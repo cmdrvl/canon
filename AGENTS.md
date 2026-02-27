@@ -194,9 +194,17 @@ If the user gives a direct instruction, follow it even if it conflicts with defa
 
 ---
 
+## RULE 1: No File Deletion
+
+**You are never allowed to delete a file without express permission.** Always ask and receive clear, written permission before deleting any file or folder.
+
+---
+
 ## Beads (`br`) Workflow
 
-Use Beads as source of truth for task state.
+Use Beads as source of truth for task state. Issues are stored in `.beads/` and tracked in git.
+
+**Important:** `br` is non-invasive — it NEVER executes git commands. After `br sync --flush-only`, you must manually run `git add .beads/ && git commit`.
 
 ```bash
 br ready              # Show unblocked ready work
@@ -209,6 +217,18 @@ br sync --flush-only  # Export to JSONL (no git ops)
 
 Pick unblocked beads. Mark in-progress before coding. Close with evidence when done.
 
+### Phase Labels
+
+Beads are labeled `phase-0` through `phase-2` indicating when they can start:
+
+| Phase | When | What |
+|-------|------|------|
+| `phase-0` | Immediately | Scaffold, fixtures, CI, release, docs |
+| `phase-1` | After Phase 0 completes | All feature modules + orchestration (parallel) |
+| `phase-2` | After Phase 1 completes | Integration test suites + witness protocol |
+
+Use `br list --label phase-N` to see beads in each phase.
+
 ---
 
 ## Agent Mail (Multi-Agent Sessions)
@@ -216,11 +236,36 @@ Pick unblocked beads. Mark in-progress before coding. Close with evidence when d
 When Agent Mail is available:
 
 - Register identity in this project
-- Reserve only specific files you are actively editing — never entire directories
-- Send start/finish updates per bead
+- **Reserve only the specific file(s) you are editing — never entire directories or broad globs**
+- Each bead's comments document the exact files to reserve (look for `RESERVATIONS:`)
+- Send start/finish updates per bead using bead ID as `thread_id`
 - Poll inbox at moderate cadence (2-5 minutes)
 - Acknowledge `ack_required` messages promptly
 - Release reservations when done
+
+### File Reservation Rules
+
+The scaffold (bd-1do) pre-creates all module stubs and shared types. This means:
+
+1. **No bead except scaffold touches `lib.rs` shared types or `main.rs`** — your types and dispatch are already in place
+2. **You only edit your own `.rs` file(s)** — the stubs have `todo!()` that you replace with real implementation
+3. **Reserve only the files you are writing** — not the module directory, not other stubs
+4. **src/output/ is split into json.rs and csv.rs** — bd-2p4 and bd-37k work in parallel without conflict
+
+Example: if working on `registry` (bd-23d), reserve only `src/registry.rs`.
+
+---
+
+## Multi-Agent Coordination
+
+When working alongside other agents:
+
+- **Never stash, revert, or overwrite other agents' work**
+- Treat unexpected changes in the working tree as if you made them
+- If you see changes you didn't make in `git status`, those are from other agents working concurrently — commit them together with your changes
+- This is normal and happens frequently in multi-agent environments
+
+**Do NOT** stop working to ask about unexpected changes. **Do** continue working as normal and include those changes when you commit.
 
 ---
 
@@ -230,6 +275,15 @@ Before ending a session:
 
 1. Run quality gate (`fmt` + `clippy` + `test`)
 2. Confirm docs/spec alignment for behavior changes
-3. Commit with precise message
-4. Push `main` and sync `master`
-5. Summarize: what changed, what was validated, remaining risks
+3. Update bead status (`br close <id>` or update progress)
+4. Sync beads: `br sync --flush-only`
+5. Commit with precise message:
+   ```bash
+   git add .beads/ <other files>
+   git commit -m "..."
+   git push
+   ```
+6. Verify: `git status` shows "up to date with origin"
+7. Summarize: what changed, what was validated, remaining risks
+
+**Work is NOT complete until `git push` succeeds.** Never stop before pushing.
