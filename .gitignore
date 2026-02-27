@@ -26,3 +26,9 @@ target
 
 # ntm runtime state
 .ntm/
+
+# Witness ledger (local runtime artifact)
+.canon-witness.jsonl
+
+# SQLite derived indexes (rebuilt from source registry files)
+_index.sqlite
