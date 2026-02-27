@@ -15,6 +15,7 @@ pub enum EmitMode {
 #[command(name = "canon")]
 #[command(version = "0.1.0")]
 #[command(about = "Resolve messy identifiers to canonical IDs using versioned registries")]
+#[command(disable_version_flag = true)]
 pub struct Cli {
     /// Input CSV or JSONL file (use '-' for stdin with JSONL)
     pub input: Option<PathBuf>,
