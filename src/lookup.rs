@@ -2,8 +2,6 @@
 use crate::SpecialReason;
 use crate::{InputValues, Mapping, Registry, ResolveResult, Summary, UnresolvedEntry};
 use rusqlite::{Connection, params};
-#[cfg(test)]
-use std::collections::HashMap;
 
 /// Resolve input values against registry and return mapping results
 pub fn resolve_values(

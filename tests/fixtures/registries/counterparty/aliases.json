@@ -1,0 +1,26 @@
+[
+  {
+    "input": "Wells Fargo",
+    "canonical_id": "C-00012",
+    "canonical_type": "counterparty_id",
+    "rule_id": "COUNTERPARTY_ALIAS"
+  },
+  {
+    "input": "Wells Fargo Bank N.A.",
+    "canonical_id": "C-00012",
+    "canonical_type": "counterparty_id",
+    "rule_id": "COUNTERPARTY_ALIAS"
+  },
+  {
+    "input": "WFB",
+    "canonical_id": "C-00012",
+    "canonical_type": "counterparty_id",
+    "rule_id": "COUNTERPARTY_ALIAS"
+  },
+  {
+    "input": "JPMorgan",
+    "canonical_id": "C-00099",
+    "canonical_type": "counterparty_id",
+    "rule_id": "COUNTERPARTY_ALIAS"
+  }
+]

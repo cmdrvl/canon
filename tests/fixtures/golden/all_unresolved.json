@@ -1,0 +1,30 @@
+{
+  "version": "canon.v0",
+  "outcome": "UNRESOLVED",
+  "registry": {
+    "id": "cusip-isin",
+    "version": "1.0.0",
+    "source": "tests/fixtures/registries/cusip-isin"
+  },
+  "summary": {
+    "total": 3,
+    "resolved": 0,
+    "unresolved": 3
+  },
+  "mappings": [],
+  "unresolved": [
+    {
+      "input": "u8:UNKNOWN01",
+      "reason": "no matching rule"
+    },
+    {
+      "input": "u8:UNKNOWN02",
+      "reason": "no matching rule"
+    },
+    {
+      "input": "u8:UNKNOWN03",
+      "reason": "no matching rule"
+    }
+  ],
+  "refusal": null
+}

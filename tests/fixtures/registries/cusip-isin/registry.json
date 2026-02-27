@@ -1,0 +1,7 @@
+{
+  "id": "cusip-isin",
+  "version": "1.0.0",
+  "description": "Test CUSIP mappings",
+  "updated": "2026-01-01",
+  "entry_count": 5
+}

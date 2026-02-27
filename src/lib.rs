@@ -10,12 +10,430 @@ pub mod witness;
 
 use crate::cli::Cli;
 use serde::{Deserialize, Serialize, Serializer};
-use std::{collections::HashMap, error::Error, path::PathBuf};
+use std::{
+    collections::HashMap,
+    error::Error,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
-// Entry point function - stub for now
-pub fn run(_cli: Cli) -> Result<u8, Box<dyn Error>> {
-    // TODO: Implement orchestration
-    Ok(0)
+// Entry point function
+pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
+    // Step 1: Handle info commands (early return)
+    if cli.version {
+        println!("canon 0.1.0");
+        return Ok(0);
+    }
+
+    if cli.describe {
+        let operator = serde_json::json!({
+            "tool": "canon",
+            "version": "0.1.0",
+            "description": "Canonical identifier resolution tool",
+            "schema_version": "canon.v0",
+            "capabilities": {
+                "input_formats": ["csv", "jsonl"],
+                "output_formats": ["json", "csv"],
+                "hash_algorithm": "BLAKE3"
+            }
+        });
+        println!("{}", serde_json::to_string(&operator)?);
+        return Ok(0);
+    }
+
+    if cli.schema {
+        let schema = serde_json::json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "https://canon.v0/schema.json",
+            "title": "Canon Output Schema",
+            "description": "JSON schema for canon.v0 output format",
+            "type": "object",
+            "required": ["version", "outcome"],
+            "properties": {
+                "version": {
+                    "type": "string",
+                    "const": "canon.v0"
+                },
+                "outcome": {
+                    "type": "string",
+                    "enum": ["RESOLVED", "PARTIAL", "UNRESOLVED", "REFUSAL"]
+                },
+                "registry": {
+                    "type": ["object", "null"],
+                    "properties": {
+                        "id": { "type": "string" },
+                        "version": { "type": "string" },
+                        "source": { "type": "string" }
+                    },
+                    "required": ["id", "version", "source"]
+                },
+                "summary": {
+                    "type": ["object", "null"],
+                    "properties": {
+                        "total": { "type": "integer", "minimum": 0 },
+                        "resolved": { "type": "integer", "minimum": 0 },
+                        "unresolved": { "type": "integer", "minimum": 0 }
+                    },
+                    "required": ["total", "resolved", "unresolved"]
+                },
+                "mappings": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "input": { "type": "string" },
+                            "canonical_id": { "type": "string" },
+                            "canonical_type": { "type": "string" },
+                            "rule_id": { "type": "string" },
+                            "confidence": { "type": "string" }
+                        },
+                        "required": ["input", "canonical_id", "canonical_type", "rule_id", "confidence"]
+                    }
+                },
+                "unresolved": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "input": { "type": ["string", "null"] },
+                            "reason": { "type": "string" }
+                        },
+                        "required": ["reason"]
+                    }
+                },
+                "refusal": {
+                    "type": ["object", "null"],
+                    "properties": {
+                        "code": { "type": "string" },
+                        "message": { "type": "string" },
+                        "detail": { "type": "object" },
+                        "next_command": { "type": ["string", "null"] }
+                    },
+                    "required": ["code", "message", "detail"]
+                }
+            }
+        });
+        println!("{}", serde_json::to_string_pretty(&schema)?);
+        return Ok(0);
+    }
+
+    // Step 2: Validate required args
+    let input_path = cli
+        .input
+        .as_ref()
+        .ok_or("Input path required")?
+        .to_path_buf();
+    let registry_path = cli
+        .registry
+        .as_ref()
+        .ok_or("Registry path required")?
+        .to_path_buf();
+    let column = cli
+        .column
+        .as_deref()
+        .ok_or("Column name required")?
+        .to_string();
+
+    // Step 3: Warn on stderr if --map-out is set with --emit json
+    if matches!(cli.emit, crate::cli::EmitMode::Json) && cli.map_out.is_some() {
+        eprintln!("Warning: --map-out ignored in JSON mode (mapping already is stdout)");
+    }
+
+    // Handle refusals by converting to CanonOutput and routing appropriately
+    let result = run_pipeline(&input_path, &registry_path, &column, &cli);
+
+    match result {
+        Ok(exit_code) => Ok(exit_code),
+        Err(refusal_output) => {
+            match cli.emit {
+                crate::cli::EmitMode::Json => {
+                    // Refusal JSON to stdout
+                    println!("{}", serde_json::to_string(&refusal_output)?);
+                }
+                crate::cli::EmitMode::Csv => {
+                    // Refusal JSON to stderr
+                    eprintln!("{}", serde_json::to_string(&refusal_output)?);
+                }
+            }
+            Ok(2) // REFUSAL exit code
+        }
+    }
+}
+
+// Internal pipeline that can return refusals
+#[allow(clippy::result_large_err)]
+fn run_pipeline(
+    input_path: &Path,
+    registry_path: &Path,
+    column: &str,
+    cli: &Cli,
+) -> Result<u8, CanonOutput> {
+    // Step 4: Load registry
+    let registry = registry::load_registry(registry_path.to_str().unwrap())
+        .map_err(create_registry_refusal)?;
+
+    // Step 5: Hash input file bytes (witness protocol)
+    let input_hash = witness::hash_file(input_path).map_err(|e| {
+        create_io_refusal(std::io::Error::other(format!(
+            "Failed to hash input file: {}",
+            e
+        )))
+    })?;
+
+    // Step 6: Parse input
+    let input_values = input::parse_input(
+        input_path.to_str().unwrap(),
+        column,
+        cli.max_bytes,
+        cli.max_rows,
+    )
+    .map_err(create_input_refusal)?;
+
+    // Step 7: Validate emit mode
+    if matches!(cli.emit, crate::cli::EmitMode::Csv)
+        && matches!(input_values.format, InputFormat::Jsonl)
+    {
+        return Err(refusal::create_refusal(
+            RefusalCode::EEmitFormat,
+            "--emit csv cannot be used with JSONL input".to_string(),
+            serde_json::json!({"input_format": "jsonl", "emit_mode": "csv"}),
+            Some("Use --emit json with JSONL input".to_string()),
+        ));
+    }
+
+    // Step 8: Resolve values
+    let resolve_result =
+        lookup::resolve_values(&registry, &input_values).map_err(create_lookup_refusal)?;
+
+    // Step 9: Determine outcome
+    let outcome = determine_outcome(&resolve_result.summary);
+
+    // Debug assert for safety net
+    debug_assert!(
+        !(resolve_result.summary.resolved == 0 && resolve_result.summary.unresolved == 0),
+        "Empty input should have been caught by input module"
+    );
+
+    // Step 10: Emit output
+    let output_hash = match cli.emit {
+        crate::cli::EmitMode::Json => {
+            // JSON mode: emit to stdout with hash
+            let json_output = output::json::emit_json(&registry.meta, &resolve_result)
+                .map_err(create_output_refusal)?;
+
+            print!("{}", json_output);
+
+            // Step 11: Hash output bytes (witness protocol)
+            witness::hash_bytes(json_output.as_bytes())
+        }
+        crate::cli::EmitMode::Csv => {
+            // CSV mode: create resolve map and emit with hash
+            let resolve_map = build_resolve_map(&resolve_result);
+            let default_canonical_column = format!("{}__canon", column);
+            let canonical_column = cli
+                .canon_column
+                .as_deref()
+                .unwrap_or(default_canonical_column.as_str());
+
+            let stdout = std::io::stdout();
+            let mut stdout_lock = stdout.lock();
+            let mut tee_writer = HashingWriter::new(&mut stdout_lock);
+            output::csv::emit_csv(
+                input_path.to_str().unwrap(),
+                &resolve_map,
+                column,
+                canonical_column,
+                input_values.delimiter.unwrap_or(b','),
+                &mut tee_writer,
+            )
+            .map_err(create_csv_output_refusal)?;
+
+            tee_writer.flush().map_err(create_io_refusal)?;
+
+            // Write --map-out sidecar if specified
+            if let Some(map_out_path) = &cli.map_out {
+                let json_output = output::json::emit_json(&registry.meta, &resolve_result)
+                    .map_err(create_output_refusal)?;
+                std::fs::write(map_out_path, json_output).map_err(create_io_refusal)?;
+            }
+
+            // Step 11: Hash output bytes (witness protocol)
+            tee_writer.finalize_hash()
+        }
+    };
+
+    // Step 12: Record witness (unless --no-witness)
+    let no_witness = cli.no_witness;
+    if !no_witness {
+        let witness_summary = witness::WitnessSummary {
+            total: resolve_result.summary.total,
+            resolved: resolve_result.summary.resolved,
+            unresolved: resolve_result.summary.unresolved,
+        };
+
+        let outcome_str = match outcome {
+            Outcome::Resolved => "RESOLVED",
+            Outcome::Partial => "PARTIAL",
+            Outcome::Unresolved => "UNRESOLVED",
+            Outcome::Refusal => "REFUSAL",
+        };
+
+        let witness_record = witness::WitnessRecord::new(
+            input_path.to_str().unwrap(),
+            &input_hash,
+            &output_hash,
+            &registry.meta.id,
+            &registry.meta.version,
+            outcome_str,
+            witness_summary,
+        );
+
+        if let Err(error) = witness::append_witness_record(&witness_record, no_witness) {
+            eprintln!("Warning: failed to append witness: {}", error);
+        }
+    }
+
+    // Step 13: Return exit code
+    let exit_code = match outcome {
+        Outcome::Resolved => 0,
+        Outcome::Partial | Outcome::Unresolved => 1,
+        Outcome::Refusal => 2, // Should not reach here
+    };
+
+    Ok(exit_code)
+}
+
+fn determine_outcome(summary: &Summary) -> Outcome {
+    match (summary.resolved, summary.unresolved) {
+        (resolved, 0) if resolved > 0 => Outcome::Resolved,
+        (resolved, unresolved) if resolved > 0 && unresolved > 0 => Outcome::Partial,
+        (0, unresolved) if unresolved > 0 => Outcome::Unresolved,
+        _ => {
+            debug_assert!(false, "Invalid summary state");
+            Outcome::Unresolved
+        }
+    }
+}
+
+fn build_resolve_map(
+    resolve_result: &ResolveResult,
+) -> std::collections::HashMap<String, Option<String>> {
+    let mut resolve_map = std::collections::HashMap::new();
+
+    // Add resolved mappings
+    for mapping in &resolve_result.mappings {
+        resolve_map.insert(mapping.input.clone(), Some(mapping.canonical_id.clone()));
+    }
+
+    // Add unresolved entries that have input values
+    for unresolved in &resolve_result.unresolved {
+        if let Some(input_value) = &unresolved.input {
+            resolve_map.insert(input_value.clone(), None);
+        }
+    }
+
+    resolve_map
+}
+
+struct HashingWriter<W: Write> {
+    writer: W,
+    hasher: blake3::Hasher,
+}
+
+impl<W: Write> HashingWriter<W> {
+    fn new(writer: W) -> Self {
+        Self {
+            writer,
+            hasher: blake3::Hasher::new(),
+        }
+    }
+
+    fn finalize_hash(self) -> String {
+        format!("blake3:{}", self.hasher.finalize().to_hex())
+    }
+}
+
+impl<W: Write> Write for HashingWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let bytes_written = self.writer.write(buf)?;
+        self.hasher.update(&buf[..bytes_written]);
+        Ok(bytes_written)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.writer.flush()
+    }
+}
+
+// Helper functions to create refusal outputs from errors
+fn create_registry_refusal(error: Box<dyn Error>) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EBadRegistry,
+        error.to_string(),
+        serde_json::json!({}),
+        None,
+    )
+}
+
+fn create_input_refusal(error: input::InputError) -> CanonOutput {
+    refusal::create_refusal(
+        error.to_refusal_code(),
+        error.to_string(),
+        serde_json::json!({}),
+        None,
+    )
+}
+
+fn create_lookup_refusal(error: lookup::LookupError) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EIo,
+        error.to_string(),
+        serde_json::json!({}),
+        None,
+    )
+}
+
+fn create_output_refusal(error: Box<dyn Error>) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EIo,
+        error.to_string(),
+        serde_json::json!({}),
+        None,
+    )
+}
+
+fn create_csv_output_refusal(error: output::csv::CsvOutputError) -> CanonOutput {
+    match error {
+        output::csv::CsvOutputError::Io(message) => {
+            refusal::create_refusal(RefusalCode::EIo, message, serde_json::json!({}), None)
+        }
+        output::csv::CsvOutputError::CsvParse(message) => {
+            refusal::create_refusal(RefusalCode::ECsvParse, message, serde_json::json!({}), None)
+        }
+        output::csv::CsvOutputError::ColumnExists { column } => refusal::create_refusal(
+            RefusalCode::EColumnExists,
+            format!("Canonical column '{}' already exists in CSV header", column),
+            serde_json::json!({ "canon_column": column }),
+            None,
+        ),
+        output::csv::CsvOutputError::ColumnNotFound { column, available } => {
+            refusal::create_refusal(
+                RefusalCode::EColumnNotFound,
+                format!("Column '{}' not found", column),
+                serde_json::json!({ "column": column, "available_columns": available }),
+                None,
+            )
+        }
+    }
+}
+
+fn create_io_refusal(error: std::io::Error) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EIo,
+        error.to_string(),
+        serde_json::json!({}),
+        None,
+    )
 }
 
 // Output types

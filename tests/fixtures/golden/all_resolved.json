@@ -1,0 +1,39 @@
+{
+  "version": "canon.v0",
+  "outcome": "RESOLVED",
+  "registry": {
+    "id": "cusip-isin",
+    "version": "1.0.0",
+    "source": "tests/fixtures/registries/cusip-isin"
+  },
+  "summary": {
+    "total": 3,
+    "resolved": 3,
+    "unresolved": 0
+  },
+  "mappings": [
+    {
+      "input": "u8:037833100",
+      "canonical_id": "u8:US0378331005",
+      "canonical_type": "isin",
+      "rule_id": "CUSIP_TO_ISIN",
+      "confidence": "deterministic"
+    },
+    {
+      "input": "u8:17275R102",
+      "canonical_id": "u8:US17275R1023",
+      "canonical_type": "isin",
+      "rule_id": "CUSIP_TO_ISIN",
+      "confidence": "deterministic"
+    },
+    {
+      "input": "u8:594918104",
+      "canonical_id": "u8:US5949181045",
+      "canonical_type": "isin",
+      "rule_id": "CUSIP_TO_ISIN",
+      "confidence": "deterministic"
+    }
+  ],
+  "unresolved": [],
+  "refusal": null
+}

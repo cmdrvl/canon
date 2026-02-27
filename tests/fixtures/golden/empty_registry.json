@@ -1,0 +1,30 @@
+{
+  "version": "canon.v0",
+  "outcome": "UNRESOLVED",
+  "registry": {
+    "id": "empty",
+    "version": "1.0.0",
+    "source": "tests/fixtures/registries/empty"
+  },
+  "summary": {
+    "total": 3,
+    "resolved": 0,
+    "unresolved": 3
+  },
+  "mappings": [],
+  "unresolved": [
+    {
+      "input": "u8:037833100",
+      "reason": "no matching rule"
+    },
+    {
+      "input": "u8:17275R102",
+      "reason": "no matching rule"
+    },
+    {
+      "input": "u8:594918104",
+      "reason": "no matching rule"
+    }
+  ],
+  "refusal": null
+}

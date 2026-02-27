@@ -1,0 +1,20 @@
+[
+  {
+    "input": "037833100",
+    "canonical_id": "AAPL",
+    "canonical_type": "ticker",
+    "rule_id": "CUSIP_TO_TICKER"
+  },
+  {
+    "input": "594918104",
+    "canonical_id": "MSFT",
+    "canonical_type": "ticker",
+    "rule_id": "CUSIP_TO_TICKER"
+  },
+  {
+    "input": "17275R102",
+    "canonical_id": "COIN",
+    "canonical_type": "ticker",
+    "rule_id": "CUSIP_TO_TICKER"
+  }
+]
