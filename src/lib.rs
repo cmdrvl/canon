@@ -367,21 +367,62 @@ impl<W: Write> Write for HashingWriter<W> {
 
 // Helper functions to create refusal outputs from errors
 fn create_registry_refusal(error: Box<dyn Error>) -> CanonOutput {
-    refusal::create_refusal(
-        RefusalCode::EBadRegistry,
-        error.to_string(),
-        serde_json::json!({}),
-        None,
-    )
+    let message = error.to_string();
+    let code = if message.contains("Registry directory not found") {
+        RefusalCode::EIo
+    } else {
+        RefusalCode::EBadRegistry
+    };
+    refusal::create_refusal(code, message, serde_json::json!({}), None)
 }
 
 fn create_input_refusal(error: input::InputError) -> CanonOutput {
-    refusal::create_refusal(
-        error.to_refusal_code(),
-        error.to_string(),
-        serde_json::json!({}),
-        None,
-    )
+    match error {
+        input::InputError::ColumnNotFound { column, available } => refusal::create_refusal(
+            RefusalCode::EColumnNotFound,
+            format!("Column '{}' not found in input file", column),
+            serde_json::json!({
+                "column": column,
+                "available_columns": available
+            }),
+            None,
+        ),
+        input::InputError::TooLarge {
+            limit_type,
+            limit,
+            actual,
+        } => refusal::create_refusal(
+            RefusalCode::ETooLarge,
+            format!(
+                "Input exceeds --{} limit ({} > {})",
+                limit_type, actual, limit
+            ),
+            serde_json::json!({
+                "limit_type": limit_type,
+                "limit": limit,
+                "actual": actual
+            }),
+            None,
+        ),
+        input::InputError::Io(message) => {
+            refusal::create_refusal(RefusalCode::EIo, message, serde_json::json!({}), None)
+        }
+        input::InputError::Parse(message) => {
+            refusal::create_refusal(RefusalCode::EParse, message, serde_json::json!({}), None)
+        }
+        input::InputError::CsvParse(message) => {
+            refusal::create_refusal(RefusalCode::ECsvParse, message, serde_json::json!({}), None)
+        }
+        input::InputError::Encoding(message) => {
+            refusal::create_refusal(RefusalCode::EEncoding, message, serde_json::json!({}), None)
+        }
+        input::InputError::EmptyInput => refusal::create_refusal(
+            RefusalCode::EEmptyInput,
+            "Input has no processable rows".to_string(),
+            serde_json::json!({}),
+            None,
+        ),
+    }
 }
 
 fn create_lookup_refusal(error: lookup::LookupError) -> CanonOutput {

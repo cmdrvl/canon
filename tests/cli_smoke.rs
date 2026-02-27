@@ -5,8 +5,7 @@ use std::path::Path;
 
 #[test]
 fn test_version_command() {
-    let output = Command::cargo_bin("canon")
-        .unwrap()
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("--version")
         .assert()
         .success();
@@ -17,8 +16,7 @@ fn test_version_command() {
 
 #[test]
 fn test_describe_command() {
-    let output = Command::cargo_bin("canon")
-        .unwrap()
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("--describe")
         .assert()
         .success();
@@ -34,8 +32,7 @@ fn test_describe_command() {
 
 #[test]
 fn test_schema_command() {
-    let output = Command::cargo_bin("canon")
-        .unwrap()
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("--schema")
         .assert()
         .success();
@@ -43,15 +40,17 @@ fn test_schema_command() {
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     let json: Value = serde_json::from_str(&stdout).expect("--schema should output valid JSON");
 
-    assert_eq!(json["$schema"], "https://json-schema.org/draft/2020-12/schema");
+    assert_eq!(
+        json["$schema"],
+        "https://json-schema.org/draft/2020-12/schema"
+    );
     assert_eq!(json["$id"], "https://canon.v0/schema.json");
     assert!(json["properties"].is_object());
 }
 
 #[test]
 fn test_all_resolved_exit_code() {
-    Command::cargo_bin("canon")
-        .unwrap()
+    Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("tests/fixtures/inputs/all_resolved.csv")
         .arg("--registry")
         .arg("tests/fixtures/registries/cusip-isin")
@@ -63,8 +62,7 @@ fn test_all_resolved_exit_code() {
 
 #[test]
 fn test_partial_exit_code() {
-    Command::cargo_bin("canon")
-        .unwrap()
+    Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("tests/fixtures/inputs/partial.csv")
         .arg("--registry")
         .arg("tests/fixtures/registries/cusip-isin")
@@ -76,8 +74,7 @@ fn test_partial_exit_code() {
 
 #[test]
 fn test_all_unresolved_exit_code() {
-    Command::cargo_bin("canon")
-        .unwrap()
+    Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("tests/fixtures/inputs/all_unresolved.csv")
         .arg("--registry")
         .arg("tests/fixtures/registries/cusip-isin")
@@ -89,8 +86,7 @@ fn test_all_unresolved_exit_code() {
 
 #[test]
 fn test_missing_input_file_refusal() {
-    Command::cargo_bin("canon")
-        .unwrap()
+    Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("nonexistent.csv")
         .arg("--registry")
         .arg("tests/fixtures/registries/cusip-isin")
@@ -103,8 +99,7 @@ fn test_missing_input_file_refusal() {
 
 #[test]
 fn test_emit_csv_with_jsonl_refusal() {
-    Command::cargo_bin("canon")
-        .unwrap()
+    Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("tests/fixtures/inputs/basic.jsonl")
         .arg("--registry")
         .arg("tests/fixtures/registries/cusip-isin")
@@ -119,8 +114,7 @@ fn test_emit_csv_with_jsonl_refusal() {
 
 #[test]
 fn test_column_not_found_refusal() {
-    Command::cargo_bin("canon")
-        .unwrap()
+    Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("tests/fixtures/inputs/all_resolved.csv")
         .arg("--registry")
         .arg("tests/fixtures/registries/cusip-isin")
@@ -133,8 +127,7 @@ fn test_column_not_found_refusal() {
 
 #[test]
 fn test_json_mode_success_to_stdout() {
-    let output = Command::cargo_bin("canon")
-        .unwrap()
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("tests/fixtures/inputs/all_resolved.csv")
         .arg("--registry")
         .arg("tests/fixtures/registries/cusip-isin")
@@ -156,8 +149,7 @@ fn test_json_mode_success_to_stdout() {
 
 #[test]
 fn test_csv_mode_success_to_stdout() {
-    let output = Command::cargo_bin("canon")
-        .unwrap()
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("tests/fixtures/inputs/all_resolved.csv")
         .arg("--registry")
         .arg("tests/fixtures/registries/cusip-isin")
@@ -178,8 +170,7 @@ fn test_csv_mode_success_to_stdout() {
 
 #[test]
 fn test_csv_mode_refusal_to_stderr() {
-    let output = Command::cargo_bin("canon")
-        .unwrap()
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("tests/fixtures/inputs/wrong_column.csv")
         .arg("--registry")
         .arg("tests/fixtures/registries/cusip-isin")
@@ -202,8 +193,7 @@ fn test_csv_mode_refusal_to_stderr() {
 #[test]
 fn test_witness_flag_no_witness() {
     // This test just ensures --no-witness doesn't break execution
-    Command::cargo_bin("canon")
-        .unwrap()
+    Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("tests/fixtures/inputs/all_resolved.csv")
         .arg("--registry")
         .arg("tests/fixtures/registries/cusip-isin")
@@ -221,8 +211,7 @@ fn test_map_out_sidecar_in_csv_mode() {
     let temp_file = NamedTempFile::new().unwrap();
     let map_out_path = temp_file.path().to_str().unwrap();
 
-    Command::cargo_bin("canon")
-        .unwrap()
+    Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("tests/fixtures/inputs/all_resolved.csv")
         .arg("--registry")
         .arg("tests/fixtures/registries/cusip-isin")
