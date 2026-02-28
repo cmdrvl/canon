@@ -24,9 +24,9 @@ fn test_describe_command() {
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     let json: Value = serde_json::from_str(&stdout).expect("--describe should output valid JSON");
 
-    assert_eq!(json["tool"], "canon");
+    assert_eq!(json["name"], "canon");
     assert_eq!(json["version"], "0.1.0");
-    assert_eq!(json["schema_version"], "canon.v0");
+    assert_eq!(json["schema_version"], "operator.v0");
     assert!(json["capabilities"].is_object());
 }
 

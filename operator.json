@@ -1,0 +1,80 @@
+{
+  "schema_version": "operator.v0",
+  "name": "canon",
+  "version": "0.1.0",
+  "description": "Canonical identifier resolution — maps raw IDs to canonical forms using a versioned registry",
+  "repository": "https://github.com/cmdrvl/canon",
+  "license": "MIT",
+  "agent_guide": "https://github.com/cmdrvl/.github/blob/main/profile/AGENT_PROMPT.md",
+
+  "invocation": {
+    "binary": "canon",
+    "usage": [
+      "canon <INPUT> --registry <DIR> --column <COL> [OPTIONS]"
+    ],
+    "output_mode": "mixed",
+    "output_schema": "canon.v0",
+    "json_flag": null
+  },
+
+  "arguments": [
+    {
+      "name": "input",
+      "type": "file_path",
+      "required": true,
+      "position": 0,
+      "description": "Input CSV or JSONL file. Format detected by extension (.csv, .tsv, .jsonl, .ndjson). Use - for stdin (JSONL only)."
+    }
+  ],
+
+  "options": [
+    { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Registry directory containing registry.json and mapping files" },
+    { "name": "column", "flag": "--column", "type": "string", "required": true, "description": "Column containing IDs to resolve" },
+    { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (JSON mapping) or csv (CSV with canonical column)" },
+    { "name": "canon_column", "flag": "--canon-column", "type": "string", "description": "Name of appended canonical column (default: <COLUMN>__canon). CSV mode only." },
+    { "name": "map_out", "flag": "--map-out", "type": "file_path", "description": "Write JSON mapping artifact to file (sidecar). CSV mode only." },
+    { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if input exceeds N data rows" },
+    { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if input exceeds N bytes" },
+    { "name": "no_witness", "flag": "--no-witness", "type": "flag", "description": "Suppress witness ledger recording" },
+    { "name": "describe", "flag": "--describe", "type": "flag", "description": "Print compiled operator.json and exit 0" },
+    { "name": "schema", "flag": "--schema", "type": "flag", "description": "Print canon.v0 JSON Schema and exit 0" },
+    { "name": "version", "flag": "--version", "type": "flag", "description": "Print version and exit 0" }
+  ],
+
+  "subcommands": [],
+
+  "exit_codes": {
+    "0": { "meaning": "RESOLVED", "domain": "positive" },
+    "1": { "meaning": "PARTIAL or UNRESOLVED", "domain": "negative" },
+    "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+  },
+
+  "refusals": [
+    { "code": "E_IO", "message": "Cannot read file or registry path", "action": "escalate" },
+    { "code": "E_ENCODING", "message": "Unsupported text encoding (non-UTF-8)", "action": "escalate" },
+    { "code": "E_CSV_PARSE", "message": "CSV header/record parse failure", "action": "escalate" },
+    { "code": "E_BAD_REGISTRY", "message": "Invalid registry.json or mapping format", "action": "escalate" },
+    { "code": "E_COLUMN_NOT_FOUND", "message": "Column does not exist in header", "action": "fix_input" },
+    { "code": "E_PARSE", "message": "Unrecognized file extension or parse error", "action": "escalate" },
+    { "code": "E_EMPTY_INPUT", "message": "No processable data rows", "action": "escalate" },
+    { "code": "E_TOO_LARGE", "message": "Input exceeds --max-rows or --max-bytes limit", "action": "retry_with_flag", "flag": "--max-rows or --max-bytes" },
+    { "code": "E_EMIT_FORMAT", "message": "--emit csv requested with JSONL input", "action": "adjust_input" },
+    { "code": "E_COLUMN_EXISTS", "message": "Canonical column name already in CSV header", "action": "adjust_input" }
+  ],
+
+  "capabilities": {
+    "formats": ["csv", "jsonl"],
+    "profile_aware": false,
+    "streaming": false,
+    "witness": {
+      "ambient_recording": "enabled_by_default",
+      "query_subcommands": false,
+      "no_witness_flag": "suppresses_recording"
+    }
+  },
+
+  "pipeline": {
+    "upstream": [],
+    "downstream": ["lock", "pack"]
+  }
+}

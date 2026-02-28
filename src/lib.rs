@@ -26,19 +26,8 @@ pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
     }
 
     if cli.describe {
-        let operator = serde_json::json!({
-            "tool": "canon",
-            "version": "0.1.0",
-            "description": "Canonical identifier resolution tool",
-            "agent_guide": "https://github.com/cmdrvl/.github/blob/main/profile/AGENT_PROMPT.md",
-            "schema_version": "canon.v0",
-            "capabilities": {
-                "input_formats": ["csv", "jsonl"],
-                "output_formats": ["json", "csv"],
-                "hash_algorithm": "BLAKE3"
-            }
-        });
-        println!("{}", serde_json::to_string(&operator)?);
+        const OPERATOR_JSON: &str = include_str!("../operator.json");
+        println!("{OPERATOR_JSON}");
         return Ok(0);
     }
 
