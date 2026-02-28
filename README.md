@@ -4,9 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Resolve messy identifiers to canonical IDs using versioned registries.**
-
-Know what matched, what didn't, and why.
+**The same entity has five names across three vendors. canon makes them one.**
 
 ```bash
 brew install cmdrvl/tap/canon
@@ -16,22 +14,16 @@ brew install cmdrvl/tap/canon
 
 ---
 
-## TL;DR
+The same loan appears as CUSIP `037833100` in one system, ISIN `US0378331005` in another, and ticker `AAPL` in a third. Three vendors, three identifiers, one entity. Your reconciliation pipeline needs them to be the same row. Right now, the mapping lives in a VLOOKUP chain, an unmaintained Python script, or someone's head.
 
-**The Problem**: The same entity has 5 names across 3 vendors. CUSIPs map to ISINs map to tickers — but which mapping version? Counterparty names drift. The resolution lives in a VLOOKUP chain, an unmaintained script, or someone's head.
+**canon resolves identifiers against versioned registries — deterministic, traceable, reproducible.** Every resolution records which registry version was used, which rule produced the match, and what didn't match. Same input plus same registry version equals same output, every time. No fuzzy matching, no silent normalization, no guessing.
 
-**The Solution**: One command, one mapping. `canon` resolves input identifiers against versioned registries and records everything — what matched, what didn't, and which rule produced the match. Deterministic. Inspectable. Reproducible.
+### What makes this different
 
-### Why Use canon?
-
-| Feature | What It Does |
-|---------|--------------|
-| **Versioned registries** | Every resolution is pinned to a registry version — same input + same version = same output |
-| **Four clear outcomes** | RESOLVED, PARTIAL, UNRESOLVED, or REFUSAL — every input is classified |
-| **Two output modes** | JSON mapping artifact for audit, or CSV with canonical column appended for pipelines |
-| **Pipeline stage** | `canon --emit csv` feeds directly into `rvl`, `shape`, or any CSV tool |
-| **Full traceability** | Every mapping includes the rule ID, canonical type, and confidence level |
-| **Deterministic** | Exact byte match after ASCII-trim — no fuzzy heuristics, no silent normalization |
+- **Versioned registries** — every resolution is pinned to a registry version with semver. When the registry updates, you know exactly what changed. Registries are plain JSON directories — inspectable in git, diffable, no database required.
+- **Pipeline composable** — `canon --emit csv` appends a `<column>__canon` column to your CSV. Pipe the output directly into `rvl` or `shape`: `canon nov.csv --column cusip --emit csv | rvl - dec.canon.csv --key cusip__canon`.
+- **Full traceability** — every mapping includes `rule_id`, `canonical_type`, and `confidence`. Every unresolved entry includes the reason. Every result is auditable.
+- **Deduplication built in** — input values are deduplicated before lookup. 500 unique CUSIPs produce 500 mapping entries whether your file has 500 rows or 500,000.
 
 ---
 
