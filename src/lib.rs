@@ -30,6 +30,7 @@ pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
             "tool": "canon",
             "version": "0.1.0",
             "description": "Canonical identifier resolution tool",
+            "agent_guide": "https://github.com/cmdrvl/.github/blob/main/profile/AGENT_PROMPT.md",
             "schema_version": "canon.v0",
             "capabilities": {
                 "input_formats": ["csv", "jsonl"],

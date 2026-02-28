@@ -492,6 +492,12 @@ Special reasons (`empty_value`, `null_value`, `missing_field`, `non_scalar_value
 
 ---
 
+## Agent Integration
+
+For the full toolchain guide, see the [Agent Operator Guide](https://github.com/cmdrvl/.github/blob/main/profile/AGENT_PROMPT.md). Run `canon --describe` for this tool's machine-readable contract.
+
+---
+
 ## Spec
 
 The full specification is `docs/PLAN_CANON.md`. This README covers everything needed to use the tool; the spec adds implementation details, edge-case definitions, and testing requirements.
