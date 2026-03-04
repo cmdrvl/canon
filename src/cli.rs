@@ -13,7 +13,7 @@ pub enum EmitMode {
 
 #[derive(Parser, Debug)]
 #[command(name = "canon")]
-#[command(version = "0.1.0")]
+#[command(version = "0.2.0")]
 #[command(about = "Resolve messy identifiers to canonical IDs using versioned registries")]
 #[command(disable_version_flag = true)]
 pub struct Cli {
@@ -51,6 +51,10 @@ pub struct Cli {
     /// Suppress witness ledger append
     #[arg(long)]
     pub no_witness: bool,
+
+    /// Show entity names and identifiers in JSON output (default: redacted for zero-retention safety)
+    #[arg(long)]
+    pub explicit: bool,
 
     /// Print version and exit
     #[arg(long)]

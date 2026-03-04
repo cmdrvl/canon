@@ -466,6 +466,7 @@ fn run_json_mode(input_path: &Path, registry_path: &Path) -> (Vec<u8>, Value) {
             COLUMN,
             "--emit",
             "json",
+            "--explicit",
         ])
         .output()
         .unwrap();

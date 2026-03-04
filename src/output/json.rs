@@ -6,19 +6,35 @@ pub fn emit_json(
     registry_meta: &RegistryMeta,
     result: &ResolveResult,
 ) -> Result<String, Box<dyn Error>> {
+    emit_json_with_options(registry_meta, result, false)
+}
+
+pub fn emit_json_explicit(
+    registry_meta: &RegistryMeta,
+    result: &ResolveResult,
+    explicit: bool,
+) -> Result<String, Box<dyn Error>> {
+    emit_json_with_options(registry_meta, result, explicit)
+}
+
+fn emit_json_with_options(
+    registry_meta: &RegistryMeta,
+    result: &ResolveResult,
+    explicit: bool,
+) -> Result<String, Box<dyn Error>> {
     let outcome = derive_outcome(&result.summary)?;
 
     let mut mappings = result
         .mappings
         .iter()
-        .map(mapping_to_wire)
+        .map(|m| mapping_to_wire(m, explicit))
         .collect::<Vec<_>>();
     mappings.sort_by(|left, right| left.input.cmp(&right.input));
 
     let mut unresolved = result
         .unresolved
         .iter()
-        .map(unresolved_to_wire)
+        .map(|u| unresolved_to_wire(u, explicit))
         .collect::<Vec<_>>();
     unresolved.sort_by(|left, right| match (&left.input, &right.input) {
         (Some(left_input), Some(right_input)) => left_input.cmp(right_input),
@@ -49,22 +65,41 @@ fn derive_outcome(summary: &Summary) -> Result<Outcome, Box<dyn Error>> {
     }
 }
 
-fn mapping_to_wire(mapping: &Mapping) -> WireMapping {
-    WireMapping {
-        input: encode_identifier(mapping.input.as_bytes()),
-        canonical_id: encode_identifier(mapping.canonical_id.as_bytes()),
-        canonical_type: mapping.canonical_type.clone(),
-        rule_id: mapping.rule_id.clone(),
-        confidence: mapping.confidence.clone(),
+const REDACTED: &str = "[REDACTED]";
+
+fn mapping_to_wire(mapping: &Mapping, explicit: bool) -> WireMapping {
+    if explicit {
+        WireMapping {
+            input: encode_identifier(mapping.input.as_bytes()),
+            canonical_id: encode_identifier(mapping.canonical_id.as_bytes()),
+            canonical_type: mapping.canonical_type.clone(),
+            rule_id: mapping.rule_id.clone(),
+            confidence: mapping.confidence.clone(),
+        }
+    } else {
+        WireMapping {
+            input: REDACTED.to_string(),
+            canonical_id: REDACTED.to_string(),
+            canonical_type: mapping.canonical_type.clone(),
+            rule_id: mapping.rule_id.clone(),
+            confidence: mapping.confidence.clone(),
+        }
     }
 }
 
-fn unresolved_to_wire(unresolved_entry: &UnresolvedEntry) -> WireUnresolvedEntry {
+fn unresolved_to_wire(unresolved_entry: &UnresolvedEntry, explicit: bool) -> WireUnresolvedEntry {
     WireUnresolvedEntry {
-        input: unresolved_entry
-            .input
-            .as_ref()
-            .map(|value| encode_identifier(value.as_bytes())),
+        input: if explicit {
+            unresolved_entry
+                .input
+                .as_ref()
+                .map(|value| encode_identifier(value.as_bytes()))
+        } else {
+            unresolved_entry
+                .input
+                .as_ref()
+                .map(|_| REDACTED.to_string())
+        },
         reason: unresolved_entry.reason.clone(),
     }
 }
@@ -198,7 +233,7 @@ mod tests {
             },
         };
 
-        let output = emit_json(&registry_meta, &result).unwrap();
+        let output = emit_json_explicit(&registry_meta, &result, true).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
 
         assert_eq!(parsed["version"], "canon.v0");
@@ -218,6 +253,43 @@ mod tests {
         assert_eq!(parsed["unresolved"][1]["input"], serde_json::Value::Null);
         assert_eq!(parsed["unresolved"][1]["reason"], "empty_value");
         assert_eq!(parsed["refusal"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn emit_json_redacts_by_default() {
+        let registry_meta = RegistryMeta {
+            id: "cusip-isin".to_string(),
+            version: "3.2.1".to_string(),
+            source: "registries/cusip-isin/".to_string(),
+        };
+        let result = ResolveResult {
+            mappings: vec![Mapping {
+                input: "037833100".to_string(),
+                canonical_id: "AAPL".to_string(),
+                canonical_type: "ticker".to_string(),
+                rule_id: "CUSIP_TO_TICKER".to_string(),
+                confidence: "deterministic".to_string(),
+            }],
+            unresolved: vec![UnresolvedEntry {
+                input: Some("UNKNOWN99".to_string()),
+                reason: "no matching rule".to_string(),
+            }],
+            summary: Summary {
+                total: 2,
+                resolved: 1,
+                unresolved: 1,
+            },
+        };
+
+        let output = emit_json(&registry_meta, &result).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+
+        assert_eq!(parsed["mappings"][0]["input"], "[REDACTED]");
+        assert_eq!(parsed["mappings"][0]["canonical_id"], "[REDACTED]");
+        assert_eq!(parsed["mappings"][0]["canonical_type"], "ticker");
+        assert_eq!(parsed["mappings"][0]["rule_id"], "CUSIP_TO_TICKER");
+        assert_eq!(parsed["unresolved"][0]["input"], "[REDACTED]");
+        assert_eq!(parsed["unresolved"][0]["reason"], "no matching rule");
     }
 
     #[test]

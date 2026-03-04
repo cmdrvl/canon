@@ -236,6 +236,7 @@ fn csv_canonical_values_match_json_mappings_without_prefix() {
         "cusip",
         "--emit",
         "csv",
+        "--explicit",
         "--map-out",
         map_file.path().to_str().unwrap(),
     ]);

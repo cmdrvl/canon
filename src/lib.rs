@@ -208,8 +208,9 @@ fn run_pipeline(
     let output_hash = match cli.emit {
         crate::cli::EmitMode::Json => {
             // JSON mode: emit to stdout with hash
-            let json_output = output::json::emit_json(&registry.meta, &resolve_result)
-                .map_err(create_output_refusal)?;
+            let json_output =
+                output::json::emit_json_explicit(&registry.meta, &resolve_result, cli.explicit)
+                    .map_err(create_output_refusal)?;
 
             print!("{}", json_output);
 
@@ -242,8 +243,9 @@ fn run_pipeline(
 
             // Write --map-out sidecar if specified
             if let Some(map_out_path) = &cli.map_out {
-                let json_output = output::json::emit_json(&registry.meta, &resolve_result)
-                    .map_err(create_output_refusal)?;
+                let json_output =
+                    output::json::emit_json_explicit(&registry.meta, &resolve_result, cli.explicit)
+                        .map_err(create_output_refusal)?;
                 std::fs::write(map_out_path, json_output).map_err(create_io_refusal)?;
             }
 

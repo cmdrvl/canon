@@ -117,6 +117,7 @@ fn jsonl_mixed_types_are_coerced_and_special_reasons_dedup() {
         &fixture("registries/cusip-isin"),
         "--column",
         "cusip",
+        "--explicit",
     ]);
     assert_eq!(mixed_output.status.code(), Some(1));
     let mixed_payload = parse_stdout_json(&mixed_output);

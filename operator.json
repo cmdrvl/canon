@@ -1,7 +1,7 @@
 {
   "schema_version": "operator.v0",
   "name": "canon",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Canonical identifier resolution — maps raw IDs to canonical forms using a versioned registry",
   "repository": "https://github.com/cmdrvl/canon",
   "license": "MIT",
@@ -36,6 +36,7 @@
     { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if input exceeds N data rows" },
     { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if input exceeds N bytes" },
     { "name": "no_witness", "flag": "--no-witness", "type": "flag", "description": "Suppress witness ledger recording" },
+    { "name": "explicit", "flag": "--explicit", "type": "flag", "description": "Show entity names and identifiers in JSON output (default: redacted for zero-retention safety)" },
     { "name": "describe", "flag": "--describe", "type": "flag", "description": "Print compiled operator.json and exit 0" },
     { "name": "schema", "flag": "--schema", "type": "flag", "description": "Print canon.v0 JSON Schema and exit 0" },
     { "name": "version", "flag": "--version", "type": "flag", "description": "Print version and exit 0" }

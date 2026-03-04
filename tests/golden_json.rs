@@ -14,7 +14,7 @@ fn fixture(path: &str) -> String {
 fn run_json(input: &str, registry: &str, column: &str) -> (i32, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg(input)
-        .args(["--registry", registry, "--column", column])
+        .args(["--registry", registry, "--column", column, "--explicit"])
         .output()
         .unwrap();
     (

@@ -82,8 +82,8 @@ pub fn load_registry(registry_path: &str) -> Result<Registry, Box<dyn Error>> {
     let actual_entry_count: usize = mapping_files.iter().map(|f| f.entries.len()).sum();
     if actual_entry_count != registry_json.entry_count {
         eprintln!(
-            "Warning: registry.json entry_count ({}) differs from actual count ({})",
-            registry_json.entry_count, actual_entry_count
+            "Warning: registry.json entry_count ({}) differs from actual count ({}). Update to \"entry_count\": {}",
+            registry_json.entry_count, actual_entry_count, actual_entry_count
         );
     }
 
