@@ -159,8 +159,8 @@ fn run_pipeline(
     cli: &Cli,
 ) -> Result<u8, CanonOutput> {
     // Step 4: Load registry
-    let registry = registry::load_registry(registry_path.to_str().unwrap())
-        .map_err(create_registry_refusal)?;
+    let registry = registry::load_registry(registry_path).map_err(create_registry_refusal)?;
+    let input_path_display = input_path.to_string_lossy().into_owned();
 
     // Step 5: Hash input file bytes (witness protocol)
     let input_hash = witness::hash_file(input_path).map_err(|e| {
@@ -171,13 +171,8 @@ fn run_pipeline(
     })?;
 
     // Step 6: Parse input
-    let input_values = input::parse_input(
-        input_path.to_str().unwrap(),
-        column,
-        cli.max_bytes,
-        cli.max_rows,
-    )
-    .map_err(create_input_refusal)?;
+    let input_values = input::parse_input(input_path, column, cli.max_bytes, cli.max_rows)
+        .map_err(create_input_refusal)?;
 
     // Step 7: Validate emit mode
     if matches!(cli.emit, crate::cli::EmitMode::Csv)
@@ -230,7 +225,7 @@ fn run_pipeline(
             let mut stdout_lock = stdout.lock();
             let mut tee_writer = HashingWriter::new(&mut stdout_lock);
             output::csv::emit_csv(
-                input_path.to_str().unwrap(),
+                input_path,
                 &resolve_map,
                 column,
                 canonical_column,
@@ -271,7 +266,7 @@ fn run_pipeline(
         };
 
         let witness_record = witness::WitnessRecord::new(
-            input_path.to_str().unwrap(),
+            &input_path_display,
             &input_hash,
             &output_hash,
             &registry.meta.id,

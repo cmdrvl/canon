@@ -2,9 +2,10 @@ use csv::{ReaderBuilder, StringRecord, WriterBuilder};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
 
 pub fn emit_csv<W: Write>(
-    input_path: &str,
+    input_path: &Path,
     resolve_map: &HashMap<String, Option<String>>,
     column: &str,
     canon_column: &str,
@@ -153,7 +154,7 @@ mod tests {
 
         let mut output = Vec::new();
         emit_csv(
-            file.path().to_str().unwrap(),
+            file.path(),
             &resolve_map,
             "id",
             "id__canon",
@@ -177,7 +178,7 @@ mod tests {
 
         let mut output = Vec::new();
         emit_csv(
-            file.path().to_str().unwrap(),
+            file.path(),
             &resolve_map,
             "id",
             "canonical_id",
@@ -199,7 +200,7 @@ mod tests {
 
         let mut output = Vec::new();
         emit_csv(
-            file.path().to_str().unwrap(),
+            file.path(),
             &resolve_map,
             "id",
             "id__canon",
@@ -224,7 +225,7 @@ mod tests {
 
         let mut output = Vec::new();
         emit_csv(
-            file.path().to_str().unwrap(),
+            file.path(),
             &resolve_map,
             "id",
             "id__canon",
@@ -267,7 +268,7 @@ mod tests {
 
             let mut output = Vec::new();
             emit_csv(
-                file.path().to_str().unwrap(),
+                file.path(),
                 &resolve_map,
                 "id",
                 "id__canon",
@@ -288,7 +289,7 @@ mod tests {
         let mut output = Vec::new();
 
         let error = emit_csv(
-            file.path().to_str().unwrap(),
+            file.path(),
             &resolve_map,
             "id",
             "id__canon",
@@ -308,7 +309,7 @@ mod tests {
         let mut buffer = Vec::<u8>::new();
 
         emit_csv(
-            file.path().to_str().unwrap(),
+            file.path(),
             &resolve_map,
             "id",
             "id__canon",

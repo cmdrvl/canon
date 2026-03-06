@@ -235,3 +235,25 @@ fn test_map_out_sidecar_in_csv_mode() {
     assert_eq!(json["version"], "canon.v0");
     assert_eq!(json["outcome"], "RESOLVED");
 }
+
+#[cfg(unix)]
+#[test]
+fn test_non_utf8_input_path_does_not_panic() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+    use tempfile::tempdir;
+
+    let temp_dir = tempdir().unwrap();
+    let input_path = temp_dir
+        .path()
+        .join(OsString::from_vec(b"input-\xFF.csv".to_vec()));
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .arg(&input_path)
+        .arg("--registry")
+        .arg("tests/fixtures/registries/cusip-isin")
+        .arg("--column")
+        .arg("cusip")
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains("E_IO"));
+}

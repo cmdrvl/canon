@@ -8,7 +8,7 @@ use std::path::Path;
 
 /// Parse input file based on format and return unified InputValues
 pub fn parse_input(
-    input_path: &str,
+    input_path: &Path,
     column: &str,
     max_bytes: Option<u64>,
     max_rows: Option<usize>,
@@ -16,7 +16,7 @@ pub fn parse_input(
     let format = detect_format(input_path)?;
 
     // Handle file size check for regular files
-    if input_path != "-"
+    if input_path != Path::new("-")
         && let Some(limit) = max_bytes
     {
         let file_size = std::fs::metadata(input_path)
@@ -45,13 +45,12 @@ pub fn parse_input(
 }
 
 /// Detect input format from file extension
-fn detect_format(input_path: &str) -> Result<InputFormat, InputError> {
-    if input_path == "-" {
+fn detect_format(input_path: &Path) -> Result<InputFormat, InputError> {
+    if input_path == Path::new("-") {
         return Ok(InputFormat::Jsonl);
     }
 
-    let path = Path::new(input_path);
-    let extension = path
+    let extension = input_path
         .extension()
         .and_then(|ext| ext.to_str())
         .ok_or_else(|| InputError::Parse("Missing or unrecognized file extension".to_string()))?;
@@ -68,7 +67,7 @@ fn detect_format(input_path: &str) -> Result<InputFormat, InputError> {
 
 /// Parse CSV input
 fn parse_csv(
-    input_path: &str,
+    input_path: &Path,
     column: &str,
     _max_bytes: Option<u64>, // Already checked for regular files
     max_rows: Option<usize>,
@@ -142,12 +141,12 @@ fn parse_csv(
 
 /// Parse JSONL input
 fn parse_jsonl(
-    input_path: &str,
+    input_path: &Path,
     column: &str,
     max_bytes: Option<u64>,
     max_rows: Option<usize>,
 ) -> Result<InputValues, InputError> {
-    let reader: Box<dyn BufRead> = if input_path == "-" {
+    let reader: Box<dyn BufRead> = if input_path == Path::new("-") {
         Box::new(io::stdin().lock())
     } else {
         let file = File::open(input_path)
@@ -165,7 +164,7 @@ fn parse_jsonl(
             line_result.map_err(|e| InputError::Io(format!("IO error reading line: {}", e)))?;
 
         // Check max_bytes limit for stdin
-        if input_path == "-"
+        if input_path == Path::new("-")
             && let Some(limit) = max_bytes
         {
             byte_count += line.len() as u64 + 1; // +1 for newline
@@ -374,25 +373,28 @@ mod tests {
     #[test]
     fn test_detect_format() {
         assert!(matches!(
-            detect_format("test.csv").unwrap(),
+            detect_format(Path::new("test.csv")).unwrap(),
             InputFormat::Csv
         ));
         assert!(matches!(
-            detect_format("test.tsv").unwrap(),
+            detect_format(Path::new("test.tsv")).unwrap(),
             InputFormat::Csv
         ));
         assert!(matches!(
-            detect_format("test.jsonl").unwrap(),
+            detect_format(Path::new("test.jsonl")).unwrap(),
             InputFormat::Jsonl
         ));
         assert!(matches!(
-            detect_format("test.ndjson").unwrap(),
+            detect_format(Path::new("test.ndjson")).unwrap(),
             InputFormat::Jsonl
         ));
-        assert!(matches!(detect_format("-").unwrap(), InputFormat::Jsonl));
+        assert!(matches!(
+            detect_format(Path::new("-")).unwrap(),
+            InputFormat::Jsonl
+        ));
 
-        assert!(detect_format("test.txt").is_err());
-        assert!(detect_format("test").is_err());
+        assert!(detect_format(Path::new("test.txt")).is_err());
+        assert!(detect_format(Path::new("test")).is_err());
     }
 
     #[test]
@@ -400,7 +402,7 @@ mod tests {
         let csv_content = "id,name,value\nA001,Alice,100\nB002,Bob,200\n";
         let file = create_test_csv(csv_content);
 
-        let result = parse_input(file.path().to_str().unwrap(), "id", None, None).unwrap();
+        let result = parse_input(file.path(), "id", None, None).unwrap();
 
         assert_eq!(result.values.len(), 2);
         assert!(result.values.contains_key("A001"));
@@ -415,7 +417,7 @@ mod tests {
         let csv_content = "id,name\nA001,Alice\n,Bob\nC003,\n";
         let file = create_test_csv(csv_content);
 
-        let result = parse_input(file.path().to_str().unwrap(), "id", None, None).unwrap();
+        let result = parse_input(file.path(), "id", None, None).unwrap();
 
         assert_eq!(result.values.len(), 2);
         assert!(result.values.contains_key("A001"));
@@ -428,7 +430,7 @@ mod tests {
         let csv_content = "id,name\nA001,Alice\n";
         let file = create_test_csv(csv_content);
 
-        let result = parse_input(file.path().to_str().unwrap(), "nonexistent", None, None);
+        let result = parse_input(file.path(), "nonexistent", None, None);
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -442,7 +444,7 @@ mod tests {
 {"id": "B002", "name": "Bob"}"#;
         let file = create_test_jsonl(jsonl_content);
 
-        let result = parse_input(file.path().to_str().unwrap(), "id", None, None).unwrap();
+        let result = parse_input(file.path(), "id", None, None).unwrap();
 
         assert_eq!(result.values.len(), 2);
         assert!(result.values.contains_key("A001"));
@@ -463,7 +465,7 @@ mod tests {
 {"id": ""}"#;
         let file = create_test_jsonl(jsonl_content);
 
-        let result = parse_input(file.path().to_str().unwrap(), "id", None, None).unwrap();
+        let result = parse_input(file.path(), "id", None, None).unwrap();
 
         assert_eq!(result.values.len(), 3); // A001, 42, true
         assert!(result.values.contains_key("A001"));
@@ -481,7 +483,7 @@ mod tests {
         let csv_content = "id\nA\nB\nC\n";
         let file = create_test_csv(csv_content);
 
-        let result = parse_input(file.path().to_str().unwrap(), "id", None, Some(2));
+        let result = parse_input(file.path(), "id", None, Some(2));
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), InputError::TooLarge { .. }));
     }
@@ -491,7 +493,7 @@ mod tests {
         let csv_content = "id\n";
         let file = create_test_csv(csv_content);
 
-        let result = parse_input(file.path().to_str().unwrap(), "id", None, None);
+        let result = parse_input(file.path(), "id", None, None);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), InputError::EmptyInput));
     }
@@ -501,13 +503,13 @@ mod tests {
         // Test comma
         let csv_content = "a,b,c\n1,2,3\n";
         let file = create_test_csv(csv_content);
-        let result = parse_input(file.path().to_str().unwrap(), "a", None, None).unwrap();
+        let result = parse_input(file.path(), "a", None, None).unwrap();
         assert_eq!(result.delimiter, Some(b','));
 
         // Test tab
         let csv_content = "a\tb\tc\n1\t2\t3\n";
         let file = create_test_csv(csv_content);
-        let result = parse_input(file.path().to_str().unwrap(), "a", None, None).unwrap();
+        let result = parse_input(file.path(), "a", None, None).unwrap();
         assert_eq!(result.delimiter, Some(b'\t'));
     }
 }

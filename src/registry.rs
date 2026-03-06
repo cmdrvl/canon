@@ -49,12 +49,10 @@ CREATE TABLE IF NOT EXISTS entries (
 CREATE INDEX IF NOT EXISTS idx_input ON entries(input);
 "#;
 
-pub fn load_registry(registry_path: &str) -> Result<Registry, Box<dyn Error>> {
-    let registry_dir = Path::new(registry_path);
-
+pub fn load_registry(registry_dir: &Path) -> Result<Registry, Box<dyn Error>> {
     // Check if registry directory exists
     if !registry_dir.exists() || !registry_dir.is_dir() {
-        return Err(format!("Registry directory not found: {}", registry_path).into());
+        return Err(format!("Registry directory not found: {}", registry_dir.display()).into());
     }
 
     // Read and parse registry.json
@@ -72,7 +70,7 @@ pub fn load_registry(registry_path: &str) -> Result<Registry, Box<dyn Error>> {
     let registry_meta = RegistryMeta {
         id: registry_json.id,
         version: registry_json.version.clone(),
-        source: registry_path.to_string(),
+        source: registry_dir.to_string_lossy().into_owned(),
     };
 
     // Discover mapping files
@@ -355,7 +353,7 @@ mod tests {
         let temp_dir = TempDir::new()?;
         create_test_registry(temp_dir.path())?;
 
-        let registry = load_registry(temp_dir.path().to_str().unwrap())?;
+        let registry = load_registry(temp_dir.path())?;
 
         assert_eq!(registry.meta.id, "test-registry");
         assert_eq!(registry.meta.version, "1.0.0");
@@ -366,7 +364,7 @@ mod tests {
 
     #[test]
     fn test_load_registry_missing_directory() {
-        let result = load_registry("/nonexistent/path");
+        let result = load_registry(Path::new("/nonexistent/path"));
         assert!(result.is_err());
         assert!(
             result
@@ -380,7 +378,7 @@ mod tests {
     fn test_load_registry_missing_registry_json() -> Result<(), Box<dyn Error>> {
         let temp_dir = TempDir::new()?;
 
-        let result = load_registry(temp_dir.path().to_str().unwrap());
+        let result = load_registry(temp_dir.path());
         assert!(result.is_err());
         assert!(
             result
