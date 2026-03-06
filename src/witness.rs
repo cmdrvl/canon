@@ -1,11 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::path::Path;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-const LEDGER_PATH: &str = ".canon-witness.jsonl";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WitnessSummary {
@@ -66,7 +64,8 @@ pub fn append_witness_record(
     record: &WitnessRecord,
     no_witness: bool,
 ) -> Result<(), Box<dyn Error>> {
-    append_witness_record_to_path(record, no_witness, Path::new(LEDGER_PATH))
+    let ledger_path = resolve_ledger_path()?;
+    append_witness_record_to_path(record, no_witness, &ledger_path)
 }
 
 pub fn append_witness(_output_hash: &[u8], no_witness: bool) -> Result<(), Box<dyn Error>> {
@@ -101,6 +100,14 @@ fn append_witness_record_to_path(
     }
 
     let line = serde_json::to_string(record)?;
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+        && let Err(error) = fs::create_dir_all(parent)
+    {
+        eprintln!("Warning: witness append skipped: {}", error);
+        return Ok(());
+    }
+
     match OpenOptions::new().create(true).append(true).open(path) {
         Ok(mut file) => {
             if let Err(error) = writeln!(file, "{}", line) {
@@ -112,6 +119,33 @@ fn append_witness_record_to_path(
         }
     }
     Ok(())
+}
+
+fn resolve_ledger_path() -> io::Result<PathBuf> {
+    resolve_ledger_path_from_env(|key| std::env::var(key).ok())
+}
+
+fn resolve_ledger_path_from_env<F>(get_env: F) -> io::Result<PathBuf>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    if let Some(path) = get_env("EPISTEMIC_WITNESS")
+        && !path.trim().is_empty()
+    {
+        return Ok(PathBuf::from(path));
+    }
+
+    let home = get_env("HOME")
+        .or_else(|| get_env("USERPROFILE"))
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "could not determine home directory; set EPISTEMIC_WITNESS",
+            )
+        })?;
+
+    Ok(PathBuf::from(home).join(".epistemic").join("witness.jsonl"))
 }
 
 fn utc_timestamp_millis() -> String {
@@ -131,7 +165,7 @@ mod tests {
     #[test]
     fn witness_record_serializes_expected_structure() {
         let temp_dir = TempDir::new().unwrap();
-        let witness_path = temp_dir.path().join(".canon-witness.jsonl");
+        let witness_path = temp_dir.path().join("nested").join("witness.jsonl");
 
         let record = WitnessRecord::new(
             "tape.csv",
@@ -182,7 +216,7 @@ mod tests {
     #[test]
     fn no_witness_mode_skips_writing() {
         let temp_dir = TempDir::new().unwrap();
-        let witness_path = temp_dir.path().join(".canon-witness.jsonl");
+        let witness_path = temp_dir.path().join("nested").join("witness.jsonl");
         let record = WitnessRecord::new(
             "tape.csv",
             "blake3:in",
@@ -199,6 +233,36 @@ mod tests {
 
         append_witness_record_to_path(&record, true, &witness_path).unwrap();
         assert!(!witness_path.exists());
+    }
+
+    #[test]
+    fn ledger_path_prefers_epistemic_witness_env_var() {
+        let path = resolve_ledger_path_from_env(|key| match key {
+            "EPISTEMIC_WITNESS" => Some("/tmp/custom-witness.jsonl".to_owned()),
+            "HOME" => Some("/tmp/home".to_owned()),
+            _ => None,
+        })
+        .unwrap();
+
+        assert_eq!(path, PathBuf::from("/tmp/custom-witness.jsonl"));
+    }
+
+    #[test]
+    fn ledger_path_defaults_to_home_epistemic_path() {
+        let path = resolve_ledger_path_from_env(|key| match key {
+            "EPISTEMIC_WITNESS" => None,
+            "HOME" => Some("/tmp/home".to_owned()),
+            _ => None,
+        })
+        .unwrap();
+
+        assert_eq!(path, PathBuf::from("/tmp/home/.epistemic/witness.jsonl"));
+    }
+
+    #[test]
+    fn ledger_path_errors_without_home_or_override() {
+        let error = resolve_ledger_path_from_env(|_| None).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
     }
 
     #[test]

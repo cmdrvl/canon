@@ -1,7 +1,12 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use serde_json::Value;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use tempfile::tempdir;
+
+fn fixture_path(relative: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join(relative)
+}
 
 #[test]
 fn test_version_command() {
@@ -205,6 +210,53 @@ fn test_witness_flag_no_witness() {
         .arg("--no-witness")
         .assert()
         .success();
+}
+
+#[test]
+fn test_witness_uses_epistemic_witness_env_path() {
+    let ledger_dir = tempdir().unwrap();
+    let cwd = tempdir().unwrap();
+    let ledger_path = ledger_dir.path().join("nested").join("witness.jsonl");
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .current_dir(cwd.path())
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .arg(fixture_path("tests/fixtures/inputs/all_resolved.csv"))
+        .arg("--registry")
+        .arg(fixture_path("tests/fixtures/registries/cusip-isin"))
+        .arg("--column")
+        .arg("cusip")
+        .assert()
+        .success();
+
+    assert!(ledger_path.exists());
+    assert!(!cwd.path().join(".canon-witness.jsonl").exists());
+
+    let content = std::fs::read_to_string(&ledger_path).unwrap();
+    let record: Value = serde_json::from_str(content.lines().next().unwrap()).unwrap();
+    assert_eq!(record["tool"], "canon");
+}
+
+#[test]
+fn test_witness_defaults_to_home_epistemic_path() {
+    let home = tempdir().unwrap();
+    let cwd = tempdir().unwrap();
+    let ledger_path = home.path().join(".epistemic").join("witness.jsonl");
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .current_dir(cwd.path())
+        .env_remove("EPISTEMIC_WITNESS")
+        .env("HOME", home.path())
+        .arg(fixture_path("tests/fixtures/inputs/all_resolved.csv"))
+        .arg("--registry")
+        .arg(fixture_path("tests/fixtures/registries/cusip-isin"))
+        .arg("--column")
+        .arg("cusip")
+        .assert()
+        .success();
+
+    assert!(ledger_path.exists());
+    assert!(!cwd.path().join(".canon-witness.jsonl").exists());
 }
 
 #[test]
