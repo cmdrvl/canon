@@ -1,4 +1,5 @@
 use crate::{InputFormat, InputValues, SpecialReason};
+use blake3::Hasher;
 use csv::{ReaderBuilder, StringRecord};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -136,6 +137,8 @@ fn parse_csv(
         special,
         format: InputFormat::Csv,
         delimiter: Some(delimiter),
+        source_hash: None,
+        source_bytes: None,
     })
 }
 
@@ -146,29 +149,48 @@ fn parse_jsonl(
     max_bytes: Option<u64>,
     max_rows: Option<usize>,
 ) -> Result<InputValues, InputError> {
-    let reader: Box<dyn BufRead> = if input_path == Path::new("-") {
-        Box::new(io::stdin().lock())
+    if input_path == Path::new("-") {
+        let stdin = io::stdin();
+        parse_jsonl_reader(stdin.lock(), column, max_bytes, max_rows, true)
     } else {
         let file = File::open(input_path)
             .map_err(|e| InputError::Io(format!("Cannot open file: {}", e)))?;
-        Box::new(BufReader::new(file))
-    };
+        parse_jsonl_reader(BufReader::new(file), column, max_bytes, max_rows, false)
+    }
+}
 
+fn parse_jsonl_reader<R: BufRead>(
+    mut reader: R,
+    column: &str,
+    max_bytes: Option<u64>,
+    max_rows: Option<usize>,
+    track_source_bytes: bool,
+) -> Result<InputValues, InputError> {
     let mut values = HashMap::new();
     let mut special = HashMap::new();
     let mut row_count = 0;
     let mut byte_count = 0u64;
+    let mut hasher = track_source_bytes.then(Hasher::new);
+    let mut line = String::new();
 
-    for line_result in reader.lines() {
-        let line =
-            line_result.map_err(|e| InputError::Io(format!("IO error reading line: {}", e)))?;
+    loop {
+        line.clear();
+        let bytes_read = reader
+            .read_line(&mut line)
+            .map_err(|e| InputError::Io(format!("IO error reading line: {}", e)))?;
+        if bytes_read == 0 {
+            break;
+        }
 
-        // Check max_bytes limit for stdin
-        if input_path == Path::new("-")
-            && let Some(limit) = max_bytes
-        {
-            byte_count += line.len() as u64 + 1; // +1 for newline
-            if byte_count > limit {
+        if let Some(hasher) = hasher.as_mut() {
+            hasher.update(line.as_bytes());
+        }
+
+        if track_source_bytes {
+            byte_count += bytes_read as u64;
+            if let Some(limit) = max_bytes
+                && byte_count > limit
+            {
                 return Err(InputError::TooLarge {
                     limit_type: "max_bytes".to_string(),
                     limit: limit.to_string(),
@@ -235,6 +257,8 @@ fn parse_jsonl(
         special,
         format: InputFormat::Jsonl,
         delimiter: None,
+        source_hash: hasher.map(|hasher| format!("blake3:{}", hasher.finalize().to_hex())),
+        source_bytes: track_source_bytes.then_some(byte_count),
     })
 }
 
@@ -356,6 +380,7 @@ impl InputError {
 mod tests {
     use super::*;
     use std::fs;
+    use std::io::Cursor;
     use tempfile::NamedTempFile;
 
     fn create_test_csv(content: &str) -> NamedTempFile {
@@ -452,6 +477,8 @@ mod tests {
         assert!(result.special.is_empty());
         assert!(matches!(result.format, InputFormat::Jsonl));
         assert_eq!(result.delimiter, None);
+        assert_eq!(result.source_hash, None);
+        assert_eq!(result.source_bytes, None);
     }
 
     #[test]
@@ -511,5 +538,29 @@ mod tests {
         let file = create_test_csv(csv_content);
         let result = parse_input(file.path(), "a", None, None).unwrap();
         assert_eq!(result.delimiter, Some(b'\t'));
+    }
+
+    #[test]
+    fn test_parse_jsonl_reader_tracks_stdin_hash_and_bytes() {
+        let jsonl_content = "{\"id\":\"A001\"}\n{\"id\":\"B002\"}\n";
+
+        let result = parse_jsonl_reader(
+            Cursor::new(jsonl_content.as_bytes()),
+            "id",
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(result.values.len(), 2);
+        assert_eq!(
+            result.source_hash,
+            Some(format!(
+                "blake3:{}",
+                blake3::hash(jsonl_content.as_bytes()).to_hex()
+            ))
+        );
+        assert_eq!(result.source_bytes, Some(jsonl_content.len() as u64));
     }
 }

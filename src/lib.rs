@@ -162,17 +162,27 @@ fn run_pipeline(
     let registry = registry::load_registry(registry_path).map_err(create_registry_refusal)?;
     let input_path_display = input_path.to_string_lossy().into_owned();
 
-    // Step 5: Hash input file bytes (witness protocol)
-    let input_hash = witness::hash_file(input_path).map_err(|e| {
-        create_io_refusal(std::io::Error::other(format!(
-            "Failed to hash input file: {}",
-            e
-        )))
-    })?;
-
-    // Step 6: Parse input
+    // Step 5: Parse input
     let input_values = input::parse_input(input_path, column, cli.max_bytes, cli.max_rows)
         .map_err(create_input_refusal)?;
+
+    // Step 6: Hash input bytes for witness
+    let (input_hash, input_bytes) = if input_path == Path::new("-") {
+        let hash = input_values.source_hash.clone().ok_or_else(|| {
+            create_io_refusal(std::io::Error::other(
+                "Failed to hash stdin input bytes during parsing",
+            ))
+        })?;
+        (hash, input_values.source_bytes)
+    } else {
+        let hash = witness::hash_file(input_path).map_err(|e| {
+            create_io_refusal(std::io::Error::other(format!(
+                "Failed to hash input file: {}",
+                e
+            )))
+        })?;
+        (hash, input_size(input_path))
+    };
 
     // Step 7: Validate emit mode
     if matches!(cli.emit, crate::cli::EmitMode::Csv)
@@ -336,7 +346,7 @@ fn run_pipeline(
             vec![witness::WitnessInput {
                 path: input_path_display.clone(),
                 hash: Some(input_hash.clone()),
-                bytes: input_size(input_path),
+                bytes: input_bytes,
             }],
             params,
             &output_hash,
@@ -666,6 +676,8 @@ pub struct InputValues {
     pub special: HashMap<SpecialReason, usize>,
     pub format: InputFormat,
     pub delimiter: Option<u8>,
+    pub source_hash: Option<String>,
+    pub source_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone)]

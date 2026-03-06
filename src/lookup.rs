@@ -211,6 +211,8 @@ mod tests {
             special: special_map,
             format: InputFormat::Csv,
             delimiter: Some(b','),
+            source_hash: None,
+            source_bytes: None,
         }
     }
 

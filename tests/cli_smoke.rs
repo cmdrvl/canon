@@ -332,6 +332,39 @@ fn test_witness_hash_parity_and_chain_linkage() {
 }
 
 #[test]
+fn test_witness_hashes_stdin_bytes_without_dash_file() {
+    let ledger_dir = tempdir().unwrap();
+    let cwd = tempdir().unwrap();
+    let ledger_path = ledger_dir.path().join("witness.jsonl");
+    let stdin_data =
+        std::fs::read_to_string(fixture_path("tests/fixtures/inputs/basic.jsonl")).unwrap();
+    let registry_path = fixture_path("tests/fixtures/registries/cusip-isin");
+
+    assert!(!cwd.path().join("-").exists());
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .current_dir(cwd.path())
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .arg("-")
+        .arg("--registry")
+        .arg(&registry_path)
+        .arg("--column")
+        .arg("cusip")
+        .write_stdin(stdin_data.clone())
+        .assert()
+        .success();
+
+    let content = std::fs::read_to_string(&ledger_path).unwrap();
+    let record: Value = serde_json::from_str(content.lines().next().unwrap()).unwrap();
+    let expected_hash = format!("blake3:{}", blake3::hash(stdin_data.as_bytes()).to_hex());
+
+    assert_eq!(record["inputs"][0]["path"], "-");
+    assert_eq!(record["inputs"][0]["hash"], expected_hash);
+    assert_eq!(record["inputs"][0]["bytes"], stdin_data.len() as u64);
+    assert_eq!(record["outcome"], "RESOLVED");
+}
+
+#[test]
 fn test_map_out_sidecar_in_csv_mode() {
     use tempfile::NamedTempFile;
 
