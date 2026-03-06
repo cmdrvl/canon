@@ -250,6 +250,12 @@ fn run_pipeline(
     };
 
     // Step 12: Record witness (unless --no-witness)
+    let exit_code = match outcome {
+        Outcome::Resolved => 0,
+        Outcome::Partial | Outcome::Unresolved => 1,
+        Outcome::Refusal => 2, // Should not reach here
+    };
+
     let no_witness = cli.no_witness;
     if !no_witness {
         let witness_summary = witness::WitnessSummary {
@@ -265,14 +271,77 @@ fn run_pipeline(
             Outcome::Refusal => "REFUSAL",
         };
 
+        let mut params = serde_json::Map::new();
+        params.insert(
+            "input_path".to_string(),
+            serde_json::Value::String(input_path_display.clone()),
+        );
+        params.insert(
+            "registry_id".to_string(),
+            serde_json::Value::String(registry.meta.id.clone()),
+        );
+        params.insert(
+            "registry_version".to_string(),
+            serde_json::Value::String(registry.meta.version.clone()),
+        );
+        params.insert(
+            "column".to_string(),
+            serde_json::Value::String(column.to_string()),
+        );
+        params.insert(
+            "emit".to_string(),
+            serde_json::Value::String(
+                match cli.emit {
+                    crate::cli::EmitMode::Json => "json",
+                    crate::cli::EmitMode::Csv => "csv",
+                }
+                .to_string(),
+            ),
+        );
+        params.insert(
+            "explicit".to_string(),
+            serde_json::Value::Bool(cli.explicit),
+        );
+        params.insert(
+            "summary".to_string(),
+            serde_json::json!({
+                "total": witness_summary.total,
+                "resolved": witness_summary.resolved,
+                "unresolved": witness_summary.unresolved
+            }),
+        );
+        if let Some(canon_column) = &cli.canon_column {
+            params.insert(
+                "canon_column".to_string(),
+                serde_json::Value::String(canon_column.clone()),
+            );
+        }
+        if let Some(map_out) = &cli.map_out {
+            params.insert(
+                "map_out".to_string(),
+                serde_json::Value::String(map_out.display().to_string()),
+            );
+        }
+        if let Some(max_rows) = cli.max_rows {
+            params.insert(
+                "max_rows".to_string(),
+                serde_json::Value::from(max_rows as u64),
+            );
+        }
+        if let Some(max_bytes) = cli.max_bytes {
+            params.insert("max_bytes".to_string(), serde_json::Value::from(max_bytes));
+        }
+
         let witness_record = witness::WitnessRecord::new(
-            &input_path_display,
-            &input_hash,
+            vec![witness::WitnessInput {
+                path: input_path_display.clone(),
+                hash: Some(input_hash.clone()),
+                bytes: input_size(input_path),
+            }],
+            params,
             &output_hash,
-            &registry.meta.id,
-            &registry.meta.version,
             outcome_str,
-            witness_summary,
+            exit_code,
         );
 
         if let Err(error) = witness::append_witness_record(&witness_record, no_witness) {
@@ -281,12 +350,6 @@ fn run_pipeline(
     }
 
     // Step 13: Return exit code
-    let exit_code = match outcome {
-        Outcome::Resolved => 0,
-        Outcome::Partial | Outcome::Unresolved => 1,
-        Outcome::Refusal => 2, // Should not reach here
-    };
-
     Ok(exit_code)
 }
 
@@ -320,6 +383,14 @@ fn build_resolve_map(
     }
 
     resolve_map
+}
+
+fn input_size(path: &Path) -> Option<u64> {
+    if path == Path::new("-") {
+        return None;
+    }
+
+    std::fs::metadata(path).ok().map(|metadata| metadata.len())
 }
 
 struct HashingWriter<W: Write> {

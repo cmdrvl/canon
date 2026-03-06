@@ -1,9 +1,10 @@
+use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::error::Error;
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WitnessSummary {
@@ -13,41 +14,65 @@ pub struct WitnessSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WitnessInput {
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WitnessRecord {
+    #[serde(default)]
+    pub id: String,
     pub tool: String,
     pub version: String,
-    pub timestamp: String,
-    pub input_path: String,
-    pub input_hash: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub binary_hash: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inputs: Vec<WitnessInput>,
+    #[serde(default, skip_serializing_if = "Map::is_empty")]
+    pub params: Map<String, Value>,
     pub output_hash: String,
-    pub registry_id: String,
-    pub registry_version: String,
     pub outcome: String,
-    pub summary: WitnessSummary,
+    pub exit_code: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prev: Option<String>,
+    pub ts: String,
 }
 
 impl WitnessRecord {
     pub fn new(
-        input_path: &str,
-        input_hash: &str,
+        inputs: Vec<WitnessInput>,
+        params: Map<String, Value>,
         output_hash: &str,
-        registry_id: &str,
-        registry_version: &str,
         outcome: &str,
-        summary: WitnessSummary,
+        exit_code: u8,
     ) -> Self {
         Self {
+            id: String::new(),
             tool: "canon".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
-            timestamp: utc_timestamp_millis(),
-            input_path: input_path.to_string(),
-            input_hash: input_hash.to_string(),
+            binary_hash: hash_binary()
+                .map(|hash| format!("blake3:{hash}"))
+                .unwrap_or_default(),
+            inputs,
+            params,
             output_hash: output_hash.to_string(),
-            registry_id: registry_id.to_string(),
-            registry_version: registry_version.to_string(),
             outcome: outcome.to_string(),
-            summary,
+            exit_code,
+            prev: None,
+            ts: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
         }
+    }
+
+    pub fn compute_id(&mut self) {
+        self.id.clear();
+        self.id = format!(
+            "blake3:{}",
+            blake3::hash(canonical_json(self).as_bytes()).to_hex()
+        );
     }
 }
 
@@ -75,17 +100,15 @@ pub fn append_witness(_output_hash: &[u8], no_witness: bool) -> Result<(), Box<d
 
     let output_hash = hash_bytes(_output_hash);
     let record = WitnessRecord::new(
-        "<unknown>",
-        "blake3:unknown",
+        vec![WitnessInput {
+            path: "<unknown>".to_string(),
+            hash: Some("blake3:unknown".to_string()),
+            bytes: None,
+        }],
+        Map::new(),
         &output_hash,
-        "<unknown>",
-        "<unknown>",
         "PARTIAL",
-        WitnessSummary {
-            total: 0,
-            resolved: 0,
-            unresolved: 0,
-        },
+        1,
     );
     append_witness_record(&record, false)
 }
@@ -99,7 +122,12 @@ fn append_witness_record_to_path(
         return Ok(());
     }
 
-    let line = serde_json::to_string(record)?;
+    let mut record = record.clone();
+    if record.prev.is_none() {
+        record.prev = last_record_id(path);
+    }
+    record.compute_id();
+    let line = canonical_json(&record);
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
         && let Err(error) = fs::create_dir_all(parent)
@@ -119,6 +147,34 @@ fn append_witness_record_to_path(
         }
     }
     Ok(())
+}
+
+fn canonical_json(record: &WitnessRecord) -> String {
+    let value = serde_json::to_value(record).expect("witness record should serialize");
+    serde_json::to_string(&value).expect("witness record should encode")
+}
+
+fn hash_binary() -> io::Result<String> {
+    let path = std::env::current_exe()?;
+    let bytes = std::fs::read(path)?;
+    Ok(blake3::hash(&bytes).to_hex().to_string())
+}
+
+fn last_record_id(path: &Path) -> Option<String> {
+    let file = fs::File::open(path).ok()?;
+    let reader = BufReader::new(file);
+    let mut last_non_empty = None;
+
+    for line in reader.lines().map_while(Result::ok) {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            last_non_empty = Some(trimmed.to_owned());
+        }
+    }
+
+    let last = last_non_empty?;
+    let value: Value = serde_json::from_str(&last).ok()?;
+    value.get("id")?.as_str().map(ToOwned::to_owned)
 }
 
 fn resolve_ledger_path() -> io::Result<PathBuf> {
@@ -148,38 +204,53 @@ where
     Ok(PathBuf::from(home).join(".epistemic").join("witness.jsonl"))
 }
 
-fn utc_timestamp_millis() -> String {
-    let duration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = duration.as_secs();
-    let millis = duration.subsec_millis();
-    format!("unix:{}.{:03}Z", secs, millis)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    fn sample_record() -> WitnessRecord {
+        let mut params = Map::new();
+        params.insert(
+            "input_path".to_string(),
+            Value::String("tape.csv".to_string()),
+        );
+        params.insert(
+            "registry_id".to_string(),
+            Value::String("cusip-isin".to_string()),
+        );
+        params.insert(
+            "registry_version".to_string(),
+            Value::String("1.0.0".to_string()),
+        );
+        params.insert(
+            "summary".to_string(),
+            serde_json::json!({
+                "total": 100,
+                "resolved": 95,
+                "unresolved": 5
+            }),
+        );
+
+        WitnessRecord::new(
+            vec![WitnessInput {
+                path: "tape.csv".to_string(),
+                hash: Some("blake3:inputhash".to_string()),
+                bytes: Some(123),
+            }],
+            params,
+            "blake3:outputhash",
+            "PARTIAL",
+            1,
+        )
+    }
 
     #[test]
     fn witness_record_serializes_expected_structure() {
         let temp_dir = TempDir::new().unwrap();
         let witness_path = temp_dir.path().join("nested").join("witness.jsonl");
 
-        let record = WitnessRecord::new(
-            "tape.csv",
-            "blake3:inputhash",
-            "blake3:outputhash",
-            "cusip-isin",
-            "1.0.0",
-            "PARTIAL",
-            WitnessSummary {
-                total: 100,
-                resolved: 95,
-                unresolved: 5,
-            },
-        );
+        let record = sample_record();
 
         append_witness_record_to_path(&record, false, &witness_path).unwrap();
 
@@ -189,16 +260,26 @@ mod tests {
 
         assert_eq!(parsed["tool"], "canon");
         assert_eq!(parsed["version"], env!("CARGO_PKG_VERSION"));
-        assert_eq!(parsed["input_path"], "tape.csv");
-        assert_eq!(parsed["input_hash"], "blake3:inputhash");
+        assert!(parsed["id"].as_str().unwrap().starts_with("blake3:"));
+        assert!(
+            parsed["binary_hash"]
+                .as_str()
+                .unwrap()
+                .starts_with("blake3:")
+        );
+        assert_eq!(parsed["inputs"][0]["path"], "tape.csv");
+        assert_eq!(parsed["inputs"][0]["hash"], "blake3:inputhash");
+        assert_eq!(parsed["inputs"][0]["bytes"], 123);
         assert_eq!(parsed["output_hash"], "blake3:outputhash");
-        assert_eq!(parsed["registry_id"], "cusip-isin");
-        assert_eq!(parsed["registry_version"], "1.0.0");
+        assert_eq!(parsed["params"]["registry_id"], "cusip-isin");
+        assert_eq!(parsed["params"]["registry_version"], "1.0.0");
         assert_eq!(parsed["outcome"], "PARTIAL");
-        assert_eq!(parsed["summary"]["total"], 100);
-        assert_eq!(parsed["summary"]["resolved"], 95);
-        assert_eq!(parsed["summary"]["unresolved"], 5);
-        assert!(parsed["timestamp"].as_str().unwrap().starts_with("unix:"));
+        assert_eq!(parsed["exit_code"], 1);
+        assert_eq!(parsed["params"]["summary"]["total"], 100);
+        assert_eq!(parsed["params"]["summary"]["resolved"], 95);
+        assert_eq!(parsed["params"]["summary"]["unresolved"], 5);
+        assert!(parsed["ts"].as_str().unwrap().contains('T'));
+        assert!(parsed["prev"].is_null());
     }
 
     #[test]
@@ -217,19 +298,7 @@ mod tests {
     fn no_witness_mode_skips_writing() {
         let temp_dir = TempDir::new().unwrap();
         let witness_path = temp_dir.path().join("nested").join("witness.jsonl");
-        let record = WitnessRecord::new(
-            "tape.csv",
-            "blake3:in",
-            "blake3:out",
-            "registry",
-            "1.0.0",
-            "RESOLVED",
-            WitnessSummary {
-                total: 1,
-                resolved: 1,
-                unresolved: 0,
-            },
-        );
+        let record = sample_record();
 
         append_witness_record_to_path(&record, true, &witness_path).unwrap();
         assert!(!witness_path.exists());
@@ -271,21 +340,31 @@ mod tests {
         let invalid_path = temp_dir.path().join("not_a_file");
         std::fs::create_dir_all(&invalid_path).unwrap();
 
-        let record = WitnessRecord::new(
-            "tape.csv",
-            "blake3:in",
-            "blake3:out",
-            "registry",
-            "1.0.0",
-            "UNRESOLVED",
-            WitnessSummary {
-                total: 1,
-                resolved: 0,
-                unresolved: 1,
-            },
-        );
+        let mut record = sample_record();
+        record.outcome = "UNRESOLVED".to_string();
 
         let result = append_witness_record_to_path(&record, false, &invalid_path);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn witness_records_chain_prev_ids() {
+        let temp_dir = TempDir::new().unwrap();
+        let witness_path = temp_dir.path().join("nested").join("witness.jsonl");
+
+        let first = sample_record();
+        let mut second = sample_record();
+        second.output_hash = "blake3:other".to_string();
+
+        append_witness_record_to_path(&first, false, &witness_path).unwrap();
+        append_witness_record_to_path(&second, false, &witness_path).unwrap();
+
+        let contents = std::fs::read_to_string(&witness_path).unwrap();
+        let lines: Vec<&str> = contents.lines().collect();
+        assert_eq!(lines.len(), 2);
+
+        let first: Value = serde_json::from_str(lines[0]).unwrap();
+        let second: Value = serde_json::from_str(lines[1]).unwrap();
+        assert_eq!(second["prev"], first["id"]);
     }
 }

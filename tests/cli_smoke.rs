@@ -235,6 +235,30 @@ fn test_witness_uses_epistemic_witness_env_path() {
     let content = std::fs::read_to_string(&ledger_path).unwrap();
     let record: Value = serde_json::from_str(content.lines().next().unwrap()).unwrap();
     assert_eq!(record["tool"], "canon");
+    assert!(record["id"].as_str().unwrap().starts_with("blake3:"));
+    assert!(
+        record["binary_hash"]
+            .as_str()
+            .unwrap()
+            .starts_with("blake3:")
+    );
+    assert_eq!(
+        record["inputs"][0]["path"],
+        fixture_path("tests/fixtures/inputs/all_resolved.csv")
+            .display()
+            .to_string()
+    );
+    assert!(
+        record["inputs"][0]["hash"]
+            .as_str()
+            .unwrap()
+            .starts_with("blake3:")
+    );
+    assert_eq!(record["params"]["registry_id"], "cusip-isin");
+    assert_eq!(record["params"]["registry_version"], "1.0.0");
+    assert_eq!(record["params"]["emit"], "json");
+    assert_eq!(record["outcome"], "RESOLVED");
+    assert_eq!(record["exit_code"], 0);
 }
 
 #[test]
@@ -257,6 +281,54 @@ fn test_witness_defaults_to_home_epistemic_path() {
 
     assert!(ledger_path.exists());
     assert!(!cwd.path().join(".canon-witness.jsonl").exists());
+}
+
+#[test]
+fn test_witness_hash_parity_and_chain_linkage() {
+    let ledger_dir = tempdir().unwrap();
+    let ledger_path = ledger_dir.path().join("witness.jsonl");
+    let input_path = fixture_path("tests/fixtures/inputs/all_resolved.csv");
+    let registry_path = fixture_path("tests/fixtures/registries/cusip-isin");
+
+    let json_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .arg(&input_path)
+        .arg("--registry")
+        .arg(&registry_path)
+        .arg("--column")
+        .arg("cusip")
+        .assert()
+        .success();
+    let json_stdout = json_output.get_output().stdout.clone();
+
+    let csv_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .arg(&input_path)
+        .arg("--registry")
+        .arg(&registry_path)
+        .arg("--column")
+        .arg("cusip")
+        .arg("--emit")
+        .arg("csv")
+        .assert()
+        .success();
+    let csv_stdout = csv_output.get_output().stdout.clone();
+
+    let content = std::fs::read_to_string(&ledger_path).unwrap();
+    let lines: Vec<&str> = content.lines().collect();
+    assert_eq!(lines.len(), 2);
+
+    let first: Value = serde_json::from_str(lines[0]).unwrap();
+    let second: Value = serde_json::from_str(lines[1]).unwrap();
+
+    let expected_json_hash = format!("blake3:{}", blake3::hash(&json_stdout).to_hex());
+    let expected_csv_hash = format!("blake3:{}", blake3::hash(&csv_stdout).to_hex());
+
+    assert_eq!(first["output_hash"], expected_json_hash);
+    assert_eq!(second["output_hash"], expected_csv_hash);
+    assert_eq!(second["prev"], first["id"]);
+    assert_eq!(first["params"]["emit"], "json");
+    assert_eq!(second["params"]["emit"], "csv");
 }
 
 #[test]
