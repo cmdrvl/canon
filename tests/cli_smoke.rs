@@ -57,6 +57,40 @@ fn test_schema_command() {
 }
 
 #[test]
+fn info_flags_short_circuit_before_invalid_args_are_parsed() {
+    let version = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["--version", "--emit", "bogus"])
+        .assert()
+        .success();
+    let version_stdout = String::from_utf8(version.get_output().stdout.clone()).unwrap();
+    assert_eq!(
+        version_stdout.trim(),
+        format!("canon {}", env!("CARGO_PKG_VERSION"))
+    );
+    assert!(version.get_output().stderr.is_empty());
+
+    let describe = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["--describe", "--column"])
+        .assert()
+        .success();
+    let describe_stdout = String::from_utf8(describe.get_output().stdout.clone()).unwrap();
+    let describe_json: Value =
+        serde_json::from_str(&describe_stdout).expect("--describe should output valid JSON");
+    assert_eq!(describe_json["name"], "canon");
+    assert!(describe.get_output().stderr.is_empty());
+
+    let schema = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["--schema", "--max-rows", "nope"])
+        .assert()
+        .success();
+    let schema_stdout = String::from_utf8(schema.get_output().stdout.clone()).unwrap();
+    let schema_json: Value =
+        serde_json::from_str(&schema_stdout).expect("--schema should output valid JSON");
+    assert_eq!(schema_json["$id"], "https://canon.v0/schema.json");
+    assert!(schema.get_output().stderr.is_empty());
+}
+
+#[test]
 fn test_all_resolved_exit_code() {
     Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("tests/fixtures/inputs/all_resolved.csv")

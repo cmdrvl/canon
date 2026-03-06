@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize, Serializer};
 use std::{
     collections::HashMap,
     error::Error,
+    ffi::OsString,
     io::Write,
     path::{Path, PathBuf},
 };
@@ -21,90 +22,15 @@ use std::{
 pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
     // Step 1: Handle info commands (early return)
     if cli.version {
-        println!("canon {}", env!("CARGO_PKG_VERSION"));
-        return Ok(0);
+        return run_display_mode(DisplayMode::Version);
     }
 
     if cli.describe {
-        const OPERATOR_JSON: &str = include_str!("../operator.json");
-        println!("{OPERATOR_JSON}");
-        return Ok(0);
+        return run_display_mode(DisplayMode::Describe);
     }
 
     if cli.schema {
-        let schema = serde_json::json!({
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": "https://canon.v0/schema.json",
-            "title": "Canon Output Schema",
-            "description": "JSON schema for canon.v0 output format",
-            "type": "object",
-            "required": ["version", "outcome"],
-            "properties": {
-                "version": {
-                    "type": "string",
-                    "const": "canon.v0"
-                },
-                "outcome": {
-                    "type": "string",
-                    "enum": ["RESOLVED", "PARTIAL", "UNRESOLVED", "REFUSAL"]
-                },
-                "registry": {
-                    "type": ["object", "null"],
-                    "properties": {
-                        "id": { "type": "string" },
-                        "version": { "type": "string" },
-                        "source": { "type": "string" }
-                    },
-                    "required": ["id", "version", "source"]
-                },
-                "summary": {
-                    "type": ["object", "null"],
-                    "properties": {
-                        "total": { "type": "integer", "minimum": 0 },
-                        "resolved": { "type": "integer", "minimum": 0 },
-                        "unresolved": { "type": "integer", "minimum": 0 }
-                    },
-                    "required": ["total", "resolved", "unresolved"]
-                },
-                "mappings": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "input": { "type": "string" },
-                            "canonical_id": { "type": "string" },
-                            "canonical_type": { "type": "string" },
-                            "rule_id": { "type": "string" },
-                            "confidence": { "type": "string" }
-                        },
-                        "required": ["input", "canonical_id", "canonical_type", "rule_id", "confidence"]
-                    }
-                },
-                "unresolved": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "input": { "type": ["string", "null"] },
-                            "reason": { "type": "string" }
-                        },
-                        "required": ["reason"]
-                    }
-                },
-                "refusal": {
-                    "type": ["object", "null"],
-                    "properties": {
-                        "code": { "type": "string" },
-                        "message": { "type": "string" },
-                        "detail": { "type": "object" },
-                        "next_command": { "type": ["string", "null"] }
-                    },
-                    "required": ["code", "message", "detail"]
-                }
-            }
-        });
-        println!("{}", serde_json::to_string_pretty(&schema)?);
-        return Ok(0);
+        return run_display_mode(DisplayMode::Schema);
     }
 
     // Step 2: Validate required args
@@ -148,6 +74,119 @@ pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
             Ok(2) // REFUSAL exit code
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DisplayMode {
+    Version,
+    Describe,
+    Schema,
+}
+
+pub fn detect_display_mode<I, T>(args: I) -> Option<DisplayMode>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString>,
+{
+    let args = args.into_iter().map(Into::into).collect::<Vec<OsString>>();
+
+    if args.iter().skip(1).any(|arg| arg == "--version") {
+        Some(DisplayMode::Version)
+    } else if args.iter().skip(1).any(|arg| arg == "--describe") {
+        Some(DisplayMode::Describe)
+    } else if args.iter().skip(1).any(|arg| arg == "--schema") {
+        Some(DisplayMode::Schema)
+    } else {
+        None
+    }
+}
+
+pub fn run_display_mode(mode: DisplayMode) -> Result<u8, Box<dyn Error>> {
+    match mode {
+        DisplayMode::Version => {
+            println!("canon {}", env!("CARGO_PKG_VERSION"));
+        }
+        DisplayMode::Describe => {
+            const OPERATOR_JSON: &str = include_str!("../operator.json");
+            println!("{OPERATOR_JSON}");
+        }
+        DisplayMode::Schema => {
+            let schema = serde_json::json!({
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$id": "https://canon.v0/schema.json",
+                "title": "Canon Output Schema",
+                "description": "JSON schema for canon.v0 output format",
+                "type": "object",
+                "required": ["version", "outcome"],
+                "properties": {
+                    "version": {
+                        "type": "string",
+                        "const": "canon.v0"
+                    },
+                    "outcome": {
+                        "type": "string",
+                        "enum": ["RESOLVED", "PARTIAL", "UNRESOLVED", "REFUSAL"]
+                    },
+                    "registry": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "id": { "type": "string" },
+                            "version": { "type": "string" },
+                            "source": { "type": "string" }
+                        },
+                        "required": ["id", "version", "source"]
+                    },
+                    "summary": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "total": { "type": "integer", "minimum": 0 },
+                            "resolved": { "type": "integer", "minimum": 0 },
+                            "unresolved": { "type": "integer", "minimum": 0 }
+                        },
+                        "required": ["total", "resolved", "unresolved"]
+                    },
+                    "mappings": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "input": { "type": "string" },
+                                "canonical_id": { "type": "string" },
+                                "canonical_type": { "type": "string" },
+                                "rule_id": { "type": "string" },
+                                "confidence": { "type": "string" }
+                            },
+                            "required": ["input", "canonical_id", "canonical_type", "rule_id", "confidence"]
+                        }
+                    },
+                    "unresolved": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "input": { "type": ["string", "null"] },
+                                "reason": { "type": "string" }
+                            },
+                            "required": ["reason"]
+                        }
+                    },
+                    "refusal": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "code": { "type": "string" },
+                            "message": { "type": "string" },
+                            "detail": { "type": "object" },
+                            "next_command": { "type": ["string", "null"] }
+                        },
+                        "required": ["code", "message", "detail"]
+                    }
+                }
+            });
+            println!("{}", serde_json::to_string_pretty(&schema)?);
+        }
+    }
+
+    Ok(0)
 }
 
 // Internal pipeline that can return refusals
