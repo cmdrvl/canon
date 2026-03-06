@@ -21,7 +21,7 @@ use std::{
 pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
     // Step 1: Handle info commands (early return)
     if cli.version {
-        println!("canon 0.1.0");
+        println!("canon {}", env!("CARGO_PKG_VERSION"));
         return Ok(0);
     }
 

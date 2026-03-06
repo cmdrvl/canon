@@ -13,7 +13,7 @@ pub enum EmitMode {
 
 #[derive(Parser, Debug)]
 #[command(name = "canon")]
-#[command(version = "0.2.0")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "Resolve messy identifiers to canonical IDs using versioned registries")]
 #[command(disable_version_flag = true)]
 pub struct Cli {
