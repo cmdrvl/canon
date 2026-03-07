@@ -171,6 +171,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "spine-rules",
  "tempfile",
 ]
 
@@ -732,6 +733,16 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
+
+[[package]]
+name = "spine-rules"
+version = "0.1.0"
+source = "git+https://github.com/cmdrvl/spine-rules#30a089e50e2a57a0a56cd6d42726d93219e982c9"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+]
 
 [[package]]
 name = "strsim"
