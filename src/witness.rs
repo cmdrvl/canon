@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::error::Error;
 use std::fs::{self, OpenOptions};
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -37,8 +37,6 @@ pub struct WitnessRecord {
     pub output_hash: String,
     pub outcome: String,
     pub exit_code: u8,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub prev: Option<String>,
     pub ts: String,
 }
 
@@ -62,7 +60,6 @@ impl WitnessRecord {
             output_hash: output_hash.to_string(),
             outcome: outcome.to_string(),
             exit_code,
-            prev: None,
             ts: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
         }
     }
@@ -123,9 +120,6 @@ fn append_witness_record_to_path(
     }
 
     let mut record = record.clone();
-    if record.prev.is_none() {
-        record.prev = last_record_id(path);
-    }
     record.compute_id();
     let line = canonical_json(&record);
     if let Some(parent) = path.parent()
@@ -158,23 +152,6 @@ fn hash_binary() -> io::Result<String> {
     let path = std::env::current_exe()?;
     let bytes = std::fs::read(path)?;
     Ok(blake3::hash(&bytes).to_hex().to_string())
-}
-
-fn last_record_id(path: &Path) -> Option<String> {
-    let file = fs::File::open(path).ok()?;
-    let reader = BufReader::new(file);
-    let mut last_non_empty = None;
-
-    for line in reader.lines().map_while(Result::ok) {
-        let trimmed = line.trim();
-        if !trimmed.is_empty() {
-            last_non_empty = Some(trimmed.to_owned());
-        }
-    }
-
-    let last = last_non_empty?;
-    let value: Value = serde_json::from_str(&last).ok()?;
-    value.get("id")?.as_str().map(ToOwned::to_owned)
 }
 
 fn resolve_ledger_path() -> io::Result<PathBuf> {
@@ -279,7 +256,6 @@ mod tests {
         assert_eq!(parsed["params"]["summary"]["resolved"], 95);
         assert_eq!(parsed["params"]["summary"]["unresolved"], 5);
         assert!(parsed["ts"].as_str().unwrap().contains('T'));
-        assert!(parsed["prev"].is_null());
     }
 
     #[test]
@@ -348,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn witness_records_chain_prev_ids() {
+    fn witness_append_is_additive() {
         let temp_dir = TempDir::new().unwrap();
         let witness_path = temp_dir.path().join("nested").join("witness.jsonl");
 
@@ -365,6 +341,8 @@ mod tests {
 
         let first: Value = serde_json::from_str(lines[0]).unwrap();
         let second: Value = serde_json::from_str(lines[1]).unwrap();
-        assert_eq!(second["prev"], first["id"]);
+        assert_eq!(first["outcome"], "PARTIAL");
+        assert_eq!(second["output_hash"], "blake3:other");
+        assert_ne!(second["id"], first["id"]);
     }
 }

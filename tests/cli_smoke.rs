@@ -360,7 +360,7 @@ fn test_witness_hash_parity_and_chain_linkage() {
 
     assert_eq!(first["output_hash"], expected_json_hash);
     assert_eq!(second["output_hash"], expected_csv_hash);
-    assert_eq!(second["prev"], first["id"]);
+    assert_ne!(second["id"], first["id"]);
     assert_eq!(first["params"]["emit"], "json");
     assert_eq!(second["params"]["emit"], "csv");
 }
