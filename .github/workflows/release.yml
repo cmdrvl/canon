@@ -263,6 +263,15 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: ${{ steps.version.outputs.version }}
+          body: |
+            This release packages `${{ steps.version.outputs.version }}` for all supported targets.
+
+            ## Verification
+
+            ```bash
+            sha256sum -c SHA256SUMS
+            ```
+          generate_release_notes: true
           files: |
             dist/canon-*.tar.gz
             dist/canon-*.zip
