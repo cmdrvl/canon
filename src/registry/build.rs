@@ -12,7 +12,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 #[derive(Debug, Clone)]
@@ -28,6 +28,7 @@ pub struct RegistryBuildRequest {
     pub special_reasons: Vec<(String, usize)>,
     pub batch_size: Option<usize>,
     pub rate_limit_ms: Option<u64>,
+    pub provider_options: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +74,8 @@ impl RegistryBuildError {
 pub fn build_registry(
     request: &RegistryBuildRequest,
 ) -> Result<RegistryBuildOutput, RegistryBuildError> {
+    let started_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let build_started = Instant::now();
     let provider = provider_for_source(&request.source).ok_or_else(|| {
         RegistryBuildError::parse(
             format!("Unknown registry build source '{}'", request.source),
@@ -150,9 +153,16 @@ pub fn build_registry(
         ));
     }
 
+    let config = ProviderConfig {
+        seed_column: request.seed_column.clone(),
+        version: request.version.clone(),
+        batch_size: 0,
+        rate_limit_ms: request.rate_limit_ms,
+        provider_options: request.provider_options.clone(),
+    };
     let batch_size = request
         .batch_size
-        .unwrap_or_else(|| provider.default_batch_size());
+        .unwrap_or_else(|| provider.default_batch_size(&config.provider_options));
     if batch_size == 0 {
         return Err(RegistryBuildError::parse(
             "--batch-size must be greater than zero".to_string(),
@@ -161,10 +171,8 @@ pub fn build_registry(
     }
 
     let config = ProviderConfig {
-        seed_column: request.seed_column.clone(),
-        version: request.version.clone(),
         batch_size,
-        rate_limit_ms: request.rate_limit_ms,
+        ..config
     };
     let rate_limit_ms = provider.rate_limit(&config).map(|limit| limit.delay_ms);
 
@@ -178,6 +186,7 @@ pub fn build_registry(
     let mut new_files = BTreeMap::new();
     let mut unresolved = BTreeSet::new();
     let mut failures = Vec::new();
+    let mut diagnostics = Vec::new();
     let mut api_calls = 0usize;
     let batch_count = if identifiers_to_fetch.is_empty() {
         0
@@ -204,6 +213,7 @@ pub fn build_registry(
         }
         unresolved.extend(result.unresolved);
         failures.extend(result.failures);
+        diagnostics.extend(result.diagnostics);
         api_calls += result.api_calls;
 
         if batch_index + 1 < batch_count
@@ -263,9 +273,14 @@ pub fn build_registry(
         .into_iter()
         .map(|failure| RegistryBuildFailure {
             input: failure.input,
+            kind: failure.kind,
             message: failure.message,
         })
         .collect::<Vec<_>>();
+    let ambiguous_count = failure_entries
+        .iter()
+        .filter(|failure| failure.kind == "ambiguous_match")
+        .count();
     let carried_forward_count = if request.incremental {
         request
             .identifiers
@@ -292,6 +307,8 @@ pub fn build_registry(
     let registry_files = final_files.keys().cloned().collect::<Vec<_>>();
     let materialized_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let updated = Utc::now().format("%Y-%m-%d").to_string();
+    let finished_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let elapsed_ms = build_started.elapsed().as_millis() as u64;
     let registry_description = provider.description(&request.seed_column);
     let entry_count = final_files.values().map(Vec::len).sum::<usize>();
 
@@ -380,6 +397,7 @@ pub fn build_registry(
             "resolved_count": resolved_count,
             "unresolved_count": unresolved_entries.len(),
             "failure_count": failure_entries.len(),
+            "ambiguous_count": ambiguous_count,
             "skipped_special_reason_rows": skipped_special_reason_rows,
             "mapping_files": registry_files.len(),
             "api_calls": api_calls,
@@ -390,10 +408,17 @@ pub fn build_registry(
             "id_types": provider.id_types(),
             "batch_size": batch_size,
             "rate_limit_ms": rate_limit_ms,
+            "options": sanitize_provider_options(&request.provider_options),
         },
         "files": registry_files,
         "unresolved": unresolved_entries,
         "failures": failure_entries,
+        "diagnostics": diagnostics,
+        "timing": {
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "elapsed_ms": elapsed_ms,
+        },
     });
     fs::write(
         request.output_dir.join("_build.json"),
@@ -431,6 +456,7 @@ pub fn build_registry(
             resolved_count,
             unresolved_count: unresolved_entries.len(),
             failure_count: failure_entries.len(),
+            ambiguous_count,
             skipped_special_reason_rows,
             mapping_files: registry_files.len(),
             api_calls,
@@ -441,6 +467,25 @@ pub fn build_registry(
         special_reasons,
         incremental: request.incremental,
     })
+}
+
+fn sanitize_provider_options(options: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    options
+        .iter()
+        .map(|(key, value)| {
+            let lower = key.to_ascii_lowercase();
+            let sanitized = if lower.contains("key")
+                || lower.contains("secret")
+                || lower.contains("token")
+                || lower.contains("password")
+            {
+                "[REDACTED]".to_string()
+            } else {
+                value.clone()
+            };
+            (key.clone(), sanitized)
+        })
+        .collect()
 }
 
 fn dir_has_entries(path: &Path) -> Result<bool, RegistryBuildError> {

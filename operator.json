@@ -11,7 +11,7 @@
     "binary": "canon",
     "usage": [
       "canon <INPUT> --registry <DIR> --column <COL> [OPTIONS]",
-      "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>]",
+      "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
       "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]"
     ],
@@ -48,7 +48,7 @@
   "subcommands": [
     {
       "name": "registry build",
-      "usage": "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>]",
+      "usage": "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "description": "Materialize a standard canon registry directory from a provider-backed seed corpus and write build provenance to _build.json",
       "output_mode": "json",
       "output_schema": "canon_registry_build.v0",
@@ -66,7 +66,8 @@
         { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if the seed input exceeds N data rows" },
         { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if the seed input exceeds N bytes" },
         { "name": "batch_size", "flag": "--batch-size", "type": "integer", "description": "Override provider batch size" },
-        { "name": "rate_limit_ms", "flag": "--rate-limit-ms", "type": "integer", "description": "Override provider rate-limit delay in milliseconds" }
+        { "name": "rate_limit_ms", "flag": "--rate-limit-ms", "type": "integer", "description": "Override provider rate-limit delay in milliseconds" },
+        { "name": "provider_config", "flag": "--provider-config", "type": "string", "description": "Repeatable provider-specific key=value option such as id_type=ID_ISIN or base_url=http://..." }
       ]
     },
     {

@@ -125,6 +125,10 @@ pub struct RegistryBuildCli {
     /// Override provider rate limit delay in milliseconds
     #[arg(long)]
     pub rate_limit_ms: Option<u64>,
+
+    /// Provider-specific key=value option (repeatable)
+    #[arg(long = "provider-config", value_name = "KEY=VALUE")]
+    pub provider_config: Vec<String>,
 }
 
 #[derive(Parser, Debug)]
@@ -318,6 +322,10 @@ mod tests {
             "25",
             "--rate-limit-ms",
             "100",
+            "--provider-config",
+            "id_type=ID_CUSIP",
+            "--provider-config",
+            "base_url=http://127.0.0.1:8080/v3/mapping",
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
@@ -334,6 +342,13 @@ mod tests {
                     assert!(build.incremental);
                     assert_eq!(build.batch_size, Some(25));
                     assert_eq!(build.rate_limit_ms, Some(100));
+                    assert_eq!(
+                        build.provider_config,
+                        vec![
+                            "id_type=ID_CUSIP".to_string(),
+                            "base_url=http://127.0.0.1:8080/v3/mapping".to_string(),
+                        ]
+                    );
                 }
             }
         }

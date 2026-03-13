@@ -1,8 +1,13 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    thread,
+};
 use tempfile::tempdir;
+use tiny_http::{Header, Response, Server, StatusCode};
 
 fn fixture_path(relative: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(relative)
@@ -33,6 +38,36 @@ fn write_mapping_file(temp_dir: &Path, name: &str, entries: serde_json::Value) {
 
 fn write_seed_csv(path: &Path, contents: &str) {
     std::fs::write(path, contents).unwrap();
+}
+
+type RecordedOpenFigiRequest = (String, BTreeMap<String, String>);
+type OpenFigiServerHandle = thread::JoinHandle<RecordedOpenFigiRequest>;
+
+fn spawn_openfigi_server(response_body: String) -> (String, OpenFigiServerHandle) {
+    let server = Server::http("127.0.0.1:0").unwrap();
+    let base_url = format!("http://{}/v3/mapping", server.server_addr());
+    let handle = thread::spawn(move || {
+        let mut request = server.recv().unwrap();
+        let headers = request
+            .headers()
+            .iter()
+            .map(|header| {
+                (
+                    header.field.as_str().to_string().to_ascii_lowercase(),
+                    header.value.as_str().to_string(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut body = String::new();
+        request.as_reader().read_to_string(&mut body).unwrap();
+        let response = Response::from_string(response_body)
+            .with_status_code(StatusCode(200))
+            .with_header(Header::from_bytes("Content-Type", "application/json").unwrap());
+        request.respond(response).unwrap();
+        (body, headers)
+    });
+
+    (base_url, handle)
 }
 
 #[test]
@@ -896,6 +931,113 @@ fn test_registry_build_refuses_non_incremental_overwrite() {
             .as_str()
             .unwrap()
             .contains("refuse to overwrite in place")
+    );
+}
+
+#[test]
+fn test_registry_build_openfigi_provider_materializes_registry() {
+    let response_body = serde_json::json!([
+        {
+            "data": [{
+                "figi": "BBG000B9XRY4",
+                "compositeFIGI": "BBG000B9XRY4",
+                "ticker": "AAPL",
+                "name": "APPLE INC",
+                "securityType": "Common Stock"
+            }]
+        },
+        {
+            "data": [{
+                "figi": "BBG000BPH459",
+                "compositeFIGI": "BBG000BPH459",
+                "ticker": "MSFT",
+                "name": "MICROSOFT CORP",
+                "securityType": "Common Stock"
+            }]
+        }
+    ])
+    .to_string();
+    let (base_url, server_handle) = spawn_openfigi_server(response_body);
+
+    let temp_dir = tempdir().unwrap();
+    let seed_path = temp_dir.path().join("seed.csv");
+    let output_dir = temp_dir.path().join("registries/openfigi-cusip");
+    let resolve_path = temp_dir.path().join("resolve.csv");
+    let base_url_arg = format!("base_url={base_url}");
+
+    write_seed_csv(&seed_path, "cusip\n037833100\n594918104\n");
+    write_seed_csv(&resolve_path, "cusip\n037833100\n594918104\n");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .env("OPENFIGI_API_KEY", "env-api-key")
+        .args([
+            "registry",
+            "build",
+            "--source",
+            "openfigi",
+            "--seed",
+            seed_path.to_str().unwrap(),
+            "--seed-column",
+            "cusip",
+            "--provider-config",
+            &base_url_arg,
+            "--output",
+            output_dir.to_str().unwrap(),
+            "--version",
+            "2026.03.14",
+        ])
+        .assert()
+        .success();
+
+    let build_stdout = String::from_utf8(build.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&build_stdout).unwrap();
+    assert_eq!(payload["registry"]["id"], "openfigi-cusip");
+    assert_eq!(payload["summary"]["resolved_count"], 2);
+    assert_eq!(payload["summary"]["api_calls"], 1);
+    assert_eq!(payload["summary"]["failure_count"], 0);
+    assert_eq!(
+        payload["files"],
+        serde_json::json!([
+            "cusip-to-figi.json",
+            "cusip-to-name.json",
+            "cusip-to-ticker.json"
+        ])
+    );
+
+    let build_file: Value =
+        serde_json::from_str(&std::fs::read_to_string(output_dir.join("_build.json")).unwrap())
+            .unwrap();
+    assert_eq!(build_file["provider"]["options"]["base_url"], base_url);
+    assert!(build_file["timing"]["elapsed_ms"].as_u64().is_some());
+
+    let (request_body, headers) = server_handle.join().unwrap();
+    assert!(request_body.contains("\"idType\":\"ID_CUSIP\""));
+    assert!(request_body.contains("\"idValue\":\"037833100\""));
+    assert_eq!(
+        headers.get("x-openfigi-apikey").map(String::as_str),
+        Some("env-api-key")
+    );
+
+    let resolve = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .arg(&resolve_path)
+        .arg("--registry")
+        .arg(&output_dir)
+        .arg("--column")
+        .arg("cusip")
+        .arg("--explicit")
+        .assert()
+        .success();
+
+    let resolve_stdout = String::from_utf8(resolve.get_output().stdout.clone()).unwrap();
+    let resolve_json: Value = serde_json::from_str(&resolve_stdout).unwrap();
+    assert_eq!(resolve_json["outcome"], "RESOLVED");
+    assert_eq!(
+        resolve_json["mappings"][0]["canonical_id"],
+        "u8:BBG000B9XRY4"
+    );
+    assert_eq!(
+        resolve_json["mappings"][1]["canonical_id"],
+        "u8:BBG000BPH459"
     );
 }
 

@@ -41,7 +41,7 @@ Registry materialization is an explicit maintenance workflow; normal `canon` run
 ## CLI (v0)
 ```bash
 canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--emit json|csv] [--canon-column <NAME>] [--map-out <PATH>] [--max-rows <N>] [--max-bytes <N>]
-canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>]
+canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 ```
@@ -66,11 +66,12 @@ Options:
 
 `canon` also exposes explicit registry-maintenance workflows that reuse the normal exact-match parser and lookup semantics without changing the `canon.v0` resolution contract.
 
-`canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>]`
+`canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]`
 - materializes a standard registry directory from a provider-backed seed corpus using the same dedup semantics as normal resolution
 - writes `registry.json`, mapping files, and `_build.json` provenance
 - exits `0` on successful materialization, `2` on refusal
 - partial provider failures are preserved in the JSON report and warned on stderr; successful mappings still land in the registry directory
+- `--provider-config` is repeatable and carries provider-specific options such as OpenFIGI `id_type` or `base_url`
 
 `canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]`
 - compares two versions of the same registry id
@@ -518,7 +519,7 @@ cat events.jsonl | canon - --registry registries/entity/ --column entity_id
 
 ```bash
 # Materialize a registry from a provider-backed seed corpus
-canon registry build --source mock --seed seeds.csv --seed-column cusip --output registries/mock-cusip/ --version 2026.03.13
+OPENFIGI_API_KEY=xxx canon registry build --source openfigi --seed seeds.csv --seed-column cusip --output registries/openfigi-cusip/ --version 2026.03.13
 
 # What changed between two registry versions?
 canon registry diff --old registries/openfigi-cusip-v2026.02/ --new registries/openfigi-cusip-v2026.03/

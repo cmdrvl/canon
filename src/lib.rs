@@ -194,6 +194,7 @@ fn run_registry_audit_pipeline(
 fn run_registry_build_pipeline(
     build: &RegistryBuildCli,
 ) -> Result<RegistryBuildOutput, CanonOutput> {
+    let provider_options = parse_provider_config(&build.provider_config)?;
     let input_values = input::parse_input(
         &build.seed,
         &build.seed_column,
@@ -239,8 +240,52 @@ fn run_registry_build_pipeline(
         special_reasons,
         batch_size: build.batch_size,
         rate_limit_ms: build.rate_limit_ms,
+        provider_options,
     })
     .map_err(create_registry_build_refusal)
+}
+
+#[allow(clippy::result_large_err)]
+fn parse_provider_config(options: &[String]) -> Result<BTreeMap<String, String>, CanonOutput> {
+    let mut parsed = BTreeMap::new();
+
+    for option in options {
+        let (raw_key, raw_value) = option.split_once('=').ok_or_else(|| {
+            refusal::create_refusal(
+                RefusalCode::EParse,
+                format!("Invalid --provider-config '{}'; expected KEY=VALUE", option),
+                serde_json::json!({ "provider_config": option }),
+                None,
+            )
+        })?;
+
+        let key = raw_key.trim();
+        if key.is_empty() {
+            return Err(refusal::create_refusal(
+                RefusalCode::EParse,
+                format!(
+                    "Invalid --provider-config '{}'; key cannot be empty",
+                    option
+                ),
+                serde_json::json!({ "provider_config": option }),
+                None,
+            ));
+        }
+
+        if parsed
+            .insert(key.to_string(), raw_value.to_string())
+            .is_some()
+        {
+            return Err(refusal::create_refusal(
+                RefusalCode::EParse,
+                format!("Duplicate --provider-config key '{}'", key),
+                serde_json::json!({ "provider_config_key": key }),
+                None,
+            ));
+        }
+    }
+
+    Ok(parsed)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1056,6 +1101,7 @@ pub struct RegistryBuildSpecialReason {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RegistryBuildFailure {
     pub input: String,
+    pub kind: String,
     pub message: String,
 }
 
@@ -1073,6 +1119,7 @@ pub struct RegistryBuildSummary {
     pub resolved_count: usize,
     pub unresolved_count: usize,
     pub failure_count: usize,
+    pub ambiguous_count: usize,
     pub skipped_special_reason_rows: usize,
     pub mapping_files: usize,
     pub api_calls: usize,

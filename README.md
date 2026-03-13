@@ -241,7 +241,7 @@ cargo build --release
 
 ```bash
 canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
-canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>]
+canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 ```
@@ -272,7 +272,7 @@ canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json
 
 | Subcommand | Description |
 |------------|-------------|
-| `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus. |
+| `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides. |
 | `registry diff --old <PATH> --new <PATH> [--emit json\|summary]` | Compare two versions of the same registry ID and report added, removed, changed, and unchanged effective mappings. |
 | `registry audit <SEED> --registry <PATH> --column <COLUMN> [--emit json\|summary]` | Audit a seed corpus against a registry and emit resolved/unresolved entries plus aggregate canonical-target and rule-hit counts. |
 
@@ -351,11 +351,12 @@ canon registry audit seeds.csv \
 Materialize a registry from a provider-backed seed corpus:
 
 ```bash
+OPENFIGI_API_KEY=xxx \
 canon registry build \
-  --source mock \
+  --source openfigi \
   --seed seeds.csv \
   --seed-column cusip \
-  --output registries/mock-cusip/ \
+  --output registries/openfigi-cusip/ \
   --version 2026.03.13
 ```
 
