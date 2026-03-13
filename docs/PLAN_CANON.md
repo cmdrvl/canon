@@ -33,14 +33,15 @@ Today this means:
 - a data cleansing tool
 - a replacement for a proper MDM platform at scale
 
-It does not build or maintain registries.
-It resolves input values against them and records everything.
+It does not call remote providers at resolution time.
+Registry materialization is an explicit maintenance workflow; normal `canon` runs still resolve input values against local versioned registries and record everything.
 
 ---
 
 ## CLI (v0)
 ```bash
 canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--emit json|csv] [--canon-column <NAME>] [--map-out <PATH>] [--max-rows <N>] [--max-bytes <N>]
+canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 ```
@@ -61,9 +62,15 @@ Options:
 - `--schema`: Print JSON Schema for the mapping artifact (`canon.v0` object) to stdout and exit 0. This is the schema for `--emit json` output and `--map-out` sidecar, not a description of CSV output format.
 - `--no-witness`: Suppress witness ledger append.
 
-### Registry reporting subcommands
+### Registry maintenance subcommands
 
-`canon` also exposes registry-maintenance reporting workflows that reuse the normal exact-match parser and lookup semantics without changing the `canon.v0` resolution contract.
+`canon` also exposes explicit registry-maintenance workflows that reuse the normal exact-match parser and lookup semantics without changing the `canon.v0` resolution contract.
+
+`canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>]`
+- materializes a standard registry directory from a provider-backed seed corpus using the same dedup semantics as normal resolution
+- writes `registry.json`, mapping files, and `_build.json` provenance
+- exits `0` on successful materialization, `2` on refusal
+- partial provider failures are preserved in the JSON report and warned on stderr; successful mappings still land in the registry directory
 
 `canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]`
 - compares two versions of the same registry id
@@ -180,7 +187,7 @@ registries/cusip-isin/
 ```
 
 ### Mapping file discovery
-- All `*.json` files in the registry directory except `registry.json` are treated as mapping files
+- All `*.json` files in the registry directory except `registry.json` and `_build.json` are treated as mapping files
 - Subdirectories are ignored (flat structure only in v0)
 - Non-JSON files (e.g., `.md`, `.txt`) are ignored
 - If a discovered `.json` file is not a valid mapping file (wrong schema, malformed JSON) → REFUSAL `E_BAD_REGISTRY`
@@ -510,6 +517,9 @@ cat events.jsonl | canon - --registry registries/entity/ --column entity_id
 ### Registry maintenance reporting
 
 ```bash
+# Materialize a registry from a provider-backed seed corpus
+canon registry build --source mock --seed seeds.csv --seed-column cusip --output registries/mock-cusip/ --version 2026.03.13
+
 # What changed between two registry versions?
 canon registry diff --old registries/openfigi-cusip-v2026.02/ --new registries/openfigi-cusip-v2026.03/
 

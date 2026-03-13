@@ -11,6 +11,7 @@
     "binary": "canon",
     "usage": [
       "canon <INPUT> --registry <DIR> --column <COL> [OPTIONS]",
+      "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>]",
       "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
       "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]"
     ],
@@ -45,6 +46,29 @@
   ],
 
   "subcommands": [
+    {
+      "name": "registry build",
+      "usage": "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>]",
+      "description": "Materialize a standard canon registry directory from a provider-backed seed corpus and write build provenance to _build.json",
+      "output_mode": "json",
+      "output_schema": "canon_registry_build.v0",
+      "exit_codes": {
+        "0": { "meaning": "registry materialized successfully", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "source", "flag": "--source", "type": "string", "required": true, "description": "Provider source name" },
+        { "name": "seed", "flag": "--seed", "type": "file_path", "required": true, "description": "Seed CSV or JSONL file used to extract unique identifiers" },
+        { "name": "seed_column", "flag": "--seed-column", "type": "string", "required": true, "description": "Column containing seed identifiers" },
+        { "name": "output", "flag": "--output", "type": "directory_path", "required": true, "description": "Output registry directory to create or update" },
+        { "name": "version", "flag": "--version", "type": "string", "required": true, "description": "Registry version to write into registry.json" },
+        { "name": "incremental", "flag": "--incremental", "type": "flag", "description": "Carry forward existing registry entries and fetch only new identifiers" },
+        { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if the seed input exceeds N data rows" },
+        { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if the seed input exceeds N bytes" },
+        { "name": "batch_size", "flag": "--batch-size", "type": "integer", "description": "Override provider batch size" },
+        { "name": "rate_limit_ms", "flag": "--rate-limit-ms", "type": "integer", "description": "Override provider rate-limit delay in milliseconds" }
+      ]
+    },
     {
       "name": "registry diff",
       "usage": "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",

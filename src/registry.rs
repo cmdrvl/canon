@@ -3,6 +3,7 @@ use crate::{
     RegistryDiffOutput, RegistryDiffRemovedEntry, RegistryDiffSummary, RegistryDiffValue,
     RegistryDiffVersion, RegistryMeta,
 };
+pub use build::{RegistryBuildError, RegistryBuildErrorKind, RegistryBuildRequest, build_registry};
 use rusqlite::Connection;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -10,6 +11,9 @@ use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+
+mod build;
+mod provider;
 
 #[derive(Debug, Clone, Deserialize)]
 struct RegistryJson {
@@ -324,6 +328,7 @@ fn discover_mapping_files(registry_dir: &Path) -> Result<Vec<MappingFile>, Box<d
         if path.is_file()
             && path.extension() == Some("json".as_ref())
             && path.file_name() != Some("registry.json".as_ref())
+            && path.file_name() != Some("_build.json".as_ref())
         {
             json_files.push(path);
         }
@@ -613,6 +618,13 @@ mod tests {
     fn test_discover_mapping_files() -> Result<(), Box<dyn Error>> {
         let temp_dir = TempDir::new()?;
         create_test_registry(temp_dir.path())?;
+        fs::write(
+            temp_dir.path().join("_build.json"),
+            serde_json::to_string_pretty(&serde_json::json!({
+                "version": "canon_registry_build.v0",
+                "summary": { "seed_count": 3 }
+            }))?,
+        )?;
 
         let mapping_files = discover_mapping_files(temp_dir.path())?;
 

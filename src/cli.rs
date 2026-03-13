@@ -39,6 +39,8 @@ pub enum RegistrySubcommand {
     Diff(RegistryDiffCli),
     /// Audit a seed corpus against a registry for authoring workflows
     Audit(RegistryAuditCli),
+    /// Materialize a registry from a provider and seed corpus
+    Build(RegistryBuildCli),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -80,6 +82,49 @@ pub struct RegistryAuditCli {
     /// Refuse if input exceeds N bytes
     #[arg(long)]
     pub max_bytes: Option<u64>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RegistryBuildCli {
+    /// Provider source name
+    #[arg(long)]
+    pub source: String,
+
+    /// Seed CSV or JSONL file to materialize from
+    #[arg(long)]
+    pub seed: PathBuf,
+
+    /// Column containing seed identifiers
+    #[arg(long)]
+    pub seed_column: String,
+
+    /// Output registry directory
+    #[arg(long)]
+    pub output: PathBuf,
+
+    /// Registry version to write into registry.json
+    #[arg(long)]
+    pub version: String,
+
+    /// Carry forward existing registry entries and fetch only new identifiers
+    #[arg(long)]
+    pub incremental: bool,
+
+    /// Refuse if input exceeds N data rows
+    #[arg(long)]
+    pub max_rows: Option<usize>,
+
+    /// Refuse if input exceeds N bytes
+    #[arg(long)]
+    pub max_bytes: Option<u64>,
+
+    /// Override provider batch size
+    #[arg(long)]
+    pub batch_size: Option<usize>,
+
+    /// Override provider rate limit delay in milliseconds
+    #[arg(long)]
+    pub rate_limit_ms: Option<u64>,
 }
 
 #[derive(Parser, Debug)]
@@ -247,6 +292,48 @@ mod tests {
                     assert_eq!(audit.column, "cusip");
                     assert!(matches!(audit.emit, RegistryEmitMode::Summary));
                     assert_eq!(audit.max_rows, Some(10));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_cli_registry_build_parsing() {
+        let args = [
+            "canon",
+            "registry",
+            "build",
+            "--source",
+            "mock",
+            "--seed",
+            "seeds.csv",
+            "--seed-column",
+            "cusip",
+            "--output",
+            "registries/mock-cusip",
+            "--version",
+            "2026.03.13",
+            "--incremental",
+            "--batch-size",
+            "25",
+            "--rate-limit-ms",
+            "100",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Registry(command) => {
+                let subcommand = command.command;
+                assert!(matches!(subcommand, RegistrySubcommand::Build(_)));
+                if let RegistrySubcommand::Build(build) = subcommand {
+                    assert_eq!(build.source, "mock");
+                    assert_eq!(build.seed, PathBuf::from("seeds.csv"));
+                    assert_eq!(build.seed_column, "cusip");
+                    assert_eq!(build.output, PathBuf::from("registries/mock-cusip"));
+                    assert_eq!(build.version, "2026.03.13");
+                    assert!(build.incremental);
+                    assert_eq!(build.batch_size, Some(25));
+                    assert_eq!(build.rate_limit_ms, Some(100));
                 }
             }
         }

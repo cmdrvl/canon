@@ -9,7 +9,8 @@ pub mod registry;
 pub mod witness;
 
 use crate::cli::{
-    CanonCommand, Cli, RegistryAuditCli, RegistryDiffCli, RegistryEmitMode, RegistrySubcommand,
+    CanonCommand, Cli, RegistryAuditCli, RegistryBuildCli, RegistryDiffCli, RegistryEmitMode,
+    RegistrySubcommand,
 };
 use serde::{Deserialize, Serialize, Serializer};
 use std::{
@@ -87,6 +88,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
         CanonCommand::Registry(command) => match &command.command {
             RegistrySubcommand::Diff(diff) => run_registry_diff(diff),
             RegistrySubcommand::Audit(audit) => run_registry_audit(audit),
+            RegistrySubcommand::Build(build) => run_registry_build(build),
         },
     }
 }
@@ -147,6 +149,28 @@ fn run_registry_audit(audit: &RegistryAuditCli) -> Result<u8, Box<dyn Error>> {
     }
 }
 
+fn run_registry_build(build: &RegistryBuildCli) -> Result<u8, Box<dyn Error>> {
+    let result = run_registry_build_pipeline(build);
+
+    match result {
+        Ok(output) => {
+            println!("{}", serde_json::to_string(&output)?);
+            if !output.failures.is_empty() {
+                eprintln!(
+                    "Warning: registry build completed with {} provider failure(s); see {}/_build.json for details",
+                    output.failures.len(),
+                    output.output_path,
+                );
+            }
+            Ok(0)
+        }
+        Err(refusal_output) => {
+            println!("{}", serde_json::to_string(&refusal_output)?);
+            Ok(2)
+        }
+    }
+}
+
 #[allow(clippy::result_large_err)]
 fn run_registry_audit_pipeline(
     audit: &RegistryAuditCli,
@@ -166,6 +190,59 @@ fn run_registry_audit_pipeline(
     ))
 }
 
+#[allow(clippy::result_large_err)]
+fn run_registry_build_pipeline(
+    build: &RegistryBuildCli,
+) -> Result<RegistryBuildOutput, CanonOutput> {
+    let input_values = input::parse_input(
+        &build.seed,
+        &build.seed_column,
+        build.max_bytes,
+        build.max_rows,
+    )
+    .map_err(create_input_refusal)?;
+
+    let seed_hash = if build.seed == Path::new("-") {
+        input_values.source_hash.clone().ok_or_else(|| {
+            create_io_refusal(std::io::Error::other(
+                "Failed to hash stdin seed bytes during parsing",
+            ))
+        })?
+    } else {
+        witness::hash_file(&build.seed).map_err(|error| {
+            create_io_refusal(std::io::Error::other(format!(
+                "Failed to hash seed file: {}",
+                error
+            )))
+        })?
+    };
+
+    let mut identifiers = input_values.values.keys().cloned().collect::<Vec<_>>();
+    identifiers.sort();
+
+    let mut special_reasons = input_values
+        .special
+        .iter()
+        .map(|(reason, count)| (reason.to_string(), *count))
+        .collect::<Vec<_>>();
+    special_reasons.sort_by(|left, right| left.0.cmp(&right.0));
+
+    registry::build_registry(&registry::RegistryBuildRequest {
+        source: build.source.clone(),
+        seed_path: build.seed.clone(),
+        seed_column: build.seed_column.clone(),
+        output_dir: build.output.clone(),
+        version: build.version.clone(),
+        incremental: build.incremental,
+        identifiers,
+        seed_hash,
+        special_reasons,
+        batch_size: build.batch_size,
+        rate_limit_ms: build.rate_limit_ms,
+    })
+    .map_err(create_registry_build_refusal)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DisplayMode {
     Version,
@@ -179,15 +256,13 @@ where
     T: Into<OsString>,
 {
     let args = args.into_iter().map(Into::into).collect::<Vec<OsString>>();
+    let first_arg = args.get(1).and_then(|arg| arg.to_str());
 
-    if args.iter().skip(1).any(|arg| arg == "--version") {
-        Some(DisplayMode::Version)
-    } else if args.iter().skip(1).any(|arg| arg == "--describe") {
-        Some(DisplayMode::Describe)
-    } else if args.iter().skip(1).any(|arg| arg == "--schema") {
-        Some(DisplayMode::Schema)
-    } else {
-        None
+    match first_arg {
+        Some("--version") => Some(DisplayMode::Version),
+        Some("--describe") => Some(DisplayMode::Describe),
+        Some("--schema") => Some(DisplayMode::Schema),
+        _ => None,
     }
 }
 
@@ -591,6 +666,15 @@ fn create_registry_id_mismatch_refusal(error: registry::RegistryDiffError) -> Ca
     )
 }
 
+fn create_registry_build_refusal(error: registry::RegistryBuildError) -> CanonOutput {
+    let code = match error.kind {
+        registry::RegistryBuildErrorKind::Io => RefusalCode::EIo,
+        registry::RegistryBuildErrorKind::BadRegistry => RefusalCode::EBadRegistry,
+        registry::RegistryBuildErrorKind::Parse => RefusalCode::EParse,
+    };
+    refusal::create_refusal(code, error.message, error.detail, None)
+}
+
 fn create_input_refusal(error: input::InputError) -> CanonOutput {
     match error {
         input::InputError::ColumnNotFound { column, available } => refusal::create_refusal(
@@ -963,6 +1047,51 @@ impl RegistryAuditOutput {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryBuildSpecialReason {
+    pub reason: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryBuildFailure {
+    pub input: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryBuildUnresolvedEntry {
+    pub input: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryBuildSummary {
+    pub seed_count: usize,
+    pub queried_count: usize,
+    pub carried_forward_count: usize,
+    pub resolved_count: usize,
+    pub unresolved_count: usize,
+    pub failure_count: usize,
+    pub skipped_special_reason_rows: usize,
+    pub mapping_files: usize,
+    pub api_calls: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryBuildOutput {
+    pub version: String,
+    pub source: String,
+    pub registry: RegistryMeta,
+    pub output_path: String,
+    pub summary: RegistryBuildSummary,
+    pub files: Vec<String>,
+    pub unresolved: Vec<RegistryBuildUnresolvedEntry>,
+    pub failures: Vec<RegistryBuildFailure>,
+    pub special_reasons: Vec<RegistryBuildSpecialReason>,
+    pub incremental: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Summary {
     pub total: usize,
@@ -1073,4 +1202,40 @@ pub struct ResolveResult {
     pub mappings: Vec<Mapping>,
     pub unresolved: Vec<UnresolvedEntry>,
     pub summary: Summary,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DisplayMode, detect_display_mode};
+
+    #[test]
+    fn detect_display_mode_ignores_subcommand_version_flag() {
+        let args = [
+            "canon",
+            "registry",
+            "build",
+            "--source",
+            "mock",
+            "--version",
+            "2026.03.13",
+        ];
+
+        assert_eq!(detect_display_mode(args), None);
+    }
+
+    #[test]
+    fn detect_display_mode_short_circuits_top_level_info_flags() {
+        assert_eq!(
+            detect_display_mode(["canon", "--version", "--emit", "bogus"]),
+            Some(DisplayMode::Version)
+        );
+        assert_eq!(
+            detect_display_mode(["canon", "--describe", "--column"]),
+            Some(DisplayMode::Describe)
+        );
+        assert_eq!(
+            detect_display_mode(["canon", "--schema", "--max-rows", "nope"]),
+            Some(DisplayMode::Schema)
+        );
+    }
 }

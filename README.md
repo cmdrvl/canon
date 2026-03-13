@@ -132,7 +132,8 @@ A registry is a versioned directory of JSON mapping files:
 registries/cusip-isin/
 ├── registry.json            # Metadata: id, version, description, updated
 ├── cusip-to-isin.json       # Mapping file
-└── cusip-to-ticker.json     # Mapping file
+├── cusip-to-ticker.json     # Mapping file
+└── _build.json              # Optional build provenance; ignored during resolution
 ```
 
 Each mapping file is an array of entries:
@@ -143,7 +144,7 @@ Each mapping file is an array of entries:
 {"input": "WFB", "canonical_id": "C-00012", "canonical_type": "counterparty_id", "rule_id": "COUNTERPARTY_ALIAS"}
 ```
 
-Registries are versioned with semver, inspectable in git, and diffable. A SQLite derived index is built automatically for fast lookups against large registries.
+Registries are versioned with semver, inspectable in git, and diffable. A SQLite derived index is built automatically for fast lookups against large registries. `_build.json` is reserved for materializer provenance and is ignored during normal resolution.
 
 ### Matching
 
@@ -240,6 +241,7 @@ cargo build --release
 
 ```bash
 canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
+canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 ```
@@ -270,6 +272,7 @@ canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json
 
 | Subcommand | Description |
 |------------|-------------|
+| `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus. |
 | `registry diff --old <PATH> --new <PATH> [--emit json\|summary]` | Compare two versions of the same registry ID and report added, removed, changed, and unchanged effective mappings. |
 | `registry audit <SEED> --registry <PATH> --column <COLUMN> [--emit json\|summary]` | Audit a seed corpus against a registry and emit resolved/unresolved entries plus aggregate canonical-target and rule-hit counts. |
 
@@ -281,7 +284,7 @@ canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json
 | `1` | PARTIAL or UNRESOLVED (some or all inputs unresolved) |
 | `2` | REFUSAL or CLI error |
 
-`canon registry diff` and `canon registry audit` exit `0` when the report succeeds and `2` on refusal.
+`canon registry diff` and `canon registry audit` exit `0` when the report succeeds and `2` on refusal. `canon registry build` exits `0` when materialization succeeds and `2` on refusal; provider failures are preserved in the JSON report and warned on stderr.
 
 ### Output Routing
 
@@ -345,6 +348,17 @@ canon registry audit seeds.csv \
   --emit summary
 ```
 
+Materialize a registry from a provider-backed seed corpus:
+
+```bash
+canon registry build \
+  --source mock \
+  --seed seeds.csv \
+  --seed-column cusip \
+  --output registries/mock-cusip/ \
+  --version 2026.03.13
+```
+
 Resolve counterparty aliases:
 
 ```bash
@@ -394,7 +408,7 @@ Column names are matched exactly (byte-for-byte after ASCII-trim). Check for inv
 
 ### "E_BAD_REGISTRY" on a registry that looks fine
 
-All `.json` files in the registry directory (except `registry.json`) must be valid mapping files. Check for stray JSON files, malformed entries, or missing required fields (`input`, `canonical_id`, `canonical_type`, `rule_id`).
+All `.json` files in the registry directory except `registry.json` and `_build.json` must be valid mapping files. Check for stray JSON files, malformed entries, or missing required fields (`input`, `canonical_id`, `canonical_type`, `rule_id`).
 
 ### Unresolved entries that should match
 
@@ -443,7 +457,7 @@ Not in v0. `canon` v0 resolves identifiers and aliases via exact lookup. Multi-c
 
 ### What about registries — do I have to build them?
 
-A small set of standard registries ship with the tool. CMD+RVL also publishes official, industry-relevant registries (sector classifications, ABS deal mappings, servicer ID normalization) as a commercial layer.
+You can author registries by hand, consume published registries, or materialize them with `canon registry build`. The build workflow snapshots provider-backed lookups into a normal versioned registry directory plus `_build.json` provenance, and normal `canon` resolution ignores that metadata sidecar.
 
 ### Can I use this in CI/CD?
 

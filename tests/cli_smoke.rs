@@ -31,6 +31,10 @@ fn write_mapping_file(temp_dir: &Path, name: &str, entries: serde_json::Value) {
     .unwrap();
 }
 
+fn write_seed_csv(path: &Path, contents: &str) {
+    std::fs::write(path, contents).unwrap();
+}
+
 #[test]
 fn test_version_command() {
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
@@ -703,6 +707,196 @@ fn test_map_out_sidecar_in_csv_mode() {
 
     assert_eq!(json["version"], "canon.v0");
     assert_eq!(json["outcome"], "RESOLVED");
+}
+
+#[test]
+fn test_registry_build_materializes_registry_and_resolves() {
+    let temp_dir = tempdir().unwrap();
+    let seed_path = temp_dir.path().join("seed.csv");
+    let output_dir = temp_dir.path().join("registries/mock-cusip");
+    let resolve_path = temp_dir.path().join("resolve.csv");
+
+    write_seed_csv(
+        &seed_path,
+        "cusip,note\nAAPL,ok\nMSFT,ok\nMISS_UNKNOWN,miss\nFAIL_BROKEN,fail\n,blank\nAAPL,dup\n",
+    );
+    write_seed_csv(&resolve_path, "cusip\nAAPL\nMSFT\n");
+
+    let build = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "build",
+            "--source",
+            "mock",
+            "--seed",
+            seed_path.to_str().unwrap(),
+            "--seed-column",
+            "cusip",
+            "--output",
+            output_dir.to_str().unwrap(),
+            "--version",
+            "2026.03.13",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("provider failure(s)"));
+
+    let build_stdout = String::from_utf8(build.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&build_stdout).unwrap();
+
+    assert_eq!(payload["version"], "canon_registry_build.v0");
+    assert_eq!(payload["source"], "mock");
+    assert_eq!(payload["registry"]["id"], "mock-cusip");
+    assert_eq!(payload["registry"]["version"], "2026.03.13");
+    assert_eq!(payload["summary"]["seed_count"], 4);
+    assert_eq!(payload["summary"]["queried_count"], 4);
+    assert_eq!(payload["summary"]["carried_forward_count"], 0);
+    assert_eq!(payload["summary"]["resolved_count"], 2);
+    assert_eq!(payload["summary"]["unresolved_count"], 1);
+    assert_eq!(payload["summary"]["failure_count"], 1);
+    assert_eq!(payload["summary"]["skipped_special_reason_rows"], 1);
+    assert_eq!(payload["special_reasons"][0]["reason"], "empty_value");
+    assert_eq!(payload["special_reasons"][0]["count"], 1);
+    assert_eq!(payload["files"], serde_json::json!(["cusip-to-mock.json"]));
+
+    let registry_json: Value =
+        serde_json::from_str(&std::fs::read_to_string(output_dir.join("registry.json")).unwrap())
+            .unwrap();
+    assert_eq!(registry_json["id"], "mock-cusip");
+    assert_eq!(registry_json["version"], "2026.03.13");
+    assert_eq!(registry_json["entry_count"], 2);
+    assert!(output_dir.join("_build.json").exists());
+
+    let resolve = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .arg(&resolve_path)
+        .arg("--registry")
+        .arg(&output_dir)
+        .arg("--column")
+        .arg("cusip")
+        .arg("--explicit")
+        .assert()
+        .success();
+
+    let resolve_stdout = String::from_utf8(resolve.get_output().stdout.clone()).unwrap();
+    let resolve_json: Value = serde_json::from_str(&resolve_stdout).unwrap();
+    assert_eq!(resolve_json["outcome"], "RESOLVED");
+    assert_eq!(resolve_json["registry"]["id"], "mock-cusip");
+    assert_eq!(resolve_json["summary"]["resolved"], 2);
+    assert_eq!(resolve_json["mappings"][0]["canonical_id"], "u8:MOCK::AAPL");
+    assert_eq!(resolve_json["mappings"][1]["canonical_id"], "u8:MOCK::MSFT");
+}
+
+#[test]
+fn test_registry_build_incremental_carries_forward_existing_entries() {
+    let temp_dir = tempdir().unwrap();
+    let initial_seed_path = temp_dir.path().join("seed-initial.csv");
+    let incremental_seed_path = temp_dir.path().join("seed-incremental.csv");
+    let output_dir = temp_dir.path().join("registries/mock-cusip");
+
+    write_seed_csv(&initial_seed_path, "cusip\nAAPL\nMSFT\n");
+    write_seed_csv(&incremental_seed_path, "cusip\nAAPL\nMSFT\nNVDA\n");
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "build",
+            "--source",
+            "mock",
+            "--seed",
+            initial_seed_path.to_str().unwrap(),
+            "--seed-column",
+            "cusip",
+            "--output",
+            output_dir.to_str().unwrap(),
+            "--version",
+            "2026.03.13",
+        ])
+        .assert()
+        .success();
+
+    let incremental = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "build",
+            "--source",
+            "mock",
+            "--seed",
+            incremental_seed_path.to_str().unwrap(),
+            "--seed-column",
+            "cusip",
+            "--output",
+            output_dir.to_str().unwrap(),
+            "--version",
+            "2026.03.14",
+            "--incremental",
+        ])
+        .assert()
+        .success();
+
+    let incremental_stdout = String::from_utf8(incremental.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&incremental_stdout).unwrap();
+
+    assert_eq!(payload["summary"]["seed_count"], 3);
+    assert_eq!(payload["summary"]["queried_count"], 1);
+    assert_eq!(payload["summary"]["carried_forward_count"], 2);
+    assert_eq!(payload["summary"]["resolved_count"], 3);
+    assert_eq!(payload["summary"]["unresolved_count"], 0);
+    assert_eq!(payload["summary"]["failure_count"], 0);
+
+    let registry_json: Value =
+        serde_json::from_str(&std::fs::read_to_string(output_dir.join("registry.json")).unwrap())
+            .unwrap();
+    assert_eq!(registry_json["version"], "2026.03.14");
+    assert_eq!(registry_json["entry_count"], 3);
+
+    let mapping_entries: Value = serde_json::from_str(
+        &std::fs::read_to_string(output_dir.join("cusip-to-mock.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(mapping_entries.as_array().unwrap().len(), 3);
+    assert_eq!(mapping_entries[0]["input"], "AAPL");
+    assert_eq!(mapping_entries[1]["input"], "MSFT");
+    assert_eq!(mapping_entries[2]["input"], "NVDA");
+}
+
+#[test]
+fn test_registry_build_refuses_non_incremental_overwrite() {
+    let temp_dir = tempdir().unwrap();
+    let seed_path = temp_dir.path().join("seed.csv");
+    let output_dir = temp_dir.path().join("registries/mock-cusip");
+
+    write_seed_csv(&seed_path, "cusip\nAAPL\n");
+    std::fs::create_dir_all(&output_dir).unwrap();
+    std::fs::write(output_dir.join("existing.txt"), "occupied").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "build",
+            "--source",
+            "mock",
+            "--seed",
+            seed_path.to_str().unwrap(),
+            "--seed-column",
+            "cusip",
+            "--output",
+            output_dir.to_str().unwrap(),
+            "--version",
+            "2026.03.13",
+        ])
+        .assert()
+        .code(2);
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["outcome"], "REFUSAL");
+    assert_eq!(payload["refusal"]["code"], "E_IO");
+    assert!(
+        payload["refusal"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("refuse to overwrite in place")
+    );
 }
 
 #[cfg(unix)]
