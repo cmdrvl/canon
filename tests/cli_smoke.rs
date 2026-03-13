@@ -8,6 +8,29 @@ fn fixture_path(relative: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(relative)
 }
 
+fn write_registry_metadata(temp_dir: &Path, id: &str, version: &str, entry_count: usize) {
+    let registry_json = serde_json::json!({
+        "id": id,
+        "version": version,
+        "description": "Test registry",
+        "updated": "2026-01-01",
+        "entry_count": entry_count,
+    });
+    std::fs::write(
+        temp_dir.join("registry.json"),
+        serde_json::to_string_pretty(&registry_json).unwrap(),
+    )
+    .unwrap();
+}
+
+fn write_mapping_file(temp_dir: &Path, name: &str, entries: serde_json::Value) {
+    std::fs::write(
+        temp_dir.join(name),
+        serde_json::to_string_pretty(&entries).unwrap(),
+    )
+    .unwrap();
+}
+
 #[test]
 fn test_version_command() {
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
@@ -88,6 +111,181 @@ fn info_flags_short_circuit_before_invalid_args_are_parsed() {
         serde_json::from_str(&schema_stdout).expect("--schema should output valid JSON");
     assert_eq!(schema_json["$id"], "https://canon.v0/schema.json");
     assert!(schema.get_output().stderr.is_empty());
+}
+
+#[test]
+fn test_registry_diff_json_output() {
+    let old_dir = tempdir().unwrap();
+    write_registry_metadata(old_dir.path(), "openfigi-cusip", "2026.02.28", 3);
+    write_mapping_file(
+        old_dir.path(),
+        "a-primary.json",
+        serde_json::json!([
+            {
+                "input": "AAPL",
+                "canonical_id": "BBG000B9XRY4",
+                "canonical_type": "composite_figi",
+                "rule_id": "OPENFIGI"
+            },
+            {
+                "input": "MSFT",
+                "canonical_id": "BBG000BPH459",
+                "canonical_type": "composite_figi",
+                "rule_id": "OPENFIGI"
+            },
+            {
+                "input": "TSLA",
+                "canonical_id": "BBG000N9MNX3",
+                "canonical_type": "composite_figi",
+                "rule_id": "OPENFIGI"
+            }
+        ]),
+    );
+
+    let new_dir = tempdir().unwrap();
+    write_registry_metadata(new_dir.path(), "openfigi-cusip", "2026.03.05", 3);
+    write_mapping_file(
+        new_dir.path(),
+        "a-primary.json",
+        serde_json::json!([
+            {
+                "input": "AAPL",
+                "canonical_id": "BBG000B9XRY4",
+                "canonical_type": "composite_figi",
+                "rule_id": "OPENFIGI"
+            },
+            {
+                "input": "MSFT",
+                "canonical_id": "BBG000BPH45Z",
+                "canonical_type": "composite_figi",
+                "rule_id": "OPENFIGI"
+            },
+            {
+                "input": "NVDA",
+                "canonical_id": "BBG000BBJQV0",
+                "canonical_type": "composite_figi",
+                "rule_id": "OPENFIGI"
+            }
+        ]),
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "diff",
+            "--old",
+            old_dir.path().to_str().unwrap(),
+            "--new",
+            new_dir.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+
+    assert_eq!(payload["version"], "canon_registry_diff.v0");
+    assert_eq!(payload["old"]["id"], "openfigi-cusip");
+    assert_eq!(payload["old"]["version"], "2026.02.28");
+    assert_eq!(payload["new"]["version"], "2026.03.05");
+    assert_eq!(payload["summary"]["added"], 1);
+    assert_eq!(payload["summary"]["removed"], 1);
+    assert_eq!(payload["summary"]["changed"], 1);
+    assert_eq!(payload["summary"]["unchanged"], 1);
+    assert_eq!(payload["added"][0]["input"], "NVDA");
+    assert_eq!(payload["removed"][0]["input"], "TSLA");
+    assert_eq!(payload["changed"][0]["input"], "MSFT");
+    assert_eq!(payload["changed"][0]["change_type"], "canonical_id_change");
+}
+
+#[test]
+fn test_registry_diff_summary_output() {
+    let old_dir = tempdir().unwrap();
+    write_registry_metadata(old_dir.path(), "openfigi-cusip", "2026.02.28", 1);
+    write_mapping_file(
+        old_dir.path(),
+        "a-primary.json",
+        serde_json::json!([
+            {
+                "input": "AAPL",
+                "canonical_id": "BBG000B9XRY4",
+                "canonical_type": "composite_figi",
+                "rule_id": "OPENFIGI"
+            }
+        ]),
+    );
+
+    let new_dir = tempdir().unwrap();
+    write_registry_metadata(new_dir.path(), "openfigi-cusip", "2026.03.05", 2);
+    write_mapping_file(
+        new_dir.path(),
+        "a-primary.json",
+        serde_json::json!([
+            {
+                "input": "AAPL",
+                "canonical_id": "BBG000B9XRY4",
+                "canonical_type": "composite_figi",
+                "rule_id": "OPENFIGI"
+            },
+            {
+                "input": "NVDA",
+                "canonical_id": "BBG000BBJQV0",
+                "canonical_type": "composite_figi",
+                "rule_id": "OPENFIGI"
+            }
+        ]),
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "diff",
+            "--old",
+            old_dir.path().to_str().unwrap(),
+            "--new",
+            new_dir.path().to_str().unwrap(),
+            "--emit",
+            "summary",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    assert_eq!(
+        stdout.trim(),
+        "openfigi-cusip: 2026.02.28 -> 2026.03.05 | +1 added, -0 removed, ~0 changed, =1 unchanged"
+    );
+}
+
+#[test]
+fn test_registry_diff_mismatched_id_refusal_in_summary_mode() {
+    let old_dir = tempdir().unwrap();
+    write_registry_metadata(old_dir.path(), "old-registry", "1.0.0", 0);
+
+    let new_dir = tempdir().unwrap();
+    write_registry_metadata(new_dir.path(), "new-registry", "1.1.0", 0);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "diff",
+            "--old",
+            old_dir.path().to_str().unwrap(),
+            "--new",
+            new_dir.path().to_str().unwrap(),
+            "--emit",
+            "summary",
+        ])
+        .assert()
+        .code(2);
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("E_BAD_REGISTRY"));
+    assert!(stderr.contains("old-registry"));
+    assert!(stderr.contains("new-registry"));
 }
 
 #[test]

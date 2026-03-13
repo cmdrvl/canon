@@ -10,7 +10,8 @@
   "invocation": {
     "binary": "canon",
     "usage": [
-      "canon <INPUT> --registry <DIR> --column <COL> [OPTIONS]"
+      "canon <INPUT> --registry <DIR> --column <COL> [OPTIONS]",
+      "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]"
     ],
     "output_mode": "mixed",
     "output_schema": "canon.v0",
@@ -42,7 +43,24 @@
     { "name": "version", "flag": "--version", "type": "flag", "description": "Print version and exit 0" }
   ],
 
-  "subcommands": [],
+  "subcommands": [
+    {
+      "name": "registry diff",
+      "usage": "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
+      "description": "Compare two versions of the same registry and report added, removed, changed, and unchanged effective mappings",
+      "output_mode": "mixed",
+      "output_schema": "canon_registry_diff.v0",
+      "exit_codes": {
+        "0": { "meaning": "diff computed successfully", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "old", "flag": "--old", "type": "directory_path", "required": true, "description": "Older registry directory" },
+        { "name": "new", "flag": "--new", "type": "directory_path", "required": true, "description": "Newer registry directory" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (structured diff) or summary (human-readable summary line)" }
+      ]
+    }
+  ],
 
   "exit_codes": {
     "0": { "meaning": "RESOLVED", "domain": "positive" },

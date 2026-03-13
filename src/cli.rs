@@ -1,4 +1,4 @@
-use clap::{Parser, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 /// Emit mode for output
@@ -11,12 +11,60 @@ pub enum EmitMode {
     Csv,
 }
 
+/// Emit mode for registry diff output
+#[derive(Debug, Clone, ValueEnum, Default)]
+pub enum RegistryDiffEmitMode {
+    /// Structured registry diff JSON (default)
+    #[default]
+    Json,
+    /// Human-readable registry diff summary
+    Summary,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum CanonCommand {
+    /// Registry maintenance and inspection commands
+    Registry(RegistryCommand),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RegistryCommand {
+    #[command(subcommand)]
+    pub command: RegistrySubcommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum RegistrySubcommand {
+    /// Compare two registry versions and report what changed
+    Diff(RegistryDiffCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RegistryDiffCli {
+    /// Older registry directory
+    #[arg(long)]
+    pub old: PathBuf,
+
+    /// Newer registry directory
+    #[arg(long)]
+    pub new: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryDiffEmitMode,
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "canon")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "Resolve messy identifiers to canonical IDs using versioned registries")]
 #[command(disable_version_flag = true)]
+#[command(subcommand_precedence_over_arg = true)]
+#[command(subcommand_negates_reqs = true)]
 pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<CanonCommand>,
+
     /// Input CSV or JSONL file (use '-' for stdin with JSONL)
     pub input: Option<PathBuf>,
 
@@ -113,6 +161,32 @@ mod tests {
         assert_eq!(cli.registry, Some(PathBuf::from("registries/test")));
         assert_eq!(cli.column, Some("id".to_string()));
         assert!(matches!(cli.emit, EmitMode::Json));
+    }
+
+    #[test]
+    fn test_cli_registry_diff_parsing() {
+        let args = [
+            "canon",
+            "registry",
+            "diff",
+            "--old",
+            "registries/test-v1",
+            "--new",
+            "registries/test-v2",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Registry(command) => match command.command {
+                RegistrySubcommand::Diff(diff) => {
+                    assert_eq!(diff.old, PathBuf::from("registries/test-v1"));
+                    assert_eq!(diff.new, PathBuf::from("registries/test-v2"));
+                    assert!(matches!(diff.emit, RegistryDiffEmitMode::Summary));
+                }
+            },
+        }
     }
 
     #[test]

@@ -8,7 +8,7 @@ pub mod refusal;
 pub mod registry;
 pub mod witness;
 
-use crate::cli::Cli;
+use crate::cli::{CanonCommand, Cli, RegistryDiffCli, RegistryDiffEmitMode, RegistrySubcommand};
 use serde::{Deserialize, Serialize, Serializer};
 use std::{
     collections::HashMap,
@@ -31,6 +31,10 @@ pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
 
     if cli.schema {
         return run_display_mode(DisplayMode::Schema);
+    }
+
+    if let Some(command) = &cli.command {
+        return run_command(command);
     }
 
     // Step 2: Validate required args
@@ -72,6 +76,45 @@ pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
                 }
             }
             Ok(2) // REFUSAL exit code
+        }
+    }
+}
+
+fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
+    match command {
+        CanonCommand::Registry(command) => match &command.command {
+            RegistrySubcommand::Diff(diff) => run_registry_diff(diff),
+        },
+    }
+}
+
+fn run_registry_diff(diff: &RegistryDiffCli) -> Result<u8, Box<dyn Error>> {
+    let result = registry::diff_registries(&diff.old, &diff.new).map_err(|error| {
+        if error.is_mismatched_id {
+            create_registry_id_mismatch_refusal(error)
+        } else {
+            create_registry_refusal(error.source)
+        }
+    });
+
+    match result {
+        Ok(output) => {
+            match diff.emit {
+                RegistryDiffEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryDiffEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal_output) => {
+            match diff.emit {
+                RegistryDiffEmitMode::Json => {
+                    println!("{}", serde_json::to_string(&refusal_output)?);
+                }
+                RegistryDiffEmitMode::Summary => {
+                    eprintln!("{}", serde_json::to_string(&refusal_output)?);
+                }
+            }
+            Ok(2)
         }
     }
 }
@@ -483,6 +526,24 @@ fn create_registry_refusal(error: Box<dyn Error>) -> CanonOutput {
     refusal::create_refusal(code, message, serde_json::json!({}), None)
 }
 
+fn create_registry_id_mismatch_refusal(error: registry::RegistryDiffError) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EBadRegistry,
+        error.source.to_string(),
+        serde_json::json!({
+            "old": {
+                "path": error.old_path.display().to_string(),
+                "id": error.old_id,
+            },
+            "new": {
+                "path": error.new_path.display().to_string(),
+                "id": error.new_id,
+            }
+        }),
+        Some("Compare two versions of the same registry id".to_string()),
+    )
+}
+
 fn create_input_refusal(error: input::InputError) -> CanonOutput {
     match error {
         input::InputError::ColumnNotFound { column, available } => refusal::create_refusal(
@@ -618,6 +679,89 @@ pub struct RegistryMeta {
     pub version: String,
     // source is CLI arg verbatim
     pub source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryDiffVersion {
+    pub id: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryDiffEntry {
+    pub input: String,
+    pub canonical_id: String,
+    pub canonical_type: String,
+    pub rule_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryDiffValue {
+    pub canonical_id: String,
+    pub canonical_type: String,
+    pub rule_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegistryDiffChangeType {
+    CanonicalIdChange,
+    CanonicalTypeChange,
+    RuleIdChange,
+    MultipleFieldsChanged,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryDiffChangedEntry {
+    pub input: String,
+    pub old: RegistryDiffValue,
+    pub new: RegistryDiffValue,
+    pub change_type: RegistryDiffChangeType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryDiffRemovedEntry {
+    pub input: String,
+    pub canonical_id: String,
+    pub canonical_type: String,
+    pub rule_id: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryDiffSummary {
+    pub total_old: usize,
+    pub total_new: usize,
+    pub added: usize,
+    pub removed: usize,
+    pub changed: usize,
+    pub unchanged: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryDiffOutput {
+    pub version: String,
+    pub old: RegistryDiffVersion,
+    pub new: RegistryDiffVersion,
+    pub summary: RegistryDiffSummary,
+    pub added: Vec<RegistryDiffEntry>,
+    pub removed: Vec<RegistryDiffRemovedEntry>,
+    pub changed: Vec<RegistryDiffChangedEntry>,
+}
+
+impl RegistryDiffOutput {
+    pub fn render_summary(&self) -> String {
+        format!(
+            "{}: {} -> {} | +{} added, -{} removed, ~{} changed, ={} unchanged",
+            self.old.id,
+            self.old.version,
+            self.new.version,
+            self.summary.added,
+            self.summary.removed,
+            self.summary.changed,
+            self.summary.unchanged,
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

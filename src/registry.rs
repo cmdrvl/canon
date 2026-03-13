@@ -1,12 +1,17 @@
-use crate::{Registry, RegistryMeta};
+use crate::{
+    Registry, RegistryDiffChangeType, RegistryDiffChangedEntry, RegistryDiffEntry,
+    RegistryDiffOutput, RegistryDiffRemovedEntry, RegistryDiffSummary, RegistryDiffValue,
+    RegistryDiffVersion, RegistryMeta,
+};
 use rusqlite::Connection;
 use serde::Deserialize;
+use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct RegistryJson {
     id: String,
     version: String,
@@ -17,7 +22,7 @@ struct RegistryJson {
     entry_count: usize,
 }
 
-#[derive(Debug, Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 struct MappingEntry {
     input: String,
     canonical_id: String,
@@ -29,6 +34,53 @@ struct MappingEntry {
 struct MappingFile {
     path: PathBuf,
     entries: Vec<MappingEntry>,
+}
+
+#[derive(Debug)]
+struct RegistrySnapshot {
+    meta: RegistryMeta,
+    entries: Vec<RegistryDiffEntry>,
+}
+
+#[derive(Debug)]
+pub struct RegistryDiffError {
+    pub source: Box<dyn Error>,
+    pub is_mismatched_id: bool,
+    pub old_path: PathBuf,
+    pub new_path: PathBuf,
+    pub old_id: String,
+    pub new_id: String,
+}
+
+impl RegistryDiffError {
+    fn other(source: Box<dyn Error>, old_path: &Path, new_path: &Path) -> Self {
+        Self {
+            source,
+            is_mismatched_id: false,
+            old_path: old_path.to_path_buf(),
+            new_path: new_path.to_path_buf(),
+            old_id: String::new(),
+            new_id: String::new(),
+        }
+    }
+
+    fn mismatched_id(old_path: &Path, old_id: &str, new_path: &Path, new_id: &str) -> Self {
+        Self {
+            source: std::io::Error::other(format!(
+                "Cannot diff registries with different ids: '{}' ({}) != '{}' ({})",
+                old_path.display(),
+                old_id,
+                new_path.display(),
+                new_id,
+            ))
+            .into(),
+            is_mismatched_id: true,
+            old_path: old_path.to_path_buf(),
+            new_path: new_path.to_path_buf(),
+            old_id: old_id.to_string(),
+            new_id: new_id.to_string(),
+        }
+    }
 }
 
 const SCHEMA_SQL: &str = r#"
@@ -50,40 +102,7 @@ CREATE INDEX IF NOT EXISTS idx_input ON entries(input);
 "#;
 
 pub fn load_registry(registry_dir: &Path) -> Result<Registry, Box<dyn Error>> {
-    // Check if registry directory exists
-    if !registry_dir.exists() || !registry_dir.is_dir() {
-        return Err(format!("Registry directory not found: {}", registry_dir.display()).into());
-    }
-
-    // Read and parse registry.json
-    let registry_json_path = registry_dir.join("registry.json");
-    if !registry_json_path.exists() {
-        return Err("Missing registry.json in registry directory".into());
-    }
-
-    let registry_json_content = fs::read_to_string(&registry_json_path)
-        .map_err(|e| format!("Failed to read registry.json: {}", e))?;
-
-    let registry_json: RegistryJson = serde_json::from_str(&registry_json_content)
-        .map_err(|e| format!("Failed to parse registry.json: {}", e))?;
-
-    let registry_meta = RegistryMeta {
-        id: registry_json.id,
-        version: registry_json.version.clone(),
-        source: registry_dir.to_string_lossy().into_owned(),
-    };
-
-    // Discover mapping files
-    let mapping_files = discover_mapping_files(registry_dir)?;
-
-    // Validate entry count
-    let actual_entry_count: usize = mapping_files.iter().map(|f| f.entries.len()).sum();
-    if actual_entry_count != registry_json.entry_count {
-        eprintln!(
-            "Warning: registry.json entry_count ({}) differs from actual count ({}). Update to \"entry_count\": {}",
-            registry_json.entry_count, actual_entry_count, actual_entry_count
-        );
-    }
+    let (registry_json, registry_meta, mapping_files) = load_registry_definition(registry_dir)?;
 
     // Build or validate SQLite index
     let db_path = registry_dir.join("_index.sqlite");
@@ -103,6 +122,192 @@ pub fn load_registry(registry_dir: &Path) -> Result<Registry, Box<dyn Error>> {
         meta: registry_meta,
         db_path,
     })
+}
+
+pub fn diff_registries(
+    old_dir: &Path,
+    new_dir: &Path,
+) -> Result<RegistryDiffOutput, RegistryDiffError> {
+    let old_registry = load_registry_snapshot(old_dir)
+        .map_err(|error| RegistryDiffError::other(error, old_dir, new_dir))?;
+    let new_registry = load_registry_snapshot(new_dir)
+        .map_err(|error| RegistryDiffError::other(error, old_dir, new_dir))?;
+
+    if old_registry.meta.id != new_registry.meta.id {
+        return Err(RegistryDiffError::mismatched_id(
+            old_dir,
+            &old_registry.meta.id,
+            new_dir,
+            &new_registry.meta.id,
+        ));
+    }
+
+    let old_entries = old_registry
+        .entries
+        .into_iter()
+        .map(|entry| (entry.input.clone(), entry))
+        .collect::<BTreeMap<_, _>>();
+    let new_entries = new_registry
+        .entries
+        .into_iter()
+        .map(|entry| (entry.input.clone(), entry))
+        .collect::<BTreeMap<_, _>>();
+
+    let mut inputs = BTreeSet::new();
+    inputs.extend(old_entries.keys().cloned());
+    inputs.extend(new_entries.keys().cloned());
+
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+    let mut changed = Vec::new();
+    let mut unchanged = 0;
+
+    for input in inputs {
+        match (old_entries.get(&input), new_entries.get(&input)) {
+            (None, Some(new_entry)) => added.push(new_entry.clone()),
+            (Some(old_entry), None) => removed.push(RegistryDiffRemovedEntry {
+                input: old_entry.input.clone(),
+                canonical_id: old_entry.canonical_id.clone(),
+                canonical_type: old_entry.canonical_type.clone(),
+                rule_id: old_entry.rule_id.clone(),
+                reason: "not_in_new_registry".to_string(),
+            }),
+            (Some(old_entry), Some(new_entry)) => {
+                if let Some(change_type) = classify_change(old_entry, new_entry) {
+                    changed.push(RegistryDiffChangedEntry {
+                        input: input.clone(),
+                        old: RegistryDiffValue {
+                            canonical_id: old_entry.canonical_id.clone(),
+                            canonical_type: old_entry.canonical_type.clone(),
+                            rule_id: old_entry.rule_id.clone(),
+                        },
+                        new: RegistryDiffValue {
+                            canonical_id: new_entry.canonical_id.clone(),
+                            canonical_type: new_entry.canonical_type.clone(),
+                            rule_id: new_entry.rule_id.clone(),
+                        },
+                        change_type,
+                    });
+                } else {
+                    unchanged += 1;
+                }
+            }
+            (None, None) => {}
+        }
+    }
+
+    Ok(RegistryDiffOutput {
+        version: "canon_registry_diff.v0".to_string(),
+        old: RegistryDiffVersion {
+            id: old_registry.meta.id,
+            version: old_registry.meta.version,
+        },
+        new: RegistryDiffVersion {
+            id: new_registry.meta.id,
+            version: new_registry.meta.version,
+        },
+        summary: RegistryDiffSummary {
+            total_old: old_entries.len(),
+            total_new: new_entries.len(),
+            added: added.len(),
+            removed: removed.len(),
+            changed: changed.len(),
+            unchanged,
+        },
+        added,
+        removed,
+        changed,
+    })
+}
+
+fn load_registry_snapshot(registry_dir: &Path) -> Result<RegistrySnapshot, Box<dyn Error>> {
+    let (_, registry_meta, mapping_files) = load_registry_definition(registry_dir)?;
+    Ok(RegistrySnapshot {
+        meta: registry_meta,
+        entries: effective_entries(&mapping_files),
+    })
+}
+
+fn load_registry_definition(
+    registry_dir: &Path,
+) -> Result<(RegistryJson, RegistryMeta, Vec<MappingFile>), Box<dyn Error>> {
+    // Check if registry directory exists
+    if !registry_dir.exists() || !registry_dir.is_dir() {
+        return Err(format!("Registry directory not found: {}", registry_dir.display()).into());
+    }
+
+    // Read and parse registry.json
+    let registry_json_path = registry_dir.join("registry.json");
+    if !registry_json_path.exists() {
+        return Err("Missing registry.json in registry directory".into());
+    }
+
+    let registry_json_content = fs::read_to_string(&registry_json_path)
+        .map_err(|e| format!("Failed to read registry.json: {}", e))?;
+
+    let registry_json: RegistryJson = serde_json::from_str(&registry_json_content)
+        .map_err(|e| format!("Failed to parse registry.json: {}", e))?;
+
+    let registry_meta = RegistryMeta {
+        id: registry_json.id.clone(),
+        version: registry_json.version.clone(),
+        source: registry_dir.to_string_lossy().into_owned(),
+    };
+
+    let mapping_files = discover_mapping_files(registry_dir)?;
+    warn_if_entry_count_mismatch(&registry_json, &mapping_files);
+
+    Ok((registry_json, registry_meta, mapping_files))
+}
+
+fn warn_if_entry_count_mismatch(registry_json: &RegistryJson, mapping_files: &[MappingFile]) {
+    let actual_entry_count: usize = mapping_files.iter().map(|file| file.entries.len()).sum();
+    if actual_entry_count != registry_json.entry_count {
+        eprintln!(
+            "Warning: registry.json entry_count ({}) differs from actual count ({}). Update to \"entry_count\": {}",
+            registry_json.entry_count, actual_entry_count, actual_entry_count
+        );
+    }
+}
+
+fn effective_entries(mapping_files: &[MappingFile]) -> Vec<RegistryDiffEntry> {
+    let mut entries = BTreeMap::new();
+
+    for mapping_file in mapping_files {
+        for entry in &mapping_file.entries {
+            entries
+                .entry(entry.input.clone())
+                .or_insert_with(|| RegistryDiffEntry {
+                    input: entry.input.clone(),
+                    canonical_id: entry.canonical_id.clone(),
+                    canonical_type: entry.canonical_type.clone(),
+                    rule_id: entry.rule_id.clone(),
+                });
+        }
+    }
+
+    entries.into_values().collect()
+}
+
+fn classify_change(
+    old_entry: &RegistryDiffEntry,
+    new_entry: &RegistryDiffEntry,
+) -> Option<RegistryDiffChangeType> {
+    let canonical_id_changed = old_entry.canonical_id != new_entry.canonical_id;
+    let canonical_type_changed = old_entry.canonical_type != new_entry.canonical_type;
+    let rule_id_changed = old_entry.rule_id != new_entry.rule_id;
+
+    match (
+        canonical_id_changed,
+        canonical_type_changed,
+        rule_id_changed,
+    ) {
+        (false, false, false) => None,
+        (true, false, false) => Some(RegistryDiffChangeType::CanonicalIdChange),
+        (false, true, false) => Some(RegistryDiffChangeType::CanonicalTypeChange),
+        (false, false, true) => Some(RegistryDiffChangeType::RuleIdChange),
+        _ => Some(RegistryDiffChangeType::MultipleFieldsChanged),
+    }
 }
 
 fn discover_mapping_files(registry_dir: &Path) -> Result<Vec<MappingFile>, Box<dyn Error>> {
@@ -305,21 +510,38 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn create_test_registry(temp_dir: &Path) -> Result<(), Box<dyn Error>> {
-        // Create registry.json
+    fn write_registry_metadata(
+        temp_dir: &Path,
+        id: &str,
+        version: &str,
+        entry_count: usize,
+    ) -> Result<(), Box<dyn Error>> {
         let registry_json = serde_json::json!({
-            "id": "test-registry",
-            "version": "1.0.0",
+            "id": id,
+            "version": version,
             "description": "Test registry",
             "updated": "2026-01-01",
-            "entry_count": 3
+            "entry_count": entry_count
         });
         fs::write(
             temp_dir.join("registry.json"),
             serde_json::to_string_pretty(&registry_json)?,
         )?;
+        Ok(())
+    }
 
-        // Create mapping file
+    fn write_mapping_file(
+        temp_dir: &Path,
+        name: &str,
+        entries: &[MappingEntry],
+    ) -> Result<(), Box<dyn Error>> {
+        fs::write(temp_dir.join(name), serde_json::to_string_pretty(entries)?)?;
+        Ok(())
+    }
+
+    fn create_test_registry(temp_dir: &Path) -> Result<(), Box<dyn Error>> {
+        write_registry_metadata(temp_dir, "test-registry", "1.0.0", 3)?;
+
         let mappings = vec![
             MappingEntry {
                 input: "AAPL".to_string(),
@@ -340,10 +562,7 @@ mod tests {
                 rule_id: "TICKER_TO_CUSIP".to_string(),
             },
         ];
-        fs::write(
-            temp_dir.join("ticker-to-cusip.json"),
-            serde_json::to_string_pretty(&mappings)?,
-        )?;
+        write_mapping_file(temp_dir, "ticker-to-cusip.json", &mappings)?;
 
         Ok(())
     }
@@ -400,6 +619,230 @@ mod tests {
         assert_eq!(mapping_files.len(), 1);
         assert_eq!(mapping_files[0].entries.len(), 3);
         assert_eq!(mapping_files[0].entries[0].input, "AAPL");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_effective_entries_follow_sorted_file_precedence() -> Result<(), Box<dyn Error>> {
+        let temp_dir = TempDir::new()?;
+        write_registry_metadata(temp_dir.path(), "test-registry", "1.0.0", 4)?;
+        write_mapping_file(
+            temp_dir.path(),
+            "z-secondary.json",
+            &[
+                MappingEntry {
+                    input: "AAPL".to_string(),
+                    canonical_id: "SECOND".to_string(),
+                    canonical_type: "ticker".to_string(),
+                    rule_id: "SECONDARY".to_string(),
+                },
+                MappingEntry {
+                    input: "NVDA".to_string(),
+                    canonical_id: "67066G104".to_string(),
+                    canonical_type: "cusip".to_string(),
+                    rule_id: "SECONDARY".to_string(),
+                },
+            ],
+        )?;
+        write_mapping_file(
+            temp_dir.path(),
+            "a-primary.json",
+            &[
+                MappingEntry {
+                    input: "AAPL".to_string(),
+                    canonical_id: "FIRST".to_string(),
+                    canonical_type: "ticker".to_string(),
+                    rule_id: "PRIMARY".to_string(),
+                },
+                MappingEntry {
+                    input: "MSFT".to_string(),
+                    canonical_id: "594918104".to_string(),
+                    canonical_type: "cusip".to_string(),
+                    rule_id: "PRIMARY".to_string(),
+                },
+            ],
+        )?;
+
+        let snapshot = load_registry_snapshot(temp_dir.path())?;
+
+        assert_eq!(snapshot.entries.len(), 3);
+        assert_eq!(snapshot.entries[0].input, "AAPL");
+        assert_eq!(snapshot.entries[0].canonical_id, "FIRST");
+        assert_eq!(snapshot.entries[0].rule_id, "PRIMARY");
+        assert_eq!(snapshot.entries[2].input, "NVDA");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_diff_registries_reports_add_remove_change_and_unchanged() -> Result<(), Box<dyn Error>>
+    {
+        let old_dir = TempDir::new()?;
+        write_registry_metadata(old_dir.path(), "openfigi-cusip", "2026.02.28", 3)?;
+        write_mapping_file(
+            old_dir.path(),
+            "a-primary.json",
+            &[
+                MappingEntry {
+                    input: "AAPL".to_string(),
+                    canonical_id: "BBG000B9XRY4".to_string(),
+                    canonical_type: "composite_figi".to_string(),
+                    rule_id: "OPENFIGI".to_string(),
+                },
+                MappingEntry {
+                    input: "MSFT".to_string(),
+                    canonical_id: "BBG000BPH459".to_string(),
+                    canonical_type: "composite_figi".to_string(),
+                    rule_id: "OPENFIGI".to_string(),
+                },
+                MappingEntry {
+                    input: "TSLA".to_string(),
+                    canonical_id: "BBG000N9MNX3".to_string(),
+                    canonical_type: "composite_figi".to_string(),
+                    rule_id: "OPENFIGI".to_string(),
+                },
+            ],
+        )?;
+
+        let new_dir = TempDir::new()?;
+        write_registry_metadata(new_dir.path(), "openfigi-cusip", "2026.03.05", 3)?;
+        write_mapping_file(
+            new_dir.path(),
+            "a-primary.json",
+            &[
+                MappingEntry {
+                    input: "AAPL".to_string(),
+                    canonical_id: "BBG000B9XRY4".to_string(),
+                    canonical_type: "composite_figi".to_string(),
+                    rule_id: "OPENFIGI".to_string(),
+                },
+                MappingEntry {
+                    input: "MSFT".to_string(),
+                    canonical_id: "BBG000BPH45Z".to_string(),
+                    canonical_type: "composite_figi".to_string(),
+                    rule_id: "OPENFIGI".to_string(),
+                },
+                MappingEntry {
+                    input: "NVDA".to_string(),
+                    canonical_id: "BBG000BBJQV0".to_string(),
+                    canonical_type: "composite_figi".to_string(),
+                    rule_id: "OPENFIGI".to_string(),
+                },
+            ],
+        )?;
+
+        let diff = diff_registries(old_dir.path(), new_dir.path()).unwrap();
+
+        assert_eq!(
+            diff.summary,
+            RegistryDiffSummary {
+                total_old: 3,
+                total_new: 3,
+                added: 1,
+                removed: 1,
+                changed: 1,
+                unchanged: 1,
+            }
+        );
+        assert_eq!(diff.added[0].input, "NVDA");
+        assert_eq!(diff.removed[0].input, "TSLA");
+        assert_eq!(diff.removed[0].reason, "not_in_new_registry");
+        assert_eq!(diff.changed[0].input, "MSFT");
+        assert_eq!(
+            diff.changed[0].change_type,
+            RegistryDiffChangeType::CanonicalIdChange
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_diff_registries_ignores_shadowed_entries_in_new_mapping_files()
+    -> Result<(), Box<dyn Error>> {
+        let old_dir = TempDir::new()?;
+        write_registry_metadata(old_dir.path(), "openfigi-cusip", "2026.02.28", 2)?;
+        write_mapping_file(
+            old_dir.path(),
+            "a-primary.json",
+            &[
+                MappingEntry {
+                    input: "AAPL".to_string(),
+                    canonical_id: "BBG000B9XRY4".to_string(),
+                    canonical_type: "composite_figi".to_string(),
+                    rule_id: "PRIMARY".to_string(),
+                },
+                MappingEntry {
+                    input: "MSFT".to_string(),
+                    canonical_id: "BBG000BPH459".to_string(),
+                    canonical_type: "composite_figi".to_string(),
+                    rule_id: "PRIMARY".to_string(),
+                },
+            ],
+        )?;
+
+        let new_dir = TempDir::new()?;
+        write_registry_metadata(new_dir.path(), "openfigi-cusip", "2026.03.05", 4)?;
+        write_mapping_file(
+            new_dir.path(),
+            "a-primary.json",
+            &[
+                MappingEntry {
+                    input: "AAPL".to_string(),
+                    canonical_id: "BBG000B9XRY4".to_string(),
+                    canonical_type: "composite_figi".to_string(),
+                    rule_id: "PRIMARY".to_string(),
+                },
+                MappingEntry {
+                    input: "MSFT".to_string(),
+                    canonical_id: "BBG000BPH459".to_string(),
+                    canonical_type: "composite_figi".to_string(),
+                    rule_id: "PRIMARY".to_string(),
+                },
+            ],
+        )?;
+        write_mapping_file(
+            new_dir.path(),
+            "z-secondary.json",
+            &[
+                MappingEntry {
+                    input: "AAPL".to_string(),
+                    canonical_id: "SHADOWED".to_string(),
+                    canonical_type: "composite_figi".to_string(),
+                    rule_id: "SECONDARY".to_string(),
+                },
+                MappingEntry {
+                    input: "NVDA".to_string(),
+                    canonical_id: "BBG000BBJQV0".to_string(),
+                    canonical_type: "composite_figi".to_string(),
+                    rule_id: "SECONDARY".to_string(),
+                },
+            ],
+        )?;
+
+        let diff = diff_registries(old_dir.path(), new_dir.path()).unwrap();
+
+        assert_eq!(diff.summary.added, 1);
+        assert_eq!(diff.summary.changed, 0);
+        assert_eq!(diff.summary.unchanged, 2);
+        assert_eq!(diff.added[0].input, "NVDA");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_diff_registries_detects_mismatched_ids() -> Result<(), Box<dyn Error>> {
+        let old_dir = TempDir::new()?;
+        write_registry_metadata(old_dir.path(), "old-registry", "1.0.0", 0)?;
+
+        let new_dir = TempDir::new()?;
+        write_registry_metadata(new_dir.path(), "new-registry", "1.1.0", 0)?;
+
+        let error = diff_registries(old_dir.path(), new_dir.path()).unwrap_err();
+
+        assert!(error.is_mismatched_id);
+        assert_eq!(error.old_id, "old-registry");
+        assert_eq!(error.new_id, "new-registry");
 
         Ok(())
     }

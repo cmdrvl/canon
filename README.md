@@ -20,7 +20,7 @@ The same loan appears as CUSIP `037833100` in one system, ISIN `US0378331005` in
 
 ### What makes this different
 
-- **Versioned registries** — every resolution is pinned to a registry version with semver. When the registry updates, you know exactly what changed. Registries are plain JSON directories — inspectable in git, diffable, no database required.
+- **Versioned registries** — every resolution is pinned to a registry version with semver. When the registry updates, `canon registry diff` tells you exactly what changed. Registries are plain JSON directories — inspectable in git, diffable, no database required.
 - **Pipeline composable** — `canon --emit csv` appends a `<column>__canon` column to your CSV. Pipe the output directly into `rvl` or `shape`: `canon nov.csv --column cusip --emit csv | rvl - dec.canon.csv --key cusip__canon`.
 - **Full traceability** — every mapping includes `rule_id`, `canonical_type`, and `confidence`. Every unresolved entry includes the reason. Every result is auditable.
 - **Deduplication built in** — input values are deduplicated before lookup. 500 unique CUSIPs produce 500 mapping entries whether your file has 500 rows or 500,000.
@@ -240,6 +240,7 @@ cargo build --release
 
 ```
 canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
+canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 ```
 
 ### Arguments
@@ -264,6 +265,12 @@ canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
 | `--describe` | flag | | Emit `operator.json` to stdout and exit. |
 | `--schema` | flag | | Print JSON Schema for the mapping artifact and exit. |
 
+### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `registry diff --old <PATH> --new <PATH> [--emit json\|summary]` | Compare two versions of the same registry ID and report added, removed, changed, and unchanged effective mappings. |
+
 ### Exit Codes
 
 | Code | Meaning |
@@ -271,6 +278,8 @@ canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
 | `0` | RESOLVED (all inputs mapped) |
 | `1` | PARTIAL or UNRESOLVED (some or all inputs unresolved) |
 | `2` | REFUSAL or CLI error |
+
+`canon registry diff` exits `0` when the comparison succeeds and `2` on refusal (for example, malformed registries or mismatched registry IDs).
 
 ### Output Routing
 
@@ -306,6 +315,19 @@ Inspect unresolved entries:
 
 ```bash
 canon tape.csv --registry registries/cusip-isin/ --column cusip | jq '.unresolved[]'
+```
+
+Review what changed before rolling a registry version:
+
+```bash
+canon registry diff \
+  --old registries/openfigi-cusip-v2026.02/ \
+  --new registries/openfigi-cusip-v2026.03/
+
+canon registry diff \
+  --old registries/openfigi-cusip-v2026.02/ \
+  --new registries/openfigi-cusip-v2026.03/ \
+  --emit summary
 ```
 
 Resolve counterparty aliases:
