@@ -238,9 +238,10 @@ cargo build --release
 
 ## CLI Reference
 
-```
+```bash
 canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
+canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 ```
 
 ### Arguments
@@ -270,6 +271,7 @@ canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summa
 | Subcommand | Description |
 |------------|-------------|
 | `registry diff --old <PATH> --new <PATH> [--emit json\|summary]` | Compare two versions of the same registry ID and report added, removed, changed, and unchanged effective mappings. |
+| `registry audit <SEED> --registry <PATH> --column <COLUMN> [--emit json\|summary]` | Audit a seed corpus against a registry and emit resolved/unresolved entries plus aggregate canonical-target and rule-hit counts. |
 
 ### Exit Codes
 
@@ -279,7 +281,7 @@ canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summa
 | `1` | PARTIAL or UNRESOLVED (some or all inputs unresolved) |
 | `2` | REFUSAL or CLI error |
 
-`canon registry diff` exits `0` when the comparison succeeds and `2` on refusal (for example, malformed registries or mismatched registry IDs).
+`canon registry diff` and `canon registry audit` exit `0` when the report succeeds and `2` on refusal.
 
 ### Output Routing
 
@@ -327,6 +329,19 @@ canon registry diff \
 canon registry diff \
   --old registries/openfigi-cusip-v2026.02/ \
   --new registries/openfigi-cusip-v2026.03/ \
+  --emit summary
+```
+
+Audit a seed corpus while maintaining a registry:
+
+```bash
+canon registry audit seeds.csv \
+  --registry registries/cusip-isin/ \
+  --column cusip
+
+canon registry audit seeds.csv \
+  --registry registries/cusip-isin/ \
+  --column cusip \
   --emit summary
 ```
 

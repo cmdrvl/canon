@@ -41,6 +41,8 @@ It resolves input values against them and records everything.
 ## CLI (v0)
 ```bash
 canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--emit json|csv] [--canon-column <NAME>] [--map-out <PATH>] [--max-rows <N>] [--max-bytes <N>]
+canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
+canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 ```
 
 Arguments:
@@ -58,6 +60,21 @@ Options:
 - `--describe`: Emit `operator.json` as JSON to stdout and exit 0. This is the spine's standard tool identity record (tool name, version, accepted inputs, output schema, refusal codes) — used by orchestrators and `pack` to introspect tools without running them.
 - `--schema`: Print JSON Schema for the mapping artifact (`canon.v0` object) to stdout and exit 0. This is the schema for `--emit json` output and `--map-out` sidecar, not a description of CSV output format.
 - `--no-witness`: Suppress witness ledger append.
+
+### Registry reporting subcommands
+
+`canon` also exposes registry-maintenance reporting workflows that reuse the normal exact-match parser and lookup semantics without changing the `canon.v0` resolution contract.
+
+`canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]`
+- compares two versions of the same registry id
+- emits `canon_registry_diff.v0` JSON or a human-readable summary line
+- exits `0` on successful comparison, `2` on refusal
+
+`canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]`
+- audits a seed corpus against a registry using the same dedup + exact-match semantics as normal resolution
+- emits `canon_registry_audit.v0` JSON with `resolved`, `unresolved`, `canonical_targets`, and `rule_hits`, or a human-readable summary line
+- exits `0` on successful audit, `2` on refusal
+- does not change the normal `canon.v0` output contract or witness semantics for the primary resolution path
 
 ### Output modes
 
@@ -490,6 +507,17 @@ canon counterparties.csv --registry registries/counterparty-cmbs/ --column servi
 cat events.jsonl | canon - --registry registries/entity/ --column entity_id
 ```
 
+### Registry maintenance reporting
+
+```bash
+# What changed between two registry versions?
+canon registry diff --old registries/openfigi-cusip-v2026.02/ --new registries/openfigi-cusip-v2026.03/
+
+# How well does the current registry cover a seed corpus?
+canon registry audit seeds.csv --registry registries/cusip-isin/ --column cusip
+canon registry audit seeds.csv --registry registries/cusip-isin/ --column cusip --emit summary
+```
+
 ---
 
 ## Rust Implementation Sketch
@@ -578,6 +606,8 @@ Must-pass (v0)
 - `--emit csv` + `--map-out`: JSON mapping artifact matches what `--emit json` would produce
 - `--emit csv`: PARTIAL exit code 1 but CSV is still fully written (unresolved rows are visible, not dropped)
 - `--emit csv` + `--emit json` consistency: for the same input + registry, the CSV canonical column values correspond to the `mappings[].canonical_id` values in JSON output after stripping the identifier encoding prefix (CSV has `AAPL`, JSON has `u8:AAPL` — same value, different representation)
+- `registry diff`: deterministic added/removed/changed/unchanged counts and detail for known registry fixtures
+- `registry audit`: exit 0 even when unresolved seeds exist, with stable `resolved`, `unresolved`, `canonical_targets`, and `rule_hits` sections
 
 Never allow
 - silent resolution failures (every unresolved entry must be reported)
@@ -591,6 +621,7 @@ Never allow
 - `canon --emit csv | rvl` replaces a VLOOKUP-then-eyeball workflow in under 60 seconds
 - an analyst opens the `.canon.csv` in Excel and sees the canonical column right there — no join required
 - registry diffs show exactly what changed between versions
+- registry audits show which seed values resolved, which stayed unresolved, and which canonical targets and rule IDs were exercised
 - the mapping output is inspectable: every resolution traceable to a registry entry + rule ID
 - "who is Wells Fargo in this dataset?" has one answer, with a rule ID
 - someone deletes a VLOOKUP spreadsheet because `canon --emit csv` made it unnecessary

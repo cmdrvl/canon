@@ -8,10 +8,12 @@ pub mod refusal;
 pub mod registry;
 pub mod witness;
 
-use crate::cli::{CanonCommand, Cli, RegistryDiffCli, RegistryDiffEmitMode, RegistrySubcommand};
+use crate::cli::{
+    CanonCommand, Cli, RegistryAuditCli, RegistryDiffCli, RegistryEmitMode, RegistrySubcommand,
+};
 use serde::{Deserialize, Serialize, Serializer};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     error::Error,
     ffi::OsString,
     io::Write,
@@ -84,6 +86,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
     match command {
         CanonCommand::Registry(command) => match &command.command {
             RegistrySubcommand::Diff(diff) => run_registry_diff(diff),
+            RegistrySubcommand::Audit(audit) => run_registry_audit(audit),
         },
     }
 }
@@ -100,23 +103,67 @@ fn run_registry_diff(diff: &RegistryDiffCli) -> Result<u8, Box<dyn Error>> {
     match result {
         Ok(output) => {
             match diff.emit {
-                RegistryDiffEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
-                RegistryDiffEmitMode::Summary => println!("{}", output.render_summary()),
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
             }
             Ok(0)
         }
         Err(refusal_output) => {
             match diff.emit {
-                RegistryDiffEmitMode::Json => {
+                RegistryEmitMode::Json => {
                     println!("{}", serde_json::to_string(&refusal_output)?);
                 }
-                RegistryDiffEmitMode::Summary => {
+                RegistryEmitMode::Summary => {
                     eprintln!("{}", serde_json::to_string(&refusal_output)?);
                 }
             }
             Ok(2)
         }
     }
+}
+
+fn run_registry_audit(audit: &RegistryAuditCli) -> Result<u8, Box<dyn Error>> {
+    let result = run_registry_audit_pipeline(audit);
+
+    match result {
+        Ok(output) => {
+            match audit.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal_output) => {
+            match audit.emit {
+                RegistryEmitMode::Json => {
+                    println!("{}", serde_json::to_string(&refusal_output)?);
+                }
+                RegistryEmitMode::Summary => {
+                    eprintln!("{}", serde_json::to_string(&refusal_output)?);
+                }
+            }
+            Ok(2)
+        }
+    }
+}
+
+#[allow(clippy::result_large_err)]
+fn run_registry_audit_pipeline(
+    audit: &RegistryAuditCli,
+) -> Result<RegistryAuditOutput, CanonOutput> {
+    let registry = registry::load_registry(&audit.registry).map_err(create_registry_refusal)?;
+    let input_values =
+        input::parse_input(&audit.seed, &audit.column, audit.max_bytes, audit.max_rows)
+            .map_err(create_input_refusal)?;
+    let resolve_result =
+        lookup::resolve_values(&registry, &input_values).map_err(create_lookup_refusal)?;
+
+    Ok(RegistryAuditOutput::from_resolve_result(
+        &audit.seed,
+        &audit.column,
+        &registry.meta,
+        &resolve_result,
+    ))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -673,7 +720,7 @@ pub struct UnresolvedEntry {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RegistryMeta {
     pub id: String,
     pub version: String,
@@ -760,6 +807,158 @@ impl RegistryDiffOutput {
             self.summary.removed,
             self.summary.changed,
             self.summary.unchanged,
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryAuditSeed {
+    pub path: String,
+    pub column: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryAuditResolvedEntry {
+    pub input: String,
+    pub canonical_id: String,
+    pub canonical_type: String,
+    pub rule_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryAuditUnresolvedEntry {
+    pub input: Option<String>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryAuditCanonicalTarget {
+    pub canonical_id: String,
+    pub canonical_type: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryAuditRuleHit {
+    pub rule_id: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryAuditSummary {
+    pub total: usize,
+    pub resolved: usize,
+    pub unresolved: usize,
+    pub distinct_canonical_targets: usize,
+    pub distinct_rule_ids: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryAuditOutput {
+    pub version: String,
+    pub seed: RegistryAuditSeed,
+    pub registry: RegistryMeta,
+    pub summary: RegistryAuditSummary,
+    pub resolved: Vec<RegistryAuditResolvedEntry>,
+    pub unresolved: Vec<RegistryAuditUnresolvedEntry>,
+    pub canonical_targets: Vec<RegistryAuditCanonicalTarget>,
+    pub rule_hits: Vec<RegistryAuditRuleHit>,
+}
+
+impl RegistryAuditOutput {
+    fn from_resolve_result(
+        seed_path: &Path,
+        column: &str,
+        registry_meta: &RegistryMeta,
+        result: &ResolveResult,
+    ) -> Self {
+        let mut resolved = result
+            .mappings
+            .iter()
+            .map(|mapping| RegistryAuditResolvedEntry {
+                input: output::json::encode_identifier(mapping.input.as_bytes()),
+                canonical_id: output::json::encode_identifier(mapping.canonical_id.as_bytes()),
+                canonical_type: mapping.canonical_type.clone(),
+                rule_id: mapping.rule_id.clone(),
+            })
+            .collect::<Vec<_>>();
+        resolved.sort_by(|left, right| left.input.cmp(&right.input));
+
+        let mut unresolved = result
+            .unresolved
+            .iter()
+            .map(|entry| RegistryAuditUnresolvedEntry {
+                input: entry
+                    .input
+                    .as_ref()
+                    .map(|value| output::json::encode_identifier(value.as_bytes())),
+                reason: entry.reason.clone(),
+            })
+            .collect::<Vec<_>>();
+        unresolved.sort_by(|left, right| match (&left.input, &right.input) {
+            (Some(left_input), Some(right_input)) => left_input.cmp(right_input),
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, None) => left.reason.cmp(&right.reason),
+        });
+
+        let mut canonical_targets = BTreeMap::new();
+        let mut rule_hits = BTreeMap::new();
+        for mapping in &result.mappings {
+            *canonical_targets
+                .entry((mapping.canonical_type.clone(), mapping.canonical_id.clone()))
+                .or_insert(0usize) += 1;
+            *rule_hits.entry(mapping.rule_id.clone()).or_insert(0usize) += 1;
+        }
+
+        let canonical_targets = canonical_targets
+            .into_iter()
+            .map(
+                |((canonical_type, canonical_id), count)| RegistryAuditCanonicalTarget {
+                    canonical_id: output::json::encode_identifier(canonical_id.as_bytes()),
+                    canonical_type,
+                    count,
+                },
+            )
+            .collect::<Vec<_>>();
+        let rule_hits = rule_hits
+            .into_iter()
+            .map(|(rule_id, count)| RegistryAuditRuleHit { rule_id, count })
+            .collect::<Vec<_>>();
+
+        Self {
+            version: "canon_registry_audit.v0".to_string(),
+            seed: RegistryAuditSeed {
+                path: seed_path.display().to_string(),
+                column: column.to_string(),
+            },
+            registry: registry_meta.clone(),
+            summary: RegistryAuditSummary {
+                total: result.summary.total,
+                resolved: result.summary.resolved,
+                unresolved: result.summary.unresolved,
+                distinct_canonical_targets: canonical_targets.len(),
+                distinct_rule_ids: rule_hits.len(),
+            },
+            resolved,
+            unresolved,
+            canonical_targets,
+            rule_hits,
+        }
+    }
+
+    pub fn render_summary(&self) -> String {
+        format!(
+            "{}@{} audit {}:{} | {} total, {} resolved, {} unresolved, {} targets, {} rules",
+            self.registry.id,
+            self.registry.version,
+            self.seed.path,
+            self.seed.column,
+            self.summary.total,
+            self.summary.resolved,
+            self.summary.unresolved,
+            self.summary.distinct_canonical_targets,
+            self.summary.distinct_rule_ids,
         )
     }
 }

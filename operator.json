@@ -11,7 +11,8 @@
     "binary": "canon",
     "usage": [
       "canon <INPUT> --registry <DIR> --column <COL> [OPTIONS]",
-      "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]"
+      "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
+      "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]"
     ],
     "output_mode": "mixed",
     "output_schema": "canon.v0",
@@ -58,6 +59,24 @@
         { "name": "old", "flag": "--old", "type": "directory_path", "required": true, "description": "Older registry directory" },
         { "name": "new", "flag": "--new", "type": "directory_path", "required": true, "description": "Newer registry directory" },
         { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (structured diff) or summary (human-readable summary line)" }
+      ]
+    },
+    {
+      "name": "registry audit",
+      "usage": "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]",
+      "description": "Audit a seed corpus against a registry and report resolved entries, unresolved entries, canonical target counts, and rule-hit counts",
+      "output_mode": "mixed",
+      "output_schema": "canon_registry_audit.v0",
+      "exit_codes": {
+        "0": { "meaning": "audit computed successfully", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Registry directory to audit against" },
+        { "name": "column", "flag": "--column", "type": "string", "required": true, "description": "Column containing seed identifiers" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (structured audit artifact) or summary (human-readable summary line)" },
+        { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if the seed input exceeds N data rows" },
+        { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if the seed input exceeds N bytes" }
       ]
     }
   ],

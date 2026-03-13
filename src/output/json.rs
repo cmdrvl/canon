@@ -104,7 +104,7 @@ fn unresolved_to_wire(unresolved_entry: &UnresolvedEntry, explicit: bool) -> Wir
     }
 }
 
-fn encode_identifier(raw: &[u8]) -> String {
+pub(crate) fn encode_identifier(raw: &[u8]) -> String {
     if raw.iter().all(|byte| !is_ascii_control(*byte)) {
         format!("u8:{}", String::from_utf8_lossy(raw))
     } else {

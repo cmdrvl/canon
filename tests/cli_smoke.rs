@@ -289,6 +289,86 @@ fn test_registry_diff_mismatched_id_refusal_in_summary_mode() {
 }
 
 #[test]
+fn test_registry_audit_json_output() {
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "audit",
+            "tests/fixtures/inputs/partial.csv",
+            "--registry",
+            "tests/fixtures/registries/cusip-isin",
+            "--column",
+            "cusip",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+
+    assert_eq!(payload["version"], "canon_registry_audit.v0");
+    assert_eq!(payload["seed"]["column"], "cusip");
+    assert_eq!(payload["registry"]["id"], "cusip-isin");
+    assert_eq!(payload["summary"]["total"], 3);
+    assert_eq!(payload["summary"]["resolved"], 2);
+    assert_eq!(payload["summary"]["unresolved"], 1);
+    assert_eq!(payload["summary"]["distinct_canonical_targets"], 2);
+    assert_eq!(payload["summary"]["distinct_rule_ids"], 1);
+    assert_eq!(payload["resolved"].as_array().unwrap().len(), 2);
+    assert_eq!(payload["unresolved"].as_array().unwrap().len(), 1);
+    assert_eq!(payload["canonical_targets"].as_array().unwrap().len(), 2);
+    assert_eq!(payload["rule_hits"][0]["rule_id"], "CUSIP_TO_ISIN");
+    assert_eq!(payload["rule_hits"][0]["count"], 2);
+}
+
+#[test]
+fn test_registry_audit_summary_output() {
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "audit",
+            "tests/fixtures/inputs/partial.csv",
+            "--registry",
+            "tests/fixtures/registries/cusip-isin",
+            "--column",
+            "cusip",
+            "--emit",
+            "summary",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    assert!(stdout.contains("cusip-isin@1.0.0 audit"));
+    assert!(stdout.contains("3 total, 2 resolved, 1 unresolved"));
+    assert!(stdout.contains("2 targets, 1 rules"));
+}
+
+#[test]
+fn test_registry_audit_refusal_in_summary_mode() {
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "audit",
+            "tests/fixtures/inputs/partial.csv",
+            "--registry",
+            "tests/fixtures/registries/cusip-isin",
+            "--column",
+            "missing_column",
+            "--emit",
+            "summary",
+        ])
+        .assert()
+        .code(2);
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let stderr = String::from_utf8(output.get_output().stderr.clone()).unwrap();
+
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("E_COLUMN_NOT_FOUND"));
+}
+
+#[test]
 fn test_all_resolved_exit_code() {
     Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("tests/fixtures/inputs/all_resolved.csv")

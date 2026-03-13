@@ -11,13 +11,13 @@ pub enum EmitMode {
     Csv,
 }
 
-/// Emit mode for registry diff output
+/// Emit mode for registry reporting subcommands
 #[derive(Debug, Clone, ValueEnum, Default)]
-pub enum RegistryDiffEmitMode {
-    /// Structured registry diff JSON (default)
+pub enum RegistryEmitMode {
+    /// Structured registry JSON (default)
     #[default]
     Json,
-    /// Human-readable registry diff summary
+    /// Human-readable registry summary
     Summary,
 }
 
@@ -37,6 +37,8 @@ pub struct RegistryCommand {
 pub enum RegistrySubcommand {
     /// Compare two registry versions and report what changed
     Diff(RegistryDiffCli),
+    /// Audit a seed corpus against a registry for authoring workflows
+    Audit(RegistryAuditCli),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -51,7 +53,33 @@ pub struct RegistryDiffCli {
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
-    pub emit: RegistryDiffEmitMode,
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RegistryAuditCli {
+    /// Seed CSV or JSONL file to audit (use '-' for stdin with JSONL)
+    pub seed: PathBuf,
+
+    /// Registry directory to audit against
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Column containing seed identifiers
+    #[arg(long)]
+    pub column: String,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+
+    /// Refuse if input exceeds N data rows
+    #[arg(long)]
+    pub max_rows: Option<usize>,
+
+    /// Refuse if input exceeds N bytes
+    #[arg(long)]
+    pub max_bytes: Option<u64>,
 }
 
 #[derive(Parser, Debug)]
@@ -179,13 +207,48 @@ mod tests {
         let cli = Cli::try_parse_from(args).unwrap();
 
         match cli.command.unwrap() {
-            CanonCommand::Registry(command) => match command.command {
-                RegistrySubcommand::Diff(diff) => {
+            CanonCommand::Registry(command) => {
+                let subcommand = command.command;
+                assert!(matches!(subcommand, RegistrySubcommand::Diff(_)));
+                if let RegistrySubcommand::Diff(diff) = subcommand {
                     assert_eq!(diff.old, PathBuf::from("registries/test-v1"));
                     assert_eq!(diff.new, PathBuf::from("registries/test-v2"));
-                    assert!(matches!(diff.emit, RegistryDiffEmitMode::Summary));
+                    assert!(matches!(diff.emit, RegistryEmitMode::Summary));
                 }
-            },
+            }
+        }
+    }
+
+    #[test]
+    fn test_cli_registry_audit_parsing() {
+        let args = [
+            "canon",
+            "registry",
+            "audit",
+            "seeds.csv",
+            "--registry",
+            "registries/test",
+            "--column",
+            "cusip",
+            "--emit",
+            "summary",
+            "--max-rows",
+            "10",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Registry(command) => {
+                let subcommand = command.command;
+                assert!(matches!(subcommand, RegistrySubcommand::Audit(_)));
+                if let RegistrySubcommand::Audit(audit) = subcommand {
+                    assert_eq!(audit.seed, PathBuf::from("seeds.csv"));
+                    assert_eq!(audit.registry, PathBuf::from("registries/test"));
+                    assert_eq!(audit.column, "cusip");
+                    assert!(matches!(audit.emit, RegistryEmitMode::Summary));
+                    assert_eq!(audit.max_rows, Some(10));
+                }
+            }
         }
     }
 
