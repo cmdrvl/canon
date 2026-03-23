@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{ArgGroup, Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 /// Emit mode for output
@@ -21,16 +21,44 @@ pub enum RegistryEmitMode {
     Summary,
 }
 
+/// Emit mode for org artifact subcommands
+#[derive(Debug, Clone, ValueEnum, Default)]
+pub enum OrgEmitMode {
+    /// Structured org JSON artifact (default)
+    #[default]
+    Json,
+    /// Human-readable org summary
+    Summary,
+}
+
+/// Emit mode for org streaming subcommands
+#[derive(Debug, Clone, ValueEnum, Default)]
+pub enum OrgStreamEmitMode {
+    /// Line-delimited org records (default)
+    #[default]
+    Jsonl,
+    /// Human-readable org summary
+    Summary,
+}
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum CanonCommand {
     /// Registry maintenance and inspection commands
     Registry(RegistryCommand),
+    /// Organization identity commands
+    Org(OrgCommand),
 }
 
 #[derive(Args, Debug, Clone)]
 pub struct RegistryCommand {
     #[command(subcommand)]
     pub command: RegistrySubcommand,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct OrgCommand {
+    #[command(subcommand)]
+    pub command: OrgSubcommand,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -41,6 +69,24 @@ pub enum RegistrySubcommand {
     Audit(RegistryAuditCli),
     /// Materialize a registry from a provider and seed corpus
     Build(RegistryBuildCli),
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum OrgSubcommand {
+    /// Run the full org orchestration flow
+    Run(OrgRunCli),
+    /// Generate candidate neighborhoods
+    Block(OrgBlockCli),
+    /// Generate typed evidence edges for candidate pairs
+    Edge(OrgEdgeCli),
+    /// Solve org identity assignments from evidence edges
+    Solve(OrgSolveCli),
+    /// Audit an org result artifact against a suite
+    Audit(OrgAuditCli),
+    /// Promote an audited org result into the registry and escrow sidecars
+    Promote(OrgPromoteCli),
+    /// Explain one org row, canonical entity, or escrow entity
+    Explain(OrgExplainCli),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -131,6 +177,158 @@ pub struct RegistryBuildCli {
     pub provider_config: Vec<String>,
 }
 
+#[derive(Args, Debug, Clone)]
+pub struct OrgRunCli {
+    /// Input CSV or JSONL rows
+    pub rows: PathBuf,
+
+    /// Strategy YAML file
+    #[arg(long)]
+    pub strategy: PathBuf,
+
+    /// Org registry directory
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Frozen evaluation suite directory
+    #[arg(long)]
+    pub suite: Option<PathBuf>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: OrgEmitMode,
+
+    /// Suppress witness ledger append
+    #[arg(long)]
+    pub no_witness: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct OrgBlockCli {
+    /// Input CSV or JSONL rows
+    pub rows: PathBuf,
+
+    /// Strategy YAML file
+    #[arg(long)]
+    pub strategy: PathBuf,
+
+    /// Org registry directory
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "jsonl")]
+    pub emit: OrgStreamEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct OrgEdgeCli {
+    /// Input CSV or JSONL rows
+    pub rows: PathBuf,
+
+    /// Strategy YAML file
+    #[arg(long)]
+    pub strategy: PathBuf,
+
+    /// Candidate block artifact
+    #[arg(long)]
+    pub candidates: PathBuf,
+
+    /// Org registry directory
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "jsonl")]
+    pub emit: OrgStreamEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct OrgSolveCli {
+    /// Input CSV or JSONL rows
+    pub rows: PathBuf,
+
+    /// Strategy YAML file
+    #[arg(long)]
+    pub strategy: PathBuf,
+
+    /// Edge artifact
+    #[arg(long)]
+    pub edges: PathBuf,
+
+    /// Org registry directory
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: OrgEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct OrgAuditCli {
+    /// Org solve or run artifact
+    pub result: PathBuf,
+
+    /// Frozen evaluation suite directory
+    #[arg(long)]
+    pub suite: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: OrgEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct OrgPromoteCli {
+    /// Org solve or run artifact
+    pub result: PathBuf,
+
+    /// Audit artifact
+    #[arg(long)]
+    pub audit: PathBuf,
+
+    /// Org registry directory
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Explicit next registry version
+    #[arg(long)]
+    pub next_version: String,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: OrgEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("query")
+        .required(true)
+        .multiple(false)
+        .args(["row", "canon_id", "escrow_id"])
+))]
+pub struct OrgExplainCli {
+    /// Org solve or run artifact
+    pub result: PathBuf,
+
+    /// Explain a source row by source_row_id
+    #[arg(long)]
+    pub row: Option<String>,
+
+    /// Explain a resolved entity by canonical ID
+    #[arg(long)]
+    pub canon_id: Option<String>,
+
+    /// Explain an escrow entity by escrow ID
+    #[arg(long)]
+    pub escrow_id: Option<String>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: OrgEmitMode,
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "canon")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
@@ -205,6 +403,15 @@ mod tests {
     }
 
     #[test]
+    fn test_org_emit_mode_defaults() {
+        assert!(matches!(OrgEmitMode::default(), OrgEmitMode::Json));
+        assert!(matches!(
+            OrgStreamEmitMode::default(),
+            OrgStreamEmitMode::Jsonl
+        ));
+    }
+
+    #[test]
     fn test_cli_info_commands() {
         // Test version flag
         let args = ["canon", "--version"];
@@ -265,6 +472,7 @@ mod tests {
                     assert!(matches!(diff.emit, RegistryEmitMode::Summary));
                 }
             }
+            other => panic!("expected registry command, got {:?}", other),
         }
     }
 
@@ -298,6 +506,7 @@ mod tests {
                     assert_eq!(audit.max_rows, Some(10));
                 }
             }
+            other => panic!("expected registry command, got {:?}", other),
         }
     }
 
@@ -351,7 +560,242 @@ mod tests {
                     );
                 }
             }
+            other => panic!("expected registry command, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_cli_org_run_parsing() {
+        let args = [
+            "canon",
+            "org",
+            "run",
+            "rows.csv",
+            "--strategy",
+            "strategy.yaml",
+            "--registry",
+            "registries/org",
+            "--suite",
+            "suite",
+            "--emit",
+            "summary",
+            "--no-witness",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Org(command) => match command.command {
+                OrgSubcommand::Run(run) => {
+                    assert_eq!(run.rows, PathBuf::from("rows.csv"));
+                    assert_eq!(run.strategy, PathBuf::from("strategy.yaml"));
+                    assert_eq!(run.registry, PathBuf::from("registries/org"));
+                    assert_eq!(run.suite, Some(PathBuf::from("suite")));
+                    assert!(matches!(run.emit, OrgEmitMode::Summary));
+                    assert!(run.no_witness);
+                }
+                other => panic!("expected org run, got {:?}", other),
+            },
+            other => panic!("expected org command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_org_block_parsing() {
+        let args = [
+            "canon",
+            "org",
+            "block",
+            "rows.csv",
+            "--strategy",
+            "strategy.yaml",
+            "--registry",
+            "registries/org",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Org(command) => match command.command {
+                OrgSubcommand::Block(block) => {
+                    assert_eq!(block.rows, PathBuf::from("rows.csv"));
+                    assert_eq!(block.strategy, PathBuf::from("strategy.yaml"));
+                    assert_eq!(block.registry, PathBuf::from("registries/org"));
+                    assert!(matches!(block.emit, OrgStreamEmitMode::Summary));
+                }
+                other => panic!("expected org block, got {:?}", other),
+            },
+            other => panic!("expected org command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_org_edge_parsing() {
+        let args = [
+            "canon",
+            "org",
+            "edge",
+            "rows.csv",
+            "--strategy",
+            "strategy.yaml",
+            "--candidates",
+            "block.jsonl",
+            "--registry",
+            "registries/org",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Org(command) => match command.command {
+                OrgSubcommand::Edge(edge) => {
+                    assert_eq!(edge.rows, PathBuf::from("rows.csv"));
+                    assert_eq!(edge.strategy, PathBuf::from("strategy.yaml"));
+                    assert_eq!(edge.candidates, PathBuf::from("block.jsonl"));
+                    assert_eq!(edge.registry, PathBuf::from("registries/org"));
+                    assert!(matches!(edge.emit, OrgStreamEmitMode::Jsonl));
+                }
+                other => panic!("expected org edge, got {:?}", other),
+            },
+            other => panic!("expected org command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_org_solve_parsing() {
+        let args = [
+            "canon",
+            "org",
+            "solve",
+            "rows.csv",
+            "--strategy",
+            "strategy.yaml",
+            "--edges",
+            "edges.jsonl",
+            "--registry",
+            "registries/org",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Org(command) => match command.command {
+                OrgSubcommand::Solve(solve) => {
+                    assert_eq!(solve.rows, PathBuf::from("rows.csv"));
+                    assert_eq!(solve.strategy, PathBuf::from("strategy.yaml"));
+                    assert_eq!(solve.edges, PathBuf::from("edges.jsonl"));
+                    assert_eq!(solve.registry, PathBuf::from("registries/org"));
+                    assert!(matches!(solve.emit, OrgEmitMode::Summary));
+                }
+                other => panic!("expected org solve, got {:?}", other),
+            },
+            other => panic!("expected org command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_org_audit_parsing() {
+        let args = [
+            "canon",
+            "org",
+            "audit",
+            "result.json",
+            "--suite",
+            "suite",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Org(command) => match command.command {
+                OrgSubcommand::Audit(audit) => {
+                    assert_eq!(audit.result, PathBuf::from("result.json"));
+                    assert_eq!(audit.suite, PathBuf::from("suite"));
+                    assert!(matches!(audit.emit, OrgEmitMode::Summary));
+                }
+                other => panic!("expected org audit, got {:?}", other),
+            },
+            other => panic!("expected org command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_org_promote_parsing() {
+        let args = [
+            "canon",
+            "org",
+            "promote",
+            "result.json",
+            "--audit",
+            "audit.json",
+            "--registry",
+            "registries/org",
+            "--next-version",
+            "2026.03.23",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Org(command) => match command.command {
+                OrgSubcommand::Promote(promote) => {
+                    assert_eq!(promote.result, PathBuf::from("result.json"));
+                    assert_eq!(promote.audit, PathBuf::from("audit.json"));
+                    assert_eq!(promote.registry, PathBuf::from("registries/org"));
+                    assert_eq!(promote.next_version, "2026.03.23");
+                    assert!(matches!(promote.emit, OrgEmitMode::Summary));
+                }
+                other => panic!("expected org promote, got {:?}", other),
+            },
+            other => panic!("expected org command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_org_explain_parsing() {
+        let args = [
+            "canon",
+            "org",
+            "explain",
+            "result.json",
+            "--canon-id",
+            "ORG-0001",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Org(command) => match command.command {
+                OrgSubcommand::Explain(explain) => {
+                    assert_eq!(explain.result, PathBuf::from("result.json"));
+                    assert_eq!(explain.canon_id.as_deref(), Some("ORG-0001"));
+                    assert_eq!(explain.row, None);
+                    assert_eq!(explain.escrow_id, None);
+                    assert!(matches!(explain.emit, OrgEmitMode::Summary));
+                }
+                other => panic!("expected org explain, got {:?}", other),
+            },
+            other => panic!("expected org command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_org_explain_requires_exactly_one_selector() {
+        let args = [
+            "canon",
+            "org",
+            "explain",
+            "result.json",
+            "--row",
+            "row-1",
+            "--canon-id",
+            "ORG-0001",
+        ];
+
+        assert!(Cli::try_parse_from(args).is_err());
     }
 
     #[test]

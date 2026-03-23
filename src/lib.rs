@@ -91,6 +91,9 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
             RegistrySubcommand::Audit(audit) => run_registry_audit(audit),
             RegistrySubcommand::Build(build) => run_registry_build(build),
         },
+        CanonCommand::Org(_) => {
+            Err(std::io::Error::other("canon org runtime dispatch is not implemented yet").into())
+        }
     }
 }
 
