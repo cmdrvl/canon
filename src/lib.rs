@@ -3,6 +3,7 @@
 pub mod cli;
 pub mod input;
 pub mod lookup;
+pub mod org;
 pub mod output;
 pub mod refusal;
 pub mod registry;
