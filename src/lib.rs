@@ -141,7 +141,7 @@ fn run_org_run_command(run: &OrgRunCli) -> Result<u8, Box<dyn Error>> {
             {
                 return emit_org_refusal(
                     refusal_output,
-                    false,
+                    true,
                     matches!(run.emit, OrgEmitMode::Summary),
                 );
             }
@@ -162,7 +162,7 @@ fn run_org_run_command(run: &OrgRunCli) -> Result<u8, Box<dyn Error>> {
         }
         Err(refusal_output) => emit_org_refusal(
             refusal_output,
-            false,
+            true,
             matches!(run.emit, OrgEmitMode::Summary),
         ),
     }
@@ -216,7 +216,7 @@ fn run_org_solve_command(solve: &OrgSolveCli) -> Result<u8, Box<dyn Error>> {
         }
         Err(refusal_output) => emit_org_refusal(
             refusal_output,
-            false,
+            true,
             matches!(solve.emit, OrgEmitMode::Summary),
         ),
     }
@@ -234,7 +234,7 @@ fn run_org_audit_command(audit: &OrgAuditCli) -> Result<u8, Box<dyn Error>> {
         }
         Err(refusal_output) => emit_org_refusal(
             refusal_output,
-            false,
+            true,
             matches!(audit.emit, OrgEmitMode::Summary),
         ),
     }
@@ -252,7 +252,7 @@ fn run_org_promote_command(promote: &OrgPromoteCli) -> Result<u8, Box<dyn Error>
         }
         Err(refusal_output) => emit_org_refusal(
             refusal_output,
-            false,
+            true,
             matches!(promote.emit, OrgEmitMode::Summary),
         ),
     }
@@ -270,7 +270,7 @@ fn run_org_explain_command(explain: &OrgExplainCli) -> Result<u8, Box<dyn Error>
         }
         Err(refusal_output) => emit_org_refusal(
             refusal_output,
-            false,
+            true,
             matches!(explain.emit, OrgEmitMode::Summary),
         ),
     }

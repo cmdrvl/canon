@@ -43,7 +43,9 @@ pub fn promote(
     } else {
         vec![mapping_file_name.clone()]
     };
-    if result.proposed_registry_patch.mapping_files != mapping_files {
+    if !result.proposed_registry_patch.mapping_files.is_empty()
+        && result.proposed_registry_patch.mapping_files != mapping_files
+    {
         return Err(promotion_error(
             "Promotion mapping files do not match the result artifact's proposed patch summary",
             json!({
@@ -1004,6 +1006,83 @@ mod tests {
         assert_eq!(anchor_records[0].canonical_id, "IC-new");
     }
 
+    #[test]
+    fn promote_defaults_mapping_filename_when_result_omits_it() {
+        let temp_dir = tempdir().expect("tempdir");
+        write_registry_json(temp_dir.path(), "bdc-issuers", "2026.03.01");
+
+        let before = load_incumbent_memory(temp_dir.path()).expect("before snapshot");
+        let mut result = positive_result(&before.registry);
+        result.proposed_registry_patch.mapping_files.clear();
+        let result_bytes = serde_json::to_vec(&result).expect("result bytes");
+        let audit = matching_audit(&result, &result_bytes);
+        let audit_bytes = serde_json::to_vec(&audit).expect("audit bytes");
+
+        let artifact = promote(
+            &result,
+            &result_bytes,
+            &audit,
+            &audit_bytes,
+            temp_dir.path(),
+            "2026.03.02",
+        )
+        .expect("promotion to succeed with default mapping filename");
+
+        assert_eq!(artifact.writes.mapping_files, vec!["org-20260302.json"]);
+        assert!(temp_dir.path().join("org-20260302.json").is_file());
+    }
+
+    #[test]
+    fn promote_refuses_invalid_explicit_mapping_file_values() {
+        let temp_dir = tempdir().expect("tempdir");
+        write_registry_json(temp_dir.path(), "bdc-issuers", "2026.03.01");
+
+        let before = load_incumbent_memory(temp_dir.path()).expect("before snapshot");
+
+        let mut invalid_path = positive_result(&before.registry);
+        invalid_path.proposed_registry_patch.mapping_files =
+            vec!["nested/org-20260302.json".to_string()];
+        let invalid_path_bytes = serde_json::to_vec(&invalid_path).expect("result bytes");
+        let invalid_path_audit = matching_audit(&invalid_path, &invalid_path_bytes);
+        let invalid_path_audit_bytes =
+            serde_json::to_vec(&invalid_path_audit).expect("audit bytes");
+
+        let invalid_path_error = promote(
+            &invalid_path,
+            &invalid_path_bytes,
+            &invalid_path_audit,
+            &invalid_path_audit_bytes,
+            temp_dir.path(),
+            "2026.03.02",
+        )
+        .expect_err("invalid explicit mapping file path to refuse");
+        assert_eq!(invalid_path_error.code, OrgErrorCode::Promotion);
+        assert!(invalid_path_error.message.contains("root-level .json"));
+
+        let mut multi_file = positive_result(&before.registry);
+        multi_file.proposed_registry_patch.mapping_files =
+            vec!["a.json".to_string(), "b.json".to_string()];
+        let multi_file_bytes = serde_json::to_vec(&multi_file).expect("result bytes");
+        let multi_file_audit = matching_audit(&multi_file, &multi_file_bytes);
+        let multi_file_audit_bytes = serde_json::to_vec(&multi_file_audit).expect("audit bytes");
+
+        let multi_file_error = promote(
+            &multi_file,
+            &multi_file_bytes,
+            &multi_file_audit,
+            &multi_file_audit_bytes,
+            temp_dir.path(),
+            "2026.03.02",
+        )
+        .expect_err("multi-file explicit mapping list to refuse");
+        assert_eq!(multi_file_error.code, OrgErrorCode::Promotion);
+        assert!(
+            multi_file_error
+                .message
+                .contains("at most one mapping file")
+        );
+    }
+
     fn positive_result(registry: &RegistrySnapshot) -> SolveRunArtifact {
         SolveRunArtifact {
             version: CANON_ORG_RUN_VERSION.to_string(),
@@ -1085,7 +1164,7 @@ mod tests {
             ],
             contradictions: Vec::new(),
             proposed_registry_patch: RegistryPatchSummary {
-                mapping_files: vec!["org-20260302.json".to_string()],
+                mapping_files: Vec::new(),
                 new_entity_entries: 2,
                 existing_alias_entries: 1,
             },
