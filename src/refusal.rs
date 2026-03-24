@@ -1,5 +1,5 @@
 use crate::{CanonOutput, Outcome, Refusal, RefusalCode};
-use serde_json::json;
+use serde_json::{Value, json};
 
 impl Refusal {
     pub fn io_error(path: &str, err: &str) -> Self {
@@ -157,6 +157,78 @@ impl Refusal {
         }
     }
 
+    pub fn org_input_contract(message: impl Into<String>, detail: Value) -> Self {
+        Self {
+            code: RefusalCode::EOrgInputContract,
+            message: message.into(),
+            detail,
+            next_command: Some(
+                "Fix the required org row fields or structured side-field JSON, then rerun canon org"
+                    .to_string(),
+            ),
+        }
+    }
+
+    pub fn org_bad_strategy(message: impl Into<String>, detail: Value) -> Self {
+        Self {
+            code: RefusalCode::EOrgBadStrategy,
+            message: message.into(),
+            detail,
+            next_command: Some(
+                "Fix the strategy YAML and rerun the same canon org command with --strategy"
+                    .to_string(),
+            ),
+        }
+    }
+
+    pub fn org_bad_suite(message: impl Into<String>, detail: Value) -> Self {
+        Self {
+            code: RefusalCode::EOrgBadSuite,
+            message: message.into(),
+            detail,
+            next_command: Some(
+                "Check the frozen suite directory and profile compatibility, then rerun canon org audit"
+                    .to_string(),
+            ),
+        }
+    }
+
+    pub fn org_fixture_invalid(message: impl Into<String>, detail: Value) -> Self {
+        Self {
+            code: RefusalCode::EOrgFixtureInvalid,
+            message: message.into(),
+            detail,
+            next_command: Some(
+                "Repair the suite fixture references or row catalog, then rerun canon org audit"
+                    .to_string(),
+            ),
+        }
+    }
+
+    pub fn org_version_bump_required(message: impl Into<String>, detail: Value) -> Self {
+        Self {
+            code: RefusalCode::EOrgVersionBumpRequired,
+            message: message.into(),
+            detail,
+            next_command: Some(
+                "Rerun canon org promote with an explicit --next-version different from registry.json"
+                    .to_string(),
+            ),
+        }
+    }
+
+    pub fn org_stale_registry(message: impl Into<String>, detail: Value) -> Self {
+        Self {
+            code: RefusalCode::EOrgStaleRegistry,
+            message: message.into(),
+            detail,
+            next_command: Some(
+                "Refresh the org result and audit against the current registry snapshot, then retry promotion"
+                    .to_string(),
+            ),
+        }
+    }
+
     pub fn to_canon_output(self) -> CanonOutput {
         CanonOutput {
             version: "canon.v0".to_string(),
@@ -202,6 +274,15 @@ mod tests {
             (RefusalCode::ETooLarge, "\"E_TOO_LARGE\""),
             (RefusalCode::EEmitFormat, "\"E_EMIT_FORMAT\""),
             (RefusalCode::EColumnExists, "\"E_COLUMN_EXISTS\""),
+            (RefusalCode::EOrgInputContract, "\"E_ORG_INPUT_CONTRACT\""),
+            (RefusalCode::EOrgBadStrategy, "\"E_ORG_BAD_STRATEGY\""),
+            (RefusalCode::EOrgBadSuite, "\"E_ORG_BAD_SUITE\""),
+            (RefusalCode::EOrgFixtureInvalid, "\"E_ORG_FIXTURE_INVALID\""),
+            (
+                RefusalCode::EOrgVersionBumpRequired,
+                "\"E_ORG_VERSION_BUMP_REQUIRED\"",
+            ),
+            (RefusalCode::EOrgStaleRegistry, "\"E_ORG_STALE_REGISTRY\""),
         ];
 
         for (code, expected) in cases {
@@ -233,6 +314,20 @@ mod tests {
         assert_eq!(registry_refusal.code, RefusalCode::EBadRegistry);
         assert_eq!(registry_refusal.detail["registry"], "registries/cusip-isin");
         assert!(registry_refusal.next_command.is_some());
+
+        let org_refusal = Refusal::org_bad_strategy(
+            "Strategy YAML is invalid",
+            json!({ "path": "strategies/bdc.yaml" }),
+        );
+        assert_eq!(org_refusal.code, RefusalCode::EOrgBadStrategy);
+        assert_eq!(org_refusal.detail["path"], "strategies/bdc.yaml");
+        assert!(
+            org_refusal
+                .next_command
+                .as_deref()
+                .unwrap()
+                .contains("--strategy")
+        );
     }
 
     #[test]

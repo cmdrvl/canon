@@ -10,17 +10,26 @@ pub mod registry;
 pub mod witness;
 
 use crate::cli::{
-    CanonCommand, Cli, RegistryAuditCli, RegistryBuildCli, RegistryDiffCli, RegistryEmitMode,
-    RegistrySubcommand,
+    CanonCommand, Cli, OrgAuditCli, OrgBlockCli, OrgCommand, OrgEdgeCli, OrgEmitMode,
+    OrgExplainCli, OrgPromoteCli, OrgRunCli, OrgSolveCli, OrgStreamEmitMode, OrgSubcommand,
+    RegistryAuditCli, RegistryBuildCli, RegistryDiffCli, RegistryEmitMode, RegistrySubcommand,
 };
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
     collections::{BTreeMap, HashMap},
     error::Error,
     ffi::OsString,
     io::Write,
     path::{Path, PathBuf},
+    time::Instant,
 };
+
+const ORG_V1_PROFILE: &str = "bdc_issuer";
+
+struct OrgRunExecution {
+    artifact: org::SolveRunArtifact,
+    candidate_pairs: u64,
+}
 
 // Entry point function
 pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
@@ -91,9 +100,179 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
             RegistrySubcommand::Audit(audit) => run_registry_audit(audit),
             RegistrySubcommand::Build(build) => run_registry_build(build),
         },
-        CanonCommand::Org(_) => {
-            Err(std::io::Error::other("canon org runtime dispatch is not implemented yet").into())
+        CanonCommand::Org(command) => run_org_command(command),
+    }
+}
+
+fn run_org_command(command: &OrgCommand) -> Result<u8, Box<dyn Error>> {
+    match &command.command {
+        OrgSubcommand::Run(run) => run_org_run_command(run),
+        OrgSubcommand::Block(block) => run_org_block_command(block),
+        OrgSubcommand::Edge(edge) => run_org_edge_command(edge),
+        OrgSubcommand::Solve(solve) => run_org_solve_command(solve),
+        OrgSubcommand::Audit(audit) => run_org_audit_command(audit),
+        OrgSubcommand::Promote(promote) => run_org_promote_command(promote),
+        OrgSubcommand::Explain(explain) => run_org_explain_command(explain),
+    }
+}
+
+fn run_org_run_command(run: &OrgRunCli) -> Result<u8, Box<dyn Error>> {
+    let started = Instant::now();
+
+    match run_org_run_pipeline(run) {
+        Ok(execution) => {
+            let artifact_bytes = serde_json::to_vec(&execution.artifact)?;
+            if let Some(suite_dir) = run.suite.as_deref()
+                && let Err(refusal_output) = org::audit::audit(
+                    &execution.artifact,
+                    &artifact_bytes,
+                    org::audit::AuditContext {
+                        suite_dir,
+                        profile: ORG_V1_PROFILE,
+                        budget_usage: org::audit::AuditBudgetUsage {
+                            runtime_seconds: started.elapsed().as_secs(),
+                            candidate_pairs: execution.candidate_pairs,
+                        },
+                        baseline: None,
+                        promoted_with_prior_escrow_count: 0,
+                    },
+                )
+                .map_err(create_org_refusal)
+            {
+                return emit_org_refusal(
+                    refusal_output,
+                    false,
+                    matches!(run.emit, OrgEmitMode::Summary),
+                );
+            }
+
+            let output = match run.emit {
+                OrgEmitMode::Json => org::output::emit_run_json(&execution.artifact)?,
+                OrgEmitMode::Summary => org::output::render_run_summary(&execution.artifact),
+            };
+            emit_org_output(&output, matches!(run.emit, OrgEmitMode::Summary));
+            append_org_run_witness(
+                run,
+                &execution.artifact,
+                &output,
+                started.elapsed().as_secs(),
+                run.suite.as_deref().map(|_| execution.candidate_pairs),
+            );
+            Ok(0)
         }
+        Err(refusal_output) => emit_org_refusal(
+            refusal_output,
+            false,
+            matches!(run.emit, OrgEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_org_block_command(block: &OrgBlockCli) -> Result<u8, Box<dyn Error>> {
+    match run_org_block_pipeline(block) {
+        Ok(records) => {
+            let output = match block.emit {
+                OrgStreamEmitMode::Jsonl => org::output::emit_block_jsonl(&records)?,
+                OrgStreamEmitMode::Summary => org::output::render_block_summary(&records),
+            };
+            emit_org_output(&output, matches!(block.emit, OrgStreamEmitMode::Summary));
+            Ok(0)
+        }
+        Err(refusal_output) => emit_org_refusal(
+            refusal_output,
+            true,
+            matches!(block.emit, OrgStreamEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_org_edge_command(edge: &OrgEdgeCli) -> Result<u8, Box<dyn Error>> {
+    match run_org_edge_pipeline(edge) {
+        Ok(records) => {
+            let output = match edge.emit {
+                OrgStreamEmitMode::Jsonl => org::output::emit_edge_jsonl(&records)?,
+                OrgStreamEmitMode::Summary => org::output::render_edge_summary(&records),
+            };
+            emit_org_output(&output, matches!(edge.emit, OrgStreamEmitMode::Summary));
+            Ok(0)
+        }
+        Err(refusal_output) => emit_org_refusal(
+            refusal_output,
+            true,
+            matches!(edge.emit, OrgStreamEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_org_solve_command(solve: &OrgSolveCli) -> Result<u8, Box<dyn Error>> {
+    match run_org_solve_pipeline(solve) {
+        Ok(artifact) => {
+            let output = match solve.emit {
+                OrgEmitMode::Json => org::output::emit_solve_json(&artifact)?,
+                OrgEmitMode::Summary => org::output::render_solve_summary(&artifact),
+            };
+            emit_org_output(&output, matches!(solve.emit, OrgEmitMode::Summary));
+            Ok(0)
+        }
+        Err(refusal_output) => emit_org_refusal(
+            refusal_output,
+            false,
+            matches!(solve.emit, OrgEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_org_audit_command(audit: &OrgAuditCli) -> Result<u8, Box<dyn Error>> {
+    match run_org_audit_pipeline(audit) {
+        Ok(artifact) => {
+            let output = match audit.emit {
+                OrgEmitMode::Json => org::output::emit_audit_json(&artifact)?,
+                OrgEmitMode::Summary => org::output::render_audit_summary(&artifact),
+            };
+            emit_org_output(&output, matches!(audit.emit, OrgEmitMode::Summary));
+            Ok(0)
+        }
+        Err(refusal_output) => emit_org_refusal(
+            refusal_output,
+            false,
+            matches!(audit.emit, OrgEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_org_promote_command(promote: &OrgPromoteCli) -> Result<u8, Box<dyn Error>> {
+    match run_org_promote_pipeline(promote) {
+        Ok(artifact) => {
+            let output = match promote.emit {
+                OrgEmitMode::Json => org::output::emit_promote_json(&artifact)?,
+                OrgEmitMode::Summary => org::output::render_promote_summary(&artifact),
+            };
+            emit_org_output(&output, matches!(promote.emit, OrgEmitMode::Summary));
+            Ok(0)
+        }
+        Err(refusal_output) => emit_org_refusal(
+            refusal_output,
+            false,
+            matches!(promote.emit, OrgEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_org_explain_command(explain: &OrgExplainCli) -> Result<u8, Box<dyn Error>> {
+    match run_org_explain_pipeline(explain) {
+        Ok(artifact) => {
+            let output = match explain.emit {
+                OrgEmitMode::Json => org::output::emit_explain_json(&artifact)?,
+                OrgEmitMode::Summary => org::output::render_explain_summary(&artifact),
+            };
+            emit_org_output(&output, matches!(explain.emit, OrgEmitMode::Summary));
+            Ok(0)
+        }
+        Err(refusal_output) => emit_org_refusal(
+            refusal_output,
+            false,
+            matches!(explain.emit, OrgEmitMode::Summary),
+        ),
     }
 }
 
@@ -173,6 +352,342 @@ fn run_registry_build(build: &RegistryBuildCli) -> Result<u8, Box<dyn Error>> {
             Ok(2)
         }
     }
+}
+
+#[allow(clippy::result_large_err)]
+fn run_org_run_pipeline(run: &OrgRunCli) -> Result<OrgRunExecution, CanonOutput> {
+    let strategy = org::strategy::load_strategy(&run.strategy).map_err(create_org_refusal)?;
+    let incumbent =
+        org::incumbent::load_incumbent_memory(&run.registry).map_err(create_org_refusal)?;
+    let observations = org::projection::project_input(&run.rows, &strategy, None, None)
+        .map_err(create_org_refusal)?;
+    let blocks = org::block::build_candidate_blocks(&strategy, &observations, &incumbent)
+        .map_err(create_org_refusal)?;
+    let edges = org::edge::build_edges(&strategy, &observations, &blocks, &incumbent)
+        .map_err(create_org_refusal)?;
+    let artifact = org::solve::run(&strategy, &observations, &edges, &incumbent)
+        .map_err(create_org_refusal)?;
+
+    Ok(OrgRunExecution {
+        artifact,
+        candidate_pairs: edges.len() as u64,
+    })
+}
+
+#[allow(clippy::result_large_err)]
+fn run_org_block_pipeline(block: &OrgBlockCli) -> Result<Vec<org::BlockRecord>, CanonOutput> {
+    let strategy = org::strategy::load_strategy(&block.strategy).map_err(create_org_refusal)?;
+    let incumbent =
+        org::incumbent::load_incumbent_memory(&block.registry).map_err(create_org_refusal)?;
+    let observations = org::projection::project_input(&block.rows, &strategy, None, None)
+        .map_err(create_org_refusal)?;
+
+    org::block::build_candidate_blocks(&strategy, &observations, &incumbent)
+        .map_err(create_org_refusal)
+}
+
+#[allow(clippy::result_large_err)]
+fn run_org_edge_pipeline(edge: &OrgEdgeCli) -> Result<Vec<org::EdgeRecord>, CanonOutput> {
+    let strategy = org::strategy::load_strategy(&edge.strategy).map_err(create_org_refusal)?;
+    let incumbent =
+        org::incumbent::load_incumbent_memory(&edge.registry).map_err(create_org_refusal)?;
+    let observations = org::projection::project_input(&edge.rows, &strategy, None, None)
+        .map_err(create_org_refusal)?;
+    let candidates = read_jsonl_artifact(&edge.candidates, "candidate block artifact")?;
+
+    org::edge::build_edges(&strategy, &observations, &candidates, &incumbent)
+        .map_err(create_org_refusal)
+}
+
+#[allow(clippy::result_large_err)]
+fn run_org_solve_pipeline(solve: &OrgSolveCli) -> Result<org::SolveRunArtifact, CanonOutput> {
+    let strategy = org::strategy::load_strategy(&solve.strategy).map_err(create_org_refusal)?;
+    let incumbent =
+        org::incumbent::load_incumbent_memory(&solve.registry).map_err(create_org_refusal)?;
+    let observations = org::projection::project_input(&solve.rows, &strategy, None, None)
+        .map_err(create_org_refusal)?;
+    let edges = read_jsonl_artifact(&solve.edges, "edge artifact")?;
+
+    org::solve::solve(&strategy, &observations, &edges, &incumbent).map_err(create_org_refusal)
+}
+
+#[allow(clippy::result_large_err)]
+fn run_org_audit_pipeline(audit: &OrgAuditCli) -> Result<org::AuditArtifact, CanonOutput> {
+    let (result, result_bytes): (org::SolveRunArtifact, Vec<u8>) =
+        read_json_artifact(&audit.result, "org result artifact")?;
+
+    org::audit::audit(
+        &result,
+        &result_bytes,
+        org::audit::AuditContext {
+            suite_dir: &audit.suite,
+            profile: ORG_V1_PROFILE,
+            budget_usage: org::audit::AuditBudgetUsage {
+                runtime_seconds: 0,
+                candidate_pairs: 0,
+            },
+            baseline: None,
+            promoted_with_prior_escrow_count: 0,
+        },
+    )
+    .map_err(create_org_refusal)
+}
+
+#[allow(clippy::result_large_err)]
+fn run_org_promote_pipeline(promote: &OrgPromoteCli) -> Result<org::PromoteArtifact, CanonOutput> {
+    let (result, result_bytes): (org::SolveRunArtifact, Vec<u8>) =
+        read_json_artifact(&promote.result, "org result artifact")?;
+    let (audit, audit_bytes): (org::AuditArtifact, Vec<u8>) =
+        read_json_artifact(&promote.audit, "org audit artifact")?;
+
+    org::promote::promote(
+        &result,
+        &result_bytes,
+        &audit,
+        &audit_bytes,
+        &promote.registry,
+        &promote.next_version,
+    )
+    .map_err(create_org_refusal)
+}
+
+#[allow(clippy::result_large_err)]
+fn run_org_explain_pipeline(explain: &OrgExplainCli) -> Result<org::ExplainArtifact, CanonOutput> {
+    let (result, _result_bytes): (org::SolveRunArtifact, Vec<u8>) =
+        read_json_artifact(&explain.result, "org result artifact")?;
+    let query = org::ExplainQuery {
+        row_id: explain.row.clone(),
+        canonical_id: explain.canon_id.clone(),
+        escrow_id: explain.escrow_id.clone(),
+    };
+
+    org::explain::explain_from_result(query, &result).map_err(create_org_refusal)
+}
+
+fn emit_org_output(output: &str, summary_mode: bool) {
+    if summary_mode {
+        println!("{output}");
+    } else {
+        print!("{output}");
+    }
+}
+
+fn emit_org_refusal(
+    refusal_output: CanonOutput,
+    structured_stdout: bool,
+    summary_mode: bool,
+) -> Result<u8, Box<dyn Error>> {
+    let refusal_json = serde_json::to_string(&refusal_output)?;
+    if structured_stdout && !summary_mode {
+        println!("{refusal_json}");
+    } else {
+        eprintln!("{refusal_json}");
+    }
+    Ok(2)
+}
+
+fn append_org_run_witness(
+    run: &OrgRunCli,
+    artifact: &org::SolveRunArtifact,
+    output: &str,
+    runtime_seconds: u64,
+    candidate_pairs: Option<u64>,
+) {
+    if run.no_witness {
+        return;
+    }
+
+    let mut inputs = vec![witness::WitnessInput {
+        path: run.rows.display().to_string(),
+        hash: hash_input_path(&run.rows),
+        bytes: input_size(&run.rows),
+    }];
+    inputs.push(witness::WitnessInput {
+        path: run.strategy.display().to_string(),
+        hash: hash_input_path(&run.strategy),
+        bytes: input_size(&run.strategy),
+    });
+
+    let mut params = serde_json::Map::new();
+    params.insert(
+        "subcommand".to_string(),
+        serde_json::Value::String("org.run".to_string()),
+    );
+    params.insert(
+        "strategy_id".to_string(),
+        serde_json::Value::String(artifact.strategy.id.clone()),
+    );
+    params.insert(
+        "strategy_version".to_string(),
+        serde_json::Value::String(artifact.strategy.version.clone()),
+    );
+    params.insert(
+        "strategy_path".to_string(),
+        serde_json::Value::String(run.strategy.display().to_string()),
+    );
+    params.insert(
+        "registry_id".to_string(),
+        serde_json::Value::String(artifact.registry.id.clone()),
+    );
+    params.insert(
+        "registry_version".to_string(),
+        serde_json::Value::String(artifact.registry.version.clone()),
+    );
+    params.insert(
+        "registry_path".to_string(),
+        serde_json::Value::String(run.registry.display().to_string()),
+    );
+    params.insert(
+        "registry_lookup_snapshot_hash".to_string(),
+        serde_json::Value::String(artifact.registry.lookup_snapshot_hash.clone()),
+    );
+    params.insert(
+        "registry_escrow_snapshot_hash".to_string(),
+        serde_json::Value::String(artifact.registry.escrow_snapshot_hash.clone()),
+    );
+    params.insert(
+        "emit".to_string(),
+        serde_json::Value::String(
+            match run.emit {
+                OrgEmitMode::Json => "json",
+                OrgEmitMode::Summary => "summary",
+            }
+            .to_string(),
+        ),
+    );
+    params.insert(
+        "summary".to_string(),
+        serde_json::json!({
+            "observations": artifact.summary.observations,
+            "resolved_existing": artifact.summary.resolved_existing,
+            "promotable_new": artifact.summary.promotable_new,
+            "abstain_low_evidence": artifact.summary.abstain_low_evidence,
+            "abstain_conflict": artifact.summary.abstain_conflict,
+            "contradictions": artifact.contradictions.len(),
+        }),
+    );
+    params.insert(
+        "runtime_seconds".to_string(),
+        serde_json::Value::from(runtime_seconds),
+    );
+
+    if let Some(suite_dir) = &run.suite {
+        params.insert(
+            "suite_path".to_string(),
+            serde_json::Value::String(suite_dir.display().to_string()),
+        );
+    }
+    if let Some(candidate_pairs) = candidate_pairs {
+        params.insert(
+            "candidate_pairs".to_string(),
+            serde_json::Value::from(candidate_pairs),
+        );
+    }
+
+    let witness_record = witness::WitnessRecord::new(
+        inputs,
+        params,
+        &witness::hash_bytes(output.as_bytes()),
+        "RESOLVED",
+        0,
+    );
+    if let Err(error) = witness::append_witness_record(&witness_record, false) {
+        eprintln!("Warning: failed to append witness: {}", error);
+    }
+}
+
+fn hash_input_path(path: &Path) -> Option<String> {
+    if path == Path::new("-") {
+        None
+    } else {
+        witness::hash_file(path).ok()
+    }
+}
+
+#[allow(clippy::result_large_err)]
+fn read_json_artifact<T: DeserializeOwned>(
+    path: &Path,
+    label: &str,
+) -> Result<(T, Vec<u8>), CanonOutput> {
+    let bytes = read_artifact_bytes(path, label)?;
+    let value = serde_json::from_slice(&bytes).map_err(|error| {
+        refusal::create_refusal(
+            RefusalCode::EParse,
+            format!("Failed to parse {} '{}': {}", label, path.display(), error),
+            serde_json::json!({
+                "path": path.display().to_string(),
+                "artifact": label,
+                "error": error.to_string(),
+            }),
+            None,
+        )
+    })?;
+    Ok((value, bytes))
+}
+
+#[allow(clippy::result_large_err)]
+fn read_jsonl_artifact<T: DeserializeOwned>(
+    path: &Path,
+    label: &str,
+) -> Result<Vec<T>, CanonOutput> {
+    let bytes = read_artifact_bytes(path, label)?;
+    let text = std::str::from_utf8(&bytes).map_err(|error| {
+        refusal::create_refusal(
+            RefusalCode::EParse,
+            format!(
+                "{} '{}' must be valid UTF-8 JSONL: {}",
+                label,
+                path.display(),
+                error
+            ),
+            serde_json::json!({
+                "path": path.display().to_string(),
+                "artifact": label,
+                "error": error.to_string(),
+            }),
+            None,
+        )
+    })?;
+
+    text.lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            serde_json::from_str(line).map_err(|error| {
+                refusal::create_refusal(
+                    RefusalCode::EParse,
+                    format!(
+                        "Failed to parse {} '{}' as JSONL: {}",
+                        label,
+                        path.display(),
+                        error
+                    ),
+                    serde_json::json!({
+                        "path": path.display().to_string(),
+                        "artifact": label,
+                        "line": line,
+                        "error": error.to_string(),
+                    }),
+                    None,
+                )
+            })
+        })
+        .collect()
+}
+
+#[allow(clippy::result_large_err)]
+fn read_artifact_bytes(path: &Path, label: &str) -> Result<Vec<u8>, CanonOutput> {
+    std::fs::read(path).map_err(|error| {
+        refusal::create_refusal(
+            RefusalCode::EIo,
+            format!("Failed to read {} '{}': {}", label, path.display(), error),
+            serde_json::json!({
+                "path": path.display().to_string(),
+                "artifact": label,
+                "error": error.to_string(),
+            }),
+            None,
+        )
+    })
 }
 
 #[allow(clippy::result_large_err)]
@@ -825,6 +1340,69 @@ fn create_io_refusal(error: std::io::Error) -> CanonOutput {
     )
 }
 
+fn create_org_refusal(error: org::OrgError) -> CanonOutput {
+    let detail = error.detail.unwrap_or_else(|| serde_json::json!({}));
+    let message = error.message;
+
+    match error.code {
+        org::OrgErrorCode::InputContract => {
+            Refusal::org_input_contract(message, detail).to_canon_output()
+        }
+        org::OrgErrorCode::Strategy => {
+            Refusal::org_bad_strategy(message, detail).to_canon_output()
+        }
+        org::OrgErrorCode::Audit => {
+            let lowercase = message.to_ascii_lowercase();
+            if lowercase.contains("fixture")
+                || lowercase.contains("row catalog")
+                || lowercase.contains("source_row_id")
+            {
+                Refusal::org_fixture_invalid(message, detail).to_canon_output()
+            } else {
+                Refusal::org_bad_suite(message, detail).to_canon_output()
+            }
+        }
+        org::OrgErrorCode::Promotion => {
+            let lowercase = message.to_ascii_lowercase();
+            if lowercase.contains("stale") {
+                Refusal::org_stale_registry(message, detail).to_canon_output()
+            } else if lowercase.contains("next-version")
+                || lowercase.contains("next version")
+                || lowercase.contains("version bump")
+                || lowercase.contains("differ from the current")
+            {
+                Refusal::org_version_bump_required(message, detail).to_canon_output()
+            } else {
+                refusal::create_refusal(RefusalCode::EParse, message, detail, None)
+            }
+        }
+        org::OrgErrorCode::Registry => refusal::create_refusal(
+            RefusalCode::EBadRegistry,
+            message,
+            detail,
+            Some("Check the org registry sidecars and rerun the canon org command".to_string()),
+        ),
+        org::OrgErrorCode::ArtifactContract => refusal::create_refusal(
+            RefusalCode::EParse,
+            message,
+            detail,
+            Some("Regenerate the referenced org artifact with matching strategy and registry inputs, then rerun".to_string()),
+        ),
+        org::OrgErrorCode::Explain => refusal::create_refusal(
+            RefusalCode::EParse,
+            message,
+            detail,
+            Some("Check the explain selector and result artifact, then rerun canon org explain".to_string()),
+        ),
+        org::OrgErrorCode::Unimplemented => refusal::create_refusal(
+            RefusalCode::EParse,
+            message,
+            detail,
+            Some("Use an implemented canon org subcommand or update the runtime wiring first".to_string()),
+        ),
+    }
+}
+
 // Output types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -1174,6 +1752,12 @@ pub enum RefusalCode {
     ETooLarge,
     EEmitFormat,
     EColumnExists,
+    EOrgInputContract,
+    EOrgBadStrategy,
+    EOrgBadSuite,
+    EOrgFixtureInvalid,
+    EOrgVersionBumpRequired,
+    EOrgStaleRegistry,
 }
 
 impl Serialize for RefusalCode {
@@ -1192,6 +1776,12 @@ impl Serialize for RefusalCode {
             RefusalCode::ETooLarge => "E_TOO_LARGE",
             RefusalCode::EEmitFormat => "E_EMIT_FORMAT",
             RefusalCode::EColumnExists => "E_COLUMN_EXISTS",
+            RefusalCode::EOrgInputContract => "E_ORG_INPUT_CONTRACT",
+            RefusalCode::EOrgBadStrategy => "E_ORG_BAD_STRATEGY",
+            RefusalCode::EOrgBadSuite => "E_ORG_BAD_SUITE",
+            RefusalCode::EOrgFixtureInvalid => "E_ORG_FIXTURE_INVALID",
+            RefusalCode::EOrgVersionBumpRequired => "E_ORG_VERSION_BUMP_REQUIRED",
+            RefusalCode::EOrgStaleRegistry => "E_ORG_STALE_REGISTRY",
         };
         serializer.serialize_str(code_str)
     }

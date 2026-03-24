@@ -122,7 +122,13 @@
     { "code": "E_EMPTY_INPUT", "message": "No processable data rows", "action": "escalate" },
     { "code": "E_TOO_LARGE", "message": "Input exceeds --max-rows or --max-bytes limit", "action": "retry_with_flag", "flag": "--max-rows or --max-bytes" },
     { "code": "E_EMIT_FORMAT", "message": "--emit csv requested with JSONL input", "action": "adjust_input" },
-    { "code": "E_COLUMN_EXISTS", "message": "Canonical column name already in CSV header", "action": "adjust_input" }
+    { "code": "E_COLUMN_EXISTS", "message": "Canonical column name already in CSV header", "action": "adjust_input" },
+    { "code": "E_ORG_INPUT_CONTRACT", "message": "Org input rows violate the active strategy contract", "action": "fix_input" },
+    { "code": "E_ORG_BAD_STRATEGY", "message": "Org strategy YAML is malformed or semantically invalid", "action": "fix_input" },
+    { "code": "E_ORG_BAD_SUITE", "message": "Org evaluation suite is missing, malformed, or profile-mismatched", "action": "escalate" },
+    { "code": "E_ORG_FIXTURE_INVALID", "message": "Org evaluation fixture references are internally inconsistent", "action": "escalate" },
+    { "code": "E_ORG_VERSION_BUMP_REQUIRED", "message": "Org promotion requires an explicit next registry version", "action": "adjust_input" },
+    { "code": "E_ORG_STALE_REGISTRY", "message": "Org promotion target registry no longer matches the audited snapshot", "action": "escalate" }
   ],
 
   "capabilities": {
