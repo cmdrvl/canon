@@ -24,6 +24,7 @@ The same loan appears as CUSIP `037833100` in one system, ISIN `US0378331005` in
 - **Pipeline composable** — `canon --emit csv` appends a `<column>__canon` column to your CSV. Pipe the output directly into `rvl` or `shape`: `canon nov.csv --column cusip --emit csv | rvl - dec.canon.csv --key cusip__canon`.
 - **Full traceability** — every mapping includes `rule_id`, `canonical_type`, and `confidence`. Every unresolved entry includes the reason. Every result is auditable.
 - **Deduplication built in** — input values are deduplicated before lookup. 500 unique CUSIPs produce 500 mapping entries whether your file has 500 rows or 500,000.
+- **Org identity resolution** — `canon org` resolves entities that appear under different names across documents via a deterministic multi-stage pipeline: block, score evidence, solve clusters, audit against evaluation suites, and promote into the registry.
 
 ---
 
@@ -208,9 +209,9 @@ canon tape.csv --registry registries/cusip-isin/ --column cusip \
 - Building audit trails for regulatory mappings (every resolution traceable)
 
 **When canon might not be ideal:**
-- Fuzzy entity matching (address variants, phonetic matching) — deferred to v1
+- Fuzzy entity matching (address variants, phonetic matching)
 - Master data management at enterprise scale
-- Record linkage / entity clustering
+- Probabilistic record linkage requiring ML models
 
 ---
 
@@ -241,9 +242,11 @@ cargo build --release
 
 ```bash
 canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
-canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]
+canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [OPTIONS]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
-canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
+canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary]
+canon org run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json|summary]
+canon org block|edge|solve|audit|promote|explain [OPTIONS]
 ```
 
 ### Arguments
@@ -275,6 +278,13 @@ canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json
 | `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides. |
 | `registry diff --old <PATH> --new <PATH> [--emit json\|summary]` | Compare two versions of the same registry ID and report added, removed, changed, and unchanged effective mappings. |
 | `registry audit <SEED> --registry <PATH> --column <COLUMN> [--emit json\|summary]` | Audit a seed corpus against a registry and emit resolved/unresolved entries plus aggregate canonical-target and rule-hit counts. |
+| `org run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json\|summary]` | Run the full deterministic org-identity pipeline (block → edge → solve, optional audit + promote). |
+| `org block <ROWS> --strategy <YAML> --registry <DIR> [--emit jsonl\|summary]` | Generate candidate neighborhoods via blocking operators. |
+| `org edge <ROWS> --strategy <YAML> --candidates <JSONL> --registry <DIR> [--emit jsonl\|summary]` | Score typed evidence edges for blocked candidate pairs. |
+| `org solve <ROWS> --strategy <YAML> --edges <JSONL> --registry <DIR> [--emit json\|summary]` | Solve deterministic identity assignments from evidence edges. |
+| `org audit <RESULT> --suite <DIR> [--emit json\|summary]` | Validate a solve/run artifact against a frozen evaluation suite. |
+| `org promote <RESULT> --audit <JSON> --registry <DIR> --next-version <VER> [--emit json\|summary]` | Write audited results into registry aliases and escrow sidecars. |
+| `org explain <RESULT> --row <ID>\|--canon-id <ID>\|--escrow-id <ID> [--emit json\|summary]` | Proof trace for one row, canonical entity, or escrow entity. |
 
 ### Exit Codes
 
@@ -398,6 +408,12 @@ Every refusal includes the error code, a concrete message, and a recovery path.
 | `E_TOO_LARGE` | Exceeds `--max-rows` or `--max-bytes` | Increase limits or reduce input |
 | `E_EMIT_FORMAT` | `--emit csv` with JSONL input | Use `--emit json` or provide CSV input |
 | `E_COLUMN_EXISTS` | Canonical column name already in header | Choose a different `--canon-column` |
+| `E_ORG_INPUT_CONTRACT` | Org input rows violate the strategy contract | Check required fields and side-field JSON |
+| `E_ORG_BAD_STRATEGY` | Org strategy YAML is malformed or invalid | Fix the strategy file |
+| `E_ORG_BAD_SUITE` | Evaluation suite missing or profile-mismatched | Check suite directory and strategy profile |
+| `E_ORG_FIXTURE_INVALID` | Suite fixture references are inconsistent | Fix fixture row catalog or expected pairs |
+| `E_ORG_VERSION_BUMP_REQUIRED` | Promotion requires an explicit next version | Pass `--next-version` |
+| `E_ORG_STALE_REGISTRY` | Registry changed since the audited snapshot | Re-run org against the current registry |
 
 ---
 
@@ -426,14 +442,109 @@ canon tape.csv --registry registries/cusip-isin/ --column cusip \
 
 ---
 
+## Organization Identity Resolution (`canon org`)
+
+The same entity appears as "Wells Fargo & Company" in one document, "Wells Fargo Bank, N.A." in another, and "WFB" in a third. Three names, one issuer. `canon org` resolves these via a deterministic multi-stage pipeline — no ML models, no probabilistic matching, no black boxes.
+
+The pipeline is YAML-driven: a **strategy file** defines which fields to observe, how to normalize names, which blocking operators generate candidates, how to score evidence, and what thresholds the solver uses to merge or abstain. Same strategy + same input + same registry = same output, every time.
+
+```bash
+# Full pipeline in one command:
+$ canon org run rows.csv \
+    --strategy strategy.yaml \
+    --registry registries/org/ \
+    --suite eval/holdout/ \
+    --emit summary
+
+org_run: 847 rows → 312 canonical entities, 4 escrow (pending), 0 escrow (conflict)
+audit: holdout 98/98 pass, perturbation stability 0.998
+```
+
+Or run stages individually for inspection:
+
+```bash
+$ canon org block rows.csv --strategy strategy.yaml --registry registries/org/ > blocks.jsonl
+$ canon org edge rows.csv --strategy strategy.yaml --candidates blocks.jsonl --registry registries/org/ > edges.jsonl
+$ canon org solve rows.csv --strategy strategy.yaml --edges edges.jsonl --registry registries/org/ > result.json
+$ canon org audit result.json --suite eval/holdout/
+$ canon org promote result.json --audit audit.json --registry registries/org/ --next-version 2.1.0
+$ canon org explain result.json --canon-id IC-00042
+```
+
+---
+
+## The Org Pipeline
+
+### Strategy
+
+A YAML file that configures the entire pipeline. Defines observation fields (`name_fields`, `anchor_fields`, `context_fields`), normalization views (lowercase, strip legal suffixes, extract initials), blocking operators, evidence rules, solver thresholds, reconciliation policy, and promotion gates.
+
+### Block
+
+Candidate neighborhood generation. Blocking operators reduce the O(n²) comparison space to plausible pairs:
+
+| Operator | What it does |
+|----------|-------------|
+| `exact_view` | Blocks on exact match of a normalized name view |
+| `rare_token_overlap` | Blocks on shared rare tokens weighted by IDF |
+| `shared_anchor` | Blocks on shared anchor values (LEI, CIK, FIGI) |
+| `registry_alias_match` | Blocks on existing registry alias matches |
+
+### Edge
+
+Typed evidence scoring. Each candidate pair receives evidence edges:
+
+- **Must-link** — strong deterministic evidence (shared trusted anchor, registry alias match)
+- **Support** — scored positive evidence (exact name view match, acronym-plus-token, categorical field equality)
+- **Cannot-link** — negative evidence (conflicting anchor values in the same namespace)
+
+### Solve
+
+Staged deterministic solver:
+
+1. **Seed** — build initial components from must-link edges using union-find
+2. **Backbone** — merge clusters via reciprocal best scoring pairs (requires positive name evidence, respects max cluster diameter)
+3. **Attachment** — attach singletons to backbone clusters (requires winner margin, attachments don't chain)
+
+**Reconciliation** then classifies each cluster:
+
+- Single incumbent overlap → inherit existing canonical ID
+- Multiple incumbent overlap → abstain with conflict escrow
+- No incumbent → mint new canonical ID
+- Low evidence → abstain with pending escrow
+
+### Audit
+
+Validate results against frozen evaluation suites. Checks holdout fixture pass rates and perturbation stability (strategy-configurable threshold, e.g. ≥ 0.995). Promotion requires a passing audit.
+
+### Promote
+
+Write audited results back to the registry:
+
+- Resolved entities get alias entries added to registry mapping files
+- Escrow sidecars are written for entities that need human review
+- Requires an explicit `--next-version` bump
+
+### Explain
+
+Proof traces for any row, entity, or escrow decision:
+
+```bash
+$ canon org explain result.json --row src-row-42
+$ canon org explain result.json --canon-id IC-00042
+$ canon org explain result.json --escrow-id ESC-00007
+```
+
+Returns the full evidence chain: which blocking operator surfaced the pair, which evidence edges were scored, which solver stage produced the merge or abstention, and why.
+
+---
+
 ## Limitations
 
 | Limitation | Detail |
 |------------|--------|
-| **Exact match only** | No fuzzy, phonetic, or normalized matching in v0. Registry must contain all variants. |
+| **Exact match only (core lookup)** | Core `canon` lookup uses exact byte match after ASCII-trim. `canon org` adds multi-field deterministic resolution but not fuzzy/phonetic matching. |
 | **Flat registries** | No subdirectories in v0. All mapping files must be at the registry root. |
-| **No multi-column matching** | Entity resolution (address + name + coordinates) is deferred to v1. |
-| **No suggestions** | Probabilistic/fuzzy suggestions (`canon suggest`) are deferred to v1. |
 | **CSV-only for `--emit csv`** | JSONL input cannot use `--emit csv` mode. |
 
 ---
@@ -446,7 +557,7 @@ Short for *canonical*. The tool produces canonical identifiers — one true ID f
 
 ### Is this entity resolution?
 
-Not in v0. `canon` v0 resolves identifiers and aliases via exact lookup. Multi-column entity resolution (property addresses, counterparty matching with fuzzy logic) is planned for v1.
+Yes — as of v0.3.0, `canon org` performs deterministic multi-field org-identity resolution. It resolves entities that appear under different names across documents using a YAML-driven pipeline of blocking, evidence scoring, and cluster solving. Core `canon` (without `org`) still resolves identifiers via exact lookup against versioned registries.
 
 ### How does canon relate to rvl?
 
