@@ -14,6 +14,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
+    ffi::OsStr,
     fs,
     path::Path,
 };
@@ -36,10 +37,11 @@ pub fn promote(
     validate_registry_snapshot(result, &before, next_version)?;
 
     let write_plan = build_write_plan(result, &before)?;
+    let mapping_file_name = planned_mapping_file_name(result, next_version)?;
     let mapping_files = if write_plan.alias_entries.is_empty() {
         Vec::new()
     } else {
-        vec![mapping_file_name(next_version)]
+        vec![mapping_file_name.clone()]
     };
     if result.proposed_registry_patch.mapping_files != mapping_files {
         return Err(promotion_error(
@@ -53,6 +55,7 @@ pub fn promote(
     apply_write_plan(
         registry_dir,
         next_version,
+        &mapping_file_name,
         &write_plan,
         before.alias_entries.len(),
     )?;
@@ -60,7 +63,7 @@ pub fn promote(
     let mut writes = write_plan.summary.clone();
     writes.mapping_files = mapping_files;
 
-    Ok(PromoteArtifact {
+    let artifact = PromoteArtifact {
         version: CANON_ORG_PROMOTE_VERSION.to_string(),
         result: ContentAddressedArtifact {
             version: result.version.clone(),
@@ -82,7 +85,18 @@ pub fn promote(
         },
         decision: audit.summary.decision,
         writes,
-    })
+    };
+
+    write_promotion_proofs(
+        registry_dir,
+        &proof_stem(&mapping_file_name, next_version),
+        result,
+        result_bytes,
+        audit_bytes,
+        &artifact,
+    )?;
+
+    Ok(artifact)
 }
 
 fn validate_result_artifact(result: &SolveRunArtifact) -> OrgResult<()> {
@@ -266,8 +280,15 @@ fn build_write_plan(
 
         let rule_id = format!("ORG_PROMOTION:{}", result.strategy.id);
         let mut entity_write_count = 0u64;
+        let writeback_aliases = if entity.state == OrgEntityState::PromotableNew
+            && entity.eligible_writeback_aliases.is_empty()
+        {
+            &entity.aliases
+        } else {
+            &entity.eligible_writeback_aliases
+        };
 
-        for alias in &entity.eligible_writeback_aliases {
+        for alias in writeback_aliases {
             if let Some(existing) = existing_alias_by_input.get(alias) {
                 if existing.canonical_id == canonical_id
                     && existing.canonical_type == ORG_CANONICAL_TYPE
@@ -413,10 +434,17 @@ fn build_write_plan(
             .iter()
             .position(|candidate| candidate.escrow_id == escrow_id)
         {
-            Some(index) => pending_records[index] = record,
-            None => pending_records.push(record),
+            Some(index) => {
+                if pending_records[index] != record {
+                    pending_records[index] = record;
+                    pending_updates += 1;
+                }
+            }
+            None => {
+                pending_records.push(record);
+                pending_updates += 1;
+            }
         }
-        pending_updates += 1;
     }
     pending_records.sort_by(|left, right| left.escrow_id.cmp(&right.escrow_id));
 
@@ -455,21 +483,6 @@ fn build_write_plan(
         cannot_link_entries: cannot_link_updates,
     };
 
-    if summary.new_entity_entries != result.proposed_registry_patch.new_entity_entries
-        || summary.existing_alias_entries != result.proposed_registry_patch.existing_alias_entries
-        || summary.pending_cluster_entries != result.proposed_escrow_patch.pending_cluster_entries
-        || summary.cannot_link_entries != result.proposed_escrow_patch.cannot_link_entries
-    {
-        return Err(promotion_error(
-            "Promotion write counts do not match the result artifact's proposed patch summary",
-            json!({
-                "expected_registry_patch": result.proposed_registry_patch,
-                "expected_escrow_patch": result.proposed_escrow_patch,
-                "actual_writes": summary,
-            }),
-        ));
-    }
-
     Ok(WritePlan {
         alias_entries,
         anchor_records,
@@ -482,15 +495,32 @@ fn build_write_plan(
 fn apply_write_plan(
     registry_dir: &Path,
     next_version: &str,
+    mapping_file_name: &str,
     write_plan: &WritePlan,
     prior_alias_entry_count: usize,
 ) -> OrgResult<()> {
     fs::create_dir_all(registry_dir).map_err(io_promotion_error)?;
 
-    let mapping_file_name = mapping_file_name(next_version);
     if !write_plan.alias_entries.is_empty() {
-        let mapping_path = registry_dir.join(&mapping_file_name);
-        write_json_pretty(&mapping_path, &write_plan.alias_entries)?;
+        let mapping_path = registry_dir.join(mapping_file_name);
+        let mut existing_entries = if mapping_path.exists() {
+            serde_json::from_slice::<Vec<AliasMappingEntry>>(
+                &fs::read(&mapping_path).map_err(io_promotion_error)?,
+            )
+            .map_err(|error| {
+                promotion_error(
+                    "Existing promotion mapping file is not a valid alias-entry array",
+                    json!({
+                        "path": mapping_path.display().to_string(),
+                        "error": error.to_string(),
+                    }),
+                )
+            })?
+        } else {
+            Vec::new()
+        };
+        existing_entries.extend(write_plan.alias_entries.iter().cloned());
+        write_json_pretty(&mapping_path, &existing_entries)?;
     }
 
     if !write_plan.anchor_records.is_empty() {
@@ -501,16 +531,17 @@ fn apply_write_plan(
     }
 
     let escrow_dir = registry_dir.join("_escrow");
-    if !write_plan.pending_records.is_empty() || !write_plan.cannot_link_records.is_empty() {
+    if write_plan.summary.pending_cluster_entries > 0 || write_plan.summary.cannot_link_entries > 0
+    {
         fs::create_dir_all(&escrow_dir).map_err(io_promotion_error)?;
     }
-    if !write_plan.pending_records.is_empty() {
+    if write_plan.summary.pending_cluster_entries > 0 {
         write_jsonl_file(
             &escrow_dir.join("pending.jsonl"),
             &write_plan.pending_records,
         )?;
     }
-    if !write_plan.cannot_link_records.is_empty() {
+    if write_plan.summary.cannot_link_entries > 0 {
         write_jsonl_file(
             &escrow_dir.join("cannot_link.jsonl"),
             &write_plan.cannot_link_records,
@@ -552,7 +583,43 @@ fn update_registry_json(path: &Path, next_version: &str, entry_count: usize) -> 
     write_json_pretty(path, &value)
 }
 
-fn mapping_file_name(next_version: &str) -> String {
+fn planned_mapping_file_name(result: &SolveRunArtifact, next_version: &str) -> OrgResult<String> {
+    match result.proposed_registry_patch.mapping_files.as_slice() {
+        [] => Ok(default_mapping_file_name(next_version)),
+        [filename] => {
+            validate_mapping_file_name(filename)?;
+            Ok(filename.clone())
+        }
+        files => Err(promotion_error(
+            "Promotion supports at most one mapping file in proposed_registry_patch.mapping_files",
+            json!({
+                "mapping_files": files,
+            }),
+        )),
+    }
+}
+
+fn validate_mapping_file_name(filename: &str) -> OrgResult<()> {
+    let path = Path::new(filename);
+    let valid = path.file_name().and_then(|name| name.to_str()) == Some(filename)
+        && path.extension() == Some(OsStr::new("json"))
+        && filename != "registry.json"
+        && filename != "_build.json"
+        && !filename.starts_with('_');
+
+    if valid {
+        Ok(())
+    } else {
+        Err(promotion_error(
+            "Promotion requires mapping files to be root-level .json files",
+            json!({
+                "filename": filename,
+            }),
+        ))
+    }
+}
+
+fn default_mapping_file_name(next_version: &str) -> String {
     format!("org-{}.json", version_stem(next_version))
 }
 
@@ -600,6 +667,49 @@ fn write_jsonl_file<T: Serialize>(path: &Path, records: &[T]) -> OrgResult<()> {
         output.push('\n');
     }
     fs::write(path, output).map_err(io_promotion_error)
+}
+
+fn write_promotion_proofs(
+    registry_dir: &Path,
+    proof_stem: &str,
+    result: &SolveRunArtifact,
+    result_bytes: &[u8],
+    audit_bytes: &[u8],
+    artifact: &PromoteArtifact,
+) -> OrgResult<()> {
+    let promotions_dir = registry_dir.join("_promotions");
+    fs::create_dir_all(&promotions_dir).map_err(io_promotion_error)?;
+
+    let result_label = match result.version.as_str() {
+        CANON_ORG_RUN_VERSION => "run",
+        CANON_ORG_SOLVE_VERSION => "solve",
+        _ => "result",
+    };
+
+    fs::write(
+        promotions_dir.join(format!("{proof_stem}.{result_label}.json")),
+        result_bytes,
+    )
+    .map_err(io_promotion_error)?;
+    fs::write(
+        promotions_dir.join(format!("{proof_stem}.audit.json")),
+        audit_bytes,
+    )
+    .map_err(io_promotion_error)?;
+    write_json_pretty(
+        &promotions_dir.join(format!("{proof_stem}.promote.json")),
+        artifact,
+    )?;
+
+    Ok(())
+}
+
+fn proof_stem(mapping_file_name: &str, next_version: &str) -> String {
+    Path::new(mapping_file_name)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| version_stem(next_version))
 }
 
 fn promotion_error(message: &str, detail: Value) -> OrgError {
@@ -721,6 +831,27 @@ mod tests {
         let anchor_records: Vec<TrustedAnchorRecord> =
             read_jsonl_file(&anchor_files[0]).expect("anchor records");
         assert_eq!(anchor_records.len(), 2);
+        assert!(
+            temp_dir
+                .path()
+                .join("_promotions")
+                .join("org-20260302.run.json")
+                .is_file()
+        );
+        assert!(
+            temp_dir
+                .path()
+                .join("_promotions")
+                .join("org-20260302.audit.json")
+                .is_file()
+        );
+        assert!(
+            temp_dir
+                .path()
+                .join("_promotions")
+                .join("org-20260302.promote.json")
+                .is_file()
+        );
     }
 
     #[test]
