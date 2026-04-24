@@ -171,7 +171,6 @@ cargo test
 ## Git and Release
 
 - **Primary branch:** `main`
-- **`master`** exists for legacy URL compatibility — keep synced: `git push origin main:master`
 - Bump `Cargo.toml` semver appropriately on release
 - Sync `Cargo.lock` before release workflows that use `--locked`
 
