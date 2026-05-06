@@ -5,11 +5,13 @@
 //! registry entries once the phase-1/phase-2 implementation beads land.
 
 pub mod assertions;
+pub mod graph;
 pub mod strategy;
 pub mod tape;
 pub mod types;
 
 pub use assertions::*;
+pub use graph::*;
 pub use strategy::*;
 pub use tape::*;
 pub use types::*;
