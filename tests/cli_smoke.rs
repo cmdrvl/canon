@@ -57,6 +57,83 @@ fn write_strategy_schema(path: &Path, vendor_cardinality: u64) {
     .unwrap();
 }
 
+struct ResolveSmokeFixture {
+    reference: PathBuf,
+    target: PathBuf,
+    strategy: PathBuf,
+    registry: PathBuf,
+    gold: PathBuf,
+}
+
+fn write_resolve_smoke_fixture(root: &Path, matched: bool) -> ResolveSmokeFixture {
+    let reference = root.join("reference.csv");
+    let target = root.join("target.csv");
+    let strategy = root.join("strategy.yaml");
+    let registry = root.join("registry");
+    let gold = root.join("gold.jsonl");
+    std::fs::create_dir_all(&registry).unwrap();
+
+    write_registry_metadata(&registry, "resolve-smoke", "0.1.0", 0);
+    write_seed_csv(
+        &reference,
+        "loan_id,deal,address,upb\nR-1,D1,100 Main St,100\n",
+    );
+    let target_row = if matched {
+        "D1,1,100 Main St,101\n"
+    } else {
+        "D1,1,999 Other St,500\n"
+    };
+    write_seed_csv(
+        &target,
+        &format!("deal,loan_number,address,balance\n{target_row}"),
+    );
+    std::fs::write(
+        &strategy,
+        r#"strategy_id: resolve-smoke.v1
+strategy_version: "0.1.0"
+entity_type: loan
+identity:
+  reference:
+    id_columns: [loan_id]
+  target:
+    id_columns: [deal, loan_number]
+candidate_filter:
+  - field_ref: deal
+    field_tgt: deal
+    op: exact
+assertions:
+  - field_ref: address
+    field_tgt: address
+    op: exact
+    weight: 0.60
+    required: true
+  - field_ref: upb
+    field_tgt: balance
+    op: tolerance_pct
+    tolerance: 0.05
+    weight: 0.40
+    required: false
+match_threshold: 0.75
+ambiguity_gap: 0.10
+max_candidates: 10
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &gold,
+        "{\"target_id\":\"D1|1\",\"expected_reference_id\":\"R-1\"}\n",
+    )
+    .unwrap();
+
+    ResolveSmokeFixture {
+        reference,
+        target,
+        strategy,
+        registry,
+        gold,
+    }
+}
+
 type RecordedOpenFigiRequest = (String, BTreeMap<String, String>);
 type OpenFigiServerHandle = thread::JoinHandle<RecordedOpenFigiRequest>;
 
@@ -122,8 +199,281 @@ fn test_describe_command() {
             .iter()
             .any(|entry| entry["name"] == "resolve"
                 && entry["output_schema"] == "canon_resolve.v0"
-                && entry["status"] == "scaffolded")
+                && entry["status"] == "implemented")
     );
+}
+
+#[test]
+fn test_resolve_cli_success_json() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_resolve_smoke_fixture(temp_dir.path(), true);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "resolve",
+            fixture.reference.to_str().unwrap(),
+            fixture.target.to_str().unwrap(),
+            "--strategy",
+            fixture.strategy.to_str().unwrap(),
+            "--registry",
+            fixture.registry.to_str().unwrap(),
+            "--no-witness",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["version"], "canon_resolve.v0");
+    assert_eq!(payload["summary"]["target_records"], 1);
+    assert_eq!(payload["summary"]["matched"], 1);
+    assert_eq!(payload["summary"]["unmatched"], 0);
+    assert_eq!(payload["summary"]["ambiguous"], 0);
+    assert_eq!(payload["matches"][0]["reference_id"], "R-1");
+    assert_eq!(payload["matches"][0]["target_id"], "D1|1");
+}
+
+#[test]
+fn test_resolve_cli_summary_output() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_resolve_smoke_fixture(temp_dir.path(), true);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "resolve",
+            fixture.reference.to_str().unwrap(),
+            fixture.target.to_str().unwrap(),
+            "--strategy",
+            fixture.strategy.to_str().unwrap(),
+            "--registry",
+            fixture.registry.to_str().unwrap(),
+            "--emit",
+            "summary",
+            "--no-witness",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    assert!(stdout.contains("canon_resolve.v0"));
+    assert!(stdout.contains("matched=1"));
+    assert!(stdout.contains("match_rate=1.000"));
+}
+
+#[test]
+fn test_resolve_cli_partial_exit_one() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_resolve_smoke_fixture(temp_dir.path(), false);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "resolve",
+            fixture.reference.to_str().unwrap(),
+            fixture.target.to_str().unwrap(),
+            "--strategy",
+            fixture.strategy.to_str().unwrap(),
+            "--registry",
+            fixture.registry.to_str().unwrap(),
+            "--no-witness",
+        ])
+        .assert()
+        .code(1);
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["summary"]["matched"], 0);
+    assert_eq!(payload["summary"]["unmatched"], 1);
+    assert_eq!(
+        payload["unmatched"][0]["reason"],
+        "required_assertion_failed"
+    );
+}
+
+#[test]
+fn test_resolve_cli_malformed_strategy_refusal() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_resolve_smoke_fixture(temp_dir.path(), true);
+    std::fs::write(&fixture.strategy, "not: [valid").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "resolve",
+            fixture.reference.to_str().unwrap(),
+            fixture.target.to_str().unwrap(),
+            "--strategy",
+            fixture.strategy.to_str().unwrap(),
+            "--registry",
+            fixture.registry.to_str().unwrap(),
+            "--no-witness",
+        ])
+        .assert()
+        .code(2);
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["outcome"], "REFUSAL");
+    assert_eq!(payload["refusal"]["code"], "E_BAD_STRATEGY");
+}
+
+#[test]
+fn test_resolve_cli_missing_column_refusal() {
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "resolve",
+            fixture_path("tests/fixtures/resolve/tapes/reference_loans.csv")
+                .to_str()
+                .unwrap(),
+            fixture_path("tests/fixtures/resolve/tapes/missing_column_target.csv")
+                .to_str()
+                .unwrap(),
+            "--strategy",
+            fixture_path("tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml")
+                .to_str()
+                .unwrap(),
+            "--registry",
+            fixture_path("tests/fixtures/registries/resolve-servicers")
+                .to_str()
+                .unwrap(),
+            "--no-witness",
+        ])
+        .assert()
+        .code(2);
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["refusal"]["code"], "E_COLUMN_NOT_FOUND");
+}
+
+#[test]
+fn test_resolve_cli_empty_tape_refusal() {
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "resolve",
+            fixture_path("tests/fixtures/resolve/tapes/reference_loans.csv")
+                .to_str()
+                .unwrap(),
+            fixture_path("tests/fixtures/resolve/tapes/empty_target.csv")
+                .to_str()
+                .unwrap(),
+            "--strategy",
+            fixture_path("tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml")
+                .to_str()
+                .unwrap(),
+            "--registry",
+            fixture_path("tests/fixtures/registries/resolve-servicers")
+                .to_str()
+                .unwrap(),
+            "--no-witness",
+        ])
+        .assert()
+        .code(2);
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["refusal"]["code"], "E_EMPTY_TAPE");
+}
+
+#[test]
+fn test_resolve_cli_no_witness_suppresses_ledger() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_resolve_smoke_fixture(temp_dir.path(), true);
+    let ledger_path = temp_dir.path().join("resolve-witness.jsonl");
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .args([
+            "resolve",
+            fixture.reference.to_str().unwrap(),
+            fixture.target.to_str().unwrap(),
+            "--strategy",
+            fixture.strategy.to_str().unwrap(),
+            "--registry",
+            fixture.registry.to_str().unwrap(),
+            "--no-witness",
+        ])
+        .assert()
+        .success();
+
+    assert!(!ledger_path.exists());
+}
+
+#[test]
+fn test_resolve_cli_witness_append_and_failure_nonfatal() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_resolve_smoke_fixture(temp_dir.path(), true);
+    let ledger_path = temp_dir.path().join("resolve-witness.jsonl");
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .args([
+            "resolve",
+            fixture.reference.to_str().unwrap(),
+            fixture.target.to_str().unwrap(),
+            "--strategy",
+            fixture.strategy.to_str().unwrap(),
+            "--registry",
+            fixture.registry.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let content = std::fs::read_to_string(&ledger_path).unwrap();
+    let record: Value = serde_json::from_str(content.lines().next().unwrap()).unwrap();
+    assert_eq!(record["outcome"], "RESOLVED");
+    assert_eq!(record["exit_code"], 0);
+    assert_eq!(record["params"]["command"], "resolve");
+    assert_eq!(record["params"]["registry_id"], "resolve-smoke");
+    assert_eq!(record["params"]["summary"]["matched"], 1);
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .env("EPISTEMIC_WITNESS", temp_dir.path())
+        .args([
+            "resolve",
+            fixture.reference.to_str().unwrap(),
+            fixture.target.to_str().unwrap(),
+            "--strategy",
+            fixture.strategy.to_str().unwrap(),
+            "--registry",
+            fixture.registry.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_resolve_cli_writeback_invocation_shape() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_resolve_smoke_fixture(temp_dir.path(), true);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "resolve",
+            fixture.reference.to_str().unwrap(),
+            fixture.target.to_str().unwrap(),
+            "--strategy",
+            fixture.strategy.to_str().unwrap(),
+            "--registry",
+            fixture.registry.to_str().unwrap(),
+            "--gold",
+            fixture.gold.to_str().unwrap(),
+            "--write-back",
+            "--no-witness",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["gold_score"]["accuracy"], 1.0);
+    assert_eq!(payload["write_back"]["written"], true);
+    assert_eq!(payload["write_back"]["entry_count"], 2);
+
+    let mapping_file = payload["write_back"]["mapping_file"].as_str().unwrap();
+    let mapping_path = fixture.registry.join(mapping_file);
+    assert!(mapping_path.exists());
+    let mapping_content = std::fs::read_to_string(mapping_path).unwrap();
+    assert!(mapping_content.contains("STRUCTURAL_MATCH:resolve-smoke.v1"));
+    assert!(!mapping_content.contains("100 Main St"));
 }
 
 #[test]

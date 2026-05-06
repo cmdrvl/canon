@@ -65,10 +65,10 @@
     {
       "name": "resolve",
       "usage": "canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
-      "description": "Run the planned cross-tape structural resolution workbench and emit canon_resolve.v0 evidence before optional registry write-back",
+      "description": "Run the cross-tape structural resolution workbench and emit canon_resolve.v0 evidence before optional registry write-back",
       "output_mode": "mixed",
       "output_schema": "canon_resolve.v0",
-      "status": "scaffolded",
+      "status": "implemented",
       "exit_codes": {
         "0": { "meaning": "all target records matched", "domain": "positive" },
         "1": { "meaning": "one or more target records unmatched or ambiguous", "domain": "negative" },
