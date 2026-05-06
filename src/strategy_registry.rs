@@ -209,6 +209,95 @@ impl StrategyRegisterOutput {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct StrategyEntryKey {
+    pub schema_fingerprint: String,
+    pub skill_hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StrategyProofHashes {
+    pub verify: String,
+    pub assess: String,
+    pub airlock: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StrategyDiffEntry {
+    pub key: StrategyEntryKey,
+    pub schema: StrategySchemaShape,
+    pub script: FrozenScript,
+    pub proof_hashes: StrategyProofHashes,
+    pub rule_id: String,
+    pub source_file: String,
+    pub entry_order: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StrategyDiffValue {
+    pub schema: StrategySchemaShape,
+    pub script: FrozenScript,
+    pub proof_hashes: StrategyProofHashes,
+    pub rule_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StrategyDiffChangeType {
+    ScriptIdChange,
+    ScriptPathChange,
+    ScriptLanguageChange,
+    ScriptContentHashChange,
+    ProofHashChange,
+    SchemaShapeChange,
+    RuleIdChange,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StrategyDiffChangedEntry {
+    pub key: StrategyEntryKey,
+    pub old: StrategyDiffValue,
+    pub new: StrategyDiffValue,
+    pub change_types: Vec<StrategyDiffChangeType>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StrategyDiffSummary {
+    pub total_old: usize,
+    pub total_new: usize,
+    pub added: usize,
+    pub removed: usize,
+    pub changed: usize,
+    pub unchanged: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StrategyDiffOutput {
+    pub version: String,
+    pub old: RegistryMeta,
+    pub new: RegistryMeta,
+    pub summary: StrategyDiffSummary,
+    pub added: Vec<StrategyDiffEntry>,
+    pub removed: Vec<StrategyDiffEntry>,
+    pub changed: Vec<StrategyDiffChangedEntry>,
+    pub unchanged: Vec<StrategyDiffEntry>,
+}
+
+impl StrategyDiffOutput {
+    pub fn render_summary(&self) -> String {
+        format!(
+            "{}: {} -> {} strategy diff | +{} added, -{} removed, ~{} changed, ={} unchanged",
+            self.old.id,
+            self.old.version,
+            self.new.version,
+            self.summary.added,
+            self.summary.removed,
+            self.summary.changed,
+            self.summary.unchanged,
+        )
+    }
+}
+
 pub struct StrategyRegisterRequest<'a> {
     pub registry_dir: &'a Path,
     pub schema_path: &'a Path,
@@ -400,6 +489,75 @@ pub fn register(request: StrategyRegisterRequest<'_>) -> StrategyResult<Strategy
     })
 }
 
+pub fn diff(old_dir: &Path, new_dir: &Path) -> StrategyResult<StrategyDiffOutput> {
+    let old_registry = load_strategy_registry(old_dir)?;
+    let new_registry = load_strategy_registry(new_dir)?;
+
+    if old_registry.meta.id != new_registry.meta.id {
+        return Err(Refusal::bad_registry(
+            &new_dir.display().to_string(),
+            &format!(
+                "Cannot diff strategy registries with different ids: '{}' ({}) != '{}' ({})",
+                old_dir.display(),
+                old_registry.meta.id,
+                new_dir.display(),
+                new_registry.meta.id,
+            ),
+        ));
+    }
+
+    let old_entries = effective_strategy_entries(&old_registry);
+    let new_entries = effective_strategy_entries(&new_registry);
+    let mut keys = old_entries.keys().cloned().collect::<BTreeSet<_>>();
+    keys.extend(new_entries.keys().cloned());
+
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+    let mut changed = Vec::new();
+    let mut unchanged = Vec::new();
+
+    for key in keys {
+        match (old_entries.get(&key), new_entries.get(&key)) {
+            (None, Some(new_entry)) => added.push(diff_entry(new_entry)),
+            (Some(old_entry), None) => removed.push(diff_entry(old_entry)),
+            (Some(old_entry), Some(new_entry)) => {
+                let old_value = diff_value(old_entry);
+                let new_value = diff_value(new_entry);
+                let change_types = classify_strategy_change(&old_value, &new_value);
+                if change_types.is_empty() {
+                    unchanged.push(diff_entry(old_entry));
+                } else {
+                    changed.push(StrategyDiffChangedEntry {
+                        key,
+                        old: old_value,
+                        new: new_value,
+                        change_types,
+                    });
+                }
+            }
+            (None, None) => {}
+        }
+    }
+
+    Ok(StrategyDiffOutput {
+        version: "canon_strategy_diff.v0".to_string(),
+        old: old_registry.meta,
+        new: new_registry.meta,
+        summary: StrategyDiffSummary {
+            total_old: old_entries.len(),
+            total_new: new_entries.len(),
+            added: added.len(),
+            removed: removed.len(),
+            changed: changed.len(),
+            unchanged: unchanged.len(),
+        },
+        added,
+        removed,
+        changed,
+        unchanged,
+    })
+}
+
 fn load_strategy_registry(registry_dir: &Path) -> StrategyResult<LoadedStrategyRegistry> {
     if !registry_dir.exists() || !registry_dir.is_dir() {
         return Err(Refusal::bad_registry(
@@ -528,6 +686,9 @@ fn validate_registry_entry(
         || entry.script.language.is_empty()
         || entry.script.content_hash.is_empty()
         || entry.rule_id.is_empty()
+        || proof_reference_is_incomplete(&entry.proofs.verify)
+        || proof_reference_is_incomplete(&entry.proofs.assess)
+        || proof_reference_is_incomplete(&entry.proofs.airlock)
     {
         return Err(Refusal::bad_registry(
             &registry_dir.display().to_string(),
@@ -547,6 +708,87 @@ fn validate_registry_entry(
         ));
     }
     Ok(())
+}
+
+fn proof_reference_is_incomplete(proof: &StrategyProofReference) -> bool {
+    proof.path.is_empty() || proof.content_hash.is_empty() || proof.decision.is_empty()
+}
+
+fn effective_strategy_entries(
+    registry: &LoadedStrategyRegistry,
+) -> BTreeMap<StrategyEntryKey, StrategyEntryRecord> {
+    let mut entries = BTreeMap::new();
+    for record in &registry.entries {
+        entries
+            .entry(strategy_entry_key(&record.entry))
+            .or_insert_with(|| record.clone());
+    }
+    entries
+}
+
+fn strategy_entry_key(entry: &StrategyRegistryEntry) -> StrategyEntryKey {
+    StrategyEntryKey {
+        schema_fingerprint: entry.schema_fingerprint.clone(),
+        skill_hash: entry.skill_hash.clone(),
+    }
+}
+
+fn proof_hashes(entry: &StrategyRegistryEntry) -> StrategyProofHashes {
+    StrategyProofHashes {
+        verify: entry.proofs.verify.content_hash.clone(),
+        assess: entry.proofs.assess.content_hash.clone(),
+        airlock: entry.proofs.airlock.content_hash.clone(),
+    }
+}
+
+fn diff_entry(record: &StrategyEntryRecord) -> StrategyDiffEntry {
+    StrategyDiffEntry {
+        key: strategy_entry_key(&record.entry),
+        schema: record.entry.schema.clone(),
+        script: record.entry.script.clone(),
+        proof_hashes: proof_hashes(&record.entry),
+        rule_id: record.entry.rule_id.clone(),
+        source_file: record.source_file.clone(),
+        entry_order: record.entry_order,
+    }
+}
+
+fn diff_value(record: &StrategyEntryRecord) -> StrategyDiffValue {
+    StrategyDiffValue {
+        schema: record.entry.schema.clone(),
+        script: record.entry.script.clone(),
+        proof_hashes: proof_hashes(&record.entry),
+        rule_id: record.entry.rule_id.clone(),
+    }
+}
+
+fn classify_strategy_change(
+    old: &StrategyDiffValue,
+    new: &StrategyDiffValue,
+) -> Vec<StrategyDiffChangeType> {
+    let mut changes = Vec::new();
+    if old.script.id != new.script.id {
+        changes.push(StrategyDiffChangeType::ScriptIdChange);
+    }
+    if old.script.path != new.script.path {
+        changes.push(StrategyDiffChangeType::ScriptPathChange);
+    }
+    if old.script.language != new.script.language {
+        changes.push(StrategyDiffChangeType::ScriptLanguageChange);
+    }
+    if old.script.content_hash != new.script.content_hash {
+        changes.push(StrategyDiffChangeType::ScriptContentHashChange);
+    }
+    if old.proof_hashes != new.proof_hashes {
+        changes.push(StrategyDiffChangeType::ProofHashChange);
+    }
+    if old.schema != new.schema {
+        changes.push(StrategyDiffChangeType::SchemaShapeChange);
+    }
+    if old.rule_id != new.rule_id {
+        changes.push(StrategyDiffChangeType::RuleIdChange);
+    }
+    changes
 }
 
 fn load_schema_shape(schema_path: &Path) -> StrategyResult<StrategySchemaShape> {
@@ -1054,6 +1296,66 @@ mod tests {
         StrategySchemaShape { columns }
     }
 
+    fn registry_entry(
+        shape: StrategySchemaShape,
+        skill_hash: &str,
+        script_id: &str,
+        script_hash: &str,
+    ) -> StrategyRegistryEntry {
+        StrategyRegistryEntry {
+            schema_fingerprint: fingerprint_schema(&shape).unwrap(),
+            schema: shape,
+            skill_hash: skill_hash.to_string(),
+            script: FrozenScript {
+                id: script_id.to_string(),
+                path: format!("scripts/{script_id}.py"),
+                language: "python".to_string(),
+                content_hash: script_hash.to_string(),
+            },
+            proofs: StrategyProofs {
+                verify: proof("verify", "blake3:verify"),
+                assess: proof("assess", "blake3:assess"),
+                airlock: proof("airlock", "blake3:airlock"),
+            },
+            rule_id: "STRATEGY_CHAMPION".to_string(),
+        }
+    }
+
+    fn proof(label: &str, hash: &str) -> StrategyProofReference {
+        StrategyProofReference {
+            path: format!("evidence/{label}.json"),
+            content_hash: hash.to_string(),
+            decision: "PASS".to_string(),
+        }
+    }
+
+    fn write_strategy_registry(
+        path: &Path,
+        id: &str,
+        version: &str,
+        entries: &[StrategyRegistryEntry],
+    ) {
+        fs::write(
+            path.join("registry.json"),
+            serde_json::to_string_pretty(&json!({
+                "id": id,
+                "version": version,
+                "description": "test strategy registry",
+                "updated": "2026-01-01",
+                "entry_count": entries.len()
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let strategy_dir = path.join(STRATEGY_DIR);
+        fs::create_dir_all(&strategy_dir).unwrap();
+        fs::write(
+            strategy_dir.join(DEFAULT_ENTRIES_FILE),
+            serde_json::to_string_pretty(entries).unwrap(),
+        )
+        .unwrap();
+    }
+
     #[test]
     fn parses_profile_columns_and_hashes_canonically() {
         let value = json!({
@@ -1119,6 +1421,163 @@ mod tests {
             accepted_proof_decision(&json!({"decision":"RETRY"}), ProofKind::Assess),
             None
         );
+    }
+
+    #[test]
+    fn classifies_strategy_change_types_independently() {
+        let old_shape = schema(&[("amount", "number", Some(10))]);
+        let new_shape = schema(&[("amount", "number", Some(11))]);
+        let old = StrategyDiffValue {
+            schema: old_shape,
+            script: FrozenScript {
+                id: "script-a".to_string(),
+                path: "scripts/a.py".to_string(),
+                language: "python".to_string(),
+                content_hash: "blake3:old".to_string(),
+            },
+            proof_hashes: StrategyProofHashes {
+                verify: "blake3:verify-old".to_string(),
+                assess: "blake3:assess-old".to_string(),
+                airlock: "blake3:airlock-old".to_string(),
+            },
+            rule_id: "OLD_RULE".to_string(),
+        };
+        let new = StrategyDiffValue {
+            schema: new_shape,
+            script: FrozenScript {
+                id: "script-b".to_string(),
+                path: "scripts/b.py".to_string(),
+                language: "bash".to_string(),
+                content_hash: "blake3:new".to_string(),
+            },
+            proof_hashes: StrategyProofHashes {
+                verify: "blake3:verify-new".to_string(),
+                assess: "blake3:assess-new".to_string(),
+                airlock: "blake3:airlock-new".to_string(),
+            },
+            rule_id: "NEW_RULE".to_string(),
+        };
+
+        assert_eq!(
+            classify_strategy_change(&old, &new),
+            vec![
+                StrategyDiffChangeType::ScriptIdChange,
+                StrategyDiffChangeType::ScriptPathChange,
+                StrategyDiffChangeType::ScriptLanguageChange,
+                StrategyDiffChangeType::ScriptContentHashChange,
+                StrategyDiffChangeType::ProofHashChange,
+                StrategyDiffChangeType::SchemaShapeChange,
+                StrategyDiffChangeType::RuleIdChange,
+            ]
+        );
+    }
+
+    #[test]
+    fn diff_reports_add_remove_change_and_unchanged_entries() {
+        let old_dir = tempdir().unwrap();
+        let new_dir = tempdir().unwrap();
+        let unchanged = registry_entry(
+            schema(&[("vendor", "string", Some(3))]),
+            "blake3:skill-a",
+            "unchanged",
+            "blake3:unchanged",
+        );
+        let removed = registry_entry(
+            schema(&[("removed", "string", Some(1))]),
+            "blake3:skill-b",
+            "removed",
+            "blake3:removed",
+        );
+        let mut changed_old = registry_entry(
+            schema(&[("changed", "number", Some(2))]),
+            "blake3:skill-c",
+            "changed",
+            "blake3:old-script",
+        );
+        changed_old.rule_id = "OLD_RULE".to_string();
+        let mut changed_new = changed_old.clone();
+        changed_new.script.content_hash = "blake3:new-script".to_string();
+        changed_new.proofs.verify.content_hash = "blake3:new-verify".to_string();
+        changed_new.rule_id = "NEW_RULE".to_string();
+        let added = registry_entry(
+            schema(&[("added", "string", Some(4))]),
+            "blake3:skill-d",
+            "added",
+            "blake3:added",
+        );
+
+        write_strategy_registry(
+            old_dir.path(),
+            "strategy-test",
+            "0.1.0",
+            &[unchanged.clone(), removed, changed_old],
+        );
+        write_strategy_registry(
+            new_dir.path(),
+            "strategy-test",
+            "0.2.0",
+            &[unchanged.clone(), changed_new, added],
+        );
+
+        let output = diff(old_dir.path(), new_dir.path()).unwrap();
+        assert_eq!(output.version, "canon_strategy_diff.v0");
+        assert_eq!(output.summary.total_old, 3);
+        assert_eq!(output.summary.total_new, 3);
+        assert_eq!(output.summary.added, 1);
+        assert_eq!(output.summary.removed, 1);
+        assert_eq!(output.summary.changed, 1);
+        assert_eq!(output.summary.unchanged, 1);
+        assert_eq!(output.unchanged[0].key, strategy_entry_key(&unchanged));
+        assert_eq!(
+            output.changed[0].change_types,
+            vec![
+                StrategyDiffChangeType::ScriptContentHashChange,
+                StrategyDiffChangeType::ProofHashChange,
+                StrategyDiffChangeType::RuleIdChange,
+            ]
+        );
+    }
+
+    #[test]
+    fn diff_refuses_mismatched_registry_ids() {
+        let old_dir = tempdir().unwrap();
+        let new_dir = tempdir().unwrap();
+        write_strategy_registry(old_dir.path(), "old-id", "0.1.0", &[]);
+        write_strategy_registry(new_dir.path(), "new-id", "0.2.0", &[]);
+
+        let refusal = diff(old_dir.path(), new_dir.path()).unwrap_err();
+        assert_eq!(refusal.code, RefusalCode::EBadRegistry);
+        assert!(refusal.message.contains("new-id"));
+    }
+
+    #[test]
+    fn diff_uses_first_entry_for_duplicate_strategy_keys() {
+        let old_dir = tempdir().unwrap();
+        let new_dir = tempdir().unwrap();
+        let primary = registry_entry(
+            schema(&[("vendor", "string", Some(3))]),
+            "blake3:skill",
+            "primary",
+            "blake3:primary",
+        );
+        let mut shadowed = primary.clone();
+        shadowed.script.id = "shadowed".to_string();
+        shadowed.script.content_hash = "blake3:shadowed".to_string();
+
+        write_strategy_registry(
+            old_dir.path(),
+            "strategy-test",
+            "0.1.0",
+            &[primary.clone(), shadowed],
+        );
+        write_strategy_registry(new_dir.path(), "strategy-test", "0.2.0", &[primary]);
+
+        let output = diff(old_dir.path(), new_dir.path()).unwrap();
+        assert_eq!(output.summary.total_old, 1);
+        assert_eq!(output.summary.total_new, 1);
+        assert_eq!(output.summary.changed, 0);
+        assert_eq!(output.summary.unchanged, 1);
+        assert_eq!(output.unchanged[0].script.id, "primary");
     }
 
     #[test]

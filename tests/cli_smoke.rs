@@ -259,6 +259,81 @@ fn test_strategy_register_and_resolve_cli() {
 }
 
 #[test]
+fn test_strategy_diff_cli_reports_changed_entry() {
+    let old_registry_dir = tempdir().unwrap();
+    let new_registry_dir = tempdir().unwrap();
+    write_registry_metadata(old_registry_dir.path(), "strategy-test", "0.1.0", 0);
+    write_registry_metadata(new_registry_dir.path(), "strategy-test", "0.1.0", 0);
+
+    for (registry_dir, script_body) in [
+        (old_registry_dir.path(), "print('old')\n"),
+        (new_registry_dir.path(), "print('new')\n"),
+    ] {
+        let schema_path = registry_dir.join("profile.json");
+        let skill_path = registry_dir.join("SKILL.md");
+        let script_path = registry_dir.join("script.py");
+        let verify_path = registry_dir.join("verify.json");
+        let assess_path = registry_dir.join("assess.json");
+        let airlock_path = registry_dir.join("airlock.json");
+
+        write_strategy_schema(&schema_path, 3);
+        std::fs::write(&skill_path, "procurement skill").unwrap();
+        std::fs::write(&script_path, script_body).unwrap();
+        std::fs::write(&verify_path, r#"{"status":"PASS"}"#).unwrap();
+        std::fs::write(&assess_path, r#"{"decision":"PROCEED"}"#).unwrap();
+        std::fs::write(&airlock_path, r#"{"sealed":true}"#).unwrap();
+
+        Command::new(env!("CARGO_BIN_EXE_canon"))
+            .args([
+                "strategy",
+                "register",
+                "--registry",
+                registry_dir.to_str().unwrap(),
+                "--schema",
+                schema_path.to_str().unwrap(),
+                "--skill",
+                skill_path.to_str().unwrap(),
+                "--script",
+                script_path.to_str().unwrap(),
+                "--script-id",
+                "procurement-total.v1",
+                "--language",
+                "python",
+                "--verify",
+                verify_path.to_str().unwrap(),
+                "--assess",
+                assess_path.to_str().unwrap(),
+                "--airlock",
+                airlock_path.to_str().unwrap(),
+                "--next-version",
+                "0.2.0",
+            ])
+            .assert()
+            .success();
+    }
+
+    let diff = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "diff",
+            "--old",
+            old_registry_dir.path().to_str().unwrap(),
+            "--new",
+            new_registry_dir.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let diff_stdout = String::from_utf8(diff.get_output().stdout.clone()).unwrap();
+    let diff_json: Value = serde_json::from_str(&diff_stdout).unwrap();
+    assert_eq!(diff_json["version"], "canon_strategy_diff.v0");
+    assert_eq!(diff_json["summary"]["changed"], 1);
+    assert_eq!(
+        diff_json["changed"][0]["change_types"],
+        serde_json::json!(["script_path_change", "script_content_hash_change"])
+    );
+}
+
+#[test]
 fn info_flags_short_circuit_before_invalid_args_are_parsed() {
     let version = Command::new(env!("CARGO_BIN_EXE_canon"))
         .args(["--version", "--emit", "bogus"])

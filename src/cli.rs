@@ -103,6 +103,8 @@ pub enum StrategySubcommand {
     Resolve(StrategyResolveCli),
     /// Register a verified frozen champion script for a schema shape and skill hash
     Register(StrategyRegisterCli),
+    /// Compare two frozen-script strategy registry versions
+    Diff(StrategyDiffCli),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -277,6 +279,21 @@ pub struct StrategyRegisterCli {
     /// Rule identifier for this registration
     #[arg(long = "rule-id")]
     pub rule_id: Option<String>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct StrategyDiffCli {
+    /// Older strategy registry directory
+    #[arg(long)]
+    pub old: PathBuf,
+
+    /// Newer strategy registry directory
+    #[arg(long)]
+    pub new: PathBuf,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
@@ -750,6 +767,34 @@ mod tests {
                     assert_eq!(register.rule_id.as_deref(), Some("PROCUREMENT_TOTAL"));
                 }
                 other => panic!("expected strategy register, got {:?}", other),
+            },
+            other => panic!("expected strategy command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_strategy_diff_parsing() {
+        let args = [
+            "canon",
+            "strategy",
+            "diff",
+            "--old",
+            "registries/strategies-v1",
+            "--new",
+            "registries/strategies-v2",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Strategy(command) => match command.command {
+                StrategySubcommand::Diff(diff) => {
+                    assert_eq!(diff.old, PathBuf::from("registries/strategies-v1"));
+                    assert_eq!(diff.new, PathBuf::from("registries/strategies-v2"));
+                    assert!(matches!(diff.emit, RegistryEmitMode::Summary));
+                }
+                other => panic!("expected strategy diff, got {:?}", other),
             },
             other => panic!("expected strategy command, got {:?}", other),
         }

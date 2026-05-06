@@ -247,6 +247,7 @@ canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summa
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary]
 canon strategy resolve --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
 canon strategy register --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--emit json|summary]
+canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]
 canon org run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json|summary]
 canon org block|edge|solve|audit|promote|explain [OPTIONS]
 ```
@@ -282,6 +283,7 @@ canon org block|edge|solve|audit|promote|explain [OPTIONS]
 | `registry audit <SEED> --registry <PATH> --column <COLUMN> [--emit json\|summary]` | Audit a seed corpus against a registry and emit resolved/unresolved entries plus aggregate canonical-target and rule-hit counts. |
 | `strategy resolve --registry <DIR> --schema <JSON> --skill <PATH>\|--skill-hash <HASH>` | Resolve a schema shape plus skill hash to a frozen champion script. EXACT and COMPATIBLE exit `0`; PARTIAL and UNRESOLVED exit `1`. |
 | `strategy register --registry <DIR> --schema <JSON> --skill <PATH>\|--skill-hash <HASH> --script <PATH> --script-id <ID> --language <LANG> --verify <JSON> --assess <JSON> --airlock <JSON> --next-version <VER>` | Register a frozen script after verify, assess, and airlock proof artifacts pass. |
+| `strategy diff --old <DIR> --new <DIR> [--emit json\|summary]` | Compare frozen-script strategy registry versions by effective `(schema_fingerprint, skill_hash)` entries. |
 | `org run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json\|summary]` | Run the full deterministic org-identity pipeline (block → edge → solve, optional audit + promote). |
 | `org block <ROWS> --strategy <YAML> --registry <DIR> [--emit jsonl\|summary]` | Generate candidate neighborhoods via blocking operators. |
 | `org edge <ROWS> --strategy <YAML> --candidates <JSONL> --registry <DIR> [--emit jsonl\|summary]` | Score typed evidence edges for blocked candidate pairs. |
@@ -300,7 +302,7 @@ canon org block|edge|solve|audit|promote|explain [OPTIONS]
 
 `canon registry diff` and `canon registry audit` exit `0` when the report succeeds and `2` on refusal. `canon registry build` exits `0` when materialization succeeds and `2` on refusal; provider failures are preserved in the JSON report and warned on stderr.
 
-`canon strategy resolve` exits `0` for an EXACT or COMPATIBLE frozen-script match, `1` for PARTIAL or UNRESOLVED, and `2` on refusal. `canon strategy register` exits `0` when the audited entry is written and `2` on refusal.
+`canon strategy resolve` exits `0` for an EXACT or COMPATIBLE frozen-script match, `1` for PARTIAL or UNRESOLVED, and `2` on refusal. `canon strategy register` and `canon strategy diff` exit `0` when their reports or writes succeed and `2` on refusal.
 
 ### Output Routing
 
@@ -401,6 +403,15 @@ canon strategy register \
   --assess evidence/assess.json \
   --airlock evidence/airlock.json \
   --next-version 2026.05.06
+```
+
+Review frozen-script registry changes before adoption:
+
+```bash
+canon strategy diff \
+  --old registries/procurement-strategies-v2026.05.01/ \
+  --new registries/procurement-strategies-v2026.05.06/ \
+  --emit summary
 ```
 
 Resolve counterparty aliases:

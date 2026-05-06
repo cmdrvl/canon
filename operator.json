@@ -16,6 +16,7 @@
       "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]",
       "canon strategy resolve --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]",
       "canon strategy register --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VERSION> [--rule-id <RULE>] [--emit json|summary]",
+      "canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
       "canon org run <ROWS> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--suite <SUITE_DIR>] [--emit json|summary] [--no-witness]",
       "canon org block <ROWS> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
       "canon org edge <ROWS> --strategy <STRATEGY.yaml> --candidates <BLOCK.jsonl> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
@@ -156,6 +157,22 @@
         { "name": "next_version", "flag": "--next-version", "type": "string", "required": true, "description": "Explicit registry.json version after registration" },
         { "name": "rule_id", "flag": "--rule-id", "type": "string", "description": "Optional rule identifier; default STRATEGY_CHAMPION" },
         { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_strategy_register.v0) or summary" }
+      ]
+    },
+    {
+      "name": "strategy diff",
+      "usage": "canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
+      "description": "Compare two frozen-script strategy registry versions by effective (schema_fingerprint, skill_hash) entries",
+      "output_mode": "mixed",
+      "output_schema": "canon_strategy_diff.v0",
+      "exit_codes": {
+        "0": { "meaning": "strategy diff computed successfully", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "old", "flag": "--old", "type": "directory_path", "required": true, "description": "Older strategy registry directory" },
+        { "name": "new", "flag": "--new", "type": "directory_path", "required": true, "description": "Newer strategy registry directory" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_strategy_diff.v0) or summary" }
       ]
     },
     {

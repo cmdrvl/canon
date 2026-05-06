@@ -46,6 +46,7 @@ canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summa
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 canon strategy resolve --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
 canon strategy register --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--rule-id <RULE>] [--emit json|summary]
+canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 ```
 
 Arguments:
@@ -111,7 +112,16 @@ Resolution tiers:
 - requires airlock status `PASS`/`PASSED`/`SEALED`/`SUCCESS` or `sealed:true`
 - appends a registry entry under `_strategy/entries.json`, records BLAKE3 hashes for schema, skill/script bytes, and proof artifacts, and updates `registry.json` version + entry_count
 
-Strategy registries are local artifacts. No remote provider calls happen during `resolve` or `register`.
+Strategy registries are local artifacts. No remote provider calls happen during `resolve`, `register`, or `diff`.
+
+`canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]`
+- compares two strategy registry versions with the same registry id
+- emits `canon_strategy_diff.v0`
+- keys effective entries by `(schema_fingerprint, skill_hash)`
+- reports `added`, `removed`, `changed`, and `unchanged` entries
+- classifies changes by script id/path/language/content hash, proof hashes, schema shape, and rule id
+- resolves duplicate keys deterministically by filename-sorted, entry-order precedence; shadowed duplicates do not affect the effective diff
+- exits `0` on successful comparison and `2` on refusal
 
 ### Output modes
 

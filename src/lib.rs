@@ -14,7 +14,7 @@ use crate::cli::{
     CanonCommand, Cli, OrgAuditCli, OrgBlockCli, OrgCommand, OrgEdgeCli, OrgEmitMode,
     OrgExplainCli, OrgPromoteCli, OrgRunCli, OrgSolveCli, OrgStreamEmitMode, OrgSubcommand,
     RegistryAuditCli, RegistryBuildCli, RegistryDiffCli, RegistryEmitMode, RegistrySubcommand,
-    StrategyCommand, StrategyRegisterCli, StrategyResolveCli, StrategySubcommand,
+    StrategyCommand, StrategyDiffCli, StrategyRegisterCli, StrategyResolveCli, StrategySubcommand,
 };
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
@@ -111,6 +111,7 @@ fn run_strategy_command(command: &StrategyCommand) -> Result<u8, Box<dyn Error>>
     match &command.command {
         StrategySubcommand::Resolve(resolve) => run_strategy_resolve_command(resolve),
         StrategySubcommand::Register(register) => run_strategy_register_command(register),
+        StrategySubcommand::Diff(diff) => run_strategy_diff_command(diff),
     }
 }
 
@@ -160,6 +161,21 @@ fn run_strategy_register_command(register: &StrategyRegisterCli) -> Result<u8, B
         }
         Err(refusal) => {
             emit_strategy_refusal(refusal, matches!(register.emit, RegistryEmitMode::Summary))
+        }
+    }
+}
+
+fn run_strategy_diff_command(diff: &StrategyDiffCli) -> Result<u8, Box<dyn Error>> {
+    match strategy_registry::diff(&diff.old, &diff.new) {
+        Ok(output) => {
+            match diff.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            emit_strategy_refusal(refusal, matches!(diff.emit, RegistryEmitMode::Summary))
         }
     }
 }
