@@ -1,4 +1,8 @@
-# canon 0.4.0 Release Notes
+# canon 0.4.1 Release Notes
+
+`v0.4.0` was already published before the final resolve v0 implementation
+commits landed. The resolve v0 release is therefore shipped as `v0.4.1` without
+moving the existing published tag.
 
 ## Headline
 
@@ -44,7 +48,7 @@ resolution workbench. Core `canon` lookup remains exact registry lookup.
 ## Homebrew Tap
 
 - Publish the crate/tag normally after the quality gate passes.
-- Ensure the tap formula points at the release tag that includes `canon 0.4.0`
+- Ensure the tap formula points at the release tag that includes `canon 0.4.1`
   and the `canon resolve` operator metadata.
 - Smoke after tap update:
 
