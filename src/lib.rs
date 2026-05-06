@@ -7,12 +7,14 @@ pub mod org;
 pub mod output;
 pub mod refusal;
 pub mod registry;
+pub mod strategy_registry;
 pub mod witness;
 
 use crate::cli::{
     CanonCommand, Cli, OrgAuditCli, OrgBlockCli, OrgCommand, OrgEdgeCli, OrgEmitMode,
     OrgExplainCli, OrgPromoteCli, OrgRunCli, OrgSolveCli, OrgStreamEmitMode, OrgSubcommand,
     RegistryAuditCli, RegistryBuildCli, RegistryDiffCli, RegistryEmitMode, RegistrySubcommand,
+    StrategyCommand, StrategyRegisterCli, StrategyResolveCli, StrategySubcommand,
 };
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
@@ -101,7 +103,75 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
             RegistrySubcommand::Build(build) => run_registry_build(build),
         },
         CanonCommand::Org(command) => run_org_command(command),
+        CanonCommand::Strategy(command) => run_strategy_command(command),
     }
+}
+
+fn run_strategy_command(command: &StrategyCommand) -> Result<u8, Box<dyn Error>> {
+    match &command.command {
+        StrategySubcommand::Resolve(resolve) => run_strategy_resolve_command(resolve),
+        StrategySubcommand::Register(register) => run_strategy_register_command(register),
+    }
+}
+
+fn run_strategy_resolve_command(resolve: &StrategyResolveCli) -> Result<u8, Box<dyn Error>> {
+    match strategy_registry::resolve(
+        &resolve.registry,
+        &resolve.schema,
+        resolve.skill.as_deref(),
+        resolve.skill_hash.as_deref(),
+    ) {
+        Ok(output) => {
+            match resolve.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(output.exit_code())
+        }
+        Err(refusal) => {
+            emit_strategy_refusal(refusal, matches!(resolve.emit, RegistryEmitMode::Summary))
+        }
+    }
+}
+
+fn run_strategy_register_command(register: &StrategyRegisterCli) -> Result<u8, Box<dyn Error>> {
+    let request = strategy_registry::StrategyRegisterRequest {
+        registry_dir: &register.registry,
+        schema_path: &register.schema,
+        skill_path: register.skill.as_deref(),
+        skill_hash: register.skill_hash.as_deref(),
+        script_path: &register.script,
+        script_id: &register.script_id,
+        language: &register.language,
+        verify_path: &register.verify,
+        assess_path: &register.assess,
+        airlock_path: &register.airlock,
+        next_version: &register.next_version,
+        rule_id: register.rule_id.as_deref(),
+    };
+
+    match strategy_registry::register(request) {
+        Ok(output) => {
+            match register.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            emit_strategy_refusal(refusal, matches!(register.emit, RegistryEmitMode::Summary))
+        }
+    }
+}
+
+fn emit_strategy_refusal(refusal: Refusal, emit_summary: bool) -> Result<u8, Box<dyn Error>> {
+    let output = refusal.to_canon_output();
+    if emit_summary {
+        eprintln!("{}", serde_json::to_string(&output)?);
+    } else {
+        println!("{}", serde_json::to_string(&output)?);
+    }
+    Ok(2)
 }
 
 fn run_org_command(command: &OrgCommand) -> Result<u8, Box<dyn Error>> {
@@ -1758,6 +1828,9 @@ pub enum RefusalCode {
     EOrgFixtureInvalid,
     EOrgVersionBumpRequired,
     EOrgStaleRegistry,
+    EStrategyInputContract,
+    EStrategyProofInvalid,
+    EStrategyVersionBumpRequired,
 }
 
 impl Serialize for RefusalCode {
@@ -1782,6 +1855,9 @@ impl Serialize for RefusalCode {
             RefusalCode::EOrgFixtureInvalid => "E_ORG_FIXTURE_INVALID",
             RefusalCode::EOrgVersionBumpRequired => "E_ORG_VERSION_BUMP_REQUIRED",
             RefusalCode::EOrgStaleRegistry => "E_ORG_STALE_REGISTRY",
+            RefusalCode::EStrategyInputContract => "E_STRATEGY_INPUT_CONTRACT",
+            RefusalCode::EStrategyProofInvalid => "E_STRATEGY_PROOF_INVALID",
+            RefusalCode::EStrategyVersionBumpRequired => "E_STRATEGY_VERSION_BUMP_REQUIRED",
         };
         serializer.serialize_str(code_str)
     }

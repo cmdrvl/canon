@@ -229,6 +229,42 @@ impl Refusal {
         }
     }
 
+    pub fn strategy_input_contract(message: impl Into<String>, detail: Value) -> Self {
+        Self {
+            code: RefusalCode::EStrategyInputContract,
+            message: message.into(),
+            detail,
+            next_command: Some(
+                "Fix the schema profile, skill identity, or frozen-script metadata, then rerun canon strategy"
+                    .to_string(),
+            ),
+        }
+    }
+
+    pub fn strategy_proof_invalid(message: impl Into<String>, detail: Value) -> Self {
+        Self {
+            code: RefusalCode::EStrategyProofInvalid,
+            message: message.into(),
+            detail,
+            next_command: Some(
+                "Rerun verify, assess, and airlock for the script, then retry canon strategy register"
+                    .to_string(),
+            ),
+        }
+    }
+
+    pub fn strategy_version_bump_required(message: impl Into<String>, detail: Value) -> Self {
+        Self {
+            code: RefusalCode::EStrategyVersionBumpRequired,
+            message: message.into(),
+            detail,
+            next_command: Some(
+                "Rerun canon strategy register with an explicit --next-version different from registry.json"
+                    .to_string(),
+            ),
+        }
+    }
+
     pub fn to_canon_output(self) -> CanonOutput {
         CanonOutput {
             version: "canon.v0".to_string(),

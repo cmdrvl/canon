@@ -47,6 +47,8 @@ pub enum CanonCommand {
     Registry(RegistryCommand),
     /// Organization identity commands
     Org(OrgCommand),
+    /// Frozen script strategy registry commands
+    Strategy(StrategyCommand),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -59,6 +61,12 @@ pub struct RegistryCommand {
 pub struct OrgCommand {
     #[command(subcommand)]
     pub command: OrgSubcommand,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct StrategyCommand {
+    #[command(subcommand)]
+    pub command: StrategySubcommand,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -87,6 +95,14 @@ pub enum OrgSubcommand {
     Promote(OrgPromoteCli),
     /// Explain one org row, canonical entity, or escrow entity
     Explain(OrgExplainCli),
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum StrategySubcommand {
+    /// Resolve a schema shape and skill hash to a frozen champion script
+    Resolve(StrategyResolveCli),
+    /// Register a verified frozen champion script for a schema shape and skill hash
+    Register(StrategyRegisterCli),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -175,6 +191,96 @@ pub struct RegistryBuildCli {
     /// Provider-specific key=value option (repeatable)
     #[arg(long = "provider-config", value_name = "KEY=VALUE")]
     pub provider_config: Vec<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("skill_identity")
+        .required(true)
+        .multiple(false)
+        .args(["skill", "skill_hash"])
+))]
+pub struct StrategyResolveCli {
+    /// Strategy registry directory
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Schema/profile JSON file describing the input shape
+    #[arg(long)]
+    pub schema: PathBuf,
+
+    /// Skill file whose bytes define the authoring context
+    #[arg(long)]
+    pub skill: Option<PathBuf>,
+
+    /// Precomputed BLAKE3 skill hash
+    #[arg(long = "skill-hash")]
+    pub skill_hash: Option<String>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("skill_identity")
+        .required(true)
+        .multiple(false)
+        .args(["skill", "skill_hash"])
+))]
+pub struct StrategyRegisterCli {
+    /// Strategy registry directory
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Schema/profile JSON file describing the input shape
+    #[arg(long)]
+    pub schema: PathBuf,
+
+    /// Skill file whose bytes define the authoring context
+    #[arg(long)]
+    pub skill: Option<PathBuf>,
+
+    /// Precomputed BLAKE3 skill hash
+    #[arg(long = "skill-hash")]
+    pub skill_hash: Option<String>,
+
+    /// Frozen script file that passed verify, assess, and airlock
+    #[arg(long)]
+    pub script: PathBuf,
+
+    /// Stable script identifier to store in the registry
+    #[arg(long = "script-id")]
+    pub script_id: String,
+
+    /// Script language/runtime label
+    #[arg(long)]
+    pub language: String,
+
+    /// Verify artifact proving the script passed verification
+    #[arg(long)]
+    pub verify: PathBuf,
+
+    /// Assess artifact proving the script should proceed
+    #[arg(long)]
+    pub assess: PathBuf,
+
+    /// Airlock artifact proving the script cleared airlock
+    #[arg(long)]
+    pub airlock: PathBuf,
+
+    /// Explicit next registry version
+    #[arg(long = "next-version")]
+    pub next_version: String,
+
+    /// Rule identifier for this registration
+    #[arg(long = "rule-id")]
+    pub rule_id: Option<String>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -561,6 +667,91 @@ mod tests {
                 }
             }
             other => panic!("expected registry command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_strategy_resolve_parsing() {
+        let args = [
+            "canon",
+            "strategy",
+            "resolve",
+            "--registry",
+            "registries/strategies",
+            "--schema",
+            "profile.json",
+            "--skill",
+            "SKILL.md",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Strategy(command) => match command.command {
+                StrategySubcommand::Resolve(resolve) => {
+                    assert_eq!(resolve.registry, PathBuf::from("registries/strategies"));
+                    assert_eq!(resolve.schema, PathBuf::from("profile.json"));
+                    assert_eq!(resolve.skill, Some(PathBuf::from("SKILL.md")));
+                    assert_eq!(resolve.skill_hash, None);
+                    assert!(matches!(resolve.emit, RegistryEmitMode::Summary));
+                }
+                other => panic!("expected strategy resolve, got {:?}", other),
+            },
+            other => panic!("expected strategy command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_strategy_register_parsing() {
+        let args = [
+            "canon",
+            "strategy",
+            "register",
+            "--registry",
+            "registries/strategies",
+            "--schema",
+            "profile.json",
+            "--skill-hash",
+            "blake3:abc",
+            "--script",
+            "script.py",
+            "--script-id",
+            "procurement-total.v1",
+            "--language",
+            "python",
+            "--verify",
+            "verify.json",
+            "--assess",
+            "assess.json",
+            "--airlock",
+            "airlock.json",
+            "--next-version",
+            "0.2.0",
+            "--rule-id",
+            "PROCUREMENT_TOTAL",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Strategy(command) => match command.command {
+                StrategySubcommand::Register(register) => {
+                    assert_eq!(register.registry, PathBuf::from("registries/strategies"));
+                    assert_eq!(register.schema, PathBuf::from("profile.json"));
+                    assert_eq!(register.skill, None);
+                    assert_eq!(register.skill_hash.as_deref(), Some("blake3:abc"));
+                    assert_eq!(register.script, PathBuf::from("script.py"));
+                    assert_eq!(register.script_id, "procurement-total.v1");
+                    assert_eq!(register.language, "python");
+                    assert_eq!(register.verify, PathBuf::from("verify.json"));
+                    assert_eq!(register.assess, PathBuf::from("assess.json"));
+                    assert_eq!(register.airlock, PathBuf::from("airlock.json"));
+                    assert_eq!(register.next_version, "0.2.0");
+                    assert_eq!(register.rule_id.as_deref(), Some("PROCUREMENT_TOTAL"));
+                }
+                other => panic!("expected strategy register, got {:?}", other),
+            },
+            other => panic!("expected strategy command, got {:?}", other),
         }
     }
 

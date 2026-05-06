@@ -14,6 +14,8 @@
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
       "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]",
+      "canon strategy resolve --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]",
+      "canon strategy register --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VERSION> [--rule-id <RULE>] [--emit json|summary]",
       "canon org run <ROWS> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--suite <SUITE_DIR>] [--emit json|summary] [--no-witness]",
       "canon org block <ROWS> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
       "canon org edge <ROWS> --strategy <STRATEGY.yaml> --candidates <BLOCK.jsonl> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
@@ -109,6 +111,51 @@
         { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (structured audit artifact) or summary (human-readable summary line)" },
         { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if the seed input exceeds N data rows" },
         { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if the seed input exceeds N bytes" }
+      ]
+    },
+    {
+      "name": "strategy resolve",
+      "usage": "canon strategy resolve --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]",
+      "description": "Resolve a schema shape plus skill hash to a frozen champion script from a versioned strategy registry",
+      "output_mode": "mixed",
+      "output_schema": "canon_strategy_resolve.v0",
+      "exit_codes": {
+        "0": { "meaning": "EXACT or COMPATIBLE frozen script resolved", "domain": "positive" },
+        "1": { "meaning": "PARTIAL or UNRESOLVED; escalate for rewrite/registration", "domain": "negative" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Versioned strategy registry directory containing registry.json and _strategy/*.json" },
+        { "name": "schema", "flag": "--schema", "type": "file_path", "required": true, "description": "JSON profile/schema artifact with columns or fields" },
+        { "name": "skill", "flag": "--skill", "type": "file_path", "description": "Skill file to hash as part of the lookup key" },
+        { "name": "skill_hash", "flag": "--skill-hash", "type": "string", "description": "Precomputed skill hash; mutually exclusive with --skill" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_strategy_resolve.v0) or summary" }
+      ]
+    },
+    {
+      "name": "strategy register",
+      "usage": "canon strategy register --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VERSION> [--rule-id <RULE>] [--emit json|summary]",
+      "description": "Register a frozen champion script after verify, assess, and airlock proof artifacts pass",
+      "output_mode": "mixed",
+      "output_schema": "canon_strategy_register.v0",
+      "exit_codes": {
+        "0": { "meaning": "strategy entry registered and registry version bumped", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Versioned strategy registry directory to update" },
+        { "name": "schema", "flag": "--schema", "type": "file_path", "required": true, "description": "JSON profile/schema artifact with columns or fields" },
+        { "name": "skill", "flag": "--skill", "type": "file_path", "description": "Skill file to hash as part of the lookup key" },
+        { "name": "skill_hash", "flag": "--skill-hash", "type": "string", "description": "Precomputed skill hash; mutually exclusive with --skill" },
+        { "name": "script", "flag": "--script", "type": "file_path", "required": true, "description": "Frozen script file that passed the gates" },
+        { "name": "script_id", "flag": "--script-id", "type": "string", "required": true, "description": "Stable frozen script identifier" },
+        { "name": "language", "flag": "--language", "type": "string", "required": true, "description": "Script language/runtime label" },
+        { "name": "verify", "flag": "--verify", "type": "file_path", "required": true, "description": "Verify artifact with PASS/PASSED/SUCCESS status or passed:true" },
+        { "name": "assess", "flag": "--assess", "type": "file_path", "required": true, "description": "Assess artifact with PROCEED decision" },
+        { "name": "airlock", "flag": "--airlock", "type": "file_path", "required": true, "description": "Airlock artifact with PASS/PASSED/SEALED/SUCCESS status or sealed:true" },
+        { "name": "next_version", "flag": "--next-version", "type": "string", "required": true, "description": "Explicit registry.json version after registration" },
+        { "name": "rule_id", "flag": "--rule-id", "type": "string", "description": "Optional rule identifier; default STRATEGY_CHAMPION" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_strategy_register.v0) or summary" }
       ]
     },
     {
@@ -252,12 +299,16 @@
     { "code": "E_ORG_BAD_SUITE", "message": "Org evaluation suite is missing, malformed, or profile-mismatched", "action": "escalate" },
     { "code": "E_ORG_FIXTURE_INVALID", "message": "Org evaluation fixture references are internally inconsistent", "action": "escalate" },
     { "code": "E_ORG_VERSION_BUMP_REQUIRED", "message": "Org promotion requires an explicit next registry version", "action": "adjust_input" },
-    { "code": "E_ORG_STALE_REGISTRY", "message": "Org promotion target registry no longer matches the audited snapshot", "action": "escalate" }
+    { "code": "E_ORG_STALE_REGISTRY", "message": "Org promotion target registry no longer matches the audited snapshot", "action": "escalate" },
+    { "code": "E_STRATEGY_INPUT_CONTRACT", "message": "Strategy schema profile, skill identity, or script metadata is invalid", "action": "fix_input" },
+    { "code": "E_STRATEGY_PROOF_INVALID", "message": "Strategy registration proof artifacts did not pass required gates", "action": "fix_input" },
+    { "code": "E_STRATEGY_VERSION_BUMP_REQUIRED", "message": "Strategy registration requires an explicit next registry version", "action": "adjust_input" }
   ],
 
   "capabilities": {
     "formats": ["csv", "jsonl"],
     "profile_aware": false,
+    "strategy_registry": true,
     "streaming": true,
     "witness": {
       "ambient_recording": "enabled_by_default",

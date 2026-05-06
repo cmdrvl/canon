@@ -40,6 +40,20 @@ fn write_seed_csv(path: &Path, contents: &str) {
     std::fs::write(path, contents).unwrap();
 }
 
+fn write_strategy_schema(path: &Path, vendor_cardinality: u64) {
+    std::fs::write(
+        path,
+        serde_json::to_string_pretty(&serde_json::json!({
+            "columns": [
+                {"name": "vendor", "type": "string", "cardinality": vendor_cardinality},
+                {"name": "amount", "type": "number", "cardinality": 10}
+            ]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+}
+
 type RecordedOpenFigiRequest = (String, BTreeMap<String, String>);
 type OpenFigiServerHandle = thread::JoinHandle<RecordedOpenFigiRequest>;
 
@@ -116,6 +130,132 @@ fn test_schema_command() {
     );
     assert_eq!(json["$id"], "https://canon.v0/schema.json");
     assert!(json["properties"].is_object());
+}
+
+#[test]
+fn test_strategy_register_and_resolve_cli() {
+    let registry_dir = tempdir().unwrap();
+    write_registry_metadata(registry_dir.path(), "strategy-test", "0.1.0", 0);
+
+    let schema_path = registry_dir.path().join("profile.json");
+    let compatible_schema_path = registry_dir.path().join("profile-compatible.json");
+    let partial_schema_path = registry_dir.path().join("profile-partial.json");
+    let skill_path = registry_dir.path().join("SKILL.md");
+    let script_path = registry_dir.path().join("script.py");
+    let verify_path = registry_dir.path().join("verify.json");
+    let assess_path = registry_dir.path().join("assess.json");
+    let airlock_path = registry_dir.path().join("airlock.json");
+
+    write_strategy_schema(&schema_path, 3);
+    write_strategy_schema(&compatible_schema_path, 99);
+    std::fs::write(
+        &partial_schema_path,
+        serde_json::to_string_pretty(&serde_json::json!({
+            "columns": [
+                {"name": "vendor", "type": "string", "cardinality": 3},
+                {"name": "category", "type": "string", "cardinality": 5}
+            ]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    std::fs::write(&skill_path, "procurement skill").unwrap();
+    std::fs::write(&script_path, "print('total')\n").unwrap();
+    std::fs::write(&verify_path, r#"{"status":"PASS"}"#).unwrap();
+    std::fs::write(&assess_path, r#"{"decision":"PROCEED"}"#).unwrap();
+    std::fs::write(&airlock_path, r#"{"sealed":true}"#).unwrap();
+
+    let register = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "register",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--schema",
+            schema_path.to_str().unwrap(),
+            "--skill",
+            skill_path.to_str().unwrap(),
+            "--script",
+            script_path.to_str().unwrap(),
+            "--script-id",
+            "procurement-total.v1",
+            "--language",
+            "python",
+            "--verify",
+            verify_path.to_str().unwrap(),
+            "--assess",
+            assess_path.to_str().unwrap(),
+            "--airlock",
+            airlock_path.to_str().unwrap(),
+            "--next-version",
+            "0.2.0",
+        ])
+        .assert()
+        .success();
+    let register_stdout = String::from_utf8(register.get_output().stdout.clone()).unwrap();
+    let register_json: Value = serde_json::from_str(&register_stdout).unwrap();
+    assert_eq!(register_json["version"], "canon_strategy_register.v0");
+    assert_eq!(register_json["registry"]["version"], "0.2.0");
+    assert_eq!(
+        register_json["registered"]["script"]["id"],
+        "procurement-total.v1"
+    );
+
+    let exact = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "resolve",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--schema",
+            schema_path.to_str().unwrap(),
+            "--skill",
+            skill_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let exact_stdout = String::from_utf8(exact.get_output().stdout.clone()).unwrap();
+    let exact_json: Value = serde_json::from_str(&exact_stdout).unwrap();
+    assert_eq!(exact_json["outcome"], "EXACT");
+    assert_eq!(exact_json["match"]["script"]["id"], "procurement-total.v1");
+
+    let compatible = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "resolve",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--schema",
+            compatible_schema_path.to_str().unwrap(),
+            "--skill",
+            skill_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let compatible_stdout = String::from_utf8(compatible.get_output().stdout.clone()).unwrap();
+    let compatible_json: Value = serde_json::from_str(&compatible_stdout).unwrap();
+    assert_eq!(compatible_json["outcome"], "COMPATIBLE");
+
+    let partial = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "resolve",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--schema",
+            partial_schema_path.to_str().unwrap(),
+            "--skill",
+            skill_path.to_str().unwrap(),
+        ])
+        .assert()
+        .code(1);
+    let partial_stdout = String::from_utf8(partial.get_output().stdout.clone()).unwrap();
+    let partial_json: Value = serde_json::from_str(&partial_stdout).unwrap();
+    assert_eq!(partial_json["outcome"], "PARTIAL");
+    assert_eq!(
+        partial_json["escalation"]["reason"],
+        "partial_schema_overlap"
+    );
 }
 
 #[test]

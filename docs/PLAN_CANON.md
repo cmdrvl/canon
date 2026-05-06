@@ -44,6 +44,8 @@ canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--emit json|csv] [--canon
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
+canon strategy resolve --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
+canon strategy register --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--rule-id <RULE>] [--emit json|summary]
 ```
 
 Arguments:
@@ -83,6 +85,33 @@ Options:
 - emits `canon_registry_audit.v0` JSON with `resolved`, `unresolved`, `canonical_targets`, and `rule_hits`, or a human-readable summary line
 - exits `0` on successful audit, `2` on refusal
 - does not change the normal `canon.v0` output contract or witness semantics for the primary resolution path
+
+### Strategy registry subcommands
+
+`canon strategy` extends the same registry discipline to deterministic script reuse. It resolves a schema shape plus skill hash to a frozen script that previously passed verify, assess, and airlock. This does not change the primary identifier-resolution path and does not execute scripts.
+
+`canon strategy resolve --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]`
+- reads `registry.json` and `_strategy/*.json` entries from a local versioned registry
+- hashes `--skill` with BLAKE3, unless `--skill-hash` is provided directly
+- parses a JSON schema/profile artifact with top-level `columns` or `fields`
+- emits `canon_strategy_resolve.v0`
+- exits `0` for `EXACT` or `COMPATIBLE`, `1` for `PARTIAL` or `UNRESOLVED`, and `2` on refusal
+
+Resolution tiers:
+- `EXACT`: identical column names, types, and cardinalities for the same skill hash; run the frozen script
+- `COMPATIBLE`: identical column names and types but different cardinalities; run the frozen script
+- `PARTIAL`: overlapping columns with missing, extra, or type-changed fields; escalate for rewrite
+- `UNRESOLVED`: no same-skill schema overlap; author a new script, gate it, then register it
+
+`canon strategy register --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--rule-id <RULE>] [--emit json|summary]`
+- refuses unless `--next-version` differs from `registry.json`
+- refuses duplicate `(schema_fingerprint, skill_hash)` entries
+- requires verify status `PASS`/`PASSED`/`SUCCESS` or `passed:true`
+- requires assess decision `PROCEED`
+- requires airlock status `PASS`/`PASSED`/`SEALED`/`SUCCESS` or `sealed:true`
+- appends a registry entry under `_strategy/entries.json`, records BLAKE3 hashes for schema, skill/script bytes, and proof artifacts, and updates `registry.json` version + entry_count
+
+Strategy registries are local artifacts. No remote provider calls happen during `resolve` or `register`.
 
 ### Output modes
 

@@ -245,6 +245,8 @@ canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [OPTIONS]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary]
+canon strategy resolve --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
+canon strategy register --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--emit json|summary]
 canon org run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json|summary]
 canon org block|edge|solve|audit|promote|explain [OPTIONS]
 ```
@@ -278,6 +280,8 @@ canon org block|edge|solve|audit|promote|explain [OPTIONS]
 | `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides. |
 | `registry diff --old <PATH> --new <PATH> [--emit json\|summary]` | Compare two versions of the same registry ID and report added, removed, changed, and unchanged effective mappings. |
 | `registry audit <SEED> --registry <PATH> --column <COLUMN> [--emit json\|summary]` | Audit a seed corpus against a registry and emit resolved/unresolved entries plus aggregate canonical-target and rule-hit counts. |
+| `strategy resolve --registry <DIR> --schema <JSON> --skill <PATH>\|--skill-hash <HASH>` | Resolve a schema shape plus skill hash to a frozen champion script. EXACT and COMPATIBLE exit `0`; PARTIAL and UNRESOLVED exit `1`. |
+| `strategy register --registry <DIR> --schema <JSON> --skill <PATH>\|--skill-hash <HASH> --script <PATH> --script-id <ID> --language <LANG> --verify <JSON> --assess <JSON> --airlock <JSON> --next-version <VER>` | Register a frozen script after verify, assess, and airlock proof artifacts pass. |
 | `org run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json\|summary]` | Run the full deterministic org-identity pipeline (block → edge → solve, optional audit + promote). |
 | `org block <ROWS> --strategy <YAML> --registry <DIR> [--emit jsonl\|summary]` | Generate candidate neighborhoods via blocking operators. |
 | `org edge <ROWS> --strategy <YAML> --candidates <JSONL> --registry <DIR> [--emit jsonl\|summary]` | Score typed evidence edges for blocked candidate pairs. |
@@ -295,6 +299,8 @@ canon org block|edge|solve|audit|promote|explain [OPTIONS]
 | `2` | REFUSAL or CLI error |
 
 `canon registry diff` and `canon registry audit` exit `0` when the report succeeds and `2` on refusal. `canon registry build` exits `0` when materialization succeeds and `2` on refusal; provider failures are preserved in the JSON report and warned on stderr.
+
+`canon strategy resolve` exits `0` for an EXACT or COMPATIBLE frozen-script match, `1` for PARTIAL or UNRESOLVED, and `2` on refusal. `canon strategy register` exits `0` when the audited entry is written and `2` on refusal.
 
 ### Output Routing
 
@@ -368,6 +374,33 @@ canon registry build \
   --seed-column cusip \
   --output registries/openfigi-cusip/ \
   --version 2026.03.13
+```
+
+Resolve a frozen strategy script for a repeated schema shape:
+
+```bash
+canon strategy resolve \
+  --registry registries/procurement-strategies/ \
+  --schema profile.json \
+  --skill skills/procurement/SKILL.md
+```
+
+EXACT means the registered schema columns, types, and cardinalities match. COMPATIBLE means the columns and types match but cardinalities differ. PARTIAL means the schema overlaps but is missing or changing fields, so an LLM rewrite should be escalated and registered only after verify, assess, and airlock pass.
+
+Register a passing frozen script:
+
+```bash
+canon strategy register \
+  --registry registries/procurement-strategies/ \
+  --schema profile.json \
+  --skill skills/procurement/SKILL.md \
+  --script scripts/procurement_total.py \
+  --script-id procurement_total.v1 \
+  --language python \
+  --verify evidence/verify.json \
+  --assess evidence/assess.json \
+  --airlock evidence/airlock.json \
+  --next-version 2026.05.06
 ```
 
 Resolve counterparty aliases:
