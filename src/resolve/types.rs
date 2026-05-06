@@ -338,7 +338,7 @@ impl ResolveArtifact {
 
     pub fn render_summary(&self) -> String {
         format!(
-            "{} strategy={} registry={}@{} target_records={} matched={} unmatched={} ambiguous={}",
+            "{} strategy={} registry={}@{} target_records={} matched={} unmatched={} ambiguous={} match_rate={:.3} conflicts={}",
             self.version,
             self.strategy.id,
             self.registry.id,
@@ -346,7 +346,9 @@ impl ResolveArtifact {
             self.summary.target_records,
             self.summary.matched,
             self.summary.unmatched,
-            self.summary.ambiguous
+            self.summary.ambiguous,
+            self.summary.match_rate,
+            self.conflict_warnings.len()
         )
     }
 }
