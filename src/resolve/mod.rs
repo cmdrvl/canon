@@ -12,6 +12,7 @@ pub mod scoring;
 pub mod strategy;
 pub mod tape;
 pub mod types;
+pub mod writeback;
 
 pub use assertions::*;
 pub use gold::*;
@@ -21,6 +22,7 @@ pub use scoring::*;
 pub use strategy::*;
 pub use tape::*;
 pub use types::*;
+pub use writeback::*;
 
 pub fn run(_request: ResolveRequest) -> ResolveResult<ResolveArtifact> {
     Err(ResolveError::unimplemented("canon resolve orchestration"))
