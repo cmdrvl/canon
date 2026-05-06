@@ -99,6 +99,8 @@ pub enum OrgSubcommand {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum StrategySubcommand {
+    /// Derive a deterministic schema profile from CSV, TSV, JSONL, or NDJSON input
+    Profile(StrategyProfileCli),
     /// Resolve a schema shape and skill hash to a frozen champion script
     Resolve(StrategyResolveCli),
     /// Register a verified frozen champion script for a schema shape and skill hash
@@ -193,6 +195,24 @@ pub struct RegistryBuildCli {
     /// Provider-specific key=value option (repeatable)
     #[arg(long = "provider-config", value_name = "KEY=VALUE")]
     pub provider_config: Vec<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct StrategyProfileCli {
+    /// CSV, TSV, JSONL, or NDJSON input to profile (use '-' for JSONL stdin)
+    pub input: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+
+    /// Refuse if input exceeds N data rows
+    #[arg(long)]
+    pub max_rows: Option<usize>,
+
+    /// Refuse if input exceeds N bytes
+    #[arg(long)]
+    pub max_bytes: Option<u64>,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -714,6 +734,36 @@ mod tests {
                     assert!(matches!(resolve.emit, RegistryEmitMode::Summary));
                 }
                 other => panic!("expected strategy resolve, got {:?}", other),
+            },
+            other => panic!("expected strategy command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_strategy_profile_parsing() {
+        let args = [
+            "canon",
+            "strategy",
+            "profile",
+            "rows.ndjson",
+            "--emit",
+            "summary",
+            "--max-rows",
+            "100",
+            "--max-bytes",
+            "4096",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Strategy(command) => match command.command {
+                StrategySubcommand::Profile(profile) => {
+                    assert_eq!(profile.input, PathBuf::from("rows.ndjson"));
+                    assert!(matches!(profile.emit, RegistryEmitMode::Summary));
+                    assert_eq!(profile.max_rows, Some(100));
+                    assert_eq!(profile.max_bytes, Some(4096));
+                }
+                other => panic!("expected strategy profile, got {:?}", other),
             },
             other => panic!("expected strategy command, got {:?}", other),
         }

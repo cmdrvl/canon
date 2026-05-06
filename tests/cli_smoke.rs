@@ -259,6 +259,112 @@ fn test_strategy_register_and_resolve_cli() {
 }
 
 #[test]
+fn test_strategy_profile_cli_output_can_resolve_registered_strategy() {
+    let registry_dir = tempdir().unwrap();
+    write_registry_metadata(registry_dir.path(), "strategy-profile-test", "0.1.0", 0);
+
+    let rows_path = registry_dir.path().join("rows.csv");
+    let profile_path = registry_dir.path().join("profile.json");
+    let skill_path = registry_dir.path().join("SKILL.md");
+    let script_path = registry_dir.path().join("script.py");
+    let verify_path = registry_dir.path().join("verify.json");
+    let assess_path = registry_dir.path().join("assess.json");
+    let airlock_path = registry_dir.path().join("airlock.json");
+
+    std::fs::write(
+        &rows_path,
+        "vendor,amount,active\nAcme,10,true\nBolt,20,false\nAcme,30,true\n",
+    )
+    .unwrap();
+    std::fs::write(&skill_path, "procurement skill").unwrap();
+    std::fs::write(&script_path, "print('profiled total')\n").unwrap();
+    std::fs::write(&verify_path, r#"{"status":"PASS"}"#).unwrap();
+    std::fs::write(&assess_path, r#"{"decision":"PROCEED"}"#).unwrap();
+    std::fs::write(&airlock_path, r#"{"sealed":true}"#).unwrap();
+
+    let profile = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "profile",
+            rows_path.to_str().unwrap(),
+            "--max-rows",
+            "10",
+            "--max-bytes",
+            "1024",
+        ])
+        .assert()
+        .success();
+    let profile_stdout = String::from_utf8(profile.get_output().stdout.clone()).unwrap();
+    let profile_json: Value = serde_json::from_str(&profile_stdout).unwrap();
+    assert_eq!(profile_json["version"], "canon_strategy_profile.v0");
+    assert_eq!(profile_json["summary"]["rows"], 3);
+    assert_eq!(profile_json["input"]["format"], "csv");
+    assert_eq!(
+        profile_json["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|column| column["name"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["active", "amount", "vendor"]
+    );
+    std::fs::write(&profile_path, &profile_stdout).unwrap();
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "register",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--schema",
+            profile_path.to_str().unwrap(),
+            "--skill",
+            skill_path.to_str().unwrap(),
+            "--script",
+            script_path.to_str().unwrap(),
+            "--script-id",
+            "procurement-profiled-total.v1",
+            "--language",
+            "python",
+            "--verify",
+            verify_path.to_str().unwrap(),
+            "--assess",
+            assess_path.to_str().unwrap(),
+            "--airlock",
+            airlock_path.to_str().unwrap(),
+            "--next-version",
+            "0.2.0",
+        ])
+        .assert()
+        .success();
+
+    let resolve = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "resolve",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--schema",
+            profile_path.to_str().unwrap(),
+            "--skill",
+            skill_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let resolve_stdout = String::from_utf8(resolve.get_output().stdout.clone()).unwrap();
+    let resolve_json: Value = serde_json::from_str(&resolve_stdout).unwrap();
+    assert_eq!(resolve_json["outcome"], "EXACT");
+    assert_eq!(
+        resolve_json["query"]["schema_fingerprint"],
+        profile_json["schema_fingerprint"]
+    );
+    assert_eq!(
+        resolve_json["match"]["script"]["id"],
+        "procurement-profiled-total.v1"
+    );
+}
+
+#[test]
 fn test_strategy_diff_cli_reports_changed_entry() {
     let old_registry_dir = tempdir().unwrap();
     let new_registry_dir = tempdir().unwrap();

@@ -46,7 +46,7 @@ pub fn parse_input(
 }
 
 /// Detect input format from file extension
-fn detect_format(input_path: &Path) -> Result<InputFormat, InputError> {
+pub(crate) fn detect_format(input_path: &Path) -> Result<InputFormat, InputError> {
     if input_path == Path::new("-") {
         return Ok(InputFormat::Jsonl);
     }
@@ -263,7 +263,7 @@ fn parse_jsonl_reader<R: BufRead>(
 }
 
 /// Detect CSV delimiter by analyzing first 8KB
-fn detect_csv_delimiter(mut file: &File) -> Result<u8, InputError> {
+pub(crate) fn detect_csv_delimiter(mut file: &File) -> Result<u8, InputError> {
     let mut buffer = vec![0; 8192]; // 8KB buffer
     let initial_pos = file
         .stream_position()

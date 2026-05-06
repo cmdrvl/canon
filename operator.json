@@ -14,6 +14,7 @@
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
       "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]",
+      "canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]",
       "canon strategy resolve --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]",
       "canon strategy register --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VERSION> [--rule-id <RULE>] [--emit json|summary]",
       "canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
@@ -112,6 +113,23 @@
         { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (structured audit artifact) or summary (human-readable summary line)" },
         { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if the seed input exceeds N data rows" },
         { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if the seed input exceeds N bytes" }
+      ]
+    },
+    {
+      "name": "strategy profile",
+      "usage": "canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]",
+      "description": "Derive a deterministic schema/profile artifact from CSV, TSV, JSONL, or NDJSON input for canon strategy resolve/register",
+      "output_mode": "mixed",
+      "output_schema": "canon_strategy_profile.v0",
+      "exit_codes": {
+        "0": { "meaning": "strategy profile emitted successfully", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "input", "type": "file_path", "required": true, "description": "Input CSV, TSV, JSONL, or NDJSON file to profile; use - for JSONL stdin" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_strategy_profile.v0) or summary" },
+        { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if the input exceeds N data rows" },
+        { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if the input exceeds N bytes" }
       ]
     },
     {

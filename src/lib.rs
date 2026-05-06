@@ -7,6 +7,7 @@ pub mod org;
 pub mod output;
 pub mod refusal;
 pub mod registry;
+pub mod strategy_profile;
 pub mod strategy_registry;
 pub mod witness;
 
@@ -14,7 +15,8 @@ use crate::cli::{
     CanonCommand, Cli, OrgAuditCli, OrgBlockCli, OrgCommand, OrgEdgeCli, OrgEmitMode,
     OrgExplainCli, OrgPromoteCli, OrgRunCli, OrgSolveCli, OrgStreamEmitMode, OrgSubcommand,
     RegistryAuditCli, RegistryBuildCli, RegistryDiffCli, RegistryEmitMode, RegistrySubcommand,
-    StrategyCommand, StrategyDiffCli, StrategyRegisterCli, StrategyResolveCli, StrategySubcommand,
+    StrategyCommand, StrategyDiffCli, StrategyProfileCli, StrategyRegisterCli, StrategyResolveCli,
+    StrategySubcommand,
 };
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
@@ -109,9 +111,25 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
 
 fn run_strategy_command(command: &StrategyCommand) -> Result<u8, Box<dyn Error>> {
     match &command.command {
+        StrategySubcommand::Profile(profile) => run_strategy_profile_command(profile),
         StrategySubcommand::Resolve(resolve) => run_strategy_resolve_command(resolve),
         StrategySubcommand::Register(register) => run_strategy_register_command(register),
         StrategySubcommand::Diff(diff) => run_strategy_diff_command(diff),
+    }
+}
+
+fn run_strategy_profile_command(profile: &StrategyProfileCli) -> Result<u8, Box<dyn Error>> {
+    match strategy_profile::profile(&profile.input, profile.max_bytes, profile.max_rows) {
+        Ok(output) => {
+            match profile.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            emit_strategy_refusal(refusal, matches!(profile.emit, RegistryEmitMode::Summary))
+        }
     }
 }
 

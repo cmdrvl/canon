@@ -44,6 +44,7 @@ canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--emit json|csv] [--canon
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
+canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 canon strategy resolve --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
 canon strategy register --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--rule-id <RULE>] [--emit json|summary]
 canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
@@ -91,6 +92,14 @@ Options:
 
 `canon strategy` extends the same registry discipline to deterministic script reuse. It resolves a schema shape plus skill hash to a frozen script that previously passed verify, assess, and airlock. This does not change the primary identifier-resolution path and does not execute scripts.
 
+`canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]`
+- reads CSV, TSV, JSONL, or NDJSON rows using the same format detection and max-limit refusal patterns as the normal identifier path
+- emits `canon_strategy_profile.v0`
+- sorts canonicalized top-level columns deterministically by name
+- records primitive type labels, exact distinct cardinalities, value/null/empty/missing/non-scalar counts, raw input byte count, raw input BLAKE3 hash, schema fingerprint, and profile content hash
+- emits a top-level `columns` array that can be passed directly to `canon strategy resolve --schema` or `canon strategy register --schema`
+- exits `0` on successful profiling and `2` on refusal
+
 `canon strategy resolve --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]`
 - reads `registry.json` and `_strategy/*.json` entries from a local versioned registry
 - hashes `--skill` with BLAKE3, unless `--skill-hash` is provided directly
@@ -112,7 +121,7 @@ Resolution tiers:
 - requires airlock status `PASS`/`PASSED`/`SEALED`/`SUCCESS` or `sealed:true`
 - appends a registry entry under `_strategy/entries.json`, records BLAKE3 hashes for schema, skill/script bytes, and proof artifacts, and updates `registry.json` version + entry_count
 
-Strategy registries are local artifacts. No remote provider calls happen during `resolve`, `register`, or `diff`.
+Strategy registries are local artifacts. No remote provider calls happen during `profile`, `resolve`, `register`, or `diff`.
 
 `canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]`
 - compares two strategy registry versions with the same registry id
