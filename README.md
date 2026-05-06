@@ -18,13 +18,15 @@ The same loan appears as CUSIP `037833100` in one system, ISIN `US0378331005` in
 
 **canon resolves identifiers against versioned registries — deterministic, traceable, reproducible.** Every resolution records which registry version was used, which rule produced the match, and what didn't match. Same input plus same registry version equals same output, every time. No fuzzy matching, no silent normalization, no guessing.
 
+Architecturally, `canon` has two layers. The core lookup kernel is exact and boring on purpose. Resolution workbenches such as `canon org` run offline evidence pipelines that create, audit, review, and promote new registry knowledge. Once promoted, production lookup is still exact registry lookup. See [`docs/IDENTITY_ARCHITECTURE.md`](docs/IDENTITY_ARCHITECTURE.md) for the boundary.
+
 ### What makes this different
 
 - **Versioned registries** — every resolution is pinned to a registry version with semver. When the registry updates, `canon registry diff` tells you exactly what changed. Registries are plain JSON directories — inspectable in git, diffable, no database required.
 - **Pipeline composable** — `canon --emit csv` appends a `<column>__canon` column to your CSV. Pipe the output directly into `rvl` or `shape`: `canon nov.csv --column cusip --emit csv | rvl - dec.canon.csv --key cusip__canon`.
 - **Full traceability** — every mapping includes `rule_id`, `canonical_type`, and `confidence`. Every unresolved entry includes the reason. Every result is auditable.
 - **Deduplication built in** — input values are deduplicated before lookup. 500 unique CUSIPs produce 500 mapping entries whether your file has 500 rows or 500,000.
-- **Org identity resolution** — `canon org` resolves entities that appear under different names across documents via a deterministic multi-stage pipeline: block, score evidence, solve clusters, audit against evaluation suites, and promote into the registry.
+- **Org identity resolution** — `canon org` resolves organization-like entities that appear under different names across documents via a deterministic multi-stage workbench: block, score evidence, solve clusters, audit against evaluation suites, review if needed, and promote into the registry.
 
 ---
 
@@ -206,10 +208,11 @@ canon tape.csv --registry registries/cusip-isin/ --column cusip \
 **When to use canon:**
 - Normalizing identifiers before reconciliation (`canon --emit csv | rvl`)
 - Resolving counterparty aliases across vendor datasets
+- Running deterministic org-identity resolution when the domain has modeled observations, anchors, context fields, audit suites, and a versioned registry (`canon org`)
 - Building audit trails for regulatory mappings (every resolution traceable)
 
 **When canon might not be ideal:**
-- Fuzzy entity matching (address variants, phonetic matching)
+- Unbounded fuzzy entity matching with no strategy, audit, or review gate
 - Master data management at enterprise scale
 - Probabilistic record linkage requiring ML models
 
@@ -526,6 +529,8 @@ The same entity appears as "Wells Fargo & Company" in one document, "Wells Fargo
 
 The pipeline is YAML-driven: a **strategy file** defines which fields to observe, how to normalize names, which blocking operators generate candidates, how to score evidence, and what thresholds the solver uses to merge or abstain. Same strategy + same input + same registry = same output, every time.
 
+`canon org` is a resolution workbench, not the core lookup path. It manufactures registry knowledge through evidence, audit, review, and promotion. After promotion, ordinary `canon` runs still resolve the resulting aliases through exact lookup.
+
 ```bash
 # Full pipeline in one command:
 $ canon org run rows.csv \
@@ -642,6 +647,8 @@ Short for *canonical*. The tool produces canonical identifiers — one true ID f
 ### Is this entity resolution?
 
 Yes — as of v0.3.0, `canon org` performs deterministic multi-field org-identity resolution. It resolves entities that appear under different names across documents using a YAML-driven pipeline of blocking, evidence scoring, and cluster solving. Core `canon` (without `org`) still resolves identifiers via exact lookup against versioned registries.
+
+The important boundary is that entity resolution happens in workbench commands such as `canon org`, then accepted knowledge is promoted into registries. The default lookup command never performs open-ended fuzzy matching at resolution time.
 
 ### How does canon relate to rvl?
 

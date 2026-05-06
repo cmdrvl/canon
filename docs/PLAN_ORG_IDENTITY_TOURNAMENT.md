@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Created**: 2026-03-22
-> **Revised**: 2026-03-22
+> **Revised**: 2026-05-06
 > **Context**: The parsing tournament can emit a normalized row relation with
 > stable `source_row_id` and reusable semantic fields. The next compounding
 > layer is organization identity: repeated organization-like names across
@@ -48,6 +48,14 @@ and compounding artifact.
 ## Relationship to existing plans
 
 This plan sits cleanly beside the current docs rather than replacing them.
+
+### Relationship to `IDENTITY_ARCHITECTURE.md`
+
+`canon org` is the first implemented resolution workbench in the shared identity
+architecture. It is allowed to run blocking, evidence scoring, cluster solving,
+abstention, audit, review, and promotion because those steps happen outside the
+core exact lookup kernel. The durable result is still registry knowledge that
+ordinary `canon` lookup can consume exactly.
 
 ### Relationship to `PLAN_BDC_ENTITY_REGISTRATION.md`
 

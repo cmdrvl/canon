@@ -1,4 +1,4 @@
-# canon — Canonical Entity Resolution
+# canon — Canonical Lookup and Registry Substrate
 
 ## One-line promise
 **Resolve messy identifiers to canonical IDs using versioned registries. Know what matched, what didn't, and why.**
@@ -22,19 +22,30 @@ Today this means:
 
 `canon` replaces that with **one deterministic command** backed by versioned, inspectable registries.
 
+Architecture note: this plan defines the core lookup kernel and registry
+substrate. Domain-specific resolution workbenches, such as `canon org`, may
+create audited registry updates, but normal `canon` lookup remains exact
+registry lookup. See `docs/IDENTITY_ARCHITECTURE.md` for the boundary.
+
 ---
 
 ## Non-goals (explicit)
-`canon` is NOT:
+The core `canon` lookup path is NOT:
 - a fuzzy matcher (suggestions may be probabilistic, but accepted mappings are deterministic)
 - a master data management system
-- a record linker (it resolves IDs, not entity clusters)
+- a generic record linker at lookup time
 - an address parser or geocoder
 - a data cleansing tool
 - a replacement for a proper MDM platform at scale
 
 It does not call remote providers at resolution time.
 Registry materialization is an explicit maintenance workflow; normal `canon` runs still resolve input values against local versioned registries and record everything.
+
+These non-goals do not prohibit bounded resolution workbenches. They prohibit
+mixing fuzzy or multi-column matching into the production lookup kernel.
+Workbench commands must emit inspectable artifacts, abstain on ambiguity, pass
+audit gates before promotion, and write durable knowledge back into versioned
+registries.
 
 ---
 
@@ -297,9 +308,15 @@ Registries vary in complexity. `canon` treats all registries uniformly — input
 |---------------|----------|-----|---------|
 | **ID mapping** | Exact lookup (input ID -> canonical ID) | Yes | CUSIP->ISIN, ticker normalization |
 | **Alias resolution** | Exact lookup with pre-populated variants | Yes | "Wells Fargo" / "WFB" -> counterparty C-00012 (each variant is a separate registry entry) |
-| **Entity resolution** | Multi-column matching (address + name + coordinates -> canonical ID) | **v1** | Property address variants -> canonical property P-00456 |
+| **Org identity workbench** | Multi-field deterministic evidence outside the lookup path, promoted into flat aliases and sidecars | Yes, via `canon org` | "Wells Fargo & Company" / "WFB" -> org O-00012 |
+| **Generic structural/property workbench** | Multi-column matching under a domain strategy, promoted into registry entries | Future | Property address variants -> canonical property P-00456 |
 
-ID mapping and alias resolution both use the same v0 mechanism: exact byte match after ASCII-trim. The difference is how the registry is authored (one entry per ID vs many entries per entity). Entity resolution requires multi-column matching and is deferred to v1.
+ID mapping and alias resolution both use the same v0 lookup mechanism: exact
+byte match after ASCII-trim. The difference is how the registry is authored
+(one entry per ID vs many entries per entity). `canon org` is not a new lookup
+match mode; it is a separate workbench that uses deterministic multi-field
+evidence to manufacture audited registry updates. Generic structural/property
+resolution remains future work.
 
 ### Registry governance
 
@@ -635,7 +652,9 @@ canon registry audit seeds.csv --registry registries/cusip-isin/ --column cusip 
 ### Lookup implementation
 - v0: exact-match query (ASCII-trimmed input against registry `input` field) via SQLite
 - Alias resolution uses the same exact-match path — the registry author pre-populates all known variants as separate entries
-- Entity resolution registries with multi-column matching: deferred to v1
+- Multi-column entity resolution does not run inside this lookup path. Domain
+  workbenches such as `canon org` run before lookup promotion, then write flat
+  registry entries and sidecars that this lookup path can consume exactly.
 
 ### Core data types
 ```
@@ -744,12 +763,13 @@ If any feature makes the mapping less inspectable or the pipeline less composabl
 - Normalization rules defined per mode, documented and deterministic
 - `strsim` crate (Jaro-Winkler, Sorensen-Dice) for fuzzy candidate scoring in suggest mode
 
-### Entity resolution registries
-- Multi-column matching (address + name + coordinates -> canonical ID)
-- Geospatial matching via `geo` + `rstar` (Haversine + R-tree)
-- Phonetic blocking via `rphonetic` (Metaphone, Soundex)
-- H3 hex blocking via `h3o` for property matching at scale (389K+ entries)
-- Address normalization (US abbreviations: ST->STREET, AVE->AVENUE, etc.)
+### Future resolution workbenches
+- Cross-tape structural matching (`canon resolve`) remains a sibling workbench, not a core lookup feature
+- Property identity may use multi-column matching (address + name + coordinates -> canonical ID)
+- Geospatial matching via `geo` + `rstar` (Haversine + R-tree) may be useful inside a property workbench
+- Phonetic blocking via `rphonetic` (Metaphone, Soundex) may be useful for candidate generation, not auto-accepted lookup
+- H3 hex blocking via `h3o` may be useful for property matching at scale (389K+ entries)
+- Address normalization (US abbreviations: ST->STREET, AVE->AVENUE, etc.) belongs in the workbench strategy, not the core lookup kernel
 
 ### ID validation
 - CUSIP format validation + check digit computation via `cusip` crate
@@ -771,7 +791,12 @@ If any feature makes the mapping less inspectable or the pipeline less composabl
 - Share registries across teams with version tracking
 
 ### Decision notes
-**Entity registry format:** The v0 registry format (flat JSON mapping files) handles ID mapping and alias resolution cleanly. Entity resolution registries (e.g., `canon.property-cmbs` with 389K properties, address variants, lat/lng coordinates) are structurally richer. The hybrid approach (JSONL source + SQLite derived index) handles both — source files remain git-friendly, derived index provides query performance. Multi-column matching logic lives in the lookup implementation, not the file format.
+**Entity registry format:** The v0 registry format (flat JSON mapping files)
+handles ID mapping and alias resolution cleanly. Richer identity domains may
+need sidecars for anchors, escrow, review, and proof metadata. The durable
+lookup asset is still flat registry entries plus derived indexes; multi-column
+matching logic belongs in workbench execution, not in the core lookup
+implementation.
 
 ---
 

@@ -2,12 +2,17 @@
 
 > **Status**: Draft
 > **Created**: 2026-03-18
-> **Revised**: 2026-03-18
+> **Revised**: 2026-05-06
 > **Context**: The BDC tournament extracts Schedule of Investments rows with ~20
 > fields, but there is no entity resolution layer. The Identity Model
 > (`cmdrvl-context/docs/09-plans/tournament/IDENTITY_MODEL.md`) defines three layers:
 > `source_row_id` (exists), `issuer_canon_id` (this plan), `position_match_id`
 > (future). This plan builds the second layer — canonical company identity.
+
+> **Architecture status**: Bootstrap domain plan for the implemented `canon org`
+> workbench. The current general interface is `canon org`; this older
+> `canon register` framing should be read as BDC issuer-profile background, not
+> a separate current CLI surface.
 
 ---
 
