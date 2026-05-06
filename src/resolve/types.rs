@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::BTreeMap, error::Error, fmt, path::PathBuf};
 
+use crate::InputFormat;
+
 pub const CANON_RESOLVE_VERSION: &str = "canon_resolve.v0";
 
 pub type ResolveResult<T> = Result<T, ResolveError>;
@@ -15,9 +17,12 @@ pub type ResolveResult<T> = Result<T, ResolveError>;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ResolveErrorCode {
+    Io,
+    Parse,
     Strategy,
     InputContract,
     Registry,
+    TooLarge,
     TooManyCandidates,
     EmptyTape,
     IncompatibleTapes,
@@ -130,6 +135,46 @@ pub struct ResolveRecord {
     pub composite_id: String,
     pub row_index: usize,
     pub attributes: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TapeLoadOptions {
+    pub max_rows: Option<usize>,
+    pub max_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LoadedTape {
+    pub side: TapeSide,
+    pub path: String,
+    pub format: InputFormat,
+    pub delimiter: Option<u8>,
+    pub records: Vec<ResolveRecord>,
+}
+
+impl LoadedTape {
+    pub fn summary(&self) -> TapeSummary {
+        TapeSummary {
+            path: self.path.clone(),
+            record_count: self.records.len(),
+        }
+    }
+
+    pub fn records_sorted_by_id(&self) -> Vec<&ResolveRecord> {
+        let mut records = self.records.iter().collect::<Vec<_>>();
+        records.sort_by(|left, right| {
+            left.composite_id
+                .cmp(&right.composite_id)
+                .then(left.row_index.cmp(&right.row_index))
+        });
+        records
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LoadedTapes {
+    pub reference: LoadedTape,
+    pub target: LoadedTape,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

@@ -1700,6 +1700,18 @@ fn create_resolve_refusal(error: resolve::ResolveError) -> CanonOutput {
     let message = error.message;
 
     match error.code {
+        resolve::ResolveErrorCode::Io => refusal::create_refusal(
+            RefusalCode::EIo,
+            message,
+            detail,
+            Some("Check resolve tape, strategy, and registry paths, then rerun canon resolve".to_string()),
+        ),
+        resolve::ResolveErrorCode::Parse => refusal::create_refusal(
+            RefusalCode::EParse,
+            message,
+            detail,
+            Some("Use supported resolve tape formats (.csv, .tsv, .jsonl, .ndjson) and valid JSON/YAML, then rerun canon resolve".to_string()),
+        ),
         resolve::ResolveErrorCode::Strategy => refusal::create_refusal(
             RefusalCode::EBadStrategy,
             message,
@@ -1717,6 +1729,12 @@ fn create_resolve_refusal(error: resolve::ResolveError) -> CanonOutput {
             message,
             detail,
             Some("Check the resolve registry and rerun canon resolve".to_string()),
+        ),
+        resolve::ResolveErrorCode::TooLarge => refusal::create_refusal(
+            RefusalCode::ETooLarge,
+            message,
+            detail,
+            Some("Increase --max-rows or --max-bytes, or reduce the resolve tapes, then rerun canon resolve".to_string()),
         ),
         resolve::ResolveErrorCode::TooManyCandidates => refusal::create_refusal(
             RefusalCode::ETooManyCandidates,
@@ -2164,7 +2182,8 @@ pub struct Refusal {
 }
 
 // Cross-module types (the 8-agent contract)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum InputFormat {
     Csv,
     Jsonl,

@@ -4,8 +4,12 @@
 //! bounded workbench that will turn two-tape structural evidence into flat
 //! registry entries once the phase-1/phase-2 implementation beads land.
 
+pub mod strategy;
+pub mod tape;
 pub mod types;
 
+pub use strategy::*;
+pub use tape::*;
 pub use types::*;
 
 pub fn run(_request: ResolveRequest) -> ResolveResult<ResolveArtifact> {
