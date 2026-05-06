@@ -69,7 +69,7 @@ So the precise product claim is:
 | Registry maintenance | `canon registry` | Implemented | Registry entries | Provider-backed materialization, diff, audit, lint | Versioned registry files |
 | Strategy registry | `canon strategy` | Implemented | Schema and skill to frozen script | Deterministic script selection | Versioned strategy registry |
 | Organization identity | `canon org` | Implemented, first validated around BDC/issuer-like profiles | Organization observation to `org_canon_id` | Blocking, typed evidence, deterministic solver, abstention | Alias entries, anchor sidecars, escrow sidecars, proofs |
-| Cross-tape structural resolution | `canon resolve` | Planned, not current CLI surface | Record in tape A to record in tape B | Structural similarity under an explicit strategy | Cross-reference registry entries |
+| Cross-tape structural resolution | `canon resolve` | Scaffolded CLI/contracts; matching pipeline pending | Record in tape A to record in tape B | Structural similarity under an explicit strategy | Cross-reference registry entries |
 | Property/address identity | Future workbench | Planned | Property observation to property canonical ID | Address/geospatial/name evidence under deterministic strategy | Property registry entries and proofs |
 | Fuzzy suggestions | Future assistive workflow only | Deferred | Unresolved value to suggested candidate | Probabilistic candidate generation, never auto-accepted | Human-approved registry entries only |
 
@@ -124,4 +124,3 @@ When these documents appear to disagree, use this hierarchy:
 1. Core lookup behavior follows `PLAN_CANON.md`.
 2. Workbench behavior follows its workbench-specific plan.
 3. This architecture note defines the boundary between them.
-

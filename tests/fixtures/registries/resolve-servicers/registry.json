@@ -1,0 +1,7 @@
+{
+  "id": "resolve-servicers",
+  "version": "0.1.0",
+  "description": "Servicer alias fixture registry for canon resolve tests",
+  "updated": "2026-05-06",
+  "entry_count": 8
+}

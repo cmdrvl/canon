@@ -1,0 +1,2 @@
+deal,loan_number,servicer_loan_id,address,city,state,balance,coupon,servicer_name,maturity,orig_date,collateral_type
+WFCM2019-C50,900,S-900,Any Candidate Way,Miami,FL,1015000,0.050,Wells Fargo,2030-01-01,2020-01-01,retail

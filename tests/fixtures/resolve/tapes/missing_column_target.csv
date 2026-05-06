@@ -1,0 +1,2 @@
+deal,loan_number,servicer_loan_id,address,city,state,coupon,servicer_name,maturity,orig_date,collateral_type
+WFCM2019-C50,1,S-001,100 Main St,Austin,TX,0.045,Wells Fargo,2030-06-03,2019-04-15,retail

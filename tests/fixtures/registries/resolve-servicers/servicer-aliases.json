@@ -1,0 +1,50 @@
+[
+  {
+    "input": "Wells Fargo Bank N.A.",
+    "canonical_id": "SERVICER-WELLS-FARGO",
+    "canonical_type": "servicer_id",
+    "rule_id": "SERVICER_ALIAS"
+  },
+  {
+    "input": "Wells Fargo",
+    "canonical_id": "SERVICER-WELLS-FARGO",
+    "canonical_type": "servicer_id",
+    "rule_id": "SERVICER_ALIAS"
+  },
+  {
+    "input": "Wells Fargo Bank",
+    "canonical_id": "SERVICER-WELLS-FARGO",
+    "canonical_type": "servicer_id",
+    "rule_id": "SERVICER_ALIAS"
+  },
+  {
+    "input": "JPMorgan",
+    "canonical_id": "SERVICER-JPMORGAN",
+    "canonical_type": "servicer_id",
+    "rule_id": "SERVICER_ALIAS"
+  },
+  {
+    "input": "JPMorgan Chase",
+    "canonical_id": "SERVICER-JPMORGAN",
+    "canonical_type": "servicer_id",
+    "rule_id": "SERVICER_ALIAS"
+  },
+  {
+    "input": "KeyBank National Association",
+    "canonical_id": "SERVICER-KEYBANK",
+    "canonical_type": "servicer_id",
+    "rule_id": "SERVICER_ALIAS"
+  },
+  {
+    "input": "KeyBank",
+    "canonical_id": "SERVICER-KEYBANK",
+    "canonical_type": "servicer_id",
+    "rule_id": "SERVICER_ALIAS"
+  },
+  {
+    "input": "Midland Loan Services",
+    "canonical_id": "SERVICER-MIDLAND",
+    "canonical_type": "servicer_id",
+    "rule_id": "SERVICER_ALIAS"
+  }
+]

@@ -11,6 +11,7 @@
     "binary": "canon",
     "usage": [
       "canon <INPUT> --registry <DIR> --column <COL> [OPTIONS]",
+      "canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
       "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]",
@@ -61,6 +62,32 @@
   ],
 
   "subcommands": [
+    {
+      "name": "resolve",
+      "usage": "canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
+      "description": "Run the planned cross-tape structural resolution workbench and emit canon_resolve.v0 evidence before optional registry write-back",
+      "output_mode": "mixed",
+      "output_schema": "canon_resolve.v0",
+      "status": "scaffolded",
+      "exit_codes": {
+        "0": { "meaning": "all target records matched", "domain": "positive" },
+        "1": { "meaning": "one or more target records unmatched or ambiguous", "domain": "negative" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "reference_tape", "type": "file_path", "required": true, "position": 0, "description": "Authoritative/reference CSV, TSV, JSONL, or NDJSON tape" },
+        { "name": "target_tape", "type": "file_path", "required": true, "position": 1, "description": "Target CSV, TSV, JSONL, or NDJSON tape to match against the reference" },
+        { "name": "strategy", "flag": "--strategy", "type": "file_path", "required": true, "description": "Resolve strategy YAML file" },
+        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Registry used for canon_match lookups and optional write-back" },
+        { "name": "gold", "flag": "--gold", "type": "file_path", "description": "Gold cross-reference JSONL file for scoring" },
+        { "name": "write_back", "flag": "--write-back", "type": "flag", "description": "Write matched ID pairs to a new registry mapping file after gates pass" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_resolve.v0) or summary" },
+        { "name": "max_candidates", "flag": "--max-candidates", "type": "integer", "description": "Refuse if a target record has more than N surviving candidates" },
+        { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if either tape exceeds N data rows" },
+        { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if either tape exceeds N bytes" },
+        { "name": "no_witness", "flag": "--no-witness", "type": "flag", "description": "Suppress witness ledger recording for canon resolve" }
+      ]
+    },
     {
       "name": "registry build",
       "usage": "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
@@ -407,13 +434,18 @@
     { "code": "E_ORG_STALE_REGISTRY", "message": "Org promotion target registry no longer matches the audited snapshot", "action": "escalate" },
     { "code": "E_STRATEGY_INPUT_CONTRACT", "message": "Strategy schema profile, skill identity, or script metadata is invalid", "action": "fix_input" },
     { "code": "E_STRATEGY_PROOF_INVALID", "message": "Strategy registration proof artifacts did not pass required gates", "action": "fix_input" },
-    { "code": "E_STRATEGY_VERSION_BUMP_REQUIRED", "message": "Strategy registration requires an explicit next registry version", "action": "adjust_input" }
+    { "code": "E_STRATEGY_VERSION_BUMP_REQUIRED", "message": "Strategy registration requires an explicit next registry version", "action": "adjust_input" },
+    { "code": "E_BAD_STRATEGY", "message": "Resolve strategy YAML is malformed or semantically invalid", "action": "fix_input" },
+    { "code": "E_TOO_MANY_CANDIDATES", "message": "Resolve candidate filtering produced more candidates than allowed", "action": "retry_with_flag", "flag": "--max-candidates" },
+    { "code": "E_EMPTY_TAPE", "message": "Reference or target tape has zero processable records", "action": "fix_input" },
+    { "code": "E_INCOMPATIBLE_TAPES", "message": "Resolve strategy leaves no comparable structural fields across tapes", "action": "fix_input" }
   ],
 
   "capabilities": {
     "formats": ["csv", "jsonl"],
     "profile_aware": false,
     "strategy_registry": true,
+    "cross_tape_resolution": "scaffolded",
     "streaming": true,
     "witness": {
       "ambient_recording": "enabled_by_default",

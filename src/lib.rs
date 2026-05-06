@@ -8,6 +8,7 @@ pub mod output;
 pub mod refusal;
 pub mod registry;
 pub mod registry_lint;
+pub mod resolve;
 pub mod strategy_audit;
 pub mod strategy_profile;
 pub mod strategy_registry;
@@ -18,9 +19,9 @@ use crate::cli::{
     OrgExplainCli, OrgPromoteCli, OrgReviewCommand, OrgReviewExportCli, OrgReviewExportEmitMode,
     OrgReviewImportCli, OrgReviewInclude, OrgReviewSubcommand, OrgRunCli, OrgSolveCli,
     OrgStreamEmitMode, OrgSubcommand, RegistryAuditCli, RegistryBuildCli, RegistryDiffCli,
-    RegistryEmitMode, RegistryLintCli, RegistryLintProfile, RegistrySubcommand, StrategyAuditCli,
-    StrategyCommand, StrategyDiffCli, StrategyProfileCli, StrategyRegisterCli, StrategyResolveCli,
-    StrategySubcommand,
+    RegistryEmitMode, RegistryLintCli, RegistryLintProfile, RegistrySubcommand, ResolveCli,
+    ResolveEmitMode, StrategyAuditCli, StrategyCommand, StrategyDiffCli, StrategyProfileCli,
+    StrategyRegisterCli, StrategyResolveCli, StrategySubcommand,
 };
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
@@ -103,6 +104,7 @@ pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
 
 fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
     match command {
+        CanonCommand::Resolve(resolve) => run_resolve_command(resolve),
         CanonCommand::Registry(command) => match &command.command {
             RegistrySubcommand::Diff(diff) => run_registry_diff(diff),
             RegistrySubcommand::Audit(audit) => run_registry_audit(audit),
@@ -111,6 +113,39 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
         },
         CanonCommand::Org(command) => run_org_command(command),
         CanonCommand::Strategy(command) => run_strategy_command(command),
+    }
+}
+
+fn run_resolve_command(resolve_cli: &ResolveCli) -> Result<u8, Box<dyn Error>> {
+    let request = resolve::ResolveRequest {
+        reference_tape: resolve_cli.reference_tape.clone(),
+        target_tape: resolve_cli.target_tape.clone(),
+        strategy: resolve_cli.strategy.clone(),
+        registry: resolve_cli.registry.clone(),
+        gold: resolve_cli.gold.clone(),
+        write_back: resolve_cli.write_back,
+        max_candidates: resolve_cli.max_candidates,
+        max_rows: resolve_cli.max_rows,
+        max_bytes: resolve_cli.max_bytes,
+        no_witness: resolve_cli.no_witness,
+    };
+
+    match resolve::run(request) {
+        Ok(output) => {
+            match resolve_cli.emit {
+                ResolveEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                ResolveEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(output.exit_code())
+        }
+        Err(error) => {
+            let output = create_resolve_refusal(error);
+            match resolve_cli.emit {
+                ResolveEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                ResolveEmitMode::Summary => eprintln!("{}", serde_json::to_string(&output)?),
+            }
+            Ok(2)
+        }
     }
 }
 
@@ -1660,6 +1695,68 @@ fn create_org_refusal(error: org::OrgError) -> CanonOutput {
     }
 }
 
+fn create_resolve_refusal(error: resolve::ResolveError) -> CanonOutput {
+    let detail = error.detail.unwrap_or_else(|| serde_json::json!({}));
+    let message = error.message;
+
+    match error.code {
+        resolve::ResolveErrorCode::Strategy => refusal::create_refusal(
+            RefusalCode::EBadStrategy,
+            message,
+            detail,
+            Some("Fix the strategy YAML and rerun canon resolve with --strategy".to_string()),
+        ),
+        resolve::ResolveErrorCode::InputContract => refusal::create_refusal(
+            RefusalCode::EColumnNotFound,
+            message,
+            detail,
+            Some("Fix strategy field mappings or tape headers, then rerun canon resolve".to_string()),
+        ),
+        resolve::ResolveErrorCode::Registry => refusal::create_refusal(
+            RefusalCode::EBadRegistry,
+            message,
+            detail,
+            Some("Check the resolve registry and rerun canon resolve".to_string()),
+        ),
+        resolve::ResolveErrorCode::TooManyCandidates => refusal::create_refusal(
+            RefusalCode::ETooManyCandidates,
+            message,
+            detail,
+            Some("Tighten candidate_filter or raise --max-candidates, then rerun canon resolve".to_string()),
+        ),
+        resolve::ResolveErrorCode::EmptyTape => refusal::create_refusal(
+            RefusalCode::EEmptyTape,
+            message,
+            detail,
+            Some("Provide reference and target tapes with processable records, then rerun canon resolve".to_string()),
+        ),
+        resolve::ResolveErrorCode::IncompatibleTapes => refusal::create_refusal(
+            RefusalCode::EIncompatibleTapes,
+            message,
+            detail,
+            Some("Fix the strategy so reference and target fields can be compared, then rerun canon resolve".to_string()),
+        ),
+        resolve::ResolveErrorCode::Gold => refusal::create_refusal(
+            RefusalCode::EParse,
+            message,
+            detail,
+            Some("Repair the gold JSONL cross-reference file and rerun canon resolve".to_string()),
+        ),
+        resolve::ResolveErrorCode::WriteBack => refusal::create_refusal(
+            RefusalCode::EParse,
+            message,
+            detail,
+            Some("Resolve registry write-back conflicts before rerunning canon resolve --write-back".to_string()),
+        ),
+        resolve::ResolveErrorCode::Unimplemented => refusal::create_refusal(
+            RefusalCode::EParse,
+            message,
+            detail,
+            Some("Complete the resolve implementation beads before using canon resolve".to_string()),
+        ),
+    }
+}
+
 // Output types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -2018,6 +2115,10 @@ pub enum RefusalCode {
     EStrategyInputContract,
     EStrategyProofInvalid,
     EStrategyVersionBumpRequired,
+    EBadStrategy,
+    ETooManyCandidates,
+    EEmptyTape,
+    EIncompatibleTapes,
 }
 
 impl Serialize for RefusalCode {
@@ -2045,6 +2146,10 @@ impl Serialize for RefusalCode {
             RefusalCode::EStrategyInputContract => "E_STRATEGY_INPUT_CONTRACT",
             RefusalCode::EStrategyProofInvalid => "E_STRATEGY_PROOF_INVALID",
             RefusalCode::EStrategyVersionBumpRequired => "E_STRATEGY_VERSION_BUMP_REQUIRED",
+            RefusalCode::EBadStrategy => "E_BAD_STRATEGY",
+            RefusalCode::ETooManyCandidates => "E_TOO_MANY_CANDIDATES",
+            RefusalCode::EEmptyTape => "E_EMPTY_TAPE",
+            RefusalCode::EIncompatibleTapes => "E_INCOMPATIBLE_TAPES",
         };
         serializer.serialize_str(code_str)
     }

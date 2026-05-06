@@ -1,0 +1,5 @@
+loan_id,deal,trustee_loan_number,property_address,city,state,upb,rate,servicer,maturity_date,origination_date,property_type
+TM001,WFCM2019-C50,901,1 Candidate Way,Miami,FL,1000000,0.050,Wells Fargo Bank N.A.,2030-01-01,2020-01-01,retail
+TM002,WFCM2019-C50,902,2 Candidate Way,Miami,FL,1010000,0.050,Wells Fargo Bank N.A.,2030-01-01,2020-01-01,retail
+TM003,WFCM2019-C50,903,3 Candidate Way,Miami,FL,1020000,0.050,Wells Fargo Bank N.A.,2030-01-01,2020-01-01,retail
+TM004,WFCM2019-C50,904,4 Candidate Way,Miami,FL,1030000,0.050,Wells Fargo Bank N.A.,2030-01-01,2020-01-01,retail

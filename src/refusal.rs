@@ -319,6 +319,10 @@ mod tests {
                 "\"E_ORG_VERSION_BUMP_REQUIRED\"",
             ),
             (RefusalCode::EOrgStaleRegistry, "\"E_ORG_STALE_REGISTRY\""),
+            (RefusalCode::EBadStrategy, "\"E_BAD_STRATEGY\""),
+            (RefusalCode::ETooManyCandidates, "\"E_TOO_MANY_CANDIDATES\""),
+            (RefusalCode::EEmptyTape, "\"E_EMPTY_TAPE\""),
+            (RefusalCode::EIncompatibleTapes, "\"E_INCOMPATIBLE_TAPES\""),
         ];
 
         for (code, expected) in cases {

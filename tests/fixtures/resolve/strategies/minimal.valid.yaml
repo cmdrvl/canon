@@ -1,0 +1,20 @@
+strategy_id: minimal-loan-match.v1
+strategy_version: "0.1.0"
+entity_type: loan
+
+identity:
+  reference:
+    id_columns: [loan_id]
+  target:
+    id_columns: [deal, loan_number]
+
+assertions:
+  - field_ref: property_address
+    field_tgt: address
+    op: exact
+    weight: 1.0
+    required: true
+
+match_threshold: 1.0
+ambiguity_gap: 0.01
+max_candidates: 25

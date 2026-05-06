@@ -1,0 +1,66 @@
+strategy_id: cmbs-loan-match.v1
+strategy_version: "0.1.0"
+entity_type: loan
+description: "Match CMBS loans across trustee and servicer tapes"
+
+identity:
+  reference:
+    id_columns: [loan_id]
+  target:
+    id_columns: [deal, loan_number]
+
+candidate_filter:
+  - field_ref: deal
+    field_tgt: deal
+    op: exact
+  - field_ref: servicer
+    field_tgt: servicer_name
+    op: canon_match
+  - field_ref: upb
+    field_tgt: balance
+    op: range
+    range_pct: 0.20
+
+assertions:
+  - field_ref: trustee_loan_number
+    field_tgt: loan_number
+    op: exact
+    weight: 0.20
+    required: false
+  - field_ref: property_address
+    field_tgt: address
+    op: exact
+    weight: 0.20
+    required: false
+  - field_ref: upb
+    field_tgt: balance
+    op: tolerance_pct
+    tolerance: 0.05
+    weight: 0.20
+    required: false
+  - field_ref: rate
+    field_tgt: coupon
+    op: tolerance_abs
+    tolerance: 0.001
+    weight: 0.15
+    required: false
+  - field_ref: servicer
+    field_tgt: servicer_name
+    op: canon_match
+    weight: 0.15
+    required: false
+  - field_ref: maturity_date
+    field_tgt: maturity
+    op: date_range
+    days: 5
+    weight: 0.05
+    required: false
+  - field_ref: origination_date
+    field_tgt: orig_date
+    op: exact
+    weight: 0.05
+    required: false
+
+match_threshold: 0.75
+ambiguity_gap: 0.15
+max_candidates: 10

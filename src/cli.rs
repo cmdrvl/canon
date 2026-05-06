@@ -31,6 +31,16 @@ pub enum OrgEmitMode {
     Summary,
 }
 
+/// Emit mode for cross-tape resolve artifacts
+#[derive(Debug, Clone, ValueEnum, Default)]
+pub enum ResolveEmitMode {
+    /// Structured resolve JSON artifact (default)
+    #[default]
+    Json,
+    /// Human-readable resolve summary
+    Summary,
+}
+
 /// Emit mode for org streaming subcommands
 #[derive(Debug, Clone, ValueEnum, Default)]
 pub enum OrgStreamEmitMode {
@@ -67,6 +77,8 @@ pub enum OrgReviewInclude {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CanonCommand {
+    /// Cross-tape structural resolution workbench
+    Resolve(ResolveCli),
     /// Registry maintenance and inspection commands
     Registry(RegistryCommand),
     /// Organization identity commands
@@ -400,6 +412,51 @@ pub struct StrategyDiffCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ResolveCli {
+    /// Authoritative/reference tape
+    pub reference_tape: PathBuf,
+
+    /// Target tape to match against the reference
+    pub target_tape: PathBuf,
+
+    /// Matching strategy YAML file
+    #[arg(long)]
+    pub strategy: PathBuf,
+
+    /// Registry directory used for canon_match lookups and optional write-back
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Gold cross-reference JSONL file for scoring
+    #[arg(long)]
+    pub gold: Option<PathBuf>,
+
+    /// Write matched ID pairs back into a new registry mapping file
+    #[arg(long)]
+    pub write_back: bool,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: ResolveEmitMode,
+
+    /// Refuse if a target record has more than N surviving candidates
+    #[arg(long)]
+    pub max_candidates: Option<usize>,
+
+    /// Refuse if either tape exceeds N data rows
+    #[arg(long)]
+    pub max_rows: Option<usize>,
+
+    /// Refuse if either tape exceeds N bytes
+    #[arg(long)]
+    pub max_bytes: Option<u64>,
+
+    /// Suppress witness ledger append
+    #[arg(long)]
+    pub no_witness: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1032,6 +1089,50 @@ mod tests {
                 other => panic!("expected strategy diff, got {:?}", other),
             },
             other => panic!("expected strategy command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_resolve_parsing() {
+        let args = [
+            "canon",
+            "resolve",
+            "trustee.csv",
+            "servicer.csv",
+            "--strategy",
+            "strategies/cmbs.yaml",
+            "--registry",
+            "registries/cmbs-loan",
+            "--gold",
+            "gold/loan_matches.jsonl",
+            "--write-back",
+            "--emit",
+            "summary",
+            "--max-candidates",
+            "25",
+            "--max-rows",
+            "1000",
+            "--max-bytes",
+            "1048576",
+            "--no-witness",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Resolve(resolve) => {
+                assert_eq!(resolve.reference_tape, PathBuf::from("trustee.csv"));
+                assert_eq!(resolve.target_tape, PathBuf::from("servicer.csv"));
+                assert_eq!(resolve.strategy, PathBuf::from("strategies/cmbs.yaml"));
+                assert_eq!(resolve.registry, PathBuf::from("registries/cmbs-loan"));
+                assert_eq!(resolve.gold, Some(PathBuf::from("gold/loan_matches.jsonl")));
+                assert!(resolve.write_back);
+                assert!(matches!(resolve.emit, ResolveEmitMode::Summary));
+                assert_eq!(resolve.max_candidates, Some(25));
+                assert_eq!(resolve.max_rows, Some(1000));
+                assert_eq!(resolve.max_bytes, Some(1_048_576));
+                assert!(resolve.no_witness);
+            }
+            other => panic!("expected resolve command, got {:?}", other),
         }
     }
 

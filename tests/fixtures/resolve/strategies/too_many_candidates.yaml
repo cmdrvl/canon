@@ -1,0 +1,30 @@
+strategy_id: too-many-candidates.v1
+strategy_version: "0.1.0"
+entity_type: loan
+
+identity:
+  reference:
+    id_columns: [loan_id]
+  target:
+    id_columns: [deal, loan_number]
+
+candidate_filter:
+  - field_ref: deal
+    field_tgt: deal
+    op: exact
+  - field_ref: upb
+    field_tgt: balance
+    op: range
+    range_pct: 0.10
+
+assertions:
+  - field_ref: upb
+    field_tgt: balance
+    op: tolerance_pct
+    tolerance: 0.10
+    weight: 1.0
+    required: false
+
+match_threshold: 0.50
+ambiguity_gap: 0.05
+max_candidates: 1

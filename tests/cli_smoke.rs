@@ -115,6 +115,15 @@ fn test_describe_command() {
     assert_eq!(json["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(json["schema_version"], "operator.v0");
     assert!(json["capabilities"].is_object());
+    assert!(
+        json["subcommands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["name"] == "resolve"
+                && entry["output_schema"] == "canon_resolve.v0"
+                && entry["status"] == "scaffolded")
+    );
 }
 
 #[test]

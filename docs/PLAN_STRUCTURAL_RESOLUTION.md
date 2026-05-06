@@ -8,10 +8,12 @@
 > the same loan as tape B's `deal=a, loan=2` — using structural similarity, not
 > pre-built ID mappings.
 
-> **Architecture status**: Future resolution workbench. This plan describes a
-> sibling to `canon org`, not current core lookup behavior. The current CLI does
-> not expose `canon resolve`; production lookup remains exact registry lookup as
-> described in `PLAN_CANON.md` and `IDENTITY_ARCHITECTURE.md`.
+> **Architecture status**: Scaffolded future resolution workbench. This plan
+> describes a sibling to `canon org`, not current core lookup behavior. The CLI
+> parse surface and shared contracts for `canon resolve` are scaffolded, but the
+> matching pipeline is still implementation-pending; production lookup remains
+> exact registry lookup as described in `PLAN_CANON.md` and
+> `IDENTITY_ARCHITECTURE.md`.
 
 ---
 
