@@ -6,12 +6,14 @@
 
 pub mod assertions;
 pub mod graph;
+pub mod scoring;
 pub mod strategy;
 pub mod tape;
 pub mod types;
 
 pub use assertions::*;
 pub use graph::*;
+pub use scoring::*;
 pub use strategy::*;
 pub use tape::*;
 pub use types::*;

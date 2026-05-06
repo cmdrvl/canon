@@ -251,6 +251,8 @@ pub struct AssertionResult {
 pub struct CandidateScore {
     pub reference_id: String,
     pub score: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gap: Option<f64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub assertions: Vec<AssertionResult>,
 }
