@@ -1216,6 +1216,53 @@ fn test_registry_build_incremental_carries_forward_existing_entries() {
 }
 
 #[test]
+fn test_registry_lint_cli_json_and_summary_output() {
+    let registry_dir = tempdir().unwrap();
+    write_registry_metadata(registry_dir.path(), "lint-test", "1.0.0", 2);
+    write_mapping_file(
+        registry_dir.path(),
+        "mappings.json",
+        serde_json::json!([
+            {"input":"A","canonical_id":"C1","canonical_type":"entity","rule_id":"r1"},
+            {"input":"A","canonical_id":"C2","canonical_type":"entity","rule_id":"r2"}
+        ]),
+    );
+
+    let json = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "lint",
+            registry_dir.path().to_str().unwrap(),
+            "--profile",
+            "standard",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(json.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["version"], "canon_registry_lint.v0");
+    assert_eq!(payload["profile"], "standard");
+    assert_eq!(payload["summary"]["warnings"], 1);
+    assert_eq!(payload["findings"][0]["code"], "index_missing");
+    assert_eq!(payload["findings"][1]["code"], "shadowed_input");
+
+    let summary = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "lint",
+            registry_dir.path().to_str().unwrap(),
+            "--profile",
+            "standard",
+            "--emit",
+            "summary",
+        ])
+        .assert()
+        .success();
+    let summary_stdout = String::from_utf8(summary.get_output().stdout.clone()).unwrap();
+    assert!(summary_stdout.contains("lint-test@1.0.0 lint standard"));
+}
+
+#[test]
 fn test_registry_build_refuses_non_incremental_overwrite() {
     let temp_dir = tempdir().unwrap();
     let seed_path = temp_dir.path().join("seed.csv");

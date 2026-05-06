@@ -245,6 +245,7 @@ canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [OPTIONS]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary]
+canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary]
 canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 canon strategy resolve --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
 canon strategy register --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--emit json|summary]
@@ -282,6 +283,7 @@ canon org block|edge|solve|audit|promote|explain [OPTIONS]
 | `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides. |
 | `registry diff --old <PATH> --new <PATH> [--emit json\|summary]` | Compare two versions of the same registry ID and report added, removed, changed, and unchanged effective mappings. |
 | `registry audit <SEED> --registry <PATH> --column <COLUMN> [--emit json\|summary]` | Audit a seed corpus against a registry and emit resolved/unresolved entries plus aggregate canonical-target and rule-hit counts. |
+| `registry lint <DIR> [--profile standard\|org\|strategy\|auto] [--emit json\|summary]` | Preflight standard mapping, org, or strategy registry health with severity-tagged findings. |
 | `strategy profile <INPUT> [--emit json\|summary] [--max-rows <N>] [--max-bytes <N>]` | Derive a deterministic schema/profile artifact from CSV, TSV, JSONL, or NDJSON for `strategy resolve` and `strategy register`. |
 | `strategy resolve --registry <DIR> --schema <JSON> --skill <PATH>\|--skill-hash <HASH>` | Resolve a schema shape plus skill hash to a frozen champion script. EXACT and COMPATIBLE exit `0`; PARTIAL and UNRESOLVED exit `1`. |
 | `strategy register --registry <DIR> --schema <JSON> --skill <PATH>\|--skill-hash <HASH> --script <PATH> --script-id <ID> --language <LANG> --verify <JSON> --assess <JSON> --airlock <JSON> --next-version <VER>` | Register a frozen script after verify, assess, and airlock proof artifacts pass. |
@@ -302,7 +304,7 @@ canon org block|edge|solve|audit|promote|explain [OPTIONS]
 | `1` | PARTIAL or UNRESOLVED (some or all inputs unresolved) |
 | `2` | REFUSAL or CLI error |
 
-`canon registry diff` and `canon registry audit` exit `0` when the report succeeds and `2` on refusal. `canon registry build` exits `0` when materialization succeeds and `2` on refusal; provider failures are preserved in the JSON report and warned on stderr.
+`canon registry diff`, `canon registry audit`, and `canon registry lint` exit `0` when the report succeeds and `2` on refusal. Lint findings are represented inside `canon_registry_lint.v0` rather than via exit status. `canon registry build` exits `0` when materialization succeeds and `2` on refusal; provider failures are preserved in the JSON report and warned on stderr.
 
 `canon strategy profile`, `canon strategy register`, and `canon strategy diff` exit `0` when their reports or writes succeed and `2` on refusal. `canon strategy resolve` exits `0` for an EXACT or COMPATIBLE frozen-script match, `1` for PARTIAL or UNRESOLVED, and `2` on refusal.
 
@@ -366,6 +368,12 @@ canon registry audit seeds.csv \
   --registry registries/cusip-isin/ \
   --column cusip \
   --emit summary
+```
+
+Preflight a registry before production use:
+
+```bash
+canon registry lint registries/org/ --profile auto --emit summary
 ```
 
 Materialize a registry from a provider-backed seed corpus:

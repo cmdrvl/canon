@@ -44,6 +44,7 @@ canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--emit json|csv] [--canon
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
+canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary]
 canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 canon strategy resolve --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
 canon strategy register --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--rule-id <RULE>] [--emit json|summary]
@@ -87,6 +88,15 @@ Options:
 - emits `canon_registry_audit.v0` JSON with `resolved`, `unresolved`, `canonical_targets`, and `rule_hits`, or a human-readable summary line
 - exits `0` on successful audit, `2` on refusal
 - does not change the normal `canon.v0` output contract or witness semantics for the primary resolution path
+
+`canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary]`
+- validates a registry directory without mutating lookup indexes, mappings, strategy entries, or org sidecars
+- emits `canon_registry_lint.v0` with severity-tagged findings, counts by category, registry provenance, and next-command guidance
+- `standard` checks `registry.json`, mapping-file parseability, duplicate/shadowed inputs, stale `entry_count`, empty required mapping fields, and lookup-index rebuild eligibility
+- `strategy` checks `_strategy` entries, recomputed `schema_fingerprint`, proof hash/reference presence, duplicate `(schema_fingerprint, skill_hash)` keys, stale `entry_count`, and script metadata completeness
+- `org` checks alias files, trusted-anchor sidecars, escrow sidecars, lookup/escrow snapshot-hash inputs, malformed records, and conflicting aliases/anchors/escrow records
+- `auto` chooses `strategy` when `_strategy/` exists, `org` when org sidecars exist, and `standard` otherwise
+- exits `0` when the lint report is emitted, even if findings are present; exits `2` only on refusal
 
 ### Strategy registry subcommands
 

@@ -7,6 +7,7 @@ pub mod org;
 pub mod output;
 pub mod refusal;
 pub mod registry;
+pub mod registry_lint;
 pub mod strategy_profile;
 pub mod strategy_registry;
 pub mod witness;
@@ -14,9 +15,9 @@ pub mod witness;
 use crate::cli::{
     CanonCommand, Cli, OrgAuditCli, OrgBlockCli, OrgCommand, OrgEdgeCli, OrgEmitMode,
     OrgExplainCli, OrgPromoteCli, OrgRunCli, OrgSolveCli, OrgStreamEmitMode, OrgSubcommand,
-    RegistryAuditCli, RegistryBuildCli, RegistryDiffCli, RegistryEmitMode, RegistrySubcommand,
-    StrategyCommand, StrategyDiffCli, StrategyProfileCli, StrategyRegisterCli, StrategyResolveCli,
-    StrategySubcommand,
+    RegistryAuditCli, RegistryBuildCli, RegistryDiffCli, RegistryEmitMode, RegistryLintCli,
+    RegistryLintProfile, RegistrySubcommand, StrategyCommand, StrategyDiffCli, StrategyProfileCli,
+    StrategyRegisterCli, StrategyResolveCli, StrategySubcommand,
 };
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
@@ -103,6 +104,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
             RegistrySubcommand::Diff(diff) => run_registry_diff(diff),
             RegistrySubcommand::Audit(audit) => run_registry_audit(audit),
             RegistrySubcommand::Build(build) => run_registry_build(build),
+            RegistrySubcommand::Lint(lint) => run_registry_lint(lint),
         },
         CanonCommand::Org(command) => run_org_command(command),
         CanonCommand::Strategy(command) => run_strategy_command(command),
@@ -453,6 +455,33 @@ fn run_registry_build(build: &RegistryBuildCli) -> Result<u8, Box<dyn Error>> {
         }
         Err(refusal_output) => {
             println!("{}", serde_json::to_string(&refusal_output)?);
+            Ok(2)
+        }
+    }
+}
+
+fn run_registry_lint(lint: &RegistryLintCli) -> Result<u8, Box<dyn Error>> {
+    let profile = match lint.profile {
+        RegistryLintProfile::Standard => registry_lint::RegistryLintProfile::Standard,
+        RegistryLintProfile::Org => registry_lint::RegistryLintProfile::Org,
+        RegistryLintProfile::Strategy => registry_lint::RegistryLintProfile::Strategy,
+        RegistryLintProfile::Auto => registry_lint::RegistryLintProfile::Auto,
+    };
+
+    match registry_lint::lint(&lint.registry, profile) {
+        Ok(output) => {
+            match lint.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            let output = refusal.to_canon_output();
+            match lint.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&output)?),
+            }
             Ok(2)
         }
     }

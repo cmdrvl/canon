@@ -77,6 +77,8 @@ pub enum RegistrySubcommand {
     Audit(RegistryAuditCli),
     /// Materialize a registry from a provider and seed corpus
     Build(RegistryBuildCli),
+    /// Check registry health before production use
+    Lint(RegistryLintCli),
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -195,6 +197,33 @@ pub struct RegistryBuildCli {
     /// Provider-specific key=value option (repeatable)
     #[arg(long = "provider-config", value_name = "KEY=VALUE")]
     pub provider_config: Vec<String>,
+}
+
+#[derive(Debug, Clone, ValueEnum, Default)]
+pub enum RegistryLintProfile {
+    /// Infer strategy, org, or standard registry linting from sidecars
+    #[default]
+    Auto,
+    /// Standard exact-match mapping registry
+    Standard,
+    /// Organization identity registry with aliases and sidecars
+    Org,
+    /// Frozen-script strategy registry
+    Strategy,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RegistryLintCli {
+    /// Registry directory to lint
+    pub registry: PathBuf,
+
+    /// Registry profile to lint
+    #[arg(long, value_enum, default_value = "auto")]
+    pub profile: RegistryLintProfile,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -701,6 +730,34 @@ mod tests {
                             "base_url=http://127.0.0.1:8080/v3/mapping".to_string(),
                         ]
                     );
+                }
+            }
+            other => panic!("expected registry command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_registry_lint_parsing() {
+        let args = [
+            "canon",
+            "registry",
+            "lint",
+            "registries/org",
+            "--profile",
+            "org",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Registry(command) => {
+                let subcommand = command.command;
+                assert!(matches!(subcommand, RegistrySubcommand::Lint(_)));
+                if let RegistrySubcommand::Lint(lint) = subcommand {
+                    assert_eq!(lint.registry, PathBuf::from("registries/org"));
+                    assert!(matches!(lint.profile, RegistryLintProfile::Org));
+                    assert!(matches!(lint.emit, RegistryEmitMode::Summary));
                 }
             }
             other => panic!("expected registry command, got {:?}", other),
