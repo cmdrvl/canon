@@ -791,7 +791,7 @@ fn classify_strategy_change(
     changes
 }
 
-fn load_schema_shape(schema_path: &Path) -> StrategyResult<StrategySchemaShape> {
+pub(crate) fn load_schema_shape(schema_path: &Path) -> StrategyResult<StrategySchemaShape> {
     let content = fs::read_to_string(schema_path).map_err(|error| {
         Refusal::io_error(&schema_path.display().to_string(), &error.to_string())
     })?;
@@ -1066,7 +1066,7 @@ fn resolve_skill_hash(
     }
 }
 
-fn fingerprint_schema(schema: &StrategySchemaShape) -> StrategyResult<String> {
+pub(crate) fn fingerprint_schema(schema: &StrategySchemaShape) -> StrategyResult<String> {
     let bytes = serde_json::to_vec(schema).map_err(|error| {
         Refusal::strategy_input_contract(
             "Failed to serialize schema shape for fingerprinting",

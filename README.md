@@ -247,6 +247,7 @@ canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summa
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary]
 canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary]
 canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
+canon strategy audit --schema <PROFILE.json> --script <SCRIPT> --suite <DIR> [--emit json|summary]
 canon strategy resolve --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
 canon strategy register --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--emit json|summary]
 canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]
@@ -285,6 +286,7 @@ canon org block|edge|solve|audit|promote|explain [OPTIONS]
 | `registry audit <SEED> --registry <PATH> --column <COLUMN> [--emit json\|summary]` | Audit a seed corpus against a registry and emit resolved/unresolved entries plus aggregate canonical-target and rule-hit counts. |
 | `registry lint <DIR> [--profile standard\|org\|strategy\|auto] [--emit json\|summary]` | Preflight standard mapping, org, or strategy registry health with severity-tagged findings. |
 | `strategy profile <INPUT> [--emit json\|summary] [--max-rows <N>] [--max-bytes <N>]` | Derive a deterministic schema/profile artifact from CSV, TSV, JSONL, or NDJSON for `strategy resolve` and `strategy register`. |
+| `strategy audit --schema <JSON> --script <PATH> --suite <DIR> [--emit json\|summary]` | Run a frozen script against deterministic fixture expectations and emit a `canon_strategy_audit.v0` proof artifact. |
 | `strategy resolve --registry <DIR> --schema <JSON> --skill <PATH>\|--skill-hash <HASH>` | Resolve a schema shape plus skill hash to a frozen champion script. EXACT and COMPATIBLE exit `0`; PARTIAL and UNRESOLVED exit `1`. |
 | `strategy register --registry <DIR> --schema <JSON> --skill <PATH>\|--skill-hash <HASH> --script <PATH> --script-id <ID> --language <LANG> --verify <JSON> --assess <JSON> --airlock <JSON> --next-version <VER>` | Register a frozen script after verify, assess, and airlock proof artifacts pass. |
 | `strategy diff --old <DIR> --new <DIR> [--emit json\|summary]` | Compare frozen-script strategy registry versions by effective `(schema_fingerprint, skill_hash)` entries. |
@@ -306,7 +308,7 @@ canon org block|edge|solve|audit|promote|explain [OPTIONS]
 
 `canon registry diff`, `canon registry audit`, and `canon registry lint` exit `0` when the report succeeds and `2` on refusal. Lint findings are represented inside `canon_registry_lint.v0` rather than via exit status. `canon registry build` exits `0` when materialization succeeds and `2` on refusal; provider failures are preserved in the JSON report and warned on stderr.
 
-`canon strategy profile`, `canon strategy register`, and `canon strategy diff` exit `0` when their reports or writes succeed and `2` on refusal. `canon strategy resolve` exits `0` for an EXACT or COMPATIBLE frozen-script match, `1` for PARTIAL or UNRESOLVED, and `2` on refusal.
+`canon strategy profile`, `canon strategy register`, and `canon strategy diff` exit `0` when their reports or writes succeed and `2` on refusal. `canon strategy audit` exits `0` when all fixtures pass, `1` when deterministic fixture checks fail, and `2` on refusal. `canon strategy resolve` exits `0` for an EXACT or COMPATIBLE frozen-script match, `1` for PARTIAL or UNRESOLVED, and `2` on refusal.
 
 ### Output Routing
 
@@ -395,6 +397,18 @@ canon strategy profile rows.csv --emit json > profile.json
 ```
 
 The profile artifact includes sorted columns, primitive type labels, exact distinct counts, null/empty/missing/non-scalar counts, the raw input BLAKE3 hash, and a profile content hash. Its top-level `columns` array can be used directly as `--schema` for strategy lookup or registration.
+
+Audit a frozen script against a deterministic fixture suite:
+
+```bash
+canon strategy audit \
+  --schema profile.json \
+  --script scripts/procurement_total.py \
+  --suite suites/procurement_total.v1/ \
+  --emit json > evidence/audit.json
+```
+
+The suite manifest is `manifest.json` with `suite_id`, optional `version`, optional `repeatability_runs`, and fixture entries containing `id`, `input`, `expected_stdout`, and optional `expected_exit_code`. Fixture input bytes are sent to the script on stdin. A passing audit artifact includes `passed: true`, `decision: "PROCEED"`, and `sealed: true`, so it can be used directly as the `--verify`, `--assess`, and `--airlock` proof artifact for `strategy register`.
 
 ```bash
 canon strategy resolve \

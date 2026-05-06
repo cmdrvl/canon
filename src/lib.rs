@@ -8,6 +8,7 @@ pub mod output;
 pub mod refusal;
 pub mod registry;
 pub mod registry_lint;
+pub mod strategy_audit;
 pub mod strategy_profile;
 pub mod strategy_registry;
 pub mod witness;
@@ -16,8 +17,8 @@ use crate::cli::{
     CanonCommand, Cli, OrgAuditCli, OrgBlockCli, OrgCommand, OrgEdgeCli, OrgEmitMode,
     OrgExplainCli, OrgPromoteCli, OrgRunCli, OrgSolveCli, OrgStreamEmitMode, OrgSubcommand,
     RegistryAuditCli, RegistryBuildCli, RegistryDiffCli, RegistryEmitMode, RegistryLintCli,
-    RegistryLintProfile, RegistrySubcommand, StrategyCommand, StrategyDiffCli, StrategyProfileCli,
-    StrategyRegisterCli, StrategyResolveCli, StrategySubcommand,
+    RegistryLintProfile, RegistrySubcommand, StrategyAuditCli, StrategyCommand, StrategyDiffCli,
+    StrategyProfileCli, StrategyRegisterCli, StrategyResolveCli, StrategySubcommand,
 };
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
@@ -114,6 +115,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
 fn run_strategy_command(command: &StrategyCommand) -> Result<u8, Box<dyn Error>> {
     match &command.command {
         StrategySubcommand::Profile(profile) => run_strategy_profile_command(profile),
+        StrategySubcommand::Audit(audit) => run_strategy_audit_command(audit),
         StrategySubcommand::Resolve(resolve) => run_strategy_resolve_command(resolve),
         StrategySubcommand::Register(register) => run_strategy_register_command(register),
         StrategySubcommand::Diff(diff) => run_strategy_diff_command(diff),
@@ -131,6 +133,21 @@ fn run_strategy_profile_command(profile: &StrategyProfileCli) -> Result<u8, Box<
         }
         Err(refusal) => {
             emit_strategy_refusal(refusal, matches!(profile.emit, RegistryEmitMode::Summary))
+        }
+    }
+}
+
+fn run_strategy_audit_command(audit: &StrategyAuditCli) -> Result<u8, Box<dyn Error>> {
+    match strategy_audit::audit(&audit.schema, &audit.script, &audit.suite) {
+        Ok(output) => {
+            match audit.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(output.exit_code())
+        }
+        Err(refusal) => {
+            emit_strategy_refusal(refusal, matches!(audit.emit, RegistryEmitMode::Summary))
         }
     }
 }

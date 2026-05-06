@@ -103,6 +103,8 @@ pub enum OrgSubcommand {
 pub enum StrategySubcommand {
     /// Derive a deterministic schema profile from CSV, TSV, JSONL, or NDJSON input
     Profile(StrategyProfileCli),
+    /// Audit a frozen script against a deterministic fixture suite
+    Audit(StrategyAuditCli),
     /// Resolve a schema shape and skill hash to a frozen champion script
     Resolve(StrategyResolveCli),
     /// Register a verified frozen champion script for a schema shape and skill hash
@@ -242,6 +244,25 @@ pub struct StrategyProfileCli {
     /// Refuse if input exceeds N bytes
     #[arg(long)]
     pub max_bytes: Option<u64>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct StrategyAuditCli {
+    /// Schema/profile JSON file describing the input shape
+    #[arg(long)]
+    pub schema: PathBuf,
+
+    /// Frozen script executable to audit
+    #[arg(long)]
+    pub script: PathBuf,
+
+    /// Deterministic fixture suite directory
+    #[arg(long)]
+    pub suite: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -821,6 +842,37 @@ mod tests {
                     assert_eq!(profile.max_bytes, Some(4096));
                 }
                 other => panic!("expected strategy profile, got {:?}", other),
+            },
+            other => panic!("expected strategy command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_strategy_audit_parsing() {
+        let args = [
+            "canon",
+            "strategy",
+            "audit",
+            "--schema",
+            "profile.json",
+            "--script",
+            "script.sh",
+            "--suite",
+            "suite",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Strategy(command) => match command.command {
+                StrategySubcommand::Audit(audit) => {
+                    assert_eq!(audit.schema, PathBuf::from("profile.json"));
+                    assert_eq!(audit.script, PathBuf::from("script.sh"));
+                    assert_eq!(audit.suite, PathBuf::from("suite"));
+                    assert!(matches!(audit.emit, RegistryEmitMode::Summary));
+                }
+                other => panic!("expected strategy audit, got {:?}", other),
             },
             other => panic!("expected strategy command, got {:?}", other),
         }

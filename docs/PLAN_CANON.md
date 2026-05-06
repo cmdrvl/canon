@@ -46,6 +46,7 @@ canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summa
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary]
 canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
+canon strategy audit --schema <PROFILE.json> --script <SCRIPT> --suite <DIR> [--emit json|summary]
 canon strategy resolve --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
 canon strategy register --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--rule-id <RULE>] [--emit json|summary]
 canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
@@ -109,6 +110,16 @@ Options:
 - records primitive type labels, exact distinct cardinalities, value/null/empty/missing/non-scalar counts, raw input byte count, raw input BLAKE3 hash, schema fingerprint, and profile content hash
 - emits a top-level `columns` array that can be passed directly to `canon strategy resolve --schema` or `canon strategy register --schema`
 - exits `0` on successful profiling and `2` on refusal
+
+`canon strategy audit --schema <PROFILE.json> --script <SCRIPT> --suite <DIR> [--emit json|summary]`
+- parses the same schema/profile shape accepted by `resolve` and `register`
+- hashes the script bytes, schema shape, and fixture suite inputs/expected outputs
+- reads `<DIR>/manifest.json` with `suite_id`, optional `version`, optional `repeatability_runs`, and fixtures containing `id`, `input`, `expected_stdout`, and optional `expected_exit_code`
+- executes the script once per fixture with fixture input bytes on stdin, compares stdout and exit code to expected outputs, then repeats the run to refuse nondeterministic output
+- emits `canon_strategy_audit.v0` with script hash, schema fingerprint, suite hash, deterministic output hash, fixture pass/fail metrics, and a gate decision
+- a passing artifact includes `passed: true`, `decision: "PROCEED"`, `sealed: true`, `status: "PASS"`, and `result: "SUCCESS"` so the same artifact can satisfy `strategy register`'s `--verify`, `--assess`, and `--airlock` gates
+- exits `0` when all deterministic fixture checks pass, `1` when deterministic fixture checks fail, and `2` on refusal
+- refuses malformed suites or nondeterministic script outputs with structured refusal envelopes
 
 `canon strategy resolve --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]`
 - reads `registry.json` and `_strategy/*.json` entries from a local versioned registry

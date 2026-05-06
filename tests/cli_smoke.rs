@@ -9,6 +9,9 @@ use std::{
 use tempfile::tempdir;
 use tiny_http::{Header, Response, Server, StatusCode};
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 fn fixture_path(relative: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(relative)
 }
@@ -437,6 +440,99 @@ fn test_strategy_diff_cli_reports_changed_entry() {
         diff_json["changed"][0]["change_types"],
         serde_json::json!(["script_path_change", "script_content_hash_change"])
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_strategy_audit_cli_produces_register_compatible_proof() {
+    let registry_dir = tempdir().unwrap();
+    write_registry_metadata(registry_dir.path(), "strategy-audit-test", "0.1.0", 0);
+
+    let schema_path = registry_dir.path().join("profile.json");
+    let skill_path = registry_dir.path().join("SKILL.md");
+    let script_path = registry_dir.path().join("script.sh");
+    let suite_dir = registry_dir.path().join("suite");
+    let audit_path = registry_dir.path().join("audit.json");
+
+    write_strategy_schema(&schema_path, 1);
+    std::fs::write(&skill_path, "procurement skill").unwrap();
+    std::fs::write(&script_path, "#!/bin/sh\ncat\n").unwrap();
+    let mut permissions = std::fs::metadata(&script_path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&script_path, permissions).unwrap();
+
+    std::fs::create_dir(&suite_dir).unwrap();
+    std::fs::create_dir(suite_dir.join("inputs")).unwrap();
+    std::fs::create_dir(suite_dir.join("expected")).unwrap();
+    std::fs::write(suite_dir.join("inputs/case1.txt"), "Acme,10\n").unwrap();
+    std::fs::write(suite_dir.join("expected/case1.out"), "Acme,10\n").unwrap();
+    std::fs::write(
+        suite_dir.join("manifest.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "suite_id": "strategy_audit_suite.v1",
+            "version": "1.0.0",
+            "repeatability_runs": 2,
+            "fixtures": [
+                {
+                    "id": "case1",
+                    "input": "inputs/case1.txt",
+                    "expected_stdout": "expected/case1.out",
+                    "expected_exit_code": 0
+                }
+            ]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let audit = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "audit",
+            "--schema",
+            schema_path.to_str().unwrap(),
+            "--script",
+            script_path.to_str().unwrap(),
+            "--suite",
+            suite_dir.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let audit_stdout = String::from_utf8(audit.get_output().stdout.clone()).unwrap();
+    let audit_json: Value = serde_json::from_str(&audit_stdout).unwrap();
+    assert_eq!(audit_json["version"], "canon_strategy_audit.v0");
+    assert_eq!(audit_json["passed"], true);
+    assert_eq!(audit_json["decision"], "PROCEED");
+    assert_eq!(audit_json["sealed"], true);
+    std::fs::write(&audit_path, audit_stdout).unwrap();
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "register",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--schema",
+            schema_path.to_str().unwrap(),
+            "--skill",
+            skill_path.to_str().unwrap(),
+            "--script",
+            script_path.to_str().unwrap(),
+            "--script-id",
+            "audited-script.v1",
+            "--language",
+            "sh",
+            "--verify",
+            audit_path.to_str().unwrap(),
+            "--assess",
+            audit_path.to_str().unwrap(),
+            "--airlock",
+            audit_path.to_str().unwrap(),
+            "--next-version",
+            "0.2.0",
+        ])
+        .assert()
+        .success();
 }
 
 #[test]
