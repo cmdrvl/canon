@@ -1,6 +1,6 @@
 # canon resolve — Cross-Tape Entity Resolution
 
-> **Status**: Draft
+> **Status**: Implemented v0
 > **Created**: 2026-03-17
 > **Revised**: 2026-05-06
 > **Context**: Different data sources describe the same entities with different
@@ -8,12 +8,28 @@
 > the same loan as tape B's `deal=a, loan=2` — using structural similarity, not
 > pre-built ID mappings.
 
-> **Architecture status**: Scaffolded future resolution workbench. This plan
-> describes a sibling to `canon org`, not current core lookup behavior. The CLI
-> parse surface and shared contracts for `canon resolve` are scaffolded, but the
-> matching pipeline is still implementation-pending; production lookup remains
-> exact registry lookup as described in `PLAN_CANON.md` and
-> `IDENTITY_ARCHITECTURE.md`.
+> **Architecture status**: Implemented bounded resolution workbench. This plan
+> describes a sibling to `canon org`, not current core lookup behavior. `canon
+> resolve` loads exactly two local tapes, applies deterministic strategy
+> operators, emits `canon_resolve.v0`, optionally scores a gold set, and writes
+> flat cross-reference entries only when `--write-back` is explicitly provided.
+> Production lookup remains exact registry lookup as described in
+> `PLAN_CANON.md` and `IDENTITY_ARCHITECTURE.md`.
+
+Implemented v0 includes:
+
+- CSV, TSV, JSONL, and NDJSON tape loading with composite IDs
+- strategy parsing and BLAKE3 content hashing
+- candidate filters and assertions: `exact`, `canon_match`, `tolerance_pct`,
+  `tolerance_abs`, `range`, `date_range`, and `prefix`
+- deterministic scoring, thresholding, ambiguity handling, conflict warnings,
+  gold scoring, witness append, and optional registry write-back
+- integration coverage for end-to-end runs, golden output, refusal envelopes,
+  write-back feedback, determinism, and 5K-by-5K bounded-candidate scale
+
+Remaining non-v0 work: more than two tapes, address/geospatial normalization,
+fuzzy candidate suggestions, tournament orchestration inside `canon`, automatic
+registry version bumping, and property-specific identity sidecars.
 
 ---
 
@@ -339,6 +355,8 @@ canon resolve <REFERENCE_TAPE> <TARGET_TAPE> \
   [--write-back] \
   [--emit json|summary] \
   [--max-candidates <N>] \
+  [--max-rows <N>] \
+  [--max-bytes <N>] \
   [--no-witness]
 ```
 
@@ -351,6 +369,9 @@ Arguments:
 - `--gold`: Known-correct cross-references for scoring (optional)
 - `--write-back`: Write matched ID pairs to the registry
 - `--emit`: Output mode
+- `--max-candidates`: Refuse if any target record has more than N surviving
+  candidates after filtering
+- `--max-rows` / `--max-bytes`: Refuse oversized tapes before matching
 - `--no-witness`: Suppress witness ledger
 
 ### Exit codes
@@ -373,7 +394,8 @@ Arguments:
   },
   "registry": {
     "id": "cmbs-loan",
-    "version": "2.1.0"
+    "version": "2.1.0",
+    "source": "registries/cmbs-loan/"
   },
   "reference_tape": {
     "path": "trustee_tape.csv",
@@ -426,7 +448,7 @@ Arguments:
         {"reference_id": "223402", "score": 0.78}
       ],
       "gap": 0.03,
-      "reason": "ambiguity_gap_insufficient"
+      "reason": "insufficient_ambiguity_gap"
     }
   ],
   "gold_score": {
@@ -456,7 +478,7 @@ This avoids inventing synthetic canonical IDs. The reference tape is the authori
 
 ### What gets written
 
-When `--write-back` is specified and gold validation passes (zero regressions):
+When `--write-back` is specified:
 
 For each matched pair, write **two** registry entries:
 
@@ -469,7 +491,8 @@ The first entry is the reference ID mapping to itself (idempotent if it already
 exists). The second entry maps the target ID to the reference ID.
 
 Both go into a timestamped mapping file: `resolve-matches-YYYYMMDD.json`.
-The registry's `_index.sqlite` is rebuilt to include them.
+The registry's derived SQLite index is updated so the new entries resolve via
+normal lookup immediately.
 
 ### What does NOT get written
 
@@ -484,7 +507,9 @@ always used. The only thing that grows is the number of ID cross-references.
 ### Write-back safety
 
 - Write-back only fires with explicit `--write-back` flag
-- Gated on gold validation: any regression → no entries written
+- If `--gold` is provided, any regression → no entries written
+- Without `--gold`, write-back is allowed but the emitted evidence artifact is
+  the operator review gate
 - Creates new mapping files (never modifies existing ones)
 - Registry version NOT bumped (manual/CI step after review)
 - Each entry carries `rule_id` for auditability
@@ -641,7 +666,7 @@ routes events downstream.
 
 ```toml
 # canon/Cargo.toml additions
-petgraph = "0.7"
+petgraph = "0.6"
 serde_yaml = "0.9"               # strategy file parsing
 ```
 
@@ -659,18 +684,21 @@ canon/src/
 ├── output/                   # existing (json, csv emitters)
 ├── refusal.rs                # existing + new refusal codes
 ├── registry.rs               # existing (load, build, diff, audit)
-├── resolve/                  # NEW: cross-tape resolution module
+├── resolve/                  # cross-tape resolution module
 │   ├── mod.rs                # resolve orchestration: load tapes → filter → score → emit
+│   ├── types.rs              # shared resolve request/artifact/error contracts
 │   ├── strategy.rs           # strategy YAML parsing and validation
+│   ├── tape.rs               # CSV/TSV/JSONL/NDJSON tape loading and projection
 │   ├── graph.rs              # petgraph hydration from two tapes
 │   ├── assertions.rs         # assertion operators (exact, tolerance, canon_match, etc.)
 │   ├── scoring.rs            # candidate scoring and threshold/ambiguity evaluation
+│   ├── output.rs             # canon_resolve.v0 artifact construction and summary rendering
 │   ├── writeback.rs          # registry write-back of matched ID pairs
 │   └── gold.rs               # gold set scoring for tournament integration
 └── witness.rs                # existing
 ```
 
-### Build order
+### Implemented build order
 
 | Order | Component | LOC est. | What it does | Test strategy |
 |-------|-----------|----------|-------------|---------------|
@@ -685,6 +713,9 @@ canon/src/
 | 9 | **CLI integration** | ~150 | `canon resolve` subcommand, argument parsing, output formatting, exit codes. | CLI smoke tests |
 | 10 | **Witness integration** | ~50 | Record resolve runs in the witness ledger. | Verify witness append |
 | **Total** | | **~1600** | | |
+
+Items 1-10 are implemented in v0. The remaining work is validation and
+domain-specific strategy evolution outside this core runtime.
 
 ### New refusal codes
 
@@ -752,8 +783,11 @@ canon/src/
 ### Golden file tests
 
 - Fixture: reference tape (10 records), target tape (12 records)
-- 8 match, 2 unmatched, 2 ambiguous
-- Golden output file checked byte-for-byte
+- Full CMBS fixture: 9 matched, 2 unmatched, 1 ambiguous
+- Minimal strategy fixture: 9 matched, 1 unmatched, 2 ambiguous, with conflict
+  warning coverage
+- Golden output file checked for stable `canon_resolve.v0` shape
+- Full fixture output checked byte-for-byte across repeated runs
 - Strategy content hash recorded and verified
 
 ---
@@ -840,16 +874,16 @@ what's different about deal 2 and discovers an adapted strategy.
 
 ---
 
-## Sequencing
+## Sequencing Status
 
-### Phase 1: Strategy parser + assertion operators (~450 LOC)
+### Phase 1: Strategy parser + assertion operators (~450 LOC) — complete
 
 Pure functions, no I/O dependencies. Can be tested in complete isolation.
 
 **Exit criteria:** All operators pass property-based tests. Malformed strategies
 refused. Strategy content hashing works. Cross-tape column mapping validates.
 
-### Phase 2: Tape loader + graph hydration (~350 LOC)
+### Phase 2: Tape loader + graph hydration (~350 LOC) — complete
 
 Load two tapes into petgraph. Apply candidate filter. Reuse existing CSV/JSONL
 parsing from `input.rs` where possible.
@@ -857,21 +891,22 @@ parsing from `input.rs` where possible.
 **Exit criteria:** Fixture tapes load correctly. Graph has expected node counts.
 Candidate filter narrows pairs. Deterministic node ordering verified.
 
-### Phase 3: Scoring + resolve orchestration + CLI (~400 LOC)
+### Phase 3: Scoring + resolve orchestration + CLI (~400 LOC) — complete
 
 Wire together the full pipeline. Add `canon resolve` subcommand.
 
 **Exit criteria:** End-to-end matching works. Exit codes correct. Output contract
 matches spec. Witness records runs.
 
-### Phase 4: Gold scoring + write-back (~200 LOC)
+### Phase 4: Gold scoring + write-back (~200 LOC) — complete
 
 Tournament integration. Write matched ID pairs to registry.
 
 **Exit criteria:** Gold accuracy computed. Regressions detected. Write-back gated
-on zero regressions. Feedback loop verified: write-back entries resolve via lookup.
+on zero regressions when `--gold` is provided. Feedback loop verified:
+write-back entries resolve via lookup.
 
-### Phase 5: Tournament validation
+### Phase 5: Tournament validation — next
 
 Run the full loop externally on real CMBS tapes:
 1. Pick one deal with trustee + servicer tapes

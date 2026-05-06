@@ -445,7 +445,7 @@
     "formats": ["csv", "jsonl"],
     "profile_aware": false,
     "strategy_registry": true,
-    "cross_tape_resolution": "scaffolded",
+    "cross_tape_resolution": "implemented_v0",
     "streaming": true,
     "witness": {
       "ambient_recording": "enabled_by_default",

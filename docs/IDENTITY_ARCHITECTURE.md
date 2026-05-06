@@ -19,8 +19,8 @@
      heuristic guessing at resolution time.
 
 2. **Resolution workbenches**
-   - Command families: `canon org` today; `canon resolve` or property-specific
-     workbenches may exist later.
+   - Command families: `canon org` and `canon resolve` today;
+     property-specific workbenches may exist later.
    - Contract: run a bounded deterministic strategy against frozen local inputs,
      emit candidates/evidence/solve/audit/review artifacts, then promote accepted
      registry updates.
@@ -69,7 +69,7 @@ So the precise product claim is:
 | Registry maintenance | `canon registry` | Implemented | Registry entries | Provider-backed materialization, diff, audit, lint | Versioned registry files |
 | Strategy registry | `canon strategy` | Implemented | Schema and skill to frozen script | Deterministic script selection | Versioned strategy registry |
 | Organization identity | `canon org` | Implemented, first validated around BDC/issuer-like profiles | Organization observation to `org_canon_id` | Blocking, typed evidence, deterministic solver, abstention | Alias entries, anchor sidecars, escrow sidecars, proofs |
-| Cross-tape structural resolution | `canon resolve` | Scaffolded CLI/contracts; matching pipeline pending | Record in tape A to record in tape B | Structural similarity under an explicit strategy | Cross-reference registry entries |
+| Cross-tape structural resolution | `canon resolve` | Implemented v0 | Record in reference tape to record in target tape | Structural evidence under an explicit two-tape strategy; deterministic abstention on unmatched/ambiguous records | `canon_resolve.v0` evidence and optional flat cross-reference registry entries |
 | Property/address identity | Future workbench | Planned | Property observation to property canonical ID | Address/geospatial/name evidence under deterministic strategy | Property registry entries and proofs |
 | Fuzzy suggestions | Future assistive workflow only | Deferred | Unresolved value to suggested candidate | Probabilistic candidate generation, never auto-accepted | Human-approved registry entries only |
 
@@ -113,9 +113,9 @@ as part of `canon` rather than an ad hoc matcher:
   contract.
 - `docs/PLAN_ORG_IDENTITY_TOURNAMENT.md`: source of truth for the `canon org`
   organization-identity workbench.
-- `docs/PLAN_STRUCTURAL_RESOLUTION.md`: future sibling workbench for cross-tape
-  structural record matching; it should not be read as current core lookup
-  behavior.
+- `docs/PLAN_STRUCTURAL_RESOLUTION.md`: source of truth for the implemented
+  v0 `canon resolve` cross-tape structural record workbench; it should not be
+  read as current core lookup behavior.
 - `docs/PLAN_BDC_ENTITY_REGISTRATION.md`: domain bootstrap plan that now fits
   under the `canon org` workbench model.
 

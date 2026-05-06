@@ -309,14 +309,15 @@ Registries vary in complexity. `canon` treats all registries uniformly — input
 | **ID mapping** | Exact lookup (input ID -> canonical ID) | Yes | CUSIP->ISIN, ticker normalization |
 | **Alias resolution** | Exact lookup with pre-populated variants | Yes | "Wells Fargo" / "WFB" -> counterparty C-00012 (each variant is a separate registry entry) |
 | **Org identity workbench** | Multi-field deterministic evidence outside the lookup path, promoted into flat aliases and sidecars | Yes, via `canon org` | "Wells Fargo & Company" / "WFB" -> org O-00012 |
-| **Generic structural/property workbench** | Multi-column matching under a domain strategy, promoted into registry entries | Future | Property address variants -> canonical property P-00456 |
+| **Cross-tape structural workbench** | Two-tape deterministic matching under a domain strategy, promoted into flat registry entries | Yes, via `canon resolve` | Trustee loan `223232` -> servicer loan `WFCM2019-C50\|1` |
+| **Property/address identity** | Address/geospatial/name evidence under a property-specific strategy | Future | Property address variants -> canonical property P-00456 |
 
 ID mapping and alias resolution both use the same v0 lookup mechanism: exact
 byte match after ASCII-trim. The difference is how the registry is authored
-(one entry per ID vs many entries per entity). `canon org` is not a new lookup
-match mode; it is a separate workbench that uses deterministic multi-field
-evidence to manufacture audited registry updates. Generic structural/property
-resolution remains future work.
+(one entry per ID vs many entries per entity). `canon org` and `canon resolve`
+are not new lookup match modes; they are separate workbenches that use
+deterministic evidence to manufacture audited registry updates. Property-specific
+identity remains future work.
 
 ### Registry governance
 
@@ -763,7 +764,7 @@ If any feature makes the mapping less inspectable or the pipeline less composabl
 - Normalization rules defined per mode, documented and deterministic
 - `strsim` crate (Jaro-Winkler, Sorensen-Dice) for fuzzy candidate scoring in suggest mode
 
-### Future resolution workbenches
+### Future workbench directions
 - Cross-tape structural matching (`canon resolve`) remains a sibling workbench, not a core lookup feature
 - Property identity may use multi-column matching (address + name + coordinates -> canonical ID)
 - Geospatial matching via `geo` + `rstar` (Haversine + R-tree) may be useful inside a property workbench

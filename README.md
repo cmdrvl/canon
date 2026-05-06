@@ -18,7 +18,7 @@ The same loan appears as CUSIP `037833100` in one system, ISIN `US0378331005` in
 
 **canon resolves identifiers against versioned registries — deterministic, traceable, reproducible.** Every resolution records which registry version was used, which rule produced the match, and what didn't match. Same input plus same registry version equals same output, every time. No fuzzy matching, no silent normalization, no guessing.
 
-Architecturally, `canon` has two layers. The core lookup kernel is exact and boring on purpose. Resolution workbenches such as `canon org` run offline evidence pipelines that create, audit, review, and promote new registry knowledge. Once promoted, production lookup is still exact registry lookup. See [`docs/IDENTITY_ARCHITECTURE.md`](docs/IDENTITY_ARCHITECTURE.md) for the boundary.
+Architecturally, `canon` has two layers. The core lookup kernel is exact and boring on purpose. Resolution workbenches such as `canon org` and `canon resolve` run offline evidence pipelines that create, audit, review, and promote new registry knowledge. Once promoted, production lookup is still exact registry lookup. See [`docs/IDENTITY_ARCHITECTURE.md`](docs/IDENTITY_ARCHITECTURE.md) for the boundary.
 
 ### What makes this different
 
@@ -27,6 +27,7 @@ Architecturally, `canon` has two layers. The core lookup kernel is exact and bor
 - **Full traceability** — every mapping includes `rule_id`, `canonical_type`, and `confidence`. Every unresolved entry includes the reason. Every result is auditable.
 - **Deduplication built in** — input values are deduplicated before lookup. 500 unique CUSIPs produce 500 mapping entries whether your file has 500 rows or 500,000.
 - **Org identity resolution** — `canon org` resolves organization-like entities that appear under different names across documents via a deterministic multi-stage workbench: block, score evidence, solve clusters, audit against evaluation suites, review if needed, and promote into the registry.
+- **Cross-tape structural resolution** — `canon resolve` compares two local tapes under an explicit YAML strategy, emits `canon_resolve.v0` evidence, and can write matched ID pairs back into a flat registry when explicitly requested.
 
 ---
 
@@ -209,6 +210,7 @@ canon tape.csv --registry registries/cusip-isin/ --column cusip \
 - Normalizing identifiers before reconciliation (`canon --emit csv | rvl`)
 - Resolving counterparty aliases across vendor datasets
 - Running deterministic org-identity resolution when the domain has modeled observations, anchors, context fields, audit suites, and a versioned registry (`canon org`)
+- Building cross-reference registries from two tapes that describe the same records with different IDs (`canon resolve`)
 - Building audit trails for regulatory mappings (every resolution traceable)
 
 **When canon might not be ideal:**
@@ -245,7 +247,7 @@ cargo build --release
 
 ```bash
 canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
-canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <YAML> --registry <DIR> [--gold <JSONL>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--no-witness]
+canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <YAML> --registry <DIR> [--gold <JSONL>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [OPTIONS]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary]
@@ -287,7 +289,7 @@ canon org review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> 
 
 | Subcommand | Description |
 |------------|-------------|
-| `resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <YAML> --registry <DIR> [--gold <JSONL>] [--write-back] [--emit json\|summary]` | Cross-tape structural resolution workbench. Loads two tapes, filters candidates, scores matches, optionally evaluates gold, and writes matched ID pairs back to the registry when explicitly requested. |
+| `resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <YAML> --registry <DIR> [--gold <JSONL>] [--write-back] [--emit json\|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>]` | Cross-tape structural resolution workbench. Loads two tapes, filters candidates, scores matches, optionally evaluates gold, and writes matched ID pairs back to the registry when explicitly requested. |
 | `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides. |
 | `registry diff --old <PATH> --new <PATH> [--emit json\|summary]` | Compare two versions of the same registry ID and report added, removed, changed, and unchanged effective mappings. |
 | `registry audit <SEED> --registry <PATH> --column <COLUMN> [--emit json\|summary]` | Audit a seed corpus against a registry and emit resolved/unresolved entries plus aggregate canonical-target and rule-hit counts. |
@@ -318,6 +320,8 @@ canon org review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> 
 `canon registry diff`, `canon registry audit`, and `canon registry lint` exit `0` when the report succeeds and `2` on refusal. Lint findings are represented inside `canon_registry_lint.v0` rather than via exit status. `canon registry build` exits `0` when materialization succeeds and `2` on refusal; provider failures are preserved in the JSON report and warned on stderr.
 
 `canon strategy profile`, `canon strategy register`, and `canon strategy diff` exit `0` when their reports or writes succeed and `2` on refusal. `canon strategy audit` exits `0` when all fixtures pass, `1` when deterministic fixture checks fail, and `2` on refusal. `canon strategy resolve` exits `0` for an EXACT or COMPATIBLE frozen-script match, `1` for PARTIAL or UNRESOLVED, and `2` on refusal.
+
+`canon resolve` exits `0` when every target record is matched, `1` when any target record is unmatched or ambiguous, and `2` on refusal. In `summary` mode, refusal JSON is written to stderr.
 
 ### Output Routing
 
@@ -475,6 +479,52 @@ canon tape.csv --registry registries/cusip-isin/ --column cusip \
 
 ---
 
+## Cross-Tape Structural Resolution (`canon resolve`)
+
+`canon resolve` is for the moment before a registry exists. Give it a reference tape, a target tape, and a YAML strategy that says how fields correspond. It builds an in-memory graph, filters candidate pairs, scores deterministic assertions, and emits a `canon_resolve.v0` evidence artifact.
+
+This is still not the core lookup path. The normal `canon <INPUT> --registry ...` command does exact lookup only. `canon resolve` is a workbench for manufacturing audited cross-reference entries that normal lookup can use later.
+
+Run the fixture corpus as JSON:
+
+```bash
+canon resolve \
+  tests/fixtures/resolve/tapes/reference_loans.csv \
+  tests/fixtures/resolve/tapes/target_loans.csv \
+  --strategy tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml \
+  --registry tests/fixtures/registries/resolve-servicers \
+  --gold tests/fixtures/resolve/gold/loan_matches.jsonl \
+  --no-witness
+```
+
+Summary mode is compact for operators:
+
+```bash
+canon resolve \
+  tests/fixtures/resolve/tapes/reference_loans.csv \
+  tests/fixtures/resolve/tapes/target_loans.csv \
+  --strategy tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml \
+  --registry tests/fixtures/registries/resolve-servicers \
+  --emit summary \
+  --no-witness
+```
+
+Write-back is explicit. It writes only flat ID mappings, never structural attributes:
+
+```bash
+canon resolve reference.csv target.csv \
+  --strategy strategies/cmbs_loans.yaml \
+  --registry registries/cmbs-loans/ \
+  --gold gold/loan_matches.jsonl \
+  --write-back
+```
+
+If `--gold` is provided, any gold regression suppresses write-back. Without `--gold`, write-back is still allowed, but the safety gate is the explicit `--write-back` flag plus the emitted evidence artifact. Review the artifact and version the registry before using it as production lookup knowledge.
+
+Implemented v0 limits: exactly two tapes, deterministic local operators only, no address parser, no geocoder, no fuzzy matching, no persistent attribute store, and no automatic registry version bump.
+
+---
+
 ## Refusal Codes
 
 Every refusal includes the error code, a concrete message, and a recovery path.
@@ -497,6 +547,10 @@ Every refusal includes the error code, a concrete message, and a recovery path.
 | `E_ORG_FIXTURE_INVALID` | Suite fixture references are inconsistent | Fix fixture row catalog or expected pairs |
 | `E_ORG_VERSION_BUMP_REQUIRED` | Promotion requires an explicit next version | Pass `--next-version` |
 | `E_ORG_STALE_REGISTRY` | Registry changed since the audited snapshot | Re-run org against the current registry |
+| `E_BAD_STRATEGY` | Resolve strategy YAML is malformed or invalid | Fix the strategy file |
+| `E_TOO_MANY_CANDIDATES` | Resolve candidate filters left too many candidates | Tighten filters or raise `--max-candidates` |
+| `E_EMPTY_TAPE` | Resolve reference or target tape has no processable records | Provide non-empty tapes |
+| `E_INCOMPATIBLE_TAPES` | Resolve strategy leaves no comparable fields | Fix strategy field mappings |
 
 ---
 
@@ -634,7 +688,7 @@ Returns the full evidence chain: which blocking operator surfaced the pair, whic
 
 | Limitation | Detail |
 |------------|--------|
-| **Exact match only (core lookup)** | Core `canon` lookup uses exact byte match after ASCII-trim. `canon org` adds multi-field deterministic resolution but not fuzzy/phonetic matching. |
+| **Exact match only (core lookup)** | Core `canon` lookup uses exact byte match after ASCII-trim. `canon org` and `canon resolve` add deterministic workbenches, not fuzzy/phonetic matching in the lookup kernel. |
 | **Flat registries** | No subdirectories in v0. All mapping files must be at the registry root. |
 | **CSV-only for `--emit csv`** | JSONL input cannot use `--emit csv` mode. |
 
@@ -648,9 +702,9 @@ Short for *canonical*. The tool produces canonical identifiers — one true ID f
 
 ### Is this entity resolution?
 
-Yes — as of v0.3.0, `canon org` performs deterministic multi-field org-identity resolution. It resolves entities that appear under different names across documents using a YAML-driven pipeline of blocking, evidence scoring, and cluster solving. Core `canon` (without `org`) still resolves identifiers via exact lookup against versioned registries.
+Yes. `canon org` performs deterministic multi-field org-identity resolution, and `canon resolve` performs deterministic two-tape structural record resolution. Both use YAML-driven evidence pipelines and emit audit artifacts. Core `canon` without a workbench subcommand still resolves identifiers via exact lookup against versioned registries.
 
-The important boundary is that entity resolution happens in workbench commands such as `canon org`, then accepted knowledge is promoted into registries. The default lookup command never performs open-ended fuzzy matching at resolution time.
+The important boundary is that entity resolution happens in workbench commands such as `canon org` and `canon resolve`, then accepted knowledge is promoted into registries. The default lookup command never performs open-ended fuzzy matching at resolution time.
 
 ### How does canon relate to rvl?
 
