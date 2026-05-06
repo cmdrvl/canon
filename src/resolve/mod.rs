@@ -5,6 +5,7 @@
 //! registry entries once the phase-1/phase-2 implementation beads land.
 
 pub mod assertions;
+pub mod gold;
 pub mod graph;
 pub mod output;
 pub mod scoring;
@@ -13,6 +14,7 @@ pub mod tape;
 pub mod types;
 
 pub use assertions::*;
+pub use gold::*;
 pub use graph::*;
 pub use output::*;
 pub use scoring::*;
