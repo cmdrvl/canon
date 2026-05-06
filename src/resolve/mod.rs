@@ -4,10 +4,12 @@
 //! bounded workbench that will turn two-tape structural evidence into flat
 //! registry entries once the phase-1/phase-2 implementation beads land.
 
+pub mod assertions;
 pub mod strategy;
 pub mod tape;
 pub mod types;
 
+pub use assertions::*;
 pub use strategy::*;
 pub use tape::*;
 pub use types::*;

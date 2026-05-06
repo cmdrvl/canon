@@ -240,7 +240,9 @@ pub struct AssertionResult {
     pub field_tgt: String,
     pub op: String,
     pub passed: bool,
+    pub score: f64,
     pub weight: f64,
+    pub required: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub detail: BTreeMap<String, Value>,
 }
