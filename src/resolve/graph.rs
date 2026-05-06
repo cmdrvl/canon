@@ -4,7 +4,8 @@ use super::{
 };
 use crate::Registry;
 use petgraph::graph::{Graph, NodeIndex};
-use serde_json::json;
+use serde_json::{Value, json};
+use std::collections::BTreeMap;
 
 pub type ResolvePetGraph = Graph<ResolveNode, ResolveEdge>;
 
@@ -109,19 +110,29 @@ pub fn select_candidates(
 ) -> ResolveResult<CandidateSelection> {
     let graph = hydrate_graph(tapes);
     let max_candidates = cli_max_candidates.or(strategy.max_candidates);
+    let leading_exact_filter = strategy
+        .candidate_filter
+        .first()
+        .filter(|filter| filter.op == "exact");
+    let leading_exact_index =
+        leading_exact_filter.map(|filter| build_exact_reference_index(&graph, filter));
     let mut targets = Vec::with_capacity(graph.target_nodes.len());
 
     for target_node in &graph.target_nodes {
         let target = graph.record(*target_node);
-        let mut candidates = graph
-            .reference_nodes
-            .iter()
-            .map(|reference_node| CandidatePair {
-                reference_id: graph.record(*reference_node).composite_id.clone(),
-                reference_node: *reference_node,
-                filters: Vec::with_capacity(strategy.candidate_filter.len()),
-            })
-            .collect::<Vec<_>>();
+        let mut candidates = if let (Some(filter), Some(index)) =
+            (leading_exact_filter, leading_exact_index.as_ref())
+        {
+            indexed_exact_candidates(
+                &graph,
+                target,
+                filter,
+                index,
+                strategy.candidate_filter.len(),
+            )
+        } else {
+            all_reference_candidates(&graph, strategy.candidate_filter.len())
+        };
 
         for filter in &strategy.candidate_filter {
             candidates = apply_filter(&graph, target, candidates, filter, registry);
@@ -158,6 +169,70 @@ pub fn select_candidates(
     }
 
     Ok(CandidateSelection { graph, targets })
+}
+
+fn all_reference_candidates(graph: &ResolveGraph, filter_count: usize) -> Vec<CandidatePair> {
+    graph
+        .reference_nodes
+        .iter()
+        .map(|reference_node| CandidatePair {
+            reference_id: graph.record(*reference_node).composite_id.clone(),
+            reference_node: *reference_node,
+            filters: Vec::with_capacity(filter_count),
+        })
+        .collect()
+}
+
+fn build_exact_reference_index(
+    graph: &ResolveGraph,
+    filter: &ResolveOperatorSpec,
+) -> BTreeMap<String, Vec<NodeIndex>> {
+    let mut index = BTreeMap::<String, Vec<NodeIndex>>::new();
+    for reference_node in &graph.reference_nodes {
+        let reference = graph.record(*reference_node);
+        if let Some(key) = scalar_exact_key(reference.attributes.get(&filter.field_ref)) {
+            index.entry(key).or_default().push(*reference_node);
+        }
+    }
+    index
+}
+
+fn indexed_exact_candidates(
+    graph: &ResolveGraph,
+    target: &ResolveRecord,
+    filter: &ResolveOperatorSpec,
+    index: &BTreeMap<String, Vec<NodeIndex>>,
+    filter_count: usize,
+) -> Vec<CandidatePair> {
+    let Some(key) = scalar_exact_key(target.attributes.get(&filter.field_tgt)) else {
+        return Vec::new();
+    };
+    let Some(reference_nodes) = index.get(&key) else {
+        return Vec::new();
+    };
+
+    reference_nodes
+        .iter()
+        .map(|reference_node| CandidatePair {
+            reference_id: graph.record(*reference_node).composite_id.clone(),
+            reference_node: *reference_node,
+            filters: Vec::with_capacity(filter_count),
+        })
+        .collect()
+}
+
+fn scalar_exact_key(value: Option<&Value>) -> Option<String> {
+    let rendered = match value? {
+        Value::String(value) => value.clone(),
+        Value::Number(value) => value.to_string(),
+        Value::Bool(value) => value.to_string(),
+        Value::Null | Value::Array(_) | Value::Object(_) => return None,
+    };
+    Some(
+        rendered
+            .trim_matches(|character: char| character.is_ascii_whitespace())
+            .to_string(),
+    )
 }
 
 fn add_record_node(graph: &mut ResolvePetGraph, record: &ResolveRecord) -> NodeIndex {

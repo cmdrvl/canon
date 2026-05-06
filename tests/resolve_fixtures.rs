@@ -103,5 +103,5 @@ fn resolve_servicer_registry_fixture_is_parseable() {
         &fs::read_to_string(root.join("servicer-aliases.json")).expect("alias mapping"),
     )
     .expect("alias mapping json");
-    assert_eq!(aliases.as_array().unwrap().len(), 8);
+    assert_eq!(aliases.as_array().unwrap().len(), 13);
 }

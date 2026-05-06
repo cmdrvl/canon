@@ -1,0 +1,292 @@
+{
+  "version": "canon_resolve.v0",
+  "strategy": {
+    "id": "minimal-loan-match.v1",
+    "version": "0.1.0",
+    "content_hash": "blake3:d072276b094b6b6c4c5eb870d49ed75b26913be2fc6cb1ff0d8351ca4a6a1236"
+  },
+  "registry": {
+    "id": "resolve-servicers",
+    "version": "0.1.0",
+    "source": "tests/fixtures/registries/resolve-servicers"
+  },
+  "reference_tape": {
+    "path": "tests/fixtures/resolve/tapes/reference_loans.csv",
+    "record_count": 10
+  },
+  "target_tape": {
+    "path": "tests/fixtures/resolve/tapes/target_loans.csv",
+    "record_count": 12
+  },
+  "summary": {
+    "target_records": 12,
+    "matched": 9,
+    "unmatched": 1,
+    "ambiguous": 2,
+    "match_rate": 0.75
+  },
+  "matches": [
+    {
+      "reference_id": "223232",
+      "target_id": "WFCM2019-C50|1",
+      "canonical_id": "223232",
+      "score": 1.0,
+      "assertions": [
+        {
+          "field_ref": "property_address",
+          "field_tgt": "address",
+          "op": "exact",
+          "passed": true,
+          "score": 1.0,
+          "weight": 1.0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "reference_id": "223233",
+      "target_id": "WFCM2019-C50|2",
+      "canonical_id": "223233",
+      "score": 1.0,
+      "assertions": [
+        {
+          "field_ref": "property_address",
+          "field_tgt": "address",
+          "op": "exact",
+          "passed": true,
+          "score": 1.0,
+          "weight": 1.0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "reference_id": "223234",
+      "target_id": "WFCM2019-C50|3",
+      "canonical_id": "223234",
+      "score": 1.0,
+      "assertions": [
+        {
+          "field_ref": "property_address",
+          "field_tgt": "address",
+          "op": "exact",
+          "passed": true,
+          "score": 1.0,
+          "weight": 1.0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "reference_id": "223235",
+      "target_id": "WFCM2019-C50|4",
+      "canonical_id": "223235",
+      "score": 1.0,
+      "assertions": [
+        {
+          "field_ref": "property_address",
+          "field_tgt": "address",
+          "op": "exact",
+          "passed": true,
+          "score": 1.0,
+          "weight": 1.0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "reference_id": "223236",
+      "target_id": "WFCM2019-C50|5",
+      "canonical_id": "223236",
+      "score": 1.0,
+      "assertions": [
+        {
+          "field_ref": "property_address",
+          "field_tgt": "address",
+          "op": "exact",
+          "passed": true,
+          "score": 1.0,
+          "weight": 1.0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "reference_id": "223237",
+      "target_id": "WFCM2019-C50|6",
+      "canonical_id": "223237",
+      "score": 1.0,
+      "assertions": [
+        {
+          "field_ref": "property_address",
+          "field_tgt": "address",
+          "op": "exact",
+          "passed": true,
+          "score": 1.0,
+          "weight": 1.0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "reference_id": "223238",
+      "target_id": "WFCM2019-C50|7",
+      "canonical_id": "223238",
+      "score": 1.0,
+      "assertions": [
+        {
+          "field_ref": "property_address",
+          "field_tgt": "address",
+          "op": "exact",
+          "passed": true,
+          "score": 1.0,
+          "weight": 1.0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "reference_id": "223239",
+      "target_id": "WFCM2019-C50|8",
+      "canonical_id": "223239",
+      "score": 1.0,
+      "assertions": [
+        {
+          "field_ref": "property_address",
+          "field_tgt": "address",
+          "op": "exact",
+          "passed": true,
+          "score": 1.0,
+          "weight": 1.0,
+          "required": true
+        }
+      ]
+    },
+    {
+      "reference_id": "223232",
+      "target_id": "WFCM2019-C50|NULLSERV",
+      "canonical_id": "223232",
+      "score": 1.0,
+      "assertions": [
+        {
+          "field_ref": "property_address",
+          "field_tgt": "address",
+          "op": "exact",
+          "passed": true,
+          "score": 1.0,
+          "weight": 1.0,
+          "required": true
+        }
+      ]
+    }
+  ],
+  "unmatched": [
+    {
+      "target_id": "WFCM2019-C50|404",
+      "reason": "required_assertion_failed",
+      "best_candidate": {
+        "reference_id": "223232",
+        "score": 0.0,
+        "assertions": [
+          {
+            "field_ref": "property_address",
+            "field_tgt": "address",
+            "op": "exact",
+            "passed": false,
+            "score": 0.0,
+            "weight": 1.0,
+            "required": true,
+            "detail": {
+              "reason": "not_equal",
+              "ref_val": "100 Main St",
+              "tgt_val": "404 Missing Mall"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "ambiguous": [
+    {
+      "target_id": "WFCM2019-C50|9",
+      "candidates": [
+        {
+          "reference_id": "223240",
+          "score": 1.0,
+          "gap": 0.0,
+          "assertions": [
+            {
+              "field_ref": "property_address",
+              "field_tgt": "address",
+              "op": "exact",
+              "passed": true,
+              "score": 1.0,
+              "weight": 1.0,
+              "required": true
+            }
+          ]
+        },
+        {
+          "reference_id": "223241",
+          "score": 1.0,
+          "gap": 0.0,
+          "assertions": [
+            {
+              "field_ref": "property_address",
+              "field_tgt": "address",
+              "op": "exact",
+              "passed": true,
+              "score": 1.0,
+              "weight": 1.0,
+              "required": true
+            }
+          ]
+        }
+      ],
+      "gap": 0.0,
+      "reason": "insufficient_ambiguity_gap"
+    },
+    {
+      "target_id": "WFCM2019-C50|AMB",
+      "candidates": [
+        {
+          "reference_id": "223240",
+          "score": 1.0,
+          "gap": 0.0,
+          "assertions": [
+            {
+              "field_ref": "property_address",
+              "field_tgt": "address",
+              "op": "exact",
+              "passed": true,
+              "score": 1.0,
+              "weight": 1.0,
+              "required": true
+            }
+          ]
+        },
+        {
+          "reference_id": "223241",
+          "score": 1.0,
+          "gap": 0.0,
+          "assertions": [
+            {
+              "field_ref": "property_address",
+              "field_tgt": "address",
+              "op": "exact",
+              "passed": true,
+              "score": 1.0,
+              "weight": 1.0,
+              "required": true
+            }
+          ]
+        }
+      ],
+      "gap": 0.0,
+      "reason": "insufficient_ambiguity_gap"
+    }
+  ],
+  "conflict_warnings": [
+    "one_to_many_conflict: reference_id '223232' matched target_ids [WFCM2019-C50|1, WFCM2019-C50|NULLSERV]"
+  ]
+}

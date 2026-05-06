@@ -46,5 +46,35 @@
     "canonical_id": "SERVICER-MIDLAND",
     "canonical_type": "servicer_id",
     "rule_id": "SERVICER_ALIAS"
+  },
+  {
+    "input": "Midland",
+    "canonical_id": "SERVICER-MIDLAND",
+    "canonical_type": "servicer_id",
+    "rule_id": "SERVICER_ALIAS"
+  },
+  {
+    "input": "Berkadia Commercial Mortgage",
+    "canonical_id": "SERVICER-BERKADIA",
+    "canonical_type": "servicer_id",
+    "rule_id": "SERVICER_ALIAS"
+  },
+  {
+    "input": "Berkadia",
+    "canonical_id": "SERVICER-BERKADIA",
+    "canonical_type": "servicer_id",
+    "rule_id": "SERVICER_ALIAS"
+  },
+  {
+    "input": "PNC Bank",
+    "canonical_id": "SERVICER-PNC",
+    "canonical_type": "servicer_id",
+    "rule_id": "SERVICER_ALIAS"
+  },
+  {
+    "input": "PNC",
+    "canonical_id": "SERVICER-PNC",
+    "canonical_type": "servicer_id",
+    "rule_id": "SERVICER_ALIAS"
   }
 ]
