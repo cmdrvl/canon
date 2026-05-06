@@ -41,6 +41,30 @@ pub enum OrgStreamEmitMode {
     Summary,
 }
 
+/// Emit mode for org review export
+#[derive(Debug, Clone, ValueEnum, Default)]
+pub enum OrgReviewExportEmitMode {
+    /// Structured review JSON artifact (default)
+    #[default]
+    Json,
+    /// Human-reviewable CSV artifact
+    Csv,
+}
+
+/// Include selector for org review export
+#[derive(Debug, Clone, ValueEnum, Default)]
+pub enum OrgReviewInclude {
+    /// Resolved and promotable entities
+    Resolved,
+    /// Escrowed abstentions
+    Escrow,
+    /// Contradiction records
+    Contradictions,
+    /// All reviewable items
+    #[default]
+    All,
+}
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum CanonCommand {
     /// Registry maintenance and inspection commands
@@ -61,6 +85,12 @@ pub struct RegistryCommand {
 pub struct OrgCommand {
     #[command(subcommand)]
     pub command: OrgSubcommand,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct OrgReviewCommand {
+    #[command(subcommand)]
+    pub command: OrgReviewSubcommand,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -97,6 +127,8 @@ pub enum OrgSubcommand {
     Promote(OrgPromoteCli),
     /// Explain one org row, canonical entity, or escrow entity
     Explain(OrgExplainCli),
+    /// Export and import human adjudication review queues
+    Review(OrgReviewCommand),
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -488,6 +520,50 @@ pub struct OrgPromoteCli {
     /// Explicit next registry version
     #[arg(long)]
     pub next_version: String,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: OrgEmitMode,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum OrgReviewSubcommand {
+    /// Export reviewable org identity clusters from a solve/run artifact
+    Export(OrgReviewExportCli),
+    /// Import adjudicated review decisions into a registry version
+    Import(OrgReviewImportCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct OrgReviewExportCli {
+    /// Org solve or run artifact
+    pub result: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: OrgReviewExportEmitMode,
+
+    /// Which reviewable records to include
+    #[arg(long, value_enum, default_value = "all")]
+    pub include: OrgReviewInclude,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct OrgReviewImportCli {
+    /// Review JSON or CSV artifact
+    pub review: PathBuf,
+
+    /// Org registry directory
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Explicit next registry version
+    #[arg(long = "next-version")]
+    pub next_version: String,
+
+    /// Audit artifact required for alias/anchor promotion decisions
+    #[arg(long)]
+    pub audit: Option<PathBuf>,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
@@ -1143,6 +1219,74 @@ mod tests {
                     assert!(matches!(promote.emit, OrgEmitMode::Summary));
                 }
                 other => panic!("expected org promote, got {:?}", other),
+            },
+            other => panic!("expected org command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_org_review_export_parsing() {
+        let args = [
+            "canon",
+            "org",
+            "review",
+            "export",
+            "result.json",
+            "--emit",
+            "csv",
+            "--include",
+            "escrow",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Org(command) => match command.command {
+                OrgSubcommand::Review(review) => match review.command {
+                    OrgReviewSubcommand::Export(export) => {
+                        assert_eq!(export.result, PathBuf::from("result.json"));
+                        assert!(matches!(export.emit, OrgReviewExportEmitMode::Csv));
+                        assert!(matches!(export.include, OrgReviewInclude::Escrow));
+                    }
+                    other => panic!("expected org review export, got {:?}", other),
+                },
+                other => panic!("expected org review, got {:?}", other),
+            },
+            other => panic!("expected org command, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_cli_org_review_import_parsing() {
+        let args = [
+            "canon",
+            "org",
+            "review",
+            "import",
+            "review.csv",
+            "--registry",
+            "registries/org",
+            "--next-version",
+            "2026.05.06",
+            "--audit",
+            "audit.json",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        match cli.command.unwrap() {
+            CanonCommand::Org(command) => match command.command {
+                OrgSubcommand::Review(review) => match review.command {
+                    OrgReviewSubcommand::Import(import) => {
+                        assert_eq!(import.review, PathBuf::from("review.csv"));
+                        assert_eq!(import.registry, PathBuf::from("registries/org"));
+                        assert_eq!(import.next_version, "2026.05.06");
+                        assert_eq!(import.audit, Some(PathBuf::from("audit.json")));
+                        assert!(matches!(import.emit, OrgEmitMode::Summary));
+                    }
+                    other => panic!("expected org review import, got {:?}", other),
+                },
+                other => panic!("expected org review, got {:?}", other),
             },
             other => panic!("expected org command, got {:?}", other),
         }

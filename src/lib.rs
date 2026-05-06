@@ -15,10 +15,12 @@ pub mod witness;
 
 use crate::cli::{
     CanonCommand, Cli, OrgAuditCli, OrgBlockCli, OrgCommand, OrgEdgeCli, OrgEmitMode,
-    OrgExplainCli, OrgPromoteCli, OrgRunCli, OrgSolveCli, OrgStreamEmitMode, OrgSubcommand,
-    RegistryAuditCli, RegistryBuildCli, RegistryDiffCli, RegistryEmitMode, RegistryLintCli,
-    RegistryLintProfile, RegistrySubcommand, StrategyAuditCli, StrategyCommand, StrategyDiffCli,
-    StrategyProfileCli, StrategyRegisterCli, StrategyResolveCli, StrategySubcommand,
+    OrgExplainCli, OrgPromoteCli, OrgReviewCommand, OrgReviewExportCli, OrgReviewExportEmitMode,
+    OrgReviewImportCli, OrgReviewInclude, OrgReviewSubcommand, OrgRunCli, OrgSolveCli,
+    OrgStreamEmitMode, OrgSubcommand, RegistryAuditCli, RegistryBuildCli, RegistryDiffCli,
+    RegistryEmitMode, RegistryLintCli, RegistryLintProfile, RegistrySubcommand, StrategyAuditCli,
+    StrategyCommand, StrategyDiffCli, StrategyProfileCli, StrategyRegisterCli, StrategyResolveCli,
+    StrategySubcommand,
 };
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
@@ -236,6 +238,7 @@ fn run_org_command(command: &OrgCommand) -> Result<u8, Box<dyn Error>> {
         OrgSubcommand::Audit(audit) => run_org_audit_command(audit),
         OrgSubcommand::Promote(promote) => run_org_promote_command(promote),
         OrgSubcommand::Explain(explain) => run_org_explain_command(explain),
+        OrgSubcommand::Review(review) => run_org_review_command(review),
     }
 }
 
@@ -377,6 +380,60 @@ fn run_org_promote_command(promote: &OrgPromoteCli) -> Result<u8, Box<dyn Error>
             refusal_output,
             true,
             matches!(promote.emit, OrgEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_org_review_command(review: &OrgReviewCommand) -> Result<u8, Box<dyn Error>> {
+    match &review.command {
+        OrgReviewSubcommand::Export(export) => run_org_review_export_command(export),
+        OrgReviewSubcommand::Import(import) => run_org_review_import_command(import),
+    }
+}
+
+fn run_org_review_export_command(export: &OrgReviewExportCli) -> Result<u8, Box<dyn Error>> {
+    match run_org_review_export_pipeline(export) {
+        Ok(artifact) => {
+            let output = match export.emit {
+                OrgReviewExportEmitMode::Json => Ok(serde_json::to_string(&artifact)?),
+                OrgReviewExportEmitMode::Csv => {
+                    org::review::export_csv(&artifact).map_err(create_org_refusal)
+                }
+            };
+            match output {
+                Ok(output) => {
+                    emit_org_output(&output, false);
+                    Ok(0)
+                }
+                Err(refusal_output) => emit_org_refusal(
+                    refusal_output,
+                    matches!(export.emit, OrgReviewExportEmitMode::Json),
+                    false,
+                ),
+            }
+        }
+        Err(refusal_output) => emit_org_refusal(
+            refusal_output,
+            matches!(export.emit, OrgReviewExportEmitMode::Json),
+            false,
+        ),
+    }
+}
+
+fn run_org_review_import_command(import: &OrgReviewImportCli) -> Result<u8, Box<dyn Error>> {
+    match run_org_review_import_pipeline(import) {
+        Ok(artifact) => {
+            let output = match import.emit {
+                OrgEmitMode::Json => serde_json::to_string(&artifact)?,
+                OrgEmitMode::Summary => artifact.render_summary(),
+            };
+            emit_org_output(&output, matches!(import.emit, OrgEmitMode::Summary));
+            Ok(0)
+        }
+        Err(refusal_output) => emit_org_refusal(
+            refusal_output,
+            true,
+            matches!(import.emit, OrgEmitMode::Summary),
         ),
     }
 }
@@ -599,6 +656,56 @@ fn run_org_promote_pipeline(promote: &OrgPromoteCli) -> Result<org::PromoteArtif
         &promote.next_version,
     )
     .map_err(create_org_refusal)
+}
+
+#[allow(clippy::result_large_err)]
+fn run_org_review_export_pipeline(
+    export: &OrgReviewExportCli,
+) -> Result<org::review::ReviewExportOutput, CanonOutput> {
+    let (result, result_bytes): (org::SolveRunArtifact, Vec<u8>) =
+        read_json_artifact(&export.result, "org result artifact")?;
+
+    org::review::export(
+        &result,
+        &result_bytes,
+        map_org_review_include(&export.include),
+    )
+    .map_err(create_org_refusal)
+}
+
+#[allow(clippy::result_large_err)]
+fn run_org_review_import_pipeline(
+    import: &OrgReviewImportCli,
+) -> Result<org::review::ReviewImportOutput, CanonOutput> {
+    let review_bytes = read_artifact_bytes(&import.review, "org review artifact")?;
+    let audit_data = import
+        .audit
+        .as_ref()
+        .map(|audit_path| {
+            read_json_artifact::<org::AuditArtifact>(audit_path, "org audit artifact")
+        })
+        .transpose()?;
+    let audit = audit_data
+        .as_ref()
+        .map(|(audit, bytes)| (audit, bytes.as_slice()));
+
+    org::review::import(
+        &import.review,
+        &review_bytes,
+        &import.registry,
+        &import.next_version,
+        audit,
+    )
+    .map_err(create_org_refusal)
+}
+
+fn map_org_review_include(include: &OrgReviewInclude) -> org::review::ReviewInclude {
+    match include {
+        OrgReviewInclude::Resolved => org::review::ReviewInclude::Resolved,
+        OrgReviewInclude::Escrow => org::review::ReviewInclude::Escrow,
+        OrgReviewInclude::Contradictions => org::review::ReviewInclude::Contradictions,
+        OrgReviewInclude::All => org::review::ReviewInclude::All,
+    }
 }
 
 #[allow(clippy::result_large_err)]

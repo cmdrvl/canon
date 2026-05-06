@@ -293,6 +293,11 @@ fn org_describe_includes_command_family() {
         .collect::<Vec<_>>();
     assert!(usage.iter().any(|line| line.contains("canon org run")));
     assert!(usage.iter().any(|line| line.contains("canon org promote")));
+    assert!(
+        usage
+            .iter()
+            .any(|line| line.contains("canon org review export"))
+    );
 
     let subcommands = payload["subcommands"]
         .as_array()
@@ -305,6 +310,12 @@ fn org_describe_includes_command_family() {
             .iter()
             .any(|entry| entry["name"] == "org explain"
                 && entry["output_schema"] == "canon_org_explain.v0")
+    );
+    assert!(
+        subcommands
+            .iter()
+            .any(|entry| entry["name"] == "org review import"
+                && entry["output_schema"] == "canon_org_review_import.v0")
     );
 }
 
@@ -339,6 +350,66 @@ fn org_run_and_promote_happy_path_succeeds() {
     assert_eq!(payload["registry"]["version_after"], "2026.03.02");
     assert_eq!(payload["writes"]["new_entity_entries"], 2);
     assert!(fixture.registry_dir.join("org-20260302.json").exists());
+}
+
+#[test]
+fn org_review_export_and_import_happy_path_succeeds() {
+    let fixture = OrgFixture::new();
+
+    let export = canon_cmd(&fixture.witness_path)
+        .args([
+            "org",
+            "review",
+            "export",
+            fixture.result_path.to_str().unwrap(),
+            "--include",
+            "resolved",
+        ])
+        .assert()
+        .success();
+    let mut review_json: Value =
+        serde_json::from_slice(&export.get_output().stdout).expect("review json");
+    assert_eq!(review_json["version"], "canon_org_review_export.v0");
+    for item in review_json["items"].as_array_mut().expect("review items") {
+        item["decision"] = item["proposed_action"].clone();
+    }
+    let review_path = fixture.result_path.with_file_name("review.json");
+    fs::write(
+        &review_path,
+        serde_json::to_vec_pretty(&review_json).unwrap(),
+    )
+    .unwrap();
+
+    let import = canon_cmd(&fixture.witness_path)
+        .args([
+            "org",
+            "review",
+            "import",
+            review_path.to_str().unwrap(),
+            "--audit",
+            fixture.audit_path.to_str().unwrap(),
+            "--registry",
+            fixture.registry_dir.to_str().unwrap(),
+            "--next-version",
+            "2026.03.03",
+        ])
+        .assert()
+        .success();
+    let payload: Value = serde_json::from_slice(&import.get_output().stdout).expect("import json");
+
+    assert_eq!(payload["version"], "canon_org_review_import.v0");
+    assert!(
+        fixture
+            .registry_dir
+            .join("org-review-20260303.json")
+            .exists()
+    );
+    assert!(
+        fixture
+            .registry_dir
+            .join("_reviews/20260303.proof.json")
+            .exists()
+    );
 }
 
 #[test]

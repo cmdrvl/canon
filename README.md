@@ -252,7 +252,9 @@ canon strategy resolve --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md
 canon strategy register --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--emit json|summary]
 canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]
 canon org run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json|summary]
-canon org block|edge|solve|audit|promote|explain [OPTIONS]
+canon org block|edge|solve|audit|promote|explain|review [OPTIONS]
+canon org review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]
+canon org review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]
 ```
 
 ### Arguments
@@ -296,6 +298,8 @@ canon org block|edge|solve|audit|promote|explain [OPTIONS]
 | `org solve <ROWS> --strategy <YAML> --edges <JSONL> --registry <DIR> [--emit json\|summary]` | Solve deterministic identity assignments from evidence edges. |
 | `org audit <RESULT> --suite <DIR> [--emit json\|summary]` | Validate a solve/run artifact against a frozen evaluation suite. |
 | `org promote <RESULT> --audit <JSON> --registry <DIR> --next-version <VER> [--emit json\|summary]` | Write audited results into registry aliases and escrow sidecars. |
+| `org review export <RESULT> [--emit json\|csv] [--include resolved\|escrow\|contradictions\|all]` | Produce a deterministic human-adjudication queue with stable review IDs and evidence context. |
+| `org review import <REVIEW> --registry <DIR> --next-version <VER> [--audit <JSON>] [--emit json\|summary]` | Import reviewed decisions into alias, anchor, and escrow patches with proof hashes. |
 | `org explain <RESULT> --row <ID>\|--canon-id <ID>\|--escrow-id <ID> [--emit json\|summary]` | Proof trace for one row, canonical entity, or escrow entity. |
 
 ### Exit Codes
@@ -540,7 +544,9 @@ Or run stages individually for inspection:
 $ canon org block rows.csv --strategy strategy.yaml --registry registries/org/ > blocks.jsonl
 $ canon org edge rows.csv --strategy strategy.yaml --candidates blocks.jsonl --registry registries/org/ > edges.jsonl
 $ canon org solve rows.csv --strategy strategy.yaml --edges edges.jsonl --registry registries/org/ > result.json
-$ canon org audit result.json --suite eval/holdout/
+$ canon org audit result.json --suite eval/holdout/ > audit.json
+$ canon org review export result.json --include all --emit csv > review.csv
+$ canon org review import review.csv --audit audit.json --registry registries/org/ --next-version 2.1.0
 $ canon org promote result.json --audit audit.json --registry registries/org/ --next-version 2.1.0
 $ canon org explain result.json --canon-id IC-00042
 ```
@@ -590,6 +596,10 @@ Staged deterministic solver:
 ### Audit
 
 Validate results against frozen evaluation suites. Checks holdout fixture pass rates and perturbation stability (strategy-configurable threshold, e.g. ≥ 0.995). Promotion requires a passing audit.
+
+### Review
+
+Export resolved, escrowed, or contradictory clusters into JSON or CSV review artifacts. Each item carries a stable review ID, source row IDs, observed names, anchors, incumbent overlaps, evidence scores, contradiction reasons, and a proposed action. Importing a reviewed artifact refuses malformed or duplicate decisions, stale registry snapshots, anchor conflicts, and alias/anchor promotion decisions without a matching audit.
 
 ### Promote
 

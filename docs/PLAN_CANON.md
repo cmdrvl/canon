@@ -50,6 +50,8 @@ canon strategy audit --schema <PROFILE.json> --script <SCRIPT> --suite <DIR> [--
 canon strategy resolve --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
 canon strategy register --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--rule-id <RULE>] [--emit json|summary]
 canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
+canon org review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]
+canon org review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]
 ```
 
 Arguments:
@@ -152,6 +154,20 @@ Strategy registries are local artifacts. No remote provider calls happen during 
 - classifies changes by script id/path/language/content hash, proof hashes, schema shape, and rule id
 - resolves duplicate keys deterministically by filename-sorted, entry-order precedence; shadowed duplicates do not affect the effective diff
 - exits `0` on successful comparison and `2` on refusal
+
+### Org review subcommands
+
+`canon org review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]`
+- reads a `canon_org_run.v0` or `canon_org_solve.v0` artifact and emits `canon_org_review_export.v0`
+- includes deterministic review IDs, source row IDs, observed names, anchors, incumbent overlaps, evidence scores, contradiction reasons, and proposed review actions
+- `--include` filters to resolved/promotable entities, escrowed abstentions, contradiction records, or all reviewable items; default is `all`
+- `--emit csv` emits a round-trippable review queue with JSON-encoded complex cells and result/registry snapshot metadata in every row
+
+`canon org review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]`
+- imports reviewed decisions into alias, trusted-anchor, pending-escrow, and cannot-link sidecars, then bumps `registry.json` to `--next-version`
+- refuses malformed decisions, duplicate review IDs, stale registry snapshots, alias overwrites, trusted-anchor conflicts, and unchanged or empty next versions
+- alias/anchor promotion decisions require a matching passing `canon_org_audit.v0` artifact; escrow-only decisions do not require audit
+- emits `canon_org_review_import.v0` with registry before/after hashes, write counts, and BLAKE3 proof hashes for the review input, optional audit input, alias patch, anchor patch, and escrow patch
 
 ### Output modes
 
@@ -688,6 +704,10 @@ Must-pass (v0)
 - `--emit csv` + `--emit json` consistency: for the same input + registry, the CSV canonical column values correspond to the `mappings[].canonical_id` values in JSON output after stripping the identifier encoding prefix (CSV has `AAPL`, JSON has `u8:AAPL` — same value, different representation)
 - `registry diff`: deterministic added/removed/changed/unchanged counts and detail for known registry fixtures
 - `registry audit`: exit 0 even when unresolved seeds exist, with stable `resolved`, `unresolved`, `canonical_targets`, and `rule_hits` sections
+- `org review export`: same result artifact bytes produce byte-identical review artifacts with stable review IDs
+- `org review import`: clean reviewed decisions write alias, trusted-anchor, pending-escrow, and cannot-link patches with proof hashes
+- `org review import`: refuses duplicate review IDs, malformed decisions, stale registry snapshots, trusted-anchor conflicts, and unaudited alias/anchor promotions
+- `org review` CSV export/import round-trips decisions and registry snapshot metadata
 
 Never allow
 - silent resolution failures (every unresolved entry must be reported)

@@ -170,6 +170,12 @@ canon org audit <RESULT.json> --suite <SUITE_DIR> [--emit json|summary]
 canon org promote <RESULT.json> --audit <AUDIT.json> --registry <REGISTRY_DIR> \
   --next-version <VERSION> [--emit json|summary]
 
+canon org review export <RESULT.json> [--emit json|csv] \
+  [--include resolved|escrow|contradictions|all]
+
+canon org review import <REVIEW.json|csv> --registry <REGISTRY_DIR> \
+  --next-version <VERSION> [--audit <AUDIT.json>] [--emit json|summary]
+
 canon org explain <RESULT.json> --row <SOURCE_ROW_ID>|--canon-id <CANON_ID>|--escrow-id <ESCROW_ID> \
   [--emit json|summary]
 ```
@@ -182,6 +188,8 @@ canon org explain <RESULT.json> --row <SOURCE_ROW_ID>|--canon-id <CANON_ID>|--es
 - `solve`: deterministic graph partition and registry inheritance
 - `audit`: scoring against frozen evaluation suites
 - `promote`: safe registry and escrow write-back
+- `review`: deterministic human adjudication export/import for unresolved,
+  abstained, contradictory, or operator-selected resolved clusters
 - `explain`: proof trace for one row or one canonical entity
 
 `run` is what production and tournaments normally call. The others exist to keep
@@ -206,6 +214,9 @@ Minimum org-specific refusal cases:
 - promotion requested without an explicit next registry version
 - promotion requested against a registry snapshot that no longer matches the
   audited result artifact
+- review import with malformed or duplicate decisions, stale registry snapshots,
+  trusted-anchor conflicts, or alias/anchor promotion decisions without a
+  matching audit artifact
 
 Suggested refusal codes:
 

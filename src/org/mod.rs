@@ -11,6 +11,7 @@ pub mod incumbent;
 pub mod output;
 pub mod projection;
 pub mod promote;
+pub mod review;
 pub mod solve;
 pub mod strategy;
 pub mod types;
