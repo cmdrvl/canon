@@ -57,6 +57,34 @@ fn write_strategy_schema(path: &Path, vendor_cardinality: u64) {
     .unwrap();
 }
 
+fn doctor_cmd_in(dir: &Path, witness_path: &Path) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_canon"));
+    command
+        .current_dir(dir)
+        .env("EPISTEMIC_WITNESS", witness_path);
+    command
+}
+
+fn assert_doctor_side_effects_absent(dir: &Path, witness_path: &Path) {
+    assert!(!witness_path.exists());
+    if let Some(parent) = witness_path.parent() {
+        assert!(!parent.exists());
+    }
+    assert!(!dir.join(".doctor").exists());
+    assert!(!dir.join(".canon-witness.jsonl").exists());
+    assert!(!dir.join("_index.sqlite").exists());
+}
+
+fn assert_all_side_effects_false(side_effects: &Value) {
+    let object = side_effects
+        .as_object()
+        .expect("side_effects should be a JSON object");
+    assert!(!object.is_empty());
+    for (name, value) in object {
+        assert_eq!(value, false, "side effect {name} should be false");
+    }
+}
+
 struct ResolveSmokeFixture {
     reference: PathBuf,
     target: PathBuf,
@@ -201,6 +229,139 @@ fn test_describe_command() {
                 && entry["output_schema"] == "canon_resolve.v0"
                 && entry["status"] == "implemented")
     );
+    assert!(
+        json["subcommands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["name"] == "doctor"
+                && entry["status"] == "implemented"
+                && entry["read_only"] == true)
+    );
+}
+
+#[test]
+fn test_doctor_health_json_is_read_only() {
+    let temp_dir = tempdir().unwrap();
+    let witness_path = temp_dir.path().join("witness").join("canon-witness.jsonl");
+
+    let output = doctor_cmd_in(temp_dir.path(), &witness_path)
+        .args(["doctor", "health", "--json"])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["schema"], "canon.doctor.health.v1");
+    assert_eq!(payload["contract"], "cmdrvl.read_only_doctor.v1");
+    assert_eq!(payload["tool"], "canon");
+    assert_eq!(payload["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(payload["ok"], true);
+    assert_eq!(payload["read_only"], true);
+    assert_eq!(payload["summary"]["checks_failed"], 0);
+    assert_eq!(
+        payload["observed_paths"]["witness_ledger"],
+        witness_path.display().to_string()
+    );
+    assert_eq!(payload["side_effects"]["opens_witness_ledger"], false);
+    assert_eq!(payload["side_effects"]["appends_witness_ledger"], false);
+    assert_eq!(payload["side_effects"]["creates_witness_directory"], false);
+    assert_all_side_effects_false(&payload["side_effects"]);
+    assert!(payload["fixers"].as_array().unwrap().is_empty());
+    assert_doctor_side_effects_absent(temp_dir.path(), &witness_path);
+}
+
+#[test]
+fn test_doctor_capabilities_json_has_no_fixers_or_side_effects() {
+    let temp_dir = tempdir().unwrap();
+    let witness_path = temp_dir.path().join("witness").join("canon-witness.jsonl");
+
+    let output = doctor_cmd_in(temp_dir.path(), &witness_path)
+        .args(["doctor", "capabilities", "--json"])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["schema"], "canon.doctor.capabilities.v1");
+    assert_eq!(payload["contract"], "cmdrvl.read_only_doctor.v1");
+    assert_eq!(payload["read_only"], true);
+    assert_all_side_effects_false(&payload["side_effects"]);
+    assert!(payload["fixers"].as_array().unwrap().is_empty());
+    assert!(
+        payload["commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|command| command["name"] == "robot-triage"
+                && command["usage"] == "canon doctor --robot-triage")
+    );
+    assert_doctor_side_effects_absent(temp_dir.path(), &witness_path);
+}
+
+#[test]
+fn test_doctor_robot_triage_json_is_machine_readable() {
+    let temp_dir = tempdir().unwrap();
+    let witness_path = temp_dir.path().join("witness").join("canon-witness.jsonl");
+
+    let output = doctor_cmd_in(temp_dir.path(), &witness_path)
+        .args(["doctor", "--robot-triage"])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["schema"], "canon.doctor.triage.v1");
+    assert_eq!(payload["contract"], "cmdrvl.read_only_doctor.v1");
+    assert_eq!(payload["ok"], true);
+    assert_eq!(payload["score"], 100);
+    assert_eq!(payload["read_only"], true);
+    assert_all_side_effects_false(&payload["side_effects"]);
+    assert_doctor_side_effects_absent(temp_dir.path(), &witness_path);
+}
+
+#[test]
+fn test_doctor_robot_docs_is_plain_text_and_read_only() {
+    let temp_dir = tempdir().unwrap();
+    let witness_path = temp_dir.path().join("witness").join("canon-witness.jsonl");
+
+    doctor_cmd_in(temp_dir.path(), &witness_path)
+        .args(["doctor", "robot-docs"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("cmdrvl.read_only_doctor.v1"))
+        .stdout(predicate::str::contains("canon doctor health --json"))
+        .stdout(predicate::str::contains("no --fix surface"));
+
+    assert_doctor_side_effects_absent(temp_dir.path(), &witness_path);
+}
+
+#[test]
+fn test_doctor_help_is_available() {
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["doctor", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("health"))
+        .stdout(predicate::str::contains("capabilities"))
+        .stdout(predicate::str::contains("robot-docs"))
+        .stdout(predicate::str::contains("--robot-triage"));
+}
+
+#[test]
+fn test_doctor_fix_is_not_available() {
+    let temp_dir = tempdir().unwrap();
+    let witness_path = temp_dir.path().join("witness").join("canon-witness.jsonl");
+
+    doctor_cmd_in(temp_dir.path(), &witness_path)
+        .args(["doctor", "--fix"])
+        .assert()
+        .failure()
+        .code(2)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("--fix"));
+
+    assert_doctor_side_effects_absent(temp_dir.path(), &witness_path);
 }
 
 #[test]

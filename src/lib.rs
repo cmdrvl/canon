@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod cli;
+pub mod doctor;
 pub mod input;
 pub mod lookup;
 pub mod org;
@@ -104,6 +105,7 @@ pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
 
 fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
     match command {
+        CanonCommand::Doctor(args) => doctor::run(args),
         CanonCommand::Resolve(resolve) => run_resolve_command(resolve),
         CanonCommand::Registry(command) => match &command.command {
             RegistrySubcommand::Diff(diff) => run_registry_diff(diff),

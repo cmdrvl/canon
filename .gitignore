@@ -30,5 +30,8 @@ target
 # Witness ledger (local runtime artifact)
 .canon-witness.jsonl
 
+# Doctor mode run artifacts (future write-capable doctor passes only)
+.doctor/
+
 # SQLite derived indexes (rebuilt from source registry files)
 _index.sqlite

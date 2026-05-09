@@ -77,6 +77,8 @@ pub enum OrgReviewInclude {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CanonCommand {
+    /// Read-only health, capabilities, and robot-oriented diagnostics
+    Doctor(DoctorArgs),
     /// Cross-tape structural resolution workbench
     Resolve(ResolveCli),
     /// Registry maintenance and inspection commands
@@ -85,6 +87,38 @@ pub enum CanonCommand {
     Org(OrgCommand),
     /// Frozen script strategy registry commands
     Strategy(StrategyCommand),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct DoctorArgs {
+    /// Emit compact machine-readable triage JSON
+    #[arg(long = "robot-triage")]
+    pub robot_triage: bool,
+
+    /// Emit health JSON when no doctor subcommand is provided
+    #[arg(long)]
+    pub json: bool,
+
+    #[command(subcommand)]
+    pub command: Option<DoctorCommand>,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum DoctorCommand {
+    /// Report compiled manifest and read-only contract health
+    Health(DoctorJsonArgs),
+    /// Describe doctor commands, exit codes, side effects, and fixers
+    Capabilities(DoctorJsonArgs),
+    /// Emit concise machine-oriented usage notes
+    #[command(name = "robot-docs")]
+    RobotDocs,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct DoctorJsonArgs {
+    /// Emit JSON instead of concise text
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -723,6 +757,42 @@ mod tests {
     use super::*;
     use clap::Parser;
 
+    fn registry_command(cli: Cli) -> Option<RegistryCommand> {
+        let command = cli.command;
+        assert!(
+            matches!(&command, Some(CanonCommand::Registry(_))),
+            "expected registry command"
+        );
+        match command {
+            Some(CanonCommand::Registry(command)) => Some(command),
+            _ => None,
+        }
+    }
+
+    fn strategy_command(cli: Cli) -> Option<StrategyCommand> {
+        let command = cli.command;
+        assert!(
+            matches!(&command, Some(CanonCommand::Strategy(_))),
+            "expected strategy command"
+        );
+        match command {
+            Some(CanonCommand::Strategy(command)) => Some(command),
+            _ => None,
+        }
+    }
+
+    fn org_command(cli: Cli) -> Option<OrgCommand> {
+        let command = cli.command;
+        assert!(
+            matches!(&command, Some(CanonCommand::Org(_))),
+            "expected org command"
+        );
+        match command {
+            Some(CanonCommand::Org(command)) => Some(command),
+            _ => None,
+        }
+    }
+
     #[test]
     fn test_emit_mode_default() {
         assert!(matches!(EmitMode::default(), EmitMode::Json));
@@ -774,6 +844,32 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_doctor_parsing() {
+        let args = ["canon", "doctor", "capabilities", "--json"];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let command = cli.command;
+        assert!(matches!(&command, Some(CanonCommand::Doctor(_))));
+        if let Some(CanonCommand::Doctor(doctor)) = command {
+            assert!(!doctor.robot_triage);
+            assert!(!doctor.json);
+            assert!(matches!(
+                doctor.command,
+                Some(DoctorCommand::Capabilities(DoctorJsonArgs { json: true }))
+            ));
+        }
+
+        let args = ["canon", "doctor", "--robot-triage"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        let command = cli.command;
+        assert!(matches!(&command, Some(CanonCommand::Doctor(_))));
+        if let Some(CanonCommand::Doctor(doctor)) = command {
+            assert!(doctor.robot_triage);
+            assert!(doctor.command.is_none());
+        }
+    }
+
+    #[test]
     fn test_cli_registry_diff_parsing() {
         let args = [
             "canon",
@@ -788,17 +884,15 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Registry(command) => {
-                let subcommand = command.command;
-                assert!(matches!(subcommand, RegistrySubcommand::Diff(_)));
-                if let RegistrySubcommand::Diff(diff) = subcommand {
-                    assert_eq!(diff.old, PathBuf::from("registries/test-v1"));
-                    assert_eq!(diff.new, PathBuf::from("registries/test-v2"));
-                    assert!(matches!(diff.emit, RegistryEmitMode::Summary));
-                }
-            }
-            other => panic!("expected registry command, got {:?}", other),
+        let Some(command) = registry_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, RegistrySubcommand::Diff(_)));
+        if let RegistrySubcommand::Diff(diff) = subcommand {
+            assert_eq!(diff.old, PathBuf::from("registries/test-v1"));
+            assert_eq!(diff.new, PathBuf::from("registries/test-v2"));
+            assert!(matches!(diff.emit, RegistryEmitMode::Summary));
         }
     }
 
@@ -820,19 +914,17 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Registry(command) => {
-                let subcommand = command.command;
-                assert!(matches!(subcommand, RegistrySubcommand::Audit(_)));
-                if let RegistrySubcommand::Audit(audit) = subcommand {
-                    assert_eq!(audit.seed, PathBuf::from("seeds.csv"));
-                    assert_eq!(audit.registry, PathBuf::from("registries/test"));
-                    assert_eq!(audit.column, "cusip");
-                    assert!(matches!(audit.emit, RegistryEmitMode::Summary));
-                    assert_eq!(audit.max_rows, Some(10));
-                }
-            }
-            other => panic!("expected registry command, got {:?}", other),
+        let Some(command) = registry_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, RegistrySubcommand::Audit(_)));
+        if let RegistrySubcommand::Audit(audit) = subcommand {
+            assert_eq!(audit.seed, PathBuf::from("seeds.csv"));
+            assert_eq!(audit.registry, PathBuf::from("registries/test"));
+            assert_eq!(audit.column, "cusip");
+            assert!(matches!(audit.emit, RegistryEmitMode::Summary));
+            assert_eq!(audit.max_rows, Some(10));
         }
     }
 
@@ -864,29 +956,27 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Registry(command) => {
-                let subcommand = command.command;
-                assert!(matches!(subcommand, RegistrySubcommand::Build(_)));
-                if let RegistrySubcommand::Build(build) = subcommand {
-                    assert_eq!(build.source, "mock");
-                    assert_eq!(build.seed, PathBuf::from("seeds.csv"));
-                    assert_eq!(build.seed_column, "cusip");
-                    assert_eq!(build.output, PathBuf::from("registries/mock-cusip"));
-                    assert_eq!(build.version, "2026.03.13");
-                    assert!(build.incremental);
-                    assert_eq!(build.batch_size, Some(25));
-                    assert_eq!(build.rate_limit_ms, Some(100));
-                    assert_eq!(
-                        build.provider_config,
-                        vec![
-                            "id_type=ID_CUSIP".to_string(),
-                            "base_url=http://127.0.0.1:8080/v3/mapping".to_string(),
-                        ]
-                    );
-                }
-            }
-            other => panic!("expected registry command, got {:?}", other),
+        let Some(command) = registry_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, RegistrySubcommand::Build(_)));
+        if let RegistrySubcommand::Build(build) = subcommand {
+            assert_eq!(build.source, "mock");
+            assert_eq!(build.seed, PathBuf::from("seeds.csv"));
+            assert_eq!(build.seed_column, "cusip");
+            assert_eq!(build.output, PathBuf::from("registries/mock-cusip"));
+            assert_eq!(build.version, "2026.03.13");
+            assert!(build.incremental);
+            assert_eq!(build.batch_size, Some(25));
+            assert_eq!(build.rate_limit_ms, Some(100));
+            assert_eq!(
+                build.provider_config,
+                vec![
+                    "id_type=ID_CUSIP".to_string(),
+                    "base_url=http://127.0.0.1:8080/v3/mapping".to_string(),
+                ]
+            );
         }
     }
 
@@ -904,17 +994,15 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Registry(command) => {
-                let subcommand = command.command;
-                assert!(matches!(subcommand, RegistrySubcommand::Lint(_)));
-                if let RegistrySubcommand::Lint(lint) = subcommand {
-                    assert_eq!(lint.registry, PathBuf::from("registries/org"));
-                    assert!(matches!(lint.profile, RegistryLintProfile::Org));
-                    assert!(matches!(lint.emit, RegistryEmitMode::Summary));
-                }
-            }
-            other => panic!("expected registry command, got {:?}", other),
+        let Some(command) = registry_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, RegistrySubcommand::Lint(_)));
+        if let RegistrySubcommand::Lint(lint) = subcommand {
+            assert_eq!(lint.registry, PathBuf::from("registries/org"));
+            assert!(matches!(lint.profile, RegistryLintProfile::Org));
+            assert!(matches!(lint.emit, RegistryEmitMode::Summary));
         }
     }
 
@@ -935,18 +1023,17 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Strategy(command) => match command.command {
-                StrategySubcommand::Resolve(resolve) => {
-                    assert_eq!(resolve.registry, PathBuf::from("registries/strategies"));
-                    assert_eq!(resolve.schema, PathBuf::from("profile.json"));
-                    assert_eq!(resolve.skill, Some(PathBuf::from("SKILL.md")));
-                    assert_eq!(resolve.skill_hash, None);
-                    assert!(matches!(resolve.emit, RegistryEmitMode::Summary));
-                }
-                other => panic!("expected strategy resolve, got {:?}", other),
-            },
-            other => panic!("expected strategy command, got {:?}", other),
+        let Some(command) = strategy_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, StrategySubcommand::Resolve(_)));
+        if let StrategySubcommand::Resolve(resolve) = subcommand {
+            assert_eq!(resolve.registry, PathBuf::from("registries/strategies"));
+            assert_eq!(resolve.schema, PathBuf::from("profile.json"));
+            assert_eq!(resolve.skill, Some(PathBuf::from("SKILL.md")));
+            assert_eq!(resolve.skill_hash, None);
+            assert!(matches!(resolve.emit, RegistryEmitMode::Summary));
         }
     }
 
@@ -966,17 +1053,16 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Strategy(command) => match command.command {
-                StrategySubcommand::Profile(profile) => {
-                    assert_eq!(profile.input, PathBuf::from("rows.ndjson"));
-                    assert!(matches!(profile.emit, RegistryEmitMode::Summary));
-                    assert_eq!(profile.max_rows, Some(100));
-                    assert_eq!(profile.max_bytes, Some(4096));
-                }
-                other => panic!("expected strategy profile, got {:?}", other),
-            },
-            other => panic!("expected strategy command, got {:?}", other),
+        let Some(command) = strategy_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, StrategySubcommand::Profile(_)));
+        if let StrategySubcommand::Profile(profile) = subcommand {
+            assert_eq!(profile.input, PathBuf::from("rows.ndjson"));
+            assert!(matches!(profile.emit, RegistryEmitMode::Summary));
+            assert_eq!(profile.max_rows, Some(100));
+            assert_eq!(profile.max_bytes, Some(4096));
         }
     }
 
@@ -997,17 +1083,16 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Strategy(command) => match command.command {
-                StrategySubcommand::Audit(audit) => {
-                    assert_eq!(audit.schema, PathBuf::from("profile.json"));
-                    assert_eq!(audit.script, PathBuf::from("script.sh"));
-                    assert_eq!(audit.suite, PathBuf::from("suite"));
-                    assert!(matches!(audit.emit, RegistryEmitMode::Summary));
-                }
-                other => panic!("expected strategy audit, got {:?}", other),
-            },
-            other => panic!("expected strategy command, got {:?}", other),
+        let Some(command) = strategy_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, StrategySubcommand::Audit(_)));
+        if let StrategySubcommand::Audit(audit) = subcommand {
+            assert_eq!(audit.schema, PathBuf::from("profile.json"));
+            assert_eq!(audit.script, PathBuf::from("script.sh"));
+            assert_eq!(audit.suite, PathBuf::from("suite"));
+            assert!(matches!(audit.emit, RegistryEmitMode::Summary));
         }
     }
 
@@ -1042,25 +1127,24 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Strategy(command) => match command.command {
-                StrategySubcommand::Register(register) => {
-                    assert_eq!(register.registry, PathBuf::from("registries/strategies"));
-                    assert_eq!(register.schema, PathBuf::from("profile.json"));
-                    assert_eq!(register.skill, None);
-                    assert_eq!(register.skill_hash.as_deref(), Some("blake3:abc"));
-                    assert_eq!(register.script, PathBuf::from("script.py"));
-                    assert_eq!(register.script_id, "procurement-total.v1");
-                    assert_eq!(register.language, "python");
-                    assert_eq!(register.verify, PathBuf::from("verify.json"));
-                    assert_eq!(register.assess, PathBuf::from("assess.json"));
-                    assert_eq!(register.airlock, PathBuf::from("airlock.json"));
-                    assert_eq!(register.next_version, "0.2.0");
-                    assert_eq!(register.rule_id.as_deref(), Some("PROCUREMENT_TOTAL"));
-                }
-                other => panic!("expected strategy register, got {:?}", other),
-            },
-            other => panic!("expected strategy command, got {:?}", other),
+        let Some(command) = strategy_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, StrategySubcommand::Register(_)));
+        if let StrategySubcommand::Register(register) = subcommand {
+            assert_eq!(register.registry, PathBuf::from("registries/strategies"));
+            assert_eq!(register.schema, PathBuf::from("profile.json"));
+            assert_eq!(register.skill, None);
+            assert_eq!(register.skill_hash.as_deref(), Some("blake3:abc"));
+            assert_eq!(register.script, PathBuf::from("script.py"));
+            assert_eq!(register.script_id, "procurement-total.v1");
+            assert_eq!(register.language, "python");
+            assert_eq!(register.verify, PathBuf::from("verify.json"));
+            assert_eq!(register.assess, PathBuf::from("assess.json"));
+            assert_eq!(register.airlock, PathBuf::from("airlock.json"));
+            assert_eq!(register.next_version, "0.2.0");
+            assert_eq!(register.rule_id.as_deref(), Some("PROCUREMENT_TOTAL"));
         }
     }
 
@@ -1079,16 +1163,15 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Strategy(command) => match command.command {
-                StrategySubcommand::Diff(diff) => {
-                    assert_eq!(diff.old, PathBuf::from("registries/strategies-v1"));
-                    assert_eq!(diff.new, PathBuf::from("registries/strategies-v2"));
-                    assert!(matches!(diff.emit, RegistryEmitMode::Summary));
-                }
-                other => panic!("expected strategy diff, got {:?}", other),
-            },
-            other => panic!("expected strategy command, got {:?}", other),
+        let Some(command) = strategy_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, StrategySubcommand::Diff(_)));
+        if let StrategySubcommand::Diff(diff) = subcommand {
+            assert_eq!(diff.old, PathBuf::from("registries/strategies-v1"));
+            assert_eq!(diff.new, PathBuf::from("registries/strategies-v2"));
+            assert!(matches!(diff.emit, RegistryEmitMode::Summary));
         }
     }
 
@@ -1118,21 +1201,20 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Resolve(resolve) => {
-                assert_eq!(resolve.reference_tape, PathBuf::from("trustee.csv"));
-                assert_eq!(resolve.target_tape, PathBuf::from("servicer.csv"));
-                assert_eq!(resolve.strategy, PathBuf::from("strategies/cmbs.yaml"));
-                assert_eq!(resolve.registry, PathBuf::from("registries/cmbs-loan"));
-                assert_eq!(resolve.gold, Some(PathBuf::from("gold/loan_matches.jsonl")));
-                assert!(resolve.write_back);
-                assert!(matches!(resolve.emit, ResolveEmitMode::Summary));
-                assert_eq!(resolve.max_candidates, Some(25));
-                assert_eq!(resolve.max_rows, Some(1000));
-                assert_eq!(resolve.max_bytes, Some(1_048_576));
-                assert!(resolve.no_witness);
-            }
-            other => panic!("expected resolve command, got {:?}", other),
+        let command = cli.command;
+        assert!(matches!(&command, Some(CanonCommand::Resolve(_))));
+        if let Some(CanonCommand::Resolve(resolve)) = command {
+            assert_eq!(resolve.reference_tape, PathBuf::from("trustee.csv"));
+            assert_eq!(resolve.target_tape, PathBuf::from("servicer.csv"));
+            assert_eq!(resolve.strategy, PathBuf::from("strategies/cmbs.yaml"));
+            assert_eq!(resolve.registry, PathBuf::from("registries/cmbs-loan"));
+            assert_eq!(resolve.gold, Some(PathBuf::from("gold/loan_matches.jsonl")));
+            assert!(resolve.write_back);
+            assert!(matches!(resolve.emit, ResolveEmitMode::Summary));
+            assert_eq!(resolve.max_candidates, Some(25));
+            assert_eq!(resolve.max_rows, Some(1000));
+            assert_eq!(resolve.max_bytes, Some(1_048_576));
+            assert!(resolve.no_witness);
         }
     }
 
@@ -1155,19 +1237,18 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Org(command) => match command.command {
-                OrgSubcommand::Run(run) => {
-                    assert_eq!(run.rows, PathBuf::from("rows.csv"));
-                    assert_eq!(run.strategy, PathBuf::from("strategy.yaml"));
-                    assert_eq!(run.registry, PathBuf::from("registries/org"));
-                    assert_eq!(run.suite, Some(PathBuf::from("suite")));
-                    assert!(matches!(run.emit, OrgEmitMode::Summary));
-                    assert!(run.no_witness);
-                }
-                other => panic!("expected org run, got {:?}", other),
-            },
-            other => panic!("expected org command, got {:?}", other),
+        let Some(command) = org_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, OrgSubcommand::Run(_)));
+        if let OrgSubcommand::Run(run) = subcommand {
+            assert_eq!(run.rows, PathBuf::from("rows.csv"));
+            assert_eq!(run.strategy, PathBuf::from("strategy.yaml"));
+            assert_eq!(run.registry, PathBuf::from("registries/org"));
+            assert_eq!(run.suite, Some(PathBuf::from("suite")));
+            assert!(matches!(run.emit, OrgEmitMode::Summary));
+            assert!(run.no_witness);
         }
     }
 
@@ -1187,17 +1268,16 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Org(command) => match command.command {
-                OrgSubcommand::Block(block) => {
-                    assert_eq!(block.rows, PathBuf::from("rows.csv"));
-                    assert_eq!(block.strategy, PathBuf::from("strategy.yaml"));
-                    assert_eq!(block.registry, PathBuf::from("registries/org"));
-                    assert!(matches!(block.emit, OrgStreamEmitMode::Summary));
-                }
-                other => panic!("expected org block, got {:?}", other),
-            },
-            other => panic!("expected org command, got {:?}", other),
+        let Some(command) = org_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, OrgSubcommand::Block(_)));
+        if let OrgSubcommand::Block(block) = subcommand {
+            assert_eq!(block.rows, PathBuf::from("rows.csv"));
+            assert_eq!(block.strategy, PathBuf::from("strategy.yaml"));
+            assert_eq!(block.registry, PathBuf::from("registries/org"));
+            assert!(matches!(block.emit, OrgStreamEmitMode::Summary));
         }
     }
 
@@ -1217,18 +1297,17 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Org(command) => match command.command {
-                OrgSubcommand::Edge(edge) => {
-                    assert_eq!(edge.rows, PathBuf::from("rows.csv"));
-                    assert_eq!(edge.strategy, PathBuf::from("strategy.yaml"));
-                    assert_eq!(edge.candidates, PathBuf::from("block.jsonl"));
-                    assert_eq!(edge.registry, PathBuf::from("registries/org"));
-                    assert!(matches!(edge.emit, OrgStreamEmitMode::Jsonl));
-                }
-                other => panic!("expected org edge, got {:?}", other),
-            },
-            other => panic!("expected org command, got {:?}", other),
+        let Some(command) = org_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, OrgSubcommand::Edge(_)));
+        if let OrgSubcommand::Edge(edge) = subcommand {
+            assert_eq!(edge.rows, PathBuf::from("rows.csv"));
+            assert_eq!(edge.strategy, PathBuf::from("strategy.yaml"));
+            assert_eq!(edge.candidates, PathBuf::from("block.jsonl"));
+            assert_eq!(edge.registry, PathBuf::from("registries/org"));
+            assert!(matches!(edge.emit, OrgStreamEmitMode::Jsonl));
         }
     }
 
@@ -1250,18 +1329,17 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Org(command) => match command.command {
-                OrgSubcommand::Solve(solve) => {
-                    assert_eq!(solve.rows, PathBuf::from("rows.csv"));
-                    assert_eq!(solve.strategy, PathBuf::from("strategy.yaml"));
-                    assert_eq!(solve.edges, PathBuf::from("edges.jsonl"));
-                    assert_eq!(solve.registry, PathBuf::from("registries/org"));
-                    assert!(matches!(solve.emit, OrgEmitMode::Summary));
-                }
-                other => panic!("expected org solve, got {:?}", other),
-            },
-            other => panic!("expected org command, got {:?}", other),
+        let Some(command) = org_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, OrgSubcommand::Solve(_)));
+        if let OrgSubcommand::Solve(solve) = subcommand {
+            assert_eq!(solve.rows, PathBuf::from("rows.csv"));
+            assert_eq!(solve.strategy, PathBuf::from("strategy.yaml"));
+            assert_eq!(solve.edges, PathBuf::from("edges.jsonl"));
+            assert_eq!(solve.registry, PathBuf::from("registries/org"));
+            assert!(matches!(solve.emit, OrgEmitMode::Summary));
         }
     }
 
@@ -1279,16 +1357,15 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Org(command) => match command.command {
-                OrgSubcommand::Audit(audit) => {
-                    assert_eq!(audit.result, PathBuf::from("result.json"));
-                    assert_eq!(audit.suite, PathBuf::from("suite"));
-                    assert!(matches!(audit.emit, OrgEmitMode::Summary));
-                }
-                other => panic!("expected org audit, got {:?}", other),
-            },
-            other => panic!("expected org command, got {:?}", other),
+        let Some(command) = org_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, OrgSubcommand::Audit(_)));
+        if let OrgSubcommand::Audit(audit) = subcommand {
+            assert_eq!(audit.result, PathBuf::from("result.json"));
+            assert_eq!(audit.suite, PathBuf::from("suite"));
+            assert!(matches!(audit.emit, OrgEmitMode::Summary));
         }
     }
 
@@ -1310,18 +1387,17 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Org(command) => match command.command {
-                OrgSubcommand::Promote(promote) => {
-                    assert_eq!(promote.result, PathBuf::from("result.json"));
-                    assert_eq!(promote.audit, PathBuf::from("audit.json"));
-                    assert_eq!(promote.registry, PathBuf::from("registries/org"));
-                    assert_eq!(promote.next_version, "2026.03.23");
-                    assert!(matches!(promote.emit, OrgEmitMode::Summary));
-                }
-                other => panic!("expected org promote, got {:?}", other),
-            },
-            other => panic!("expected org command, got {:?}", other),
+        let Some(command) = org_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, OrgSubcommand::Promote(_)));
+        if let OrgSubcommand::Promote(promote) = subcommand {
+            assert_eq!(promote.result, PathBuf::from("result.json"));
+            assert_eq!(promote.audit, PathBuf::from("audit.json"));
+            assert_eq!(promote.registry, PathBuf::from("registries/org"));
+            assert_eq!(promote.next_version, "2026.03.23");
+            assert!(matches!(promote.emit, OrgEmitMode::Summary));
         }
     }
 
@@ -1340,19 +1416,19 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Org(command) => match command.command {
-                OrgSubcommand::Review(review) => match review.command {
-                    OrgReviewSubcommand::Export(export) => {
-                        assert_eq!(export.result, PathBuf::from("result.json"));
-                        assert!(matches!(export.emit, OrgReviewExportEmitMode::Csv));
-                        assert!(matches!(export.include, OrgReviewInclude::Escrow));
-                    }
-                    other => panic!("expected org review export, got {:?}", other),
-                },
-                other => panic!("expected org review, got {:?}", other),
-            },
-            other => panic!("expected org command, got {:?}", other),
+        let Some(command) = org_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, OrgSubcommand::Review(_)));
+        if let OrgSubcommand::Review(review) = subcommand {
+            let review_subcommand = review.command;
+            assert!(matches!(&review_subcommand, OrgReviewSubcommand::Export(_)));
+            if let OrgReviewSubcommand::Export(export) = review_subcommand {
+                assert_eq!(export.result, PathBuf::from("result.json"));
+                assert!(matches!(export.emit, OrgReviewExportEmitMode::Csv));
+                assert!(matches!(export.include, OrgReviewInclude::Escrow));
+            }
         }
     }
 
@@ -1375,21 +1451,21 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Org(command) => match command.command {
-                OrgSubcommand::Review(review) => match review.command {
-                    OrgReviewSubcommand::Import(import) => {
-                        assert_eq!(import.review, PathBuf::from("review.csv"));
-                        assert_eq!(import.registry, PathBuf::from("registries/org"));
-                        assert_eq!(import.next_version, "2026.05.06");
-                        assert_eq!(import.audit, Some(PathBuf::from("audit.json")));
-                        assert!(matches!(import.emit, OrgEmitMode::Summary));
-                    }
-                    other => panic!("expected org review import, got {:?}", other),
-                },
-                other => panic!("expected org review, got {:?}", other),
-            },
-            other => panic!("expected org command, got {:?}", other),
+        let Some(command) = org_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, OrgSubcommand::Review(_)));
+        if let OrgSubcommand::Review(review) = subcommand {
+            let review_subcommand = review.command;
+            assert!(matches!(&review_subcommand, OrgReviewSubcommand::Import(_)));
+            if let OrgReviewSubcommand::Import(import) = review_subcommand {
+                assert_eq!(import.review, PathBuf::from("review.csv"));
+                assert_eq!(import.registry, PathBuf::from("registries/org"));
+                assert_eq!(import.next_version, "2026.05.06");
+                assert_eq!(import.audit, Some(PathBuf::from("audit.json")));
+                assert!(matches!(import.emit, OrgEmitMode::Summary));
+            }
         }
     }
 
@@ -1407,18 +1483,17 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        match cli.command.unwrap() {
-            CanonCommand::Org(command) => match command.command {
-                OrgSubcommand::Explain(explain) => {
-                    assert_eq!(explain.result, PathBuf::from("result.json"));
-                    assert_eq!(explain.canon_id.as_deref(), Some("ORG-0001"));
-                    assert_eq!(explain.row, None);
-                    assert_eq!(explain.escrow_id, None);
-                    assert!(matches!(explain.emit, OrgEmitMode::Summary));
-                }
-                other => panic!("expected org explain, got {:?}", other),
-            },
-            other => panic!("expected org command, got {:?}", other),
+        let Some(command) = org_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, OrgSubcommand::Explain(_)));
+        if let OrgSubcommand::Explain(explain) = subcommand {
+            assert_eq!(explain.result, PathBuf::from("result.json"));
+            assert_eq!(explain.canon_id.as_deref(), Some("ORG-0001"));
+            assert_eq!(explain.row, None);
+            assert_eq!(explain.escrow_id, None);
+            assert!(matches!(explain.emit, OrgEmitMode::Summary));
         }
     }
 

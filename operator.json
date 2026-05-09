@@ -1,7 +1,7 @@
 {
   "schema_version": "operator.v0",
   "name": "canon",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Canonical identifier resolution and org-identity orchestration using versioned registries",
   "repository": "https://github.com/cmdrvl/canon",
   "license": "MIT",
@@ -11,6 +11,7 @@
     "binary": "canon",
     "usage": [
       "canon <INPUT> --registry <DIR> --column <COL> [OPTIONS]",
+      "canon doctor [health [--json]|capabilities [--json]|robot-docs|--robot-triage]",
       "canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
@@ -62,6 +63,36 @@
   ],
 
   "subcommands": [
+    {
+      "name": "doctor",
+      "usage": "canon doctor [health [--json]|capabilities [--json]|robot-docs|--robot-triage]",
+      "description": "Read-only health, capabilities, and robot-oriented diagnostics for the compiled canon operator contract",
+      "output_mode": "mixed",
+      "output_schema": "canon.doctor.health.v1 | canon.doctor.capabilities.v1 | canon.doctor.triage.v1 | text/plain",
+      "status": "implemented",
+      "read_only": true,
+      "fixers": [],
+      "exit_codes": {
+        "0": { "meaning": "doctor report emitted successfully", "domain": "positive" },
+        "1": { "meaning": "reserved for future unhealthy read-only findings", "domain": "negative" },
+        "2": { "meaning": "CLI usage error or refusal", "domain": "error" }
+      },
+      "options": [
+        { "name": "json", "flag": "--json", "type": "flag", "description": "Emit JSON for health or capabilities reports" },
+        { "name": "robot_triage", "flag": "--robot-triage", "type": "flag", "description": "Emit compact canon.doctor.triage.v1 JSON" }
+      ],
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": false
+      }
+    },
     {
       "name": "resolve",
       "usage": "canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
