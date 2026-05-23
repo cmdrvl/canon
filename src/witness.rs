@@ -1,10 +1,11 @@
+use crate::paths;
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WitnessSummary {
@@ -86,8 +87,12 @@ pub fn append_witness_record(
     record: &WitnessRecord,
     no_witness: bool,
 ) -> Result<(), Box<dyn Error>> {
-    let ledger_path = resolve_ledger_path()?;
-    append_witness_record_to_path(record, no_witness, &ledger_path)
+    if no_witness {
+        return Ok(());
+    }
+
+    let ledger_path = paths::prepare_witness_path_for_append()?;
+    append_witness_record_to_path(record, false, &ledger_path)
 }
 
 pub fn append_witness(_output_hash: &[u8], no_witness: bool) -> Result<(), Box<dyn Error>> {
@@ -152,33 +157,6 @@ fn hash_binary() -> io::Result<String> {
     let path = std::env::current_exe()?;
     let bytes = std::fs::read(path)?;
     Ok(blake3::hash(&bytes).to_hex().to_string())
-}
-
-fn resolve_ledger_path() -> io::Result<PathBuf> {
-    resolve_ledger_path_from_env(|key| std::env::var(key).ok())
-}
-
-fn resolve_ledger_path_from_env<F>(get_env: F) -> io::Result<PathBuf>
-where
-    F: Fn(&str) -> Option<String>,
-{
-    if let Some(path) = get_env("EPISTEMIC_WITNESS")
-        && !path.trim().is_empty()
-    {
-        return Ok(PathBuf::from(path));
-    }
-
-    let home = get_env("HOME")
-        .or_else(|| get_env("USERPROFILE"))
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                "could not determine home directory; set EPISTEMIC_WITNESS",
-            )
-        })?;
-
-    Ok(PathBuf::from(home).join(".epistemic").join("witness.jsonl"))
 }
 
 #[cfg(test)]
@@ -278,36 +256,6 @@ mod tests {
 
         append_witness_record_to_path(&record, true, &witness_path).unwrap();
         assert!(!witness_path.exists());
-    }
-
-    #[test]
-    fn ledger_path_prefers_epistemic_witness_env_var() {
-        let path = resolve_ledger_path_from_env(|key| match key {
-            "EPISTEMIC_WITNESS" => Some("/tmp/custom-witness.jsonl".to_owned()),
-            "HOME" => Some("/tmp/home".to_owned()),
-            _ => None,
-        })
-        .unwrap();
-
-        assert_eq!(path, PathBuf::from("/tmp/custom-witness.jsonl"));
-    }
-
-    #[test]
-    fn ledger_path_defaults_to_home_epistemic_path() {
-        let path = resolve_ledger_path_from_env(|key| match key {
-            "EPISTEMIC_WITNESS" => None,
-            "HOME" => Some("/tmp/home".to_owned()),
-            _ => None,
-        })
-        .unwrap();
-
-        assert_eq!(path, PathBuf::from("/tmp/home/.epistemic/witness.jsonl"));
-    }
-
-    #[test]
-    fn ledger_path_errors_without_home_or_override() {
-        let error = resolve_ledger_path_from_env(|_| None).unwrap_err();
-        assert_eq!(error.kind(), io::ErrorKind::NotFound);
     }
 
     #[test]

@@ -290,6 +290,12 @@ canon org review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> 
 | `--describe` | flag | | Emit `operator.json` to stdout and exit. |
 | `--schema` | flag | | Print JSON Schema for the mapping artifact and exit. |
 
+### Config Footprint
+
+By default, `canon` appends witness records to `~/.cmdrvl/state/witness/witness.jsonl`. `EPISTEMIC_WITNESS` remains an explicit operator override; override paths are used as provided and are not migrated.
+
+On first default witness use, `canon` copy-migrates an existing legacy `~/.epistemic/witness.jsonl` or `.epistemic/witness.jsonl` ledger into the canonical path. It never deletes or moves the legacy file. Migration and deprecation notices are path-only JSONL records under `~/.cmdrvl/migrations/applied.jsonl` and `~/.cmdrvl/notices/deprecated-paths.jsonl`; file contents and secret values are not recorded.
+
 ### Subcommands
 
 | Subcommand | Description |

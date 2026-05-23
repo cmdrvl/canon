@@ -72,6 +72,7 @@ fn assert_doctor_side_effects_absent(dir: &Path, witness_path: &Path) {
     }
     assert!(!dir.join(".doctor").exists());
     assert!(!dir.join(".canon-witness.jsonl").exists());
+    assert!(!dir.join(".cmdrvl").exists());
     assert!(!dir.join("_index.sqlite").exists());
 }
 
@@ -260,6 +261,15 @@ fn test_doctor_health_json_is_read_only() {
     assert_eq!(payload["read_only"], true);
     assert_eq!(payload["summary"]["checks_failed"], 0);
     assert_eq!(
+        payload["config_footprint"]["managed_state_paths"][0],
+        "~/.cmdrvl/state/witness/witness.jsonl"
+    );
+    assert_eq!(
+        payload["config_footprint"]["legacy_migration_required"],
+        true
+    );
+    assert_eq!(payload["config_footprint"]["self_contained"], true);
+    assert_eq!(
         payload["observed_paths"]["witness_ledger"],
         witness_path.display().to_string()
     );
@@ -286,6 +296,10 @@ fn test_doctor_capabilities_json_has_no_fixers_or_side_effects() {
     assert_eq!(payload["schema"], "canon.doctor.capabilities.v1");
     assert_eq!(payload["contract"], "cmdrvl.read_only_doctor.v1");
     assert_eq!(payload["read_only"], true);
+    assert_eq!(
+        payload["config_footprint"]["deprecation_notices"],
+        "~/.cmdrvl/notices/deprecated-paths.jsonl"
+    );
     assert_all_side_effects_false(&payload["side_effects"]);
     assert!(payload["fixers"].as_array().unwrap().is_empty());
     assert!(
@@ -316,6 +330,10 @@ fn test_doctor_robot_triage_json_is_machine_readable() {
     assert_eq!(payload["ok"], true);
     assert_eq!(payload["score"], 100);
     assert_eq!(payload["read_only"], true);
+    assert_eq!(
+        payload["config_footprint"]["migration_policy"],
+        "copy-only legacy witness migration; never delete or move legacy files; never record file contents or secret values"
+    );
     assert_all_side_effects_false(&payload["side_effects"]);
     assert_doctor_side_effects_absent(temp_dir.path(), &witness_path);
 }
@@ -1550,10 +1568,15 @@ fn test_witness_uses_epistemic_witness_env_path() {
 }
 
 #[test]
-fn test_witness_defaults_to_home_epistemic_path() {
+fn test_witness_defaults_to_home_cmdrvl_path() {
     let home = tempdir().unwrap();
     let cwd = tempdir().unwrap();
-    let ledger_path = home.path().join(".epistemic").join("witness.jsonl");
+    let ledger_path = home
+        .path()
+        .join(".cmdrvl")
+        .join("state")
+        .join("witness")
+        .join("witness.jsonl");
 
     Command::new(env!("CARGO_BIN_EXE_canon"))
         .current_dir(cwd.path())
@@ -1568,7 +1591,58 @@ fn test_witness_defaults_to_home_epistemic_path() {
         .success();
 
     assert!(ledger_path.exists());
+    assert!(
+        !home
+            .path()
+            .join(".epistemic")
+            .join("witness.jsonl")
+            .exists()
+    );
     assert!(!cwd.path().join(".canon-witness.jsonl").exists());
+}
+
+#[test]
+fn test_witness_migrates_legacy_home_epistemic_path_copy_only() {
+    let home = tempdir().unwrap();
+    let cwd = tempdir().unwrap();
+    let legacy_path = home.path().join(".epistemic").join("witness.jsonl");
+    std::fs::create_dir_all(legacy_path.parent().unwrap()).unwrap();
+    std::fs::write(&legacy_path, "{\"tool\":\"legacy-canon\"}\n").unwrap();
+
+    let canonical_path = home
+        .path()
+        .join(".cmdrvl")
+        .join("state")
+        .join("witness")
+        .join("witness.jsonl");
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .current_dir(cwd.path())
+        .env_remove("EPISTEMIC_WITNESS")
+        .env("HOME", home.path())
+        .arg(fixture_path("tests/fixtures/inputs/all_resolved.csv"))
+        .arg("--registry")
+        .arg(fixture_path("tests/fixtures/registries/cusip-isin"))
+        .arg("--column")
+        .arg("cusip")
+        .assert()
+        .success();
+
+    assert!(legacy_path.exists());
+    let content = std::fs::read_to_string(&canonical_path).unwrap();
+    assert!(content.contains("\"tool\":\"legacy-canon\""));
+    assert!(content.contains("\"tool\":\"canon\""));
+
+    let migration_log =
+        std::fs::read_to_string(home.path().join(".cmdrvl/migrations/applied.jsonl")).unwrap();
+    assert!(migration_log.contains("\"path_class\":\"witness_ledger\""));
+    assert!(migration_log.contains("\"secret_values_recorded\":false"));
+
+    let notices =
+        std::fs::read_to_string(home.path().join(".cmdrvl/notices/deprecated-paths.jsonl"))
+            .unwrap();
+    assert!(notices.contains("\"action\":\"legacy_path_migrated\""));
+    assert!(notices.contains("\"secret_values_recorded\":false"));
 }
 
 #[test]

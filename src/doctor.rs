@@ -1,6 +1,9 @@
-use crate::cli::{DoctorArgs, DoctorCommand, DoctorJsonArgs};
+use crate::{
+    cli::{DoctorArgs, DoctorCommand, DoctorJsonArgs},
+    paths,
+};
 use serde_json::{Value, json};
-use std::{env, error::Error, path::PathBuf};
+use std::error::Error;
 
 const CONTRACT: &str = "cmdrvl.read_only_doctor.v1";
 const HEALTH_SCHEMA: &str = "canon.doctor.health.v1";
@@ -79,6 +82,7 @@ fn health_payload() -> Value {
         },
         "checks": checks,
         "observed_paths": observed_paths(),
+        "config_footprint": paths::config_footprint(),
         "side_effects": side_effects(),
         "fixers": []
     })
@@ -122,6 +126,7 @@ fn capabilities_payload() -> Value {
             "1": "reserved for future unhealthy read-only findings",
             "2": "CLI usage error or refusal"
         },
+        "config_footprint": paths::config_footprint(),
         "side_effects": side_effects(),
         "fixers": []
     })
@@ -144,6 +149,7 @@ fn triage_payload() -> Value {
         "score": if ok { 100 } else { 0 },
         "read_only": true,
         "checks": checks,
+        "config_footprint": paths::config_footprint(),
         "side_effects": side_effects(),
         "fixers": [],
         "recommended_next_steps": [
@@ -210,6 +216,14 @@ fn health_checks() -> Vec<Value> {
             "doctor resolves no input and does not append the witness ledger",
         ),
         check(
+            "config_footprint_declared",
+            paths::config_footprint()
+                .get("self_contained")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            "doctor reports the canonical ~/.cmdrvl/ configuration footprint",
+        ),
+        check(
             "registry_unopened",
             true,
             "doctor reads no registry, strategy, review, tape, CSV, JSONL, or SQLite files",
@@ -235,21 +249,8 @@ fn observed_paths() -> Value {
     json!({
         "operator_manifest": "embedded:operator.json",
         "mapping_schema": "inline:canon.v0",
-        "witness_ledger": resolve_witness_path_label()
+        "witness_ledger": paths::default_witness_path().display().to_string()
     })
-}
-
-fn resolve_witness_path_label() -> String {
-    if let Some(path) = env::var_os("EPISTEMIC_WITNESS").filter(|path| !path.is_empty()) {
-        return PathBuf::from(path).display().to_string();
-    }
-
-    env::var_os("HOME")
-        .or_else(|| env::var_os("USERPROFILE"))
-        .map(|home| PathBuf::from(home).join(".canon-witness.jsonl"))
-        .unwrap_or_else(|| PathBuf::from(".canon-witness.jsonl"))
-        .display()
-        .to_string()
 }
 
 fn side_effects() -> Value {
@@ -269,6 +270,8 @@ fn side_effects() -> Value {
         "opens_witness_ledger": false,
         "appends_witness_ledger": false,
         "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
         "writes_registry_files": false,
         "writes_mapping_sidecars": false,
         "writes_csv": false,

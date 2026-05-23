@@ -81,6 +81,15 @@ Options:
 - `--schema`: Print JSON Schema for the mapping artifact (`canon.v0` object) to stdout and exit 0. This is the schema for `--emit json` output and `--map-out` sidecar, not a description of CSV output format.
 - `--no-witness`: Suppress witness ledger append.
 
+### Config footprint and witness ledger
+
+`canon` is self-contained under the CMD+RVL configuration root for implicit state. Ambient witness appends resolve in this order:
+
+1. `EPISTEMIC_WITNESS` when explicitly set by the operator.
+2. `~/.cmdrvl/state/witness/witness.jsonl` as the default managed state path.
+
+On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/witness.jsonl` or `.epistemic/witness.jsonl` ledger into the canonical path. It never deletes or moves legacy files. Migration and deprecation notices are path-only JSONL records under `~/.cmdrvl/migrations/applied.jsonl` and `~/.cmdrvl/notices/deprecated-paths.jsonl`; file contents and secret values are never recorded.
+
 ### Registry maintenance subcommands
 
 `canon` also exposes explicit registry-maintenance workflows that reuse the normal exact-match parser and lookup semantics without changing the `canon.v0` resolution contract.

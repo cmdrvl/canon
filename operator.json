@@ -55,7 +55,7 @@
     { "name": "map_out", "flag": "--map-out", "type": "file_path", "description": "Write JSON mapping artifact to file (sidecar). CSV mode only." },
     { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if input exceeds N data rows" },
     { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if input exceeds N bytes" },
-    { "name": "no_witness", "flag": "--no-witness", "type": "flag", "description": "Suppress witness ledger recording" },
+    { "name": "no_witness", "flag": "--no-witness", "type": "flag", "description": "Suppress witness ledger recording; default ledger is ~/.cmdrvl/state/witness/witness.jsonl unless EPISTEMIC_WITNESS is set" },
     { "name": "explicit", "flag": "--explicit", "type": "flag", "description": "Show entity names and identifiers in JSON output (default: redacted for zero-retention safety)" },
     { "name": "describe", "flag": "--describe", "type": "flag", "description": "Print compiled operator.json and exit 0" },
     { "name": "schema", "flag": "--schema", "type": "flag", "description": "Print canon.v0 JSON Schema and exit 0" },
@@ -88,6 +88,9 @@
         "reads_strategy_files": false,
         "loads_sqlite": false,
         "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
         "writes_registry_files": false,
         "writes_mapping_sidecars": false,
         "uses_network": false
@@ -481,7 +484,13 @@
     "witness": {
       "ambient_recording": "enabled_by_default",
       "query_subcommands": false,
-      "no_witness_flag": "suppresses_recording"
+      "no_witness_flag": "suppresses_recording",
+      "ledger_path_resolution": [
+        "EPISTEMIC_WITNESS",
+        "~/.cmdrvl/state/witness/witness.jsonl",
+        "legacy ~/.epistemic/witness.jsonl or .epistemic/witness.jsonl is copied on first default use"
+      ],
+      "migration_policy": "copy-only; never delete or move legacy ledgers; path-only notices under ~/.cmdrvl/migrations and ~/.cmdrvl/notices"
     }
   },
 

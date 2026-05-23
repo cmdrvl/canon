@@ -6,6 +6,7 @@ pub mod input;
 pub mod lookup;
 pub mod org;
 pub mod output;
+pub mod paths;
 pub mod refusal;
 pub mod registry;
 pub mod registry_lint;

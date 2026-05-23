@@ -107,6 +107,8 @@ Mapping files are evaluated in filename-sorted (lexicographic) order. First matc
 Ambient witness semantics must match spine conventions (`shape`/`rvl`/`lock` parity):
 - Append by default
 - `--no-witness` opt-out
+- Resolve implicit witness state to `~/.cmdrvl/state/witness/witness.jsonl`
+- Copy any legacy `~/.epistemic/witness.jsonl` or `.epistemic/witness.jsonl` ledger to the canonical path on first default use; never delete the legacy ledger
 - Witness failures do not mutate domain outcome semantics
 
 ---
