@@ -41,6 +41,7 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ### Source of Truth
 
 - **Spec:** [`docs/PLAN_CANON.md`](./docs/PLAN_CANON.md) — all behavior must follow this document
+- **Harness notes:** [`CODEX.md`](./CODEX.md), [`CLAUDE.md`](./CLAUDE.md), and [`GEMINI.md`](./GEMINI.md) — runner-specific caveats only
 - Do not invent behavior not present in the plan
 
 ### Key Files

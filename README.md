@@ -925,7 +925,7 @@ Special reasons (`empty_value`, `null_value`, `missing_field`, `non_scalar_value
 
 ## Agent Integration
 
-For the full toolchain guide, see the [Agent Operator Guide](https://github.com/cmdrvl/.github/blob/main/profile/AGENT_PROMPT.md). Run `canon --describe` for this tool's machine-readable contract.
+For the full toolchain guide, see the [Agent Operator Guide](https://github.com/cmdrvl/.github/blob/main/profile/AGENT_PROMPT.md). Shared repo instructions live in [AGENTS.md](./AGENTS.md); harness-specific notes live in [CODEX.md](./CODEX.md), [CLAUDE.md](./CLAUDE.md), and [GEMINI.md](./GEMINI.md). Run `canon --describe` for this tool's machine-readable contract.
 
 ---
 
