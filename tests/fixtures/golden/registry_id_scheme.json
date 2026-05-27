@@ -1,0 +1,27 @@
+{
+  "version": "canon_registry_default_id_scheme.v0",
+  "registry": {
+    "id": "people",
+    "source": "<REGISTRY>",
+    "version_before": "1.2.3",
+    "version_after": "1.2.4",
+    "entry_count": 1
+  },
+  "new_scheme": {
+    "prefix": "PPL",
+    "zero_pad": 3
+  },
+  "summary": {
+    "warnings": 1
+  },
+  "warnings": [
+    {
+      "code": "canonical_id_out_of_scheme",
+      "canonical_id": "PPL-1",
+      "reason": "suffix_shorter_than_zero_pad"
+    }
+  ],
+  "touched_files": [
+    "registry.json"
+  ]
+}

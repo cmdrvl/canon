@@ -176,6 +176,9 @@ pub enum RegistrySubcommand {
     AddEntry(RegistryAddEntryCli),
     /// Mint one self-authored canonical ID with one or more starting aliases
     Mint(RegistryMintCli),
+    /// Persist a registry's default self-authored canonical ID scheme
+    #[command(name = "default-id-scheme")]
+    DefaultIdScheme(RegistryDefaultIdSchemeCli),
     /// Compare two registry versions and report what changed
     Diff(RegistryDiffCli),
     /// Audit a seed corpus against a registry for authoring workflows
@@ -295,6 +298,42 @@ pub struct RegistryMintCli {
     /// Skip standard registry lint before accepting the write
     #[arg(long = "no-lint")]
     pub no_lint: bool,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryPlainJsonEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("version_update")
+        .multiple(false)
+        .args(["bump", "next_version"])
+))]
+pub struct RegistryDefaultIdSchemeCli {
+    /// Registry directory to update
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Canonical ID prefix to store as the default scheme
+    #[arg(long)]
+    pub prefix: String,
+
+    /// Zero-padding width for the numeric suffix
+    #[arg(long = "zero-pad")]
+    pub zero_pad: Option<usize>,
+
+    /// Refuse instead of warning when existing in-namespace IDs are out of scheme
+    #[arg(long)]
+    pub strict: bool,
+
+    /// Numeric semver bump to apply; defaults to patch when --next-version is absent
+    #[arg(long, value_enum)]
+    pub bump: Option<RegistryVersionBumpMode>,
+
+    /// Explicit next registry version for non-numeric or calendar versions
+    #[arg(long = "next-version")]
+    pub next_version: Option<String>,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
@@ -1151,6 +1190,45 @@ mod tests {
             assert!(mint.next_version.is_none());
             assert!(!mint.no_lint);
             assert!(matches!(mint.emit, RegistryPlainJsonEmitMode::Plain));
+        }
+    }
+
+    #[test]
+    fn test_cli_registry_default_id_scheme_parsing() {
+        let args = [
+            "canon",
+            "registry",
+            "default-id-scheme",
+            "--registry",
+            "registries/people",
+            "--prefix",
+            "PPL",
+            "--zero-pad",
+            "5",
+            "--strict",
+            "--bump",
+            "major",
+            "--emit",
+            "plain",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = registry_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(
+            &subcommand,
+            RegistrySubcommand::DefaultIdScheme(_)
+        ));
+        if let RegistrySubcommand::DefaultIdScheme(id_scheme) = subcommand {
+            assert_eq!(id_scheme.registry, PathBuf::from("registries/people"));
+            assert_eq!(id_scheme.prefix, "PPL");
+            assert_eq!(id_scheme.zero_pad, Some(5));
+            assert!(id_scheme.strict);
+            assert_eq!(id_scheme.bump, Some(RegistryVersionBumpMode::Major));
+            assert!(id_scheme.next_version.is_none());
+            assert!(matches!(id_scheme.emit, RegistryPlainJsonEmitMode::Plain));
         }
     }
 

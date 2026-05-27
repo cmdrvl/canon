@@ -21,10 +21,11 @@ use crate::cli::{
     OrgExplainCli, OrgPromoteCli, OrgReviewCommand, OrgReviewExportCli, OrgReviewExportEmitMode,
     OrgReviewImportCli, OrgReviewInclude, OrgReviewSubcommand, OrgRunCli, OrgSolveCli,
     OrgStreamEmitMode, OrgSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
-    RegistryDiffCli, RegistryEmitMode, RegistryLintCli, RegistryLintProfile, RegistryMintCli,
-    RegistryNextIdCli, RegistryPlainJsonEmitMode, RegistrySubcommand, RegistryVersionBumpMode,
-    ResolveCli, ResolveEmitMode, StrategyAuditCli, StrategyCommand, StrategyDiffCli,
-    StrategyProfileCli, StrategyRegisterCli, StrategyResolveCli, StrategySubcommand,
+    RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryLintCli,
+    RegistryLintProfile, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
+    RegistrySubcommand, RegistryVersionBumpMode, ResolveCli, ResolveEmitMode, StrategyAuditCli,
+    StrategyCommand, StrategyDiffCli, StrategyProfileCli, StrategyRegisterCli, StrategyResolveCli,
+    StrategySubcommand,
 };
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
@@ -113,6 +114,9 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
             RegistrySubcommand::NextId(next_id) => run_registry_next_id(next_id),
             RegistrySubcommand::AddEntry(add_entry) => run_registry_add_entry(add_entry),
             RegistrySubcommand::Mint(mint) => run_registry_mint(mint),
+            RegistrySubcommand::DefaultIdScheme(id_scheme) => {
+                run_registry_default_id_scheme(id_scheme)
+            }
             RegistrySubcommand::Diff(diff) => run_registry_diff(diff),
             RegistrySubcommand::Audit(audit) => run_registry_audit(audit),
             RegistrySubcommand::Build(build) => run_registry_build(build),
@@ -583,6 +587,39 @@ fn run_registry_mint(mint: &RegistryMintCli) -> Result<u8, Box<dyn Error>> {
         Err(refusal) => {
             let output = refusal.to_canon_output();
             match mint.emit {
+                RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryPlainJsonEmitMode::Plain => {
+                    eprintln!("{}", serde_json::to_string(&output)?)
+                }
+            }
+            Ok(2)
+        }
+    }
+}
+
+fn run_registry_default_id_scheme(
+    id_scheme: &RegistryDefaultIdSchemeCli,
+) -> Result<u8, Box<dyn Error>> {
+    let request = registry::RegistryDefaultIdSchemeRequest {
+        registry: id_scheme.registry.clone(),
+        prefix: id_scheme.prefix.clone(),
+        zero_pad: id_scheme.zero_pad,
+        strict: id_scheme.strict,
+        bump: id_scheme.bump.map(registry_version_bump),
+        next_version: id_scheme.next_version.clone(),
+    };
+
+    match registry::set_default_id_scheme(request) {
+        Ok(output) => {
+            match id_scheme.emit {
+                RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryPlainJsonEmitMode::Plain => println!("{}", output.render_plain()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            let output = refusal.to_canon_output();
+            match id_scheme.emit {
                 RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
                 RegistryPlainJsonEmitMode::Plain => {
                     eprintln!("{}", serde_json::to_string(&output)?)

@@ -14,6 +14,7 @@ use std::time::SystemTime;
 
 mod add_entry;
 mod build;
+mod id_scheme;
 mod mint;
 mod next_id;
 mod provider;
@@ -21,6 +22,9 @@ mod provider;
 pub use add_entry::{
     RegistryAddEntryOutput, RegistryAddEntryPlan, RegistryAddEntryRequest, RegistryVersionBump,
     add_entry, plan_add_entry,
+};
+pub use id_scheme::{
+    RegistryDefaultIdSchemeOutput, RegistryDefaultIdSchemeRequest, set_default_id_scheme,
 };
 pub use mint::{RegistryMintOutput, RegistryMintRequest, mint};
 pub use next_id::{RegistryNextIdOutput, RegistryNextIdRequest, next_id};
