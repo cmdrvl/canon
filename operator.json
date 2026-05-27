@@ -15,6 +15,7 @@
       "canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
+      "canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
       "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
       "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]",
       "canon registry lint <DIR> [--profile standard|org|strategy|auto] [--emit json|summary]",
@@ -154,6 +155,45 @@
         { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Registry directory to inspect" },
         { "name": "zero_pad", "flag": "--zero-pad", "type": "integer", "description": "Zero-padding width for the numeric suffix" },
         { "name": "emit", "flag": "--emit", "type": "string", "default": "plain", "description": "Output mode: plain (ID only) or json (canon_registry_next_id.v0)" }
+      ]
+    },
+    {
+      "name": "registry add-entry",
+      "usage": "canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]",
+      "description": "Append one exact alias entry to a self-authored registry with metadata version/count update and optional standard lint gate",
+      "output_mode": "mixed",
+      "output_schema": "canon_registry_add_entry.v0 | text/plain",
+      "status": "implemented",
+      "read_only": false,
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": true,
+        "reads_strategy_files": false,
+        "loads_sqlite": true,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": true,
+        "writes_mapping_sidecars": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": { "meaning": "alias entry appended and registry metadata updated", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Registry directory to update" },
+        { "name": "alias_file", "flag": "--alias-file", "type": "file_name", "required": true, "description": "Existing root-level mapping JSON file to append to" },
+        { "name": "canonical_id", "flag": "--canonical-id", "type": "string", "required": true, "description": "Canonical ID to map the input alias to" },
+        { "name": "input", "flag": "--input", "type": "string", "required": true, "description": "Exact input alias to write; must already be ASCII-trimmed" },
+        { "name": "rule_id", "flag": "--rule-id", "type": "string", "required": true, "description": "Rule ID for this authored alias" },
+        { "name": "canonical_type", "flag": "--canonical-type", "type": "string", "description": "Canonical type; inferred only for an existing canonical ID with one type" },
+        { "name": "bump", "flag": "--bump", "type": "string", "default": "patch", "description": "Numeric semver bump: patch, minor, or major; mutually exclusive with --next-version" },
+        { "name": "next_version", "flag": "--next-version", "type": "string", "description": "Explicit next registry version for non-numeric or calendar versions" },
+        { "name": "no_lint", "flag": "--no-lint", "type": "flag", "description": "Skip the standard registry lint gate after planning the write" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_registry_add_entry.v0) or plain" }
       ]
     },
     {

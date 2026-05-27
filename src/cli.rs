@@ -31,6 +31,17 @@ pub enum RegistryPlainJsonEmitMode {
     Json,
 }
 
+/// Registry version bump mode
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
+pub enum RegistryVersionBumpMode {
+    /// Increment MAJOR.MINOR.PATCH patch component
+    Patch,
+    /// Increment minor and reset patch
+    Minor,
+    /// Increment major and reset minor/patch
+    Major,
+}
+
 /// Emit mode for org artifact subcommands
 #[derive(Debug, Clone, ValueEnum, Default)]
 pub enum OrgEmitMode {
@@ -160,6 +171,9 @@ pub enum RegistrySubcommand {
     /// Suggest the next canonical ID for a self-authored registry namespace
     #[command(name = "next-id")]
     NextId(RegistryNextIdCli),
+    /// Append one exact alias entry to a self-authored registry
+    #[command(name = "add-entry")]
+    AddEntry(RegistryAddEntryCli),
     /// Compare two registry versions and report what changed
     Diff(RegistryDiffCli),
     /// Audit a seed corpus against a registry for authoring workflows
@@ -185,6 +199,54 @@ pub struct RegistryNextIdCli {
 
     /// Output mode
     #[arg(long, value_enum, default_value = "plain")]
+    pub emit: RegistryPlainJsonEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("version_update")
+        .multiple(false)
+        .args(["bump", "next_version"])
+))]
+pub struct RegistryAddEntryCli {
+    /// Registry directory to update
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Existing root-level mapping file to append to
+    #[arg(long = "alias-file")]
+    pub alias_file: String,
+
+    /// Canonical ID to map the input alias to
+    #[arg(long = "canonical-id")]
+    pub canonical_id: String,
+
+    /// Exact input alias to write
+    #[arg(long)]
+    pub input: String,
+
+    /// Rule ID for this authored alias
+    #[arg(long = "rule-id")]
+    pub rule_id: String,
+
+    /// Canonical type; inferred only for an existing canonical ID with one type
+    #[arg(long = "canonical-type")]
+    pub canonical_type: Option<String>,
+
+    /// Numeric semver bump to apply; defaults to patch when --next-version is absent
+    #[arg(long, value_enum)]
+    pub bump: Option<RegistryVersionBumpMode>,
+
+    /// Explicit next registry version for non-numeric or calendar versions
+    #[arg(long = "next-version")]
+    pub next_version: Option<String>,
+
+    /// Skip standard registry lint before accepting the write
+    #[arg(long = "no-lint")]
+    pub no_lint: bool,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryPlainJsonEmitMode,
 }
 
@@ -953,6 +1015,50 @@ mod tests {
             assert_eq!(next_id.registry, PathBuf::from("registries/people"));
             assert_eq!(next_id.zero_pad, Some(5));
             assert!(matches!(next_id.emit, RegistryPlainJsonEmitMode::Json));
+        }
+    }
+
+    #[test]
+    fn test_cli_registry_add_entry_parsing() {
+        let args = [
+            "canon",
+            "registry",
+            "add-entry",
+            "--registry",
+            "registries/people",
+            "--alias-file",
+            "aliases.json",
+            "--canonical-id",
+            "PPL-001",
+            "--input",
+            "Jane Doe",
+            "--rule-id",
+            "MANUAL",
+            "--canonical-type",
+            "person",
+            "--bump",
+            "minor",
+            "--emit",
+            "plain",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = registry_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, RegistrySubcommand::AddEntry(_)));
+        if let RegistrySubcommand::AddEntry(add_entry) = subcommand {
+            assert_eq!(add_entry.registry, PathBuf::from("registries/people"));
+            assert_eq!(add_entry.alias_file, "aliases.json");
+            assert_eq!(add_entry.canonical_id, "PPL-001");
+            assert_eq!(add_entry.input, "Jane Doe");
+            assert_eq!(add_entry.rule_id, "MANUAL");
+            assert_eq!(add_entry.canonical_type.as_deref(), Some("person"));
+            assert_eq!(add_entry.bump, Some(RegistryVersionBumpMode::Minor));
+            assert!(add_entry.next_version.is_none());
+            assert!(!add_entry.no_lint);
+            assert!(matches!(add_entry.emit, RegistryPlainJsonEmitMode::Plain));
         }
     }
 

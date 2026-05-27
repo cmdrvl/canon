@@ -20,11 +20,11 @@ use crate::cli::{
     CanonCommand, Cli, OrgAuditCli, OrgBlockCli, OrgCommand, OrgEdgeCli, OrgEmitMode,
     OrgExplainCli, OrgPromoteCli, OrgReviewCommand, OrgReviewExportCli, OrgReviewExportEmitMode,
     OrgReviewImportCli, OrgReviewInclude, OrgReviewSubcommand, OrgRunCli, OrgSolveCli,
-    OrgStreamEmitMode, OrgSubcommand, RegistryAuditCli, RegistryBuildCli, RegistryDiffCli,
-    RegistryEmitMode, RegistryLintCli, RegistryLintProfile, RegistryNextIdCli,
-    RegistryPlainJsonEmitMode, RegistrySubcommand, ResolveCli, ResolveEmitMode, StrategyAuditCli,
-    StrategyCommand, StrategyDiffCli, StrategyProfileCli, StrategyRegisterCli, StrategyResolveCli,
-    StrategySubcommand,
+    OrgStreamEmitMode, OrgSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
+    RegistryDiffCli, RegistryEmitMode, RegistryLintCli, RegistryLintProfile, RegistryNextIdCli,
+    RegistryPlainJsonEmitMode, RegistrySubcommand, RegistryVersionBumpMode, ResolveCli,
+    ResolveEmitMode, StrategyAuditCli, StrategyCommand, StrategyDiffCli, StrategyProfileCli,
+    StrategyRegisterCli, StrategyResolveCli, StrategySubcommand,
 };
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
@@ -111,6 +111,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
         CanonCommand::Resolve(resolve) => run_resolve_command(resolve),
         CanonCommand::Registry(command) => match &command.command {
             RegistrySubcommand::NextId(next_id) => run_registry_next_id(next_id),
+            RegistrySubcommand::AddEntry(add_entry) => run_registry_add_entry(add_entry),
             RegistrySubcommand::Diff(diff) => run_registry_diff(diff),
             RegistrySubcommand::Audit(audit) => run_registry_audit(audit),
             RegistrySubcommand::Build(build) => run_registry_build(build),
@@ -521,6 +522,48 @@ fn run_registry_next_id(next_id: &RegistryNextIdCli) -> Result<u8, Box<dyn Error
             }
             Ok(2)
         }
+    }
+}
+
+fn run_registry_add_entry(add_entry: &RegistryAddEntryCli) -> Result<u8, Box<dyn Error>> {
+    let request = registry::RegistryAddEntryRequest {
+        registry: add_entry.registry.clone(),
+        alias_file: add_entry.alias_file.clone(),
+        canonical_id: add_entry.canonical_id.clone(),
+        input: add_entry.input.clone(),
+        rule_id: add_entry.rule_id.clone(),
+        canonical_type: add_entry.canonical_type.clone(),
+        bump: add_entry.bump.map(registry_version_bump),
+        next_version: add_entry.next_version.clone(),
+        no_lint: add_entry.no_lint,
+    };
+
+    match registry::add_entry(request) {
+        Ok(output) => {
+            match add_entry.emit {
+                RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryPlainJsonEmitMode::Plain => println!("{}", output.render_plain()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            let output = refusal.to_canon_output();
+            match add_entry.emit {
+                RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryPlainJsonEmitMode::Plain => {
+                    eprintln!("{}", serde_json::to_string(&output)?)
+                }
+            }
+            Ok(2)
+        }
+    }
+}
+
+fn registry_version_bump(bump: RegistryVersionBumpMode) -> registry::RegistryVersionBump {
+    match bump {
+        RegistryVersionBumpMode::Patch => registry::RegistryVersionBump::Patch,
+        RegistryVersionBumpMode::Minor => registry::RegistryVersionBump::Minor,
+        RegistryVersionBumpMode::Major => registry::RegistryVersionBump::Major,
     }
 }
 

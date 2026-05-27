@@ -12,10 +12,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+mod add_entry;
 mod build;
 mod next_id;
 mod provider;
 
+pub use add_entry::{
+    RegistryAddEntryOutput, RegistryAddEntryPlan, RegistryAddEntryRequest, RegistryVersionBump,
+    add_entry, plan_add_entry,
+};
 pub use next_id::{RegistryNextIdOutput, RegistryNextIdRequest, next_id};
 
 #[derive(Debug, Clone, Deserialize)]

@@ -1,0 +1,33 @@
+{
+  "version": "canon_registry_add_entry.v0",
+  "registry": {
+    "id": "people",
+    "source": "<REGISTRY>",
+    "version_before": "1.2.3",
+    "version_after": "1.2.4",
+    "entry_count_before": 0,
+    "entry_count_after": 1
+  },
+  "alias_entry": {
+    "alias_file": "aliases.json",
+    "input": "Jane Doe",
+    "canonical_id": "PPL-001",
+    "canonical_type": "person",
+    "rule_id": "MANUAL"
+  },
+  "touched_files": [
+    "aliases.json",
+    "registry.json"
+  ],
+  "lint": {
+    "enabled": true,
+    "profile": "standard",
+    "total_findings": 1,
+    "errors": 0,
+    "warnings": 0,
+    "info": 1
+  },
+  "warnings": [
+    "index_missing"
+  ]
+}
