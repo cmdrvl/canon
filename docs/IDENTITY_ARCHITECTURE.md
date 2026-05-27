@@ -66,7 +66,8 @@ So the precise product claim is:
 | Capability | Command family | Status | Identity object | Matching mode | Persistent output |
 |------------|----------------|--------|-----------------|---------------|-------------------|
 | Exact identifier lookup | `canon <INPUT>` | Implemented | Input value to canonical ID | Exact registry lookup | None; emits mapping artifact |
-| Registry maintenance | `canon registry` | Implemented | Registry entries | Provider-backed materialization, diff, audit, lint | Versioned registry files |
+| Provider-backed registry maintenance | `canon registry build/diff/audit/lint` | Implemented | Registry entries | Provider-backed materialization, diff, audit, lint | Versioned registry files |
+| Self-authored registry maintenance | `canon registry next-id/add-entry/mint/default-id-scheme` | Implemented | Operator-chosen canonical IDs and aliases | Exact alias authoring under a local ID convention; not a resolution workbench | Flat mapping entries plus `registry.json` metadata |
 | Strategy registry | `canon strategy` | Implemented | Schema and skill to frozen script | Deterministic script selection | Versioned strategy registry |
 | Organization identity | `canon org` | Implemented, first validated around BDC/issuer-like profiles | Organization observation to `org_canon_id` | Blocking, typed evidence, deterministic solver, abstention | Alias entries, anchor sidecars, escrow sidecars, proofs |
 | Cross-tape structural resolution | `canon resolve` | Implemented v0 | Record in reference tape to record in target tape | Structural evidence under an explicit two-tape strategy; deterministic abstention on unmatched/ambiguous records | `canon_resolve.v0` evidence and optional flat cross-reference registry entries |
@@ -103,6 +104,12 @@ as part of `canon` rather than an ad hoc matcher:
    - Workbench-specific evidence can live in sidecars and proofs.
    - Production lookup remains `input -> canonical_id` through versioned registry
      files and derived indexes.
+
+Self-authored registry maintenance is deliberately outside these workbench
+rules. `canon registry mint` and `add-entry` do not infer identity from messy
+observations; they record an operator's already-accepted canonical ID and exact
+aliases as flat mapping entries. `default-id-scheme` is metadata for consistent
+local ID allocation, not a new matching mode.
 
 ---
 

@@ -26,6 +26,14 @@ canon tape.csv --registry registries/cusip-isin/ --column cusip --emit csv > tap
 canon nov.csv --registry registries/cusip-isin/ --column cusip \
   --emit csv --map-out evidence/nov.map.json > nov.canon.csv
 
+# Self-authored registry maintenance
+canon registry default-id-scheme --registry registries/people/ --prefix PPL --zero-pad 3
+canon registry next-id --registry registries/people/
+canon registry mint --registry registries/people/ \
+  --canonical-type person --with-alias 'aliases.json=Jane Doe:MANUAL'
+canon registry add-entry --registry registries/people/ \
+  --alias-file aliases.json --canonical-id PPL-001 --input 'J. Doe' --rule-id MANUAL
+
 # Quality gate
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
@@ -93,6 +101,8 @@ Matching is exact byte match after ASCII-trim. No case normalization, no punctua
 ### 5. Registry version tracking
 
 Every output includes `registry.id` and `registry.version` from `registry.json`. Resolution without a versioned registry is not permitted. If `registry.json` is missing or malformed, refuse with `E_BAD_REGISTRY`.
+
+For self-authored registry updates, prefer `canon registry mint` or `canon registry add-entry` over hand-editing mapping JSON. The commands preserve the exact-match registry model while keeping version bumps, `entry_count`, and lint behavior aligned with the implementation.
 
 ### 6. Match precedence
 

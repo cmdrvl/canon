@@ -30,6 +30,7 @@ Architecturally, `canon` has two layers. The core lookup kernel is exact and bor
 - **Pipeline composable** — `canon --emit csv` appends a `<column>__canon` column to your CSV. Pipe the output directly into `rvl` or `shape`: `canon nov.csv --column cusip --emit csv | rvl - dec.canon.csv --key cusip__canon`.
 - **Full traceability** — every mapping includes `rule_id`, `canonical_type`, and `confidence`. Every unresolved entry includes the reason. Every result is auditable.
 - **Deduplication built in** — input values are deduplicated before lookup. 500 unique CUSIPs produce 500 mapping entries whether your file has 500 rows or 500,000.
+- **Self-authored registries** — use `canon registry default-id-scheme`, `next-id`, `add-entry`, and `mint` to maintain local alias registries without hand-editing mapping JSON.
 - **Org identity resolution** — `canon org` resolves organization-like entities that appear under different names across documents via a deterministic multi-stage workbench: block, score evidence, solve clusters, audit against evaluation suites, review if needed, and promote into the registry.
 - **Cross-tape structural resolution** — `canon resolve` compares two local tapes under an explicit YAML strategy, emits `canon_resolve.v0` evidence, and can write matched ID pairs back into a flat registry when explicitly requested.
 
@@ -154,6 +155,62 @@ Each mapping file is an array of entries:
 
 Registries are versioned with semver, inspectable in git, and diffable. A SQLite derived index is built automatically for fast lookups against large registries. `_build.json` is reserved for materializer provenance and is ignored during normal resolution.
 
+### Two registry-creation patterns
+
+Provider-fetched registries snapshot an external or bundled provider into normal mapping files. This local example uses the built-in `mock` provider; real provider-backed runs use sources such as `openfigi` and may require provider configuration:
+
+```bash
+example_dir=$(mktemp -d)
+printf 'cusip\n037833100\n' > "$example_dir/seeds.csv"
+
+canon registry build \
+  --source mock \
+  --seed "$example_dir/seeds.csv" \
+  --seed-column cusip \
+  --output "$example_dir/registries/mock-cusip" \
+  --version 2026.03.13
+
+canon "$example_dir/seeds.csv" \
+  --registry "$example_dir/registries/mock-cusip" \
+  --column cusip
+```
+
+Self-authored registries are local operator conventions expressed as exact aliases. The maintenance commands keep `registry.json`, version bumps, and entry counts synchronized:
+
+```bash
+example_dir=$(mktemp -d)
+mkdir -p "$example_dir/registries/people"
+
+cat > "$example_dir/registries/people/registry.json" <<'JSON'
+{
+  "id": "people",
+  "version": "0.1.0",
+  "description": "Local people aliases",
+  "updated": "2026-05-27",
+  "entry_count": 0
+}
+JSON
+
+printf '[]\n' > "$example_dir/registries/people/aliases.json"
+printf 'name\nJane Doe\n' > "$example_dir/names.csv"
+
+canon registry default-id-scheme \
+  --registry "$example_dir/registries/people" \
+  --prefix PPL \
+  --zero-pad 3
+
+canon registry mint \
+  --registry "$example_dir/registries/people" \
+  --canonical-type person \
+  --with-alias 'aliases.json=Jane Doe:MANUAL'
+
+canon "$example_dir/names.csv" \
+  --registry "$example_dir/registries/people" \
+  --column name
+```
+
+These workflows only create or update registry files. Normal `canon <INPUT> --registry ...` still resolves by exact byte match after ASCII-trim.
+
 ### Matching
 
 v0 matching is **exact byte match after ASCII-trim**. No uppercasing, no punctuation stripping, no stemming. The registry is the complete source of truth — if you need case-insensitive matching, include all case variants as registry entries.
@@ -254,6 +311,10 @@ canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
 canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <YAML> --registry <DIR> [--gold <JSONL>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon doctor [health [--json]|capabilities [--json]|robot-docs|--robot-triage]
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [OPTIONS]
+canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
+canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
+canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
+canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary]
 canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary]
@@ -303,6 +364,10 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `doctor [health [--json]\|capabilities [--json]\|robot-docs\|--robot-triage]` | Read-only compiled-contract diagnostics for agents. Does not read inputs, registries, SQLite indexes, or witness ledgers, does not contact providers, and has no `--fix` mode. |
 | `resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <YAML> --registry <DIR> [--gold <JSONL>] [--write-back] [--emit json\|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>]` | Cross-tape structural resolution workbench. Loads two tapes, filters candidates, scores matches, optionally evaluates gold, and writes matched ID pairs back to the registry when explicitly requested. |
 | `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides. |
+| `registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain\|json]` | Read the existing canonical IDs for a self-authored namespace and suggest the next deterministic ID. Uses `registry.json.default_id_scheme` when `PREFIX` is omitted. |
+| `registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>]` | Append one exact alias entry to an existing root mapping file, bump the registry version, update `entry_count`, and run standard lint unless `--no-lint` is set. |
+| `registry mint --registry <DIR> [--canonical-id <ID>\|--prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>...` | Mint one self-authored canonical ID and one or more starting aliases in a single versioned write. Without `--canonical-id`, allocates via `next-id`. |
+| `registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict]` | Persist the registry's default self-authored ID convention in `registry.json` so `next-id` and `mint` can allocate without a prefix argument. |
 | `registry diff --old <PATH> --new <PATH> [--emit json\|summary]` | Compare two versions of the same registry ID and report added, removed, changed, and unchanged effective mappings. |
 | `registry audit <SEED> --registry <PATH> --column <COLUMN> [--emit json\|summary]` | Audit a seed corpus against a registry and emit resolved/unresolved entries plus aggregate canonical-target and rule-hit counts. |
 | `registry lint <DIR> [--profile standard\|org\|strategy\|auto] [--emit json\|summary]` | Preflight standard mapping, org, or strategy registry health with severity-tagged findings. |
@@ -329,7 +394,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `1` | PARTIAL or UNRESOLVED (some or all inputs unresolved) |
 | `2` | REFUSAL or CLI error |
 
-`canon registry diff`, `canon registry audit`, and `canon registry lint` exit `0` when the report succeeds and `2` on refusal. Lint findings are represented inside `canon_registry_lint.v0` rather than via exit status. `canon registry build` exits `0` when materialization succeeds and `2` on refusal; provider failures are preserved in the JSON report and warned on stderr.
+`canon registry diff`, `canon registry audit`, and `canon registry lint` exit `0` when the report succeeds and `2` on refusal. Lint findings are represented inside `canon_registry_lint.v0` rather than via exit status. `canon registry build`, `registry next-id`, `registry add-entry`, `registry mint`, and `registry default-id-scheme` exit `0` when their report or write succeeds and `2` on refusal. Provider failures from `registry build` are preserved in the JSON report and warned on stderr. `add-entry` and `mint` restore the original files if their post-write lint gate finds errors.
 
 `canon strategy profile`, `canon strategy register`, and `canon strategy diff` exit `0` when their reports or writes succeed and `2` on refusal. `canon strategy audit` exits `0` when all fixtures pass, `1` when deterministic fixture checks fail, and `2` on refusal. `canon strategy resolve` exits `0` for an EXACT or COMPATIBLE frozen-script match, `1` for PARTIAL or UNRESOLVED, and `2` on refusal.
 
@@ -415,6 +480,48 @@ canon registry build \
   --seed-column cusip \
   --output registries/openfigi-cusip/ \
   --version 2026.03.13
+```
+
+Maintain a self-authored alias registry:
+
+```bash
+example_dir=$(mktemp -d)
+mkdir -p "$example_dir/registries/people"
+cat > "$example_dir/registries/people/registry.json" <<'JSON'
+{
+  "id": "people",
+  "version": "0.1.0",
+  "description": "Local people aliases",
+  "updated": "2026-05-27",
+  "entry_count": 0
+}
+JSON
+printf '[]\n' > "$example_dir/registries/people/aliases.json"
+
+canon registry default-id-scheme \
+  --registry "$example_dir/registries/people" \
+  --prefix PPL \
+  --zero-pad 3
+
+canon registry next-id --registry "$example_dir/registries/people"
+
+canon registry mint \
+  --registry "$example_dir/registries/people" \
+  --canonical-type person \
+  --with-alias 'aliases.json=Jane Doe:MANUAL'
+
+canon registry add-entry \
+  --registry "$example_dir/registries/people" \
+  --alias-file aliases.json \
+  --canonical-id PPL-001 \
+  --input 'J. Doe' \
+  --rule-id MANUAL
+
+printf 'name\nJane Doe\nJ. Doe\n' > "$example_dir/names.csv"
+canon "$example_dir/names.csv" \
+  --registry "$example_dir/registries/people" \
+  --column name \
+  --emit csv
 ```
 
 Resolve a frozen strategy script for a repeated schema shape:
@@ -730,7 +837,7 @@ The important boundary is that entity resolution happens in workbench commands s
 
 ### What about registries — do I have to build them?
 
-You can author registries by hand, consume published registries, or materialize them with `canon registry build`. The build workflow snapshots provider-backed lookups into a normal versioned registry directory plus `_build.json` provenance, and normal `canon` resolution ignores that metadata sidecar.
+You can consume published registries, materialize provider-backed registries with `canon registry build`, or maintain local self-authored registries with `canon registry mint` and `canon registry add-entry`. Prefer the maintenance commands over hand-editing mapping JSON: they preserve exact lookup semantics while keeping versions, entry counts, and lint checks in sync. The build workflow snapshots provider-backed lookups into a normal versioned registry directory plus `_build.json` provenance, and normal `canon` resolution ignores that metadata sidecar.
 
 ### Can I use this in CI/CD?
 

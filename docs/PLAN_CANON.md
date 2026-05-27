@@ -53,6 +53,10 @@ registries.
 ```bash
 canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--emit json|csv] [--canon-column <NAME>] [--map-out <PATH>] [--max-rows <N>] [--max-bytes <N>]
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]
+canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
+canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
+canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
+canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary]
@@ -100,6 +104,42 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - exits `0` on successful materialization, `2` on refusal
 - partial provider failures are preserved in the JSON report and warned on stderr; successful mappings still land in the registry directory
 - `--provider-config` is repeatable and carries provider-specific options such as OpenFIGI `id_type` or `base_url`
+
+`canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]`
+- inspects existing `canonical_id` values in all root mapping files and suggests the next `<PREFIX>-<number>` ID
+- is read-only; it does not write registry files or mutate the derived SQLite index
+- uses `registry.json.default_id_scheme` when `PREFIX` is omitted; without either source, refuses with recovery guidance
+- treats non-numeric in-namespace canonical IDs as malformed registry state instead of skipping them
+- emits plain text by default (`<PREFIX>-<zero-padded-number>`) or `canon_registry_next_id.v0` JSON
+- exits `0` when an ID is suggested, `2` on refusal
+
+`canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]`
+- appends one exact alias entry to an existing root-level mapping file; `--alias-file` cannot point into a subdirectory and cannot be `registry.json` or `_build.json`
+- requires `--input` to be non-empty and already ASCII-trimmed; the lookup key written is exactly that value
+- refuses duplicate inputs already present anywhere in the registry because first-match precedence would make the new entry ambiguous or shadowed
+- infers `--canonical-type` only when the canonical ID already exists with exactly one type; new canonical IDs require an explicit type
+- defaults to a patch semver bump when `--next-version` is absent; use `--next-version` for calendar or other non-numeric versions
+- updates `registry.json.version` and `registry.json.entry_count`, runs standard lint by default, and restores the original files if lint reports errors
+- emits `canon_registry_add_entry.v0` JSON by default; `--emit plain` prints a one-line shell-oriented receipt
+- exits `0` on accepted write, `2` on refusal
+
+`canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]`
+- creates one self-authored canonical ID with one or more starting exact aliases in a single versioned write
+- accepts either an explicit `--canonical-id` or an allocation prefix; when both are omitted, allocation uses `registry.json.default_id_scheme`
+- requires at least one `--with-alias`; each alias target file must already exist at the registry root
+- parses each alias at the first `=` and the last `:`, so alias inputs may contain colons when quoted by the shell
+- applies one version bump and one `entry_count` increment covering all added aliases, then runs the same standard lint gate as `add-entry` unless `--no-lint` is set
+- emits `canon_registry_mint.v0` JSON by default; `--emit plain` prints only the minted canonical ID
+- exits `0` on accepted write, `2` on refusal
+
+`canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]`
+- persists the registry's default self-authored ID convention in `registry.json.default_id_scheme`
+- validates prefixes as uppercase ASCII letters/digits starting with a letter; default `--zero-pad` is `3`, with allowed range `1..=20`
+- is metadata-only: it writes `registry.json` and does not change mapping entries, `_build.json`, or `_index.sqlite`
+- warns about existing in-namespace canonical IDs that do not conform; `--strict` turns those warnings into a refusal
+- defaults to a patch semver bump when `--next-version` is absent
+- emits `canon_registry_default_id_scheme.v0` JSON by default; `--emit plain` prints `<PREFIX>-<zero_pad>`
+- exits `0` on accepted write, `2` on refusal
 
 `canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]`
 - compares two versions of the same registry id
@@ -292,6 +332,17 @@ registries/cusip-isin/
 }
 ```
 
+`default_id_scheme` is optional metadata for self-authored registry maintenance. Existing registries without it remain valid. When present, `canon registry next-id` and `canon registry mint` can allocate IDs without a prefix argument, and `canon registry add-entry` validates explicit canonical IDs against the convention.
+
+```json
+{
+  "default_id_scheme": {
+    "prefix": "PPL",
+    "zero_pad": 3
+  }
+}
+```
+
 ### Mapping file discovery
 - All `*.json` files in the registry directory except `registry.json` and `_build.json` are treated as mapping files
 - Subdirectories are ignored (flat structure only in v0)
@@ -327,6 +378,15 @@ byte match after ASCII-trim. The difference is how the registry is authored
 are not new lookup match modes; they are separate workbenches that use
 deterministic evidence to manufacture audited registry updates. Property-specific
 identity remains future work.
+
+### Registry creation patterns
+
+Registry creation has two supported operational shapes:
+
+- **Provider-fetched:** `canon registry build` consumes a seed corpus and writes a normal registry directory plus `_build.json` provenance. Provider calls happen only during maintenance; normal lookup never calls providers.
+- **Self-authored:** operators create canonical entities by convention using `canon registry default-id-scheme`, `next-id`, `mint`, and `add-entry`. The durable product is still flat mapping entries that exact lookup can resolve.
+
+Self-authored registry maintenance is not a resolution workbench. It does not score candidates, inspect multiple columns, or infer that two observations represent the same entity. It records an operator's accepted alias decision as deterministic registry data.
 
 ### Registry governance
 
@@ -639,6 +699,18 @@ canon registry diff --old registries/openfigi-cusip-v2026.02/ --new registries/o
 # How well does the current registry cover a seed corpus?
 canon registry audit seeds.csv --registry registries/cusip-isin/ --column cusip
 canon registry audit seeds.csv --registry registries/cusip-isin/ --column cusip --emit summary
+
+# Establish a self-authored ID convention
+canon registry default-id-scheme --registry registries/people/ --prefix PPL --zero-pad 3
+
+# Preview the next local ID without writing
+canon registry next-id --registry registries/people/
+
+# Mint one canonical ID with an initial exact alias
+canon registry mint --registry registries/people/ --canonical-type person --with-alias 'aliases.json=Jane Doe:MANUAL'
+
+# Add another exact alias to an existing canonical ID
+canon registry add-entry --registry registries/people/ --alias-file aliases.json --canonical-id PPL-001 --input 'J. Doe' --rule-id MANUAL
 ```
 
 ---
