@@ -21,6 +21,16 @@ pub enum RegistryEmitMode {
     Summary,
 }
 
+/// Emit mode for registry commands that default to shell-composable text
+#[derive(Debug, Clone, ValueEnum, Default)]
+pub enum RegistryPlainJsonEmitMode {
+    /// Plain text value for shell composition (default)
+    #[default]
+    Plain,
+    /// Structured registry JSON
+    Json,
+}
+
 /// Emit mode for org artifact subcommands
 #[derive(Debug, Clone, ValueEnum, Default)]
 pub enum OrgEmitMode {
@@ -147,6 +157,9 @@ pub struct StrategyCommand {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum RegistrySubcommand {
+    /// Suggest the next canonical ID for a self-authored registry namespace
+    #[command(name = "next-id")]
+    NextId(RegistryNextIdCli),
     /// Compare two registry versions and report what changed
     Diff(RegistryDiffCli),
     /// Audit a seed corpus against a registry for authoring workflows
@@ -155,6 +168,24 @@ pub enum RegistrySubcommand {
     Build(RegistryBuildCli),
     /// Check registry health before production use
     Lint(RegistryLintCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RegistryNextIdCli {
+    /// Canonical ID prefix to allocate under, such as PPL or CPTY
+    pub prefix: Option<String>,
+
+    /// Registry directory to inspect
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Zero-padding width for the numeric suffix
+    #[arg(long = "zero-pad")]
+    pub zero_pad: Option<usize>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "plain")]
+    pub emit: RegistryPlainJsonEmitMode,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -893,6 +924,35 @@ mod tests {
             assert_eq!(diff.old, PathBuf::from("registries/test-v1"));
             assert_eq!(diff.new, PathBuf::from("registries/test-v2"));
             assert!(matches!(diff.emit, RegistryEmitMode::Summary));
+        }
+    }
+
+    #[test]
+    fn test_cli_registry_next_id_parsing() {
+        let args = [
+            "canon",
+            "registry",
+            "next-id",
+            "PPL",
+            "--registry",
+            "registries/people",
+            "--zero-pad",
+            "5",
+            "--emit",
+            "json",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = registry_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, RegistrySubcommand::NextId(_)));
+        if let RegistrySubcommand::NextId(next_id) = subcommand {
+            assert_eq!(next_id.prefix.as_deref(), Some("PPL"));
+            assert_eq!(next_id.registry, PathBuf::from("registries/people"));
+            assert_eq!(next_id.zero_pad, Some(5));
+            assert!(matches!(next_id.emit, RegistryPlainJsonEmitMode::Json));
         }
     }
 

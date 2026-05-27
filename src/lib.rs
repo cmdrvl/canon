@@ -21,9 +21,10 @@ use crate::cli::{
     OrgExplainCli, OrgPromoteCli, OrgReviewCommand, OrgReviewExportCli, OrgReviewExportEmitMode,
     OrgReviewImportCli, OrgReviewInclude, OrgReviewSubcommand, OrgRunCli, OrgSolveCli,
     OrgStreamEmitMode, OrgSubcommand, RegistryAuditCli, RegistryBuildCli, RegistryDiffCli,
-    RegistryEmitMode, RegistryLintCli, RegistryLintProfile, RegistrySubcommand, ResolveCli,
-    ResolveEmitMode, StrategyAuditCli, StrategyCommand, StrategyDiffCli, StrategyProfileCli,
-    StrategyRegisterCli, StrategyResolveCli, StrategySubcommand,
+    RegistryEmitMode, RegistryLintCli, RegistryLintProfile, RegistryNextIdCli,
+    RegistryPlainJsonEmitMode, RegistrySubcommand, ResolveCli, ResolveEmitMode, StrategyAuditCli,
+    StrategyCommand, StrategyDiffCli, StrategyProfileCli, StrategyRegisterCli, StrategyResolveCli,
+    StrategySubcommand,
 };
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
@@ -109,6 +110,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
         CanonCommand::Doctor(args) => doctor::run(args),
         CanonCommand::Resolve(resolve) => run_resolve_command(resolve),
         CanonCommand::Registry(command) => match &command.command {
+            RegistrySubcommand::NextId(next_id) => run_registry_next_id(next_id),
             RegistrySubcommand::Diff(diff) => run_registry_diff(diff),
             RegistrySubcommand::Audit(audit) => run_registry_audit(audit),
             RegistrySubcommand::Build(build) => run_registry_build(build),
@@ -491,6 +493,34 @@ fn run_org_explain_command(explain: &OrgExplainCli) -> Result<u8, Box<dyn Error>
             true,
             matches!(explain.emit, OrgEmitMode::Summary),
         ),
+    }
+}
+
+fn run_registry_next_id(next_id: &RegistryNextIdCli) -> Result<u8, Box<dyn Error>> {
+    let request = registry::RegistryNextIdRequest {
+        registry: next_id.registry.clone(),
+        prefix: next_id.prefix.clone(),
+        zero_pad: next_id.zero_pad,
+    };
+
+    match registry::next_id(request) {
+        Ok(output) => {
+            match next_id.emit {
+                RegistryPlainJsonEmitMode::Plain => println!("{}", output.render_plain()),
+                RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            let output = refusal.to_canon_output();
+            match next_id.emit {
+                RegistryPlainJsonEmitMode::Plain => {
+                    eprintln!("{}", serde_json::to_string(&output)?)
+                }
+                RegistryPlainJsonEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+            }
+            Ok(2)
+        }
     }
 }
 

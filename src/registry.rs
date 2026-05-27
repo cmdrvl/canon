@@ -5,7 +5,7 @@ use crate::{
 };
 pub use build::{RegistryBuildError, RegistryBuildErrorKind, RegistryBuildRequest, build_registry};
 use rusqlite::Connection;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fs;
@@ -13,7 +13,10 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 mod build;
+mod next_id;
 mod provider;
+
+pub use next_id::{RegistryNextIdOutput, RegistryNextIdRequest, next_id};
 
 #[derive(Debug, Clone, Deserialize)]
 struct RegistryJson {
@@ -24,6 +27,14 @@ struct RegistryJson {
     #[allow(dead_code)]
     updated: String,
     entry_count: usize,
+    #[serde(default)]
+    default_id_scheme: Option<DefaultIdScheme>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct DefaultIdScheme {
+    pub prefix: String,
+    pub zero_pad: usize,
 }
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]

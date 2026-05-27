@@ -14,6 +14,7 @@
       "canon doctor [health [--json]|capabilities [--json]|robot-docs|--robot-triage]",
       "canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
+      "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
       "canon registry diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
       "canon registry audit <SEED> --registry <DIR> --column <COL> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]",
       "canon registry lint <DIR> [--profile standard|org|strategy|auto] [--emit json|summary]",
@@ -120,6 +121,39 @@
         { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if either tape exceeds N data rows" },
         { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if either tape exceeds N bytes" },
         { "name": "no_witness", "flag": "--no-witness", "type": "flag", "description": "Suppress witness ledger recording for canon resolve" }
+      ]
+    },
+    {
+      "name": "registry next-id",
+      "usage": "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
+      "description": "Suggest the next canonical ID for a self-authored registry namespace without mutating registry files or the derived SQLite index",
+      "output_mode": "mixed",
+      "output_schema": "canon_registry_next_id.v0 | text/plain",
+      "status": "implemented",
+      "read_only": true,
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": true,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": { "meaning": "next ID suggested successfully", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "prefix", "type": "string", "position": 0, "description": "Canonical ID namespace prefix such as PPL or CPTY; optional when registry.json has default_id_scheme" },
+        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Registry directory to inspect" },
+        { "name": "zero_pad", "flag": "--zero-pad", "type": "integer", "description": "Zero-padding width for the numeric suffix" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "plain", "description": "Output mode: plain (ID only) or json (canon_registry_next_id.v0)" }
       ]
     },
     {
