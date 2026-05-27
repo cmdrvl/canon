@@ -174,6 +174,8 @@ pub enum RegistrySubcommand {
     /// Append one exact alias entry to a self-authored registry
     #[command(name = "add-entry")]
     AddEntry(RegistryAddEntryCli),
+    /// Mint one self-authored canonical ID with one or more starting aliases
+    Mint(RegistryMintCli),
     /// Compare two registry versions and report what changed
     Diff(RegistryDiffCli),
     /// Audit a seed corpus against a registry for authoring workflows
@@ -232,6 +234,55 @@ pub struct RegistryAddEntryCli {
     /// Canonical type; inferred only for an existing canonical ID with one type
     #[arg(long = "canonical-type")]
     pub canonical_type: Option<String>,
+
+    /// Numeric semver bump to apply; defaults to patch when --next-version is absent
+    #[arg(long, value_enum)]
+    pub bump: Option<RegistryVersionBumpMode>,
+
+    /// Explicit next registry version for non-numeric or calendar versions
+    #[arg(long = "next-version")]
+    pub next_version: Option<String>,
+
+    /// Skip standard registry lint before accepting the write
+    #[arg(long = "no-lint")]
+    pub no_lint: bool,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryPlainJsonEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("mint_id")
+        .multiple(false)
+        .args(["canonical_id", "prefix"])
+))]
+#[command(group(
+    ArgGroup::new("version_update")
+        .multiple(false)
+        .args(["bump", "next_version"])
+))]
+pub struct RegistryMintCli {
+    /// Registry directory to update
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Explicit canonical ID; omit to allocate with next-id
+    #[arg(long = "canonical-id")]
+    pub canonical_id: Option<String>,
+
+    /// Prefix override for allocation when --canonical-id is omitted
+    #[arg(long)]
+    pub prefix: Option<String>,
+
+    /// Canonical type for the minted entity
+    #[arg(long = "canonical-type")]
+    pub canonical_type: String,
+
+    /// Alias spec, repeatable: FILE=INPUT:RULE_ID
+    #[arg(long = "with-alias")]
+    pub with_alias: Vec<String>,
 
     /// Numeric semver bump to apply; defaults to patch when --next-version is absent
     #[arg(long, value_enum)]
@@ -1059,6 +1110,47 @@ mod tests {
             assert!(add_entry.next_version.is_none());
             assert!(!add_entry.no_lint);
             assert!(matches!(add_entry.emit, RegistryPlainJsonEmitMode::Plain));
+        }
+    }
+
+    #[test]
+    fn test_cli_registry_mint_parsing() {
+        let args = [
+            "canon",
+            "registry",
+            "mint",
+            "--registry",
+            "registries/people",
+            "--prefix",
+            "PPL",
+            "--canonical-type",
+            "person",
+            "--with-alias",
+            "aliases.json=Jane Doe:MANUAL",
+            "--with-alias",
+            "aliases.json=J. Doe:ALIAS",
+            "--bump",
+            "minor",
+            "--emit",
+            "plain",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = registry_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, RegistrySubcommand::Mint(_)));
+        if let RegistrySubcommand::Mint(mint) = subcommand {
+            assert_eq!(mint.registry, PathBuf::from("registries/people"));
+            assert_eq!(mint.canonical_id, None);
+            assert_eq!(mint.prefix.as_deref(), Some("PPL"));
+            assert_eq!(mint.canonical_type, "person");
+            assert_eq!(mint.with_alias.len(), 2);
+            assert_eq!(mint.bump, Some(RegistryVersionBumpMode::Minor));
+            assert!(mint.next_version.is_none());
+            assert!(!mint.no_lint);
+            assert!(matches!(mint.emit, RegistryPlainJsonEmitMode::Plain));
         }
     }
 

@@ -229,7 +229,7 @@ fn registry_output(
     }
 }
 
-fn validate_alias_file(registry: &Path, alias_file: &str) -> Result<PathBuf, Refusal> {
+pub(super) fn validate_alias_file(registry: &Path, alias_file: &str) -> Result<PathBuf, Refusal> {
     let alias_path = Path::new(alias_file);
     let has_single_component = alias_path
         .parent()
@@ -267,7 +267,7 @@ fn validate_alias_file(registry: &Path, alias_file: &str) -> Result<PathBuf, Ref
     Ok(full_path)
 }
 
-fn validate_trimmed_non_empty(
+pub(super) fn validate_trimmed_non_empty(
     registry: &Path,
     flag: &str,
     value: &str,
@@ -300,11 +300,11 @@ fn validate_trimmed_non_empty(
     Ok(trimmed.to_string())
 }
 
-fn ascii_trim(value: &str) -> &str {
+pub(super) fn ascii_trim(value: &str) -> &str {
     value.trim_matches(|ch: char| ch.is_ascii_whitespace())
 }
 
-fn validate_default_id_scheme(
+pub(super) fn validate_default_id_scheme(
     registry: &Path,
     canonical_id: &str,
     scheme: Option<&DefaultIdScheme>,
@@ -361,7 +361,7 @@ fn validate_default_id_scheme(
     Ok(())
 }
 
-fn ensure_input_is_new(
+pub(super) fn ensure_input_is_new(
     registry: &Path,
     input: &str,
     mapping_files: &[MappingFile],
@@ -389,7 +389,7 @@ fn ensure_input_is_new(
     Ok(())
 }
 
-fn resolve_canonical_type(
+pub(super) fn resolve_canonical_type(
     registry: &Path,
     canonical_id: &str,
     provided: Option<&str>,
@@ -449,7 +449,7 @@ fn resolve_canonical_type(
     }
 }
 
-fn resolve_next_version(
+pub(super) fn resolve_next_version(
     registry: &Path,
     current: &str,
     bump: Option<RegistryVersionBump>,
@@ -521,7 +521,7 @@ fn version_bump_refusal(registry: &Path, current: &str) -> Refusal {
     )
 }
 
-fn build_registry_bytes(
+pub(super) fn build_registry_bytes(
     registry: &Path,
     registry_path: &Path,
     version_after: &str,
@@ -559,6 +559,26 @@ fn build_alias_bytes(
     canonical_type: &str,
     rule_id: &str,
 ) -> Result<Vec<u8>, Refusal> {
+    let alias_file = alias_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_string();
+    let entry = RegistryAddEntryAliasEntry {
+        alias_file,
+        input: input.to_string(),
+        canonical_id: canonical_id.to_string(),
+        canonical_type: canonical_type.to_string(),
+        rule_id: rule_id.to_string(),
+    };
+    build_alias_bytes_with_entries(registry, alias_path, &[entry])
+}
+
+pub(super) fn build_alias_bytes_with_entries(
+    registry: &Path,
+    alias_path: &Path,
+    new_entries: &[RegistryAddEntryAliasEntry],
+) -> Result<Vec<u8>, Refusal> {
     let bytes = fs::read(alias_path).map_err(|error| io_refusal(alias_path, error))?;
     let mut entries: Vec<Value> = serde_json::from_slice(&bytes).map_err(|error| {
         Refusal::bad_registry(
@@ -569,16 +589,21 @@ fn build_alias_bytes(
             ),
         )
     })?;
-    entries.push(json!({
-        "input": input,
-        "canonical_id": canonical_id,
-        "canonical_type": canonical_type,
-        "rule_id": rule_id,
-    }));
+    for entry in new_entries {
+        entries.push(json!({
+            "input": entry.input,
+            "canonical_id": entry.canonical_id,
+            "canonical_type": entry.canonical_type,
+            "rule_id": entry.rule_id,
+        }));
+    }
     to_pretty_bytes(&entries, registry)
 }
 
-fn to_pretty_bytes<T: Serialize + ?Sized>(value: &T, registry: &Path) -> Result<Vec<u8>, Refusal> {
+pub(super) fn to_pretty_bytes<T: Serialize + ?Sized>(
+    value: &T,
+    registry: &Path,
+) -> Result<Vec<u8>, Refusal> {
     let mut bytes = serde_json::to_vec_pretty(value).map_err(|error| {
         Refusal::bad_registry(
             &registry.display().to_string(),
@@ -644,7 +669,7 @@ fn commit_add_entry_plan(
     Ok(plan.output)
 }
 
-fn lint_summary(lint: &RegistryLintOutput) -> RegistryAddEntryLintSummary {
+pub(super) fn lint_summary(lint: &RegistryLintOutput) -> RegistryAddEntryLintSummary {
     RegistryAddEntryLintSummary {
         enabled: true,
         profile: Some(lint.profile.clone()),
@@ -667,7 +692,7 @@ fn restore_originals(
     Ok(())
 }
 
-fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+pub(super) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let temp_path = temp_sibling(path);
     if temp_path.exists() {
         return Err(std::io::Error::new(
@@ -694,7 +719,7 @@ fn temp_sibling(path: &Path) -> PathBuf {
     path.with_file_name(format!("{file_name}.canon-add-entry.tmp"))
 }
 
-fn parse_refusal(
+pub(super) fn parse_refusal(
     registry: &Path,
     message: impl Into<String>,
     detail: Value,
@@ -708,7 +733,7 @@ fn parse_refusal(
     }
 }
 
-fn bad_registry_refusal(
+pub(super) fn bad_registry_refusal(
     registry: &Path,
     message: impl Into<String>,
     detail: Value,
@@ -732,7 +757,7 @@ fn with_registry(registry: &Path, mut detail: Value) -> Value {
     detail
 }
 
-fn io_refusal(path: &Path, error: std::io::Error) -> Refusal {
+pub(super) fn io_refusal(path: &Path, error: std::io::Error) -> Refusal {
     Refusal {
         code: RefusalCode::EIo,
         message: format!(

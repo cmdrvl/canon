@@ -1,0 +1,50 @@
+{
+  "version": "canon_registry_mint.v0",
+  "registry": {
+    "id": "people",
+    "source": "<REGISTRY>",
+    "version_before": "1.2.3",
+    "version_after": "1.2.4",
+    "entry_count_before": 1,
+    "entry_count_after": 3
+  },
+  "canonical_id": "PPL-002",
+  "canonical_type": "person",
+  "scheme": {
+    "prefix": "PPL",
+    "zero_pad": 3,
+    "source": "registry_default"
+  },
+  "aliases": [
+    {
+      "alias_file": "aliases.json",
+      "input": "John Doe",
+      "canonical_id": "PPL-002",
+      "canonical_type": "person",
+      "rule_id": "MANUAL"
+    },
+    {
+      "alias_file": "nicknames.json",
+      "input": "J:Doe",
+      "canonical_id": "PPL-002",
+      "canonical_type": "person",
+      "rule_id": "ALIAS"
+    }
+  ],
+  "touched_files": [
+    "aliases.json",
+    "nicknames.json",
+    "registry.json"
+  ],
+  "lint": {
+    "enabled": true,
+    "profile": "standard",
+    "total_findings": 1,
+    "errors": 0,
+    "warnings": 0,
+    "info": 1
+  },
+  "warnings": [
+    "index_missing"
+  ]
+}
