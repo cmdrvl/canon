@@ -175,14 +175,14 @@ canon "$example_dir/seeds.csv" \
   --column cusip
 ```
 
-Provider changes should be proven against a local twin before any live OpenFIGI maintenance run. With `twinning` 0.5.1+ available, the OpenFIGI response-stub fixture exercises `canon registry build` without contacting `api.openfigi.com`:
+Provider changes should be proven against a local twin before any live OpenFIGI maintenance run. OpenFIGI mapping filters may be passed as repeatable `--provider-config` values for corpus-wide disambiguation, such as `exchCode=US` for U.S. listed instruments. With `twinning` 0.5.1+ available, the OpenFIGI response-stub fixture exercises `canon registry build` without contacting `api.openfigi.com`:
 
 ```bash
 twinning rest \
   --spec ../twinning/tests/fixtures/rest/openfigi_v2_v3/response-stub-schema.yaml \
   --server-variable basePath=v3 \
   --auth-mode shape \
-  --run 'canon registry build --source openfigi --seed seeds.csv --seed-column cusip --provider-config id_type=ID_CUSIP --provider-config api_key=stub-key --provider-config base_url="$TWIN_BASE_URL/v3/mapping" --output registries/openfigi-cusip/ --version 2026.06.09'
+  --run 'canon registry build --source openfigi --seed seeds.csv --seed-column cusip --provider-config id_type=ID_CUSIP --provider-config exchCode=US --provider-config api_key=stub-key --provider-config base_url="$TWIN_BASE_URL/v3/mapping" --output registries/openfigi-cusip/ --version 2026.06.09'
 ```
 
 Self-authored registries are local operator conventions expressed as exact aliases. The maintenance commands keep `registry.json`, version bumps, and entry counts synchronized:
@@ -373,7 +373,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 |------------|-------------|
 | `doctor [health [--json]\|capabilities [--json]\|robot-docs\|--robot-triage]` | Read-only compiled-contract diagnostics for agents. Does not read inputs, registries, SQLite indexes, or witness ledgers, does not contact providers, and has no `--fix` mode. |
 | `resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <YAML> --registry <DIR> [--gold <JSONL>] [--write-back] [--emit json\|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>]` | Cross-tape structural resolution workbench. Loads two tapes, filters candidates, scores matches, optionally evaluates gold, and writes matched ID pairs back to the registry when explicitly requested. |
-| `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides such as OpenFIGI `id_type`, `base_url`, or `api_key`. |
+| `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides such as OpenFIGI `id_type`, `base_url`, `api_key`, or mapping filters like `exchCode=US`. |
 | `registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain\|json]` | Read the existing canonical IDs for a self-authored namespace and suggest the next deterministic ID. Uses `registry.json.default_id_scheme` when `PREFIX` is omitted. |
 | `registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>]` | Append one exact alias entry to an existing root mapping file, bump the registry version, update `entry_count`, and run standard lint unless `--no-lint` is set. |
 | `registry mint --registry <DIR> [--canonical-id <ID>\|--prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>...` | Mint one self-authored canonical ID and one or more starting aliases in a single versioned write. Without `--canonical-id`, allocates via `next-id`. |
@@ -480,7 +480,7 @@ Preflight a registry before production use:
 canon registry lint registries/org/ --profile auto --emit summary
 ```
 
-Materialize a registry from a provider-backed seed corpus. `openfigi` supports `cusip`, `isin`, and `sedol` seed columns by inference, or an explicit `--provider-config id_type=ID_CUSIP|ID_ISIN|ID_SEDOL`; use `--provider-config base_url=...` for local twins and tests. For CMBS-style corpora, extract identifiers from the source tapes, normalize and dedupe them, split CUSIP/ISIN/SEDOL into separate seed files, run one build per id type, publish the resulting static registries, and use `--incremental` for follow-up corpus refreshes:
+Materialize a registry from a provider-backed seed corpus. `openfigi` supports `cusip`, `isin`, and `sedol` seed columns by inference, or an explicit `--provider-config id_type=ID_CUSIP|ID_ISIN|ID_SEDOL`; use `--provider-config base_url=...` for local twins and tests. Corpus-wide OpenFIGI mapping filters pass through to every mapping job when supplied as provider config, including `exchCode`, `micCode`, `currency`, `marketSecDes`, `securityType`, `securityType2`, `optionType`, `includeUnlistedEquities`, `strike`, `contractSize`, `coupon`, `expiration`, and `maturity`. These filters narrow provider materialization only; normal canon lookup still reads static registry files and never calls OpenFIGI. For CMBS-style corpora, extract identifiers from the source tapes, normalize and dedupe them, split CUSIP/ISIN/SEDOL into separate seed files, run one build per id type, publish the resulting static registries, and use `--incremental` for follow-up corpus refreshes:
 
 ```bash
 OPENFIGI_API_KEY=xxx \
@@ -488,6 +488,7 @@ canon registry build \
   --source openfigi \
   --seed seeds.csv \
   --seed-column cusip \
+  --provider-config exchCode=US \
   --output registries/openfigi-cusip/ \
   --version 2026.03.13
 ```

@@ -1,7 +1,7 @@
 {
   "schema_version": "operator.v0",
   "name": "canon",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Canonical identifier resolution and org-identity orchestration using versioned registries",
   "repository": "https://github.com/cmdrvl/canon",
   "license": "MIT",
@@ -275,7 +275,7 @@
     {
       "name": "registry build",
       "usage": "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
-      "description": "Materialize a standard canon registry directory from a provider-backed seed corpus and write build provenance to _build.json; OpenFIGI is a maintenance-only CUSIP/ISIN/SEDOL registry materializer, not normal lookup",
+      "description": "Materialize a standard canon registry directory from a provider-backed seed corpus and write build provenance to _build.json; OpenFIGI is a maintenance-only CUSIP/ISIN/SEDOL registry materializer with optional static mapping filters, not normal lookup",
       "output_mode": "json",
       "output_schema": "canon_registry_build.v0",
       "exit_codes": {
@@ -293,7 +293,7 @@
         { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if the seed input exceeds N bytes" },
         { "name": "batch_size", "flag": "--batch-size", "type": "integer", "description": "Override provider batch size" },
         { "name": "rate_limit_ms", "flag": "--rate-limit-ms", "type": "integer", "description": "Override provider rate-limit delay in milliseconds" },
-        { "name": "provider_config", "flag": "--provider-config", "type": "string", "description": "Repeatable provider-specific key=value option such as id_type=ID_CUSIP|ID_ISIN|ID_SEDOL, base_url=http://... for local twins, or api_key=...; secret-like values are redacted in _build.json" }
+        { "name": "provider_config", "flag": "--provider-config", "type": "string", "description": "Repeatable provider-specific key=value option such as id_type=ID_CUSIP|ID_ISIN|ID_SEDOL, base_url=http://... for local twins, api_key=..., or OpenFIGI mapping filters such as exchCode=US; secret-like values are redacted in _build.json" }
       ]
     },
     {

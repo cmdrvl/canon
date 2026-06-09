@@ -457,7 +457,7 @@ pub struct RegistryBuildCli {
     #[arg(long)]
     pub rate_limit_ms: Option<u64>,
 
-    /// Provider-specific key=value option (repeatable), e.g. OpenFIGI id_type/base_url/api_key
+    /// Provider-specific key=value option (repeatable), e.g. OpenFIGI id_type/base_url/api_key/exchCode
     #[arg(long = "provider-config", value_name = "KEY=VALUE")]
     pub provider_config: Vec<String>,
 }

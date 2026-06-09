@@ -158,6 +158,18 @@ impl RegistryProvider for MockProvider {
 const OPENFIGI_API_URL: &str = "https://api.openfigi.com/v3/mapping";
 const OPENFIGI_ID_TYPES: [&str; 3] = ["ID_CUSIP", "ID_ISIN", "ID_SEDOL"];
 const OPENFIGI_RETRY_STATUSES: [u16; 5] = [429, 500, 502, 503, 504];
+const OPENFIGI_STRING_FILTERS: [&str; 7] = [
+    "exchCode",
+    "micCode",
+    "currency",
+    "marketSecDes",
+    "securityType",
+    "securityType2",
+    "optionType",
+];
+const OPENFIGI_NUMERIC_INTERVAL_FILTERS: [&str; 3] = ["strike", "contractSize", "coupon"];
+const OPENFIGI_DATE_INTERVAL_FILTERS: [&str; 2] = ["expiration", "maturity"];
+const OPENFIGI_BOOL_FILTERS: [&str; 1] = ["includeUnlistedEquities"];
 
 struct OpenFigiProvider;
 
@@ -178,11 +190,13 @@ impl RegistryProvider for OpenFigiProvider {
         let id_type = openfigi_id_type(config)?;
         let base_url = openfigi_base_url(&config.provider_options);
         let auth_header_value = openfigi_auth_header_value(&config.provider_options);
+        let mapping_filters = openfigi_mapping_filters(&config.provider_options)?;
         let jobs = identifiers
             .iter()
             .map(|identifier| OpenFigiMappingJob {
                 id_type: id_type.as_str(),
                 id_value: identifier.as_str(),
+                filters: mapping_filters.clone(),
             })
             .collect::<Vec<_>>();
 
@@ -338,6 +352,8 @@ struct OpenFigiMappingJob<'a> {
     id_type: &'a str,
     #[serde(rename = "idValue")]
     id_value: &'a str,
+    #[serde(flatten)]
+    filters: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -497,6 +513,173 @@ fn openfigi_auth_header_value(provider_options: &BTreeMap<String, String>) -> Op
                 Some(value)
             }
         })
+}
+
+fn openfigi_mapping_filters(
+    provider_options: &BTreeMap<String, String>,
+) -> Result<BTreeMap<String, serde_json::Value>, Box<dyn Error>> {
+    let mut filters = BTreeMap::new();
+
+    for key in OPENFIGI_STRING_FILTERS {
+        if let Some(value) = provider_options
+            .get(key)
+            .and_then(|value| normalize_nonempty(Some(value)))
+        {
+            filters.insert(
+                key.to_string(),
+                serde_json::Value::String(value.to_string()),
+            );
+        }
+    }
+
+    for key in OPENFIGI_BOOL_FILTERS {
+        if let Some(value) = provider_options
+            .get(key)
+            .and_then(|value| normalize_nonempty(Some(value)))
+        {
+            filters.insert(
+                key.to_string(),
+                serde_json::Value::Bool(parse_bool_filter(key, value)?),
+            );
+        }
+    }
+
+    for key in OPENFIGI_NUMERIC_INTERVAL_FILTERS {
+        if let Some(value) = provider_options
+            .get(key)
+            .and_then(|value| normalize_nonempty(Some(value)))
+        {
+            filters.insert(
+                key.to_string(),
+                parse_interval_filter(key, value, IntervalKind::Numeric)?,
+            );
+        }
+    }
+
+    for key in OPENFIGI_DATE_INTERVAL_FILTERS {
+        if let Some(value) = provider_options
+            .get(key)
+            .and_then(|value| normalize_nonempty(Some(value)))
+        {
+            filters.insert(
+                key.to_string(),
+                parse_interval_filter(key, value, IntervalKind::Date)?,
+            );
+        }
+    }
+
+    if provider_options.contains_key("exchCode") && provider_options.contains_key("micCode") {
+        return Err("OpenFIGI filters exchCode and micCode cannot be used together".into());
+    }
+
+    Ok(filters)
+}
+
+fn parse_bool_filter(key: &str, value: &str) -> Result<bool, Box<dyn Error>> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(format!("OpenFIGI filter {key} must be a boolean literal: true or false").into()),
+    }
+}
+
+#[derive(Clone, Copy)]
+enum IntervalKind {
+    Numeric,
+    Date,
+}
+
+fn parse_interval_filter(
+    key: &str,
+    value: &str,
+    kind: IntervalKind,
+) -> Result<serde_json::Value, Box<dyn Error>> {
+    let parsed = serde_json::from_str::<serde_json::Value>(value)
+        .map_err(|error| format!("OpenFIGI filter {key} must be a JSON array interval: {error}"))?;
+    let items = parsed
+        .as_array()
+        .ok_or_else(|| format!("OpenFIGI filter {key} must be a JSON array interval"))?;
+    if items.len() != 2 {
+        return Err(
+            format!("OpenFIGI filter {key} interval must contain exactly two values").into(),
+        );
+    }
+
+    let mut has_bound = false;
+    for item in items {
+        match kind {
+            IntervalKind::Numeric => {
+                if item.is_number() {
+                    has_bound = true;
+                } else if !item.is_null() {
+                    return Err(format!(
+                        "OpenFIGI filter {key} interval values must be numbers or null"
+                    )
+                    .into());
+                }
+            }
+            IntervalKind::Date => {
+                if let Some(date) = item.as_str() {
+                    validate_openfigi_date(key, date)?;
+                    has_bound = true;
+                } else if !item.is_null() {
+                    return Err(format!(
+                        "OpenFIGI filter {key} interval values must be YYYY-MM-DD strings or null"
+                    )
+                    .into());
+                }
+            }
+        }
+    }
+    if !has_bound {
+        return Err(
+            format!("OpenFIGI filter {key} interval must include at least one bound").into(),
+        );
+    }
+    if matches!(kind, IntervalKind::Numeric) {
+        let [left_value, right_value] = items.as_slice() else {
+            return Err(
+                format!("OpenFIGI filter {key} interval must contain exactly two values").into(),
+            );
+        };
+        if let (Some(left), Some(right)) = (left_value.as_f64(), right_value.as_f64())
+            && left > right
+        {
+            return Err(
+                format!("OpenFIGI filter {key} interval lower bound exceeds upper bound").into(),
+            );
+        }
+    }
+
+    Ok(parsed)
+}
+
+fn validate_openfigi_date(key: &str, value: &str) -> Result<(), Box<dyn Error>> {
+    let bytes = value.as_bytes();
+    let valid_shape = match bytes {
+        [
+            year_0,
+            year_1,
+            year_2,
+            year_3,
+            b'-',
+            month_0,
+            month_1,
+            b'-',
+            day_0,
+            day_1,
+        ] => [
+            year_0, year_1, year_2, year_3, month_0, month_1, day_0, day_1,
+        ]
+        .into_iter()
+        .all(|byte| byte.is_ascii_digit()),
+        _ => false,
+    };
+    if valid_shape {
+        return Ok(());
+    }
+
+    Err(format!("OpenFIGI filter {key} date must use YYYY-MM-DD format").into())
 }
 
 fn execute_openfigi_request(
@@ -730,6 +913,114 @@ mod tests {
         assert_eq!(requests[0].path, "/v3/mapping");
         assert!(requests[0].body.contains("\"idType\":\"ID_CUSIP\""));
         assert!(requests[0].body.contains("\"idValue\":\"037833100\""));
+    }
+
+    #[test]
+    fn openfigi_fetch_passes_mapping_filters() {
+        let server = spawn_server(vec![(
+            200,
+            vec![("Content-Type", "application/json")],
+            serde_json::json!([
+                {
+                    "data": [{
+                        "figi": "BBG000BPH459",
+                        "compositeFIGI": "BBG000BPH459",
+                        "ticker": "MSFT",
+                        "name": "MICROSOFT CORP",
+                        "securityType": "Common Stock"
+                    }]
+                }
+            ])
+            .to_string(),
+        )]);
+        let provider = OpenFigiProvider;
+        let mut config = openfigi_config(&server.base_url);
+        config.seed_column = "isin".to_string();
+        config
+            .provider_options
+            .insert("id_type".to_string(), "ID_ISIN".to_string());
+        config
+            .provider_options
+            .insert("exchCode".to_string(), "US".to_string());
+        config
+            .provider_options
+            .insert("marketSecDes".to_string(), "Equity".to_string());
+        config
+            .provider_options
+            .insert("securityType2".to_string(), "Common Stock".to_string());
+        config
+            .provider_options
+            .insert("includeUnlistedEquities".to_string(), "false".to_string());
+        config
+            .provider_options
+            .insert("coupon".to_string(), "[3.125,3.125]".to_string());
+        config
+            .provider_options
+            .insert("maturity".to_string(), "[\"2028-01-01\",null]".to_string());
+
+        let result = provider
+            .fetch(&["US5949181045".to_string()], &config)
+            .unwrap();
+
+        let figi_entry = result
+            .files
+            .get("isin-to-figi.json")
+            .and_then(|entries| entries.first())
+            .unwrap();
+        assert_eq!(figi_entry.canonical_id, "BBG000BPH459");
+        let requests = server.finish();
+        let request = requests.first().unwrap();
+        let body: serde_json::Value = serde_json::from_str(&request.body).unwrap();
+        let job = body.as_array().and_then(|jobs| jobs.first()).unwrap();
+        assert_eq!(job["idType"], "ID_ISIN");
+        assert_eq!(job["idValue"], "US5949181045");
+        assert_eq!(job["exchCode"], "US");
+        assert_eq!(job["marketSecDes"], "Equity");
+        assert_eq!(job["securityType2"], "Common Stock");
+        assert_eq!(job["includeUnlistedEquities"], false);
+        assert_eq!(job["coupon"], serde_json::json!([3.125, 3.125]));
+        assert_eq!(job["maturity"], serde_json::json!(["2028-01-01", null]));
+        assert!(job.get("base_url").is_none());
+        assert!(job.get("api_key").is_none());
+    }
+
+    #[test]
+    fn openfigi_filters_reject_invalid_values() {
+        let mut config = openfigi_config("http://127.0.0.1:1/v3/mapping");
+        config
+            .provider_options
+            .insert("exchCode".to_string(), "US".to_string());
+        config
+            .provider_options
+            .insert("micCode".to_string(), "XNAS".to_string());
+        assert!(
+            openfigi_mapping_filters(&config.provider_options)
+                .unwrap_err()
+                .to_string()
+                .contains("cannot be used together")
+        );
+
+        config.provider_options.remove("micCode");
+        config
+            .provider_options
+            .insert("includeUnlistedEquities".to_string(), "yes".to_string());
+        assert!(
+            openfigi_mapping_filters(&config.provider_options)
+                .unwrap_err()
+                .to_string()
+                .contains("must be a boolean")
+        );
+
+        config.provider_options.remove("includeUnlistedEquities");
+        config
+            .provider_options
+            .insert("coupon".to_string(), "[4.0,3.0]".to_string());
+        assert!(
+            openfigi_mapping_filters(&config.provider_options)
+                .unwrap_err()
+                .to_string()
+                .contains("lower bound exceeds upper bound")
+        );
     }
 
     #[test]
