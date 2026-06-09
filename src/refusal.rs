@@ -108,12 +108,13 @@ impl Refusal {
     }
 
     pub fn too_large(limit_type: &str, limit: &str, actual: &str) -> Self {
+        // `limit_type` is the canonical underscore identifier (e.g. "max_rows")
+        // preserved verbatim in `detail`; the human-facing flag uses dashes so
+        // the message and recovery hint name the real CLI flag (--max-rows).
+        let flag = limit_type.replace('_', "-");
         Self {
             code: RefusalCode::ETooLarge,
-            message: format!(
-                "Input exceeds --{} limit ({} > {})",
-                limit_type, actual, limit
-            ),
+            message: format!("Input exceeds --{} limit ({} > {})", flag, actual, limit),
             detail: json!({
                 "limit_type": limit_type,
                 "limit": limit,
@@ -121,7 +122,7 @@ impl Refusal {
             }),
             next_command: Some(format!(
                 "Increase --{} above {} or reduce input size, then rerun",
-                limit_type, actual
+                flag, actual
             )),
         }
     }
@@ -284,6 +285,10 @@ pub fn create_refusal(
     detail: serde_json::Value,
     next_command: Option<String>,
 ) -> CanonOutput {
+    // Every refusal is an operator handoff, not a dead end. When a call site
+    // does not supply a sharper recovery path, fall back to the code's generic
+    // hint so the envelope's `next_command` is never null.
+    let next_command = next_command.or_else(|| Some(code.default_next_command().to_string()));
     Refusal {
         code,
         message,

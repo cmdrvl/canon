@@ -48,6 +48,18 @@ fn assert_refusal_envelope(payload: &Value, code: &str) {
     assert_eq!(payload["refusal"]["code"], code);
     assert!(payload["refusal"]["message"].is_string());
     assert!(payload["refusal"]["detail"].is_object());
+    // Every refusal is an operator handoff, not a dead end: the envelope must
+    // always carry a non-empty recovery path. Regression guard for the core
+    // pipeline that previously emitted next_command: null on most codes.
+    let next_command = &payload["refusal"]["next_command"];
+    assert!(
+        next_command.is_string(),
+        "refusal {code} must include a next_command recovery path, got {next_command:?}"
+    );
+    assert!(
+        !next_command.as_str().unwrap().trim().is_empty(),
+        "refusal {code} next_command must not be empty"
+    );
 }
 
 #[test]
@@ -85,6 +97,54 @@ fn refusal_e_column_not_found_has_available_columns() {
     ]);
     assert_refusal_envelope(&payload, "E_COLUMN_NOT_FOUND");
     assert!(payload["refusal"]["detail"]["available_columns"].is_array());
+}
+
+#[test]
+fn refusal_e_column_not_found_suggests_an_existing_column() {
+    let payload = run_json_refusal(&[
+        &fixture("csv/wrong_column.csv"),
+        "--registry",
+        &fixture("registries/cusip-isin"),
+        "--column",
+        "cusip",
+    ]);
+    let available = payload["refusal"]["detail"]["available_columns"]
+        .as_array()
+        .expect("available_columns is an array");
+    let suggested = available[0].as_str().expect("first available column");
+    let next_command = payload["refusal"]["next_command"]
+        .as_str()
+        .expect("next_command is a string");
+    // The recovery path points the agent at a column that actually exists.
+    assert!(
+        next_command.contains(&format!("--column {suggested}")),
+        "next_command should suggest the existing column '{suggested}', got: {next_command}"
+    );
+}
+
+#[test]
+fn refusal_e_too_large_recovery_names_the_real_dashed_flag() {
+    let payload = run_json_refusal(&[
+        &fixture("csv/all_resolved.csv"),
+        "--registry",
+        &fixture("registries/cusip-isin"),
+        "--column",
+        "cusip",
+        "--max-rows",
+        "1",
+    ]);
+    assert_refusal_envelope(&payload, "E_TOO_LARGE");
+    // detail keeps the canonical underscore identifier...
+    assert_eq!(payload["refusal"]["detail"]["limit_type"], "max_rows");
+    // ...but the human-facing message and hint name the real CLI flag.
+    let message = payload["refusal"]["message"].as_str().unwrap();
+    let next_command = payload["refusal"]["next_command"].as_str().unwrap();
+    assert!(message.contains("--max-rows"), "message: {message}");
+    assert!(!message.contains("--max_rows"), "message: {message}");
+    assert!(
+        next_command.contains("--max-rows") && !next_command.contains("--max_rows"),
+        "next_command: {next_command}"
+    );
 }
 
 #[test]

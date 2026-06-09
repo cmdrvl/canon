@@ -1675,37 +1675,27 @@ fn create_registry_build_refusal(error: registry::RegistryBuildError) -> CanonOu
         registry::RegistryBuildErrorKind::BadRegistry => RefusalCode::EBadRegistry,
         registry::RegistryBuildErrorKind::Parse => RefusalCode::EParse,
     };
-    refusal::create_refusal(code, error.message, error.detail, None)
+    // An unknown --source carries available_sources in its detail; point the
+    // agent at the discovery command rather than the generic parse hint.
+    let next_command = error
+        .detail
+        .get("available_sources")
+        .map(|_| "canon registry providers --emit json".to_string());
+    refusal::create_refusal(code, error.message, error.detail, next_command)
 }
 
 fn create_input_refusal(error: input::InputError) -> CanonOutput {
     match error {
-        input::InputError::ColumnNotFound { column, available } => refusal::create_refusal(
-            RefusalCode::EColumnNotFound,
-            format!("Column '{}' not found in input file", column),
-            serde_json::json!({
-                "column": column,
-                "available_columns": available
-            }),
-            None,
-        ),
+        // Route through the rich builders: identical message/detail, plus a
+        // dynamic recovery path (the column builder suggests an existing column).
+        input::InputError::ColumnNotFound { column, available } => {
+            Refusal::column_not_found(&column, &available).to_canon_output()
+        }
         input::InputError::TooLarge {
             limit_type,
             limit,
             actual,
-        } => refusal::create_refusal(
-            RefusalCode::ETooLarge,
-            format!(
-                "Input exceeds --{} limit ({} > {})",
-                limit_type, actual, limit
-            ),
-            serde_json::json!({
-                "limit_type": limit_type,
-                "limit": limit,
-                "actual": actual
-            }),
-            None,
-        ),
+        } => Refusal::too_large(&limit_type, &limit, &actual).to_canon_output(),
         input::InputError::Io(message) => {
             refusal::create_refusal(RefusalCode::EIo, message, serde_json::json!({}), None)
         }
@@ -2317,6 +2307,83 @@ impl Serialize for RefusalCode {
             RefusalCode::EIncompatibleTapes => "E_INCOMPATIBLE_TAPES",
         };
         serializer.serialize_str(code_str)
+    }
+}
+
+impl RefusalCode {
+    /// Generic, copy-paste-ready recovery hint for this refusal code.
+    ///
+    /// Every refusal is an operator handoff, not a dead end: when a refusal is
+    /// constructed without a more specific `next_command`, `create_refusal`
+    /// falls back to this so the envelope always carries a recovery path. Call
+    /// sites that can compute a sharper hint (e.g. suggesting an existing
+    /// column) still pass their own `Some(..)` and take precedence.
+    pub fn default_next_command(&self) -> &'static str {
+        match self {
+            RefusalCode::EIo => {
+                "Check the input and registry paths and permissions, then rerun the same canon command"
+            }
+            RefusalCode::EEncoding => {
+                "Convert or re-export the input as UTF-8, then rerun the same canon command"
+            }
+            RefusalCode::ECsvParse => "Re-export the input as standard CSV, then rerun canon",
+            RefusalCode::EBadRegistry => {
+                "Fix registry.json or the mapping files in the registry directory, then rerun canon"
+            }
+            RefusalCode::EColumnNotFound => {
+                "Pass --column with a column that exists in the input (see detail.available_columns)"
+            }
+            RefusalCode::EParse => {
+                "Use a supported input extension (.csv, .tsv, .jsonl, .ndjson) with valid content, then rerun canon"
+            }
+            RefusalCode::EEmptyInput => {
+                "Provide an input file with data rows in the selected column, then rerun canon"
+            }
+            RefusalCode::ETooLarge => {
+                "Increase --max-rows/--max-bytes or reduce the input size, then rerun canon"
+            }
+            RefusalCode::EEmitFormat => {
+                "Use --emit json for JSONL input, or provide CSV input for --emit csv"
+            }
+            RefusalCode::EColumnExists => {
+                "Choose a --canon-column name that is not already present in the input header"
+            }
+            RefusalCode::EOrgInputContract => {
+                "Fix the org input rows to match the strategy contract, then rerun canon org"
+            }
+            RefusalCode::EOrgBadStrategy => "Fix the org strategy YAML, then rerun canon org",
+            RefusalCode::EOrgBadSuite => {
+                "Check the evaluation suite directory and strategy profile, then rerun canon org audit"
+            }
+            RefusalCode::EOrgFixtureInvalid => {
+                "Fix the suite fixture row catalog or expected pairs, then rerun canon org audit"
+            }
+            RefusalCode::EOrgVersionBumpRequired => {
+                "Pass --next-version, then rerun canon org promote"
+            }
+            RefusalCode::EOrgStaleRegistry => {
+                "Re-run canon org against the current registry snapshot"
+            }
+            RefusalCode::EStrategyInputContract => {
+                "Fix the strategy inputs to match the contract, then rerun canon strategy"
+            }
+            RefusalCode::EStrategyProofInvalid => {
+                "Regenerate passing verify/assess/airlock proof artifacts, then rerun canon strategy register"
+            }
+            RefusalCode::EStrategyVersionBumpRequired => {
+                "Pass --next-version, then rerun canon strategy register"
+            }
+            RefusalCode::EBadStrategy => "Fix the strategy YAML, then rerun canon with --strategy",
+            RefusalCode::ETooManyCandidates => {
+                "Tighten candidate_filter or raise --max-candidates, then rerun canon resolve"
+            }
+            RefusalCode::EEmptyTape => {
+                "Provide reference and target tapes with processable records, then rerun canon resolve"
+            }
+            RefusalCode::EIncompatibleTapes => {
+                "Fix strategy field mappings so the tapes share comparable fields, then rerun canon resolve"
+            }
+        }
     }
 }
 
