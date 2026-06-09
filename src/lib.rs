@@ -1451,6 +1451,10 @@ pub fn run_display_mode(mode: DisplayMode) -> Result<u8, Box<dyn Error>> {
                         },
                         "required": ["total", "resolved", "unresolved"]
                     },
+                    "redacted": {
+                        "type": "boolean",
+                        "description": "Present on RESOLVED/PARTIAL/UNRESOLVED outputs. true when input and canonical_id values are masked as \"[REDACTED]\" (the zero-retention default); re-run with --explicit to reveal them. Absent on REFUSAL."
+                    },
                     "mappings": {
                         "type": "array",
                         "items": {

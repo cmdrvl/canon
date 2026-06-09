@@ -48,6 +48,10 @@ fn emit_json_with_options(
         outcome,
         registry: Some(registry_meta.clone()),
         summary: Some(result.summary.clone()),
+        // Discovery breadcrumb: when false, input/canonical_id values are shown
+        // verbatim; when true they are masked as "[REDACTED]" and the operator
+        // can re-run with --explicit to reveal them.
+        redacted: !explicit,
         mappings,
         unresolved,
         refusal: None,
@@ -130,6 +134,7 @@ struct WireCanonOutput {
     outcome: Outcome,
     registry: Option<RegistryMeta>,
     summary: Option<Summary>,
+    redacted: bool,
     mappings: Vec<WireMapping>,
     unresolved: Vec<WireUnresolvedEntry>,
     refusal: Option<crate::Refusal>,

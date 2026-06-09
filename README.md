@@ -366,6 +366,7 @@ canon org review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> 
 | `--max-rows <N>` | integer | *(none)* | Refuse if input exceeds N data rows. |
 | `--max-bytes <N>` | integer | *(none)* | Refuse if input exceeds N bytes. |
 | `--no-witness` | flag | `false` | Suppress witness ledger append. |
+| `--explicit` | flag | `false` | Show input and canonical_id values verbatim in JSON output. By default they are masked as `[REDACTED]` for zero-retention safety and the envelope reports `"redacted": true`. |
 | `--version` | flag | | Print version and exit. |
 | `--describe` | flag | | Emit `operator.json` to stdout and exit. |
 | `--schema` | flag | | Print JSON Schema for the mapping artifact and exit. |
@@ -886,6 +887,7 @@ A single JSON object on stdout. This is the default output and the format used f
     "resolved": 4150,
     "unresolved": 33
   },
+  "redacted": true,                        // present on RESOLVED/PARTIAL/UNRESOLVED; true when values are masked. Re-run with --explicit to reveal. Absent on REFUSAL.
   "mappings": [                            // one per resolved unique input
     {
       "input": "u8:037833100",

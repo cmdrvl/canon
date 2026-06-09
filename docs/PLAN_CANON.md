@@ -493,6 +493,7 @@ Single JSON object on stdout. This is the default output mode and the format use
     "resolved": 4150,
     "unresolved": 33
   },
+  "redacted": true,
   "mappings": [
     {
       "input": "u8:037833100",
@@ -524,6 +525,7 @@ Single JSON object on stdout. This is the default output mode and the format use
 | `summary.total` | integer | Count of unique entries processed: unique normal input values (after ASCII-trim, excluding blank records) plus one per distinct special reason that fired (see Dedup rules below) |
 | `summary.resolved` | integer | Count of successfully mapped entries |
 | `summary.unresolved` | integer | Count of entries that could not be mapped |
+| `redacted` | boolean | Present on `RESOLVED`/`PARTIAL`/`UNRESOLVED` outputs. `true` when `input` and `canonical_id` values are masked as `"[REDACTED]"` (the zero-retention default); `false` when `--explicit` reveals them. Absent on `REFUSAL` (no values to mask). A discovery breadcrumb so consumers can detect masking without parsing `--help` |
 | `mappings[]` | array | One entry per resolved input |
 | `mappings[].input` | string | Original input value (identifier-encoded) |
 | `mappings[].canonical_id` | string | Resolved canonical ID (identifier-encoded) |
