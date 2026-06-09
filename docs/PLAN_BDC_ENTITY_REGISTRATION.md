@@ -378,8 +378,9 @@ always used.
 
 ## OpenFIGI integration
 
-Already implemented in `canon/src/registry/provider.rs` (868 lines). Used as
-**secondary enrichment**, not primary resolution:
+Already implemented in `canon/src/registry/provider.rs`. The provider itself is
+a general corpus-scoped CUSIP/ISIN/SEDOL registry materializer; in this BDC flow
+it is used as **secondary enrichment**, not primary resolution:
 
 - Only attempted for syndicated instrument types (strategy-configured)
 - FIGI result stored as enrichment metadata, not as the canonical ID

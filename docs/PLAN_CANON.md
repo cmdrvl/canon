@@ -104,6 +104,9 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - exits `0` on successful materialization, `2` on refusal
 - partial provider failures are preserved in the JSON report and warned on stderr; successful mappings still land in the registry directory
 - `--provider-config` is repeatable and carries provider-specific options such as OpenFIGI `id_type` or `base_url`
+- OpenFIGI is a corpus-scoped securities identifier provider for CUSIP, ISIN, and SEDOL seeds; it is not CMBS-specific and is not an organization identity source
+- CMBS-style OpenFIGI workflows should extract identifiers from source tapes, normalize/dedupe them, split CUSIP/ISIN/SEDOL into separate seed files, run one build per id type, publish static registries, and use `--incremental` for refreshes
+- provider implementation and regression tests should use a local `twinning rest` fixture through `--provider-config base_url=...`; live OpenFIGI calls are maintenance operations, never normal lookup behavior
 
 `canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]`
 - inspects existing `canonical_id` values in all root mapping files and suggests the next `<PREFIX>-<number>` ID
@@ -383,7 +386,7 @@ identity remains future work.
 
 Registry creation has two supported operational shapes:
 
-- **Provider-fetched:** `canon registry build` consumes a seed corpus and writes a normal registry directory plus `_build.json` provenance. Provider calls happen only during maintenance; normal lookup never calls providers.
+- **Provider-fetched:** `canon registry build` consumes a seed corpus and writes a normal registry directory plus `_build.json` provenance. Provider calls happen only during maintenance; normal lookup never calls providers. OpenFIGI-backed builds materialize corpus-scoped CUSIP, ISIN, or SEDOL mappings into ordinary registry files and do not become a provider-backed resolver.
 - **Self-authored:** operators create canonical entities by convention using `canon registry default-id-scheme`, `next-id`, `mint`, and `add-entry`. The durable product is still flat mapping entries that exact lookup can resolve.
 
 Self-authored registry maintenance is not a resolution workbench. It does not score candidates, inspect multiple columns, or infer that two observations represent the same entity. It records an operator's accepted alias decision as deterministic registry data.
@@ -692,6 +695,9 @@ cat events.jsonl | canon - --registry registries/entity/ --column entity_id
 ```bash
 # Materialize a registry from a provider-backed seed corpus
 OPENFIGI_API_KEY=xxx canon registry build --source openfigi --seed seeds.csv --seed-column cusip --output registries/openfigi-cusip/ --version 2026.03.13
+
+# Prove the OpenFIGI provider path locally without contacting api.openfigi.com
+twinning rest --spec ../twinning/tests/fixtures/rest/openfigi_v2_v3/response-stub-schema.yaml --server-variable basePath=v3 --auth-mode shape --run 'canon registry build --source openfigi --seed seeds.csv --seed-column cusip --provider-config id_type=ID_CUSIP --provider-config api_key=stub-key --provider-config base_url="$TWIN_BASE_URL/v3/mapping" --output registries/openfigi-cusip/ --version 2026.06.09'
 
 # What changed between two registry versions?
 canon registry diff --old registries/openfigi-cusip-v2026.02/ --new registries/openfigi-cusip-v2026.03/

@@ -778,6 +778,68 @@ mod tests {
     }
 
     #[test]
+    fn openfigi_fetch_records_no_match_as_unresolved() {
+        let server = spawn_server(vec![(
+            200,
+            vec![("Content-Type", "application/json")],
+            serde_json::json!([{ "data": [] }]).to_string(),
+        )]);
+        let provider = OpenFigiProvider;
+        let result = provider
+            .fetch(
+                &["000000000".to_string()],
+                &openfigi_config(&server.base_url),
+            )
+            .unwrap();
+
+        assert!(result.files.is_empty());
+        assert_eq!(result.unresolved, vec!["000000000"]);
+        assert!(result.failures.is_empty());
+        assert_eq!(result.api_calls, 1);
+
+        let _ = server.finish();
+    }
+
+    #[test]
+    fn openfigi_fetch_rejects_mismatched_result_count() {
+        let server = spawn_server(vec![(
+            200,
+            vec![("Content-Type", "application/json")],
+            serde_json::json!([{ "data": [] }]).to_string(),
+        )]);
+        let provider = OpenFigiProvider;
+        let error = provider
+            .fetch(
+                &["037833100".to_string(), "594918104".to_string()],
+                &openfigi_config(&server.base_url),
+            )
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("OpenFIGI returned 1 results for 2 identifiers"));
+
+        let _ = server.finish();
+    }
+
+    #[test]
+    fn openfigi_fetch_rejects_malformed_top_level_payload() {
+        let server = spawn_server(vec![(
+            200,
+            vec![("Content-Type", "application/json")],
+            serde_json::json!({ "data": null, "warning": null }).to_string(),
+        )]);
+        let provider = OpenFigiProvider;
+        let result = provider.fetch(
+            &["037833100".to_string()],
+            &openfigi_config(&server.base_url),
+        );
+
+        assert!(result.is_err());
+
+        let _ = server.finish();
+    }
+
+    #[test]
     fn openfigi_fetch_retries_rate_limits_and_sends_api_key() {
         let server = spawn_server(vec![
             (
@@ -830,6 +892,50 @@ mod tests {
     }
 
     #[test]
+    fn openfigi_fetch_retries_retry_after_header() {
+        let server = spawn_server(vec![
+            (
+                429,
+                vec![("Content-Type", "application/json"), ("Retry-After", "0")],
+                "{\"error\":\"rate limited\"}".to_string(),
+            ),
+            (
+                200,
+                vec![("Content-Type", "application/json")],
+                serde_json::json!([
+                    {
+                        "data": [{
+                            "figi": "BBG000B9XRY4",
+                            "compositeFIGI": "BBG000B9XRY4",
+                            "ticker": "AAPL",
+                            "name": "APPLE INC",
+                            "securityType": "Common Stock"
+                        }]
+                    }
+                ])
+                .to_string(),
+            ),
+        ]);
+        let provider = OpenFigiProvider;
+
+        let result = provider
+            .fetch(
+                &["037833100".to_string()],
+                &openfigi_config(&server.base_url),
+            )
+            .unwrap();
+
+        assert_eq!(result.api_calls, 2);
+        assert_eq!(
+            result.files["cusip-to-figi.json"][0].canonical_id,
+            "BBG000B9XRY4"
+        );
+
+        let requests = server.finish();
+        assert_eq!(requests.len(), 2);
+    }
+
+    #[test]
     fn openfigi_batch_and_rate_limit_defaults_depend_on_api_key() {
         let provider = OpenFigiProvider;
         let no_key = BTreeMap::new();
@@ -862,6 +968,32 @@ mod tests {
                 .unwrap()
                 .delay_ms,
             240
+        );
+    }
+
+    #[test]
+    fn openfigi_id_type_infers_supported_seed_columns_and_accepts_explicit_override() {
+        let mut config = openfigi_config("http://127.0.0.1:1/v3/mapping");
+
+        config.seed_column = "isin".to_string();
+        assert_eq!(openfigi_id_type(&config).unwrap(), "ID_ISIN");
+
+        config.seed_column = "sedol".to_string();
+        assert_eq!(openfigi_id_type(&config).unwrap(), "ID_SEDOL");
+
+        config
+            .provider_options
+            .insert("id_type".to_string(), "id_cusip".to_string());
+        assert_eq!(openfigi_id_type(&config).unwrap(), "ID_CUSIP");
+
+        config
+            .provider_options
+            .insert("id_type".to_string(), "ID_BOGUS".to_string());
+        assert!(
+            openfigi_id_type(&config)
+                .unwrap_err()
+                .to_string()
+                .contains("Unsupported OpenFIGI id_type")
         );
     }
 }

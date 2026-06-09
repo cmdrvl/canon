@@ -157,7 +157,7 @@ Registries are versioned with semver, inspectable in git, and diffable. A SQLite
 
 ### Two registry-creation patterns
 
-Provider-fetched registries snapshot an external or bundled provider into normal mapping files. This local example uses the built-in `mock` provider; real provider-backed runs use sources such as `openfigi` and may require provider configuration:
+Provider-fetched registries snapshot an external or bundled provider into normal mapping files. OpenFIGI is a corpus-scoped securities identifier materializer for CUSIP, ISIN, or SEDOL seeds; it is not an organization identity source, not CMBS-specific, and never participates in normal lookup after the registry files are written. This local example uses the built-in `mock` provider; real provider-backed runs use sources such as `openfigi` and may require provider configuration:
 
 ```bash
 example_dir=$(mktemp -d)
@@ -173,6 +173,16 @@ canon registry build \
 canon "$example_dir/seeds.csv" \
   --registry "$example_dir/registries/mock-cusip" \
   --column cusip
+```
+
+Provider changes should be proven against a local twin before any live OpenFIGI maintenance run. With `twinning` 0.5.1+ available, the OpenFIGI response-stub fixture exercises `canon registry build` without contacting `api.openfigi.com`:
+
+```bash
+twinning rest \
+  --spec ../twinning/tests/fixtures/rest/openfigi_v2_v3/response-stub-schema.yaml \
+  --server-variable basePath=v3 \
+  --auth-mode shape \
+  --run 'canon registry build --source openfigi --seed seeds.csv --seed-column cusip --provider-config id_type=ID_CUSIP --provider-config api_key=stub-key --provider-config base_url="$TWIN_BASE_URL/v3/mapping" --output registries/openfigi-cusip/ --version 2026.06.09'
 ```
 
 Self-authored registries are local operator conventions expressed as exact aliases. The maintenance commands keep `registry.json`, version bumps, and entry counts synchronized:
@@ -363,7 +373,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 |------------|-------------|
 | `doctor [health [--json]\|capabilities [--json]\|robot-docs\|--robot-triage]` | Read-only compiled-contract diagnostics for agents. Does not read inputs, registries, SQLite indexes, or witness ledgers, does not contact providers, and has no `--fix` mode. |
 | `resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <YAML> --registry <DIR> [--gold <JSONL>] [--write-back] [--emit json\|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>]` | Cross-tape structural resolution workbench. Loads two tapes, filters candidates, scores matches, optionally evaluates gold, and writes matched ID pairs back to the registry when explicitly requested. |
-| `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides. |
+| `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides such as OpenFIGI `id_type`, `base_url`, or `api_key`. |
 | `registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain\|json]` | Read the existing canonical IDs for a self-authored namespace and suggest the next deterministic ID. Uses `registry.json.default_id_scheme` when `PREFIX` is omitted. |
 | `registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>]` | Append one exact alias entry to an existing root mapping file, bump the registry version, update `entry_count`, and run standard lint unless `--no-lint` is set. |
 | `registry mint --registry <DIR> [--canonical-id <ID>\|--prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>...` | Mint one self-authored canonical ID and one or more starting aliases in a single versioned write. Without `--canonical-id`, allocates via `next-id`. |
@@ -470,7 +480,7 @@ Preflight a registry before production use:
 canon registry lint registries/org/ --profile auto --emit summary
 ```
 
-Materialize a registry from a provider-backed seed corpus:
+Materialize a registry from a provider-backed seed corpus. `openfigi` supports `cusip`, `isin`, and `sedol` seed columns by inference, or an explicit `--provider-config id_type=ID_CUSIP|ID_ISIN|ID_SEDOL`; use `--provider-config base_url=...` for local twins and tests. For CMBS-style corpora, extract identifiers from the source tapes, normalize and dedupe them, split CUSIP/ISIN/SEDOL into separate seed files, run one build per id type, publish the resulting static registries, and use `--incremental` for follow-up corpus refreshes:
 
 ```bash
 OPENFIGI_API_KEY=xxx \
@@ -837,7 +847,7 @@ The important boundary is that entity resolution happens in workbench commands s
 
 ### What about registries — do I have to build them?
 
-You can consume published registries, materialize provider-backed registries with `canon registry build`, or maintain local self-authored registries with `canon registry mint` and `canon registry add-entry`. Prefer the maintenance commands over hand-editing mapping JSON: they preserve exact lookup semantics while keeping versions, entry counts, and lint checks in sync. The build workflow snapshots provider-backed lookups into a normal versioned registry directory plus `_build.json` provenance, and normal `canon` resolution ignores that metadata sidecar.
+You can consume published registries, materialize provider-backed registries with `canon registry build`, or maintain local self-authored registries with `canon registry mint` and `canon registry add-entry`. Prefer the maintenance commands over hand-editing mapping JSON: they preserve exact lookup semantics while keeping versions, entry counts, and lint checks in sync. The build workflow snapshots provider-backed lookups into a normal versioned registry directory plus `_build.json` provenance, and normal `canon` resolution ignores that metadata sidecar. For OpenFIGI provider work, use a local `twinning rest` fixture to model success, no-match, error, and malformed-provider cases before running a live maintenance build.
 
 ### Can I use this in CI/CD?
 

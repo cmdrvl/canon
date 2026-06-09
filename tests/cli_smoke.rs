@@ -43,6 +43,19 @@ fn write_seed_csv(path: &Path, contents: &str) {
     std::fs::write(path, contents).unwrap();
 }
 
+#[cfg(unix)]
+fn shell_quote(value: impl AsRef<Path>) -> String {
+    let rendered = value.as_ref().to_string_lossy();
+    format!("'{}'", rendered.replace('\'', "'\\''"))
+}
+
+#[cfg(unix)]
+fn twinning_bin() -> PathBuf {
+    std::env::var_os("TWINNING_BIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| fixture_path("../twinning/target/debug/twinning"))
+}
+
 fn write_strategy_schema(path: &Path, vendor_cardinality: u64) {
     std::fs::write(
         path,
@@ -2096,6 +2109,196 @@ fn test_registry_build_openfigi_provider_materializes_registry() {
     assert_eq!(
         resolve_json["mappings"][1]["canonical_id"],
         "u8:BBG000BPH459"
+    );
+}
+
+#[test]
+fn test_registry_build_openfigi_incremental_fetches_only_missing_identifiers() {
+    let response_body = serde_json::json!([
+        {
+            "data": [{
+                "figi": "BBG000BPH459",
+                "compositeFIGI": "BBG000BPH459",
+                "ticker": "MSFT",
+                "name": "MICROSOFT CORP",
+                "securityType": "Common Stock"
+            }]
+        }
+    ])
+    .to_string();
+    let (base_url, server_handle) = spawn_openfigi_server(response_body);
+
+    let temp_dir = tempdir().unwrap();
+    let seed_path = temp_dir.path().join("seed.csv");
+    let output_dir = temp_dir.path().join("registries/openfigi-cusip");
+    let base_url_arg = format!("base_url={base_url}");
+    write_seed_csv(&seed_path, "cusip\n037833100\n594918104\n");
+    std::fs::create_dir_all(&output_dir).unwrap();
+    write_registry_metadata(&output_dir, "openfigi-cusip", "2026.06.01", 1);
+    write_mapping_file(
+        &output_dir,
+        "cusip-to-figi.json",
+        serde_json::json!([
+            {
+                "input": "037833100",
+                "canonical_id": "BBG000B9XRY4",
+                "canonical_type": "composite_figi",
+                "rule_id": "OPENFIGI_CUSIP_TO_COMPOSITE_FIGI"
+            }
+        ]),
+    );
+
+    let build = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "build",
+            "--source",
+            "openfigi",
+            "--seed",
+            seed_path.to_str().unwrap(),
+            "--seed-column",
+            "cusip",
+            "--provider-config",
+            &base_url_arg,
+            "--output",
+            output_dir.to_str().unwrap(),
+            "--version",
+            "2026.06.09",
+            "--incremental",
+        ])
+        .assert()
+        .success();
+
+    let build_stdout = String::from_utf8(build.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&build_stdout).unwrap();
+    assert_eq!(payload["summary"]["seed_count"], 2);
+    assert_eq!(payload["summary"]["carried_forward_count"], 1);
+    assert_eq!(payload["summary"]["queried_count"], 1);
+    assert_eq!(payload["summary"]["resolved_count"], 2);
+    assert_eq!(payload["summary"]["api_calls"], 1);
+
+    let build_file: Value =
+        serde_json::from_str(&std::fs::read_to_string(output_dir.join("_build.json")).unwrap())
+            .unwrap();
+    assert_eq!(build_file["summary"]["carried_forward_count"], 1);
+    assert_eq!(build_file["summary"]["queried_count"], 1);
+    assert_eq!(build_file["summary"]["resolved_count"], 2);
+
+    let (request_body, _) = server_handle.join().unwrap();
+    assert!(!request_body.contains("\"idValue\":\"037833100\""));
+    assert!(request_body.contains("\"idValue\":\"594918104\""));
+}
+
+#[cfg(unix)]
+#[test]
+fn test_registry_build_openfigi_provider_materializes_registry_with_twinning_stub() {
+    let twinning = twinning_bin();
+    assert!(
+        twinning.exists(),
+        "expected twinning binary at {}; set TWINNING_BIN to override",
+        twinning.display()
+    );
+
+    let spec_path =
+        fixture_path("../twinning/tests/fixtures/rest/openfigi_v2_v3/response-stub-schema.yaml");
+    assert!(
+        spec_path.exists(),
+        "expected OpenFIGI response-stub fixture at {}",
+        spec_path.display()
+    );
+
+    let temp_dir = tempdir().unwrap();
+    let seed_path = temp_dir.path().join("seed.csv");
+    let output_dir = temp_dir.path().join("registries/openfigi-cusip");
+    let report_path = temp_dir.path().join("twinning-rest-report.json");
+    write_seed_csv(&seed_path, "cusip\n037833100\n");
+
+    let child_command = format!(
+        "{} registry build --source openfigi --seed {} --seed-column cusip --provider-config id_type=ID_CUSIP --provider-config api_key=stub-key --provider-config base_url=\"$TWIN_BASE_URL/v3/mapping\" --output {} --version 2026.06.09",
+        shell_quote(env!("CARGO_BIN_EXE_canon")),
+        shell_quote(&seed_path),
+        shell_quote(&output_dir),
+    );
+
+    let twin_run = Command::new(&twinning)
+        .args([
+            "rest",
+            "--json",
+            "--spec",
+            spec_path.to_str().unwrap(),
+            "--server-variable",
+            "basePath=v3",
+            "--auth-mode",
+            "shape",
+            "--report",
+            report_path.to_str().unwrap(),
+            "--run",
+            &child_command,
+        ])
+        .assert()
+        .success();
+
+    let twin_stdout = String::from_utf8(twin_run.get_output().stdout.clone()).unwrap();
+    let twin_payload: Value = serde_json::from_str(&twin_stdout).unwrap();
+    assert_eq!(twin_payload["version"], "twinning.rest-run.v0");
+    assert_eq!(twin_payload["child"]["exit_code"], 0);
+    assert!(
+        twin_payload["child"]["command"]
+            .as_str()
+            .unwrap()
+            .contains("registry build --source openfigi")
+    );
+
+    let build_file: Value =
+        serde_json::from_str(&std::fs::read_to_string(output_dir.join("_build.json")).unwrap())
+            .unwrap();
+    assert_eq!(build_file["summary"]["queried_count"], 1);
+    assert_eq!(build_file["summary"]["resolved_count"], 1);
+    assert_eq!(build_file["summary"]["unresolved_count"], 0);
+    assert_eq!(build_file["summary"]["failure_count"], 0);
+    assert_eq!(build_file["summary"]["api_calls"], 1);
+    assert_eq!(
+        build_file["provider"]["options"]["api_key"],
+        serde_json::json!("[REDACTED]")
+    );
+    let base_url = build_file["provider"]["options"]["base_url"]
+        .as_str()
+        .unwrap();
+    assert!(base_url.starts_with("http://127.0.0.1:"));
+    assert!(!base_url.contains("api.openfigi.com"));
+
+    let figi_entries: Value = serde_json::from_str(
+        &std::fs::read_to_string(output_dir.join("cusip-to-figi.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(figi_entries[0]["input"], "037833100");
+    assert_eq!(figi_entries[0]["canonical_id"], "BBG000B9XRY4");
+    assert_eq!(figi_entries[0]["canonical_type"], "composite_figi");
+
+    let report: Value =
+        serde_json::from_str(&std::fs::read_to_string(&report_path).unwrap()).unwrap();
+    assert_eq!(report["version"], "twinning.rest-report.v0");
+    assert_eq!(report["session"]["request_count"], 1);
+    assert_eq!(
+        report["session"]["response_stubs"]["openfigi_cusip_success"],
+        1
+    );
+
+    let resolve = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .arg(&seed_path)
+        .arg("--registry")
+        .arg(&output_dir)
+        .arg("--column")
+        .arg("cusip")
+        .arg("--explicit")
+        .assert()
+        .success();
+    let resolve_stdout = String::from_utf8(resolve.get_output().stdout.clone()).unwrap();
+    let resolve_json: Value = serde_json::from_str(&resolve_stdout).unwrap();
+    assert_eq!(resolve_json["outcome"], "RESOLVED");
+    assert_eq!(
+        resolve_json["mappings"][0]["canonical_id"],
+        "u8:BBG000B9XRY4"
     );
 }
 
