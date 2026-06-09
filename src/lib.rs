@@ -80,6 +80,27 @@ pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
         .ok_or("Column name required")?
         .to_string();
 
+    // Intent inference: a misspelled subcommand is otherwise swallowed as the
+    // optional positional input. If the input does not exist and is one edit
+    // away from a known subcommand, refuse with a did-you-mean rather than a
+    // bare file-not-found error. Real input files (which exist) never trigger.
+    if !input_path.exists()
+        && let Some(token) = input_path.to_str()
+        && let Some(subcommand) = suggest_subcommand(token)
+    {
+        let refusal = refusal::create_refusal(
+            RefusalCode::EParse,
+            format!("'{token}' is not a canon subcommand or a readable input file"),
+            serde_json::json!({ "input": token, "suggested_subcommand": subcommand }),
+            Some(format!("canon {subcommand} --help")),
+        );
+        match cli.emit {
+            crate::cli::EmitMode::Json => println!("{}", serde_json::to_string(&refusal)?),
+            crate::cli::EmitMode::Csv => eprintln!("{}", serde_json::to_string(&refusal)?),
+        }
+        return Ok(2);
+    }
+
     // Step 3: Warn on stderr if --map-out is set with --emit json
     if matches!(cli.emit, crate::cli::EmitMode::Json) && cli.map_out.is_some() {
         eprintln!("Warning: --map-out ignored in JSON mode (mapping already is stdout)");
@@ -1384,6 +1405,91 @@ fn parse_provider_config(options: &[String]) -> Result<BTreeMap<String, String>,
     Ok(parsed)
 }
 
+/// Long flags an agent commonly types on the core resolve command. Used to
+/// turn clap's generic "unexpected argument" into a did-you-mean suggestion.
+const KNOWN_CORE_FLAGS: [&str; 13] = [
+    "registry",
+    "column",
+    "emit",
+    "canon-column",
+    "map-out",
+    "max-rows",
+    "max-bytes",
+    "no-witness",
+    "explicit",
+    "version",
+    "describe",
+    "schema",
+    "help",
+];
+
+/// Top-level subcommands, for disambiguating a misspelled subcommand that clap
+/// otherwise swallows as the optional positional input.
+const KNOWN_SUBCOMMANDS: [&str; 5] = ["doctor", "resolve", "registry", "org", "strategy"];
+
+/// Classic dynamic-programming Levenshtein edit distance.
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut curr = vec![0usize; b.len() + 1];
+    for (i, ca) in a.iter().enumerate() {
+        curr[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cost = if ca == cb { 0 } else { 1 };
+            curr[j + 1] = (prev[j + 1] + 1).min(curr[j] + 1).min(prev[j] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[b.len()]
+}
+
+/// Nearest known item to `candidate` within `max_distance`, preferring the
+/// smallest distance then declaration order. Returns `None` on an exact match
+/// (nothing to suggest) or when nothing is close enough.
+fn nearest<'a>(candidate: &str, options: &[&'a str], max_distance: usize) -> Option<&'a str> {
+    let mut best: Option<(usize, &str)> = None;
+    for option in options {
+        let distance = levenshtein(candidate, option);
+        if distance == 0 {
+            return None;
+        }
+        if distance <= max_distance && best.is_none_or(|(d, _)| distance < d) {
+            best = Some((distance, option));
+        }
+    }
+    best.map(|(_, option)| option)
+}
+
+/// Suggest the nearest known long flag for an unknown `--flag` token.
+pub fn suggest_flag(unknown: &str) -> Option<&'static str> {
+    let stripped = unknown.trim_start_matches('-');
+    nearest(stripped, &KNOWN_CORE_FLAGS, 1)
+}
+
+/// Suggest the nearest known subcommand for a misspelled first token.
+fn suggest_subcommand(token: &str) -> Option<&'static str> {
+    nearest(token, &KNOWN_SUBCOMMANDS, 1)
+}
+
+/// Turn a clap `UnknownArgument` error into an agent-friendly did-you-mean
+/// message naming the exact corrected flag, or `None` to defer to clap.
+pub fn unknown_flag_suggestion(error: &clap::Error) -> Option<String> {
+    use clap::error::{ContextKind, ContextValue};
+    if error.kind() != clap::error::ErrorKind::UnknownArgument {
+        return None;
+    }
+    let invalid = match error.get(ContextKind::InvalidArg)? {
+        ContextValue::String(value) => value.clone(),
+        ContextValue::Strings(values) => values.first()?.clone(),
+        _ => return None,
+    };
+    let suggestion = suggest_flag(&invalid)?;
+    Some(format!(
+        "error: unknown flag '{invalid}'\n\n  did you mean '--{suggestion}'?\n\nFor more information, try '--help'."
+    ))
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DisplayMode {
     Version,
@@ -2658,5 +2764,28 @@ mod tests {
         assert_eq!(detect_display_mode(["canon", "tape.csv"]), None);
         // A subcommand is not intercepted either.
         assert_eq!(detect_display_mode(["canon", "doctor"]), None);
+    }
+
+    #[test]
+    fn suggest_flag_corrects_one_edit_typos() {
+        assert_eq!(super::suggest_flag("--regisry"), Some("registry"));
+        assert_eq!(super::suggest_flag("--colum"), Some("column"));
+        assert_eq!(super::suggest_flag("--explcit"), Some("explicit"));
+        // Exact spelling has nothing to suggest.
+        assert_eq!(super::suggest_flag("--registry"), None);
+        // Nonsense is left to clap (no near match).
+        assert_eq!(super::suggest_flag("--zzzzzz"), None);
+    }
+
+    #[test]
+    fn suggest_subcommand_corrects_one_edit_typos() {
+        assert_eq!(super::suggest_subcommand("regstry"), Some("registry"));
+        assert_eq!(super::suggest_subcommand("doctr"), Some("doctor"));
+        assert_eq!(super::suggest_subcommand("resolv"), Some("resolve"));
+        assert_eq!(super::suggest_subcommand("registry"), None);
+        // Transpositions are distance 2 under Levenshtein, so not suggested.
+        assert_eq!(super::suggest_subcommand("ogr"), None);
+        // A real data filename is far from any subcommand.
+        assert_eq!(super::suggest_subcommand("positions.csv"), None);
     }
 }

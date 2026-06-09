@@ -15,7 +15,19 @@ fn main() {
         }
     }
 
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(error) => {
+            // Enrich an unknown-flag error with a did-you-mean naming the exact
+            // corrected flag; otherwise defer to clap's own handling (which also
+            // covers --help/--version and correct exit codes).
+            if let Some(message) = canon::unknown_flag_suggestion(&error) {
+                eprintln!("{message}");
+                process::exit(2);
+            }
+            error.exit();
+        }
+    };
     match canon::run(cli) {
         Ok(exit_code) => process::exit(exit_code as i32),
         Err(e) => {
