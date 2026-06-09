@@ -1389,6 +1389,9 @@ pub enum DisplayMode {
     Version,
     Describe,
     Schema,
+    /// Bare `canon` with no arguments: print agent-oriented orientation
+    /// instead of a bare clap "required arguments" error.
+    Orientation,
 }
 
 pub fn detect_display_mode<I, T>(args: I) -> Option<DisplayMode>
@@ -1397,6 +1400,13 @@ where
     T: Into<OsString>,
 {
     let args = args.into_iter().map(Into::into).collect::<Vec<OsString>>();
+
+    // No user arguments at all (just the program name): orient the caller
+    // toward the canonical command and the machine-readable surfaces.
+    if args.len() <= 1 {
+        return Some(DisplayMode::Orientation);
+    }
+
     let first_arg = args.get(1).and_then(|arg| arg.to_str());
 
     match first_arg {
@@ -1409,6 +1419,21 @@ where
 
 pub fn run_display_mode(mode: DisplayMode) -> Result<u8, Box<dyn Error>> {
     match mode {
+        DisplayMode::Orientation => {
+            // Diagnostics to stderr (stdout stays clean for pipelines); exit 2
+            // signals "no task performed", consistent with a usage error.
+            eprintln!(
+                "canon: resolve messy identifiers to canonical IDs against versioned registries.\n\
+                 \n\
+                 No input given. Start with one of:\n\
+                 \x20\x20canon <INPUT> --registry <DIR> --column <COLUMN>   resolve a CSV/JSONL column\n\
+                 \x20\x20canon --help                                       full usage and flags\n\
+                 \x20\x20canon doctor --robot-triage                        machine-readable capabilities + health\n\
+                 \x20\x20canon --describe                                   operator.json contract\n\
+                 \x20\x20canon --schema                                     canon.v0 output JSON Schema"
+            );
+            return Ok(2);
+        }
         DisplayMode::Version => {
             println!("canon {}", env!("CARGO_PKG_VERSION"));
         }
@@ -2621,5 +2646,17 @@ mod tests {
             detect_display_mode(["canon", "--schema", "--max-rows", "nope"]),
             Some(DisplayMode::Schema)
         );
+    }
+
+    #[test]
+    fn detect_display_mode_orients_on_no_arguments() {
+        assert_eq!(
+            detect_display_mode(["canon"]),
+            Some(DisplayMode::Orientation)
+        );
+        // A real invocation (positional input) is not intercepted.
+        assert_eq!(detect_display_mode(["canon", "tape.csv"]), None);
+        // A subcommand is not intercepted either.
+        assert_eq!(detect_display_mode(["canon", "doctor"]), None);
     }
 }

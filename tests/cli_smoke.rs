@@ -221,6 +221,22 @@ fn test_version_command() {
 }
 
 #[test]
+fn test_bare_invocation_prints_orientation() {
+    // Bare `canon` orients the caller toward the canonical command and the
+    // machine-readable surfaces instead of emitting a raw clap error. Exit 2
+    // (no task performed), guidance on stderr, stdout clean for pipelines.
+    let assert = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .assert()
+        .code(2)
+        .stdout(predicate::str::is_empty());
+    let output = assert.get_output();
+    let stderr = String::from_utf8(output.stderr.clone()).unwrap();
+    assert!(stderr.contains("--registry"));
+    assert!(stderr.contains("canon doctor --robot-triage"));
+    assert!(stderr.contains("canon --describe"));
+}
+
+#[test]
 fn test_describe_command() {
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("--describe")
