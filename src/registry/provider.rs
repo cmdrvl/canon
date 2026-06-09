@@ -52,6 +52,80 @@ pub struct ProviderFetchResult {
     pub api_calls: usize,
 }
 
+/// One option accepted via `--provider-config KEY=VALUE` for a provider.
+///
+/// The schema is the machine-discoverable contract: agents read it to learn
+/// which keys a provider accepts, their types, secret status, defaults, and
+/// examples, instead of scraping prose or source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderOption {
+    /// `--provider-config` key, e.g. `exchCode`.
+    pub key: String,
+    /// Value shape: `string`, `bool`, `enum`, `url`, `numeric_interval`, `date_interval`.
+    #[serde(rename = "type")]
+    pub value_type: String,
+    /// Whether the option must be supplied (most provider options are optional).
+    pub required: bool,
+    /// Secret values must never be echoed by agents and are redacted in `_build.json`.
+    pub secret: bool,
+    /// One-line human/agent description.
+    pub description: String,
+    /// Allowed values for `enum`-typed options.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub enum_values: Vec<String>,
+    /// Environment variable consulted when the option is absent.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub env_fallback: Option<String>,
+    /// Default value applied when neither the option nor its env fallback is set.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub default: Option<String>,
+    /// Copy-paste-ready example value.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub example: Option<String>,
+}
+
+/// A worked `--provider-config` example for a provider.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderExample {
+    pub title: String,
+    /// Repeatable `--provider-config KEY=VALUE` strings, in order.
+    pub provider_config: Vec<String>,
+}
+
+/// The full, deterministic, JSON-serializable option contract for one provider.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderSchema {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    /// Seed columns the provider can materialize from.
+    pub seed_columns: Vec<String>,
+    /// Accepted `id_type` enum values (empty for providers without id types).
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub id_types: Vec<String>,
+    /// Deterministic seed-column → id_type inference map.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub id_type_inference: BTreeMap<String, String>,
+    /// `--provider-config` options, in stable declaration order.
+    pub options: Vec<ProviderOption>,
+    /// Sets of option keys that cannot be combined, e.g. `["exchCode", "micCode"]`.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub mutual_exclusions: Vec<Vec<String>>,
+    /// Human-readable rule for encoding interval-typed options.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub interval_encoding: Option<String>,
+    pub examples: Vec<ProviderExample>,
+}
+
+/// A short catalog entry for `canon registry providers`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderCatalogEntry {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub seed_columns: Vec<String>,
+}
+
 pub trait RegistryProvider {
     fn name(&self) -> &str;
     fn registry_id(&self, seed_column: &str) -> String;
@@ -62,6 +136,9 @@ pub trait RegistryProvider {
     ) -> Result<ProviderFetchResult, Box<dyn Error>>;
     fn id_types(&self) -> &[&str];
     fn rate_limit(&self, config: &ProviderConfig) -> Option<RateLimit>;
+
+    /// Machine-discoverable `--provider-config` option contract for this provider.
+    fn schema(&self) -> ProviderSchema;
 
     fn default_batch_size(&self, _provider_options: &BTreeMap<String, String>) -> usize {
         100
@@ -86,6 +163,29 @@ pub fn provider_for_source(source: &str) -> Option<Box<dyn RegistryProvider>> {
 
 pub fn available_sources() -> Vec<&'static str> {
     vec!["mock", "openfigi"]
+}
+
+/// The deterministic provider catalog for `canon registry providers`, ordered
+/// by `available_sources()`.
+pub fn provider_catalog() -> Vec<ProviderCatalogEntry> {
+    available_sources()
+        .into_iter()
+        .filter_map(provider_for_source)
+        .map(|provider| {
+            let schema = provider.schema();
+            ProviderCatalogEntry {
+                id: schema.id,
+                name: schema.name,
+                description: schema.description,
+                seed_columns: schema.seed_columns,
+            }
+        })
+        .collect()
+}
+
+/// The full option schema for one provider id, or `None` if unknown.
+pub fn provider_schema(source: &str) -> Option<ProviderSchema> {
+    provider_for_source(source).map(|provider| provider.schema())
 }
 
 struct MockProvider;
@@ -152,6 +252,26 @@ impl RegistryProvider for MockProvider {
             .rate_limit_ms
             .filter(|delay_ms| *delay_ms > 0)
             .map(|delay_ms| RateLimit { delay_ms })
+    }
+
+    fn schema(&self) -> ProviderSchema {
+        ProviderSchema {
+            id: "mock".to_string(),
+            name: "Mock".to_string(),
+            description:
+                "Deterministic local materializer for tests and examples; ignores provider-config and contacts no network"
+                    .to_string(),
+            seed_columns: vec!["any".to_string()],
+            id_types: Vec::new(),
+            id_type_inference: BTreeMap::new(),
+            options: Vec::new(),
+            mutual_exclusions: Vec::new(),
+            interval_encoding: None,
+            examples: vec![ProviderExample {
+                title: "Materialize a mock registry from a CUSIP seed".to_string(),
+                provider_config: Vec::new(),
+            }],
+        }
     }
 }
 
@@ -344,6 +464,172 @@ impl RegistryProvider for OpenFigiProvider {
     fn description(&self, seed_column: &str) -> String {
         format!("Materialized OpenFIGI registry for {seed_column} identifiers")
     }
+
+    fn schema(&self) -> ProviderSchema {
+        let mut options = vec![
+            ProviderOption {
+                key: "id_type".to_string(),
+                value_type: "enum".to_string(),
+                required: false,
+                secret: false,
+                description:
+                    "OpenFIGI identifier type; inferred from --seed-column when omitted".to_string(),
+                enum_values: OPENFIGI_ID_TYPES.iter().map(|v| v.to_string()).collect(),
+                env_fallback: None,
+                default: None,
+                example: Some("ID_CUSIP".to_string()),
+            },
+            ProviderOption {
+                key: "base_url".to_string(),
+                value_type: "url".to_string(),
+                required: false,
+                secret: false,
+                description:
+                    "OpenFIGI mapping endpoint; override for local twins and tests".to_string(),
+                enum_values: Vec::new(),
+                env_fallback: None,
+                default: Some(OPENFIGI_API_URL.to_string()),
+                example: Some("http://127.0.0.1:8080/v3/mapping".to_string()),
+            },
+            ProviderOption {
+                key: "api_key".to_string(),
+                value_type: "string".to_string(),
+                required: false,
+                secret: true,
+                description:
+                    "OpenFIGI API key; raises batch size and rate limit. Secret: never echo the value"
+                        .to_string(),
+                enum_values: Vec::new(),
+                env_fallback: Some("OPENFIGI_API_KEY".to_string()),
+                default: None,
+                example: None,
+            },
+        ];
+
+        for key in OPENFIGI_STRING_FILTERS {
+            options.push(ProviderOption {
+                key: key.to_string(),
+                value_type: "string".to_string(),
+                required: false,
+                secret: false,
+                description: openfigi_filter_description(key),
+                enum_values: Vec::new(),
+                env_fallback: None,
+                default: None,
+                example: openfigi_filter_example(key),
+            });
+        }
+        for key in OPENFIGI_BOOL_FILTERS {
+            options.push(ProviderOption {
+                key: key.to_string(),
+                value_type: "bool".to_string(),
+                required: false,
+                secret: false,
+                description: openfigi_filter_description(key),
+                enum_values: Vec::new(),
+                env_fallback: None,
+                default: None,
+                example: Some("false".to_string()),
+            });
+        }
+        for key in OPENFIGI_NUMERIC_INTERVAL_FILTERS {
+            options.push(ProviderOption {
+                key: key.to_string(),
+                value_type: "numeric_interval".to_string(),
+                required: false,
+                secret: false,
+                description: openfigi_filter_description(key),
+                enum_values: Vec::new(),
+                env_fallback: None,
+                default: None,
+                example: Some("[3.0,5.0]".to_string()),
+            });
+        }
+        for key in OPENFIGI_DATE_INTERVAL_FILTERS {
+            options.push(ProviderOption {
+                key: key.to_string(),
+                value_type: "date_interval".to_string(),
+                required: false,
+                secret: false,
+                description: openfigi_filter_description(key),
+                enum_values: Vec::new(),
+                env_fallback: None,
+                default: None,
+                example: Some("[\"2028-01-01\",null]".to_string()),
+            });
+        }
+
+        let id_type_inference = BTreeMap::from([
+            ("cusip".to_string(), "ID_CUSIP".to_string()),
+            ("isin".to_string(), "ID_ISIN".to_string()),
+            ("sedol".to_string(), "ID_SEDOL".to_string()),
+        ]);
+
+        ProviderSchema {
+            id: "openfigi".to_string(),
+            name: "OpenFIGI".to_string(),
+            description:
+                "Corpus-scoped securities identifier materializer for CUSIP/ISIN/SEDOL seeds; maintenance-only, never used during normal lookup"
+                    .to_string(),
+            seed_columns: vec!["cusip".to_string(), "isin".to_string(), "sedol".to_string()],
+            id_types: OPENFIGI_ID_TYPES.iter().map(|v| v.to_string()).collect(),
+            id_type_inference,
+            options,
+            mutual_exclusions: vec![vec!["exchCode".to_string(), "micCode".to_string()]],
+            interval_encoding: Some(
+                "JSON array of exactly two values; null is allowed for an open bound; at least one bound is required"
+                    .to_string(),
+            ),
+            examples: vec![
+                ProviderExample {
+                    title: "Disambiguate to U.S.-listed instruments".to_string(),
+                    provider_config: vec!["exchCode=US".to_string()],
+                },
+                ProviderExample {
+                    title: "Bond/note cohort by coupon and maturity".to_string(),
+                    provider_config: vec![
+                        "securityType2=Note".to_string(),
+                        "coupon=[3.0,5.0]".to_string(),
+                        "maturity=[\"2028-01-01\",null]".to_string(),
+                    ],
+                },
+            ],
+        }
+    }
+}
+
+fn openfigi_filter_description(key: &str) -> String {
+    let text = match key {
+        "exchCode" => "Exchange code filter; mutually exclusive with micCode",
+        "micCode" => "ISO 10383 market identifier code filter; mutually exclusive with exchCode",
+        "currency" => "Trading currency filter (ISO 4217)",
+        "marketSecDes" => "Market sector description filter, e.g. Equity, Corp, Govt",
+        "securityType" => "OpenFIGI security type filter",
+        "securityType2" => "OpenFIGI secondary security type filter, e.g. Common Stock, Note",
+        "optionType" => "Option type filter, e.g. Call or Put",
+        "includeUnlistedEquities" => "Include unlisted equities in mapping results (true/false)",
+        "strike" => "Strike-price interval filter",
+        "contractSize" => "Contract-size interval filter",
+        "coupon" => "Coupon interval filter",
+        "expiration" => "Expiration-date interval filter (YYYY-MM-DD bounds)",
+        "maturity" => "Maturity-date interval filter (YYYY-MM-DD bounds)",
+        _ => "OpenFIGI mapping filter",
+    };
+    text.to_string()
+}
+
+fn openfigi_filter_example(key: &str) -> Option<String> {
+    let example = match key {
+        "exchCode" => "US",
+        "micCode" => "XNAS",
+        "currency" => "USD",
+        "marketSecDes" => "Equity",
+        "securityType" => "Common Stock",
+        "securityType2" => "Common Stock",
+        "optionType" => "Call",
+        _ => return None,
+    };
+    Some(example.to_string())
 }
 
 #[derive(Debug, Serialize)]
@@ -1286,5 +1572,103 @@ mod tests {
                 .to_string()
                 .contains("Unsupported OpenFIGI id_type")
         );
+    }
+
+    #[test]
+    fn openfigi_schema_matches_implementation_constants() {
+        let schema = OpenFigiProvider.schema();
+        assert_eq!(schema.id, "openfigi");
+
+        // id_type enum and inference are driven by the same constants the
+        // resolver uses, so the published schema cannot drift from validation.
+        assert_eq!(schema.id_types, OPENFIGI_ID_TYPES);
+        let id_type_option = schema
+            .options
+            .iter()
+            .find(|option| option.key == "id_type")
+            .expect("id_type option present");
+        assert_eq!(id_type_option.value_type, "enum");
+        assert_eq!(id_type_option.enum_values, OPENFIGI_ID_TYPES);
+
+        // api_key is the only secret and carries its env fallback.
+        let api_key = schema
+            .options
+            .iter()
+            .find(|option| option.key == "api_key")
+            .expect("api_key option present");
+        assert!(api_key.secret);
+        assert_eq!(api_key.env_fallback.as_deref(), Some("OPENFIGI_API_KEY"));
+        assert_eq!(
+            schema.options.iter().filter(|option| option.secret).count(),
+            1,
+            "api_key must be the only secret option"
+        );
+
+        // base_url default tracks the live endpoint constant.
+        let base_url = schema
+            .options
+            .iter()
+            .find(|option| option.key == "base_url")
+            .expect("base_url option present");
+        assert_eq!(base_url.default.as_deref(), Some(OPENFIGI_API_URL));
+        assert!(!base_url.secret);
+
+        // Every filter constant is published exactly once with the right type,
+        // and the schema introduces no filter keys the resolver does not honor.
+        for key in OPENFIGI_STRING_FILTERS {
+            assert_eq!(option_type(&schema, key), Some("string"), "{key}");
+        }
+        for key in OPENFIGI_BOOL_FILTERS {
+            assert_eq!(option_type(&schema, key), Some("bool"), "{key}");
+        }
+        for key in OPENFIGI_NUMERIC_INTERVAL_FILTERS {
+            assert_eq!(option_type(&schema, key), Some("numeric_interval"), "{key}");
+        }
+        for key in OPENFIGI_DATE_INTERVAL_FILTERS {
+            assert_eq!(option_type(&schema, key), Some("date_interval"), "{key}");
+        }
+
+        let mut published_filters = schema
+            .options
+            .iter()
+            .map(|option| option.key.as_str())
+            .filter(|key| !matches!(*key, "id_type" | "base_url" | "api_key"))
+            .collect::<Vec<_>>();
+        published_filters.sort_unstable();
+        let mut expected_filters = OPENFIGI_STRING_FILTERS
+            .iter()
+            .chain(OPENFIGI_BOOL_FILTERS.iter())
+            .chain(OPENFIGI_NUMERIC_INTERVAL_FILTERS.iter())
+            .chain(OPENFIGI_DATE_INTERVAL_FILTERS.iter())
+            .copied()
+            .collect::<Vec<_>>();
+        expected_filters.sort_unstable();
+        assert_eq!(published_filters, expected_filters);
+
+        // The exchCode/micCode mutual exclusion the resolver enforces is published.
+        assert!(
+            schema
+                .mutual_exclusions
+                .iter()
+                .any(|pair| pair.contains(&"exchCode".to_string())
+                    && pair.contains(&"micCode".to_string()))
+        );
+        assert!(schema.interval_encoding.is_some());
+    }
+
+    #[test]
+    fn mock_schema_has_no_provider_options() {
+        let schema = MockProvider.schema();
+        assert_eq!(schema.id, "mock");
+        assert!(schema.options.is_empty());
+        assert!(schema.id_types.is_empty());
+    }
+
+    fn option_type<'a>(schema: &'a ProviderSchema, key: &str) -> Option<&'a str> {
+        schema
+            .options
+            .iter()
+            .find(|option| option.key == key)
+            .map(|option| option.value_type.as_str())
     }
 }

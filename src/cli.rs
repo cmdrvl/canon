@@ -187,6 +187,28 @@ pub enum RegistrySubcommand {
     Build(RegistryBuildCli),
     /// Check registry health before production use
     Lint(RegistryLintCli),
+    /// List registry build providers available for materialization
+    Providers(RegistryProvidersCli),
+    /// Show the --provider-config option schema for one provider
+    #[command(name = "provider-schema")]
+    ProviderSchema(RegistryProviderSchemaCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RegistryProvidersCli {
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RegistryProviderSchemaCli {
+    /// Provider id to describe, such as openfigi or mock
+    pub provider: String,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]

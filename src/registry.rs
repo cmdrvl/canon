@@ -28,6 +28,10 @@ pub use id_scheme::{
 };
 pub use mint::{RegistryMintOutput, RegistryMintRequest, mint};
 pub use next_id::{RegistryNextIdOutput, RegistryNextIdRequest, next_id};
+pub use provider::{
+    ProviderCatalogEntry, ProviderExample, ProviderOption, ProviderSchema, provider_catalog,
+    provider_schema,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 struct RegistryJson {

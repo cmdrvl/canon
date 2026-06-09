@@ -159,6 +159,13 @@ Registries are versioned with semver, inspectable in git, and diffable. A SQLite
 
 Provider-fetched registries snapshot an external or bundled provider into normal mapping files. OpenFIGI is a corpus-scoped securities identifier materializer for CUSIP, ISIN, or SEDOL seeds; it is not an organization identity source, not CMBS-specific, and never participates in normal lookup after the registry files are written. This local example uses the built-in `mock` provider; real provider-backed runs use sources such as `openfigi` and may require provider configuration:
 
+Provider-specific `--provider-config` semantics are discoverable through canon itself, not only through this prose. `canon registry providers --emit json` lists the available providers, and `canon registry provider-schema <PROVIDER> --emit json` emits the full option contract for one provider — keys, value types, enum values, secret flags, environment fallbacks, defaults, mutual exclusions, the interval encoding rule, and worked examples. Both surfaces are deterministic and offline (no provider call), and the same provider catalog is exposed under `providers` in `canon --describe`. Agents and skills should read the schema rather than hard-coding option lists:
+
+```bash
+canon registry providers --emit json
+canon registry provider-schema openfigi --emit json
+```
+
 ```bash
 example_dir=$(mktemp -d)
 printf 'cusip\n037833100\n' > "$example_dir/seeds.csv"
@@ -321,6 +328,8 @@ canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
 canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <YAML> --registry <DIR> [--gold <JSONL>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon doctor [health [--json]|capabilities [--json]|robot-docs|--robot-triage]
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [OPTIONS]
+canon registry providers [--emit json|summary]
+canon registry provider-schema <PROVIDER> [--emit json|summary]
 canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
 canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
@@ -374,6 +383,8 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `doctor [health [--json]\|capabilities [--json]\|robot-docs\|--robot-triage]` | Read-only compiled-contract diagnostics for agents. Does not read inputs, registries, SQLite indexes, or witness ledgers, does not contact providers, and has no `--fix` mode. |
 | `resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <YAML> --registry <DIR> [--gold <JSONL>] [--write-back] [--emit json\|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>]` | Cross-tape structural resolution workbench. Loads two tapes, filters candidates, scores matches, optionally evaluates gold, and writes matched ID pairs back to the registry when explicitly requested. |
 | `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides such as OpenFIGI `id_type`, `base_url`, `api_key`, or mapping filters like `exchCode=US`. |
+| `registry providers [--emit json\|summary]` | List the registry build providers available for materialization, with their seed-column support and a pointer to each provider's schema command. |
+| `registry provider-schema <PROVIDER> [--emit json\|summary]` | Emit one provider's machine-readable `--provider-config` option contract — keys, types, enum values, secret flags, env fallbacks, defaults, mutual exclusions, interval encoding, and examples. Deterministic and offline; never contacts the provider. |
 | `registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain\|json]` | Read the existing canonical IDs for a self-authored namespace and suggest the next deterministic ID. Uses `registry.json.default_id_scheme` when `PREFIX` is omitted. |
 | `registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>]` | Append one exact alias entry to an existing root mapping file, bump the registry version, update `entry_count`, and run standard lint unless `--no-lint` is set. |
 | `registry mint --registry <DIR> [--canonical-id <ID>\|--prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>...` | Mint one self-authored canonical ID and one or more starting aliases in a single versioned write. Without `--canonical-id`, allocates via `next-id`. |

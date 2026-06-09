@@ -53,6 +53,8 @@ registries.
 ```bash
 canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--emit json|csv] [--canon-column <NAME>] [--map-out <PATH>] [--max-rows <N>] [--max-bytes <N>]
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]
+canon registry providers [--emit json|summary]
+canon registry provider-schema <PROVIDER> [--emit json|summary]
 canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
 canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID> --input <INPUT> --rule-id <RULE> [--canonical-type <TYPE>] [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
@@ -108,6 +110,18 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - OpenFIGI mapping filters are passed through only during provider-backed materialization. Supported static filter keys are `exchCode`, `micCode`, `currency`, `marketSecDes`, `securityType`, `securityType2`, `optionType`, `includeUnlistedEquities`, `strike`, `contractSize`, `coupon`, `expiration`, and `maturity`; all non-secret filter values are recorded in `_build.json`.
 - CMBS-style OpenFIGI workflows should extract identifiers from source tapes, normalize/dedupe them, split CUSIP/ISIN/SEDOL into separate seed files, run one build per id type, publish static registries, and use `--incremental` for refreshes
 - provider implementation and regression tests should use a local `twinning rest` fixture through `--provider-config base_url=...`; live OpenFIGI calls are maintenance operations, never normal lookup behavior
+
+`canon registry providers [--emit json|summary]`
+- lists the registry build providers available for materialization with their id, name, description, and supported seed columns
+- emits `canon_registry_providers.v0` JSON (default) or a human-readable summary; deterministic and offline (no provider call)
+- the same catalog is exposed under the top-level `providers` key in `canon --describe`/`operator.json`, and a test guards the two against drift
+
+`canon registry provider-schema <PROVIDER> [--emit json|summary]`
+- emits the machine-discoverable `--provider-config` option contract for one provider as `canon_registry_provider_schema.v0`: option keys, value types (`string`, `bool`, `enum`, `url`, `numeric_interval`, `date_interval`), required status, secret flags, environment fallbacks, defaults, examples, mutual exclusions, and the interval encoding rule
+- `--provider-config` is generic transport at the CLI boundary; each provider owns and publishes its option schema. The allowed keys, secret status, and validation rules are therefore discoverable through canon, not only through prose or source, so skills and agents read the schema instead of hard-coding option lists
+- secret options (e.g. OpenFIGI `api_key`) are flagged `"secret": true` so agents do not echo their values; this matches `_build.json` redaction
+- the OpenFIGI schema is derived from the same constants the resolver validates against, so the published contract cannot drift from runtime behavior; tests assert this and never contact `api.openfigi.com`
+- an unknown provider refuses with `E_PARSE`, the available provider ids in `detail`, and `next_command: canon registry providers --emit json`; deterministic and offline
 
 `canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]`
 - inspects existing `canonical_id` values in all root mapping files and suggests the next `<PREFIX>-<number>` ID

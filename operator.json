@@ -293,7 +293,36 @@
         { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if the seed input exceeds N bytes" },
         { "name": "batch_size", "flag": "--batch-size", "type": "integer", "description": "Override provider batch size" },
         { "name": "rate_limit_ms", "flag": "--rate-limit-ms", "type": "integer", "description": "Override provider rate-limit delay in milliseconds" },
-        { "name": "provider_config", "flag": "--provider-config", "type": "string", "description": "Repeatable provider-specific key=value option such as id_type=ID_CUSIP|ID_ISIN|ID_SEDOL, base_url=http://... for local twins, api_key=..., or OpenFIGI mapping filters such as exchCode=US; secret-like values are redacted in _build.json" }
+        { "name": "provider_config", "flag": "--provider-config", "type": "string", "description": "Repeatable provider-specific key=value option such as id_type=ID_CUSIP|ID_ISIN|ID_SEDOL, base_url=http://... for local twins, api_key=..., or OpenFIGI mapping filters such as exchCode=US; secret-like values are redacted in _build.json. Discover valid keys with: canon registry provider-schema <PROVIDER> --emit json" }
+      ]
+    },
+    {
+      "name": "registry providers",
+      "usage": "canon registry providers [--emit json|summary]",
+      "description": "List registry build providers available for materialization; matches the top-level providers catalog in this manifest",
+      "output_mode": "mixed",
+      "output_schema": "canon_registry_providers.v0",
+      "exit_codes": {
+        "0": { "meaning": "provider catalog emitted successfully", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_registry_providers.v0) or summary" }
+      ]
+    },
+    {
+      "name": "registry provider-schema",
+      "usage": "canon registry provider-schema <PROVIDER> [--emit json|summary]",
+      "description": "Show the --provider-config option schema for one registry build provider (keys, types, enum values, secret flags, env fallbacks, defaults, mutual exclusions, examples). Deterministic and offline; does not contact the provider",
+      "output_mode": "mixed",
+      "output_schema": "canon_registry_provider_schema.v0",
+      "exit_codes": {
+        "0": { "meaning": "provider schema emitted successfully", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI error (e.g. unknown provider)", "domain": "error" }
+      },
+      "options": [
+        { "name": "provider", "type": "string", "required": true, "description": "Provider id to describe, such as openfigi or mock" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_registry_provider_schema.v0) or summary" }
       ]
     },
     {
@@ -591,6 +620,11 @@
         { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_org_explain.v0) or summary" }
       ]
     }
+  ],
+
+  "providers": [
+    { "id": "mock", "name": "Mock", "description": "Deterministic local materializer for tests and examples; ignores provider-config and contacts no network", "seed_columns": ["any"] },
+    { "id": "openfigi", "name": "OpenFIGI", "description": "Corpus-scoped securities identifier materializer for CUSIP/ISIN/SEDOL seeds; maintenance-only, never used during normal lookup", "seed_columns": ["cusip", "isin", "sedol"] }
   ],
 
   "exit_codes": {

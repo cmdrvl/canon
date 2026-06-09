@@ -23,9 +23,9 @@ use crate::cli::{
     OrgStreamEmitMode, OrgSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
     RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryLintCli,
     RegistryLintProfile, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
-    RegistrySubcommand, RegistryVersionBumpMode, ResolveCli, ResolveEmitMode, StrategyAuditCli,
-    StrategyCommand, StrategyDiffCli, StrategyProfileCli, StrategyRegisterCli, StrategyResolveCli,
-    StrategySubcommand,
+    RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode,
+    ResolveCli, ResolveEmitMode, StrategyAuditCli, StrategyCommand, StrategyDiffCli,
+    StrategyProfileCli, StrategyRegisterCli, StrategyResolveCli, StrategySubcommand,
 };
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
@@ -121,6 +121,8 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
             RegistrySubcommand::Audit(audit) => run_registry_audit(audit),
             RegistrySubcommand::Build(build) => run_registry_build(build),
             RegistrySubcommand::Lint(lint) => run_registry_lint(lint),
+            RegistrySubcommand::Providers(providers) => run_registry_providers(providers),
+            RegistrySubcommand::ProviderSchema(schema) => run_registry_provider_schema(schema),
         },
         CanonCommand::Org(command) => run_org_command(command),
         CanonCommand::Strategy(command) => run_strategy_command(command),
@@ -741,6 +743,142 @@ fn run_registry_lint(lint: &RegistryLintCli) -> Result<u8, Box<dyn Error>> {
             Ok(2)
         }
     }
+}
+
+#[derive(Serialize)]
+struct ProvidersReport {
+    version: &'static str,
+    providers: Vec<registry::ProviderCatalogEntry>,
+}
+
+#[derive(Serialize)]
+struct ProviderSchemaReport {
+    version: &'static str,
+    #[serde(flatten)]
+    schema: registry::ProviderSchema,
+}
+
+fn run_registry_providers(providers: &RegistryProvidersCli) -> Result<u8, Box<dyn Error>> {
+    let catalog = registry::provider_catalog();
+    match providers.emit {
+        RegistryEmitMode::Json => {
+            let report = ProvidersReport {
+                version: "canon_registry_providers.v0",
+                providers: catalog,
+            };
+            println!("{}", serde_json::to_string(&report)?);
+        }
+        RegistryEmitMode::Summary => {
+            println!("registry build providers ({}):", catalog.len());
+            for entry in &catalog {
+                println!("  {} — {}", entry.id, entry.description);
+                println!("    seed columns: {}", entry.seed_columns.join(", "));
+                println!(
+                    "    schema: canon registry provider-schema {} --emit json",
+                    entry.id
+                );
+            }
+        }
+    }
+    Ok(0)
+}
+
+fn run_registry_provider_schema(schema: &RegistryProviderSchemaCli) -> Result<u8, Box<dyn Error>> {
+    match registry::provider_schema(&schema.provider) {
+        Some(provider_schema) => {
+            match schema.emit {
+                RegistryEmitMode::Json => {
+                    let report = ProviderSchemaReport {
+                        version: "canon_registry_provider_schema.v0",
+                        schema: provider_schema,
+                    };
+                    println!("{}", serde_json::to_string(&report)?);
+                }
+                RegistryEmitMode::Summary => {
+                    print!("{}", render_provider_schema_summary(&provider_schema));
+                }
+            }
+            Ok(0)
+        }
+        None => {
+            let available = registry::provider_catalog()
+                .into_iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<_>>();
+            let output = refusal::create_refusal(
+                RefusalCode::EParse,
+                format!("Unknown registry build provider '{}'", schema.provider),
+                serde_json::json!({
+                    "provider": schema.provider,
+                    "available_providers": available,
+                }),
+                Some("canon registry providers --emit json".to_string()),
+            );
+            match schema.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&output)?),
+            }
+            Ok(2)
+        }
+    }
+}
+
+fn render_provider_schema_summary(schema: &registry::ProviderSchema) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "{} ({}) — {}",
+        schema.name, schema.id, schema.description
+    );
+    let _ = writeln!(out, "seed columns: {}", schema.seed_columns.join(", "));
+    if !schema.id_types.is_empty() {
+        let _ = writeln!(out, "id types: {}", schema.id_types.join(", "));
+    }
+    if !schema.options.is_empty() {
+        let _ = writeln!(out, "provider-config options:");
+        for option in &schema.options {
+            let mut tags = vec![option.value_type.clone()];
+            if option.required {
+                tags.push("required".to_string());
+            }
+            if option.secret {
+                tags.push("secret".to_string());
+            }
+            if let Some(env) = &option.env_fallback {
+                tags.push(format!("env {env}"));
+            }
+            if let Some(default) = &option.default {
+                tags.push(format!("default {default}"));
+            }
+            let _ = writeln!(
+                out,
+                "  {} ({}) — {}",
+                option.key,
+                tags.join(", "),
+                option.description
+            );
+        }
+    }
+    for pair in &schema.mutual_exclusions {
+        let _ = writeln!(out, "mutually exclusive: {}", pair.join(" | "));
+    }
+    if let Some(rule) = &schema.interval_encoding {
+        let _ = writeln!(out, "interval encoding: {rule}");
+    }
+    if !schema.examples.is_empty() {
+        let _ = writeln!(out, "examples:");
+        for example in &schema.examples {
+            let config = example
+                .provider_config
+                .iter()
+                .map(|item| format!("--provider-config {item}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let _ = writeln!(out, "  {}: {}", example.title, config);
+        }
+    }
+    out
 }
 
 #[allow(clippy::result_large_err)]
