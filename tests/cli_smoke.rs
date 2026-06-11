@@ -339,6 +339,21 @@ fn test_doctor_capabilities_json_has_no_fixers_or_side_effects() {
             .any(|command| command["name"] == "robot-triage"
                 && command["usage"] == "canon doctor --robot-triage")
     );
+    assert_eq!(payload["composition"]["family"]["name"], "cmdrvl-spine");
+    assert_eq!(
+        payload["composition"]["role"],
+        "canonical identifier normalization before structural checks and reconciliation"
+    );
+    assert!(
+        payload["composition"]["canonical_chain"][0]
+            .as_str()
+            .is_some_and(|command| command.contains("canon old.csv --registry <REGISTRY>"))
+    );
+    assert!(
+        payload["composition"]["canonical_chain"][2]
+            .as_str()
+            .is_some_and(|command| command.contains("shape old.canon.csv new.canon.csv"))
+    );
     assert_doctor_side_effects_absent(temp_dir.path(), &witness_path);
 }
 
@@ -378,6 +393,11 @@ fn test_doctor_robot_docs_is_plain_text_and_read_only() {
         .success()
         .stdout(predicate::str::contains("cmdrvl.read_only_doctor.v1"))
         .stdout(predicate::str::contains("canon doctor health --json"))
+        .stdout(predicate::str::contains("composition:"))
+        .stdout(predicate::str::contains(
+            "shape old.canon.csv new.canon.csv",
+        ))
+        .stdout(predicate::str::contains("rvl old.canon.csv new.canon.csv"))
         .stdout(predicate::str::contains("no --fix surface"));
 
     assert_doctor_side_effects_absent(temp_dir.path(), &witness_path);
@@ -2397,7 +2417,7 @@ fn test_registry_build_openfigi_provider_materializes_registry_with_twinning_stu
     assert_eq!(report["version"], "twinning.rest-report.v0");
     assert_eq!(report["session"]["request_count"], 1);
     assert_eq!(
-        report["session"]["response_stubs"]["openfigi_cusip_success"],
+        report["session"]["response_stubs"]["openfigi_cusip_success_us"],
         1
     );
 

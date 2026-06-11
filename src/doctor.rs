@@ -83,6 +83,7 @@ fn health_payload() -> Value {
         "checks": checks,
         "observed_paths": observed_paths(),
         "config_footprint": paths::config_footprint(),
+        "composition": composition_payload(),
         "side_effects": side_effects(),
         "fixers": []
     })
@@ -127,8 +128,39 @@ fn capabilities_payload() -> Value {
             "2": "CLI usage error or refusal"
         },
         "config_footprint": paths::config_footprint(),
+        "composition": composition_payload(),
         "side_effects": side_effects(),
         "fixers": []
+    })
+}
+
+fn composition_payload() -> Value {
+    json!({
+        "family": {
+            "name": "cmdrvl-spine",
+            "siblings": [
+                {"tool": "canon", "capabilities": "canon doctor capabilities --json"},
+                {"tool": "profile", "capabilities": "profile capabilities --json"},
+                {"tool": "shape", "capabilities": "shape capabilities --json"},
+                {"tool": "rvl", "capabilities": "rvl capabilities --json"},
+                {"tool": "pack", "capabilities": "pack capabilities --json"}
+            ]
+        },
+        "role": "canonical identifier normalization before structural checks and reconciliation",
+        "position": "before shape/rvl when messy IDs need canonical IDs",
+        "accepts": ["CSV or JSONL input", "versioned canon registry"],
+        "produces": ["canon mapping JSON", "canonicalized CSV when --emit csv is used"],
+        "canonical_chain": [
+            "canon old.csv --registry <REGISTRY> --column <COLUMN> --emit csv --map-out evidence/old.map.json > old.canon.csv",
+            "canon new.csv --registry <REGISTRY> --column <COLUMN> --emit csv --map-out evidence/new.map.json > new.canon.csv",
+            "shape old.canon.csv new.canon.csv --key <CANONICAL_COLUMN> --json > evidence/shape.report.json",
+            "rvl old.canon.csv new.canon.csv --key <CANONICAL_COLUMN> --json > evidence/rvl.report.json"
+        ],
+        "agent_rules": [
+            "Use canon before shape or rvl when source identifiers are aliases, legacy IDs, or vendor-specific IDs.",
+            "Preserve --map-out artifacts; they explain how source IDs mapped to canonical IDs.",
+            "Use profile after canon when downstream tools need an explicit column scope."
+        ]
     })
 }
 
@@ -314,6 +346,17 @@ fn print_robot_docs() {
     );
     println!(
         "  - does not append witness ledgers, create directories, write sidecars, or contact providers"
+    );
+    println!("composition:");
+    println!("  - canon normalizes IDs before shape and rvl compare canonicalized rows");
+    println!(
+        "  - canon old.csv --registry <REGISTRY> --column <COLUMN> --emit csv --map-out evidence/old.map.json > old.canon.csv"
+    );
+    println!(
+        "  - shape old.canon.csv new.canon.csv --key <CANONICAL_COLUMN> --json > evidence/shape.report.json"
+    );
+    println!(
+        "  - rvl old.canon.csv new.canon.csv --key <CANONICAL_COLUMN> --json > evidence/rvl.report.json"
     );
     println!("fix_mode:");
     println!("  - no --fix surface is implemented in this release");
