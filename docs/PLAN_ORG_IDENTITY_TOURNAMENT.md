@@ -3,6 +3,12 @@
 > **Status**: Draft
 > **Created**: 2026-03-22
 > **Revised**: 2026-05-06
+> **Successor direction**: `PLAN_ENTITY_WORKBENCH.md` generalizes this workbench
+> from `canon org` to `canon entity`, adds native Rust namekit primitives,
+> first-class anti-merge evidence, and the first non-org profile
+> (`cmbs_tenant_label`). This document remains the legacy source of truth for
+> the currently implemented org-specific workbench until direct replacement; no
+> long-lived `canon org` compatibility alias is planned.
 > **Context**: The parsing tournament can emit a normalized row relation with
 > stable `source_row_id` and reusable semantic fields. The next compounding
 > layer is organization identity: repeated organization-like names across

@@ -19,8 +19,11 @@
      heuristic guessing at resolution time.
 
 2. **Resolution workbenches**
-   - Command families: `canon org` and `canon resolve` today;
-     property-specific workbenches may exist later.
+   - Command families: `canon org` and `canon resolve` today.
+     `canon entity` is the planned direct replacement for the generic
+     observation -> evidence -> solve -> audit -> promote workbench currently
+     embodied by `canon org`; no long-lived `canon org` compatibility alias is
+     planned.
    - Contract: run a bounded deterministic strategy against frozen local inputs,
      emit candidates/evidence/solve/audit/review artifacts, then promote accepted
      registry updates.
@@ -69,7 +72,8 @@ So the precise product claim is:
 | Provider-backed registry maintenance | `canon registry build/diff/audit/lint` | Implemented | Registry entries | Provider-backed materialization, diff, audit, lint | Versioned registry files |
 | Self-authored registry maintenance | `canon registry next-id/add-entry/mint/default-id-scheme` | Implemented | Operator-chosen canonical IDs and aliases | Exact alias authoring under a local ID convention; not a resolution workbench | Flat mapping entries plus `registry.json` metadata |
 | Strategy registry | `canon strategy` | Implemented | Schema and skill to frozen script | Deterministic script selection | Versioned strategy registry |
-| Organization identity | `canon org` | Implemented, first validated around BDC/issuer-like profiles | Organization observation to `org_canon_id` | Blocking, typed evidence, deterministic solver, abstention | Alias entries, anchor sidecars, escrow sidecars, proofs |
+| Profiled entity workbench | `canon entity` | Planned direct replacement for `canon org` | Profile-scoped observations such as tenant labels, legal entities, funds, people, brands, or properties | Native Rust normalization, bounded blocking, typed merge evidence, anti-merge evidence, deterministic solver, abstention | Alias entries, anchor sidecars, cannot-link sidecars, escrow sidecars, proofs |
+| Organization identity | `canon org` | Implemented, first validated around BDC/issuer-like profiles; to be replaced outright by `canon entity` | Organization observation to `org_canon_id` | Blocking, typed evidence, deterministic solver, abstention | Alias entries, anchor sidecars, escrow sidecars, proofs |
 | Cross-tape structural resolution | `canon resolve` | Implemented v0 | Record in reference tape to record in target tape | Structural evidence under an explicit two-tape strategy; deterministic abstention on unmatched/ambiguous records | `canon_resolve.v0` evidence and optional flat cross-reference registry entries |
 | Property/address identity | Future workbench | Planned | Property observation to property canonical ID | Address/geospatial/name evidence under deterministic strategy | Property registry entries and proofs |
 | Fuzzy suggestions | Future assistive workflow only | Deferred | Unresolved value to suggested candidate | Probabilistic candidate generation, never auto-accepted | Human-approved registry entries only |
@@ -118,13 +122,19 @@ local ID allocation, not a new matching mode.
 - `docs/PLAN_CANON.md`: source of truth for the core lookup kernel, registry
   substrate, refusal semantics, exact-match invariants, and shared release
   contract.
-- `docs/PLAN_ORG_IDENTITY_TOURNAMENT.md`: source of truth for the `canon org`
-  organization-identity workbench.
+- `docs/PLAN_ENTITY_WORKBENCH.md`: direct-replacement plan for renaming the generic
+  workbench to `canon entity`, adding native Rust namekit primitives,
+  first-class anti-merge evidence, CMBS tenant-label support, performance
+  hardening, and smoother operator ergonomics.
+- `docs/PLAN_ORG_IDENTITY_TOURNAMENT.md`: source of truth for the currently
+  implemented `canon org` organization-identity workbench until it is replaced
+  outright by `canon entity`.
 - `docs/PLAN_STRUCTURAL_RESOLUTION.md`: source of truth for the implemented
   v0 `canon resolve` cross-tape structural record workbench; it should not be
   read as current core lookup behavior.
-- `docs/PLAN_BDC_ENTITY_REGISTRATION.md`: domain bootstrap plan that now fits
-  under the `canon org` workbench model.
+- `docs/PLAN_BDC_ENTITY_REGISTRATION.md`: domain bootstrap plan that fits under
+  the legacy `canon org` workbench model and should migrate with that workbench
+  to `canon entity`.
 
 When these documents appear to disagree, use this hierarchy:
 
