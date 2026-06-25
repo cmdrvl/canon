@@ -1,0 +1,250 @@
+{
+  "version": "canon_entity_cmbs_tenant_benchmark_manifest.v0",
+  "source": {
+    "description": "Public CMBS tenant sample used to design use case #1 benchmarks.",
+    "local_path_observed": "/Users/zacharyruiz/Downloads/tenant_sample_cmbs.csv",
+    "sha256": "34f9ce6be4e941ea04899299c99aa409ac6e833da3208495e4ab4322e57e0e00",
+    "data_rows": 6000,
+    "columns": 74,
+    "tenant_slots": 18000,
+    "tenant_observations": 10143,
+    "blank_tenant_slots": 7857,
+    "unique_raw_tenant_names": 431
+  },
+  "tenant_fields": [
+    {
+      "rank": 1,
+      "tenant": "LARGESTTENANT",
+      "square_feet": "SQUAREFEETLARGESTTENANTNUMBER",
+      "lease_expiration": "LEASEEXPIRATIONLARGESTTENANTDATE"
+    },
+    {
+      "rank": 2,
+      "tenant": "SECONDLARGESTTENANT",
+      "square_feet": "SQUAREFEETSECONDLARGESTTENANTNUMBER",
+      "lease_expiration": "LEASEEXPIRATIONSECONDLARGESTTENANTDATE"
+    },
+    {
+      "rank": 3,
+      "tenant": "THIRDLARGESTTENANT",
+      "square_feet": "SQUAREFEETTHIRDLARGESTTENANTNUMBER",
+      "lease_expiration": "LEASEEXPIRATIONTHIRDLARGESTTENANTDATE"
+    }
+  ],
+  "placeholder_surfaces": [
+    {
+      "surface": "0",
+      "observations": 785,
+      "expected": "unresolved_placeholder_not_entity"
+    }
+  ],
+  "must_link_clusters": [
+    {
+      "id": "TNT-238-SAND-ISLAND-PROPERTY",
+      "label": "238 Sand Island Property",
+      "observations": 1072,
+      "variants": [
+        "238 Sand Island Prop",
+        "238 SAND ISLAND PROPERTY LLC",
+        "238 Sand Island Property LLC"
+      ]
+    },
+    {
+      "id": "TNT-2020-AUTO-BODY",
+      "label": "2020 Auto Body",
+      "observations": 336,
+      "variants": [
+        "2020 Auto Body  LLC",
+        "2020 Auto Body, LLC"
+      ]
+    },
+    {
+      "id": "TNT-24-HOUR-FITNESS",
+      "label": "24 Hour Fitness",
+      "observations": 681,
+      "variants": [
+        "24 Hour Fitness",
+        "24 HOUR FITNESS",
+        "24 HOUR FITNESS USA INC",
+        "24 HOUR FITNESS USA, INC.",
+        "24 HR FITNESS",
+        "24 HR Fitness"
+      ]
+    },
+    {
+      "id": "TNT-FOOT-LOCKER",
+      "label": "Foot Locker",
+      "observations": 147,
+      "variants": [
+        "FOOT LOCKER RETAIL",
+        "-STORE 2:Foot Locker",
+        "Foot Locker"
+      ]
+    },
+    {
+      "id": "TNT-TJ-MAXX",
+      "label": "TJ Maxx",
+      "observations": 42,
+      "variants": [
+        "T J Maxx",
+        "T.J. MAXX",
+        "T.J. Maxx",
+        "TJ Maxx #0108"
+      ]
+    },
+    {
+      "id": "TNT-10X-GENOMICS",
+      "label": "10x Genomics",
+      "observations": 77,
+      "variants": [
+        "10x Genomics Inc.",
+        "10x Genomics  Inc.",
+        "10X GENOMICS, INC.",
+        "10x Genomics, Inc."
+      ]
+    },
+    {
+      "id": "TNT-23ANDME",
+      "label": "23andMe",
+      "observations": 104,
+      "variants": [
+        "23 AND ME INC",
+        "23andMe Inc",
+        "23andME  Inc"
+      ]
+    },
+    {
+      "id": "TNT-1-LIFE-HEALTHCARE",
+      "label": "1 Life Healthcare",
+      "observations": 95,
+      "variants": [
+        "1 Life Healthcare Inc",
+        "1 Life Healthcare, Inc.",
+        "1Life Healthcare",
+        "1Life Healthcare, Inc. LIFE"
+      ]
+    },
+    {
+      "id": "TNT-TAVERN-BOWL",
+      "label": "Tavern & Bowl",
+      "observations": 37,
+      "variants": [
+        "Tavern & Bowl",
+        "TAVERN & BOWL",
+        "Tavern & Bowl (Costa Mesa55 Tavern & Bowl. LLC)"
+      ]
+    },
+    {
+      "id": "TNT-PANGAEA-OUTPOST",
+      "label": "Pangaea Outpost",
+      "observations": 70,
+      "variants": [
+        "Pangaea Outpost",
+        "Pangaea Outpost  LLC",
+        "PANGAEA OUTPOST"
+      ]
+    },
+    {
+      "id": "TNT-TWO-TAILS",
+      "label": "Two Tails",
+      "observations": 73,
+      "variants": [
+        "TWO TAILS",
+        "Two Tails LLC",
+        "Two Tails, LLC"
+      ]
+    },
+    {
+      "id": "TNT-ETHOS-LENDING",
+      "label": "Ethos Lending",
+      "observations": 54,
+      "variants": [
+        "Ethos Lending,",
+        "Ethos Lending",
+        "Ethos Lending LLC",
+        "Ethos Lending  LLC."
+      ]
+    },
+    {
+      "id": "TNT-MGA-ENTERTAINMENT",
+      "label": "MGA Entertainment",
+      "observations": 132,
+      "variants": [
+        "150 - MGA Entertainment Inc., a California corporation",
+        "MGA Entertainment Inc., a California corporation"
+      ]
+    }
+  ],
+  "hard_negative_pairs": [
+    ["2020 Auto Body, LLC", "2020 Broadway Ave"],
+    ["100 Riverside Parking LLC", "220 Riverside Parking LLC"],
+    ["100 Riverside Parking LLC", "100 Forsyth Restaurant LLC"],
+    ["1OAK", "1 Life Healthcare Inc"],
+    ["13 Rattles", "137 VENTURES MANAGEMENT  LLC"],
+    ["24 Hour Fitness", "24 Hour Club"],
+    ["Triangle Cinemas", "TIME NIGHT CLUB"],
+    ["1460 Broadway Tenant", "FOOT LOCKER RETAIL"],
+    ["MGA Entertainment Inc., a California corporation", "San Fernando Valley Mental Health Center, Inc."]
+  ],
+  "review_cases": [
+    {
+      "id": "CMBS-REVIEW-CHINA-KING",
+      "expected": "candidate_review_or_policy_merge",
+      "variants": [
+        "Chen and Lin 88, LLC dba China King Buffet",
+        "Chen and Lin 88, LLC dba China IGng Buffet"
+      ]
+    },
+    {
+      "id": "CMBS-REVIEW-RANDALLS-TOM-THUMB",
+      "expected": "grouped_review_relation_preserved",
+      "variants": [
+        "(GrL) Randall's Food and Drugs, L.P. / Tom Thumb (Store #1972-00)",
+        "(GrL) Randall's Food and Drugs, L.P. /Tom Thumb (Store #1972-00)"
+      ]
+    },
+    {
+      "id": "CMBS-REVIEW-WEWORK-SHELLS",
+      "expected": "tenant_shell_brand_review_no_cross_property_auto_collapse",
+      "variants": [
+        "1460 Broadway Tenant - WEWORK",
+        "1460 Broadway Tenant LLC - WeWork",
+        "222 Kearny Street Tenant LLC (WeWork)",
+        "12655 Jefferson Blvd Tenant LLC/WeWork",
+        "1201 3rd Ave Tenant LLC (VVeWork)"
+      ]
+    },
+    {
+      "id": "CMBS-REVIEW-TEPPER-SOUTHERN-STATES",
+      "expected": "relation_aware_review_or_explicit_policy_merge",
+      "variants": [
+        "Southern States (Tepper Technologies)",
+        "TEPPER TECHNOLOGIES, INC. (SOUTHERN STATES)"
+      ]
+    },
+    {
+      "id": "CMBS-REVIEW-FORSYTH-WAYLA",
+      "expected": "parenthetical_dba_review_group",
+      "variants": [
+        "100 Forsyth Restaurant LLC",
+        "100 Forsyth Restaurant LLC\n(Little Wayla)",
+        "100 Forsyth Restaurant LLC\nWayla)"
+      ]
+    }
+  ],
+  "required_benchmarks": [
+    "CMBS-SRC-001",
+    "CMBS-EXTRACT-001",
+    "CMBS-EXTRACT-002",
+    "CMBS-PREP-001",
+    "CMBS-NK-001",
+    "CMBS-CAND-001",
+    "CMBS-HARDNEG-001",
+    "CMBS-REVIEW-001",
+    "CMBS-BLOCK-001",
+    "CMBS-SOLVE-001",
+    "CMBS-REPLAY-001",
+    "CMBS-PERF-001",
+    "CMBS-PERF-002"
+  ]
+}

@@ -183,6 +183,16 @@ This profile is intentionally easier than legal-entity identity. It creates a
 high-value path to clean CMBS tenant strings while forcing the workbench to get
 anti-merge and operator review right.
 
+The public-data benchmark contract for this use case lives in
+[`CMBS_TENANT_BENCHMARKS.md`](CMBS_TENANT_BENCHMARKS.md). It is derived from a
+real CMBS tenant sample with `10,143` tenant observations and `431` unique raw
+tenant names. The benchmark suite defines fixed extraction counts, must-link
+tenant-label clusters, hard negatives, review/escrow cases, exact-bucket
+compactness checks, replay assertions, and performance tiers. Implementation
+Beads for the CMBS profile and backfill workflow should treat that file and
+`tests/fixtures/entity/cmbs/tenant_sample_benchmark_manifest.json` as the
+use-case #1 benchmark contract.
+
 ---
 
 ## CMBS Tenant Backfill Pipeline
