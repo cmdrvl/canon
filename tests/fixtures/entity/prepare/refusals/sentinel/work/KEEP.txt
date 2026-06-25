@@ -1,0 +1,1 @@
+sentinel workdir content must survive prepare refusals

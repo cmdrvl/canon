@@ -1,0 +1,52 @@
+{
+  "version": "canon_entity_prepare_refusal_matrix.v0",
+  "stage": "prepare",
+  "scenarios": [
+    {
+      "id": "prepare_unknown_profile",
+      "refusal_code": "E_ENTITY_PROFILE",
+      "trigger": "unknown profile id",
+      "stdout_structured": true,
+      "writes_performed": false,
+      "next_command_contains": "canon entity"
+    },
+    {
+      "id": "prepare_bad_alias_side_field",
+      "refusal_code": "E_ENTITY_INPUT_CONTRACT",
+      "trigger": "malformed alias_surfaces_json",
+      "stdout_structured": true,
+      "writes_performed": false,
+      "next_command_contains": "canon entity prepare"
+    },
+    {
+      "id": "prepare_patch_conflict",
+      "refusal_code": "E_ENTITY_PATCH_CONFLICT",
+      "trigger": "alias and distinctness patches contradict before prepare writes",
+      "stdout_structured": true,
+      "writes_performed": false,
+      "next_command_contains": "patch conflicts"
+    },
+    {
+      "id": "prepare_surface_id_collision",
+      "refusal_code": "E_ENTITY_SURFACE_ID_COLLISION",
+      "trigger": "distinct prepared surface material derives the same surface_id",
+      "stdout_structured": true,
+      "writes_performed": false,
+      "next_command_contains": "surface_id"
+    },
+    {
+      "id": "prepare_artifact_contract",
+      "refusal_code": "E_ENTITY_ARTIFACT_CONTRACT",
+      "trigger": "prepared surface material is missing required artifact fields",
+      "stdout_structured": true,
+      "writes_performed": false,
+      "next_command_contains": "upstream entity artifact"
+    }
+  ],
+  "forbidden_partial_outputs": [
+    "prepare/surfaces.jsonl",
+    "prepare/prepare.json",
+    "cache",
+    "witness.jsonl"
+  ]
+}

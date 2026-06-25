@@ -1,0 +1,9 @@
+{
+  "existing_label": "Sears",
+  "requested_label": "Sears",
+  "normalized_display_label": "sears",
+  "registry_snapshot_hash": "blake3:cmbs-registry-20260625",
+  "alias_patch_hash": "blake3:cmbs-alias-patch-001",
+  "existing_review_decision_id": "review:cmbs:sears:001",
+  "requested_review_decision_id": "review:cmbs:sears:auto-center:001"
+}

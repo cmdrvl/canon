@@ -1,0 +1,21 @@
+{
+  "surface_id": "surf:cmbs_tenant_label:constant:collision",
+  "hash_algorithm": "constant",
+  "collision_policy": "refuse_without_silent_rekey",
+  "existing_material": {
+    "profile_id": "cmbs_tenant_label",
+    "normalized_view": {
+      "name": "tenant_core",
+      "value": "sears"
+    },
+    "raw_surfaces": ["Sears LLC"]
+  },
+  "colliding_material": {
+    "profile_id": "cmbs_tenant_label",
+    "normalized_view": {
+      "name": "tenant_core",
+      "value": "sears auto center"
+    },
+    "raw_surfaces": ["Sears Auto Center"]
+  }
+}

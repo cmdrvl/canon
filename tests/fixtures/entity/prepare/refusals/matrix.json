@@ -1,0 +1,77 @@
+{
+  "schema_version": "canon.entity.prepare_refusal_matrix.v0",
+  "required_codes": [
+    "E_ENTITY_PROFILE",
+    "E_ENTITY_INPUT_CONTRACT",
+    "E_ENTITY_PATCH_CONFLICT",
+    "E_ENTITY_SURFACE_ID_COLLISION",
+    "E_ENTITY_ARTIFACT_CONTRACT"
+  ],
+  "cases": [
+    {
+      "id": "profile_unknown_builtin",
+      "code": "E_ENTITY_PROFILE",
+      "trigger": "canon_entity_prepare_cli",
+      "fixture": "tests/fixtures/entity/prepare/refusals/profile/valid_rows.jsonl",
+      "expected_stream": "stdout",
+      "forbidden_outputs": [
+        "prepare/surfaces.jsonl",
+        "prepare/prepare.json",
+        "cache"
+      ]
+    },
+    {
+      "id": "input_contract_bad_alias_json",
+      "code": "E_ENTITY_INPUT_CONTRACT",
+      "trigger": "canon_entity_prepare_cli",
+      "fixture": "tests/fixtures/entity/prepare/refusals/input_contract/bad_alias.jsonl",
+      "expected_stream": "stdout",
+      "forbidden_outputs": [
+        "prepare/surfaces.jsonl",
+        "prepare/prepare.json",
+        "cache"
+      ]
+    },
+    {
+      "id": "patch_conflict_tenant_id_collision",
+      "code": "E_ENTITY_PATCH_CONFLICT",
+      "trigger": "cmbs_tenant_allocator_patch_conflict",
+      "fixture": "tests/fixtures/entity/prepare/refusals/patch_conflict/cmbs_tenant_collision.json",
+      "expected_stream": "library_refusal",
+      "forbidden_outputs": [
+        "prepare/surfaces.jsonl",
+        "prepare/prepare.json",
+        "cache"
+      ]
+    },
+    {
+      "id": "surface_id_synthetic_collision",
+      "code": "E_ENTITY_SURFACE_ID_COLLISION",
+      "trigger": "synthetic_surface_id_collision",
+      "fixture": "tests/fixtures/entity/prepare/refusals/surface_collision/synthetic_collision.json",
+      "expected_stream": "library_refusal",
+      "forbidden_outputs": [
+        "prepare/surfaces.jsonl",
+        "prepare/prepare.json",
+        "cache"
+      ]
+    },
+    {
+      "id": "artifact_contract_bad_surface_material",
+      "code": "E_ENTITY_ARTIFACT_CONTRACT",
+      "trigger": "surface_id_artifact_contract",
+      "fixture": "tests/fixtures/entity/prepare/refusals/artifact_contract/bad_surface_material.json",
+      "expected_stream": "library_refusal",
+      "forbidden_outputs": [
+        "prepare/surfaces.jsonl",
+        "prepare/prepare.json",
+        "cache"
+      ]
+    }
+  ],
+  "no_mutation": {
+    "sentinel_registry": "tests/fixtures/entity/prepare/refusals/sentinel/registry",
+    "sentinel_work_dir": "tests/fixtures/entity/prepare/refusals/sentinel/work",
+    "forbidden_witness_suffix": ".cmdrvl/state/witness/witness.jsonl"
+  }
+}
