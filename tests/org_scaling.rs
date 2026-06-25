@@ -179,7 +179,7 @@ fn org_cli_scaling_stays_within_structural_budgets() {
     write_org_rows(&rows_path);
 
     let block_assert = canon()
-        .arg("org")
+        .arg("entity")
         .arg("block")
         .arg(&rows_path)
         .arg("--strategy")
@@ -198,7 +198,7 @@ fn org_cli_scaling_stays_within_structural_budgets() {
     fs::write(&block_path, block_stdout).unwrap();
 
     let edge_assert = canon()
-        .arg("org")
+        .arg("entity")
         .arg("edge")
         .arg(&rows_path)
         .arg("--strategy")
@@ -219,7 +219,7 @@ fn org_cli_scaling_stays_within_structural_budgets() {
     fs::write(&edge_path, edge_stdout).unwrap();
 
     let run_assert = canon()
-        .arg("org")
+        .arg("entity")
         .arg("run")
         .arg(&rows_path)
         .arg("--strategy")

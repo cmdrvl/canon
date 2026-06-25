@@ -130,7 +130,7 @@ impl OrgFixture {
 
         let output = canon_cmd(&witness_path)
             .args([
-                "org",
+                "entity",
                 "run",
                 rows_path.to_str().unwrap(),
                 "--strategy",
@@ -277,7 +277,7 @@ fn blake3_string(bytes: &[u8]) -> String {
 }
 
 #[test]
-fn org_describe_includes_command_family() {
+fn entity_describe_includes_command_family() {
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("--describe")
         .assert()
@@ -291,12 +291,16 @@ fn org_describe_includes_command_family() {
         .iter()
         .filter_map(Value::as_str)
         .collect::<Vec<_>>();
-    assert!(usage.iter().any(|line| line.contains("canon org run")));
-    assert!(usage.iter().any(|line| line.contains("canon org promote")));
+    assert!(usage.iter().any(|line| line.contains("canon entity run")));
     assert!(
         usage
             .iter()
-            .any(|line| line.contains("canon org review export"))
+            .any(|line| line.contains("canon entity promote"))
+    );
+    assert!(
+        usage
+            .iter()
+            .any(|line| line.contains("canon entity review export"))
     );
 
     let subcommands = payload["subcommands"]
@@ -304,17 +308,18 @@ fn org_describe_includes_command_family() {
         .expect("subcommands array");
     assert!(subcommands
         .iter()
-        .any(|entry| entry["name"] == "org run" && entry["output_schema"] == "canon_org_run.v0"));
+        .any(|entry| entry["name"] == "entity run"
+            && entry["output_schema"] == "canon_org_run.v0"));
     assert!(
         subcommands
             .iter()
-            .any(|entry| entry["name"] == "org explain"
+            .any(|entry| entry["name"] == "entity explain"
                 && entry["output_schema"] == "canon_org_explain.v0")
     );
     assert!(
         subcommands
             .iter()
-            .any(|entry| entry["name"] == "org review import"
+            .any(|entry| entry["name"] == "entity review import"
                 && entry["output_schema"] == "canon_org_review_import.v0")
     );
 }
@@ -326,11 +331,11 @@ fn org_run_and_promote_happy_path_succeeds() {
     assert_eq!(fixture.result_json["version"], "canon_org_run.v0");
     assert_eq!(fixture.result_json["summary"]["promotable_new"], 2);
     let witness_body = fs::read_to_string(&fixture.witness_path).expect("witness ledger");
-    assert!(witness_body.contains("\"subcommand\":\"org.run\""));
+    assert!(witness_body.contains("\"subcommand\":\"entity.run\""));
 
     let output = canon_cmd(&fixture.witness_path)
         .args([
-            "org",
+            "entity",
             "promote",
             fixture.result_path.to_str().unwrap(),
             "--audit",
@@ -358,7 +363,7 @@ fn org_review_export_and_import_happy_path_succeeds() {
 
     let export = canon_cmd(&fixture.witness_path)
         .args([
-            "org",
+            "entity",
             "review",
             "export",
             fixture.result_path.to_str().unwrap(),
@@ -382,7 +387,7 @@ fn org_review_export_and_import_happy_path_succeeds() {
 
     let import = canon_cmd(&fixture.witness_path)
         .args([
-            "org",
+            "entity",
             "review",
             "import",
             review_path.to_str().unwrap(),
@@ -426,7 +431,7 @@ fn org_run_refuses_malformed_side_fields() {
 
     let output = canon_cmd(&temp_dir.path().join("witness.jsonl"))
         .args([
-            "org",
+            "entity",
             "run",
             rows_path.to_str().unwrap(),
             "--strategy",
@@ -460,7 +465,7 @@ fn org_promote_refuses_stale_audit_result_mismatch() {
 
     let output = canon_cmd(&fixture.witness_path)
         .args([
-            "org",
+            "entity",
             "promote",
             stale_result_path.to_str().unwrap(),
             "--audit",
@@ -503,7 +508,7 @@ fn org_promote_refuses_stale_registry_and_same_version() {
 
     let stale_output = canon_cmd(&fixture.witness_path)
         .args([
-            "org",
+            "entity",
             "promote",
             fixture.result_path.to_str().unwrap(),
             "--audit",
@@ -522,7 +527,7 @@ fn org_promote_refuses_stale_registry_and_same_version() {
     write_registry_metadata(&fixture.registry_dir, "bdc-issuers", "2026.03.01", 0);
     let same_version = canon_cmd(&fixture.witness_path)
         .args([
-            "org",
+            "entity",
             "promote",
             fixture.result_path.to_str().unwrap(),
             "--audit",

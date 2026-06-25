@@ -1696,7 +1696,7 @@ const KNOWN_CORE_FLAGS: [&str; 14] = [
 
 /// Top-level subcommands, for disambiguating a misspelled subcommand that clap
 /// otherwise swallows as the optional positional input.
-const KNOWN_SUBCOMMANDS: [&str; 5] = ["doctor", "resolve", "registry", "org", "strategy"];
+const KNOWN_SUBCOMMANDS: [&str; 5] = ["doctor", "resolve", "registry", "entity", "strategy"];
 
 /// Classic dynamic-programming Levenshtein edit distance.
 fn levenshtein(a: &str, b: &str) -> usize {

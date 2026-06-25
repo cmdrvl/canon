@@ -237,6 +237,52 @@ fn test_bare_invocation_prints_orientation() {
 }
 
 #[test]
+fn entity_namespace_cli() {
+    let help = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .arg("--help")
+        .assert()
+        .success();
+    let help_stdout = String::from_utf8(help.get_output().stdout.clone()).unwrap();
+    assert!(help_stdout.contains("entity"));
+    assert!(!help_stdout.contains("\n  org"));
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["entity", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("run"))
+        .stdout(predicate::str::contains("review"));
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["org", "run", "--help"])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn exact_lookup_regression_after_entity_namespace() {
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .arg("tests/fixtures/inputs/all_resolved.csv")
+        .arg("--registry")
+        .arg("tests/fixtures/registries/cusip-isin")
+        .arg("--column")
+        .arg("cusip")
+        .arg("--emit")
+        .arg("json")
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let json: Value = serde_json::from_str(&stdout).expect("exact lookup emits valid JSON");
+    assert_eq!(json["version"], "canon.v0");
+    assert_eq!(json["outcome"], "RESOLVED");
+    assert_eq!(json["summary"]["total"], 3);
+    assert_eq!(json["summary"]["resolved"], 3);
+    assert_eq!(json["summary"]["unresolved"], 0);
+    assert_eq!(json["mappings"].as_array().unwrap().len(), 3);
+}
+
+#[test]
 fn test_describe_command() {
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("--describe")

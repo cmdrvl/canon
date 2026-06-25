@@ -131,7 +131,8 @@ pub enum CanonCommand {
     Resolve(ResolveCli),
     /// Registry maintenance and inspection commands
     Registry(RegistryCommand),
-    /// Organization identity commands
+    /// Profiled entity workbench commands
+    #[command(name = "entity")]
     Org(OrgCommand),
     /// Frozen script strategy registry commands
     Strategy(StrategyCommand),
@@ -391,19 +392,19 @@ pub struct RegistryDefaultIdSchemeCli {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum OrgSubcommand {
-    /// Run the full org orchestration flow
+    /// Run the full entity orchestration flow
     Run(OrgRunCli),
     /// Generate candidate neighborhoods
     Block(OrgBlockCli),
     /// Generate typed evidence edges for candidate pairs
     Edge(OrgEdgeCli),
-    /// Solve org identity assignments from evidence edges
+    /// Solve entity identity assignments from evidence edges
     Solve(OrgSolveCli),
-    /// Audit an org result artifact against a suite
+    /// Audit an entity result artifact against a suite
     Audit(OrgAuditCli),
-    /// Promote an audited org result into the registry and escrow sidecars
+    /// Promote an audited entity result into the registry and escrow sidecars
     Promote(OrgPromoteCli),
-    /// Explain one org row, canonical entity, or escrow entity
+    /// Explain one entity row, canonical entity, or escrow entity
     Explain(OrgExplainCli),
     /// Export and import human adjudication review queues
     Review(OrgReviewCommand),
@@ -1256,7 +1257,7 @@ mod tests {
         let command = cli.command;
         assert!(
             matches!(&command, Some(CanonCommand::Org(_))),
-            "expected org command"
+            "expected entity command"
         );
         match command {
             Some(CanonCommand::Org(command)) => Some(command),
@@ -1867,7 +1868,7 @@ mod tests {
     fn test_cli_org_run_parsing() {
         let args = [
             "canon",
-            "org",
+            "entity",
             "run",
             "rows.csv",
             "--strategy",
@@ -1901,7 +1902,7 @@ mod tests {
     fn test_cli_org_block_parsing() {
         let args = [
             "canon",
-            "org",
+            "entity",
             "block",
             "rows.csv",
             "--strategy",
@@ -1930,7 +1931,7 @@ mod tests {
     fn test_cli_org_edge_parsing() {
         let args = [
             "canon",
-            "org",
+            "entity",
             "edge",
             "rows.csv",
             "--strategy",
@@ -1960,7 +1961,7 @@ mod tests {
     fn test_cli_org_solve_parsing() {
         let args = [
             "canon",
-            "org",
+            "entity",
             "solve",
             "rows.csv",
             "--strategy",
@@ -1992,7 +1993,7 @@ mod tests {
     fn test_cli_org_audit_parsing() {
         let args = [
             "canon",
-            "org",
+            "entity",
             "audit",
             "result.json",
             "--suite",
@@ -2018,7 +2019,7 @@ mod tests {
     fn test_cli_org_promote_parsing() {
         let args = [
             "canon",
-            "org",
+            "entity",
             "promote",
             "result.json",
             "--audit",
@@ -2050,7 +2051,7 @@ mod tests {
     fn test_cli_org_review_export_parsing() {
         let args = [
             "canon",
-            "org",
+            "entity",
             "review",
             "export",
             "result.json",
@@ -2081,7 +2082,7 @@ mod tests {
     fn test_cli_org_review_import_parsing() {
         let args = [
             "canon",
-            "org",
+            "entity",
             "review",
             "import",
             "review.csv",
@@ -2118,7 +2119,7 @@ mod tests {
     fn test_cli_org_explain_parsing() {
         let args = [
             "canon",
-            "org",
+            "entity",
             "explain",
             "result.json",
             "--canon-id",
@@ -2146,7 +2147,7 @@ mod tests {
     fn test_cli_org_explain_requires_exactly_one_selector() {
         let args = [
             "canon",
-            "org",
+            "entity",
             "explain",
             "result.json",
             "--row",
