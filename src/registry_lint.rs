@@ -1,6 +1,8 @@
 use crate::{
     Refusal,
-    org::types::{AnchorValue, CannotLinkFact, PendingClusterRecord, RowPair, TrustedAnchorRecord},
+    entity::runtime::types::{
+        AnchorValue, CannotLinkFact, PendingClusterRecord, RowPair, TrustedAnchorRecord,
+    },
     strategy_registry::{
         StrategyAttestationGrade, StrategyEntryKey, StrategyEntryStatus, StrategyRegistryEntry,
         StrategySchemaShape,
@@ -1150,7 +1152,7 @@ fn check_anchor_conflicts(context: &mut LintContext, anchors: &[TrustedAnchorRec
                         "first_canonical_id": first.canonical_id,
                         "conflicting_canonical_id": anchor.canonical_id,
                     }),
-                    "Resolve the trusted-anchor conflict before running canon org",
+                    "Resolve the trusted-anchor conflict before running canon entity",
                 );
             }
         } else {

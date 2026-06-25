@@ -1,9 +1,9 @@
-//! Output/emitter helpers for `canon org`.
+//! Output/emitter helpers for `canon entity`.
 
 use super::types::{
-    AuditArtifact, BlockRecord, CANON_ORG_BLOCK_VERSION, CANON_ORG_EDGE_VERSION,
-    CANON_ORG_RUN_VERSION, CANON_ORG_SOLVE_VERSION, EdgeRecord, ExplainArtifact, ExplainQuery,
-    PromoteArtifact, PromotionDecision, SolveRunArtifact,
+    AuditArtifact, BlockRecord, CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION,
+    CANON_ENTITY_RUN_VERSION, CANON_ENTITY_SOLVE_VERSION, EdgeRecord, ExplainArtifact,
+    ExplainQuery, PromoteArtifact, PromotionDecision, SolveRunArtifact,
 };
 use serde::Serialize;
 use std::error::Error;
@@ -55,7 +55,7 @@ pub fn render_block_summary(records: &[BlockRecord]) -> String {
         ),
         None => format!(
             "{} | {} pairs, {} block hits",
-            CANON_ORG_BLOCK_VERSION, pair_count, block_hit_count
+            CANON_ENTITY_BLOCK_VERSION, pair_count, block_hit_count
         ),
     }
 }
@@ -91,7 +91,7 @@ pub fn render_edge_summary(records: &[EdgeRecord]) -> String {
         ),
         None => format!(
             "{} | {} pairs, {} hits, {} must-link, {} cannot-link, total score {}",
-            CANON_ORG_EDGE_VERSION,
+            CANON_ENTITY_EDGE_VERSION,
             pair_count,
             hit_count,
             must_link_pairs,
@@ -185,8 +185,8 @@ fn render_solve_run_summary(artifact: &SolveRunArtifact) -> String {
 
 fn solve_run_label(version: &str) -> &str {
     match version {
-        CANON_ORG_RUN_VERSION => "run",
-        CANON_ORG_SOLVE_VERSION => "solve",
+        CANON_ENTITY_RUN_VERSION => "run",
+        CANON_ENTITY_SOLVE_VERSION => "solve",
         _ => version,
     }
 }
@@ -207,13 +207,13 @@ fn option_label(value: Option<&str>) -> &str {
     value.unwrap_or("-")
 }
 
-fn entity_state_label(state: super::types::OrgEntityState) -> &'static str {
+fn entity_state_label(state: super::types::EntityState) -> &'static str {
     match state {
-        super::types::OrgEntityState::ResolvedExisting => "RESOLVED_EXISTING",
-        super::types::OrgEntityState::PromotableNew => "PROMOTABLE_NEW",
-        super::types::OrgEntityState::AbstainLowEvidence => "ABSTAIN_LOW_EVIDENCE",
-        super::types::OrgEntityState::AbstainConflict => "ABSTAIN_CONFLICT",
-        super::types::OrgEntityState::Contradiction => "CONTRADICTION",
+        super::types::EntityState::ResolvedExisting => "RESOLVED_EXISTING",
+        super::types::EntityState::PromotableNew => "PROMOTABLE_NEW",
+        super::types::EntityState::AbstainLowEvidence => "ABSTAIN_LOW_EVIDENCE",
+        super::types::EntityState::AbstainConflict => "ABSTAIN_CONFLICT",
+        super::types::EntityState::Contradiction => "CONTRADICTION",
     }
 }
 
@@ -227,7 +227,7 @@ fn promotion_decision_label(decision: PromotionDecision) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::org::types::{
+    use crate::entity_runtime::types::{
         AnchorValue, ExplainResult, InheritanceMode, InheritanceRecord, MergeWitness,
         RegistryPatchSummary, RegistrySnapshot, SolveRunSummary, StrategyReference,
     };
@@ -285,8 +285,8 @@ mod tests {
         assert_eq!(
             first,
             concat!(
-                "{\"version\":\"canon_org_block.v0\",\"strategy\":{\"id\":\"bdc_org_graph.v1\",\"version\":\"0.1.0\",\"content_hash\":\"blake3:strategy\"},\"registry_snapshot\":{\"id\":\"bdc-issuers\",\"version\":\"2026.03.01\",\"source\":\"registries/bdc-issuers\",\"lookup_snapshot_hash\":\"blake3:lookup\",\"escrow_snapshot_hash\":\"blake3:escrow\"},\"left_row_id\":\"row-1\",\"right_row_id\":\"row-9\",\"block_hits\":[{\"operator_id\":\"exact_view:core_name\"}]}\n",
-                "{\"version\":\"canon_org_block.v0\",\"strategy\":{\"id\":\"bdc_org_graph.v1\",\"version\":\"0.1.0\",\"content_hash\":\"blake3:strategy\"},\"registry_snapshot\":{\"id\":\"bdc-issuers\",\"version\":\"2026.03.01\",\"source\":\"registries/bdc-issuers\",\"lookup_snapshot_hash\":\"blake3:lookup\",\"escrow_snapshot_hash\":\"blake3:escrow\"},\"left_row_id\":\"row-2\",\"right_row_id\":\"row-7\",\"block_hits\":[{\"operator_id\":\"shared_anchor:lei\"}]}"
+                "{\"version\":\"canon_entity_block.v0\",\"strategy\":{\"id\":\"bdc_org_graph.v1\",\"version\":\"0.1.0\",\"content_hash\":\"blake3:strategy\"},\"registry_snapshot\":{\"id\":\"bdc-issuers\",\"version\":\"2026.03.01\",\"source\":\"registries/bdc-issuers\",\"lookup_snapshot_hash\":\"blake3:lookup\",\"escrow_snapshot_hash\":\"blake3:escrow\"},\"left_row_id\":\"row-1\",\"right_row_id\":\"row-9\",\"block_hits\":[{\"operator_id\":\"exact_view:core_name\"}]}\n",
+                "{\"version\":\"canon_entity_block.v0\",\"strategy\":{\"id\":\"bdc_org_graph.v1\",\"version\":\"0.1.0\",\"content_hash\":\"blake3:strategy\"},\"registry_snapshot\":{\"id\":\"bdc-issuers\",\"version\":\"2026.03.01\",\"source\":\"registries/bdc-issuers\",\"lookup_snapshot_hash\":\"blake3:lookup\",\"escrow_snapshot_hash\":\"blake3:escrow\"},\"left_row_id\":\"row-2\",\"right_row_id\":\"row-7\",\"block_hits\":[{\"operator_id\":\"shared_anchor:lei\"}]}"
             )
         );
     }
@@ -298,7 +298,7 @@ mod tests {
         pair_score_by_namespace.insert("registry".to_string(), 0);
 
         let artifact = SolveRunArtifact {
-            version: CANON_ORG_RUN_VERSION.to_string(),
+            version: CANON_ENTITY_RUN_VERSION.to_string(),
             strategy: StrategyReference {
                 id: "bdc_org_graph.v1".to_string(),
                 version: "0.1.0".to_string(),
@@ -319,7 +319,7 @@ mod tests {
                 abstain_conflict: 0,
             },
             entities: vec![super::super::types::SolvedEntity {
-                state: super::super::types::OrgEntityState::ResolvedExisting,
+                state: super::super::types::EntityState::ResolvedExisting,
                 canonical_id: Some("IC-123abc456def".to_string()),
                 backbone_rows: vec!["row-1".to_string(), "row-9".to_string()],
                 attached_rows: vec![],
@@ -360,14 +360,14 @@ mod tests {
         let second = emit_run_json(&artifact).expect("second emit");
 
         assert_eq!(first, second);
-        assert!(first.contains("\"version\":\"canon_org_run.v0\""));
+        assert!(first.contains("\"version\":\"canon_entity_run.v0\""));
         assert!(first.contains("\"pair_score_by_namespace\":{\"name\":32,\"registry\":0}"));
     }
 
     #[test]
     fn render_summaries_include_key_counts() {
         let run_artifact = SolveRunArtifact {
-            version: CANON_ORG_SOLVE_VERSION.to_string(),
+            version: CANON_ENTITY_SOLVE_VERSION.to_string(),
             strategy: StrategyReference {
                 id: "bdc_org_graph.v1".to_string(),
                 version: "0.1.0".to_string(),
@@ -396,14 +396,14 @@ mod tests {
             ..SolveRunArtifact::default()
         };
         let explain_artifact = ExplainArtifact {
-            version: super::super::types::CANON_ORG_EXPLAIN_VERSION.to_string(),
+            version: super::super::types::CANON_ENTITY_EXPLAIN_VERSION.to_string(),
             query: ExplainQuery {
                 row_id: Some("row-9".to_string()),
                 canonical_id: None,
                 escrow_id: None,
             },
             result: ExplainResult {
-                state: super::super::types::OrgEntityState::ResolvedExisting,
+                state: super::super::types::EntityState::ResolvedExisting,
                 canonical_id: Some("IC-123abc456def".to_string()),
                 escrow_id: None,
                 backbone_rows: vec!["row-1".to_string(), "row-9".to_string()],
@@ -422,12 +422,12 @@ mod tests {
             },
         };
         let audit_artifact = AuditArtifact {
-            version: super::super::types::CANON_ORG_AUDIT_VERSION.to_string(),
+            version: super::super::types::CANON_ENTITY_AUDIT_VERSION.to_string(),
             suite: super::super::types::SuiteReference {
                 id: "bdc_org_eval.v1".to_string(),
             },
             result: super::super::types::ResultReference {
-                version: CANON_ORG_RUN_VERSION.to_string(),
+                version: CANON_ENTITY_RUN_VERSION.to_string(),
                 content_hash: "blake3:run".to_string(),
                 strategy_content_hash: "blake3:strategy".to_string(),
                 lookup_snapshot_hash: "blake3:lookup".to_string(),
@@ -462,7 +462,7 @@ mod tests {
         );
         assert_eq!(
             render_audit_summary(&audit_artifact),
-            "bdc_org_eval.v1 audit canon_org_run.v0 | PROMOTE, hard_gates=true, holdout_score=0.975, anchor_conflicts=0, gate_failures=0"
+            "bdc_org_eval.v1 audit canon_entity_run.v0 | PROMOTE, hard_gates=true, holdout_score=0.975, anchor_conflicts=0, gate_failures=0"
         );
     }
 }

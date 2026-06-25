@@ -11,6 +11,7 @@ pub mod contracts;
 pub mod edge;
 pub mod error;
 pub mod profile;
+pub mod runtime;
 pub mod schema;
 
 pub use contracts::*;

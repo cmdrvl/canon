@@ -1,13 +1,13 @@
-//! Promotion/write-back for `canon org`.
+//! Promotion/write-back for `canon entity`.
 
 use super::{
     incumbent::load_incumbent_memory,
     types::{
-        AliasMappingEntry, AuditArtifact, CANON_ORG_AUDIT_VERSION, CANON_ORG_PROMOTE_VERSION,
-        CANON_ORG_RUN_VERSION, CANON_ORG_SOLVE_VERSION, CannotLinkFact, ContentAddressedArtifact,
-        OrgEntityState, OrgError, OrgErrorCode, OrgResult, PendingClusterRecord, PromoteArtifact,
-        PromotionDecision, PromotionRegistrySummary, PromotionWrites, SolveRunArtifact,
-        TrustedAnchorRecord,
+        AliasMappingEntry, AuditArtifact, CANON_ENTITY_AUDIT_VERSION, CANON_ENTITY_PROMOTE_VERSION,
+        CANON_ENTITY_RUN_VERSION, CANON_ENTITY_SOLVE_VERSION, CannotLinkFact,
+        ContentAddressedArtifact, EntityError, EntityErrorCode, EntityResult, EntityState,
+        PendingClusterRecord, PromoteArtifact, PromotionDecision, PromotionRegistrySummary,
+        PromotionWrites, SolveRunArtifact, TrustedAnchorRecord,
     },
 };
 use serde::Serialize;
@@ -28,7 +28,7 @@ pub fn promote(
     audit_bytes: &[u8],
     registry_dir: &Path,
     next_version: &str,
-) -> OrgResult<PromoteArtifact> {
+) -> EntityResult<PromoteArtifact> {
     validate_result_artifact(result)?;
     validate_audit_artifact(result, result_bytes, audit, audit_bytes)?;
     validate_next_version(next_version)?;
@@ -66,7 +66,7 @@ pub fn promote(
     writes.mapping_files = mapping_files;
 
     let artifact = PromoteArtifact {
-        version: CANON_ORG_PROMOTE_VERSION.to_string(),
+        version: CANON_ENTITY_PROMOTE_VERSION.to_string(),
         result: ContentAddressedArtifact {
             version: result.version.clone(),
             content_hash: blake3_string(result_bytes),
@@ -101,11 +101,11 @@ pub fn promote(
     Ok(artifact)
 }
 
-fn validate_result_artifact(result: &SolveRunArtifact) -> OrgResult<()> {
+fn validate_result_artifact(result: &SolveRunArtifact) -> EntityResult<()> {
     match result.version.as_str() {
-        CANON_ORG_RUN_VERSION | CANON_ORG_SOLVE_VERSION => Ok(()),
+        CANON_ENTITY_RUN_VERSION | CANON_ENTITY_SOLVE_VERSION => Ok(()),
         other => Err(promotion_error(
-            "Promotion requires a canon_org_run.v0 or canon_org_solve.v0 artifact",
+            "Promotion requires a canon_entity_run.v0 or canon_entity_solve.v0 artifact",
             json!({
                 "result_version": other,
             }),
@@ -118,10 +118,10 @@ fn validate_audit_artifact(
     result_bytes: &[u8],
     audit: &AuditArtifact,
     audit_bytes: &[u8],
-) -> OrgResult<()> {
-    if audit.version != CANON_ORG_AUDIT_VERSION {
+) -> EntityResult<()> {
+    if audit.version != CANON_ENTITY_AUDIT_VERSION {
         return Err(promotion_error(
-            "Promotion requires a canon_org_audit.v0 artifact",
+            "Promotion requires a canon_entity_audit.v0 artifact",
             json!({
                 "audit_version": audit.version,
             }),
@@ -165,10 +165,10 @@ fn validate_audit_artifact(
     Ok(())
 }
 
-fn validate_next_version(next_version: &str) -> OrgResult<()> {
+fn validate_next_version(next_version: &str) -> EntityResult<()> {
     if next_version.trim().is_empty() {
-        return Err(OrgError::with_detail(
-            OrgErrorCode::Promotion,
+        return Err(EntityError::with_detail(
+            EntityErrorCode::Promotion,
             "Promotion requires an explicit --next-version value",
             json!({
                 "next_version": next_version,
@@ -183,14 +183,14 @@ fn validate_registry_snapshot(
     result: &SolveRunArtifact,
     before: &super::types::IncumbentMemory,
     next_version: &str,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     if before.registry.id != result.registry.id
         || before.registry.version != result.registry.version
         || before.registry.lookup_snapshot_hash != result.registry.lookup_snapshot_hash
         || before.registry.escrow_snapshot_hash != result.registry.escrow_snapshot_hash
     {
-        return Err(OrgError::with_detail(
-            OrgErrorCode::Promotion,
+        return Err(EntityError::with_detail(
+            EntityErrorCode::Promotion,
             "Current registry snapshot is stale relative to the audited result artifact",
             json!({
                 "expected": result.registry,
@@ -200,8 +200,8 @@ fn validate_registry_snapshot(
     }
 
     if before.registry.version == next_version {
-        return Err(OrgError::with_detail(
-            OrgErrorCode::Promotion,
+        return Err(EntityError::with_detail(
+            EntityErrorCode::Promotion,
             "Promotion requires --next-version to differ from the current registry.json version",
             json!({
                 "current_version": before.registry.version,
@@ -225,7 +225,7 @@ struct WritePlan {
 fn build_write_plan(
     result: &SolveRunArtifact,
     before: &super::types::IncumbentMemory,
-) -> OrgResult<WritePlan> {
+) -> EntityResult<WritePlan> {
     let existing_alias_keys = before
         .alias_entries
         .iter()
@@ -264,7 +264,7 @@ fn build_write_plan(
     for entity in &result.entities {
         let state_allowed = matches!(
             entity.state,
-            OrgEntityState::PromotableNew | OrgEntityState::ResolvedExisting
+            EntityState::PromotableNew | EntityState::ResolvedExisting
         );
         if !state_allowed {
             continue;
@@ -282,7 +282,7 @@ fn build_write_plan(
 
         let rule_id = format!("ORG_PROMOTION:{}", result.strategy.id);
         let mut entity_write_count = 0u64;
-        let writeback_aliases = if entity.state == OrgEntityState::PromotableNew
+        let writeback_aliases = if entity.state == EntityState::PromotableNew
             && entity.eligible_writeback_aliases.is_empty()
         {
             &entity.aliases
@@ -353,8 +353,8 @@ fn build_write_plan(
         }
 
         match entity.state {
-            OrgEntityState::PromotableNew => new_entity_entries += entity_write_count,
-            OrgEntityState::ResolvedExisting => existing_alias_entries += entity_write_count,
+            EntityState::PromotableNew => new_entity_entries += entity_write_count,
+            EntityState::ResolvedExisting => existing_alias_entries += entity_write_count,
             _ => {}
         }
 
@@ -500,7 +500,7 @@ fn apply_write_plan(
     mapping_file_name: &str,
     write_plan: &WritePlan,
     prior_alias_entry_count: usize,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     fs::create_dir_all(registry_dir).map_err(io_promotion_error)?;
 
     if !write_plan.alias_entries.is_empty() {
@@ -558,7 +558,7 @@ fn apply_write_plan(
     Ok(())
 }
 
-fn update_registry_json(path: &Path, next_version: &str, entry_count: usize) -> OrgResult<()> {
+fn update_registry_json(path: &Path, next_version: &str, entry_count: usize) -> EntityResult<()> {
     let bytes = fs::read(path).map_err(io_promotion_error)?;
     let mut value: Value = serde_json::from_slice(&bytes).map_err(|error| {
         promotion_error(
@@ -585,7 +585,10 @@ fn update_registry_json(path: &Path, next_version: &str, entry_count: usize) -> 
     write_json_pretty(path, &value)
 }
 
-fn planned_mapping_file_name(result: &SolveRunArtifact, next_version: &str) -> OrgResult<String> {
+fn planned_mapping_file_name(
+    result: &SolveRunArtifact,
+    next_version: &str,
+) -> EntityResult<String> {
     match result.proposed_registry_patch.mapping_files.as_slice() {
         [] => Ok(default_mapping_file_name(next_version)),
         [filename] => {
@@ -601,7 +604,7 @@ fn planned_mapping_file_name(result: &SolveRunArtifact, next_version: &str) -> O
     }
 }
 
-fn validate_mapping_file_name(filename: &str) -> OrgResult<()> {
+fn validate_mapping_file_name(filename: &str) -> EntityResult<()> {
     let path = Path::new(filename);
     let valid = path.file_name().and_then(|name| name.to_str()) == Some(filename)
         && path.extension() == Some(OsStr::new("json"))
@@ -641,7 +644,7 @@ fn blake3_string(bytes: &[u8]) -> String {
     format!("blake3:{}", blake3::hash(bytes).to_hex())
 }
 
-fn write_json_pretty<T: Serialize>(path: &Path, value: &T) -> OrgResult<()> {
+fn write_json_pretty<T: Serialize>(path: &Path, value: &T) -> EntityResult<()> {
     let bytes = serde_json::to_vec_pretty(value).map_err(|error| {
         promotion_error(
             "Failed to serialize promotion JSON",
@@ -654,7 +657,7 @@ fn write_json_pretty<T: Serialize>(path: &Path, value: &T) -> OrgResult<()> {
     fs::write(path, bytes).map_err(io_promotion_error)
 }
 
-fn write_jsonl_file<T: Serialize>(path: &Path, records: &[T]) -> OrgResult<()> {
+fn write_jsonl_file<T: Serialize>(path: &Path, records: &[T]) -> EntityResult<()> {
     let mut output = String::new();
     for record in records {
         output.push_str(&serde_json::to_string(record).map_err(|error| {
@@ -678,13 +681,13 @@ fn write_promotion_proofs(
     result_bytes: &[u8],
     audit_bytes: &[u8],
     artifact: &PromoteArtifact,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     let promotions_dir = registry_dir.join("_promotions");
     fs::create_dir_all(&promotions_dir).map_err(io_promotion_error)?;
 
     let result_label = match result.version.as_str() {
-        CANON_ORG_RUN_VERSION => "run",
-        CANON_ORG_SOLVE_VERSION => "solve",
+        CANON_ENTITY_RUN_VERSION => "run",
+        CANON_ENTITY_SOLVE_VERSION => "solve",
         _ => "result",
     };
 
@@ -714,11 +717,11 @@ fn proof_stem(mapping_file_name: &str, next_version: &str) -> String {
         .unwrap_or_else(|| version_stem(next_version))
 }
 
-fn promotion_error(message: &str, detail: Value) -> OrgError {
-    OrgError::with_detail(OrgErrorCode::Promotion, message, detail)
+fn promotion_error(message: &str, detail: Value) -> EntityError {
+    EntityError::with_detail(EntityErrorCode::Promotion, message, detail)
 }
 
-fn io_promotion_error(error: std::io::Error) -> OrgError {
+fn io_promotion_error(error: std::io::Error) -> EntityError {
     promotion_error(
         "Promotion file I/O failed",
         json!({ "error": error.to_string() }),
@@ -728,7 +731,7 @@ fn io_promotion_error(error: std::io::Error) -> OrgError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::org::types::{
+    use crate::entity_runtime::types::{
         AbstentionRecord, AnchorValue, AuditMetrics, AuditSummary, EscrowActionKind,
         EscrowActionRecord, InheritanceMode, InheritanceRecord, RegistryPatchSummary,
         RegistrySnapshot, SolveRunSummary, SolvedEntity, StrategyReference, SuiteReference,
@@ -737,7 +740,7 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::tempdir;
 
-    fn read_jsonl_file<T: DeserializeOwned>(path: &Path) -> OrgResult<Vec<T>> {
+    fn read_jsonl_file<T: DeserializeOwned>(path: &Path) -> EntityResult<Vec<T>> {
         if !path.exists() {
             return Ok(Vec::new());
         }
@@ -877,7 +880,7 @@ mod tests {
         )
         .expect_err("stale registry to refuse");
 
-        assert_eq!(error.code, OrgErrorCode::Promotion);
+        assert_eq!(error.code, EntityErrorCode::Promotion);
         assert!(error.message.contains("stale"));
     }
 
@@ -900,7 +903,7 @@ mod tests {
             "",
         )
         .expect_err("missing next-version to refuse");
-        assert_eq!(missing_version.code, OrgErrorCode::Promotion);
+        assert_eq!(missing_version.code, EntityErrorCode::Promotion);
 
         let unchanged_version = promote(
             &result,
@@ -911,7 +914,7 @@ mod tests {
             "2026.03.01",
         )
         .expect_err("unchanged next-version to refuse");
-        assert_eq!(unchanged_version.code, OrgErrorCode::Promotion);
+        assert_eq!(unchanged_version.code, EntityErrorCode::Promotion);
     }
 
     #[test]
@@ -946,7 +949,7 @@ mod tests {
         )
         .expect_err("alias overwrite to refuse");
 
-        assert_eq!(error.code, OrgErrorCode::Promotion);
+        assert_eq!(error.code, EntityErrorCode::Promotion);
         assert!(error.message.contains("overwrite"));
     }
 
@@ -1056,7 +1059,7 @@ mod tests {
             "2026.03.02",
         )
         .expect_err("invalid explicit mapping file path to refuse");
-        assert_eq!(invalid_path_error.code, OrgErrorCode::Promotion);
+        assert_eq!(invalid_path_error.code, EntityErrorCode::Promotion);
         assert!(invalid_path_error.message.contains("root-level .json"));
 
         let mut multi_file = positive_result(&before.registry);
@@ -1075,7 +1078,7 @@ mod tests {
             "2026.03.02",
         )
         .expect_err("multi-file explicit mapping list to refuse");
-        assert_eq!(multi_file_error.code, OrgErrorCode::Promotion);
+        assert_eq!(multi_file_error.code, EntityErrorCode::Promotion);
         assert!(
             multi_file_error
                 .message
@@ -1085,7 +1088,7 @@ mod tests {
 
     fn positive_result(registry: &RegistrySnapshot) -> SolveRunArtifact {
         SolveRunArtifact {
-            version: CANON_ORG_RUN_VERSION.to_string(),
+            version: CANON_ENTITY_RUN_VERSION.to_string(),
             strategy: StrategyReference {
                 id: "bdc_org_graph.v1".to_string(),
                 version: "0.1.0".to_string(),
@@ -1101,7 +1104,7 @@ mod tests {
             },
             entities: vec![
                 SolvedEntity {
-                    state: OrgEntityState::PromotableNew,
+                    state: EntityState::PromotableNew,
                     canonical_id: Some("IC-new".to_string()),
                     aliases: vec!["Acme Corp.".to_string(), "ACME Corporation".to_string()],
                     anchors: vec![AnchorValue {
@@ -1119,7 +1122,7 @@ mod tests {
                     ..SolvedEntity::default()
                 },
                 SolvedEntity {
-                    state: OrgEntityState::ResolvedExisting,
+                    state: EntityState::ResolvedExisting,
                     canonical_id: Some("IC-old".to_string()),
                     aliases: vec!["Legacy Alias".to_string(), "Legacy Alias 2".to_string()],
                     anchors: vec![AnchorValue {
@@ -1136,7 +1139,7 @@ mod tests {
             ],
             abstentions: vec![
                 AbstentionRecord {
-                    state: OrgEntityState::AbstainLowEvidence,
+                    state: EntityState::AbstainLowEvidence,
                     all_rows: vec!["row-1".to_string(), "row-2".to_string()],
                     reason: "insufficient_distinct_docs".to_string(),
                     incumbent_ids: Vec::new(),
@@ -1147,7 +1150,7 @@ mod tests {
                     }),
                 },
                 AbstentionRecord {
-                    state: OrgEntityState::AbstainConflict,
+                    state: EntityState::AbstainConflict,
                     all_rows: vec!["row-3".to_string(), "row-4".to_string()],
                     reason: "trusted_anchor_conflict".to_string(),
                     incumbent_ids: vec!["IC-left".to_string(), "IC-right".to_string()],
@@ -1177,7 +1180,7 @@ mod tests {
 
     fn matching_audit(result: &SolveRunArtifact, result_bytes: &[u8]) -> AuditArtifact {
         AuditArtifact {
-            version: CANON_ORG_AUDIT_VERSION.to_string(),
+            version: CANON_ENTITY_AUDIT_VERSION.to_string(),
             result: super::super::types::ResultReference {
                 version: result.version.clone(),
                 content_hash: blake3_string(result_bytes),

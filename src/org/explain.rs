@@ -1,10 +1,11 @@
-//! Explain/proof-trace extraction for `canon org`.
+//! Explain/proof-trace extraction for `canon entity`.
 
 use super::types::{
-    AbstentionRecord, CANON_ORG_EDGE_VERSION, CANON_ORG_EXPLAIN_VERSION, CANON_ORG_RUN_VERSION,
-    CANON_ORG_SOLVE_VERSION, ContradictionRecord, EdgeRecord, EvidenceKind, ExplainArtifact,
-    ExplainQuery, ExplainResult, InheritanceMode, InheritanceRecord, MergeWitness, OrgEntityState,
-    OrgError, OrgErrorCode, OrgResult, PendingClusterRecord, SolveRunArtifact, SolvedEntity,
+    AbstentionRecord, CANON_ENTITY_EDGE_VERSION, CANON_ENTITY_EXPLAIN_VERSION,
+    CANON_ENTITY_RUN_VERSION, CANON_ENTITY_SOLVE_VERSION, ContradictionRecord, EdgeRecord,
+    EntityError, EntityErrorCode, EntityResult, EntityState, EvidenceKind, ExplainArtifact,
+    ExplainQuery, ExplainResult, InheritanceMode, InheritanceRecord, MergeWitness,
+    PendingClusterRecord, SolveRunArtifact, SolvedEntity,
 };
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -16,7 +17,7 @@ pub fn explain(
     result: &SolveRunArtifact,
     edges: &[EdgeRecord],
     pending_clusters: &[PendingClusterRecord],
-) -> OrgResult<ExplainArtifact> {
+) -> EntityResult<ExplainArtifact> {
     validate_result_artifact(result)?;
     validate_query(&query)?;
 
@@ -34,7 +35,7 @@ pub fn explain(
     };
 
     Ok(ExplainArtifact {
-        version: CANON_ORG_EXPLAIN_VERSION.to_string(),
+        version: CANON_ENTITY_EXPLAIN_VERSION.to_string(),
         query,
         result: explain_result,
     })
@@ -43,7 +44,7 @@ pub fn explain(
 pub fn explain_from_result(
     query: ExplainQuery,
     result: &SolveRunArtifact,
-) -> OrgResult<ExplainArtifact> {
+) -> EntityResult<ExplainArtifact> {
     explain(query, result, &[], &[])
 }
 
@@ -53,20 +54,20 @@ enum QueryMatch<'a> {
     Contradiction(&'a ContradictionRecord),
 }
 
-fn validate_result_artifact(result: &SolveRunArtifact) -> OrgResult<()> {
+fn validate_result_artifact(result: &SolveRunArtifact) -> EntityResult<()> {
     match result.version.as_str() {
-        CANON_ORG_SOLVE_VERSION | CANON_ORG_RUN_VERSION => Ok(()),
+        CANON_ENTITY_SOLVE_VERSION | CANON_ENTITY_RUN_VERSION => Ok(()),
         other => Err(explain_error(
-            "Explain requires a canon_org_solve.v0 or canon_org_run.v0 artifact",
+            "Explain requires a canon_entity_solve.v0 or canon_entity_run.v0 artifact",
             json!({
-                "expected": [CANON_ORG_SOLVE_VERSION, CANON_ORG_RUN_VERSION],
+                "expected": [CANON_ENTITY_SOLVE_VERSION, CANON_ENTITY_RUN_VERSION],
                 "actual": other,
             }),
         )),
     }
 }
 
-fn validate_query(query: &ExplainQuery) -> OrgResult<()> {
+fn validate_query(query: &ExplainQuery) -> EntityResult<()> {
     let selector_count = usize::from(query.row_id.is_some())
         + usize::from(query.canonical_id.is_some())
         + usize::from(query.escrow_id.is_some());
@@ -86,15 +87,15 @@ fn validate_query(query: &ExplainQuery) -> OrgResult<()> {
 fn build_edge_index(
     edges: &[EdgeRecord],
     result: &SolveRunArtifact,
-) -> OrgResult<BTreeMap<(String, String), EdgeRecord>> {
+) -> EntityResult<BTreeMap<(String, String), EdgeRecord>> {
     let mut index = BTreeMap::new();
 
     for edge in edges {
-        if edge.version != CANON_ORG_EDGE_VERSION {
+        if edge.version != CANON_ENTITY_EDGE_VERSION {
             return Err(explain_error(
-                "Edge artifact version does not match canon_org_edge.v0",
+                "Edge artifact version does not match canon_entity_edge.v0",
                 json!({
-                    "expected": CANON_ORG_EDGE_VERSION,
+                    "expected": CANON_ENTITY_EDGE_VERSION,
                     "actual": edge.version,
                 }),
             ));
@@ -135,7 +136,7 @@ fn build_edge_index(
 
 fn build_pending_index(
     pending_clusters: &[PendingClusterRecord],
-) -> OrgResult<BTreeMap<String, PendingClusterRecord>> {
+) -> EntityResult<BTreeMap<String, PendingClusterRecord>> {
     let mut index = BTreeMap::new();
 
     for pending in pending_clusters {
@@ -158,7 +159,7 @@ fn build_pending_index(
 fn resolve_query<'a>(
     query: &ExplainQuery,
     result: &'a SolveRunArtifact,
-) -> OrgResult<QueryMatch<'a>> {
+) -> EntityResult<QueryMatch<'a>> {
     let mut matches = Vec::new();
 
     if let Some(row_id) = query.row_id.as_deref() {
@@ -363,7 +364,7 @@ fn build_contradiction_result(
     }
 
     ExplainResult {
-        state: OrgEntityState::Contradiction,
+        state: EntityState::Contradiction,
         canonical_id: None,
         escrow_id: None,
         backbone_rows: sorted_rows(contradiction.row_ids.clone()),
@@ -544,15 +545,15 @@ fn canonical_pair(left_row_id: &str, right_row_id: &str) -> (String, String) {
     }
 }
 
-fn explain_error(message: impl Into<String>, detail: serde_json::Value) -> OrgError {
-    OrgError::with_detail(OrgErrorCode::Explain, message, detail)
+fn explain_error(message: impl Into<String>, detail: serde_json::Value) -> EntityError {
+    EntityError::with_detail(EntityErrorCode::Explain, message, detail)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::org::types::{
-        CANON_ORG_EDGE_VERSION, EscrowActionKind, EscrowActionRecord, EvidenceHit,
+    use crate::entity_runtime::types::{
+        CANON_ENTITY_EDGE_VERSION, EscrowActionKind, EscrowActionRecord, EvidenceHit,
         RegistrySnapshot, RowPair, StrategyReference,
     };
 
@@ -572,8 +573,8 @@ mod tests {
         )
         .expect("row query to resolve");
 
-        assert_eq!(artifact.version, CANON_ORG_EXPLAIN_VERSION);
-        assert_eq!(artifact.result.state, OrgEntityState::ResolvedExisting);
+        assert_eq!(artifact.version, CANON_ENTITY_EXPLAIN_VERSION);
+        assert_eq!(artifact.result.state, EntityState::ResolvedExisting);
         assert_eq!(
             artifact.result.canonical_id.as_deref(),
             Some("IC-123abc456def")
@@ -636,7 +637,7 @@ mod tests {
         let result = solve_artifact(
             Vec::new(),
             vec![AbstentionRecord {
-                state: OrgEntityState::AbstainLowEvidence,
+                state: EntityState::AbstainLowEvidence,
                 all_rows: vec!["row-41".to_string(), "row-58".to_string()],
                 reason: "insufficient_distinct_docs".to_string(),
                 incumbent_ids: Vec::new(),
@@ -683,7 +684,7 @@ mod tests {
         )
         .expect("escrow_id query to resolve");
 
-        assert_eq!(artifact.result.state, OrgEntityState::AbstainLowEvidence);
+        assert_eq!(artifact.result.state, EntityState::AbstainLowEvidence);
         assert_eq!(
             artifact.result.escrow_id.as_deref(),
             Some("OE-8f9b7c1d2a3e")
@@ -710,7 +711,7 @@ mod tests {
         contradictions: Vec<ContradictionRecord>,
     ) -> SolveRunArtifact {
         SolveRunArtifact {
-            version: CANON_ORG_SOLVE_VERSION.to_string(),
+            version: CANON_ENTITY_SOLVE_VERSION.to_string(),
             strategy: strategy_reference(),
             registry: registry_snapshot(),
             entities,
@@ -722,7 +723,7 @@ mod tests {
 
     fn resolved_entity() -> SolvedEntity {
         SolvedEntity {
-            state: OrgEntityState::ResolvedExisting,
+            state: EntityState::ResolvedExisting,
             canonical_id: Some("IC-123abc456def".to_string()),
             backbone_rows: vec!["row-1".to_string(), "row-9".to_string()],
             attached_rows: Vec::new(),
@@ -756,7 +757,7 @@ mod tests {
             .collect::<BTreeMap<_, _>>();
 
         EdgeRecord {
-            version: CANON_ORG_EDGE_VERSION.to_string(),
+            version: CANON_ENTITY_EDGE_VERSION.to_string(),
             strategy: strategy_reference(),
             registry_snapshot: registry_snapshot(),
             left_row_id: left_row_id.to_string(),

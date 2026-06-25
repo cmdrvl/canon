@@ -1,11 +1,11 @@
-//! Staged solver and reconciliation for `canon org`.
+//! Staged solver and reconciliation for `canon entity`.
 
 use super::types::{
-    AbstentionRecord, AnchorValue, CANON_ORG_EDGE_VERSION, CANON_ORG_RUN_VERSION,
-    CANON_ORG_SOLVE_VERSION, CannotLinkFact, EdgeRecord, EscrowActionKind, EscrowActionRecord,
+    AbstentionRecord, AnchorValue, CANON_ENTITY_EDGE_VERSION, CANON_ENTITY_RUN_VERSION,
+    CANON_ENTITY_SOLVE_VERSION, CannotLinkFact, EdgeRecord, EntityError, EntityErrorCode,
+    EntityResult, EntityState, EntityStrategy, EscrowActionKind, EscrowActionRecord,
     EscrowPatchSummary, IncumbentMemory, InheritanceMode, InheritanceRecord, MergeWitness,
-    OrgEntityState, OrgError, OrgErrorCode, OrgResult, OrgStrategy, ProjectedObservation,
-    RegistryPatchSummary, SolveRunArtifact, SolvedEntity, StrategyReference,
+    ProjectedObservation, RegistryPatchSummary, SolveRunArtifact, SolvedEntity, StrategyReference,
 };
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -13,13 +13,13 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 const NAME_NAMESPACE: &str = "name";
 
 pub fn solve(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     observations: &[ProjectedObservation],
     edges: &[EdgeRecord],
     incumbent: &IncumbentMemory,
-) -> OrgResult<SolveRunArtifact> {
+) -> EntityResult<SolveRunArtifact> {
     solve_with_version(
-        CANON_ORG_SOLVE_VERSION,
+        CANON_ENTITY_SOLVE_VERSION,
         strategy,
         observations,
         edges,
@@ -28,13 +28,13 @@ pub fn solve(
 }
 
 pub fn run(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     observations: &[ProjectedObservation],
     edges: &[EdgeRecord],
     incumbent: &IncumbentMemory,
-) -> OrgResult<SolveRunArtifact> {
+) -> EntityResult<SolveRunArtifact> {
     solve_with_version(
-        CANON_ORG_RUN_VERSION,
+        CANON_ENTITY_RUN_VERSION,
         strategy,
         observations,
         edges,
@@ -44,11 +44,11 @@ pub fn run(
 
 fn solve_with_version(
     version: &str,
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     observations: &[ProjectedObservation],
     edges: &[EdgeRecord],
     incumbent: &IncumbentMemory,
-) -> OrgResult<SolveRunArtifact> {
+) -> EntityResult<SolveRunArtifact> {
     let observation_index = build_observation_index(observations)?;
     let edge_index = build_edge_index(edges, &strategy.reference(), &incumbent.registry)?;
     let mut contradictions = Vec::new();
@@ -97,7 +97,7 @@ fn solve_with_version(
         if incumbent_ids.len() > 1 {
             proposed_escrow_patch.cannot_link_entries += 1;
             abstentions.push(AbstentionRecord {
-                state: OrgEntityState::AbstainConflict,
+                state: EntityState::AbstainConflict,
                 all_rows: cluster_rows.clone(),
                 reason: "multiple_incumbent_overlap".to_string(),
                 incumbent_ids: incumbent_ids.clone(),
@@ -120,7 +120,7 @@ fn solve_with_version(
             {
                 proposed_escrow_patch.cannot_link_entries += 1;
                 abstentions.push(AbstentionRecord {
-                    state: OrgEntityState::AbstainConflict,
+                    state: EntityState::AbstainConflict,
                     all_rows: cluster_rows.clone(),
                     reason: "trusted_anchor_conflict".to_string(),
                     incumbent_ids: incumbent_ids.clone(),
@@ -149,7 +149,7 @@ fn solve_with_version(
             proposed_registry_patch.existing_alias_entries +=
                 eligible_writeback_aliases.len() as u64;
             entities.push(SolvedEntity {
-                state: OrgEntityState::ResolvedExisting,
+                state: EntityState::ResolvedExisting,
                 canonical_id: Some(incumbent_id.clone()),
                 backbone_rows: cluster.backbone_rows.clone(),
                 attached_rows: cluster.attached_rows.clone(),
@@ -184,7 +184,7 @@ fn solve_with_version(
             );
             proposed_registry_patch.new_entity_entries += aliases.len() as u64;
             entities.push(SolvedEntity {
-                state: OrgEntityState::PromotableNew,
+                state: EntityState::PromotableNew,
                 canonical_id: Some(canonical_id),
                 backbone_rows: cluster.backbone_rows.clone(),
                 attached_rows: cluster.attached_rows.clone(),
@@ -228,7 +228,7 @@ fn solve_with_version(
         };
 
         abstentions.push(AbstentionRecord {
-            state: OrgEntityState::AbstainLowEvidence,
+            state: EntityState::AbstainLowEvidence,
             all_rows: cluster_rows,
             reason: low_evidence_reason(
                 doc_ids.len(),
@@ -306,7 +306,7 @@ struct AttachmentCandidate {
 
 fn build_observation_index(
     observations: &[ProjectedObservation],
-) -> OrgResult<BTreeMap<String, ProjectedObservation>> {
+) -> EntityResult<BTreeMap<String, ProjectedObservation>> {
     let mut index = BTreeMap::new();
 
     for observation in observations {
@@ -328,15 +328,15 @@ fn build_edge_index(
     edges: &[EdgeRecord],
     strategy_reference: &StrategyReference,
     registry_snapshot: &super::types::RegistrySnapshot,
-) -> OrgResult<BTreeMap<(String, String), EdgeRecord>> {
+) -> EntityResult<BTreeMap<(String, String), EdgeRecord>> {
     let mut index = BTreeMap::new();
 
     for edge in edges {
-        if edge.version != CANON_ORG_EDGE_VERSION {
+        if edge.version != CANON_ENTITY_EDGE_VERSION {
             return Err(artifact_error(
-                "Edge artifact version does not match canon_org_edge.v0",
+                "Edge artifact version does not match canon_entity_edge.v0",
                 json!({
-                    "expected": CANON_ORG_EDGE_VERSION,
+                    "expected": CANON_ENTITY_EDGE_VERSION,
                     "actual": edge.version,
                 }),
             ));
@@ -376,11 +376,11 @@ fn build_edge_index(
 }
 
 fn build_seed_clusters(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     observations: &BTreeMap<String, ProjectedObservation>,
     edges: &BTreeMap<(String, String), EdgeRecord>,
     contradictions: &mut Vec<super::types::ContradictionRecord>,
-) -> OrgResult<Vec<Option<Cluster>>> {
+) -> EntityResult<Vec<Option<Cluster>>> {
     let row_ids = observations.keys().cloned().collect::<Vec<_>>();
     let mut row_positions = BTreeMap::new();
     for (index, row_id) in row_ids.iter().enumerate() {
@@ -436,7 +436,7 @@ fn build_seed_clusters(
 }
 
 fn component_contradiction(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     rows: &[String],
     observations: &BTreeMap<String, ProjectedObservation>,
     edges: &BTreeMap<(String, String), EdgeRecord>,
@@ -518,7 +518,7 @@ fn seed_merge_witnesses(
 }
 
 fn best_backbone_merge_candidates(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     clusters: &[Option<Cluster>],
     observations: &BTreeMap<String, ProjectedObservation>,
     edges: &BTreeMap<(String, String), EdgeRecord>,
@@ -602,7 +602,7 @@ fn best_backbone_merge_candidates(
 }
 
 fn attachment_candidates(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     clusters: &[Option<Cluster>],
     observations: &BTreeMap<String, ProjectedObservation>,
     edges: &BTreeMap<(String, String), EdgeRecord>,
@@ -767,7 +767,7 @@ fn attached_cluster(target: &Cluster, source: &Cluster) -> Cluster {
 }
 
 fn cluster_invariants_hold(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     cluster: &Cluster,
     observations: &BTreeMap<String, ProjectedObservation>,
 ) -> bool {
@@ -816,7 +816,7 @@ fn backbone_diameter(cluster: &Cluster) -> u32 {
 }
 
 fn internal_trusted_anchor_conflict(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     rows: &[String],
     observations: &BTreeMap<String, ProjectedObservation>,
 ) -> Option<(String, String, String)> {
@@ -1029,7 +1029,7 @@ fn incumbent_anchor_index(
 }
 
 fn incumbent_anchor_conflict(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     incumbent_id: &str,
     anchors: &[AnchorValue],
     incumbent_anchor_index: &BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
@@ -1063,7 +1063,7 @@ fn incumbent_anchor_conflict(
 }
 
 fn unique_high_trust_anchor(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     anchors: &[AnchorValue],
 ) -> Option<AnchorValue> {
     for namespace in &strategy.anchors.precedence {
@@ -1091,7 +1091,7 @@ fn unique_high_trust_anchor(
 }
 
 fn is_promotable_new(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     distinct_doc_count: usize,
     has_unique_high_trust_anchor: bool,
     has_backbone_relation: bool,
@@ -1102,7 +1102,7 @@ fn is_promotable_new(
 }
 
 fn mint_canonical_id(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     unique_high_trust_anchor: Option<&AnchorValue>,
     backbone_aliases: &[String],
     backbone_rows: &[String],
@@ -1124,7 +1124,7 @@ fn mint_canonical_id(
 }
 
 fn low_evidence_cluster_is_escrow_eligible(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     cluster: &Cluster,
     rows: &[String],
     anchors: &[AnchorValue],
@@ -1155,7 +1155,7 @@ fn cluster_has_positive_name_evidence(
 }
 
 fn internal_anchor_conflict_for_values(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     anchors: &[AnchorValue],
 ) -> Option<(String, String, String)> {
     for namespace in &strategy.anchors.trusted_for_must_link {
@@ -1174,7 +1174,7 @@ fn internal_anchor_conflict_for_values(
 }
 
 fn pending_cluster_escrow_id(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     cluster: &Cluster,
     aliases: &[String],
     anchors: &[AnchorValue],
@@ -1233,7 +1233,7 @@ fn pending_cluster_escrow_id(
 }
 
 fn pending_cluster_conflicts(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     anchors: &[AnchorValue],
     pending: &super::types::PendingClusterRecord,
 ) -> bool {
@@ -1297,13 +1297,13 @@ fn contradiction_sort_key(record: &super::types::ContradictionRecord) -> (String
     )
 }
 
-fn entity_state_rank(state: OrgEntityState) -> u8 {
+fn entity_state_rank(state: EntityState) -> u8 {
     match state {
-        OrgEntityState::ResolvedExisting => 0,
-        OrgEntityState::PromotableNew => 1,
-        OrgEntityState::AbstainLowEvidence => 2,
-        OrgEntityState::AbstainConflict => 3,
-        OrgEntityState::Contradiction => 4,
+        EntityState::ResolvedExisting => 0,
+        EntityState::PromotableNew => 1,
+        EntityState::AbstainLowEvidence => 2,
+        EntityState::AbstainConflict => 3,
+        EntityState::Contradiction => 4,
     }
 }
 
@@ -1315,22 +1315,22 @@ fn build_summary(
 ) -> super::types::SolveRunSummary {
     let resolved_existing = entities
         .iter()
-        .filter(|entity| entity.state == OrgEntityState::ResolvedExisting)
+        .filter(|entity| entity.state == EntityState::ResolvedExisting)
         .map(|entity| entity.all_rows.len() as u64)
         .sum();
     let promotable_new = entities
         .iter()
-        .filter(|entity| entity.state == OrgEntityState::PromotableNew)
+        .filter(|entity| entity.state == EntityState::PromotableNew)
         .map(|entity| entity.all_rows.len() as u64)
         .sum();
     let abstain_low_evidence = abstentions
         .iter()
-        .filter(|record| record.state == OrgEntityState::AbstainLowEvidence)
+        .filter(|record| record.state == EntityState::AbstainLowEvidence)
         .map(|record| record.all_rows.len() as u64)
         .sum();
     let mut abstain_conflict = abstentions
         .iter()
-        .filter(|record| record.state == OrgEntityState::AbstainConflict)
+        .filter(|record| record.state == EntityState::AbstainConflict)
         .map(|record| record.all_rows.len() as u64)
         .sum::<u64>();
     abstain_conflict += contradictions
@@ -1415,8 +1415,8 @@ fn attachment_sort_key(
     )
 }
 
-fn artifact_error(message: impl Into<String>, detail: serde_json::Value) -> OrgError {
-    OrgError::with_detail(OrgErrorCode::ArtifactContract, message, detail)
+fn artifact_error(message: impl Into<String>, detail: serde_json::Value) -> EntityError {
+    EntityError::with_detail(EntityErrorCode::ArtifactContract, message, detail)
 }
 
 struct UnionFind {
@@ -1461,13 +1461,13 @@ impl UnionFind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::org::types::{
+    use crate::entity_runtime::types::{
         EdgeRecord, EvidenceHit, EvidenceKind, ProjectedAnchor, ProjectedSurface, StrategyAnchors,
         StrategyPromotion, StrategyReconcile, StrategySolver,
     };
 
-    fn base_strategy() -> OrgStrategy {
-        OrgStrategy {
+    fn base_strategy() -> EntityStrategy {
+        EntityStrategy {
             id: "bdc_org_graph.v1".to_string(),
             version: "0.1.0".to_string(),
             entity_type: "issuer".to_string(),
@@ -1501,17 +1501,14 @@ mod tests {
                 require_unique_for_attachment: true,
             },
             promotion: StrategyPromotion {
-                write_states: vec![
-                    OrgEntityState::ResolvedExisting,
-                    OrgEntityState::PromotableNew,
-                ],
+                write_states: vec![EntityState::ResolvedExisting, EntityState::PromotableNew],
                 require_zero_anchor_conflicts: true,
                 require_holdout_non_regression: true,
                 require_perturbation_stability_gte: 0.995,
                 min_distinct_docs: 2,
                 allow_single_doc_if_unique_anchor: true,
             },
-            ..OrgStrategy::default()
+            ..EntityStrategy::default()
         }
     }
 
@@ -1559,7 +1556,7 @@ mod tests {
     }
 
     fn edge(
-        strategy: &OrgStrategy,
+        strategy: &EntityStrategy,
         left: &str,
         right: &str,
         hits: Vec<EvidenceHit>,
@@ -1572,7 +1569,7 @@ mod tests {
             .map(|(namespace, score)| ((*namespace).to_string(), *score))
             .collect::<BTreeMap<_, _>>();
         EdgeRecord {
-            version: CANON_ORG_EDGE_VERSION.to_string(),
+            version: CANON_ENTITY_EDGE_VERSION.to_string(),
             strategy: strategy.reference(),
             registry_snapshot: registry(),
             left_row_id: left.to_string(),
@@ -1643,7 +1640,7 @@ mod tests {
         let artifact = solve(&strategy, &observations, &edges, &incumbent()).expect("solve");
 
         assert_eq!(artifact.entities.len(), 1);
-        assert_eq!(artifact.entities[0].state, OrgEntityState::PromotableNew);
+        assert_eq!(artifact.entities[0].state, EntityState::PromotableNew);
         assert_eq!(artifact.entities[0].backbone_rows, vec!["row-1", "row-2"]);
         assert_eq!(artifact.entities[0].merge_witnesses.len(), 1);
         assert_eq!(artifact.summary.promotable_new, 2);
@@ -1736,7 +1733,7 @@ mod tests {
         let artifact = solve(&strategy, &observations, &edges, &incumbent).expect("solve");
 
         assert_eq!(artifact.entities.len(), 1);
-        assert_eq!(artifact.entities[0].state, OrgEntityState::ResolvedExisting);
+        assert_eq!(artifact.entities[0].state, EntityState::ResolvedExisting);
         assert_eq!(artifact.entities[0].canonical_id.as_deref(), Some("IC-old"));
         assert_eq!(
             artifact.entities[0].eligible_writeback_aliases,
@@ -1779,10 +1776,7 @@ mod tests {
         let artifact = solve(&strategy, &observations, &edges, &incumbent).expect("solve");
 
         assert_eq!(artifact.abstentions.len(), 1);
-        assert_eq!(
-            artifact.abstentions[0].state,
-            OrgEntityState::AbstainConflict
-        );
+        assert_eq!(artifact.abstentions[0].state, EntityState::AbstainConflict);
         assert_eq!(artifact.abstentions[0].incumbent_ids, vec!["IC-1", "IC-2"]);
         assert_eq!(
             artifact.abstentions[0].escrow.as_ref().unwrap().action,
@@ -1811,7 +1805,7 @@ mod tests {
         assert_eq!(artifact.abstentions.len(), 1);
         assert_eq!(
             artifact.abstentions[0].state,
-            OrgEntityState::AbstainLowEvidence
+            EntityState::AbstainLowEvidence
         );
         assert_eq!(
             artifact.abstentions[0].escrow.as_ref().unwrap().action,

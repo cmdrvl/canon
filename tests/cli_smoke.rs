@@ -260,6 +260,26 @@ fn entity_namespace_cli() {
 }
 
 #[test]
+fn entity_namespace_internal() {
+    assert_eq!(
+        canon::entity::runtime::types::CANON_ENTITY_RUN_VERSION,
+        "canon_entity_run.v0"
+    );
+    assert_eq!(
+        canon::entity::runtime::types::CANON_ENTITY_SOLVE_VERSION,
+        "canon_entity_solve.v0"
+    );
+
+    let strategy_type = std::any::type_name::<canon::entity::runtime::types::EntityStrategy>();
+    assert!(strategy_type.contains("entity::runtime::types::EntityStrategy"));
+    assert!(!strategy_type.contains(concat!("Org", "Strategy")));
+
+    let error_type = std::any::type_name::<canon::entity::runtime::types::EntityError>();
+    assert!(error_type.contains("entity::runtime::types::EntityError"));
+    assert!(!error_type.contains(concat!("Org", "Error")));
+}
+
+#[test]
 fn exact_lookup_regression_after_entity_namespace() {
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .arg("tests/fixtures/inputs/all_resolved.csv")

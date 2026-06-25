@@ -7,20 +7,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::BTreeMap, error::Error, fmt};
 
-pub const CANON_ORG_PROJECTION_VERSION: &str = "canon_org_projection.v0";
-pub const CANON_ORG_BLOCK_VERSION: &str = "canon_org_block.v0";
-pub const CANON_ORG_EDGE_VERSION: &str = "canon_org_edge.v0";
-pub const CANON_ORG_SOLVE_VERSION: &str = "canon_org_solve.v0";
-pub const CANON_ORG_RUN_VERSION: &str = "canon_org_run.v0";
-pub const CANON_ORG_EXPLAIN_VERSION: &str = "canon_org_explain.v0";
-pub const CANON_ORG_AUDIT_VERSION: &str = "canon_org_audit.v0";
-pub const CANON_ORG_PROMOTE_VERSION: &str = "canon_org_promote.v0";
+pub const CANON_ENTITY_PROJECTION_VERSION: &str = "canon_entity_projection.v0";
+pub const CANON_ENTITY_BLOCK_VERSION: &str = "canon_entity_block.v0";
+pub const CANON_ENTITY_EDGE_VERSION: &str = "canon_entity_edge.v0";
+pub const CANON_ENTITY_SOLVE_VERSION: &str = "canon_entity_solve.v0";
+pub const CANON_ENTITY_RUN_VERSION: &str = "canon_entity_run.v0";
+pub const CANON_ENTITY_EXPLAIN_VERSION: &str = "canon_entity_explain.v0";
+pub const CANON_ENTITY_AUDIT_VERSION: &str = "canon_entity_audit.v0";
+pub const CANON_ENTITY_PROMOTE_VERSION: &str = "canon_entity_promote.v0";
 
-pub type OrgResult<T> = Result<T, OrgError>;
+pub type EntityResult<T> = Result<T, EntityError>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-pub enum OrgErrorCode {
+pub enum EntityErrorCode {
     Strategy,
     InputContract,
     Registry,
@@ -33,15 +33,15 @@ pub enum OrgErrorCode {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct OrgError {
-    pub code: OrgErrorCode,
+pub struct EntityError {
+    pub code: EntityErrorCode,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<Value>,
 }
 
-impl OrgError {
-    pub fn new(code: OrgErrorCode, message: impl Into<String>) -> Self {
+impl EntityError {
+    pub fn new(code: EntityErrorCode, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -49,7 +49,7 @@ impl OrgError {
         }
     }
 
-    pub fn with_detail(code: OrgErrorCode, message: impl Into<String>, detail: Value) -> Self {
+    pub fn with_detail(code: EntityErrorCode, message: impl Into<String>, detail: Value) -> Self {
         Self {
             code,
             message: message.into(),
@@ -59,19 +59,19 @@ impl OrgError {
 
     pub fn unimplemented(area: &'static str) -> Self {
         Self::new(
-            OrgErrorCode::Unimplemented,
+            EntityErrorCode::Unimplemented,
             format!("org scaffold placeholder for {}", area),
         )
     }
 }
 
-impl fmt::Display for OrgError {
+impl fmt::Display for EntityError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}: {}", self.code, self.message)
     }
 }
 
-impl Error for OrgError {}
+impl Error for EntityError {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct StrategyReference {
@@ -90,7 +90,7 @@ pub struct RegistrySnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-pub struct OrgStrategy {
+pub struct EntityStrategy {
     #[serde(rename = "strategy_id")]
     pub id: String,
     #[serde(rename = "strategy_version")]
@@ -112,7 +112,7 @@ pub struct OrgStrategy {
     pub content_hash: String,
 }
 
-impl OrgStrategy {
+impl EntityStrategy {
     pub fn reference(&self) -> StrategyReference {
         StrategyReference {
             id: self.id.clone(),
@@ -127,7 +127,7 @@ pub struct StrategyObservations {
     #[serde(default)]
     pub name_fields: Vec<String>,
     #[serde(default)]
-    pub required_side_fields: Vec<OrgSideField>,
+    pub required_side_fields: Vec<EntitySideField>,
     #[serde(default)]
     pub context_fields: Vec<String>,
     #[serde(default)]
@@ -136,7 +136,7 @@ pub struct StrategyObservations {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-pub enum OrgSideField {
+pub enum EntitySideField {
     #[default]
     AliasSurfacesJson,
     MentionSurfacesJson,
@@ -222,7 +222,7 @@ pub struct StrategyAnchors {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct StrategyPromotion {
     #[serde(default)]
-    pub write_states: Vec<OrgEntityState>,
+    pub write_states: Vec<EntityState>,
     #[serde(default)]
     pub require_zero_anchor_conflicts: bool,
     #[serde(default)]
@@ -258,7 +258,7 @@ pub struct ProjectedObservation {
 impl Default for ProjectedObservation {
     fn default() -> Self {
         Self {
-            version: CANON_ORG_PROJECTION_VERSION.to_string(),
+            version: CANON_ENTITY_PROJECTION_VERSION.to_string(),
             source_row_id: String::new(),
             doc_id: String::new(),
             as_of_date: None,
@@ -366,7 +366,7 @@ pub struct BlockRecord {
 impl Default for BlockRecord {
     fn default() -> Self {
         Self {
-            version: CANON_ORG_BLOCK_VERSION.to_string(),
+            version: CANON_ENTITY_BLOCK_VERSION.to_string(),
             strategy: StrategyReference::default(),
             registry_snapshot: RegistrySnapshot::default(),
             left_row_id: String::new(),
@@ -413,7 +413,7 @@ pub struct EdgeRecord {
 impl Default for EdgeRecord {
     fn default() -> Self {
         Self {
-            version: CANON_ORG_EDGE_VERSION.to_string(),
+            version: CANON_ENTITY_EDGE_VERSION.to_string(),
             strategy: StrategyReference::default(),
             registry_snapshot: RegistrySnapshot::default(),
             left_row_id: String::new(),
@@ -429,7 +429,7 @@ impl Default for EdgeRecord {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum OrgEntityState {
+pub enum EntityState {
     ResolvedExisting,
     PromotableNew,
     AbstainLowEvidence,
@@ -485,7 +485,7 @@ pub struct MergeWitness {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct SolvedEntity {
-    pub state: OrgEntityState,
+    pub state: EntityState,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub canonical_id: Option<String>,
     #[serde(default)]
@@ -509,7 +509,7 @@ pub struct SolvedEntity {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AbstentionRecord {
-    pub state: OrgEntityState,
+    pub state: EntityState,
     #[serde(default)]
     pub all_rows: Vec<String>,
     pub reason: String,
@@ -581,7 +581,7 @@ pub struct ExplainQuery {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ExplainResult {
-    pub state: OrgEntityState,
+    pub state: EntityState,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub canonical_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -701,24 +701,24 @@ mod tests {
     #[test]
     fn entity_state_serializes_as_expected() {
         let state =
-            serde_json::to_string(&OrgEntityState::ResolvedExisting).expect("state to serialize");
+            serde_json::to_string(&EntityState::ResolvedExisting).expect("state to serialize");
         assert_eq!(state, "\"RESOLVED_EXISTING\"");
     }
 
     #[test]
     fn required_side_field_serializes_as_expected() {
-        let field =
-            serde_json::to_string(&OrgSideField::MentionSurfacesJson).expect("field to serialize");
+        let field = serde_json::to_string(&EntitySideField::MentionSurfacesJson)
+            .expect("field to serialize");
         assert_eq!(field, "\"mention_surfaces_json\"");
     }
 
     #[test]
     fn strategy_reference_uses_runtime_content_hash() {
-        let strategy = OrgStrategy {
+        let strategy = EntityStrategy {
             id: "bdc_org_graph.v1".to_string(),
             version: "0.1.0".to_string(),
             content_hash: "blake3:abc".to_string(),
-            ..OrgStrategy::default()
+            ..EntityStrategy::default()
         };
 
         assert_eq!(

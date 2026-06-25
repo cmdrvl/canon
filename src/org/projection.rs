@@ -1,7 +1,7 @@
-//! Projection of normalized rows into `canon org` observations.
+//! Projection of normalized rows into `canon entity` observations.
 
 use super::types::{
-    OrgError, OrgErrorCode, OrgResult, OrgSideField, OrgStrategy, ProjectedAnchor,
+    EntityError, EntityErrorCode, EntityResult, EntitySideField, EntityStrategy, ProjectedAnchor,
     ProjectedObservation, ProjectedSurface,
 };
 use csv::{ReaderBuilder, StringRecord};
@@ -15,10 +15,10 @@ use std::{
 
 pub fn project_input(
     input_path: &Path,
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     max_bytes: Option<u64>,
     max_rows: Option<usize>,
-) -> OrgResult<Vec<ProjectedObservation>> {
+) -> EntityResult<Vec<ProjectedObservation>> {
     let format = detect_format(input_path)?;
 
     if input_path != Path::new("-")
@@ -79,7 +79,7 @@ impl RawRow {
         self.values.get(field)
     }
 
-    fn required_string(&self, field: &str) -> OrgResult<String> {
+    fn required_string(&self, field: &str) -> EntityResult<String> {
         let value = self.get(field).ok_or_else(|| {
             input_contract_error(
                 format!("Missing required field '{}'", field),
@@ -102,7 +102,7 @@ impl RawRow {
     }
 }
 
-fn detect_format(input_path: &Path) -> OrgResult<ProjectionInputFormat> {
+fn detect_format(input_path: &Path) -> EntityResult<ProjectionInputFormat> {
     if input_path == Path::new("-") {
         return Ok(ProjectionInputFormat::Jsonl);
     }
@@ -134,9 +134,9 @@ fn detect_format(input_path: &Path) -> OrgResult<ProjectionInputFormat> {
 
 fn project_csv(
     input_path: &Path,
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     max_rows: Option<usize>,
-) -> OrgResult<Vec<ProjectedObservation>> {
+) -> EntityResult<Vec<ProjectedObservation>> {
     let file = File::open(input_path).map_err(|error| {
         input_contract_error(
             "Failed to open org input",
@@ -206,10 +206,10 @@ fn project_csv(
 
 fn project_jsonl(
     input_path: &Path,
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     max_bytes: Option<u64>,
     max_rows: Option<usize>,
-) -> OrgResult<Vec<ProjectedObservation>> {
+) -> EntityResult<Vec<ProjectedObservation>> {
     if input_path == Path::new("-") {
         let stdin = io::stdin();
         project_jsonl_reader(stdin.lock(), strategy, max_bytes, max_rows, true)
@@ -229,11 +229,11 @@ fn project_jsonl(
 
 fn project_jsonl_reader<R: BufRead>(
     mut reader: R,
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     max_bytes: Option<u64>,
     max_rows: Option<usize>,
     track_bytes: bool,
-) -> OrgResult<Vec<ProjectedObservation>> {
+) -> EntityResult<Vec<ProjectedObservation>> {
     let mut observations = Vec::new();
     let mut row_count = 0usize;
     let mut byte_count = 0u64;
@@ -307,7 +307,7 @@ fn project_jsonl_reader<R: BufRead>(
     Ok(observations)
 }
 
-fn validate_csv_headers(headers: &[String], strategy: &OrgStrategy) -> OrgResult<()> {
+fn validate_csv_headers(headers: &[String], strategy: &EntityStrategy) -> EntityResult<()> {
     let header_set = headers.iter().map(String::as_str).collect::<BTreeSet<_>>();
 
     for field in ["source_row_id", "doc_id", "as_of_date"] {
@@ -373,7 +373,7 @@ fn json_object_to_raw(row_number: usize, object: &Map<String, Value>) -> RawRow 
     }
 }
 
-fn project_row(row: &RawRow, strategy: &OrgStrategy) -> OrgResult<ProjectedObservation> {
+fn project_row(row: &RawRow, strategy: &EntityStrategy) -> EntityResult<ProjectedObservation> {
     let source_row_id = row.required_string("source_row_id")?;
     let doc_id = row.required_string("doc_id")?;
     let as_of_date = row.required_string("as_of_date")?;
@@ -385,7 +385,7 @@ fn project_row(row: &RawRow, strategy: &OrgStrategy) -> OrgResult<ProjectedObser
         strategy
             .observations
             .required_side_fields
-            .contains(&OrgSideField::AliasSurfacesJson),
+            .contains(&EntitySideField::AliasSurfacesJson),
     )?;
     let mention_surfaces = side_surfaces(
         row,
@@ -393,7 +393,7 @@ fn project_row(row: &RawRow, strategy: &OrgStrategy) -> OrgResult<ProjectedObser
         strategy
             .observations
             .required_side_fields
-            .contains(&OrgSideField::MentionSurfacesJson),
+            .contains(&EntitySideField::MentionSurfacesJson),
     )?;
 
     let anchors = projected_anchors(row, strategy)?;
@@ -420,7 +420,7 @@ fn project_row(row: &RawRow, strategy: &OrgStrategy) -> OrgResult<ProjectedObser
     })
 }
 
-fn primary_surface(row: &RawRow, strategy: &OrgStrategy) -> OrgResult<ProjectedSurface> {
+fn primary_surface(row: &RawRow, strategy: &EntityStrategy) -> EntityResult<ProjectedSurface> {
     for field in &strategy.observations.name_fields {
         match row.get(field) {
             None | Some(Value::Null) => continue,
@@ -448,7 +448,7 @@ fn side_surfaces(
     row: &RawRow,
     field_name: &str,
     required: bool,
-) -> OrgResult<Vec<ProjectedSurface>> {
+) -> EntityResult<Vec<ProjectedSurface>> {
     let value = match row.get(field_name) {
         None => {
             if required {
@@ -475,7 +475,11 @@ fn side_surfaces(
         .collect())
 }
 
-fn decode_side_field(value: &Value, field_name: &str, row_number: usize) -> OrgResult<Vec<String>> {
+fn decode_side_field(
+    value: &Value,
+    field_name: &str,
+    row_number: usize,
+) -> EntityResult<Vec<String>> {
     let array = match value {
         Value::Array(items) => items.clone(),
         Value::String(text) => {
@@ -557,7 +561,10 @@ fn decode_side_field(value: &Value, field_name: &str, row_number: usize) -> OrgR
     Ok(surfaces)
 }
 
-fn projected_anchors(row: &RawRow, strategy: &OrgStrategy) -> OrgResult<Vec<ProjectedAnchor>> {
+fn projected_anchors(
+    row: &RawRow,
+    strategy: &EntityStrategy,
+) -> EntityResult<Vec<ProjectedAnchor>> {
     let mut anchors = Vec::new();
 
     for (namespace, field) in &strategy.observations.anchor_fields {
@@ -578,7 +585,10 @@ fn projected_anchors(row: &RawRow, strategy: &OrgStrategy) -> OrgResult<Vec<Proj
     Ok(anchors)
 }
 
-fn projected_context(row: &RawRow, strategy: &OrgStrategy) -> OrgResult<BTreeMap<String, Value>> {
+fn projected_context(
+    row: &RawRow,
+    strategy: &EntityStrategy,
+) -> EntityResult<BTreeMap<String, Value>> {
     let mut context = BTreeMap::new();
 
     for field in &strategy.observations.context_fields {
@@ -650,7 +660,7 @@ fn projected_provenance(
     provenance
 }
 
-fn scalar_string(value: &Value, field: &str, row_number: usize) -> OrgResult<Option<String>> {
+fn scalar_string(value: &Value, field: &str, row_number: usize) -> EntityResult<Option<String>> {
     match value {
         Value::Null => Ok(None),
         Value::String(text) => {
@@ -673,14 +683,14 @@ fn scalar_string(value: &Value, field: &str, row_number: usize) -> OrgResult<Opt
     }
 }
 
-fn side_field_name(field: OrgSideField) -> &'static str {
+fn side_field_name(field: EntitySideField) -> &'static str {
     match field {
-        OrgSideField::AliasSurfacesJson => "alias_surfaces_json",
-        OrgSideField::MentionSurfacesJson => "mention_surfaces_json",
+        EntitySideField::AliasSurfacesJson => "alias_surfaces_json",
+        EntitySideField::MentionSurfacesJson => "mention_surfaces_json",
     }
 }
 
-fn detect_csv_delimiter(mut file: &File) -> OrgResult<u8> {
+fn detect_csv_delimiter(mut file: &File) -> EntityResult<u8> {
     let mut buffer = vec![0; 8192];
     let initial_pos = file.stream_position().map_err(|error| {
         input_contract_error(
@@ -739,11 +749,11 @@ fn is_blank_record(record: &StringRecord) -> bool {
     record.iter().all(|field| field.trim().is_empty())
 }
 
-fn input_contract_error(message: impl Into<String>, detail: Value) -> OrgError {
-    OrgError::with_detail(OrgErrorCode::InputContract, message, detail)
+fn input_contract_error(message: impl Into<String>, detail: Value) -> EntityError {
+    EntityError::with_detail(EntityErrorCode::InputContract, message, detail)
 }
 
-fn limit_error(limit_type: &str, limit: String, actual: String) -> OrgError {
+fn limit_error(limit_type: &str, limit: String, actual: String) -> EntityError {
     input_contract_error(
         format!("Input exceeds --{} limit", limit_type),
         json!({
@@ -757,14 +767,14 @@ fn limit_error(limit_type: &str, limit: String, actual: String) -> OrgError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::org::types::{
+    use crate::entity_runtime::types::{
         NormalizeConfig, StrategyAnchors, StrategyEvidence, StrategyObservations,
         StrategyPromotion, StrategyReconcile, StrategySolver,
     };
     use tempfile::NamedTempFile;
 
-    fn test_strategy(required_side_fields: Vec<OrgSideField>) -> OrgStrategy {
-        OrgStrategy {
+    fn test_strategy(required_side_fields: Vec<EntitySideField>) -> EntityStrategy {
+        EntityStrategy {
             id: "bdc_org_graph.v1".to_string(),
             version: "0.1.0".to_string(),
             entity_type: "issuer".to_string(),
@@ -910,14 +920,14 @@ mod tests {
 
     #[test]
     fn refuses_when_required_side_field_is_missing() {
-        let strategy = test_strategy(vec![OrgSideField::AliasSurfacesJson]);
+        let strategy = test_strategy(vec![EntitySideField::AliasSurfacesJson]);
         let file = write_csv(
             &["source_row_id", "doc_id", "as_of_date", "portfolio_company"],
             &[vec!["row-1", "doc-1", "2025-12-31", "Acme Corp."]],
         );
 
         let error = project_input(file.path(), &strategy, None, None).expect_err("missing side");
-        assert_eq!(error.code, OrgErrorCode::InputContract);
+        assert_eq!(error.code, EntityErrorCode::InputContract);
         assert!(error.message.contains("Missing required side field"));
     }
 
@@ -942,7 +952,7 @@ mod tests {
         );
 
         let error = project_input(file.path(), &strategy, None, None).expect_err("bad side field");
-        assert_eq!(error.code, OrgErrorCode::InputContract);
+        assert_eq!(error.code, EntityErrorCode::InputContract);
         assert!(error.message.contains("may contain only strings"));
     }
 
@@ -958,7 +968,7 @@ mod tests {
         );
 
         let error = project_input(file.path(), &strategy, None, Some(1)).expect_err("max rows");
-        assert_eq!(error.code, OrgErrorCode::InputContract);
+        assert_eq!(error.code, EntityErrorCode::InputContract);
         assert!(error.message.contains("max_rows"));
     }
 
@@ -972,7 +982,7 @@ mod tests {
 
         let error =
             project_input(file.path(), &strategy, Some(byte_len - 1), None).expect_err("max bytes");
-        assert_eq!(error.code, OrgErrorCode::InputContract);
+        assert_eq!(error.code, EntityErrorCode::InputContract);
         assert!(error.message.contains("max_bytes"));
     }
 }

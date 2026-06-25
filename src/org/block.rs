@@ -1,8 +1,8 @@
-//! Candidate-block generation for `canon org`.
+//! Candidate-block generation for `canon entity`.
 
 use super::types::{
-    BlockHit, BlockRecord, IncumbentMemory, OrgError, OrgErrorCode, OrgResult, OrgStrategy,
-    ProjectedObservation,
+    BlockHit, BlockRecord, EntityError, EntityErrorCode, EntityResult, EntityStrategy,
+    IncumbentMemory, ProjectedObservation,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -54,10 +54,10 @@ struct PreparedObservation {
 }
 
 pub fn build_candidate_blocks(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     observations: &[ProjectedObservation],
     incumbent: &IncumbentMemory,
-) -> OrgResult<Vec<BlockRecord>> {
+) -> EntityResult<Vec<BlockRecord>> {
     let prepared = prepare_observations(strategy, observations, incumbent);
     let mut pair_hits: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
 
@@ -83,7 +83,7 @@ pub fn build_candidate_blocks(
     Ok(pair_hits
         .into_iter()
         .map(|((left_row_id, right_row_id), hits)| BlockRecord {
-            version: super::types::CANON_ORG_BLOCK_VERSION.to_string(),
+            version: super::types::CANON_ENTITY_BLOCK_VERSION.to_string(),
             strategy: strategy.reference(),
             registry_snapshot: incumbent.registry.clone(),
             left_row_id,
@@ -97,7 +97,7 @@ pub fn build_candidate_blocks(
 }
 
 fn prepare_observations(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     observations: &[ProjectedObservation],
     incumbent: &IncumbentMemory,
 ) -> Vec<PreparedObservation> {
@@ -178,7 +178,7 @@ fn observation_surfaces(observation: &ProjectedObservation) -> BTreeSet<String> 
 }
 
 fn normalize_views(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     surfaces: &BTreeSet<String>,
 ) -> BTreeMap<String, BTreeSet<String>> {
     strategy
@@ -305,11 +305,11 @@ fn normalize_token(token: &str) -> String {
 }
 
 fn apply_exact_view(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     operator: &super::types::StrategyOperator,
     observations: &[PreparedObservation],
     pair_hits: &mut BTreeMap<(String, String), BTreeSet<String>>,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     let view = required_string_param(operator, "view")?;
     require_known_view(strategy, &view)?;
 
@@ -334,11 +334,11 @@ fn apply_exact_view(
 }
 
 fn apply_shared_anchor(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     operator: &super::types::StrategyOperator,
     observations: &[PreparedObservation],
     pair_hits: &mut BTreeMap<(String, String), BTreeSet<String>>,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     let anchor = required_string_param(operator, "anchor")?;
     if !strategy.observations.anchor_fields.contains_key(&anchor) {
         return Err(strategy_error(
@@ -388,11 +388,11 @@ fn apply_registry_alias_match(
 }
 
 fn apply_rare_token_overlap(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     operator: &super::types::StrategyOperator,
     observations: &[PreparedObservation],
     pair_hits: &mut BTreeMap<(String, String), BTreeSet<String>>,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     let left_view = required_string_param(operator, "left_view")?;
     let right_view = required_string_param(operator, "right_view")?;
     let min_tokens = required_usize_param(operator, "min_tokens")?;
@@ -523,7 +523,7 @@ fn insert_pair_hit(
         .insert(operator_id.to_string());
 }
 
-fn require_known_view(strategy: &OrgStrategy, view: &str) -> OrgResult<()> {
+fn require_known_view(strategy: &EntityStrategy, view: &str) -> EntityResult<()> {
     if strategy.normalize.views.contains_key(view) {
         Ok(())
     } else {
@@ -537,7 +537,7 @@ fn require_known_view(strategy: &OrgStrategy, view: &str) -> OrgResult<()> {
 fn required_string_param(
     operator: &super::types::StrategyOperator,
     key: &str,
-) -> OrgResult<String> {
+) -> EntityResult<String> {
     let value = operator.params.get(key).ok_or_else(|| {
         strategy_error(
             "Blocking operator is missing a required string parameter",
@@ -557,7 +557,10 @@ fn required_string_param(
         })
 }
 
-fn required_usize_param(operator: &super::types::StrategyOperator, key: &str) -> OrgResult<usize> {
+fn required_usize_param(
+    operator: &super::types::StrategyOperator,
+    key: &str,
+) -> EntityResult<usize> {
     let value = operator.params.get(key).ok_or_else(|| {
         strategy_error(
             "Blocking operator is missing a required integer parameter",
@@ -576,7 +579,7 @@ fn required_usize_param(operator: &super::types::StrategyOperator, key: &str) ->
         })
 }
 
-fn required_f64_param(operator: &super::types::StrategyOperator, key: &str) -> OrgResult<f64> {
+fn required_f64_param(operator: &super::types::StrategyOperator, key: &str) -> EntityResult<f64> {
     let value = operator.params.get(key).ok_or_else(|| {
         strategy_error(
             "Blocking operator is missing a required numeric parameter",
@@ -601,15 +604,15 @@ fn trim_to_option(value: &str) -> Option<String> {
     }
 }
 
-fn strategy_error(message: &str, detail: Value) -> OrgError {
-    OrgError::with_detail(OrgErrorCode::Strategy, message, detail)
+fn strategy_error(message: &str, detail: Value) -> EntityError {
+    EntityError::with_detail(EntityErrorCode::Strategy, message, detail)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::org::types::{
-        NormalizeConfig, OrgStrategy, ProjectedAnchor, ProjectedSurface, StrategyObservations,
+    use crate::entity_runtime::types::{
+        EntityStrategy, NormalizeConfig, ProjectedAnchor, ProjectedSurface, StrategyObservations,
         StrategyOperator,
     };
 
@@ -749,8 +752,8 @@ mod tests {
         );
     }
 
-    fn test_strategy(blocking: Vec<StrategyOperator>) -> OrgStrategy {
-        OrgStrategy {
+    fn test_strategy(blocking: Vec<StrategyOperator>) -> EntityStrategy {
+        EntityStrategy {
             id: "bdc_org_graph.v1".to_string(),
             version: "0.1.0".to_string(),
             content_hash: "blake3:test".to_string(),
@@ -780,13 +783,13 @@ mod tests {
                 ]),
             },
             blocking,
-            ..OrgStrategy::default()
+            ..EntityStrategy::default()
         }
     }
 
     fn incumbent_memory() -> IncumbentMemory {
         IncumbentMemory {
-            registry: crate::org::types::RegistrySnapshot {
+            registry: crate::entity_runtime::types::RegistrySnapshot {
                 id: "bdc-issuers".to_string(),
                 version: "2026.03.01".to_string(),
                 source: "registries/bdc-issuers".to_string(),

@@ -1,9 +1,9 @@
-//! Evidence-edge generation for `canon org`.
+//! Evidence-edge generation for `canon entity`.
 
 use super::types::{
-    BlockRecord, EdgeRecord, EvidenceHit, EvidenceKind, IncumbentMemory, OrgError, OrgErrorCode,
-    OrgResult, OrgStrategy, ProjectedObservation, RegistrySnapshot, StrategyOperator,
-    StrategyReference,
+    BlockRecord, EdgeRecord, EntityError, EntityErrorCode, EntityResult, EntityStrategy,
+    EvidenceHit, EvidenceKind, IncumbentMemory, ProjectedObservation, RegistrySnapshot,
+    StrategyOperator, StrategyReference,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -29,11 +29,11 @@ const LEGAL_SUFFIXES: &[&str] = &[
 ];
 
 pub fn build_edges(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     observations: &[ProjectedObservation],
     candidates: &[BlockRecord],
     incumbent: &IncumbentMemory,
-) -> OrgResult<Vec<EdgeRecord>> {
+) -> EntityResult<Vec<EdgeRecord>> {
     let facts = ObservationFactsIndex::build(strategy, observations, incumbent)?;
     let strategy_reference = strategy.reference();
     let mut ordered_candidates = candidates.to_vec();
@@ -51,7 +51,7 @@ fn build_edge_record(
     strategy_reference: &StrategyReference,
     facts: &ObservationFactsIndex,
     candidate: &BlockRecord,
-) -> OrgResult<EdgeRecord> {
+) -> EntityResult<EdgeRecord> {
     validate_candidate(candidate, strategy_reference, &facts.registry_snapshot)?;
 
     let left = facts
@@ -102,7 +102,7 @@ fn build_edge_record(
         .any(|hit| matches!(hit.kind, EvidenceKind::CannotLink));
 
     Ok(EdgeRecord {
-        version: super::types::CANON_ORG_EDGE_VERSION.to_string(),
+        version: super::types::CANON_ENTITY_EDGE_VERSION.to_string(),
         strategy: strategy_reference.clone(),
         registry_snapshot: facts.registry_snapshot.clone(),
         left_row_id: candidate.left_row_id.clone(),
@@ -119,12 +119,12 @@ fn validate_candidate(
     candidate: &BlockRecord,
     strategy_reference: &StrategyReference,
     registry_snapshot: &RegistrySnapshot,
-) -> OrgResult<()> {
-    if candidate.version != super::types::CANON_ORG_BLOCK_VERSION {
+) -> EntityResult<()> {
+    if candidate.version != super::types::CANON_ENTITY_BLOCK_VERSION {
         return Err(artifact_error(
-            "Candidate block artifact version does not match canon_org_block.v0",
+            "Candidate block artifact version does not match canon_entity_block.v0",
             json!({
-                "expected": super::types::CANON_ORG_BLOCK_VERSION,
+                "expected": super::types::CANON_ENTITY_BLOCK_VERSION,
                 "actual": candidate.version,
             }),
         ));
@@ -157,7 +157,7 @@ fn evaluate_must_link(
     operator: &StrategyOperator,
     left: &ObservationFacts,
     right: &ObservationFacts,
-) -> OrgResult<Option<EvidenceHit>> {
+) -> EntityResult<Option<EvidenceHit>> {
     match operator.op.as_str() {
         "shared_anchor" => {
             let anchor = string_param(operator, "anchor")?;
@@ -180,7 +180,7 @@ fn evaluate_support(
     operator: &StrategyOperator,
     left: &ObservationFacts,
     right: &ObservationFacts,
-) -> OrgResult<Option<EvidenceHit>> {
+) -> EntityResult<Option<EvidenceHit>> {
     match operator.op.as_str() {
         "exact_view" => {
             let view = string_param(operator, "view")?;
@@ -215,7 +215,7 @@ fn evaluate_cannot_link(
     operator: &StrategyOperator,
     left: &ObservationFacts,
     right: &ObservationFacts,
-) -> OrgResult<Option<EvidenceHit>> {
+) -> EntityResult<Option<EvidenceHit>> {
     match operator.op.as_str() {
         "conflicting_anchor" => {
             let anchor = string_param(operator, "anchor")?;
@@ -375,7 +375,7 @@ fn context_values_equal(left: &Value, right: &Value) -> bool {
     }
 }
 
-fn string_param<'a>(operator: &'a StrategyOperator, key: &str) -> OrgResult<&'a str> {
+fn string_param<'a>(operator: &'a StrategyOperator, key: &str) -> EntityResult<&'a str> {
     operator
         .params
         .get(key)
@@ -391,7 +391,7 @@ fn string_param<'a>(operator: &'a StrategyOperator, key: &str) -> OrgResult<&'a 
         })
 }
 
-fn i64_param(operator: &StrategyOperator, key: &str) -> OrgResult<i64> {
+fn i64_param(operator: &StrategyOperator, key: &str) -> EntityResult<i64> {
     operator
         .params
         .get(key)
@@ -407,7 +407,7 @@ fn i64_param(operator: &StrategyOperator, key: &str) -> OrgResult<i64> {
         })
 }
 
-fn missing_row_error(field: &str, row_id: &str) -> OrgError {
+fn missing_row_error(field: &str, row_id: &str) -> EntityError {
     artifact_error(
         "Candidate block artifact references an unknown row",
         json!({
@@ -417,12 +417,12 @@ fn missing_row_error(field: &str, row_id: &str) -> OrgError {
     )
 }
 
-fn strategy_error(message: &str, detail: Value) -> OrgError {
-    OrgError::with_detail(OrgErrorCode::Strategy, message, detail)
+fn strategy_error(message: &str, detail: Value) -> EntityError {
+    EntityError::with_detail(EntityErrorCode::Strategy, message, detail)
 }
 
-fn artifact_error(message: &str, detail: Value) -> OrgError {
-    OrgError::with_detail(OrgErrorCode::ArtifactContract, message, detail)
+fn artifact_error(message: &str, detail: Value) -> EntityError {
+    EntityError::with_detail(EntityErrorCode::ArtifactContract, message, detail)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -434,17 +434,17 @@ struct ObservationFacts {
 }
 
 struct ObservationFactsIndex {
-    strategy: OrgStrategy,
+    strategy: EntityStrategy,
     registry_snapshot: RegistrySnapshot,
     observations: BTreeMap<String, ObservationFacts>,
 }
 
 impl ObservationFactsIndex {
     fn build(
-        strategy: &OrgStrategy,
+        strategy: &EntityStrategy,
         observations: &[ProjectedObservation],
         incumbent: &IncumbentMemory,
-    ) -> OrgResult<Self> {
+    ) -> EntityResult<Self> {
         let alias_lookup = build_alias_lookup(incumbent);
         let mut facts_by_row = BTreeMap::new();
 
@@ -486,7 +486,7 @@ fn build_alias_lookup(incumbent: &IncumbentMemory) -> BTreeMap<String, BTreeSet<
 fn build_views(
     view_pipelines: &BTreeMap<String, Vec<String>>,
     observation: &ProjectedObservation,
-) -> OrgResult<BTreeMap<String, BTreeSet<String>>> {
+) -> EntityResult<BTreeMap<String, BTreeSet<String>>> {
     let surfaces = observation_surfaces(observation);
     let mut views = BTreeMap::new();
 
@@ -551,7 +551,7 @@ fn build_registry_ids(
     registry_ids
 }
 
-fn apply_view_pipeline(surface: &str, pipeline: &[String]) -> OrgResult<Option<String>> {
+fn apply_view_pipeline(surface: &str, pipeline: &[String]) -> EntityResult<Option<String>> {
     let mut value = surface.to_string();
     for operator in pipeline {
         value = apply_normalize_operator(operator, &value)?;
@@ -565,7 +565,7 @@ fn apply_view_pipeline(surface: &str, pipeline: &[String]) -> OrgResult<Option<S
     }
 }
 
-fn apply_normalize_operator(operator: &str, value: &str) -> OrgResult<String> {
+fn apply_normalize_operator(operator: &str, value: &str) -> EntityResult<String> {
     match operator {
         "lowercase" => Ok(value.to_lowercase()),
         "ascii_trim" => Ok(value
@@ -674,7 +674,7 @@ fn initials_from_view(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::org::types::{
+    use crate::entity_runtime::types::{
         AliasMappingEntry, BlockHit, ProjectedAnchor, ProjectedSurface, StrategyAnchors,
         StrategyEvidence, StrategyObservations, StrategySolver,
     };
@@ -851,10 +851,10 @@ mod tests {
         let error = build_edges(&strategy, &observations, &[candidate], &incumbent)
             .expect_err("mismatched strategy to fail");
 
-        assert_eq!(error.code, OrgErrorCode::ArtifactContract);
+        assert_eq!(error.code, EntityErrorCode::ArtifactContract);
     }
 
-    fn fixture_strategy() -> OrgStrategy {
+    fn fixture_strategy() -> EntityStrategy {
         let mut anchor_fields = BTreeMap::new();
         anchor_fields.insert("lei".to_string(), "lei".to_string());
 
@@ -874,7 +874,7 @@ mod tests {
             vec!["tokenize".to_string(), "drop_stopwords".to_string()],
         );
 
-        OrgStrategy {
+        EntityStrategy {
             id: "bdc_org_graph.v1".to_string(),
             version: "0.1.0".to_string(),
             entity_type: "issuer".to_string(),
@@ -920,7 +920,7 @@ mod tests {
             },
             solver: StrategySolver::default(),
             content_hash: "blake3:strategy".to_string(),
-            ..OrgStrategy::default()
+            ..EntityStrategy::default()
         }
     }
 
@@ -942,7 +942,7 @@ mod tests {
         context: Vec<(&str, Value)>,
     ) -> ProjectedObservation {
         ProjectedObservation {
-            version: super::super::types::CANON_ORG_PROJECTION_VERSION.to_string(),
+            version: super::super::types::CANON_ENTITY_PROJECTION_VERSION.to_string(),
             source_row_id: row_id.to_string(),
             doc_id: "doc-1".to_string(),
             as_of_date: Some("2025-12-31".to_string()),
@@ -977,11 +977,11 @@ mod tests {
     fn fixture_block(
         left_row_id: &str,
         right_row_id: &str,
-        strategy: &OrgStrategy,
+        strategy: &EntityStrategy,
         registry: &RegistrySnapshot,
     ) -> BlockRecord {
         BlockRecord {
-            version: super::super::types::CANON_ORG_BLOCK_VERSION.to_string(),
+            version: super::super::types::CANON_ENTITY_BLOCK_VERSION.to_string(),
             strategy: strategy.reference(),
             registry_snapshot: registry.clone(),
             left_row_id: left_row_id.to_string(),

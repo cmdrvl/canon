@@ -1,8 +1,8 @@
-//! Incumbent registry-memory loading and snapshot hashing for `canon org`.
+//! Incumbent registry-memory loading and snapshot hashing for `canon entity`.
 
 use super::types::{
-    AliasMappingEntry, AnchorValue, CannotLinkFact, IncumbentMemory, OrgError, OrgErrorCode,
-    OrgResult, PendingClusterRecord, RegistrySnapshot, RowPair, TrustedAnchorRecord,
+    AliasMappingEntry, AnchorValue, CannotLinkFact, EntityError, EntityErrorCode, EntityResult,
+    IncumbentMemory, PendingClusterRecord, RegistrySnapshot, RowPair, TrustedAnchorRecord,
 };
 use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::json;
@@ -61,7 +61,7 @@ impl RawRowPair {
     }
 }
 
-pub fn load_incumbent_memory(registry_dir: &Path) -> OrgResult<IncumbentMemory> {
+pub fn load_incumbent_memory(registry_dir: &Path) -> EntityResult<IncumbentMemory> {
     let metadata = load_registry_metadata(registry_dir)?;
     let alias_files = discover_alias_files(registry_dir)?;
     let anchor_files = discover_anchor_sidecars(registry_dir)?;
@@ -95,7 +95,7 @@ pub fn load_incumbent_memory(registry_dir: &Path) -> OrgResult<IncumbentMemory> 
     })
 }
 
-pub fn lookup_snapshot_hash(registry_dir: &Path) -> OrgResult<String> {
+pub fn lookup_snapshot_hash(registry_dir: &Path) -> EntityResult<String> {
     let alias_files = discover_alias_files(registry_dir)?;
     let anchor_files = discover_anchor_sidecars(registry_dir)?;
     compute_manifest_hash(
@@ -105,7 +105,7 @@ pub fn lookup_snapshot_hash(registry_dir: &Path) -> OrgResult<String> {
     )
 }
 
-pub fn escrow_snapshot_hash(registry_dir: &Path) -> OrgResult<String> {
+pub fn escrow_snapshot_hash(registry_dir: &Path) -> EntityResult<String> {
     let escrow_files = discover_escrow_sidecars(registry_dir);
     compute_manifest_hash(
         registry_dir,
@@ -114,7 +114,7 @@ pub fn escrow_snapshot_hash(registry_dir: &Path) -> OrgResult<String> {
     )
 }
 
-fn load_registry_metadata(registry_dir: &Path) -> OrgResult<RegistryJson> {
+fn load_registry_metadata(registry_dir: &Path) -> EntityResult<RegistryJson> {
     if !registry_dir.is_dir() {
         return Err(registry_error(
             format!("Registry directory not found: {}", registry_dir.display()),
@@ -147,7 +147,7 @@ fn load_registry_metadata(registry_dir: &Path) -> OrgResult<RegistryJson> {
     })
 }
 
-fn discover_alias_files(registry_dir: &Path) -> OrgResult<Vec<PathBuf>> {
+fn discover_alias_files(registry_dir: &Path) -> EntityResult<Vec<PathBuf>> {
     let mut files = Vec::new();
     let entries = fs::read_dir(registry_dir).map_err(|error| {
         registry_error(
@@ -190,7 +190,7 @@ fn discover_alias_files(registry_dir: &Path) -> OrgResult<Vec<PathBuf>> {
     Ok(files)
 }
 
-fn discover_anchor_sidecars(registry_dir: &Path) -> OrgResult<Vec<PathBuf>> {
+fn discover_anchor_sidecars(registry_dir: &Path) -> EntityResult<Vec<PathBuf>> {
     let anchors_dir = registry_dir.join("_anchors");
     if !anchors_dir.is_dir() {
         return Ok(Vec::new());
@@ -273,7 +273,7 @@ fn build_escrow_manifest_paths(sidecars: &EscrowSidecars) -> Vec<PathBuf> {
     files
 }
 
-fn load_alias_entries(paths: &[PathBuf]) -> OrgResult<Vec<AliasMappingEntry>> {
+fn load_alias_entries(paths: &[PathBuf]) -> EntityResult<Vec<AliasMappingEntry>> {
     let mut entries = Vec::new();
 
     for path in paths {
@@ -333,7 +333,7 @@ fn load_alias_entries(paths: &[PathBuf]) -> OrgResult<Vec<AliasMappingEntry>> {
     Ok(entries)
 }
 
-fn load_trusted_anchors(paths: &[PathBuf]) -> OrgResult<Vec<TrustedAnchorRecord>> {
+fn load_trusted_anchors(paths: &[PathBuf]) -> EntityResult<Vec<TrustedAnchorRecord>> {
     let mut anchors = Vec::new();
 
     for path in paths {
@@ -366,7 +366,7 @@ fn load_trusted_anchors(paths: &[PathBuf]) -> OrgResult<Vec<TrustedAnchorRecord>
     Ok(anchors)
 }
 
-fn load_pending_clusters(path: &Option<PathBuf>) -> OrgResult<Vec<PendingClusterRecord>> {
+fn load_pending_clusters(path: &Option<PathBuf>) -> EntityResult<Vec<PendingClusterRecord>> {
     let Some(path) = path else {
         return Ok(Vec::new());
     };
@@ -466,7 +466,7 @@ fn load_pending_clusters(path: &Option<PathBuf>) -> OrgResult<Vec<PendingCluster
     Ok(clusters)
 }
 
-fn load_cannot_link_facts(path: &Option<PathBuf>) -> OrgResult<Vec<CannotLinkFact>> {
+fn load_cannot_link_facts(path: &Option<PathBuf>) -> EntityResult<Vec<CannotLinkFact>> {
     let Some(path) = path else {
         return Ok(Vec::new());
     };
@@ -500,7 +500,7 @@ fn load_cannot_link_facts(path: &Option<PathBuf>) -> OrgResult<Vec<CannotLinkFac
     Ok(facts)
 }
 
-fn read_jsonl<T>(path: &Path, context: &str) -> OrgResult<Vec<(usize, T)>>
+fn read_jsonl<T>(path: &Path, context: &str) -> EntityResult<Vec<(usize, T)>>
 where
     T: DeserializeOwned,
 {
@@ -552,7 +552,7 @@ fn compute_manifest_hash(
     registry_dir: &Path,
     paths: &[PathBuf],
     context: &str,
-) -> OrgResult<String> {
+) -> EntityResult<String> {
     let mut manifest = Vec::new();
 
     for path in paths {
@@ -591,7 +591,7 @@ fn validate_non_empty(
     value: &str,
     path: &Path,
     location: Option<usize>,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     if value.trim().is_empty() {
         let mut detail = json!({
             "path": path.display().to_string(),
@@ -610,8 +610,8 @@ fn validate_non_empty(
     Ok(())
 }
 
-fn registry_error(message: impl Into<String>, detail: serde_json::Value) -> OrgError {
-    OrgError::with_detail(OrgErrorCode::Registry, message, detail)
+fn registry_error(message: impl Into<String>, detail: serde_json::Value) -> EntityError {
+    EntityError::with_detail(EntityErrorCode::Registry, message, detail)
 }
 
 #[cfg(test)]
@@ -835,7 +835,7 @@ mod tests {
         .unwrap();
 
         let error = load_incumbent_memory(temp_dir.path()).unwrap_err();
-        assert_eq!(error.code, OrgErrorCode::Registry);
+        assert_eq!(error.code, EntityErrorCode::Registry);
         assert!(error.message.contains("trusted anchor"));
     }
 }

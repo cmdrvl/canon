@@ -44,7 +44,7 @@ pub enum RegistryVersionBumpMode {
 
 /// Emit mode for org artifact subcommands
 #[derive(Debug, Clone, ValueEnum, Default)]
-pub enum OrgEmitMode {
+pub enum EntityEmitMode {
     /// Structured org JSON artifact (default)
     #[default]
     Json,
@@ -64,7 +64,7 @@ pub enum ResolveEmitMode {
 
 /// Emit mode for org streaming subcommands
 #[derive(Debug, Clone, ValueEnum, Default)]
-pub enum OrgStreamEmitMode {
+pub enum EntityStreamEmitMode {
     /// Line-delimited org records (default)
     #[default]
     Jsonl,
@@ -74,7 +74,7 @@ pub enum OrgStreamEmitMode {
 
 /// Emit mode for org review export
 #[derive(Debug, Clone, ValueEnum, Default)]
-pub enum OrgReviewExportEmitMode {
+pub enum EntityReviewExportEmitMode {
     /// Structured review JSON artifact (default)
     #[default]
     Json,
@@ -84,7 +84,7 @@ pub enum OrgReviewExportEmitMode {
 
 /// Include selector for org review export
 #[derive(Debug, Clone, ValueEnum, Default)]
-pub enum OrgReviewInclude {
+pub enum EntityReviewInclude {
     /// Resolved and promotable entities
     Resolved,
     /// Escrowed abstentions
@@ -133,7 +133,7 @@ pub enum CanonCommand {
     Registry(RegistryCommand),
     /// Profiled entity workbench commands
     #[command(name = "entity")]
-    Org(OrgCommand),
+    Entity(EntityCommand),
     /// Frozen script strategy registry commands
     Strategy(StrategyCommand),
 }
@@ -177,15 +177,15 @@ pub struct RegistryCommand {
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct OrgCommand {
+pub struct EntityCommand {
     #[command(subcommand)]
-    pub command: OrgSubcommand,
+    pub command: EntitySubcommand,
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct OrgReviewCommand {
+pub struct EntityReviewCommand {
     #[command(subcommand)]
-    pub command: OrgReviewSubcommand,
+    pub command: EntityReviewSubcommand,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -391,23 +391,23 @@ pub struct RegistryDefaultIdSchemeCli {
 }
 
 #[derive(Subcommand, Debug, Clone)]
-pub enum OrgSubcommand {
+pub enum EntitySubcommand {
     /// Run the full entity orchestration flow
-    Run(OrgRunCli),
+    Run(EntityRunCli),
     /// Generate candidate neighborhoods
-    Block(OrgBlockCli),
+    Block(EntityBlockCli),
     /// Generate typed evidence edges for candidate pairs
-    Edge(OrgEdgeCli),
+    Edge(EntityEdgeCli),
     /// Solve entity identity assignments from evidence edges
-    Solve(OrgSolveCli),
+    Solve(EntitySolveCli),
     /// Audit an entity result artifact against a suite
-    Audit(OrgAuditCli),
+    Audit(EntityAuditCli),
     /// Promote an audited entity result into the registry and escrow sidecars
-    Promote(OrgPromoteCli),
+    Promote(EntityPromoteCli),
     /// Explain one entity row, canonical entity, or escrow entity
-    Explain(OrgExplainCli),
+    Explain(EntityExplainCli),
     /// Export and import human adjudication review queues
-    Review(OrgReviewCommand),
+    Review(EntityReviewCommand),
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -962,7 +962,7 @@ pub struct ResolveCli {
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct OrgRunCli {
+pub struct EntityRunCli {
     /// Input CSV or JSONL rows
     pub rows: PathBuf,
 
@@ -970,7 +970,7 @@ pub struct OrgRunCli {
     #[arg(long)]
     pub strategy: PathBuf,
 
-    /// Org registry directory
+    /// Entity registry directory
     #[arg(long)]
     pub registry: PathBuf,
 
@@ -980,7 +980,7 @@ pub struct OrgRunCli {
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
-    pub emit: OrgEmitMode,
+    pub emit: EntityEmitMode,
 
     /// Suppress witness ledger append
     #[arg(long)]
@@ -988,7 +988,7 @@ pub struct OrgRunCli {
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct OrgBlockCli {
+pub struct EntityBlockCli {
     /// Input CSV or JSONL rows
     pub rows: PathBuf,
 
@@ -996,17 +996,17 @@ pub struct OrgBlockCli {
     #[arg(long)]
     pub strategy: PathBuf,
 
-    /// Org registry directory
+    /// Entity registry directory
     #[arg(long)]
     pub registry: PathBuf,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "jsonl")]
-    pub emit: OrgStreamEmitMode,
+    pub emit: EntityStreamEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct OrgEdgeCli {
+pub struct EntityEdgeCli {
     /// Input CSV or JSONL rows
     pub rows: PathBuf,
 
@@ -1018,17 +1018,17 @@ pub struct OrgEdgeCli {
     #[arg(long)]
     pub candidates: PathBuf,
 
-    /// Org registry directory
+    /// Entity registry directory
     #[arg(long)]
     pub registry: PathBuf,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "jsonl")]
-    pub emit: OrgStreamEmitMode,
+    pub emit: EntityStreamEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct OrgSolveCli {
+pub struct EntitySolveCli {
     /// Input CSV or JSONL rows
     pub rows: PathBuf,
 
@@ -1040,18 +1040,18 @@ pub struct OrgSolveCli {
     #[arg(long)]
     pub edges: PathBuf,
 
-    /// Org registry directory
+    /// Entity registry directory
     #[arg(long)]
     pub registry: PathBuf,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
-    pub emit: OrgEmitMode,
+    pub emit: EntityEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct OrgAuditCli {
-    /// Org solve or run artifact
+pub struct EntityAuditCli {
+    /// Entity solve or run artifact
     pub result: PathBuf,
 
     /// Frozen evaluation suite directory
@@ -1060,19 +1060,19 @@ pub struct OrgAuditCli {
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
-    pub emit: OrgEmitMode,
+    pub emit: EntityEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct OrgPromoteCli {
-    /// Org solve or run artifact
+pub struct EntityPromoteCli {
+    /// Entity solve or run artifact
     pub result: PathBuf,
 
     /// Audit artifact
     #[arg(long)]
     pub audit: PathBuf,
 
-    /// Org registry directory
+    /// Entity registry directory
     #[arg(long)]
     pub registry: PathBuf,
 
@@ -1082,37 +1082,37 @@ pub struct OrgPromoteCli {
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
-    pub emit: OrgEmitMode,
+    pub emit: EntityEmitMode,
 }
 
 #[derive(Subcommand, Debug, Clone)]
-pub enum OrgReviewSubcommand {
+pub enum EntityReviewSubcommand {
     /// Export reviewable org identity clusters from a solve/run artifact
-    Export(OrgReviewExportCli),
+    Export(EntityReviewExportCli),
     /// Import adjudicated review decisions into a registry version
-    Import(OrgReviewImportCli),
+    Import(EntityReviewImportCli),
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct OrgReviewExportCli {
-    /// Org solve or run artifact
+pub struct EntityReviewExportCli {
+    /// Entity solve or run artifact
     pub result: PathBuf,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
-    pub emit: OrgReviewExportEmitMode,
+    pub emit: EntityReviewExportEmitMode,
 
     /// Which reviewable records to include
     #[arg(long, value_enum, default_value = "all")]
-    pub include: OrgReviewInclude,
+    pub include: EntityReviewInclude,
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct OrgReviewImportCli {
+pub struct EntityReviewImportCli {
     /// Review JSON or CSV artifact
     pub review: PathBuf,
 
-    /// Org registry directory
+    /// Entity registry directory
     #[arg(long)]
     pub registry: PathBuf,
 
@@ -1126,7 +1126,7 @@ pub struct OrgReviewImportCli {
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
-    pub emit: OrgEmitMode,
+    pub emit: EntityEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1136,8 +1136,8 @@ pub struct OrgReviewImportCli {
         .multiple(false)
         .args(["row", "canon_id", "escrow_id"])
 ))]
-pub struct OrgExplainCli {
-    /// Org solve or run artifact
+pub struct EntityExplainCli {
+    /// Entity solve or run artifact
     pub result: PathBuf,
 
     /// Explain a source row by source_row_id
@@ -1154,7 +1154,7 @@ pub struct OrgExplainCli {
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
-    pub emit: OrgEmitMode,
+    pub emit: EntityEmitMode,
 }
 
 #[derive(Parser, Debug)]
@@ -1253,14 +1253,14 @@ mod tests {
         }
     }
 
-    fn org_command(cli: Cli) -> Option<OrgCommand> {
+    fn entity_command(cli: Cli) -> Option<EntityCommand> {
         let command = cli.command;
         assert!(
-            matches!(&command, Some(CanonCommand::Org(_))),
+            matches!(&command, Some(CanonCommand::Entity(_))),
             "expected entity command"
         );
         match command {
-            Some(CanonCommand::Org(command)) => Some(command),
+            Some(CanonCommand::Entity(command)) => Some(command),
             _ => None,
         }
     }
@@ -1271,11 +1271,11 @@ mod tests {
     }
 
     #[test]
-    fn test_org_emit_mode_defaults() {
-        assert!(matches!(OrgEmitMode::default(), OrgEmitMode::Json));
+    fn test_entity_emit_mode_defaults() {
+        assert!(matches!(EntityEmitMode::default(), EntityEmitMode::Json));
         assert!(matches!(
-            OrgStreamEmitMode::default(),
-            OrgStreamEmitMode::Jsonl
+            EntityStreamEmitMode::default(),
+            EntityStreamEmitMode::Jsonl
         ));
     }
 
@@ -1865,7 +1865,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_org_run_parsing() {
+    fn test_cli_entity_run_parsing() {
         let args = [
             "canon",
             "entity",
@@ -1883,23 +1883,23 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        let Some(command) = org_command(cli) else {
+        let Some(command) = entity_command(cli) else {
             return;
         };
         let subcommand = command.command;
-        assert!(matches!(&subcommand, OrgSubcommand::Run(_)));
-        if let OrgSubcommand::Run(run) = subcommand {
+        assert!(matches!(&subcommand, EntitySubcommand::Run(_)));
+        if let EntitySubcommand::Run(run) = subcommand {
             assert_eq!(run.rows, PathBuf::from("rows.csv"));
             assert_eq!(run.strategy, PathBuf::from("strategy.yaml"));
             assert_eq!(run.registry, PathBuf::from("registries/org"));
             assert_eq!(run.suite, Some(PathBuf::from("suite")));
-            assert!(matches!(run.emit, OrgEmitMode::Summary));
+            assert!(matches!(run.emit, EntityEmitMode::Summary));
             assert!(run.no_witness);
         }
     }
 
     #[test]
-    fn test_cli_org_block_parsing() {
+    fn test_cli_entity_block_parsing() {
         let args = [
             "canon",
             "entity",
@@ -1914,21 +1914,21 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        let Some(command) = org_command(cli) else {
+        let Some(command) = entity_command(cli) else {
             return;
         };
         let subcommand = command.command;
-        assert!(matches!(&subcommand, OrgSubcommand::Block(_)));
-        if let OrgSubcommand::Block(block) = subcommand {
+        assert!(matches!(&subcommand, EntitySubcommand::Block(_)));
+        if let EntitySubcommand::Block(block) = subcommand {
             assert_eq!(block.rows, PathBuf::from("rows.csv"));
             assert_eq!(block.strategy, PathBuf::from("strategy.yaml"));
             assert_eq!(block.registry, PathBuf::from("registries/org"));
-            assert!(matches!(block.emit, OrgStreamEmitMode::Summary));
+            assert!(matches!(block.emit, EntityStreamEmitMode::Summary));
         }
     }
 
     #[test]
-    fn test_cli_org_edge_parsing() {
+    fn test_cli_entity_edge_parsing() {
         let args = [
             "canon",
             "entity",
@@ -1943,22 +1943,22 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        let Some(command) = org_command(cli) else {
+        let Some(command) = entity_command(cli) else {
             return;
         };
         let subcommand = command.command;
-        assert!(matches!(&subcommand, OrgSubcommand::Edge(_)));
-        if let OrgSubcommand::Edge(edge) = subcommand {
+        assert!(matches!(&subcommand, EntitySubcommand::Edge(_)));
+        if let EntitySubcommand::Edge(edge) = subcommand {
             assert_eq!(edge.rows, PathBuf::from("rows.csv"));
             assert_eq!(edge.strategy, PathBuf::from("strategy.yaml"));
             assert_eq!(edge.candidates, PathBuf::from("block.jsonl"));
             assert_eq!(edge.registry, PathBuf::from("registries/org"));
-            assert!(matches!(edge.emit, OrgStreamEmitMode::Jsonl));
+            assert!(matches!(edge.emit, EntityStreamEmitMode::Jsonl));
         }
     }
 
     #[test]
-    fn test_cli_org_solve_parsing() {
+    fn test_cli_entity_solve_parsing() {
         let args = [
             "canon",
             "entity",
@@ -1975,22 +1975,22 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        let Some(command) = org_command(cli) else {
+        let Some(command) = entity_command(cli) else {
             return;
         };
         let subcommand = command.command;
-        assert!(matches!(&subcommand, OrgSubcommand::Solve(_)));
-        if let OrgSubcommand::Solve(solve) = subcommand {
+        assert!(matches!(&subcommand, EntitySubcommand::Solve(_)));
+        if let EntitySubcommand::Solve(solve) = subcommand {
             assert_eq!(solve.rows, PathBuf::from("rows.csv"));
             assert_eq!(solve.strategy, PathBuf::from("strategy.yaml"));
             assert_eq!(solve.edges, PathBuf::from("edges.jsonl"));
             assert_eq!(solve.registry, PathBuf::from("registries/org"));
-            assert!(matches!(solve.emit, OrgEmitMode::Summary));
+            assert!(matches!(solve.emit, EntityEmitMode::Summary));
         }
     }
 
     #[test]
-    fn test_cli_org_audit_parsing() {
+    fn test_cli_entity_audit_parsing() {
         let args = [
             "canon",
             "entity",
@@ -2003,20 +2003,20 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        let Some(command) = org_command(cli) else {
+        let Some(command) = entity_command(cli) else {
             return;
         };
         let subcommand = command.command;
-        assert!(matches!(&subcommand, OrgSubcommand::Audit(_)));
-        if let OrgSubcommand::Audit(audit) = subcommand {
+        assert!(matches!(&subcommand, EntitySubcommand::Audit(_)));
+        if let EntitySubcommand::Audit(audit) = subcommand {
             assert_eq!(audit.result, PathBuf::from("result.json"));
             assert_eq!(audit.suite, PathBuf::from("suite"));
-            assert!(matches!(audit.emit, OrgEmitMode::Summary));
+            assert!(matches!(audit.emit, EntityEmitMode::Summary));
         }
     }
 
     #[test]
-    fn test_cli_org_promote_parsing() {
+    fn test_cli_entity_promote_parsing() {
         let args = [
             "canon",
             "entity",
@@ -2033,22 +2033,22 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        let Some(command) = org_command(cli) else {
+        let Some(command) = entity_command(cli) else {
             return;
         };
         let subcommand = command.command;
-        assert!(matches!(&subcommand, OrgSubcommand::Promote(_)));
-        if let OrgSubcommand::Promote(promote) = subcommand {
+        assert!(matches!(&subcommand, EntitySubcommand::Promote(_)));
+        if let EntitySubcommand::Promote(promote) = subcommand {
             assert_eq!(promote.result, PathBuf::from("result.json"));
             assert_eq!(promote.audit, PathBuf::from("audit.json"));
             assert_eq!(promote.registry, PathBuf::from("registries/org"));
             assert_eq!(promote.next_version, "2026.03.23");
-            assert!(matches!(promote.emit, OrgEmitMode::Summary));
+            assert!(matches!(promote.emit, EntityEmitMode::Summary));
         }
     }
 
     #[test]
-    fn test_cli_org_review_export_parsing() {
+    fn test_cli_entity_review_export_parsing() {
         let args = [
             "canon",
             "entity",
@@ -2062,24 +2062,27 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        let Some(command) = org_command(cli) else {
+        let Some(command) = entity_command(cli) else {
             return;
         };
         let subcommand = command.command;
-        assert!(matches!(&subcommand, OrgSubcommand::Review(_)));
-        if let OrgSubcommand::Review(review) = subcommand {
+        assert!(matches!(&subcommand, EntitySubcommand::Review(_)));
+        if let EntitySubcommand::Review(review) = subcommand {
             let review_subcommand = review.command;
-            assert!(matches!(&review_subcommand, OrgReviewSubcommand::Export(_)));
-            if let OrgReviewSubcommand::Export(export) = review_subcommand {
+            assert!(matches!(
+                &review_subcommand,
+                EntityReviewSubcommand::Export(_)
+            ));
+            if let EntityReviewSubcommand::Export(export) = review_subcommand {
                 assert_eq!(export.result, PathBuf::from("result.json"));
-                assert!(matches!(export.emit, OrgReviewExportEmitMode::Csv));
-                assert!(matches!(export.include, OrgReviewInclude::Escrow));
+                assert!(matches!(export.emit, EntityReviewExportEmitMode::Csv));
+                assert!(matches!(export.include, EntityReviewInclude::Escrow));
             }
         }
     }
 
     #[test]
-    fn test_cli_org_review_import_parsing() {
+    fn test_cli_entity_review_import_parsing() {
         let args = [
             "canon",
             "entity",
@@ -2097,26 +2100,29 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        let Some(command) = org_command(cli) else {
+        let Some(command) = entity_command(cli) else {
             return;
         };
         let subcommand = command.command;
-        assert!(matches!(&subcommand, OrgSubcommand::Review(_)));
-        if let OrgSubcommand::Review(review) = subcommand {
+        assert!(matches!(&subcommand, EntitySubcommand::Review(_)));
+        if let EntitySubcommand::Review(review) = subcommand {
             let review_subcommand = review.command;
-            assert!(matches!(&review_subcommand, OrgReviewSubcommand::Import(_)));
-            if let OrgReviewSubcommand::Import(import) = review_subcommand {
+            assert!(matches!(
+                &review_subcommand,
+                EntityReviewSubcommand::Import(_)
+            ));
+            if let EntityReviewSubcommand::Import(import) = review_subcommand {
                 assert_eq!(import.review, PathBuf::from("review.csv"));
                 assert_eq!(import.registry, PathBuf::from("registries/org"));
                 assert_eq!(import.next_version, "2026.05.06");
                 assert_eq!(import.audit, Some(PathBuf::from("audit.json")));
-                assert!(matches!(import.emit, OrgEmitMode::Summary));
+                assert!(matches!(import.emit, EntityEmitMode::Summary));
             }
         }
     }
 
     #[test]
-    fn test_cli_org_explain_parsing() {
+    fn test_cli_entity_explain_parsing() {
         let args = [
             "canon",
             "entity",
@@ -2129,22 +2135,22 @@ mod tests {
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
-        let Some(command) = org_command(cli) else {
+        let Some(command) = entity_command(cli) else {
             return;
         };
         let subcommand = command.command;
-        assert!(matches!(&subcommand, OrgSubcommand::Explain(_)));
-        if let OrgSubcommand::Explain(explain) = subcommand {
+        assert!(matches!(&subcommand, EntitySubcommand::Explain(_)));
+        if let EntitySubcommand::Explain(explain) = subcommand {
             assert_eq!(explain.result, PathBuf::from("result.json"));
             assert_eq!(explain.canon_id.as_deref(), Some("ORG-0001"));
             assert_eq!(explain.row, None);
             assert_eq!(explain.escrow_id, None);
-            assert!(matches!(explain.emit, OrgEmitMode::Summary));
+            assert!(matches!(explain.emit, EntityEmitMode::Summary));
         }
     }
 
     #[test]
-    fn test_cli_org_explain_requires_exactly_one_selector() {
+    fn test_cli_entity_explain_requires_exactly_one_selector() {
         let args = [
             "canon",
             "entity",

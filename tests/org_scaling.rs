@@ -111,7 +111,7 @@ fn write_strategy(path: &Path) {
     fs::write(path, TEST_STRATEGY).unwrap();
 }
 
-fn write_org_rows(path: &Path) {
+fn write_entity_rows(path: &Path) {
     let mut writer = Writer::from_path(path).unwrap();
     writer
         .write_record([
@@ -166,7 +166,7 @@ fn write_lookup_input(path: &Path) {
 }
 
 #[test]
-fn org_cli_scaling_stays_within_structural_budgets() {
+fn entity_cli_scaling_stays_within_structural_budgets() {
     let temp_dir = tempdir().unwrap();
     let registry_dir = temp_dir.path().join("org-registry");
     let strategy_path = temp_dir.path().join("strategy.yaml");
@@ -176,7 +176,7 @@ fn org_cli_scaling_stays_within_structural_budgets() {
 
     write_registry_metadata(&registry_dir, "bdc-issuers", "2026.03.01", 0);
     write_strategy(&strategy_path);
-    write_org_rows(&rows_path);
+    write_entity_rows(&rows_path);
 
     let block_assert = canon()
         .arg("entity")
@@ -193,7 +193,7 @@ fn org_cli_scaling_stays_within_structural_budgets() {
     assert_eq!(block_lines.len(), 24, "candidate-pair budget changed");
     for line in &block_lines {
         let record: Value = serde_json::from_str(line).unwrap();
-        assert_eq!(record["version"], "canon_org_block.v0");
+        assert_eq!(record["version"], "canon_entity_block.v0");
     }
     fs::write(&block_path, block_stdout).unwrap();
 
@@ -214,7 +214,7 @@ fn org_cli_scaling_stays_within_structural_budgets() {
     assert_eq!(edge_lines.len(), 24, "edge-count budget changed");
     for line in &edge_lines {
         let record: Value = serde_json::from_str(line).unwrap();
-        assert_eq!(record["version"], "canon_org_edge.v0");
+        assert_eq!(record["version"], "canon_entity_edge.v0");
     }
     fs::write(&edge_path, edge_stdout).unwrap();
 
@@ -231,7 +231,7 @@ fn org_cli_scaling_stays_within_structural_budgets() {
         .success();
     let run_payload: Value = serde_json::from_slice(&run_assert.get_output().stdout).unwrap();
 
-    assert_eq!(run_payload["version"], "canon_org_run.v0");
+    assert_eq!(run_payload["version"], "canon_entity_run.v0");
     assert_eq!(run_payload["summary"]["observations"], 20);
     assert_eq!(run_payload["summary"]["resolved_existing"], 0);
     assert_eq!(run_payload["summary"]["promotable_new"], 16);

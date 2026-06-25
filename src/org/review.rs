@@ -3,9 +3,10 @@
 use super::{
     incumbent::load_incumbent_memory,
     types::{
-        AliasMappingEntry, AnchorValue, AuditArtifact, CANON_ORG_AUDIT_VERSION, CannotLinkFact,
-        OrgEntityState, OrgError, OrgErrorCode, OrgResult, PendingClusterRecord, PromotionDecision,
-        PromotionWrites, RegistrySnapshot, RowPair, SolveRunArtifact, TrustedAnchorRecord,
+        AliasMappingEntry, AnchorValue, AuditArtifact, CANON_ENTITY_AUDIT_VERSION, CannotLinkFact,
+        EntityError, EntityErrorCode, EntityResult, EntityState, PendingClusterRecord,
+        PromotionDecision, PromotionWrites, RegistrySnapshot, RowPair, SolveRunArtifact,
+        TrustedAnchorRecord,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -69,7 +70,7 @@ pub struct ReviewEvidenceScore {
 pub struct ReviewItem {
     pub review_id: String,
     pub category: String,
-    pub state: OrgEntityState,
+    pub state: EntityState,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub canonical_id: Option<String>,
     #[serde(default)]
@@ -186,7 +187,7 @@ pub struct ReviewProofHashes {
 struct CsvReviewRow {
     review_id: String,
     category: String,
-    state: OrgEntityState,
+    state: EntityState,
     canonical_id: String,
     source_row_ids: String,
     observed_names: String,
@@ -212,7 +213,7 @@ struct CsvReviewRow {
 struct CsvReviewRowOut<'a> {
     review_id: &'a str,
     category: &'a str,
-    state: OrgEntityState,
+    state: EntityState,
     canonical_id: &'a str,
     source_row_ids: String,
     observed_names: String,
@@ -248,7 +249,7 @@ pub fn export(
     result: &SolveRunArtifact,
     result_bytes: &[u8],
     include: ReviewInclude,
-) -> OrgResult<ReviewExportOutput> {
+) -> EntityResult<ReviewExportOutput> {
     let result_hash = blake3_string(result_bytes);
     let mut items = Vec::new();
 
@@ -274,7 +275,7 @@ pub fn export(
     let summary = summarize_review_items(&items);
 
     Ok(ReviewExportOutput {
-        version: "canon_org_review_export.v0".to_string(),
+        version: "canon_entity_review_export.v0".to_string(),
         include: include.as_str().to_string(),
         result: ReviewResultReference {
             version: result.version.clone(),
@@ -290,7 +291,7 @@ pub fn export(
     })
 }
 
-pub fn export_csv(output: &ReviewExportOutput) -> OrgResult<String> {
+pub fn export_csv(output: &ReviewExportOutput) -> EntityResult<String> {
     let mut writer = csv::Writer::from_writer(Vec::new());
     for item in &output.items {
         writer
@@ -321,16 +322,16 @@ pub fn export_csv(output: &ReviewExportOutput) -> OrgResult<String> {
             .map_err(csv_error)?;
     }
     let bytes = writer.into_inner().map_err(|error| {
-        OrgError::with_detail(
-            OrgErrorCode::ArtifactContract,
+        EntityError::with_detail(
+            EntityErrorCode::ArtifactContract,
             "Failed to finalize org review CSV",
             json!({ "error": error.to_string() }),
         )
     })?;
     String::from_utf8(bytes).map_err(|error| {
-        OrgError::with_detail(
-            OrgErrorCode::ArtifactContract,
-            "Org review CSV must be valid UTF-8",
+        EntityError::with_detail(
+            EntityErrorCode::ArtifactContract,
+            "Entity review CSV must be valid UTF-8",
             json!({ "error": error.to_string() }),
         )
     })
@@ -342,7 +343,7 @@ pub fn import(
     registry_dir: &Path,
     next_version: &str,
     audit: Option<(&AuditArtifact, &[u8])>,
-) -> OrgResult<ReviewImportOutput> {
+) -> EntityResult<ReviewImportOutput> {
     validate_next_version(next_version)?;
     let review = parse_review(review_path, review_bytes)?;
     validate_review(&review)?;
@@ -381,7 +382,7 @@ pub fn import(
     )?;
 
     Ok(ReviewImportOutput {
-        version: "canon_org_review_import.v0".to_string(),
+        version: "canon_entity_review_import.v0".to_string(),
         review: ReviewImportReference {
             version: review.version,
             content_hash: blake3_string(review_bytes),
@@ -406,7 +407,7 @@ pub fn import(
     })
 }
 
-fn parse_review(path: &Path, bytes: &[u8]) -> OrgResult<ReviewExportOutput> {
+fn parse_review(path: &Path, bytes: &[u8]) -> EntityResult<ReviewExportOutput> {
     match path
         .extension()
         .and_then(|extension| extension.to_str())
@@ -415,8 +416,8 @@ fn parse_review(path: &Path, bytes: &[u8]) -> OrgResult<ReviewExportOutput> {
     {
         Some("csv") => parse_review_csv(path, bytes),
         _ => serde_json::from_slice(bytes).map_err(|error| {
-            OrgError::with_detail(
-                OrgErrorCode::ArtifactContract,
+            EntityError::with_detail(
+                EntityErrorCode::ArtifactContract,
                 "Failed to parse org review JSON artifact",
                 json!({
                     "path": path.display().to_string(),
@@ -427,7 +428,7 @@ fn parse_review(path: &Path, bytes: &[u8]) -> OrgResult<ReviewExportOutput> {
     }
 }
 
-fn parse_review_csv(path: &Path, bytes: &[u8]) -> OrgResult<ReviewExportOutput> {
+fn parse_review_csv(path: &Path, bytes: &[u8]) -> EntityResult<ReviewExportOutput> {
     let mut reader = csv::Reader::from_reader(bytes);
     let mut rows = Vec::new();
     for row in reader.deserialize::<CsvReviewRow>() {
@@ -491,7 +492,7 @@ fn parse_review_csv(path: &Path, bytes: &[u8]) -> OrgResult<ReviewExportOutput> 
     let summary = summarize_review_items(&items);
 
     Ok(ReviewExportOutput {
-        version: "canon_org_review_export.v0".to_string(),
+        version: "canon_entity_review_export.v0".to_string(),
         include: "csv".to_string(),
         result,
         strategy_id,
@@ -597,7 +598,7 @@ fn review_item_for_contradiction(
     ReviewItem {
         review_id: stable_review_id(result_hash, category, &key),
         category: category.to_string(),
-        state: OrgEntityState::AbstainConflict,
+        state: EntityState::AbstainConflict,
         canonical_id: None,
         source_row_ids: contradiction.row_ids.clone(),
         observed_names: Vec::new(),
@@ -612,10 +613,10 @@ fn review_item_for_contradiction(
     }
 }
 
-fn validate_review(review: &ReviewExportOutput) -> OrgResult<()> {
-    if review.version != "canon_org_review_export.v0" {
+fn validate_review(review: &ReviewExportOutput) -> EntityResult<()> {
+    if review.version != "canon_entity_review_export.v0" {
         return Err(review_error(
-            "Review import requires canon_org_review_export.v0",
+            "Review import requires canon_entity_review_export.v0",
             json!({ "version": review.version }),
         ));
     }
@@ -660,14 +661,14 @@ fn validate_registry_snapshot(
     review: &ReviewExportOutput,
     before: &super::types::IncumbentMemory,
     next_version: &str,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     if before.registry.id != review.registry.id
         || before.registry.version != review.registry.version
         || before.registry.lookup_snapshot_hash != review.registry.lookup_snapshot_hash
         || before.registry.escrow_snapshot_hash != review.registry.escrow_snapshot_hash
     {
-        return Err(OrgError::with_detail(
-            OrgErrorCode::Promotion,
+        return Err(EntityError::with_detail(
+            EntityErrorCode::Promotion,
             "Current registry snapshot is stale relative to the review artifact",
             json!({
                 "expected": review.registry,
@@ -677,8 +678,8 @@ fn validate_registry_snapshot(
     }
 
     if before.registry.version == next_version {
-        return Err(OrgError::with_detail(
-            OrgErrorCode::Promotion,
+        return Err(EntityError::with_detail(
+            EntityErrorCode::Promotion,
             "Review import requires --next-version to differ from the current registry.json version",
             json!({
                 "current_version": before.registry.version,
@@ -692,7 +693,7 @@ fn validate_registry_snapshot(
 fn validate_audit_if_required(
     review: &ReviewExportOutput,
     audit: Option<(&AuditArtifact, &[u8])>,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     let requires_audit = review
         .items
         .iter()
@@ -701,13 +702,13 @@ fn validate_audit_if_required(
         return Ok(());
     }
     let Some((audit, _audit_bytes)) = audit else {
-        return Err(OrgError::with_detail(
-            OrgErrorCode::Promotion,
+        return Err(EntityError::with_detail(
+            EntityErrorCode::Promotion,
             "Review import requires --audit for alias or anchor promotion decisions",
             json!({ "required_for_decision": "accept_aliases" }),
         ));
     };
-    if audit.version != CANON_ORG_AUDIT_VERSION
+    if audit.version != CANON_ENTITY_AUDIT_VERSION
         || !audit.summary.hard_gates_passed
         || audit.summary.decision != PromotionDecision::Promote
         || audit.result.version != review.result.version
@@ -716,8 +717,8 @@ fn validate_audit_if_required(
         || audit.result.lookup_snapshot_hash != review.result.lookup_snapshot_hash
         || audit.result.escrow_snapshot_hash != review.result.escrow_snapshot_hash
     {
-        return Err(OrgError::with_detail(
-            OrgErrorCode::Promotion,
+        return Err(EntityError::with_detail(
+            EntityErrorCode::Promotion,
             "Audit artifact does not authorize review promotion decisions",
             json!({
                 "review_result": review.result,
@@ -735,7 +736,7 @@ fn build_write_plan(
     review: &ReviewExportOutput,
     before: &super::types::IncumbentMemory,
     next_version: &str,
-) -> OrgResult<ReviewWritePlan> {
+) -> EntityResult<ReviewWritePlan> {
     let mut plan = ReviewWritePlan::default();
     let mut planned_alias_by_input = BTreeMap::<String, String>::new();
     let mut planned_anchor_by_key = BTreeMap::<(String, String), String>::new();
@@ -814,7 +815,7 @@ fn build_write_plan(
                     }
                 }
                 let added_aliases = plan.alias_entries.len().saturating_sub(alias_count_before);
-                if item.state == OrgEntityState::ResolvedExisting {
+                if item.state == EntityState::ResolvedExisting {
                     existing_alias_entries += added_aliases as u64;
                 } else {
                     new_entity_entries += added_aliases as u64;
@@ -906,7 +907,7 @@ fn apply_write_plan(
     review: &ReviewExportOutput,
     plan: &ReviewWritePlan,
     prior_alias_count: usize,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     fs::create_dir_all(registry_dir).map_err(io_review_error)?;
     let mapping_file_name = default_mapping_file_name(next_version);
 
@@ -952,7 +953,7 @@ fn validate_alias_write(
     canonical_id: &str,
     existing_alias_by_input: &BTreeMap<String, &AliasMappingEntry>,
     planned_alias_by_input: &BTreeMap<String, String>,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     if alias.trim().is_empty() {
         return Err(review_error(
             "Review alias promotion contains an empty alias",
@@ -962,8 +963,8 @@ fn validate_alias_write(
     if let Some(existing) = existing_alias_by_input.get(alias)
         && existing.canonical_id != canonical_id
     {
-        return Err(OrgError::with_detail(
-            OrgErrorCode::Promotion,
+        return Err(EntityError::with_detail(
+            EntityErrorCode::Promotion,
             "Review import would overwrite an existing alias mapping",
             json!({
                 "review_id": item.review_id,
@@ -976,8 +977,8 @@ fn validate_alias_write(
     if let Some(existing_canonical_id) = planned_alias_by_input.get(alias)
         && existing_canonical_id != canonical_id
     {
-        return Err(OrgError::with_detail(
-            OrgErrorCode::Promotion,
+        return Err(EntityError::with_detail(
+            EntityErrorCode::Promotion,
             "Review import would emit conflicting alias mappings in one batch",
             json!({
                 "review_id": item.review_id,
@@ -996,7 +997,7 @@ fn validate_anchor_write(
     canonical_id: &str,
     existing_anchor_by_key: &BTreeMap<(String, String), &TrustedAnchorRecord>,
     planned_anchor_by_key: &BTreeMap<(String, String), String>,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     if anchor.namespace.trim().is_empty() || anchor.value.trim().is_empty() {
         return Err(review_error(
             "Review anchor promotion contains an incomplete anchor",
@@ -1007,8 +1008,8 @@ fn validate_anchor_write(
         existing_anchor_by_key.get(&(anchor.namespace.clone(), anchor.value.clone()))
         && existing.canonical_id != canonical_id
     {
-        return Err(OrgError::with_detail(
-            OrgErrorCode::Promotion,
+        return Err(EntityError::with_detail(
+            EntityErrorCode::Promotion,
             "Review import would create a trusted-anchor conflict",
             json!({
                 "review_id": item.review_id,
@@ -1023,8 +1024,8 @@ fn validate_anchor_write(
         planned_anchor_by_key.get(&(anchor.namespace.clone(), anchor.value.clone()))
         && existing_canonical_id != canonical_id
     {
-        return Err(OrgError::with_detail(
-            OrgErrorCode::Promotion,
+        return Err(EntityError::with_detail(
+            EntityErrorCode::Promotion,
             "Review import would emit conflicting trusted anchors in one batch",
             json!({
                 "review_id": item.review_id,
@@ -1038,7 +1039,7 @@ fn validate_anchor_write(
     Ok(())
 }
 
-fn required_canonical_id(item: &ReviewItem) -> OrgResult<String> {
+fn required_canonical_id(item: &ReviewItem) -> EntityResult<String> {
     item.canonical_id
         .as_deref()
         .map(str::trim)
@@ -1052,7 +1053,7 @@ fn required_canonical_id(item: &ReviewItem) -> OrgResult<String> {
         })
 }
 
-fn cannot_link_for_item(item: &ReviewItem) -> OrgResult<CannotLinkFact> {
+fn cannot_link_for_item(item: &ReviewItem) -> EntityResult<CannotLinkFact> {
     let (left_key, right_key) = match (item.left_key.as_deref(), item.right_key.as_deref()) {
         (Some(left), Some(right)) if !left.trim().is_empty() && !right.trim().is_empty() => {
             (left.to_string(), right.to_string())
@@ -1141,7 +1142,7 @@ fn review_stem(next_version: &str) -> String {
     }
 }
 
-fn update_registry_json(path: &Path, next_version: &str, entry_count: usize) -> OrgResult<()> {
+fn update_registry_json(path: &Path, next_version: &str, entry_count: usize) -> EntityResult<()> {
     let bytes = fs::read(path).map_err(io_review_error)?;
     let mut value: Value = serde_json::from_slice(&bytes).map_err(|error| {
         review_error(
@@ -1172,7 +1173,7 @@ fn write_review_proofs(
     review_bytes: &[u8],
     audit_bytes: Option<&[u8]>,
     proof_hashes: &ReviewProofHashes,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     let dir = registry_dir.join("_reviews");
     fs::create_dir_all(&dir).map_err(io_review_error)?;
     let stem = review_stem(next_version);
@@ -1183,10 +1184,10 @@ fn write_review_proofs(
     write_json_pretty(&dir.join(format!("{stem}.proof.json")), proof_hashes)
 }
 
-fn validate_next_version(next_version: &str) -> OrgResult<()> {
+fn validate_next_version(next_version: &str) -> EntityResult<()> {
     if next_version.trim().is_empty() {
-        return Err(OrgError::with_detail(
-            OrgErrorCode::Promotion,
+        return Err(EntityError::with_detail(
+            EntityErrorCode::Promotion,
             "Review import requires an explicit --next-version value",
             json!({ "next_version": next_version }),
         ));
@@ -1217,20 +1218,20 @@ fn default_decision() -> String {
     "undecided".to_string()
 }
 
-fn json_cell<T: Serialize>(value: &T) -> OrgResult<String> {
+fn json_cell<T: Serialize>(value: &T) -> EntityResult<String> {
     serde_json::to_string(value).map_err(|error| {
-        OrgError::with_detail(
-            OrgErrorCode::ArtifactContract,
+        EntityError::with_detail(
+            EntityErrorCode::ArtifactContract,
             "Failed to serialize org review CSV cell",
             json!({ "error": error.to_string() }),
         )
     })
 }
 
-fn parse_json_cell<T: for<'de> Deserialize<'de>>(raw: &str, field: &str) -> OrgResult<T> {
+fn parse_json_cell<T: for<'de> Deserialize<'de>>(raw: &str, field: &str) -> EntityResult<T> {
     serde_json::from_str(raw).map_err(|error| {
-        OrgError::with_detail(
-            OrgErrorCode::ArtifactContract,
+        EntityError::with_detail(
+            EntityErrorCode::ArtifactContract,
             "Failed to parse org review CSV JSON cell",
             json!({
                 "field": field,
@@ -1240,7 +1241,7 @@ fn parse_json_cell<T: for<'de> Deserialize<'de>>(raw: &str, field: &str) -> OrgR
     })
 }
 
-fn write_json_pretty<T: Serialize>(path: &Path, value: &T) -> OrgResult<()> {
+fn write_json_pretty<T: Serialize>(path: &Path, value: &T) -> EntityResult<()> {
     let bytes = serde_json::to_vec_pretty(value).map_err(|error| {
         review_error(
             "Failed to serialize review JSON",
@@ -1250,7 +1251,7 @@ fn write_json_pretty<T: Serialize>(path: &Path, value: &T) -> OrgResult<()> {
     fs::write(path, bytes).map_err(io_review_error)
 }
 
-fn write_jsonl_file<T: Serialize>(path: &Path, records: &[T]) -> OrgResult<()> {
+fn write_jsonl_file<T: Serialize>(path: &Path, records: &[T]) -> EntityResult<()> {
     let mut output = String::new();
     for record in records {
         output.push_str(&serde_json::to_string(record).map_err(|error| {
@@ -1264,7 +1265,7 @@ fn write_jsonl_file<T: Serialize>(path: &Path, records: &[T]) -> OrgResult<()> {
     fs::write(path, output).map_err(io_review_error)
 }
 
-fn blake3_json<T: Serialize>(value: &T) -> OrgResult<String> {
+fn blake3_json<T: Serialize>(value: &T) -> EntityResult<String> {
     let bytes = serde_json::to_vec(value).map_err(|error| {
         review_error(
             "Failed to serialize review proof hash input",
@@ -1278,19 +1279,19 @@ fn blake3_string(bytes: &[u8]) -> String {
     format!("blake3:{}", blake3::hash(bytes).to_hex())
 }
 
-fn csv_error(error: csv::Error) -> OrgError {
-    OrgError::with_detail(
-        OrgErrorCode::ArtifactContract,
-        "Org review CSV parse or write failed",
+fn csv_error(error: csv::Error) -> EntityError {
+    EntityError::with_detail(
+        EntityErrorCode::ArtifactContract,
+        "Entity review CSV parse or write failed",
         json!({ "error": error.to_string() }),
     )
 }
 
-fn review_error(message: &str, detail: Value) -> OrgError {
-    OrgError::with_detail(OrgErrorCode::Promotion, message, detail)
+fn review_error(message: &str, detail: Value) -> EntityError {
+    EntityError::with_detail(EntityErrorCode::Promotion, message, detail)
 }
 
-fn io_review_error(error: std::io::Error) -> OrgError {
+fn io_review_error(error: std::io::Error) -> EntityError {
     review_error(
         "Review import file I/O failed",
         json!({ "error": error.to_string() }),
@@ -1300,9 +1301,9 @@ fn io_review_error(error: std::io::Error) -> OrgError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::org::types::{
-        AbstentionRecord, AuditMetrics, AuditSummary, CANON_ORG_AUDIT_VERSION,
-        CANON_ORG_RUN_VERSION, EscrowActionKind, EscrowActionRecord, InheritanceMode,
+    use crate::entity_runtime::types::{
+        AbstentionRecord, AuditMetrics, AuditSummary, CANON_ENTITY_AUDIT_VERSION,
+        CANON_ENTITY_RUN_VERSION, EscrowActionKind, EscrowActionRecord, InheritanceMode,
         InheritanceRecord, RegistryPatchSummary, SolveRunSummary, StrategyReference,
         SuiteReference,
     };
@@ -1327,7 +1328,7 @@ mod tests {
     fn result_fixture(registry_dir: &Path) -> (SolveRunArtifact, Vec<u8>) {
         let memory = load_incumbent_memory(registry_dir).unwrap();
         let result = SolveRunArtifact {
-            version: CANON_ORG_RUN_VERSION.to_string(),
+            version: CANON_ENTITY_RUN_VERSION.to_string(),
             strategy: StrategyReference {
                 id: "bdc_org_graph.v1".to_string(),
                 version: "0.1.0".to_string(),
@@ -1342,7 +1343,7 @@ mod tests {
                 abstain_conflict: 0,
             },
             entities: vec![super::super::types::SolvedEntity {
-                state: OrgEntityState::PromotableNew,
+                state: EntityState::PromotableNew,
                 canonical_id: Some("ORG-1".to_string()),
                 backbone_rows: vec!["row-1".to_string(), "row-2".to_string()],
                 attached_rows: Vec::new(),
@@ -1367,7 +1368,7 @@ mod tests {
                 escrow: None,
             }],
             abstentions: vec![AbstentionRecord {
-                state: OrgEntityState::AbstainLowEvidence,
+                state: EntityState::AbstainLowEvidence,
                 all_rows: vec!["row-3".to_string()],
                 reason: "single_doc_without_unique_anchor".to_string(),
                 incumbent_ids: Vec::new(),
@@ -1399,7 +1400,7 @@ mod tests {
 
     fn matching_audit(result: &SolveRunArtifact, result_bytes: &[u8]) -> (AuditArtifact, Vec<u8>) {
         let audit = AuditArtifact {
-            version: CANON_ORG_AUDIT_VERSION.to_string(),
+            version: CANON_ENTITY_AUDIT_VERSION.to_string(),
             result: super::super::types::ResultReference {
                 version: result.version.clone(),
                 content_hash: blake3_string(result_bytes),

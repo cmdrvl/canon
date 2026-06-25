@@ -1,9 +1,10 @@
-//! Audit engine for `canon org`.
+//! Audit engine for `canon entity`.
 
 use super::types::{
-    AuditArtifact, AuditMetrics, AuditSummary, CANON_ORG_AUDIT_VERSION, CANON_ORG_RUN_VERSION,
-    CANON_ORG_SOLVE_VERSION, OrgEntityState, OrgError, OrgErrorCode, OrgResult,
-    ProjectedObservation, PromotionDecision, ResultReference, SolveRunArtifact, SuiteReference,
+    AuditArtifact, AuditMetrics, AuditSummary, CANON_ENTITY_AUDIT_VERSION,
+    CANON_ENTITY_RUN_VERSION, CANON_ENTITY_SOLVE_VERSION, EntityError, EntityErrorCode,
+    EntityResult, EntityState, ProjectedObservation, PromotionDecision, ResultReference,
+    SolveRunArtifact, SuiteReference,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -122,7 +123,7 @@ pub fn audit(
     result: &SolveRunArtifact,
     result_bytes: &[u8],
     context: AuditContext<'_>,
-) -> OrgResult<AuditArtifact> {
+) -> EntityResult<AuditArtifact> {
     validate_result_artifact(result)?;
     let suite = load_suite(context.suite_dir, context.profile)?;
     let row_resolutions = build_row_resolutions(result)?;
@@ -225,7 +226,7 @@ pub fn audit(
     let hard_gates_passed = gate_failures.is_empty();
 
     Ok(AuditArtifact {
-        version: CANON_ORG_AUDIT_VERSION.to_string(),
+        version: CANON_ENTITY_AUDIT_VERSION.to_string(),
         result: ResultReference {
             version: result.version.clone(),
             content_hash: format!("blake3:{}", blake3::hash(result_bytes).to_hex()),
@@ -249,20 +250,20 @@ pub fn audit(
     })
 }
 
-fn validate_result_artifact(result: &SolveRunArtifact) -> OrgResult<()> {
+fn validate_result_artifact(result: &SolveRunArtifact) -> EntityResult<()> {
     match result.version.as_str() {
-        CANON_ORG_SOLVE_VERSION | CANON_ORG_RUN_VERSION => Ok(()),
+        CANON_ENTITY_SOLVE_VERSION | CANON_ENTITY_RUN_VERSION => Ok(()),
         other => Err(audit_error(
-            "Audit requires a canon_org_solve.v0 or canon_org_run.v0 artifact",
+            "Audit requires a canon_entity_solve.v0 or canon_entity_run.v0 artifact",
             json!({
-                "expected": [CANON_ORG_SOLVE_VERSION, CANON_ORG_RUN_VERSION],
+                "expected": [CANON_ENTITY_SOLVE_VERSION, CANON_ENTITY_RUN_VERSION],
                 "actual": other,
             }),
         )),
     }
 }
 
-fn load_suite(suite_dir: &Path, profile: &str) -> OrgResult<SuiteData> {
+fn load_suite(suite_dir: &Path, profile: &str) -> EntityResult<SuiteData> {
     let manifest: SuiteManifest =
         read_json_file(&suite_dir.join("manifest.json"), "suite manifest")?;
     if manifest.profile != profile {
@@ -300,7 +301,7 @@ fn load_suite(suite_dir: &Path, profile: &str) -> OrgResult<SuiteData> {
     })
 }
 
-fn load_row_catalog(suite_dir: &Path) -> OrgResult<BTreeMap<String, SuiteRowInfo>> {
+fn load_row_catalog(suite_dir: &Path) -> EntityResult<BTreeMap<String, SuiteRowInfo>> {
     let mut row_catalog = BTreeMap::new();
 
     for (partition, subdir) in [
@@ -331,13 +332,15 @@ fn load_row_catalog(suite_dir: &Path) -> OrgResult<BTreeMap<String, SuiteRowInfo
     Ok(row_catalog)
 }
 
-fn build_row_resolutions(result: &SolveRunArtifact) -> OrgResult<BTreeMap<String, RowResolution>> {
+fn build_row_resolutions(
+    result: &SolveRunArtifact,
+) -> EntityResult<BTreeMap<String, RowResolution>> {
     let mut rows = BTreeMap::new();
 
     for entity in &result.entities {
         let component_label = component_label("entity", &entity.all_rows);
         let comparable_incumbent_id = match entity.state {
-            OrgEntityState::ResolvedExisting => entity.inheritance.incumbent_ids.first().cloned(),
+            EntityState::ResolvedExisting => entity.inheritance.incumbent_ids.first().cloned(),
             _ => None,
         };
 
@@ -368,7 +371,7 @@ fn build_row_resolutions(result: &SolveRunArtifact) -> OrgResult<BTreeMap<String
                     component_label: component_label.clone(),
                     canonical_label: None,
                     comparable_incumbent_id: comparable_incumbent_id.clone(),
-                    abstain_conflict: matches!(abstention.state, OrgEntityState::AbstainConflict),
+                    abstain_conflict: matches!(abstention.state, EntityState::AbstainConflict),
                 },
             )?;
         }
@@ -398,7 +401,7 @@ fn insert_row_resolution(
     rows: &mut BTreeMap<String, RowResolution>,
     row_id: &str,
     resolution: RowResolution,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     if rows.insert(row_id.to_string(), resolution).is_some() {
         return Err(audit_error(
             "Result artifact maps one source_row_id into multiple outcomes",
@@ -413,7 +416,7 @@ fn insert_row_resolution(
 fn validate_suite_row_references(
     suite: &SuiteData,
     row_resolutions: &BTreeMap<String, RowResolution>,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     for row_id in suite.row_catalog.keys() {
         if !row_resolutions.contains_key(row_id) {
             return Err(audit_error(
@@ -425,7 +428,7 @@ fn validate_suite_row_references(
         }
     }
 
-    let verify_row = |row_id: &str, origin: &str| -> OrgResult<()> {
+    let verify_row = |row_id: &str, origin: &str| -> EntityResult<()> {
         if !suite.row_catalog.contains_key(row_id) || !row_resolutions.contains_key(row_id) {
             return Err(audit_error(
                 "Suite fixture references an unknown source_row_id",
@@ -527,7 +530,7 @@ fn anchor_consistency(
     row_resolutions: &BTreeMap<String, RowResolution>,
     row_catalog: &BTreeMap<String, SuiteRowInfo>,
     partition: Option<CorpusPartition>,
-) -> OrgResult<f64> {
+) -> EntityResult<f64> {
     let mut grouped = BTreeMap::<String, BTreeMap<String, Vec<String>>>::new();
 
     for fixture in fixtures {
@@ -607,7 +610,7 @@ fn perturbation_stability(
     row_resolutions: &BTreeMap<String, RowResolution>,
     row_catalog: &BTreeMap<String, SuiteRowInfo>,
     partition: Option<CorpusPartition>,
-) -> OrgResult<f64> {
+) -> EntityResult<f64> {
     let filtered = fixtures
         .iter()
         .filter(|fixture| {
@@ -661,7 +664,7 @@ fn contradiction_rate(
     row_resolutions: &BTreeMap<String, RowResolution>,
     row_catalog: &BTreeMap<String, SuiteRowInfo>,
     partition: Option<CorpusPartition>,
-) -> OrgResult<f64> {
+) -> EntityResult<f64> {
     let filtered = fixtures
         .iter()
         .filter(|fixture| fixture_matches_partition(&fixture.row_ids, row_catalog, partition))
@@ -712,7 +715,7 @@ fn anchor_conflicts(
     fixtures: &[SilverAnchorFixture],
     row_resolutions: &BTreeMap<String, RowResolution>,
     row_catalog: &BTreeMap<String, SuiteRowInfo>,
-) -> OrgResult<u64> {
+) -> EntityResult<u64> {
     let mut by_component = BTreeMap::<String, BTreeMap<String, BTreeSet<String>>>::new();
 
     for fixture in fixtures {
@@ -788,11 +791,11 @@ fn registry_churn(row_resolutions: &BTreeMap<String, RowResolution>) -> f64 {
 fn escrow_reuse_rate(
     result: &SolveRunArtifact,
     promoted_with_prior_escrow_count: u64,
-) -> OrgResult<f64> {
+) -> EntityResult<f64> {
     let promotable_new_clusters = result
         .entities
         .iter()
-        .filter(|entity| matches!(entity.state, OrgEntityState::PromotableNew))
+        .filter(|entity| matches!(entity.state, EntityState::PromotableNew))
         .count() as u64;
 
     if promotable_new_clusters == 0 {
@@ -828,7 +831,7 @@ fn holdout_terms(
     terms
 }
 
-fn geometric_mean(values: &[f64]) -> OrgResult<f64> {
+fn geometric_mean(values: &[f64]) -> EntityResult<f64> {
     if values.is_empty() {
         return Err(audit_error(
             "Holdout score requires at least one holdout term",
@@ -948,7 +951,7 @@ fn component_label(prefix: &str, row_ids: &[String]) -> String {
     format!("{prefix}:{}", row_ids.join("|"))
 }
 
-fn read_json_file<T: for<'de> Deserialize<'de>>(path: &Path, label: &str) -> OrgResult<T> {
+fn read_json_file<T: for<'de> Deserialize<'de>>(path: &Path, label: &str) -> EntityResult<T> {
     let text = fs::read_to_string(path).map_err(|error| {
         audit_error(
             format!("Failed to read {label}"),
@@ -970,7 +973,7 @@ fn read_json_file<T: for<'de> Deserialize<'de>>(path: &Path, label: &str) -> Org
     })
 }
 
-fn read_yaml_file<T: for<'de> Deserialize<'de>>(path: &Path, label: &str) -> OrgResult<T> {
+fn read_yaml_file<T: for<'de> Deserialize<'de>>(path: &Path, label: &str) -> EntityResult<T> {
     let text = fs::read_to_string(path).map_err(|error| {
         audit_error(
             format!("Failed to read {label}"),
@@ -992,7 +995,7 @@ fn read_yaml_file<T: for<'de> Deserialize<'de>>(path: &Path, label: &str) -> Org
     })
 }
 
-fn read_jsonl_file<T: for<'de> Deserialize<'de>>(path: &Path, label: &str) -> OrgResult<Vec<T>> {
+fn read_jsonl_file<T: for<'de> Deserialize<'de>>(path: &Path, label: &str) -> EntityResult<Vec<T>> {
     let text = fs::read_to_string(path).map_err(|error| {
         audit_error(
             format!("Failed to read {label}"),
@@ -1027,7 +1030,7 @@ fn read_jsonl_file<T: for<'de> Deserialize<'de>>(path: &Path, label: &str) -> Or
 fn load_jsonl_directory<T: for<'de> Deserialize<'de>>(
     directory: &Path,
     label: &str,
-) -> OrgResult<Vec<T>> {
+) -> EntityResult<Vec<T>> {
     let mut files = fs::read_dir(directory)
         .map_err(|error| {
             audit_error(
@@ -1060,15 +1063,15 @@ fn load_jsonl_directory<T: for<'de> Deserialize<'de>>(
     Ok(records)
 }
 
-fn audit_error(message: impl Into<String>, detail: serde_json::Value) -> OrgError {
-    OrgError::with_detail(OrgErrorCode::Audit, message, detail)
+fn audit_error(message: impl Into<String>, detail: serde_json::Value) -> EntityError {
+    EntityError::with_detail(EntityErrorCode::Audit, message, detail)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::org::types::{
-        AbstentionRecord, CANON_ORG_SOLVE_VERSION, InheritanceMode, InheritanceRecord,
+    use crate::entity_runtime::types::{
+        AbstentionRecord, CANON_ENTITY_SOLVE_VERSION, InheritanceMode, InheritanceRecord,
         RegistrySnapshot, SolveRunSummary, SolvedEntity, StrategyReference,
     };
     use std::io::Write;
@@ -1101,12 +1104,12 @@ mod tests {
         )
         .expect("audit to succeed");
 
-        assert_eq!(artifact.version, CANON_ORG_AUDIT_VERSION);
+        assert_eq!(artifact.version, CANON_ENTITY_AUDIT_VERSION);
         assert_eq!(artifact.summary.decision, PromotionDecision::Promote);
         assert!(artifact.summary.hard_gates_passed);
         assert!(artifact.gate_failures.is_empty());
         assert_eq!(artifact.suite.id, "bdc_org_eval.v1");
-        assert_eq!(artifact.result.version, CANON_ORG_SOLVE_VERSION);
+        assert_eq!(artifact.result.version, CANON_ENTITY_SOLVE_VERSION);
         assert!(artifact.result.content_hash.starts_with("blake3:"));
         assert_eq!(artifact.metrics.anchor_conflicts, 0);
         assert_eq!(artifact.metrics.escrow_reuse_rate, 1.0);
@@ -1231,7 +1234,7 @@ mod tests {
 
     fn projected_observation(row_id: &str, surface: &str) -> serde_json::Value {
         json!({
-            "version": "canon_org_projection.v0",
+            "version": "canon_entity_projection.v0",
             "source_row_id": row_id,
             "doc_id": format!("doc-{row_id}"),
             "primary_surface": {
@@ -1248,7 +1251,7 @@ mod tests {
 
     fn positive_result() -> SolveRunArtifact {
         SolveRunArtifact {
-            version: CANON_ORG_SOLVE_VERSION.to_string(),
+            version: CANON_ENTITY_SOLVE_VERSION.to_string(),
             strategy: strategy_reference(),
             registry: registry_snapshot(),
             summary: SolveRunSummary {
@@ -1260,7 +1263,7 @@ mod tests {
             },
             entities: vec![
                 SolvedEntity {
-                    state: OrgEntityState::ResolvedExisting,
+                    state: EntityState::ResolvedExisting,
                     canonical_id: Some("IC-1".to_string()),
                     all_rows: vec!["row-1".to_string(), "row-9".to_string()],
                     inheritance: InheritanceRecord {
@@ -1270,7 +1273,7 @@ mod tests {
                     ..SolvedEntity::default()
                 },
                 SolvedEntity {
-                    state: OrgEntityState::PromotableNew,
+                    state: EntityState::PromotableNew,
                     canonical_id: Some("IC-NEW".to_string()),
                     all_rows: vec!["row-2".to_string()],
                     inheritance: InheritanceRecord {
@@ -1281,7 +1284,7 @@ mod tests {
                 },
             ],
             abstentions: vec![AbstentionRecord {
-                state: OrgEntityState::AbstainLowEvidence,
+                state: EntityState::AbstainLowEvidence,
                 all_rows: vec!["row-11".to_string()],
                 reason: "insufficient_distinct_docs".to_string(),
                 incumbent_ids: Vec::new(),
@@ -1294,7 +1297,7 @@ mod tests {
 
     fn failing_result() -> SolveRunArtifact {
         SolveRunArtifact {
-            version: CANON_ORG_RUN_VERSION.to_string(),
+            version: CANON_ENTITY_RUN_VERSION.to_string(),
             strategy: strategy_reference(),
             registry: registry_snapshot(),
             summary: SolveRunSummary {
@@ -1305,7 +1308,7 @@ mod tests {
                 abstain_conflict: 0,
             },
             entities: vec![SolvedEntity {
-                state: OrgEntityState::ResolvedExisting,
+                state: EntityState::ResolvedExisting,
                 canonical_id: Some("IC-1".to_string()),
                 all_rows: vec!["row-1".to_string()],
                 inheritance: InheritanceRecord {
@@ -1316,21 +1319,21 @@ mod tests {
             }],
             abstentions: vec![
                 AbstentionRecord {
-                    state: OrgEntityState::AbstainLowEvidence,
+                    state: EntityState::AbstainLowEvidence,
                     all_rows: vec!["row-9".to_string()],
                     reason: "insufficient_backbone_evidence".to_string(),
                     incumbent_ids: Vec::new(),
                     escrow: None,
                 },
                 AbstentionRecord {
-                    state: OrgEntityState::AbstainLowEvidence,
+                    state: EntityState::AbstainLowEvidence,
                     all_rows: vec!["row-2".to_string()],
                     reason: "insufficient_backbone_evidence".to_string(),
                     incumbent_ids: Vec::new(),
                     escrow: None,
                 },
                 AbstentionRecord {
-                    state: OrgEntityState::AbstainLowEvidence,
+                    state: EntityState::AbstainLowEvidence,
                     all_rows: vec!["row-11".to_string()],
                     reason: "insufficient_backbone_evidence".to_string(),
                     incumbent_ids: Vec::new(),

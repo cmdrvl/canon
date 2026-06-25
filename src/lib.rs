@@ -5,7 +5,6 @@ pub mod doctor;
 pub mod entity;
 pub mod input;
 pub mod lookup;
-pub mod org;
 pub mod output;
 pub mod paths;
 pub mod refusal;
@@ -18,18 +17,20 @@ pub mod strategy_registry;
 pub mod witness;
 
 use crate::cli::{
-    CanonCommand, Cli, OrgAuditCli, OrgBlockCli, OrgCommand, OrgEdgeCli, OrgEmitMode,
-    OrgExplainCli, OrgPromoteCli, OrgReviewCommand, OrgReviewExportCli, OrgReviewExportEmitMode,
-    OrgReviewImportCli, OrgReviewInclude, OrgReviewSubcommand, OrgRunCli, OrgSolveCli,
-    OrgStreamEmitMode, OrgSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
-    RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryLintCli,
-    RegistryLintProfile, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
-    RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode,
-    ResolveCli, ResolveEmitMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
-    StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
-    StrategyProfileCli, StrategyPromoteCli, StrategyRegisterCli, StrategyResolveCli,
-    StrategyStatusArg, StrategySubcommand, StrategyUpdateCli,
+    CanonCommand, Cli, EntityAuditCli, EntityBlockCli, EntityCommand, EntityEdgeCli,
+    EntityEmitMode, EntityExplainCli, EntityPromoteCli, EntityReviewCommand, EntityReviewExportCli,
+    EntityReviewExportEmitMode, EntityReviewImportCli, EntityReviewInclude, EntityReviewSubcommand,
+    EntityRunCli, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, RegistryAddEntryCli,
+    RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli, RegistryDiffCli,
+    RegistryEmitMode, RegistryLintCli, RegistryLintProfile, RegistryMintCli, RegistryNextIdCli,
+    RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand,
+    RegistryVersionBumpMode, ResolveCli, ResolveEmitMode, StrategyAuditCli, StrategyCommand,
+    StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli, StrategyGradeArg,
+    StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
+    StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
+    StrategyUpdateCli,
 };
+use crate::entity::runtime as entity_runtime;
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -42,8 +43,8 @@ use std::{
 
 const ORG_V1_PROFILE: &str = "bdc_issuer";
 
-struct OrgRunExecution {
-    artifact: org::SolveRunArtifact,
+struct EntityRunExecution {
+    artifact: entity_runtime::SolveRunArtifact,
     candidate_pairs: u64,
 }
 
@@ -148,7 +149,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
             RegistrySubcommand::Providers(providers) => run_registry_providers(providers),
             RegistrySubcommand::ProviderSchema(schema) => run_registry_provider_schema(schema),
         },
-        CanonCommand::Org(command) => run_org_command(command),
+        CanonCommand::Entity(command) => run_entity_command(command),
         CanonCommand::Strategy(command) => run_strategy_command(command),
     }
 }
@@ -568,33 +569,33 @@ fn append_strategy_mutation_witness(output_json: &str, no_witness: bool) {
     }
 }
 
-fn run_org_command(command: &OrgCommand) -> Result<u8, Box<dyn Error>> {
+fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
     match &command.command {
-        OrgSubcommand::Run(run) => run_org_run_command(run),
-        OrgSubcommand::Block(block) => run_org_block_command(block),
-        OrgSubcommand::Edge(edge) => run_org_edge_command(edge),
-        OrgSubcommand::Solve(solve) => run_org_solve_command(solve),
-        OrgSubcommand::Audit(audit) => run_org_audit_command(audit),
-        OrgSubcommand::Promote(promote) => run_org_promote_command(promote),
-        OrgSubcommand::Explain(explain) => run_org_explain_command(explain),
-        OrgSubcommand::Review(review) => run_org_review_command(review),
+        EntitySubcommand::Run(run) => run_entity_run_command(run),
+        EntitySubcommand::Block(block) => run_entity_block_command(block),
+        EntitySubcommand::Edge(edge) => run_entity_edge_command(edge),
+        EntitySubcommand::Solve(solve) => run_entity_solve_command(solve),
+        EntitySubcommand::Audit(audit) => run_entity_audit_command(audit),
+        EntitySubcommand::Promote(promote) => run_entity_promote_command(promote),
+        EntitySubcommand::Explain(explain) => run_entity_explain_command(explain),
+        EntitySubcommand::Review(review) => run_entity_review_command(review),
     }
 }
 
-fn run_org_run_command(run: &OrgRunCli) -> Result<u8, Box<dyn Error>> {
+fn run_entity_run_command(run: &EntityRunCli) -> Result<u8, Box<dyn Error>> {
     let started = Instant::now();
 
-    match run_org_run_pipeline(run) {
+    match run_entity_run_pipeline(run) {
         Ok(execution) => {
             let artifact_bytes = serde_json::to_vec(&execution.artifact)?;
             if let Some(suite_dir) = run.suite.as_deref()
-                && let Err(refusal_output) = org::audit::audit(
+                && let Err(refusal_output) = entity_runtime::audit::audit(
                     &execution.artifact,
                     &artifact_bytes,
-                    org::audit::AuditContext {
+                    entity_runtime::audit::AuditContext {
                         suite_dir,
                         profile: ORG_V1_PROFILE,
-                        budget_usage: org::audit::AuditBudgetUsage {
+                        budget_usage: entity_runtime::audit::AuditBudgetUsage {
                             runtime_seconds: started.elapsed().as_secs(),
                             candidate_pairs: execution.candidate_pairs,
                         },
@@ -602,21 +603,23 @@ fn run_org_run_command(run: &OrgRunCli) -> Result<u8, Box<dyn Error>> {
                         promoted_with_prior_escrow_count: 0,
                     },
                 )
-                .map_err(create_org_refusal)
+                .map_err(create_entity_refusal)
             {
-                return emit_org_refusal(
+                return emit_entity_refusal(
                     refusal_output,
                     true,
-                    matches!(run.emit, OrgEmitMode::Summary),
+                    matches!(run.emit, EntityEmitMode::Summary),
                 );
             }
 
             let output = match run.emit {
-                OrgEmitMode::Json => org::output::emit_run_json(&execution.artifact)?,
-                OrgEmitMode::Summary => org::output::render_run_summary(&execution.artifact),
+                EntityEmitMode::Json => entity_runtime::output::emit_run_json(&execution.artifact)?,
+                EntityEmitMode::Summary => {
+                    entity_runtime::output::render_run_summary(&execution.artifact)
+                }
             };
-            emit_org_output(&output, matches!(run.emit, OrgEmitMode::Summary));
-            append_org_run_witness(
+            emit_entity_output(&output, matches!(run.emit, EntityEmitMode::Summary));
+            append_entity_run_witness(
                 run,
                 &execution.artifact,
                 &output,
@@ -625,172 +628,180 @@ fn run_org_run_command(run: &OrgRunCli) -> Result<u8, Box<dyn Error>> {
             );
             Ok(0)
         }
-        Err(refusal_output) => emit_org_refusal(
+        Err(refusal_output) => emit_entity_refusal(
             refusal_output,
             true,
-            matches!(run.emit, OrgEmitMode::Summary),
+            matches!(run.emit, EntityEmitMode::Summary),
         ),
     }
 }
 
-fn run_org_block_command(block: &OrgBlockCli) -> Result<u8, Box<dyn Error>> {
-    match run_org_block_pipeline(block) {
+fn run_entity_block_command(block: &EntityBlockCli) -> Result<u8, Box<dyn Error>> {
+    match run_entity_block_pipeline(block) {
         Ok(records) => {
             let output = match block.emit {
-                OrgStreamEmitMode::Jsonl => org::output::emit_block_jsonl(&records)?,
-                OrgStreamEmitMode::Summary => org::output::render_block_summary(&records),
+                EntityStreamEmitMode::Jsonl => entity_runtime::output::emit_block_jsonl(&records)?,
+                EntityStreamEmitMode::Summary => {
+                    entity_runtime::output::render_block_summary(&records)
+                }
             };
-            emit_org_output(&output, matches!(block.emit, OrgStreamEmitMode::Summary));
+            emit_entity_output(&output, matches!(block.emit, EntityStreamEmitMode::Summary));
             Ok(0)
         }
-        Err(refusal_output) => emit_org_refusal(
+        Err(refusal_output) => emit_entity_refusal(
             refusal_output,
             true,
-            matches!(block.emit, OrgStreamEmitMode::Summary),
+            matches!(block.emit, EntityStreamEmitMode::Summary),
         ),
     }
 }
 
-fn run_org_edge_command(edge: &OrgEdgeCli) -> Result<u8, Box<dyn Error>> {
-    match run_org_edge_pipeline(edge) {
+fn run_entity_edge_command(edge: &EntityEdgeCli) -> Result<u8, Box<dyn Error>> {
+    match run_entity_edge_pipeline(edge) {
         Ok(records) => {
             let output = match edge.emit {
-                OrgStreamEmitMode::Jsonl => org::output::emit_edge_jsonl(&records)?,
-                OrgStreamEmitMode::Summary => org::output::render_edge_summary(&records),
+                EntityStreamEmitMode::Jsonl => entity_runtime::output::emit_edge_jsonl(&records)?,
+                EntityStreamEmitMode::Summary => {
+                    entity_runtime::output::render_edge_summary(&records)
+                }
             };
-            emit_org_output(&output, matches!(edge.emit, OrgStreamEmitMode::Summary));
+            emit_entity_output(&output, matches!(edge.emit, EntityStreamEmitMode::Summary));
             Ok(0)
         }
-        Err(refusal_output) => emit_org_refusal(
+        Err(refusal_output) => emit_entity_refusal(
             refusal_output,
             true,
-            matches!(edge.emit, OrgStreamEmitMode::Summary),
+            matches!(edge.emit, EntityStreamEmitMode::Summary),
         ),
     }
 }
 
-fn run_org_solve_command(solve: &OrgSolveCli) -> Result<u8, Box<dyn Error>> {
-    match run_org_solve_pipeline(solve) {
+fn run_entity_solve_command(solve: &EntitySolveCli) -> Result<u8, Box<dyn Error>> {
+    match run_entity_solve_pipeline(solve) {
         Ok(artifact) => {
             let output = match solve.emit {
-                OrgEmitMode::Json => org::output::emit_solve_json(&artifact)?,
-                OrgEmitMode::Summary => org::output::render_solve_summary(&artifact),
+                EntityEmitMode::Json => entity_runtime::output::emit_solve_json(&artifact)?,
+                EntityEmitMode::Summary => entity_runtime::output::render_solve_summary(&artifact),
             };
-            emit_org_output(&output, matches!(solve.emit, OrgEmitMode::Summary));
+            emit_entity_output(&output, matches!(solve.emit, EntityEmitMode::Summary));
             Ok(0)
         }
-        Err(refusal_output) => emit_org_refusal(
+        Err(refusal_output) => emit_entity_refusal(
             refusal_output,
             true,
-            matches!(solve.emit, OrgEmitMode::Summary),
+            matches!(solve.emit, EntityEmitMode::Summary),
         ),
     }
 }
 
-fn run_org_audit_command(audit: &OrgAuditCli) -> Result<u8, Box<dyn Error>> {
-    match run_org_audit_pipeline(audit) {
+fn run_entity_audit_command(audit: &EntityAuditCli) -> Result<u8, Box<dyn Error>> {
+    match run_entity_audit_pipeline(audit) {
         Ok(artifact) => {
             let output = match audit.emit {
-                OrgEmitMode::Json => org::output::emit_audit_json(&artifact)?,
-                OrgEmitMode::Summary => org::output::render_audit_summary(&artifact),
+                EntityEmitMode::Json => entity_runtime::output::emit_audit_json(&artifact)?,
+                EntityEmitMode::Summary => entity_runtime::output::render_audit_summary(&artifact),
             };
-            emit_org_output(&output, matches!(audit.emit, OrgEmitMode::Summary));
+            emit_entity_output(&output, matches!(audit.emit, EntityEmitMode::Summary));
             Ok(0)
         }
-        Err(refusal_output) => emit_org_refusal(
+        Err(refusal_output) => emit_entity_refusal(
             refusal_output,
             true,
-            matches!(audit.emit, OrgEmitMode::Summary),
+            matches!(audit.emit, EntityEmitMode::Summary),
         ),
     }
 }
 
-fn run_org_promote_command(promote: &OrgPromoteCli) -> Result<u8, Box<dyn Error>> {
-    match run_org_promote_pipeline(promote) {
+fn run_entity_promote_command(promote: &EntityPromoteCli) -> Result<u8, Box<dyn Error>> {
+    match run_entity_promote_pipeline(promote) {
         Ok(artifact) => {
             let output = match promote.emit {
-                OrgEmitMode::Json => org::output::emit_promote_json(&artifact)?,
-                OrgEmitMode::Summary => org::output::render_promote_summary(&artifact),
+                EntityEmitMode::Json => entity_runtime::output::emit_promote_json(&artifact)?,
+                EntityEmitMode::Summary => {
+                    entity_runtime::output::render_promote_summary(&artifact)
+                }
             };
-            emit_org_output(&output, matches!(promote.emit, OrgEmitMode::Summary));
+            emit_entity_output(&output, matches!(promote.emit, EntityEmitMode::Summary));
             Ok(0)
         }
-        Err(refusal_output) => emit_org_refusal(
+        Err(refusal_output) => emit_entity_refusal(
             refusal_output,
             true,
-            matches!(promote.emit, OrgEmitMode::Summary),
+            matches!(promote.emit, EntityEmitMode::Summary),
         ),
     }
 }
 
-fn run_org_review_command(review: &OrgReviewCommand) -> Result<u8, Box<dyn Error>> {
+fn run_entity_review_command(review: &EntityReviewCommand) -> Result<u8, Box<dyn Error>> {
     match &review.command {
-        OrgReviewSubcommand::Export(export) => run_org_review_export_command(export),
-        OrgReviewSubcommand::Import(import) => run_org_review_import_command(import),
+        EntityReviewSubcommand::Export(export) => run_entity_review_export_command(export),
+        EntityReviewSubcommand::Import(import) => run_entity_review_import_command(import),
     }
 }
 
-fn run_org_review_export_command(export: &OrgReviewExportCli) -> Result<u8, Box<dyn Error>> {
-    match run_org_review_export_pipeline(export) {
+fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8, Box<dyn Error>> {
+    match run_entity_review_export_pipeline(export) {
         Ok(artifact) => {
             let output = match export.emit {
-                OrgReviewExportEmitMode::Json => Ok(serde_json::to_string(&artifact)?),
-                OrgReviewExportEmitMode::Csv => {
-                    org::review::export_csv(&artifact).map_err(create_org_refusal)
+                EntityReviewExportEmitMode::Json => Ok(serde_json::to_string(&artifact)?),
+                EntityReviewExportEmitMode::Csv => {
+                    entity_runtime::review::export_csv(&artifact).map_err(create_entity_refusal)
                 }
             };
             match output {
                 Ok(output) => {
-                    emit_org_output(&output, false);
+                    emit_entity_output(&output, false);
                     Ok(0)
                 }
-                Err(refusal_output) => emit_org_refusal(
+                Err(refusal_output) => emit_entity_refusal(
                     refusal_output,
-                    matches!(export.emit, OrgReviewExportEmitMode::Json),
+                    matches!(export.emit, EntityReviewExportEmitMode::Json),
                     false,
                 ),
             }
         }
-        Err(refusal_output) => emit_org_refusal(
+        Err(refusal_output) => emit_entity_refusal(
             refusal_output,
-            matches!(export.emit, OrgReviewExportEmitMode::Json),
+            matches!(export.emit, EntityReviewExportEmitMode::Json),
             false,
         ),
     }
 }
 
-fn run_org_review_import_command(import: &OrgReviewImportCli) -> Result<u8, Box<dyn Error>> {
-    match run_org_review_import_pipeline(import) {
+fn run_entity_review_import_command(import: &EntityReviewImportCli) -> Result<u8, Box<dyn Error>> {
+    match run_entity_review_import_pipeline(import) {
         Ok(artifact) => {
             let output = match import.emit {
-                OrgEmitMode::Json => serde_json::to_string(&artifact)?,
-                OrgEmitMode::Summary => artifact.render_summary(),
+                EntityEmitMode::Json => serde_json::to_string(&artifact)?,
+                EntityEmitMode::Summary => artifact.render_summary(),
             };
-            emit_org_output(&output, matches!(import.emit, OrgEmitMode::Summary));
+            emit_entity_output(&output, matches!(import.emit, EntityEmitMode::Summary));
             Ok(0)
         }
-        Err(refusal_output) => emit_org_refusal(
+        Err(refusal_output) => emit_entity_refusal(
             refusal_output,
             true,
-            matches!(import.emit, OrgEmitMode::Summary),
+            matches!(import.emit, EntityEmitMode::Summary),
         ),
     }
 }
 
-fn run_org_explain_command(explain: &OrgExplainCli) -> Result<u8, Box<dyn Error>> {
-    match run_org_explain_pipeline(explain) {
+fn run_entity_explain_command(explain: &EntityExplainCli) -> Result<u8, Box<dyn Error>> {
+    match run_entity_explain_pipeline(explain) {
         Ok(artifact) => {
             let output = match explain.emit {
-                OrgEmitMode::Json => org::output::emit_explain_json(&artifact)?,
-                OrgEmitMode::Summary => org::output::render_explain_summary(&artifact),
+                EntityEmitMode::Json => entity_runtime::output::emit_explain_json(&artifact)?,
+                EntityEmitMode::Summary => {
+                    entity_runtime::output::render_explain_summary(&artifact)
+                }
             };
-            emit_org_output(&output, matches!(explain.emit, OrgEmitMode::Summary));
+            emit_entity_output(&output, matches!(explain.emit, EntityEmitMode::Summary));
             Ok(0)
         }
-        Err(refusal_output) => emit_org_refusal(
+        Err(refusal_output) => emit_entity_refusal(
             refusal_output,
             true,
-            matches!(explain.emit, OrgEmitMode::Summary),
+            matches!(explain.emit, EntityEmitMode::Summary),
         ),
     }
 }
@@ -1173,74 +1184,90 @@ fn render_provider_schema_summary(schema: &registry::ProviderSchema) -> String {
 }
 
 #[allow(clippy::result_large_err)]
-fn run_org_run_pipeline(run: &OrgRunCli) -> Result<OrgRunExecution, CanonOutput> {
-    let strategy = org::strategy::load_strategy(&run.strategy).map_err(create_org_refusal)?;
-    let incumbent =
-        org::incumbent::load_incumbent_memory(&run.registry).map_err(create_org_refusal)?;
-    let observations = org::projection::project_input(&run.rows, &strategy, None, None)
-        .map_err(create_org_refusal)?;
-    let blocks = org::block::build_candidate_blocks(&strategy, &observations, &incumbent)
-        .map_err(create_org_refusal)?;
-    let edges = org::edge::build_edges(&strategy, &observations, &blocks, &incumbent)
-        .map_err(create_org_refusal)?;
-    let artifact = org::solve::run(&strategy, &observations, &edges, &incumbent)
-        .map_err(create_org_refusal)?;
+fn run_entity_run_pipeline(run: &EntityRunCli) -> Result<EntityRunExecution, CanonOutput> {
+    let strategy =
+        entity_runtime::strategy::load_strategy(&run.strategy).map_err(create_entity_refusal)?;
+    let incumbent = entity_runtime::incumbent::load_incumbent_memory(&run.registry)
+        .map_err(create_entity_refusal)?;
+    let observations = entity_runtime::projection::project_input(&run.rows, &strategy, None, None)
+        .map_err(create_entity_refusal)?;
+    let blocks =
+        entity_runtime::block::build_candidate_blocks(&strategy, &observations, &incumbent)
+            .map_err(create_entity_refusal)?;
+    let edges = entity_runtime::edge::build_edges(&strategy, &observations, &blocks, &incumbent)
+        .map_err(create_entity_refusal)?;
+    let artifact = entity_runtime::solve::run(&strategy, &observations, &edges, &incumbent)
+        .map_err(create_entity_refusal)?;
 
-    Ok(OrgRunExecution {
+    Ok(EntityRunExecution {
         artifact,
         candidate_pairs: edges.len() as u64,
     })
 }
 
 #[allow(clippy::result_large_err)]
-fn run_org_block_pipeline(block: &OrgBlockCli) -> Result<Vec<org::BlockRecord>, CanonOutput> {
-    let strategy = org::strategy::load_strategy(&block.strategy).map_err(create_org_refusal)?;
-    let incumbent =
-        org::incumbent::load_incumbent_memory(&block.registry).map_err(create_org_refusal)?;
-    let observations = org::projection::project_input(&block.rows, &strategy, None, None)
-        .map_err(create_org_refusal)?;
+fn run_entity_block_pipeline(
+    block: &EntityBlockCli,
+) -> Result<Vec<entity_runtime::BlockRecord>, CanonOutput> {
+    let strategy =
+        entity_runtime::strategy::load_strategy(&block.strategy).map_err(create_entity_refusal)?;
+    let incumbent = entity_runtime::incumbent::load_incumbent_memory(&block.registry)
+        .map_err(create_entity_refusal)?;
+    let observations =
+        entity_runtime::projection::project_input(&block.rows, &strategy, None, None)
+            .map_err(create_entity_refusal)?;
 
-    org::block::build_candidate_blocks(&strategy, &observations, &incumbent)
-        .map_err(create_org_refusal)
+    entity_runtime::block::build_candidate_blocks(&strategy, &observations, &incumbent)
+        .map_err(create_entity_refusal)
 }
 
 #[allow(clippy::result_large_err)]
-fn run_org_edge_pipeline(edge: &OrgEdgeCli) -> Result<Vec<org::EdgeRecord>, CanonOutput> {
-    let strategy = org::strategy::load_strategy(&edge.strategy).map_err(create_org_refusal)?;
-    let incumbent =
-        org::incumbent::load_incumbent_memory(&edge.registry).map_err(create_org_refusal)?;
-    let observations = org::projection::project_input(&edge.rows, &strategy, None, None)
-        .map_err(create_org_refusal)?;
+fn run_entity_edge_pipeline(
+    edge: &EntityEdgeCli,
+) -> Result<Vec<entity_runtime::EdgeRecord>, CanonOutput> {
+    let strategy =
+        entity_runtime::strategy::load_strategy(&edge.strategy).map_err(create_entity_refusal)?;
+    let incumbent = entity_runtime::incumbent::load_incumbent_memory(&edge.registry)
+        .map_err(create_entity_refusal)?;
+    let observations = entity_runtime::projection::project_input(&edge.rows, &strategy, None, None)
+        .map_err(create_entity_refusal)?;
     let candidates = read_jsonl_artifact(&edge.candidates, "candidate block artifact")?;
 
-    org::edge::build_edges(&strategy, &observations, &candidates, &incumbent)
-        .map_err(create_org_refusal)
+    entity_runtime::edge::build_edges(&strategy, &observations, &candidates, &incumbent)
+        .map_err(create_entity_refusal)
 }
 
 #[allow(clippy::result_large_err)]
-fn run_org_solve_pipeline(solve: &OrgSolveCli) -> Result<org::SolveRunArtifact, CanonOutput> {
-    let strategy = org::strategy::load_strategy(&solve.strategy).map_err(create_org_refusal)?;
-    let incumbent =
-        org::incumbent::load_incumbent_memory(&solve.registry).map_err(create_org_refusal)?;
-    let observations = org::projection::project_input(&solve.rows, &strategy, None, None)
-        .map_err(create_org_refusal)?;
+fn run_entity_solve_pipeline(
+    solve: &EntitySolveCli,
+) -> Result<entity_runtime::SolveRunArtifact, CanonOutput> {
+    let strategy =
+        entity_runtime::strategy::load_strategy(&solve.strategy).map_err(create_entity_refusal)?;
+    let incumbent = entity_runtime::incumbent::load_incumbent_memory(&solve.registry)
+        .map_err(create_entity_refusal)?;
+    let observations =
+        entity_runtime::projection::project_input(&solve.rows, &strategy, None, None)
+            .map_err(create_entity_refusal)?;
     let edges = read_jsonl_artifact(&solve.edges, "edge artifact")?;
 
-    org::solve::solve(&strategy, &observations, &edges, &incumbent).map_err(create_org_refusal)
+    entity_runtime::solve::solve(&strategy, &observations, &edges, &incumbent)
+        .map_err(create_entity_refusal)
 }
 
 #[allow(clippy::result_large_err)]
-fn run_org_audit_pipeline(audit: &OrgAuditCli) -> Result<org::AuditArtifact, CanonOutput> {
-    let (result, result_bytes): (org::SolveRunArtifact, Vec<u8>) =
+fn run_entity_audit_pipeline(
+    audit: &EntityAuditCli,
+) -> Result<entity_runtime::AuditArtifact, CanonOutput> {
+    let (result, result_bytes): (entity_runtime::SolveRunArtifact, Vec<u8>) =
         read_json_artifact(&audit.result, "org result artifact")?;
 
-    org::audit::audit(
+    entity_runtime::audit::audit(
         &result,
         &result_bytes,
-        org::audit::AuditContext {
+        entity_runtime::audit::AuditContext {
             suite_dir: &audit.suite,
             profile: ORG_V1_PROFILE,
-            budget_usage: org::audit::AuditBudgetUsage {
+            budget_usage: entity_runtime::audit::AuditBudgetUsage {
                 runtime_seconds: 0,
                 candidate_pairs: 0,
             },
@@ -1248,17 +1275,19 @@ fn run_org_audit_pipeline(audit: &OrgAuditCli) -> Result<org::AuditArtifact, Can
             promoted_with_prior_escrow_count: 0,
         },
     )
-    .map_err(create_org_refusal)
+    .map_err(create_entity_refusal)
 }
 
 #[allow(clippy::result_large_err)]
-fn run_org_promote_pipeline(promote: &OrgPromoteCli) -> Result<org::PromoteArtifact, CanonOutput> {
-    let (result, result_bytes): (org::SolveRunArtifact, Vec<u8>) =
+fn run_entity_promote_pipeline(
+    promote: &EntityPromoteCli,
+) -> Result<entity_runtime::PromoteArtifact, CanonOutput> {
+    let (result, result_bytes): (entity_runtime::SolveRunArtifact, Vec<u8>) =
         read_json_artifact(&promote.result, "org result artifact")?;
-    let (audit, audit_bytes): (org::AuditArtifact, Vec<u8>) =
+    let (audit, audit_bytes): (entity_runtime::AuditArtifact, Vec<u8>) =
         read_json_artifact(&promote.audit, "org audit artifact")?;
 
-    org::promote::promote(
+    entity_runtime::promote::promote(
         &result,
         &result_bytes,
         &audit,
@@ -1266,73 +1295,79 @@ fn run_org_promote_pipeline(promote: &OrgPromoteCli) -> Result<org::PromoteArtif
         &promote.registry,
         &promote.next_version,
     )
-    .map_err(create_org_refusal)
+    .map_err(create_entity_refusal)
 }
 
 #[allow(clippy::result_large_err)]
-fn run_org_review_export_pipeline(
-    export: &OrgReviewExportCli,
-) -> Result<org::review::ReviewExportOutput, CanonOutput> {
-    let (result, result_bytes): (org::SolveRunArtifact, Vec<u8>) =
+fn run_entity_review_export_pipeline(
+    export: &EntityReviewExportCli,
+) -> Result<entity_runtime::review::ReviewExportOutput, CanonOutput> {
+    let (result, result_bytes): (entity_runtime::SolveRunArtifact, Vec<u8>) =
         read_json_artifact(&export.result, "org result artifact")?;
 
-    org::review::export(
+    entity_runtime::review::export(
         &result,
         &result_bytes,
-        map_org_review_include(&export.include),
+        map_entity_review_include(&export.include),
     )
-    .map_err(create_org_refusal)
+    .map_err(create_entity_refusal)
 }
 
 #[allow(clippy::result_large_err)]
-fn run_org_review_import_pipeline(
-    import: &OrgReviewImportCli,
-) -> Result<org::review::ReviewImportOutput, CanonOutput> {
+fn run_entity_review_import_pipeline(
+    import: &EntityReviewImportCli,
+) -> Result<entity_runtime::review::ReviewImportOutput, CanonOutput> {
     let review_bytes = read_artifact_bytes(&import.review, "org review artifact")?;
     let audit_data = import
         .audit
         .as_ref()
         .map(|audit_path| {
-            read_json_artifact::<org::AuditArtifact>(audit_path, "org audit artifact")
+            read_json_artifact::<entity_runtime::AuditArtifact>(audit_path, "org audit artifact")
         })
         .transpose()?;
     let audit = audit_data
         .as_ref()
         .map(|(audit, bytes)| (audit, bytes.as_slice()));
 
-    org::review::import(
+    entity_runtime::review::import(
         &import.review,
         &review_bytes,
         &import.registry,
         &import.next_version,
         audit,
     )
-    .map_err(create_org_refusal)
+    .map_err(create_entity_refusal)
 }
 
-fn map_org_review_include(include: &OrgReviewInclude) -> org::review::ReviewInclude {
+fn map_entity_review_include(
+    include: &EntityReviewInclude,
+) -> entity_runtime::review::ReviewInclude {
     match include {
-        OrgReviewInclude::Resolved => org::review::ReviewInclude::Resolved,
-        OrgReviewInclude::Escrow => org::review::ReviewInclude::Escrow,
-        OrgReviewInclude::Contradictions => org::review::ReviewInclude::Contradictions,
-        OrgReviewInclude::All => org::review::ReviewInclude::All,
+        EntityReviewInclude::Resolved => entity_runtime::review::ReviewInclude::Resolved,
+        EntityReviewInclude::Escrow => entity_runtime::review::ReviewInclude::Escrow,
+        EntityReviewInclude::Contradictions => {
+            entity_runtime::review::ReviewInclude::Contradictions
+        }
+        EntityReviewInclude::All => entity_runtime::review::ReviewInclude::All,
     }
 }
 
 #[allow(clippy::result_large_err)]
-fn run_org_explain_pipeline(explain: &OrgExplainCli) -> Result<org::ExplainArtifact, CanonOutput> {
-    let (result, _result_bytes): (org::SolveRunArtifact, Vec<u8>) =
+fn run_entity_explain_pipeline(
+    explain: &EntityExplainCli,
+) -> Result<entity_runtime::ExplainArtifact, CanonOutput> {
+    let (result, _result_bytes): (entity_runtime::SolveRunArtifact, Vec<u8>) =
         read_json_artifact(&explain.result, "org result artifact")?;
-    let query = org::ExplainQuery {
+    let query = entity_runtime::ExplainQuery {
         row_id: explain.row.clone(),
         canonical_id: explain.canon_id.clone(),
         escrow_id: explain.escrow_id.clone(),
     };
 
-    org::explain::explain_from_result(query, &result).map_err(create_org_refusal)
+    entity_runtime::explain::explain_from_result(query, &result).map_err(create_entity_refusal)
 }
 
-fn emit_org_output(output: &str, summary_mode: bool) {
+fn emit_entity_output(output: &str, summary_mode: bool) {
     if summary_mode {
         println!("{output}");
     } else {
@@ -1340,7 +1375,7 @@ fn emit_org_output(output: &str, summary_mode: bool) {
     }
 }
 
-fn emit_org_refusal(
+fn emit_entity_refusal(
     refusal_output: CanonOutput,
     structured_stdout: bool,
     summary_mode: bool,
@@ -1354,9 +1389,9 @@ fn emit_org_refusal(
     Ok(2)
 }
 
-fn append_org_run_witness(
-    run: &OrgRunCli,
-    artifact: &org::SolveRunArtifact,
+fn append_entity_run_witness(
+    run: &EntityRunCli,
+    artifact: &entity_runtime::SolveRunArtifact,
     output: &str,
     runtime_seconds: u64,
     candidate_pairs: Option<u64>,
@@ -1379,7 +1414,7 @@ fn append_org_run_witness(
     let mut params = serde_json::Map::new();
     params.insert(
         "subcommand".to_string(),
-        serde_json::Value::String("org.run".to_string()),
+        serde_json::Value::String("entity.run".to_string()),
     );
     params.insert(
         "strategy_id".to_string(),
@@ -1417,8 +1452,8 @@ fn append_org_run_witness(
         "emit".to_string(),
         serde_json::Value::String(
             match run.emit {
-                OrgEmitMode::Json => "json",
-                OrgEmitMode::Summary => "summary",
+                EntityEmitMode::Json => "json",
+                EntityEmitMode::Summary => "summary",
             }
             .to_string(),
         ),
@@ -2340,65 +2375,65 @@ fn create_io_refusal(error: std::io::Error) -> CanonOutput {
     )
 }
 
-fn create_org_refusal(error: org::OrgError) -> CanonOutput {
+fn create_entity_refusal(error: entity_runtime::EntityError) -> CanonOutput {
     let detail = error.detail.unwrap_or_else(|| serde_json::json!({}));
     let message = error.message;
 
     match error.code {
-        org::OrgErrorCode::InputContract => {
-            Refusal::org_input_contract(message, detail).to_canon_output()
+        entity_runtime::EntityErrorCode::InputContract => {
+            Refusal::entity_input_contract(message, detail).to_canon_output()
         }
-        org::OrgErrorCode::Strategy => {
-            Refusal::org_bad_strategy(message, detail).to_canon_output()
+        entity_runtime::EntityErrorCode::Strategy => {
+            Refusal::entity_bad_strategy(message, detail).to_canon_output()
         }
-        org::OrgErrorCode::Audit => {
+        entity_runtime::EntityErrorCode::Audit => {
             let lowercase = message.to_ascii_lowercase();
             if lowercase.contains("fixture")
                 || lowercase.contains("row catalog")
                 || lowercase.contains("source_row_id")
             {
-                Refusal::org_fixture_invalid(message, detail).to_canon_output()
+                Refusal::entity_fixture_invalid(message, detail).to_canon_output()
             } else {
-                Refusal::org_bad_suite(message, detail).to_canon_output()
+                Refusal::entity_bad_suite(message, detail).to_canon_output()
             }
         }
-        org::OrgErrorCode::Promotion => {
+        entity_runtime::EntityErrorCode::Promotion => {
             let lowercase = message.to_ascii_lowercase();
             if lowercase.contains("stale") {
-                Refusal::org_stale_registry(message, detail).to_canon_output()
+                Refusal::entity_stale_registry(message, detail).to_canon_output()
             } else if lowercase.contains("next-version")
                 || lowercase.contains("next version")
                 || lowercase.contains("version bump")
                 || lowercase.contains("differ from the current")
             {
-                Refusal::org_version_bump_required(message, detail).to_canon_output()
+                Refusal::entity_version_bump_required(message, detail).to_canon_output()
             } else {
-                refusal::create_refusal(RefusalCode::EParse, message, detail, None)
+                refusal::create_refusal(RefusalCode::EEntityArtifactContract, message, detail, None)
             }
         }
-        org::OrgErrorCode::Registry => refusal::create_refusal(
+        entity_runtime::EntityErrorCode::Registry => refusal::create_refusal(
             RefusalCode::EBadRegistry,
             message,
             detail,
-            Some("Check the org registry sidecars and rerun the canon org command".to_string()),
+            Some("Check the entity registry sidecars and rerun the canon entity command".to_string()),
         ),
-        org::OrgErrorCode::ArtifactContract => refusal::create_refusal(
-            RefusalCode::EParse,
+        entity_runtime::EntityErrorCode::ArtifactContract => refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
             message,
             detail,
-            Some("Regenerate the referenced org artifact with matching strategy and registry inputs, then rerun".to_string()),
+            Some("Regenerate the referenced entity artifact with matching strategy and registry inputs, then rerun".to_string()),
         ),
-        org::OrgErrorCode::Explain => refusal::create_refusal(
-            RefusalCode::EParse,
+        entity_runtime::EntityErrorCode::Explain => refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
             message,
             detail,
-            Some("Check the explain selector and result artifact, then rerun canon org explain".to_string()),
+            Some("Check the explain selector and result artifact, then rerun canon entity explain".to_string()),
         ),
-        org::OrgErrorCode::Unimplemented => refusal::create_refusal(
-            RefusalCode::EParse,
+        entity_runtime::EntityErrorCode::Unimplemented => refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
             message,
             detail,
-            Some("Use an implemented canon org subcommand or update the runtime wiring first".to_string()),
+            Some("Use an implemented canon entity subcommand or update the runtime wiring first".to_string()),
         ),
     }
 }
@@ -2832,12 +2867,6 @@ pub enum RefusalCode {
     ETooLarge,
     EEmitFormat,
     EColumnExists,
-    EOrgInputContract,
-    EOrgBadStrategy,
-    EOrgBadSuite,
-    EOrgFixtureInvalid,
-    EOrgVersionBumpRequired,
-    EOrgStaleRegistry,
     EEntityProfile,
     EEntityStrategy,
     EEntityInputContract,
@@ -2878,12 +2907,6 @@ impl Serialize for RefusalCode {
             RefusalCode::ETooLarge => "E_TOO_LARGE",
             RefusalCode::EEmitFormat => "E_EMIT_FORMAT",
             RefusalCode::EColumnExists => "E_COLUMN_EXISTS",
-            RefusalCode::EOrgInputContract => "E_ORG_INPUT_CONTRACT",
-            RefusalCode::EOrgBadStrategy => "E_ORG_BAD_STRATEGY",
-            RefusalCode::EOrgBadSuite => "E_ORG_BAD_SUITE",
-            RefusalCode::EOrgFixtureInvalid => "E_ORG_FIXTURE_INVALID",
-            RefusalCode::EOrgVersionBumpRequired => "E_ORG_VERSION_BUMP_REQUIRED",
-            RefusalCode::EOrgStaleRegistry => "E_ORG_STALE_REGISTRY",
             RefusalCode::EEntityProfile => "E_ENTITY_PROFILE",
             RefusalCode::EEntityStrategy => "E_ENTITY_STRATEGY",
             RefusalCode::EEntityInputContract => "E_ENTITY_INPUT_CONTRACT",
@@ -2948,22 +2971,6 @@ impl RefusalCode {
             }
             RefusalCode::EColumnExists => {
                 "Choose a --canon-column name that is not already present in the input header"
-            }
-            RefusalCode::EOrgInputContract => {
-                "Fix the org input rows to match the strategy contract, then rerun canon org"
-            }
-            RefusalCode::EOrgBadStrategy => "Fix the org strategy YAML, then rerun canon org",
-            RefusalCode::EOrgBadSuite => {
-                "Check the evaluation suite directory and strategy profile, then rerun canon org audit"
-            }
-            RefusalCode::EOrgFixtureInvalid => {
-                "Fix the suite fixture row catalog or expected pairs, then rerun canon org audit"
-            }
-            RefusalCode::EOrgVersionBumpRequired => {
-                "Pass --next-version, then rerun canon org promote"
-            }
-            RefusalCode::EOrgStaleRegistry => {
-                "Re-run canon org against the current registry snapshot"
             }
             RefusalCode::EEntityProfile => {
                 "Run canon entity profile list or fix the strategy profile block, then rerun canon entity"

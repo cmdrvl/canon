@@ -1,9 +1,9 @@
-//! Strategy parsing and validation for `canon org`.
+//! Strategy parsing and validation for `canon entity`.
 
 use super::types::{
-    NormalizeConfig, OrgEntityState, OrgError, OrgErrorCode, OrgResult, OrgSideField, OrgStrategy,
-    StrategyAnchors, StrategyEvidence, StrategyObservations, StrategyOperator, StrategyPromotion,
-    StrategyReconcile, StrategySolver,
+    EntityError, EntityErrorCode, EntityResult, EntitySideField, EntityState, EntityStrategy,
+    NormalizeConfig, StrategyAnchors, StrategyEvidence, StrategyObservations, StrategyOperator,
+    StrategyPromotion, StrategyReconcile, StrategySolver,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -19,10 +19,10 @@ const MERGE_POLICY_RECIPROCAL_BEST: &str = "reciprocal_best";
 const RECONCILE_INHERIT: &str = "inherit";
 const RECONCILE_ABSTAIN_CONFLICT: &str = "abstain_conflict";
 
-pub fn load_strategy(path: &Path) -> OrgResult<OrgStrategy> {
+pub fn load_strategy(path: &Path) -> EntityResult<EntityStrategy> {
     let bytes = fs::read(path).map_err(|error| {
-        OrgError::with_detail(
-            OrgErrorCode::Strategy,
+        EntityError::with_detail(
+            EntityErrorCode::Strategy,
             format!("Failed to read strategy file '{}'", path.display()),
             json!({
                 "path": path.display().to_string(),
@@ -34,10 +34,10 @@ pub fn load_strategy(path: &Path) -> OrgResult<OrgStrategy> {
     parse_strategy_bytes(&bytes)
 }
 
-pub fn parse_strategy_bytes(bytes: &[u8]) -> OrgResult<OrgStrategy> {
+pub fn parse_strategy_bytes(bytes: &[u8]) -> EntityResult<EntityStrategy> {
     let text = std::str::from_utf8(bytes).map_err(|error| {
-        OrgError::with_detail(
-            OrgErrorCode::Strategy,
+        EntityError::with_detail(
+            EntityErrorCode::Strategy,
             "Strategy YAML must be valid UTF-8",
             json!({
                 "error": error.to_string(),
@@ -45,9 +45,9 @@ pub fn parse_strategy_bytes(bytes: &[u8]) -> OrgResult<OrgStrategy> {
         )
     })?;
 
-    let raw: RawOrgStrategy = serde_yaml::from_str(text).map_err(|error| {
-        OrgError::with_detail(
-            OrgErrorCode::Strategy,
+    let raw: RawEntityStrategy = serde_yaml::from_str(text).map_err(|error| {
+        EntityError::with_detail(
+            EntityErrorCode::Strategy,
             "Invalid org strategy YAML",
             json!({
                 "error": error.to_string(),
@@ -55,7 +55,7 @@ pub fn parse_strategy_bytes(bytes: &[u8]) -> OrgResult<OrgStrategy> {
         )
     })?;
 
-    let strategy = OrgStrategy {
+    let strategy = EntityStrategy {
         id: raw.id,
         version: raw.version,
         entity_type: raw.entity_type,
@@ -124,7 +124,7 @@ pub fn strategy_content_hash(bytes: &[u8]) -> String {
     format!("blake3:{}", blake3::hash(bytes).to_hex())
 }
 
-fn validate_strategy(strategy: &OrgStrategy) -> OrgResult<()> {
+fn validate_strategy(strategy: &EntityStrategy) -> EntityResult<()> {
     validate_non_empty("strategy_id", &strategy.id)?;
     validate_non_empty("strategy_version", &strategy.version)?;
     validate_non_empty("entity_type", &strategy.entity_type)?;
@@ -142,7 +142,7 @@ fn validate_strategy(strategy: &OrgStrategy) -> OrgResult<()> {
     Ok(())
 }
 
-fn validate_observations(strategy: &OrgStrategy) -> OrgResult<()> {
+fn validate_observations(strategy: &EntityStrategy) -> EntityResult<()> {
     if strategy.observations.name_fields.is_empty() {
         return Err(strategy_error(
             "observations.name_fields must contain at least one field",
@@ -199,7 +199,7 @@ fn validate_observations(strategy: &OrgStrategy) -> OrgResult<()> {
     Ok(())
 }
 
-fn validate_normalize(strategy: &OrgStrategy) -> OrgResult<()> {
+fn validate_normalize(strategy: &EntityStrategy) -> EntityResult<()> {
     if strategy.normalize.views.is_empty() {
         return Err(strategy_error(
             "normalize.views must contain at least one named view",
@@ -233,7 +233,7 @@ fn validate_normalize(strategy: &OrgStrategy) -> OrgResult<()> {
     Ok(())
 }
 
-fn validate_blocking(strategy: &OrgStrategy) -> OrgResult<()> {
+fn validate_blocking(strategy: &EntityStrategy) -> EntityResult<()> {
     for (index, operator) in strategy.blocking.iter().enumerate() {
         let path = format!("blocking[{index}]");
         match operator.op.as_str() {
@@ -274,7 +274,7 @@ fn validate_blocking(strategy: &OrgStrategy) -> OrgResult<()> {
     Ok(())
 }
 
-fn validate_evidence(strategy: &OrgStrategy) -> OrgResult<()> {
+fn validate_evidence(strategy: &EntityStrategy) -> EntityResult<()> {
     validate_evidence_group(strategy, "evidence.must_link", &strategy.evidence.must_link)?;
     validate_evidence_group(strategy, "evidence.support", &strategy.evidence.support)?;
     validate_evidence_group(
@@ -286,10 +286,10 @@ fn validate_evidence(strategy: &OrgStrategy) -> OrgResult<()> {
 }
 
 fn validate_evidence_group(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     group: &str,
     operators: &[StrategyOperator],
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     for (index, operator) in operators.iter().enumerate() {
         let path = format!("{group}[{index}]");
         match group {
@@ -303,10 +303,10 @@ fn validate_evidence_group(
 }
 
 fn validate_must_link_operator(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     operator: &StrategyOperator,
     path: &str,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     match operator.op.as_str() {
         "shared_anchor" => {
             reject_extra_params(operator, path, &["anchor"])?;
@@ -330,10 +330,10 @@ fn validate_must_link_operator(
 }
 
 fn validate_support_operator(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     operator: &StrategyOperator,
     path: &str,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     match operator.op.as_str() {
         "exact_view" => {
             reject_extra_params(operator, path, &["view", "score"])?;
@@ -366,10 +366,10 @@ fn validate_support_operator(
 }
 
 fn validate_cannot_link_operator(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     operator: &StrategyOperator,
     path: &str,
-) -> OrgResult<()> {
+) -> EntityResult<()> {
     match operator.op.as_str() {
         "conflicting_anchor" => {
             reject_extra_params(operator, path, &["anchor"])?;
@@ -389,7 +389,7 @@ fn validate_cannot_link_operator(
     Ok(())
 }
 
-fn validate_solver(strategy: &OrgStrategy) -> OrgResult<()> {
+fn validate_solver(strategy: &EntityStrategy) -> EntityResult<()> {
     if strategy.solver.score_mode != SCORE_MODE_NAMESPACE_MAX_SUM {
         return Err(strategy_error(
             "solver.score_mode must match the validated BDC v1 policy",
@@ -464,7 +464,7 @@ fn validate_solver(strategy: &OrgStrategy) -> OrgResult<()> {
     Ok(())
 }
 
-fn validate_reconcile(strategy: &OrgStrategy) -> OrgResult<()> {
+fn validate_reconcile(strategy: &EntityStrategy) -> EntityResult<()> {
     if strategy.reconcile.single_incumbent_overlap != RECONCILE_INHERIT {
         return Err(strategy_error(
             "reconcile.single_incumbent_overlap must be 'inherit'",
@@ -493,7 +493,7 @@ fn validate_reconcile(strategy: &OrgStrategy) -> OrgResult<()> {
     Ok(())
 }
 
-fn validate_anchors(strategy: &OrgStrategy) -> OrgResult<()> {
+fn validate_anchors(strategy: &EntityStrategy) -> EntityResult<()> {
     let declared_anchors = strategy
         .observations
         .anchor_fields
@@ -585,7 +585,7 @@ fn validate_anchors(strategy: &OrgStrategy) -> OrgResult<()> {
     Ok(())
 }
 
-fn validate_promotion(strategy: &OrgStrategy) -> OrgResult<()> {
+fn validate_promotion(strategy: &EntityStrategy) -> EntityResult<()> {
     if strategy.promotion.write_states.is_empty() {
         return Err(strategy_error(
             "promotion.write_states must contain at least one state",
@@ -638,7 +638,7 @@ fn validate_promotion(strategy: &OrgStrategy) -> OrgResult<()> {
     Ok(())
 }
 
-fn referenced_anchor_names(strategy: &OrgStrategy) -> BTreeSet<String> {
+fn referenced_anchor_names(strategy: &EntityStrategy) -> BTreeSet<String> {
     let mut anchors = BTreeSet::new();
 
     for operator in &strategy.blocking {
@@ -661,7 +661,11 @@ fn referenced_anchor_names(strategy: &OrgStrategy) -> BTreeSet<String> {
     anchors
 }
 
-fn reject_extra_params(operator: &StrategyOperator, path: &str, allowed: &[&str]) -> OrgResult<()> {
+fn reject_extra_params(
+    operator: &StrategyOperator,
+    path: &str,
+    allowed: &[&str],
+) -> EntityResult<()> {
     let allowed_keys = allowed.iter().copied().collect::<BTreeSet<_>>();
     let extras = operator
         .params
@@ -686,11 +690,11 @@ fn reject_extra_params(operator: &StrategyOperator, path: &str, allowed: &[&str]
 }
 
 fn require_view_param(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     operator: &StrategyOperator,
     path: &str,
     key: &str,
-) -> OrgResult<String> {
+) -> EntityResult<String> {
     let view = require_string_param(operator, path, key)?;
     if !strategy.normalize.views.contains_key(&view) {
         return Err(strategy_error(
@@ -708,11 +712,11 @@ fn require_view_param(
 }
 
 fn require_anchor_param(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     operator: &StrategyOperator,
     path: &str,
     key: &str,
-) -> OrgResult<String> {
+) -> EntityResult<String> {
     let anchor = require_string_param(operator, path, key)?;
     if !strategy.observations.anchor_fields.contains_key(&anchor) {
         return Err(strategy_error(
@@ -730,11 +734,11 @@ fn require_anchor_param(
 }
 
 fn require_context_field_param(
-    strategy: &OrgStrategy,
+    strategy: &EntityStrategy,
     operator: &StrategyOperator,
     path: &str,
     key: &str,
-) -> OrgResult<String> {
+) -> EntityResult<String> {
     let field = require_string_param(operator, path, key)?;
     if !strategy.observations.context_fields.contains(&field) {
         return Err(strategy_error(
@@ -751,7 +755,11 @@ fn require_context_field_param(
     Ok(field)
 }
 
-fn require_string_param(operator: &StrategyOperator, path: &str, key: &str) -> OrgResult<String> {
+fn require_string_param(
+    operator: &StrategyOperator,
+    path: &str,
+    key: &str,
+) -> EntityResult<String> {
     let value = operator.params.get(key).ok_or_else(|| {
         strategy_error(
             "Strategy operator is missing a required parameter",
@@ -782,7 +790,7 @@ fn require_positive_u64_param(
     operator: &StrategyOperator,
     path: &str,
     key: &str,
-) -> OrgResult<u64> {
+) -> EntityResult<u64> {
     let value = operator.params.get(key).ok_or_else(|| {
         strategy_error(
             "Strategy operator is missing a required parameter",
@@ -825,7 +833,7 @@ fn require_positive_i64_param(
     operator: &StrategyOperator,
     path: &str,
     key: &str,
-) -> OrgResult<i64> {
+) -> EntityResult<i64> {
     let value = operator.params.get(key).ok_or_else(|| {
         strategy_error(
             "Strategy operator is missing a required parameter",
@@ -868,7 +876,7 @@ fn require_non_negative_f64_param(
     operator: &StrategyOperator,
     path: &str,
     key: &str,
-) -> OrgResult<f64> {
+) -> EntityResult<f64> {
     let value = operator.params.get(key).ok_or_else(|| {
         strategy_error(
             "Strategy operator is missing a required parameter",
@@ -911,7 +919,7 @@ fn string_param<'a>(operator: &'a StrategyOperator, key: &str) -> Option<&'a str
     operator.params.get(key).and_then(Value::as_str)
 }
 
-fn validate_unique_non_empty_strings(path: &str, values: &[String]) -> OrgResult<()> {
+fn validate_unique_non_empty_strings(path: &str, values: &[String]) -> EntityResult<()> {
     let mut seen = BTreeSet::new();
     for value in values {
         validate_non_empty(path, value)?;
@@ -928,7 +936,7 @@ fn validate_unique_non_empty_strings(path: &str, values: &[String]) -> OrgResult
     Ok(())
 }
 
-fn validate_non_empty(path: &str, value: &str) -> OrgResult<()> {
+fn validate_non_empty(path: &str, value: &str) -> EntityResult<()> {
     if value.trim().is_empty() {
         return Err(strategy_error(
             "Required strategy value must not be empty",
@@ -942,8 +950,8 @@ fn validate_non_empty(path: &str, value: &str) -> OrgResult<()> {
     Ok(())
 }
 
-fn strategy_error(message: impl Into<String>, detail: Value) -> OrgError {
-    OrgError::with_detail(OrgErrorCode::Strategy, message, detail)
+fn strategy_error(message: impl Into<String>, detail: Value) -> EntityError {
+    EntityError::with_detail(EntityErrorCode::Strategy, message, detail)
 }
 
 fn is_supported_normalize_operator(operator: &str) -> bool {
@@ -963,7 +971,7 @@ fn is_supported_normalize_operator(operator: &str) -> bool {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawOrgStrategy {
+struct RawEntityStrategy {
     #[serde(rename = "strategy_id")]
     id: String,
     #[serde(rename = "strategy_version")]
@@ -989,7 +997,7 @@ struct RawStrategyObservations {
     #[serde(default)]
     name_fields: Vec<String>,
     #[serde(default)]
-    required_side_fields: Vec<OrgSideField>,
+    required_side_fields: Vec<EntitySideField>,
     #[serde(default)]
     context_fields: Vec<String>,
     #[serde(default)]
@@ -1058,7 +1066,7 @@ struct RawStrategyAnchors {
 #[serde(deny_unknown_fields)]
 struct RawStrategyPromotion {
     #[serde(default)]
-    write_states: Vec<OrgEntityState>,
+    write_states: Vec<EntityState>,
     require_zero_anchor_conflicts: bool,
     require_holdout_non_regression: bool,
     require_perturbation_stability_gte: f64,
@@ -1176,7 +1184,7 @@ promotion:
         assert_eq!(strategy.observations.name_fields, vec!["portfolio_company"]);
         assert_eq!(
             strategy.observations.required_side_fields,
-            vec![OrgSideField::AliasSurfacesJson]
+            vec![EntitySideField::AliasSurfacesJson]
         );
         assert_eq!(
             strategy
@@ -1202,7 +1210,7 @@ promotion:
         let invalid = VALID_STRATEGY.replace("op: shared_anchor", "op: prefix_view");
         let error = parse_strategy_bytes(invalid.as_bytes()).expect_err("invalid strategy");
 
-        assert_eq!(error.code, OrgErrorCode::Strategy);
+        assert_eq!(error.code, EntityErrorCode::Strategy);
         assert!(error.message.contains("Unsupported blocking operator"));
     }
 
@@ -1211,7 +1219,7 @@ promotion:
         let invalid = VALID_STRATEGY.replace("      score: 32\n", "      score: nope\n");
         let error = parse_strategy_bytes(invalid.as_bytes()).expect_err("invalid strategy");
 
-        assert_eq!(error.code, OrgErrorCode::Strategy);
+        assert_eq!(error.code, EntityErrorCode::Strategy);
         assert!(error.message.contains("positive integer"));
     }
 
@@ -1223,7 +1231,7 @@ promotion:
         );
         let error = parse_strategy_bytes(invalid.as_bytes()).expect_err("invalid strategy");
 
-        assert_eq!(error.code, OrgErrorCode::Strategy);
+        assert_eq!(error.code, EntityErrorCode::Strategy);
         assert!(error.message.contains("must be disjoint"));
     }
 
@@ -1235,7 +1243,7 @@ promotion:
         );
         let error = parse_strategy_bytes(invalid.as_bytes()).expect_err("invalid strategy");
 
-        assert_eq!(error.code, OrgErrorCode::Strategy);
+        assert_eq!(error.code, EntityErrorCode::Strategy);
         assert!(error.message.contains("Invalid org strategy YAML"));
     }
 
