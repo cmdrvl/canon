@@ -136,6 +136,32 @@ impl ReasonCode {
             .position(|candidate| *candidate == self)
             .expect("reason code must be in canonical order table")
     }
+
+    pub fn merge_evidence_role(self) -> MergeEvidenceRole {
+        match self {
+            ReasonCode::RareTokenSupport => MergeEvidenceRole::Support,
+            ReasonCode::ProtectedTokenConflict => MergeEvidenceRole::CannotLink,
+            ReasonCode::CommonTokenDownweighted
+            | ReasonCode::LegalSuffixPreserved
+            | ReasonCode::MetricCutoff
+            | ReasonCode::NgramFingerprintCollision
+            | ReasonCode::NoLoss
+            | ReasonCode::ProfileTokenPreserved
+            | ReasonCode::SourceParityReference => MergeEvidenceRole::ReviewContext,
+            ReasonCode::ControlRemoved
+            | ReasonCode::LegalSuffixStripped
+            | ReasonCode::ProfileTokenDropped
+            | ReasonCode::PunctuationRemoved
+            | ReasonCode::TokensDeduped
+            | ReasonCode::TokensSorted
+            | ReasonCode::UnicodeFolded
+            | ReasonCode::WhitespaceCollapsed => MergeEvidenceRole::Transform,
+        }
+    }
+
+    pub fn can_support_merge(self) -> bool {
+        self.merge_evidence_role() == MergeEvidenceRole::Support
+    }
 }
 
 impl TryFrom<&str> for ReasonCode {
@@ -197,6 +223,35 @@ pub enum SourceTechnique {
     SplinkTfAdjustment,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeEvidenceRole {
+    Transform,
+    ReviewContext,
+    Support,
+    CannotLink,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProtectedTokenLane {
+    TenantProtectedBrand,
+    RegulatedLegalIdentity,
+    PlatformCategory,
+    ProfileDistinctness,
+}
+
+impl ProtectedTokenLane {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            ProtectedTokenLane::TenantProtectedBrand => "tenant_protected_brand",
+            ProtectedTokenLane::RegulatedLegalIdentity => "regulated_legal_identity",
+            ProtectedTokenLane::PlatformCategory => "platform_category",
+            ProtectedTokenLane::ProfileDistinctness => "profile_distinctness",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NamekitReason {
     pub code: ReasonCode,
@@ -230,6 +285,46 @@ impl NamekitReason {
         self.detail.insert(key.into(), value.into());
         self
     }
+
+    pub fn merge_evidence_role(&self) -> MergeEvidenceRole {
+        self.code.merge_evidence_role()
+    }
+
+    pub fn can_support_merge(&self) -> bool {
+        self.code.can_support_merge()
+    }
+}
+
+pub fn protected_token_conflict_reason(
+    profile_id: impl Into<String>,
+    lane: ProtectedTokenLane,
+    left_token: impl Into<String>,
+    right_token: impl Into<String>,
+) -> NamekitReason {
+    NamekitReason::new(
+        ReasonCode::ProtectedTokenConflict,
+        ReasonStage::ProtectedToken,
+    )
+    .with_source(SourceTechnique::CanonProfile)
+    .with_detail("profile_id", profile_id)
+    .with_detail("lane", lane.as_str())
+    .with_detail("left_token", left_token)
+    .with_detail("right_token", right_token)
+}
+
+pub fn protected_token_preserved_reason(
+    profile_id: impl Into<String>,
+    lane: ProtectedTokenLane,
+    token: impl Into<String>,
+) -> NamekitReason {
+    NamekitReason::new(
+        ReasonCode::ProfileTokenPreserved,
+        ReasonStage::ProfilePolicy,
+    )
+    .with_source(SourceTechnique::CanonProfile)
+    .with_detail("profile_id", profile_id)
+    .with_detail("lane", lane.as_str())
+    .with_detail("token", token)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
