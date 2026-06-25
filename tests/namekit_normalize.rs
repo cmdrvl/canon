@@ -136,6 +136,31 @@ fn namekit_normalize_impl_keeps_unknown_non_ascii_visible() {
 }
 
 #[test]
+fn namekit_normalize_lossless_path_emits_no_loss_reason() {
+    let normalized = normalize_normality("sears");
+
+    assert_eq!(normalized.normalized, "sears");
+    assert_eq!(normalized.fingerprint, "sears");
+    assert!(!normalized.lossy);
+    assert_eq!(
+        normalized.reason_codes(),
+        ["no_loss", "source_parity_reference"]
+    );
+}
+
+#[test]
+fn namekit_normalize_repeated_runs_are_byte_identical() {
+    let first = normalize_openrefine_fingerprint("  Sears—Roebuck,  Inc. ");
+    let second = normalize_openrefine_fingerprint("  Sears—Roebuck,  Inc. ");
+
+    let first_json = serde_json::to_vec(&first).expect("first normalization serializes");
+    let second_json = serde_json::to_vec(&second).expect("second normalization serializes");
+
+    assert_eq!(first, second);
+    assert_eq!(first_json, second_json);
+}
+
+#[test]
 #[allow(non_snake_case)]
 fn NK_U004_accented_names_record_unicode_fold_reason() {
     let fixtures = load_fixtures();

@@ -79,6 +79,14 @@ pub fn normalize_text(raw: &str, view: NormalizationView) -> NamekitNormalizatio
             ),
     );
 
+    if !reasons.iter().any(|reason| reason.lossy) {
+        reasons.push(
+            NamekitReason::new(ReasonCode::NoLoss, ReasonStage::Normalize)
+                .with_source(SourceTechnique::CanonProfile)
+                .with_detail("operation", "no_lossy_transform"),
+        );
+    }
+
     sort_reasons(&mut reasons);
     let lossy = reasons.iter().any(|reason| reason.lossy);
     NamekitNormalization {
