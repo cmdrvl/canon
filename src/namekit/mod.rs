@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 pub mod explain;
 pub mod legal_suffix;
 pub mod similarity;
+pub mod tfidf;
 
 pub use explain::{
     NAMEKIT_EXPLAIN_VERSION, NamekitExplainTrace, NamekitReason, ReasonCode, ReasonStage,
