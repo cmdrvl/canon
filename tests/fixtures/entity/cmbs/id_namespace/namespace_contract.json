@@ -1,0 +1,186 @@
+{
+  "schema_version": "canon.entity.cmbs_id_namespace_contract.v0",
+  "profile": {
+    "id": "cmbs_tenant_label",
+    "version": "0.1.0",
+    "entity_type": "tenant_label",
+    "identity_semantics": "canonical_display_label",
+    "canonical_type": "tenant_label",
+    "patch_namespaces": {
+      "aliases": "cmbs_tenant_label.aliases",
+      "distinct": "cmbs_tenant_label.distinct",
+      "relations": "cmbs_tenant_label.relations"
+    }
+  },
+  "id_namespace": {
+    "prefix": "TNT",
+    "canonical_id_pattern": "TNT-[A-Z0-9]+(?:-[A-Z0-9]+)*",
+    "valid_examples": [
+      "TNT-SEARS",
+      "TNT-SEARS-2",
+      "TNT-24-HOUR-FITNESS",
+      "TNT-23ANDME",
+      "TNT-238-SAND-ISLAND-PROPERTY"
+    ],
+    "invalid_examples": [
+      "ORG-SEARS",
+      "TNT-sears",
+      "TNT-SEARS__AUTO",
+      "TNT-SEARS--AUTO",
+      "TNT-"
+    ]
+  },
+  "allocator": {
+    "stage": "promote",
+    "inputs": [
+      {
+        "name": "profile_id",
+        "required": true,
+        "participates_in_replay_key": true
+      },
+      {
+        "name": "canonical_type",
+        "required": true,
+        "participates_in_replay_key": true
+      },
+      {
+        "name": "identity_semantics",
+        "required": true,
+        "participates_in_replay_key": true
+      },
+      {
+        "name": "normalized_display_label",
+        "required": true,
+        "participates_in_replay_key": true
+      },
+      {
+        "name": "registry_snapshot_hash",
+        "required": true,
+        "participates_in_replay_key": true
+      },
+      {
+        "name": "alias_patch_hash",
+        "required": true,
+        "participates_in_replay_key": true
+      },
+      {
+        "name": "review_decision_id",
+        "required": true,
+        "participates_in_replay_key": true
+      }
+    ],
+    "forbidden_identity_inputs": [
+      "source_row_id",
+      "deal_id",
+      "loan_id",
+      "property_id",
+      "row_order",
+      "physical_batch_id"
+    ],
+    "default_candidate_id": {
+      "source": "reviewed_display_label",
+      "normalization": "uppercase_ascii_slug",
+      "collision_policy": "refuse_without_suffix_or_silent_remint"
+    }
+  },
+  "exact_replay": {
+    "stable_key_fields": [
+      "profile_id",
+      "canonical_type",
+      "identity_semantics",
+      "normalized_display_label",
+      "registry_snapshot_hash",
+      "alias_patch_hash",
+      "review_decision_id"
+    ],
+    "disallowed_key_fields": [
+      "source_row_id",
+      "deal_id",
+      "loan_id",
+      "property_id",
+      "row_order",
+      "physical_batch_id"
+    ],
+    "expectations": [
+      {
+        "id": "same_review_same_snapshot_replays_tnt_sears",
+        "left": {
+          "profile_id": "cmbs_tenant_label",
+          "canonical_type": "tenant_label",
+          "normalized_display_label": "sears",
+          "registry_snapshot_hash": "blake3:cmbs-registry-20260625",
+          "alias_patch_hash": "blake3:cmbs-alias-patch-001",
+          "review_decision_id": "review:cmbs:sears:001",
+          "row_order": 1,
+          "physical_batch_id": "deal-batch-001"
+        },
+        "right": {
+          "profile_id": "cmbs_tenant_label",
+          "canonical_type": "tenant_label",
+          "normalized_display_label": "sears",
+          "registry_snapshot_hash": "blake3:cmbs-registry-20260625",
+          "alias_patch_hash": "blake3:cmbs-alias-patch-001",
+          "review_decision_id": "review:cmbs:sears:001",
+          "row_order": 9482,
+          "physical_batch_id": "deal-batch-014"
+        },
+        "expected_canonical_id": "TNT-SEARS",
+        "expected_relation": "same_id"
+      },
+      {
+        "id": "same_review_same_snapshot_replays_tnt_24_hour_fitness",
+        "left": {
+          "profile_id": "cmbs_tenant_label",
+          "canonical_type": "tenant_label",
+          "normalized_display_label": "24 hour fitness",
+          "registry_snapshot_hash": "blake3:cmbs-registry-20260625",
+          "alias_patch_hash": "blake3:cmbs-alias-patch-002",
+          "review_decision_id": "review:cmbs:24-hour-fitness:001",
+          "row_order": 31,
+          "physical_batch_id": "deal-batch-002"
+        },
+        "right": {
+          "profile_id": "cmbs_tenant_label",
+          "canonical_type": "tenant_label",
+          "normalized_display_label": "24 hour fitness",
+          "registry_snapshot_hash": "blake3:cmbs-registry-20260625",
+          "alias_patch_hash": "blake3:cmbs-alias-patch-002",
+          "review_decision_id": "review:cmbs:24-hour-fitness:001",
+          "row_order": 8104,
+          "physical_batch_id": "deal-batch-021"
+        },
+        "expected_canonical_id": "TNT-24-HOUR-FITNESS",
+        "expected_relation": "same_id"
+      }
+    ]
+  },
+  "collision_refusals": [
+    {
+      "id": "slug_collision_with_distinct_accepted_label",
+      "proposed_canonical_id": "TNT-SEARS",
+      "refusal_code": "E_ENTITY_PATCH_CONFLICT",
+      "behavior": "refuse_no_mutation",
+      "next_command_contains": "Resolve the patch conflict before running"
+    },
+    {
+      "id": "stale_registry_snapshot_before_promotion",
+      "proposed_canonical_id": "TNT-SEARS",
+      "refusal_code": "E_ENTITY_REGISTRY_SNAPSHOT",
+      "behavior": "refuse_no_mutation",
+      "next_command_contains": "Re-run from prepare or use the matching registry snapshot"
+    }
+  ],
+  "cross_profile_firewall": {
+    "relation_policy": "relation_hint_only",
+    "same_as_allowed": false,
+    "refusal_code": "E_ENTITY_PROFILE",
+    "examples": [
+      {
+        "source_profile": "cmbs_tenant_label",
+        "source_canonical_id": "TNT-WELLS-FARGO-BANK",
+        "target_profile": "regab_firm_identity",
+        "target_canonical_id": "ORG-WELLS-FARGO-BANK"
+      }
+    ]
+  }
+}
