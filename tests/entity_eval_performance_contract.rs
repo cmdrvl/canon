@@ -12,6 +12,10 @@ fn fixture(path: &str) -> Value {
     serde_json::from_str(&fs::read_to_string(path).expect("fixture opens")).expect("fixture parses")
 }
 
+fn doc(path: &str) -> String {
+    fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(path)).expect("doc opens")
+}
+
 fn scorecard_metric<'a>(contract: &'a Value, id: &str) -> &'a Value {
     contract["scorecard_metrics"]
         .as_array()
@@ -40,6 +44,34 @@ fn entity_eval_performance_contract_is_parseable_and_linked_to_docs() {
     assert!(commands.contains_key("small_ci_future"));
     assert!(commands.contains_key("operator_future"));
     assert!(commands.contains_key("final_guardrails_future"));
+}
+
+#[test]
+fn entity_eval_contract_ids_are_documented_and_cross_referenced() {
+    let contract = fixture("evals/entity_eval_performance_targets.json");
+    let shared_doc = doc("docs/ENTITY_EVALS_AND_PERFORMANCE.md");
+    let plan = doc("docs/PLAN_ENTITY_WORKBENCH.md");
+    let cmbs = doc("docs/CMBS_TENANT_BENCHMARKS.md");
+    let regab = doc("docs/SEC10D_REGAB_BENCHMARKS.md");
+
+    for metric in contract["scorecard_metrics"].as_array().unwrap() {
+        let id = metric["id"].as_str().unwrap();
+        assert!(shared_doc.contains(id), "shared eval doc omits {id}");
+    }
+    for target in contract["wall_clock_targets"].as_array().unwrap() {
+        let id = target["id"].as_str().unwrap();
+        assert!(shared_doc.contains(id), "shared eval doc omits {id}");
+    }
+    for (path, text) in [
+        ("docs/PLAN_ENTITY_WORKBENCH.md", plan.as_str()),
+        ("docs/CMBS_TENANT_BENCHMARKS.md", cmbs.as_str()),
+        ("docs/SEC10D_REGAB_BENCHMARKS.md", regab.as_str()),
+    ] {
+        assert!(
+            text.contains("ENTITY_EVALS_AND_PERFORMANCE.md"),
+            "{path} must cross-reference the shared eval contract"
+        );
+    }
 }
 
 #[test]

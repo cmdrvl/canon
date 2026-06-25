@@ -413,18 +413,18 @@ count, candidate count, and artifact sizes.
 
 Initial targets:
 
-| Workload | Target |
-|----------|--------|
-| Small CI fixture eval | `< 1s` |
-| Committed sec10d 46-surface fixture | `< 1s` |
-| CMBS public sample, 10,143 tenant observations / 431 raw names | `< 2s` end-to-end after implementation is complete |
-| sec10d full baseline, 127,991 mentions / 46 surfaces | `< 10s` end-to-end |
-| sec10d exact replay/apply over full baseline | `< 5s` |
-| sec10d prepare/dedupe full baseline | `< 5s` |
-| CMBS 500k rows, normal repetition, warm cache | `< 2min` end-to-end |
-| CMBS 500k rows, normal repetition, cold cache | `< 5min` end-to-end |
-| CMBS exact apply/replay over 500k rows | `< 15s` |
-| CMBS 500k unique names | bounded completion or deterministic refusal before memory/candidate explosion |
+| ID | Workload | Target |
+|----|----------|--------|
+| `PERF-SMALL-CI` | Small CI fixture eval | `< 1s` |
+| `PERF-REGAB-COMMITTED` | Committed sec10d 46-surface fixture | `< 1s` |
+| `PERF-CMBS-PUBLIC` | CMBS public sample, 10,143 tenant observations / 431 raw names | `< 2s` end-to-end after implementation is complete |
+| `PERF-REGAB-FULL` | sec10d full baseline, 127,991 mentions / 46 surfaces | `< 10s` end-to-end |
+| `PERF-REGAB-APPLY` | sec10d exact replay/apply over full baseline | `< 5s` |
+| `PERF-REGAB-PREPARE` | sec10d prepare/dedupe full baseline | `< 5s` |
+| `PERF-CMBS-500K-WARM` | CMBS 500k rows, normal repetition, warm cache | `< 2min` end-to-end |
+| `PERF-CMBS-500K-COLD` | CMBS 500k rows, normal repetition, cold cache | `< 5min` end-to-end |
+| `PERF-CMBS-500K-APPLY` | CMBS exact apply/replay over 500k rows | `< 15s` |
+| `PERF-CMBS-500K-UNIQUE` | CMBS 500k unique names | bounded completion or deterministic refusal before memory/candidate explosion |
 
 Targets may be tightened or relaxed only by updating
 `entity_eval_performance_targets.json`, recording baseline artifacts, and
