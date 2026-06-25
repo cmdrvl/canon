@@ -1417,6 +1417,131 @@ Each packet must carry:
 
 ---
 
+## Adversarial Readiness Update
+
+This section records the follow-up adversarial pass over the plan and Beads.
+The goal is to remove implementation-time ambiguity before broad coding starts.
+Where there is a tradeoff between a smaller implementation and better entity
+resolution quality, choose the higher-quality entity-resolution path as long as
+the exact lookup kernel, determinism, and local execution constraints remain
+intact.
+
+### Implementation-Quality Defaults
+
+These decisions replace vague "decide/design/prove" language in the packet
+graph:
+
+1. **Recall-rich candidate generation wins.**
+   Namekit and blocking should include word tokens, char n-grams, sparse TF-IDF
+   support, rare-token weighting, deterministic top-k retrieval, and source
+   parity fixtures. Do not simplify to plain edit distance or one fuzzy
+   threshold.
+
+2. **Sparse integer layouts are the default.**
+   Use compact dictionaries, integer token/ngram IDs, sorted posting lists,
+   CSR-like offset arrays where useful, and posting-list derived top-k
+   retrieval. Dense per-surface vectors are forbidden for large corpora.
+
+3. **Sorted-neighborhood is supplemental, not authoritative.**
+   It may improve recall when it has a deterministic key/window contract and
+   diagnostics, but it must not be the only candidate path and must not bypass
+   caps, anti-merge evidence, or review.
+
+4. **Similarity dependency default is source-parity first.**
+   Prefer a pinned native Rust metric implementation or crate with strong
+   parity tests, byte/Unicode paths, cutoff/hint correctness tests, and license
+   review. A dependency is acceptable only if it respects the repository's
+   `#![forbid(unsafe_code)]` posture or is explicitly isolated behind a
+   reviewed boundary. If that audit fails, implement the required metrics
+   internally.
+
+5. **Scores are canonical integers at boundaries.**
+   Internal metric math may use practical numeric representations, but every
+   score used for thresholds, top-k ordering, artifact output, review, and
+   solve must be quantized to deterministic integer score units. Floating point
+   debug output is never part of an artifact contract.
+
+6. **Budget policy is explicit and stage-specific.**
+   Index/block hard limit breaches refuse before large artifact emission.
+   Edge refuses stale or malformed candidate input before scoring. Solve may
+   emit bounded abstentions only when configured and must record the affected
+   component. Apply refuses full-resolution mode when unresolved surfaces
+   remain. Every breach uses an `E_ENTITY_*` code plus `next_command`.
+
+7. **Exact buckets are hyperedges.**
+   Exact normalized buckets emit compact bucket assertions with O(N) membership
+   and `pair_expansion = forbidden`. Edge and solve consume these as
+   hyperedges/cluster assertions while preserving cannot-link veto checks.
+   Exact-bucket all-pairs expansion is a stop-ship regression.
+
+8. **Performance gates start from measured baselines.**
+   Normal CI proves deterministic small fixtures and structural caps. Large
+   500k-row and 500k-unique runs are ignored/operator tiers with telemetry.
+   Do not encode aspirational wall-clock claims until a baseline run records
+   hardware, build profile, cache state, row counts, unique-surface counts,
+   candidate counts, artifact sizes, and timings.
+
+9. **sec10d compatibility needs local frozen fixtures.**
+   The Reg AB profile must carry canon-owned fixture snapshots for
+   `org_mentions` input shape, parser-field preservation, Snowflake append-only
+   output, and hard-negative examples. Do not rely on a moving external repo
+   shape to define canon correctness.
+
+10. **Final operator ergonomics is a release gate.**
+    Operator journey, robot JSON, summaries, next commands, doctor/lint, and
+    explain should be validated after the underlying packets exist. It is a
+    fixture-driven acceptance sweep, not a catch-all implementation bead.
+
+### Beads Flagged As Readiness Risks
+
+The adversarial pass flagged these Beads for strengthening:
+
+| Bead | Required tightening |
+|------|---------------------|
+| `bd-3k3.11` | Turn TF-IDF/sparse/top-N from open design into a locked Rust data-layout and scoring contract. |
+| `bd-3k3.12` | Resolve metric dependency posture before importing a crate. |
+| `bd-3bu.5` | Align index CSR/posting layout with the namekit sparse decision so two packets do not choose incompatible layouts. |
+| `bd-39z.6` | Make integer score units and deterministic tie ordering a prerequisite to edge scoring. |
+| `bd-486.6` | Add a stage-by-stage refusal vs bounded-abstention policy table. |
+| `bd-486.7` | Specify the exact-bucket hyperedge API and record-count proof, not only a prose no-O(N^2) goal. |
+| `bd-1pz.5` / `bd-1pz.6` / `bd-1pz.8` | Separate small CI checks from ignored/operator stress tiers and ground budgets in measured baselines. |
+| `bd-2c6.6` | Require an executable mini e2e runbook fixture, not only prose commands. |
+| `bd-sbm.6` | Freeze local sec10d contract fixtures inside canon. |
+| `bd-2nw.6` | Treat as final acceptance sweep over completed packets, not implementation scope. |
+
+### Readiness Gate Beads Added
+
+The Beads graph now carries explicit gates for the adversarial findings:
+
+| Bead | Purpose |
+|------|---------|
+| `bd-3b4.10` | Implementation readiness appendix, module skeleton, and packet-local contract/test coverage matrix. |
+| `bd-3k3.21` | High-recall namekit source-parity implementation decisions: sparse layout, metrics, score quantization, sorted-neighborhood posture. |
+| `bd-486.9` | Blocking budget table and exact-bucket hyperedge readiness proof. |
+| `bd-1pz.9` | Measured performance baseline artifacts for stress-gate calibration. |
+| `bd-sbm.7` | Local canon-owned sec10d contract fixture snapshots. |
+
+### Escalations Requiring Owner Judgment
+
+The implementation should proceed with the defaults above unless one of these
+judgment points is hit:
+
+1. **Unsafe or native-code metric dependency.**
+   If the best similarity crate requires unsafe code, native extensions, or a
+   large transitive dependency surface, pause for owner approval rather than
+   weakening source-parity and quality silently.
+
+2. **Repository size for stress fixtures.**
+   Prefer deterministic fixture generators plus small golden outputs. Escalate
+   before committing large generated 500k-row artifacts.
+
+3. **Auto-merge aggressiveness.**
+   Default to high precision and review/escrow for ambiguous tenant-family or
+   parent/subsidiary cases. Escalate only if product goals require materially
+   higher automatic recall at the cost of more over-merge risk.
+
+---
+
 ## Reality Check Findings
 
 Current implementation reality:
