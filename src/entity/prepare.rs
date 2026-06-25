@@ -7,6 +7,11 @@
 use crate::entity::{
     CANON_ENTITY_PREPARE_VERSION, EntityProfileDocument, EntityProfileReference,
     error::EntityRefusalKind,
+    stream::{
+        EntityStreamChunkMetadata, EntityStreamFormat, EntityStreamInput,
+        EntityStreamRowProvenance, EntityStreamStage, EntityStreamTelemetry,
+        deterministic_chunk_metadata, stream_telemetry,
+    },
 };
 use crate::{Refusal, witness};
 use csv::{ReaderBuilder, StringRecord};
@@ -21,6 +26,8 @@ const BUILTIN_CMBS_TENANT_LABEL_PROFILE: &str =
     include_str!("../../tests/fixtures/entity/profiles/cmbs_tenant_label.yaml");
 const BUILTIN_REGAB_FIRM_IDENTITY_PROFILE: &str =
     include_str!("../../tests/fixtures/entity/profiles/regab_firm_identity.yaml");
+const DEFAULT_PREPARE_ROWS_PER_CHUNK: u64 = 1024;
+const MAX_PREPARE_PROVENANCE_SAMPLES: usize = 16;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct PrepareFieldMapping {
@@ -169,6 +176,7 @@ pub struct PrepareRunArtifact {
     pub registry_snapshot: PrepareRegistrySnapshot,
     pub input: PrepareInputReference,
     pub summary: BTreeMap<String, u64>,
+    pub streaming: PrepareStreamingDiagnostics,
     pub surfaces_path: String,
 }
 
@@ -184,6 +192,20 @@ pub struct PrepareRegistrySnapshot {
 pub struct PrepareInputReference {
     pub row_count: u64,
     pub content_hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrepareStreamOutput {
+    pub observations: Vec<PreparedInputObservation>,
+    pub diagnostics: PrepareStreamingDiagnostics,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrepareStreamingDiagnostics {
+    pub input: EntityStreamInput,
+    pub chunks: Vec<EntityStreamChunkMetadata>,
+    pub telemetry: EntityStreamTelemetry,
+    pub provenance_samples: Vec<EntityStreamRowProvenance>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -361,22 +383,59 @@ pub fn project_prepare_path(
     }
 }
 
+pub fn stream_prepare_path(
+    rows: &Path,
+    contract: &PrepareInputContract,
+    target_rows_per_chunk: u64,
+) -> Result<PrepareStreamOutput, Refusal> {
+    let format = prepare_input_format(rows)?;
+    let observations = project_prepare_path(rows, contract)?;
+    let byte_count = fs::metadata(rows)
+        .map_err(|error| {
+            io_budget_refusal(
+                "Failed to inspect prepare input rows",
+                rows,
+                error.to_string(),
+            )
+        })?
+        .len();
+    let content_hash = witness::hash_file(rows).map_err(|error| {
+        io_budget_refusal("Failed to hash prepare input rows", rows, error.to_string())
+    })?;
+    let input = EntityStreamInput::new(
+        EntityStreamStage::Prepare,
+        entity_stream_format(&format),
+        rows.display().to_string(),
+        content_hash,
+        u64::try_from(observations.len()).expect("observation count fits u64"),
+        byte_count,
+    );
+    let chunks = deterministic_chunk_metadata(&input, target_rows_per_chunk)?;
+    let telemetry = stream_telemetry(&input, &chunks);
+    let provenance_samples = prepare_stream_provenance_samples(&observations, &chunks);
+
+    Ok(PrepareStreamOutput {
+        observations,
+        diagnostics: PrepareStreamingDiagnostics {
+            input,
+            chunks,
+            telemetry,
+            provenance_samples,
+        },
+    })
+}
+
 pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact, Refusal> {
     let profile = load_prepare_profile(request.profile)?;
     let contract = PrepareInputContract::for_builtin_profile(&profile)?;
-    let observations = project_prepare_path(request.rows, &contract)?;
+    let stream_output =
+        stream_prepare_path(request.rows, &contract, DEFAULT_PREPARE_ROWS_PER_CHUNK)?;
+    let observations = stream_output.observations;
 
     let registry_snapshot = load_prepare_registry_snapshot(request.registry)?;
-    let input_hash = witness::hash_file(request.rows).map_err(|error| {
-        io_budget_refusal(
-            "Failed to hash prepare input rows",
-            request.rows,
-            error.to_string(),
-        )
-    })?;
     let input = PrepareInputReference {
         row_count: u64::try_from(observations.len()).expect("observation count fits u64"),
-        content_hash: input_hash,
+        content_hash: stream_output.diagnostics.input.content_hash.clone(),
     };
 
     let prepare_dir = request.work_dir.join("prepare");
@@ -399,6 +458,7 @@ pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact,
         registry_snapshot,
         input,
         summary: prepare_summary(&observations),
+        streaming: stream_output.diagnostics,
         surfaces_path: surfaces_relative.to_string_lossy().into_owned(),
     };
     artifact.artifact_content_hash = hash_artifact_without_self(&artifact)?;
@@ -783,6 +843,43 @@ fn prepare_input_format(path: &Path) -> Result<PrepareInputFormat, Refusal> {
             None,
         )),
     }
+}
+
+fn entity_stream_format(format: &PrepareInputFormat) -> EntityStreamFormat {
+    match format {
+        PrepareInputFormat::Csv(_) => EntityStreamFormat::Csv,
+        PrepareInputFormat::Jsonl => EntityStreamFormat::Jsonl,
+    }
+}
+
+fn prepare_stream_provenance_samples(
+    observations: &[PreparedInputObservation],
+    chunks: &[EntityStreamChunkMetadata],
+) -> Vec<EntityStreamRowProvenance> {
+    observations
+        .iter()
+        .take(MAX_PREPARE_PROVENANCE_SAMPLES)
+        .enumerate()
+        .map(|(index, observation)| {
+            let row_ordinal = u64::try_from(index).expect("sample index fits u64");
+            let chunk = chunks
+                .iter()
+                .find(|chunk| {
+                    row_ordinal >= chunk.first_row_ordinal
+                        && row_ordinal < chunk.row_end_exclusive()
+                })
+                .or_else(|| chunks.last());
+            let source_row_id = observation.provenance.get("source_row_id").cloned();
+            EntityStreamRowProvenance::new(
+                EntityStreamStage::Prepare,
+                chunk.map(|chunk| chunk.chunk_index).unwrap_or_default(),
+                row_ordinal,
+                source_row_id,
+                chunk.map(|chunk| chunk.byte_start).unwrap_or_default(),
+                0,
+            )
+        })
+        .collect()
 }
 
 fn load_prepare_registry_snapshot(registry_dir: &Path) -> Result<PrepareRegistrySnapshot, Refusal> {

@@ -6,6 +6,8 @@ canonical_type: tenant_label
 required_fields:
   - source_row_id
   - deal_id
+  - loan_id
+  - property_id
   - raw_tenant_name
 normalized_views:
   tenant_core:
@@ -21,6 +23,12 @@ normalized_views:
       - lowercase
       - tokenize
       - drop_tenant_stopwords
+  tenant_brand:
+    operators:
+      - unicode_fold
+      - lowercase
+      - tenant_brand_fingerprint
+      - normalize_whitespace
 evidence:
   support:
     - op: exact_view
@@ -29,14 +37,29 @@ evidence:
       view: tenant_core
     - op: tfidf_cosine
       view: tenant_tokens
+    - op: alias_patch_match
+      view: tenant_core
   cannot_link:
     - op: protected_token_conflict
       view: tenant_tokens
     - op: related_distinct_phrase
       view: tenant_core
+    - op: same_property_distinct_rank
   relation_hints:
     - op: related_brand_family
+      view: tenant_brand
+      params:
+        merge_authorized: "false"
+        review_policy: relation_hint_only
+    - op: possible_successor_predecessor
+      view: tenant_brand
+      params:
+        merge_authorized: "false"
+        review_policy: relation_hint_only
     - op: cross_profile_alignment
+      params:
+        merge_authorized: "false"
+        review_policy: relation_hint_only
 patch_namespaces:
   aliases: cmbs_tenant_label.aliases
   distinct: cmbs_tenant_label.distinct

@@ -1,0 +1,95 @@
+strategy_id: regab_firm_identity.v1
+strategy_version: "0.1.0"
+entity_type: organization
+description: "Resolve reviewed Reg AB firm aliases from sec10d org_mentions observations"
+id_prefix: "ORG"
+
+observations:
+  name_fields: [org_name]
+  required_side_fields: [alias_surfaces_json, mention_surfaces_json]
+  context_fields:
+    - dataset
+    - field_name
+    - role_context
+    - capacity
+    - capacity_normalized
+    - reporting_party_capacity
+    - platform_capacity
+    - platform_capacity_normalized
+    - subject_role
+  anchor_fields:
+    cik: filing_cik
+    accession: accession
+
+normalize:
+  views:
+    firm_core:
+      - lowercase
+      - strip_footnotes
+      - strip_legal_suffixes
+      - normalize_whitespace
+    firm_tokens:
+      - tokenize
+      - drop_stopwords
+
+blocking:
+  - op: exact_view
+    view: firm_core
+  - op: rare_token_overlap
+    left_view: firm_tokens
+    right_view: firm_tokens
+    min_tokens: 1
+    min_idf: 1.0
+  - op: shared_anchor
+    anchor: accession
+  - op: registry_alias_match
+
+evidence:
+  must_link:
+    - op: shared_anchor
+      anchor: accession
+  support:
+    - op: exact_view
+      view: firm_core
+      score: 32
+    - op: categorical_equal
+      field: field_name
+      score: 4
+  cannot_link:
+    - op: conflicting_anchor
+      anchor: cik
+
+solver:
+  score_mode: namespace_max_sum
+  component_score_mode: core_best_pair_sum
+  merge_policy: reciprocal_best
+  backbone_score_min: 32
+  backbone_requires_positive_name: true
+  attach_score_min: 28
+  abstain_margin: 6
+  max_cluster_diameter: 2
+  require_positive_name_evidence: true
+  attach_requires_backbone_contact: true
+  score_against_backbone_only: true
+  attachments_do_not_chain: true
+
+reconcile:
+  single_incumbent_overlap: inherit
+  multi_incumbent_overlap: abstain_conflict
+  allow_incumbent_merge: false
+  allow_alias_writeback_for_resolved_existing: true
+
+anchors:
+  precedence: [accession, cik]
+  trusted_for_must_link: [accession]
+  trusted_for_single_doc_promotion: [accession]
+  support_only: [cik]
+  require_unique_for_attachment: true
+
+promotion:
+  write_states: [PROMOTABLE_NEW, RESOLVED_EXISTING]
+  require_zero_anchor_conflicts: true
+  require_holdout_non_regression: true
+  require_perturbation_stability_gte: 0.99
+  min_distinct_docs: 2
+  allow_single_doc_if_unique_anchor: true
