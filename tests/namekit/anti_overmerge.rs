@@ -2,7 +2,9 @@ use canon::namekit::explain::{
     MergeEvidenceRole, NamekitReason, ProtectedTokenLane, ReasonCode, ReasonStage,
     protected_token_conflict_reason, protected_token_preserved_reason, sort_reasons,
 };
-use serde_json::json;
+use serde_json::{Value, json};
+use std::collections::BTreeSet;
+use std::fs;
 
 #[test]
 fn protected_token_reason_codes_are_profile_scoped_and_non_support() {
@@ -135,4 +137,125 @@ fn protected_token_reason_order_is_stable_for_review_and_explain() {
             }
         ])
     );
+}
+
+#[test]
+fn namekit_anti_overmerge_negative_fixtures_cover_required_pairs() {
+    let rows = anti_overmerge_rows();
+    let case_ids = rows
+        .iter()
+        .map(|row| string(row, "case_id"))
+        .collect::<BTreeSet<_>>();
+
+    for required in [
+        "sears_vs_sears_auto_center_tenant",
+        "sears_vs_kmart_distinct_brand",
+        "sears_vs_transform_sr_successor",
+        "pnc_bank_vs_midland_loan_services",
+        "pnc_bank_vs_pnc_capital_markets",
+        "platform_label_vs_regulated_firm",
+        "parent_subsidiary_spv_near_name",
+    ] {
+        assert!(
+            case_ids.contains(required),
+            "missing fixture case {required}"
+        );
+    }
+
+    for row in &rows {
+        assert!(
+            bool_field(row, "support_views_may_be_similar"),
+            "{} must prove support-like views can still be unsafe",
+            string(row, "case_id")
+        );
+        assert!(
+            !strings(row, "protected_tokens").is_empty(),
+            "{} must name protected tokens",
+            string(row, "case_id")
+        );
+        assert!(
+            !string(row, "why_auto_merge_wrong").is_empty(),
+            "{} must explain why auto-merge is wrong",
+            string(row, "case_id")
+        );
+
+        let evidence = row["expected_evidence"]
+            .as_array()
+            .expect("expected_evidence must be an array");
+        assert!(
+            evidence.iter().any(|item| item["kind"] == "cannot_link")
+                || evidence.iter().any(|item| item["kind"] == "relation_hint"),
+            "{} must carry cannot_link or relation_hint evidence",
+            string(row, "case_id")
+        );
+        assert!(
+            evidence.iter().all(|item| item["kind"] != "low_similarity"),
+            "{} must not rely on low similarity as the negative proof",
+            string(row, "case_id")
+        );
+    }
+}
+
+#[test]
+fn protected_token_lanes_cover_tenant_regulated_platform_and_distinctness() {
+    let rows = anti_overmerge_rows();
+    let lanes = rows
+        .iter()
+        .flat_map(|row| strings(row, "protected_lanes"))
+        .collect::<BTreeSet<_>>();
+
+    for required in [
+        ProtectedTokenLane::TenantProtectedBrand.as_str(),
+        ProtectedTokenLane::RegulatedLegalIdentity.as_str(),
+        ProtectedTokenLane::PlatformCategory.as_str(),
+        ProtectedTokenLane::ProfileDistinctness.as_str(),
+    ] {
+        assert!(
+            lanes.contains(required),
+            "missing protected lane {required}"
+        );
+    }
+
+    let pnc_capital = rows
+        .iter()
+        .find(|row| string(row, "case_id") == "pnc_bank_vs_pnc_capital_markets")
+        .expect("PNC affiliate case exists");
+    assert_eq!(strings(pnc_capital, "support_views"), ["pnc"]);
+    assert!(
+        pnc_capital["expected_evidence"]
+            .as_array()
+            .expect("evidence")
+            .iter()
+            .any(
+                |item| item["kind"] == "relation_hint" && item["code"] == "affiliate_relation_hint"
+            )
+    );
+}
+
+fn anti_overmerge_rows() -> Vec<Value> {
+    fs::read_to_string("tests/fixtures/namekit/anti_overmerge/negative_pairs.jsonl")
+        .expect("anti-overmerge fixture is readable")
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| serde_json::from_str(line).expect("anti-overmerge line is valid JSON"))
+        .collect()
+}
+
+fn string<'a>(row: &'a Value, key: &str) -> &'a str {
+    row[key].as_str().unwrap_or("")
+}
+
+fn strings<'a>(row: &'a Value, key: &str) -> Vec<&'a str> {
+    row[key]
+        .as_array()
+        .expect("fixture field must be an array")
+        .iter()
+        .map(|value| value.as_str().expect("fixture item must be a string"))
+        .collect()
+}
+
+fn bool_field(row: &Value, key: &str) -> bool {
+    row[key]
+        .as_bool()
+        .unwrap_or_else(|| panic!("{key} must be a bool in {row}"))
 }
