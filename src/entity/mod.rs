@@ -14,6 +14,7 @@ pub mod error;
 pub mod postings;
 pub mod prepare;
 pub mod profile;
+pub mod profiles;
 pub mod runtime;
 pub mod schema;
 pub mod stream;

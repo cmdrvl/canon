@@ -13,6 +13,11 @@ use crate::entity::{
         deterministic_chunk_metadata, stream_telemetry,
     },
 };
+use crate::namekit::{
+    legal_suffix::{LegalSuffixAnalysis, LegalSuffixProfile, analyze_legal_suffixes},
+    normalize::{NamekitNormalization, normalize_normality, normalize_openrefine_fingerprint},
+    tokenize::{NamekitTokenization, tokenize_sorted_unique},
+};
 use crate::{Refusal, witness};
 use csv::{ReaderBuilder, StringRecord};
 use serde::{Deserialize, Serialize};
@@ -28,6 +33,7 @@ const BUILTIN_REGAB_FIRM_IDENTITY_PROFILE: &str =
     include_str!("../../tests/fixtures/entity/profiles/regab_firm_identity.yaml");
 const DEFAULT_PREPARE_ROWS_PER_CHUNK: u64 = 1024;
 const MAX_PREPARE_PROVENANCE_SAMPLES: usize = 16;
+const MAX_SURFACE_PROVENANCE_SAMPLES: usize = 8;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct PrepareFieldMapping {
@@ -158,6 +164,34 @@ pub struct PreparedAnchor {
     pub namespace: String,
     pub value: String,
     pub field: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreparedSurfaceRecord {
+    pub profile_id: String,
+    pub surface_key: String,
+    pub primary_surface: String,
+    pub normalized_views: BTreeMap<String, PreparedNormalizedView>,
+    pub raw_variants: Vec<String>,
+    pub alias_surfaces: Vec<String>,
+    pub mention_surfaces: Vec<String>,
+    pub row_count: u64,
+    pub deal_count: u64,
+    pub provenance_samples: Vec<PreparedSurfaceProvenanceSample>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreparedNormalizedView {
+    pub value: String,
+    pub reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct PreparedSurfaceProvenanceSample {
+    pub source_row_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub row_number: Option<usize>,
+    pub provenance: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -431,6 +465,7 @@ pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact,
     let stream_output =
         stream_prepare_path(request.rows, &contract, DEFAULT_PREPARE_ROWS_PER_CHUNK)?;
     let observations = stream_output.observations;
+    let surfaces = prepare_surface_records(&observations);
 
     let registry_snapshot = load_prepare_registry_snapshot(request.registry)?;
     let input = PrepareInputReference {
@@ -449,7 +484,7 @@ pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact,
 
     let surfaces_relative = PathBuf::from("prepare").join("surfaces.jsonl");
     let surfaces_path = request.work_dir.join(&surfaces_relative);
-    write_observations_jsonl(&surfaces_path, &observations)?;
+    write_surfaces_jsonl(&surfaces_path, &surfaces)?;
 
     let mut artifact = PrepareRunArtifact {
         version: CANON_ENTITY_PREPARE_VERSION.to_string(),
@@ -457,7 +492,7 @@ pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact,
         profile: contract.profile.clone(),
         registry_snapshot,
         input,
-        summary: prepare_summary(&observations),
+        summary: prepare_summary(&observations, &surfaces),
         streaming: stream_output.diagnostics,
         surfaces_path: surfaces_relative.to_string_lossy().into_owned(),
     };
@@ -466,6 +501,145 @@ pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact,
     let artifact_path = prepare_dir.join("prepare.json");
     write_json_file(&artifact_path, &artifact)?;
     Ok(artifact)
+}
+
+pub fn prepare_surface_records(
+    observations: &[PreparedInputObservation],
+) -> Vec<PreparedSurfaceRecord> {
+    let mut groups: BTreeMap<String, PreparedSurfaceAccumulator> = BTreeMap::new();
+
+    for observation in observations {
+        let normalized_views = normalized_views_for_surface(
+            &observation.profile_id,
+            &observation.primary_surface.value,
+        );
+        let core_value = core_view_value(&observation.profile_id, &normalized_views)
+            .unwrap_or_else(|| observation.primary_surface.value.trim().to_string());
+        let surface_key = format!("{}:{core_value}", observation.profile_id);
+        let accumulator = groups.entry(surface_key.clone()).or_insert_with(|| {
+            PreparedSurfaceAccumulator::new(
+                observation.profile_id.clone(),
+                surface_key,
+                BTreeMap::new(),
+            )
+        });
+        accumulator.merge_normalized_views(normalized_views);
+        accumulator.push(observation);
+    }
+
+    groups
+        .into_values()
+        .map(PreparedSurfaceAccumulator::finish)
+        .collect()
+}
+
+#[derive(Debug)]
+struct PreparedSurfaceAccumulator {
+    profile_id: String,
+    surface_key: String,
+    normalized_views: BTreeMap<String, PreparedNormalizedView>,
+    raw_variants: BTreeSet<String>,
+    alias_surfaces: BTreeSet<String>,
+    mention_surfaces: BTreeSet<String>,
+    deal_ids: BTreeSet<String>,
+    provenance_samples: Vec<PreparedSurfaceProvenanceSample>,
+    row_count: u64,
+}
+
+impl PreparedSurfaceAccumulator {
+    fn new(
+        profile_id: String,
+        surface_key: String,
+        normalized_views: BTreeMap<String, PreparedNormalizedView>,
+    ) -> Self {
+        Self {
+            profile_id,
+            surface_key,
+            normalized_views,
+            raw_variants: BTreeSet::new(),
+            alias_surfaces: BTreeSet::new(),
+            mention_surfaces: BTreeSet::new(),
+            deal_ids: BTreeSet::new(),
+            provenance_samples: Vec::new(),
+            row_count: 0,
+        }
+    }
+
+    fn push(&mut self, observation: &PreparedInputObservation) {
+        self.row_count += 1;
+        self.raw_variants
+            .insert(observation.primary_surface.value.clone());
+        self.alias_surfaces.extend(
+            observation
+                .alias_surfaces
+                .iter()
+                .map(|surface| surface.value.clone()),
+        );
+        self.mention_surfaces.extend(
+            observation
+                .mention_surfaces
+                .iter()
+                .map(|surface| surface.value.clone()),
+        );
+        if let Some(deal_id) = observation.provenance.get("deal_id") {
+            self.deal_ids.insert(deal_id.clone());
+        } else if let Some(Value::String(deal_id)) = observation.context.get("deal_id") {
+            self.deal_ids.insert(deal_id.clone());
+        }
+        let source_row_id = observation.provenance.get("source_row_id").cloned();
+        self.provenance_samples
+            .push(PreparedSurfaceProvenanceSample {
+                row_number: source_row_id.is_none().then_some(observation.row_number),
+                source_row_id,
+                provenance: observation.provenance.clone(),
+            });
+    }
+
+    fn merge_normalized_views(
+        &mut self,
+        normalized_views: BTreeMap<String, PreparedNormalizedView>,
+    ) {
+        for (name, view) in normalized_views {
+            self.normalized_views
+                .entry(name)
+                .and_modify(|existing| {
+                    if view.value < existing.value {
+                        existing.value = view.value.clone();
+                    }
+                    let mut reason_codes = existing
+                        .reason_codes
+                        .iter()
+                        .chain(view.reason_codes.iter())
+                        .cloned()
+                        .collect::<BTreeSet<_>>()
+                        .into_iter()
+                        .collect::<Vec<_>>();
+                    reason_codes.sort();
+                    existing.reason_codes = reason_codes;
+                })
+                .or_insert(view);
+        }
+    }
+
+    fn finish(mut self) -> PreparedSurfaceRecord {
+        self.provenance_samples.sort();
+        self.provenance_samples
+            .truncate(MAX_SURFACE_PROVENANCE_SAMPLES);
+        let raw_variants = self.raw_variants.into_iter().collect::<Vec<_>>();
+        let primary_surface = raw_variants.first().cloned().unwrap_or_default();
+        PreparedSurfaceRecord {
+            profile_id: self.profile_id,
+            surface_key: self.surface_key,
+            primary_surface,
+            normalized_views: self.normalized_views,
+            raw_variants,
+            alias_surfaces: self.alias_surfaces.into_iter().collect(),
+            mention_surfaces: self.mention_surfaces.into_iter().collect(),
+            row_count: self.row_count,
+            deal_count: u64::try_from(self.deal_ids.len()).expect("deal count fits u64"),
+            provenance_samples: self.provenance_samples,
+        }
+    }
 }
 
 fn project_prepare_row(
@@ -493,6 +667,145 @@ fn project_prepare_row(
         context,
         provenance,
     })
+}
+
+fn normalized_views_for_surface(
+    profile_id: &str,
+    raw: &str,
+) -> BTreeMap<String, PreparedNormalizedView> {
+    match profile_id {
+        "cmbs_tenant_label" => cmbs_normalized_views(raw),
+        "regab_firm_identity" => regab_normalized_views(raw),
+        _ => generic_normalized_views(raw),
+    }
+}
+
+fn cmbs_normalized_views(raw: &str) -> BTreeMap<String, PreparedNormalizedView> {
+    let normal = normalize_normality(raw);
+    let legal = analyze_legal_suffixes(&normal.normalized, LegalSuffixProfile::CmbsTenantLabel);
+    let core = non_empty_or_fallback(&legal.basename, &normal.normalized);
+    let tokens = tokenize_sorted_unique(&core);
+    let brand = normalize_openrefine_fingerprint(&core);
+
+    BTreeMap::from([
+        (
+            "tenant_core".to_string(),
+            PreparedNormalizedView {
+                value: core.clone(),
+                reason_codes: reason_codes(&normal, Some(&legal), None),
+            },
+        ),
+        (
+            "tenant_tokens".to_string(),
+            PreparedNormalizedView {
+                value: tokenized_value(&tokens),
+                reason_codes: reason_codes(&normal, Some(&legal), Some(&tokens)),
+            },
+        ),
+        (
+            "tenant_brand".to_string(),
+            PreparedNormalizedView {
+                value: brand.fingerprint.clone(),
+                reason_codes: namekit_reason_codes(&brand),
+            },
+        ),
+    ])
+}
+
+fn regab_normalized_views(raw: &str) -> BTreeMap<String, PreparedNormalizedView> {
+    let normal = normalize_normality(raw);
+    let legal = analyze_legal_suffixes(&normal.normalized, LegalSuffixProfile::RegabFirmIdentity);
+    let core = non_empty_or_fallback(&legal.basename, &normal.normalized);
+    let tokens = tokenize_sorted_unique(&core);
+
+    BTreeMap::from([
+        (
+            "firm_core".to_string(),
+            PreparedNormalizedView {
+                value: core.clone(),
+                reason_codes: reason_codes(&normal, Some(&legal), None),
+            },
+        ),
+        (
+            "firm_tokens".to_string(),
+            PreparedNormalizedView {
+                value: tokenized_value(&tokens),
+                reason_codes: reason_codes(&normal, Some(&legal), Some(&tokens)),
+            },
+        ),
+    ])
+}
+
+fn generic_normalized_views(raw: &str) -> BTreeMap<String, PreparedNormalizedView> {
+    let normal = normalize_normality(raw);
+    BTreeMap::from([(
+        "core".to_string(),
+        PreparedNormalizedView {
+            value: normal.normalized.clone(),
+            reason_codes: namekit_reason_codes(&normal),
+        },
+    )])
+}
+
+fn core_view_value(
+    profile_id: &str,
+    views: &BTreeMap<String, PreparedNormalizedView>,
+) -> Option<String> {
+    let view_name = match profile_id {
+        "cmbs_tenant_label" => "tenant_core",
+        "regab_firm_identity" => "firm_core",
+        _ => "core",
+    };
+    views.get(view_name).map(|view| view.value.clone())
+}
+
+fn non_empty_or_fallback(value: &str, fallback: &str) -> String {
+    if value.trim().is_empty() {
+        fallback.to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn tokenized_value(tokens: &NamekitTokenization) -> String {
+    tokens
+        .tokens
+        .iter()
+        .map(|token| token.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn reason_codes(
+    normal: &NamekitNormalization,
+    legal: Option<&LegalSuffixAnalysis>,
+    tokens: Option<&NamekitTokenization>,
+) -> Vec<String> {
+    let mut codes = normal
+        .reasons
+        .iter()
+        .map(|reason| reason.code.as_str().to_string())
+        .collect::<BTreeSet<_>>();
+    if let Some(legal) = legal {
+        codes.extend(legal.reasons.iter().map(|reason| reason.code.to_string()));
+    }
+    if let Some(tokens) = tokens {
+        codes.extend(
+            tokens
+                .reasons
+                .iter()
+                .map(|reason| reason.code.as_str().to_string()),
+        );
+    }
+    codes.into_iter().collect()
+}
+
+fn namekit_reason_codes(normal: &NamekitNormalization) -> Vec<String> {
+    normal
+        .reason_codes()
+        .into_iter()
+        .map(str::to_string)
+        .collect()
 }
 
 fn validate_mapping(mapping: &PrepareFieldMapping) -> Result<(), Refusal> {
@@ -962,11 +1275,25 @@ fn hash_registry_json_files(registry_dir: &Path) -> Result<String, Refusal> {
     Ok(format!("blake3:{}", hasher.finalize().to_hex()))
 }
 
-fn prepare_summary(observations: &[PreparedInputObservation]) -> BTreeMap<String, u64> {
+fn prepare_summary(
+    observations: &[PreparedInputObservation],
+    surfaces: &[PreparedSurfaceRecord],
+) -> BTreeMap<String, u64> {
     let observation_count = u64::try_from(observations.len()).expect("observation count fits u64");
+    let surface_count = u64::try_from(surfaces.len()).expect("surface count fits u64");
+    let raw_unique_surfaces = observations
+        .iter()
+        .map(|observation| observation.primary_surface.value.as_str())
+        .collect::<BTreeSet<_>>()
+        .len();
     BTreeMap::from([
         ("row_count".to_string(), observation_count),
         ("prepared_observations".to_string(), observation_count),
+        (
+            "raw_unique_surfaces".to_string(),
+            u64::try_from(raw_unique_surfaces).expect("raw unique surface count fits u64"),
+        ),
+        ("prepared_surfaces".to_string(), surface_count),
         ("primary_surface_count".to_string(), observation_count),
         (
             "alias_surface_count".to_string(),
@@ -1000,10 +1327,7 @@ fn prepare_summary(observations: &[PreparedInputObservation]) -> BTreeMap<String
     ])
 }
 
-fn write_observations_jsonl(
-    path: &Path,
-    observations: &[PreparedInputObservation],
-) -> Result<(), Refusal> {
+fn write_surfaces_jsonl(path: &Path, surfaces: &[PreparedSurfaceRecord]) -> Result<(), Refusal> {
     let mut file = File::create(path).map_err(|error| {
         io_budget_refusal(
             "Failed to create prepare surfaces file",
@@ -1011,10 +1335,10 @@ fn write_observations_jsonl(
             error.to_string(),
         )
     })?;
-    for observation in observations {
-        let line = serde_json::to_string(observation).map_err(|error| {
+    for surface in surfaces {
+        let line = serde_json::to_string(surface).map_err(|error| {
             EntityRefusalKind::ArtifactContract.to_refusal(
-                "Failed to serialize prepare observation",
+                "Failed to serialize prepare surface",
                 json!({ "error": error.to_string() }),
                 None,
             )
