@@ -1,0 +1,54 @@
+{
+  "schema_version": "canon.entity.namespace_migration_fixture.v0",
+  "gates": ["G01", "G02"],
+  "lookup_cases": [
+    {
+      "id": "csv_all_resolved_exact_lookup",
+      "input": "tests/fixtures/inputs/all_resolved.csv",
+      "registry": "tests/fixtures/registries/cusip-isin",
+      "column": "cusip",
+      "pre_migration_golden": "tests/fixtures/golden/all_resolved.json",
+      "expected_exit_code": 0
+    },
+    {
+      "id": "jsonl_basic_exact_lookup",
+      "input": "tests/fixtures/inputs/basic.jsonl",
+      "registry": "tests/fixtures/registries/cusip-isin",
+      "column": "cusip",
+      "pre_migration_golden": "tests/fixtures/golden/all_resolved.json",
+      "expected_exit_code": 0
+    }
+  ],
+  "public_surface": {
+    "required_help_tokens": ["entity"],
+    "forbidden_help_tokens": ["\n  org"],
+    "required_usage_prefixes": [
+      "canon entity run",
+      "canon entity block",
+      "canon entity edge",
+      "canon entity solve",
+      "canon entity audit",
+      "canon entity promote",
+      "canon entity review export",
+      "canon entity review import",
+      "canon entity explain"
+    ],
+    "required_subcommands": [
+      { "name": "entity run", "output_schema": "canon_entity_run.v0" },
+      { "name": "entity block", "output_schema": "canon_entity_block.v0" },
+      { "name": "entity edge", "output_schema": "canon_entity_edge.v0" },
+      { "name": "entity solve", "output_schema": "canon_entity_solve.v0" },
+      { "name": "entity audit", "output_schema": "canon_entity_audit.v0" },
+      { "name": "entity promote", "output_schema": "canon_entity_promote.v0" },
+      { "name": "entity review export", "output_schema": "canon_entity_review_export.v0" },
+      { "name": "entity review import", "output_schema": "canon_entity_review_import.v0" },
+      { "name": "entity explain", "output_schema": "canon_entity_explain.v0" }
+    ],
+    "forbidden_public_tokens": [
+      "canon org",
+      "org run",
+      "canon_org",
+      "CANON_ORG"
+    ]
+  }
+}
