@@ -1,0 +1,202 @@
+{
+  "dataset_counts": {
+    "regab_attestations": 344,
+    "regab_platform_rosters": 32055,
+    "regab_servicer_schedules": 95592
+  },
+  "field_counts": {
+    "regab_attestations.attesting_firm_name": 172,
+    "regab_attestations.subject_party_name": 172,
+    "regab_platform_rosters.reporting_party_name": 32055,
+    "regab_servicer_schedules.reporting_party_name": 47796,
+    "regab_servicer_schedules.servicer_name": 47796
+  },
+  "mention_count": 127991,
+  "top_surfaces": [
+    {
+      "count": 38197,
+      "org_name": "Computershare Trust Company, National Association"
+    },
+    {
+      "count": 24466,
+      "org_name": "KeyBank National Association"
+    },
+    {
+      "count": 13878,
+      "org_name": "Wells Fargo"
+    },
+    {
+      "count": 12156,
+      "org_name": "Wells Fargo Bank, National Association"
+    },
+    {
+      "count": 11054,
+      "org_name": "Trimont LLC"
+    },
+    {
+      "count": 11040,
+      "org_name": "Trimont"
+    },
+    {
+      "count": 5150,
+      "org_name": "LNR Partners, LLC"
+    },
+    {
+      "count": 4382,
+      "org_name": "Computershare"
+    },
+    {
+      "count": 2671,
+      "org_name": "Rialto Capital Advisors, LLC"
+    },
+    {
+      "count": 1882,
+      "org_name": "Servicer compliance statement, KeyBank National Association"
+    },
+    {
+      "count": 680,
+      "org_name": "Argentic Services Company LP"
+    },
+    {
+      "count": 353,
+      "org_name": "PNC Bank, National Association"
+    },
+    {
+      "count": 348,
+      "org_name": "National Cooperative Bank, N.A"
+    },
+    {
+      "count": 345,
+      "org_name": "National Cooperative Bank, N.A."
+    },
+    {
+      "count": 205,
+      "org_name": "Midland Loan Services, a Division of PNC Bank, National Association"
+    },
+    {
+      "count": 183,
+      "org_name": "Servicer compliance statement, Rialto Capital Advisors, LLC"
+    },
+    {
+      "count": 170,
+      "org_name": "Greystone Servicing Company LLC"
+    },
+    {
+      "count": 128,
+      "org_name": "Servicer compliance statement, Midland Loan Services, a division of PNC Bank, National Association"
+    },
+    {
+      "count": 128,
+      "org_name": "Citibank, N.A."
+    },
+    {
+      "count": 128,
+      "org_name": "Servicer compliance statement, Citibank, N.A"
+    },
+    {
+      "count": 87,
+      "org_name": "Torchlight Loan Services, LLC"
+    },
+    {
+      "count": 55,
+      "org_name": "PricewaterhouseCoopers LLP"
+    },
+    {
+      "count": 50,
+      "org_name": "3650 REIT Loan Servicing LLC"
+    },
+    {
+      "count": 37,
+      "org_name": "Grant Thornton LLP"
+    },
+    {
+      "count": 29,
+      "org_name": "KPMG LLP"
+    },
+    {
+      "count": 23,
+      "org_name": "Berkadia Commercial Mortgage LLC"
+    },
+    {
+      "count": 20,
+      "org_name": "Midland Loan Services, a division of PNC Bank, National Association"
+    },
+    {
+      "count": 18,
+      "org_name": "CoreLogic Solutions, LLC"
+    },
+    {
+      "count": 17,
+      "org_name": "Midland"
+    },
+    {
+      "count": 16,
+      "org_name": "RSM US LLP"
+    },
+    {
+      "count": 15,
+      "org_name": "Pentalpha Surveillance LLC"
+    },
+    {
+      "count": 14,
+      "org_name": "Forvis Mazars, LLP"
+    },
+    {
+      "count": 13,
+      "org_name": "Deloitte & Touche LLP"
+    },
+    {
+      "count": 12,
+      "org_name": "Park Bridge Lender Services LLC"
+    },
+    {
+      "count": 10,
+      "org_name": "Wells Fargo Commercial Mortgage Servicing, a division of Wells Fargo Bank, National Association"
+    },
+    {
+      "count": 6,
+      "org_name": "BellOak, LLC"
+    },
+    {
+      "count": 5,
+      "org_name": "Citibank, N.A"
+    },
+    {
+      "count": 4,
+      "org_name": "CohnReznick LLP"
+    },
+    {
+      "count": 3,
+      "org_name": "CWCapital Asset Management, LLC"
+    },
+    {
+      "count": 3,
+      "org_name": "GRANT THORNTON LLP"
+    },
+    {
+      "count": 3,
+      "org_name": "K-Star Asset Management LLC"
+    },
+    {
+      "count": 3,
+      "org_name": "SCP Servicing, LLC"
+    },
+    {
+      "count": 1,
+      "org_name": "3650 REIT Loan Servicing, LLC"
+    },
+    {
+      "count": 1,
+      "org_name": "Situs Holdings, LLC"
+    },
+    {
+      "count": 1,
+      "org_name": "Greystone Servicing Company LLC and Subsidiaries"
+    },
+    {
+      "count": 1,
+      "org_name": "Forvis, LLP"
+    }
+  ],
+  "unique_surface_count": 46
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "canonical_id": "ORG-017",
+    "canonical_type": "firm",
+    "input": "MTY Group",
+    "rule_id": "CANON_ID_DISPLAY_NAME"
+  },
+  {
+    "canonical_id": "ORG-018",
+    "canonical_type": "firm",
+    "input": "W3C",
+    "rule_id": "CANON_ID_DISPLAY_NAME"
+  },
+  {
+    "canonical_id": "ORG-019",
+    "canonical_type": "firm",
+    "input": "Bloomberg",
+    "rule_id": "CANON_ID_DISPLAY_NAME"
+  },
+  {
+    "canonical_id": "ORG-020",
+    "canonical_type": "firm",
+    "input": "Reworld",
+    "rule_id": "CANON_ID_DISPLAY_NAME"
+  }
+]

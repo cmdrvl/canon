@@ -1,0 +1,330 @@
+{
+  "schema_version": "canon.entity.benchmark_manifest.v0",
+  "benchmark_id": "sec10d_regab_org_canon_baseline_20260623T204557Z",
+  "profile": "regab_firm_identity",
+  "entity_type": "organization",
+  "identity_semantics": "same_firm_or_reviewed_alias",
+  "canonical_type": "org",
+  "source": {
+    "path_hint": "/Users/zacharyruiz/Downloads/sec10d_regab_org_canon_baseline_20260623T204557Z.zip",
+    "zip_sha256": "5766b83bb2e1bad3736b1d78fa7ea1433d929d1f3d936762fdfbdba7cc9bdf3b",
+    "artifact_root": "org_canon_baseline/",
+    "source_run": "evidence/cmbs-10k-regab-delta-20260623/regab_delta_jsonl_20260623",
+    "registry": {
+      "id": "firms",
+      "version": "1.0.12",
+      "updated": "2026-06-23",
+      "entry_count": 110
+    },
+    "files": [
+      {
+        "path": "org_canon_baseline/org_mentions.csv",
+        "size_bytes": 122009771,
+        "sha256": "b7e88405e1c49562abae3497007e70cdeac8899c0a3374a447dc62fcc64dd3d2"
+      },
+      {
+        "path": "org_canon_baseline/org_mentions.canon.csv",
+        "size_bytes": 122905720,
+        "sha256": "ff3453d8a321d12130e27a0cf5fc93d4ccccbe0dd1ffea21284c59df7f286362"
+      },
+      {
+        "path": "org_canon_baseline/org_lookup.map.json",
+        "size_bytes": 7727,
+        "sha256": "00b9fa7bed19b8f03efd709b547d60c723d0286fa380bbdd2dafcdb049425a8b"
+      },
+      {
+        "path": "org_canon_baseline/org_mentions_summary.json",
+        "size_bytes": 4350,
+        "sha256": "8abe2d09ebcda5df3145afa6c7224bca442581fae7d8c6c51b421da27495aa82"
+      },
+      {
+        "path": "org_canon_baseline/org_resolution_summary.json",
+        "size_bytes": 1659,
+        "sha256": "44a25e34c483e1986106563e6df5827013e04807be0398ec4bc1224b305b0f49"
+      },
+      {
+        "path": "org_canon_baseline/registry_snapshot/firms/regab-org-seed-20260623.json",
+        "size_bytes": 6634,
+        "sha256": "8f6734935d630100a41562496c86a34a676929f035dade3c6d7e2ca9918a5e83"
+      },
+      {
+        "path": "org_canon_baseline/enriched_datasets/regab_platform_rosters.jsonl",
+        "size_bytes": 158640320,
+        "sha256": "06711e3f61cd4c80fb613e9f90bd80da103a8797644b59401da68cf29f4f0691"
+      },
+      {
+        "path": "org_canon_baseline/enriched_datasets/regab_servicer_schedules.jsonl",
+        "size_bytes": 254208917,
+        "sha256": "dce2e0218fb8c6df5a9db5300087d946dee18e5d1af69d3f8885cb1e49d9d25b"
+      },
+      {
+        "path": "org_canon_baseline/enriched_datasets/regab_attestations.jsonl",
+        "size_bytes": 1807566,
+        "sha256": "ae04ae60b8cf6faf3c313b4ee58231d5e83be455b2f3122fad21e7d2c5b04c7d"
+      }
+    ]
+  },
+  "committed_fixture_slice": {
+    "root": "tests/fixtures/entity/regab/sec10d_baseline_public",
+    "policy": "public-data compact normal-CI slice; discard the full bulk artifacts from git",
+    "selected_surface_rows": 46,
+    "selected_unique_surfaces": 46,
+    "selected_unique_canonical_ids": 31,
+    "files": [
+      "README.md",
+      "fixture_slice.json",
+      "org_mentions_selected.csv",
+      "org_mentions_selected.canon.csv",
+      "org_lookup_expected.map.json",
+      "org_review_queue.csv",
+      "org_resolution_summary.json",
+      "org_mentions_summary.json",
+      "registry_snapshot/firms/registry.json",
+      "registry_snapshot/firms/regab-org-seed-20260623.json",
+      "registry_snapshot/firms/name-to-firm.json",
+      "registry_snapshot/firms/canon-ids.json",
+      "registry_snapshot/firms/domain-to-firm.json",
+      "registry_snapshot/firms/crm-id-to-canon.json",
+      "registry_snapshot/firms/aliases.json",
+      "enriched_samples/regab_attestations.selected.jsonl",
+      "enriched_samples/regab_platform_rosters.selected.jsonl",
+      "enriched_samples/regab_servicer_schedules.selected.jsonl"
+    ]
+  },
+  "input_contract": {
+    "org_mentions_columns": [
+      "source_row_id",
+      "record_id",
+      "dataset",
+      "record_version",
+      "field_name",
+      "org_name",
+      "doc_id",
+      "as_of_date",
+      "filing_cik",
+      "accession",
+      "filing_form",
+      "filed_date",
+      "period",
+      "source_exhibit_document_name",
+      "source_exhibit_type",
+      "source_item",
+      "role_context",
+      "capacity",
+      "capacity_normalized",
+      "reporting_party_capacity",
+      "platform_capacity",
+      "platform_capacity_normalized",
+      "subject_role",
+      "deal_key",
+      "transaction_name",
+      "alias_surfaces_json",
+      "mention_surfaces_json"
+    ],
+    "canon_csv_appended_columns": [
+      "org_canon_id"
+    ],
+    "approved_enriched_suffixes": [
+      "_org_canon_id",
+      "_org_canonical_name",
+      "_org_resolution_status",
+      "_org_registry_id",
+      "_org_registry_version",
+      "_org_rule_id"
+    ]
+  },
+  "expected_counts": {
+    "mention_rows": 127991,
+    "unique_source_row_ids": 127991,
+    "duplicate_source_row_ids": 0,
+    "unique_record_ids": 80023,
+    "unique_accessions": 19,
+    "unique_deal_keys": 7030,
+    "unique_source_exhibits": 256,
+    "unique_surfaces": 46,
+    "unique_canonical_ids": 31,
+    "resolved_mentions": 127991,
+    "unresolved_mentions": 0,
+    "resolved_unique_surfaces": 46,
+    "unresolved_unique_surfaces": 0,
+    "null_canon_ids": 0
+  },
+  "dataset_field_counts": {
+    "regab_attestations.attesting_firm_name": 172,
+    "regab_attestations.subject_party_name": 172,
+    "regab_platform_rosters.reporting_party_name": 32055,
+    "regab_servicer_schedules.reporting_party_name": 47796,
+    "regab_servicer_schedules.servicer_name": 47796
+  },
+  "enriched_datasets": {
+    "regab_attestations": {
+      "record_count": 172,
+      "canonical_field_prefixes": [
+        "attesting_firm_org",
+        "subject_party_org"
+      ]
+    },
+    "regab_platform_rosters": {
+      "record_count": 32055,
+      "canonical_field_prefixes": [
+        "reporting_party_org"
+      ]
+    },
+    "regab_servicer_schedules": {
+      "record_count": 47796,
+      "canonical_field_prefixes": [
+        "reporting_party_org",
+        "servicer_org"
+      ]
+    }
+  },
+  "canonical_id_counts": [
+    {"canonical_id": "ORG-022", "mention_count": 42579},
+    {"canonical_id": "ORG-031", "mention_count": 26348},
+    {"canonical_id": "ORG-012", "mention_count": 26034},
+    {"canonical_id": "ORG-021", "mention_count": 22094},
+    {"canonical_id": "ORG-032", "mention_count": 5150},
+    {"canonical_id": "ORG-030", "mention_count": 2854},
+    {"canonical_id": "ORG-028", "mention_count": 693},
+    {"canonical_id": "ORG-033", "mention_count": 680},
+    {"canonical_id": "ORG-035", "mention_count": 370},
+    {"canonical_id": "ORG-034", "mention_count": 353},
+    {"canonical_id": "ORG-037", "mention_count": 261},
+    {"canonical_id": "ORG-036", "mention_count": 171},
+    {"canonical_id": "ORG-038", "mention_count": 87},
+    {"canonical_id": "ORG-039", "mention_count": 55},
+    {"canonical_id": "ORG-040", "mention_count": 51},
+    {"canonical_id": "ORG-041", "mention_count": 40},
+    {"canonical_id": "ORG-042", "mention_count": 29},
+    {"canonical_id": "ORG-043", "mention_count": 23},
+    {"canonical_id": "ORG-044", "mention_count": 18},
+    {"canonical_id": "ORG-045", "mention_count": 16},
+    {"canonical_id": "ORG-046", "mention_count": 15},
+    {"canonical_id": "ORG-027", "mention_count": 15},
+    {"canonical_id": "ORG-047", "mention_count": 13},
+    {"canonical_id": "ORG-048", "mention_count": 12},
+    {"canonical_id": "ORG-053", "mention_count": 10},
+    {"canonical_id": "ORG-024", "mention_count": 6},
+    {"canonical_id": "ORG-049", "mention_count": 4},
+    {"canonical_id": "ORG-029", "mention_count": 3},
+    {"canonical_id": "ORG-050", "mention_count": 3},
+    {"canonical_id": "ORG-051", "mention_count": 3},
+    {"canonical_id": "ORG-052", "mention_count": 1}
+  ],
+  "rule_counts": {
+    "CMBS_COUNTERPARTY": 5,
+    "FIRM_NAME_TO_FIRM": 1,
+    "REGAB_CASE_VARIANT_ALIAS": 1,
+    "REGAB_DIVISION_ALIAS": 3,
+    "REGAB_EXACT_ALIAS": 26,
+    "REGAB_PREFIXED_COMPLIANCE_STATEMENT_ALIAS": 4,
+    "REGAB_PUNCTUATION_VARIANT_ALIAS": 4,
+    "REGAB_REVIEWED_PREDECESSOR_ALIAS": 1,
+    "REGAB_SUBSIDIARIES_ALIAS": 1
+  },
+  "surface_mappings": [
+    {"surface": "3650 REIT Loan Servicing LLC", "canonical_id": "ORG-040", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 50},
+    {"surface": "3650 REIT Loan Servicing, LLC", "canonical_id": "ORG-040", "rule_id": "REGAB_PUNCTUATION_VARIANT_ALIAS", "mention_count": 1},
+    {"surface": "Argentic Services Company LP", "canonical_id": "ORG-033", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 680},
+    {"surface": "BellOak, LLC", "canonical_id": "ORG-024", "rule_id": "CMBS_COUNTERPARTY", "mention_count": 6},
+    {"surface": "Berkadia Commercial Mortgage LLC", "canonical_id": "ORG-043", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 23},
+    {"surface": "CWCapital Asset Management, LLC", "canonical_id": "ORG-029", "rule_id": "REGAB_PUNCTUATION_VARIANT_ALIAS", "mention_count": 3},
+    {"surface": "Citibank, N.A", "canonical_id": "ORG-037", "rule_id": "REGAB_PUNCTUATION_VARIANT_ALIAS", "mention_count": 5},
+    {"surface": "Citibank, N.A.", "canonical_id": "ORG-037", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 128},
+    {"surface": "CohnReznick LLP", "canonical_id": "ORG-049", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 4},
+    {"surface": "Computershare", "canonical_id": "ORG-022", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 4382},
+    {"surface": "Computershare Trust Company, National Association", "canonical_id": "ORG-022", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 38197},
+    {"surface": "CoreLogic Solutions, LLC", "canonical_id": "ORG-044", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 18},
+    {"surface": "Deloitte & Touche LLP", "canonical_id": "ORG-047", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 13},
+    {"surface": "Forvis Mazars, LLP", "canonical_id": "ORG-046", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 14},
+    {"surface": "Forvis, LLP", "canonical_id": "ORG-046", "rule_id": "REGAB_REVIEWED_PREDECESSOR_ALIAS", "mention_count": 1},
+    {"surface": "GRANT THORNTON LLP", "canonical_id": "ORG-041", "rule_id": "REGAB_CASE_VARIANT_ALIAS", "mention_count": 3},
+    {"surface": "Grant Thornton LLP", "canonical_id": "ORG-041", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 37},
+    {"surface": "Greystone Servicing Company LLC", "canonical_id": "ORG-036", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 170},
+    {"surface": "Greystone Servicing Company LLC and Subsidiaries", "canonical_id": "ORG-036", "rule_id": "REGAB_SUBSIDIARIES_ALIAS", "mention_count": 1},
+    {"surface": "K-Star Asset Management LLC", "canonical_id": "ORG-050", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 3},
+    {"surface": "KPMG LLP", "canonical_id": "ORG-042", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 29},
+    {"surface": "KeyBank National Association", "canonical_id": "ORG-031", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 24466},
+    {"surface": "LNR Partners, LLC", "canonical_id": "ORG-032", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 5150},
+    {"surface": "Midland", "canonical_id": "ORG-035", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 17},
+    {"surface": "Midland Loan Services, a Division of PNC Bank, National Association", "canonical_id": "ORG-035", "rule_id": "REGAB_DIVISION_ALIAS", "mention_count": 205},
+    {"surface": "Midland Loan Services, a division of PNC Bank, National Association", "canonical_id": "ORG-035", "rule_id": "REGAB_DIVISION_ALIAS", "mention_count": 20},
+    {"surface": "National Cooperative Bank, N.A", "canonical_id": "ORG-028", "rule_id": "REGAB_PUNCTUATION_VARIANT_ALIAS", "mention_count": 348},
+    {"surface": "National Cooperative Bank, N.A.", "canonical_id": "ORG-028", "rule_id": "CMBS_COUNTERPARTY", "mention_count": 345},
+    {"surface": "PNC Bank, National Association", "canonical_id": "ORG-034", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 353},
+    {"surface": "Park Bridge Lender Services LLC", "canonical_id": "ORG-048", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 12},
+    {"surface": "Pentalpha Surveillance LLC", "canonical_id": "ORG-027", "rule_id": "CMBS_COUNTERPARTY", "mention_count": 15},
+    {"surface": "PricewaterhouseCoopers LLP", "canonical_id": "ORG-039", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 55},
+    {"surface": "RSM US LLP", "canonical_id": "ORG-045", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 16},
+    {"surface": "Rialto Capital Advisors, LLC", "canonical_id": "ORG-030", "rule_id": "CMBS_COUNTERPARTY", "mention_count": 2671},
+    {"surface": "SCP Servicing, LLC", "canonical_id": "ORG-051", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 3},
+    {"surface": "Servicer compliance statement, Citibank, N.A", "canonical_id": "ORG-037", "rule_id": "REGAB_PREFIXED_COMPLIANCE_STATEMENT_ALIAS", "mention_count": 128},
+    {"surface": "Servicer compliance statement, KeyBank National Association", "canonical_id": "ORG-031", "rule_id": "REGAB_PREFIXED_COMPLIANCE_STATEMENT_ALIAS", "mention_count": 1882},
+    {"surface": "Servicer compliance statement, Midland Loan Services, a division of PNC Bank, National Association", "canonical_id": "ORG-035", "rule_id": "REGAB_PREFIXED_COMPLIANCE_STATEMENT_ALIAS", "mention_count": 128},
+    {"surface": "Servicer compliance statement, Rialto Capital Advisors, LLC", "canonical_id": "ORG-030", "rule_id": "REGAB_PREFIXED_COMPLIANCE_STATEMENT_ALIAS", "mention_count": 183},
+    {"surface": "Situs Holdings, LLC", "canonical_id": "ORG-052", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 1},
+    {"surface": "Torchlight Loan Services, LLC", "canonical_id": "ORG-038", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 87},
+    {"surface": "Trimont", "canonical_id": "ORG-021", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 11040},
+    {"surface": "Trimont LLC", "canonical_id": "ORG-021", "rule_id": "CMBS_COUNTERPARTY", "mention_count": 11054},
+    {"surface": "Wells Fargo", "canonical_id": "ORG-012", "rule_id": "FIRM_NAME_TO_FIRM", "mention_count": 13878},
+    {"surface": "Wells Fargo Bank, National Association", "canonical_id": "ORG-012", "rule_id": "REGAB_EXACT_ALIAS", "mention_count": 12156},
+    {"surface": "Wells Fargo Commercial Mortgage Servicing, a division of Wells Fargo Bank, National Association", "canonical_id": "ORG-053", "rule_id": "REGAB_DIVISION_ALIAS", "mention_count": 10}
+  ],
+  "anti_collapse_pairs": [
+    {
+      "left_surface": "PNC Bank, National Association",
+      "left_canonical_id": "ORG-034",
+      "right_surface": "Midland Loan Services, a division of PNC Bank, National Association",
+      "right_canonical_id": "ORG-035",
+      "reason": "bank parent or affiliate vs loan-services division wording",
+      "expected": "must_remain_distinct_or_relation_hint"
+    },
+    {
+      "left_surface": "Wells Fargo Bank, National Association",
+      "left_canonical_id": "ORG-012",
+      "right_surface": "Wells Fargo Commercial Mortgage Servicing, a division of Wells Fargo Bank, National Association",
+      "right_canonical_id": "ORG-053",
+      "reason": "bank vs commercial mortgage servicing division",
+      "expected": "must_remain_distinct_or_relation_hint"
+    },
+    {
+      "left_surface": "Forvis Mazars, LLP",
+      "left_canonical_id": "ORG-046",
+      "right_surface": "Forvis, LLP",
+      "right_canonical_id": "ORG-046",
+      "reason": "predecessor alias is allowed only because rule_id is REGAB_REVIEWED_PREDECESSOR_ALIAS",
+      "expected": "same_only_with_reviewed_policy_rule"
+    },
+    {
+      "left_surface": "Greystone Servicing Company LLC",
+      "left_canonical_id": "ORG-036",
+      "right_surface": "Greystone Servicing Company LLC and Subsidiaries",
+      "right_canonical_id": "ORG-036",
+      "reason": "subsidiaries wording is allowed only because rule_id is REGAB_SUBSIDIARIES_ALIAS",
+      "expected": "same_only_with_reviewed_policy_rule"
+    }
+  ],
+  "required_benchmarks": [
+    "REGAB-SRC-001",
+    "REGAB-OBS-001",
+    "REGAB-OBS-002",
+    "REGAB-LOOKUP-001",
+    "REGAB-APPLY-001",
+    "REGAB-ENRICH-001",
+    "REGAB-HIER-001",
+    "REGAB-HIER-002",
+    "REGAB-ALIAS-001",
+    "REGAB-REVIEW-001",
+    "REGAB-PREP-001",
+    "REGAB-PERF-001",
+    "REGAB-FIREWALL-001"
+  ],
+  "non_goals": [
+    "do not commit the full baseline zip by default",
+    "do not introduce frontier model calls",
+    "do not introduce network access",
+    "do not introduce Python or general ML framework runtime dependencies",
+    "do not silently collapse parent/subsidiary/division relationships",
+    "do not mutate raw sec10d parser evidence"
+  ]
+}

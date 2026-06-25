@@ -495,6 +495,20 @@ The entity workbench subsumes it by adding prepare/index/block/edge/solve/audit
 around unresolved or reviewable surfaces, while preserving exact replay as the
 production enrichment path.
 
+The baseline benchmark contract for this use case lives in
+`docs/SEC10D_REGAB_BENCHMARKS.md`, with machine-readable expectations in
+`tests/fixtures/entity/regab/sec10d_regab_benchmark_manifest.json`. It is based
+on `sec10d_regab_org_canon_baseline_20260623T204557Z.zip`, whose baseline has
+127,991 firm mentions, 46 unique raw firm surfaces, 31 canonical ids, 0
+unresolved mentions, and registry `firms` version `1.0.12`.
+
+Implementation Beads for ENT-P11/ENT-P13 should treat that doc and manifest as
+the use-case #2 benchmark contract. Passing the benchmark means the migrated
+`canon entity` path preserves the current exact baseline, accepts the existing
+`org_mentions.csv` shape, keeps parser evidence append-only, and enforces the
+Reg AB anti-collapse boundary for cases such as PNC vs Midland and Wells Fargo
+Bank vs Wells Fargo Commercial Mortgage Servicing.
+
 ---
 
 ## CLI Migration

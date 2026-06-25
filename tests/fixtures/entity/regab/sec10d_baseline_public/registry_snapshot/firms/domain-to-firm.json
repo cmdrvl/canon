@@ -1,0 +1,62 @@
+[
+  {
+    "canonical_id": "ORG-016",
+    "canonical_type": "firm",
+    "input": "allegisglobalsolutions.com",
+    "rule_id": "DOMAIN_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-014",
+    "canonical_type": "firm",
+    "input": "anthropic.com",
+    "rule_id": "DOMAIN_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-013",
+    "canonical_type": "firm",
+    "input": "appian.com",
+    "rule_id": "DOMAIN_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-001",
+    "canonical_type": "firm",
+    "input": "cmdrvl.com",
+    "rule_id": "DOMAIN_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-005",
+    "canonical_type": "firm",
+    "input": "cred-iq.com",
+    "rule_id": "DOMAIN_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-008",
+    "canonical_type": "firm",
+    "input": "fishermp.com",
+    "rule_id": "DOMAIN_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-002",
+    "canonical_type": "firm",
+    "input": "kovrex.ai",
+    "rule_id": "DOMAIN_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-006",
+    "canonical_type": "firm",
+    "input": "nmrk.com",
+    "rule_id": "DOMAIN_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-012",
+    "canonical_type": "firm",
+    "input": "wellsfargo.com",
+    "rule_id": "DOMAIN_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-007",
+    "canonical_type": "firm",
+    "input": "wilcoxcommunities.com",
+    "rule_id": "DOMAIN_TO_FIRM"
+  }
+]

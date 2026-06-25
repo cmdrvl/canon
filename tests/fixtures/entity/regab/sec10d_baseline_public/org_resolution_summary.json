@@ -1,0 +1,55 @@
+{
+  "canon_exit": 0,
+  "enriched_datasets": {
+    "regab_attestations": {
+      "path": "evidence/cmbs-10k-regab-delta-20260623/regab_delta_jsonl_20260623/org_canon_baseline/enriched_datasets/regab_attestations.jsonl",
+      "record_count": 172
+    },
+    "regab_platform_rosters": {
+      "path": "evidence/cmbs-10k-regab-delta-20260623/regab_delta_jsonl_20260623/org_canon_baseline/enriched_datasets/regab_platform_rosters.jsonl",
+      "record_count": 32055
+    },
+    "regab_servicer_schedules": {
+      "path": "evidence/cmbs-10k-regab-delta-20260623/regab_delta_jsonl_20260623/org_canon_baseline/enriched_datasets/regab_servicer_schedules.jsonl",
+      "record_count": 47796
+    }
+  },
+  "field_resolution": {
+    "regab_attestations.attesting_firm_name": {
+      "mentions": 172,
+      "resolved": 172,
+      "unresolved": 0
+    },
+    "regab_attestations.subject_party_name": {
+      "mentions": 172,
+      "resolved": 172,
+      "unresolved": 0
+    },
+    "regab_platform_rosters.reporting_party_name": {
+      "mentions": 32055,
+      "resolved": 32055,
+      "unresolved": 0
+    },
+    "regab_servicer_schedules.reporting_party_name": {
+      "mentions": 47796,
+      "resolved": 47796,
+      "unresolved": 0
+    },
+    "regab_servicer_schedules.servicer_name": {
+      "mentions": 47796,
+      "resolved": 47796,
+      "unresolved": 0
+    }
+  },
+  "mention_count": 127991,
+  "registry": {
+    "registry_id": "firms",
+    "registry_version": "1.0.12"
+  },
+  "resolved_mentions": 127991,
+  "resolved_unique_surfaces": 46,
+  "top_unresolved_surfaces": [],
+  "unique_surface_count": 46,
+  "unresolved_mentions": 0,
+  "unresolved_unique_surfaces": 0
+}

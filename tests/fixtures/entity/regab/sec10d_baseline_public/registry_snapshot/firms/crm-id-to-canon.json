@@ -1,0 +1,162 @@
+[
+  {
+    "input": "co_01KS6KE882SSEWXFEH2YFXWFD9",
+    "crm_id": "co_01KS6KE882SSEWXFEH2YFXWFD9",
+    "canonical_id": "ORG-016",
+    "canonical_type": "firm",
+    "name": "Allegis Global Solutions",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE8828BEGHC3YJBEYM8A0",
+    "crm_id": "co_01KS6KE8828BEGHC3YJBEYM8A0",
+    "canonical_id": "ORG-014",
+    "canonical_type": "firm",
+    "name": "Anthropic",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE882J17NJKD0XE8VP8N1",
+    "crm_id": "co_01KS6KE882J17NJKD0XE8VP8N1",
+    "canonical_id": "ORG-013",
+    "canonical_type": "firm",
+    "name": "Appian",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE88242VC8K3Z5EKA0W39",
+    "crm_id": "co_01KS6KE88242VC8K3Z5EKA0W39",
+    "canonical_id": "ORG-010",
+    "canonical_type": "firm",
+    "name": "Augmented Compliance LLC",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE88248T25NVZEJKQPNYV",
+    "crm_id": "co_01KS6KE88248T25NVZEJKQPNYV",
+    "canonical_id": "ORG-001",
+    "canonical_type": "firm",
+    "name": "CMD+RVL",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE882YWZVBT7JR9W4NSEF",
+    "crm_id": "co_01KS6KE882YWZVBT7JR9W4NSEF",
+    "canonical_id": "ORG-005",
+    "canonical_type": "firm",
+    "name": "CRED iQ",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE8826HQFAGYHZRKP08DB",
+    "crm_id": "co_01KS6KE8826HQFAGYHZRKP08DB",
+    "canonical_id": "ORG-008",
+    "canonical_type": "firm",
+    "name": "Fisher Management Partners",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE882HXB8TA0PNZ3KYKPZ",
+    "crm_id": "co_01KS6KE882HXB8TA0PNZ3KYKPZ",
+    "canonical_id": "ORG-009",
+    "canonical_type": "firm",
+    "name": "Flash AI",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE882HT3MGGVYFQVNBH61",
+    "crm_id": "co_01KS6KE882HT3MGGVYFQVNBH61",
+    "canonical_id": "ORG-002",
+    "canonical_type": "firm",
+    "name": "Kovrex",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE882T3PSFP3TN5QWYGZ1",
+    "crm_id": "co_01KS6KE882T3PSFP3TN5QWYGZ1",
+    "canonical_id": "ORG-011",
+    "canonical_type": "firm",
+    "name": "Lincoln Property Group",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE882M993XN8Y4BPB0XB7",
+    "crm_id": "co_01KS6KE882M993XN8Y4BPB0XB7",
+    "canonical_id": "ORG-017",
+    "canonical_type": "firm",
+    "name": "MTY Group",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE88212G7AAVJK2PJ6F7B",
+    "crm_id": "co_01KS6KE88212G7AAVJK2PJ6F7B",
+    "canonical_id": "ORG-006",
+    "canonical_type": "firm",
+    "name": "Newmark",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE882N2VP97TMGABMYQNG",
+    "crm_id": "co_01KS6KE882N2VP97TMGABMYQNG",
+    "canonical_id": "ORG-003",
+    "canonical_type": "firm",
+    "name": "The Select Group",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE882J9J61TM5S268XZKY",
+    "crm_id": "co_01KS6KE882J9J61TM5S268XZKY",
+    "canonical_id": "ORG-004",
+    "canonical_type": "firm",
+    "name": "Velocity Procurement",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE882SW4DMPKCPE0D2EC1",
+    "crm_id": "co_01KS6KE882SW4DMPKCPE0D2EC1",
+    "canonical_id": "ORG-012",
+    "canonical_type": "firm",
+    "name": "Wells Fargo",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE882KYW5G44TPH1MTE56",
+    "crm_id": "co_01KS6KE882KYW5G44TPH1MTE56",
+    "canonical_id": "ORG-007",
+    "canonical_type": "firm",
+    "name": "Wilcox Communities",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KS6KE882GE11KJB6HPAAQV66",
+    "crm_id": "co_01KS6KE882GE11KJB6HPAAQV66",
+    "canonical_id": "ORG-015",
+    "canonical_type": "firm",
+    "name": "Zais Group",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KTMMFJ9SNZH4NAGQTC1NFE05",
+    "crm_id": "co_01KTMMFJ9SNZH4NAGQTC1NFE05",
+    "canonical_id": "ORG-018",
+    "canonical_type": "firm",
+    "name": "W3C",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KTVDB2SYT6YB2FPKQVVXKJMB",
+    "crm_id": "co_01KTVDB2SYT6YB2FPKQVVXKJMB",
+    "canonical_id": "ORG-019",
+    "canonical_type": "firm",
+    "name": "Bloomberg",
+    "rule_id": "CRM_ID_TO_FIRM"
+  },
+  {
+    "input": "co_01KTY844Z52YGEWV0R46NJVDWK",
+    "crm_id": "co_01KTY844Z52YGEWV0R46NJVDWK",
+    "canonical_id": "ORG-020",
+    "canonical_type": "firm",
+    "name": "Reworld",
+    "rule_id": "CRM_ID_TO_FIRM"
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "description": "Compact public sec10d Reg AB baseline fixture slice for normal CI; the full baseline zip remains an operator-tier benchmark input.",
+  "enriched_sample_record_counts": {
+    "regab_attestations": 5,
+    "regab_platform_rosters": 1,
+    "regab_servicer_schedules": 3
+  },
+  "registry_snapshot_includes_sqlite_index": false,
+  "schema_version": "canon.entity.fixture_slice.v0",
+  "selected_surface_rows": 46,
+  "selected_unique_canonical_ids": 31,
+  "selected_unique_surfaces": 46,
+  "selection_policy": "first canonized mention per observed firm surface, sorted by org_name, plus targeted enriched records for anti-collapse and append-only field contracts",
+  "source_artifact_root": "org_canon_baseline/",
+  "source_zip_sha256": "5766b83bb2e1bad3736b1d78fa7ea1433d929d1f3d936762fdfbdba7cc9bdf3b"
+}

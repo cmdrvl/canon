@@ -1,0 +1,206 @@
+[
+  {
+    "canonical_id": "ORG-001",
+    "canonical_type": "firm",
+    "input": "- Role: internal brand",
+    "rule_id": "FIRM_LEGAL_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-004",
+    "canonical_type": "firm",
+    "input": "- Role: prospect",
+    "rule_id": "FIRM_LEGAL_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-016",
+    "canonical_type": "firm",
+    "input": "Allegis Global Solutions",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-016",
+    "canonical_type": "firm",
+    "input": "Allegis Global Solutions, LLC (subsidiary of Allegis Group)",
+    "rule_id": "FIRM_LEGAL_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-014",
+    "canonical_type": "firm",
+    "input": "Anthropic",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-014",
+    "canonical_type": "firm",
+    "input": "Anthropic, PBC",
+    "rule_id": "FIRM_LEGAL_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-013",
+    "canonical_type": "firm",
+    "input": "Appian",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-013",
+    "canonical_type": "firm",
+    "input": "Appian Corporation",
+    "rule_id": "FIRM_LEGAL_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-010",
+    "canonical_type": "firm",
+    "input": "Augmented Compliance LLC",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-001",
+    "canonical_type": "firm",
+    "input": "CMD+RVL",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-005",
+    "canonical_type": "firm",
+    "input": "CRED iQ",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-008",
+    "canonical_type": "firm",
+    "input": "Fisher Management Partners",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-009",
+    "canonical_type": "firm",
+    "input": "Flash AI",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-002",
+    "canonical_type": "firm",
+    "input": "Kovrex",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-011",
+    "canonical_type": "firm",
+    "input": "Lincoln Property Company",
+    "rule_id": "FIRM_LEGAL_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-011",
+    "canonical_type": "firm",
+    "input": "Lincoln Property Group",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-006",
+    "canonical_type": "firm",
+    "input": "Newmark",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-003",
+    "canonical_type": "firm",
+    "input": "The Select Group",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-004",
+    "canonical_type": "firm",
+    "input": "Velocity Procurement",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-012",
+    "canonical_type": "firm",
+    "input": "Wells Fargo",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-012",
+    "canonical_type": "firm",
+    "input": "Wells Fargo & Company",
+    "rule_id": "FIRM_LEGAL_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-007",
+    "canonical_type": "firm",
+    "input": "Wilcox Communities",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-015",
+    "canonical_type": "firm",
+    "input": "Zais Group",
+    "rule_id": "FIRM_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-015",
+    "canonical_type": "firm",
+    "input": "Zais Group, LLC",
+    "rule_id": "FIRM_LEGAL_NAME_TO_FIRM"
+  },
+  {
+    "canonical_id": "ORG-021",
+    "canonical_type": "firm",
+    "input": "Trimont LLC",
+    "rule_id": "CMBS_COUNTERPARTY"
+  },
+  {
+    "canonical_id": "ORG-022",
+    "canonical_type": "firm",
+    "input": "Computershare Trust Company, N.A. as agent for Wells Fargo Bank, N.A.",
+    "rule_id": "CMBS_COUNTERPARTY"
+  },
+  {
+    "canonical_id": "ORG-023",
+    "canonical_type": "firm",
+    "input": "Wilmington Trust, National Association",
+    "rule_id": "CMBS_COUNTERPARTY"
+  },
+  {
+    "canonical_id": "ORG-024",
+    "canonical_type": "firm",
+    "input": "BellOak, LLC",
+    "rule_id": "CMBS_COUNTERPARTY"
+  },
+  {
+    "canonical_id": "ORG-025",
+    "canonical_type": "firm",
+    "input": "RBS Commercial Funding Inc.",
+    "rule_id": "CMBS_COUNTERPARTY"
+  },
+  {
+    "canonical_id": "ORG-026",
+    "canonical_type": "firm",
+    "input": "Wells Fargo Commercial Mortgage Securities, Inc.",
+    "rule_id": "CMBS_COUNTERPARTY"
+  },
+  {
+    "canonical_id": "ORG-027",
+    "canonical_type": "firm",
+    "input": "Pentalpha Surveillance LLC",
+    "rule_id": "CMBS_COUNTERPARTY"
+  },
+  {
+    "canonical_id": "ORG-028",
+    "canonical_type": "firm",
+    "input": "National Cooperative Bank, N.A.",
+    "rule_id": "CMBS_COUNTERPARTY"
+  },
+  {
+    "canonical_id": "ORG-029",
+    "canonical_type": "firm",
+    "input": "CWCapital Asset Management LLC",
+    "rule_id": "CMBS_COUNTERPARTY"
+  },
+  {
+    "canonical_id": "ORG-030",
+    "canonical_type": "firm",
+    "input": "Rialto Capital Advisors, LLC",
+    "rule_id": "CMBS_COUNTERPARTY"
+  }
+]
