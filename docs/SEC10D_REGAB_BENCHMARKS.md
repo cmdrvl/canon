@@ -429,6 +429,26 @@ Failure meaning:
 
 - Canon is mixing profile semantics and creating unsafe cross-domain identity.
 
+### Shared Guardrail Evals
+
+The Reg AB suite must also satisfy the shared eval contract:
+
+- `ER-REGISTRY-001`: stale review imports, failed audits, and failed promotions
+  do not mutate the `firms` registry or sec10d replay outputs.
+- `ER-EXPLAIN-001`: exact replay and any future review item expose registry id,
+  registry version, rule id, snapshot hash, support evidence, anti-collapse
+  evidence, and next action.
+- `ER-REVIEW-GOLDEN-001`: a resolved baseline remains header-only review, while
+  future unresolved baselines produce stable review CSV/JSONL/markdown goldens.
+- `ER-META-001`: row shuffle, batch size, cache state, profile firewall, and
+  apply-idempotence relations hold for `org_mentions.csv` and enriched outputs.
+- `ER-HOLDOUT-001`: refreshed public baselines become `regab-baseline-v2`,
+  `regab-baseline-v3`, and so on, without silently rewriting v1.
+- `ER-RUNTIME-001`: the migration runs without network access, frontier model
+  calls, runtime model downloads, Python ML runtime, or a general ML framework.
+- `ER-MEM-001`: full-baseline prepare/apply runs report peak memory and stay
+  within the shared release target after calibration.
+
 ---
 
 ## Non-Negotiables

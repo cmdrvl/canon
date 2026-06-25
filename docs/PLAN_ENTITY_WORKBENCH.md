@@ -196,7 +196,10 @@ use-case #1 benchmark contract.
 Shared eval scoring, structural performance gates, wall-clock targets,
 telemetry fields, and run commands live in
 [`ENTITY_EVALS_AND_PERFORMANCE.md`](ENTITY_EVALS_AND_PERFORMANCE.md) and
-`tests/fixtures/entity/evals/entity_eval_performance_targets.json`.
+`tests/fixtures/entity/evals/entity_eval_performance_targets.json`. The shared
+guardrails also cover registry mutation safety, explainability completeness,
+human review goldens, metamorphic invariants, holdout discipline, no-network /
+no-model runtime behavior, and peak memory.
 
 ---
 
@@ -516,6 +519,7 @@ Bank vs Wells Fargo Commercial Mortgage Servicing.
 
 The shared entity eval/performance contract applies here too. In particular,
 Reg AB migration must satisfy `ER-DIFF-001`, `ER-ADV-001`, `ER-DET-001`,
+`ER-REGISTRY-001`, `ER-EXPLAIN-001`, `ER-RUNTIME-001`, `ER-MEM-001`,
 `PERF-REGAB-FULL`, `PERF-REGAB-PREPARE`, and `PERF-REGAB-APPLY` from
 [`ENTITY_EVALS_AND_PERFORMANCE.md`](ENTITY_EVALS_AND_PERFORMANCE.md).
 
@@ -1261,7 +1265,12 @@ state with every performance result.
 
 The concrete eval scorecard and initial wall-clock targets are centralized in
 [`ENTITY_EVALS_AND_PERFORMANCE.md`](ENTITY_EVALS_AND_PERFORMANCE.md). That
-contract sets:
+contract sets scorecards for false-merge weighted loss, adversarial anti-merge,
+review queue quality, perturbation robustness, determinism, differential
+baseline parity, registry mutation safety, explainability, review goldens,
+metamorphic invariants, holdout protocol, runtime guards, and peak memory.
+
+Initial timing targets:
 
 ```text
 small CI fixture target < 1s

@@ -15,6 +15,14 @@
     "operator_future": [
       "cargo test --ignored cmbs_500k_stress -- --nocapture",
       "cargo test --ignored entity_500k_unique_stress -- --nocapture"
+    ],
+    "final_guardrails_future": [
+      "cargo test entity_registry_mutation_safety -- --nocapture",
+      "cargo test entity_explainability_completeness -- --nocapture",
+      "cargo test entity_review_golden_artifacts -- --nocapture",
+      "cargo test entity_metamorphic_eval -- --nocapture",
+      "cargo test entity_runtime_guard -- --nocapture",
+      "cargo test --ignored entity_peak_memory -- --nocapture"
     ]
   },
   "scorecard_metrics": [
@@ -123,6 +131,94 @@
         "review_required",
         "refusal"
       ]
+    },
+    {
+      "id": "ER-REGISTRY-001",
+      "name": "registry_mutation_safety",
+      "required_behaviors": [
+        "refusal_no_mutation",
+        "atomic_promotion_write",
+        "idempotent_replay",
+        "pre_post_registry_tree_hashes",
+        "stale_input_refuses_before_write"
+      ],
+      "gates": {
+        "refusal_mutates_registry": false,
+        "failed_write_changes_registry_snapshot": false,
+        "same_promotion_second_run_changes_registry": false,
+        "pre_post_tree_hash_required": true
+      }
+    },
+    {
+      "id": "ER-EXPLAIN-001",
+      "name": "explainability_completeness",
+      "required_sections_ref": "explainability_contract.required_sections",
+      "gates": {
+        "auto_merge_requires_support_evidence": true,
+        "non_merge_requires_antimerge_or_uncertainty": true,
+        "exact_replay_requires_rule_and_snapshot": true,
+        "canonical_sort_required": true
+      }
+    },
+    {
+      "id": "ER-REVIEW-GOLDEN-001",
+      "name": "human_review_golden_artifacts",
+      "required_artifacts_ref": "review_golden_contract.required_artifacts",
+      "gates": {
+        "small_ci_duplicate_review_groups_max": 0,
+        "review_summary_generated_from_jsonl": true,
+        "expected_actions_importable": true
+      }
+    },
+    {
+      "id": "ER-META-001",
+      "name": "metamorphic_eval",
+      "required_relation_ids": [
+        "MR-ROW-SHUFFLE",
+        "MR-BATCH-SIZE",
+        "MR-DUPLICATE-ROWS",
+        "MR-CACHE-STATE",
+        "MR-HARMLESS-NOISE",
+        "MR-PROFILE-FIREWALL",
+        "MR-APPLY-REPLAY-IDEMPOTENCE"
+      ],
+      "min_strength_score": 2.0
+    },
+    {
+      "id": "ER-HOLDOUT-001",
+      "name": "corpus_holdout_protocol",
+      "required_contract_ref": "holdout_protocol",
+      "gates": {
+        "monotonic_holdout_ids": true,
+        "source_hash_required": true,
+        "tuning_and_holdout_separated": true,
+        "threshold_lowering_requires_waiver": true
+      }
+    },
+    {
+      "id": "ER-RUNTIME-001",
+      "name": "no_network_no_model_runtime_eval",
+      "required_contract_ref": "runtime_guards",
+      "gates": {
+        "frontier_model_calls_allowed": false,
+        "network_access_allowed": false,
+        "runtime_model_downloads_allowed": false,
+        "python_ml_runtime_allowed": false,
+        "general_ml_framework_runtime_allowed": false
+      }
+    },
+    {
+      "id": "ER-MEM-001",
+      "name": "peak_memory_eval",
+      "required_contract_ref": "peak_memory_targets",
+      "measurement_method_required": true,
+      "gates": {
+        "small_ci_peak_memory_bytes_max": 268435456,
+        "cmbs_public_peak_memory_bytes_max": 536870912,
+        "regab_full_peak_memory_bytes_max": 536870912,
+        "cmbs_500k_peak_memory_bytes_max": 2147483648,
+        "cmbs_500k_unique_refusal_before_bytes": 4294967296
+      }
     }
   ],
   "structural_performance_gates": {
@@ -227,6 +323,245 @@
       "enforcement": "bounded_completion_or_deterministic_refusal"
     }
   ],
+  "metamorphic_relations": [
+    {
+      "id": "MR-ROW-SHUFFLE",
+      "relation_type": "equivalence",
+      "score_strength": 5.0,
+      "expected_invariant": "row order does not change prepared surfaces, candidates, edges, solve groups, review groups, or apply output after canonical sort",
+      "allowed_differences": [
+        "telemetry_run_id",
+        "timings_ms_by_stage"
+      ]
+    },
+    {
+      "id": "MR-BATCH-SIZE",
+      "relation_type": "equivalence",
+      "score_strength": 5.0,
+      "expected_invariant": "physical chunk size does not change semantic artifacts after canonical sort",
+      "allowed_differences": [
+        "timings_ms_by_stage",
+        "cache_state"
+      ]
+    },
+    {
+      "id": "MR-DUPLICATE-ROWS",
+      "relation_type": "count_preserving_inclusion",
+      "score_strength": 3.2,
+      "expected_invariant": "duplicating raw rows changes provenance and counts but not canonical surface identity, candidates, or merge decisions",
+      "allowed_differences": [
+        "raw_row_count",
+        "raw_observation_count",
+        "provenance_samples",
+        "row_count_summaries"
+      ]
+    },
+    {
+      "id": "MR-CACHE-STATE",
+      "relation_type": "equivalence",
+      "score_strength": 4.0,
+      "expected_invariant": "cold cache and warm cache runs produce identical semantic artifacts",
+      "allowed_differences": [
+        "cache_state",
+        "timings_ms_by_stage"
+      ]
+    },
+    {
+      "id": "MR-HARMLESS-NOISE",
+      "relation_type": "recall_floor",
+      "score_strength": 3.0,
+      "expected_invariant": "identity-preserving spelling, punctuation, case, spacing, and legal-suffix mutations keep candidate recall above the suite target",
+      "allowed_differences": [
+        "candidate_operator_distribution",
+        "support_evidence_scores"
+      ]
+    },
+    {
+      "id": "MR-PROFILE-FIREWALL",
+      "relation_type": "exclusive_refusal",
+      "score_strength": 3.5,
+      "expected_invariant": "artifacts from incompatible profiles refuse cross-profile review, promotion, and apply reuse",
+      "allowed_differences": [
+        "refusal_detail",
+        "next_command"
+      ]
+    },
+    {
+      "id": "MR-APPLY-REPLAY-IDEMPOTENCE",
+      "relation_type": "idempotence",
+      "score_strength": 4.0,
+      "expected_invariant": "applying the same approved registry snapshot twice produces byte-identical output and no extra registry mutation",
+      "allowed_differences": [
+        "telemetry_run_id",
+        "timings_ms_by_stage"
+      ]
+    }
+  ],
+  "registry_mutation_safety": {
+    "applies_to_commands": [
+      "review import",
+      "promote",
+      "apply"
+    ],
+    "required_fields": [
+      "registry_pre_mutation_hash",
+      "registry_post_mutation_hash",
+      "registry_snapshot_hash",
+      "patch_hash",
+      "audit_hash",
+      "write_plan_hash",
+      "atomic_write_mode",
+      "refusal_code"
+    ],
+    "gates": {
+      "refusal_paths_write_registry": false,
+      "stale_registry_snapshot_writes": false,
+      "failed_audit_writes": false,
+      "atomic_temp_write_required": true,
+      "idempotent_promote_required": true
+    }
+  },
+  "explainability_contract": {
+    "required_sections": [
+      "input_surface",
+      "profile_and_strategy",
+      "normalized_views",
+      "blocking_candidates",
+      "support_evidence",
+      "anti_merge_evidence",
+      "relation_hints",
+      "solver_decision",
+      "review_or_patch_decision",
+      "registry_snapshot",
+      "promotion_provenance",
+      "next_action"
+    ],
+    "per_decision_requirements": {
+      "auto_merge": [
+        "support_evidence",
+        "absence_of_active_cannot_link"
+      ],
+      "review": [
+        "positive_or_uncertainty_evidence",
+        "anti_merge_or_relation_evidence",
+        "next_action"
+      ],
+      "exact_replay": [
+        "registry_id",
+        "registry_version",
+        "rule_id",
+        "registry_snapshot_hash"
+      ]
+    }
+  },
+  "review_golden_contract": {
+    "required_artifacts": [
+      "review.csv",
+      "review.jsonl",
+      "review.summary.md",
+      "review.expected_actions.json"
+    ],
+    "required_jsonl_fields": [
+      "review_group_id",
+      "profile",
+      "surface_ids",
+      "representative_raw_labels",
+      "row_count",
+      "deal_count",
+      "positive_evidence",
+      "anti_merge_evidence",
+      "relation_evidence",
+      "proposed_action",
+      "reason_codes",
+      "next_command"
+    ],
+    "stable_csv_headers_required": true,
+    "summary_generated_from_jsonl_required": true
+  },
+  "holdout_protocol": {
+    "series": [
+      {
+        "suite_prefix": "cmbs-public",
+        "current_holdout_id": "cmbs-public-v1",
+        "profile": "cmbs_tenant_label"
+      },
+      {
+        "suite_prefix": "regab-baseline",
+        "current_holdout_id": "regab-baseline-v1",
+        "profile": "regab_firm_identity"
+      }
+    ],
+    "required_manifest_fields": [
+      "holdout_id",
+      "source_hash",
+      "fixture_selector_hash",
+      "profile",
+      "benchmark_ids",
+      "expected_row_counts",
+      "expected_surface_counts",
+      "artifact_hash_policy",
+      "threshold_waiver_bead_id"
+    ],
+    "gates": {
+      "holdout_id_must_be_monotonic": true,
+      "older_holdouts_are_append_only": true,
+      "tuning_corpus_must_be_named": true,
+      "threshold_lowering_requires_waiver": true
+    }
+  },
+  "runtime_guards": {
+    "network_access_allowed": false,
+    "frontier_model_calls_allowed": false,
+    "runtime_model_downloads_allowed": false,
+    "python_ml_runtime_allowed": false,
+    "general_ml_framework_runtime_allowed": false,
+    "dense_embedding_service_allowed_for_large_corpora": false,
+    "local_artifacts_require_content_hash": true,
+    "runtime_guard_verdict_required": true
+  },
+  "peak_memory_targets": [
+    {
+      "id": "MEM-SMALL-CI",
+      "profile": "all",
+      "tier": "small-ci",
+      "workload": "small committed eval fixtures",
+      "max_bytes": 268435456,
+      "measurement_method_required": true
+    },
+    {
+      "id": "MEM-CMBS-PUBLIC",
+      "profile": "cmbs_tenant_label",
+      "tier": "public-sample",
+      "workload": "CMBS public sample",
+      "max_bytes": 536870912,
+      "measurement_method_required": true
+    },
+    {
+      "id": "MEM-REGAB-FULL",
+      "profile": "regab_firm_identity",
+      "tier": "public-sample",
+      "workload": "sec10d full baseline",
+      "max_bytes": 536870912,
+      "measurement_method_required": true
+    },
+    {
+      "id": "MEM-CMBS-500K",
+      "profile": "cmbs_tenant_label",
+      "tier": "stress",
+      "workload": "CMBS 500k rows, normal repetition",
+      "max_bytes": 2147483648,
+      "measurement_method_required": true
+    },
+    {
+      "id": "MEM-CMBS-500K-UNIQUE",
+      "profile": "cmbs_tenant_label",
+      "tier": "stress",
+      "workload": "CMBS 500k unique names",
+      "max_bytes": 4294967296,
+      "enforcement": "bounded_completion_or_deterministic_refusal_before_limit",
+      "measurement_method_required": true
+    }
+  ],
   "telemetry_required_fields": [
     "run_id",
     "suite_id",
@@ -245,6 +580,8 @@
     "strategy_hash",
     "registry_snapshot_hash",
     "patch_hash",
+    "holdout_id",
+    "metamorphic_relation_id",
     "raw_row_count",
     "raw_observation_count",
     "raw_unique_surface_count",
@@ -264,6 +601,10 @@
     "artifact_bytes_by_stage",
     "timings_ms_by_stage",
     "peak_memory_bytes",
+    "peak_memory_method",
+    "registry_pre_mutation_hash",
+    "registry_post_mutation_hash",
+    "runtime_guard_status",
     "refusal_code",
     "next_command"
   ],

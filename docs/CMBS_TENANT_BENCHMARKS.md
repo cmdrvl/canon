@@ -385,6 +385,26 @@ Failure meaning:
 
 - Hidden row-order dependence has entered the workbench.
 
+### Shared Guardrail Evals
+
+The CMBS tenant suite must also satisfy the shared eval contract:
+
+- `ER-REGISTRY-001`: refused review imports, failed promotions, and stale
+  registry snapshots do not mutate tenant registries.
+- `ER-EXPLAIN-001`: every tenant merge/review/non-merge can be reconstructed
+  from normalized views, candidates, support evidence, anti-merge evidence,
+  review decisions, and registry provenance.
+- `ER-REVIEW-GOLDEN-001`: review CSV/JSONL/markdown/expected-action artifacts
+  are stable enough for operators and agents to compare.
+- `ER-META-001`: row shuffle, batch size, duplicate-row, cache-state, harmless
+  noise, profile-firewall, and apply-idempotence relations hold.
+- `ER-HOLDOUT-001`: future public CMBS samples become `cmbs-public-v2`,
+  `cmbs-public-v3`, and so on, without rewriting older holdouts.
+- `ER-RUNTIME-001`: the suite runs without network access, frontier model calls,
+  runtime model downloads, Python ML runtime, or a general ML framework.
+- `ER-MEM-001`: peak memory is reported for public-sample and 500k stress runs,
+  with 500k unique names refusing deterministically before memory explosion.
+
 ---
 
 ## Commands To Eventually Support

@@ -53,6 +53,14 @@ canon entity eval run \
 # Operator stress tiers.
 cargo test --ignored cmbs_500k_stress -- --nocapture
 cargo test --ignored entity_500k_unique_stress -- --nocapture
+
+# Final guardrail suites.
+cargo test entity_registry_mutation_safety -- --nocapture
+cargo test entity_explainability_completeness -- --nocapture
+cargo test entity_review_golden_artifacts -- --nocapture
+cargo test entity_metamorphic_eval -- --nocapture
+cargo test entity_runtime_guard -- --nocapture
+cargo test --ignored entity_peak_memory -- --nocapture
 ```
 
 Every future eval run should write:
@@ -231,6 +239,147 @@ For CMBS, the public tenant sample is the first benchmark. Future public
 holdouts should be added as `cmbs-public-v2`, `cmbs-public-v3`, and so on rather
 than tuning only to one sample.
 
+### `ER-REGISTRY-001`: Registry Mutation Safety
+
+Registry-writing commands are more dangerous than scoring commands. Any command
+that can write a registry, sidecar, patch ledger, or promotion proof must run
+through this eval.
+
+Expected:
+
+- refusal paths do not mutate registry files, sidecars, ledgers, or indexes;
+- promotion is atomic: a failed write leaves the previous snapshot byte-identical;
+- replaying the same approved promotion is idempotent;
+- pre-write and post-write registry tree hashes are recorded;
+- stale registry snapshot, stale audit, stale review import, and failed audit
+  paths refuse before any write;
+- partial temp files are either cleaned or recorded as failed temp artifacts
+  outside the registry path.
+
+### `ER-EXPLAIN-001`: Explainability Completeness
+
+Every merge, non-merge, review, refusal, and promotion should be reconstructable
+without rerunning candidate generation.
+
+Required sections:
+
+```text
+input_surface
+profile_and_strategy
+normalized_views
+blocking_candidates
+support_evidence
+anti_merge_evidence
+relation_hints
+solver_decision
+review_or_patch_decision
+registry_snapshot
+promotion_provenance
+next_action
+```
+
+Expected:
+
+- every auto-merge has at least one support evidence lane and no active
+  cannot-link veto;
+- every non-merge/review item has anti-merge evidence or an uncertainty reason;
+- every exact replay points to registry id, version, rule id, and snapshot hash;
+- explain artifacts are deterministic after canonical sorting.
+
+### `ER-REVIEW-GOLDEN-001`: Human Review Golden Artifacts
+
+Review quality needs stable human-readable and machine-readable goldens, not
+only aggregate counts.
+
+Expected artifacts:
+
+```text
+review.csv
+review.jsonl
+review.summary.md
+review.expected_actions.json
+```
+
+Gates:
+
+- CSV headers are stable and ordered;
+- JSONL rows contain surface ids, representative raw labels, counts, positive
+  evidence, anti-merge/relation evidence, proposed action, and reason codes;
+- markdown summaries are generated from the same JSONL, not hand-maintained;
+- importing `review.expected_actions.json` produces the expected ledger events;
+- duplicate review groups are zero on small-CI suites.
+
+### `ER-META-001`: Metamorphic Eval
+
+Metamorphic checks catch regressions that are not covered by one fixed golden.
+The initial relation set is:
+
+| Relation | Expected invariant |
+|----------|--------------------|
+| `MR-ROW-SHUFFLE` | row order does not change prepared surfaces, candidates, edges, solve groups, or apply output after canonical sort |
+| `MR-BATCH-SIZE` | physical chunk size does not change artifacts after canonical sort |
+| `MR-DUPLICATE-ROWS` | duplicate raw rows change provenance/counts, not canonical surface identity or merge decisions |
+| `MR-CACHE-STATE` | cold and warm cache runs produce identical semantic artifacts |
+| `MR-HARMLESS-NOISE` | identity-preserving spelling/punctuation/case mutations keep candidate recall above target |
+| `MR-PROFILE-FIREWALL` | same surface text under incompatible profiles refuses cross-profile reuse/import |
+| `MR-APPLY-REPLAY-IDEMPOTENCE` | applying the same approved registry snapshot twice is byte-identical |
+
+Every relation must name its source fixture, transformation seed or algorithm,
+expected invariant, allowed differences, and strength score. Relations with a
+strength score below `2.0` are too weak to count as release gates.
+
+### `ER-HOLDOUT-001`: Corpus Holdout Protocol
+
+CMBS public sample v1 and the current sec10d Reg AB baseline are not enough.
+They are seed corpora. Future public holdouts must be versioned as immutable
+benchmark series rather than silently replacing fixtures.
+
+Expected:
+
+- holdout ids use monotonic names such as `cmbs-public-v1`, `cmbs-public-v2`,
+  `regab-baseline-v1`, and `regab-baseline-v2`;
+- every holdout manifest records source hash, fixture selector, profile,
+  benchmark ids, expected row/surface counts, and artifact hash policy;
+- training/tuning corpora are separated from holdout corpora;
+- lowering a threshold requires an explicit waiver field and Bead reference;
+- adding a new holdout must not rewrite older expected results except for
+  explicit schema migrations.
+
+### `ER-RUNTIME-001`: No-Network / No-Model Runtime Eval
+
+The entity workbench should remain native, local, reproducible Rust. The eval
+harness must prove this at runtime, not only in prose.
+
+Expected:
+
+- no frontier model calls;
+- no network access;
+- no runtime model downloads;
+- no Python or general ML framework runtime;
+- no dense embedding service dependency for large corpora;
+- model/data resources, if any, are pinned local artifacts with content hashes;
+- eval logs include the runtime guard verdict.
+
+### `ER-MEM-001`: Peak Memory Eval
+
+Wall-clock numbers without memory numbers are incomplete for a 500k-row tool.
+Peak RSS or platform-equivalent measurements must be captured for every
+operator performance tier.
+
+Initial targets:
+
+| Workload | Peak memory target |
+|----------|--------------------|
+| Small CI fixture eval | `<= 256 MiB` |
+| CMBS public sample | `<= 512 MiB` |
+| sec10d full baseline | `<= 512 MiB` |
+| CMBS 500k rows, normal repetition | `<= 2 GiB` |
+| CMBS 500k unique names | bounded completion or deterministic refusal before `4 GiB` |
+
+Memory results must include the measurement method. On macOS this can be
+`rusage`/peak RSS or a documented wrapper; Linux runs may use `/usr/bin/time -v`
+or an equivalent telemetry source.
+
 ---
 
 ## Structural Performance Gates
@@ -281,6 +430,13 @@ Targets may be tightened or relaxed only by updating
 `entity_eval_performance_targets.json`, recording baseline artifacts, and
 explaining the change in the relevant Bead.
 
+## Peak Memory Targets
+
+Peak-memory targets are defined by `ER-MEM-001` and enforced by the same
+machine-readable contract as wall-clock targets. They are operator/release
+targets until telemetry-backed baselines exist; normal CI should only assert
+that the contract and small fixtures can report memory fields.
+
 ---
 
 ## Telemetry Contract
@@ -305,6 +461,8 @@ profile_hash
 strategy_hash
 registry_snapshot_hash
 patch_hash
+holdout_id
+metamorphic_relation_id
 raw_row_count
 raw_observation_count
 raw_unique_surface_count
@@ -324,6 +482,10 @@ review_group_count
 artifact_bytes_by_stage
 timings_ms_by_stage
 peak_memory_bytes
+peak_memory_method
+registry_pre_mutation_hash
+registry_post_mutation_hash
+runtime_guard_status
 refusal_code
 next_command
 ```
@@ -362,7 +524,9 @@ The future result artifact should use this shape:
   },
   "artifacts": {
     "telemetry": "telemetry.json",
-    "summary": "summary.md"
+    "summary": "summary.md",
+    "explain": "artifacts/explain.jsonl",
+    "review": "artifacts/review.jsonl"
   }
 }
 ```
