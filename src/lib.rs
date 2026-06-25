@@ -19,14 +19,14 @@ pub mod witness;
 
 use crate::cli::{
     CanonCommand, Cli, EntityAuditCli, EntityBlockCli, EntityCommand, EntityEdgeCli,
-    EntityEmitMode, EntityExplainCli, EntityPromoteCli, EntityReviewCommand, EntityReviewExportCli,
-    EntityReviewExportEmitMode, EntityReviewImportCli, EntityReviewInclude, EntityReviewSubcommand,
-    EntityRunCli, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, RegistryAddEntryCli,
-    RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli, RegistryDiffCli,
-    RegistryEmitMode, RegistryLintCli, RegistryLintProfile, RegistryMintCli, RegistryNextIdCli,
-    RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand,
-    RegistryVersionBumpMode, ResolveCli, ResolveEmitMode, StrategyAuditCli, StrategyCommand,
-    StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli, StrategyGradeArg,
+    EntityEmitMode, EntityExplainCli, EntityPrepareCli, EntityPromoteCli, EntityReviewCommand,
+    EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewImportCli, EntityReviewInclude,
+    EntityReviewSubcommand, EntityRunCli, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand,
+    RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli,
+    RegistryDiffCli, RegistryEmitMode, RegistryLintCli, RegistryLintProfile, RegistryMintCli,
+    RegistryNextIdCli, RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli,
+    RegistrySubcommand, RegistryVersionBumpMode, ResolveCli, ResolveEmitMode, StrategyAuditCli,
+    StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli, StrategyGradeArg,
     StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
     StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
     StrategyUpdateCli,
@@ -573,6 +573,7 @@ fn append_strategy_mutation_witness(output_json: &str, no_witness: bool) {
 fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
     match &command.command {
         EntitySubcommand::Run(run) => run_entity_run_command(run),
+        EntitySubcommand::Prepare(prepare) => run_entity_prepare_command(prepare),
         EntitySubcommand::Block(block) => run_entity_block_command(block),
         EntitySubcommand::Edge(edge) => run_entity_edge_command(edge),
         EntitySubcommand::Solve(solve) => run_entity_solve_command(solve),
@@ -634,6 +635,17 @@ fn run_entity_run_command(run: &EntityRunCli) -> Result<u8, Box<dyn Error>> {
             true,
             matches!(run.emit, EntityEmitMode::Summary),
         ),
+    }
+}
+
+fn run_entity_prepare_command(prepare: &EntityPrepareCli) -> Result<u8, Box<dyn Error>> {
+    match run_entity_prepare_pipeline(prepare) {
+        Ok(artifact) => {
+            let output = serde_json::to_string(&artifact)?;
+            emit_entity_output(&output, false);
+            Ok(0)
+        }
+        Err(refusal_output) => emit_entity_refusal(refusal_output, true, false),
     }
 }
 
@@ -1204,6 +1216,19 @@ fn run_entity_run_pipeline(run: &EntityRunCli) -> Result<EntityRunExecution, Can
         artifact,
         candidate_pairs: edges.len() as u64,
     })
+}
+
+#[allow(clippy::result_large_err)]
+fn run_entity_prepare_pipeline(
+    prepare: &EntityPrepareCli,
+) -> Result<entity::prepare::PrepareRunArtifact, CanonOutput> {
+    entity::prepare::run_prepare(entity::prepare::PrepareRunRequest {
+        rows: &prepare.rows,
+        profile: &prepare.profile,
+        registry: &prepare.registry,
+        work_dir: &prepare.work_dir,
+    })
+    .map_err(|refusal| refusal.to_canon_output())
 }
 
 #[allow(clippy::result_large_err)]

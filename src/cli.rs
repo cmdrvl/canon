@@ -394,6 +394,8 @@ pub struct RegistryDefaultIdSchemeCli {
 pub enum EntitySubcommand {
     /// Run the full entity orchestration flow
     Run(EntityRunCli),
+    /// Validate and project profile-mapped observations for entity preparation
+    Prepare(EntityPrepareCli),
     /// Generate candidate neighborhoods
     Block(EntityBlockCli),
     /// Generate typed evidence edges for candidate pairs
@@ -985,6 +987,24 @@ pub struct EntityRunCli {
     /// Suppress witness ledger append
     #[arg(long)]
     pub no_witness: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntityPrepareCli {
+    /// Input CSV or JSONL rows
+    pub rows: PathBuf,
+
+    /// Entity profile id or YAML path
+    #[arg(long)]
+    pub profile: String,
+
+    /// Entity registry directory
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Work directory for prepare artifacts
+    #[arg(long = "work-dir")]
+    pub work_dir: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1895,6 +1915,35 @@ mod tests {
             assert_eq!(run.suite, Some(PathBuf::from("suite")));
             assert!(matches!(run.emit, EntityEmitMode::Summary));
             assert!(run.no_witness);
+        }
+    }
+
+    #[test]
+    fn test_cli_entity_prepare_parsing() {
+        let args = [
+            "canon",
+            "entity",
+            "prepare",
+            "rows.csv",
+            "--profile",
+            "cmbs_tenant_label",
+            "--registry",
+            "registries/cmbs-tenants",
+            "--work-dir",
+            "work/entity",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = entity_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, EntitySubcommand::Prepare(_)));
+        if let EntitySubcommand::Prepare(prepare) = subcommand {
+            assert_eq!(prepare.rows, PathBuf::from("rows.csv"));
+            assert_eq!(prepare.profile, "cmbs_tenant_label");
+            assert_eq!(prepare.registry, PathBuf::from("registries/cmbs-tenants"));
+            assert_eq!(prepare.work_dir, PathBuf::from("work/entity"));
         }
     }
 

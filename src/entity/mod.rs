@@ -7,11 +7,16 @@
 pub mod artifact_chain;
 pub mod block_artifact;
 pub mod budget;
+pub mod cache;
 pub mod contracts;
 pub mod edge;
 pub mod error;
+pub mod postings;
+pub mod prepare;
 pub mod profile;
 pub mod runtime;
 pub mod schema;
+pub mod stream;
 
 pub use contracts::*;
+pub use profile::EntityProfileDocument;
