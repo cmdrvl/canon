@@ -193,6 +193,11 @@ Beads for the CMBS profile and backfill workflow should treat that file and
 `tests/fixtures/entity/cmbs/tenant_sample_benchmark_manifest.json` as the
 use-case #1 benchmark contract.
 
+Shared eval scoring, structural performance gates, wall-clock targets,
+telemetry fields, and run commands live in
+[`ENTITY_EVALS_AND_PERFORMANCE.md`](ENTITY_EVALS_AND_PERFORMANCE.md) and
+`tests/fixtures/entity/evals/entity_eval_performance_targets.json`.
+
 ---
 
 ## CMBS Tenant Backfill Pipeline
@@ -508,6 +513,11 @@ the use-case #2 benchmark contract. Passing the benchmark means the migrated
 `org_mentions.csv` shape, keeps parser evidence append-only, and enforces the
 Reg AB anti-collapse boundary for cases such as PNC vs Midland and Wells Fargo
 Bank vs Wells Fargo Commercial Mortgage Servicing.
+
+The shared entity eval/performance contract applies here too. In particular,
+Reg AB migration must satisfy `ER-DIFF-001`, `ER-ADV-001`, `ER-DET-001`,
+`PERF-REGAB-FULL`, `PERF-REGAB-PREPARE`, and `PERF-REGAB-APPLY` from
+[`ENTITY_EVALS_AND_PERFORMANCE.md`](ENTITY_EVALS_AND_PERFORMANCE.md).
 
 ---
 
@@ -1248,6 +1258,24 @@ cache-hit rerun avoids rebuilding normalization and postings
 Do not encode aspirational wall-clock claims until a baseline benchmark exists.
 Record real hardware, build profile, input size, unique-surface count, and cache
 state with every performance result.
+
+The concrete eval scorecard and initial wall-clock targets are centralized in
+[`ENTITY_EVALS_AND_PERFORMANCE.md`](ENTITY_EVALS_AND_PERFORMANCE.md). That
+contract sets:
+
+```text
+small CI fixture target < 1s
+CMBS public sample target < 2s
+sec10d full baseline target < 10s
+CMBS 500k warm-cache target < 2min
+CMBS 500k cold-cache target < 5min
+CMBS 500k exact apply target < 15s
+500k-unique stress = bounded completion or deterministic refusal
+```
+
+Normal CI asserts structure, determinism, and fixture coverage. Wall-clock
+targets become release/operator gates only after telemetry-backed baselines are
+recorded.
 
 ---
 

@@ -6,6 +6,7 @@
 > `5766b83bb2e1bad3736b1d78fa7ea1433d929d1f3d936762fdfbdba7cc9bdf3b`
 > Purpose: benchmark `canon entity` use case #2, `regab_firm_identity`,
 > against the current `sec10d` Reg AB organization enrichment baseline.
+> Shared eval/performance contract: `docs/ENTITY_EVALS_AND_PERFORMANCE.md`
 
 This benchmark suite is designed for the second validated `canon entity` use
 case: Reg AB firm identity and reviewed alias canonicalization for the
@@ -398,6 +399,17 @@ Expected:
 - unresolved/reviewable work is bounded by unique surfaces and profile caps;
 - telemetry records rows, unique surfaces, resolved surfaces, artifact sizes,
   cache status, and timings.
+
+Initial wall-clock targets from the shared contract:
+
+```text
+sec10d full baseline, 127,991 mentions / 46 surfaces: < 10s end-to-end
+sec10d prepare/dedupe full baseline: < 5s
+sec10d exact replay/apply full baseline: < 5s
+```
+
+These are operator/release targets after telemetry-backed baseline calibration,
+not brittle normal-CI timing assertions.
 
 Failure meaning:
 

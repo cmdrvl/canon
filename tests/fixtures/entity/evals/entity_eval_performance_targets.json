@@ -1,0 +1,280 @@
+{
+  "schema_version": "canon.entity.eval_performance_targets.v0",
+  "doc": "docs/ENTITY_EVALS_AND_PERFORMANCE.md",
+  "run_commands": {
+    "contract_ci": [
+      "cargo test --test entity_eval_performance_contract -- --nocapture",
+      "jq '.' tests/fixtures/entity/evals/entity_eval_performance_targets.json",
+      "jq '.' tests/fixtures/entity/cmbs/tenant_sample_benchmark_manifest.json",
+      "jq '.' tests/fixtures/entity/regab/sec10d_regab_benchmark_manifest.json"
+    ],
+    "small_ci_future": [
+      "cargo test entity_eval_ci_small -- --nocapture",
+      "cargo test entity_perf_ci_small -- --nocapture"
+    ],
+    "operator_future": [
+      "cargo test --ignored cmbs_500k_stress -- --nocapture",
+      "cargo test --ignored entity_500k_unique_stress -- --nocapture"
+    ]
+  },
+  "scorecard_metrics": [
+    {
+      "id": "ER-SCORE-001",
+      "name": "cluster_and_pairwise_metrics",
+      "required_outputs": [
+        "pairwise_precision",
+        "pairwise_recall",
+        "pairwise_f1",
+        "cluster_precision",
+        "cluster_recall",
+        "b_cubed_precision",
+        "b_cubed_recall",
+        "b_cubed_f1"
+      ],
+      "gates": {
+        "curated_hard_negative_false_merges_max": 0,
+        "regab_hierarchy_false_merges_max": 0,
+        "must_link_candidate_recall_min": 0.995,
+        "small_ci_pairwise_precision_min": 0.995,
+        "small_ci_pairwise_recall_min": 0.98
+      }
+    },
+    {
+      "id": "ER-SCORE-002",
+      "name": "false_merge_weighted_loss",
+      "formula": "10.0 * false_merge_rate + 2.0 * false_split_rate + 1.0 * missed_candidate_rate + 0.25 * review_over_budget_rate",
+      "gates": {
+        "small_ci_weighted_loss_max": 0.02,
+        "public_sample_weighted_loss_max_after_calibration": 0.05,
+        "hard_negative_false_merge_stop_ship": true
+      }
+    },
+    {
+      "id": "ER-ADV-001",
+      "name": "adversarial_antimerge_suite",
+      "must_cover": [
+        "parent_vs_subsidiary",
+        "bank_parent_vs_loan_services_division",
+        "same_brand_family_different_operator",
+        "same_numeric_or_address_token_different_entity",
+        "same_root_token_different_legal_entity",
+        "tenant_shell_vs_real_tenant",
+        "platform_or_category_label",
+        "dba_slash_parenthetical_relation"
+      ],
+      "false_merges_max": 0
+    },
+    {
+      "id": "ER-REVIEW-001",
+      "name": "review_queue_quality",
+      "required_outputs": [
+        "review_group_count",
+        "review_rows_covered",
+        "review_deals_covered",
+        "review_groups_per_1k_raw_rows",
+        "duplicate_review_group_rate",
+        "review_groups_with_positive_evidence_rate",
+        "review_groups_with_antimerge_evidence_rate",
+        "review_groups_with_next_action_rate"
+      ],
+      "gates": {
+        "small_ci_duplicate_review_group_rate_max": 0.0,
+        "required_next_actions": [
+          "alias",
+          "distinct",
+          "relation",
+          "escrow",
+          "needs_policy"
+        ]
+      }
+    },
+    {
+      "id": "ER-PERTURB-001",
+      "name": "mutation_and_noise_robustness",
+      "deterministic_seed_required": true,
+      "must_cover": [
+        "case",
+        "punctuation",
+        "legal_suffix",
+        "whitespace",
+        "ocr_like_single_character",
+        "abbreviation",
+        "store_suite_unit_number_noise"
+      ]
+    },
+    {
+      "id": "ER-DET-001",
+      "name": "determinism_and_batch_equivalence",
+      "must_compare": [
+        "same_input_twice",
+        "row_shuffled_input",
+        "different_physical_batch_sizes",
+        "cold_cache",
+        "warm_cache"
+      ],
+      "canonical_artifact_match_required": true
+    },
+    {
+      "id": "ER-DIFF-001",
+      "name": "legacy_and_baseline_differential_eval",
+      "regab_exact_baseline_is_floor": true,
+      "allowed_differences": [
+        "intentional_improvement",
+        "review_required",
+        "refusal"
+      ]
+    }
+  ],
+  "structural_performance_gates": {
+    "row_level_all_pairs": "forbidden",
+    "surface_level_all_pairs": "forbidden_except_tiny_explicit_fixtures",
+    "exact_bucket_pair_expansion_count": 0,
+    "exact_bucket_representation": "compact_hyperedge",
+    "candidate_cap_scope": [
+      "per_unique_surface",
+      "per_operator"
+    ],
+    "candidate_pairs_per_surface_p95_max": 25,
+    "candidate_pairs_per_surface_p99_max": 100,
+    "review_groups_per_500k_cmbs_backfill_max": 2000,
+    "cache_hit_rerun_rebuilds_normalization": false,
+    "cache_hit_rerun_rebuilds_postings": false,
+    "apply_replay_mode": "streaming",
+    "unique_500k_required_behavior": "bounded_completion_or_deterministic_refusal"
+  },
+  "wall_clock_targets": [
+    {
+      "id": "PERF-SMALL-CI",
+      "profile": "all",
+      "tier": "small-ci",
+      "workload": "small committed eval fixtures",
+      "target_seconds": 1,
+      "enforcement": "developer_target_not_brittle_ci_gate"
+    },
+    {
+      "id": "PERF-REGAB-COMMITTED",
+      "profile": "regab_firm_identity",
+      "tier": "small-ci",
+      "workload": "committed sec10d 46-surface fixture",
+      "source": "tests/fixtures/entity/regab/sec10d_baseline_public",
+      "target_seconds": 1,
+      "enforcement": "developer_target_not_brittle_ci_gate"
+    },
+    {
+      "id": "PERF-CMBS-PUBLIC",
+      "profile": "cmbs_tenant_label",
+      "tier": "public-sample",
+      "workload": "CMBS public sample: 10143 tenant observations, 431 raw names",
+      "source": "/Users/zacharyruiz/Downloads/tenant_sample_cmbs.csv",
+      "target_seconds": 2,
+      "enforcement": "operator_release_target_after_baseline"
+    },
+    {
+      "id": "PERF-REGAB-FULL",
+      "profile": "regab_firm_identity",
+      "tier": "public-sample",
+      "workload": "sec10d full baseline: 127991 mentions, 46 surfaces",
+      "source": "/Users/zacharyruiz/Downloads/sec10d_regab_org_canon_baseline_20260623T204557Z.zip",
+      "target_seconds": 10,
+      "enforcement": "operator_release_target_after_baseline"
+    },
+    {
+      "id": "PERF-REGAB-APPLY",
+      "profile": "regab_firm_identity",
+      "tier": "public-sample",
+      "workload": "sec10d exact replay/apply full baseline",
+      "target_seconds": 5,
+      "enforcement": "operator_release_target_after_baseline"
+    },
+    {
+      "id": "PERF-REGAB-PREPARE",
+      "profile": "regab_firm_identity",
+      "tier": "public-sample",
+      "workload": "sec10d prepare/dedupe full baseline",
+      "target_seconds": 5,
+      "enforcement": "operator_release_target_after_baseline"
+    },
+    {
+      "id": "PERF-CMBS-500K-WARM",
+      "profile": "cmbs_tenant_label",
+      "tier": "stress",
+      "workload": "CMBS 500k rows, normal repetition, warm cache",
+      "target_seconds": 120,
+      "enforcement": "operator_release_target_after_baseline"
+    },
+    {
+      "id": "PERF-CMBS-500K-COLD",
+      "profile": "cmbs_tenant_label",
+      "tier": "stress",
+      "workload": "CMBS 500k rows, normal repetition, cold cache",
+      "target_seconds": 300,
+      "enforcement": "operator_release_target_after_baseline"
+    },
+    {
+      "id": "PERF-CMBS-500K-APPLY",
+      "profile": "cmbs_tenant_label",
+      "tier": "stress",
+      "workload": "CMBS exact apply/replay over 500k rows",
+      "target_seconds": 15,
+      "enforcement": "operator_release_target_after_baseline"
+    },
+    {
+      "id": "PERF-CMBS-500K-UNIQUE",
+      "profile": "cmbs_tenant_label",
+      "tier": "stress",
+      "workload": "CMBS 500k unique names",
+      "target_seconds": null,
+      "enforcement": "bounded_completion_or_deterministic_refusal"
+    }
+  ],
+  "telemetry_required_fields": [
+    "run_id",
+    "suite_id",
+    "profile",
+    "canon_version",
+    "git_sha",
+    "rust_profile",
+    "target_triple",
+    "os",
+    "cpu_model",
+    "logical_cores",
+    "memory_bytes",
+    "cache_state",
+    "input_hash",
+    "profile_hash",
+    "strategy_hash",
+    "registry_snapshot_hash",
+    "patch_hash",
+    "raw_row_count",
+    "raw_observation_count",
+    "raw_unique_surface_count",
+    "prepared_surface_count",
+    "exact_resolved_surface_count",
+    "candidate_pair_count",
+    "candidate_pairs_per_surface_p50",
+    "candidate_pairs_per_surface_p95",
+    "candidate_pairs_per_surface_p99",
+    "suppressed_candidate_count",
+    "exact_bucket_count",
+    "exact_bucket_pair_expansion_count",
+    "largest_exact_bucket_size",
+    "largest_component_size",
+    "edge_count",
+    "review_group_count",
+    "artifact_bytes_by_stage",
+    "timings_ms_by_stage",
+    "peak_memory_bytes",
+    "refusal_code",
+    "next_command"
+  ],
+  "no_theatre_rules": [
+    "an eval cannot pass only because a file exists",
+    "a benchmark cannot pass only because the command exited 0",
+    "every merge decision must be explainable by support evidence",
+    "every non-merge or review decision must expose anti-merge evidence or uncertainty",
+    "wall-clock claims without telemetry are ignored",
+    "500k results without candidate counts are ignored",
+    "exact bucket expansion above zero is stop-ship",
+    "hard-negative false merge is stop-ship"
+  ]
+}

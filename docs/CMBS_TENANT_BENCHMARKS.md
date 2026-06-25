@@ -4,6 +4,7 @@
 > SHA-256: `34f9ce6be4e941ea04899299c99aa409ac6e833da3208495e4ab4322e57e0e00`
 > Purpose: benchmark `canon entity` use case #1, `cmbs_tenant_label`, against
 > real public CMBS tenant strings without test theatre.
+> Shared eval/performance contract: `docs/ENTITY_EVALS_AND_PERFORMANCE.md`
 
 This benchmark suite is designed for the first validated `canon entity` use
 case: canonical tenant-label authoring from CMBS property tenant fields. It
@@ -351,13 +352,22 @@ Expected:
 - prepare/index/block/edge/solve complete under configured local limits;
 - candidate generation operates on unique surfaces, not 10,143 raw rows;
 - exact buckets are compact;
+- exact-bucket pair expansion is 0;
+- candidate pairs per unique surface satisfy the shared p95/p99 targets unless
+  an explicit benchmark waiver exists;
 - summaries include row count, raw unique count, prepared surface count,
   candidate count, edge count, exact bucket count, suppressed candidate count,
   review group count, artifact sizes, cache status, and timing metadata;
 - output is deterministic across repeated runs.
 
-The first implementation should record baselines rather than hard-code
-aspirational wall-clock targets.
+Initial wall-clock target from the shared contract:
+
+```text
+CMBS public sample, 10,143 observations / 431 raw names: < 2s end-to-end
+```
+
+This is an operator/release target after telemetry-backed baseline calibration,
+not a brittle normal-CI timing assertion.
 
 ### `CMBS-PERF-002`: Shuffled Replay Determinism
 
