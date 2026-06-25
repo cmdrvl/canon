@@ -7,7 +7,9 @@
 use serde::{Deserialize, Serialize};
 
 pub mod explain;
+pub mod ids;
 pub mod legal_suffix;
+pub mod normalize;
 pub mod similarity;
 pub mod tfidf;
 
