@@ -1,0 +1,1171 @@
+{
+  "bundle_version": "canon_entity_contract_goldens.v0",
+  "artifacts": {
+    "canon_entity_projection.v0": {
+      "version": "canon_entity_projection.v0",
+      "artifact_content_hash": "blake3:projection",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:projection"
+      },
+      "summary": {
+        "counts": {
+          "records": 3
+        },
+        "labels": {
+          "cache_status": "rebuilt"
+        }
+      },
+      "projected_rows_path": "entity/projection/rows.jsonl"
+    },
+    "canon_entity_prepare.v0": {
+      "version": "canon_entity_prepare.v0",
+      "artifact_content_hash": "blake3:prepare",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_projection.v0",
+            "content_hash": "blake3:projection"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:prepare"
+      },
+      "summary": {
+        "counts": {
+          "surfaces": 3
+        },
+        "labels": {
+          "profile": "cmbs_tenant_label"
+        }
+      },
+      "input": {
+        "row_count": 3,
+        "content_hash": "blake3:input"
+      },
+      "surfaces_path": "entity/prepare/surfaces.jsonl"
+    },
+    "canon_entity_surface_row.v0": {
+      "version": "canon_entity_surface_row.v0",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_prepare.v0",
+            "content_hash": "blake3:prepare"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:surface"
+      },
+      "summary": {
+        "counts": {
+          "raw_rows": 3
+        },
+        "labels": {
+          "surface_kind": "tenant_label"
+        }
+      },
+      "surface_id": "surface:cmbs:001",
+      "primary_surface": "Acme Stores",
+      "normalized_views": {
+        "tenant_core": "acme stores"
+      },
+      "exact_lookup": {
+        "value": "Acme Stores"
+      },
+      "provenance_samples": [
+        {
+          "source_row_id": "row-1"
+        }
+      ],
+      "row_count": 3
+    },
+    "canon_entity_index.v0": {
+      "version": "canon_entity_index.v0",
+      "artifact_content_hash": "blake3:index",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_prepare.v0",
+            "content_hash": "blake3:prepare"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:index"
+      },
+      "summary": {
+        "counts": {
+          "postings": 5
+        },
+        "labels": {
+          "index_layout": "csr"
+        }
+      },
+      "prepare_hash": "blake3:prepare",
+      "postings_path": "entity/index/postings.bin",
+      "diagnostics_path": "entity/index/diagnostics.json"
+    },
+    "canon_entity_block.v0": {
+      "version": "canon_entity_block.v0",
+      "artifact_content_hash": "blake3:block",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_index.v0",
+            "content_hash": "blake3:index"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:block"
+      },
+      "summary": {
+        "counts": {
+          "candidate_pairs": 2
+        },
+        "labels": {
+          "blocking": "bounded"
+        }
+      },
+      "upstream_artifacts": [
+        {
+          "version": "canon_entity_index.v0",
+          "content_hash": "blake3:index"
+        }
+      ],
+      "candidate_records_path": "entity/block/candidates.jsonl"
+    },
+    "canon_entity_block_bucket.v0": {
+      "version": "canon_entity_block_bucket.v0",
+      "artifact_content_hash": "blake3:bucket",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_block.v0",
+            "content_hash": "blake3:block"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:bucket"
+      },
+      "summary": {
+        "counts": {
+          "members": 3
+        },
+        "labels": {
+          "operator": "exact_view"
+        }
+      },
+      "bucket_id": "bucket:tenant_core:acme",
+      "operator_id": "exact_view",
+      "membership": {
+        "surface_ids": ["surface:cmbs:001", "surface:cmbs:002"]
+      },
+      "pair_expansion": "forbidden",
+      "row_count": 3
+    },
+    "canon_entity_edge.v0": {
+      "version": "canon_entity_edge.v0",
+      "artifact_content_hash": "blake3:edge",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_block.v0",
+            "content_hash": "blake3:block"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:edge"
+      },
+      "summary": {
+        "counts": {
+          "edges": 2
+        },
+        "labels": {
+          "evidence": "support_and_cannot_link"
+        }
+      },
+      "upstream_artifacts": [
+        {
+          "version": "canon_entity_block.v0",
+          "content_hash": "blake3:block"
+        }
+      ],
+      "edge_records_path": "entity/edge/edges.jsonl"
+    },
+    "canon_entity_solve.v0": {
+      "version": "canon_entity_solve.v0",
+      "artifact_content_hash": "blake3:solve",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_edge.v0",
+            "content_hash": "blake3:edge"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:solve"
+      },
+      "summary": {
+        "counts": {
+          "entities": 2
+        },
+        "labels": {
+          "auto_merge": "bounded"
+        }
+      },
+      "entities": [
+        {
+          "canonical_id": "TENANT-001",
+          "surface_ids": ["surface:cmbs:001"]
+        }
+      ],
+      "review_groups": [],
+      "decision_ledger_path": "entity/solve/decision-ledger.jsonl"
+    },
+    "canon_entity_run.v0": {
+      "version": "canon_entity_run.v0",
+      "artifact_content_hash": "blake3:run",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:run"
+      },
+      "summary": {
+        "counts": {
+          "stages": 7
+        },
+        "labels": {
+          "run_status": "complete"
+        }
+      },
+      "stage_artifacts": [
+        {
+          "version": "canon_entity_solve.v0",
+          "content_hash": "blake3:solve"
+        }
+      ]
+    },
+    "canon_entity_review_queue.v0": {
+      "version": "canon_entity_review_queue.v0",
+      "artifact_content_hash": "blake3:review-queue",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_solve.v0",
+            "content_hash": "blake3:solve"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:review-queue"
+      },
+      "summary": {
+        "counts": {
+          "review_items": 1
+        },
+        "labels": {
+          "grouping": "ambiguity_pattern"
+        }
+      },
+      "source_solve_hash": "blake3:solve",
+      "review_items": [
+        {
+          "review_id": "review-001"
+        }
+      ]
+    },
+    "canon_entity_review_import.v0": {
+      "version": "canon_entity_review_import.v0",
+      "artifact_content_hash": "blake3:review-import",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_review_queue.v0",
+            "content_hash": "blake3:review-queue"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:review-import"
+      },
+      "summary": {
+        "counts": {
+          "decisions": 1
+        },
+        "labels": {
+          "import_status": "accepted"
+        }
+      },
+      "source_review_queue_hash": "blake3:review-queue",
+      "decisions": [
+        {
+          "decision_id": "decision-001"
+        }
+      ]
+    },
+    "canon_entity_decision_ledger.v0": {
+      "version": "canon_entity_decision_ledger.v0",
+      "artifact_content_hash": "blake3:decision-ledger",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_solve.v0",
+            "content_hash": "blake3:solve"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:decision-ledger"
+      },
+      "summary": {
+        "counts": {
+          "events": 1
+        },
+        "labels": {
+          "ledger": "append_only"
+        }
+      },
+      "decision_id": "decision-001",
+      "event_hash": "blake3:event",
+      "event_type": "merge_reviewed",
+      "event_version": "decision_event.v0",
+      "operator_id": "operator@example.com",
+      "previous_event_hash": "blake3:previous-event",
+      "source_artifact_hash": "blake3:solve"
+    },
+    "canon_entity_audit.v0": {
+      "version": "canon_entity_audit.v0",
+      "artifact_content_hash": "blake3:audit",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_solve.v0",
+            "content_hash": "blake3:solve"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:audit"
+      },
+      "summary": {
+        "counts": {
+          "gates": 2
+        },
+        "labels": {
+          "audit_status": "pass"
+        }
+      },
+      "source_artifact_hash": "blake3:solve",
+      "gates": [
+        {
+          "gate": "G09",
+          "status": "pass"
+        }
+      ]
+    },
+    "canon_entity_promote.v0": {
+      "version": "canon_entity_promote.v0",
+      "artifact_content_hash": "blake3:promote",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_audit.v0",
+            "content_hash": "blake3:audit"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:promote"
+      },
+      "summary": {
+        "counts": {
+          "aliases": 1
+        },
+        "labels": {
+          "promotion": "proof_written"
+        }
+      },
+      "audit_hash": "blake3:audit",
+      "registry_before_hash": "blake3:registry-before",
+      "registry_after_hash": "blake3:registry-after",
+      "proof_path": "entity/promote/proof.json",
+      "sidecars_path": "entity/promote/sidecars.json"
+    },
+    "canon_entity_promotion_proof.v0": {
+      "version": "canon_entity_promotion_proof.v0",
+      "artifact_content_hash": "blake3:promotion-proof",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_audit.v0",
+            "content_hash": "blake3:audit"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:promotion-proof"
+      },
+      "summary": {
+        "counts": {
+          "promoted_aliases": 1
+        },
+        "labels": {
+          "proof": "audit_matched"
+        }
+      },
+      "audit_hash": "blake3:audit",
+      "source_solve_hash": "blake3:solve",
+      "registry_before_hash": "blake3:registry-before",
+      "registry_after_hash": "blake3:registry-after",
+      "promoted_aliases_path": "entity/promote/aliases.json"
+    },
+    "canon_entity_promotion_sidecar.v0": {
+      "version": "canon_entity_promotion_sidecar.v0",
+      "artifact_content_hash": "blake3:promotion-sidecar",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_promote.v0",
+            "content_hash": "blake3:promote"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:promotion-sidecar"
+      },
+      "summary": {
+        "counts": {
+          "entries": 1
+        },
+        "labels": {
+          "sidecar_type": "alias"
+        }
+      },
+      "sidecar_type": "alias",
+      "entries": [
+        {
+          "canonical_id": "TENANT-001"
+        }
+      ]
+    },
+    "canon_entity_explain.v0": {
+      "version": "canon_entity_explain.v0",
+      "artifact_content_hash": "blake3:explain",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_solve.v0",
+            "content_hash": "blake3:solve"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:explain"
+      },
+      "summary": {
+        "counts": {
+          "explanations": 1
+        },
+        "labels": {
+          "explain": "human_readable"
+        }
+      },
+      "source_artifact_hash": "blake3:solve",
+      "explanations": [
+        {
+          "canonical_id": "TENANT-001"
+        }
+      ]
+    },
+    "canon_entity_apply.v0": {
+      "version": "canon_entity_apply.v0",
+      "artifact_content_hash": "blake3:apply",
+      "metadata": {
+        "profile": {
+          "id": "cmbs_tenant_label",
+          "version": "0.1.0",
+          "entity_type": "tenant_label",
+          "identity_semantics": "canonical_display_label",
+          "canonical_type": "tenant_label",
+          "patch_namespaces": {
+            "aliases": "cmbs_tenant_label.aliases",
+            "distinct": "cmbs_tenant_label.distinct",
+            "relations": "cmbs_tenant_label.relations"
+          },
+          "content_hash": "blake3:profile"
+        },
+        "strategy": {
+          "id": "cmbs_tenant_label.v1",
+          "version": "0.1.0",
+          "content_hash": "blake3:strategy"
+        },
+        "registry_snapshot": {
+          "id": "cmbs-tenants",
+          "version": "2026.06.25",
+          "source": "registries/cmbs-tenants",
+          "lookup_snapshot_hash": "blake3:registry",
+          "sidecar_snapshot_hash": "blake3:sidecars"
+        },
+        "input": {
+          "row_count": 3,
+          "content_hash": "blake3:input"
+        },
+        "upstream_artifacts": [
+          {
+            "version": "canon_entity_solve.v0",
+            "content_hash": "blake3:solve"
+          }
+        ],
+        "patch_set": {
+          "content_hash": "blake3:patch",
+          "paths": ["patches/cmbs-tenants.yaml"]
+        },
+        "namekit": {
+          "version": "namekit.v0",
+          "content_hash": "blake3:namekit"
+        },
+        "patch_namespace": "cmbs_tenant_label.aliases",
+        "artifact_content_hash": "blake3:apply"
+      },
+      "summary": {
+        "counts": {
+          "rows": 3
+        },
+        "labels": {
+          "raw_fields_preserved": "true"
+        }
+      },
+      "registry": {
+        "id": "cmbs-tenants",
+        "version": "2026.06.25",
+        "source": "registries/cmbs-tenants",
+        "lookup_snapshot_hash": "blake3:registry",
+        "sidecar_snapshot_hash": "blake3:sidecars"
+      },
+      "output_path": "entity/apply/output.csv",
+      "raw_fields_preserved": true
+    }
+  }
+}
