@@ -5,6 +5,7 @@ pub mod doctor;
 pub mod entity;
 pub mod input;
 pub mod lookup;
+pub mod namekit;
 pub mod output;
 pub mod paths;
 pub mod refusal;

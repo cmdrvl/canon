@@ -1,0 +1,17 @@
+{"code":"no_loss","stage":"normalize","lossy":false,"summary":"view kept the source text without lossy transformation","source":"canon_profile"}
+{"code":"unicode_folded","stage":"normalize","lossy":true,"summary":"unicode characters were folded into a deterministic comparison form","source":"normality","detail":{"operation":"unicode_fold"}}
+{"code":"punctuation_removed","stage":"normalize","lossy":true,"summary":"punctuation was removed or folded during normalization","source":"normality","detail":{"operation":"punctuation_fold"}}
+{"code":"control_removed","stage":"normalize","lossy":true,"summary":"control characters were removed during normalization","source":"normality","detail":{"operation":"control_strip"}}
+{"code":"whitespace_collapsed","stage":"normalize","lossy":true,"summary":"whitespace was collapsed into the canonical separator","source":"normality","detail":{"operation":"space_collapse"}}
+{"code":"legal_suffix_stripped","stage":"legal_suffix","lossy":true,"summary":"legal-form suffix text was stripped for this view","source":"cleanco","detail":{"operation":"suffix_strip"}}
+{"code":"legal_suffix_preserved","stage":"legal_suffix","lossy":false,"summary":"legal-form suffix text was preserved by profile policy","source":"canon_profile","detail":{"operation":"suffix_preserve"}}
+{"code":"tokens_sorted","stage":"tokenize","lossy":true,"summary":"token order was canonicalized for this view","source":"open_sanctions_rigour","detail":{"operation":"token_sort"}}
+{"code":"tokens_deduped","stage":"tokenize","lossy":true,"summary":"duplicate tokens were removed for this view","source":"open_sanctions_rigour","detail":{"operation":"token_dedupe"}}
+{"code":"ngram_fingerprint_collision","stage":"fingerprint","lossy":true,"summary":"different source strings share the same ngram fingerprint","source":"ing_entity_matching_model","detail":{"operation":"ngram_fingerprint"}}
+{"code":"common_token_downweighted","stage":"tfidf","lossy":false,"summary":"a common token contributed reduced evidence weight","source":"splink_tf_adjustment","detail":{"operation":"tf_downweight"}}
+{"code":"rare_token_support","stage":"tfidf","lossy":false,"summary":"a rare token contributed positive support evidence","source":"splink_tf_adjustment","detail":{"operation":"tf_support"}}
+{"code":"metric_cutoff","stage":"similarity","lossy":false,"summary":"a string metric score was below the configured cutoff","source":"rapid_fuzz","detail":{"operation":"score_cutoff"}}
+{"code":"protected_token_conflict","stage":"protected_token","lossy":false,"summary":"protected tokens conflict and must not support an auto-merge","source":"canon_profile","detail":{"operation":"protected_conflict"}}
+{"code":"profile_token_preserved","stage":"profile_policy","lossy":false,"summary":"profile policy preserved a token that another view might drop","source":"canon_profile","detail":{"operation":"profile_preserve"}}
+{"code":"profile_token_dropped","stage":"profile_policy","lossy":true,"summary":"profile policy dropped a token from this view","source":"canon_profile","detail":{"operation":"profile_drop"}}
+{"code":"source_parity_reference","stage":"source_parity","lossy":false,"summary":"reason traces the upstream technique used for parity","source":"nomenklatura_resolver","detail":{"operation":"source_trace"}}
