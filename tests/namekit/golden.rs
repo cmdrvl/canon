@@ -11,6 +11,7 @@ use std::collections::BTreeSet;
 use std::fs;
 
 const GOLDEN_MATRIX: &str = "tests/fixtures/namekit/source_parity/nk_golden_matrix.jsonl";
+const GOLDEN_SUITE: &str = "tests/fixtures/namekit/golden_suite.jsonl";
 
 #[test]
 fn namekit_source_parity_golden_matrix_covers_nk_u001_through_nk_u005() {
@@ -84,6 +85,96 @@ fn namekit_golden_matrix_matches_current_primitives() {
                 strings_from(&row["expected_views"], "tokens"),
                 "{}",
                 string(&row, "fixture_id")
+            );
+        }
+    }
+}
+
+#[test]
+fn namekit_golden_fixture_suite_covers_tenant_and_regab_examples() {
+    let rows = fixture_rows(GOLDEN_SUITE);
+    let case_ids = rows
+        .iter()
+        .map(|row| string(row, "case_id"))
+        .collect::<BTreeSet<_>>();
+
+    for required in [
+        "golden_sears_llc_tenant_label",
+        "golden_sears_auto_center_tenant",
+        "golden_kmart_distinct_tenant",
+        "golden_transform_sr_llc_successor",
+        "golden_pnc_bank_na_regab",
+        "golden_midland_loan_services_regab",
+        "golden_platform_label_regab",
+        "golden_accented_tenant_label",
+        "golden_punctuation_whitespace_variant",
+    ] {
+        assert!(case_ids.contains(required), "missing {required}");
+    }
+
+    for row in &rows {
+        assert!(!string(row, "profile").is_empty());
+        assert!(!string(row, "raw").is_empty());
+        assert!(row["expected_views"].is_object());
+        assert!(!strings_from(&row["expected_views"], "tokens").is_empty());
+        assert_reason_order(row);
+    }
+}
+
+#[test]
+fn namekit_golden_fixture_suite_matches_current_normalization_and_tokens() {
+    for row in fixture_rows(GOLDEN_SUITE) {
+        let normalization = normalize_for_row(&row, string(&row, "raw"));
+        assert_eq!(
+            normalization.normalized,
+            row["expected_views"]["normalized"],
+            "{}",
+            string(&row, "case_id")
+        );
+        assert_eq!(
+            normalization.reason_codes(),
+            strings(&row, "expected_reason_codes"),
+            "{}",
+            string(&row, "case_id")
+        );
+        assert_eq!(
+            normalization.fingerprint,
+            row["expected_views"]["fingerprint"],
+            "{}",
+            string(&row, "case_id")
+        );
+
+        let legal = analyze_legal_suffixes(&normalization.normalized, profile(&row));
+        assert_eq!(
+            legal.basename,
+            row["expected_views"]["legal_basename"],
+            "{}",
+            string(&row, "case_id")
+        );
+
+        let tokenization = tokenize_words(&legal.basename);
+        assert_eq!(
+            token_texts(&tokenization),
+            strings_from(&row["expected_views"], "tokens"),
+            "{}",
+            string(&row, "case_id")
+        );
+    }
+}
+
+#[test]
+fn namekit_golden_fixture_suite_records_non_equivalence_notes() {
+    for row in fixture_rows(GOLDEN_SUITE) {
+        if bool_field(&row, "expected_non_equivalent") {
+            assert!(
+                !string(&row, "non_equivalence_note").is_empty(),
+                "{} needs a non-equivalence note",
+                string(&row, "case_id")
+            );
+            assert!(
+                !strings(&row, "semantic_protected_tokens").is_empty(),
+                "{} needs protected tokens",
+                string(&row, "case_id")
             );
         }
     }
@@ -194,11 +285,15 @@ fn row_by_fixture_id(fixture_id: &str) -> Value {
 }
 
 fn golden_rows() -> Vec<Value> {
-    fs::read_to_string(GOLDEN_MATRIX)
-        .expect("namekit golden matrix is readable")
+    fixture_rows(GOLDEN_MATRIX)
+}
+
+fn fixture_rows(path: &str) -> Vec<Value> {
+    fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("read {path}: {error}"))
         .lines()
         .filter(|line| !line.trim().is_empty())
-        .map(|line| serde_json::from_str(line).expect("namekit golden row is JSON"))
+        .map(|line| serde_json::from_str(line).unwrap_or_else(|error| panic!("{path}: {error}")))
         .collect()
 }
 
@@ -242,6 +337,12 @@ fn strings_from(row: &Value, key: &str) -> Vec<String> {
         .iter()
         .map(|value| value.as_str().expect("string array entry").to_string())
         .collect()
+}
+
+fn bool_field(row: &Value, key: &str) -> bool {
+    row[key]
+        .as_bool()
+        .unwrap_or_else(|| panic!("{key} must be a bool in {row}"))
 }
 
 fn string<'a>(row: &'a Value, key: &str) -> &'a str {

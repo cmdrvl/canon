@@ -20,6 +20,9 @@ mod ngram;
 #[path = "namekit/golden.rs"]
 mod golden;
 
+#[path = "namekit/golden_suite.rs"]
+mod golden_suite;
+
 #[path = "namekit/source_parity.rs"]
 mod source_parity;
 
