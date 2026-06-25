@@ -1512,6 +1512,76 @@ task so the owner edits the shared file. Runtime implementation Beads should
 not also rewrite benchmark prose unless the acceptance criteria specifically
 require a docs update.
 
+### Implementation Readiness Appendix
+
+This appendix is the bridge from architecture to code. Implementation packets
+must not invent module boundaries beyond this map without updating this
+appendix first. If a Bead needs a file outside its row, split the Bead or land
+the owning contract change before the runtime implementation.
+
+Repo-shape note: at packetization time the current code still has `src/org/*`
+and no complete `src/entity/*` or `src/namekit/*` implementation. ENT-P00 and
+ENT-P01 must land before later packets assume these paths, module exports, or
+artifact constants exist.
+
+Module skeleton:
+
+| Path family | Responsibility |
+|-------------|----------------|
+| `src/entity/mod.rs` | Entity command module wiring and narrow public exports only. |
+| `src/entity/contracts.rs` | Artifact version constants, metadata structs, stable refusal codes, gate/invariant handles. |
+| `src/entity/schema.rs` | Offline JSON Schema snapshots and artifact contract validation helpers. |
+| `src/entity/profile.rs` | Profile id/version, entity type, identity semantics, canonical type, and cross-profile firewall. |
+| `src/entity/strategy.rs` | Strategy parsing/linting, operator declarations, patch references, content hash inputs. |
+| `src/entity/prepare.rs` / `src/entity/projection.rs` | Profile input mapping, normalized surface projection, deterministic `surface_id`, exact lookup status. |
+| `src/entity/index.rs` | Token/ngram/IDF dictionaries, postings, cache metadata, stale-cache diagnostics. |
+| `src/entity/block.rs` | Compact exact buckets, bounded candidate generation, blocking diagnostics. |
+| `src/entity/edge.rs` | Support/cannot-link/relation evidence, integer score units, deterministic tie ordering. |
+| `src/entity/solve.rs` | Signed graph solve, hard cannot-link enforcement, review group creation. |
+| `src/entity/review.rs` / `src/entity/ledger.rs` | Review export/import, immutable decision events, patch derivation. |
+| `src/entity/audit.rs` / `src/entity/promote.rs` / `src/entity/apply.rs` | Gate verification, registry mutation proofs, exact replay/apply with raw-field preservation. |
+| `src/entity/explain.rs` / `src/entity/doctor.rs` | Operator summaries, explain, lint/doctor diagnostics, robot-readable next commands. |
+| `src/namekit/mod.rs` | Public namekit module exports and shared deterministic text primitive contracts. |
+| `src/namekit/normalize.rs` | Unicode/text folding, whitespace/punctuation normalization, reason-code emission. |
+| `src/namekit/legal_suffix.rs` | Legal suffix dictionaries and stripping with deterministic reasons. |
+| `src/namekit/tokenize.rs` / `src/namekit/ngram.rs` | Token and char n-gram primitives, stable IDs, source-parity fixtures. |
+| `src/namekit/tfidf.rs` | Sparse TF-IDF/IDF primitives and top-k score inputs; no dense large-corpus vectors. |
+| `src/namekit/similarity.rs` | Pinned deterministic string metrics and integer score quantization boundaries. |
+| `src/namekit/patches.rs` / `src/namekit/explain.rs` | Alias/distinct/relation patch primitives and normalization/evidence explanations. |
+| `tests/entity/*` | Packet-local contract, stage, profile, workflow, and ergonomics tests. One packet should add or own one exact test file at a time. |
+| `tests/namekit/*` | Namekit unit, parity, and reason-code golden tests. |
+| `tests/fixtures/entity/*` | Schema/contracts, namekit, prepare, block, edge, solve, review, `cmbs`, `regab`, and `evals` fixtures. |
+| `docs/ENTITY_EVALS_AND_PERFORMANCE.md` and benchmark docs | Shared scorecards and benchmark contracts; update only from eval/profile packets. |
+| `scripts/perf/entity_*` | Optional deterministic performance harness scripts; introduce only from ENT-P14 Beads. |
+
+Packet-local coverage:
+
+| Packet | Files | I## | C## | T## | G## | E_ENTITY_* | Tests | Verification commands |
+|--------|-------|-----|-----|-----|-----|------------|-------|-----------------------|
+| ENT-P00 | `src/entity/contracts.rs`, `src/entity/schema.rs`, `src/entity/profile.rs`, `tests/entity/schema_snapshots.rs`, `tests/fixtures/entity/schemas/*`, `tests/fixtures/entity/contracts/*` | I01-I25 | C01-C12 | T01-T12 | G01-G15 | Full taxonomy, especially `E_ENTITY_PROFILE`, `E_ENTITY_STRATEGY`, `E_ENTITY_REGISTRY_SNAPSHOT`, `E_ENTITY_ARTIFACT_CONTRACT` | `entity_schema_snapshots`, `entity_contracts_golden`, `artifact_schema_required_fields`, `E_ENTITY_ARTIFACT_CONTRACT` | `cargo test entity_schema_snapshots -- --nocapture`; `cargo test entity_contracts_golden -- --nocapture`; `cargo test artifact_schema_required_fields -- --nocapture`; `cargo fmt --check` |
+| ENT-P01 | `src/cli.rs`, `src/main.rs`, `src/entity/mod.rs`, `operator.json`, targeted docs and CLI tests | I01, I02, I10, I25 | C11, C12 | T10, T11 | G01, G02 | `E_ENTITY_PROFILE`, `E_ENTITY_STRATEGY`, `E_ENTITY_ARTIFACT_CONTRACT` | Entity CLI smoke tests, namespace migration tests, no-public-`org` checks | `cargo test entity_cli -- --nocapture`; `rg -n "canon org|canon_org" src docs operator.json tests`; `cargo test` |
+| ENT-P02 | `src/namekit/normalize.rs`, `legal_suffix.rs`, `tokenize.rs`, `ngram.rs`, `tfidf.rs`, `similarity.rs`, `patches.rs`, one `tests/namekit/*` file per Bead | I03, I12, I21, I23 | C01, C04, C12 | T02, T06, T11, T12 | G03, G10, G15 | `E_ENTITY_STRATEGY`, `E_ENTITY_PATCH_CONFLICT`, `E_ENTITY_CACHE_MISMATCH` | NK-U001 through NK-U005, source-parity fixtures, integer score unit tests | `cargo test namekit -- --nocapture`; `cargo test source_parity -- --nocapture`; `cargo test score_units -- --nocapture` |
+| ENT-P03 | `src/entity/prepare.rs`, `src/entity/projection.rs`, `src/entity/profile.rs`, `tests/entity/prepare.rs`, selected `tests/fixtures/entity/prepare/*` | I03, I04, I05, I06, I10, I12, I17, I20, I23 | C01 | T06, T09, T11, T12 | G03, G04, G10 | `E_ENTITY_PROFILE`, `E_ENTITY_STRATEGY`, `E_ENTITY_INPUT_CONTRACT`, `E_ENTITY_SURFACE_ID_COLLISION`, `E_ENTITY_PATCH_CONFLICT`, `E_ENTITY_REGISTRY_SNAPSHOT`, `E_ENTITY_CACHE_MISMATCH`, `E_ENTITY_IO_BUDGET` | EN-P001 through EN-P005 | `cargo test entity_prepare -- --nocapture`; `cargo test surface_id_stability -- --nocapture`; `cargo test E_ENTITY_INPUT_CONTRACT -- --nocapture` |
+| ENT-P04 | `src/entity/index.rs`, cache metadata helpers, `tests/entity/index.rs`, selected `tests/fixtures/entity/index/*` | I03, I04, I06, I13, I21, I22, I23 | C02 | T02, T06, T12 | G10, G12 | `E_ENTITY_STRATEGY`, `E_ENTITY_REGISTRY_SNAPSHOT`, `E_ENTITY_CACHE_MISMATCH`, `E_ENTITY_INDEX_LIMIT`, `E_ENTITY_IO_BUDGET` | Index cache correctness, posting caps, stale-cache diagnostics | `cargo test entity_index -- --nocapture`; `cargo test cache_key_contract -- --nocapture`; `cargo test E_ENTITY_INDEX_LIMIT -- --nocapture` |
+| ENT-P05 | `src/entity/block.rs`, `tests/entity/block.rs`, selected `tests/fixtures/entity/block/*` | I07, I13, I21, I23 | C03 | T01, T02, T12 | G05, G10, G12 | `E_ENTITY_ARTIFACT_CONTRACT`, `E_ENTITY_INDEX_LIMIT`, `E_ENTITY_CANDIDATE_BUDGET`, `E_ENTITY_IO_BUDGET` | EN-B001, EN-B002, EN-B005, exact-bucket hyperedge tests | `cargo test entity_block -- --nocapture`; `cargo test exact_bucket_contract -- --nocapture`; `cargo test E_ENTITY_CANDIDATE_BUDGET -- --nocapture` |
+| ENT-P06 | `src/entity/edge.rs`, score adapters, `tests/entity/edge.rs`, selected `tests/fixtures/entity/edge/*` | I08, I09, I12, I13, I23, I24 | C04 | T03, T04, T11, T12 | G06, G07, G15 | `E_ENTITY_STRATEGY`, `E_ENTITY_ARTIFACT_CONTRACT`, `E_ENTITY_CANDIDATE_BUDGET` | EN-B003, EN-B004, integer edge score and tie-order tests | `cargo test entity_edge -- --nocapture`; `cargo test edge_score_units -- --nocapture`; `cargo test relation_hint_non_merge -- --nocapture` |
+| ENT-P07 | `src/entity/solve.rs`, `tests/entity/solve.rs`, selected `tests/fixtures/entity/solve/*` | I08, I09, I14, I15, I23, I24, I25 | C05 | T03, T04, T05, T08, T10, T12 | G06, G07, G08, G15 | `E_ENTITY_ARTIFACT_CONTRACT`, `E_ENTITY_CANNOT_LINK_OVERRIDE`, `E_ENTITY_IO_BUDGET` | EN-S001 through EN-S005 | `cargo test entity_solve -- --nocapture`; `cargo test cannot_link_veto -- --nocapture`; `cargo test signed_graph_contract -- --nocapture` |
+| ENT-P08 | `src/entity/review.rs`, `src/entity/ledger.rs`, `tests/entity/review.rs`, review golden fixtures | I14, I15, I16, I17, I24 | C06, C07 | T05, T07, T08 | G08, G09, G15 | `E_ENTITY_REVIEW_IMPORT`, `E_ENTITY_CANNOT_LINK_OVERRIDE`, `E_ENTITY_PATCH_CONFLICT`, `E_ENTITY_ARTIFACT_CONTRACT` | EN-R001 through EN-R003, decision ledger continuity tests | `cargo test entity_review -- --nocapture`; `cargo test decision_ledger -- --nocapture`; `cargo test E_ENTITY_REVIEW_IMPORT -- --nocapture` |
+| ENT-P09 | `src/entity/audit.rs`, `src/entity/promote.rs`, `src/entity/apply.rs`, registry writer helpers, `tests/entity/promote.rs`, `tests/entity/apply.rs` | I01, I18, I19, I20, I24 | C08, C09, C10, C11 | T06, T07, T08, T09, T11 | G01, G13, G14, G15 | `E_ENTITY_AUDIT_GATE`, `E_ENTITY_APPLY_UNRESOLVED`, `E_ENTITY_REGISTRY_SNAPSHOT`, `E_ENTITY_ARTIFACT_CONTRACT`, `E_ENTITY_CANNOT_LINK_OVERRIDE` | EN-PR001, EN-PR002, EN-A001 | `cargo test entity_audit -- --nocapture`; `cargo test entity_promote -- --nocapture`; `cargo test entity_apply -- --nocapture`; `cargo test core_lookup_exact -- --nocapture` |
+| ENT-P10 | `src/entity/profiles/cmbs_tenant_label.rs` if profile code is needed, `strategies/cmbs_tenant_label.yaml`, `tests/fixtures/entity/cmbs/*`, profile integration tests | I08, I10, I11, I14, I25 | C01, C03, C04, C05, C08 | T01, T03, T05 | G06, G08, G11, G15 | `E_ENTITY_PROFILE`, `E_ENTITY_STRATEGY`, `E_ENTITY_INPUT_CONTRACT`, `E_ENTITY_CANDIDATE_BUDGET` | CMBS-I001 through CMBS-I003, CMBS benchmark manifest tests | `cargo test cmbs_tenant_label -- --nocapture`; `cargo test CMBS-I -- --nocapture`; `cargo test entity_eval_cmbs -- --nocapture` |
+| ENT-P11 | `src/entity/profiles/regab_firm_identity.rs` if profile code is needed, `strategies/regab_firm_identity.yaml`, `tests/fixtures/entity/regab/*`, profile integration tests | I10, I11, I20, I25 | C01, C04, C08, C10 | T04, T09, T10 | G06, G13, G15 | `E_ENTITY_PROFILE`, `E_ENTITY_STRATEGY`, `E_ENTITY_INPUT_CONTRACT`, `E_ENTITY_ARTIFACT_CONTRACT` | REGAB-I001 through REGAB-I004, local sec10d fixture snapshots | `cargo test regab_firm_identity -- --nocapture`; `cargo test REGAB-I -- --nocapture`; `cargo test sec10d_contract_fixture -- --nocapture` |
+| ENT-P12 | CMBS workflow tests, review/promote/apply fixtures, `tests/entity/cmbs_backfill_workflow.rs` | I03, I06, I14, I18, I20, I24 | C01-C10 | T01, T02, T05, T06 | G03, G04, G05, G08, G10, G11, G14 | Stage-specific refusals plus `E_ENTITY_AUDIT_GATE`, `E_ENTITY_APPLY_UNRESOLVED` | CMBS end-to-end mini fixture, benchmark replay assertions | `cargo test cmbs_backfill_workflow -- --nocapture`; `cargo test entity_eval_cmbs -- --nocapture`; `cargo test promotion_replay_exact -- --nocapture` |
+| ENT-P13 | Reg AB migration tests and fixtures, `tests/entity/regab_migration_workflow.rs`, downstream contract docs if needed | I01, I10, I20, I25 | C01, C08, C10, C11 | T04, T09, T10, T11 | G01, G02, G13, G15 | `E_ENTITY_PROFILE`, `E_ENTITY_INPUT_CONTRACT`, `E_ENTITY_APPLY_UNRESOLVED`, `E_ENTITY_ARTIFACT_CONTRACT` | Reg AB exact-baseline parity, parser-field preservation, Snowflake append-only output tests | `cargo test regab_migration_workflow -- --nocapture`; `cargo test sec10d_raw_fields_preserved -- --nocapture`; `cargo test PERF-REGAB -- --nocapture` |
+| ENT-P14 | `tests/entity_eval_performance_contract.rs`, optional `scripts/perf/entity_*`, `tests/fixtures/entity/evals/*` | I03, I13, I21, I22, I23 | C02, C03, C12 | T01, T02, T06, T12 | G10, G11, G12 | `E_ENTITY_CACHE_MISMATCH`, `E_ENTITY_INDEX_LIMIT`, `E_ENTITY_CANDIDATE_BUDGET`, `E_ENTITY_IO_BUDGET` | Performance contract snapshots, ignored stress harnesses, cache-hit telemetry tests | `cargo test entity_eval_performance_contract -- --nocapture`; `cargo test cache_hit_telemetry -- --nocapture`; ignored stress commands documented in `ENTITY_EVALS_AND_PERFORMANCE.md` |
+| ENT-P15 | `src/entity/explain.rs`, `src/entity/doctor.rs`, CLI summary surfaces, `tests/entity/ergonomics.rs`, robot JSON fixtures | I12, I22, I24 | C11, C12 | T05, T08, T11 | G15 | All surfaced as operator next-command diagnostics; especially `E_ENTITY_PROFILE`, `E_ENTITY_STRATEGY`, `E_ENTITY_REVIEW_IMPORT`, `E_ENTITY_AUDIT_GATE` | Explain, doctor/lint, robot JSON, next-command, final acceptance sweep tests | `cargo test entity_explain -- --nocapture`; `cargo test entity_doctor -- --nocapture`; `cargo test entity_operator_ergonomics -- --nocapture` |
+
+Readiness verification for this appendix:
+
+```bash
+rg -n "Implementation Readiness|Packet-local coverage|src/entity|src/namekit|ENT-P15" docs/PLAN_ENTITY_WORKBENCH.md
+br dep cycles
+```
+
 ---
 
 ## Adversarial Readiness Update
