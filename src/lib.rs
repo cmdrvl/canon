@@ -2,6 +2,7 @@
 
 pub mod cli;
 pub mod doctor;
+pub mod entity;
 pub mod input;
 pub mod lookup;
 pub mod org;
@@ -2809,6 +2810,21 @@ pub enum RefusalCode {
     EOrgFixtureInvalid,
     EOrgVersionBumpRequired,
     EOrgStaleRegistry,
+    EEntityProfile,
+    EEntityStrategy,
+    EEntityInputContract,
+    EEntitySurfaceIdCollision,
+    EEntityPatchConflict,
+    EEntityRegistrySnapshot,
+    EEntityCacheMismatch,
+    EEntityIndexLimit,
+    EEntityCandidateBudget,
+    EEntityArtifactContract,
+    EEntityCannotLinkOverride,
+    EEntityReviewImport,
+    EEntityAuditGate,
+    EEntityApplyUnresolved,
+    EEntityIoBudget,
     EStrategyInputContract,
     EStrategyProofInvalid,
     EStrategyVersionBumpRequired,
@@ -2840,6 +2856,21 @@ impl Serialize for RefusalCode {
             RefusalCode::EOrgFixtureInvalid => "E_ORG_FIXTURE_INVALID",
             RefusalCode::EOrgVersionBumpRequired => "E_ORG_VERSION_BUMP_REQUIRED",
             RefusalCode::EOrgStaleRegistry => "E_ORG_STALE_REGISTRY",
+            RefusalCode::EEntityProfile => "E_ENTITY_PROFILE",
+            RefusalCode::EEntityStrategy => "E_ENTITY_STRATEGY",
+            RefusalCode::EEntityInputContract => "E_ENTITY_INPUT_CONTRACT",
+            RefusalCode::EEntitySurfaceIdCollision => "E_ENTITY_SURFACE_ID_COLLISION",
+            RefusalCode::EEntityPatchConflict => "E_ENTITY_PATCH_CONFLICT",
+            RefusalCode::EEntityRegistrySnapshot => "E_ENTITY_REGISTRY_SNAPSHOT",
+            RefusalCode::EEntityCacheMismatch => "E_ENTITY_CACHE_MISMATCH",
+            RefusalCode::EEntityIndexLimit => "E_ENTITY_INDEX_LIMIT",
+            RefusalCode::EEntityCandidateBudget => "E_ENTITY_CANDIDATE_BUDGET",
+            RefusalCode::EEntityArtifactContract => "E_ENTITY_ARTIFACT_CONTRACT",
+            RefusalCode::EEntityCannotLinkOverride => "E_ENTITY_CANNOT_LINK_OVERRIDE",
+            RefusalCode::EEntityReviewImport => "E_ENTITY_REVIEW_IMPORT",
+            RefusalCode::EEntityAuditGate => "E_ENTITY_AUDIT_GATE",
+            RefusalCode::EEntityApplyUnresolved => "E_ENTITY_APPLY_UNRESOLVED",
+            RefusalCode::EEntityIoBudget => "E_ENTITY_IO_BUDGET",
             RefusalCode::EStrategyInputContract => "E_STRATEGY_INPUT_CONTRACT",
             RefusalCode::EStrategyProofInvalid => "E_STRATEGY_PROOF_INVALID",
             RefusalCode::EStrategyVersionBumpRequired => "E_STRATEGY_VERSION_BUMP_REQUIRED",
@@ -2905,6 +2936,51 @@ impl RefusalCode {
             }
             RefusalCode::EOrgStaleRegistry => {
                 "Re-run canon org against the current registry snapshot"
+            }
+            RefusalCode::EEntityProfile => {
+                "Run canon entity profile list or fix the strategy profile block, then rerun canon entity"
+            }
+            RefusalCode::EEntityStrategy => {
+                "Fix the entity strategy YAML or unsupported operator, then rerun canon entity"
+            }
+            RefusalCode::EEntityInputContract => {
+                "Fix the entity input rows or profile field mapping, then rerun canon entity prepare"
+            }
+            RefusalCode::EEntitySurfaceIdCollision => {
+                "Inspect the collision detail and adjust surface_id derivation before rerunning canon entity prepare"
+            }
+            RefusalCode::EEntityPatchConflict => {
+                "Resolve alias, distinctness, or relation patch conflicts before rerunning canon entity"
+            }
+            RefusalCode::EEntityRegistrySnapshot => {
+                "Re-run the entity stage against the current registry snapshot or use the matching registry"
+            }
+            RefusalCode::EEntityCacheMismatch => {
+                "Rebuild the entity cache or use the work directory matching this input/profile/strategy/registry"
+            }
+            RefusalCode::EEntityIndexLimit => {
+                "Tighten index settings or raise explicit posting/bucket limits, then rerun canon entity index/block"
+            }
+            RefusalCode::EEntityCandidateBudget => {
+                "Adjust blocking operators or candidate caps, then rerun canon entity block"
+            }
+            RefusalCode::EEntityArtifactContract => {
+                "Use the correct upstream entity artifact or re-run the prior stage"
+            }
+            RefusalCode::EEntityCannotLinkOverride => {
+                "Keep the surfaces in review or add explicit operator override evidence before merging"
+            }
+            RefusalCode::EEntityReviewImport => {
+                "Export a fresh review queue or repair the review file before rerunning canon entity review import"
+            }
+            RefusalCode::EEntityAuditGate => {
+                "Re-run entity audit and fix failures before promotion"
+            }
+            RefusalCode::EEntityApplyUnresolved => {
+                "Promote more aliases or rerun canon entity apply with partial output allowed"
+            }
+            RefusalCode::EEntityIoBudget => {
+                "Increase explicit row/byte/artifact limits or process the corpus in physical batches"
             }
             RefusalCode::EStrategyInputContract => {
                 "Fix the strategy inputs to match the contract, then rerun canon strategy"

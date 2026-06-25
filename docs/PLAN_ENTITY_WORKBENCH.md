@@ -1482,26 +1482,29 @@ The Entity Workbench implementation is expected to run with multiple agents in
 one shared checkout. Agents should claim the narrowest ready Bead in their lane,
 reserve only the exact file or files they will write, and avoid directory-wide
 or broad-glob reservations. The default reservation shape is one implementation
-file plus one test or fixture file. Parent packet Beads such as ENT-P00 through
-ENT-P15, and the overall `bd-25k` feature Bead, are orchestration or acceptance
-Beads unless they have been split into exact file-level tasks.
+file plus one test or fixture file. The roots below are orientation hints, not
+valid reservation globs. Parent packet Beads such as ENT-P00 through ENT-P15,
+and the overall `bd-25k` feature Bead, are orchestration or acceptance Beads
+unless they have been split into exact file-level tasks.
 
 If a lane has no ready Bead, agents should unblock the highest-priority ready
 P0/P1 contract Bead whose files are unreserved. Critical-path contract Beads
-include `bd-3b4.*` for entity contracts, `bd-1fm.*` for the direct `org` to
-`entity` namespace migration, and stage contracts `bd-18g.6`, `bd-486.6`,
-`bd-486.7`, and `bd-39z.6`.
+include `bd-3b4.*` for entity contracts and lane readiness, `bd-1fm.*` for the
+direct `org` to `entity` namespace migration, stage contracts `bd-18g.6`,
+`bd-486.6`, `bd-486.7`, `bd-486.9`, and `bd-39z.6`, namekit/index decisions
+`bd-3k3.21` and `bd-3bu.5`, performance calibration `bd-1pz.9`, and local Reg
+AB fixture snapshots `bd-sbm.7`.
 
-| Lane | Owns | Default File Roots | Test And Fixture Roots | Critical Blockers |
-|------|------|--------------------|------------------------|-------------------|
-| contracts/CLI | ENT-P00, ENT-P01, artifact constants, profile/refusal contracts, public command surface, operator metadata. | `src/entity/contracts.rs`, `src/entity/mod.rs`, `src/cli.rs`, `operator.json`, targeted docs sections. | `tests/entity/contracts.rs`, CLI smoke tests, contract snapshots. | `bd-3b4.*`, `bd-1fm.*`. |
-| namekit | ENT-P02 normalization, legal suffixes, tokens, n-grams, TF-IDF primitives, similarity score units, reason codes. | `src/namekit/*.rs`, with one module reserved per Bead. | `tests/namekit/*.rs`, `tests/fixtures/namekit/**`. | `bd-3k3.21`, `bd-3k3.12`, `bd-3k3.22`. |
-| prepare/surface | ENT-P03 profile input mapping, projection, prepared surfaces, deterministic `surface_id`, exact lookup status. | `src/entity/prepare.rs`, `src/entity/projection.rs`, surface metadata helpers. | `tests/entity/prepare.rs`, `tests/fixtures/entity/prepare/**`. | `bd-18g.6` and prepare artifact contracts. |
-| index/block | ENT-P04 and ENT-P05 index build, postings, exact-bucket assertions, candidate caps, blocking diagnostics. | `src/entity/index.rs`, `src/entity/block.rs`; use `src/namekit/tfidf.rs` only through namekit-owned contracts. | `tests/entity/index.rs`, `tests/entity/block.rs`, `tests/fixtures/entity/block/**`. | `bd-486.6`, `bd-486.7`, `bd-486.9`, `bd-3bu.5`. |
-| edge/solve | ENT-P06 and ENT-P07 support/cannot-link/relation edges, integer scores, signed graph solve, contradiction handling. | `src/entity/edge.rs`, `src/entity/solve.rs`, shared score adapters only when their owning Bead is ready. | `tests/entity/edge.rs`, `tests/entity/solve.rs`, `tests/fixtures/entity/solve/**`. | `bd-39z.6`, ENT-P06 score-unit contracts, ENT-P07 solver contracts. |
-| review/registry/apply | ENT-P08 and ENT-P09 decision ledger, review import/export, audit/promote/apply, registry writes, exact replay. | `src/entity/review.rs`, `src/entity/audit.rs`, `src/entity/promote.rs`, `src/entity/apply.rs`, registry writer helpers. | `tests/entity/review.rs`, `tests/entity/promote.rs`, `tests/entity/apply.rs`, review golden fixtures. | ENT-P08 ledger contracts, ENT-P09 mutation safety gates. |
-| profiles/workflows | ENT-P10 through ENT-P13 CMBS tenant and Reg AB profiles, profile fixtures, migration workflow examples. | Profile-specific strategy/config files and narrowly scoped profile modules after contracts exist. | `tests/fixtures/entity/cmbs/**`, `tests/fixtures/entity/regab/**`, profile integration tests. | `bd-sbm.7`, CMBS/Reg AB benchmark manifests, profile firewall contracts. |
-| evals/perf/ergonomics | ENT-P14 and ENT-P15 eval harness, benchmark telemetry, doctor/lint summaries, explain/operator ergonomics. | `tests/entity_eval_performance_contract.rs`, benchmark harness modules, doctor/lint output surfaces. | `tests/fixtures/entity/evals/**`, ignored stress fixtures, summary golden artifacts. | `bd-1pz.9`, `bd-2nw.6`, final acceptance sweep Beads. |
+| Lane label | Owns | Default file roots | Test and fixture roots | Critical blockers |
+|------------|------|--------------------|------------------------|-------------------|
+| `lane-contracts-cli` | ENT-P00, ENT-P01, artifact constants, profile/refusal contracts, public command surface, operator metadata. | `src/entity/contracts.rs`, `src/entity/mod.rs`, exact `src/cli/` files, `operator.json`, targeted docs sections. | `tests/entity/contracts.rs`, CLI smoke tests, contract snapshots. | `bd-3b4.*`, `bd-1fm.*`. |
+| `lane-namekit` | ENT-P02 normalization, legal suffixes, tokens, n-grams, TF-IDF primitives, similarity score units, reason codes. | One exact `src/namekit/` module per Bead. | One exact `tests/namekit/` file plus selected `tests/fixtures/entity/namekit/` files. | `bd-3k3.21`, `bd-3k3.12`, `bd-3k3.22`. |
+| `lane-prepare-surface` | ENT-P03 profile input mapping, projection, prepared surfaces, deterministic `surface_id`, exact lookup status. | `src/entity/prepare.rs`, `src/entity/projection.rs`, surface metadata helpers. | `tests/entity/prepare.rs`, selected `tests/fixtures/entity/prepare/` files. | `bd-18g.6` and prepare artifact contracts. |
+| `lane-index-block` | ENT-P04 and ENT-P05 index build, postings, exact-bucket assertions, candidate caps, blocking diagnostics. | `src/entity/index.rs`, `src/entity/block.rs`; use `src/namekit/tfidf.rs` only through namekit-owned contracts. | `tests/entity/index.rs`, `tests/entity/block.rs`, selected `tests/fixtures/entity/block/` files. | `bd-486.6`, `bd-486.7`, `bd-486.9`, `bd-3bu.5`. |
+| `lane-edge-solve` | ENT-P06 and ENT-P07 support/cannot-link/relation edges, integer scores, signed graph solve, contradiction handling. | `src/entity/edge.rs`, `src/entity/solve.rs`, shared score adapters only when their owning Bead is ready. | `tests/entity/edge.rs`, `tests/entity/solve.rs`, selected `tests/fixtures/entity/solve/` files. | `bd-39z.6`, ENT-P06 score-unit contracts, ENT-P07 solver contracts. |
+| `lane-review-registry-apply` | ENT-P08 and ENT-P09 decision ledger, review import/export, audit/promote/apply, registry writes, exact replay. | `src/entity/review.rs`, `src/entity/audit.rs`, `src/entity/promote.rs`, `src/entity/apply.rs`, registry writer helpers. | `tests/entity/review.rs`, `tests/entity/promote.rs`, `tests/entity/apply.rs`, review golden fixtures. | ENT-P08 ledger contracts, ENT-P09 mutation safety gates. |
+| `lane-profiles-workflows` | ENT-P10 through ENT-P13 CMBS tenant and Reg AB profiles, profile fixtures, migration workflow examples. | Profile-specific strategy/config files and narrowly scoped profile modules after contracts exist. | Selected `tests/fixtures/entity/cmbs/` and `tests/fixtures/entity/regab/` files, profile integration tests. | `bd-sbm.7`, CMBS/Reg AB benchmark manifests, profile firewall contracts. |
+| `lane-evals-ergonomics` | ENT-P14 and ENT-P15 eval harness, benchmark telemetry, doctor/lint summaries, explain/operator ergonomics. | `tests/entity_eval_performance_contract.rs`, benchmark harness modules, doctor/lint output surfaces. | Selected `tests/fixtures/entity/evals/` files, ignored stress fixtures, summary golden artifacts. | `bd-1pz.9`, `bd-2nw.6`, final acceptance sweep Beads. |
 
 Cross-lane edits must be explicit in the Bead description. If a task needs a
 shared type or module export, land the owning contract Bead first or split the
