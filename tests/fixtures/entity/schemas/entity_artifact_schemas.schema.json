@@ -1,0 +1,940 @@
+{
+  "$defs": {
+    "artifact_reference": {
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content_hash",
+        "version"
+      ],
+      "type": "object"
+    },
+    "hash": {
+      "type": "string",
+      "x-canon-format": "blake3-hash"
+    },
+    "input_reference": {
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "row_count": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "content_hash",
+        "row_count"
+      ],
+      "type": "object"
+    },
+    "metadata": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "input": {
+          "$ref": "#/$defs/input_reference"
+        },
+        "namekit": {
+          "$ref": "#/$defs/namekit_reference"
+        },
+        "patch_namespace": {
+          "type": "string"
+        },
+        "patch_set": {
+          "$ref": "#/$defs/patch_set_reference"
+        },
+        "profile": {
+          "$ref": "#/$defs/profile_reference"
+        },
+        "registry_snapshot": {
+          "$ref": "#/$defs/registry_snapshot"
+        },
+        "strategy": {
+          "$ref": "#/$defs/strategy_reference"
+        },
+        "upstream_artifacts": {
+          "items": {
+            "$ref": "#/$defs/artifact_reference"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "input",
+        "namekit",
+        "patch_namespace",
+        "patch_set",
+        "profile",
+        "registry_snapshot",
+        "strategy",
+        "upstream_artifacts"
+      ],
+      "type": "object"
+    },
+    "namekit_reference": {
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content_hash",
+        "version"
+      ],
+      "type": "object"
+    },
+    "patch_namespaces": {
+      "additionalProperties": false,
+      "properties": {
+        "aliases": {
+          "type": "string"
+        },
+        "distinct": {
+          "type": "string"
+        },
+        "relations": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "aliases",
+        "distinct",
+        "relations"
+      ],
+      "type": "object"
+    },
+    "patch_set_reference": {
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "content_hash",
+        "paths"
+      ],
+      "type": "object"
+    },
+    "profile_reference": {
+      "additionalProperties": false,
+      "properties": {
+        "canonical_type": {
+          "type": "string"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "entity_type": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "identity_semantics": {
+          "type": "string"
+        },
+        "patch_namespaces": {
+          "$ref": "#/$defs/patch_namespaces"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "canonical_type",
+        "content_hash",
+        "entity_type",
+        "id",
+        "identity_semantics",
+        "patch_namespaces",
+        "version"
+      ],
+      "type": "object"
+    },
+    "registry_snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "lookup_snapshot_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "sidecar_snapshot_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "source": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "lookup_snapshot_hash",
+        "source",
+        "version"
+      ],
+      "type": "object"
+    },
+    "strategy_reference": {
+      "additionalProperties": false,
+      "properties": {
+        "content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content_hash",
+        "id",
+        "version"
+      ],
+      "type": "object"
+    },
+    "summary": {
+      "additionalProperties": false,
+      "properties": {
+        "counts": {
+          "minProperties": 1,
+          "type": "object"
+        },
+        "labels": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "counts",
+        "labels"
+      ],
+      "type": "object"
+    },
+    "canon_entity_apply.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "output_path": {
+          "type": "string"
+        },
+        "raw_fields_preserved": {
+          "type": "boolean"
+        },
+        "registry": {
+          "$ref": "#/$defs/registry_snapshot"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "version": {
+          "const": "canon_entity_apply.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "metadata",
+        "output_path",
+        "raw_fields_preserved",
+        "registry",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_audit.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "gates": {
+          "items": {
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "source_artifact_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "version": {
+          "const": "canon_entity_audit.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "gates",
+        "metadata",
+        "source_artifact_hash",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_block.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "candidate_records_path": {
+          "type": "string"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "upstream_artifacts": {
+          "items": {
+            "$ref": "#/$defs/artifact_reference"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "version": {
+          "const": "canon_entity_block.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "candidate_records_path",
+        "metadata",
+        "summary",
+        "upstream_artifacts",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_block_bucket.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "bucket_id": {
+          "type": "string"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "membership": {
+          "type": "object"
+        },
+        "operator_id": {
+          "type": "string"
+        },
+        "pair_expansion": {
+          "const": "forbidden"
+        },
+        "row_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "version": {
+          "const": "canon_entity_block_bucket.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "bucket_id",
+        "membership",
+        "metadata",
+        "operator_id",
+        "pair_expansion",
+        "row_count",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_decision_ledger.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "decision_id": {
+          "type": "string"
+        },
+        "event_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "event_type": {
+          "type": "string"
+        },
+        "event_version": {
+          "type": "string"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "operator_id": {
+          "type": "string"
+        },
+        "previous_event_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "source_artifact_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "version": {
+          "const": "canon_entity_decision_ledger.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "decision_id",
+        "event_hash",
+        "event_type",
+        "event_version",
+        "metadata",
+        "operator_id",
+        "previous_event_hash",
+        "source_artifact_hash",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_edge.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "edge_records_path": {
+          "type": "string"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "upstream_artifacts": {
+          "items": {
+            "$ref": "#/$defs/artifact_reference"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "version": {
+          "const": "canon_entity_edge.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "edge_records_path",
+        "metadata",
+        "summary",
+        "upstream_artifacts",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_explain.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "explanations": {
+          "items": {
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "source_artifact_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "version": {
+          "const": "canon_entity_explain.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "explanations",
+        "metadata",
+        "source_artifact_hash",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_index.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "diagnostics_path": {
+          "type": "string"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "postings_path": {
+          "type": "string"
+        },
+        "prepare_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "version": {
+          "const": "canon_entity_index.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "diagnostics_path",
+        "metadata",
+        "postings_path",
+        "prepare_hash",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_prepare.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "input": {
+          "$ref": "#/$defs/input_reference"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "surfaces_path": {
+          "type": "string"
+        },
+        "version": {
+          "const": "canon_entity_prepare.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "input",
+        "metadata",
+        "summary",
+        "surfaces_path",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_projection.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "projected_rows_path": {
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "version": {
+          "const": "canon_entity_projection.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "metadata",
+        "projected_rows_path",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_promote.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "audit_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "proof_path": {
+          "type": "string"
+        },
+        "registry_after_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "registry_before_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "sidecars_path": {
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "version": {
+          "const": "canon_entity_promote.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "audit_hash",
+        "metadata",
+        "proof_path",
+        "registry_after_hash",
+        "registry_before_hash",
+        "sidecars_path",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_promotion_proof.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "audit_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "promoted_aliases_path": {
+          "type": "string"
+        },
+        "registry_after_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "registry_before_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "source_solve_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "version": {
+          "const": "canon_entity_promotion_proof.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "audit_hash",
+        "metadata",
+        "promoted_aliases_path",
+        "registry_after_hash",
+        "registry_before_hash",
+        "source_solve_hash",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_promotion_sidecar.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "entries": {
+          "items": {
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "sidecar_type": {
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "version": {
+          "const": "canon_entity_promotion_sidecar.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "entries",
+        "metadata",
+        "sidecar_type",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_review_import.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "decisions": {
+          "items": {
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "source_review_queue_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "version": {
+          "const": "canon_entity_review_import.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "decisions",
+        "metadata",
+        "source_review_queue_hash",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_review_queue.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "review_items": {
+          "items": {
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "source_solve_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "version": {
+          "const": "canon_entity_review_queue.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "metadata",
+        "review_items",
+        "source_solve_hash",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_run.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "stage_artifacts": {
+          "items": {
+            "$ref": "#/$defs/artifact_reference"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "version": {
+          "const": "canon_entity_run.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "metadata",
+        "stage_artifacts",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_solve.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "decision_ledger_path": {
+          "type": "string"
+        },
+        "entities": {
+          "items": {
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "review_groups": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "version": {
+          "const": "canon_entity_solve.v0"
+        }
+      },
+      "required": [
+        "artifact_content_hash",
+        "decision_ledger_path",
+        "entities",
+        "metadata",
+        "review_groups",
+        "summary",
+        "version"
+      ],
+      "type": "object"
+    },
+    "canon_entity_surface_row.v0": {
+      "additionalProperties": false,
+      "properties": {
+        "exact_lookup": {
+          "type": "object"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "normalized_views": {
+          "minProperties": 1,
+          "type": "object"
+        },
+        "primary_surface": {
+          "type": "string"
+        },
+        "provenance_samples": {
+          "items": {
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "row_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "surface_id": {
+          "type": "string"
+        },
+        "version": {
+          "const": "canon_entity_surface_row.v0"
+        }
+      },
+      "required": [
+        "exact_lookup",
+        "metadata",
+        "normalized_views",
+        "primary_surface",
+        "provenance_samples",
+        "row_count",
+        "summary",
+        "surface_id",
+        "version"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "canon.entity.artifact_schemas.v0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon entity artifact schema snapshot bundle"
+}

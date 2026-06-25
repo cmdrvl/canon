@@ -77,6 +77,8 @@ pub struct EntityProfileReference {
     pub entity_type: String,
     pub identity_semantics: String,
     pub canonical_type: String,
+    #[serde(default)]
+    pub patch_namespaces: EntityPatchNamespaces,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_hash: Option<String>,
 }
@@ -88,6 +90,40 @@ impl EntityProfileReference {
             && !self.entity_type.is_empty()
             && !self.identity_semantics.is_empty()
             && !self.canonical_type.is_empty()
+            && self.patch_namespaces.is_complete()
+    }
+}
+
+/// Profile-scoped patch namespaces carried by every persisted artifact.
+///
+/// The workbench keeps aliases, distinct facts, and relation hints separate,
+/// but all three namespaces must share the same profile root so cross-profile
+/// patches cannot be consumed as same-profile merge evidence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct EntityPatchNamespaces {
+    #[serde(default)]
+    pub aliases: String,
+    #[serde(default)]
+    pub distinct: String,
+    #[serde(default)]
+    pub relations: String,
+}
+
+impl EntityPatchNamespaces {
+    pub fn is_complete(&self) -> bool {
+        !self.aliases.trim().is_empty()
+            && !self.distinct.trim().is_empty()
+            && !self.relations.trim().is_empty()
+    }
+
+    pub fn matches_profile_root(&self, profile_id: &str) -> bool {
+        if profile_id.trim().is_empty() {
+            return false;
+        }
+        let expected_prefix = format!("{profile_id}.");
+        self.aliases.starts_with(&expected_prefix)
+            && self.distinct.starts_with(&expected_prefix)
+            && self.relations.starts_with(&expected_prefix)
     }
 }
 
@@ -136,14 +172,15 @@ pub struct EntityNamekitReference {
 /// Mandatory metadata for persisted entity artifacts.
 ///
 /// Invariant I03 requires deterministic local runs. I04 requires every
-/// workbench artifact to record profile, strategy, registry, input, and
-/// artifact hashes. Optional patch/namekit hashes are included because I21
-/// makes them part of cache-hit identity when those inputs exist.
+/// workbench artifact to record profile, strategy, registry, input, patch
+/// namespace, and artifact hashes. Optional patch/namekit hashes are included
+/// because I21 makes them part of cache-hit identity when those inputs exist.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct EntityArtifactMetadata {
     pub profile: EntityProfileReference,
     pub strategy: EntityStrategyReference,
     pub registry_snapshot: EntityRegistrySnapshot,
+    pub patch_namespace: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input: Option<EntityInputReference>,
     #[serde(default)]

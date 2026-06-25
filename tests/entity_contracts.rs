@@ -6,7 +6,7 @@ use canon::entity::{
     CANON_ENTITY_SOLVE_VERSION, ENTITY_ARTIFACT_VERSIONS, ENTITY_GATE_IDS, ENTITY_INVARIANT_IDS,
     ENTITY_REFUSAL_CODES, EntityArtifactHeader, EntityArtifactMetadata, EntityCacheKeyMaterial,
     EntityDeterministicSummary, EntityInputReference, EntityNamekitReference,
-    EntityPatchSetReference, EntityProfileReference, EntityRegistrySnapshot,
+    EntityPatchNamespaces, EntityPatchSetReference, EntityProfileReference, EntityRegistrySnapshot,
     EntityStrategyReference,
 };
 use serde_json::json;
@@ -101,6 +101,7 @@ fn entity_profile_reference_requires_identity_semantics_fields() {
         entity_type: "tenant_label".to_string(),
         identity_semantics: "canonical_display_label".to_string(),
         canonical_type: "tenant_label".to_string(),
+        patch_namespaces: cmbs_patch_namespaces(),
         content_hash: Some("blake3:profile".to_string()),
     };
     assert!(complete.is_complete());
@@ -121,6 +122,7 @@ fn entity_artifact_metadata_serializes_required_hash_fields() {
         value["registry_snapshot"]["lookup_snapshot_hash"],
         "blake3:registry"
     );
+    assert_eq!(value["patch_namespace"], "cmbs_tenant_label.aliases");
     assert_eq!(value["input"]["content_hash"], "blake3:input");
     assert_eq!(value["patch_set"]["content_hash"], "blake3:patch");
     assert_eq!(value["namekit"]["content_hash"], "blake3:namekit");
@@ -188,6 +190,7 @@ fn sample_metadata() -> EntityArtifactMetadata {
             entity_type: "tenant_label".to_string(),
             identity_semantics: "canonical_display_label".to_string(),
             canonical_type: "tenant_label".to_string(),
+            patch_namespaces: cmbs_patch_namespaces(),
             content_hash: Some("blake3:profile".to_string()),
         },
         strategy: EntityStrategyReference {
@@ -202,6 +205,7 @@ fn sample_metadata() -> EntityArtifactMetadata {
             lookup_snapshot_hash: "blake3:registry".to_string(),
             sidecar_snapshot_hash: Some("blake3:sidecars".to_string()),
         },
+        patch_namespace: "cmbs_tenant_label.aliases".to_string(),
         input: Some(EntityInputReference {
             row_count: 500_000,
             content_hash: "blake3:input".to_string(),
@@ -216,5 +220,13 @@ fn sample_metadata() -> EntityArtifactMetadata {
             content_hash: "blake3:namekit".to_string(),
         }),
         artifact_content_hash: "blake3:artifact".to_string(),
+    }
+}
+
+fn cmbs_patch_namespaces() -> EntityPatchNamespaces {
+    EntityPatchNamespaces {
+        aliases: "cmbs_tenant_label.aliases".to_string(),
+        distinct: "cmbs_tenant_label.distinct".to_string(),
+        relations: "cmbs_tenant_label.relations".to_string(),
     }
 }

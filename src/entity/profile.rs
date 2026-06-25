@@ -5,7 +5,7 @@
 //! not perform matching, candidate generation, or promotion.
 
 use crate::Refusal;
-use crate::entity::{EntityProfileReference, error::EntityRefusalKind};
+use crate::entity::{EntityPatchNamespaces, EntityProfileReference, error::EntityRefusalKind};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -74,7 +74,7 @@ impl EntityProfileDocument {
         if self.evidence.relation_hints.is_empty() {
             missing.push("evidence.relation_hints");
         }
-        if self.patch_namespaces.is_incomplete() {
+        if !self.patch_namespaces.is_complete() {
             missing.push("patch_namespaces");
         }
 
@@ -100,6 +100,7 @@ impl EntityProfileDocument {
             entity_type: self.entity_type.clone(),
             identity_semantics: self.identity_semantics.clone(),
             canonical_type: self.canonical_type.clone(),
+            patch_namespaces: self.patch_namespaces.clone(),
             content_hash: None,
         }
     }
@@ -130,6 +131,21 @@ impl EntityProfileDocument {
                 "canonical_type",
                 actual.canonical_type.as_str(),
                 expected.canonical_type.as_str(),
+            ),
+            (
+                "patch_namespaces.aliases",
+                actual.patch_namespaces.aliases.as_str(),
+                expected.patch_namespaces.aliases.as_str(),
+            ),
+            (
+                "patch_namespaces.distinct",
+                actual.patch_namespaces.distinct.as_str(),
+                expected.patch_namespaces.distinct.as_str(),
+            ),
+            (
+                "patch_namespaces.relations",
+                actual.patch_namespaces.relations.as_str(),
+                expected.patch_namespaces.relations.as_str(),
             ),
         ]
         .into_iter()
@@ -269,22 +285,203 @@ pub struct EntityOperatorSpec {
     pub params: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct EntityPatchNamespaces {
-    #[serde(default)]
-    pub aliases: String,
-    #[serde(default)]
-    pub distinct: String,
-    #[serde(default)]
-    pub relations: String,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityProfileFirewall {
+    pub profile: EntityProfileReference,
+    pub strategy_content_hash: String,
+    pub registry_snapshot_hash: String,
+    pub patch_namespace: String,
 }
 
-impl EntityPatchNamespaces {
-    fn is_incomplete(&self) -> bool {
-        self.aliases.trim().is_empty()
-            || self.distinct.trim().is_empty()
-            || self.relations.trim().is_empty()
+impl EntityProfileFirewall {
+    pub fn new(
+        profile: &EntityProfileDocument,
+        strategy_content_hash: impl Into<String>,
+        registry_snapshot_hash: impl Into<String>,
+        patch_namespace: impl Into<String>,
+    ) -> Result<Self, EntityProfileError> {
+        let firewall = Self {
+            profile: profile.to_reference(),
+            strategy_content_hash: strategy_content_hash.into(),
+            registry_snapshot_hash: registry_snapshot_hash.into(),
+            patch_namespace: patch_namespace.into(),
+        };
+        firewall.validate()?;
+        Ok(firewall)
     }
+
+    pub fn validate(&self) -> Result<(), EntityProfileError> {
+        let mut missing = Vec::new();
+        if self.profile.id.trim().is_empty() {
+            missing.push("profile.id");
+        }
+        if self.profile.version.trim().is_empty() {
+            missing.push("profile.version");
+        }
+        if self.profile.entity_type.trim().is_empty() {
+            missing.push("profile.entity_type");
+        }
+        if self.profile.identity_semantics.trim().is_empty() {
+            missing.push("profile.identity_semantics");
+        }
+        if self.profile.canonical_type.trim().is_empty() {
+            missing.push("profile.canonical_type");
+        }
+        if self.strategy_content_hash.trim().is_empty() {
+            missing.push("strategy_content_hash");
+        }
+        if self.registry_snapshot_hash.trim().is_empty() {
+            missing.push("registry_snapshot_hash");
+        }
+        if self.patch_namespace.trim().is_empty() {
+            missing.push("patch_namespace");
+        }
+        if !self.profile.patch_namespaces.is_complete() {
+            missing.push("profile.patch_namespaces");
+        }
+
+        if !missing.is_empty() {
+            return Err(EntityProfileError::new(
+                EntityRefusalKind::ArtifactContract,
+                "Entity artifact firewall metadata is incomplete",
+                json!({ "missing": missing }),
+            ));
+        }
+
+        let expected_prefix = format!("{}.", self.profile.id);
+        if !self.patch_namespace.starts_with(&expected_prefix) {
+            return Err(EntityProfileError::new(
+                EntityRefusalKind::Profile,
+                "Entity patch namespace must stay inside the profile firewall",
+                json!({
+                    "profile": self.profile.id,
+                    "patch_namespace": self.patch_namespace,
+                    "expected_prefix": expected_prefix
+                }),
+            ));
+        }
+        if !self
+            .profile
+            .patch_namespaces
+            .matches_profile_root(&self.profile.id)
+        {
+            return Err(EntityProfileError::new(
+                EntityRefusalKind::Profile,
+                "Entity profile patch namespaces must stay inside the profile firewall",
+                json!({
+                    "profile": self.profile.id,
+                    "patch_namespaces": self.profile.patch_namespaces,
+                    "expected_prefix": expected_prefix
+                }),
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub fn validate_same_as_reuse(
+        &self,
+        target: &EntityProfileFirewall,
+    ) -> Result<(), EntityProfileError> {
+        self.validate()?;
+        target.validate()?;
+
+        let mismatches = self.scope_mismatches(target);
+        if mismatches.is_empty() {
+            Ok(())
+        } else {
+            Err(EntityProfileError::new(
+                EntityRefusalKind::Profile,
+                "Cross-profile same-as reuse is not allowed",
+                json!({
+                    "mode": "same_as",
+                    "mismatches": mismatches,
+                    "recovery": "Emit a relation hint handoff instead of merging scoped IDs"
+                }),
+            ))
+        }
+    }
+
+    pub fn relation_handoff(
+        &self,
+        target: &EntityProfileFirewall,
+        relation: impl Into<String>,
+    ) -> Result<EntityProfileRelationHandoff, EntityProfileError> {
+        self.validate()?;
+        target.validate()?;
+
+        let relation = relation.into().trim().to_string();
+        if relation.is_empty() || relation == "same_as" || relation == "same-as" {
+            return Err(EntityProfileError::new(
+                EntityRefusalKind::Profile,
+                "Entity relation handoff must not authorize same-as merge",
+                json!({ "relation": relation }),
+            ));
+        }
+
+        Ok(EntityProfileRelationHandoff {
+            relation,
+            source_profile: self.profile.clone(),
+            target_profile: target.profile.clone(),
+            source_patch_namespace: self.patch_namespace.clone(),
+            target_patch_namespace: target.patch_namespace.clone(),
+            merge_authorized: false,
+        })
+    }
+
+    fn scope_mismatches(&self, target: &EntityProfileFirewall) -> Vec<serde_json::Value> {
+        [
+            (
+                "profile",
+                self.profile.id.as_str(),
+                target.profile.id.as_str(),
+            ),
+            (
+                "profile_version",
+                self.profile.version.as_str(),
+                target.profile.version.as_str(),
+            ),
+            (
+                "entity_type",
+                self.profile.entity_type.as_str(),
+                target.profile.entity_type.as_str(),
+            ),
+            (
+                "identity_semantics",
+                self.profile.identity_semantics.as_str(),
+                target.profile.identity_semantics.as_str(),
+            ),
+            (
+                "canonical_type",
+                self.profile.canonical_type.as_str(),
+                target.profile.canonical_type.as_str(),
+            ),
+            (
+                "patch_namespace",
+                self.patch_namespace.as_str(),
+                target.patch_namespace.as_str(),
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(field, source, target)| {
+            (source != target).then_some(json!({
+                "field": field,
+                "source": source,
+                "target": target
+            }))
+        })
+        .collect()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityProfileRelationHandoff {
+    pub relation: String,
+    pub source_profile: EntityProfileReference,
+    pub target_profile: EntityProfileReference,
+    pub source_patch_namespace: String,
+    pub target_patch_namespace: String,
+    pub merge_authorized: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
