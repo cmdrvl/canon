@@ -120,10 +120,13 @@ fn fingerprint_ngrams(mut ngrams: Vec<String>, width: usize) -> (Vec<String>, Ve
     ngrams.sort();
     ngrams.dedup();
     let reasons = vec![
-        NamekitReason::new(ReasonCode::NgramFingerprintCollision, ReasonStage::Fingerprint)
-            .with_source(SourceTechnique::IngEntityMatchingModel)
-            .with_detail("operation", "ngram_fingerprint")
-            .with_detail("width", width.to_string()),
+        NamekitReason::new(
+            ReasonCode::NgramFingerprintCollision,
+            ReasonStage::Fingerprint,
+        )
+        .with_source(SourceTechnique::IngEntityMatchingModel)
+        .with_detail("operation", "ngram_fingerprint")
+        .with_detail("width", width.to_string()),
     ];
 
     (ngrams, reasons)
