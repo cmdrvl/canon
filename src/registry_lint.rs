@@ -1,9 +1,12 @@
 use crate::{
     Refusal,
     org::types::{AnchorValue, CannotLinkFact, PendingClusterRecord, RowPair, TrustedAnchorRecord},
-    strategy_registry::{StrategyRegistryEntry, StrategySchemaShape},
+    strategy_registry::{
+        StrategyAttestationGrade, StrategyEntryKey, StrategyEntryStatus, StrategyRegistryEntry,
+        StrategySchemaShape,
+    },
 };
-use rusqlite::Connection;
+use rusqlite::{Connection, Error as SqliteError};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
@@ -693,11 +696,7 @@ fn check_index_status(context: &mut LintContext, mapping_files: &[PathBuf]) {
         }
     };
 
-    let stored_version = conn.query_row(
-        "SELECT value FROM metadata WHERE key = 'version'",
-        [],
-        |row| row.get::<_, String>(0),
-    );
+    let stored_version = read_index_metadata_value(&conn, "version");
     match stored_version {
         Ok(stored) if stored != version => context.finding(
             RegistryLintSeverity::Info,
@@ -727,11 +726,7 @@ fn check_index_status(context: &mut LintContext, mapping_files: &[PathBuf]) {
             .chain(std::iter::once(&registry_json_path)),
     );
     if let Some(current_max_mtime) = current_max_mtime {
-        let stored_max_mtime = conn.query_row(
-            "SELECT value FROM metadata WHERE key = 'max_mtime'",
-            [],
-            |row| row.get::<_, String>(0),
-        );
+        let stored_max_mtime = read_index_metadata_value(&conn, "max_mtime");
         if let Ok(stored) = stored_max_mtime
             && stored
                 .parse::<u64>()
@@ -806,7 +801,7 @@ fn check_strategy_entry(
     entry: &StrategyRegistryEntry,
 ) {
     for (field, value) in [
-        ("schema_fingerprint", entry.schema_fingerprint.as_str()),
+        ("entry_schema_version", entry.entry_schema_version.as_str()),
         ("skill_hash", entry.skill_hash.as_str()),
         ("script.id", entry.script.id.as_str()),
         ("script.path", entry.script.path.as_str()),
@@ -827,62 +822,196 @@ fn check_strategy_entry(
         }
     }
 
-    for (proof, content_hash, proof_path, decision) in [
-        (
-            "verify",
-            &entry.proofs.verify.content_hash,
-            &entry.proofs.verify.path,
-            &entry.proofs.verify.decision,
-        ),
-        (
-            "assess",
-            &entry.proofs.assess.content_hash,
-            &entry.proofs.assess.path,
-            &entry.proofs.assess.decision,
-        ),
-        (
-            "airlock",
-            &entry.proofs.airlock.content_hash,
-            &entry.proofs.airlock.path,
-            &entry.proofs.airlock.decision,
-        ),
-    ] {
-        if content_hash.trim().is_empty()
-            || proof_path.trim().is_empty()
-            || decision.trim().is_empty()
-        {
-            context.finding(
-                RegistryLintSeverity::Error,
-                "strategy_proofs",
-                "strategy_proof_incomplete",
-                format!("Strategy entry {entry_order} has incomplete {proof} proof reference"),
-                FindingLocation::path(path),
-                json!({
-                    "entry_order": entry_order,
-                    "proof": proof,
-                    "has_path": !proof_path.trim().is_empty(),
-                    "has_content_hash": !content_hash.trim().is_empty(),
-                    "has_decision": !decision.trim().is_empty(),
-                }),
-                "Rerun verify, assess, and airlock, then register the strategy again",
-            );
-        }
-    }
-
-    let actual_fingerprint = hash_json(&entry.schema);
-    if actual_fingerprint != entry.schema_fingerprint {
+    if entry.entry_schema_version != "canon_strategy_entry.v1" {
         context.finding(
             RegistryLintSeverity::Error,
-            "strategy_fingerprint",
-            "schema_fingerprint_mismatch",
-            format!("Strategy entry {entry_order} schema_fingerprint does not match schema bytes"),
+            "strategy_metadata",
+            "strategy_schema_version_invalid",
+            format!("Strategy entry {entry_order} has invalid entry_schema_version"),
             FindingLocation::path(path),
             json!({
                 "entry_order": entry_order,
-                "expected": entry.schema_fingerprint,
-                "actual": actual_fingerprint,
+                "entry_schema_version": entry.entry_schema_version,
             }),
-            "Regenerate the strategy entry with canon strategy register",
+            "Rewrite the strategy entry with canon strategy register/update/promote/deprecate",
+        );
+    }
+
+    if entry.key.skill_hash() != entry.skill_hash {
+        context.finding(
+            RegistryLintSeverity::Error,
+            "strategy_metadata",
+            "strategy_key_skill_hash_mismatch",
+            format!("Strategy entry {entry_order} key skill_hash does not match entry skill_hash"),
+            FindingLocation::path(path),
+            json!({
+                "entry_order": entry_order,
+                "key_skill_hash": entry.key.skill_hash(),
+                "skill_hash": entry.skill_hash,
+            }),
+            "Rewrite the strategy entry with canon strategy register/update/promote/deprecate",
+        );
+    }
+
+    match &entry.key {
+        StrategyEntryKey::Schema {
+            schema_fingerprint, ..
+        } => {
+            let Some(schema) = entry.schema.as_ref() else {
+                context.finding(
+                    RegistryLintSeverity::Error,
+                    "strategy_metadata",
+                    "strategy_schema_missing",
+                    format!("Strategy entry {entry_order} has a schema key but no schema"),
+                    FindingLocation::path(path),
+                    json!({ "entry_order": entry_order }),
+                    "Rewrite the schema-keyed entry with canon strategy register",
+                );
+                return;
+            };
+            let actual_fingerprint = hash_json(schema);
+            if actual_fingerprint != *schema_fingerprint {
+                context.finding(
+                    RegistryLintSeverity::Error,
+                    "strategy_fingerprint",
+                    "schema_fingerprint_mismatch",
+                    format!(
+                        "Strategy entry {entry_order} schema_fingerprint does not match schema bytes"
+                    ),
+                    FindingLocation::path(path),
+                    json!({
+                        "entry_order": entry_order,
+                        "expected": schema_fingerprint,
+                        "actual": actual_fingerprint,
+                    }),
+                    "Regenerate the strategy entry with canon strategy register",
+                );
+            }
+        }
+        StrategyEntryKey::Task { task, .. } => {
+            if task.trim().is_empty() {
+                context.finding(
+                    RegistryLintSeverity::Error,
+                    "strategy_metadata",
+                    "strategy_task_empty",
+                    format!("Strategy entry {entry_order} has an empty task key"),
+                    FindingLocation::path(path),
+                    json!({ "entry_order": entry_order }),
+                    "Register the task entry again with a non-empty --task",
+                );
+            }
+        }
+    }
+
+    match entry.grade {
+        StrategyAttestationGrade::ProofAttested => {
+            let Some(proofs) = entry.proofs.as_ref() else {
+                context.finding(
+                    RegistryLintSeverity::Error,
+                    "strategy_proofs",
+                    "strategy_proof_incomplete",
+                    format!("Strategy entry {entry_order} is proof-attested but has no proofs"),
+                    FindingLocation::path(path),
+                    json!({ "entry_order": entry_order }),
+                    "Rerun verify, assess, and airlock, then run canon strategy promote or register",
+                );
+                return;
+            };
+            for (proof, content_hash, proof_path, decision) in [
+                (
+                    "verify",
+                    &proofs.verify.content_hash,
+                    &proofs.verify.path,
+                    &proofs.verify.decision,
+                ),
+                (
+                    "assess",
+                    &proofs.assess.content_hash,
+                    &proofs.assess.path,
+                    &proofs.assess.decision,
+                ),
+                (
+                    "airlock",
+                    &proofs.airlock.content_hash,
+                    &proofs.airlock.path,
+                    &proofs.airlock.decision,
+                ),
+            ] {
+                if content_hash.trim().is_empty()
+                    || proof_path.trim().is_empty()
+                    || decision.trim().is_empty()
+                {
+                    context.finding(
+                        RegistryLintSeverity::Error,
+                        "strategy_proofs",
+                        "strategy_proof_incomplete",
+                        format!(
+                            "Strategy entry {entry_order} has incomplete {proof} proof reference"
+                        ),
+                        FindingLocation::path(path),
+                        json!({
+                            "entry_order": entry_order,
+                            "proof": proof,
+                            "has_path": !proof_path.trim().is_empty(),
+                            "has_content_hash": !content_hash.trim().is_empty(),
+                            "has_decision": !decision.trim().is_empty(),
+                        }),
+                        "Rerun verify, assess, and airlock, then run canon strategy promote or register",
+                    );
+                }
+            }
+        }
+        StrategyAttestationGrade::OperatorAttested => {
+            let Some(attestation) = entry.operator_attestation.as_ref() else {
+                context.finding(
+                    RegistryLintSeverity::Error,
+                    "strategy_attestation",
+                    "strategy_operator_attestation_missing",
+                    format!(
+                        "Strategy entry {entry_order} is operator-attested but has no attestation"
+                    ),
+                    FindingLocation::path(path),
+                    json!({ "entry_order": entry_order }),
+                    "Update the entry with canon strategy update or register it again",
+                );
+                return;
+            };
+            for (field, value) in [
+                ("operator", attestation.operator.as_str()),
+                ("attested_at", attestation.attested_at.as_str()),
+                ("reason", attestation.reason.as_str()),
+                (
+                    "script_content_hash",
+                    attestation.script_content_hash.as_str(),
+                ),
+                ("attestation_hash", attestation.attestation_hash.as_str()),
+            ] {
+                if value.trim().is_empty() {
+                    context.finding(
+                        RegistryLintSeverity::Error,
+                        "strategy_attestation",
+                        "strategy_operator_attestation_incomplete",
+                        format!(
+                            "Strategy entry {entry_order} has incomplete operator attestation field '{field}'"
+                        ),
+                        FindingLocation::path(path),
+                        json!({ "entry_order": entry_order, "field": field }),
+                        "Update the entry with canon strategy update or register it again",
+                    );
+                }
+            }
+        }
+    }
+
+    if entry.status == StrategyEntryStatus::Deprecated && entry.deprecation.is_none() {
+        context.finding(
+            RegistryLintSeverity::Error,
+            "strategy_lifecycle",
+            "strategy_deprecation_missing",
+            format!("Strategy entry {entry_order} is deprecated but has no deprecation metadata"),
+            FindingLocation::path(path),
+            json!({ "entry_order": entry_order }),
+            "Deprecate the entry again with canon strategy deprecate",
         );
     }
 }
@@ -891,23 +1020,25 @@ fn check_duplicate_strategy_keys(
     context: &mut LintContext,
     records: &[(StrategyRegistryEntry, String, usize)],
 ) {
-    let mut first_by_key = BTreeMap::<(String, String), (&str, usize)>::new();
+    let mut first_by_key = BTreeMap::<StrategyEntryKey, (&str, usize)>::new();
     for (entry, source_file, entry_order) in records {
-        let key = (entry.schema_fingerprint.clone(), entry.skill_hash.clone());
+        if entry.status != StrategyEntryStatus::Active {
+            continue;
+        }
+        let key = entry.key.clone();
         if let Some((first_file, first_order)) = first_by_key.get(&key) {
             context.finding(
                 RegistryLintSeverity::Warning,
                 "strategy_duplicates",
                 "duplicate_strategy_key",
-                "Duplicate (schema_fingerprint, skill_hash) strategy key is shadowed by precedence",
+                "Duplicate active strategy key is shadowed by precedence",
                 FindingLocation::default(),
                 json!({
-                    "schema_fingerprint": key.0,
-                    "skill_hash": key.1,
+                    "key": key,
                     "first": { "source_file": first_file, "entry_order": first_order },
                     "shadowed": { "source_file": source_file, "entry_order": entry_order },
                 }),
-                "Remove shadowed strategy entries, then rerun canon registry lint",
+                "Run canon strategy deprecate on shadowed active entries, then rerun canon registry lint",
             );
         } else {
             first_by_key.insert(key, (source_file, *entry_order));
@@ -1305,6 +1436,15 @@ fn manifest_hash(context: &mut LintContext, paths: &[PathBuf], label: &str) -> O
     Some(format!("blake3:{}", blake3::hash(&manifest).to_hex()))
 }
 
+fn read_index_metadata_value(conn: &Connection, key: &str) -> rusqlite::Result<String> {
+    let mut statement = conn.prepare("SELECT value FROM metadata WHERE key = ?1")?;
+    let mut rows = statement.query([key])?;
+    match rows.next()? {
+        Some(row) => row.get::<_, String>(0),
+        None => Err(SqliteError::QueryReturnedNoRows),
+    }
+}
+
 fn max_json_mtime<'a>(paths: impl Iterator<Item = &'a PathBuf>) -> Option<u64> {
     paths
         .filter_map(|path| fs::metadata(path).ok())
@@ -1540,7 +1680,7 @@ mod tests {
             }],
         };
         let mut dirty = strategy_entry(&dirty_schema, "skill-a", good_fingerprint, "", "");
-        dirty.proofs.verify.content_hash.clear();
+        dirty.proofs.as_mut().unwrap().verify.content_hash.clear();
         fs::write(
             strategy_dir.join("entries.json"),
             serde_json::to_string_pretty(&vec![good, dirty])?,
@@ -1661,8 +1801,14 @@ mod tests {
         script_hash: &str,
     ) -> StrategyRegistryEntry {
         StrategyRegistryEntry {
-            schema_fingerprint,
-            schema: schema.clone(),
+            entry_schema_version: "canon_strategy_entry.v1".to_string(),
+            key: StrategyEntryKey::Schema {
+                schema_fingerprint,
+                skill_hash: skill_hash.to_string(),
+            },
+            schema: Some(schema.clone()),
+            grade: StrategyAttestationGrade::ProofAttested,
+            status: StrategyEntryStatus::Active,
             skill_hash: skill_hash.to_string(),
             script: FrozenScript {
                 id: script_id.to_string(),
@@ -1670,11 +1816,13 @@ mod tests {
                 language: "python".to_string(),
                 content_hash: script_hash.to_string(),
             },
-            proofs: StrategyProofs {
+            proofs: Some(StrategyProofs {
                 verify: proof("verify"),
                 assess: proof("assess"),
                 airlock: proof("airlock"),
-            },
+            }),
+            operator_attestation: None,
+            deprecation: None,
             rule_id: "RULE".to_string(),
         }
     }

@@ -24,8 +24,10 @@ use crate::cli::{
     RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryLintCli,
     RegistryLintProfile, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
     RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode,
-    ResolveCli, ResolveEmitMode, StrategyAuditCli, StrategyCommand, StrategyDiffCli,
-    StrategyProfileCli, StrategyRegisterCli, StrategyResolveCli, StrategySubcommand,
+    ResolveCli, ResolveEmitMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
+    StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
+    StrategyProfileCli, StrategyPromoteCli, StrategyRegisterCli, StrategyResolveCli,
+    StrategyStatusArg, StrategySubcommand, StrategyUpdateCli,
 };
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
@@ -189,6 +191,11 @@ fn run_strategy_command(command: &StrategyCommand) -> Result<u8, Box<dyn Error>>
         StrategySubcommand::Audit(audit) => run_strategy_audit_command(audit),
         StrategySubcommand::Resolve(resolve) => run_strategy_resolve_command(resolve),
         StrategySubcommand::Register(register) => run_strategy_register_command(register),
+        StrategySubcommand::Update(update) => run_strategy_update_command(update),
+        StrategySubcommand::Deprecate(deprecate) => run_strategy_deprecate_command(deprecate),
+        StrategySubcommand::Promote(promote) => run_strategy_promote_command(promote),
+        StrategySubcommand::List(list) => run_strategy_list_command(list),
+        StrategySubcommand::Explain(explain) => run_strategy_explain_command(explain),
         StrategySubcommand::Diff(diff) => run_strategy_diff_command(diff),
     }
 }
@@ -224,12 +231,21 @@ fn run_strategy_audit_command(audit: &StrategyAuditCli) -> Result<u8, Box<dyn Er
 }
 
 fn run_strategy_resolve_command(resolve: &StrategyResolveCli) -> Result<u8, Box<dyn Error>> {
-    match strategy_registry::resolve(
-        &resolve.registry,
-        &resolve.schema,
-        resolve.skill.as_deref(),
-        resolve.skill_hash.as_deref(),
-    ) {
+    let key = match strategy_key_selector(resolve.schema.as_deref(), resolve.task.as_deref()) {
+        Ok(key) => key,
+        Err(refusal) => {
+            return emit_strategy_refusal(
+                refusal,
+                matches!(resolve.emit, RegistryEmitMode::Summary),
+            );
+        }
+    };
+    match strategy_registry::resolve(strategy_registry::StrategyResolveRequest {
+        registry_dir: &resolve.registry,
+        key,
+        skill_path: resolve.skill.as_deref(),
+        skill_hash: resolve.skill_hash.as_deref(),
+    }) {
         Ok(output) => {
             match resolve.emit {
                 RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
@@ -244,31 +260,210 @@ fn run_strategy_resolve_command(resolve: &StrategyResolveCli) -> Result<u8, Box<
 }
 
 fn run_strategy_register_command(register: &StrategyRegisterCli) -> Result<u8, Box<dyn Error>> {
+    let key = match strategy_key_selector(register.schema.as_deref(), register.task.as_deref()) {
+        Ok(key) => key,
+        Err(refusal) => {
+            return emit_strategy_refusal(
+                refusal,
+                matches!(register.emit, RegistryEmitMode::Summary),
+            );
+        }
+    };
     let request = strategy_registry::StrategyRegisterRequest {
         registry_dir: &register.registry,
-        schema_path: &register.schema,
+        key,
         skill_path: register.skill.as_deref(),
         skill_hash: register.skill_hash.as_deref(),
         script_path: &register.script,
         script_id: &register.script_id,
         language: &register.language,
-        verify_path: &register.verify,
-        assess_path: &register.assess,
-        airlock_path: &register.airlock,
+        grade: strategy_grade(register.grade),
+        operator: register.operator.as_deref(),
+        reason: register.reason.as_deref(),
+        attested_at: register.attested_at.as_deref(),
+        verify_path: register.verify.as_deref(),
+        assess_path: register.assess.as_deref(),
+        airlock_path: register.airlock.as_deref(),
         next_version: &register.next_version,
         rule_id: register.rule_id.as_deref(),
     };
 
     match strategy_registry::register(request) {
+        Ok(output) => emit_strategy_mutation_output(
+            &output,
+            output.render_summary(),
+            register.emit.clone(),
+            register.no_witness,
+        ),
+        Err(refusal) => {
+            emit_strategy_refusal(refusal, matches!(register.emit, RegistryEmitMode::Summary))
+        }
+    }
+}
+
+fn run_strategy_update_command(update: &StrategyUpdateCli) -> Result<u8, Box<dyn Error>> {
+    let key = match strategy_key_selector(update.schema.as_deref(), update.task.as_deref()) {
+        Ok(key) => key,
+        Err(refusal) => {
+            return emit_strategy_refusal(
+                refusal,
+                matches!(update.emit, RegistryEmitMode::Summary),
+            );
+        }
+    };
+    let request = strategy_registry::StrategyLifecycleRequest {
+        registry_dir: &update.registry,
+        key,
+        skill_path: update.skill.as_deref(),
+        skill_hash: update.skill_hash.as_deref(),
+        script_path: Some(&update.script),
+        script_id: Some(&update.script_id),
+        language: Some(&update.language),
+        operator: update.operator.as_deref(),
+        reason: update.reason.as_deref(),
+        attested_at: update.attested_at.as_deref(),
+        verify_path: update.verify.as_deref(),
+        assess_path: update.assess.as_deref(),
+        airlock_path: update.airlock.as_deref(),
+        next_version: &update.next_version,
+    };
+    match strategy_registry::update(request) {
+        Ok(output) => emit_strategy_mutation_output(
+            &output,
+            output.render_summary(),
+            update.emit.clone(),
+            update.no_witness,
+        ),
+        Err(refusal) => {
+            emit_strategy_refusal(refusal, matches!(update.emit, RegistryEmitMode::Summary))
+        }
+    }
+}
+
+fn run_strategy_deprecate_command(deprecate: &StrategyDeprecateCli) -> Result<u8, Box<dyn Error>> {
+    let key = match strategy_key_selector(deprecate.schema.as_deref(), deprecate.task.as_deref()) {
+        Ok(key) => key,
+        Err(refusal) => {
+            return emit_strategy_refusal(
+                refusal,
+                matches!(deprecate.emit, RegistryEmitMode::Summary),
+            );
+        }
+    };
+    let request = strategy_registry::StrategyLifecycleRequest {
+        registry_dir: &deprecate.registry,
+        key,
+        skill_path: deprecate.skill.as_deref(),
+        skill_hash: deprecate.skill_hash.as_deref(),
+        script_path: None,
+        script_id: None,
+        language: None,
+        operator: Some(&deprecate.operator),
+        reason: Some(&deprecate.reason),
+        attested_at: deprecate.attested_at.as_deref(),
+        verify_path: None,
+        assess_path: None,
+        airlock_path: None,
+        next_version: &deprecate.next_version,
+    };
+    match strategy_registry::deprecate(request) {
+        Ok(output) => emit_strategy_mutation_output(
+            &output,
+            output.render_summary(),
+            deprecate.emit.clone(),
+            deprecate.no_witness,
+        ),
+        Err(refusal) => {
+            emit_strategy_refusal(refusal, matches!(deprecate.emit, RegistryEmitMode::Summary))
+        }
+    }
+}
+
+fn run_strategy_promote_command(promote: &StrategyPromoteCli) -> Result<u8, Box<dyn Error>> {
+    let key = match strategy_key_selector(promote.schema.as_deref(), promote.task.as_deref()) {
+        Ok(key) => key,
+        Err(refusal) => {
+            return emit_strategy_refusal(
+                refusal,
+                matches!(promote.emit, RegistryEmitMode::Summary),
+            );
+        }
+    };
+    let request = strategy_registry::StrategyLifecycleRequest {
+        registry_dir: &promote.registry,
+        key,
+        skill_path: promote.skill.as_deref(),
+        skill_hash: promote.skill_hash.as_deref(),
+        script_path: None,
+        script_id: None,
+        language: None,
+        operator: None,
+        reason: None,
+        attested_at: None,
+        verify_path: Some(&promote.verify),
+        assess_path: Some(&promote.assess),
+        airlock_path: Some(&promote.airlock),
+        next_version: &promote.next_version,
+    };
+    match strategy_registry::promote(request) {
+        Ok(output) => emit_strategy_mutation_output(
+            &output,
+            output.render_summary(),
+            promote.emit.clone(),
+            promote.no_witness,
+        ),
+        Err(refusal) => {
+            emit_strategy_refusal(refusal, matches!(promote.emit, RegistryEmitMode::Summary))
+        }
+    }
+}
+
+fn run_strategy_list_command(list: &StrategyListCli) -> Result<u8, Box<dyn Error>> {
+    let key_type = list.key_type.map(strategy_key_type);
+    match strategy_registry::list(strategy_registry::StrategyCatalogRequest {
+        registry_dir: &list.registry,
+        key_type,
+        grade: list.grade.map(strategy_grade),
+        status: list.status.map(strategy_status),
+    }) {
         Ok(output) => {
-            match register.emit {
+            match list.emit {
                 RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
                 RegistryEmitMode::Summary => println!("{}", output.render_summary()),
             }
             Ok(0)
         }
         Err(refusal) => {
-            emit_strategy_refusal(refusal, matches!(register.emit, RegistryEmitMode::Summary))
+            emit_strategy_refusal(refusal, matches!(list.emit, RegistryEmitMode::Summary))
+        }
+    }
+}
+
+fn run_strategy_explain_command(explain: &StrategyExplainCli) -> Result<u8, Box<dyn Error>> {
+    let key = match strategy_key_selector(explain.schema.as_deref(), explain.task.as_deref()) {
+        Ok(key) => key,
+        Err(refusal) => {
+            return emit_strategy_refusal(
+                refusal,
+                matches!(explain.emit, RegistryEmitMode::Summary),
+            );
+        }
+    };
+    match strategy_registry::explain(strategy_registry::StrategyExplainRequest {
+        registry_dir: &explain.registry,
+        key,
+        skill_path: explain.skill.as_deref(),
+        skill_hash: explain.skill_hash.as_deref(),
+    }) {
+        Ok(output) => {
+            match explain.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            emit_strategy_refusal(refusal, matches!(explain.emit, RegistryEmitMode::Summary))
         }
     }
 }
@@ -296,6 +491,80 @@ fn emit_strategy_refusal(refusal: Refusal, emit_summary: bool) -> Result<u8, Box
         println!("{}", serde_json::to_string(&output)?);
     }
     Ok(2)
+}
+
+fn strategy_key_selector<'a>(
+    schema: Option<&'a Path>,
+    task: Option<&'a str>,
+) -> Result<strategy_registry::StrategyKeySelector<'a>, Refusal> {
+    match (schema, task) {
+        (Some(path), None) => Ok(strategy_registry::StrategyKeySelector::Schema(path)),
+        (None, Some(task)) => Ok(strategy_registry::StrategyKeySelector::Task(task)),
+        _ => Err(Refusal::strategy_input_contract(
+            "Exactly one of --schema or --task is required",
+            serde_json::json!({
+                "has_schema": schema.is_some(),
+                "has_task": task.is_some(),
+            }),
+        )),
+    }
+}
+
+fn strategy_grade(grade: StrategyGradeArg) -> strategy_registry::StrategyAttestationGrade {
+    match grade {
+        StrategyGradeArg::OperatorAttested => {
+            strategy_registry::StrategyAttestationGrade::OperatorAttested
+        }
+        StrategyGradeArg::ProofAttested => {
+            strategy_registry::StrategyAttestationGrade::ProofAttested
+        }
+    }
+}
+
+fn strategy_status(status: StrategyStatusArg) -> strategy_registry::StrategyEntryStatus {
+    match status {
+        StrategyStatusArg::Active => strategy_registry::StrategyEntryStatus::Active,
+        StrategyStatusArg::Deprecated => strategy_registry::StrategyEntryStatus::Deprecated,
+    }
+}
+
+fn strategy_key_type(key_type: StrategyKeyTypeArg) -> &'static str {
+    match key_type {
+        StrategyKeyTypeArg::Schema => "schema",
+        StrategyKeyTypeArg::Task => "task",
+    }
+}
+
+fn emit_strategy_mutation_output<T: Serialize>(
+    output: &T,
+    summary: String,
+    emit: RegistryEmitMode,
+    no_witness: bool,
+) -> Result<u8, Box<dyn Error>> {
+    let json = serde_json::to_string(output)?;
+    append_strategy_mutation_witness(&json, no_witness);
+    match emit {
+        RegistryEmitMode::Json => println!("{json}"),
+        RegistryEmitMode::Summary => println!("{summary}"),
+    }
+    Ok(0)
+}
+
+fn append_strategy_mutation_witness(output_json: &str, no_witness: bool) {
+    let mut params = serde_json::Map::new();
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(output_json) {
+        if let Some(receipt) = value.get("receipt") {
+            params.insert("strategy_receipt".to_string(), receipt.clone());
+        }
+        if let Some(registry) = value.get("registry") {
+            params.insert("registry".to_string(), registry.clone());
+        }
+    }
+    let output_hash = witness::hash_bytes(output_json.as_bytes());
+    let record = witness::WitnessRecord::new(Vec::new(), params, &output_hash, "RESOLVED", 0);
+    if let Err(error) = witness::append_witness_record(&record, no_witness) {
+        eprintln!("Warning: witness append skipped: {error}");
+    }
 }
 
 fn run_org_command(command: &OrgCommand) -> Result<u8, Box<dyn Error>> {
@@ -1685,7 +1954,7 @@ fn run_pipeline(
 
     // Debug assert for safety net
     debug_assert!(
-        !(resolve_result.summary.resolved == 0 && resolve_result.summary.unresolved == 0),
+        resolve_result.summary.resolved + resolve_result.summary.unresolved > 0,
         "Empty input should have been caught by input module"
     );
 

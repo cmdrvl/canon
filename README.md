@@ -339,8 +339,9 @@ canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json
 canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary]
 canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 canon strategy audit --schema <PROFILE.json> --script <SCRIPT> --suite <DIR> [--emit json|summary]
-canon strategy resolve --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
-canon strategy register --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--emit json|summary]
+canon strategy resolve --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
+canon strategy register --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --grade operator-attested|proof-attested --next-version <VER> [--operator <ID> --reason <TEXT>] [--verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json>] [--emit json|summary] [--no-witness]
+canon strategy update|deprecate|promote|list|explain [OPTIONS]
 canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]
 canon org run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json|summary]
 canon org block|edge|solve|audit|promote|explain|review [OPTIONS]
@@ -395,9 +396,11 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `registry lint <DIR> [--profile standard\|org\|strategy\|auto] [--emit json\|summary]` | Preflight standard mapping, org, or strategy registry health with severity-tagged findings. |
 | `strategy profile <INPUT> [--emit json\|summary] [--max-rows <N>] [--max-bytes <N>]` | Derive a deterministic schema/profile artifact from CSV, TSV, JSONL, or NDJSON for `strategy resolve` and `strategy register`. |
 | `strategy audit --schema <JSON> --script <PATH> --suite <DIR> [--emit json\|summary]` | Run a frozen script against deterministic fixture expectations and emit a `canon_strategy_audit.v0` proof artifact. |
-| `strategy resolve --registry <DIR> --schema <JSON> --skill <PATH>\|--skill-hash <HASH>` | Resolve a schema shape plus skill hash to a frozen champion script. EXACT and COMPATIBLE exit `0`; PARTIAL and UNRESOLVED exit `1`. |
-| `strategy register --registry <DIR> --schema <JSON> --skill <PATH>\|--skill-hash <HASH> --script <PATH> --script-id <ID> --language <LANG> --verify <JSON> --assess <JSON> --airlock <JSON> --next-version <VER>` | Register a frozen script after verify, assess, and airlock proof artifacts pass. |
-| `strategy diff --old <DIR> --new <DIR> [--emit json\|summary]` | Compare frozen-script strategy registry versions by effective `(schema_fingerprint, skill_hash)` entries. |
+| `strategy resolve --registry <DIR> (--schema <JSON>\|--task <TASK>) --skill <PATH>\|--skill-hash <HASH>` | Resolve a schema or exact task key plus skill hash to a frozen champion script. Schema keys can return EXACT/COMPATIBLE/PARTIAL/UNRESOLVED; task keys return EXACT or UNRESOLVED only. |
+| `strategy register --registry <DIR> (--schema <JSON>\|--task <TASK>) --skill <PATH>\|--skill-hash <HASH> --script <PATH> --script-id <ID> --language <LANG> --grade operator-attested\|proof-attested --next-version <VER>` | Register a v1 typed strategy entry. Operator-attested entries need operator/reason and no proof artifacts; proof-attested entries require verify/assess/airlock. |
+| `strategy update|deprecate|promote` | Update an active champion, mark it deprecated without deleting history, or promote an operator-attested champion to proof-attested. Mutations emit before/after registry-hash receipts and append witness records unless `--no-witness` is passed. |
+| `strategy list|explain` | Inspect mixed schema/task strategy registries, provenance, grade, status, source file, entry order, and active-resolution behavior without hand-reading `_strategy/entries.json`. |
+| `strategy diff --old <DIR> --new <DIR> [--emit json\|summary]` | Compare frozen-script strategy registry versions by typed key plus skill hash, including grade/status/attestation changes. |
 | `org run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json\|summary]` | Run the full deterministic org-identity pipeline (block → edge → solve, optional audit + promote). |
 | `org block <ROWS> --strategy <YAML> --registry <DIR> [--emit jsonl\|summary]` | Generate candidate neighborhoods via blocking operators. |
 | `org edge <ROWS> --strategy <YAML> --candidates <JSONL> --registry <DIR> [--emit jsonl\|summary]` | Score typed evidence edges for blocked candidate pairs. |
@@ -418,7 +421,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 
 `canon registry diff`, `canon registry audit`, and `canon registry lint` exit `0` when the report succeeds and `2` on refusal. Lint findings are represented inside `canon_registry_lint.v0` rather than via exit status. `canon registry build`, `registry next-id`, `registry add-entry`, `registry mint`, and `registry default-id-scheme` exit `0` when their report or write succeeds and `2` on refusal. Provider failures from `registry build` are preserved in the JSON report and warned on stderr. `add-entry` and `mint` restore the original files if their post-write lint gate finds errors.
 
-`canon strategy profile`, `canon strategy register`, and `canon strategy diff` exit `0` when their reports or writes succeed and `2` on refusal. `canon strategy audit` exits `0` when all fixtures pass, `1` when deterministic fixture checks fail, and `2` on refusal. `canon strategy resolve` exits `0` for an EXACT or COMPATIBLE frozen-script match, `1` for PARTIAL or UNRESOLVED, and `2` on refusal.
+`canon strategy profile`, `canon strategy register`, `canon strategy update`, `canon strategy deprecate`, `canon strategy promote`, `canon strategy list`, `canon strategy explain`, and `canon strategy diff` exit `0` when their reports or writes succeed and `2` on refusal. `canon strategy audit` exits `0` when all fixtures pass, `1` when deterministic fixture checks fail, and `2` on refusal. `canon strategy resolve` exits `0` for a schema EXACT/COMPATIBLE or task EXACT match, `1` for schema PARTIAL/UNRESOLVED or task UNRESOLVED, and `2` on refusal.
 
 `canon resolve` exits `0` when every target record is matched, `1` when any target record is unmatched or ambiguous, and `2` on refusal. In `summary` mode, refusal JSON is written to stderr.
 
@@ -591,6 +594,38 @@ canon strategy register \
   --airlock evidence/airlock.json \
   --next-version 2026.05.06
 ```
+
+Save a task-keyed script that just worked, without proof artifacts:
+
+```bash
+canon strategy register \
+  --registry registries/procurement-strategies/ \
+  --task sql_lineage \
+  --skill skills/sql-lineage/SKILL.md \
+  --script scripts/sql_lineage.py \
+  --script-id sql_lineage.v1 \
+  --language python \
+  --grade operator-attested \
+  --operator "$USER" \
+  --reason "worked on reviewed sample rows" \
+  --next-version 2026.06.25
+
+canon strategy resolve \
+  --registry registries/procurement-strategies/ \
+  --task sql_lineage \
+  --skill skills/sql-lineage/SKILL.md
+
+canon strategy list \
+  --registry registries/procurement-strategies/ \
+  --key-type task
+
+canon strategy explain \
+  --registry registries/procurement-strategies/ \
+  --task sql_lineage \
+  --skill skills/sql-lineage/SKILL.md
+```
+
+Task-keyed resolution is exact: an active `(task, skill_hash)` champion returns `EXACT`; otherwise it returns `UNRESOLVED`. `strategy update`, `strategy deprecate`, and `strategy promote` mutate the registry with explicit version bumps, before/after registry-hash receipts, and witness records unless `--no-witness` is passed. Deprecation removes a champion from active resolution without deleting registry history.
 
 Review frozen-script registry changes before adoption:
 

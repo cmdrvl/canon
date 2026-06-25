@@ -849,6 +849,303 @@ fn test_strategy_register_and_resolve_cli() {
 }
 
 #[test]
+fn test_strategy_task_operator_lifecycle_cli() {
+    let registry_dir = tempdir().unwrap();
+    write_registry_metadata(registry_dir.path(), "strategy-task-test", "0.1.0", 0);
+
+    let skill_path = registry_dir.path().join("SKILL.md");
+    let script_path = registry_dir.path().join("sql_lineage.py");
+    let updated_script_path = registry_dir.path().join("sql_lineage_v2.py");
+    let verify_path = registry_dir.path().join("verify.json");
+    let assess_path = registry_dir.path().join("assess.json");
+    let airlock_path = registry_dir.path().join("airlock.json");
+    let witness_path = registry_dir.path().join("witness").join("strategy.jsonl");
+
+    std::fs::write(&skill_path, "sql lineage skill").unwrap();
+    std::fs::write(&script_path, "print('lineage v1')\n").unwrap();
+    std::fs::write(&updated_script_path, "print('lineage v2')\n").unwrap();
+    std::fs::write(&verify_path, r#"{"status":"PASS"}"#).unwrap();
+    std::fs::write(&assess_path, r#"{"decision":"PROCEED"}"#).unwrap();
+    std::fs::write(&airlock_path, r#"{"sealed":true}"#).unwrap();
+
+    let register = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .env("EPISTEMIC_WITNESS", &witness_path)
+        .args([
+            "strategy",
+            "register",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--task",
+            "sql_lineage",
+            "--skill",
+            skill_path.to_str().unwrap(),
+            "--script",
+            script_path.to_str().unwrap(),
+            "--script-id",
+            "sql-lineage.v1",
+            "--language",
+            "python",
+            "--grade",
+            "operator-attested",
+            "--operator",
+            "Zac",
+            "--reason",
+            "worked on sample rows",
+            "--attested-at",
+            "2026-06-25T12:00:00Z",
+            "--next-version",
+            "0.2.0",
+        ])
+        .assert()
+        .success();
+    let register_json: Value =
+        serde_json::from_slice(&register.get_output().stdout).expect("register JSON");
+    assert_eq!(register_json["registered"]["key"]["type"], "task");
+    assert_eq!(register_json["registered"]["task"], "sql_lineage");
+    assert_eq!(register_json["registered"]["grade"], "operator-attested");
+    assert_eq!(register_json["receipt"]["operation"], "register");
+    assert!(
+        register_json["receipt"]["before_registry_hash"]
+            .as_str()
+            .unwrap()
+            .starts_with("blake3:")
+    );
+    assert!(
+        register_json["receipt"]["after_registry_hash"]
+            .as_str()
+            .unwrap()
+            .starts_with("blake3:")
+    );
+    let witness_lines = std::fs::read_to_string(&witness_path).unwrap();
+    assert_eq!(witness_lines.lines().count(), 1);
+    assert!(witness_lines.contains("strategy_receipt"));
+
+    let resolve = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "resolve",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--task",
+            "sql_lineage",
+            "--skill",
+            skill_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let resolve_json: Value = serde_json::from_slice(&resolve.get_output().stdout).unwrap();
+    assert_eq!(resolve_json["outcome"], "EXACT");
+    assert_eq!(resolve_json["match"]["script"]["id"], "sql-lineage.v1");
+    assert_eq!(resolve_json["match"]["diagnostics"], Value::Null);
+
+    let list = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "list",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--key-type",
+            "task",
+            "--status",
+            "active",
+        ])
+        .assert()
+        .success();
+    let list_json: Value = serde_json::from_slice(&list.get_output().stdout).unwrap();
+    assert_eq!(list_json["version"], "canon_strategy_list.v0");
+    assert_eq!(list_json["entries"].as_array().unwrap().len(), 1);
+
+    let explain = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "explain",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--task",
+            "sql_lineage",
+            "--skill",
+            skill_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let explain_json: Value = serde_json::from_slice(&explain.get_output().stdout).unwrap();
+    assert_eq!(
+        explain_json["active_resolution"]["script"]["id"],
+        "sql-lineage.v1"
+    );
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .env("EPISTEMIC_WITNESS", &witness_path)
+        .args([
+            "strategy",
+            "update",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--task",
+            "sql_lineage",
+            "--skill",
+            skill_path.to_str().unwrap(),
+            "--script",
+            updated_script_path.to_str().unwrap(),
+            "--script-id",
+            "sql-lineage.v2",
+            "--language",
+            "python",
+            "--operator",
+            "Zac",
+            "--reason",
+            "tightened parser",
+            "--attested-at",
+            "2026-06-25T12:01:00Z",
+            "--next-version",
+            "0.3.0",
+            "--no-witness",
+        ])
+        .assert()
+        .success();
+    let witness_lines_after_update = std::fs::read_to_string(&witness_path).unwrap();
+    assert_eq!(witness_lines_after_update.lines().count(), 1);
+
+    let updated_resolve = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "resolve",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--task",
+            "sql_lineage",
+            "--skill",
+            skill_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let updated_resolve_json: Value =
+        serde_json::from_slice(&updated_resolve.get_output().stdout).unwrap();
+    assert_eq!(
+        updated_resolve_json["match"]["script"]["id"],
+        "sql-lineage.v2"
+    );
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .env("EPISTEMIC_WITNESS", &witness_path)
+        .args([
+            "strategy",
+            "deprecate",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--task",
+            "sql_lineage",
+            "--skill",
+            skill_path.to_str().unwrap(),
+            "--operator",
+            "Zac",
+            "--reason",
+            "retired active champion",
+            "--attested-at",
+            "2026-06-25T12:02:00Z",
+            "--next-version",
+            "0.4.0",
+        ])
+        .assert()
+        .success();
+
+    let deprecated_resolve = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "resolve",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--task",
+            "sql_lineage",
+            "--skill",
+            skill_path.to_str().unwrap(),
+        ])
+        .assert()
+        .code(1);
+    let deprecated_resolve_json: Value =
+        serde_json::from_slice(&deprecated_resolve.get_output().stdout).unwrap();
+    assert_eq!(deprecated_resolve_json["outcome"], "UNRESOLVED");
+
+    let deprecated_explain = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "explain",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--task",
+            "sql_lineage",
+            "--skill",
+            skill_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let deprecated_explain_json: Value =
+        serde_json::from_slice(&deprecated_explain.get_output().stdout).unwrap();
+    assert_eq!(deprecated_explain_json["active_resolution"], Value::Null);
+    assert_eq!(
+        deprecated_explain_json["ignored"].as_array().unwrap().len(),
+        1
+    );
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "register",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--task",
+            "sql_lineage",
+            "--skill",
+            skill_path.to_str().unwrap(),
+            "--script",
+            updated_script_path.to_str().unwrap(),
+            "--script-id",
+            "sql-lineage.v3",
+            "--language",
+            "python",
+            "--grade",
+            "operator-attested",
+            "--operator",
+            "Zac",
+            "--reason",
+            "replacement champion",
+            "--attested-at",
+            "2026-06-25T12:03:00Z",
+            "--next-version",
+            "0.5.0",
+            "--no-witness",
+        ])
+        .assert()
+        .success();
+
+    let promote = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "strategy",
+            "promote",
+            "--registry",
+            registry_dir.path().to_str().unwrap(),
+            "--task",
+            "sql_lineage",
+            "--skill",
+            skill_path.to_str().unwrap(),
+            "--verify",
+            verify_path.to_str().unwrap(),
+            "--assess",
+            assess_path.to_str().unwrap(),
+            "--airlock",
+            airlock_path.to_str().unwrap(),
+            "--next-version",
+            "0.6.0",
+            "--no-witness",
+        ])
+        .assert()
+        .success();
+    let promote_json: Value = serde_json::from_slice(&promote.get_output().stdout).unwrap();
+    assert_eq!(promote_json["entry"]["grade"], "proof-attested");
+    assert_eq!(promote_json["receipt"]["operation"], "promote");
+}
+
+#[test]
 fn test_strategy_profile_cli_output_can_resolve_registered_strategy() {
     let registry_dir = tempdir().unwrap();
     write_registry_metadata(registry_dir.path(), "strategy-profile-test", "0.1.0", 0);
@@ -2348,6 +2645,31 @@ fn test_registry_build_openfigi_provider_materializes_registry_with_twinning_stu
     let seed_path = temp_dir.path().join("seed.csv");
     let output_dir = temp_dir.path().join("registries/openfigi-cusip");
     let report_path = temp_dir.path().join("twinning-rest-report.json");
+    let preflight_report_path = temp_dir.path().join("twinning-rest-preflight.json");
+    let preflight = std::process::Command::new(&twinning)
+        .args([
+            "rest",
+            "--json",
+            "--spec",
+            spec_path.to_str().unwrap(),
+            "--server-variable",
+            "basePath=v3",
+            "--auth-mode",
+            "shape",
+            "--report",
+            preflight_report_path.to_str().unwrap(),
+            "--run",
+            "true",
+        ])
+        .output()
+        .unwrap();
+    if !preflight.status.success() {
+        eprintln!(
+            "skipping twinning-backed OpenFIGI smoke; twinning REST runtime is unavailable: {}",
+            String::from_utf8_lossy(&preflight.stdout)
+        );
+        return;
+    }
     write_seed_csv(&seed_path, "cusip\n037833100\n");
 
     let child_command = format!(

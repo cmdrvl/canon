@@ -64,8 +64,13 @@ canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json
 canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary]
 canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 canon strategy audit --schema <PROFILE.json> --script <SCRIPT> --suite <DIR> [--emit json|summary]
-canon strategy resolve --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
-canon strategy register --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--rule-id <RULE>] [--emit json|summary]
+canon strategy resolve --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
+canon strategy register --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --grade operator-attested|proof-attested --next-version <VER> [--operator <ID> --reason <TEXT>] [--verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json>] [--rule-id <RULE>] [--emit json|summary] [--no-witness]
+canon strategy update --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --next-version <VER> [--operator <ID> --reason <TEXT>] [--verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json>] [--emit json|summary] [--no-witness]
+canon strategy deprecate --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --operator <ID> --reason <TEXT> --next-version <VER> [--emit json|summary] [--no-witness]
+canon strategy promote --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--emit json|summary] [--no-witness]
+canon strategy list --registry <REGISTRY> [--key-type schema|task] [--grade operator-attested|proof-attested] [--status active|deprecated] [--emit json|summary]
+canon strategy explain --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
 canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
 canon org review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]
 canon org review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]
@@ -186,7 +191,7 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 
 ### Strategy registry subcommands
 
-`canon strategy` extends the same registry discipline to deterministic script reuse. It resolves a schema shape plus skill hash to a frozen script that previously passed verify, assess, and airlock. This does not change the primary identifier-resolution path and does not execute scripts.
+`canon strategy` extends the same registry discipline to deterministic script reuse. It resolves a typed strategy key plus skill hash to a frozen script pointer; it does not execute scripts. Strategy entries use `entry_schema_version: "canon_strategy_entry.v1"`, a typed `key` (`schema` or `task`), `grade` (`operator-attested` or `proof-attested`), and `status` (`active` or `deprecated`). Legacy schema/proof entries load as schema-keyed, proof-attested, active entries.
 
 `canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]`
 - reads CSV, TSV, JSONL, or NDJSON rows using the same format detection and max-limit refusal patterns as the normal identifier path
@@ -206,35 +211,62 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - exits `0` when all deterministic fixture checks pass, `1` when deterministic fixture checks fail, and `2` on refusal
 - refuses malformed suites or nondeterministic script outputs with structured refusal envelopes
 
-`canon strategy resolve --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]`
+`canon strategy resolve --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]`
 - reads `registry.json` and `_strategy/*.json` entries from a local versioned registry
 - hashes `--skill` with BLAKE3, unless `--skill-hash` is provided directly
-- parses a JSON schema/profile artifact with top-level `columns` or `fields`
+- for `--schema`, parses a JSON schema/profile artifact with top-level `columns` or `fields`
+- for `--task`, ASCII-trims the task and performs exact active-key lookup only; no fuzzy aliases, schema tiers, or normalization are applied
 - emits `canon_strategy_resolve.v0`
-- exits `0` for `EXACT` or `COMPATIBLE`, `1` for `PARTIAL` or `UNRESOLVED`, and `2` on refusal
+- schema keys exit `0` for `EXACT` or `COMPATIBLE`, `1` for `PARTIAL` or `UNRESOLVED`, and `2` on refusal
+- task keys exit `0` for `EXACT`, `1` for `UNRESOLVED`, and `2` on refusal; `COMPATIBLE` and `PARTIAL` are not task outcomes
 
-Resolution tiers:
+Schema resolution tiers:
 - `EXACT`: identical column names, types, and cardinalities for the same skill hash; run the frozen script
 - `COMPATIBLE`: identical column names and types but different cardinalities; run the frozen script
 - `PARTIAL`: overlapping columns with missing, extra, or type-changed fields; escalate for rewrite
 - `UNRESOLVED`: no same-skill schema overlap; author a new script, gate it, then register it
 
-`canon strategy register --registry <REGISTRY> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--rule-id <RULE>] [--emit json|summary]`
+`canon strategy register --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --grade operator-attested|proof-attested --next-version <VER> [--operator <ID> --reason <TEXT> --attested-at <RFC3339>] [--verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json>] [--rule-id <RULE>] [--emit json|summary] [--no-witness]`
 - refuses unless `--next-version` differs from `registry.json`
-- refuses duplicate `(schema_fingerprint, skill_hash)` entries
-- requires verify status `PASS`/`PASSED`/`SUCCESS` or `passed:true`
-- requires assess decision `PROCEED`
-- requires airlock status `PASS`/`PASSED`/`SEALED`/`SUCCESS` or `sealed:true`
-- appends a registry entry under `_strategy/entries.json`, records BLAKE3 hashes for schema, skill/script bytes, and proof artifacts, and updates `registry.json` version + entry_count
+- refuses duplicate active typed keys; deprecated entries are preserved but ignored by active resolution
+- `operator-attested` requires `--operator`, single-line `--reason`, timestamp, skill/script hashes, and records an operator attestation hash; it does not require verify/assess/airlock
+- `proof-attested` requires verify status `PASS`/`PASSED`/`SUCCESS` or `passed:true`, assess decision `PROCEED`, and airlock status `PASS`/`PASSED`/`SEALED`/`SUCCESS` or `sealed:true`
+- appends a registry entry under `_strategy/entries.json`, records BLAKE3 hashes for schema or task, skill/script bytes, attestation/proof artifacts, and updates `registry.json` version + entry_count
+- emits a deterministic mutation receipt with operation, before/after version, before/after registry hash, typed key, grade/status, script hash, source file, entry order, and next-command hints
+- appends a witness record for successful mutations unless `--no-witness` is passed; witness records contain receipt/provenance hashes, not raw script bytes or secrets
 
 Strategy registries are local artifacts. No remote provider calls happen during `profile`, `resolve`, `register`, or `diff`.
+
+`canon strategy update --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --next-version <VER> [--operator <ID> --reason <TEXT> --attested-at <RFC3339>] [--verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json>] [--emit json|summary] [--no-witness]`
+- updates exactly one active entry in place, preserving key identity and registry history
+- operator-attested updates refresh operator attestation provenance; proof-attested updates require fresh proof artifacts
+- emits the same mutation receipt and witness behavior as register
+
+`canon strategy deprecate --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --operator <ID> --reason <TEXT> --next-version <VER> [--attested-at <RFC3339>] [--emit json|summary] [--no-witness]`
+- marks exactly one active entry `deprecated` and records deprecation provenance
+- never physically deletes registry entries
+- active resolution ignores deprecated entries; `explain` still shows them as ignored history
+- emits the same mutation receipt and witness behavior as register
+
+`canon strategy promote --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--emit json|summary] [--no-witness]`
+- promotes exactly one active operator-attested entry to proof-attested by attaching proof references
+- refuses already proof-attested entries or invalid proof artifacts
+- emits the same mutation receipt and witness behavior as register
+
+`canon strategy list --registry <REGISTRY> [--key-type schema|task] [--grade operator-attested|proof-attested] [--status active|deprecated] [--emit json|summary]`
+- emits `canon_strategy_list.v0` with typed key, skill hash, grade, status, script metadata, provenance summary, source file, and entry order
+- is read-only and does not append witness records
+
+`canon strategy explain --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]`
+- emits `canon_strategy_explain.v0` describing the active entry, ignored deprecated entries, and the next command for resolve or register
+- is read-only and does not append witness records
 
 `canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]`
 - compares two strategy registry versions with the same registry id
 - emits `canon_strategy_diff.v0`
-- keys effective entries by `(schema_fingerprint, skill_hash)`
+- keys effective entries by typed key plus skill hash
 - reports `added`, `removed`, `changed`, and `unchanged` entries
-- classifies changes by script id/path/language/content hash, proof hashes, schema shape, and rule id
+- classifies changes by script id/path/language/content hash, proof hashes, operator attestation hash, schema shape, grade, status, typed key shape, and rule id
 - resolves duplicate keys deterministically by filename-sorted, entry-order precedence; shadowed duplicates do not affect the effective diff
 - exits `0` on successful comparison and `2` on refusal
 

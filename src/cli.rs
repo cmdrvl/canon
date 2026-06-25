@@ -96,6 +96,33 @@ pub enum OrgReviewInclude {
     All,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum, Default)]
+pub enum StrategyGradeArg {
+    /// Lightweight operator attestation without verify/assess/airlock artifacts
+    #[value(name = "operator-attested")]
+    OperatorAttested,
+    /// Proof-gated attestation with verify, assess, and airlock artifacts
+    #[default]
+    #[value(name = "proof-attested")]
+    ProofAttested,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum StrategyStatusArg {
+    /// Active entries participate in resolution
+    Active,
+    /// Deprecated entries are preserved but ignored by resolution
+    Deprecated,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum StrategyKeyTypeArg {
+    /// Schema/profile keyed entries
+    Schema,
+    /// Task/intent keyed entries
+    Task,
+}
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum CanonCommand {
     /// Read-only health, capabilities, and robot-oriented diagnostics
@@ -392,6 +419,16 @@ pub enum StrategySubcommand {
     Resolve(StrategyResolveCli),
     /// Register a verified frozen champion script for a schema shape and skill hash
     Register(StrategyRegisterCli),
+    /// Update an active strategy champion in place with a version bump
+    Update(StrategyUpdateCli),
+    /// Deprecate a champion so active resolution ignores it without deleting history
+    Deprecate(StrategyDeprecateCli),
+    /// Promote an operator-attested champion to proof-attested
+    Promote(StrategyPromoteCli),
+    /// List strategy champions, provenance, grades, and lifecycle status
+    List(StrategyListCli),
+    /// Explain active and ignored entries for one strategy key
+    Explain(StrategyExplainCli),
     /// Compare two frozen-script strategy registry versions
     Diff(StrategyDiffCli),
 }
@@ -555,6 +592,12 @@ pub struct StrategyAuditCli {
         .multiple(false)
         .args(["skill", "skill_hash"])
 ))]
+#[command(group(
+    ArgGroup::new("strategy_key")
+        .required(true)
+        .multiple(false)
+        .args(["schema", "task"])
+))]
 pub struct StrategyResolveCli {
     /// Strategy registry directory
     #[arg(long)]
@@ -562,7 +605,11 @@ pub struct StrategyResolveCli {
 
     /// Schema/profile JSON file describing the input shape
     #[arg(long)]
-    pub schema: PathBuf,
+    pub schema: Option<PathBuf>,
+
+    /// Exact task/intent key to resolve
+    #[arg(long)]
+    pub task: Option<String>,
 
     /// Skill file whose bytes define the authoring context
     #[arg(long)]
@@ -584,6 +631,12 @@ pub struct StrategyResolveCli {
         .multiple(false)
         .args(["skill", "skill_hash"])
 ))]
+#[command(group(
+    ArgGroup::new("strategy_key")
+        .required(true)
+        .multiple(false)
+        .args(["schema", "task"])
+))]
 pub struct StrategyRegisterCli {
     /// Strategy registry directory
     #[arg(long)]
@@ -591,7 +644,11 @@ pub struct StrategyRegisterCli {
 
     /// Schema/profile JSON file describing the input shape
     #[arg(long)]
-    pub schema: PathBuf,
+    pub schema: Option<PathBuf>,
+
+    /// Exact task/intent key to register
+    #[arg(long)]
+    pub task: Option<String>,
 
     /// Skill file whose bytes define the authoring context
     #[arg(long)]
@@ -613,17 +670,33 @@ pub struct StrategyRegisterCli {
     #[arg(long)]
     pub language: String,
 
+    /// Attestation grade to record
+    #[arg(long, value_enum, default_value = "proof-attested")]
+    pub grade: StrategyGradeArg,
+
+    /// Operator identity for operator-attested entries and lifecycle receipts
+    #[arg(long)]
+    pub operator: Option<String>,
+
+    /// Single-line operator reason for operator-attested entries and lifecycle receipts
+    #[arg(long)]
+    pub reason: Option<String>,
+
+    /// Explicit RFC3339 timestamp for deterministic tests and reproducible receipts
+    #[arg(long = "attested-at")]
+    pub attested_at: Option<String>,
+
     /// Verify artifact proving the script passed verification
     #[arg(long)]
-    pub verify: PathBuf,
+    pub verify: Option<PathBuf>,
 
     /// Assess artifact proving the script should proceed
     #[arg(long)]
-    pub assess: PathBuf,
+    pub assess: Option<PathBuf>,
 
     /// Airlock artifact proving the script cleared airlock
     #[arg(long)]
-    pub airlock: PathBuf,
+    pub airlock: Option<PathBuf>,
 
     /// Explicit next registry version
     #[arg(long = "next-version")]
@@ -634,6 +707,195 @@ pub struct StrategyRegisterCli {
     pub rule_id: Option<String>,
 
     /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+
+    /// Suppress witness ledger append for this registry mutation
+    #[arg(long)]
+    pub no_witness: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("skill_identity")
+        .required(true)
+        .multiple(false)
+        .args(["skill", "skill_hash"])
+))]
+#[command(group(
+    ArgGroup::new("strategy_key")
+        .required(true)
+        .multiple(false)
+        .args(["schema", "task"])
+))]
+pub struct StrategyUpdateCli {
+    /// Strategy registry directory
+    #[arg(long)]
+    pub registry: PathBuf,
+    /// Schema/profile JSON file describing the input shape
+    #[arg(long)]
+    pub schema: Option<PathBuf>,
+    /// Exact task/intent key to update
+    #[arg(long)]
+    pub task: Option<String>,
+    /// Skill file whose bytes define the authoring context
+    #[arg(long)]
+    pub skill: Option<PathBuf>,
+    /// Precomputed BLAKE3 skill hash
+    #[arg(long = "skill-hash")]
+    pub skill_hash: Option<String>,
+    /// Replacement frozen script file
+    #[arg(long)]
+    pub script: PathBuf,
+    /// Stable script identifier to store in the registry
+    #[arg(long = "script-id")]
+    pub script_id: String,
+    /// Script language/runtime label
+    #[arg(long)]
+    pub language: String,
+    /// Operator identity for the update attestation
+    #[arg(long)]
+    pub operator: Option<String>,
+    /// Single-line update reason
+    #[arg(long)]
+    pub reason: Option<String>,
+    /// Explicit RFC3339 timestamp for deterministic tests
+    #[arg(long = "attested-at")]
+    pub attested_at: Option<String>,
+    /// Verify artifact for updating proof-attested entries
+    #[arg(long)]
+    pub verify: Option<PathBuf>,
+    /// Assess artifact for updating proof-attested entries
+    #[arg(long)]
+    pub assess: Option<PathBuf>,
+    /// Airlock artifact for updating proof-attested entries
+    #[arg(long)]
+    pub airlock: Option<PathBuf>,
+    /// Explicit next registry version
+    #[arg(long = "next-version")]
+    pub next_version: String,
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+    /// Suppress witness ledger append for this registry mutation
+    #[arg(long)]
+    pub no_witness: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("skill_identity")
+        .required(true)
+        .multiple(false)
+        .args(["skill", "skill_hash"])
+))]
+#[command(group(
+    ArgGroup::new("strategy_key")
+        .required(true)
+        .multiple(false)
+        .args(["schema", "task"])
+))]
+pub struct StrategyDeprecateCli {
+    #[arg(long)]
+    pub registry: PathBuf,
+    #[arg(long)]
+    pub schema: Option<PathBuf>,
+    #[arg(long)]
+    pub task: Option<String>,
+    #[arg(long)]
+    pub skill: Option<PathBuf>,
+    #[arg(long = "skill-hash")]
+    pub skill_hash: Option<String>,
+    #[arg(long)]
+    pub operator: String,
+    #[arg(long)]
+    pub reason: String,
+    #[arg(long = "attested-at")]
+    pub attested_at: Option<String>,
+    #[arg(long = "next-version")]
+    pub next_version: String,
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+    #[arg(long)]
+    pub no_witness: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("skill_identity")
+        .required(true)
+        .multiple(false)
+        .args(["skill", "skill_hash"])
+))]
+#[command(group(
+    ArgGroup::new("strategy_key")
+        .required(true)
+        .multiple(false)
+        .args(["schema", "task"])
+))]
+pub struct StrategyPromoteCli {
+    #[arg(long)]
+    pub registry: PathBuf,
+    #[arg(long)]
+    pub schema: Option<PathBuf>,
+    #[arg(long)]
+    pub task: Option<String>,
+    #[arg(long)]
+    pub skill: Option<PathBuf>,
+    #[arg(long = "skill-hash")]
+    pub skill_hash: Option<String>,
+    #[arg(long)]
+    pub verify: PathBuf,
+    #[arg(long)]
+    pub assess: PathBuf,
+    #[arg(long)]
+    pub airlock: PathBuf,
+    #[arg(long = "next-version")]
+    pub next_version: String,
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+    #[arg(long)]
+    pub no_witness: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct StrategyListCli {
+    #[arg(long)]
+    pub registry: PathBuf,
+    #[arg(long = "key-type", value_enum)]
+    pub key_type: Option<StrategyKeyTypeArg>,
+    #[arg(long, value_enum)]
+    pub grade: Option<StrategyGradeArg>,
+    #[arg(long, value_enum)]
+    pub status: Option<StrategyStatusArg>,
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("skill_identity")
+        .required(true)
+        .multiple(false)
+        .args(["skill", "skill_hash"])
+))]
+#[command(group(
+    ArgGroup::new("strategy_key")
+        .required(true)
+        .multiple(false)
+        .args(["schema", "task"])
+))]
+pub struct StrategyExplainCli {
+    #[arg(long)]
+    pub registry: PathBuf,
+    #[arg(long)]
+    pub schema: Option<PathBuf>,
+    #[arg(long)]
+    pub task: Option<String>,
+    #[arg(long)]
+    pub skill: Option<PathBuf>,
+    #[arg(long = "skill-hash")]
+    pub skill_hash: Option<String>,
     #[arg(long, value_enum, default_value = "json")]
     pub emit: RegistryEmitMode,
 }
@@ -1388,7 +1650,8 @@ mod tests {
         assert!(matches!(&subcommand, StrategySubcommand::Resolve(_)));
         if let StrategySubcommand::Resolve(resolve) = subcommand {
             assert_eq!(resolve.registry, PathBuf::from("registries/strategies"));
-            assert_eq!(resolve.schema, PathBuf::from("profile.json"));
+            assert_eq!(resolve.schema, Some(PathBuf::from("profile.json")));
+            assert_eq!(resolve.task, None);
             assert_eq!(resolve.skill, Some(PathBuf::from("SKILL.md")));
             assert_eq!(resolve.skill_hash, None);
             assert!(matches!(resolve.emit, RegistryEmitMode::Summary));
@@ -1492,15 +1755,16 @@ mod tests {
         assert!(matches!(&subcommand, StrategySubcommand::Register(_)));
         if let StrategySubcommand::Register(register) = subcommand {
             assert_eq!(register.registry, PathBuf::from("registries/strategies"));
-            assert_eq!(register.schema, PathBuf::from("profile.json"));
+            assert_eq!(register.schema, Some(PathBuf::from("profile.json")));
+            assert_eq!(register.task, None);
             assert_eq!(register.skill, None);
             assert_eq!(register.skill_hash.as_deref(), Some("blake3:abc"));
             assert_eq!(register.script, PathBuf::from("script.py"));
             assert_eq!(register.script_id, "procurement-total.v1");
             assert_eq!(register.language, "python");
-            assert_eq!(register.verify, PathBuf::from("verify.json"));
-            assert_eq!(register.assess, PathBuf::from("assess.json"));
-            assert_eq!(register.airlock, PathBuf::from("airlock.json"));
+            assert_eq!(register.verify, Some(PathBuf::from("verify.json")));
+            assert_eq!(register.assess, Some(PathBuf::from("assess.json")));
+            assert_eq!(register.airlock, Some(PathBuf::from("airlock.json")));
             assert_eq!(register.next_version, "0.2.0");
             assert_eq!(register.rule_id.as_deref(), Some("PROCUREMENT_TOTAL"));
         }
