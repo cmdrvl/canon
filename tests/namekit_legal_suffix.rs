@@ -209,8 +209,10 @@ fn legal_suffix_protected_forms() {
         ]
     );
 
-    let tenant_view =
-        analyze_legal_suffixes("PNC Bank, National Association", LegalSuffixProfile::CmbsTenantLabel);
+    let tenant_view = analyze_legal_suffixes(
+        "PNC Bank, National Association",
+        LegalSuffixProfile::CmbsTenantLabel,
+    );
 
     assert_eq!(tenant_view.basename, "pnc bank");
     assert_eq!(tenant_view.stripped_terms, ["national association"]);
