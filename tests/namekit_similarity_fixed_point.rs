@@ -158,6 +158,9 @@ impl MetricFixture {
         match self.metric.as_str() {
             "levenshtein_normalized" => SimilarityMetric::LevenshteinNormalized,
             "jaro_winkler" => SimilarityMetric::JaroWinkler,
+            "dice_sorensen" => SimilarityMetric::DiceSorensen,
+            "token_sort_ratio" => SimilarityMetric::TokenSortRatio,
+            "token_set_ratio" => SimilarityMetric::TokenSetRatio,
             other => panic!("unexpected metric in fixture: {other}"),
         }
     }

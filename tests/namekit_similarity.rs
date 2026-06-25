@@ -167,6 +167,90 @@ fn metric_ascii_unicode_parity() {
 }
 
 #[test]
+fn local_metric_variants_are_deterministic_evidence_only() {
+    let dice = normalized_similarity(
+        SimilarityMetric::DiceSorensen,
+        "night",
+        "nacht",
+        SimilarityOptions::default(),
+    );
+    assert_eq!(dice.path, SimilarityPath::AsciiBytes);
+    assert_eq!(dice.score.map(SimilarityScore::as_scaled), Some(2500));
+    assert!(dice.evidence_only);
+
+    let unicode_dice = normalized_similarity(
+        SimilarityMetric::DiceSorensen,
+        "éclair",
+        "éclat",
+        SimilarityOptions::default(),
+    );
+    assert_eq!(unicode_dice.path, SimilarityPath::UnicodeChars);
+    assert_eq!(
+        unicode_dice.score.map(SimilarityScore::as_scaled),
+        Some(6667)
+    );
+
+    let token_sort = normalized_similarity(
+        SimilarityMetric::TokenSortRatio,
+        "roebuck sears",
+        "sears roebuck",
+        SimilarityOptions::default(),
+    );
+    assert_eq!(token_sort.path, SimilarityPath::AsciiBytes);
+    assert_eq!(
+        token_sort.score.map(SimilarityScore::as_scaled),
+        Some(10_000)
+    );
+
+    let token_set = normalized_similarity(
+        SimilarityMetric::TokenSetRatio,
+        "sears roebuck",
+        "sears roebuck llc",
+        SimilarityOptions::default(),
+    );
+    assert_eq!(token_set.score.map(SimilarityScore::as_scaled), Some(8000));
+    assert!(token_set.evidence_only);
+}
+
+#[test]
+fn local_metric_cutoffs_empty_and_long_inputs_are_stable() {
+    let empty_pair = normalized_similarity(
+        SimilarityMetric::TokenSetRatio,
+        "",
+        "",
+        SimilarityOptions::default(),
+    );
+    assert_eq!(
+        empty_pair.score.map(SimilarityScore::as_scaled),
+        Some(10_000)
+    );
+
+    let empty_side = normalized_similarity(
+        SimilarityMetric::DiceSorensen,
+        "",
+        "sears",
+        SimilarityOptions::new(Some(score(1)), Some(score(5_000))),
+    );
+    assert_eq!(empty_side.score, None);
+    assert!(!empty_side.passed_cutoff);
+    assert!(empty_side.evidence_only);
+
+    let long_left = format!("{} {}", "sears ".repeat(64), "roebuck");
+    let long_right = format!("roebuck {}", "sears ".repeat(64));
+    let long_score = normalized_similarity(
+        SimilarityMetric::TokenSortRatio,
+        &long_left,
+        &long_right,
+        SimilarityOptions::new(Some(score(10_000)), Some(score(9_000))),
+    );
+    assert_eq!(
+        long_score.score.map(SimilarityScore::as_scaled),
+        Some(10_000)
+    );
+    assert!(long_score.passed_cutoff);
+}
+
+#[test]
 fn batch_comparator_reuse_matches_pairwise_scores() {
     let rights = ["Sears Roebuck", "Sears Outlet", "Roebuck Sears"];
     let options = SimilarityOptions::new(Some(score(7_000)), Some(score(8_000)));
@@ -201,6 +285,42 @@ fn batch_comparator_reuse_matches_pairwise_scores() {
 }
 
 #[test]
+fn token_metric_batch_matches_pairwise_scores() {
+    let rights = ["roebuck sears", "kmart stores"];
+    let options = SimilarityOptions::new(Some(score(9_000)), Some(score(9_500)));
+    let batch = batch_normalized_similarity(
+        SimilarityMetric::TokenSortRatio,
+        "sears roebuck",
+        &rights,
+        options,
+    );
+    let pairwise = rights
+        .iter()
+        .map(|right| {
+            normalized_similarity(
+                SimilarityMetric::TokenSortRatio,
+                "sears roebuck",
+                right,
+                options,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(batch.len(), pairwise.len());
+    assert_eq!(batch[0].score.map(SimilarityScore::as_scaled), Some(10_000));
+    assert_eq!(batch[1].score, None);
+    for (batch_result, pairwise_result) in batch.iter().zip(pairwise.iter()) {
+        assert!(batch_result.batch_reused);
+        assert_eq!(
+            batch_result.score.map(SimilarityScore::as_scaled),
+            pairwise_result.score.map(SimilarityScore::as_scaled)
+        );
+        assert_eq!(batch_result.passed_cutoff, pairwise_result.passed_cutoff);
+        assert!(batch_result.evidence_only);
+    }
+}
+
+#[test]
 fn metric_scores_round_to_canon_integer_units() {
     assert_eq!(score_units_from_ratio(-0.1).as_scaled(), 0);
     assert_eq!(score_units_from_ratio(0.571_428_571).as_scaled(), 5714);
@@ -214,6 +334,9 @@ impl RapidFuzzFixture {
         match self.metric.as_str() {
             "levenshtein_normalized" => SimilarityMetric::LevenshteinNormalized,
             "jaro_winkler" => SimilarityMetric::JaroWinkler,
+            "dice_sorensen" => SimilarityMetric::DiceSorensen,
+            "token_sort_ratio" => SimilarityMetric::TokenSortRatio,
+            "token_set_ratio" => SimilarityMetric::TokenSetRatio,
             other => panic!("unexpected metric in fixture: {other}"),
         }
     }

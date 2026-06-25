@@ -17,6 +17,9 @@ mod review_reason_mapping;
 #[path = "namekit/ngram.rs"]
 mod ngram;
 
+#[path = "namekit/golden.rs"]
+mod golden;
+
 #[path = "namekit/source_parity.rs"]
 mod source_parity;
 
