@@ -169,11 +169,69 @@ fn legal_suffix_reason_code_constants_are_stable() {
     );
 }
 
+#[test]
+fn legal_suffix_protected_forms() {
+    let regab_national_bank = analyze_legal_suffixes(
+        "PNC Bank, National Association",
+        LegalSuffixProfile::RegabFirmIdentity,
+    );
+
+    assert_eq!(
+        regab_national_bank.basename,
+        "pnc bank national association"
+    );
+    assert!(regab_national_bank.stripped_terms.is_empty());
+    assert_eq!(
+        regab_national_bank.preserved_terms,
+        ["bank", "national association"]
+    );
+    assert_eq!(
+        reason_codes(&regab_national_bank),
+        [
+            PROTECTED_LEGAL_TOKEN_RETAINED,
+            PROTECTED_LEGAL_TOKEN_RETAINED,
+            LEGAL_SUFFIX_PRESERVED_PROFILE
+        ]
+    );
+
+    let regab_with_strip_around_protected =
+        analyze_legal_suffixes("PNC Bank LLC", LegalSuffixProfile::RegabFirmIdentity);
+
+    assert_eq!(regab_with_strip_around_protected.basename, "pnc bank");
+    assert_eq!(regab_with_strip_around_protected.stripped_terms, ["llc"]);
+    assert_eq!(regab_with_strip_around_protected.preserved_terms, ["bank"]);
+    assert_eq!(
+        reason_codes(&regab_with_strip_around_protected),
+        [
+            PROTECTED_LEGAL_TOKEN_RETAINED,
+            LEGAL_SUFFIX_STRIPPED,
+            LEGAL_SUFFIX_PRESERVED_PROFILE
+        ]
+    );
+
+    let tenant_view =
+        analyze_legal_suffixes("PNC Bank, National Association", LegalSuffixProfile::CmbsTenantLabel);
+
+    assert_eq!(tenant_view.basename, "pnc bank");
+    assert_eq!(tenant_view.stripped_terms, ["national association"]);
+    assert!(
+        tenant_view
+            .reasons
+            .iter()
+            .all(|reason| reason.code != PROTECTED_LEGAL_TOKEN_RETAINED),
+        "generic tenant view must not invent Reg AB protected-form evidence"
+    );
+}
+
 fn jsonl_cases(input: &str) -> impl Iterator<Item = Value> + '_ {
     input
         .lines()
         .filter(|line| !line.trim().is_empty())
         .map(|line| serde_json::from_str(line).expect("fixture line must be valid JSON"))
+}
+
+fn reason_codes(analysis: &canon::namekit::legal_suffix::LegalSuffixAnalysis) -> Vec<&'static str> {
+    analysis.reasons.iter().map(|reason| reason.code).collect()
 }
 
 fn string_array(value: &Value) -> Vec<&str> {

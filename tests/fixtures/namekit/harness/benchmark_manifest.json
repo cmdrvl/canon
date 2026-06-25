@@ -1,0 +1,91 @@
+{
+  "version": "canon_namekit_harness.v0",
+  "ci_safe": true,
+  "slow_benches_opt_in": true,
+  "generated_fixtures": [],
+  "required_fixture_paths": [
+    "tests/fixtures/namekit/normalization/unicode_normality.jsonl",
+    "tests/fixtures/namekit/legal_suffix/examples.jsonl",
+    "tests/fixtures/namekit/source_parity/normality_unicode.jsonl",
+    "tests/fixtures/namekit/source_parity/openrefine_fingerprint.jsonl",
+    "tests/fixtures/namekit/source_parity/cleanco_suffixes.jsonl",
+    "tests/fixtures/namekit/source_parity/sparse_topn.jsonl",
+    "tests/fixtures/namekit/source_parity/splink_tf_adjustments.jsonl",
+    "tests/fixtures/namekit/source_parity/rapidfuzz_metrics.jsonl",
+    "tests/fixtures/namekit/source_parity/logic_v2_features.jsonl",
+    "tests/fixtures/namekit/cmbs_tenant/profile_cases.jsonl",
+    "tests/fixtures/namekit/regab_firm/profile_cases.jsonl"
+  ],
+  "benchmark_cases": [
+    {
+      "id": "ascii_fast_path_similarity",
+      "primitive": "similarity",
+      "fixture_path": "tests/fixtures/namekit/source_parity/rapidfuzz_metrics.jsonl",
+      "category": "ascii_fast_path",
+      "max_rows": 6,
+      "deterministic_output": true,
+      "ci_safe": true,
+      "slow_opt_in": false
+    },
+    {
+      "id": "fixed_point_metric_scoring",
+      "primitive": "similarity",
+      "fixture_path": "tests/fixtures/namekit/source_parity/rapidfuzz_metrics.jsonl",
+      "category": "metric_scoring",
+      "max_rows": 6,
+      "deterministic_output": true,
+      "ci_safe": true,
+      "slow_opt_in": false
+    },
+    {
+      "id": "unicode_normalization_path",
+      "primitive": "normalize",
+      "fixture_path": "tests/fixtures/namekit/source_parity/normality_unicode.jsonl",
+      "category": "unicode_path",
+      "max_rows": 1,
+      "deterministic_output": true,
+      "ci_safe": true,
+      "slow_opt_in": false
+    },
+    {
+      "id": "legal_suffix_stripping_path",
+      "primitive": "legal_suffix",
+      "fixture_path": "tests/fixtures/namekit/legal_suffix/examples.jsonl",
+      "category": "legal_suffix_stripping",
+      "max_rows": 4,
+      "deterministic_output": true,
+      "ci_safe": true,
+      "slow_opt_in": false
+    },
+    {
+      "id": "sparse_vector_topk_path",
+      "primitive": "tfidf",
+      "fixture_path": "tests/fixtures/namekit/source_parity/sparse_topn.jsonl",
+      "category": "sparse_vector_construction",
+      "max_rows": 4,
+      "deterministic_output": true,
+      "ci_safe": true,
+      "slow_opt_in": false
+    },
+    {
+      "id": "common_token_mini_stress",
+      "primitive": "tfidf",
+      "fixture_path": "tests/fixtures/namekit/source_parity/splink_tf_adjustments.jsonl",
+      "category": "common_token_stress",
+      "max_rows": 8,
+      "deterministic_output": true,
+      "ci_safe": true,
+      "slow_opt_in": false
+    },
+    {
+      "id": "token_ngram_generation_contract",
+      "primitive": "token_ngram",
+      "fixture_path": "tests/fixtures/namekit/source_parity/openrefine_fingerprint.jsonl",
+      "category": "token_ngram_generation",
+      "max_rows": 1,
+      "deterministic_output": true,
+      "ci_safe": true,
+      "slow_opt_in": true
+    }
+  ]
+}

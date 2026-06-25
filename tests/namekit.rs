@@ -14,8 +14,17 @@ mod tfidf;
 #[path = "namekit/review_reason_mapping.rs"]
 mod review_reason_mapping;
 
+#[path = "namekit/ngram.rs"]
+mod ngram;
+
 #[path = "namekit/source_parity.rs"]
 mod source_parity;
 
 #[path = "namekit/token_ids.rs"]
 mod token_ids;
+
+#[path = "namekit/tokenize.rs"]
+mod tokenize;
+
+#[path = "namekit/harness.rs"]
+mod harness;
