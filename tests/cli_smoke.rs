@@ -257,6 +257,43 @@ fn entity_namespace_cli() {
         .args(["org", "run", "--help"])
         .assert()
         .failure();
+
+    let describe = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .arg("--describe")
+        .assert()
+        .success();
+    let describe_stdout = String::from_utf8(describe.get_output().stdout.clone()).unwrap();
+    let describe_json: Value =
+        serde_json::from_str(&describe_stdout).expect("--describe should output valid JSON");
+    let usage = describe_json["invocation"]["usage"]
+        .as_array()
+        .expect("describe invocation usage should be an array");
+    assert!(usage.iter().any(|entry| {
+        entry
+            .as_str()
+            .is_some_and(|usage| usage.starts_with("canon entity run"))
+    }));
+    assert!(!usage.iter().any(|entry| {
+        entry
+            .as_str()
+            .is_some_and(|usage| usage.starts_with("canon org"))
+    }));
+
+    let subcommands = describe_json["subcommands"]
+        .as_array()
+        .expect("describe subcommands should be an array");
+    assert!(
+        subcommands.iter().any(|entry| entry["name"] == "entity run"
+            && entry["output_schema"] == "canon_entity_run.v0")
+    );
+    assert!(!subcommands.iter().any(|entry| {
+        entry["name"]
+            .as_str()
+            .is_some_and(|name| name.starts_with("org "))
+            || entry["output_schema"]
+                .as_str()
+                .is_some_and(|schema| schema.starts_with("canon_org_"))
+    }));
 }
 
 #[test]
@@ -277,6 +314,45 @@ fn entity_namespace_internal() {
     let error_type = std::any::type_name::<canon::entity::runtime::types::EntityError>();
     assert!(error_type.contains("entity::runtime::types::EntityError"));
     assert!(!error_type.contains(concat!("Org", "Error")));
+}
+
+fn json_fixture(relative: &str) -> Value {
+    let raw = std::fs::read_to_string(fixture_path(relative)).unwrap();
+    serde_json::from_str(&raw).unwrap()
+}
+
+fn run_exact_lookup_json(input: &str) -> String {
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .arg(input)
+        .arg("--registry")
+        .arg("tests/fixtures/registries/cusip-isin")
+        .arg("--column")
+        .arg("cusip")
+        .arg("--emit")
+        .arg("json")
+        .arg("--explicit")
+        .assert()
+        .success();
+
+    String::from_utf8(output.get_output().stdout.clone()).unwrap()
+}
+
+#[test]
+fn exact_match_entity_namespace_golden_bytes_stay_stable() {
+    let expected = json_fixture("tests/fixtures/golden/all_resolved.json");
+
+    let csv_first = run_exact_lookup_json("tests/fixtures/inputs/all_resolved.csv");
+    let csv_second = run_exact_lookup_json("tests/fixtures/inputs/all_resolved.csv");
+    let csv_value: Value = serde_json::from_str(&csv_first).unwrap();
+    assert_eq!(csv_value, expected);
+    assert_eq!(csv_second, csv_first);
+
+    let jsonl_first = run_exact_lookup_json("tests/fixtures/inputs/basic.jsonl");
+    let jsonl_second = run_exact_lookup_json("tests/fixtures/inputs/basic.jsonl");
+    let jsonl_value: Value = serde_json::from_str(&jsonl_first).unwrap();
+    assert_eq!(jsonl_value, expected);
+    assert_eq!(jsonl_second, jsonl_first);
 }
 
 #[test]
