@@ -7,3 +7,6 @@ mod prepare_streaming;
 
 #[path = "entity/profile_regab.rs"]
 mod profile_regab;
+
+#[path = "entity/cmbs_normalization.rs"]
+mod cmbs_normalization;
