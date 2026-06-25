@@ -6,6 +6,8 @@ mod postings_layout;
 mod prepare_dedupe;
 #[path = "entity/prepare_streaming.rs"]
 mod prepare_streaming;
+#[path = "entity/surface_id.rs"]
+mod surface_id;
 
 #[path = "entity/profile_regab.rs"]
 mod profile_regab;

@@ -12,6 +12,7 @@ use crate::entity::{
         EntityStreamRowProvenance, EntityStreamStage, EntityStreamTelemetry,
         deterministic_chunk_metadata, stream_telemetry,
     },
+    surface_id::{SurfaceIdMaterial, derive_surface_ids},
 };
 use crate::namekit::{
     legal_suffix::{LegalSuffixAnalysis, LegalSuffixProfile, analyze_legal_suffixes},
@@ -168,6 +169,7 @@ pub struct PreparedAnchor {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PreparedSurfaceRecord {
+    pub surface_id: String,
     pub profile_id: String,
     pub surface_key: String,
     pub primary_surface: String,
@@ -465,7 +467,7 @@ pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact,
     let stream_output =
         stream_prepare_path(request.rows, &contract, DEFAULT_PREPARE_ROWS_PER_CHUNK)?;
     let observations = stream_output.observations;
-    let surfaces = prepare_surface_records(&observations);
+    let surfaces = prepare_surface_records(&observations)?;
 
     let registry_snapshot = load_prepare_registry_snapshot(request.registry)?;
     let input = PrepareInputReference {
@@ -505,7 +507,7 @@ pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact,
 
 pub fn prepare_surface_records(
     observations: &[PreparedInputObservation],
-) -> Vec<PreparedSurfaceRecord> {
+) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
     let mut groups: BTreeMap<String, PreparedSurfaceAccumulator> = BTreeMap::new();
 
     for observation in observations {
@@ -527,10 +529,17 @@ pub fn prepare_surface_records(
         accumulator.push(observation);
     }
 
-    groups
+    let mut surfaces = groups
         .into_values()
         .map(PreparedSurfaceAccumulator::finish)
-        .collect()
+        .collect::<Vec<_>>();
+    assign_surface_ids(&mut surfaces)?;
+    surfaces.sort_by(|left, right| {
+        left.surface_id
+            .cmp(&right.surface_id)
+            .then_with(|| left.surface_key.cmp(&right.surface_key))
+    });
+    Ok(surfaces)
 }
 
 #[derive(Debug)]
@@ -628,6 +637,7 @@ impl PreparedSurfaceAccumulator {
         let raw_variants = self.raw_variants.into_iter().collect::<Vec<_>>();
         let primary_surface = raw_variants.first().cloned().unwrap_or_default();
         PreparedSurfaceRecord {
+            surface_id: String::new(),
             profile_id: self.profile_id,
             surface_key: self.surface_key,
             primary_surface,
@@ -639,6 +649,48 @@ impl PreparedSurfaceAccumulator {
             deal_count: u64::try_from(self.deal_ids.len()).expect("deal count fits u64"),
             provenance_samples: self.provenance_samples,
         }
+    }
+}
+
+fn assign_surface_ids(surfaces: &mut [PreparedSurfaceRecord]) -> Result<(), Refusal> {
+    let materials = surfaces
+        .iter()
+        .map(surface_id_material)
+        .collect::<Result<Vec<_>, _>>()?;
+    let derived = derive_surface_ids(&materials)?;
+    for (surface, derived) in surfaces.iter_mut().zip(derived) {
+        surface.surface_id = derived.surface_id;
+    }
+    Ok(())
+}
+
+fn surface_id_material(surface: &PreparedSurfaceRecord) -> Result<SurfaceIdMaterial, Refusal> {
+    let view_name = surface_id_view_name(&surface.profile_id);
+    let view = surface.normalized_views.get(view_name).ok_or_else(|| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Prepared surface is missing the profile surface_id normalized view",
+            json!({
+                "profile_id": surface.profile_id,
+                "surface_key": surface.surface_key,
+                "view": view_name,
+                "available_views": surface.normalized_views.keys().collect::<Vec<_>>()
+            }),
+            None,
+        )
+    })?;
+    Ok(SurfaceIdMaterial::new(
+        surface.profile_id.clone(),
+        view_name.to_string(),
+        view.value.clone(),
+        surface.raw_variants.clone(),
+    ))
+}
+
+fn surface_id_view_name(profile_id: &str) -> &'static str {
+    match profile_id {
+        "cmbs_tenant_label" => "tenant_core",
+        "regab_firm_identity" => "firm_core",
+        _ => "core",
     }
 }
 

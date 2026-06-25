@@ -8,80 +8,41 @@ use std::io::Cursor;
 const CMBS_PROFILE: &str = include_str!("../fixtures/entity/profiles/cmbs_tenant_label.yaml");
 
 #[test]
-fn entity_prepare_dedupe() {
+fn entity_surface_id() {
     let surfaces = surfaces_for(rows_in_original_order());
     assert_eq!(surfaces.len(), 2);
+    assert_sorted_by_surface_id(&surfaces);
 
     let sears = surface(&surfaces, "cmbs_tenant_label:sears");
-    assert!(
-        sears
-            .surface_id
-            .starts_with("surf:cmbs_tenant_label:blake3:")
-    );
+    assert_eq!(sears.normalized_views["tenant_core"].value, "sears");
     assert_eq!(sears.row_count, 3);
     assert_eq!(sears.deal_count, 2);
-    assert_eq!(sears.normalized_views["tenant_core"].value, "sears");
-    assert!(
-        sears.normalized_views["tenant_core"]
-            .reason_codes
-            .contains(&"legal_suffix_stripped".to_string())
-    );
-    assert!(
-        sears.normalized_views["tenant_tokens"]
-            .reason_codes
-            .contains(&"tokens_deduped".to_string())
-            || sears.normalized_views["tenant_tokens"]
-                .reason_codes
-                .contains(&"source_parity_reference".to_string())
-    );
-    assert_eq!(sears.row_count, sears.provenance_samples.len() as u64);
-    assert_eq!(
-        sears
-            .provenance_samples
-            .iter()
-            .map(|sample| sample.source_row_id.as_deref())
-            .collect::<Vec<_>>(),
-        [Some("row-1"), Some("row-2"), Some("row-3")]
-    );
-    assert!(sears.alias_surfaces.contains(&"Sears Roebuck".to_string()));
+    assert_surface_id_shape(sears);
 
     let auto = surface(&surfaces, "cmbs_tenant_label:sears auto center");
-    assert_eq!(auto.row_count, 1);
-    assert_eq!(auto.deal_count, 1);
+    assert_surface_id_shape(auto);
+    assert_ne!(sears.surface_id, auto.surface_id);
 }
 
 #[test]
 #[allow(non_snake_case)]
-fn EN_P001_duplicate_rows_collapse_to_unique_prepared_surfaces() {
-    let surfaces = surfaces_for(rows_in_original_order());
-
-    let mut surface_keys = surfaces
-        .iter()
-        .map(|surface| surface.surface_key.as_str())
-        .collect::<Vec<_>>();
-    surface_keys.sort();
-    assert_eq!(
-        surface_keys,
-        [
-            "cmbs_tenant_label:sears",
-            "cmbs_tenant_label:sears auto center"
-        ]
-    );
-    assert_eq!(
-        surfaces
-            .iter()
-            .map(|surface| surface.row_count)
-            .sum::<u64>(),
-        4
-    );
-}
-
-#[test]
-fn entity_prepare_ordering() {
+fn EN_P002_reordered_rows_keep_byte_identical_surface_ids_and_sorted_output() {
     let original = surfaces_for(rows_in_original_order());
     let reordered = surfaces_for(rows_in_reordered_input());
 
     assert_eq!(reordered, original);
+    assert_sorted_by_surface_id(&original);
+}
+
+#[test]
+fn surface_ids_do_not_include_source_row_ids() {
+    let surfaces = surfaces_for(rows_in_original_order());
+
+    for surface in surfaces {
+        assert!(!surface.surface_id.contains("row-"));
+        assert!(!surface.surface_id.contains("loan-"));
+        assert!(!surface.surface_id.contains("prop-"));
+    }
 }
 
 fn surfaces_for(input: &str) -> Vec<PreparedSurfaceRecord> {
@@ -100,6 +61,25 @@ fn surface<'a>(
         .iter()
         .find(|surface| surface.surface_key == surface_key)
         .expect("surface exists")
+}
+
+fn assert_surface_id_shape(surface: &PreparedSurfaceRecord) {
+    let prefix = format!("surf:{}:blake3:", surface.profile_id);
+    assert!(surface.surface_id.starts_with(&prefix));
+    let digest = surface
+        .surface_id
+        .strip_prefix(&prefix)
+        .expect("surface id has prefix");
+    assert_eq!(digest.len(), 64);
+    assert!(digest.bytes().all(|byte| byte.is_ascii_hexdigit()));
+}
+
+fn assert_sorted_by_surface_id(surfaces: &[PreparedSurfaceRecord]) {
+    assert!(
+        surfaces
+            .windows(2)
+            .all(|pair| pair[0].surface_id < pair[1].surface_id)
+    );
 }
 
 fn rows_in_original_order() -> &'static str {
