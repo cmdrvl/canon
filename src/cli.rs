@@ -1206,6 +1206,10 @@ pub struct Cli {
     #[arg(long)]
     pub explicit: bool,
 
+    /// With --explicit JSON output, emit UTF-8 values without the u8: prefix and include encoding metadata
+    #[arg(long = "plain-json-values", requires = "explicit")]
+    pub plain_json_values: bool,
+
     /// Print version and exit
     #[arg(long)]
     pub version: bool,
@@ -1308,6 +1312,25 @@ mod tests {
         assert_eq!(cli.registry, Some(PathBuf::from("registries/test")));
         assert_eq!(cli.column, Some("id".to_string()));
         assert!(matches!(cli.emit, EmitMode::Json));
+        assert!(!cli.plain_json_values);
+    }
+
+    #[test]
+    fn test_cli_plain_json_values_parsing() {
+        let args = [
+            "canon",
+            "input.csv",
+            "--registry",
+            "registries/test",
+            "--column",
+            "id",
+            "--explicit",
+            "--plain-json-values",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        assert!(cli.explicit);
+        assert!(cli.plain_json_values);
     }
 
     #[test]

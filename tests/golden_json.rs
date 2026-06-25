@@ -23,6 +23,25 @@ fn run_json(input: &str, registry: &str, column: &str) -> (i32, String) {
     )
 }
 
+fn run_json_plain_values(input: &str, registry: &str, column: &str) -> (i32, String) {
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .arg(input)
+        .args([
+            "--registry",
+            registry,
+            "--column",
+            column,
+            "--explicit",
+            "--plain-json-values",
+        ])
+        .output()
+        .unwrap();
+    (
+        output.status.code().unwrap_or(-1),
+        String::from_utf8(output.stdout).unwrap(),
+    )
+}
+
 fn canonical_json(raw: &str) -> String {
     serde_json::to_string(&serde_json::from_str::<Value>(raw).unwrap()).unwrap()
 }
@@ -114,6 +133,30 @@ fn registry_version_and_identifier_encoding_present() {
     for unresolved in payload["unresolved"].as_array().unwrap() {
         if !unresolved["input"].is_null() {
             assert!(unresolved["input"].as_str().unwrap().starts_with("u8:"));
+        }
+    }
+}
+
+#[test]
+fn plain_json_values_are_opt_in_and_carry_encoding_metadata() {
+    let (status, output) = run_json_plain_values(
+        &fixture("csv/partial.csv"),
+        &fixture("registries/cusip-isin"),
+        "cusip",
+    );
+    assert_eq!(status, 1);
+    let payload: Value = serde_json::from_str(&output).unwrap();
+
+    for mapping in payload["mappings"].as_array().unwrap() {
+        assert!(!mapping["input"].as_str().unwrap().starts_with("u8:"));
+        assert_eq!(mapping["input_encoding"], "utf8");
+        assert!(!mapping["canonical_id"].as_str().unwrap().starts_with("u8:"));
+        assert_eq!(mapping["canonical_id_encoding"], "utf8");
+    }
+    for unresolved in payload["unresolved"].as_array().unwrap() {
+        if !unresolved["input"].is_null() {
+            assert!(!unresolved["input"].as_str().unwrap().starts_with("u8:"));
+            assert_eq!(unresolved["input_encoding"], "utf8");
         }
     }
 }

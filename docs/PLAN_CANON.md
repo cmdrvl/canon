@@ -88,6 +88,7 @@ Options:
 - `--max-rows <N>`: Refuse if input exceeds N data rows (raw row count including duplicates, excluding header). This is an I/O budget, not a cardinality limit — contrast with `summary.total` which counts unique values.
 - `--max-bytes <N>`: Refuse if input file exceeds N bytes. For regular files, checked via file size before reading. For stdin (`-`), bytes are counted during streaming; refusal triggers as soon as the limit is exceeded (partial output may have been buffered — in JSON mode this is safe since output is emitted at end; stdin is JSONL-only so CSV mode is not affected).
 - `--explicit`: Show `input` and `canonical_id` values verbatim in `--emit json` output. By default these values are masked as `"[REDACTED]"` for zero-retention safety and the envelope reports `"redacted": true`; with `--explicit` they are shown and `"redacted": false`.
+- `--plain-json-values`: Only valid with `--explicit`. Emit valid UTF-8 JSON `input` and `canonical_id` values without the `u8:` prefix and add `input_encoding` / `canonical_id_encoding` metadata. Values with ASCII control bytes or non-text bytes remain `hex:<hex-bytes>` with `"hex"` metadata. The default `--explicit` contract remains lossless `u8:`/`hex:` identifier encoding.
 - Bare `canon` (no arguments): print a short agent-oriented orientation to stderr — the canonical resolve command plus pointers to `canon --help`, `canon doctor --robot-triage`, `canon --describe`, and `canon --schema` — and exit 2. Stdout stays empty so pipelines are unaffected. This replaces the bare clap "required arguments" error.
 - Intent inference for legible-but-wrong invocations (deterministic, edit distance 1):
   - An unknown long flag within one edit of a known core flag (e.g. `--regisry`, `--colum`, `--explcit`) is rejected with `error: unknown flag '<flag>'` plus `did you mean '--<flag>'?` on stderr, exit 2. Unknown flags with no near match defer to the standard clap error.
@@ -564,13 +565,16 @@ Single JSON object on stdout. This is the default output mode and the format use
 | `summary.unresolved` | integer | Count of entries that could not be mapped |
 | `redacted` | boolean | Present on `RESOLVED`/`PARTIAL`/`UNRESOLVED` outputs. `true` when `input` and `canonical_id` values are masked as `"[REDACTED]"` (the zero-retention default); `false` when `--explicit` reveals them. Absent on `REFUSAL` (no values to mask). A discovery breadcrumb so consumers can detect masking without parsing `--help` |
 | `mappings[]` | array | One entry per resolved input |
-| `mappings[].input` | string | Original input value (identifier-encoded) |
-| `mappings[].canonical_id` | string | Resolved canonical ID (identifier-encoded) |
+| `mappings[].input` | string | Original input value. Identifier-encoded by default (`u8:`/`hex:`); plain UTF-8 without `u8:` only when `--explicit --plain-json-values` is used |
+| `mappings[].input_encoding` | string | Optional. Present only with `--explicit --plain-json-values`; `"utf8"` for plain text or `"hex"` for `hex:<bytes>` fallback |
+| `mappings[].canonical_id` | string | Resolved canonical ID. Identifier-encoded by default (`u8:`/`hex:`); plain UTF-8 without `u8:` only when `--explicit --plain-json-values` is used |
+| `mappings[].canonical_id_encoding` | string | Optional. Present only with `--explicit --plain-json-values`; `"utf8"` for plain text or `"hex"` for `hex:<bytes>` fallback |
 | `mappings[].canonical_type` | string | Type/namespace of the canonical ID |
 | `mappings[].rule_id` | string | Which mapping rule produced this match |
 | `mappings[].confidence` | string | `"deterministic"` or `"suggested"` (v0: always deterministic) |
 | `unresolved[]` | array | One entry per unresolved input |
-| `unresolved[].input` | string\|null | Original input value (identifier-encoded), or `null` for special reasons (`"empty_value"`, `"null_value"`, `"missing_field"`, `"non_scalar_value"`) |
+| `unresolved[].input` | string\|null | Original input value. Identifier-encoded by default (`u8:`/`hex:`); plain UTF-8 without `u8:` only when `--explicit --plain-json-values` is used. `null` for special reasons (`"empty_value"`, `"null_value"`, `"missing_field"`, `"non_scalar_value"`) |
+| `unresolved[].input_encoding` | string | Optional. Present only with `--explicit --plain-json-values` when `input` is not null; `"utf8"` for plain text or `"hex"` for `hex:<bytes>` fallback |
 | `unresolved[].reason` | string | Why resolution failed (see reason values below) |
 | `refusal` | object/null | Refusal envelope (null unless REFUSAL) |
 

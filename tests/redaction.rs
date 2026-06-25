@@ -60,6 +60,26 @@ fn explicit_reveals_values_and_clears_the_flag() {
 }
 
 #[test]
+fn explicit_plain_json_values_emit_utf8_without_prefix_and_metadata() {
+    let (code, value) = run(&[
+        &fixture("inputs/partial.csv"),
+        "--registry",
+        &fixture("registries/cusip-isin"),
+        "--column",
+        "cusip",
+        "--explicit",
+        "--plain-json-values",
+        "--no-witness",
+    ]);
+    assert_eq!(code, 1);
+    assert_eq!(value["redacted"], false);
+    assert_eq!(value["mappings"][0]["input"], "037833100");
+    assert_eq!(value["mappings"][0]["input_encoding"], "utf8");
+    assert_eq!(value["mappings"][0]["canonical_id"], "US0378331005");
+    assert_eq!(value["mappings"][0]["canonical_id_encoding"], "utf8");
+}
+
+#[test]
 fn refusal_outputs_omit_the_redacted_flag() {
     // Refusals carry no values, so the breadcrumb does not apply.
     let (code, value) = run(&[

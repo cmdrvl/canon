@@ -368,6 +368,7 @@ canon org review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> 
 | `--max-bytes <N>` | integer | *(none)* | Refuse if input exceeds N bytes. |
 | `--no-witness` | flag | `false` | Suppress witness ledger append. |
 | `--explicit` | flag | `false` | Show input and canonical_id values verbatim in JSON output. By default they are masked as `[REDACTED]` for zero-retention safety and the envelope reports `"redacted": true`. |
+| `--plain-json-values` | flag | `false` | With `--explicit`, emit UTF-8 JSON `input`/`canonical_id` values without the `u8:` prefix and add `*_encoding` metadata. Non-text/control-byte values remain hex encoded. |
 | `--version` | flag | | Print version and exit. |
 | `--describe` | flag | | Emit `operator.json` to stdout and exit. |
 | `--schema` | flag | | Print JSON Schema for the mapping artifact and exit. |
@@ -954,6 +955,13 @@ A single JSON object on stdout. This is the default output and the format used f
 Input values and canonical IDs in JSON use unambiguous encoding:
 - `u8:<string>` — valid UTF-8 with no ASCII control bytes
 - `hex:<hex-bytes>` — anything else
+
+This lossless encoding remains the default for `--explicit` JSON audit
+artifacts. For CLI and human workflows that want ordinary strings, pass
+`--explicit --plain-json-values`; valid UTF-8 values are emitted without the
+`u8:` prefix and each value gets `input_encoding` / `canonical_id_encoding`
+metadata; unresolved non-null inputs use `input_encoding`. Values that cannot
+be represented safely as text still use `hex:`.
 
 CSV output uses raw values (no encoding prefix).
 

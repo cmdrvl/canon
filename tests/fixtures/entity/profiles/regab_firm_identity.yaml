@@ -1,0 +1,40 @@
+profile: regab_firm_identity
+version: 0.1.0
+entity_type: organization
+identity_semantics: same_firm_or_reviewed_alias
+canonical_type: org
+required_fields:
+  - source_row_id
+  - field_name
+  - org_name
+  - dataset
+normalized_views:
+  firm_core:
+    operators:
+      - unicode_fold
+      - lowercase
+      - expand_na_abbreviation
+      - preserve_legal_form
+      - normalize_whitespace
+  firm_tokens:
+    operators:
+      - unicode_fold
+      - lowercase
+      - tokenize
+evidence:
+  support:
+    - op: exact_view
+      view: firm_core
+    - op: reviewed_alias
+      view: firm_core
+  cannot_link:
+    - op: role_conflict
+    - op: platform_label_guard
+    - op: division_boundary
+  relation_hints:
+    - op: division_of
+    - op: parent_subsidiary_context
+patch_namespaces:
+  aliases: regab_firm_identity.aliases
+  distinct: regab_firm_identity.distinct
+  relations: regab_firm_identity.relations

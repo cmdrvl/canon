@@ -1677,7 +1677,7 @@ fn parse_provider_config(options: &[String]) -> Result<BTreeMap<String, String>,
 
 /// Long flags an agent commonly types on the core resolve command. Used to
 /// turn clap's generic "unexpected argument" into a did-you-mean suggestion.
-const KNOWN_CORE_FLAGS: [&str; 13] = [
+const KNOWN_CORE_FLAGS: [&str; 14] = [
     "registry",
     "column",
     "emit",
@@ -1687,6 +1687,7 @@ const KNOWN_CORE_FLAGS: [&str; 13] = [
     "max-bytes",
     "no-witness",
     "explicit",
+    "plain-json-values",
     "version",
     "describe",
     "schema",
@@ -1862,7 +1863,17 @@ pub fn run_display_mode(mode: DisplayMode) -> Result<u8, Box<dyn Error>> {
                             "type": "object",
                             "properties": {
                                 "input": { "type": "string" },
+                                "input_encoding": {
+                                    "type": "string",
+                                    "enum": ["utf8", "hex"],
+                                    "description": "Present only when --plain-json-values is used with --explicit. Describes how to interpret input."
+                                },
                                 "canonical_id": { "type": "string" },
+                                "canonical_id_encoding": {
+                                    "type": "string",
+                                    "enum": ["utf8", "hex"],
+                                    "description": "Present only when --plain-json-values is used with --explicit. Describes how to interpret canonical_id."
+                                },
                                 "canonical_type": { "type": "string" },
                                 "rule_id": { "type": "string" },
                                 "confidence": { "type": "string" }
@@ -1876,6 +1887,11 @@ pub fn run_display_mode(mode: DisplayMode) -> Result<u8, Box<dyn Error>> {
                             "type": "object",
                             "properties": {
                                 "input": { "type": ["string", "null"] },
+                                "input_encoding": {
+                                    "type": "string",
+                                    "enum": ["utf8", "hex"],
+                                    "description": "Present only when --plain-json-values is used with --explicit and input is not null."
+                                },
                                 "reason": { "type": "string" }
                             },
                             "required": ["reason"]
@@ -1963,9 +1979,13 @@ fn run_pipeline(
     let output_hash = match cli.emit {
         crate::cli::EmitMode::Json => {
             // JSON mode: emit to stdout with hash
-            let json_output =
-                output::json::emit_json_explicit(&registry.meta, &resolve_result, cli.explicit)
-                    .map_err(create_output_refusal)?;
+            let json_output = output::json::emit_json_explicit_with_plain_values(
+                &registry.meta,
+                &resolve_result,
+                cli.explicit,
+                cli.plain_json_values,
+            )
+            .map_err(create_output_refusal)?;
 
             print!("{}", json_output);
 
@@ -1998,9 +2018,13 @@ fn run_pipeline(
 
             // Write --map-out sidecar if specified
             if let Some(map_out_path) = &cli.map_out {
-                let json_output =
-                    output::json::emit_json_explicit(&registry.meta, &resolve_result, cli.explicit)
-                        .map_err(create_output_refusal)?;
+                let json_output = output::json::emit_json_explicit_with_plain_values(
+                    &registry.meta,
+                    &resolve_result,
+                    cli.explicit,
+                    cli.plain_json_values,
+                )
+                .map_err(create_output_refusal)?;
                 std::fs::write(map_out_path, json_output).map_err(create_io_refusal)?;
             }
 
@@ -2061,6 +2085,10 @@ fn run_pipeline(
         params.insert(
             "explicit".to_string(),
             serde_json::Value::Bool(cli.explicit),
+        );
+        params.insert(
+            "plain_json_values".to_string(),
+            serde_json::Value::Bool(cli.plain_json_values),
         );
         params.insert(
             "summary".to_string(),
@@ -3116,6 +3144,10 @@ mod tests {
         assert_eq!(super::suggest_flag("--regisry"), Some("registry"));
         assert_eq!(super::suggest_flag("--colum"), Some("column"));
         assert_eq!(super::suggest_flag("--explcit"), Some("explicit"));
+        assert_eq!(
+            super::suggest_flag("--plain-json-value"),
+            Some("plain-json-values")
+        );
         // Exact spelling has nothing to suggest.
         assert_eq!(super::suggest_flag("--registry"), None);
         // Nonsense is left to clap (no near match).

@@ -61,6 +61,7 @@
     { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if input exceeds N bytes" },
     { "name": "no_witness", "flag": "--no-witness", "type": "flag", "description": "Suppress witness ledger recording; default ledger is ~/.cmdrvl/state/witness/witness.jsonl unless EPISTEMIC_WITNESS is set" },
     { "name": "explicit", "flag": "--explicit", "type": "flag", "description": "Show entity names and identifiers in JSON output (default: redacted for zero-retention safety)" },
+    { "name": "plain_json_values", "flag": "--plain-json-values", "type": "flag", "requires": "explicit", "description": "With --explicit, emit UTF-8 JSON input/canonical_id values without the u8: prefix and include encoding metadata; non-text values remain hex encoded" },
     { "name": "describe", "flag": "--describe", "type": "flag", "description": "Print compiled operator.json and exit 0" },
     { "name": "schema", "flag": "--schema", "type": "flag", "description": "Print canon.v0 JSON Schema and exit 0" },
     { "name": "version", "flag": "--version", "type": "flag", "description": "Print version and exit 0" }
