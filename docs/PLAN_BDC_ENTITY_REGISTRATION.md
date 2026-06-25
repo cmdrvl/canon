@@ -9,10 +9,10 @@
 > `source_row_id` (exists), `issuer_canon_id` (this plan), `position_match_id`
 > (future). This plan builds the second layer — canonical company identity.
 
-> **Architecture status**: Bootstrap domain plan for the implemented `canon org`
-> workbench. The current general interface is `canon org`; this older
-> `canon register` framing should be read as BDC issuer-profile background, not
-> a separate current CLI surface.
+> **Architecture status**: Legacy bootstrap domain plan for the organization
+> workbench now generalized under `canon entity`. This older `canon register`
+> framing should be read as BDC issuer-profile background, not a separate
+> current CLI surface or compatibility alias.
 
 ---
 

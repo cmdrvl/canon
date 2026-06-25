@@ -585,152 +585,152 @@
       ]
     },
     {
-      "name": "org run",
-      "usage": "canon org run <ROWS> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--suite <SUITE_DIR>] [--emit json|summary] [--no-witness]",
-      "description": "Run the full deterministic org-identity flow and emit canon_org_run.v0",
+      "name": "entity run",
+      "usage": "canon entity run <ROWS> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--suite <SUITE_DIR>] [--emit json|summary] [--no-witness]",
+      "description": "Run the full deterministic entity workbench flow and emit canon_entity_run.v0",
       "output_mode": "mixed",
-      "output_schema": "canon_org_run.v0",
+      "output_schema": "canon_entity_run.v0",
       "exit_codes": {
-        "0": { "meaning": "org run completed successfully", "domain": "positive" },
+        "0": { "meaning": "entity run completed successfully", "domain": "positive" },
         "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
       },
       "options": [
-        { "name": "strategy", "flag": "--strategy", "type": "file_path", "required": true, "description": "Org strategy YAML file" },
-        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Org registry directory" },
+        { "name": "strategy", "flag": "--strategy", "type": "file_path", "required": true, "description": "Entity strategy YAML file" },
+        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Entity registry directory" },
         { "name": "suite", "flag": "--suite", "type": "directory_path", "description": "Optional frozen evaluation suite directory" },
-        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_org_run.v0) or summary" },
-        { "name": "no_witness", "flag": "--no-witness", "type": "flag", "description": "Suppress witness ledger recording for canon org run" }
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_entity_run.v0) or summary" },
+        { "name": "no_witness", "flag": "--no-witness", "type": "flag", "description": "Suppress witness ledger recording for canon entity run" }
       ]
     },
     {
-      "name": "org block",
-      "usage": "canon org block <ROWS> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
-      "description": "Generate deterministic candidate neighborhoods for org identity",
+      "name": "entity block",
+      "usage": "canon entity block <ROWS> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
+      "description": "Generate deterministic candidate neighborhoods for entity resolution",
       "output_mode": "mixed",
-      "output_schema": "canon_org_block.v0",
+      "output_schema": "canon_entity_block.v0",
       "exit_codes": {
         "0": { "meaning": "candidate blocks emitted successfully", "domain": "positive" },
         "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
       },
       "options": [
-        { "name": "strategy", "flag": "--strategy", "type": "file_path", "required": true, "description": "Org strategy YAML file" },
-        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Org registry directory" },
-        { "name": "emit", "flag": "--emit", "type": "string", "default": "jsonl", "description": "Output mode: jsonl (canon_org_block.v0 records) or summary" }
+        { "name": "strategy", "flag": "--strategy", "type": "file_path", "required": true, "description": "Entity strategy YAML file" },
+        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Entity registry directory" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "jsonl", "description": "Output mode: jsonl (canon_entity_block.v0 records) or summary" }
       ]
     },
     {
-      "name": "org edge",
-      "usage": "canon org edge <ROWS> --strategy <STRATEGY.yaml> --candidates <BLOCK.jsonl> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
-      "description": "Generate typed evidence edges for blocked org row pairs",
+      "name": "entity edge",
+      "usage": "canon entity edge <ROWS> --strategy <STRATEGY.yaml> --candidates <BLOCK.jsonl> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
+      "description": "Generate typed evidence edges for blocked entity candidates",
       "output_mode": "mixed",
-      "output_schema": "canon_org_edge.v0",
+      "output_schema": "canon_entity_edge.v0",
       "exit_codes": {
         "0": { "meaning": "edge artifact emitted successfully", "domain": "positive" },
         "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
       },
       "options": [
-        { "name": "strategy", "flag": "--strategy", "type": "file_path", "required": true, "description": "Org strategy YAML file" },
-        { "name": "candidates", "flag": "--candidates", "type": "file_path", "required": true, "description": "canon_org_block.v0 JSONL candidate artifact" },
-        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Org registry directory" },
-        { "name": "emit", "flag": "--emit", "type": "string", "default": "jsonl", "description": "Output mode: jsonl (canon_org_edge.v0 records) or summary" }
+        { "name": "strategy", "flag": "--strategy", "type": "file_path", "required": true, "description": "Entity strategy YAML file" },
+        { "name": "candidates", "flag": "--candidates", "type": "file_path", "required": true, "description": "canon_entity_block.v0 JSONL candidate artifact" },
+        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Entity registry directory" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "jsonl", "description": "Output mode: jsonl (canon_entity_edge.v0 records) or summary" }
       ]
     },
     {
-      "name": "org solve",
-      "usage": "canon org solve <ROWS> --strategy <STRATEGY.yaml> --edges <EDGES.jsonl> --registry <REGISTRY_DIR> [--emit json|summary]",
-      "description": "Solve deterministic org identity assignments from evidence edges",
+      "name": "entity solve",
+      "usage": "canon entity solve <ROWS> --strategy <STRATEGY.yaml> --edges <EDGES.jsonl> --registry <REGISTRY_DIR> [--emit json|summary]",
+      "description": "Solve deterministic entity assignments from evidence edges",
       "output_mode": "mixed",
-      "output_schema": "canon_org_solve.v0",
+      "output_schema": "canon_entity_solve.v0",
       "exit_codes": {
-        "0": { "meaning": "org solve completed successfully", "domain": "positive" },
+        "0": { "meaning": "entity solve completed successfully", "domain": "positive" },
         "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
       },
       "options": [
-        { "name": "strategy", "flag": "--strategy", "type": "file_path", "required": true, "description": "Org strategy YAML file" },
-        { "name": "edges", "flag": "--edges", "type": "file_path", "required": true, "description": "canon_org_edge.v0 JSONL edge artifact" },
-        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Org registry directory" },
-        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_org_solve.v0) or summary" }
+        { "name": "strategy", "flag": "--strategy", "type": "file_path", "required": true, "description": "Entity strategy YAML file" },
+        { "name": "edges", "flag": "--edges", "type": "file_path", "required": true, "description": "canon_entity_edge.v0 JSONL edge artifact" },
+        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Entity registry directory" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_entity_solve.v0) or summary" }
       ]
     },
     {
-      "name": "org audit",
-      "usage": "canon org audit <RESULT.json> --suite <SUITE_DIR> [--emit json|summary]",
-      "description": "Audit an org solve/run artifact against a frozen evaluation suite",
+      "name": "entity audit",
+      "usage": "canon entity audit <RESULT.json> --suite <SUITE_DIR> [--emit json|summary]",
+      "description": "Audit an entity solve/run artifact against a frozen evaluation suite",
       "output_mode": "mixed",
-      "output_schema": "canon_org_audit.v0",
+      "output_schema": "canon_entity_audit.v0",
       "exit_codes": {
-        "0": { "meaning": "org audit completed successfully", "domain": "positive" },
+        "0": { "meaning": "entity audit completed successfully", "domain": "positive" },
         "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
       },
       "options": [
-        { "name": "suite", "flag": "--suite", "type": "directory_path", "required": true, "description": "Frozen org evaluation suite directory" },
-        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_org_audit.v0) or summary" }
+        { "name": "suite", "flag": "--suite", "type": "directory_path", "required": true, "description": "Frozen entity evaluation suite directory" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_entity_audit.v0) or summary" }
       ]
     },
     {
-      "name": "org promote",
-      "usage": "canon org promote <RESULT.json> --audit <AUDIT.json> --registry <REGISTRY_DIR> --next-version <VERSION> [--emit json|summary]",
-      "description": "Promote an audited org result into registry aliases and escrow sidecars",
+      "name": "entity promote",
+      "usage": "canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <REGISTRY_DIR> --next-version <VERSION> [--emit json|summary]",
+      "description": "Promote an audited entity result into registry aliases and escrow sidecars",
       "output_mode": "mixed",
-      "output_schema": "canon_org_promote.v0",
+      "output_schema": "canon_entity_promote.v0",
       "exit_codes": {
-        "0": { "meaning": "org promotion completed successfully", "domain": "positive" },
+        "0": { "meaning": "entity promotion completed successfully", "domain": "positive" },
         "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
       },
       "options": [
-        { "name": "audit", "flag": "--audit", "type": "file_path", "required": true, "description": "canon_org_audit.v0 artifact" },
-        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Org registry directory to update" },
+        { "name": "audit", "flag": "--audit", "type": "file_path", "required": true, "description": "canon_entity_audit.v0 artifact" },
+        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Entity registry directory to update" },
         { "name": "next_version", "flag": "--next-version", "type": "string", "required": true, "description": "Explicit next registry.json version" },
-        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_org_promote.v0) or summary" }
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_entity_promote.v0) or summary" }
       ]
     },
     {
-      "name": "org review export",
-      "usage": "canon org review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]",
-      "description": "Export a deterministic human-adjudication queue from an org solve/run artifact",
+      "name": "entity review export",
+      "usage": "canon entity review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]",
+      "description": "Export a deterministic human-adjudication queue from an entity solve/run artifact",
       "output_mode": "mixed",
-      "output_schema": "canon_org_review_export.v0",
+      "output_schema": "canon_entity_review_export.v0",
       "exit_codes": {
-        "0": { "meaning": "org review export completed successfully", "domain": "positive" },
+        "0": { "meaning": "entity review export completed successfully", "domain": "positive" },
         "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
       },
       "options": [
-        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_org_review_export.v0) or csv" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_entity_review_export.v0) or csv" },
         { "name": "include", "flag": "--include", "type": "string", "default": "all", "description": "Review item filter: resolved, escrow, contradictions, or all" }
       ]
     },
     {
-      "name": "org review import",
-      "usage": "canon org review import <REVIEW.json|csv> --registry <REGISTRY_DIR> --next-version <VERSION> [--audit <AUDIT.json>] [--emit json|summary]",
+      "name": "entity review import",
+      "usage": "canon entity review import <REVIEW.json|csv> --registry <REGISTRY_DIR> --next-version <VERSION> [--audit <AUDIT.json>] [--emit json|summary]",
       "description": "Import adjudicated review decisions into registry aliases, anchors, and escrow sidecars",
       "output_mode": "mixed",
-      "output_schema": "canon_org_review_import.v0",
+      "output_schema": "canon_entity_review_import.v0",
       "exit_codes": {
-        "0": { "meaning": "org review import completed successfully", "domain": "positive" },
+        "0": { "meaning": "entity review import completed successfully", "domain": "positive" },
         "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
       },
       "options": [
-        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Org registry directory to update" },
+        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Entity registry directory to update" },
         { "name": "next_version", "flag": "--next-version", "type": "string", "required": true, "description": "Explicit next registry.json version" },
-        { "name": "audit", "flag": "--audit", "type": "file_path", "description": "canon_org_audit.v0 artifact required for alias/anchor promotion decisions" },
-        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_org_review_import.v0) or summary" }
+        { "name": "audit", "flag": "--audit", "type": "file_path", "description": "canon_entity_audit.v0 artifact required for alias/anchor promotion decisions" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_entity_review_import.v0) or summary" }
       ]
     },
     {
-      "name": "org explain",
-      "usage": "canon org explain <RESULT.json> --row <SOURCE_ROW_ID>|--canon-id <CANON_ID>|--escrow-id <ESCROW_ID> [--emit json|summary]",
-      "description": "Explain one org row, canonical entity, or escrow entity from a solve/run artifact",
+      "name": "entity explain",
+      "usage": "canon entity explain <RESULT.json> --row <SOURCE_ROW_ID>|--canon-id <CANON_ID>|--escrow-id <ESCROW_ID> [--emit json|summary]",
+      "description": "Explain one source row, canonical entity, or escrow entity from a solve/run artifact",
       "output_mode": "mixed",
-      "output_schema": "canon_org_explain.v0",
+      "output_schema": "canon_entity_explain.v0",
       "exit_codes": {
-        "0": { "meaning": "org explain completed successfully", "domain": "positive" },
+        "0": { "meaning": "entity explain completed successfully", "domain": "positive" },
         "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
       },
       "options": [
         { "name": "row", "flag": "--row", "type": "string", "description": "Explain one source_row_id" },
         { "name": "canon_id", "flag": "--canon-id", "type": "string", "description": "Explain one canonical ID" },
         { "name": "escrow_id", "flag": "--escrow-id", "type": "string", "description": "Explain one escrow ID" },
-        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_org_explain.v0) or summary" }
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_entity_explain.v0) or summary" }
       ]
     }
   ],

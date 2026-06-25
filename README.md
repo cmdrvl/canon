@@ -22,7 +22,7 @@ The same loan appears as CUSIP `037833100` in one system, ISIN `US0378331005` in
 
 **canon resolves identifiers against versioned registries — deterministic, traceable, reproducible.** Every resolution records which registry version was used, which rule produced the match, and what didn't match. Same input plus same registry version equals same output, every time. No fuzzy matching, no silent normalization, no guessing.
 
-Architecturally, `canon` has two layers. The core lookup kernel is exact and boring on purpose. Resolution workbenches such as `canon org` and `canon resolve` run offline evidence pipelines that create, audit, review, and promote new registry knowledge. Once promoted, production lookup is still exact registry lookup. See [`docs/IDENTITY_ARCHITECTURE.md`](docs/IDENTITY_ARCHITECTURE.md) for the boundary.
+Architecturally, `canon` has two layers. The core lookup kernel is exact and boring on purpose. Resolution workbenches such as `canon entity` and `canon resolve` run offline evidence pipelines that create, audit, review, and promote new registry knowledge. Once promoted, production lookup is still exact registry lookup. See [`docs/IDENTITY_ARCHITECTURE.md`](docs/IDENTITY_ARCHITECTURE.md) for the boundary.
 
 ### What makes this different
 
@@ -31,7 +31,7 @@ Architecturally, `canon` has two layers. The core lookup kernel is exact and bor
 - **Full traceability** — every mapping includes `rule_id`, `canonical_type`, and `confidence`. Every unresolved entry includes the reason. Every result is auditable.
 - **Deduplication built in** — input values are deduplicated before lookup. 500 unique CUSIPs produce 500 mapping entries whether your file has 500 rows or 500,000.
 - **Self-authored registries** — use `canon registry default-id-scheme`, `next-id`, `add-entry`, and `mint` to maintain local alias registries without hand-editing mapping JSON.
-- **Org identity resolution** — `canon org` resolves organization-like entities that appear under different names across documents via a deterministic multi-stage workbench: block, score evidence, solve clusters, audit against evaluation suites, review if needed, and promote into the registry.
+- **Entity workbench** — `canon entity` resolves profiled entity observations that appear under different names across documents via a deterministic multi-stage workbench: prepare surfaces, build indexes, block candidates, score evidence, solve clusters, audit against evaluation suites, review if needed, and promote into the registry.
 - **Cross-tape structural resolution** — `canon resolve` compares two local tapes under an explicit YAML strategy, emits `canon_resolve.v0` evidence, and can write matched ID pairs back into a flat registry when explicitly requested.
 
 ---
@@ -287,7 +287,7 @@ canon tape.csv --registry registries/cusip-isin/ --column cusip \
 **When to use canon:**
 - Normalizing identifiers before reconciliation (`canon --emit csv | rvl`)
 - Resolving counterparty aliases across vendor datasets
-- Running deterministic org-identity resolution when the domain has modeled observations, anchors, context fields, audit suites, and a versioned registry (`canon org`)
+- Running deterministic entity resolution when the domain has modeled observations, anchors, context fields, audit suites, and a versioned registry (`canon entity`)
 - Building cross-reference registries from two tapes that describe the same records with different IDs (`canon resolve`)
 - Building audit trails for regulatory mappings (every resolution traceable)
 
@@ -343,10 +343,10 @@ canon strategy resolve --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) -
 canon strategy register --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --grade operator-attested|proof-attested --next-version <VER> [--operator <ID> --reason <TEXT>] [--verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json>] [--emit json|summary] [--no-witness]
 canon strategy update|deprecate|promote|list|explain [OPTIONS]
 canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]
-canon org run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json|summary]
-canon org block|edge|solve|audit|promote|explain|review [OPTIONS]
-canon org review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]
-canon org review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]
+canon entity run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json|summary]
+canon entity block|edge|solve|audit|promote|explain|review [OPTIONS]
+canon entity review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]
+canon entity review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]
 ```
 
 ### Arguments
@@ -402,15 +402,15 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `strategy update|deprecate|promote` | Update an active champion, mark it deprecated without deleting history, or promote an operator-attested champion to proof-attested. Mutations emit before/after registry-hash receipts and append witness records unless `--no-witness` is passed. |
 | `strategy list|explain` | Inspect mixed schema/task strategy registries, provenance, grade, status, source file, entry order, and active-resolution behavior without hand-reading `_strategy/entries.json`. |
 | `strategy diff --old <DIR> --new <DIR> [--emit json\|summary]` | Compare frozen-script strategy registry versions by typed key plus skill hash, including grade/status/attestation changes. |
-| `org run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json\|summary]` | Run the full deterministic org-identity pipeline (block → edge → solve, optional audit + promote). |
-| `org block <ROWS> --strategy <YAML> --registry <DIR> [--emit jsonl\|summary]` | Generate candidate neighborhoods via blocking operators. |
-| `org edge <ROWS> --strategy <YAML> --candidates <JSONL> --registry <DIR> [--emit jsonl\|summary]` | Score typed evidence edges for blocked candidate pairs. |
-| `org solve <ROWS> --strategy <YAML> --edges <JSONL> --registry <DIR> [--emit json\|summary]` | Solve deterministic identity assignments from evidence edges. |
-| `org audit <RESULT> --suite <DIR> [--emit json\|summary]` | Validate a solve/run artifact against a frozen evaluation suite. |
-| `org promote <RESULT> --audit <JSON> --registry <DIR> --next-version <VER> [--emit json\|summary]` | Write audited results into registry aliases and escrow sidecars. |
-| `org review export <RESULT> [--emit json\|csv] [--include resolved\|escrow\|contradictions\|all]` | Produce a deterministic human-adjudication queue with stable review IDs and evidence context. |
-| `org review import <REVIEW> --registry <DIR> --next-version <VER> [--audit <JSON>] [--emit json\|summary]` | Import reviewed decisions into alias, anchor, and escrow patches with proof hashes. |
-| `org explain <RESULT> --row <ID>\|--canon-id <ID>\|--escrow-id <ID> [--emit json\|summary]` | Proof trace for one row, canonical entity, or escrow entity. |
+| `entity run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json\|summary]` | Run the full deterministic entity pipeline (prepare → index → block → edge → solve, optional audit + promote). |
+| `entity block <ROWS> --strategy <YAML> --registry <DIR> [--emit jsonl\|summary]` | Generate candidate neighborhoods via blocking operators. |
+| `entity edge <ROWS> --strategy <YAML> --candidates <JSONL> --registry <DIR> [--emit jsonl\|summary]` | Score typed evidence edges for blocked candidate pairs. |
+| `entity solve <ROWS> --strategy <YAML> --edges <JSONL> --registry <DIR> [--emit json\|summary]` | Solve deterministic identity assignments from evidence edges. |
+| `entity audit <RESULT> --suite <DIR> [--emit json\|summary]` | Validate a solve/run artifact against a frozen evaluation suite. |
+| `entity promote <RESULT> --audit <JSON> --registry <DIR> --next-version <VER> [--emit json\|summary]` | Write audited results into registry aliases and escrow sidecars. |
+| `entity review export <RESULT> [--emit json\|csv] [--include resolved\|escrow\|contradictions\|all]` | Produce a deterministic human-adjudication queue with stable review IDs and evidence context. |
+| `entity review import <REVIEW> --registry <DIR> --next-version <VER> [--audit <JSON>] [--emit json\|summary]` | Import reviewed decisions into alias, anchor, and escrow patches with proof hashes. |
+| `entity explain <RESULT> --row <ID>\|--canon-id <ID>\|--escrow-id <ID> [--emit json\|summary]` | Proof trace for one row, canonical entity, or escrow entity. |
 
 ### Exit Codes
 
@@ -759,42 +759,42 @@ canon tape.csv --registry registries/cusip-isin/ --column cusip \
 
 ---
 
-## Organization Identity Resolution (`canon org`)
+## Entity Workbench (`canon entity`)
 
-The same entity appears as "Wells Fargo & Company" in one document, "Wells Fargo Bank, N.A." in another, and "WFB" in a third. Three names, one issuer. `canon org` resolves these via a deterministic multi-stage pipeline — no ML models, no probabilistic matching, no black boxes.
+The same entity appears as "Wells Fargo & Company" in one document, "Wells Fargo Bank, N.A." in another, and "WFB" in a third. Three names, one issuer. `canon entity` resolves profiled observations via a deterministic multi-stage pipeline — no ML models, no probabilistic matching, no black boxes.
 
 The pipeline is YAML-driven: a **strategy file** defines which fields to observe, how to normalize names, which blocking operators generate candidates, how to score evidence, and what thresholds the solver uses to merge or abstain. Same strategy + same input + same registry = same output, every time.
 
-`canon org` is a resolution workbench, not the core lookup path. It manufactures registry knowledge through evidence, audit, review, and promotion. After promotion, ordinary `canon` runs still resolve the resulting aliases through exact lookup.
+`canon entity` is a resolution workbench, not the core lookup path. It manufactures registry knowledge through evidence, audit, review, and promotion. After promotion, ordinary `canon` runs still resolve the resulting aliases through exact lookup.
 
 ```bash
 # Full pipeline in one command:
-$ canon org run rows.csv \
+$ canon entity run rows.csv \
     --strategy strategy.yaml \
-    --registry registries/org/ \
+    --registry registries/entities/ \
     --suite eval/holdout/ \
     --emit summary
 
-org_run: 847 rows → 312 canonical entities, 4 escrow (pending), 0 escrow (conflict)
+entity_run: 847 rows → 312 canonical entities, 4 escrow (pending), 0 escrow (conflict)
 audit: holdout 98/98 pass, perturbation stability 0.998
 ```
 
 Or run stages individually for inspection:
 
 ```bash
-$ canon org block rows.csv --strategy strategy.yaml --registry registries/org/ > blocks.jsonl
-$ canon org edge rows.csv --strategy strategy.yaml --candidates blocks.jsonl --registry registries/org/ > edges.jsonl
-$ canon org solve rows.csv --strategy strategy.yaml --edges edges.jsonl --registry registries/org/ > result.json
-$ canon org audit result.json --suite eval/holdout/ > audit.json
-$ canon org review export result.json --include all --emit csv > review.csv
-$ canon org review import review.csv --audit audit.json --registry registries/org/ --next-version 2.1.0
-$ canon org promote result.json --audit audit.json --registry registries/org/ --next-version 2.1.0
-$ canon org explain result.json --canon-id IC-00042
+$ canon entity block rows.csv --strategy strategy.yaml --registry registries/entities/ > blocks.jsonl
+$ canon entity edge rows.csv --strategy strategy.yaml --candidates blocks.jsonl --registry registries/entities/ > edges.jsonl
+$ canon entity solve rows.csv --strategy strategy.yaml --edges edges.jsonl --registry registries/entities/ > result.json
+$ canon entity audit result.json --suite eval/holdout/ > audit.json
+$ canon entity review export result.json --include all --emit csv > review.csv
+$ canon entity review import review.csv --audit audit.json --registry registries/entities/ --next-version 2.1.0
+$ canon entity promote result.json --audit audit.json --registry registries/entities/ --next-version 2.1.0
+$ canon entity explain result.json --canon-id IC-00042
 ```
 
 ---
 
-## The Org Pipeline
+## The Entity Pipeline
 
 ### Strategy
 
@@ -855,9 +855,9 @@ Write audited results back to the registry:
 Proof traces for any row, entity, or escrow decision:
 
 ```bash
-$ canon org explain result.json --row src-row-42
-$ canon org explain result.json --canon-id IC-00042
-$ canon org explain result.json --escrow-id ESC-00007
+$ canon entity explain result.json --row src-row-42
+$ canon entity explain result.json --canon-id IC-00042
+$ canon entity explain result.json --escrow-id ESC-00007
 ```
 
 Returns the full evidence chain: which blocking operator surfaced the pair, which evidence edges were scored, which solver stage produced the merge or abstention, and why.
@@ -868,7 +868,7 @@ Returns the full evidence chain: which blocking operator surfaced the pair, whic
 
 | Limitation | Detail |
 |------------|--------|
-| **Exact match only (core lookup)** | Core `canon` lookup uses exact byte match after ASCII-trim. `canon org` and `canon resolve` add deterministic workbenches, not fuzzy/phonetic matching in the lookup kernel. |
+| **Exact match only (core lookup)** | Core `canon` lookup uses exact byte match after ASCII-trim. `canon entity` and `canon resolve` add deterministic workbenches, not fuzzy/phonetic matching in the lookup kernel. |
 | **Flat registries** | No subdirectories in v0. All mapping files must be at the registry root. |
 | **CSV-only for `--emit csv`** | JSONL input cannot use `--emit csv` mode. |
 
@@ -882,9 +882,9 @@ Short for *canonical*. The tool produces canonical identifiers — one true ID f
 
 ### Is this entity resolution?
 
-Yes. `canon org` performs deterministic multi-field org-identity resolution, and `canon resolve` performs deterministic two-tape structural record resolution. Both use YAML-driven evidence pipelines and emit audit artifacts. Core `canon` without a workbench subcommand still resolves identifiers via exact lookup against versioned registries.
+Yes. `canon entity` performs deterministic profiled entity resolution, and `canon resolve` performs deterministic two-tape structural record resolution. Both use YAML-driven evidence pipelines and emit audit artifacts. Core `canon` without a workbench subcommand still resolves identifiers via exact lookup against versioned registries.
 
-The important boundary is that entity resolution happens in workbench commands such as `canon org` and `canon resolve`, then accepted knowledge is promoted into registries. The default lookup command never performs open-ended fuzzy matching at resolution time.
+The important boundary is that entity resolution happens in workbench commands such as `canon entity` and `canon resolve`, then accepted knowledge is promoted into registries. The default lookup command never performs open-ended fuzzy matching at resolution time.
 
 ### How does canon relate to rvl?
 

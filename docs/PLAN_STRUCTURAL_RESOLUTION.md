@@ -9,7 +9,7 @@
 > pre-built ID mappings.
 
 > **Architecture status**: Implemented bounded resolution workbench. This plan
-> describes a sibling to `canon org`, not current core lookup behavior. `canon
+> describes a sibling to `canon entity`, not current core lookup behavior. `canon
 > resolve` loads exactly two local tapes, applies deterministic strategy
 > operators, emits `canon_resolve.v0`, optionally scores a gold set, and writes
 > flat cross-reference entries only when `--write-back` is explicitly provided.

@@ -23,7 +23,7 @@ Today this means:
 `canon` replaces that with **one deterministic command** backed by versioned, inspectable registries.
 
 Architecture note: this plan defines the core lookup kernel and registry
-substrate. Domain-specific resolution workbenches, such as `canon org`, may
+substrate. Domain-specific resolution workbenches, such as `canon entity`, may
 create audited registry updates, but normal `canon` lookup remains exact
 registry lookup. See `docs/IDENTITY_ARCHITECTURE.md` for the boundary.
 
@@ -72,8 +72,8 @@ canon strategy promote --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TAS
 canon strategy list --registry <REGISTRY> [--key-type schema|task] [--grade operator-attested|proof-attested] [--status active|deprecated] [--emit json|summary]
 canon strategy explain --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
 canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
-canon org review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]
-canon org review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]
+canon entity review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]
+canon entity review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]
 ```
 
 Arguments:
@@ -271,19 +271,19 @@ Strategy registries are local artifacts. No remote provider calls happen during 
 - resolves duplicate keys deterministically by filename-sorted, entry-order precedence; shadowed duplicates do not affect the effective diff
 - exits `0` on successful comparison and `2` on refusal
 
-### Org review subcommands
+### Entity review subcommands
 
-`canon org review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]`
-- reads a `canon_org_run.v0` or `canon_org_solve.v0` artifact and emits `canon_org_review_export.v0`
+`canon entity review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]`
+- reads a `canon_entity_run.v0` or `canon_entity_solve.v0` artifact and emits `canon_entity_review_export.v0`
 - includes deterministic review IDs, source row IDs, observed names, anchors, incumbent overlaps, evidence scores, contradiction reasons, and proposed review actions
 - `--include` filters to resolved/promotable entities, escrowed abstentions, contradiction records, or all reviewable items; default is `all`
 - `--emit csv` emits a round-trippable review queue with JSON-encoded complex cells and result/registry snapshot metadata in every row
 
-`canon org review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]`
+`canon entity review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]`
 - imports reviewed decisions into alias, trusted-anchor, pending-escrow, and cannot-link sidecars, then bumps `registry.json` to `--next-version`
 - refuses malformed decisions, duplicate review IDs, stale registry snapshots, alias overwrites, trusted-anchor conflicts, and unchanged or empty next versions
-- alias/anchor promotion decisions require a matching passing `canon_org_audit.v0` artifact; escrow-only decisions do not require audit
-- emits `canon_org_review_import.v0` with registry before/after hashes, write counts, and BLAKE3 proof hashes for the review input, optional audit input, alias patch, anchor patch, and escrow patch
+- alias/anchor promotion decisions require a matching passing `canon_entity_audit.v0` artifact; escrow-only decisions do not require audit
+- emits `canon_entity_review_import.v0` with registry before/after hashes, write counts, and BLAKE3 proof hashes for the review input, optional audit input, alias patch, anchor patch, and escrow patch
 
 ### Output modes
 
@@ -424,13 +424,13 @@ Registries vary in complexity. `canon` treats all registries uniformly — input
 |---------------|----------|-----|---------|
 | **ID mapping** | Exact lookup (input ID -> canonical ID) | Yes | CUSIP->ISIN, ticker normalization |
 | **Alias resolution** | Exact lookup with pre-populated variants | Yes | "Wells Fargo" / "WFB" -> counterparty C-00012 (each variant is a separate registry entry) |
-| **Org identity workbench** | Multi-field deterministic evidence outside the lookup path, promoted into flat aliases and sidecars | Yes, via `canon org` | "Wells Fargo & Company" / "WFB" -> org O-00012 |
+| **Entity workbench** | Multi-field deterministic evidence outside the lookup path, promoted into flat aliases and sidecars | Yes, via `canon entity` | "Wells Fargo & Company" / "WFB" -> entity O-00012 |
 | **Cross-tape structural workbench** | Two-tape deterministic matching under a domain strategy, promoted into flat registry entries | Yes, via `canon resolve` | Trustee loan `223232` -> servicer loan `WFCM2019-C50\|1` |
 | **Property/address identity** | Address/geospatial/name evidence under a property-specific strategy | Future | Property address variants -> canonical property P-00456 |
 
 ID mapping and alias resolution both use the same v0 lookup mechanism: exact
 byte match after ASCII-trim. The difference is how the registry is authored
-(one entry per ID vs many entries per entity). `canon org` and `canon resolve`
+(one entry per ID vs many entries per entity). `canon entity` and `canon resolve`
 are not new lookup match modes; they are separate workbenches that use
 deterministic evidence to manufacture audited registry updates. Property-specific
 identity remains future work.
@@ -799,7 +799,7 @@ canon registry add-entry --registry registries/people/ --alias-file aliases.json
 - v0: exact-match query (ASCII-trimmed input against registry `input` field) via SQLite
 - Alias resolution uses the same exact-match path — the registry author pre-populates all known variants as separate entries
 - Multi-column entity resolution does not run inside this lookup path. Domain
-  workbenches such as `canon org` run before lookup promotion, then write flat
+  workbenches such as `canon entity` run before lookup promotion, then write flat
   registry entries and sidecars that this lookup path can consume exactly.
 
 ### Core data types
