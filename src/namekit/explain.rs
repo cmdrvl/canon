@@ -252,6 +252,122 @@ impl ProtectedTokenLane {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewEvidenceCategory {
+    NormalizationTransform,
+    SupportEvidence,
+    RiskEvidence,
+    CannotLinkEvidence,
+    ProfilePolicy,
+    SourceProvenance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewActionHint {
+    ExplainOnly,
+    ReviewCandidate,
+    ReviewDistinctness,
+    PreserveProfileSemantics,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewPatchVocabulary {
+    AliasCandidate,
+    DistinctCandidate,
+    RelationHint,
+    ProtectedToken,
+    NormalizationTrace,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResolverDecisionHint {
+    SameCandidate,
+    NotSameCandidate,
+    Undecided,
+    ContextOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReviewReasonMapping {
+    pub reason_code: ReasonCode,
+    pub evidence_category: ReviewEvidenceCategory,
+    pub action_hint: ReviewActionHint,
+    pub patch_vocabulary: Option<ReviewPatchVocabulary>,
+    pub resolver_decision_hint: ResolverDecisionHint,
+}
+
+pub fn review_reason_mapping(reason_code: ReasonCode) -> ReviewReasonMapping {
+    let (evidence_category, action_hint, patch_vocabulary, resolver_decision_hint) =
+        match reason_code {
+            ReasonCode::RareTokenSupport => (
+                ReviewEvidenceCategory::SupportEvidence,
+                ReviewActionHint::ReviewCandidate,
+                Some(ReviewPatchVocabulary::AliasCandidate),
+                ResolverDecisionHint::SameCandidate,
+            ),
+            ReasonCode::ProtectedTokenConflict => (
+                ReviewEvidenceCategory::CannotLinkEvidence,
+                ReviewActionHint::ReviewDistinctness,
+                Some(ReviewPatchVocabulary::DistinctCandidate),
+                ResolverDecisionHint::NotSameCandidate,
+            ),
+            ReasonCode::CommonTokenDownweighted
+            | ReasonCode::MetricCutoff
+            | ReasonCode::NgramFingerprintCollision => (
+                ReviewEvidenceCategory::RiskEvidence,
+                ReviewActionHint::ReviewCandidate,
+                Some(ReviewPatchVocabulary::RelationHint),
+                ResolverDecisionHint::Undecided,
+            ),
+            ReasonCode::LegalSuffixPreserved | ReasonCode::ProfileTokenPreserved => (
+                ReviewEvidenceCategory::ProfilePolicy,
+                ReviewActionHint::PreserveProfileSemantics,
+                Some(ReviewPatchVocabulary::ProtectedToken),
+                ResolverDecisionHint::ContextOnly,
+            ),
+            ReasonCode::SourceParityReference => (
+                ReviewEvidenceCategory::SourceProvenance,
+                ReviewActionHint::ExplainOnly,
+                None,
+                ResolverDecisionHint::ContextOnly,
+            ),
+            ReasonCode::ControlRemoved
+            | ReasonCode::LegalSuffixStripped
+            | ReasonCode::NoLoss
+            | ReasonCode::ProfileTokenDropped
+            | ReasonCode::PunctuationRemoved
+            | ReasonCode::TokensDeduped
+            | ReasonCode::TokensSorted
+            | ReasonCode::UnicodeFolded
+            | ReasonCode::WhitespaceCollapsed => (
+                ReviewEvidenceCategory::NormalizationTransform,
+                ReviewActionHint::ExplainOnly,
+                Some(ReviewPatchVocabulary::NormalizationTrace),
+                ResolverDecisionHint::ContextOnly,
+            ),
+        };
+
+    ReviewReasonMapping {
+        reason_code,
+        evidence_category,
+        action_hint,
+        patch_vocabulary,
+        resolver_decision_hint,
+    }
+}
+
+pub fn review_reason_mappings() -> Vec<ReviewReasonMapping> {
+    ReasonCode::ALL
+        .iter()
+        .copied()
+        .map(review_reason_mapping)
+        .collect()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NamekitReason {
     pub code: ReasonCode,
