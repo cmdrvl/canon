@@ -6,6 +6,8 @@ use crate::entity::{
     EntityDeterministicSummary,
     apply::ApplyRunArtifact,
     block_artifact::BlockCandidateArtifact,
+    edge_artifact::EdgeEvidenceArtifact,
+    index::EntityIndexArtifact,
     prepare::PrepareRunArtifact,
     run::{EntityRunArtifact, render_run_summary},
     solve::SolveArtifact,
@@ -45,6 +47,18 @@ pub struct EntitySummaryRegistry {
     pub source: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityStageOperatorSummaryRequest {
+    pub stage: String,
+    pub artifact_version: String,
+    pub counts: BTreeMap<String, u64>,
+    pub labels: BTreeMap<String, String>,
+    pub cache_status: BTreeMap<String, String>,
+    pub top_unresolved_tokens: Vec<EntitySummaryRankedItem>,
+    pub top_anti_merge_reasons: Vec<EntitySummaryRankedItem>,
+    pub next_commands: BTreeMap<String, String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct EntitySummaryRankedItem {
     pub key: String,
@@ -58,6 +72,10 @@ pub struct EntityStageOperatorSummary {
     pub artifact_version: String,
     pub counts: BTreeMap<String, u64>,
     pub labels: BTreeMap<String, String>,
+    pub cache_status: BTreeMap<String, String>,
+    pub top_unresolved_tokens: Vec<EntitySummaryRankedItem>,
+    pub top_anti_merge_reasons: Vec<EntitySummaryRankedItem>,
+    pub next_commands: BTreeMap<String, String>,
     pub human_summary: String,
 }
 
@@ -71,12 +89,16 @@ impl EntitySummaryRankedItem {
 }
 
 pub fn build_prepare_operator_summary(artifact: &PrepareRunArtifact) -> EntityStageOperatorSummary {
-    build_stage_operator_summary(
-        "prepare",
-        &artifact.version,
-        artifact.summary.clone(),
-        BTreeMap::from([
+    build_stage_operator_summary(EntityStageOperatorSummaryRequest {
+        stage: "prepare".to_string(),
+        artifact_version: artifact.version.clone(),
+        counts: artifact.summary.clone(),
+        labels: BTreeMap::from([
             ("profile_id".to_string(), artifact.profile.id.clone()),
+            (
+                "profile_version".to_string(),
+                artifact.profile.version.clone(),
+            ),
             (
                 "registry_id".to_string(),
                 artifact.registry_snapshot.id.clone(),
@@ -85,35 +107,81 @@ pub fn build_prepare_operator_summary(artifact: &PrepareRunArtifact) -> EntitySt
                 "registry_version".to_string(),
                 artifact.registry_snapshot.version.clone(),
             ),
-            (
-                "surfaces_path".to_string(),
-                artifact.surfaces_path.clone(),
-            ),
+            ("surfaces_path".to_string(), artifact.surfaces_path.clone()),
         ]),
+        cache_status: BTreeMap::new(),
+        top_unresolved_tokens: Vec::new(),
+        top_anti_merge_reasons: Vec::new(),
+        next_commands: BTreeMap::new(),
+    })
+}
+
+pub fn build_index_operator_summary(artifact: &EntityIndexArtifact) -> EntityStageOperatorSummary {
+    let cache_status = artifact
+        .summary
+        .labels
+        .get("cache_status")
+        .map(|status| BTreeMap::from([("index".to_string(), status.clone())]))
+        .unwrap_or_default();
+    build_deterministic_stage_operator_summary(
+        "index",
+        &artifact.version,
+        &artifact.summary,
+        cache_status,
+        BTreeMap::new(),
     )
 }
 
 pub fn build_block_operator_summary(
     artifact: &BlockCandidateArtifact,
 ) -> EntityStageOperatorSummary {
-    build_deterministic_stage_operator_summary("block", &artifact.version, &artifact.summary)
+    build_deterministic_stage_operator_summary(
+        "block",
+        &artifact.version,
+        &artifact.summary,
+        BTreeMap::new(),
+        BTreeMap::new(),
+    )
+}
+
+pub fn build_edge_operator_summary(artifact: &EdgeEvidenceArtifact) -> EntityStageOperatorSummary {
+    build_deterministic_stage_operator_summary(
+        "edge",
+        &artifact.version,
+        &artifact.summary,
+        BTreeMap::new(),
+        BTreeMap::new(),
+    )
 }
 
 pub fn build_solve_operator_summary(artifact: &SolveArtifact) -> EntityStageOperatorSummary {
-    build_deterministic_stage_operator_summary("solve", &artifact.version, &artifact.summary)
+    build_deterministic_stage_operator_summary(
+        "solve",
+        &artifact.version,
+        &artifact.summary,
+        BTreeMap::new(),
+        BTreeMap::new(),
+    )
 }
 
 pub fn build_apply_operator_summary(artifact: &ApplyRunArtifact) -> EntityStageOperatorSummary {
-    build_stage_operator_summary(
-        "apply",
-        &artifact.version,
-        artifact.summary.clone(),
-        BTreeMap::from([
+    build_stage_operator_summary(EntityStageOperatorSummaryRequest {
+        stage: "apply".to_string(),
+        artifact_version: artifact.version.clone(),
+        counts: artifact.summary.clone(),
+        labels: BTreeMap::from([
             ("registry_id".to_string(), artifact.registry.id.clone()),
-            ("registry_version".to_string(), artifact.registry.version.clone()),
+            (
+                "registry_version".to_string(),
+                artifact.registry.version.clone(),
+            ),
             ("output_path".to_string(), artifact.output_path.clone()),
         ]),
-    )
+        cache_status: BTreeMap::new(),
+        top_unresolved_tokens: Vec::new(),
+        top_anti_merge_reasons: Vec::new(),
+        next_commands: BTreeMap::new(),
+    })
 }
 
 pub fn build_run_operator_summary(
@@ -169,27 +237,34 @@ pub fn build_deterministic_stage_operator_summary(
     stage: &str,
     artifact_version: &str,
     summary: &EntityDeterministicSummary,
+    cache_status: BTreeMap<String, String>,
+    next_commands: BTreeMap<String, String>,
 ) -> EntityStageOperatorSummary {
-    build_stage_operator_summary(
-        stage,
-        artifact_version,
-        summary.counts.clone(),
-        summary.labels.clone(),
-    )
+    build_stage_operator_summary(EntityStageOperatorSummaryRequest {
+        stage: stage.to_string(),
+        artifact_version: artifact_version.to_string(),
+        counts: summary.counts.clone(),
+        labels: summary.labels.clone(),
+        cache_status,
+        top_unresolved_tokens: Vec::new(),
+        top_anti_merge_reasons: Vec::new(),
+        next_commands,
+    })
 }
 
 pub fn build_stage_operator_summary(
-    stage: &str,
-    artifact_version: &str,
-    counts: BTreeMap<String, u64>,
-    labels: BTreeMap<String, String>,
+    request: EntityStageOperatorSummaryRequest,
 ) -> EntityStageOperatorSummary {
     let mut summary = EntityStageOperatorSummary {
         version: CANON_ENTITY_OPERATOR_SUMMARY_VERSION.to_string(),
-        stage: stage.to_string(),
-        artifact_version: artifact_version.to_string(),
-        counts,
-        labels,
+        stage: request.stage,
+        artifact_version: request.artifact_version,
+        counts: request.counts,
+        labels: request.labels,
+        cache_status: request.cache_status,
+        top_unresolved_tokens: sorted_ranked_items(request.top_unresolved_tokens),
+        top_anti_merge_reasons: sorted_ranked_items(request.top_anti_merge_reasons),
+        next_commands: request.next_commands,
         human_summary: String::new(),
     };
     summary.human_summary = render_stage_operator_summary(&summary);
@@ -207,52 +282,66 @@ pub fn render_operator_summary(
         .cloned()
         .collect::<Vec<_>>()
         .join(",");
-    let cache = summary
-        .cache_status
-        .iter()
-        .map(|(key, value)| format!("{key}:{value}"))
-        .collect::<Vec<_>>()
-        .join(",");
+    let cache = render_pairs(&summary.cache_status);
     format!(
-        "{} deals={} raw_unique={} review_groups={} anti_merge_groups={} top_unresolved={} top_anti_merge={} cache={} next=[{}]",
+        "{} deals={} raw_unique={} promotable={} review_groups={} anti_merge_groups={} cache={} top_unresolved={} top_anti_merge={} next=[{}]",
         render_run_summary(artifact),
-        count(&summary.counts, "deal_count"),
-        count(&summary.counts, "raw_unique_names"),
-        count(&summary.counts, "operator_review_groups"),
-        count(&summary.counts, "anti_merge_groups"),
-        render_ranked_keys(&summary.top_unresolved_tokens),
-        render_ranked_keys(&summary.top_anti_merge_reasons),
+        count_any(&summary.counts, &["deals", "deal_count"]),
+        count_any(
+            &summary.counts,
+            &["raw_unique_names", "raw_unique_surfaces"]
+        ),
+        count_any(&summary.counts, &["promotable_aliases", "promotable_new"]),
+        count_any(
+            &summary.counts,
+            &[
+                "review_groups",
+                "review_group_count",
+                "operator_review_groups"
+            ]
+        ),
+        count_any(&summary.counts, &["anti_merge_groups"]),
         cache,
+        render_ranked(&summary.top_unresolved_tokens),
+        render_ranked(&summary.top_anti_merge_reasons),
         next
     )
 }
 
 pub fn render_stage_operator_summary(summary: &EntityStageOperatorSummary) -> String {
-    let counts = summary
-        .counts
-        .iter()
-        .take(8)
-        .map(|(key, value)| format!("{key}={value}"))
+    let profile = summary.labels.get("profile_id").map_or("", String::as_str);
+    let registry = summary.labels.get("registry_id").map_or("", String::as_str);
+    let next = summary
+        .next_commands
+        .keys()
+        .cloned()
         .collect::<Vec<_>>()
-        .join(" ");
-    let labels = summary
-        .labels
-        .iter()
-        .filter(|(key, _)| {
-            matches!(
-                key.as_str(),
-                "profile_id" | "registry_id" | "registry_version" | "cache_status"
-            )
-        })
-        .map(|(key, value)| format!("{key}={value}"))
-        .collect::<Vec<_>>()
-        .join(" ");
+        .join(",");
     format!(
-        "{} stage={} artifact={} {} {}",
-        summary.version, summary.stage, summary.artifact_version, labels, counts
+        "{} stage={} artifact={} profile={} registry={} rows={} prepared={} exact_resolved={} promotable={} review_groups={} anti_merge_groups={} cache={} top_unresolved={} top_anti_merge={} next=[{}]",
+        summary.version,
+        summary.stage,
+        summary.artifact_version,
+        profile,
+        registry,
+        count_any(&summary.counts, &["rows", "row_count"]),
+        count_any(&summary.counts, &["prepared_surfaces"]),
+        count_any(&summary.counts, &["exact_resolved_surfaces"]),
+        count_any(&summary.counts, &["promotable_aliases", "promotable_new"]),
+        count_any(
+            &summary.counts,
+            &[
+                "review_groups",
+                "review_group_count",
+                "operator_review_groups"
+            ]
+        ),
+        count_any(&summary.counts, &["anti_merge_groups"]),
+        render_pairs(&summary.cache_status),
+        render_ranked(&summary.top_unresolved_tokens),
+        render_ranked(&summary.top_anti_merge_reasons),
+        next
     )
-    .trim()
-    .to_string()
 }
 
 fn sorted_ranked_items(mut items: Vec<EntitySummaryRankedItem>) -> Vec<EntitySummaryRankedItem> {
@@ -265,17 +354,30 @@ fn sorted_ranked_items(mut items: Vec<EntitySummaryRankedItem>) -> Vec<EntitySum
     items
 }
 
-fn count(counts: &BTreeMap<String, u64>, key: &str) -> u64 {
-    counts.get(key).copied().unwrap_or_default()
+fn count_any(counts: &BTreeMap<String, u64>, keys: &[&str]) -> u64 {
+    keys.iter()
+        .find_map(|key| counts.get(*key).copied())
+        .unwrap_or_default()
 }
 
-fn render_ranked_keys(items: &[EntitySummaryRankedItem]) -> String {
+fn render_pairs(values: &BTreeMap<String, String>) -> String {
+    if values.is_empty() {
+        return "none".to_string();
+    }
+    values
+        .iter()
+        .map(|(key, value)| format!("{key}:{value}"))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn render_ranked(items: &[EntitySummaryRankedItem]) -> String {
     if items.is_empty() {
-        return "-".to_string();
+        return "none".to_string();
     }
     items
         .iter()
-        .map(|item| item.key.as_str())
+        .map(|item| format!("{}:{}", item.key, item.count))
         .collect::<Vec<_>>()
         .join(",")
 }

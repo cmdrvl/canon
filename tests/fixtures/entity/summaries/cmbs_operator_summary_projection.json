@@ -9,7 +9,8 @@
     "raw_unique_names": 15,
     "prepared_surfaces": 14,
     "exact_resolved_surfaces": 7,
-    "operator_review_groups": 2,
+    "promotable_aliases": 4,
+    "review_groups": 2,
     "anti_merge_groups": 2
   },
   "cache_status": {

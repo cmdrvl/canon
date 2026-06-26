@@ -24,6 +24,7 @@ pub mod index;
 pub mod index_io;
 pub mod ledger;
 pub mod ledger_replay;
+pub mod lint;
 pub mod patches;
 pub mod postings;
 pub mod prepare;
