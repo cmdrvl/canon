@@ -53,6 +53,8 @@ mod cmbs_tenant_id_allocator;
 
 #[path = "entity/edge_score_units.rs"]
 mod edge_score_units;
+#[path = "entity/edge_support.rs"]
+mod edge_support;
 
 #[path = "entity/regab_normalization.rs"]
 mod regab_normalization;

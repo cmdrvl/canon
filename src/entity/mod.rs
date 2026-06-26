@@ -15,6 +15,7 @@ pub mod contracts;
 pub mod diagnostics;
 pub mod edge;
 pub mod error;
+pub mod evidence;
 pub mod graph;
 pub mod index;
 pub mod index_io;
