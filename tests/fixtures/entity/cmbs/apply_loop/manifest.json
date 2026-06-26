@@ -1,0 +1,22 @@
+{
+  "schema_version": "canon.entity.cmbs_apply_loop.v0",
+  "profile_id": "cmbs_tenant_label",
+  "identity_semantics": "canonical_display_label",
+  "registry": {
+    "id": "cmbs-tenants",
+    "version": "2026.06.26",
+    "snapshot_hash": "blake3:cmbs-apply-registry",
+    "sidecar_version": "canon_entity_promotion_sidecar.v0",
+    "sidecar_snapshot_hash": "blake3:cmbs-promotion-sidecars"
+  },
+  "lookup_column": "raw_tenant_name",
+  "row_count": 3,
+  "canonical_fields": [
+    "canonical_id",
+    "canonical_type",
+    "canonical_status",
+    "canonical_registry_id",
+    "canonical_registry_version",
+    "canonical_rule_id"
+  ]
+}

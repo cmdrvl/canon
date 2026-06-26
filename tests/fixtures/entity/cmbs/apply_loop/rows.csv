@@ -1,0 +1,4 @@
+source_row_id,deal_id,loan_id,property_id,raw_tenant_name,tenant_square_feet,source_file
+cmbs-apply-001,D001,L001,P001,Sears,10000,cmbs-small-book.csv
+cmbs-apply-002,D005,L005,P005,24 Hour Fitness,18000,cmbs-small-book.csv
+cmbs-apply-003,D011,L011,P011,238 Sand Island Prop,30000,cmbs-small-book.csv

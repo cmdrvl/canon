@@ -1,0 +1,4 @@
+source_row_id,deal_id,loan_id,property_id,raw_tenant_name,tenant_square_feet,source_file,canonical_id,canonical_type,canonical_status,canonical_registry_id,canonical_registry_version,canonical_rule_id
+cmbs-apply-001,D001,L001,P001,Sears,10000,cmbs-small-book.csv,TNT-SEARS,tenant_label,resolved,cmbs-tenants,2026.06.26,REGISTRY_EXACT
+cmbs-apply-002,D005,L005,P005,24 Hour Fitness,18000,cmbs-small-book.csv,TNT-24-HOUR-FITNESS,tenant_label,resolved,cmbs-tenants,2026.06.26,REGISTRY_EXACT
+cmbs-apply-003,D011,L011,P011,238 Sand Island Prop,30000,cmbs-small-book.csv,TNT-238-SAND-ISLAND-PROPERTY,tenant_label,resolved,cmbs-tenants,2026.06.26,REGISTRY_EXACT
