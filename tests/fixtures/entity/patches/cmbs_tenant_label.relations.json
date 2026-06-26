@@ -1,0 +1,29 @@
+{
+  "version": "canon_entity_patch_fixture.v0",
+  "profile_id": "cmbs_tenant_label",
+  "namespace": "cmbs_tenant_label.relations",
+  "patches": [
+    {
+      "patch_id": "cmbs-relation-sears-kmart",
+      "left": "Sears",
+      "right": "Kmart",
+      "relation": "related_brand_family",
+      "expected_lane": "relation_hint",
+      "expected_operator_id": "relation_patch:cmbs_tenant_label",
+      "expected_reason_code": "relation_patch_hint",
+      "merge_authorized": false,
+      "review_policy": "relation_hint_only"
+    },
+    {
+      "patch_id": "cmbs-relation-sears-transform",
+      "left": "Sears",
+      "right": "Transform SR LLC",
+      "relation": "possible_successor_predecessor",
+      "expected_lane": "relation_hint",
+      "expected_operator_id": "relation_patch:cmbs_tenant_label",
+      "expected_reason_code": "relation_patch_hint",
+      "merge_authorized": false,
+      "review_policy": "relation_hint_only"
+    }
+  ]
+}

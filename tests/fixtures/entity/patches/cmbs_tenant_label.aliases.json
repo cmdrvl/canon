@@ -1,0 +1,15 @@
+{
+  "version": "canon_entity_patch_fixture.v0",
+  "profile_id": "cmbs_tenant_label",
+  "namespace": "cmbs_tenant_label.aliases",
+  "patches": [
+    {
+      "patch_id": "cmbs-alias-sears-roebuck",
+      "canonical_hint": "TNT-SEARS",
+      "inputs": ["Sears", "SEARS LLC", "Sears Roebuck & Co.", "Sears #1234"],
+      "expected_lane": "support",
+      "expected_operator_id": "alias_patch_match:tenant_core",
+      "expected_reason_code": "alias_patch_match"
+    }
+  ]
+}

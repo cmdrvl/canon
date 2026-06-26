@@ -1,0 +1,57 @@
+{
+  "version": "canon_entity_cmbs_hard_negative_fixture.v0",
+  "profile_id": "cmbs_tenant_label",
+  "identity_semantics": "canonical_display_label",
+  "case_id": "CMBS-I002",
+  "merge_policy": "no_silent_collapse",
+  "pairs": [
+    {
+      "id": "CMBS-I002-SEARS-AUTO-CENTER",
+      "left": "Sears",
+      "right": "Sears Auto Center",
+      "left_surface_id": "surf:cmbs_tenant_label:sears",
+      "right_surface_id": "surf:cmbs_tenant_label:sears_auto_center",
+      "shared_support_tokens": ["sears"],
+      "distinct_phrases": ["auto center"],
+      "relation": "related_brand_family",
+      "expected_review": "related_distinct_or_review",
+      "expected_auto_merge": false
+    },
+    {
+      "id": "CMBS-I002-SEARS-KMART",
+      "left": "Sears",
+      "right": "Kmart",
+      "left_surface_id": "surf:cmbs_tenant_label:kmart",
+      "right_surface_id": "surf:cmbs_tenant_label:sears",
+      "shared_support_tokens": [],
+      "distinct_phrases": ["kmart"],
+      "relation": "related_brand_family",
+      "expected_review": "related_distinct",
+      "expected_auto_merge": false
+    },
+    {
+      "id": "CMBS-I002-SEARS-TRANSFORM",
+      "left": "Sears",
+      "right": "Transform SR LLC",
+      "left_surface_id": "surf:cmbs_tenant_label:sears",
+      "right_surface_id": "surf:cmbs_tenant_label:transform_sr_llc",
+      "shared_support_tokens": [],
+      "distinct_phrases": ["transform"],
+      "relation": "possible_successor_predecessor",
+      "expected_review": "related_distinct_unless_explicitly_patched",
+      "expected_auto_merge": false
+    },
+    {
+      "id": "CMBS-I002-SEARS-HOLDINGS",
+      "left": "Sears",
+      "right": "Sears Holdings",
+      "left_surface_id": "surf:cmbs_tenant_label:sears",
+      "right_surface_id": "surf:cmbs_tenant_label:sears_holdings",
+      "shared_support_tokens": ["sears"],
+      "distinct_phrases": ["holdings"],
+      "relation": "related_brand_family",
+      "expected_review": "related_distinct_unless_explicitly_patched",
+      "expected_auto_merge": false
+    }
+  ]
+}
