@@ -205,6 +205,49 @@ pub struct SolveReconciliationReport {
     pub decisions: Vec<SolveReconciliationDecision>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolveSurfaceProvenance {
+    pub surface_id: String,
+    pub row_count: u64,
+    pub deal_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolveComponentDiagnostics {
+    pub component_id: String,
+    pub state: SolveReconciliationState,
+    pub reason: String,
+    pub surface_ids: Vec<String>,
+    pub support_score_units: ScoreUnits,
+    pub adjusted_support_score_units: ScoreUnits,
+    pub negative_score_units: ScoreUnits,
+    pub score_margin_units: ScoreUnits,
+    pub strongest_positive_cut: Option<SolveEvidenceCut>,
+    pub strongest_negative_cut: Option<SolveEvidenceCut>,
+    pub affected_rows: u64,
+    pub affected_deals: u64,
+    pub review_priority_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolveReviewGroupSeed {
+    pub review_group_id: String,
+    pub ambiguity_key: String,
+    pub component_id: String,
+    pub state: SolveReconciliationState,
+    pub priority_reasons: Vec<String>,
+    pub affected_rows: u64,
+    pub affected_deals: u64,
+    pub surface_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolveDiagnosticsReport {
+    pub summary: BTreeMap<String, u64>,
+    pub components: Vec<SolveComponentDiagnostics>,
+    pub review_group_seeds: Vec<SolveReviewGroupSeed>,
+}
+
 pub fn evaluate_solve_budget(
     components: &[SolveComponentBudgetInput],
     config: SolveBudgetConfig,
@@ -323,6 +366,217 @@ pub fn reconcile_signed_graph_components(
         summary: reconciliation_summary(&decisions),
         decisions,
     }
+}
+
+pub fn build_solve_diagnostics(
+    graph: &EntityEvidenceGraph,
+    config: SolveReconciliationConfig,
+    provenance: &[SolveSurfaceProvenance],
+) -> SolveDiagnosticsReport {
+    let constraint_report = evaluate_signed_graph_components(graph);
+    let reconciliation_report = reconcile_signed_graph_components(graph, config);
+    let constraints_by_component = constraint_report
+        .components
+        .into_iter()
+        .map(|component| (component.component_id.clone(), component))
+        .collect::<BTreeMap<_, _>>();
+    let provenance_by_surface = provenance_by_surface_id(provenance);
+
+    let mut components = reconciliation_report
+        .decisions
+        .into_iter()
+        .map(|decision| {
+            let constraint = constraints_by_component
+                .get(&decision.component_id)
+                .expect("reconciliation decision has a matching constraint decision");
+            solve_component_diagnostics(decision, constraint, &provenance_by_surface)
+        })
+        .collect::<Vec<_>>();
+    components.sort_by(solve_component_diagnostics_cmp);
+
+    let mut review_group_seeds = components
+        .iter()
+        .filter(|component| emits_review_group_seed(component.state))
+        .map(review_group_seed)
+        .collect::<Vec<_>>();
+    review_group_seeds.sort_by(review_group_seed_cmp);
+
+    SolveDiagnosticsReport {
+        summary: solve_diagnostics_summary(&components, &review_group_seeds),
+        components,
+        review_group_seeds,
+    }
+}
+
+fn solve_component_diagnostics(
+    decision: SolveReconciliationDecision,
+    constraint: &SolveComponentConstraintDecision,
+    provenance_by_surface: &BTreeMap<String, (u64, u64)>,
+) -> SolveComponentDiagnostics {
+    let negative_score_units = constraint
+        .strongest_negative_cut
+        .as_ref()
+        .map(|cut| cut.score_units)
+        .unwrap_or(ScoreUnits::ZERO);
+    let score_margin_units =
+        subtract_score_units(decision.adjusted_support_score_units, negative_score_units);
+    let (affected_rows, affected_deals) =
+        affected_counts(&decision.surface_ids, provenance_by_surface);
+    let review_priority_reasons = review_priority_reasons_for_diagnostics(&decision);
+
+    SolveComponentDiagnostics {
+        component_id: decision.component_id,
+        state: decision.state,
+        reason: decision.reason,
+        surface_ids: decision.surface_ids,
+        support_score_units: decision.support_score_units,
+        adjusted_support_score_units: decision.adjusted_support_score_units,
+        negative_score_units,
+        score_margin_units,
+        strongest_positive_cut: constraint.strongest_positive_cut.clone(),
+        strongest_negative_cut: constraint.strongest_negative_cut.clone(),
+        affected_rows,
+        affected_deals,
+        review_priority_reasons,
+    }
+}
+
+fn review_group_seed(component: &SolveComponentDiagnostics) -> SolveReviewGroupSeed {
+    SolveReviewGroupSeed {
+        review_group_id: format!(
+            "review:{}",
+            stable_component_suffix(&component.component_id)
+        ),
+        ambiguity_key: format!("{:?}:{}", component.state, component.reason).to_ascii_lowercase(),
+        component_id: component.component_id.clone(),
+        state: component.state,
+        priority_reasons: component.review_priority_reasons.clone(),
+        affected_rows: component.affected_rows,
+        affected_deals: component.affected_deals,
+        surface_ids: component.surface_ids.clone(),
+    }
+}
+
+fn emits_review_group_seed(state: SolveReconciliationState) -> bool {
+    matches!(
+        state,
+        SolveReconciliationState::Escrow
+            | SolveReconciliationState::Conflict
+            | SolveReconciliationState::Contradiction
+    )
+}
+
+fn review_priority_reasons_for_diagnostics(decision: &SolveReconciliationDecision) -> Vec<String> {
+    let mut reasons = decision.review_priority_reasons.clone();
+    match decision.state {
+        SolveReconciliationState::Conflict => reasons.push("incumbent_conflict".to_string()),
+        SolveReconciliationState::Contradiction => reasons.push("hard_cannot_link".to_string()),
+        SolveReconciliationState::Escrow => reasons.push(decision.reason.clone()),
+        SolveReconciliationState::ResolvedExisting | SolveReconciliationState::PromotableNew => {}
+    }
+    reasons.sort();
+    reasons.dedup();
+    reasons
+}
+
+fn provenance_by_surface_id(provenance: &[SolveSurfaceProvenance]) -> BTreeMap<String, (u64, u64)> {
+    let mut by_surface = BTreeMap::<String, (u64, u64)>::new();
+    for record in provenance {
+        let counts = by_surface.entry(record.surface_id.clone()).or_default();
+        counts.0 = counts.0.saturating_add(record.row_count);
+        counts.1 = counts.1.saturating_add(record.deal_count);
+    }
+    by_surface
+}
+
+fn affected_counts(
+    surface_ids: &[String],
+    provenance_by_surface: &BTreeMap<String, (u64, u64)>,
+) -> (u64, u64) {
+    surface_ids
+        .iter()
+        .filter_map(|surface_id| provenance_by_surface.get(surface_id))
+        .fold((0u64, 0u64), |(rows, deals), (row_count, deal_count)| {
+            (
+                rows.saturating_add(*row_count),
+                deals.saturating_add(*deal_count),
+            )
+        })
+}
+
+fn solve_diagnostics_summary(
+    components: &[SolveComponentDiagnostics],
+    review_group_seeds: &[SolveReviewGroupSeed],
+) -> BTreeMap<String, u64> {
+    BTreeMap::from([
+        ("component_count".to_string(), components.len() as u64),
+        (
+            "review_group_count".to_string(),
+            review_group_seeds.len() as u64,
+        ),
+        (
+            "affected_rows".to_string(),
+            components
+                .iter()
+                .map(|component| component.affected_rows)
+                .sum(),
+        ),
+        (
+            "affected_deals".to_string(),
+            components
+                .iter()
+                .map(|component| component.affected_deals)
+                .sum(),
+        ),
+        (
+            "contradiction_count".to_string(),
+            components
+                .iter()
+                .filter(|component| component.state == SolveReconciliationState::Contradiction)
+                .count() as u64,
+        ),
+        (
+            "escrow_count".to_string(),
+            components
+                .iter()
+                .filter(|component| component.state == SolveReconciliationState::Escrow)
+                .count() as u64,
+        ),
+        (
+            "conflict_count".to_string(),
+            components
+                .iter()
+                .filter(|component| component.state == SolveReconciliationState::Conflict)
+                .count() as u64,
+        ),
+    ])
+}
+
+fn solve_component_diagnostics_cmp(
+    left: &SolveComponentDiagnostics,
+    right: &SolveComponentDiagnostics,
+) -> std::cmp::Ordering {
+    left.component_id
+        .cmp(&right.component_id)
+        .then_with(|| left.surface_ids.cmp(&right.surface_ids))
+}
+
+fn review_group_seed_cmp(
+    left: &SolveReviewGroupSeed,
+    right: &SolveReviewGroupSeed,
+) -> std::cmp::Ordering {
+    left.ambiguity_key
+        .cmp(&right.ambiguity_key)
+        .then_with(|| right.affected_rows.cmp(&left.affected_rows))
+        .then_with(|| right.affected_deals.cmp(&left.affected_deals))
+        .then_with(|| left.component_id.cmp(&right.component_id))
+}
+
+fn stable_component_suffix(component_id: &str) -> String {
+    component_id
+        .strip_prefix("component:")
+        .unwrap_or(component_id)
+        .replace(':', "_")
 }
 
 fn reconcile_component(
@@ -576,7 +830,9 @@ fn evaluate_component_constraints(
 fn positive_components(graph: &EntityEvidenceGraph) -> Vec<PositiveSolveComponent> {
     let mut union_find = SurfaceUnionFind::default();
     for node in &graph.surface_nodes {
-        union_find.insert(node.surface_id.clone());
+        if node.incumbent_canonical_id.is_some() {
+            union_find.insert(node.surface_id.clone());
+        }
     }
     for edge in &graph.support_edges {
         union_find.union(&edge.left_surface_id, &edge.right_surface_id);
