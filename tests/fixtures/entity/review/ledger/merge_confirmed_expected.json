@@ -1,0 +1,25 @@
+{
+  "version": "canon_entity_decision_ledger.v0",
+  "event_version": "decision_event.v0",
+  "event_type": "merge_confirmed",
+  "decision": "merge_confirmed",
+  "operator_id": "operator@example.com",
+  "source_artifact_hash": "blake3:solve",
+  "summary_counts": {
+    "events": 1
+  },
+  "summary_labels": {
+    "ledger": "append_only"
+  },
+  "required_event_types": [
+    "merge_confirmed",
+    "distinct_confirmed",
+    "relation_confirmed",
+    "alias_patch_added",
+    "cannot_link_added",
+    "operator_override_requested",
+    "operator_override_approved",
+    "promotion_applied",
+    "promotion_reverted"
+  ]
+}

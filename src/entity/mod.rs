@@ -21,6 +21,7 @@ pub mod evidence;
 pub mod graph;
 pub mod index;
 pub mod index_io;
+pub mod ledger;
 pub mod postings;
 pub mod prepare;
 pub mod profile;
