@@ -1,0 +1,37 @@
+{
+  "schema_version": "canon.entity.cmbs_e2e_summary.v0",
+  "profile_id": "cmbs_tenant_label",
+  "identity_semantics": "canonical_display_label",
+  "artifact_summary": {
+    "row_count": 15,
+    "raw_unique_names": 15,
+    "prepared_surfaces": 14,
+    "exact_resolved_surfaces": 7,
+    "exact_bucket_count": 13,
+    "candidate_pairs": 23,
+    "edge_records": 23,
+    "solved_entities": 7,
+    "promotable_aliases": 0,
+    "review_group_count": 0,
+    "cache_status": "rebuilt"
+  },
+  "operator_review_summary": {
+    "review_groups": 2,
+    "review_rows": 6,
+    "review_deals": 6,
+    "anti_merge_groups": 1,
+    "top_unresolved_tokens": ["buffet", "china", "sears", "auto", "center"],
+    "top_anti_merge_reasons": [
+      "related_brand_family_not_same_tenant_label",
+      "successor_or_operator_not_display_label"
+    ],
+    "next_commands_required": ["review_export", "audit", "promote", "apply"]
+  },
+  "apply_summary": {
+    "registry_id": "cmbs-tenants",
+    "registry_version": "2026.06.26",
+    "row_count": 15,
+    "resolved": 8,
+    "unresolved": 7
+  }
+}

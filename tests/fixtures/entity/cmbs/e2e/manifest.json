@@ -1,0 +1,69 @@
+{
+  "schema_version": "canon.entity.cmbs_e2e.v0",
+  "fixture_id": "cmbs-small-book-e2e-v0",
+  "profile": {
+    "id": "cmbs_tenant_label",
+    "identity_semantics": "canonical_display_label",
+    "canonical_type": "tenant_label"
+  },
+  "stage_order": [
+    "prepare",
+    "index",
+    "block",
+    "edge",
+    "solve",
+    "review_export",
+    "review_import",
+    "audit",
+    "promote",
+    "apply"
+  ],
+  "fixture_paths": {
+    "observations_csv": "tests/fixtures/entity/cmbs/small_book/observations.csv",
+    "expected_summary_json": "tests/fixtures/entity/cmbs/small_book/expected_summary.json",
+    "review_queue_csv": "tests/fixtures/entity/cmbs/small_book/review_queue.csv",
+    "apply_rows_csv": "tests/fixtures/entity/cmbs/apply_loop/rows.csv",
+    "expected_apply_csv": "tests/fixtures/entity/cmbs/apply_loop/expected.csv"
+  },
+  "operator_summary": {
+    "rows": 15,
+    "deal_count": 12,
+    "raw_unique_names": 15,
+    "prepared_surfaces": 10,
+    "exact_resolved_surfaces": 3,
+    "promotable_aliases": 3,
+    "review_groups": 2,
+    "anti_merge_protected_surface_groups": 1,
+    "cache_status": {
+      "prepare": "cold_miss",
+      "index": "cold_miss",
+      "rerun_expectation": "hash_keyed_reuse"
+    },
+    "top_unresolved_tokens": [
+      {
+        "token": "0",
+        "count": 1,
+        "reason": "placeholder_suppressed"
+      }
+    ],
+    "top_anti_merge_reasons": [
+      {
+        "reason_code": "related_brand_family_not_same_tenant_label",
+        "group_count": 1,
+        "surface_count": 4,
+        "row_count": 4
+      }
+    ]
+  },
+  "expected_apply": {
+    "rows": 3,
+    "resolved": 3,
+    "unresolved": 0,
+    "canonical_ids": [
+      "TNT-238-SAND-ISLAND-PROPERTY",
+      "TNT-24-HOUR-FITNESS",
+      "TNT-SEARS"
+    ],
+    "preserves_raw_fields": true
+  }
+}
