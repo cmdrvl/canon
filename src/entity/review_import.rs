@@ -51,6 +51,10 @@ pub struct ReviewImportDecision {
     pub source_review_queue_hash: String,
     pub profile_id: String,
     pub profile_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_semantics: Option<String>,
     pub strategy_hash: String,
     pub registry_snapshot_hash: String,
     pub surface_ids: Vec<String>,
@@ -267,6 +271,25 @@ fn validate_review_import_decision(
         &context.metadata.profile.version,
         &decision.review_id,
     )?;
+    let entity_type =
+        require_import_context_field("entity_type", decision.entity_type.as_deref(), decision)?;
+    compare_context_field(
+        "entity_type",
+        entity_type,
+        &context.metadata.profile.entity_type,
+        &decision.review_id,
+    )?;
+    let identity_semantics = require_import_context_field(
+        "identity_semantics",
+        decision.identity_semantics.as_deref(),
+        decision,
+    )?;
+    compare_context_field(
+        "identity_semantics",
+        identity_semantics,
+        &context.metadata.profile.identity_semantics,
+        &decision.review_id,
+    )?;
     compare_context_field(
         "strategy_hash",
         &decision.strategy_hash,
@@ -378,6 +401,34 @@ fn compare_context_field(
     }
 }
 
+fn require_import_context_field<'a>(
+    field: &str,
+    value: Option<&'a str>,
+    decision: &ReviewImportDecision,
+) -> Result<&'a str, Refusal> {
+    let Some(value) = value else {
+        return Err(missing_import_context_field(field, decision));
+    };
+    if value.trim().is_empty() {
+        Err(missing_import_context_field(field, decision))
+    } else {
+        Ok(value)
+    }
+}
+
+fn missing_import_context_field(field: &str, decision: &ReviewImportDecision) -> Refusal {
+    review_import_refusal(
+        EntityRefusalKind::ReviewImport,
+        "Review import decision is missing exported profile firewall context",
+        json!({
+            "stage": "review_import",
+            "field": field,
+            "review_id": decision.review_id,
+            "writes_performed": false
+        }),
+    )
+}
+
 fn require_non_empty(field: &str, value: &str) -> Result<(), Refusal> {
     if value.trim().is_empty() {
         Err(review_import_refusal(
@@ -427,6 +478,10 @@ struct ReviewImportDecisionCsv {
     source_review_queue_hash: String,
     profile_id: String,
     profile_version: String,
+    #[serde(default)]
+    entity_type: Option<String>,
+    #[serde(default)]
+    identity_semantics: Option<String>,
     strategy_hash: String,
     registry_snapshot_hash: String,
     surface_ids_json: String,
@@ -461,6 +516,8 @@ impl ReviewImportDecisionCsv {
             source_review_queue_hash: self.source_review_queue_hash,
             profile_id: self.profile_id,
             profile_version: self.profile_version,
+            entity_type: self.entity_type.filter(|value| !value.is_empty()),
+            identity_semantics: self.identity_semantics.filter(|value| !value.is_empty()),
             strategy_hash: self.strategy_hash,
             registry_snapshot_hash: self.registry_snapshot_hash,
             surface_ids,

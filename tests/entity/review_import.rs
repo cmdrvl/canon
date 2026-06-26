@@ -127,6 +127,8 @@ fn merge_override_decision(
         source_review_queue_hash: "blake3:review-queue".to_string(),
         profile_id: "cmbs_tenant_label".to_string(),
         profile_version: "0.1.0".to_string(),
+        entity_type: Some("tenant_label".to_string()),
+        identity_semantics: Some("canonical_display_label".to_string()),
         strategy_hash: "blake3:strategy".to_string(),
         registry_snapshot_hash: "blake3:registry".to_string(),
         surface_ids: vec!["surf:sears".to_string(), "surf:sears_auto".to_string()],
