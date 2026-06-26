@@ -1,0 +1,88 @@
+{
+  "schema_version": "canon.entity.sec10d_migration_handoff.v0",
+  "profile_id": "regab_firm_identity",
+  "purpose": "Copy/paste handoff for migrating sec10d Reg AB firm enrichment from bespoke exact lookup orchestration to canon entity stages over the canon-owned org_mentions fixture.",
+  "fixture_paths": {
+    "org_mentions_csv": "tests/fixtures/entity/regab/org_mentions/org_mentions.csv",
+    "profile_strategy_yaml": "tests/fixtures/entity/profiles/regab_firm_identity.yaml",
+    "registry_snapshot": "tests/fixtures/entity/regab/sec10d_baseline_public/registry_snapshot/firms",
+    "expected_apply_csv": "tests/fixtures/entity/regab/org_mentions/expected_apply.csv",
+    "expected_enriched_jsonl": "tests/fixtures/entity/regab/org_mentions/applied_org_enrichment.jsonl"
+  },
+  "work_dir": "target/entity/sec10d-regab-firms",
+  "commands": [
+    {
+      "stage": "prepare",
+      "command": "canon entity prepare tests/fixtures/entity/regab/org_mentions/org_mentions.csv --profile regab_firm_identity --registry tests/fixtures/entity/regab/sec10d_baseline_public/registry_snapshot/firms --work-dir target/entity/sec10d-regab-firms"
+    },
+    {
+      "stage": "run",
+      "command": "canon entity run tests/fixtures/entity/regab/org_mentions/org_mentions.csv --profile regab_firm_identity --strategy tests/fixtures/entity/profiles/regab_firm_identity.yaml --registry tests/fixtures/entity/regab/sec10d_baseline_public/registry_snapshot/firms --work-dir target/entity/sec10d-regab-firms --emit summary"
+    },
+    {
+      "stage": "review_export",
+      "command": "canon entity review export target/entity/sec10d-regab-firms/solve/solve.json --include escrow --emit csv > target/entity/sec10d-regab-firms/review.csv"
+    },
+    {
+      "stage": "audit",
+      "command": "canon entity audit target/entity/sec10d-regab-firms/solve/solve.json --suite tests/fixtures/entity/evals --emit json > target/entity/sec10d-regab-firms/audit.json"
+    },
+    {
+      "stage": "promote",
+      "command": "canon entity promote target/entity/sec10d-regab-firms/solve/solve.json --audit target/entity/sec10d-regab-firms/audit.json --registry tests/fixtures/entity/regab/sec10d_baseline_public/registry_snapshot/firms --next-version 2026.06.25 --emit summary"
+    },
+    {
+      "stage": "apply_exact_replay",
+      "command": "canon tests/fixtures/entity/regab/org_mentions/org_mentions.csv --registry tests/fixtures/entity/regab/sec10d_baseline_public/registry_snapshot/firms --column org_name --emit csv --canon-column org_canon_id --map-out target/entity/sec10d-regab-firms/org_mentions.map.json > target/entity/sec10d-regab-firms/org_mentions.canon.csv"
+    }
+  ],
+  "expected_work_dir_files": [
+    "prepare/prepare.json",
+    "prepare/surfaces.jsonl",
+    "index.json",
+    "block/block.json",
+    "block/candidates.jsonl",
+    "block/exact_buckets.jsonl",
+    "edge/edge.json",
+    "edge/edges.jsonl",
+    "solve/solve.json",
+    "solve/decision_ledger.jsonl",
+    "run.json",
+    "review.csv",
+    "audit.json",
+    "org_mentions.map.json",
+    "org_mentions.canon.csv"
+  ],
+  "regression_checklist": [
+    {
+      "id": "parser_boundary",
+      "invariant": "sec10d remains parser-first: parser-owned org_mentions.csv and org_mentions.jsonl fields are consumed unchanged, and entity solving is not moved into the parser."
+    },
+    {
+      "id": "raw_field_preservation",
+      "invariant": "Every raw parser evidence field from org_mentions input remains byte-preserved in downstream enriched rows; canon-owned enrichment may append fields only."
+    },
+    {
+      "id": "snowflake_append_only_fields",
+      "invariant": "Snowflake-facing enrichment appends only *_org_canon_id, *_org_canonical_name, *_org_resolution_status, *_org_registry_id, *_org_registry_version, and *_org_rule_id for each firm-bearing field prefix."
+    },
+    {
+      "id": "unresolved_reviewable_status",
+      "invariant": "Unresolved, hard-negative, platform-label, and role-conflict surfaces are emitted with explicit reviewable or review_required status, never silently merged or blanked."
+    },
+    {
+      "id": "core_exact_lookup_firewall",
+      "invariant": "Production replay after promotion uses the exact registry lookup contract; entity workbench stages may prepare, block, solve, review, and promote candidates but do not change core lookup semantics."
+    },
+    {
+      "id": "no_network_or_model_runtime",
+      "invariant": "The migration path has no network dependency, frontier model call, runtime model download, Python runtime dependency, or unsafe Rust path."
+    }
+  ],
+  "downstream_regression_focus": [
+    "REGAB-I001 org_mentions shape accepted without parser rewrite",
+    "REGAB-I002 PNC vs Midland remains distinct or reviewable",
+    "REGAB-I003 platform/category labels do not auto-resolve as firms",
+    "REGAB-I004 Snowflake-facing enrichment is append-only"
+  ]
+}

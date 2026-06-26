@@ -17,3 +17,10 @@ Snapshot policy:
 - `applied_org_enrichment.jsonl` defines Snowflake-facing append-only output fields.
 - `expected_summary.json` and `expected_apply.csv` are machine-readable expected outcomes.
 - Raw parser fields are immutable. Canon may append canonical fields but must not rewrite parser evidence.
+
+Migration handoff:
+
+- `migration_handoff.json` records the canon-side prepare, run, review export, audit, promote,
+  and exact-replay apply commands for the checked-in `org_mentions.csv` fixture.
+- The handoff checklist freezes the parser-boundary and Snowflake append-only field invariants
+  that downstream sec10d enrichment must preserve.
