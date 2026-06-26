@@ -93,6 +93,7 @@
     }
   ],
   "release_claims": {
+    "baseline_artifact_manifest": "tests/fixtures/entity/perf/baselines/stress_baseline_artifacts.json",
     "g11_requires_artifacts": [
       "operator_cmbs_500k_warm",
       "operator_cmbs_500k_cold"

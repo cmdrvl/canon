@@ -1,0 +1,158 @@
+{
+  "schema_version": "canon.entity.perf_baseline_artifacts.v0",
+  "source_bead": "bd-1pz.9",
+  "calibration_state": "structural_baseline_recorded",
+  "measurement_policy": "wall_clock_not_claimed_until_operator_hardware_run",
+  "large_generated_rows_policy": "do_not_commit_generated_500k_rows",
+  "baseline_series": [
+    {
+      "id": "operator_cmbs_500k_warm",
+      "gate_id": "G11",
+      "workload": "cmbs-500k",
+      "cache_state": "warm",
+      "generator_contract": "tests/fixtures/entity/stress/generators/cmbs_500k_contract.json",
+      "expected_metrics": "tests/fixtures/entity/stress/expected_metrics/cmbs_500k_metrics.json",
+      "telemetry_out": "target/entity-evals/cmbs-500k-warm/telemetry.json",
+      "structural_counts": {
+        "raw_row_count": 500000,
+        "raw_unique_surface_count": 25000,
+        "prepared_surface_count": 25000,
+        "candidate_pair_count": 300000,
+        "suppressed_candidate_count": 100000,
+        "exact_bucket_count": 18000,
+        "exact_bucket_pair_expansion_count": 0,
+        "review_group_count": 1500
+      },
+      "candidate_pairs_per_surface": {
+        "p50": 12,
+        "p95": 25,
+        "p99": 25
+      },
+      "artifact_bytes_by_stage": {
+        "prepare": 1,
+        "index": 1,
+        "block": 1,
+        "edge": 1,
+        "solve": 1,
+        "audit": 1,
+        "promote": 1,
+        "apply": 1
+      },
+      "timings_ms_by_stage": {
+        "prepare": 0,
+        "index": 0,
+        "block": 0,
+        "edge": 0,
+        "solve": 0,
+        "audit": 0,
+        "promote": 0,
+        "apply": 0
+      },
+      "hardware_metadata_required": true,
+      "wall_clock_seconds": null,
+      "wall_clock_enforcement": "not_enforced_until_measured_operator_baseline",
+      "release_gate_status": "structural_baseline_only"
+    },
+    {
+      "id": "operator_cmbs_500k_cold",
+      "gate_id": "G11",
+      "workload": "cmbs-500k",
+      "cache_state": "cold",
+      "generator_contract": "tests/fixtures/entity/stress/generators/cmbs_500k_contract.json",
+      "expected_metrics": "tests/fixtures/entity/stress/expected_metrics/cmbs_500k_metrics.json",
+      "telemetry_out": "target/entity-evals/cmbs-500k-cold/telemetry.json",
+      "structural_counts": {
+        "raw_row_count": 500000,
+        "raw_unique_surface_count": 25000,
+        "prepared_surface_count": 25000,
+        "candidate_pair_count": 300000,
+        "suppressed_candidate_count": 100000,
+        "exact_bucket_count": 18000,
+        "exact_bucket_pair_expansion_count": 0,
+        "review_group_count": 1500
+      },
+      "candidate_pairs_per_surface": {
+        "p50": 12,
+        "p95": 25,
+        "p99": 25
+      },
+      "artifact_bytes_by_stage": {
+        "prepare": 1,
+        "index": 1,
+        "block": 1,
+        "edge": 1,
+        "solve": 1,
+        "audit": 1,
+        "promote": 1,
+        "apply": 1
+      },
+      "timings_ms_by_stage": {
+        "prepare": 0,
+        "index": 0,
+        "block": 0,
+        "edge": 0,
+        "solve": 0,
+        "audit": 0,
+        "promote": 0,
+        "apply": 0
+      },
+      "hardware_metadata_required": true,
+      "wall_clock_seconds": null,
+      "wall_clock_enforcement": "not_enforced_until_measured_operator_baseline",
+      "release_gate_status": "structural_baseline_only"
+    },
+    {
+      "id": "operator_unique_500k",
+      "gate_id": "G12",
+      "workload": "unique-500k",
+      "cache_state": "cold",
+      "generator_contract": "tests/fixtures/entity/stress/generators/unique_500k_contract.json",
+      "expected_metrics": "tests/fixtures/entity/stress/expected_metrics/unique_500k_metrics.json",
+      "telemetry_out": "target/entity-evals/unique-500k/telemetry.json",
+      "structural_counts": {
+        "raw_row_count": 500000,
+        "raw_unique_surface_count": 500000,
+        "prepared_surface_count": 500000,
+        "candidate_pair_count": 12500000,
+        "suppressed_candidate_count": 3500000,
+        "exact_bucket_count": 0,
+        "exact_bucket_pair_expansion_count": 0,
+        "review_group_count": 0
+      },
+      "candidate_pairs_per_surface": {
+        "p50": 25,
+        "p95": 25,
+        "p99": 25
+      },
+      "artifact_bytes_by_stage": {
+        "prepare": 1,
+        "index": 1,
+        "block": 1,
+        "edge": 1,
+        "solve": 1,
+        "audit": 1,
+        "promote": 1,
+        "apply": 1
+      },
+      "timings_ms_by_stage": {
+        "prepare": 0,
+        "index": 0,
+        "block": 0,
+        "edge": 0,
+        "solve": 0,
+        "audit": 0,
+        "promote": 0,
+        "apply": 0
+      },
+      "hardware_metadata_required": true,
+      "wall_clock_seconds": null,
+      "wall_clock_enforcement": "not_enforced_until_measured_operator_baseline",
+      "release_gate_status": "structural_baseline_only"
+    }
+  ],
+  "release_policy": {
+    "g11_may_pass_with": ["operator_cmbs_500k_warm", "operator_cmbs_500k_cold"],
+    "g12_may_pass_with": ["operator_unique_500k"],
+    "waiver_allowed": true
+  }
+}

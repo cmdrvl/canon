@@ -2,7 +2,11 @@
 
 use canon::entity::telemetry::{required_telemetry_fields, required_telemetry_stage_ids};
 use serde_json::Value;
-use std::{collections::BTreeSet, fs, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+};
 
 #[test]
 fn entity_performance_regression_contract() {
@@ -10,6 +14,8 @@ fn entity_performance_regression_contract() {
     let unique = fixture("stress/expected_metrics/unique_500k_metrics.json");
     let cmbs_generator = fixture("stress/generators/cmbs_500k_contract.json");
     let unique_generator = fixture("stress/generators/unique_500k_contract.json");
+    let aggregate = fixture("stress/expected_metrics/stress_expected_metrics.json");
+    let manifest = fixture("manifest.json");
     let tiers = fixture("perf/ci_tiers.json");
     let evals = fixture("evals/entity_eval_performance_targets.json");
 
@@ -17,6 +23,8 @@ fn entity_performance_regression_contract() {
     assert_expected_metrics_match_generator(&unique, &unique_generator, &tiers, &evals);
     assert_cache_and_telemetry_contract(&cmbs);
     assert_cache_and_telemetry_contract(&unique);
+    assert_aggregate_metrics_contract(&aggregate, &cmbs, &unique, &tiers);
+    assert_manifest_references_expected_metrics(&manifest);
 }
 
 fn assert_expected_metrics_match_generator(
@@ -270,6 +278,168 @@ fn assert_cache_and_telemetry_contract(metrics: &Value) {
             > 0
     );
     assert_eq!(metrics["memory"]["high_water_mark_required"], true);
+}
+
+fn assert_aggregate_metrics_contract(
+    aggregate: &Value,
+    cmbs: &Value,
+    unique: &Value,
+    tiers: &Value,
+) {
+    assert_eq!(
+        aggregate["schema_version"],
+        "canon.entity.stress_expected_metrics.v0"
+    );
+    assert_eq!(aggregate["calibration_state"], "structural_prebaseline");
+    assert_eq!(
+        aggregate["baseline_artifact_policy"]["requires_recorded_baseline_bead"],
+        "bd-1pz.9"
+    );
+    assert_eq!(
+        aggregate["baseline_artifact_policy"]["normal_ci_enforcement"],
+        "structural_counts_only"
+    );
+    assert_eq!(
+        aggregate["baseline_artifact_policy"]["large_generated_rows_policy"],
+        "do_not_commit_generated_500k_rows"
+    );
+
+    let log_fields = strings(&aggregate["required_log_fields"]);
+    for required in [
+        "git_sha",
+        "rust_profile",
+        "target_triple",
+        "cache_state",
+        "candidate_pair_count",
+        "artifact_bytes_by_stage",
+        "timings_ms_by_stage",
+        "peak_memory_bytes",
+    ] {
+        assert!(
+            log_fields.contains(required),
+            "aggregate log omits {required}"
+        );
+    }
+    assert_eq!(
+        strings(&aggregate["artifact_byte_stages"]),
+        required_telemetry_stage_ids()
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>()
+    );
+    assert_eq!(
+        aggregate["cache_hit_expectations"]["rerun_rebuilds_normalization"],
+        false
+    );
+    assert_eq!(
+        aggregate["cache_hit_expectations"]["rerun_rebuilds_postings"],
+        false
+    );
+
+    let workloads = aggregate["workloads"].as_array().expect("workloads");
+    assert_eq!(workloads.len(), 2);
+    let by_id = workloads
+        .iter()
+        .map(|workload| (workload["id"].as_str().expect("workload id"), workload))
+        .collect::<BTreeMap<_, _>>();
+
+    assert_aggregate_workload(
+        by_id
+            .get("STRESS-CMBS-500K")
+            .expect("aggregate CMBS workload"),
+        cmbs,
+        tiers,
+    );
+    assert_aggregate_workload(
+        by_id
+            .get("STRESS-UNIQUE-500K")
+            .expect("aggregate unique workload"),
+        unique,
+        tiers,
+    );
+}
+
+fn assert_aggregate_workload(workload: &Value, metrics: &Value, tiers: &Value) {
+    let input = &metrics["input_size"];
+    let candidates = &metrics["candidate_metrics"];
+    let exact = &metrics["exact_bucket_metrics"];
+    let review = &metrics["review_metrics"];
+
+    assert_eq!(workload["ci_tier_id"], metrics["stress_tier_id"]);
+    assert_eq!(workload["seed"], metrics["seed"]);
+    assert_eq!(workload["row_count"], input["row_count"]);
+    assert_eq!(
+        workload["unique_surface_count"],
+        input["unique_surface_count"]
+    );
+    assert_eq!(
+        workload["candidate_metrics"]["candidate_pairs_emitted"],
+        candidates["emitted_candidate_pair_count"]
+    );
+    assert_eq!(
+        workload["candidate_metrics"]["candidate_pairs_suppressed"],
+        candidates["suppressed_candidate_count"]
+    );
+    assert_eq!(
+        workload["candidate_metrics"]["candidate_pairs_per_surface_p95_max"],
+        candidates["candidate_pairs_per_surface_p95_max"]
+    );
+    assert_eq!(
+        workload["exact_bucket_pair_expansion_count"],
+        exact["exact_bucket_pair_expansion_count"]
+    );
+    assert_eq!(workload["exact_bucket_count"], exact["exact_bucket_count"]);
+    assert_eq!(
+        workload["largest_exact_bucket_size"],
+        exact["largest_exact_bucket_size"]
+    );
+    assert_eq!(workload["review_group_count"], review["review_group_count"]);
+    assert_eq!(
+        workload["review_group_count_max"],
+        review["review_group_count_max"]
+    );
+
+    let tier = stress_tier(tiers, workload["ci_tier_id"].as_str().expect("tier id"));
+    assert_eq!(tier["seed"], metrics["seed"]);
+}
+
+fn assert_manifest_references_expected_metrics(manifest: &Value) {
+    assert_eq!(
+        manifest["schema_version"],
+        "canon.entity.fixture_manifest.v0"
+    );
+    let fixtures = manifest["fixtures"].as_array().expect("fixtures");
+
+    for (fixture_id, metrics_path) in [
+        (
+            "CMBS-I003",
+            "tests/fixtures/entity/stress/expected_metrics/cmbs_500k_metrics.json",
+        ),
+        (
+            "STRESS-CMBS-500K",
+            "tests/fixtures/entity/stress/expected_metrics/cmbs_500k_metrics.json",
+        ),
+        (
+            "STRESS-UNIQUE-500K",
+            "tests/fixtures/entity/stress/expected_metrics/unique_500k_metrics.json",
+        ),
+    ] {
+        let fixture = fixtures
+            .iter()
+            .find(|fixture| fixture["id"] == fixture_id)
+            .unwrap_or_else(|| panic!("missing manifest fixture {fixture_id}"));
+        let inputs = strings(&fixture["input_files"]);
+        assert!(
+            inputs.contains(metrics_path),
+            "{fixture_id} does not reference {metrics_path}"
+        );
+        assert!(
+            inputs.contains(
+                "tests/fixtures/entity/stress/expected_metrics/stress_expected_metrics.json"
+            ),
+            "{fixture_id} does not reference aggregate expected metrics"
+        );
+    }
 }
 
 fn stress_tier<'a>(tiers: &'a Value, id: &str) -> &'a Value {
