@@ -5,8 +5,6 @@ use canon::{
     entity::{
         CANON_ENTITY_APPLY_VERSION, CANON_ENTITY_DECISION_LEDGER_VERSION,
         CANON_ENTITY_PROMOTE_VERSION, EntityArtifactHeader, EntityArtifactReference,
-        EntityDeterministicSummary, EntityInputReference, EntityPatchNamespaces,
-        EntityProfileReference, EntityRegistrySnapshot, EntityStrategyReference,
         apply::{
             APPLY_CANONICAL_FIELDS, ApplyCanonicalResolution, ApplyRegistryReference,
             ApplySafetyCheck, ApplyStreamRequest, run_apply_streaming,
@@ -386,49 +384,84 @@ fn artifact_summary(path: &Path) -> Value {
         .unwrap_or(Value::Null)
 }
 
-fn mini_e2e_review_queue(solve: &SolveArtifact) -> ReviewQueueArtifact {
-    let review_items = vec![ReviewQueueItem {
-        review_id: "review:cmbs-mini-e2e-sears-family".to_string(),
-        ambiguity_key: "sears_family_distinct".to_string(),
-        component_id: "component:cmbs-mini-e2e-sears-family".to_string(),
-        state: SolveReconciliationState::Escrow,
-        proposed_action: "confirm_merge_distinct_or_relation".to_string(),
-        review_priority_units: 7_000,
-        priority_reasons: vec![
-            "high_deal_count".to_string(),
-            "high_row_count".to_string(),
-            "support_and_cannot_link".to_string(),
+fn mini_e2e_review_solve(base: &SolveArtifact) -> SolveArtifact {
+    let graph = build_signed_evidence_graph(SignedEvidenceGraphInput {
+        edge_records: vec![mini_e2e_review_edge()],
+        exact_bucket_assertions: vec![],
+        incumbent_ids: vec![],
+    })
+    .expect("mini e2e review graph builds");
+    let mut metadata = base.metadata.clone();
+    metadata.artifact_content_hash.clear();
+
+    build_solve_artifact_contract(SolveArtifactRequest {
+        metadata,
+        graph,
+        config: SolveReconciliationConfig::delegate_new_ids(mini_e2e_score(5_000)),
+        provenance: vec![
+            SolveSurfaceProvenance {
+                surface_id: "surf:cmbs:sears".to_string(),
+                row_count: 3,
+                deal_count: 3,
+            },
+            SolveSurfaceProvenance {
+                surface_id: "surf:cmbs:sears_auto".to_string(),
+                row_count: 1,
+                deal_count: 1,
+            },
         ],
-        affected_rows: 4,
-        affected_deals: 4,
-        surface_ids: vec!["surf:cmbs:sears".to_string(), "surf:cmbs:auto".to_string()],
-        strongest_positive_cut: None,
-        strongest_negative_cut: None,
-        relation_hints: Vec::new(),
-        provenance_samples: Vec::new(),
-    }];
-    ReviewQueueArtifact {
-        version: CANON_ENTITY_REVIEW_QUEUE_VERSION.to_string(),
-        artifact_content_hash: "blake3:cmbs-mini-e2e-review".to_string(),
-        metadata: solve.metadata.clone(),
-        summary: EntityDeterministicSummary {
-            counts: BTreeMap::from([
-                ("review_items".to_string(), review_items.len() as u64),
-                ("review_group_count".to_string(), review_items.len() as u64),
-                ("review_rows_covered".to_string(), 4),
-                ("review_deals_covered".to_string(), 4),
-            ]),
-            labels: BTreeMap::from([
-                ("grouping".to_string(), "ambiguity_pattern".to_string()),
-                (
-                    "include".to_string(),
-                    "explicit_mini_e2e_fixture".to_string(),
-                ),
-            ]),
-        },
-        source_solve_hash: solve.artifact_content_hash.clone(),
-        review_items,
-    }
+        decision_ledger_path: base.decision_ledger_path.clone(),
+    })
+    .expect("mini e2e review solve artifact builds")
+}
+
+fn mini_e2e_review_edge() -> EdgeEvidenceRecord {
+    build_edge_evidence_record(
+        "surf:cmbs:sears",
+        "surf:cmbs:sears_auto",
+        vec![
+            mini_e2e_evidence_hit(
+                ScoreLane::Support,
+                "name",
+                "string_similarity",
+                "positive_identity_evidence",
+                9_500,
+                false,
+            ),
+            mini_e2e_evidence_hit(
+                ScoreLane::AntiMerge,
+                "cmbs_tenant_label.distinct",
+                "operator_patch",
+                "related_brand_family_not_same_tenant_label",
+                9_000,
+                true,
+            ),
+        ],
+    )
+    .expect("mini e2e review edge builds")
+}
+
+fn mini_e2e_evidence_hit(
+    lane: ScoreLane,
+    namespace: &str,
+    operator_id: &str,
+    reason_code: &str,
+    score_units: u32,
+    hard_cannot_link: bool,
+) -> EdgeEvidenceHit {
+    EdgeEvidenceHit::new(
+        lane,
+        namespace,
+        operator_id,
+        reason_code,
+        mini_e2e_score(score_units),
+        hard_cannot_link,
+        reason_code,
+    )
+}
+
+fn mini_e2e_score(units: u32) -> ScoreUnits {
+    ScoreUnits::from_scaled(units).expect("mini e2e score is inside score scale")
 }
 
 fn assert_repeated_review_ambiguity_grouped_once(review: &ReviewQueueArtifact, manifest: &Value) {
