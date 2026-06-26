@@ -138,7 +138,7 @@ pub fn render_promote_summary(artifact: &PromoteArtifact) -> String {
 
 pub fn render_explain_summary(artifact: &ExplainArtifact) -> String {
     format!(
-        "{} -> {} | canonical_id={}, escrow_id={}, backbone_rows={}, attached_rows={}, witnesses={}",
+        "{} -> {} | canonical_id={}, escrow_id={}, backbone_rows={}, attached_rows={}, witnesses={}, surfaces={}, candidates={}, support={}, anti_merge={}, review_decisions={}, promotions={}",
         explain_query_label(&artifact.query),
         entity_state_label(artifact.result.state),
         option_label(artifact.result.canonical_id.as_deref()),
@@ -146,6 +146,12 @@ pub fn render_explain_summary(artifact: &ExplainArtifact) -> String {
         artifact.result.backbone_rows.len(),
         artifact.result.attached_rows.len(),
         artifact.result.witness_chain.len(),
+        artifact.result.surfaces.len(),
+        artifact.result.candidates.len(),
+        artifact.result.positive_evidence.len(),
+        artifact.result.anti_merge_evidence.len(),
+        artifact.result.review_decisions.len(),
+        artifact.result.promotion_provenance.len(),
     )
 }
 
@@ -194,6 +200,8 @@ fn solve_run_label(version: &str) -> &str {
 fn explain_query_label(query: &ExplainQuery) -> String {
     if let Some(row_id) = &query.row_id {
         format!("row {}", row_id)
+    } else if let Some(surface_id) = &query.surface_id {
+        format!("surface {}", surface_id)
     } else if let Some(canonical_id) = &query.canonical_id {
         format!("canon-id {}", canonical_id)
     } else if let Some(escrow_id) = &query.escrow_id {
@@ -399,6 +407,7 @@ mod tests {
             version: super::super::types::CANON_ENTITY_EXPLAIN_VERSION.to_string(),
             query: ExplainQuery {
                 row_id: Some("row-9".to_string()),
+                surface_id: None,
                 canonical_id: None,
                 escrow_id: None,
             },
@@ -419,6 +428,7 @@ mod tests {
                     pair_score_by_namespace: BTreeMap::new(),
                     operator_ids: vec!["exact_view:core_name".to_string()],
                 }],
+                ..ExplainResult::default()
             },
         };
         let audit_artifact = AuditArtifact {
@@ -458,7 +468,7 @@ mod tests {
         );
         assert_eq!(
             render_explain_summary(&explain_artifact),
-            "row row-9 -> RESOLVED_EXISTING | canonical_id=IC-123abc456def, escrow_id=-, backbone_rows=2, attached_rows=0, witnesses=1"
+            "row row-9 -> RESOLVED_EXISTING | canonical_id=IC-123abc456def, escrow_id=-, backbone_rows=2, attached_rows=0, witnesses=1, surfaces=0, candidates=0, support=0, anti_merge=0, review_decisions=0, promotions=0"
         );
         assert_eq!(
             render_audit_summary(&audit_artifact),

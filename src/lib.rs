@@ -19,7 +19,8 @@ pub mod witness;
 
 use crate::cli::{
     CanonCommand, Cli, EntityAuditCli, EntityBlockCli, EntityCommand, EntityEdgeCli,
-    EntityEmitMode, EntityExplainCli, EntityPrepareCli, EntityPromoteCli, EntityReviewCommand,
+    EntityEmitMode, EntityExplainCli, EntityPrepareCli, EntityProfileCommand, EntityProfileInitCli,
+    EntityProfileListCli, EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand,
     EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewImportCli, EntityReviewInclude,
     EntityReviewSubcommand, EntityRunCli, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand,
     RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli,
@@ -44,9 +45,15 @@ use std::{
 
 const ORG_V1_PROFILE: &str = "bdc_issuer";
 
-struct EntityRunExecution {
-    artifact: entity_runtime::SolveRunArtifact,
-    candidate_pairs: u64,
+enum EntityRunExecution {
+    Legacy {
+        artifact: entity_runtime::SolveRunArtifact,
+        candidate_pairs: u64,
+    },
+    Workbench {
+        artifact: entity::run::EntityRunArtifact,
+        candidate_pairs: u64,
+    },
 }
 
 // Entry point function
@@ -580,6 +587,7 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
         EntitySubcommand::Audit(audit) => run_entity_audit_command(audit),
         EntitySubcommand::Promote(promote) => run_entity_promote_command(promote),
         EntitySubcommand::Explain(explain) => run_entity_explain_command(explain),
+        EntitySubcommand::Profile(profile) => run_entity_profile_command(profile),
         EntitySubcommand::Review(review) => run_entity_review_command(review),
     }
 }
@@ -588,18 +596,21 @@ fn run_entity_run_command(run: &EntityRunCli) -> Result<u8, Box<dyn Error>> {
     let started = Instant::now();
 
     match run_entity_run_pipeline(run) {
-        Ok(execution) => {
-            let artifact_bytes = serde_json::to_vec(&execution.artifact)?;
+        Ok(EntityRunExecution::Legacy {
+            artifact,
+            candidate_pairs,
+        }) => {
+            let artifact_bytes = serde_json::to_vec(&artifact)?;
             if let Some(suite_dir) = run.suite.as_deref()
                 && let Err(refusal_output) = entity_runtime::audit::audit(
-                    &execution.artifact,
+                    &artifact,
                     &artifact_bytes,
                     entity_runtime::audit::AuditContext {
                         suite_dir,
                         profile: ORG_V1_PROFILE,
                         budget_usage: entity_runtime::audit::AuditBudgetUsage {
                             runtime_seconds: started.elapsed().as_secs(),
-                            candidate_pairs: execution.candidate_pairs,
+                            candidate_pairs,
                         },
                         baseline: None,
                         promoted_with_prior_escrow_count: 0,
@@ -615,18 +626,34 @@ fn run_entity_run_command(run: &EntityRunCli) -> Result<u8, Box<dyn Error>> {
             }
 
             let output = match run.emit {
-                EntityEmitMode::Json => entity_runtime::output::emit_run_json(&execution.artifact)?,
-                EntityEmitMode::Summary => {
-                    entity_runtime::output::render_run_summary(&execution.artifact)
-                }
+                EntityEmitMode::Json => entity_runtime::output::emit_run_json(&artifact)?,
+                EntityEmitMode::Summary => entity_runtime::output::render_run_summary(&artifact),
             };
             emit_entity_output(&output, matches!(run.emit, EntityEmitMode::Summary));
             append_entity_run_witness(
                 run,
-                &execution.artifact,
+                &artifact,
                 &output,
                 started.elapsed().as_secs(),
-                run.suite.as_deref().map(|_| execution.candidate_pairs),
+                run.suite.as_deref().map(|_| candidate_pairs),
+            );
+            Ok(0)
+        }
+        Ok(EntityRunExecution::Workbench {
+            artifact,
+            candidate_pairs,
+        }) => {
+            let output = match run.emit {
+                EntityEmitMode::Json => serde_json::to_string(&artifact)?,
+                EntityEmitMode::Summary => entity::run::render_run_summary(&artifact),
+            };
+            emit_entity_output(&output, matches!(run.emit, EntityEmitMode::Summary));
+            append_entity_workbench_run_witness(
+                run,
+                &artifact,
+                &output,
+                started.elapsed().as_secs(),
+                candidate_pairs,
             );
             Ok(0)
         }
@@ -742,6 +769,40 @@ fn run_entity_promote_command(promote: &EntityPromoteCli) -> Result<u8, Box<dyn 
             true,
             matches!(promote.emit, EntityEmitMode::Summary),
         ),
+    }
+}
+
+fn run_entity_profile_command(profile: &EntityProfileCommand) -> Result<u8, Box<dyn Error>> {
+    match &profile.command {
+        EntityProfileSubcommand::List(list) => run_entity_profile_list_command(list),
+        EntityProfileSubcommand::Init(init) => run_entity_profile_init_command(init),
+    }
+}
+
+fn run_entity_profile_list_command(list: &EntityProfileListCli) -> Result<u8, Box<dyn Error>> {
+    match entity::profile_cli::list_profile_templates() {
+        Ok(catalog) => {
+            match list.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&catalog)?),
+                RegistryEmitMode::Summary => println!("{}", catalog.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal_output) => emit_entity_refusal(
+            refusal_output,
+            matches!(list.emit, RegistryEmitMode::Json),
+            matches!(list.emit, RegistryEmitMode::Summary),
+        ),
+    }
+}
+
+fn run_entity_profile_init_command(init: &EntityProfileInitCli) -> Result<u8, Box<dyn Error>> {
+    match entity::profile_cli::init_profile_template(&init.profile, &init.output) {
+        Ok(output) => {
+            println!("{}", serde_json::to_string(&output)?);
+            Ok(0)
+        }
+        Err(refusal_output) => emit_entity_refusal(refusal_output, true, false),
     }
 }
 
@@ -1198,6 +1259,42 @@ fn render_provider_schema_summary(schema: &registry::ProviderSchema) -> String {
 
 #[allow(clippy::result_large_err)]
 fn run_entity_run_pipeline(run: &EntityRunCli) -> Result<EntityRunExecution, CanonOutput> {
+    match (run.profile.as_deref(), run.work_dir.as_deref()) {
+        (Some(profile), Some(work_dir)) => {
+            let result = entity::run::run_entity_workbench(entity::run::EntityRunRequest {
+                rows: &run.rows,
+                profile,
+                strategy: &run.strategy,
+                registry: &run.registry,
+                work_dir,
+            })
+            .map_err(|refusal| refusal.to_canon_output())?;
+            return Ok(EntityRunExecution::Workbench {
+                artifact: result.artifact,
+                candidate_pairs: result.candidate_pairs,
+            });
+        }
+        (None, None) => {}
+        _ => {
+            return Err(refusal::create_refusal(
+                RefusalCode::EEntityInputContract,
+                "Artifact-backed entity run requires both --profile and --work-dir".to_string(),
+                serde_json::json!({
+                    "stage": "run",
+                    "profile_present": run.profile.is_some(),
+                    "work_dir_present": run.work_dir.is_some(),
+                    "writes_performed": false
+                }),
+                Some(format!(
+                    "canon entity run {} --profile <PROFILE> --strategy {} --registry {} --work-dir <DIR>",
+                    run.rows.display(),
+                    run.strategy.display(),
+                    run.registry.display()
+                )),
+            ));
+        }
+    }
+
     let strategy =
         entity_runtime::strategy::load_strategy(&run.strategy).map_err(create_entity_refusal)?;
     let incumbent = entity_runtime::incumbent::load_incumbent_memory(&run.registry)
@@ -1212,7 +1309,7 @@ fn run_entity_run_pipeline(run: &EntityRunCli) -> Result<EntityRunExecution, Can
     let artifact = entity_runtime::solve::run(&strategy, &observations, &edges, &incumbent)
         .map_err(create_entity_refusal)?;
 
-    Ok(EntityRunExecution {
+    Ok(EntityRunExecution::Legacy {
         artifact,
         candidate_pairs: edges.len() as u64,
     })
@@ -1382,15 +1479,17 @@ fn map_entity_review_include(
 fn run_entity_explain_pipeline(
     explain: &EntityExplainCli,
 ) -> Result<entity_runtime::ExplainArtifact, CanonOutput> {
-    let (result, _result_bytes): (entity_runtime::SolveRunArtifact, Vec<u8>) =
+    let (result, _result_bytes): (serde_json::Value, Vec<u8>) =
         read_json_artifact(&explain.result, "org result artifact")?;
     let query = entity_runtime::ExplainQuery {
         row_id: explain.row.clone(),
+        surface_id: explain.surface_id.clone(),
         canonical_id: explain.canon_id.clone(),
         escrow_id: explain.escrow_id.clone(),
     };
 
-    entity_runtime::explain::explain_from_result(query, &result).map_err(create_entity_refusal)
+    entity_runtime::explain::explain_from_artifact_value(query, result)
+        .map_err(create_entity_refusal)
 }
 
 fn emit_entity_output(output: &str, summary_mode: bool) {
@@ -1512,6 +1611,106 @@ fn append_entity_run_witness(
             serde_json::Value::from(candidate_pairs),
         );
     }
+
+    let witness_record = witness::WitnessRecord::new(
+        inputs,
+        params,
+        &witness::hash_bytes(output.as_bytes()),
+        "RESOLVED",
+        0,
+    );
+    if let Err(error) = witness::append_witness_record(&witness_record, false) {
+        eprintln!("Warning: failed to append witness: {}", error);
+    }
+}
+
+fn append_entity_workbench_run_witness(
+    run: &EntityRunCli,
+    artifact: &entity::run::EntityRunArtifact,
+    output: &str,
+    runtime_seconds: u64,
+    candidate_pairs: u64,
+) {
+    if run.no_witness {
+        return;
+    }
+
+    let mut inputs = vec![witness::WitnessInput {
+        path: run.rows.display().to_string(),
+        hash: hash_input_path(&run.rows),
+        bytes: input_size(&run.rows),
+    }];
+    inputs.push(witness::WitnessInput {
+        path: run.strategy.display().to_string(),
+        hash: hash_input_path(&run.strategy),
+        bytes: input_size(&run.strategy),
+    });
+
+    let mut params = serde_json::Map::new();
+    params.insert(
+        "subcommand".to_string(),
+        serde_json::Value::String("entity.run".to_string()),
+    );
+    params.insert(
+        "profile_id".to_string(),
+        serde_json::Value::String(artifact.metadata.profile.id.clone()),
+    );
+    params.insert(
+        "profile_version".to_string(),
+        serde_json::Value::String(artifact.metadata.profile.version.clone()),
+    );
+    params.insert(
+        "strategy_id".to_string(),
+        serde_json::Value::String(artifact.metadata.strategy.id.clone()),
+    );
+    params.insert(
+        "strategy_version".to_string(),
+        serde_json::Value::String(artifact.metadata.strategy.version.clone()),
+    );
+    params.insert(
+        "strategy_path".to_string(),
+        serde_json::Value::String(run.strategy.display().to_string()),
+    );
+    params.insert(
+        "registry_id".to_string(),
+        serde_json::Value::String(artifact.metadata.registry_snapshot.id.clone()),
+    );
+    params.insert(
+        "registry_version".to_string(),
+        serde_json::Value::String(artifact.metadata.registry_snapshot.version.clone()),
+    );
+    params.insert(
+        "registry_path".to_string(),
+        serde_json::Value::String(run.registry.display().to_string()),
+    );
+    params.insert(
+        "registry_lookup_snapshot_hash".to_string(),
+        serde_json::Value::String(
+            artifact
+                .metadata
+                .registry_snapshot
+                .lookup_snapshot_hash
+                .clone(),
+        ),
+    );
+    if let Some(work_dir) = &run.work_dir {
+        params.insert(
+            "work_dir".to_string(),
+            serde_json::Value::String(work_dir.display().to_string()),
+        );
+    }
+    params.insert(
+        "run_artifact_hash".to_string(),
+        serde_json::Value::String(artifact.artifact_content_hash.clone()),
+    );
+    params.insert(
+        "candidate_pairs".to_string(),
+        serde_json::Value::from(candidate_pairs),
+    );
+    params.insert(
+        "runtime_seconds".to_string(),
+        serde_json::Value::from(runtime_seconds),
+    );
 
     let witness_record = witness::WitnessRecord::new(
         inputs,

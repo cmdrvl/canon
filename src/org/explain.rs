@@ -1,16 +1,41 @@
 //! Explain/proof-trace extraction for `canon entity`.
 
-use super::types::{
-    AbstentionRecord, CANON_ENTITY_EDGE_VERSION, CANON_ENTITY_EXPLAIN_VERSION,
-    CANON_ENTITY_RUN_VERSION, CANON_ENTITY_SOLVE_VERSION, ContradictionRecord, EdgeRecord,
-    EntityError, EntityErrorCode, EntityResult, EntityState, EvidenceKind, ExplainArtifact,
-    ExplainQuery, ExplainResult, InheritanceMode, InheritanceRecord, MergeWitness,
-    PendingClusterRecord, SolveRunArtifact, SolvedEntity,
+use super::{
+    review::ReviewExportOutput,
+    types::{
+        AbstentionRecord, CANON_ENTITY_EDGE_VERSION, CANON_ENTITY_EXPLAIN_VERSION,
+        CANON_ENTITY_RUN_VERSION, CANON_ENTITY_SOLVE_VERSION, ContradictionRecord, EdgeRecord,
+        EntityError, EntityErrorCode, EntityResult, EntityState, EvidenceKind, ExplainArtifact,
+        ExplainCandidateRecord, ExplainEvidenceRecord, ExplainPromotionProvenanceRecord,
+        ExplainQuery, ExplainResult, ExplainReviewDecisionRecord, ExplainSurfaceRecord,
+        InheritanceMode, InheritanceRecord, MergeWitness, PendingClusterRecord, PromoteArtifact,
+        SolveRunArtifact, SolvedEntity,
+    },
 };
-use serde_json::json;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 const NAME_NAMESPACE: &str = "name";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ExplainReconstructionBundle {
+    pub result: SolveRunArtifact,
+    #[serde(default)]
+    pub edges: Vec<EdgeRecord>,
+    #[serde(default)]
+    pub pending_clusters: Vec<PendingClusterRecord>,
+    #[serde(default)]
+    pub surfaces: Vec<ExplainSurfaceRecord>,
+    #[serde(default)]
+    pub review_exports: Vec<ReviewExportOutput>,
+    #[serde(default)]
+    pub review_decisions: Vec<ExplainReviewDecisionRecord>,
+    #[serde(default)]
+    pub promotion_artifacts: Vec<PromoteArtifact>,
+    #[serde(default)]
+    pub promotion_provenance: Vec<ExplainPromotionProvenanceRecord>,
+}
 
 pub fn explain(
     query: ExplainQuery,
@@ -18,13 +43,85 @@ pub fn explain(
     edges: &[EdgeRecord],
     pending_clusters: &[PendingClusterRecord],
 ) -> EntityResult<ExplainArtifact> {
+    explain_with_context(query, result, edges, pending_clusters, &[], &[], &[])
+}
+
+pub fn explain_from_result(
+    query: ExplainQuery,
+    result: &SolveRunArtifact,
+) -> EntityResult<ExplainArtifact> {
+    explain_with_context(query, result, &[], &[], &[], &[], &[])
+}
+
+pub fn explain_from_bundle(
+    query: ExplainQuery,
+    bundle: &ExplainReconstructionBundle,
+) -> EntityResult<ExplainArtifact> {
+    let mut review_decisions = bundle.review_decisions.clone();
+    review_decisions.extend(review_decisions_from_exports(&bundle.review_exports));
+    review_decisions.sort_by(explain_review_decision_cmp);
+    review_decisions.dedup();
+
+    let mut promotion_provenance = bundle.promotion_provenance.clone();
+    promotion_provenance.extend(promotion_provenance_from_artifacts(
+        &bundle.promotion_artifacts,
+    ));
+    promotion_provenance.sort_by(explain_promotion_provenance_cmp);
+    promotion_provenance.dedup();
+
+    explain_with_context(
+        query,
+        &bundle.result,
+        &bundle.edges,
+        &bundle.pending_clusters,
+        &bundle.surfaces,
+        &review_decisions,
+        &promotion_provenance,
+    )
+}
+
+pub fn explain_from_artifact_value(
+    query: ExplainQuery,
+    value: Value,
+) -> EntityResult<ExplainArtifact> {
+    if value.get("result").is_some() {
+        let bundle =
+            serde_json::from_value::<ExplainReconstructionBundle>(value).map_err(|error| {
+                explain_error(
+                    "Explain reconstruction bundle is malformed",
+                    json!({ "error": error.to_string() }),
+                )
+            })?;
+        explain_from_bundle(query, &bundle)
+    } else {
+        let result = serde_json::from_value::<SolveRunArtifact>(value).map_err(|error| {
+            explain_error(
+                "Explain result artifact is malformed",
+                json!({ "error": error.to_string() }),
+            )
+        })?;
+        explain_from_result(query, &result)
+    }
+}
+
+fn explain_with_context(
+    query: ExplainQuery,
+    result: &SolveRunArtifact,
+    edges: &[EdgeRecord],
+    pending_clusters: &[PendingClusterRecord],
+    surfaces: &[ExplainSurfaceRecord],
+    review_decisions: &[ExplainReviewDecisionRecord],
+    promotion_provenance: &[ExplainPromotionProvenanceRecord],
+) -> EntityResult<ExplainArtifact> {
     validate_result_artifact(result)?;
     validate_query(&query)?;
 
     let edge_index = build_edge_index(edges, result)?;
     let pending_index = build_pending_index(pending_clusters)?;
+    let surface_index = build_surface_index(surfaces)?;
+    let row_surface_index = build_row_surface_index(surfaces);
 
-    let explain_result = match resolve_query(&query, result)? {
+    let mut explain_result = match resolve_query(&query, result, &surface_index)? {
         QueryMatch::Entity(entity) => build_entity_result(&query, entity, &edge_index),
         QueryMatch::Abstention(abstention) => {
             build_abstention_result(&query, abstention, &edge_index, &pending_index)
@@ -33,19 +130,21 @@ pub fn explain(
             build_contradiction_result(contradiction, &edge_index)
         }
     };
+    enrich_explain_result(
+        &query,
+        &mut explain_result,
+        edges,
+        surfaces,
+        &row_surface_index,
+        review_decisions,
+        promotion_provenance,
+    );
 
     Ok(ExplainArtifact {
         version: CANON_ENTITY_EXPLAIN_VERSION.to_string(),
         query,
         result: explain_result,
     })
-}
-
-pub fn explain_from_result(
-    query: ExplainQuery,
-    result: &SolveRunArtifact,
-) -> EntityResult<ExplainArtifact> {
-    explain(query, result, &[], &[])
 }
 
 enum QueryMatch<'a> {
@@ -69,6 +168,7 @@ fn validate_result_artifact(result: &SolveRunArtifact) -> EntityResult<()> {
 
 fn validate_query(query: &ExplainQuery) -> EntityResult<()> {
     let selector_count = usize::from(query.row_id.is_some())
+        + usize::from(query.surface_id.is_some())
         + usize::from(query.canonical_id.is_some())
         + usize::from(query.escrow_id.is_some());
 
@@ -76,7 +176,7 @@ fn validate_query(query: &ExplainQuery) -> EntityResult<()> {
         Ok(())
     } else {
         Err(explain_error(
-            "Explain query must set exactly one of row_id, canonical_id, or escrow_id",
+            "Explain query must set exactly one of row_id, surface_id, canonical_id, or escrow_id",
             json!({
                 "query": query,
             }),
@@ -159,6 +259,7 @@ fn build_pending_index(
 fn resolve_query<'a>(
     query: &ExplainQuery,
     result: &'a SolveRunArtifact,
+    surface_index: &BTreeMap<String, ExplainSurfaceRecord>,
 ) -> EntityResult<QueryMatch<'a>> {
     let mut matches = Vec::new();
 
@@ -191,6 +292,62 @@ fn resolve_query<'a>(
                         .row_ids
                         .iter()
                         .any(|candidate| candidate == row_id)
+                })
+                .map(QueryMatch::Contradiction),
+        );
+    }
+
+    if let Some(surface_id) = query.surface_id.as_deref() {
+        let surface = surface_index.get(surface_id).ok_or_else(|| {
+            explain_error(
+                "Explain surface_id did not match any reconstructed surface",
+                json!({
+                    "surface_id": surface_id,
+                }),
+            )
+        })?;
+        if surface.row_ids.is_empty() {
+            return Err(explain_error(
+                "Explain surface_id matched a surface with no row provenance",
+                json!({
+                    "surface_id": surface_id,
+                }),
+            ));
+        }
+        let row_ids = surface.row_ids.iter().collect::<BTreeSet<_>>();
+        matches.extend(
+            result
+                .entities
+                .iter()
+                .filter(|entity| {
+                    entity
+                        .all_rows
+                        .iter()
+                        .any(|row_id| row_ids.contains(row_id))
+                })
+                .map(QueryMatch::Entity),
+        );
+        matches.extend(
+            result
+                .abstentions
+                .iter()
+                .filter(|abstention| {
+                    abstention
+                        .all_rows
+                        .iter()
+                        .any(|row_id| row_ids.contains(row_id))
+                })
+                .map(QueryMatch::Abstention),
+        );
+        matches.extend(
+            result
+                .contradictions
+                .iter()
+                .filter(|contradiction| {
+                    contradiction
+                        .row_ids
+                        .iter()
+                        .any(|row_id| row_ids.contains(row_id))
                 })
                 .map(QueryMatch::Contradiction),
         );
@@ -291,6 +448,7 @@ fn build_entity_result(
         attached_rows: sorted_rows(entity.attached_rows.clone()),
         inheritance: entity.inheritance.clone(),
         witness_chain: sorted_unique_witnesses(witness_chain),
+        ..ExplainResult::default()
     }
 }
 
@@ -343,6 +501,7 @@ fn build_abstention_result(
         attached_rows: sorted_rows(attached_rows),
         inheritance: abstention_inheritance(abstention),
         witness_chain: sorted_unique_witnesses(witness_chain),
+        ..ExplainResult::default()
     }
 }
 
@@ -374,7 +533,370 @@ fn build_contradiction_result(
             incumbent_ids: Vec::new(),
         },
         witness_chain: sorted_unique_witnesses(witness_chain),
+        ..ExplainResult::default()
     }
+}
+
+fn build_surface_index(
+    surfaces: &[ExplainSurfaceRecord],
+) -> EntityResult<BTreeMap<String, ExplainSurfaceRecord>> {
+    let mut index = BTreeMap::new();
+
+    for surface in surfaces {
+        if surface.surface_id.trim().is_empty() {
+            return Err(explain_error(
+                "Explain surface reconstruction contains an empty surface_id",
+                json!({ "field": "surfaces.surface_id" }),
+            ));
+        }
+        let mut normalized = surface.clone();
+        normalized.row_ids = sorted_rows(normalized.row_ids);
+        if normalized.row_count == 0 {
+            normalized.row_count = normalized.row_ids.len() as u64;
+        }
+        if index
+            .insert(normalized.surface_id.clone(), normalized)
+            .is_some()
+        {
+            return Err(explain_error(
+                "Duplicate surface_id encountered while building explain index",
+                json!({ "surface_id": surface.surface_id }),
+            ));
+        }
+    }
+
+    Ok(index)
+}
+
+fn build_row_surface_index(surfaces: &[ExplainSurfaceRecord]) -> BTreeMap<String, Vec<String>> {
+    let mut index = BTreeMap::<String, BTreeSet<String>>::new();
+
+    for surface in surfaces {
+        for row_id in &surface.row_ids {
+            index
+                .entry(row_id.clone())
+                .or_default()
+                .insert(surface.surface_id.clone());
+        }
+    }
+
+    index
+        .into_iter()
+        .map(|(row_id, surface_ids)| (row_id, surface_ids.into_iter().collect()))
+        .collect()
+}
+
+fn enrich_explain_result(
+    query: &ExplainQuery,
+    result: &mut ExplainResult,
+    edges: &[EdgeRecord],
+    surfaces: &[ExplainSurfaceRecord],
+    row_surface_index: &BTreeMap<String, Vec<String>>,
+    review_decisions: &[ExplainReviewDecisionRecord],
+    promotion_provenance: &[ExplainPromotionProvenanceRecord],
+) {
+    let selected_rows = selected_result_rows(result, query);
+    let mut selected_surface_ids = selected_surface_ids_for_rows(&selected_rows, row_surface_index);
+    if let Some(surface_id) = &query.surface_id {
+        selected_surface_ids.insert(surface_id.clone());
+    }
+    let provenance_surface_ids = selected_surface_ids.clone();
+
+    let (candidates, positive_evidence, anti_merge_evidence) = explain_edges(
+        edges,
+        &selected_rows,
+        &selected_surface_ids,
+        row_surface_index,
+    );
+    for candidate in &candidates {
+        selected_surface_ids.extend(candidate.left_surface_ids.iter().cloned());
+        selected_surface_ids.extend(candidate.right_surface_ids.iter().cloned());
+    }
+    result.surfaces = explain_surfaces(surfaces, &selected_rows, &selected_surface_ids);
+    for surface in &result.surfaces {
+        selected_surface_ids.insert(surface.surface_id.clone());
+    }
+    result.candidates = candidates;
+    result.positive_evidence = positive_evidence;
+    result.anti_merge_evidence = anti_merge_evidence;
+    result.review_decisions = explain_review_decisions(
+        review_decisions,
+        result,
+        &selected_rows,
+        &provenance_surface_ids,
+        query,
+    );
+    result.promotion_provenance = explain_promotion_provenance(
+        promotion_provenance,
+        result,
+        &selected_rows,
+        &provenance_surface_ids,
+        query,
+    );
+}
+
+fn selected_result_rows(result: &ExplainResult, query: &ExplainQuery) -> BTreeSet<String> {
+    let mut rows = result
+        .backbone_rows
+        .iter()
+        .chain(result.attached_rows.iter())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if let Some(row_id) = &query.row_id {
+        rows.insert(row_id.clone());
+    }
+    rows
+}
+
+fn selected_surface_ids_for_rows(
+    rows: &BTreeSet<String>,
+    row_surface_index: &BTreeMap<String, Vec<String>>,
+) -> BTreeSet<String> {
+    rows.iter()
+        .filter_map(|row_id| row_surface_index.get(row_id))
+        .flat_map(|surface_ids| surface_ids.iter().cloned())
+        .collect()
+}
+
+fn explain_surfaces(
+    surfaces: &[ExplainSurfaceRecord],
+    selected_rows: &BTreeSet<String>,
+    selected_surface_ids: &BTreeSet<String>,
+) -> Vec<ExplainSurfaceRecord> {
+    let mut selected = surfaces
+        .iter()
+        .filter(|surface| {
+            selected_surface_ids.contains(&surface.surface_id)
+                || surface
+                    .row_ids
+                    .iter()
+                    .any(|row_id| selected_rows.contains(row_id))
+        })
+        .cloned()
+        .map(|mut surface| {
+            surface.row_ids = sorted_rows(surface.row_ids);
+            if surface.row_count == 0 {
+                surface.row_count = surface.row_ids.len() as u64;
+            }
+            surface
+        })
+        .collect::<Vec<_>>();
+    selected.sort_by(|left, right| left.surface_id.cmp(&right.surface_id));
+    selected.dedup_by(|left, right| left.surface_id == right.surface_id);
+    selected
+}
+
+fn explain_edges(
+    edges: &[EdgeRecord],
+    selected_rows: &BTreeSet<String>,
+    selected_surface_ids: &BTreeSet<String>,
+    row_surface_index: &BTreeMap<String, Vec<String>>,
+) -> (
+    Vec<ExplainCandidateRecord>,
+    Vec<ExplainEvidenceRecord>,
+    Vec<ExplainEvidenceRecord>,
+) {
+    let mut candidates = Vec::new();
+    let mut positive_evidence = Vec::new();
+    let mut anti_merge_evidence = Vec::new();
+
+    for edge in edges {
+        let left_surface_ids = row_surface_index
+            .get(&edge.left_row_id)
+            .cloned()
+            .unwrap_or_default();
+        let right_surface_ids = row_surface_index
+            .get(&edge.right_row_id)
+            .cloned()
+            .unwrap_or_default();
+        let touches_selected_row =
+            selected_rows.contains(&edge.left_row_id) || selected_rows.contains(&edge.right_row_id);
+        let touches_selected_surface = left_surface_ids
+            .iter()
+            .chain(right_surface_ids.iter())
+            .any(|surface_id| selected_surface_ids.contains(surface_id));
+
+        if !touches_selected_row && !touches_selected_surface {
+            continue;
+        }
+
+        candidates.push(ExplainCandidateRecord {
+            left_surface_ids: left_surface_ids.clone(),
+            right_surface_ids: right_surface_ids.clone(),
+            left_row_id: edge.left_row_id.clone(),
+            right_row_id: edge.right_row_id.clone(),
+            pair_score_total: edge.pair_score_total,
+            pair_score_by_namespace: edge.pair_score_by_namespace.clone(),
+            operator_ids: edge_operator_ids(edge),
+        });
+
+        for hit in &edge.hits {
+            let record = ExplainEvidenceRecord {
+                kind: hit.kind,
+                namespace: hit.namespace.clone(),
+                operator_id: hit.operator_id.clone(),
+                score: hit.score,
+                explanation: hit.explanation.clone(),
+                left_surface_ids: left_surface_ids.clone(),
+                right_surface_ids: right_surface_ids.clone(),
+                left_row_id: edge.left_row_id.clone(),
+                right_row_id: edge.right_row_id.clone(),
+            };
+            if matches!(hit.kind, EvidenceKind::CannotLink) {
+                anti_merge_evidence.push(record);
+            } else {
+                positive_evidence.push(record);
+            }
+        }
+    }
+
+    candidates.sort_by(explain_candidate_cmp);
+    positive_evidence.sort_by(explain_evidence_cmp);
+    anti_merge_evidence.sort_by(explain_evidence_cmp);
+    (candidates, positive_evidence, anti_merge_evidence)
+}
+
+fn edge_operator_ids(edge: &EdgeRecord) -> Vec<String> {
+    edge.hits
+        .iter()
+        .map(|hit| hit.operator_id.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn explain_review_decisions(
+    review_decisions: &[ExplainReviewDecisionRecord],
+    result: &ExplainResult,
+    selected_rows: &BTreeSet<String>,
+    selected_surface_ids: &BTreeSet<String>,
+    query: &ExplainQuery,
+) -> Vec<ExplainReviewDecisionRecord> {
+    let mut decisions = review_decisions
+        .iter()
+        .filter(|decision| {
+            selector_matches_optional_ids(
+                query,
+                result,
+                decision.canonical_id.as_deref(),
+                decision.escrow_id.as_deref(),
+            ) || decision
+                .source_row_ids
+                .iter()
+                .any(|row_id| selected_rows.contains(row_id))
+                || decision
+                    .surface_ids
+                    .iter()
+                    .any(|surface_id| selected_surface_ids.contains(surface_id))
+        })
+        .cloned()
+        .map(|mut decision| {
+            decision.source_row_ids = sorted_rows(decision.source_row_ids);
+            decision.surface_ids = sorted_rows(decision.surface_ids);
+            decision
+        })
+        .collect::<Vec<_>>();
+    decisions.sort_by(explain_review_decision_cmp);
+    decisions.dedup();
+    decisions
+}
+
+fn explain_promotion_provenance(
+    promotion_provenance: &[ExplainPromotionProvenanceRecord],
+    result: &ExplainResult,
+    selected_rows: &BTreeSet<String>,
+    selected_surface_ids: &BTreeSet<String>,
+    query: &ExplainQuery,
+) -> Vec<ExplainPromotionProvenanceRecord> {
+    let mut provenance = promotion_provenance
+        .iter()
+        .filter(|record| {
+            promotion_record_is_run_level(record)
+                || selector_matches_optional_ids(
+                    query,
+                    result,
+                    record.canonical_id.as_deref(),
+                    record.escrow_id.as_deref(),
+                )
+                || record
+                    .row_ids
+                    .iter()
+                    .any(|row_id| selected_rows.contains(row_id))
+                || record
+                    .surface_ids
+                    .iter()
+                    .any(|surface_id| selected_surface_ids.contains(surface_id))
+        })
+        .cloned()
+        .map(|mut record| {
+            record.row_ids = sorted_rows(record.row_ids);
+            record.surface_ids = sorted_rows(record.surface_ids);
+            record
+        })
+        .collect::<Vec<_>>();
+    provenance.sort_by(explain_promotion_provenance_cmp);
+    provenance.dedup();
+    provenance
+}
+
+fn promotion_record_is_run_level(record: &ExplainPromotionProvenanceRecord) -> bool {
+    record.canonical_id.is_none()
+        && record.escrow_id.is_none()
+        && record.row_ids.is_empty()
+        && record.surface_ids.is_empty()
+}
+
+fn selector_matches_optional_ids(
+    query: &ExplainQuery,
+    result: &ExplainResult,
+    canonical_id: Option<&str>,
+    escrow_id: Option<&str>,
+) -> bool {
+    canonical_id.is_some()
+        && (canonical_id == query.canonical_id.as_deref()
+            || canonical_id == result.canonical_id.as_deref())
+        || escrow_id.is_some()
+            && (escrow_id == query.escrow_id.as_deref() || escrow_id == result.escrow_id.as_deref())
+}
+
+fn review_decisions_from_exports(
+    review_exports: &[ReviewExportOutput],
+) -> Vec<ExplainReviewDecisionRecord> {
+    review_exports
+        .iter()
+        .flat_map(|export| {
+            export.items.iter().map(|item| ExplainReviewDecisionRecord {
+                review_id: item.review_id.clone(),
+                category: item.category.clone(),
+                state: item.state,
+                canonical_id: item.canonical_id.clone(),
+                escrow_id: None,
+                source_row_ids: item.source_row_ids.clone(),
+                surface_ids: Vec::new(),
+                proposed_action: item.proposed_action.clone(),
+                decision: item.decision.clone(),
+            })
+        })
+        .collect()
+}
+
+fn promotion_provenance_from_artifacts(
+    promotion_artifacts: &[PromoteArtifact],
+) -> Vec<ExplainPromotionProvenanceRecord> {
+    promotion_artifacts
+        .iter()
+        .map(|artifact| ExplainPromotionProvenanceRecord {
+            artifact_version: Some(artifact.version.clone()),
+            canonical_id: None,
+            escrow_id: None,
+            row_ids: Vec::new(),
+            surface_ids: Vec::new(),
+            decision: artifact.decision,
+            writes: artifact.writes.clone(),
+            registry_version_before: Some(artifact.registry.version_before.clone()),
+            registry_version_after: Some(artifact.registry.version_after.clone()),
+        })
+        .collect()
 }
 
 fn pending_backbone_rows(pending: &PendingClusterRecord, all_rows: &[String]) -> Vec<String> {
@@ -545,6 +1067,98 @@ fn canonical_pair(left_row_id: &str, right_row_id: &str) -> (String, String) {
     }
 }
 
+fn explain_candidate_cmp(
+    left: &ExplainCandidateRecord,
+    right: &ExplainCandidateRecord,
+) -> std::cmp::Ordering {
+    (
+        &left.left_surface_ids,
+        &left.right_surface_ids,
+        &left.left_row_id,
+        &left.right_row_id,
+        left.pair_score_total,
+        &left.operator_ids,
+    )
+        .cmp(&(
+            &right.left_surface_ids,
+            &right.right_surface_ids,
+            &right.left_row_id,
+            &right.right_row_id,
+            right.pair_score_total,
+            &right.operator_ids,
+        ))
+}
+
+fn explain_evidence_cmp(
+    left: &ExplainEvidenceRecord,
+    right: &ExplainEvidenceRecord,
+) -> std::cmp::Ordering {
+    (
+        &left.left_surface_ids,
+        &left.right_surface_ids,
+        &left.left_row_id,
+        &left.right_row_id,
+        &left.namespace,
+        &left.operator_id,
+        left.score,
+    )
+        .cmp(&(
+            &right.left_surface_ids,
+            &right.right_surface_ids,
+            &right.left_row_id,
+            &right.right_row_id,
+            &right.namespace,
+            &right.operator_id,
+            right.score,
+        ))
+}
+
+fn explain_review_decision_cmp(
+    left: &ExplainReviewDecisionRecord,
+    right: &ExplainReviewDecisionRecord,
+) -> std::cmp::Ordering {
+    (
+        &left.review_id,
+        &left.category,
+        &left.canonical_id,
+        &left.escrow_id,
+        &left.source_row_ids,
+        &left.surface_ids,
+        &left.decision,
+    )
+        .cmp(&(
+            &right.review_id,
+            &right.category,
+            &right.canonical_id,
+            &right.escrow_id,
+            &right.source_row_ids,
+            &right.surface_ids,
+            &right.decision,
+        ))
+}
+
+fn explain_promotion_provenance_cmp(
+    left: &ExplainPromotionProvenanceRecord,
+    right: &ExplainPromotionProvenanceRecord,
+) -> std::cmp::Ordering {
+    (
+        &left.canonical_id,
+        &left.escrow_id,
+        &left.row_ids,
+        &left.surface_ids,
+        &left.registry_version_before,
+        &left.registry_version_after,
+    )
+        .cmp(&(
+            &right.canonical_id,
+            &right.escrow_id,
+            &right.row_ids,
+            &right.surface_ids,
+            &right.registry_version_before,
+            &right.registry_version_after,
+        ))
+}
+
 fn explain_error(message: impl Into<String>, detail: serde_json::Value) -> EntityError {
     EntityError::with_detail(EntityErrorCode::Explain, message, detail)
 }
@@ -564,6 +1178,7 @@ mod tests {
         let artifact = explain(
             ExplainQuery {
                 row_id: Some("row-9".to_string()),
+                surface_id: None,
                 canonical_id: None,
                 escrow_id: None,
             },
@@ -609,6 +1224,7 @@ mod tests {
         let artifact = explain(
             ExplainQuery {
                 row_id: None,
+                surface_id: None,
                 canonical_id: Some("IC-123abc456def".to_string()),
                 escrow_id: None,
             },
@@ -675,6 +1291,7 @@ mod tests {
         let artifact = explain(
             ExplainQuery {
                 row_id: None,
+                surface_id: None,
                 canonical_id: None,
                 escrow_id: Some("OE-8f9b7c1d2a3e".to_string()),
             },

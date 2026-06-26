@@ -70,5 +70,7 @@ mod edge_tfidf;
 mod regab_hard_negatives;
 #[path = "entity/regab_normalization.rs"]
 mod regab_normalization;
+#[path = "entity/regab_profile_integration.rs"]
+mod regab_profile_integration;
 #[path = "entity/solve_budget.rs"]
 mod solve_budget;

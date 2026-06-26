@@ -183,6 +183,12 @@ pub struct EntityCommand {
 }
 
 #[derive(Args, Debug, Clone)]
+pub struct EntityProfileCommand {
+    #[command(subcommand)]
+    pub command: EntityProfileSubcommand,
+}
+
+#[derive(Args, Debug, Clone)]
 pub struct EntityReviewCommand {
     #[command(subcommand)]
     pub command: EntityReviewSubcommand,
@@ -408,6 +414,8 @@ pub enum EntitySubcommand {
     Promote(EntityPromoteCli),
     /// Explain one entity row, canonical entity, or escrow entity
     Explain(EntityExplainCli),
+    /// List and initialize built-in entity profile templates
+    Profile(EntityProfileCommand),
     /// Export and import human adjudication review queues
     Review(EntityReviewCommand),
 }
@@ -968,6 +976,10 @@ pub struct EntityRunCli {
     /// Input CSV or JSONL rows
     pub rows: PathBuf,
 
+    /// Entity profile id or YAML path for artifact-backed runs
+    #[arg(long)]
+    pub profile: Option<String>,
+
     /// Strategy YAML file
     #[arg(long)]
     pub strategy: PathBuf,
@@ -975,6 +987,10 @@ pub struct EntityRunCli {
     /// Entity registry directory
     #[arg(long)]
     pub registry: PathBuf,
+
+    /// Work directory for artifact-backed runs
+    #[arg(long = "work-dir")]
+    pub work_dir: Option<PathBuf>,
 
     /// Frozen evaluation suite directory
     #[arg(long)]
@@ -1106,6 +1122,31 @@ pub struct EntityPromoteCli {
 }
 
 #[derive(Subcommand, Debug, Clone)]
+pub enum EntityProfileSubcommand {
+    /// List built-in entity profile templates
+    List(EntityProfileListCli),
+    /// Write a built-in entity profile template to disk
+    Init(EntityProfileInitCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntityProfileListCli {
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntityProfileInitCli {
+    /// Built-in profile id, such as cmbs_tenant_label or regab_firm_identity
+    pub profile: String,
+
+    /// Output YAML path to write
+    #[arg(long)]
+    pub output: PathBuf,
+}
+
+#[derive(Subcommand, Debug, Clone)]
 pub enum EntityReviewSubcommand {
     /// Export reviewable org identity clusters from a solve/run artifact
     Export(EntityReviewExportCli),
@@ -1154,7 +1195,7 @@ pub struct EntityReviewImportCli {
     ArgGroup::new("query")
         .required(true)
         .multiple(false)
-        .args(["row", "canon_id", "escrow_id"])
+        .args(["row", "surface_id", "canon_id", "escrow_id"])
 ))]
 pub struct EntityExplainCli {
     /// Entity solve or run artifact
@@ -1163,6 +1204,10 @@ pub struct EntityExplainCli {
     /// Explain a source row by source_row_id
     #[arg(long)]
     pub row: Option<String>,
+
+    /// Explain a prepared surface by surface_id
+    #[arg(long = "surface-id")]
+    pub surface_id: Option<String>,
 
     /// Explain a resolved entity by canonical ID
     #[arg(long)]
@@ -2193,8 +2238,38 @@ mod tests {
             assert_eq!(explain.result, PathBuf::from("result.json"));
             assert_eq!(explain.canon_id.as_deref(), Some("ORG-0001"));
             assert_eq!(explain.row, None);
+            assert_eq!(explain.surface_id, None);
             assert_eq!(explain.escrow_id, None);
             assert!(matches!(explain.emit, EntityEmitMode::Summary));
+        }
+    }
+
+    #[test]
+    fn test_cli_entity_explain_surface_id_parsing() {
+        let args = [
+            "canon",
+            "entity",
+            "explain",
+            "result.json",
+            "--surface-id",
+            "surf:cmbs_tenant_label:abc",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = entity_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, EntitySubcommand::Explain(_)));
+        if let EntitySubcommand::Explain(explain) = subcommand {
+            assert_eq!(explain.result, PathBuf::from("result.json"));
+            assert_eq!(
+                explain.surface_id.as_deref(),
+                Some("surf:cmbs_tenant_label:abc")
+            );
+            assert_eq!(explain.row, None);
+            assert_eq!(explain.canon_id, None);
+            assert_eq!(explain.escrow_id, None);
         }
     }
 
@@ -2212,6 +2287,59 @@ mod tests {
         ];
 
         assert!(Cli::try_parse_from(args).is_err());
+    }
+
+    #[test]
+    fn test_cli_entity_profile_list_parsing() {
+        let args = ["canon", "entity", "profile", "list", "--emit", "summary"];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = entity_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, EntitySubcommand::Profile(_)));
+        if let EntitySubcommand::Profile(profile) = subcommand {
+            let profile_subcommand = profile.command;
+            assert!(matches!(
+                &profile_subcommand,
+                EntityProfileSubcommand::List(_)
+            ));
+            if let EntityProfileSubcommand::List(list) = profile_subcommand {
+                assert!(matches!(list.emit, RegistryEmitMode::Summary));
+            }
+        }
+    }
+
+    #[test]
+    fn test_cli_entity_profile_init_parsing() {
+        let args = [
+            "canon",
+            "entity",
+            "profile",
+            "init",
+            "cmbs_tenant_label",
+            "--output",
+            "strategy.yaml",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = entity_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, EntitySubcommand::Profile(_)));
+        if let EntitySubcommand::Profile(profile) = subcommand {
+            let profile_subcommand = profile.command;
+            assert!(matches!(
+                &profile_subcommand,
+                EntityProfileSubcommand::Init(_)
+            ));
+            if let EntityProfileSubcommand::Init(init) = profile_subcommand {
+                assert_eq!(init.profile, "cmbs_tenant_label");
+                assert_eq!(init.output, PathBuf::from("strategy.yaml"));
+            }
+        }
     }
 
     #[test]

@@ -574,9 +574,92 @@ pub struct ExplainQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub row_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub surface_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub canonical_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub escrow_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ExplainSurfaceRecord {
+    pub surface_id: String,
+    pub primary_surface: String,
+    #[serde(default)]
+    pub row_ids: Vec<String>,
+    #[serde(default)]
+    pub row_count: u64,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub normalized_views: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub provenance: BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ExplainCandidateRecord {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub left_surface_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub right_surface_ids: Vec<String>,
+    pub left_row_id: String,
+    pub right_row_id: String,
+    pub pair_score_total: i64,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub pair_score_by_namespace: BTreeMap<String, i64>,
+    #[serde(default)]
+    pub operator_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ExplainEvidenceRecord {
+    pub kind: EvidenceKind,
+    pub namespace: String,
+    pub operator_id: String,
+    pub score: i64,
+    pub explanation: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub left_surface_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub right_surface_ids: Vec<String>,
+    pub left_row_id: String,
+    pub right_row_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ExplainReviewDecisionRecord {
+    pub review_id: String,
+    pub category: String,
+    pub state: EntityState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canonical_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub escrow_id: Option<String>,
+    #[serde(default)]
+    pub source_row_ids: Vec<String>,
+    #[serde(default)]
+    pub surface_ids: Vec<String>,
+    pub proposed_action: String,
+    pub decision: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ExplainPromotionProvenanceRecord {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canonical_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub escrow_id: Option<String>,
+    #[serde(default)]
+    pub row_ids: Vec<String>,
+    #[serde(default)]
+    pub surface_ids: Vec<String>,
+    pub decision: PromotionDecision,
+    pub writes: PromotionWrites,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registry_version_before: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registry_version_after: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -593,6 +676,18 @@ pub struct ExplainResult {
     pub inheritance: InheritanceRecord,
     #[serde(default)]
     pub witness_chain: Vec<MergeWitness>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub surfaces: Vec<ExplainSurfaceRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub candidates: Vec<ExplainCandidateRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub positive_evidence: Vec<ExplainEvidenceRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub anti_merge_evidence: Vec<ExplainEvidenceRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub review_decisions: Vec<ExplainReviewDecisionRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub promotion_provenance: Vec<ExplainPromotionProvenanceRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

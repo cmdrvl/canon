@@ -1,0 +1,125 @@
+{
+  "schema_version": "canon.entity.regab.org_mentions.integration.v0",
+  "profile_id": "regab_firm_identity",
+  "identity_semantics": "same_firm_or_reviewed_alias",
+  "source": {
+    "row_count": 8,
+    "raw_unique_surfaces": 8,
+    "prepared_surfaces": 8,
+    "exact_resolved_surfaces": 5,
+    "unresolved_surfaces": 3,
+    "alias_surface_count": 7,
+    "mention_surface_count": 24,
+    "anchor_count": 16
+  },
+  "exact_resolved_surfaces": [
+    {
+      "org_name": "PNC Bank, National Association",
+      "canonical_id": "ORG-034",
+      "canonical_type": "firm",
+      "rule_id": "REGAB_EXACT_ALIAS"
+    },
+    {
+      "org_name": "Midland Loan Services, a division of PNC Bank, National Association",
+      "canonical_id": "ORG-035",
+      "canonical_type": "firm",
+      "rule_id": "REGAB_DIVISION_ALIAS"
+    },
+    {
+      "org_name": "Wells Fargo Bank, National Association",
+      "canonical_id": "ORG-012",
+      "canonical_type": "firm",
+      "rule_id": "REGAB_EXACT_ALIAS"
+    },
+    {
+      "org_name": "Wells Fargo Commercial Mortgage Servicing, a division of Wells Fargo Bank, National Association",
+      "canonical_id": "ORG-053",
+      "canonical_type": "firm",
+      "rule_id": "REGAB_DIVISION_ALIAS"
+    },
+    {
+      "org_name": "KPMG LLP",
+      "canonical_id": "ORG-042",
+      "canonical_type": "firm",
+      "rule_id": "REGAB_EXACT_ALIAS"
+    }
+  ],
+  "unresolved_surfaces": [
+    "Acme Review Analytics LLC",
+    "KPMG Securitization Trust 2024-C1",
+    "Wells Fargo Commercial Mortgage Securities Platform"
+  ],
+  "guarded_pairs": [
+    {
+      "benchmark_id": "REGAB-I002",
+      "left": "PNC Bank, National Association",
+      "right": "Midland Loan Services, a division of PNC Bank, National Association",
+      "left_role": "servicer",
+      "right_role": "master_servicer",
+      "guard": "bank_vs_loan_services_division",
+      "relation": "division_of",
+      "support_reason": "regab_same_family_high_recall_candidate",
+      "support_score_units": 7000,
+      "guard_score_units": 10000,
+      "expected_review_priority": "high"
+    },
+    {
+      "benchmark_id": "REGAB-I003",
+      "left": "Wells Fargo Commercial Mortgage Securities Platform",
+      "right": "Wells Fargo Bank, National Association",
+      "left_role": "platform",
+      "right_role": "regulated_firm",
+      "guard": "platform_category_label",
+      "relation": "platform_to_firm_context",
+      "support_reason": "regab_shared_platform_family_candidate",
+      "support_score_units": 6500,
+      "guard_score_units": 10000,
+      "expected_review_priority": "critical"
+    },
+    {
+      "benchmark_id": "REGAB-I003",
+      "left": "KPMG LLP",
+      "right": "KPMG Securitization Trust 2024-C1",
+      "left_role": "auditor",
+      "right_role": "subject_party",
+      "guard": "auditor_subject_party_role_conflict",
+      "relation": "role_context_conflict",
+      "support_reason": "regab_shared_auditor_token_candidate",
+      "support_score_units": 6200,
+      "guard_score_units": 10000,
+      "expected_review_priority": "critical"
+    }
+  ],
+  "solve_summary": {
+    "component_count": 3,
+    "auto_merge_candidate_count": 0,
+    "contradiction_count": 3,
+    "hard_cannot_link_count": 3,
+    "review_group_count": 3
+  },
+  "apply": {
+    "registry": {
+      "id": "firms",
+      "version": "1.0.12"
+    },
+    "rows": 8,
+    "resolved": 5,
+    "unresolved": 3,
+    "canonical_fields": [
+      "canonical_id",
+      "canonical_type",
+      "canonical_status",
+      "canonical_registry_id",
+      "canonical_registry_version",
+      "canonical_rule_id"
+    ],
+    "downstream_org_fields": [
+      "_org_canon_id",
+      "_org_canonical_name",
+      "_org_resolution_status",
+      "_org_registry_id",
+      "_org_registry_version",
+      "_org_rule_id"
+    ]
+  }
+}
