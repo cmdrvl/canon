@@ -1,0 +1,35 @@
+{
+  "version": "canon_entity_audit.v0",
+  "suite_id": "cmbs_tenant_smoke",
+  "suite_version": "2026.06.26",
+  "summary_counts": {
+    "certified_artifact_count": 3,
+    "failed_gate_count": 0,
+    "gate_count": 3,
+    "passed_gate_count": 3
+  },
+  "summary_labels": {
+    "status": "passed",
+    "suite_id": "cmbs_tenant_smoke",
+    "suite_version": "2026.06.26"
+  },
+  "audited_artifact": {
+    "version": "canon_entity_solve.v0",
+    "content_hash": "blake3:solve"
+  },
+  "certified_artifacts": [
+    {
+      "version": "canon_entity_decision_ledger.v0",
+      "content_hash": "blake3:decision-ledger"
+    },
+    {
+      "version": "canon_entity_review_queue.v0",
+      "content_hash": "blake3:review-queue"
+    },
+    {
+      "version": "canon_entity_solve.v0",
+      "content_hash": "blake3:solve"
+    }
+  ],
+  "gate_ids": ["G01", "G08", "G09"]
+}

@@ -7,6 +7,7 @@
 pub mod anti_merge;
 pub mod apply;
 pub mod artifact_chain;
+pub mod audit;
 pub mod block;
 pub mod block_artifact;
 pub mod budget;
