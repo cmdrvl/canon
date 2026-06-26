@@ -1,0 +1,31 @@
+{
+  "sidecar_version": "canon_entity_promotion_sidecar.v0",
+  "proof_version": "canon_entity_promotion_proof.v0",
+  "profile_id": "cmbs_tenant_label",
+  "identity_semantics": "canonical_display_label",
+  "sidecar_summary": {
+    "cannot_link_count": 1,
+    "contradiction_count": 1,
+    "escrow_count": 1,
+    "relation_hint_count": 1
+  },
+  "proof_summary": {
+    "promoted_alias_count": 1,
+    "sidecar_record_count": 4
+  },
+  "cannot_link": {
+    "profile_id": "cmbs_tenant_label",
+    "identity_semantics": "canonical_display_label",
+    "left": "surf:sears",
+    "right": "surf:sears_auto",
+    "hard_cannot_link": true,
+    "reason": "review_distinct_confirmed"
+  },
+  "relation": {
+    "namespace": "cmbs_tenant_label.relations",
+    "left": "surf:pnc_bank",
+    "right": "surf:pnc_midland_loan_services",
+    "relation": "master_special_servicer_platform"
+  },
+  "hash_linked": true
+}

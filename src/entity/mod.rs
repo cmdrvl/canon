@@ -36,6 +36,7 @@ pub mod review_import;
 pub mod runtime;
 pub mod schema;
 pub mod score;
+pub mod sidecar;
 pub mod solve;
 pub mod stream;
 pub mod surface_id;
