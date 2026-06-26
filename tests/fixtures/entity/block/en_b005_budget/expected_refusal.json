@@ -1,0 +1,11 @@
+{
+  "code": "E_ENTITY_CANDIDATE_BUDGET",
+  "policy_id": "block.max_candidates_per_surface",
+  "subject_kind": "surface",
+  "subject_id": "surf:sears",
+  "observed": 2,
+  "configured": 1,
+  "candidate_artifact_bytes": 0,
+  "candidate_artifact_written": false,
+  "partial_candidate_artifact_written": false
+}

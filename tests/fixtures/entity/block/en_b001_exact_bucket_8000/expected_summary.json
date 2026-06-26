@@ -1,0 +1,10 @@
+{
+  "assertion_count": 1,
+  "bucket_id": "bucket:tenant_core:sears",
+  "row_count": 8000,
+  "deal_count": 934,
+  "membership_record_count": 1,
+  "expanded_pair_count": 0,
+  "suppressed_pair_count": 31996000,
+  "pair_expansion": "forbidden"
+}
