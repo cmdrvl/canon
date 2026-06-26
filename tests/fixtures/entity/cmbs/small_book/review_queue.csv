@@ -1,0 +1,3 @@
+review_group_id,benchmark_id,reason_code,row_count,deal_count,property_count,representative_surfaces_json,suggested_action
+review:china-king-buffet,EN_R001,dba_typo_review,2,2,2,"[""Chen and Lin 88, LLC dba China King Buffet"",""Chen and Lin 88, LLC dba China IGng Buffet""]",review_alias_or_keep_distinct
+review:sears-family-distinct,EN_R001,related_brand_family_not_same_tenant_label,4,4,4,"[""Sears Auto Center"",""Kmart"",""Transform SR LLC"",""Sears Holdings""]",confirm_distinct_or_relation

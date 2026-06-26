@@ -1,0 +1,181 @@
+{
+  "schema_version": "canon.entity.cmbs.small_book.v0",
+  "fixture_id": "cmbs-small-book-v0",
+  "profile_id": "cmbs_tenant_label",
+  "identity_semantics": "canonical_display_label",
+  "canonical_type": "tenant_label",
+  "source": {
+    "row_count": 15,
+    "deal_count": 12,
+    "property_count": 12,
+    "tenant_observation_count": 15
+  },
+  "prepare_summary": {
+    "unique_raw_surfaces": 15,
+    "normalized_unique_surfaces": 10,
+    "exact_resolved_surface_count": 3,
+    "exact_resolved_row_count": 8,
+    "unresolved_placeholder_surface_count": 1,
+    "global_surface_scope": "all_deals"
+  },
+  "exact_resolved_surfaces": [
+    {
+      "normalized_surface": "sears",
+      "canonical_id": "TNT-SEARS",
+      "row_count": 3,
+      "deal_count": 3,
+      "property_count": 3
+    },
+    {
+      "normalized_surface": "24 hour fitness",
+      "canonical_id": "TNT-24-HOUR-FITNESS",
+      "row_count": 3,
+      "deal_count": 3,
+      "property_count": 3
+    },
+    {
+      "normalized_surface": "238 sand island property",
+      "canonical_id": "TNT-238-SAND-ISLAND-PROPERTY",
+      "row_count": 2,
+      "deal_count": 2,
+      "property_count": 2
+    }
+  ],
+  "must_link_groups": [
+    {
+      "id": "CMBS-I001-SEARS",
+      "normalized_surface": "sears",
+      "expected_canonical_id": "TNT-SEARS",
+      "row_count": 3,
+      "deal_count": 3,
+      "property_count": 3,
+      "variants": ["Sears", "SEARS LLC", "Sears Roebuck & Co."]
+    },
+    {
+      "id": "CMBS-I001-24-HOUR-FITNESS",
+      "normalized_surface": "24 hour fitness",
+      "expected_canonical_id": "TNT-24-HOUR-FITNESS",
+      "row_count": 3,
+      "deal_count": 3,
+      "property_count": 3,
+      "variants": ["24 Hour Fitness", "24 HOUR FITNESS USA, INC.", "24 HR Fitness"]
+    },
+    {
+      "id": "CMBS-I001-238-SAND-ISLAND",
+      "normalized_surface": "238 sand island property",
+      "expected_canonical_id": "TNT-238-SAND-ISLAND-PROPERTY",
+      "row_count": 2,
+      "deal_count": 2,
+      "property_count": 2,
+      "variants": ["238 Sand Island Prop", "238 SAND ISLAND PROPERTY LLC"]
+    }
+  ],
+  "hard_negative_pairs": [
+    {
+      "left": "Sears",
+      "right": "Sears Auto Center",
+      "reason_code": "related_brand_family_not_same_tenant_label",
+      "expected_auto_merge": false
+    },
+    {
+      "left": "Sears",
+      "right": "Kmart",
+      "reason_code": "related_brand_family_not_same_tenant_label",
+      "expected_auto_merge": false
+    },
+    {
+      "left": "Sears",
+      "right": "Transform SR LLC",
+      "reason_code": "successor_or_operator_not_display_label",
+      "expected_auto_merge": false
+    },
+    {
+      "left": "Sears",
+      "right": "Sears Holdings",
+      "reason_code": "related_brand_family_not_same_tenant_label",
+      "expected_auto_merge": false
+    }
+  ],
+  "stage_summaries": {
+    "prepare": {
+      "raw_rows": 15,
+      "prepared_unique_surfaces": 10,
+      "exact_resolved_surfaces": 3,
+      "unresolved_placeholder_surfaces": 1
+    },
+    "index": {
+      "posting_surfaces": 10,
+      "exact_bucket_count": 3,
+      "exact_bucket_pair_expansion_count": 0
+    },
+    "block": {
+      "candidate_source_surfaces": 7,
+      "candidate_pairs_per_surface_p95": 2,
+      "candidate_pairs_per_surface_p99": 2,
+      "exact_resolved_surfaces_skipped_by_fuzzy_blocking": [
+        "sears",
+        "24 hour fitness",
+        "238 sand island property"
+      ],
+      "candidate_pairs": [
+        ["china king buffet", "china igng buffet"],
+        ["sears", "sears auto center"],
+        ["sears", "holdings sears"],
+        ["sears", "sr transform"]
+      ]
+    },
+    "edge": {
+      "support_edges": 1,
+      "anti_merge_edges": 4,
+      "relation_hints": 4
+    },
+    "solve": {
+      "exact_resolved_clusters": 3,
+      "auto_merge_count": 0,
+      "cannot_link_count": 4,
+      "review_group_count": 2
+    },
+    "review": {
+      "group_count": 2,
+      "total_rows": 6,
+      "total_deals": 6
+    }
+  },
+  "review_groups": [
+    {
+      "id": "review:china-king-buffet",
+      "benchmark_id": "EN_R001",
+      "reason_code": "dba_typo_review",
+      "row_count": 2,
+      "deal_count": 2,
+      "property_count": 2,
+      "representative_surfaces": [
+        "Chen and Lin 88, LLC dba China King Buffet",
+        "Chen and Lin 88, LLC dba China IGng Buffet"
+      ],
+      "suggested_action": "review_alias_or_keep_distinct"
+    },
+    {
+      "id": "review:sears-family-distinct",
+      "benchmark_id": "EN_R001",
+      "reason_code": "related_brand_family_not_same_tenant_label",
+      "row_count": 4,
+      "deal_count": 4,
+      "property_count": 4,
+      "representative_surfaces": [
+        "Sears Auto Center",
+        "Kmart",
+        "Transform SR LLC",
+        "Sears Holdings"
+      ],
+      "suggested_action": "confirm_distinct_or_relation"
+    }
+  ],
+  "non_goals": [
+    "no legal-entity claim for tenant labels",
+    "no row-level all-pairs candidate generation",
+    "no exact-bucket pair expansion",
+    "no frontier model call",
+    "no network dependency"
+  ]
+}

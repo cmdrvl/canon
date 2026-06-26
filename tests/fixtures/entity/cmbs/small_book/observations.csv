@@ -1,0 +1,16 @@
+source_row_id,deal_id,loan_id,property_id,property_name,property_city,property_state,tenant_rank,raw_tenant_name,tenant_square_feet,tenant_lease_expiration,expected_normalized_surface,expected_resolution_status,expected_canonical_id,expected_review_group
+cmbs-small:001,D001,L001,P001,Northpoint Mall,Chicago,IL,1,Sears,10000,2028-01-31,sears,exact_resolved,TNT-SEARS,
+cmbs-small:002,D002,L002,P002,Harbor Plaza,Honolulu,HI,1,SEARS LLC,8500,2027-05-31,sears,exact_resolved,TNT-SEARS,
+cmbs-small:003,D003,L003,P003,Roebuck Center,Denver,CO,2,Sears Roebuck & Co.,4200,2026-11-30,sears,exact_resolved,TNT-SEARS,
+cmbs-small:004,D001,L001,P001,Northpoint Mall,Chicago,IL,2,Sears Auto Center,6200,2028-01-31,sears auto center,review_distinct,,review:sears-family-distinct
+cmbs-small:005,D002,L002,P002,Harbor Plaza,Honolulu,HI,2,Kmart,7000,2027-05-31,kmart,review_distinct,,review:sears-family-distinct
+cmbs-small:006,D003,L003,P003,Roebuck Center,Denver,CO,3,Transform SR LLC,3500,2026-11-30,sr transform,review_distinct,,review:sears-family-distinct
+cmbs-small:007,D004,L004,P004,Holdings Square,Atlanta,GA,1,Sears Holdings,9000,2029-03-31,holdings sears,review_distinct,,review:sears-family-distinct
+cmbs-small:008,D005,L005,P005,Fitness Commons,Austin,TX,1,24 Hour Fitness,18000,2030-12-31,24 hour fitness,exact_resolved,TNT-24-HOUR-FITNESS,
+cmbs-small:009,D006,L006,P006,Fitness Commons West,San Diego,CA,1,"24 HOUR FITNESS USA, INC.",21000,2029-09-30,24 hour fitness,exact_resolved,TNT-24-HOUR-FITNESS,
+cmbs-small:010,D007,L007,P007,Fitness Commons East,Miami,FL,1,24 HR Fitness,17500,2028-07-31,24 hour fitness,exact_resolved,TNT-24-HOUR-FITNESS,
+cmbs-small:011,D008,L008,P008,Buffet Center,Orlando,FL,1,"Chen and Lin 88, LLC dba China King Buffet",5200,2026-02-28,china king buffet,review_alias,,review:china-king-buffet
+cmbs-small:012,D009,L009,P009,Buffet Center North,Tampa,FL,1,"Chen and Lin 88, LLC dba China IGng Buffet",5100,2026-02-28,china igng buffet,review_alias,,review:china-king-buffet
+cmbs-small:013,D010,L010,P010,Vacancy Plaza,Phoenix,AZ,1,0,,2026-01-31,placeholder:0,unresolved_placeholder,,
+cmbs-small:014,D011,L011,P011,Sand Island Shops,Honolulu,HI,1,238 Sand Island Prop,30000,2031-10-31,238 sand island property,exact_resolved,TNT-238-SAND-ISLAND-PROPERTY,
+cmbs-small:015,D012,L012,P012,Sand Island Industrial,Honolulu,HI,1,238 SAND ISLAND PROPERTY LLC,31000,2031-10-31,238 sand island property,exact_resolved,TNT-238-SAND-ISLAND-PROPERTY,
