@@ -74,6 +74,7 @@ fn block_candidate_budget_matrix_refuses_before_artifact_write_on_surface_breach
         refusal.detail["partial_candidate_artifact_written"],
         json!(false)
     );
+    assert_eq!(refusal.detail["candidate_artifact_written"], json!(false));
     assert!(
         refusal
             .next_command
@@ -106,6 +107,10 @@ fn block_candidate_budget_matrix_refuses_operator_and_run_breaches_deterministic
         operator_refusal.detail["partial_candidate_artifact_written"],
         json!(false)
     );
+    assert_eq!(
+        operator_refusal.detail["candidate_artifact_written"],
+        json!(false)
+    );
 
     let run_refusal = validate_block_candidate_budget_before_artifact_emission(
         &BlockCandidateBudgetConfig::new(10, 10, 5),
@@ -126,6 +131,10 @@ fn block_candidate_budget_matrix_refuses_operator_and_run_breaches_deterministic
     assert_eq!(run_refusal.detail["configured"], 5);
     assert_eq!(
         run_refusal.detail["partial_candidate_artifact_written"],
+        json!(false)
+    );
+    assert_eq!(
+        run_refusal.detail["candidate_artifact_written"],
         json!(false)
     );
 }

@@ -242,6 +242,7 @@ fn block_candidate_budget_refusal(
             "candidate_pairs_per_surface_p50": diagnostics.candidate_pairs_per_surface_p50,
             "candidate_pairs_per_surface_p95": diagnostics.candidate_pairs_per_surface_p95,
             "candidate_pairs_per_surface_p99": diagnostics.candidate_pairs_per_surface_p99,
+            "candidate_artifact_written": BLOCK_PARTIAL_CANDIDATE_ARTIFACT_WRITTEN_ON_REFUSAL,
             "partial_candidate_artifact_written": BLOCK_PARTIAL_CANDIDATE_ARTIFACT_WRITTEN_ON_REFUSAL
         }),
         Some(breach.budget.next_command.to_string()),
