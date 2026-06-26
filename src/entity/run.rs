@@ -118,6 +118,8 @@ pub struct EntityRunArtifact {
     pub stage_artifacts: Vec<EntityRunStageArtifact>,
     pub work_dir: EntityRunWorkDirLayout,
     pub next_commands: EntityRunNextCommands,
+    #[serde(default)]
+    pub orchestration: EntityRunOrchestration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -152,6 +154,44 @@ pub struct EntityRunNextCommands {
     pub audit: String,
     pub promote: String,
     pub apply: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct EntityRunOrchestration {
+    pub stage_order: Vec<String>,
+    pub profile_firewall: EntityRunProfileFirewall,
+    pub handoff_steps: Vec<EntityRunHandoffStep>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct EntityRunProfileFirewall {
+    pub profile_id: String,
+    pub profile_version: String,
+    pub identity_semantics: String,
+    pub canonical_type: String,
+    pub registry_id: String,
+    pub registry_version: String,
+    pub registry_snapshot_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidecar_snapshot_hash: Option<String>,
+    pub strategy_hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct EntityRunHandoffStep {
+    pub stage: String,
+    pub command: String,
+    pub input_artifact_path: String,
+    #[serde(default)]
+    pub input_artifacts: Vec<EntityArtifactReference>,
+    #[serde(default)]
+    pub required_paths: Vec<String>,
+    #[serde(default)]
+    pub output_paths: Vec<String>,
+    #[serde(default)]
+    pub required_prior_stages: Vec<String>,
+    pub requires_audit: bool,
+    pub enforces_profile_firewall: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -517,12 +557,14 @@ fn run_artifact(
         })
         .collect();
     metadata.artifact_content_hash.clear();
+    let orchestration = run_orchestration(request, &stage_artifacts, prepare, solve);
 
     Ok(EntityRunArtifact {
         version: CANON_ENTITY_RUN_VERSION.to_string(),
         artifact_content_hash: String::new(),
         metadata,
         summary: run_summary(request, prepare, surfaces, index, block, edge, solve),
+        orchestration,
         stage_artifacts,
         work_dir: EntityRunWorkDirLayout {
             prepare_artifact_path: PREPARE_ARTIFACT_PATH.to_string(),
@@ -560,6 +602,151 @@ fn run_artifact(
             ),
         },
     })
+}
+
+fn run_orchestration(
+    request: EntityRunRequest<'_>,
+    stage_artifacts: &[EntityRunStageArtifact],
+    prepare: &PrepareRunArtifact,
+    solve: &SolveArtifact,
+) -> EntityRunOrchestration {
+    let solve_ref = EntityArtifactReference {
+        version: solve.version.clone(),
+        content_hash: solve.artifact_content_hash.clone(),
+    };
+    let stage_refs = stage_artifacts
+        .iter()
+        .map(|stage| EntityArtifactReference {
+            version: stage.version.clone(),
+            content_hash: stage.artifact_content_hash.clone(),
+        })
+        .collect::<Vec<_>>();
+    let solve_path = request
+        .work_dir
+        .join(SOLVE_ARTIFACT_PATH)
+        .display()
+        .to_string();
+    let review_path = request.work_dir.join("review.csv").display().to_string();
+    let audit_path = request.work_dir.join("audit.json").display().to_string();
+    let promote_path = request.work_dir.join("promote.json").display().to_string();
+    let sidecar_path = request
+        .work_dir
+        .join("promotion-sidecars.json")
+        .display()
+        .to_string();
+    let apply_path = request.work_dir.join("apply.csv").display().to_string();
+
+    EntityRunOrchestration {
+        stage_order: [
+            "prepare",
+            "index",
+            "block",
+            "edge",
+            "solve",
+            "review_export",
+            "audit",
+            "review_import",
+            "promote",
+            "apply",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect(),
+        profile_firewall: EntityRunProfileFirewall {
+            profile_id: prepare.profile.id.clone(),
+            profile_version: prepare.profile.version.clone(),
+            identity_semantics: prepare.profile.identity_semantics.clone(),
+            canonical_type: prepare.profile.canonical_type.clone(),
+            registry_id: prepare.registry_snapshot.id.clone(),
+            registry_version: prepare.registry_snapshot.version.clone(),
+            registry_snapshot_hash: prepare.registry_snapshot.lookup_snapshot_hash.clone(),
+            sidecar_snapshot_hash: solve
+                .metadata
+                .registry_snapshot
+                .sidecar_snapshot_hash
+                .clone(),
+            strategy_hash: solve.metadata.strategy.content_hash.clone(),
+        },
+        handoff_steps: vec![
+            EntityRunHandoffStep {
+                stage: "review_export".to_string(),
+                command: format!(
+                    "canon entity review export {solve_path} --include escrow --emit csv > {review_path}"
+                ),
+                input_artifact_path: solve_path.clone(),
+                input_artifacts: vec![solve_ref.clone()],
+                output_paths: vec![review_path.clone()],
+                required_prior_stages: vec!["solve".to_string()],
+                requires_audit: false,
+                enforces_profile_firewall: true,
+                ..EntityRunHandoffStep::default()
+            },
+            EntityRunHandoffStep {
+                stage: "audit".to_string(),
+                command: format!(
+                    "canon entity audit {solve_path} --suite <SUITE_DIR> > {audit_path}"
+                ),
+                input_artifact_path: solve_path.clone(),
+                input_artifacts: stage_refs,
+                output_paths: vec![audit_path.clone()],
+                required_prior_stages: vec!["solve".to_string()],
+                requires_audit: false,
+                enforces_profile_firewall: true,
+                ..EntityRunHandoffStep::default()
+            },
+            EntityRunHandoffStep {
+                stage: "review_import".to_string(),
+                command: format!(
+                    "canon entity review import {review_path} --registry {} --next-version <VERSION> --audit {audit_path}",
+                    request.registry.display()
+                ),
+                input_artifact_path: review_path.clone(),
+                input_artifacts: vec![solve_ref.clone()],
+                required_paths: vec![review_path.clone(), audit_path.clone()],
+                output_paths: vec![
+                    request
+                        .work_dir
+                        .join(DECISION_LEDGER_PATH)
+                        .display()
+                        .to_string(),
+                ],
+                required_prior_stages: vec!["review_export".to_string(), "audit".to_string()],
+                requires_audit: true,
+                enforces_profile_firewall: true,
+            },
+            EntityRunHandoffStep {
+                stage: "promote".to_string(),
+                command: format!(
+                    "canon entity promote {solve_path} --audit {audit_path} --registry {} --next-version <VERSION> > {promote_path}",
+                    request.registry.display()
+                ),
+                input_artifact_path: solve_path.clone(),
+                input_artifacts: vec![solve_ref.clone()],
+                required_paths: vec![audit_path.clone()],
+                output_paths: vec![promote_path, sidecar_path.clone()],
+                required_prior_stages: vec!["audit".to_string(), "review_import".to_string()],
+                requires_audit: true,
+                enforces_profile_firewall: true,
+                ..EntityRunHandoffStep::default()
+            },
+            EntityRunHandoffStep {
+                stage: "apply".to_string(),
+                command: format!(
+                    "canon entity apply {} --registry {} --column <COLUMN> --out {apply_path}",
+                    request.rows.display(),
+                    request.registry.display()
+                ),
+                input_artifact_path: request.rows.display().to_string(),
+                input_artifacts: vec![solve_ref],
+                required_paths: vec![request.registry.display().to_string(), sidecar_path],
+                output_paths: vec![apply_path],
+                required_prior_stages: vec!["promote".to_string()],
+                requires_audit: true,
+                enforces_profile_firewall: true,
+                ..EntityRunHandoffStep::default()
+            },
+        ],
+    }
 }
 
 fn run_summary(
