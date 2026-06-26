@@ -57,7 +57,7 @@ fn sec10d_review_queue_groups_repeated_regab_firm_ambiguity() {
             .iter()
             .map(|sample| sample.row_id.as_str())
             .collect::<Vec<_>>(),
-        ["regab-fixture-001", "regab-fixture-002"]
+        ["regab-fixture-002", "regab-fixture-001"]
     );
 }
 
@@ -111,7 +111,7 @@ fn REGAB_I002_I003_sec10d_review_queue_keeps_hard_negatives_reviewable() {
         unresolved
             .priority_reasons
             .iter()
-            .any(|reason| reason == "regab_unresolved_exact_lookup_miss")
+            .any(|reason| reason == "below_support_threshold")
     );
     assert!(
         unresolved
@@ -155,7 +155,11 @@ fn assert_expected_groups(items: &[ReviewQueueItem], expected_groups: &[Expected
             "{}",
             expected.id
         );
-        assert_eq!(item.affected_rows, expected.affected_rows, "{}", expected.id);
+        assert_eq!(
+            item.affected_rows, expected.affected_rows,
+            "{}",
+            expected.id
+        );
         assert_eq!(
             item.affected_deals, expected.affected_deals,
             "{}",
@@ -175,7 +179,11 @@ fn assert_expected_groups(items: &[ReviewQueueItem], expected_groups: &[Expected
             .as_ref()
             .map(|cut| cut.evidence_reason_codes.clone())
             .unwrap_or_default();
-        assert_eq!(negative_codes, expected.negative_reason_codes, "{}", expected.id);
+        assert_eq!(
+            negative_codes, expected.negative_reason_codes,
+            "{}",
+            expected.id
+        );
 
         let relation_codes = item
             .relation_hints
@@ -316,68 +324,141 @@ fn guarded_edge_record(edge: GuardedEdge<'_>) -> EdgeEvidenceRecord {
     .expect("Reg AB guarded edge builds")
 }
 
+fn soft_parent_subsidiary_record() -> EdgeEvidenceRecord {
+    build_edge_evidence_record(
+        "surf:regab:acme_depositor_llc",
+        "surf:regab:acme_mortgage_trust_2024_c1",
+        vec![
+            support_hit("regab_parent_subsidiary_name_overlap", 7_000),
+            EdgeEvidenceHit::new(
+                ScoreLane::AntiMerge,
+                "regab_firm_identity.guards",
+                "soft_parent_subsidiary_review",
+                "regab_parent_subsidiary_boundary",
+                score(1_000),
+                false,
+                "parent/subsidiary name overlap requires review, not auto-merge",
+            ),
+            relation_hint_hit(RelationHintRequest {
+                namespace: "regab_firm_identity.relations",
+                operator_id: "relation_hint:sec10d_review_queue",
+                reason_code: "regab_relation_context",
+                relation: "parent_subsidiary_context",
+                left_value: "Acme Depositor LLC",
+                right_value: "Acme Mortgage Trust 2024-C1",
+                score_units: score(1),
+            })
+            .expect("Reg AB parent/subsidiary relation hint emits"),
+        ],
+    )
+    .expect("Reg AB parent/subsidiary edge builds")
+}
+
+fn unresolved_exact_lookup_record() -> EdgeEvidenceRecord {
+    build_edge_evidence_record(
+        "surf:regab:acme_review_analytics",
+        "surf:regab:acme_review_analytics_llc",
+        vec![support_hit("regab_unresolved_exact_lookup_miss", 4_000)],
+    )
+    .expect("Reg AB unresolved exact lookup edge builds")
+}
+
+fn support_hit(reason_code: &str, units: u32) -> EdgeEvidenceHit {
+    EdgeEvidenceHit::new(
+        ScoreLane::Support,
+        "regab_firm_identity.fixture_support",
+        "sec10d_review_queue_candidate",
+        reason_code,
+        score(units),
+        false,
+        format!("sec10d review fixture candidate reason={reason_code}"),
+    )
+}
+
 fn surface_provenance() -> Vec<SolveSurfaceProvenance> {
     vec![
-        provenance("surf_regab_pnc_001_bank", 52, 11),
-        provenance("surf_regab_pnc_002_midland_division", 32, 5),
-        provenance("surf_regab_platform_001_label", 18, 5),
-        provenance("surf_regab_platform_002_wells_fargo_bank", 13, 3),
-        provenance("surf_regab_kpmg_001_auditor", 12, 3),
-        provenance("surf_regab_kpmg_002_subject_party", 9, 3),
-        provenance("surf_regab_acme_001_servicer", 7, 2),
-        provenance("surf_regab_acme_002_agent", 4, 1),
+        provenance(
+            "surf:regab:midland_loan_services_division_pnc_bank_na",
+            32,
+            5,
+        ),
+        provenance("surf:regab:pnc_bank_na", 52, 9),
+        provenance("surf:regab:wells_fargo_bank_na", 17, 3),
+        provenance(
+            "surf:regab:wells_fargo_commercial_mortgage_securities_platform",
+            22,
+            4,
+        ),
+        provenance("surf:regab:kpmg_llp", 15, 2),
+        provenance("surf:regab:kpmg_securitization_trust_2024_c1", 12, 2),
+        provenance("surf:regab:acme_depositor_llc", 31, 5),
+        provenance("surf:regab:acme_mortgage_trust_2024_c1", 25, 5),
+        provenance("surf:regab:acme_review_analytics", 8, 1),
+        provenance("surf:regab:acme_review_analytics_llc", 17, 4),
     ]
 }
 
 fn provenance_samples() -> Vec<ReviewProvenanceSample> {
     vec![
         sample(
-            "surf_regab_pnc_001_bank",
+            "surf:regab:pnc_bank_na",
             "regab-fixture-001",
             "regab_servicer_schedules:DEAL-PNC-2025",
             "PNC Bank, National Association",
         ),
         sample(
-            "surf_regab_pnc_002_midland_division",
+            "surf:regab:midland_loan_services_division_pnc_bank_na",
             "regab-fixture-002",
             "regab_servicer_schedules:DEAL-PNC-2025",
             "Midland Loan Services, a division of PNC Bank, National Association",
         ),
         sample(
-            "surf_regab_platform_002_wells_fargo_bank",
+            "surf:regab:wells_fargo_bank_na",
             "regab-fixture-003",
             "regab_servicer_schedules:DEAL-WF-2025",
             "Wells Fargo Bank, National Association",
         ),
         sample(
-            "surf_regab_platform_001_label",
+            "surf:regab:wells_fargo_commercial_mortgage_securities_platform",
             "regab-fixture-005",
             "regab_platform_rosters:DEAL-WF-2025",
             "Wells Fargo Commercial Mortgage Securities Platform",
         ),
         sample(
-            "surf_regab_kpmg_001_auditor",
+            "surf:regab:kpmg_llp",
             "regab-fixture-006",
             "regab_attestations:DEAL-KPMG-2025",
             "KPMG LLP",
         ),
         sample(
-            "surf_regab_kpmg_002_subject_party",
+            "surf:regab:kpmg_securitization_trust_2024_c1",
             "regab-fixture-007",
             "regab_attestations:DEAL-KPMG-2025",
             "KPMG Securitization Trust 2024-C1",
         ),
         sample(
-            "surf_regab_acme_001_servicer",
+            "surf:regab:acme_depositor_llc",
             "regab-fixture-008",
+            "regab_servicer_schedules:DEAL-ACME-2025",
+            "Acme Depositor LLC",
+        ),
+        sample(
+            "surf:regab:acme_mortgage_trust_2024_c1",
+            "regab-fixture-009",
+            "regab_servicer_schedules:DEAL-ACME-2025",
+            "Acme Mortgage Trust 2024-C1",
+        ),
+        sample(
+            "surf:regab:acme_review_analytics_llc",
+            "regab-fixture-010",
             "regab_servicer_schedules:DEAL-ACME-2025",
             "Acme Review Analytics LLC",
         ),
         sample(
-            "surf_regab_acme_002_agent",
-            "regab-fixture-009",
+            "surf:regab:acme_review_analytics",
+            "regab-fixture-011",
             "regab_servicer_schedules:DEAL-ACME-2025",
-            "Acme Review Analytics Servicing Agent LLC",
+            "Acme Review Analytics",
         ),
     ]
 }
@@ -385,28 +466,28 @@ fn provenance_samples() -> Vec<ReviewProvenanceSample> {
 fn relation_hints() -> Vec<ReviewRelationHint> {
     vec![
         review_relation(
-            "surf_regab_pnc_001_bank",
-            "surf_regab_pnc_002_midland_division",
+            "surf:regab:midland_loan_services_division_pnc_bank_na",
+            "surf:regab:pnc_bank_na",
             "division_of",
-            "regab_bank_division_boundary",
+            "regab_division_relation_review",
         ),
         review_relation(
-            "surf_regab_platform_001_label",
-            "surf_regab_platform_002_wells_fargo_bank",
+            "surf:regab:wells_fargo_bank_na",
+            "surf:regab:wells_fargo_commercial_mortgage_securities_platform",
             "platform_to_firm_context",
-            "regab_platform_label_guard",
+            "regab_platform_relation_review",
         ),
         review_relation(
-            "surf_regab_kpmg_001_auditor",
-            "surf_regab_kpmg_002_subject_party",
+            "surf:regab:kpmg_llp",
+            "surf:regab:kpmg_securitization_trust_2024_c1",
             "role_context_conflict",
-            "regab_auditor_subject_role_conflict",
+            "regab_auditor_relation_review",
         ),
         review_relation(
-            "surf_regab_acme_001_servicer",
-            "surf_regab_acme_002_agent",
-            "capacity_conflict",
-            "regab_role_capacity_conflict",
+            "surf:regab:acme_depositor_llc",
+            "surf:regab:acme_mortgage_trust_2024_c1",
+            "parent_subsidiary_context",
+            "regab_parent_subsidiary_relation_review",
         ),
     ]
 }
@@ -441,7 +522,7 @@ fn metadata() -> EntityArtifactMetadata {
         },
         patch_namespace: "regab_firm_identity.aliases".to_string(),
         input: Some(EntityInputReference {
-            row_count: 147,
+            row_count: 231,
             content_hash: "blake3:sec10d-review-input".to_string(),
         }),
         upstream_artifacts: vec![
@@ -497,7 +578,7 @@ fn score(units: u32) -> ScoreUnits {
 
 fn expected_fixture() -> ExpectedReviewQueue {
     serde_json::from_str(
-        &fs::read_to_string(fixture_root().join("sec10d_review_queue_expected.json"))
+        &fs::read_to_string(fixture_root().join("sec10d_review_queue_groups_expected.json"))
             .expect("expected review fixture opens"),
     )
     .expect("expected review fixture parses")
@@ -524,25 +605,21 @@ struct GuardedEdge<'a> {
 #[derive(Debug, Deserialize)]
 struct ExpectedReviewQueue {
     version: String,
-    source_solve_hash_prefix: String,
     summary_counts: BTreeMap<String, u64>,
     summary_labels: BTreeMap<String, String>,
-    items: Vec<ExpectedReviewItem>,
+    groups: Vec<ExpectedReviewGroup>,
 }
 
 #[derive(Debug, Deserialize)]
-struct ExpectedReviewItem {
-    review_id: String,
-    ambiguity_key: String,
+struct ExpectedReviewGroup {
+    id: String,
+    surface_ids: Vec<String>,
     state: SolveReconciliationState,
     proposed_action: String,
     affected_rows: u64,
     affected_deals: u64,
-    priority_reasons: Vec<String>,
-    surface_ids: Vec<String>,
-    relation_hints: usize,
-    provenance_samples: usize,
-    strongest_positive_reason_codes: Vec<String>,
-    strongest_negative_reason_codes: Vec<String>,
-    raw_values: Vec<String>,
+    required_priority_reasons: Vec<String>,
+    negative_reason_codes: Vec<String>,
+    relation_reason_codes: Vec<String>,
+    min_provenance_samples: usize,
 }

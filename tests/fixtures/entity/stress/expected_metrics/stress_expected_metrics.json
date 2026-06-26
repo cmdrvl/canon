@@ -1,0 +1,152 @@
+{
+  "schema_version": "canon.entity.stress_expected_metrics.v0",
+  "calibration_state": "structural_prebaseline",
+  "baseline_artifact_policy": {
+    "requires_recorded_baseline_bead": "bd-1pz.9",
+    "normal_ci_enforcement": "structural_counts_only",
+    "wall_clock_enforcement": "operator_hardware_scoped_after_recorded_baseline",
+    "large_generated_rows_policy": "do_not_commit_generated_500k_rows"
+  },
+  "required_log_fields": [
+    "run_id",
+    "suite_id",
+    "profile",
+    "canon_version",
+    "git_sha",
+    "rust_profile",
+    "target_triple",
+    "os",
+    "cpu_model",
+    "logical_cores",
+    "memory_bytes",
+    "cache_state",
+    "input_hash",
+    "profile_hash",
+    "strategy_hash",
+    "registry_snapshot_hash",
+    "patch_hash",
+    "raw_row_count",
+    "raw_unique_surface_count",
+    "prepared_surface_count",
+    "candidate_pair_count",
+    "candidate_pairs_per_surface_p50",
+    "candidate_pairs_per_surface_p95",
+    "candidate_pairs_per_surface_p99",
+    "suppressed_candidate_count",
+    "exact_bucket_pair_expansion_count",
+    "review_group_count",
+    "artifact_bytes_by_stage",
+    "timings_ms_by_stage",
+    "peak_memory_bytes",
+    "runtime_guard_status",
+    "refusal_code",
+    "next_command"
+  ],
+  "required_artifact_hash_fields": [
+    "input_hash",
+    "profile_hash",
+    "strategy_hash",
+    "registry_snapshot_hash",
+    "patch_hash"
+  ],
+  "artifact_byte_stages": [
+    "prepare",
+    "index",
+    "block",
+    "edge",
+    "solve",
+    "audit",
+    "promote",
+    "apply"
+  ],
+  "cache_hit_expectations": {
+    "rerun_rebuilds_normalization": false,
+    "rerun_rebuilds_postings": false,
+    "required_diagnostics": [
+      "cache_state",
+      "input_hash",
+      "profile_hash",
+      "strategy_hash",
+      "registry_snapshot_hash",
+      "patch_hash"
+    ]
+  },
+  "workloads": [
+    {
+      "id": "STRESS-CMBS-500K",
+      "gate_ids": ["G05", "G08", "G11"],
+      "ci_tier_id": "cmbs_500k_stress",
+      "generator_contract": "tests/fixtures/entity/stress/generators/cmbs_500k_contract.json",
+      "seed": 424242,
+      "row_count": 500000,
+      "unique_surface_count": 25000,
+      "candidate_metrics": {
+        "emitted_candidates_per_surface": 12,
+        "suppressed_candidates_per_surface": 4,
+        "candidate_pairs_emitted": 300000,
+        "candidate_pairs_suppressed": 100000,
+        "candidate_pairs_per_surface_p50": 12,
+        "candidate_pairs_per_surface_p95_max": 25,
+        "candidate_pairs_per_surface_p99_max": 25,
+        "candidate_cap": 25
+      },
+      "exact_bucket_pair_expansion_count": 0,
+      "exact_bucket_count": 18000,
+      "largest_exact_bucket_size": 8000,
+      "review_group_count": 1500,
+      "review_group_count_max": 2000,
+      "large_bucket_expectation": {
+        "exact_placeholder_buckets_excluded": 1,
+        "candidate_large_buckets_suppressed_min": 0
+      },
+      "runtime_outcome": {
+        "required_behavior": "bounded_completion",
+        "accepted_refusal_codes": []
+      },
+      "determinism": {
+        "same_seed_byte_identical": true,
+        "seed_participates_in_output": true
+      }
+    },
+    {
+      "id": "STRESS-UNIQUE-500K",
+      "gate_ids": ["G12"],
+      "ci_tier_id": "entity_500k_unique_stress",
+      "generator_contract": "tests/fixtures/entity/stress/generators/unique_500k_contract.json",
+      "seed": 424243,
+      "row_count": 500000,
+      "unique_surface_count": 500000,
+      "candidate_metrics": {
+        "emitted_candidates_per_surface": 25,
+        "suppressed_candidates_per_surface": 7,
+        "candidate_pairs_emitted": 12500000,
+        "candidate_pairs_suppressed": 3500000,
+        "candidate_pairs_per_surface_p50": 25,
+        "candidate_pairs_per_surface_p95_max": 25,
+        "candidate_pairs_per_surface_p99_max": 25,
+        "candidate_cap": 25
+      },
+      "exact_bucket_pair_expansion_count": 0,
+      "exact_bucket_count": 0,
+      "largest_exact_bucket_size": 0,
+      "review_group_count": 0,
+      "review_group_count_max": 0,
+      "large_bucket_expectation": {
+        "common_token_large_buckets_suppressed_min": 96,
+        "candidate_large_buckets_suppressed_full": 500000
+      },
+      "runtime_outcome": {
+        "required_behavior": "bounded_completion_or_deterministic_refusal",
+        "accepted_refusal_codes": [
+          "E_ENTITY_CANDIDATE_BUDGET",
+          "E_ENTITY_INDEX_LIMIT",
+          "E_ENTITY_IO_BUDGET"
+        ]
+      },
+      "determinism": {
+        "same_seed_byte_identical": true,
+        "seed_participates_in_output": true
+      }
+    }
+  ]
+}

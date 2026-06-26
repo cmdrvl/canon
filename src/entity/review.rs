@@ -312,14 +312,22 @@ fn review_priority_reasons(
 }
 
 fn regab_priority_reason_codes(component: &SolveComponentDiagnostics) -> Vec<String> {
-    component
-        .strongest_negative_cut
-        .as_ref()
-        .into_iter()
-        .flat_map(|cut| cut.evidence_reason_codes.iter())
-        .filter(|code| code.starts_with("regab_"))
-        .cloned()
-        .collect()
+    let mut codes = Vec::new();
+    for cut in [
+        &component.strongest_positive_cut,
+        &component.strongest_negative_cut,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        codes.extend(
+            cut.evidence_reason_codes
+                .iter()
+                .filter(|code| code.starts_with("regab_"))
+                .cloned(),
+        );
+    }
+    codes
 }
 
 fn review_priority_units(component: &SolveComponentDiagnostics, reasons: &[String]) -> u32 {

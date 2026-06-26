@@ -1,0 +1,132 @@
+{
+  "schema_version": "canon.entity.stress_expected_metrics.v0",
+  "id": "stress-unique-500k-expected-metrics",
+  "workload": "unique-500k",
+  "generator_id": "entity_500k_unique_stress",
+  "stress_tier_id": "entity_500k_unique_stress",
+  "gate_id": "G12",
+  "seed": 424243,
+  "profile_id": "cmbs_tenant_label",
+  "static_generated_rows_committed": false,
+  "input_size": {
+    "row_count": 500000,
+    "unique_surface_count": 500000,
+    "deal_count": 0
+  },
+  "candidate_metrics": {
+    "operator_id": "ngram_topk:unique_500k",
+    "candidate_cap": 25,
+    "emitted_candidates_per_surface_p50": 25,
+    "candidate_pairs_per_surface_p95_max": 25,
+    "candidate_pairs_per_surface_p99_max": 25,
+    "emitted_candidate_pair_count": 12500000,
+    "suppressed_candidates_per_surface": 7,
+    "suppressed_candidate_count": 3500000,
+    "large_buckets_suppressed_min": 1,
+    "large_buckets_suppressed_behavior": "common_token_bucket_suppressed_before_pair_expansion"
+  },
+  "exact_bucket_metrics": {
+    "exact_bucket_count": 0,
+    "largest_exact_bucket_size": 0,
+    "exact_bucket_pair_expansion_count": 0
+  },
+  "review_metrics": {
+    "review_group_count": 0,
+    "review_group_count_max": 0,
+    "hard_negative_family_count": 0,
+    "repeated_ambiguity_family_count": 0
+  },
+  "cache_hit_behavior": {
+    "expected_cache_state_sequence": ["cold", "warm"],
+    "warm_rerun_must_skip": ["prepare_normalization", "posting_index_rebuild"],
+    "cache_key_dimensions": [
+      "input_hash",
+      "profile_hash",
+      "strategy_hash",
+      "registry_snapshot_hash",
+      "patch_hash",
+      "namekit_hash"
+    ]
+  },
+  "telemetry_requirements": {
+    "stage_ids": ["prepare", "index", "block", "edge", "solve", "audit", "promote", "apply"],
+    "required_fields": [
+      "run_id",
+      "suite_id",
+      "profile",
+      "canon_version",
+      "git_sha",
+      "rust_profile",
+      "target_triple",
+      "os",
+      "cpu_model",
+      "logical_cores",
+      "memory_bytes",
+      "cache_state",
+      "input_hash",
+      "profile_hash",
+      "strategy_hash",
+      "registry_snapshot_hash",
+      "patch_hash",
+      "holdout_id",
+      "metamorphic_relation_id",
+      "raw_row_count",
+      "raw_observation_count",
+      "raw_unique_surface_count",
+      "prepared_surface_count",
+      "exact_resolved_surface_count",
+      "candidate_pair_count",
+      "candidate_pairs_per_surface_p50",
+      "candidate_pairs_per_surface_p95",
+      "candidate_pairs_per_surface_p99",
+      "suppressed_candidate_count",
+      "exact_bucket_count",
+      "exact_bucket_pair_expansion_count",
+      "largest_exact_bucket_size",
+      "largest_component_size",
+      "edge_count",
+      "review_group_count",
+      "artifact_bytes_by_stage",
+      "timings_ms_by_stage",
+      "peak_memory_bytes",
+      "peak_memory_method",
+      "registry_pre_mutation_hash",
+      "registry_post_mutation_hash",
+      "runtime_guard_status",
+      "refusal_code",
+      "next_command"
+    ]
+  },
+  "operator_log_contract": {
+    "command": "cargo test --test entity_perf_stress -- --ignored entity_500k_unique_stress --nocapture",
+    "telemetry_out": "target/entity-evals/stress-unique-500k/telemetry.json",
+    "required_metadata": [
+      "hardware",
+      "os",
+      "rust_profile",
+      "target_triple",
+      "canon_git_sha",
+      "cache_state",
+      "artifact_hashes",
+      "fixture_seed",
+      "input_size",
+      "unique_surface_count"
+    ]
+  },
+  "memory": {
+    "peak_memory_bytes_max": 4294967296,
+    "high_water_mark_required": true,
+    "high_water_mark_method": "rss_or_platform_sampler"
+  },
+  "expected_outcome": {
+    "kind": "bounded_completion_or_deterministic_refusal",
+    "runtime_guard_status": "bounded_completion_or_deterministic_refusal",
+    "refusal_code": "E_ENTITY_CANDIDATE_BUDGET",
+    "wall_clock_enforcement": "not_enforced_until_measured_baseline"
+  },
+  "baseline_policy": {
+    "source": "initial_structural_contract",
+    "calibrated_by": "bd-1pz.9",
+    "wall_clock_threshold": "not_enforced_until_measured_baseline"
+  }
+}
