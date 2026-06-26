@@ -1,0 +1,211 @@
+{
+  "version": "canon_entity_registry_snapshot_refusal_matrix.v0",
+  "scope": "ENT-P09 audit/promote/apply",
+  "cases": [
+    {
+      "id": "audit_stale_registry_snapshot",
+      "stage": "audit",
+      "downstream_contract": "bd-3u9.9",
+      "refusal_code": "E_ENTITY_REGISTRY_SNAPSHOT",
+      "trigger": "audit consumes a solve/review artifact whose registry snapshot hash does not match the current registry snapshot",
+      "required_detail_fields": [
+        "stage",
+        "artifact_version",
+        "audited_artifact_hash",
+        "expected_registry_snapshot_hash",
+        "actual_registry_snapshot_hash",
+        "writes_performed"
+      ],
+      "required_hash_fields": [
+        "audited_artifact_hash",
+        "expected_registry_snapshot_hash",
+        "actual_registry_snapshot_hash"
+      ],
+      "protected_artifacts": [
+        "audit_artifact",
+        "decision_ledger",
+        "registry"
+      ],
+      "writes_performed": false
+    },
+    {
+      "id": "promote_stale_audit_artifact",
+      "stage": "promote",
+      "downstream_contract": "bd-3u9.10",
+      "refusal_code": "E_ENTITY_AUDIT_GATE",
+      "trigger": "promotion receives an audit artifact hash other than the hash certified by the promotion request",
+      "required_detail_fields": [
+        "stage",
+        "expected_audit_artifact_hash",
+        "actual_audit_artifact_hash",
+        "registry_snapshot_hash",
+        "writes_performed"
+      ],
+      "required_hash_fields": [
+        "expected_audit_artifact_hash",
+        "actual_audit_artifact_hash",
+        "registry_snapshot_hash"
+      ],
+      "protected_artifacts": [
+        "registry",
+        "sidecars",
+        "promotion_proof"
+      ],
+      "writes_performed": false
+    },
+    {
+      "id": "promote_failed_audit_gate",
+      "stage": "promote",
+      "downstream_contract": "bd-3u9.10",
+      "refusal_code": "E_ENTITY_AUDIT_GATE",
+      "trigger": "promotion receives an audit artifact with a required gate in failed state",
+      "required_detail_fields": [
+        "stage",
+        "audit_artifact_hash",
+        "audit_status",
+        "failed_gate_ids",
+        "registry_snapshot_hash",
+        "writes_performed"
+      ],
+      "required_hash_fields": [
+        "audit_artifact_hash",
+        "registry_snapshot_hash"
+      ],
+      "protected_artifacts": [
+        "registry",
+        "sidecars",
+        "promotion_proof"
+      ],
+      "writes_performed": false
+    },
+    {
+      "id": "promote_stale_review_import_ledger",
+      "stage": "promote",
+      "downstream_contract": "bd-3u9.10",
+      "refusal_code": "E_ENTITY_ARTIFACT_CONTRACT",
+      "trigger": "promotion receives a decision ledger or review import hash that differs from the ledger hash certified by audit",
+      "required_detail_fields": [
+        "stage",
+        "audit_artifact_hash",
+        "expected_decision_ledger_hash",
+        "actual_decision_ledger_hash",
+        "registry_snapshot_hash",
+        "writes_performed"
+      ],
+      "required_hash_fields": [
+        "audit_artifact_hash",
+        "expected_decision_ledger_hash",
+        "actual_decision_ledger_hash",
+        "registry_snapshot_hash"
+      ],
+      "protected_artifacts": [
+        "registry",
+        "sidecars",
+        "promotion_proof"
+      ],
+      "writes_performed": false
+    },
+    {
+      "id": "promote_stale_registry_snapshot",
+      "stage": "promote",
+      "downstream_contract": "bd-3u9.10",
+      "refusal_code": "E_ENTITY_REGISTRY_SNAPSHOT",
+      "trigger": "promotion receives a registry snapshot hash that differs from the audit-certified registry snapshot",
+      "required_detail_fields": [
+        "stage",
+        "audit_artifact_hash",
+        "expected_registry_snapshot_hash",
+        "actual_registry_snapshot_hash",
+        "writes_performed"
+      ],
+      "required_hash_fields": [
+        "audit_artifact_hash",
+        "expected_registry_snapshot_hash",
+        "actual_registry_snapshot_hash"
+      ],
+      "protected_artifacts": [
+        "registry",
+        "sidecars",
+        "promotion_proof"
+      ],
+      "writes_performed": false
+    },
+    {
+      "id": "apply_stale_registry_snapshot",
+      "stage": "apply",
+      "downstream_contract": "bd-3u9.11",
+      "refusal_code": "E_ENTITY_REGISTRY_SNAPSHOT",
+      "trigger": "apply receives promoted registry metadata that differs from the artifact snapshot being replayed",
+      "required_detail_fields": [
+        "stage",
+        "apply_artifact_hash",
+        "expected_registry_snapshot_hash",
+        "actual_registry_snapshot_hash",
+        "output_path",
+        "writes_performed"
+      ],
+      "required_hash_fields": [
+        "apply_artifact_hash",
+        "expected_registry_snapshot_hash",
+        "actual_registry_snapshot_hash"
+      ],
+      "protected_artifacts": [
+        "apply_output",
+        "source_rows"
+      ],
+      "writes_performed": false
+    },
+    {
+      "id": "apply_unresolved_full_resolution",
+      "stage": "apply",
+      "downstream_contract": "bd-3u9.11",
+      "refusal_code": "E_ENTITY_APPLY_UNRESOLVED",
+      "trigger": "apply is configured to require full resolution and at least one input row lacks an exact registry mapping",
+      "required_detail_fields": [
+        "stage",
+        "field",
+        "rows",
+        "resolved",
+        "unresolved",
+        "registry_id",
+        "registry_version",
+        "output_path",
+        "writes_performed"
+      ],
+      "required_hash_fields": [],
+      "protected_artifacts": [
+        "apply_output",
+        "source_rows"
+      ],
+      "writes_performed": false
+    },
+    {
+      "id": "partial_write_preflight_guard",
+      "stage": "audit_promote_apply",
+      "downstream_contract": "bd-3u9.9/bd-3u9.10/bd-3u9.11",
+      "refusal_code": "E_ENTITY_ARTIFACT_CONTRACT",
+      "trigger": "any artifact/profile/strategy/hash mismatch discovered before opening registry, sidecar, proof, or apply output writers",
+      "required_detail_fields": [
+        "stage",
+        "artifact_version",
+        "profile_id",
+        "strategy_hash",
+        "registry_snapshot_hash",
+        "protected_artifacts",
+        "writes_performed"
+      ],
+      "required_hash_fields": [
+        "strategy_hash",
+        "registry_snapshot_hash"
+      ],
+      "protected_artifacts": [
+        "registry",
+        "sidecars",
+        "promotion_proof",
+        "apply_output",
+        "source_rows"
+      ],
+      "writes_performed": false
+    }
+  ]
+}
