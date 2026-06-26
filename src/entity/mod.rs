@@ -30,6 +30,7 @@ pub mod score;
 pub mod solve;
 pub mod stream;
 pub mod surface_id;
+pub mod tfidf_evidence;
 pub mod topk;
 
 pub use contracts::*;

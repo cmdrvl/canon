@@ -57,6 +57,8 @@ mod edge_cannot_link;
 mod edge_score_units;
 #[path = "entity/edge_support.rs"]
 mod edge_support;
+#[path = "entity/edge_tfidf.rs"]
+mod edge_tfidf;
 
 #[path = "entity/regab_normalization.rs"]
 mod regab_normalization;
