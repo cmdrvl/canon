@@ -1,12 +1,39 @@
 #![forbid(unsafe_code)]
 
-use canon::entity::{
-    apply::{
-        APPLY_CANONICAL_FIELDS, ApplyCanonicalResolution, ApplyRegistryReference, ApplySafetyCheck,
-        ApplyStreamRequest, run_apply_streaming,
+use canon::{
+    RefusalCode,
+    entity::{
+        CANON_ENTITY_APPLY_VERSION, CANON_ENTITY_BLOCK_VERSION,
+        CANON_ENTITY_DECISION_LEDGER_VERSION, CANON_ENTITY_EDGE_VERSION,
+        CANON_ENTITY_INDEX_VERSION, CANON_ENTITY_PREPARE_VERSION, CANON_ENTITY_PROMOTE_VERSION,
+        CANON_ENTITY_RUN_VERSION, CANON_ENTITY_SOLVE_VERSION, EntityArtifactHeader,
+        EntityArtifactReference,
+        apply::{
+            APPLY_CANONICAL_FIELDS, ApplyCanonicalResolution, ApplyRegistryReference,
+            ApplySafetyCheck, ApplyStreamRequest, run_apply_streaming,
+        },
+        artifact_chain::{
+            EntityArtifactChainExpectation, EntityArtifactChainLink, EntityChainStage,
+        },
+        audit::{EntityAuditGateCheck, EntityAuditRequest, EntityAuditSuite, run_entity_audit},
+        promote::{
+            EntityPromoteRegistryRequest, EntityPromotedAlias, EntityPromotionAuditExpectation,
+            promote_registry_aliases,
+        },
+        review::{
+            ReviewExportInclude, ReviewQueueArtifact, ReviewQueueRequest,
+            build_review_queue_artifact, render_review_queue_csv,
+        },
+        review_import::{
+            ReviewImportAction, ReviewImportContext, ReviewImportDecision, ReviewImportRequest,
+            import_review_decisions,
+        },
+        run::{EntityRunArtifact, EntityRunRequest, render_run_summary, run_entity_workbench},
+        schema::CANON_ENTITY_REVIEW_QUEUE_VERSION,
+        solve::SolveArtifact,
     },
-    run::{EntityRunRequest, render_run_summary, run_entity_workbench},
 };
+use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -20,6 +47,7 @@ const REVIEW_QUEUE_PATH: &str = "tests/fixtures/entity/cmbs/small_book/review_qu
 const PROMOTION_MANIFEST_PATH: &str = "tests/fixtures/entity/cmbs/promotion_loop/manifest.json";
 const E2E_SUMMARY_PATH: &str = "tests/fixtures/entity/cmbs/e2e/operator_summary.json";
 const E2E_APPLY_EXPECTED_PATH: &str = "tests/fixtures/entity/cmbs/e2e/expected_apply.csv";
+const MINI_E2E_MANIFEST_PATH: &str = "tests/fixtures/entity/e2e/cmbs_small/manifest.json";
 const STRATEGY_PATH: &str = "tests/fixtures/entity/profiles/cmbs_tenant_label.yaml";
 
 #[test]
@@ -70,6 +98,241 @@ fn cmbs_e2e_small_book_operator_summary_is_semantic_and_replayable() {
     }
     assert_next_commands(&run.artifact.next_commands_as_json(), &expected);
     assert_apply_replay(&rows, temp.path(), &expected);
+}
+
+#[test]
+fn entity_cmbs_e2e_small_review_promote_apply_logging_contract() {
+    let manifest = json_fixture(MINI_E2E_MANIFEST_PATH);
+    assert_eq!(manifest["schema_version"], "canon.entity.cmbs_mini_e2e.v0");
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let run_registry = temp.path().join("run-registry");
+    let work_dir = temp.path().join("work");
+    write_cmbs_registry(&run_registry);
+
+    let run = run_entity_workbench(EntityRunRequest {
+        rows: &fixture(OBSERVATIONS_PATH),
+        profile: "cmbs_tenant_label",
+        strategy: &fixture(STRATEGY_PATH),
+        registry: &run_registry,
+        work_dir: &work_dir,
+    })
+    .expect("CMBS mini e2e run succeeds");
+    let solve: SolveArtifact = read_json(&work_dir.join("solve/solve.json"));
+    let mut logs = run_stage_logs(&run.artifact, &work_dir);
+
+    let review = build_review_queue_artifact(ReviewQueueRequest {
+        solve_artifact: solve.clone(),
+        include: ReviewExportInclude::Escrow,
+        provenance_samples: vec![],
+        relation_hints: vec![],
+    })
+    .expect("review export succeeds");
+    let review_path = work_dir.join("review.csv");
+    fs::write(
+        &review_path,
+        render_review_queue_csv(&review).expect("review csv renders"),
+    )
+    .expect("review csv writes");
+    assert_repeated_review_ambiguity_grouped_once(&review, &manifest);
+    logs.push(stage_log(
+        "review_export",
+        run.artifact.next_commands.review_export.clone(),
+        0,
+        &review_path,
+        &review.version,
+        &review.artifact_content_hash,
+        review.summary_as_json(),
+    ));
+
+    let ledger_path = work_dir.join("solve/decision_ledger.jsonl");
+    let import_receipt = import_review_decisions(ReviewImportRequest {
+        context: review_import_context(&review),
+        decisions: review_import_decisions(&review),
+        ledger_path: ledger_path.clone(),
+        timestamp: "2026-06-26T20:30:00Z".to_string(),
+        previous_event_hash: "blake3:cmbs-mini-e2e-start".to_string(),
+    })
+    .expect("review import succeeds");
+    assert_eq!(
+        import_receipt.accepted_decisions,
+        review.review_items.len() as u64
+    );
+
+    let solve_header = solve_header(&solve);
+    let audit = run_entity_audit(EntityAuditRequest {
+        expected: EntityArtifactChainExpectation::from_link(
+            EntityChainStage::Audit,
+            &EntityArtifactChainLink::from_header(&solve_header),
+        ),
+        certified_artifacts: certified_e2e_artifacts(&run.artifact, &review, &import_receipt),
+        result: solve_header.clone(),
+        suite: passing_mini_e2e_suite(),
+    })
+    .expect("audit passes before promotion");
+    let audit_path = work_dir.join("audit.json");
+    fs::write(
+        &audit_path,
+        serde_json::to_vec_pretty(&audit).expect("audit json"),
+    )
+    .expect("audit writes");
+    logs.push(stage_log(
+        "audit",
+        run.artifact.next_commands.audit.clone(),
+        0,
+        &audit_path,
+        &audit.version,
+        &audit.artifact_content_hash,
+        serde_json::to_value(&audit.summary).expect("audit summary json"),
+    ));
+
+    let stale_refusal = stale_audit_refusal(&solve_header, &run.artifact);
+    assert_eq!(stale_refusal.code, RefusalCode::EEntityCacheMismatch);
+
+    logs.push(stage_log(
+        "review_import",
+        review_import_command(&run.artifact),
+        0,
+        &ledger_path,
+        CANON_ENTITY_DECISION_LEDGER_VERSION,
+        &import_receipt.last_event_hash,
+        json!({
+            "accepted_decisions": import_receipt.accepted_decisions,
+            "ledger_path": import_receipt.ledger_path.display().to_string()
+        }),
+    ));
+
+    let promotion_registry = temp.path().join("promotion-registry");
+    write_empty_cmbs_registry(
+        &promotion_registry,
+        str_at(&manifest["promotion"], "registry_version_before"),
+    );
+    let promoted_aliases = promoted_aliases_from_manifest(&manifest);
+    let promotion = promote_registry_aliases(EntityPromoteRegistryRequest {
+        registry: promotion_registry.clone(),
+        alias_file: "aliases.json".to_string(),
+        next_version: str_at(&manifest["promotion"], "registry_version_after").to_string(),
+        audit: audit.clone(),
+        audit_expectation: promotion_expectation(&audit, &solve),
+        aliases: promoted_aliases.clone(),
+        no_lint: false,
+    })
+    .expect("promotion succeeds");
+    let promote_path = work_dir.join("promote.json");
+    fs::write(
+        &promote_path,
+        serde_json::to_vec_pretty(&promotion).expect("promotion json"),
+    )
+    .expect("promotion writes");
+    assert_eq!(promotion.version, CANON_ENTITY_PROMOTE_VERSION);
+    assert_eq!(promotion.aliases, promoted_aliases);
+    assert_eq!(
+        read_json(&promotion_registry.join("aliases.json")),
+        serde_json::to_value(&promotion.aliases).expect("promoted aliases json")
+    );
+    logs.push(stage_log(
+        "promote",
+        run.artifact.next_commands.promote.clone(),
+        0,
+        &promote_path,
+        &promotion.version,
+        &audit.artifact_content_hash,
+        json!({
+            "version_before": promotion.registry.version_before,
+            "version_after": promotion.registry.version_after,
+            "entry_count_after": promotion.registry.entry_count_after
+        }),
+    ));
+
+    let apply_rows = work_dir.join("promoted-alias-rows.csv");
+    let apply_output = work_dir.join("apply.csv");
+    let raw_apply_rows = promoted_alias_apply_rows(&promotion.aliases);
+    fs::write(&apply_rows, &raw_apply_rows).expect("apply rows write");
+    let resolutions = promoted_apply_resolutions(&promotion.aliases);
+    let apply = run_apply_streaming(ApplyStreamRequest {
+        rows: &apply_rows,
+        output: &apply_output,
+        lookup_column: "raw_tenant_name",
+        registry: ApplyRegistryReference {
+            id: promotion.registry.id.clone(),
+            version: promotion.registry.version_after.clone(),
+        },
+        resolutions: &resolutions,
+        safety: ApplySafetyCheck {
+            expected_profile_id: Some(solve.metadata.profile.id.clone()),
+            actual_profile_id: Some(solve.metadata.profile.id.clone()),
+            expected_identity_semantics: Some(solve.metadata.profile.identity_semantics.clone()),
+            actual_identity_semantics: Some(solve.metadata.profile.identity_semantics.clone()),
+            expected_registry_snapshot_hash: Some(
+                solve
+                    .metadata
+                    .registry_snapshot
+                    .lookup_snapshot_hash
+                    .clone(),
+            ),
+            actual_registry_snapshot_hash: Some(
+                solve
+                    .metadata
+                    .registry_snapshot
+                    .lookup_snapshot_hash
+                    .clone(),
+            ),
+            ..ApplySafetyCheck::default()
+        },
+        require_full_resolution: true,
+        target_rows_per_chunk: 2,
+    })
+    .expect("apply succeeds");
+    assert_eq!(
+        fs::read_to_string(&apply_rows).expect("raw apply rows"),
+        raw_apply_rows
+    );
+    assert_raw_fields_preserved(&apply_rows, &apply_output);
+    assert_eq!(apply.version, CANON_ENTITY_APPLY_VERSION);
+    assert_eq!(apply.summary["rows"], promotion.aliases.len() as u64);
+    assert_eq!(apply.summary["resolved"], promotion.aliases.len() as u64);
+    assert_eq!(apply.summary["unresolved"], 0);
+    logs.push(stage_log(
+        "apply",
+        run.artifact.next_commands.apply.clone(),
+        0,
+        &apply_output,
+        &apply.version,
+        &apply.artifact_content_hash,
+        serde_json::to_value(&apply.summary).expect("apply summary json"),
+    ));
+
+    logs.push(stage_log(
+        "run_wrapper",
+        run.artifact.next_commands.resume.clone(),
+        0,
+        &work_dir.join("run.json"),
+        &run.artifact.version,
+        &run.artifact.artifact_content_hash,
+        run.artifact.summary_as_json(),
+    ));
+
+    let e2e_log = json!({
+        "schema_version": "canon.entity.cmbs_mini_e2e_log.v0",
+        "fixture_id": manifest["fixture_id"],
+        "stages": logs,
+        "refusals": [{
+            "scenario": "stale_solve_artifact",
+            "exit_code": 2,
+            "code": stale_refusal.code.as_str(),
+            "message": stale_refusal.message,
+            "detail": stale_refusal.detail,
+            "next_command": stale_refusal.next_command
+        }]
+    });
+    let log_path = work_dir.join("e2e-log.json");
+    fs::write(
+        &log_path,
+        serde_json::to_vec_pretty(&e2e_log).expect("log json"),
+    )
+    .expect("e2e log writes");
+
+    assert_e2e_stage_log_contract(&read_json(&log_path), &manifest);
 }
 
 fn assert_source_summary(rows: &[BTreeMap<String, String>], expected: &Value) {

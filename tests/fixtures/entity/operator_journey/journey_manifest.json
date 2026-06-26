@@ -1,0 +1,61 @@
+{
+  "schema_version": "canon.entity.operator_journey.v0",
+  "fixture_id": "entity-operator-journey-final-sweep-v0",
+  "command_order": [
+    "profile_list",
+    "profile_init",
+    "cmbs_backfill_run",
+    "sec10d_regab_run",
+    "summary_robot_json",
+    "explain",
+    "doctor_lint",
+    "runtime_guard"
+  ],
+  "commands": {
+    "profile_list": "canon entity profile list --emit json",
+    "profile_init": "canon entity profile init cmbs_tenant_label --output cmbs_tenant_label.yaml",
+    "cmbs_backfill_run": "canon entity run tenants/*.jsonl --profile cmbs_tenant_label --strategy strategies/cmbs_tenant_label.yaml --registry registries/cmbs-tenants --work-dir work/cmbs-tenants-2026-06 --emit summary",
+    "sec10d_regab_run": "canon entity run org_mentions.csv --profile regab_firm_identity --strategy regab_firm_identity.yaml --registry registry_snapshot/firms --work-dir work/sec10d-regab --emit summary",
+    "summary_robot_json": "canon entity run tenants/*.jsonl --emit json",
+    "explain": "canon entity explain work/cmbs-tenants/solve.json --surface-id surf:cmbs:sears --emit summary",
+    "doctor_lint": "canon entity lint work/cmbs-tenants --emit json",
+    "runtime_guard": "cargo test --test entity_operator_journey entity_runtime_guard -- --nocapture"
+  },
+  "fixture_paths": {
+    "cmbs_backfill_runbook": "tests/fixtures/entity/e2e/cmbs_backfill_runbook/runbook.json",
+    "sec10d_regab_manifest": "tests/fixtures/entity/e2e/sec10d_regab/manifest.json",
+    "summary_robot_projection": "tests/fixtures/entity/operator_journey/summary/robot_summary_projection.json",
+    "explain_bundle": "tests/fixtures/entity/operator_journey/explain/reconstruction_bundle.json",
+    "eval_targets": "tests/fixtures/entity/evals/entity_eval_performance_targets.json"
+  },
+  "required_release_gates": ["G08", "G13", "G15", "ER-RUNTIME-001"],
+  "required_explain_sections": [
+    "normalized_views",
+    "candidates",
+    "positive_evidence",
+    "anti_merge_evidence",
+    "review_decisions",
+    "promotion_provenance"
+  ],
+  "required_robot_fields": [
+    "next_command_key",
+    "next_command_keys",
+    "telemetry_link_keys",
+    "cache_status"
+  ],
+  "runtime_guard": {
+    "network_access_allowed": false,
+    "frontier_model_calls_allowed": false,
+    "runtime_model_downloads_allowed": false,
+    "python_ml_runtime_allowed": false,
+    "general_ml_framework_runtime_allowed": false,
+    "runtime_guard_verdict_required": true,
+    "forbidden_runtime_paths": [
+      "frontier model call",
+      "network call",
+      "runtime model download",
+      "Python ML runtime"
+    ],
+    "next_command": "cargo test --test entity_operator_journey entity_runtime_guard -- --nocapture"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": "canon.entity.operator_journey.v0",
+  "fixture_id": "entity-final-operator-journey-v0",
+  "fixtures": {
+    "summary_robot": "operator_journey/summary/robot_summary_projection.json",
+    "explain_bundle": "operator_journey/explain/reconstruction_bundle.json",
+    "cmbs_runbook": "e2e/cmbs_backfill_runbook/runbook.json",
+    "regab_mentions_summary": "regab/sec10d_baseline_public/org_mentions_summary.json",
+    "regab_resolution_summary": "regab/sec10d_baseline_public/org_resolution_summary.json"
+  },
+  "required_stage_order": [
+    "prepare",
+    "index",
+    "block",
+    "edge",
+    "solve",
+    "review_export",
+    "audit",
+    "review_import",
+    "promote",
+    "apply",
+    "run_wrapper"
+  ],
+  "required_summary_stages": ["prepare", "block", "solve", "apply"],
+  "required_regab_fields": [
+    "regab_attestations.attesting_firm_name",
+    "regab_attestations.subject_party_name",
+    "regab_platform_rosters.reporting_party_name",
+    "regab_servicer_schedules.reporting_party_name",
+    "regab_servicer_schedules.servicer_name"
+  ],
+  "prohibited_runtime_dependencies": [
+    "python",
+    "network",
+    "frontier_model",
+    "model_download"
+  ]
+}
