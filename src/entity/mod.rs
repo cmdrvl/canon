@@ -40,6 +40,7 @@ pub mod sidecar;
 pub mod solve;
 pub mod stream;
 pub mod surface_id;
+pub mod telemetry;
 pub mod tfidf_evidence;
 pub mod topk;
 
