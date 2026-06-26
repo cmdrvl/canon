@@ -28,6 +28,12 @@
     "candidate_budget_refusal_code": "E_ENTITY_CANDIDATE_BUDGET",
     "index_limit_refusal_code": "E_ENTITY_INDEX_LIMIT",
     "io_budget_refusal_code": "E_ENTITY_IO_BUDGET",
-    "max_exact_bucket_size": 100
+    "max_exact_bucket_size": 100,
+    "generated_static_artifact_policy": "do_not_commit_generated_500k_rows",
+    "first_surface_signatures": [
+      "surf:unique-424243|Tenant Unique 424243|tenant_unique:424243|tenant-unique-424243",
+      "surf:unique-424340|Tenant Unique 424340|tenant_unique:424340|tenant-unique-424340",
+      "surf:unique-424437|Tenant Unique 424437|tenant_unique:424437|tenant-unique-424437"
+    ]
   }
 }

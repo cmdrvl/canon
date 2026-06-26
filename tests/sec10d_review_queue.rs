@@ -533,7 +533,7 @@ fn assert_contains_all(actual: &[String], expected: &[String], label: &str) {
 
 fn review_fixture() -> ReviewFixture {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/entity/regab/review/sec10d_review_queue_expected.json");
+        .join("tests/fixtures/entity/regab/review/sec10d_review_queue_groups_expected.json");
     let bytes = fs::read(&path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
     serde_json::from_slice(&bytes)

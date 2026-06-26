@@ -1,118 +1,134 @@
 {
   "version": "canon_entity_review_queue.v0",
+  "source_solve_hash_prefix": "blake3:",
   "summary_counts": {
-    "review_deals_covered": 40,
-    "review_group_count": 5,
-    "review_items": 5,
-    "review_rows_covered": 231
+    "review_items": 4,
+    "review_group_count": 4,
+    "review_rows_covered": 147,
+    "review_deals_covered": 33
   },
   "summary_labels": {
     "grouping": "ambiguity_pattern",
     "include": "all"
   },
-  "groups": [
+  "items": [
     {
-      "id": "REGAB-I002-PNC-MIDLAND-DIVISION",
-      "surface_ids": [
-        "surf:regab:midland_loan_services_division_pnc_bank_na",
-        "surf:regab:pnc_bank_na"
-      ],
+      "review_id": "review:surf_regab_pnc_001_bank",
+      "ambiguity_key": "contradiction:hard_cannot_link_constraint",
       "state": "contradiction",
       "proposed_action": "confirm_distinct_or_request_override",
       "affected_rows": 84,
-      "affected_deals": 14,
-      "required_priority_reasons": [
+      "affected_deals": 16,
+      "priority_reasons": [
         "hard_cannot_link",
-        "high_row_count",
         "high_deal_count",
-        "support_and_cannot_link",
-        "regab_same_family_high_recall_candidate",
+        "high_row_count",
+        "regab_bank_division_boundary",
+        "support_and_cannot_link"
+      ],
+      "surface_ids": [
+        "surf_regab_pnc_001_bank",
+        "surf_regab_pnc_002_midland_division"
+      ],
+      "relation_hints": 1,
+      "provenance_samples": 2,
+      "strongest_positive_reason_codes": [
+        "regab_same_family_high_recall_candidate"
+      ],
+      "strongest_negative_reason_codes": [
         "regab_bank_division_boundary"
       ],
-      "negative_reason_codes": ["regab_bank_division_boundary"],
-      "relation_reason_codes": ["regab_division_relation_review"],
-      "min_provenance_samples": 2
+      "raw_values": [
+        "Midland Loan Services, a division of PNC Bank, National Association",
+        "PNC Bank, National Association"
+      ]
     },
     {
-      "id": "REGAB-I003-PLATFORM-LABEL",
-      "surface_ids": [
-        "surf:regab:wells_fargo_bank_na",
-        "surf:regab:wells_fargo_commercial_mortgage_securities_platform"
-      ],
+      "review_id": "review:surf_regab_platform_001_label",
+      "ambiguity_key": "contradiction:hard_cannot_link_constraint",
       "state": "contradiction",
       "proposed_action": "confirm_distinct_or_request_override",
-      "affected_rows": 39,
-      "affected_deals": 7,
-      "required_priority_reasons": [
+      "affected_rows": 31,
+      "affected_deals": 8,
+      "priority_reasons": [
         "hard_cannot_link",
-        "support_and_cannot_link",
-        "regab_shared_platform_family_candidate",
+        "regab_platform_label_guard",
+        "support_and_cannot_link"
+      ],
+      "surface_ids": [
+        "surf_regab_platform_001_label",
+        "surf_regab_platform_002_wells_fargo_bank"
+      ],
+      "relation_hints": 1,
+      "provenance_samples": 2,
+      "strongest_positive_reason_codes": [
+        "regab_shared_platform_family_candidate"
+      ],
+      "strongest_negative_reason_codes": [
         "regab_platform_label_guard"
       ],
-      "negative_reason_codes": ["regab_platform_label_guard"],
-      "relation_reason_codes": ["regab_platform_relation_review"],
-      "min_provenance_samples": 2
+      "raw_values": [
+        "Wells Fargo Bank, National Association",
+        "Wells Fargo Commercial Mortgage Securities Platform"
+      ]
     },
     {
-      "id": "REGAB-I003-AUDITOR-SUBJECT-CONFLICT",
-      "surface_ids": [
-        "surf:regab:kpmg_llp",
-        "surf:regab:kpmg_securitization_trust_2024_c1"
-      ],
+      "review_id": "review:surf_regab_kpmg_001_auditor",
+      "ambiguity_key": "contradiction:hard_cannot_link_constraint",
       "state": "contradiction",
       "proposed_action": "confirm_distinct_or_request_override",
-      "affected_rows": 27,
-      "affected_deals": 4,
-      "required_priority_reasons": [
+      "affected_rows": 21,
+      "affected_deals": 6,
+      "priority_reasons": [
         "hard_cannot_link",
-        "support_and_cannot_link",
-        "regab_shared_auditor_token_candidate",
+        "regab_auditor_subject_role_conflict",
+        "support_and_cannot_link"
+      ],
+      "surface_ids": [
+        "surf_regab_kpmg_001_auditor",
+        "surf_regab_kpmg_002_subject_party"
+      ],
+      "relation_hints": 1,
+      "provenance_samples": 2,
+      "strongest_positive_reason_codes": [
+        "regab_shared_auditor_token_candidate"
+      ],
+      "strongest_negative_reason_codes": [
         "regab_auditor_subject_role_conflict"
       ],
-      "negative_reason_codes": ["regab_auditor_subject_role_conflict"],
-      "relation_reason_codes": ["regab_auditor_relation_review"],
-      "min_provenance_samples": 2
+      "raw_values": [
+        "KPMG LLP",
+        "KPMG Securitization Trust 2024-C1"
+      ]
     },
     {
-      "id": "REGAB-PARENT-SUBSIDIARY-AMBIGUITY",
+      "review_id": "review:surf_regab_acme_001_servicer",
+      "ambiguity_key": "contradiction:hard_cannot_link_constraint",
+      "state": "contradiction",
+      "proposed_action": "confirm_distinct_or_request_override",
+      "affected_rows": 11,
+      "affected_deals": 3,
+      "priority_reasons": [
+        "hard_cannot_link",
+        "regab_role_capacity_conflict",
+        "support_and_cannot_link"
+      ],
       "surface_ids": [
-        "surf:regab:acme_depositor_llc",
-        "surf:regab:acme_mortgage_trust_2024_c1"
+        "surf_regab_acme_001_servicer",
+        "surf_regab_acme_002_agent"
       ],
-      "state": "escrow",
-      "proposed_action": "confirm_merge_distinct_or_relation",
-      "affected_rows": 56,
-      "affected_deals": 10,
-      "required_priority_reasons": [
-        "soft_anti_merge",
-        "soft_anti_merge_requires_review",
-        "high_row_count",
-        "high_deal_count",
-        "support_and_cannot_link",
-        "regab_parent_subsidiary_name_overlap",
-        "regab_parent_subsidiary_boundary"
+      "relation_hints": 1,
+      "provenance_samples": 2,
+      "strongest_positive_reason_codes": [
+        "regab_unresolved_exact_lookup_candidate"
       ],
-      "negative_reason_codes": ["regab_parent_subsidiary_boundary"],
-      "relation_reason_codes": ["regab_parent_subsidiary_relation_review"],
-      "min_provenance_samples": 2
-    },
-    {
-      "id": "REGAB-UNRESOLVED-EXACT-LOOKUP-MISS",
-      "surface_ids": [
-        "surf:regab:acme_review_analytics",
-        "surf:regab:acme_review_analytics_llc"
+      "strongest_negative_reason_codes": [
+        "regab_role_capacity_conflict"
       ],
-      "state": "escrow",
-      "proposed_action": "confirm_merge_distinct_or_relation",
-      "affected_rows": 25,
-      "affected_deals": 5,
-      "required_priority_reasons": [
-        "below_support_threshold",
-        "regab_unresolved_exact_lookup_miss"
-      ],
-      "negative_reason_codes": [],
-      "relation_reason_codes": [],
-      "min_provenance_samples": 2
+      "raw_values": [
+        "Acme Review Analytics LLC",
+        "Acme Review Analytics Servicing Agent LLC"
+      ]
     }
   ]
 }

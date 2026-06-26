@@ -18,7 +18,7 @@ use canon::{
         },
     },
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const UNIQUE_500K_CONTRACT: &str =
     include_str!("../fixtures/entity/stress/generators/unique_500k_contract.json");
@@ -31,6 +31,26 @@ fn candidate_budget_refusal_is_deterministic_for_unique_surface_stress_probe() {
     assert_eq!(contract.gate_id, "G12");
     assert_eq!(contract.seed, 424243);
     assert_eq!(contract.surface_count, 500_000);
+    assert_eq!(
+        contract.expected.generated_static_artifact_policy,
+        "do_not_commit_generated_500k_rows"
+    );
+
+    let first = sample_surfaces(&contract, contract.ci_sample_surface_count);
+    let second = sample_surfaces(&contract, contract.ci_sample_surface_count);
+    assert_eq!(first, second, "same seed/config must be byte-identical");
+    assert_eq!(
+        surface_signatures(&first[..3]),
+        contract.expected.first_surface_signatures
+    );
+
+    let mut changed_seed = contract.clone();
+    changed_seed.seed = changed_seed.seed.saturating_add(1);
+    assert_ne!(
+        sample_surfaces(&changed_seed, 3),
+        first[..3],
+        "seed must participate in generated surface ordering"
+    );
 
     let observations = virtual_candidate_observations(
         &contract,
@@ -218,7 +238,7 @@ fn entity_500k_unique_stress() {
     );
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct Unique500kStressContract {
     schema_version: String,
     id: String,
@@ -239,19 +259,19 @@ struct Unique500kStressContract {
     expected: StressExpectations,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct TopKContract {
     k: u64,
     candidate_cap: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct VirtualCandidateStream {
     emitted_candidates_per_surface: u64,
     suppressed_candidates_per_surface: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct StressExpectations {
     candidate_pairs_per_surface_p95_max: u64,
     candidate_pairs_per_surface_p99_max: u64,
@@ -260,6 +280,17 @@ struct StressExpectations {
     index_limit_refusal_code: String,
     io_budget_refusal_code: String,
     max_exact_bucket_size: u64,
+    generated_static_artifact_policy: String,
+    first_surface_signatures: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct GeneratedUniqueSurface {
+    surface_id: String,
+    raw_name: String,
+    normalized_surface_key: String,
+    common_token: String,
+    unique_token: String,
 }
 
 fn stress_contract() -> Unique500kStressContract {
@@ -291,12 +322,10 @@ fn sample_posting_index(
 ) -> EntityPostingIndex {
     let surfaces = (0..surface_count)
         .map(|index| {
-            EntityPostingSurface::new(surface_id(index))
-                .with_exact_view(&contract.view_name, format!("Tenant Store {index:06}"))
-                .with_tokens([
-                    contract.common_token.clone(),
-                    format!("{}{index:06}", contract.unique_token_prefix),
-                ])
+            let surface = generated_surface(contract, index);
+            EntityPostingSurface::new(surface.surface_id)
+                .with_exact_view(&contract.view_name, surface.raw_name)
+                .with_tokens([surface.common_token, surface.unique_token])
         })
         .collect::<Vec<_>>();
     EntityPostingIndex::build(
@@ -306,6 +335,44 @@ fn sample_posting_index(
         },
     )
     .expect("sample posting index builds")
+}
+
+fn sample_surfaces(contract: &Unique500kStressContract, limit: u64) -> Vec<GeneratedUniqueSurface> {
+    (0..limit)
+        .map(|surface_ordinal| generated_surface(contract, surface_ordinal))
+        .collect()
+}
+
+fn generated_surface(
+    contract: &Unique500kStressContract,
+    surface_ordinal: u64,
+) -> GeneratedUniqueSurface {
+    let generated_ordinal = (surface_ordinal
+        .saturating_mul(97)
+        .saturating_add(contract.seed))
+        % contract.surface_count;
+    GeneratedUniqueSurface {
+        surface_id: format!("surf:unique-{generated_ordinal:06}"),
+        raw_name: format!("Tenant Unique {generated_ordinal:06}"),
+        normalized_surface_key: format!("tenant_unique:{generated_ordinal:06}"),
+        common_token: contract.common_token.clone(),
+        unique_token: format!("{}{generated_ordinal:06}", contract.unique_token_prefix),
+    }
+}
+
+fn surface_signatures(surfaces: &[GeneratedUniqueSurface]) -> Vec<String> {
+    surfaces
+        .iter()
+        .map(|surface| {
+            format!(
+                "{}|{}|{}|{}",
+                surface.surface_id,
+                surface.raw_name,
+                surface.normalized_surface_key,
+                surface.unique_token
+            )
+        })
+        .collect()
 }
 
 fn assert_within_g12_caps(

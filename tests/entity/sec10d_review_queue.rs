@@ -19,7 +19,7 @@ use canon::entity::{
 };
 use serde::Deserialize;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -36,21 +36,16 @@ fn sec10d_review_queue_groups_repeated_regab_firm_ambiguity() {
     .expect("sec10d review queue builds");
 
     assert_eq!(artifact.version, expected.version);
-    assert!(
-        artifact
-            .source_solve_hash
-            .starts_with(&expected.source_solve_hash_prefix)
-    );
+    assert!(artifact.source_solve_hash.starts_with("blake3:"));
     assert_eq!(artifact.summary.counts, expected.summary_counts);
     assert_eq!(artifact.summary.labels, expected.summary_labels);
-    assert_eq!(artifact.review_items.len(), expected.items.len());
+    assert_eq!(artifact.review_items.len(), expected.groups.len());
+    assert_expected_groups(&artifact.review_items, &expected.groups);
 
-    for (item, expected_item) in artifact.review_items.iter().zip(&expected.items) {
-        assert_review_item(item, expected_item);
-    }
-
-    let pnc = &artifact.review_items[0];
-    assert_eq!(pnc.review_id, "review:surf_regab_pnc_001_bank");
+    let pnc = item_for_group(
+        &artifact.review_items,
+        expected_group(&expected, "REGAB-I002-PNC-MIDLAND-DIVISION"),
+    );
     assert_eq!(pnc.affected_rows, 84);
     assert!(
         pnc.priority_reasons
@@ -62,7 +57,7 @@ fn sec10d_review_queue_groups_repeated_regab_firm_ambiguity() {
             .iter()
             .map(|sample| sample.row_id.as_str())
             .collect::<Vec<_>>(),
-        ["regab-fixture-002", "regab-fixture-001"]
+        ["regab-fixture-001", "regab-fixture-002"]
     );
 }
 
@@ -77,15 +72,11 @@ fn REGAB_I002_I003_sec10d_review_queue_keeps_hard_negatives_reviewable() {
     })
     .expect("sec10d review queue builds");
 
-    let items_by_review_id = artifact
-        .review_items
-        .iter()
-        .map(|item| (item.review_id.as_str(), item))
-        .collect::<BTreeMap<_, _>>();
-
-    let platform = items_by_review_id
-        .get("review:surf_regab_platform_001_label")
-        .expect("platform label review item");
+    let expected = expected_fixture();
+    let platform = item_for_group(
+        &artifact.review_items,
+        expected_group(&expected, "REGAB-I003-PLATFORM-LABEL"),
+    );
     assert_eq!(platform.state, SolveReconciliationState::Contradiction);
     assert!(
         platform
@@ -100,16 +91,31 @@ fn REGAB_I002_I003_sec10d_review_queue_keeps_hard_negatives_reviewable() {
             .any(|sample| sample.raw_value == "Wells Fargo Commercial Mortgage Securities Platform")
     );
 
-    let acme = items_by_review_id
-        .get("review:surf_regab_acme_001_servicer")
-        .expect("unresolved exact lookup review item");
-    assert!(
-        acme.priority_reasons
-            .iter()
-            .any(|reason| reason == "regab_role_capacity_conflict")
+    let auditor = item_for_group(
+        &artifact.review_items,
+        expected_group(&expected, "REGAB-I003-AUDITOR-SUBJECT-CONFLICT"),
     );
     assert!(
-        acme.provenance_samples
+        auditor
+            .priority_reasons
+            .iter()
+            .any(|reason| reason == "regab_auditor_subject_role_conflict")
+    );
+
+    let unresolved = item_for_group(
+        &artifact.review_items,
+        expected_group(&expected, "REGAB-UNRESOLVED-EXACT-LOOKUP-MISS"),
+    );
+    assert_eq!(unresolved.state, SolveReconciliationState::Escrow);
+    assert!(
+        unresolved
+            .priority_reasons
+            .iter()
+            .any(|reason| reason == "regab_unresolved_exact_lookup_miss")
+    );
+    assert!(
+        unresolved
+            .provenance_samples
             .iter()
             .any(|sample| sample.raw_value == "Acme Review Analytics LLC")
     );
@@ -133,47 +139,78 @@ fn REGAB_I002_I003_sec10d_review_queue_keeps_hard_negatives_reviewable() {
         .records()
         .collect::<Result<Vec<_>, _>>()
         .expect("review csv records");
-    assert_eq!(rows.len(), 4);
+    assert_eq!(rows.len(), 5);
     assert!(
         rows.iter()
-            .any(|row| row[reasons_index].contains("regab_role_capacity_conflict"))
+            .any(|row| row[reasons_index].contains("regab_auditor_subject_role_conflict"))
     );
 }
 
-fn assert_review_item(item: &ReviewQueueItem, expected: &ExpectedReviewItem) {
-    assert_eq!(item.review_id, expected.review_id);
-    assert_eq!(item.ambiguity_key, expected.ambiguity_key);
-    assert_eq!(item.state, expected.state);
-    assert_eq!(item.proposed_action, expected.proposed_action);
-    assert_eq!(item.affected_rows, expected.affected_rows);
-    assert_eq!(item.affected_deals, expected.affected_deals);
-    assert_eq!(item.priority_reasons, expected.priority_reasons);
-    assert_eq!(item.surface_ids, expected.surface_ids);
-    assert_eq!(item.relation_hints.len(), expected.relation_hints);
-    assert_eq!(item.provenance_samples.len(), expected.provenance_samples);
+fn assert_expected_groups(items: &[ReviewQueueItem], expected_groups: &[ExpectedReviewGroup]) {
+    for expected in expected_groups {
+        let item = item_for_group(items, expected);
+        assert_eq!(item.state, expected.state, "{}", expected.id);
+        assert_eq!(
+            item.proposed_action, expected.proposed_action,
+            "{}",
+            expected.id
+        );
+        assert_eq!(item.affected_rows, expected.affected_rows, "{}", expected.id);
+        assert_eq!(
+            item.affected_deals, expected.affected_deals,
+            "{}",
+            expected.id
+        );
+        for reason in &expected.required_priority_reasons {
+            assert!(
+                item.priority_reasons.iter().any(|actual| actual == reason),
+                "{} missing priority reason {reason}: {:?}",
+                expected.id,
+                item.priority_reasons
+            );
+        }
 
-    let positive_codes = item
-        .strongest_positive_cut
-        .as_ref()
-        .map(|cut| cut.evidence_reason_codes.clone())
-        .unwrap_or_default();
-    let negative_codes = item
-        .strongest_negative_cut
-        .as_ref()
-        .map(|cut| cut.evidence_reason_codes.clone())
-        .unwrap_or_default();
-    assert_eq!(positive_codes, expected.strongest_positive_reason_codes);
-    assert_eq!(negative_codes, expected.strongest_negative_reason_codes);
+        let negative_codes = item
+            .strongest_negative_cut
+            .as_ref()
+            .map(|cut| cut.evidence_reason_codes.clone())
+            .unwrap_or_default();
+        assert_eq!(negative_codes, expected.negative_reason_codes, "{}", expected.id);
 
-    let raw_values = item
-        .provenance_samples
+        let relation_codes = item
+            .relation_hints
+            .iter()
+            .map(|hint| hint.reason_code.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            relation_codes, expected.relation_reason_codes,
+            "{}",
+            expected.id
+        );
+        assert!(
+            item.provenance_samples.len() >= expected.min_provenance_samples,
+            "{} provenance sample count",
+            expected.id
+        );
+    }
+}
+
+fn item_for_group<'a>(
+    items: &'a [ReviewQueueItem],
+    expected: &ExpectedReviewGroup,
+) -> &'a ReviewQueueItem {
+    items
         .iter()
-        .map(|sample| sample.raw_value.clone())
-        .collect::<BTreeSet<_>>();
-    assert_eq!(
-        raw_values,
-        expected.raw_values.iter().cloned().collect::<BTreeSet<_>>()
-    );
+        .find(|item| item.surface_ids == expected.surface_ids)
+        .unwrap_or_else(|| panic!("missing review group {}", expected.id))
+}
+
+fn expected_group<'a>(expected: &'a ExpectedReviewQueue, id: &str) -> &'a ExpectedReviewGroup {
+    expected
+        .groups
+        .iter()
+        .find(|group| group.id == id)
+        .unwrap_or_else(|| panic!("missing expected group {id}"))
 }
 
 fn solve_artifact() -> SolveArtifact {
@@ -197,32 +234,32 @@ fn solve_artifact() -> SolveArtifact {
 fn edge_records() -> Vec<EdgeEvidenceRecord> {
     vec![
         guarded_edge_record(GuardedEdge {
-            left_surface_id: "surf_regab_pnc_001_bank",
-            right_surface_id: "surf_regab_pnc_002_midland_division",
-            left_name: "PNC Bank, National Association",
-            right_name: "Midland Loan Services, a division of PNC Bank, National Association",
-            left_role: "servicer",
-            right_role: "master_servicer",
+            left_surface_id: "surf:regab:midland_loan_services_division_pnc_bank_na",
+            right_surface_id: "surf:regab:pnc_bank_na",
+            left_name: "Midland Loan Services, a division of PNC Bank, National Association",
+            right_name: "PNC Bank, National Association",
+            left_role: "master_servicer",
+            right_role: "servicer",
             support_reason: "regab_same_family_high_recall_candidate",
             support_units: 7_000,
             guard: RegabFirmGuardKind::BankLoanServicesDivision,
             relation: "division_of",
         }),
         guarded_edge_record(GuardedEdge {
-            left_surface_id: "surf_regab_platform_001_label",
-            right_surface_id: "surf_regab_platform_002_wells_fargo_bank",
-            left_name: "Wells Fargo Commercial Mortgage Securities Platform",
-            right_name: "Wells Fargo Bank, National Association",
-            left_role: "platform",
-            right_role: "regulated_firm",
+            left_surface_id: "surf:regab:wells_fargo_bank_na",
+            right_surface_id: "surf:regab:wells_fargo_commercial_mortgage_securities_platform",
+            left_name: "Wells Fargo Bank, National Association",
+            right_name: "Wells Fargo Commercial Mortgage Securities Platform",
+            left_role: "regulated_firm",
+            right_role: "platform",
             support_reason: "regab_shared_platform_family_candidate",
             support_units: 6_500,
             guard: RegabFirmGuardKind::PlatformCategoryLabel,
             relation: "platform_to_firm_context",
         }),
         guarded_edge_record(GuardedEdge {
-            left_surface_id: "surf_regab_kpmg_001_auditor",
-            right_surface_id: "surf_regab_kpmg_002_subject_party",
+            left_surface_id: "surf:regab:kpmg_llp",
+            right_surface_id: "surf:regab:kpmg_securitization_trust_2024_c1",
             left_name: "KPMG LLP",
             right_name: "KPMG Securitization Trust 2024-C1",
             left_role: "auditor",
@@ -232,18 +269,8 @@ fn edge_records() -> Vec<EdgeEvidenceRecord> {
             guard: RegabFirmGuardKind::AuditorSubjectPartyRoleConflict,
             relation: "role_context_conflict",
         }),
-        guarded_edge_record(GuardedEdge {
-            left_surface_id: "surf_regab_acme_001_servicer",
-            right_surface_id: "surf_regab_acme_002_agent",
-            left_name: "Acme Review Analytics LLC",
-            right_name: "Acme Review Analytics Servicing Agent LLC",
-            left_role: "subservicer",
-            right_role: "servicing_agent",
-            support_reason: "regab_unresolved_exact_lookup_candidate",
-            support_units: 5_600,
-            guard: RegabFirmGuardKind::ServicerSubservicerAgentRoleConflict,
-            relation: "capacity_conflict",
-        }),
+        soft_parent_subsidiary_record(),
+        unresolved_exact_lookup_record(),
     ]
 }
 

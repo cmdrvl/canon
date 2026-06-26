@@ -1,0 +1,112 @@
+{
+  "schema_version": "canon.entity.regab.profile_integration.v0",
+  "profile_id": "regab_firm_identity",
+  "identity_semantics": "same_firm_or_reviewed_alias",
+  "canonical_type": "org",
+  "fixture_sources": {
+    "profile": "tests/fixtures/entity/profiles/regab_firm_identity.yaml",
+    "org_mentions_csv": "tests/fixtures/entity/regab/org_mentions/org_mentions.csv",
+    "org_mentions_jsonl": "tests/fixtures/entity/regab/org_mentions/org_mentions.jsonl",
+    "expected_summary": "tests/fixtures/entity/regab/org_mentions/expected_summary.json",
+    "expected_apply_csv": "tests/fixtures/entity/regab/org_mentions/expected_apply.csv"
+  },
+  "cases": [
+    {
+      "id": "REGAB-I001",
+      "title": "org_mentions input shape is accepted without sec10d parser rewrites",
+      "required_fields": [
+        "source_row_id",
+        "record_id",
+        "dataset",
+        "field_name",
+        "org_name",
+        "doc_id",
+        "filing_cik",
+        "accession",
+        "form_type",
+        "period",
+        "role_context",
+        "capacity",
+        "subject_role",
+        "deal_key",
+        "transaction_name",
+        "alias_surfaces_json",
+        "mention_surfaces_json"
+      ],
+      "expected_counts": {
+        "row_count": 8,
+        "prepared_surfaces": 8,
+        "exact_resolved_surfaces": 5,
+        "unresolved_surfaces": 3
+      }
+    },
+    {
+      "id": "REGAB-I002",
+      "title": "PNC bank and Midland loan-services division stay distinct or reviewable",
+      "guarded_pair": {
+        "left": "PNC Bank, National Association",
+        "right": "Midland Loan Services, a division of PNC Bank, National Association",
+        "guard": "bank_vs_loan_services_division",
+        "relation": "division_of",
+        "expected_auto_merge": false,
+        "expected_review_priority": "high"
+      }
+    },
+    {
+      "id": "REGAB-I003",
+      "title": "platform/category labels and role conflicts are not auto-resolved as firms",
+      "guarded_pairs": [
+        {
+          "left": "Wells Fargo Commercial Mortgage Securities Platform",
+          "right": "Wells Fargo Bank, National Association",
+          "guard": "platform_category_label",
+          "relation": "platform_to_firm_context",
+          "expected_auto_merge": false,
+          "expected_review_priority": "critical"
+        },
+        {
+          "left": "KPMG LLP",
+          "right": "KPMG Securitization Trust 2024-C1",
+          "guard": "auditor_subject_party_role_conflict",
+          "relation": "role_context_conflict",
+          "expected_auto_merge": false,
+          "expected_review_priority": "critical"
+        }
+      ],
+      "unresolved_surfaces": [
+        "Wells Fargo Commercial Mortgage Securities Platform",
+        "KPMG Securitization Trust 2024-C1"
+      ]
+    },
+    {
+      "id": "REGAB-I004",
+      "title": "raw parser fields are preserved and canonical fields are appended",
+      "append_only_fields": [
+        "canonical_id",
+        "canonical_type",
+        "canonical_status",
+        "canonical_registry_id",
+        "canonical_registry_version",
+        "canonical_rule_id"
+      ],
+      "downstream_org_suffixes": [
+        "_org_canon_id",
+        "_org_canonical_name",
+        "_org_resolution_status",
+        "_org_registry_id",
+        "_org_registry_version",
+        "_org_rule_id"
+      ],
+      "expected_apply_counts": {
+        "rows": 8,
+        "resolved": 5,
+        "unresolved": 3
+      }
+    }
+  ],
+  "profile_firewall": {
+    "not_tenant_label": true,
+    "not_hierarchy_discovery": true,
+    "not_parent_subsidiary_auto_merge": true
+  }
+}

@@ -478,7 +478,7 @@
       ],
       "expected_artifacts": [
         {"path": "tests/fixtures/entity/regab/regab_i002_solve.json", "schema_version": "canon_entity_solve.v0", "hash_policy": "byte_stable", "summary_counters": ["cannot_link_count", "auto_merge_count"]},
-        {"path": "tests/fixtures/entity/regab/review/sec10d_review_queue_expected.json", "schema_version": "canon_entity_review_queue.v0", "hash_policy": "byte_stable", "summary_counters": ["review_items", "review_group_count"]}
+        {"path": "tests/fixtures/entity/regab/review/sec10d_review_queue_groups_expected.json", "schema_version": "canon_entity_review_queue.v0", "hash_policy": "byte_stable", "summary_counters": ["review_items", "review_group_count"]}
       ],
       "expected_outcome": {"kind": "success", "refusal_code": null},
       "gates": ["G06", "G13"],
@@ -498,7 +498,7 @@
       ],
       "expected_artifacts": [
         {"path": "tests/fixtures/entity/regab/regab_i003_solve.json", "schema_version": "canon_entity_solve.v0", "hash_policy": "byte_stable", "summary_counters": ["review_group_count", "auto_merge_count"]},
-        {"path": "tests/fixtures/entity/regab/review/sec10d_review_queue_expected.json", "schema_version": "canon_entity_review_queue.v0", "hash_policy": "byte_stable", "summary_counters": ["review_items", "review_group_count"]}
+        {"path": "tests/fixtures/entity/regab/review/sec10d_review_queue_groups_expected.json", "schema_version": "canon_entity_review_queue.v0", "hash_policy": "byte_stable", "summary_counters": ["review_items", "review_group_count"]}
       ],
       "expected_outcome": {"kind": "success", "refusal_code": null},
       "gates": ["G06", "G13"],
@@ -541,8 +541,8 @@
       "source_kind": "generated_synthetic",
       "ci_tier": "operator_run_only",
       "record_size": {"rows": 500000, "surfaces": 500000},
-      "input_files": ["tests/fixtures/entity/stress/stress_unique_500k.generator.json"],
-      "expected_artifacts": [{"path": "target/entity-evals/stress-unique-500k/eval.json", "schema_version": "canon.entity.eval_result.v0", "hash_policy": "telemetry_hash_recorded", "summary_counters": ["prepared_surface_count", "candidate_pair_count", "refusal_code", "peak_memory_bytes"]}],
+      "input_files": ["tests/fixtures/entity/stress/generators/unique_500k_contract.json"],
+      "expected_artifacts": [{"path": "target/entity-evals/stress-unique-500k/telemetry.json", "schema_version": "canon.entity.eval_result.v0", "hash_policy": "telemetry_hash_recorded", "summary_counters": ["prepared_surface_count", "candidate_pair_count", "refusal_code", "peak_memory_bytes"]}],
       "expected_outcome": {"kind": "refusal", "refusal_code": "E_ENTITY_CANDIDATE_BUDGET"},
       "gates": ["G12"],
       "owning_tests": ["entity_500k_unique_stress", "STRESS-UNIQUE-500K"]
