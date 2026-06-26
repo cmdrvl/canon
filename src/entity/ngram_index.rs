@@ -51,7 +51,7 @@ impl Default for EntityNgramBuildConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntityNgramIndex {
     pub version: String,
     pub surface_ids: Vec<String>,
@@ -60,7 +60,7 @@ pub struct EntityNgramIndex {
     surfaces: Vec<NormalizedNgramSurface>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct NormalizedNgramSurface {
     surface_id: String,
     normalized_key: String,

@@ -13,6 +13,7 @@ pub mod contracts;
 pub mod edge;
 pub mod error;
 pub mod index;
+pub mod index_io;
 pub mod postings;
 pub mod prepare;
 pub mod profile;

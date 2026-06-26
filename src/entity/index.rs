@@ -100,6 +100,37 @@ pub fn build_index_artifact_contract(
     Ok(artifact)
 }
 
+pub fn validate_index_artifact_hash(artifact: &EntityIndexArtifact) -> Result<(), Refusal> {
+    let expected = hash_index_artifact_without_self(artifact)?;
+    if artifact.artifact_content_hash != expected {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index artifact content hash does not match its payload",
+            json!({
+                "stage": "index",
+                "field": "artifact_content_hash",
+                "expected": expected,
+                "actual": artifact.artifact_content_hash,
+                "writes_performed": false
+            }),
+            Some("Reload the matching index artifact or rebuild canon entity index".to_string()),
+        ));
+    }
+    if artifact.metadata.artifact_content_hash != artifact.artifact_content_hash {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index metadata hash does not match artifact hash",
+            json!({
+                "stage": "index",
+                "field": "metadata.artifact_content_hash",
+                "expected": artifact.artifact_content_hash,
+                "actual": artifact.metadata.artifact_content_hash,
+                "writes_performed": false
+            }),
+            Some("Reload the matching index artifact or rebuild canon entity index".to_string()),
+        ));
+    }
+    Ok(())
+}
+
 pub fn index_cache_key_from_prepare_header(
     layer: EntityCacheLayer,
     prepare: &EntityArtifactHeader,
@@ -152,6 +183,50 @@ pub fn validate_index_cache_policy(
         return Err(cache_mismatch_refusal(&invalidation));
     }
     Ok(invalidation)
+}
+
+pub fn validate_index_artifact_contract(artifact: &EntityIndexArtifact) -> Result<(), Refusal> {
+    if artifact.version != CANON_ENTITY_INDEX_VERSION {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index artifact version mismatch",
+            json!({
+                "expected": CANON_ENTITY_INDEX_VERSION,
+                "actual": artifact.version,
+                "stage": "index",
+                "writes_performed": false
+            }),
+            Some("Use a matching index artifact or rerun canon entity index build".to_string()),
+        ));
+    }
+    if artifact.artifact_content_hash.trim().is_empty() {
+        return Err(missing_prepare_metadata("artifact_content_hash"));
+    }
+    if artifact.metadata.artifact_content_hash != artifact.artifact_content_hash {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index artifact metadata hash does not match artifact hash",
+            json!({
+                "stage": "index",
+                "artifact_content_hash": artifact.artifact_content_hash,
+                "metadata_artifact_content_hash": artifact.metadata.artifact_content_hash,
+                "writes_performed": false
+            }),
+            Some("Use a complete index artifact or rerun canon entity index build".to_string()),
+        ));
+    }
+    let expected = hash_index_artifact_without_self(artifact)?;
+    if artifact.artifact_content_hash != expected {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index artifact content hash mismatch",
+            json!({
+                "stage": "index",
+                "expected": expected,
+                "actual": artifact.artifact_content_hash,
+                "writes_performed": false
+            }),
+            Some("Discard the stale index artifact and rerun canon entity index build".to_string()),
+        ));
+    }
+    Ok(())
 }
 
 fn index_metadata_from_prepare(
