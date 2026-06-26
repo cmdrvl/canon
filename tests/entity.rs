@@ -51,6 +51,8 @@ mod cmbs_normalization;
 #[path = "entity/cmbs_tenant_id_allocator.rs"]
 mod cmbs_tenant_id_allocator;
 
+#[path = "entity/edge_artifact.rs"]
+mod edge_artifact;
 #[path = "entity/edge_cannot_link.rs"]
 mod edge_cannot_link;
 #[path = "entity/edge_relation_hints.rs"]

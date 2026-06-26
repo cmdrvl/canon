@@ -15,6 +15,7 @@ pub mod candidates;
 pub mod contracts;
 pub mod diagnostics;
 pub mod edge;
+pub mod edge_artifact;
 pub mod error;
 pub mod evidence;
 pub mod graph;
