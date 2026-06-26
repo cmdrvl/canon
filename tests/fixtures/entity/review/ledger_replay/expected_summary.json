@@ -1,0 +1,16 @@
+{
+  "counts": {
+    "events_replayed": 3,
+    "derived_patch_count": 4,
+    "alias_patch_count": 1,
+    "distinct_patch_count": 1,
+    "cannot_link_patch_count": 1,
+    "relation_patch_count": 1,
+    "override_proof_count": 0,
+    "promotion_revert_count": 0,
+    "idempotent_duplicate_count": 0
+  },
+  "labels": {
+    "replay": "deterministic"
+  }
+}
