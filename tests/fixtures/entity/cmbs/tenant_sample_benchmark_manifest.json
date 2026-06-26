@@ -11,6 +11,30 @@
     "blank_tenant_slots": 7857,
     "unique_raw_tenant_names": 431
   },
+  "fixture_policy": {
+    "raw_csv_committed": false,
+    "selector_root": "tests/fixtures/entity/cmbs/sample_selectors",
+    "source_required_when": "operator_full_sample_or_selector_regeneration"
+  },
+  "observation_shape": [
+    "source_row_id",
+    "source_file_sha256",
+    "csv_line_number",
+    "filing_id",
+    "form_submission_id",
+    "filing_date",
+    "company_name",
+    "asset_number",
+    "property_name",
+    "property_address",
+    "property_city",
+    "property_state",
+    "property_zip",
+    "tenant_rank",
+    "tenant_name_raw",
+    "tenant_square_feet",
+    "tenant_lease_expiration"
+  ],
   "tenant_fields": [
     {
       "rank": 1,
@@ -259,6 +283,157 @@
       ]
     }
   ],
+  "benchmark_contract": [
+    {
+      "id": "CMBS-SRC-001",
+      "gate_ids": ["source_fingerprint"],
+      "evidence_fields": ["source.sha256", "source.data_rows", "source.columns"],
+      "behavioral_assertions": [
+        "source sha256, data row count, and column count equal source",
+        "benchmark refuses when run against a different sample"
+      ]
+    },
+    {
+      "id": "CMBS-EXTRACT-001",
+      "gate_ids": ["tenant_extraction"],
+      "evidence_fields": ["tenant_fields", "observation_shape", "source.tenant_observations"],
+      "behavioral_assertions": [
+        "6000 rows expand to 18000 tenant slots",
+        "10143 non-empty tenant observations preserve rank, square feet, lease expiration, filing, property, and asset provenance"
+      ]
+    },
+    {
+      "id": "CMBS-EXTRACT-002",
+      "gate_ids": ["placeholder_guard"],
+      "evidence_fields": ["placeholder_surfaces", "hard_negative_policy"],
+      "behavioral_assertions": [
+        "surface 0 has placeholder expectation unresolved_placeholder_not_entity",
+        "placeholder exact buckets never become tenant entities"
+      ]
+    },
+    {
+      "id": "CMBS-PREP-001",
+      "gate_ids": ["G03", "G04"],
+      "evidence_fields": ["observation_shape", "performance_contract"],
+      "behavioral_assertions": [
+        "full sample and shuffled sample produce identical prepared surface ids",
+        "raw row ids remain provenance and do not participate in candidate identity"
+      ]
+    },
+    {
+      "id": "CMBS-NK-001",
+      "gate_ids": ["namekit_recall"],
+      "evidence_fields": ["must_link_clusters", "normalization_reason_codes_required"],
+      "behavioral_assertions": [
+        "must-link clusters include Sears, 24 Hour Fitness, Foot Locker, TJ Maxx, and numeric brand variants",
+        "variants inside a cluster are candidates or compact exact-bucket members"
+      ]
+    },
+    {
+      "id": "CMBS-CAND-001",
+      "gate_ids": ["G11"],
+      "evidence_fields": ["must_link_clusters", "candidate_recall_policy"],
+      "behavioral_assertions": [
+        "every raw variant pair inside each must-link cluster reaches candidate evidence or a compact exact-bucket assertion",
+        "common-token caps do not suppress required must-link recall"
+      ]
+    },
+    {
+      "id": "CMBS-HARDNEG-001",
+      "gate_ids": ["G06"],
+      "evidence_fields": ["hard_negative_pairs", "hard_negative_policy"],
+      "behavioral_assertions": [
+        "numeric and address-like hard negatives never auto-merge",
+        "same-property context is not sufficient support for tenant identity"
+      ]
+    },
+    {
+      "id": "CMBS-REVIEW-001",
+      "gate_ids": ["G08"],
+      "evidence_fields": ["review_cases"],
+      "behavioral_assertions": [
+        "d/b/a, slash, tenant-shell, parenthetical, and typo cases are grouped once by ambiguity pattern",
+        "review import can produce alias, distinct, or relation patches without silent auto-collapse"
+      ]
+    },
+    {
+      "id": "CMBS-BLOCK-001",
+      "gate_ids": ["G05"],
+      "evidence_fields": ["placeholder_surfaces", "performance_contract"],
+      "behavioral_assertions": [
+        "high-repeat exact buckets emit compact assertions instead of pairwise rows",
+        "record count grows O(N), not O(N^2)"
+      ]
+    },
+    {
+      "id": "CMBS-SOLVE-001",
+      "gate_ids": ["G06", "G07"],
+      "evidence_fields": ["must_link_clusters", "hard_negative_pairs", "review_cases"],
+      "behavioral_assertions": [
+        "must-link support can form promotable clusters",
+        "hard cannot-link splits, abstains, or emits contradiction",
+        "relation hints do not add positive merge score by default"
+      ]
+    },
+    {
+      "id": "CMBS-REPLAY-001",
+      "gate_ids": ["replay_exact"],
+      "evidence_fields": ["must_link_clusters", "observation_shape"],
+      "behavioral_assertions": [
+        "accepted review decisions promote exact aliases into a normal registry",
+        "entity apply appends canonical fields without mutating raw fields",
+        "ordinary core canon lookup resolves promoted aliases exactly"
+      ]
+    },
+    {
+      "id": "CMBS-PERF-001",
+      "gate_ids": ["G11"],
+      "evidence_fields": ["performance_contract"],
+      "behavioral_assertions": [
+        "candidate generation operates on 431 unique raw names, not 10143 raw observations",
+        "exact-bucket pair expansion is 0",
+        "telemetry records artifact sizes, cache status, and timing metadata"
+      ]
+    },
+    {
+      "id": "CMBS-PERF-002",
+      "gate_ids": ["G03", "G04"],
+      "evidence_fields": ["performance_contract", "observation_shape"],
+      "behavioral_assertions": [
+        "full sample and deterministic shuffle produce identical prepared surfaces",
+        "candidate, edge, solve, and review artifacts match after canonical sorting"
+      ]
+    }
+  ],
+  "performance_contract": {
+    "candidate_pairs_per_surface_p95_max": 25,
+    "candidate_pairs_per_surface_p99_max": 100,
+    "exact_bucket_pair_expansion_count": 0,
+    "wall_clock_enforcement": "operator_release_only_after_telemetry_baseline",
+    "normal_ci_wall_clock_assertions": false
+  },
+  "prohibited_runtime_dependencies": [
+    "network",
+    "frontier_model_call",
+    "runtime_model_download",
+    "python_ml_runtime",
+    "general_ml_framework"
+  ],
+  "normalization_reason_codes_required": [
+    "legal_suffix_removed",
+    "punctuation_folded",
+    "repeated_spaces_folded",
+    "all_caps_folded",
+    "store_number_stripped",
+    "leading_record_number_stripped"
+  ],
+  "candidate_recall_policy": {
+    "must_link_pairs": "candidate_or_compact_exact_bucket"
+  },
+  "hard_negative_policy": {
+    "auto_merge_allowed": false,
+    "allowed_outcomes": ["cannot_link", "no_edge", "review", "escrow"]
+  },
   "required_benchmarks": [
     "CMBS-SRC-001",
     "CMBS-EXTRACT-001",
@@ -273,5 +448,177 @@
     "CMBS-REPLAY-001",
     "CMBS-PERF-001",
     "CMBS-PERF-002"
+  ],
+  "benchmark_assertions": {
+    "CMBS-SRC-001": {
+      "tier": "operator-public-sample",
+      "assertions": [
+        "source sha256, data row count, and column count equal source",
+        "tenant slot fields are present exactly as tenant_fields",
+        "benchmark refuses when run against a different sample"
+      ],
+      "failure_meaning": "source compatibility regressed or the benchmark is using the wrong public sample"
+    },
+    "CMBS-EXTRACT-001": {
+      "tier": "operator-public-sample",
+      "assertions": [
+        "6000 rows expand to 18000 tenant slots",
+        "10143 non-empty tenant observations preserve rank, square feet, lease expiration, filing, property, and asset provenance",
+        "7857 blank tenant slots are skipped with deterministic counts"
+      ],
+      "failure_meaning": "tenant extraction lost observations, preserved blanks as tenants, or dropped replay context"
+    },
+    "CMBS-EXTRACT-002": {
+      "tier": "normal-ci-manifest",
+      "assertions": [
+        "surface 0 has placeholder expectation unresolved_placeholder_not_entity",
+        "placeholder exact buckets never become tenant entities",
+        "placeholder counts remain diagnostics rather than promotion evidence"
+      ],
+      "failure_meaning": "placeholder handling manufactured tenant entities"
+    },
+    "CMBS-PREP-001": {
+      "tier": "operator-public-sample",
+      "assertions": [
+        "full sample and shuffled sample produce identical prepared surface ids",
+        "summary counters are deterministic across row order",
+        "raw row ids remain provenance and do not participate in candidate identity"
+      ],
+      "failure_meaning": "prepare became row-order-sensitive or row-level instead of surface-level"
+    },
+    "CMBS-NK-001": {
+      "tier": "normal-ci-manifest",
+      "assertions": [
+        "must-link clusters include Sears, 24 Hour Fitness, Foot Locker, TJ Maxx, and numeric brand variants",
+        "variants inside a cluster are candidates or compact exact-bucket members",
+        "normalization records legal suffix, punctuation, all-caps, store-number, and leading-record-number evidence"
+      ],
+      "failure_meaning": "namekit or blocking dropped tenant-label recall for known public-sample clusters"
+    },
+    "CMBS-CAND-001": {
+      "tier": "operator-public-sample",
+      "assertions": [
+        "every raw variant pair inside each must-link cluster reaches candidate evidence or a compact exact-bucket assertion",
+        "candidate evidence names the recovering operator",
+        "common-token caps do not suppress required must-link recall"
+      ],
+      "failure_meaning": "blocking is too brittle for the solver to recover known tenant-label clusters"
+    },
+    "CMBS-HARDNEG-001": {
+      "tier": "normal-ci-manifest",
+      "assertions": [
+        "numeric and address-like hard negatives never auto-merge",
+        "same-property context is not sufficient support for tenant identity",
+        "hard negatives land in cannot-link, no-edge, review, or escrow outcomes"
+      ],
+      "failure_meaning": "anti-merge protection regressed for numeric, address, or same-property false positives"
+    },
+    "CMBS-REVIEW-001": {
+      "tier": "normal-ci-manifest",
+      "assertions": [
+        "d/b/a, slash, tenant-shell, parenthetical, and typo cases are grouped once by ambiguity pattern",
+        "review groups include row count, deal/property count, representative rows, support, anti-merge or relation evidence, and suggested action",
+        "review import can produce alias, distinct, or relation patches without silent auto-collapse"
+      ],
+      "failure_meaning": "review grouping became noisy, unsafe, or insufficient for operator decisions"
+    },
+    "CMBS-BLOCK-001": {
+      "tier": "normal-ci-and-operator",
+      "assertions": [
+        "high-repeat exact buckets emit compact assertions instead of pairwise rows",
+        "placeholder 0 exact bucket is excluded from entity buckets",
+        "record count grows O(N), not O(N^2)"
+      ],
+      "failure_meaning": "blocking reintroduced exact-bucket pair expansion"
+    },
+    "CMBS-SOLVE-001": {
+      "tier": "operator-public-sample",
+      "assertions": [
+        "must-link support can form promotable clusters",
+        "hard cannot-link splits, abstains, or emits contradiction",
+        "relation hints do not add positive merge score by default"
+      ],
+      "failure_meaning": "solver constraints regressed to threshold-only fuzzy matching"
+    },
+    "CMBS-REPLAY-001": {
+      "tier": "operator-public-sample",
+      "assertions": [
+        "accepted review decisions promote exact aliases into a normal registry",
+        "entity apply appends canonical fields without mutating raw fields",
+        "ordinary core canon lookup resolves promoted aliases exactly"
+      ],
+      "failure_meaning": "promotion or exact replay stopped producing durable registry knowledge"
+    },
+    "CMBS-PERF-001": {
+      "tier": "operator-public-sample",
+      "assertions": [
+        "candidate generation operates on 431 unique raw names, not 10143 raw observations",
+        "exact-bucket pair expansion is 0",
+        "telemetry records row count, unique surface count, candidate count, edge count, exact bucket count, suppressed candidates, review groups, artifact sizes, cache status, and timing metadata"
+      ],
+      "failure_meaning": "full-sample performance regressed structurally before wall-clock gating"
+    },
+    "CMBS-PERF-002": {
+      "tier": "operator-public-sample",
+      "assertions": [
+        "full sample and deterministic shuffle produce identical prepared surfaces",
+        "candidate, edge, solve, and review artifacts match after canonical sorting",
+        "apply output matches after sorting by source_row_id"
+      ],
+      "failure_meaning": "hidden row-order dependence entered the benchmark pipeline"
+    }
+  },
+  "normalization_reason_codes_required": [
+    "legal_suffix_removed",
+    "punctuation_folded",
+    "repeated_spaces_folded",
+    "all_caps_folded",
+    "store_number_stripped",
+    "leading_record_number_stripped"
+  ],
+  "candidate_recall_policy": {
+    "must_link_pairs": "candidate_or_compact_exact_bucket",
+    "candidate_evidence_must_name_operator": true,
+    "common_token_caps_must_not_drop_goldens": true
+  },
+  "hard_negative_policy": {
+    "auto_merge_allowed": false,
+    "required_reason_families": [
+      "numeric_anchor_conflict",
+      "address_like_token_conflict",
+      "different_brand_token",
+      "same_property_distinct_rank",
+      "profile_policy"
+    ]
+  },
+  "review_group_policy": {
+    "group_by": "ambiguity_pattern_and_surface_cluster",
+    "required_counts": ["row_count", "property_count", "deal_count"],
+    "allowed_decision_outputs": ["alias_patch", "distinct_patch", "relation_patch"]
+  },
+  "performance_contract": {
+    "candidate_pairs_per_surface_p95_max": 25,
+    "candidate_pairs_per_surface_p99_max": 100,
+    "exact_bucket_pair_expansion_count": 0,
+    "review_group_count_recorded": true,
+    "cache_state_recorded": true,
+    "artifact_bytes_recorded": true,
+    "timings_recorded": true,
+    "normal_ci_wall_clock_assertions": false,
+    "wall_clock_enforcement": "operator_release_only_after_telemetry_baseline"
+  },
+  "prohibited_runtime_dependencies": [
+    "network",
+    "frontier_model_call",
+    "runtime_model_download",
+    "python_ml_runtime",
+    "general_ml_framework"
+  ],
+  "non_goals": [
+    "do not commit the full public CSV by default",
+    "do not introduce frontier model calls",
+    "do not introduce network access",
+    "do not introduce Python or general ML framework runtime dependencies",
+    "do not silently collapse legal obligor, brand hierarchy, ownership, or investor identity into tenant-label identity"
   ]
 }

@@ -1,0 +1,99 @@
+{
+  "schema_version": "canon.entity.cmbs_sample_selector.v0",
+  "selector_id": "cmbs-tier0-small-golden",
+  "source_sha256": "34f9ce6be4e941ea04899299c99aa409ac6e833da3208495e4ab4322e57e0e00",
+  "raw_csv_committed": false,
+  "deterministic": true,
+  "source_required_when": "operator_full_sample_or_selector_regeneration",
+  "selected_benchmark_ids": [
+    "CMBS-SRC-001",
+    "CMBS-EXTRACT-001",
+    "CMBS-EXTRACT-002",
+    "CMBS-PREP-001",
+    "CMBS-NK-001",
+    "CMBS-CAND-001",
+    "CMBS-HARDNEG-001",
+    "CMBS-REVIEW-001",
+    "CMBS-BLOCK-001",
+    "CMBS-SOLVE-001",
+    "CMBS-REPLAY-001",
+    "CMBS-PERF-001",
+    "CMBS-PERF-002"
+  ],
+  "selection_rules": [
+    {
+      "id": "must_link_goldens",
+      "cluster_ids": [
+        "TNT-238-SAND-ISLAND-PROPERTY",
+        "TNT-2020-AUTO-BODY",
+        "TNT-24-HOUR-FITNESS",
+        "TNT-FOOT-LOCKER",
+        "TNT-TJ-MAXX",
+        "TNT-10X-GENOMICS",
+        "TNT-23ANDME",
+        "TNT-1-LIFE-HEALTHCARE",
+        "TNT-TAVERN-BOWL",
+        "TNT-PANGAEA-OUTPOST",
+        "TNT-TWO-TAILS",
+        "TNT-ETHOS-LENDING",
+        "TNT-MGA-ENTERTAINMENT"
+      ],
+      "min_variants_per_cluster": 2
+    },
+    {
+      "id": "hard_negative_pairs",
+      "min_pair_count": 13,
+      "required_reason_families": [
+        "numeric_anchor_conflict",
+        "address_like_token_conflict",
+        "different_brand_token",
+        "same_property_distinct_rank"
+      ]
+    },
+    {
+      "id": "review_ambiguity_patterns",
+      "required_patterns": [
+        "dba_typo",
+        "slash_relation",
+        "tenant_shell_brand",
+        "parenthetical_dba",
+        "relation_inversion"
+      ]
+    },
+    {
+      "id": "placeholder_and_exact_bucket",
+      "include_surfaces": ["0", "238 Sand Island Prop", "24 Hour Fitness"],
+      "exact_bucket_pair_expansion_count": 0
+    }
+  ],
+  "expected_coverage": {
+    "must_link_clusters_min": 13,
+    "hard_negative_pairs_min": 13,
+    "review_cases_min": 5,
+    "placeholder_surface": "0",
+    "tenant_rank_fields": [1, 2, 3]
+  },
+  "output_contract": {
+    "observation_shape": [
+      "source_row_id",
+      "source_file_sha256",
+      "csv_line_number",
+      "filing_id",
+      "form_submission_id",
+      "filing_date",
+      "company_name",
+      "asset_number",
+      "property_name",
+      "property_address",
+      "property_city",
+      "property_state",
+      "property_zip",
+      "tenant_rank",
+      "tenant_name_raw",
+      "tenant_square_feet",
+      "tenant_lease_expiration"
+    ],
+    "raw_fields_byte_preserved": true,
+    "source_row_id_semantics": "provenance_only_not_identity"
+  }
+}
