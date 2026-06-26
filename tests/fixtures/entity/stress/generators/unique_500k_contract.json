@@ -1,0 +1,33 @@
+{
+  "schema_version": "canon.entity.stress_generator.v0",
+  "id": "entity_500k_unique_stress",
+  "gate_id": "G12",
+  "seed": 424243,
+  "profile_id": "cmbs_tenant_label",
+  "surface_count": 500000,
+  "ci_sample_surface_count": 96,
+  "refusal_probe_surface_count": 4096,
+  "view_name": "tenant_core",
+  "common_token": "tenant",
+  "unique_token_prefix": "tenant-unique-",
+  "operator_id": "ngram_topk:unique_500k",
+  "common_posting_limit": 64,
+  "rare_token_max_posting_size": 8,
+  "topk": {
+    "k": 25,
+    "candidate_cap": 25
+  },
+  "virtual_candidate_stream": {
+    "emitted_candidates_per_surface": 25,
+    "suppressed_candidates_per_surface": 7
+  },
+  "expected": {
+    "candidate_pairs_per_surface_p95_max": 25,
+    "candidate_pairs_per_surface_p99_max": 25,
+    "exact_bucket_pair_expansion_count": 0,
+    "candidate_budget_refusal_code": "E_ENTITY_CANDIDATE_BUDGET",
+    "index_limit_refusal_code": "E_ENTITY_INDEX_LIMIT",
+    "io_budget_refusal_code": "E_ENTITY_IO_BUDGET",
+    "max_exact_bucket_size": 100
+  }
+}
