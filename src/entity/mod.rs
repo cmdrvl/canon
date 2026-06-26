@@ -4,6 +4,7 @@
 //! remains outside this module and stays exact registry lookup after
 //! ASCII-trim.
 
+pub mod apply;
 pub mod artifact_chain;
 pub mod block_artifact;
 pub mod budget;

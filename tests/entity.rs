@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+#[path = "entity/apply_streaming.rs"]
+mod apply_streaming;
 #[path = "entity/postings_layout.rs"]
 mod postings_layout;
 #[path = "entity/prepare_artifact.rs"]
