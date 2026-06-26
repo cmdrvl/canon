@@ -1,0 +1,108 @@
+{
+  "schema_version": "canon.entity.cmbs.profile_integration.v0",
+  "profile_id": "cmbs_tenant_label",
+  "profile_version": "0.1.0",
+  "entity_type": "tenant_label",
+  "identity_semantics": "canonical_display_label",
+  "canonical_type": "tenant_label",
+  "fixture_sources": {
+    "small_book": "tests/fixtures/entity/cmbs/small_book/observations.csv",
+    "small_book_summary": "tests/fixtures/entity/cmbs/small_book/expected_summary.json",
+    "hard_negatives": "tests/fixtures/entity/cmbs/hard_negatives/sears_family.json",
+    "aliases": "tests/fixtures/entity/patches/cmbs_tenant_label.aliases.json",
+    "distinct": "tests/fixtures/entity/patches/cmbs_tenant_label.distinct.json",
+    "relations": "tests/fixtures/entity/patches/cmbs_tenant_label.relations.json"
+  },
+  "cases": [
+    {
+      "id": "CMBS-I001",
+      "title": "Sears reviewed alias promotion/replay",
+      "expected_canonical_id": "TNT-SEARS",
+      "reviewed_display_label": "Sears",
+      "normalized_display_label": "sears",
+      "registry_snapshot_hash": "blake3:cmbs-registry-20260625",
+      "alias_patch_hash": "blake3:cmbs-alias-patch-001",
+      "review_decision_id": "review:cmbs:sears:001",
+      "exact_alias_material": [
+        {
+          "input": "Sears",
+          "rule_id": "CMBS_TENANT_REVIEWED_ALIAS",
+          "source": "review_decision"
+        },
+        {
+          "input": "SEARS LLC",
+          "rule_id": "CMBS_TENANT_REVIEWED_ALIAS",
+          "source": "review_decision"
+        },
+        {
+          "input": "Sears Roebuck & Co.",
+          "rule_id": "CMBS_TENANT_REVIEWED_ALIAS",
+          "source": "review_decision"
+        },
+        {
+          "input": "Sears #1234",
+          "rule_id": "CMBS_TENANT_REVIEWED_ALIAS",
+          "source": "review_decision"
+        }
+      ],
+      "expected_outcome": "promotable_exact_replay"
+    },
+    {
+      "id": "CMBS-I002",
+      "title": "Sears-family and protected-token non-collapse",
+      "expected_auto_merge": false,
+      "hard_negative_pairs": [
+        ["Sears", "Sears Auto Center"],
+        ["Sears", "Kmart"],
+        ["Sears", "Transform SR LLC"],
+        ["Sears", "Sears Holdings"],
+        ["238 Sand Island Property", "238 Sand Island Property Management LLC"],
+        ["137 VENTURES MANAGEMENT  LLC", "13 Rattles"],
+        ["Rialto Capital Advisors LLC", "Rialto Theater"]
+      ],
+      "protected_distinction_terms": [
+        "auto",
+        "center",
+        "kmart",
+        "transform",
+        "sr",
+        "holdings",
+        "management",
+        "capital"
+      ],
+      "expected_outcome": "relation_or_distinct_review_only"
+    },
+    {
+      "id": "CMBS-I003",
+      "title": "CMBS-shaped 500k-row structural gate contract",
+      "generator": "deterministic_seeded_operator_tier",
+      "generator_bead": "bd-1pz.7",
+      "seed": 424242,
+      "row_count": 500000,
+      "tenant_observation_count": 500000,
+      "expected_profile": "cmbs_tenant_label",
+      "gates": ["G05", "G08", "G11"],
+      "assertions": {
+        "exact_bucket_pair_expansion_count": 0,
+        "candidate_pairs_per_surface_p95_max": 25,
+        "candidate_pairs_per_surface_p99_max": 100,
+        "review_item_count_max": 2000,
+        "telemetry_required": true,
+        "giant_static_fixture_committed": false
+      },
+      "expected_outcome": "bounded_generated_stress_contract"
+    }
+  ],
+  "profile_firewall": {
+    "tenant_label_ids_are_not_legal_entity_ids": true,
+    "canonical_display_label_only": true,
+    "cross_profile_same_as_allowed": false,
+    "relation_hints_belong_to_ontology_layer": true
+  },
+  "non_goals": [
+    "do not claim legal same-firm identity",
+    "do not collapse Sears, Kmart, Transform SR LLC, Sears Auto Center, management, capital, or property-name variants without explicit review policy",
+    "do not commit generated 500k-row artifacts",
+    "do not use network, frontier model calls, Python ML runtime, or runtime model downloads"
+  ]
+}
