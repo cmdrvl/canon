@@ -1,0 +1,50 @@
+{
+  "fixture_id": "EN-S001",
+  "expected_state": "promotable_new",
+  "expected_reason": "new_id_delegated_to_promotion_policy",
+  "expected_surface_ids": ["surf:sears", "surf:sears_llc"],
+  "expected_incumbent_ids": [],
+  "expected_canonical_id": null,
+  "expected_candidate_id": "candidate:surf_sears",
+  "expected_support_score_units": 8750,
+  "expected_adjusted_support_score_units": 8750,
+  "expected_hard_cannot_link_count": 0,
+  "expected_soft_anti_merge_warning_count": 0,
+  "expected_review_group_count": 0,
+  "graph": {
+    "support_edge_count": 1,
+    "cannot_link_edge_count": 0,
+    "hard_cannot_link_edge_count": 0,
+    "soft_cannot_link_edge_count": 0,
+    "relation_hint_edge_count": 0,
+    "exact_bucket_hyperedge_count": 0
+  },
+  "reconciliation_summary": {
+    "component_count": 1,
+    "resolved_existing_count": 0,
+    "promotable_new_count": 1,
+    "escrow_count": 0,
+    "conflict_count": 0,
+    "contradiction_count": 0
+  },
+  "diagnostics_summary": {
+    "component_count": 1,
+    "review_group_count": 0,
+    "affected_rows": 15,
+    "affected_deals": 3,
+    "contradiction_count": 0,
+    "escrow_count": 0,
+    "conflict_count": 0
+  },
+  "exact_bucket": {
+    "bucket_id": "bucket:tenant_core:sears-range",
+    "range_start_surface_id": "surf:sears-range:0000",
+    "range_end_surface_id": "surf:sears-range:7999",
+    "member_count": 8000,
+    "membership_record_count": 1,
+    "theoretical_pair_count": 31996000,
+    "expanded_pair_count": 0,
+    "action": "merge_cluster",
+    "hard_cannot_link_count": 0
+  }
+}

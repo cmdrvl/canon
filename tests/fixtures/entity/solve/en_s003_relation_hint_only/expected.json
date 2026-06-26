@@ -1,0 +1,40 @@
+{
+  "fixture_id": "EN-S003",
+  "expected_state": null,
+  "expected_reason": null,
+  "expected_surface_ids": [],
+  "expected_incumbent_ids": [],
+  "expected_canonical_id": null,
+  "expected_candidate_id": null,
+  "expected_support_score_units": null,
+  "expected_adjusted_support_score_units": null,
+  "expected_hard_cannot_link_count": 0,
+  "expected_soft_anti_merge_warning_count": 0,
+  "expected_review_group_count": 0,
+  "graph": {
+    "support_edge_count": 0,
+    "cannot_link_edge_count": 0,
+    "hard_cannot_link_edge_count": 0,
+    "soft_cannot_link_edge_count": 0,
+    "relation_hint_edge_count": 1,
+    "exact_bucket_hyperedge_count": 0
+  },
+  "reconciliation_summary": {
+    "component_count": 0,
+    "resolved_existing_count": 0,
+    "promotable_new_count": 0,
+    "escrow_count": 0,
+    "conflict_count": 0,
+    "contradiction_count": 0
+  },
+  "diagnostics_summary": {
+    "component_count": 0,
+    "review_group_count": 0,
+    "affected_rows": 0,
+    "affected_deals": 0,
+    "contradiction_count": 0,
+    "escrow_count": 0,
+    "conflict_count": 0
+  },
+  "exact_bucket": null
+}

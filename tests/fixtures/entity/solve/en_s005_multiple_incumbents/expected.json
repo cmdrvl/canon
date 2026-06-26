@@ -1,0 +1,40 @@
+{
+  "fixture_id": "EN-S005",
+  "expected_state": "conflict",
+  "expected_reason": "multiple_incumbent_canonical_ids",
+  "expected_surface_ids": ["surf:kmart", "surf:sears"],
+  "expected_incumbent_ids": ["TNT-KMART", "TNT-SEARS"],
+  "expected_canonical_id": null,
+  "expected_candidate_id": null,
+  "expected_support_score_units": 9500,
+  "expected_adjusted_support_score_units": 1500,
+  "expected_hard_cannot_link_count": 0,
+  "expected_soft_anti_merge_warning_count": 1,
+  "expected_review_group_count": 1,
+  "graph": {
+    "support_edge_count": 1,
+    "cannot_link_edge_count": 1,
+    "hard_cannot_link_edge_count": 0,
+    "soft_cannot_link_edge_count": 1,
+    "relation_hint_edge_count": 0,
+    "exact_bucket_hyperedge_count": 0
+  },
+  "reconciliation_summary": {
+    "component_count": 1,
+    "resolved_existing_count": 0,
+    "promotable_new_count": 0,
+    "escrow_count": 0,
+    "conflict_count": 1,
+    "contradiction_count": 0
+  },
+  "diagnostics_summary": {
+    "component_count": 1,
+    "review_group_count": 1,
+    "affected_rows": 16,
+    "affected_deals": 3,
+    "contradiction_count": 0,
+    "escrow_count": 0,
+    "conflict_count": 1
+  },
+  "exact_bucket": null
+}
