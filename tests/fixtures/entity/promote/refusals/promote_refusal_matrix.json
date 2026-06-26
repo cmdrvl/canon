@@ -1,0 +1,48 @@
+{
+  "version": "canon_entity_promote_refusal_matrix.v0",
+  "cases": [
+    {
+      "id": "promote_stale_audit",
+      "refusal_code": "E_ENTITY_AUDIT_GATE",
+      "required_detail_fields": [
+        "stage",
+        "field",
+        "expected",
+        "actual",
+        "writes_performed"
+      ],
+      "writes_performed": false
+    },
+    {
+      "id": "promote_registry_snapshot_mismatch",
+      "refusal_code": "E_ENTITY_REGISTRY_SNAPSHOT",
+      "required_detail_fields": [
+        "stage",
+        "field",
+        "expected",
+        "actual",
+        "writes_performed"
+      ],
+      "writes_performed": false
+    },
+    {
+      "id": "promote_atomic_temp_collision",
+      "refusal_code": "E_ENTITY_ARTIFACT_CONTRACT",
+      "required_detail_fields": [
+        "stage",
+        "path",
+        "error",
+        "writes_performed"
+      ],
+      "writes_performed": false
+    },
+    {
+      "id": "promote_idempotent_replay",
+      "refusal_code": "NONE",
+      "required_detail_fields": [
+        "writes_performed"
+      ],
+      "writes_performed": false
+    }
+  ]
+}

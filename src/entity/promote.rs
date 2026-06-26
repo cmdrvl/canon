@@ -102,12 +102,29 @@ pub fn promote_registry_aliases(
 
     let (registry_json, registry_value) =
         parse_registry_json(&request.registry, &registry_original)?;
-    let next_version = validate_next_version(
-        &request.registry,
-        &registry_json.version,
-        &request.next_version,
-    )?;
     let aliases = validate_aliases(&request.registry, &alias_path, &request.aliases)?;
+    let requested_version = validate_requested_version(&request.next_version)?;
+    let existing_aliases = parse_alias_entries(&request.registry, &alias_path, &alias_original)?;
+    if registry_json.version == requested_version
+        && aliases_already_promoted(&existing_aliases, &aliases)
+    {
+        let lint = lint_current_registry(&request.registry, request.no_lint)?;
+        return Ok(EntityPromoteRegistryOutput {
+            version: CANON_ENTITY_PROMOTE_VERSION.to_string(),
+            audit_artifact_hash: request.audit.artifact_content_hash,
+            registry: EntityPromoteRegistrySummary {
+                id: registry_json.id,
+                version_before: registry_json.version.clone(),
+                version_after: registry_json.version,
+                entry_count_before: registry_json.entry_count,
+                entry_count_after: registry_json.entry_count,
+            },
+            aliases,
+            touched_files: vec![],
+            lint,
+        });
+    }
+    let next_version = validate_next_version(&registry_json.version, &requested_version)?;
     let existing_inputs = existing_registry_inputs(&request.registry)?;
     for alias in &aliases {
         if existing_inputs.contains(alias.input.as_str()) {
@@ -351,15 +368,14 @@ fn parse_registry_json(registry: &Path, bytes: &[u8]) -> Result<(RegistryJson, V
     Ok((parsed, value))
 }
 
-fn validate_next_version(registry: &Path, current: &str, next: &str) -> Result<String, Refusal> {
+fn validate_requested_version(next: &str) -> Result<String, Refusal> {
     let trimmed = ascii_trim(next);
-    if trimmed.is_empty() || trimmed == current {
+    if trimmed.is_empty() {
         return Err(promote_refusal(
             "Promotion requires an explicit new registry version",
             json!({
                 "stage": "promote",
                 "field": "next_version",
-                "current_version": current,
                 "next_version": next,
                 "writes_performed": false
             }),
@@ -377,7 +393,23 @@ fn validate_next_version(registry: &Path, current: &str, next: &str) -> Result<S
             }),
         ));
     }
-    let _ = registry;
+    Ok(trimmed.to_string())
+}
+
+fn validate_next_version(current: &str, next: &str) -> Result<String, Refusal> {
+    let trimmed = ascii_trim(next);
+    if trimmed.is_empty() || trimmed == current {
+        return Err(promote_refusal(
+            "Promotion requires an explicit new registry version",
+            json!({
+                "stage": "promote",
+                "field": "next_version",
+                "current_version": current,
+                "next_version": next,
+                "writes_performed": false
+            }),
+        ));
+    }
     Ok(trimmed.to_string())
 }
 
@@ -458,13 +490,7 @@ fn existing_registry_inputs(registry: &Path) -> Result<BTreeSet<String>, Refusal
     let mut inputs = BTreeSet::new();
     for path in registry_json_files(registry)? {
         let bytes = fs::read(&path).map_err(|error| io_refusal(&path, error))?;
-        let entries =
-            serde_json::from_slice::<Vec<RegistryMappingEntry>>(&bytes).map_err(|error| {
-                Refusal::bad_registry(
-                    &registry.display().to_string(),
-                    &format!("Failed to parse mapping file '{}': {error}", path.display()),
-                )
-            })?;
+        let entries = parse_alias_entries(registry, &path, &bytes)?;
         for entry in entries {
             inputs.insert(entry.input);
         }
@@ -493,9 +519,47 @@ fn registry_json_files(registry: &Path) -> Result<Vec<PathBuf>, Refusal> {
     Ok(files)
 }
 
-#[derive(Debug, Deserialize)]
-struct RegistryMappingEntry {
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+struct RegistryAliasEntry {
     input: String,
+    canonical_id: String,
+    canonical_type: String,
+    rule_id: String,
+}
+
+fn parse_alias_entries(
+    registry: &Path,
+    path: &Path,
+    bytes: &[u8],
+) -> Result<Vec<RegistryAliasEntry>, Refusal> {
+    serde_json::from_slice::<Vec<RegistryAliasEntry>>(bytes).map_err(|error| {
+        Refusal::bad_registry(
+            &registry.display().to_string(),
+            &format!("Failed to parse mapping file '{}': {error}", path.display()),
+        )
+    })
+}
+
+fn aliases_already_promoted(
+    existing_aliases: &[RegistryAliasEntry],
+    aliases: &[EntityPromotedAlias],
+) -> bool {
+    let existing = existing_aliases.iter().cloned().collect::<BTreeSet<_>>();
+    aliases
+        .iter()
+        .map(RegistryAliasEntry::from)
+        .all(|alias| existing.contains(&alias))
+}
+
+impl From<&EntityPromotedAlias> for RegistryAliasEntry {
+    fn from(alias: &EntityPromotedAlias) -> Self {
+        Self {
+            input: alias.input.clone(),
+            canonical_id: alias.canonical_id.clone(),
+            canonical_type: alias.canonical_type.clone(),
+            rule_id: alias.rule_id.clone(),
+        }
+    }
 }
 
 fn build_registry_bytes(
@@ -562,6 +626,31 @@ fn lint_summary(output: &RegistryLintOutput) -> EntityPromoteLintSummary {
         errors: output.summary.errors,
         warnings: output.summary.warnings,
         info: output.summary.info,
+    }
+}
+
+fn lint_current_registry(
+    registry: &Path,
+    no_lint: bool,
+) -> Result<EntityPromoteLintSummary, Refusal> {
+    if no_lint {
+        return Ok(EntityPromoteLintSummary {
+            enabled: false,
+            errors: 0,
+            warnings: 0,
+            info: 0,
+        });
+    }
+    match registry_lint::lint(registry, RegistryLintProfile::Standard) {
+        Ok(output) if output.summary.errors == 0 => Ok(lint_summary(&output)),
+        Ok(output) => Err(Refusal::bad_registry(
+            &registry.display().to_string(),
+            &format!(
+                "Registry lint failed during idempotent promotion replay: {}",
+                output.render_summary()
+            ),
+        )),
+        Err(refusal) => Err(refusal),
     }
 }
 
