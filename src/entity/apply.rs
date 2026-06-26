@@ -51,6 +51,14 @@ pub struct ApplyCanonicalResolution {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ApplySafetyCheck {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_profile_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual_profile_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_identity_semantics: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual_identity_semantics: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_registry_snapshot_hash: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actual_registry_snapshot_hash: Option<String>,
@@ -200,6 +208,31 @@ fn inspect_apply_input(
 
 fn validate_apply_safety(request: &ApplyStreamRequest<'_>) -> Result<(), Refusal> {
     let safety = &request.safety;
+    if let (Some(expected), Some(actual)) = (
+        safety.expected_profile_id.as_deref(),
+        safety.actual_profile_id.as_deref(),
+    ) && expected != actual
+    {
+        return Err(apply_profile_refusal(
+            request,
+            "profile_id",
+            Some(expected),
+            Some(actual),
+        ));
+    }
+    if let (Some(expected), Some(actual)) = (
+        safety.expected_identity_semantics.as_deref(),
+        safety.actual_identity_semantics.as_deref(),
+    ) && expected != actual
+    {
+        return Err(apply_profile_refusal(
+            request,
+            "identity_semantics",
+            Some(expected),
+            Some(actual),
+        ));
+    }
+
     if let (Some(expected), Some(actual)) = (
         safety.expected_registry_snapshot_hash.as_deref(),
         safety.actual_registry_snapshot_hash.as_deref(),
@@ -1053,6 +1086,28 @@ fn apply_sidecar_refusal(
             "writes_performed": false
         }),
         Some("Use the sidecar artifact produced by the matching promotion run".to_string()),
+    )
+}
+
+fn apply_profile_refusal(
+    request: &ApplyStreamRequest<'_>,
+    field: &'static str,
+    expected: Option<&str>,
+    actual: Option<&str>,
+) -> Refusal {
+    EntityRefusalKind::ArtifactContract.to_refusal(
+        "Apply profile metadata crossed the entity profile firewall",
+        json!({
+            "stage": "apply",
+            "field": field,
+            "expected": expected,
+            "actual": actual,
+            "registry_id": request.registry.id.as_str(),
+            "registry_version": request.registry.version.as_str(),
+            "output_path": request.output.display().to_string(),
+            "writes_performed": false
+        }),
+        Some("Use artifacts and sidecars produced by the same entity profile".to_string()),
     )
 }
 
