@@ -1,0 +1,120 @@
+{
+  "schema_version": "canon.entity.perf_ci_tiers.v0",
+  "doc": "docs/ENTITY_EVALS_AND_PERFORMANCE.md",
+  "normal_ci": [
+    {
+      "id": "entity_perf_ci_small_exact_bucket_compactness",
+      "tier": "small-ci",
+      "command": "cargo test --test entity_exact_bucket_contract -- --nocapture",
+      "gate_ids": ["G05"],
+      "assertions": [
+        "exact_bucket_pair_expansion_count == 0",
+        "compact hyperedge emitted instead of pair expansion"
+      ]
+    },
+    {
+      "id": "entity_perf_ci_small_cache_invalidation",
+      "tier": "small-ci",
+      "command": "cargo test --test entity_cache_reload -- --nocapture",
+      "gate_ids": ["G10"],
+      "assertions": [
+        "unchanged hashes report cache hit",
+        "changed profile/strategy/registry hashes report stale cache"
+      ]
+    },
+    {
+      "id": "entity_perf_ci_small_topk_ordering",
+      "tier": "small-ci",
+      "command": "cargo test --test entity_blocking_golden -- --nocapture",
+      "gate_ids": ["G05", "G11"],
+      "assertions": [
+        "top-k candidates are deterministic",
+        "candidate pairs per surface p95/p99 are present"
+      ]
+    },
+    {
+      "id": "entity_perf_ci_small_budget_refusal",
+      "tier": "small-ci",
+      "command": "cargo test --test entity_edge_budget -- --nocapture",
+      "gate_ids": ["G12"],
+      "assertions": [
+        "candidate cap refusal is deterministic",
+        "refusal includes budget outcome and next_command"
+      ]
+    }
+  ],
+  "ignored_stress": [
+    {
+      "id": "cmbs_500k_stress",
+      "tier": "stress",
+      "command": "cargo test --test entity_perf_stress -- --ignored cmbs_500k_stress --nocapture",
+      "seed": 424242,
+      "telemetry_out": "target/entity-evals/stress-cmbs-500k/telemetry.json",
+      "assertions": [
+        "candidate_pairs_per_surface_p95 <= configured budget",
+        "exact_bucket_pair_expansion_count == 0",
+        "review_group_count recorded"
+      ]
+    },
+    {
+      "id": "entity_500k_unique_stress",
+      "tier": "stress",
+      "command": "cargo test --test entity_perf_stress -- --ignored entity_500k_unique_stress --nocapture",
+      "seed": 424243,
+      "telemetry_out": "target/entity-evals/stress-unique-500k/telemetry.json",
+      "assertions": [
+        "bounded completion or deterministic refusal",
+        "suppressed_candidate_count recorded",
+        "peak_memory_bytes recorded"
+      ]
+    }
+  ],
+  "operator_benchmarks": [
+    {
+      "id": "operator_cmbs_500k_warm",
+      "tier": "stress",
+      "command": "canon entity eval --suite tests/fixtures/entity/evals/entity_eval_performance_targets.json --profile cmbs_tenant_label --workload cmbs-500k --cache-state warm --telemetry-out target/entity-evals/cmbs-500k-warm/telemetry.json",
+      "telemetry_out": "target/entity-evals/cmbs-500k-warm/telemetry.json",
+      "requires_recorded_artifact": true
+    },
+    {
+      "id": "operator_cmbs_500k_cold",
+      "tier": "stress",
+      "command": "canon entity eval --suite tests/fixtures/entity/evals/entity_eval_performance_targets.json --profile cmbs_tenant_label --workload cmbs-500k --cache-state cold --telemetry-out target/entity-evals/cmbs-500k-cold/telemetry.json",
+      "telemetry_out": "target/entity-evals/cmbs-500k-cold/telemetry.json",
+      "requires_recorded_artifact": true
+    },
+    {
+      "id": "operator_unique_500k",
+      "tier": "stress",
+      "command": "canon entity eval --suite tests/fixtures/entity/evals/entity_eval_performance_targets.json --profile cmbs_tenant_label --workload unique-500k --cache-state cold --telemetry-out target/entity-evals/unique-500k/telemetry.json",
+      "telemetry_out": "target/entity-evals/unique-500k/telemetry.json",
+      "requires_recorded_artifact": true
+    }
+  ],
+  "release_claims": {
+    "g11_requires_artifacts": [
+      "operator_cmbs_500k_warm",
+      "operator_cmbs_500k_cold"
+    ],
+    "g12_requires_artifacts": [
+      "operator_unique_500k"
+    ],
+    "waiver_required_fields": [
+      "gate_id",
+      "reason",
+      "operator",
+      "expires_at",
+      "telemetry_run_id",
+      "next_command"
+    ]
+  },
+  "prohibited_runtime_dependencies": [
+    "network",
+    "frontier_model_call",
+    "runtime_model_download",
+    "python_ml_runtime",
+    "general_ml_framework",
+    "dense_embedding_service"
+  ]
+}
