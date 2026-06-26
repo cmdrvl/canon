@@ -1,16 +1,64 @@
 {
   "description": "Compact public sec10d Reg AB baseline fixture slice for normal CI; the full baseline zip remains an operator-tier benchmark input.",
+  "benchmark_ids": [
+    "REGAB-OBS-002",
+    "REGAB-LOOKUP-001",
+    "REGAB-APPLY-001",
+    "REGAB-ENRICH-001",
+    "REGAB-HIER-001",
+    "REGAB-HIER-002",
+    "REGAB-ALIAS-001",
+    "REGAB-REVIEW-001",
+    "REGAB-FIREWALL-001"
+  ],
   "enriched_sample_record_counts": {
     "regab_attestations": 5,
     "regab_platform_rosters": 1,
     "regab_servicer_schedules": 3
   },
+  "expected_files": [
+    "README.md",
+    "fixture_slice.json",
+    "org_mentions_selected.csv",
+    "org_mentions_selected.canon.csv",
+    "org_lookup_expected.map.json",
+    "org_review_queue.csv",
+    "org_resolution_summary.json",
+    "org_mentions_summary.json",
+    "registry_snapshot/firms/registry.json",
+    "registry_snapshot/firms/regab-org-seed-20260623.json",
+    "registry_snapshot/firms/name-to-firm.json",
+    "registry_snapshot/firms/canon-ids.json",
+    "registry_snapshot/firms/domain-to-firm.json",
+    "registry_snapshot/firms/crm-id-to-canon.json",
+    "registry_snapshot/firms/aliases.json",
+    "enriched_samples/regab_attestations.selected.jsonl",
+    "enriched_samples/regab_platform_rosters.selected.jsonl",
+    "enriched_samples/regab_servicer_schedules.selected.jsonl"
+  ],
   "registry_snapshot_includes_sqlite_index": false,
+  "registry": {
+    "id": "firms",
+    "version": "1.0.12",
+    "updated": "2026-06-23",
+    "entry_count": 110
+  },
   "schema_version": "canon.entity.fixture_slice.v0",
+  "selected_row_count": 46,
   "selected_surface_rows": 46,
+  "unique_canonical_id_count": 31,
+  "unique_surface_count": 46,
   "selected_unique_canonical_ids": 31,
   "selected_unique_surfaces": 46,
   "selection_policy": "first canonized mention per observed firm surface, sorted by org_name, plus targeted enriched records for anti-collapse and append-only field contracts",
   "source_artifact_root": "org_canon_baseline/",
-  "source_zip_sha256": "5766b83bb2e1bad3736b1d78fa7ea1433d929d1f3d936762fdfbdba7cc9bdf3b"
+  "source_zip_sha256": "5766b83bb2e1bad3736b1d78fa7ea1433d929d1f3d936762fdfbdba7cc9bdf3b",
+  "behavioral_assertions": [
+    "covers every observed raw firm surface exactly once",
+    "covers every observed canonical id at least once",
+    "exact lookup fixture includes canonical id and rule id for every surface",
+    "canon CSV appends only org_canon_id",
+    "enriched JSONL samples append only approved *_org_* fields",
+    "PNC/Midland and Wells Fargo bank/division guard rows remain distinct where required"
+  ]
 }

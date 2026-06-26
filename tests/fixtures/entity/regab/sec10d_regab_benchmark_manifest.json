@@ -319,6 +319,124 @@
     "REGAB-PERF-001",
     "REGAB-FIREWALL-001"
   ],
+  "benchmark_assertions": {
+    "REGAB-SRC-001": {
+      "tier": "operator-full-baseline",
+      "assertions": [
+        "zip sha256 equals source.zip_sha256",
+        "inner artifact paths and hashes match source.files",
+        "artifact root is org_canon_baseline/"
+      ],
+      "failure_meaning": "the benchmark is not running against the expected public baseline"
+    },
+    "REGAB-OBS-001": {
+      "tier": "operator-full-baseline",
+      "assertions": [
+        "org_mentions.csv row and column counts equal expected_counts and input_contract",
+        "source_row_id values are unique",
+        "alias_surfaces_json and mention_surfaces_json parse as JSON arrays"
+      ],
+      "failure_meaning": "the sec10d mention input contract changed or provenance was lost"
+    },
+    "REGAB-OBS-002": {
+      "tier": "normal-ci-public-slice",
+      "assertions": [
+        "selected CSV has 46 rows and 46 unique org_name surfaces",
+        "selected canon CSV covers all 31 canonical ids",
+        "registry snapshot and enriched sample files listed in committed_fixture_slice are present"
+      ],
+      "failure_meaning": "the committed public fixture slice stopped representing the full baseline"
+    },
+    "REGAB-LOOKUP-001": {
+      "tier": "normal-ci-public-slice",
+      "assertions": [
+        "org_lookup_expected.map.json resolves all 46 surfaces with zero unresolved",
+        "each surface maps to the manifest canonical_id and rule_id",
+        "rule_counts match the reviewed alias lane counts"
+      ],
+      "failure_meaning": "exact replay or reviewed alias metadata drifted"
+    },
+    "REGAB-APPLY-001": {
+      "tier": "normal-ci-public-slice",
+      "assertions": [
+        "canon CSV row count equals input row count",
+        "input columns are byte-preserved and remain in order",
+        "output appends exactly org_canon_id with no blanks"
+      ],
+      "failure_meaning": "exact apply mutated parser evidence or changed downstream CSV shape"
+    },
+    "REGAB-ENRICH-001": {
+      "tier": "normal-ci-public-slice",
+      "assertions": [
+        "enriched JSONL samples contain raw parser fields",
+        "only approved *_org_* canonical suffixes are appended",
+        "registry id, registry version, and rule id are present for every canonical firm field"
+      ],
+      "failure_meaning": "Snowflake-facing enriched JSONL fields drifted"
+    },
+    "REGAB-HIER-001": {
+      "tier": "normal-ci-public-slice",
+      "assertions": [
+        "PNC Bank, National Association remains ORG-034",
+        "Midland division surfaces remain ORG-035",
+        "PNC and Midland ids are distinct unless represented as relation context"
+      ],
+      "failure_meaning": "bank parent or affiliate text collapsed into same-firm identity"
+    },
+    "REGAB-HIER-002": {
+      "tier": "normal-ci-public-slice",
+      "assertions": [
+        "Wells Fargo bank surfaces remain ORG-012",
+        "Wells Fargo Commercial Mortgage Servicing division remains ORG-053",
+        "division wording does not auto-merge with the parent bank"
+      ],
+      "failure_meaning": "parent/division semantics leaked into same-firm resolution"
+    },
+    "REGAB-ALIAS-001": {
+      "tier": "normal-ci-public-slice",
+      "assertions": [
+        "punctuation, case, compliance-prefix, predecessor, division, and subsidiaries lanes have explicit rule counts",
+        "reviewed predecessor and subsidiaries mappings are allowed only through their named rules",
+        "generic fuzzy behavior cannot replace reviewed rule lanes"
+      ],
+      "failure_meaning": "reviewed alias policy changed without a manifest decision"
+    },
+    "REGAB-REVIEW-001": {
+      "tier": "normal-ci-public-slice",
+      "assertions": [
+        "org_review_queue.csv is header-only for the resolved baseline",
+        "future unresolved surfaces must group review items instead of auto-collapsing hierarchy wording"
+      ],
+      "failure_meaning": "review semantics became noisy or unsafe"
+    },
+    "REGAB-PREP-001": {
+      "tier": "operator-full-baseline",
+      "assertions": [
+        "127991 mention rows dedupe to 46 prepared unique surfaces",
+        "surface preparation is row-order deterministic",
+        "raw row ids remain provenance and do not drive candidate generation"
+      ],
+      "failure_meaning": "prepare became row-level or row-order-sensitive"
+    },
+    "REGAB-PERF-001": {
+      "tier": "operator-full-baseline",
+      "assertions": [
+        "no all-pairs generation over 127991 mention rows",
+        "exact-resolved surfaces skip unnecessary fuzzy work",
+        "telemetry records row, unique surface, resolved surface, artifact, cache, and timing dimensions"
+      ],
+      "failure_meaning": "the entity migration is structurally weaker than exact replay"
+    },
+    "REGAB-FIREWALL-001": {
+      "tier": "normal-ci-public-slice",
+      "assertions": [
+        "profile is regab_firm_identity and identity_semantics is same_firm_or_reviewed_alias",
+        "tenant-label display merges cannot be applied to firm identity artifacts",
+        "hierarchy output remains relation context, not same-as inside canon"
+      ],
+      "failure_meaning": "profile semantics are mixing across entity domains"
+    }
+  },
   "non_goals": [
     "do not commit the full baseline zip by default",
     "do not introduce frontier model calls",

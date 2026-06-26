@@ -29,3 +29,14 @@ Included:
 The full zip remains useful for operator-tier benchmarks. Normal CI should use
 this slice to prove input-shape compatibility, exact mapping parity, parser
 field preservation, append-only output fields, and hierarchy anti-collapse.
+
+Guard rows:
+
+- `REGAB-OBS-002`: selected rows cover all 46 observed firm surfaces and all 31
+  canonical ids from the full baseline.
+- `REGAB-HIER-001`: `PNC Bank, National Association` remains `ORG-034`, while
+  `Midland Loan Services, a division of PNC Bank, National Association` remains
+  `ORG-035`; affiliation text is not same-firm evidence.
+- `REGAB-HIER-002`: `Wells Fargo Bank, National Association` remains `ORG-012`,
+  while `Wells Fargo Commercial Mortgage Servicing, a division of Wells Fargo
+  Bank, National Association` remains `ORG-053`.
