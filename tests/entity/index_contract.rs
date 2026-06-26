@@ -1,7 +1,5 @@
 use canon::{
-    RefusalCode,
     entity::{
-        CANON_ENTITY_INDEX_VERSION, CANON_ENTITY_PREPARE_VERSION,
         artifact_chain::EntityCacheDecision,
         cache::EntityCacheLayer,
         contracts::{
@@ -10,12 +8,14 @@ use canon::{
             EntityProfileReference, EntityRegistrySnapshot, EntityStrategyReference,
         },
         index::{
-            EntityIndexArtifactRequest, EntityIndexCachePolicy, EntityIndexCacheStatus,
             build_index_artifact_contract, index_cache_key_from_prepare_header,
             index_summary_counts, required_index_hash_fields, validate_index_cache_policy,
+            EntityIndexArtifactRequest, EntityIndexCachePolicy, EntityIndexCacheStatus,
         },
         schema::validate_artifact_core_contract,
+        CANON_ENTITY_INDEX_VERSION, CANON_ENTITY_PREPARE_VERSION,
     },
+    RefusalCode,
 };
 use serde_json::Value;
 
@@ -78,11 +78,9 @@ fn entity_cache_key_includes_i21_and_prepare_hash() {
     assert_eq!(key.patch_hash.as_deref(), Some("blake3:patch"));
     assert_eq!(key.namekit_version, "namekit.v0");
     assert_eq!(key.namekit_hash.as_deref(), Some("blake3:namekit"));
-    assert!(
-        required_index_hash_fields()
-            .iter()
-            .all(|field| key.required_hash_fields().contains(field))
-    );
+    assert!(required_index_hash_fields()
+        .iter()
+        .all(|field| key.required_hash_fields().contains(field)));
 }
 
 #[test]
@@ -98,22 +96,20 @@ fn cache_mismatch_refuses_or_rebuilds_by_policy() {
     cached.registry_snapshot_hash = "blake3:old-registry".to_string();
     cached.upstream_artifact_hash = Some("blake3:old-prepare".to_string());
 
-    let rebuild = validate_index_cache_policy(&cached, &current, EntityIndexCachePolicy::RebuildOnMiss)
-        .expect("rebuild allowed");
+    let rebuild =
+        validate_index_cache_policy(&cached, &current, EntityIndexCachePolicy::RebuildOnMiss)
+            .expect("rebuild allowed");
     assert_eq!(rebuild.decision, EntityCacheDecision::Miss);
-    assert!(
-        rebuild
-            .changed_fields
-            .contains(&canon::entity::artifact_chain::EntityHashField::RegistrySnapshotHash)
-    );
-    assert!(
-        rebuild
-            .changed_fields
-            .contains(&canon::entity::artifact_chain::EntityHashField::UpstreamArtifactHash)
-    );
+    assert!(rebuild
+        .changed_fields
+        .contains(&canon::entity::artifact_chain::EntityHashField::RegistrySnapshotHash));
+    assert!(rebuild
+        .changed_fields
+        .contains(&canon::entity::artifact_chain::EntityHashField::UpstreamArtifactHash));
 
-    let refusal = validate_index_cache_policy(&cached, &current, EntityIndexCachePolicy::RefuseOnMiss)
-        .expect_err("strict cache mismatch refuses");
+    let refusal =
+        validate_index_cache_policy(&cached, &current, EntityIndexCachePolicy::RefuseOnMiss)
+            .expect_err("strict cache mismatch refuses");
     assert_eq!(refusal.code, RefusalCode::EEntityCacheMismatch);
     assert_eq!(refusal.detail["stage"], "index");
     assert_eq!(refusal.detail["decision"], "miss");
