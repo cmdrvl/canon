@@ -1,0 +1,11 @@
+# Build-speed optimization for the multi-agent swarm.
+# The 62 integration test binaries relink on every quality gate; serialized on
+# the shared target lock this dominates wall-clock. Stripping debug info from
+# dependencies and reducing project debug to line-tables-only cuts link time
+# ~2-3x with no change to test correctness. The release profile is unaffected,
+# so shipped binaries are identical.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false

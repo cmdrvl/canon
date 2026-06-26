@@ -1,0 +1,163 @@
+{
+  "fixture_id": "EN-I002",
+  "schema_version": "canon_entity_index_golden.v0",
+  "profile": "cmbs_tenant_label",
+  "common_posting_limit": 2,
+  "ngram_width": 3,
+  "hashes": {
+    "input": "blake3:input-en-i002",
+    "profile": "blake3:profile-en-i002",
+    "strategy": "blake3:index-strategy-en-i002",
+    "registry_snapshot": "blake3:registry-en-i002",
+    "patch": "blake3:patch-en-i002",
+    "namekit_version": "namekit.v0",
+    "namekit": "blake3:namekit-en-i002",
+    "prepare": "blake3:prepare-en-i002"
+  },
+  "surfaces": [
+    {
+      "surface_id": "surf:index:004",
+      "exact_views": {"portfolio_context": "mall_anchor", "tenant_core": "kmart"},
+      "tokens": ["kmart", "retail"],
+      "ngram_key": "kmart retail"
+    },
+    {
+      "surface_id": "surf:index:001",
+      "exact_views": {"portfolio_context": "mall_anchor", "tenant_core": "sears"},
+      "tokens": ["sears", "roebuck", "retail"],
+      "ngram_key": "sears roebuck retail"
+    },
+    {
+      "surface_id": "surf:index:006",
+      "exact_views": {"portfolio_context": "servicer", "tenant_core": "midland_loan_services"},
+      "tokens": ["midland", "loan", "services"],
+      "ngram_key": "midland loan services"
+    },
+    {
+      "surface_id": "surf:index:003",
+      "exact_views": {"portfolio_context": "mall_anchor", "tenant_core": "transform_sr"},
+      "tokens": ["transform", "sr", "retail"],
+      "ngram_key": "transform sr retail"
+    },
+    {
+      "surface_id": "surf:index:005",
+      "exact_views": {"portfolio_context": "mall_anchor", "tenant_core": "sears_auto_center"},
+      "tokens": ["sears", "auto", "center", "retail"],
+      "ngram_key": "sears auto center retail"
+    },
+    {
+      "surface_id": "surf:index:002",
+      "exact_views": {"portfolio_context": "mall_anchor", "tenant_core": "sears_holdings"},
+      "tokens": ["sears", "holdings", "retail"],
+      "ngram_key": "sears holdings retail"
+    }
+  ],
+  "expected": {
+    "surface_ids": [
+      "surf:index:001",
+      "surf:index:002",
+      "surf:index:003",
+      "surf:index:004",
+      "surf:index:005",
+      "surf:index:006"
+    ],
+    "token_term_ids": {
+      "auto": 0,
+      "center": 1,
+      "holdings": 2,
+      "kmart": 3,
+      "loan": 4,
+      "midland": 5,
+      "retail": 6,
+      "roebuck": 7,
+      "sears": 8,
+      "services": 9,
+      "sr": 10,
+      "transform": 11
+    },
+    "token_document_frequency": {
+      "auto": 1,
+      "center": 1,
+      "holdings": 1,
+      "kmart": 1,
+      "loan": 1,
+      "midland": 1,
+      "retail": 5,
+      "roebuck": 1,
+      "sears": 3,
+      "services": 1,
+      "sr": 1,
+      "transform": 1
+    },
+    "token_idf_descending": [
+      "auto",
+      "center",
+      "holdings",
+      "kmart",
+      "loan",
+      "midland",
+      "roebuck",
+      "services",
+      "sr",
+      "transform",
+      "sears",
+      "retail"
+    ],
+    "token_postings": {
+      "midland": [5],
+      "retail": [0, 1, 2, 3, 4],
+      "sears": [0, 1, 4],
+      "transform": [2]
+    },
+    "token_offsets": [0, 1, 2, 3, 4, 5, 6, 11, 12, 15, 16, 17, 18],
+    "exact_view_postings": {
+      "portfolio_context:mall_anchor": [0, 1, 2, 3, 4],
+      "portfolio_context:servicer": [5],
+      "tenant_core:midland_loan_services": [5],
+      "tenant_core:sears_auto_center": [4]
+    },
+    "exact_offsets": [0, 5, 6, 7, 8, 9, 10, 11, 12],
+    "ngram_term_ids": {},
+    "ngram_postings": {
+      "mid": [5],
+      "ret": [0, 1, 2, 3, 4],
+      "sea": [0, 1, 4],
+      "tra": [2]
+    },
+    "ngram_offsets": null,
+    "common_exact_view_diagnostics": [
+      {"key": "portfolio_context:mall_anchor", "posting_count": 5, "configured_limit": 2}
+    ],
+    "common_token_diagnostics": [
+      {"key": "retail", "posting_count": 5, "configured_limit": 2},
+      {"key": "sears", "posting_count": 3, "configured_limit": 2}
+    ],
+    "common_ngram_diagnostics": [
+      {"key": "ret", "posting_count": 5, "configured_limit": 2},
+      {"key": "sea", "posting_count": 3, "configured_limit": 2}
+    ],
+    "counts": {
+      "surface_count": 6,
+      "exact_view_count": 8,
+      "token_count": 12,
+      "ngram_count": 69,
+      "large_exact_view_bucket_count": 1,
+      "common_token_count": 2,
+      "common_ngram_count": 7,
+      "largest_exact_view_bucket_size": 5,
+      "largest_token_posting_size": 5,
+      "largest_ngram_posting_size": 5
+    },
+    "artifact": {
+      "prepare_hash": "blake3:prepare-en-i002",
+      "strategy_hash": "blake3:index-strategy-en-i002",
+      "profile_hash": "blake3:profile-en-i002",
+      "registry_snapshot_hash": "blake3:registry-en-i002",
+      "input_hash": "blake3:input-en-i002",
+      "patch_hash": "blake3:patch-en-i002",
+      "namekit_version": "namekit.v0",
+      "namekit_hash": "blake3:namekit-en-i002",
+      "cache_status": "rebuilt"
+    }
+  }
+}

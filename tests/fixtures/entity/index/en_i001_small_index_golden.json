@@ -1,0 +1,97 @@
+{
+  "fixture_id": "EN-I001",
+  "schema_version": "canon_entity_index_golden.v0",
+  "profile": "cmbs_tenant_label",
+  "common_posting_limit": 1,
+  "ngram_width": 3,
+  "hashes": {
+    "input": "blake3:input-en-i001",
+    "profile": "blake3:profile-en-i001",
+    "strategy": "blake3:index-strategy-en-i001",
+    "registry_snapshot": "blake3:registry-en-i001",
+    "patch": "blake3:patch-en-i001",
+    "namekit_version": "namekit.v0",
+    "namekit": "blake3:namekit-en-i001",
+    "prepare": "blake3:prepare-en-i001"
+  },
+  "surfaces": [
+    {
+      "surface_id": "surf:index:003",
+      "exact_views": {"tenant_core": "sears"},
+      "tokens": ["sears", "auto"],
+      "ngram_key": "sears auto"
+    },
+    {
+      "surface_id": "surf:index:001",
+      "exact_views": {"tenant_core": "sears"},
+      "tokens": ["sears", "roebuck"],
+      "ngram_key": "sears roebuck"
+    },
+    {
+      "surface_id": "surf:index:002",
+      "exact_views": {"tenant_core": "kmart"},
+      "tokens": ["kmart"],
+      "ngram_key": "kmart"
+    }
+  ],
+  "expected": {
+    "surface_ids": ["surf:index:001", "surf:index:002", "surf:index:003"],
+    "token_term_ids": {"auto": 0, "kmart": 1, "roebuck": 2, "sears": 3},
+    "token_document_frequency": {"auto": 1, "kmart": 1, "roebuck": 1, "sears": 2},
+    "token_idf_descending": ["auto", "kmart", "roebuck", "sears"],
+    "token_postings": {
+      "auto": [2],
+      "kmart": [1],
+      "roebuck": [0],
+      "sears": [0, 2]
+    },
+    "token_offsets": [0, 1, 2, 3, 5],
+    "exact_view_postings": {
+      "tenant_core:kmart": [1],
+      "tenant_core:sears": [0, 2]
+    },
+    "exact_offsets": [0, 1, 3],
+    "ngram_term_ids": {"ars": 0, "aut": 2, "kma": 6, "sea": 13},
+    "ngram_postings": {
+      "ars": [0, 2],
+      "aut": [2],
+      "kma": [1],
+      "sea": [0, 2]
+    },
+    "ngram_offsets": [0, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 20],
+    "common_exact_view_diagnostics": [
+      {"key": "tenant_core:sears", "posting_count": 2, "configured_limit": 1}
+    ],
+    "common_token_diagnostics": [
+      {"key": "sears", "posting_count": 2, "configured_limit": 1}
+    ],
+    "common_ngram_diagnostics": [
+      {"key": "ars", "posting_count": 2, "configured_limit": 1},
+      {"key": "ear", "posting_count": 2, "configured_limit": 1},
+      {"key": "sea", "posting_count": 2, "configured_limit": 1}
+    ],
+    "counts": {
+      "surface_count": 3,
+      "exact_view_count": 2,
+      "token_count": 4,
+      "ngram_count": 17,
+      "large_exact_view_bucket_count": 1,
+      "common_token_count": 1,
+      "common_ngram_count": 3,
+      "largest_exact_view_bucket_size": 2,
+      "largest_token_posting_size": 2,
+      "largest_ngram_posting_size": 2
+    },
+    "artifact": {
+      "prepare_hash": "blake3:prepare-en-i001",
+      "strategy_hash": "blake3:index-strategy-en-i001",
+      "profile_hash": "blake3:profile-en-i001",
+      "registry_snapshot_hash": "blake3:registry-en-i001",
+      "input_hash": "blake3:input-en-i001",
+      "patch_hash": "blake3:patch-en-i001",
+      "namekit_version": "namekit.v0",
+      "namekit_hash": "blake3:namekit-en-i001",
+      "cache_status": "rebuilt"
+    }
+  }
+}

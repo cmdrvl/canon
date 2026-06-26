@@ -1,0 +1,222 @@
+{
+  "fixture_id": "medium_bank_common_token",
+  "schema_version": "entity_index_fixture.v0",
+  "profile": "cmbs_tenant_label",
+  "common_posting_limit": 2,
+  "ngram_width": 1,
+  "hashes": {
+    "input": "blake3:index-fixture-medium-input",
+    "profile": "blake3:index-fixture-medium-profile",
+    "strategy": "blake3:index-fixture-medium-strategy",
+    "registry_snapshot": "blake3:index-fixture-medium-registry",
+    "patch": "blake3:index-fixture-medium-patch",
+    "namekit_version": "canon_namekit.v0",
+    "namekit": "blake3:index-fixture-medium-namekit",
+    "prepare": "blake3:index-fixture-medium-prepare"
+  },
+  "surfaces": [
+    {
+      "surface_id": "surf:index:014",
+      "exact_views": {
+        "firm_core": "aldi"
+      },
+      "tokens": ["aldi", "grocery"],
+      "ngram_key": "aldi grocery"
+    },
+    {
+      "surface_id": "surf:index:012",
+      "exact_views": {
+        "firm_core": "wells fargo bank"
+      },
+      "tokens": ["bank", "wells", "fargo"],
+      "ngram_key": "wells fargo bank"
+    },
+    {
+      "surface_id": "surf:index:010",
+      "exact_views": {
+        "firm_core": "bank of america"
+      },
+      "tokens": ["bank", "america"],
+      "ngram_key": "bank of america"
+    },
+    {
+      "surface_id": "surf:index:013",
+      "exact_views": {
+        "firm_core": "pnc bank national association"
+      },
+      "tokens": ["bank", "pnc", "national", "association"],
+      "ngram_key": "pnc bank national association"
+    },
+    {
+      "surface_id": "surf:index:011",
+      "exact_views": {
+        "firm_core": "bank of america"
+      },
+      "tokens": ["bank", "america", "home", "loans"],
+      "ngram_key": "bank america home loans"
+    }
+  ],
+  "expected": {
+    "surface_ids": [
+      "surf:index:010",
+      "surf:index:011",
+      "surf:index:012",
+      "surf:index:013",
+      "surf:index:014"
+    ],
+    "token_term_ids": {
+      "aldi": 0,
+      "america": 1,
+      "association": 2,
+      "bank": 3,
+      "fargo": 4,
+      "grocery": 5,
+      "home": 6,
+      "loans": 7,
+      "national": 8,
+      "pnc": 9,
+      "wells": 10
+    },
+    "token_document_frequency": {
+      "aldi": 1,
+      "america": 2,
+      "association": 1,
+      "bank": 4,
+      "fargo": 1,
+      "grocery": 1,
+      "home": 1,
+      "loans": 1,
+      "national": 1,
+      "pnc": 1,
+      "wells": 1
+    },
+    "token_idf_descending": [
+      "aldi",
+      "association",
+      "fargo",
+      "grocery",
+      "home",
+      "loans",
+      "national",
+      "pnc",
+      "wells",
+      "america",
+      "bank"
+    ],
+    "token_postings": {
+      "aldi": [4],
+      "america": [0, 1],
+      "bank": [0, 1, 2, 3],
+      "wells": [2]
+    },
+    "token_offsets": [0, 1, 3, 4, 8, 9, 10, 11, 12, 13, 14, 15],
+    "exact_view_postings": {
+      "firm_core:aldi": [4],
+      "firm_core:bank of america": [0, 1],
+      "firm_core:pnc bank national association": [3],
+      "firm_core:wells fargo bank": [2]
+    },
+    "exact_offsets": [0, 1, 3, 4, 5],
+    "ngram_term_ids": {
+      "a": 0,
+      "b": 1,
+      "o": 13,
+      "s": 16
+    },
+    "ngram_postings": {
+      "a": [0, 1, 2, 3, 4],
+      "b": [0, 1, 2, 3],
+      "o": [0, 1, 2, 3, 4],
+      "s": [1, 2, 3]
+    },
+    "ngram_offsets": [0, 5, 9, 13, 14, 18, 20, 22, 23, 27, 31, 35, 37, 41, 46, 47, 51, 54, 55, 56, 57],
+    "common_exact_view_diagnostics": [],
+    "common_token_diagnostics": [
+      {
+        "key": "bank",
+        "posting_count": 4,
+        "configured_limit": 2
+      }
+    ],
+    "common_ngram_diagnostics": [
+      {
+        "key": "a",
+        "posting_count": 5,
+        "configured_limit": 2
+      },
+      {
+        "key": "b",
+        "posting_count": 4,
+        "configured_limit": 2
+      },
+      {
+        "key": "c",
+        "posting_count": 4,
+        "configured_limit": 2
+      },
+      {
+        "key": "e",
+        "posting_count": 4,
+        "configured_limit": 2
+      },
+      {
+        "key": "i",
+        "posting_count": 4,
+        "configured_limit": 2
+      },
+      {
+        "key": "k",
+        "posting_count": 4,
+        "configured_limit": 2
+      },
+      {
+        "key": "l",
+        "posting_count": 4,
+        "configured_limit": 2
+      },
+      {
+        "key": "n",
+        "posting_count": 4,
+        "configured_limit": 2
+      },
+      {
+        "key": "o",
+        "posting_count": 5,
+        "configured_limit": 2
+      },
+      {
+        "key": "r",
+        "posting_count": 4,
+        "configured_limit": 2
+      },
+      {
+        "key": "s",
+        "posting_count": 3,
+        "configured_limit": 2
+      }
+    ],
+    "counts": {
+      "surface_count": 5,
+      "exact_view_count": 4,
+      "token_count": 11,
+      "ngram_count": 20,
+      "large_exact_view_bucket_count": 0,
+      "common_token_count": 1,
+      "common_ngram_count": 11,
+      "largest_exact_view_bucket_size": 2,
+      "largest_token_posting_size": 4,
+      "largest_ngram_posting_size": 5
+    },
+    "artifact": {
+      "prepare_hash": "blake3:index-fixture-medium-prepare",
+      "strategy_hash": "blake3:index-fixture-medium-strategy",
+      "profile_hash": "blake3:index-fixture-medium-profile",
+      "registry_snapshot_hash": "blake3:index-fixture-medium-registry",
+      "input_hash": "blake3:index-fixture-medium-input",
+      "patch_hash": "blake3:index-fixture-medium-patch",
+      "namekit_version": "canon_namekit.v0",
+      "namekit_hash": "blake3:index-fixture-medium-namekit",
+      "cache_status": "rebuilt"
+    }
+  }
+}

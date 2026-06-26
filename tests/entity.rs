@@ -4,6 +4,12 @@
 mod apply_streaming;
 #[path = "entity/bead_parallelism_contract.rs"]
 mod bead_parallelism_contract;
+#[path = "entity/cache_reload.rs"]
+mod cache_reload;
+#[path = "entity/index_fixture_support.rs"]
+mod index_fixture_support;
+#[path = "entity/index_golden.rs"]
+mod index_golden;
 #[path = "entity/index_io.rs"]
 mod index_io;
 #[path = "entity/index_ngram.rs"]

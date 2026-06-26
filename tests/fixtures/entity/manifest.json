@@ -12,6 +12,8 @@
     "EN-P003",
     "EN-P004",
     "EN-P005",
+    "EN-I001",
+    "EN-I002",
     "EN-B001",
     "EN-B002",
     "EN-B003",
@@ -168,6 +170,32 @@
       "expected_outcome": {"kind": "success", "refusal_code": null},
       "gates": ["G01", "G03"],
       "owning_tests": ["entity_prepare_exact_lookup", "EN-P005"]
+    },
+    {
+      "id": "EN-I001",
+      "profile": "cmbs_tenant_label",
+      "purpose": "Small index golden pins token IDs, document frequencies, exact-view postings, ngram postings, CSR offsets, and hash-carrying index metadata.",
+      "source_kind": "synthetic_hand_authored",
+      "ci_tier": "normal_ci",
+      "record_size": {"rows": 3, "surfaces": 3},
+      "input_files": ["tests/fixtures/entity/index/en_i001_small_index_golden.json"],
+      "expected_artifacts": [{"path": "tests/fixtures/entity/index/en_i001_small_index_golden.json", "schema_version": "canon_entity_index_golden.v0", "hash_policy": "byte_stable", "summary_counters": ["surface_count", "token_count", "ngram_count", "large_exact_view_bucket_count"]}],
+      "expected_outcome": {"kind": "success", "refusal_code": null},
+      "gates": ["G10", "G12"],
+      "owning_tests": ["entity_index_golden", "EN-I001"]
+    },
+    {
+      "id": "EN-I002",
+      "profile": "cmbs_tenant_label",
+      "purpose": "Medium cache-reload golden pins common-token and rare-token diagnostics, disk reload equivalence, and explicit stale-hash cache-miss refusals.",
+      "source_kind": "synthetic_hand_authored",
+      "ci_tier": "normal_ci",
+      "record_size": {"rows": 6, "surfaces": 6},
+      "input_files": ["tests/fixtures/entity/index/en_i002_medium_cache_reload.json"],
+      "expected_artifacts": [{"path": "tests/fixtures/entity/index/en_i002_medium_cache_reload.json", "schema_version": "canon_entity_index_golden.v0", "hash_policy": "byte_stable", "summary_counters": ["surface_count", "token_count", "ngram_count", "common_token_count", "common_ngram_count"]}],
+      "expected_outcome": {"kind": "success", "refusal_code": null},
+      "gates": ["G10", "G12"],
+      "owning_tests": ["entity_cache_reload", "entity_index_golden", "EN-I002"]
     },
     {
       "id": "EN-B001",

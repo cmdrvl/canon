@@ -33,7 +33,7 @@ fn entity_fixture_manifest_schema_and_ids_are_stable() {
 
     let required = manifest["required_fixture_ids"].as_array().unwrap();
     let fixtures = manifest["fixtures"].as_array().unwrap();
-    assert_eq!(required.len(), 35);
+    assert_eq!(required.len(), 37);
     assert_eq!(fixtures.len(), required.len());
 
     let required_ids = required
@@ -59,6 +59,8 @@ fn entity_fixture_catalog_has_all_matrix_ids() {
         "EN-P003",
         "EN-P004",
         "EN-P005",
+        "EN-I001",
+        "EN-I002",
         "EN-B001",
         "EN-B002",
         "EN-B003",
