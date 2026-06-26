@@ -1,0 +1,11 @@
+{
+  "block_budget_refusal_code": "E_ENTITY_CANDIDATE_BUDGET",
+  "edge_permit_candidate_record_count": 2,
+  "exact_bucket_expanded_pair_count": 0,
+  "exact_bucket_hyperedge_count": 1,
+  "exact_bucket_membership_record_count": 8000,
+  "exact_bucket_theoretical_pair_count": 31996000,
+  "graph_action": "review_contradiction",
+  "graph_expanded_pair_count": 0,
+  "solve_abstained_component_count": 1
+}
