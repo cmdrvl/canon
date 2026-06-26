@@ -53,6 +53,8 @@ mod cmbs_tenant_id_allocator;
 
 #[path = "entity/edge_cannot_link.rs"]
 mod edge_cannot_link;
+#[path = "entity/edge_relation_hints.rs"]
+mod edge_relation_hints;
 #[path = "entity/edge_score_units.rs"]
 mod edge_score_units;
 #[path = "entity/edge_support.rs"]
