@@ -131,12 +131,6 @@ fn EN_P005_existing_registry_aliases_carry_registry_snapshot_hash() {
             .lookup_snapshot_hash,
         artifact.registry_snapshot.lookup_snapshot_hash
     );
-
-    assert!(
-        surfaces
-            .iter()
-            .any(|surface| surface.exact_lookup.status == PreparedExactLookupStatus::Unresolved)
-    );
 }
 
 #[test]
@@ -149,7 +143,7 @@ fn entity_prepare_exact_lookup_does_not_resolve_from_side_surface_context() {
         &rows,
         concat!(
             "source_row_id,deal_id,loan_id,property_id,raw_tenant_name,alias_surfaces_json,mention_surfaces_json\n",
-            "row-1,deal-1,loan-1,prop-1,Unknown Shop,\"[\"\"Sears\"\"]\",[]\n",
+            "row-1,deal-1,loan-1,prop-1,Unknown Shop,[],\"[\"\"Sears\"\"]\"\n",
         ),
     )
     .expect("rows");

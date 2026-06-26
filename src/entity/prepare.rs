@@ -5,7 +5,9 @@
 //! and keep `source_row_id` as provenance instead of identity evidence.
 
 use crate::entity::{
-    CANON_ENTITY_PREPARE_VERSION, EntityProfileDocument, EntityProfileReference,
+    CANON_ENTITY_PREPARE_VERSION, EntityArtifactMetadata, EntityInputReference,
+    EntityNamekitReference, EntityPatchSetReference, EntityProfileDocument, EntityProfileReference,
+    EntityRegistrySnapshot, EntityStrategyReference,
     error::EntityRefusalKind,
     stream::{
         EntityStreamChunkMetadata, EntityStreamFormat, EntityStreamInput,
@@ -35,6 +37,7 @@ const BUILTIN_REGAB_FIRM_IDENTITY_PROFILE: &str =
 const DEFAULT_PREPARE_ROWS_PER_CHUNK: u64 = 1024;
 const MAX_PREPARE_PROVENANCE_SAMPLES: usize = 16;
 const MAX_SURFACE_PROVENANCE_SAMPLES: usize = 8;
+const PREPARE_NAMEKIT_VERSION: &str = "namekit.v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct PrepareFieldMapping {
@@ -229,6 +232,7 @@ pub struct PrepareRunRequest<'a> {
 pub struct PrepareRunArtifact {
     pub version: String,
     pub artifact_content_hash: String,
+    pub metadata: EntityArtifactMetadata,
     pub profile: EntityProfileReference,
     pub registry_snapshot: PrepareRegistrySnapshot,
     pub input: PrepareInputReference,
@@ -263,6 +267,12 @@ pub struct PrepareStreamingDiagnostics {
     pub chunks: Vec<EntityStreamChunkMetadata>,
     pub telemetry: EntityStreamTelemetry,
     pub provenance_samples: Vec<EntityStreamRowProvenance>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LoadedPrepareProfile {
+    document: EntityProfileDocument,
+    content_hash: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -394,6 +404,10 @@ pub fn project_prepare_jsonl_reader<R: BufRead>(
 }
 
 pub fn load_prepare_profile(profile: &str) -> Result<EntityProfileDocument, Refusal> {
+    Ok(load_prepare_profile_with_hash(profile)?.document)
+}
+
+fn load_prepare_profile_with_hash(profile: &str) -> Result<LoadedPrepareProfile, Refusal> {
     let profile_source = if Path::new(profile).exists() {
         fs::read_to_string(profile).map_err(|error| {
             EntityRefusalKind::Profile.to_refusal(
@@ -419,7 +433,12 @@ pub fn load_prepare_profile(profile: &str) -> Result<EntityProfileDocument, Refu
         }
     };
 
-    EntityProfileDocument::from_yaml_str(&profile_source).map_err(|error| error.to_refusal())
+    let document = EntityProfileDocument::from_yaml_str(&profile_source)
+        .map_err(|error| error.to_refusal())?;
+    Ok(LoadedPrepareProfile {
+        document,
+        content_hash: witness::hash_bytes(profile_source.as_bytes()),
+    })
 }
 
 pub fn project_prepare_path(
@@ -483,8 +502,9 @@ pub fn stream_prepare_path(
 }
 
 pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact, Refusal> {
-    let profile = load_prepare_profile(request.profile)?;
-    let contract = PrepareInputContract::for_builtin_profile(&profile)?;
+    let loaded_profile = load_prepare_profile_with_hash(request.profile)?;
+    let mut contract = PrepareInputContract::for_builtin_profile(&loaded_profile.document)?;
+    contract.profile.content_hash = Some(loaded_profile.content_hash);
     let stream_output =
         stream_prepare_path(request.rows, &contract, DEFAULT_PREPARE_ROWS_PER_CHUNK)?;
     let observations = stream_output.observations;
@@ -495,6 +515,7 @@ pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact,
         row_count: u64::try_from(observations.len()).expect("observation count fits u64"),
         content_hash: stream_output.diagnostics.input.content_hash.clone(),
     };
+    let metadata = prepare_artifact_metadata(&contract, &registry_snapshot, &input)?;
 
     let prepare_dir = request.work_dir.join("prepare");
     fs::create_dir_all(&prepare_dir).map_err(|error| {
@@ -512,6 +533,7 @@ pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact,
     let mut artifact = PrepareRunArtifact {
         version: CANON_ENTITY_PREPARE_VERSION.to_string(),
         artifact_content_hash: String::new(),
+        metadata,
         profile: contract.profile.clone(),
         registry_snapshot,
         input,
@@ -520,10 +542,55 @@ pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact,
         surfaces_path: surfaces_relative.to_string_lossy().into_owned(),
     };
     artifact.artifact_content_hash = hash_artifact_without_self(&artifact)?;
+    artifact.metadata.artifact_content_hash = artifact.artifact_content_hash.clone();
 
     let artifact_path = prepare_dir.join("prepare.json");
     write_json_file(&artifact_path, &artifact)?;
     Ok(artifact)
+}
+
+fn prepare_artifact_metadata(
+    contract: &PrepareInputContract,
+    registry_snapshot: &PrepareRegistrySnapshot,
+    input: &PrepareInputReference,
+) -> Result<EntityArtifactMetadata, Refusal> {
+    let contract_bytes = serde_json::to_vec(contract).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to hash prepare field contract",
+            json!({ "error": error.to_string() }),
+            None,
+        )
+    })?;
+    Ok(EntityArtifactMetadata {
+        profile: contract.profile.clone(),
+        strategy: EntityStrategyReference {
+            id: format!("{}.prepare", contract.profile.id),
+            version: contract.profile.version.clone(),
+            content_hash: witness::hash_bytes(&contract_bytes),
+        },
+        registry_snapshot: EntityRegistrySnapshot {
+            id: registry_snapshot.id.clone(),
+            version: registry_snapshot.version.clone(),
+            source: registry_snapshot.source.clone(),
+            lookup_snapshot_hash: registry_snapshot.lookup_snapshot_hash.clone(),
+            sidecar_snapshot_hash: None,
+        },
+        patch_namespace: contract.profile.patch_namespaces.aliases.clone(),
+        input: Some(EntityInputReference {
+            row_count: input.row_count,
+            content_hash: input.content_hash.clone(),
+        }),
+        upstream_artifacts: Vec::new(),
+        patch_set: Some(EntityPatchSetReference {
+            content_hash: witness::hash_bytes(contract.profile.patch_namespaces.aliases.as_bytes()),
+            paths: Vec::new(),
+        }),
+        namekit: Some(EntityNamekitReference {
+            version: PREPARE_NAMEKIT_VERSION.to_string(),
+            content_hash: witness::hash_bytes(PREPARE_NAMEKIT_VERSION.as_bytes()),
+        }),
+        artifact_content_hash: String::new(),
+    })
 }
 
 pub fn prepare_surface_records(
@@ -1635,6 +1702,7 @@ fn write_json_file<T: Serialize>(path: &Path, value: &T) -> Result<(), Refusal> 
 fn hash_artifact_without_self(artifact: &PrepareRunArtifact) -> Result<String, Refusal> {
     let mut hashable = artifact.clone();
     hashable.artifact_content_hash.clear();
+    hashable.metadata.artifact_content_hash.clear();
     let bytes = serde_json::to_vec(&hashable).map_err(|error| {
         EntityRefusalKind::ArtifactContract.to_refusal(
             "Failed to hash prepare artifact",

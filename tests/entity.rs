@@ -2,6 +2,8 @@
 
 #[path = "entity/postings_layout.rs"]
 mod postings_layout;
+#[path = "entity/prepare_artifact.rs"]
+mod prepare_artifact;
 #[path = "entity/prepare_dedupe.rs"]
 mod prepare_dedupe;
 #[path = "entity/prepare_exact_lookup.rs"]
