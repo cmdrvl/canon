@@ -1,0 +1,20 @@
+{
+  "schema_version": "canon.entity.cmbs_review_loop.v0",
+  "purpose": "Isolated CMBS review export/import loop fixture; promotion and apply are covered by separate ENT-P12 beads.",
+  "expected_review_ids": [
+    "review:surf_sears",
+    "review:surf_pnc_bank"
+  ],
+  "expected_actions": {
+    "review:surf_sears": "distinct_confirmed",
+    "review:surf_pnc_bank": "relation_confirmed"
+  },
+  "expected_ledger_event_types": [
+    "distinct_confirmed",
+    "relation_confirmed"
+  ],
+  "forbidden_assertion_scopes": [
+    "promotion",
+    "apply"
+  ]
+}
