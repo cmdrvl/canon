@@ -139,10 +139,7 @@ fn EN_B002_block_artifact_records_common_token_suppression_without_candidates() 
     .expect("bounded common-token artifact builds");
 
     assert_eq!(artifact.summary.counts["candidate_pairs"], 0);
-    assert_eq!(
-        artifact.summary.counts["large_buckets_suppressed"],
-        8
-    );
+    assert_eq!(artifact.summary.counts["large_buckets_suppressed"], 8);
     validate_block_candidate_artifact_contract(&artifact).expect("bounded artifact validates");
 }
 
@@ -293,7 +290,12 @@ fn artifact_request_with_diagnostics(
 }
 
 fn candidate_record(left_surface_id: &str, right_surface_id: &str) -> BlockCandidateRecord {
-    candidate_record_with_score(left_surface_id, right_surface_id, "alias_patch_match", 1_000_000)
+    candidate_record_with_score(
+        left_surface_id,
+        right_surface_id,
+        "alias_patch_match",
+        1_000_000,
+    )
 }
 
 fn candidate_record_with_score(
