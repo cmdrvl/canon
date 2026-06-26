@@ -1,0 +1,17 @@
+{
+  "decisions": [
+    {
+      "review_id": "review:surf_sears",
+      "action": "distinct_confirmed",
+      "operator_id": "operator@example.com",
+      "source_review_queue_hash": "blake3:stale-review-queue",
+      "profile_id": "cmbs_tenant_label",
+      "profile_version": "0.1.0",
+      "strategy_hash": "blake3:strategy",
+      "registry_snapshot_hash": "blake3:registry",
+      "surface_ids": ["surf:sears", "surf:sears_auto"],
+      "reason_code": "review_distinct_confirmed",
+      "note": "stale review export should refuse"
+    }
+  ]
+}

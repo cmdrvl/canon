@@ -1,0 +1,2 @@
+review_id,action,operator_id,source_review_queue_hash,profile_id,profile_version,strategy_hash,registry_snapshot_hash,surface_ids_json,reason_code,note,override_approved_by,override_reason_code
+review:surf_sears,distinct_confirmed,operator@example.com,blake3:review-queue,cmbs_tenant_label,0.1.0,blake3:strategy,blake3:registry,"[""surf:sears"",""surf:sears_auto""]",review_distinct_confirmed,operator confirmed distinct tenant labels,,

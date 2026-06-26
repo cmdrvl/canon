@@ -28,6 +28,7 @@ pub mod profile;
 pub mod profiles;
 pub mod relation;
 pub mod review;
+pub mod review_import;
 pub mod runtime;
 pub mod schema;
 pub mod score;
