@@ -14,6 +14,8 @@ mod block_diagnostics;
 mod block_exact_bucket;
 #[path = "entity/block_exact_bucket_hyperedge.rs"]
 mod block_exact_bucket_hyperedge;
+#[path = "entity/blocking_golden.rs"]
+mod blocking_golden;
 #[path = "entity/cache_reload.rs"]
 mod cache_reload;
 #[path = "entity/index_fixture_support.rs"]

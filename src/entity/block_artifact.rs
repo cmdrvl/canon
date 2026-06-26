@@ -607,9 +607,15 @@ fn block_summary(
         .iter()
         .map(|candidate| candidate.block_hits.len() as u64)
         .sum::<u64>();
+    let relation_hint_count = candidates
+        .iter()
+        .flat_map(|candidate| &candidate.block_hits)
+        .filter(|hit| hit.operator_id.starts_with("relation_hint"))
+        .count() as u64;
     Ok(EntityDeterministicSummary {
         counts: BTreeMap::from([
             ("candidate_pairs".to_string(), candidates.len() as u64),
+            ("candidate_pair_count".to_string(), candidates.len() as u64),
             (
                 "candidate_pairs_emitted".to_string(),
                 diagnostics.candidate_pairs_emitted,
@@ -618,7 +624,13 @@ fn block_summary(
                 "candidate_pairs_suppressed_by_cap".to_string(),
                 diagnostics.candidate_pairs_suppressed_by_cap,
             ),
+            (
+                "suppressed_candidate_count".to_string(),
+                diagnostics.suppressed_candidate_count,
+            ),
             ("block_hits".to_string(), block_hit_count),
+            ("operator_hit_count".to_string(), block_hit_count),
+            ("relation_hint_count".to_string(), relation_hint_count),
             (
                 "exact_bucket_count".to_string(),
                 bucket_assertions.len() as u64,
