@@ -6,6 +6,8 @@ mod apply_streaming;
 mod bead_parallelism_contract;
 #[path = "entity/block_candidates.rs"]
 mod block_candidates;
+#[path = "entity/block_diagnostics.rs"]
+mod block_diagnostics;
 #[path = "entity/block_exact_bucket.rs"]
 mod block_exact_bucket;
 #[path = "entity/block_exact_bucket_hyperedge.rs"]

@@ -12,6 +12,7 @@ pub mod budget;
 pub mod cache;
 pub mod candidates;
 pub mod contracts;
+pub mod diagnostics;
 pub mod edge;
 pub mod error;
 pub mod index;

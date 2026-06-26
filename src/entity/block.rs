@@ -177,13 +177,17 @@ pub struct BlockCandidateGenerationDiagnostics {
     pub candidate_pairs_emitted: u64,
     pub candidate_pairs_suppressed_by_cap: u64,
     pub suppressed_candidate_count: u64,
+    pub large_buckets_suppressed: u64,
     pub candidate_pairs_per_surface_p50: u64,
     pub candidate_pairs_per_surface_p95: u64,
     pub candidate_pairs_per_surface_p99: u64,
     pub max_candidates_for_surface: u64,
     pub max_candidates_for_operator: u64,
+    pub configured_budget: BlockCandidateBudgetConfig,
     pub candidate_budget: EdgeCandidateBudgetProof,
+    pub candidate_artifact_bytes: u64,
     pub partial_candidate_artifact_written: bool,
+    pub operator_yield: Vec<BlockOperatorYield>,
     pub operator_diagnostics: Vec<BlockOperatorCandidateDiagnostics>,
 }
 
@@ -192,6 +196,14 @@ pub struct BlockOperatorCandidateDiagnostics {
     pub operator_id: String,
     pub input_candidate_count: u64,
     pub eligible_candidate_count: u64,
+    pub emitted_candidate_count: u64,
+    pub suppressed_candidate_count: u64,
+    pub large_posting_suppressed_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockOperatorYield {
+    pub operator_id: String,
     pub emitted_candidate_count: u64,
     pub suppressed_candidate_count: u64,
     pub large_posting_suppressed_count: u64,
@@ -255,24 +267,97 @@ pub fn generate_block_candidates(
         &request.budget_config,
         &budget_observations,
     )?;
+    operator_diagnostics.sort_by(block_operator_diagnostic_cmp);
     let candidates = accumulator.into_records();
+    let candidate_artifact_bytes = candidate_artifact_byte_count(&candidates)?;
+    let large_buckets_suppressed = operator_diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.large_posting_suppressed_count)
+        .sum();
+    let operator_yield = operator_yield_from_diagnostics(&operator_diagnostics);
     Ok(BlockCandidateGenerationResult {
         diagnostics: BlockCandidateGenerationDiagnostics {
             candidate_record_count: candidates.len() as u64,
             candidate_pairs_emitted: budget.candidate_pairs_emitted,
             candidate_pairs_suppressed_by_cap: budget.candidate_pairs_suppressed_by_cap,
             suppressed_candidate_count: budget.suppressed_candidate_count,
+            large_buckets_suppressed,
             candidate_pairs_per_surface_p50: budget.candidate_pairs_per_surface_p50,
             candidate_pairs_per_surface_p95: budget.candidate_pairs_per_surface_p95,
             candidate_pairs_per_surface_p99: budget.candidate_pairs_per_surface_p99,
             max_candidates_for_surface: budget.max_candidates_for_surface,
             max_candidates_for_operator: budget.max_candidates_for_operator,
+            configured_budget: request.budget_config.clone(),
             candidate_budget: budget.candidate_budget,
+            candidate_artifact_bytes,
             partial_candidate_artifact_written: budget.partial_candidate_artifact_written,
+            operator_yield,
             operator_diagnostics,
         },
         candidates,
     })
+}
+
+pub fn validate_block_exact_bucket_size_limit(
+    operator_id: impl Into<String>,
+    bucket_id: impl Into<String>,
+    row_count: u64,
+    configured_limit: u64,
+) -> Result<(), Refusal> {
+    if row_count <= configured_limit {
+        return Ok(());
+    }
+
+    let policy = find_budget_policy(BudgetStage::Block, BudgetLimit::MaxExactBucketSize)
+        .expect("block exact bucket size policy is defined");
+    let breach = policy.breach(row_count, configured_limit);
+    Err(EntityRefusalKind::IndexLimit.to_refusal(
+        "Exact bucket exceeds configured block size limit",
+        json!({
+            "stage": BLOCK_STAGE,
+            "artifact": BLOCK_CANDIDATE_ARTIFACT,
+            "reason": "exact_bucket_size_exceeded",
+            "operator_id": operator_id.into(),
+            "bucket_id": bucket_id.into(),
+            "policy_id": breach.policy_id,
+            "observed": breach.observed,
+            "configured": breach.configured,
+            "budget": breach,
+            "pair_expansion": EXACT_BUCKET_PAIR_EXPANSION_FORBIDDEN,
+            "candidate_artifact_written": false,
+            "partial_candidate_artifact_written": false
+        }),
+        Some(policy.next_command.to_string()),
+    ))
+}
+
+fn candidate_artifact_byte_count(candidates: &[BlockCandidateRecord]) -> Result<u64, Refusal> {
+    let bytes = serde_json::to_vec(candidates).map_err(|error| {
+        candidate_artifact_contract_refusal(
+            "Failed to measure block candidate artifact bytes",
+            json!({
+                "stage": BLOCK_STAGE,
+                "reason": "candidate_artifact_serialization_failed",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    Ok(bytes.len() as u64)
+}
+
+fn operator_yield_from_diagnostics(
+    diagnostics: &[BlockOperatorCandidateDiagnostics],
+) -> Vec<BlockOperatorYield> {
+    diagnostics
+        .iter()
+        .map(|diagnostic| BlockOperatorYield {
+            operator_id: diagnostic.operator_id.clone(),
+            emitted_candidate_count: diagnostic.emitted_candidate_count,
+            suppressed_candidate_count: diagnostic.suppressed_candidate_count,
+            large_posting_suppressed_count: diagnostic.large_posting_suppressed_count,
+        })
+        .collect()
 }
 
 fn validate_candidate_index_surface_sets(
@@ -751,6 +836,26 @@ fn block_candidate_record_cmp(
         .then_with(|| left.right_surface_id.cmp(&right.right_surface_id))
 }
 
+fn block_operator_diagnostic_cmp(
+    left: &BlockOperatorCandidateDiagnostics,
+    right: &BlockOperatorCandidateDiagnostics,
+) -> std::cmp::Ordering {
+    right
+        .emitted_candidate_count
+        .cmp(&left.emitted_candidate_count)
+        .then_with(|| {
+            right
+                .suppressed_candidate_count
+                .cmp(&left.suppressed_candidate_count)
+        })
+        .then_with(|| {
+            right
+                .large_posting_suppressed_count
+                .cmp(&left.large_posting_suppressed_count)
+        })
+        .then_with(|| left.operator_id.cmp(&right.operator_id))
+}
+
 fn primary_operator_id(record: &BlockCandidateRecord) -> &str {
     record
         .block_hits
@@ -838,6 +943,7 @@ pub fn validate_block_candidate_budget_before_artifact_emission(
         summary.diagnostics.candidate_pairs_emitted,
     ) {
         return Err(block_candidate_budget_refusal(
+            config,
             &breach,
             &summary.diagnostics,
         ));
@@ -965,6 +1071,7 @@ fn nearest_rank_percentile(sorted_counts: &[u64], percentile: u64) -> u64 {
 }
 
 fn block_candidate_budget_refusal(
+    config: &BlockCandidateBudgetConfig,
     breach: &BlockCandidateBudgetBreach,
     diagnostics: &BlockCandidateBudgetDiagnostics,
 ) -> Refusal {
@@ -973,12 +1080,28 @@ fn block_candidate_budget_refusal(
         json!({
             "stage": BLOCK_STAGE,
             "artifact": BLOCK_CANDIDATE_ARTIFACT,
+            "refusal_code": breach.budget.refusal_code.as_str(),
             "reason": "candidate_budget_exceeded",
             "policy_id": breach.budget.policy_id,
             "subject_kind": breach.subject_kind,
             "subject_id": breach.subject_id,
             "observed": breach.budget.observed,
             "configured": breach.budget.configured,
+            "configured_limits": {
+                "max_candidates_per_surface": config.max_candidates_per_surface,
+                "max_candidates_per_operator": config.max_candidates_per_operator,
+                "max_candidates_per_run": config.max_candidates_per_run
+            },
+            "observed_limits": {
+                "candidate_pairs_emitted": diagnostics.candidate_pairs_emitted,
+                "candidate_pairs_suppressed_by_cap": diagnostics.candidate_pairs_suppressed_by_cap,
+                "suppressed_candidate_count": diagnostics.suppressed_candidate_count,
+                "candidate_pairs_per_surface_p50": diagnostics.candidate_pairs_per_surface_p50,
+                "candidate_pairs_per_surface_p95": diagnostics.candidate_pairs_per_surface_p95,
+                "candidate_pairs_per_surface_p99": diagnostics.candidate_pairs_per_surface_p99,
+                "max_candidates_for_surface": diagnostics.max_candidates_for_surface,
+                "max_candidates_for_operator": diagnostics.max_candidates_for_operator
+            },
             "budget": breach.budget,
             "candidate_pairs_emitted": diagnostics.candidate_pairs_emitted,
             "candidate_pairs_suppressed_by_cap": diagnostics.candidate_pairs_suppressed_by_cap,
