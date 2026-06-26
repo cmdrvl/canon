@@ -1,0 +1,6 @@
+{
+  "schema_version": "canon_entity_operator_robot_summary_fixture.v0",
+  "fixture_id": "entity-operator-robot-json-summary-v0",
+  "projection_fixture": "robot_json_projection.json",
+  "purpose": "Stable robot JSON acceptance fixture for run and stage summaries with next commands and telemetry links."
+}

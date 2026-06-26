@@ -1,0 +1,89 @@
+{
+  "version": "canon.entity.operator_journey.summary_robot.v0",
+  "run": {
+    "summary_version": "canon_entity_operator_summary.v0",
+    "profile_id": "cmbs_tenant_label",
+    "registry_id": "cmbs-tenants",
+    "registry_version": "2026.06.26",
+    "counts": {
+      "row_count": 15,
+      "raw_unique_names": 15,
+      "prepared_surfaces": 14,
+      "exact_resolved_surfaces": 7,
+      "operator_review_groups": 2,
+      "anti_merge_groups": 2
+    },
+    "cache_status": {
+      "index": "rebuilt"
+    },
+    "next_command_key": "review_export",
+    "next_command_keys": ["apply", "audit", "promote", "resume", "review_export"],
+    "telemetry_link_keys": [
+      "block_artifact",
+      "candidate_records",
+      "decision_ledger",
+      "edge_artifact",
+      "edge_records",
+      "index_artifact",
+      "prepare_artifact",
+      "run_artifact",
+      "solve_artifact",
+      "surfaces"
+    ],
+    "top_unresolved_tokens": ["buffet", "china", "sears"],
+    "top_anti_merge_reasons": [
+      "related_brand_family_not_same_tenant_label",
+      "successor_or_operator_not_display_label"
+    ]
+  },
+  "stages": [
+    {
+      "stage": "prepare",
+      "summary_version": "canon_entity_operator_summary.v0",
+      "artifact_version": "canon_entity_prepare.v0",
+      "next_command_key": "none",
+      "telemetry_link_keys": ["input", "surfaces"],
+      "counts": {
+        "prepared_observations": 15,
+        "prepared_surfaces": 14,
+        "exact_resolved_surfaces": 7
+      }
+    },
+    {
+      "stage": "block",
+      "summary_version": "canon_entity_operator_summary.v0",
+      "artifact_version": "canon_entity_block.v0",
+      "next_command_key": "none",
+      "telemetry_link_keys": ["candidate_records"],
+      "counts": {
+        "candidate_pairs": 23,
+        "exact_bucket_count": 13,
+        "exact_bucket_pair_expansion_count": 0
+      }
+    },
+    {
+      "stage": "solve",
+      "summary_version": "canon_entity_operator_summary.v0",
+      "artifact_version": "canon_entity_solve.v0",
+      "next_command_key": "none",
+      "telemetry_link_keys": ["decision_ledger"],
+      "counts": {
+        "entity_count": 7,
+        "review_group_count": 0,
+        "promotable_new_count": 0
+      }
+    },
+    {
+      "stage": "apply",
+      "summary_version": "canon_entity_operator_summary.v0",
+      "artifact_version": "canon_entity_apply.v0",
+      "next_command_key": "none",
+      "telemetry_link_keys": ["input", "output"],
+      "counts": {
+        "rows": 15,
+        "resolved": 8,
+        "unresolved": 7
+      }
+    }
+  ]
+}

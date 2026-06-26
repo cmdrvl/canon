@@ -17,7 +17,7 @@ use canon::entity::{
 };
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -64,7 +64,11 @@ fn entity_robot_json_summaries_are_stable_and_actionable() {
         robot_projection(&run_summary, [&prepare, &block, &solve, &apply]),
         expected_robot_json()
     );
-    assert!(run_summary.next_command.contains("canon entity review export"));
+    assert!(
+        run_summary
+            .next_command
+            .contains("canon entity review export")
+    );
     for stage in [&prepare, &block, &solve, &apply] {
         assert_eq!(stage.version, "canon_entity_operator_summary.v0");
         assert!(
@@ -126,14 +130,27 @@ fn stage_projection(stage: &EntityStageOperatorSummary) -> Value {
 
 fn stage_count_projection(stage: &EntityStageOperatorSummary) -> BTreeMap<String, u64> {
     let keys = match stage.stage.as_str() {
-        "prepare" => ["prepared_observations", "prepared_surfaces", "exact_resolved_surfaces"],
-        "block" => ["candidate_pairs", "exact_bucket_count", "exact_bucket_pair_expansion_count"],
+        "prepare" => [
+            "prepared_observations",
+            "prepared_surfaces",
+            "exact_resolved_surfaces",
+        ],
+        "block" => [
+            "candidate_pairs",
+            "exact_bucket_count",
+            "exact_bucket_pair_expansion_count",
+        ],
         "solve" => ["entity_count", "review_group_count", "promotable_new_count"],
         "apply" => ["rows", "resolved", "unresolved"],
         _ => ["", "", ""],
     };
     keys.into_iter()
-        .filter_map(|key| stage.counts.get(key).map(|value| (key.to_string(), *value)))
+        .map(|key| {
+            (
+                key.to_string(),
+                stage.counts.get(key).copied().unwrap_or_default(),
+            )
+        })
         .collect()
 }
 
@@ -229,10 +246,7 @@ fn apply_resolutions() -> BTreeMap<String, ApplyCanonicalResolution> {
     BTreeMap::from([
         ("Sears".to_string(), resolution("TNT-SEARS")),
         ("SEARS LLC".to_string(), resolution("TNT-SEARS")),
-        (
-            "Sears Roebuck & Co.".to_string(),
-            resolution("TNT-SEARS"),
-        ),
+        ("Sears Roebuck & Co.".to_string(), resolution("TNT-SEARS")),
         (
             "24 Hour Fitness".to_string(),
             resolution("TNT-24-HOUR-FITNESS"),
