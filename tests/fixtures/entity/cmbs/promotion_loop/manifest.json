@@ -1,0 +1,28 @@
+{
+  "schema_version": "canon.entity.cmbs_promotion_loop.v0",
+  "registry_version_before": "1.0.0",
+  "registry_version_after": "1.0.1",
+  "registry_snapshot_hash": "blake3:cmbs-promotion-registry",
+  "decision_ledger_hash": "blake3:cmbs-review-ledger",
+  "expected_aliases": [
+    {
+      "input": "SEARS LLC",
+      "canonical_id": "TNT-SEARS",
+      "canonical_type": "tenant_label",
+      "rule_id": "ENTITY_REVIEW_PROMOTE"
+    },
+    {
+      "input": "Sears",
+      "canonical_id": "TNT-SEARS",
+      "canonical_type": "tenant_label",
+      "rule_id": "ENTITY_REVIEW_PROMOTE"
+    }
+  ],
+  "expected_sidecar_counts": {
+    "cannot_link_count": 1,
+    "relation_hint_count": 1,
+    "promoted_alias_count": 2
+  },
+  "stale_audit_refusal_code": "E_ENTITY_AUDIT_GATE",
+  "forbidden_assertion_scopes": ["apply", "canonical_status"]
+}
