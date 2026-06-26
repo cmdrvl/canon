@@ -49,7 +49,7 @@ fn prepare_artifact_records_streaming_diagnostics_without_surface_drift() {
     fs::create_dir_all(&registry).expect("registry dir");
     fs::write(
         registry.join("registry.json"),
-        r#"{"id":"cmbs-tenants","version":"2026.06.25"}"#,
+        r#"{"id":"cmbs-tenants","version":"2026.06.25","description":"Prepare streaming test registry","updated":"2026-06-25","entry_count":0}"#,
     )
     .expect("registry metadata");
 

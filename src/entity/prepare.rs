@@ -19,11 +19,11 @@ use crate::namekit::{
     normalize::{NamekitNormalization, normalize_normality, normalize_openrefine_fingerprint},
     tokenize::{NamekitTokenization, tokenize_sorted_unique},
 };
-use crate::{Refusal, witness};
+use crate::{InputFormat, InputValues, Mapping, Refusal, Registry, lookup, registry, witness};
 use csv::{ReaderBuilder, StringRecord};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -174,6 +174,7 @@ pub struct PreparedSurfaceRecord {
     pub surface_key: String,
     pub primary_surface: String,
     pub normalized_views: BTreeMap<String, PreparedNormalizedView>,
+    pub exact_lookup: PreparedExactLookup,
     pub raw_variants: Vec<String>,
     pub alias_surfaces: Vec<String>,
     pub mention_surfaces: Vec<String>,
@@ -186,6 +187,26 @@ pub struct PreparedSurfaceRecord {
 pub struct PreparedNormalizedView {
     pub value: String,
     pub reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreparedExactLookup {
+    pub status: PreparedExactLookupStatus,
+    pub canonical_id: Option<String>,
+    pub canonical_type: Option<String>,
+    pub rule_id: Option<String>,
+    pub matched_input: Option<String>,
+    #[serde(default)]
+    pub lookup_inputs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry_snapshot: Option<PrepareRegistrySnapshot>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreparedExactLookupStatus {
+    Resolved,
+    Unresolved,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -467,9 +488,9 @@ pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact,
     let stream_output =
         stream_prepare_path(request.rows, &contract, DEFAULT_PREPARE_ROWS_PER_CHUNK)?;
     let observations = stream_output.observations;
-    let surfaces = prepare_surface_records(&observations)?;
-
     let registry_snapshot = load_prepare_registry_snapshot(request.registry)?;
+    let mut surfaces = prepare_surface_records(&observations)?;
+    assign_exact_lookups(&mut surfaces, request.registry, &registry_snapshot)?;
     let input = PrepareInputReference {
         row_count: u64::try_from(observations.len()).expect("observation count fits u64"),
         content_hash: stream_output.diagnostics.input.content_hash.clone(),
@@ -636,12 +657,14 @@ impl PreparedSurfaceAccumulator {
             .truncate(MAX_SURFACE_PROVENANCE_SAMPLES);
         let raw_variants = self.raw_variants.into_iter().collect::<Vec<_>>();
         let primary_surface = raw_variants.first().cloned().unwrap_or_default();
+        let exact_lookup = PreparedExactLookup::unresolved(raw_variants.clone(), None);
         PreparedSurfaceRecord {
             surface_id: String::new(),
             profile_id: self.profile_id,
             surface_key: self.surface_key,
             primary_surface,
             normalized_views: self.normalized_views,
+            exact_lookup,
             raw_variants,
             alias_surfaces: self.alias_surfaces.into_iter().collect(),
             mention_surfaces: self.mention_surfaces.into_iter().collect(),
@@ -649,6 +672,95 @@ impl PreparedSurfaceAccumulator {
             deal_count: u64::try_from(self.deal_ids.len()).expect("deal count fits u64"),
             provenance_samples: self.provenance_samples,
         }
+    }
+}
+
+impl PreparedExactLookup {
+    fn unresolved(
+        lookup_inputs: Vec<String>,
+        registry_snapshot: Option<PrepareRegistrySnapshot>,
+    ) -> Self {
+        Self {
+            status: PreparedExactLookupStatus::Unresolved,
+            canonical_id: None,
+            canonical_type: None,
+            rule_id: None,
+            matched_input: None,
+            lookup_inputs,
+            registry_snapshot,
+        }
+    }
+
+    fn resolved(
+        lookup_inputs: Vec<String>,
+        matched_input: String,
+        mapping: &Mapping,
+        registry_snapshot: PrepareRegistrySnapshot,
+    ) -> Self {
+        Self {
+            status: PreparedExactLookupStatus::Resolved,
+            canonical_id: Some(mapping.canonical_id.clone()),
+            canonical_type: Some(mapping.canonical_type.clone()),
+            rule_id: Some(mapping.rule_id.clone()),
+            matched_input: Some(matched_input),
+            lookup_inputs,
+            registry_snapshot: Some(registry_snapshot),
+        }
+    }
+
+    fn from_mappings(
+        lookup_inputs: Vec<String>,
+        mappings: &BTreeMap<String, Mapping>,
+        registry_snapshot: &PrepareRegistrySnapshot,
+    ) -> Result<Self, Refusal> {
+        let hits = lookup_inputs
+            .iter()
+            .filter_map(|input| mappings.get(input).map(|mapping| (input, mapping)))
+            .collect::<Vec<_>>();
+
+        let Some((matched_input, first_mapping)) = hits.first() else {
+            return Ok(Self::unresolved(
+                lookup_inputs,
+                Some(registry_snapshot.clone()),
+            ));
+        };
+        let matched_input = (*matched_input).clone();
+        let first_mapping = (*first_mapping).clone();
+
+        for (conflicting_input, conflicting_mapping) in hits.iter().skip(1) {
+            if conflicting_mapping.canonical_id != first_mapping.canonical_id
+                || conflicting_mapping.canonical_type != first_mapping.canonical_type
+            {
+                return Err(EntityRefusalKind::PatchConflict.to_refusal(
+                    "Prepared surface raw variants resolve to conflicting registry entries",
+                    json!({
+                        "lookup_inputs": lookup_inputs.clone(),
+                        "first": {
+                            "input": matched_input.clone(),
+                            "canonical_id": first_mapping.canonical_id,
+                            "canonical_type": first_mapping.canonical_type,
+                            "rule_id": first_mapping.rule_id
+                        },
+                        "conflicting": {
+                            "input": (*conflicting_input).clone(),
+                            "canonical_id": conflicting_mapping.canonical_id,
+                            "canonical_type": conflicting_mapping.canonical_type,
+                            "rule_id": conflicting_mapping.rule_id
+                        },
+                        "registry_snapshot": registry_snapshot
+                    }),
+                    None,
+                ));
+            }
+        }
+        drop(hits);
+
+        Ok(Self::resolved(
+            lookup_inputs,
+            matched_input,
+            &first_mapping,
+            registry_snapshot.clone(),
+        ))
     }
 }
 
@@ -662,6 +774,83 @@ fn assign_surface_ids(surfaces: &mut [PreparedSurfaceRecord]) -> Result<(), Refu
         surface.surface_id = derived.surface_id;
     }
     Ok(())
+}
+
+fn assign_exact_lookups(
+    surfaces: &mut [PreparedSurfaceRecord],
+    registry_dir: &Path,
+    registry_snapshot: &PrepareRegistrySnapshot,
+) -> Result<(), Refusal> {
+    let registry = registry::load_registry(registry_dir).map_err(|error| {
+        EntityRefusalKind::RegistrySnapshot.to_refusal(
+            "Failed to load entity registry for exact prepare lookup",
+            json!({
+                "registry": registry_dir.display().to_string(),
+                "error": error.to_string()
+            }),
+            None,
+        )
+    })?;
+    let mappings = exact_registry_mappings(&registry, surfaces)?;
+
+    for surface in surfaces {
+        let lookup_inputs = exact_lookup_inputs(surface);
+        surface.exact_lookup =
+            PreparedExactLookup::from_mappings(lookup_inputs, &mappings, registry_snapshot)?;
+    }
+
+    Ok(())
+}
+
+fn exact_registry_mappings(
+    registry: &Registry,
+    surfaces: &[PreparedSurfaceRecord],
+) -> Result<BTreeMap<String, Mapping>, Refusal> {
+    let values = surfaces
+        .iter()
+        .flat_map(exact_lookup_inputs)
+        .map(|input| (input, ()))
+        .collect::<HashMap<_, _>>();
+
+    let input_values = InputValues {
+        values,
+        special: HashMap::new(),
+        format: InputFormat::Jsonl,
+        delimiter: None,
+        source_hash: None,
+        source_bytes: None,
+    };
+
+    let resolved = lookup::resolve_values(registry, &input_values).map_err(|error| {
+        EntityRefusalKind::RegistrySnapshot.to_refusal(
+            "Failed to run exact registry lookup for prepared surfaces",
+            json!({
+                "registry_id": registry.meta.id,
+                "registry_version": registry.meta.version,
+                "error": error.to_string()
+            }),
+            None,
+        )
+    })?;
+
+    Ok(resolved
+        .mappings
+        .into_iter()
+        .map(|mapping| (mapping.input.clone(), mapping))
+        .collect())
+}
+
+fn exact_lookup_inputs(surface: &PreparedSurfaceRecord) -> Vec<String> {
+    surface
+        .raw_variants
+        .iter()
+        .filter_map(|value| {
+            let trimmed = value.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn surface_id_material(surface: &PreparedSurfaceRecord) -> Result<SurfaceIdMaterial, Refusal> {
@@ -1346,6 +1535,30 @@ fn prepare_summary(
             u64::try_from(raw_unique_surfaces).expect("raw unique surface count fits u64"),
         ),
         ("prepared_surfaces".to_string(), surface_count),
+        (
+            "exact_resolved_surfaces".to_string(),
+            u64::try_from(
+                surfaces
+                    .iter()
+                    .filter(|surface| {
+                        surface.exact_lookup.status == PreparedExactLookupStatus::Resolved
+                    })
+                    .count(),
+            )
+            .expect("exact resolved surface count fits u64"),
+        ),
+        (
+            "unresolved_surfaces".to_string(),
+            u64::try_from(
+                surfaces
+                    .iter()
+                    .filter(|surface| {
+                        surface.exact_lookup.status == PreparedExactLookupStatus::Unresolved
+                    })
+                    .count(),
+            )
+            .expect("unresolved surface count fits u64"),
+        ),
         ("primary_surface_count".to_string(), observation_count),
         (
             "alias_surface_count".to_string(),

@@ -4,6 +4,8 @@
 mod postings_layout;
 #[path = "entity/prepare_dedupe.rs"]
 mod prepare_dedupe;
+#[path = "entity/prepare_exact_lookup.rs"]
+mod prepare_exact_lookup;
 #[path = "entity/prepare_streaming.rs"]
 mod prepare_streaming;
 #[path = "entity/surface_id.rs"]
