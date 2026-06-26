@@ -11,7 +11,9 @@ use crate::{
     Refusal,
     entity::{
         audit::EntityAuditArtifact,
-        contracts::{CANON_ENTITY_AUDIT_VERSION, CANON_ENTITY_PROMOTE_VERSION},
+        contracts::{
+            CANON_ENTITY_AUDIT_VERSION, CANON_ENTITY_PROMOTE_VERSION, EntityProfileReference,
+        },
         error::EntityRefusalKind,
     },
     registry_lint::{self, RegistryLintOutput, RegistryLintProfile},
@@ -102,12 +104,21 @@ pub fn promote_registry_aliases(
 
     let (registry_json, registry_value) =
         parse_registry_json(&request.registry, &registry_original)?;
+    validate_registry_target(&registry_json, &request.audit)?;
+    validate_existing_profile_metadata(&registry_value, &request.audit.metadata.profile)?;
     let aliases = validate_aliases(&request.registry, &alias_path, &request.aliases)?;
     let requested_version = validate_requested_version(&request.next_version)?;
     let existing_aliases = parse_alias_entries(&request.registry, &alias_path, &alias_original)?;
     if registry_json.version == requested_version
         && aliases_already_promoted(&existing_aliases, &aliases)
     {
+        if !registry_profile_metadata_matches(&registry_value, &request.audit.metadata.profile) {
+            return Err(registry_profile_refusal(
+                "entity_profile",
+                "<audited profile metadata>",
+                "<missing>",
+            ));
+        }
         let lint = lint_current_registry(&request.registry, request.no_lint)?;
         return Ok(EntityPromoteRegistryOutput {
             version: CANON_ENTITY_PROMOTE_VERSION.to_string(),
@@ -154,7 +165,12 @@ pub fn promote_registry_aliases(
                 }),
             )
         })?;
-    let registry_bytes = build_registry_bytes(registry_value, &next_version, entry_count_after)?;
+    let registry_bytes = build_registry_bytes(
+        registry_value,
+        &next_version,
+        entry_count_after,
+        &request.audit.metadata.profile,
+    )?;
     let alias_bytes = build_alias_bytes(&alias_original, &aliases)?;
 
     write_atomic(&alias_path, &alias_bytes).map_err(|error| io_refusal(&alias_path, error))?;
@@ -368,6 +384,107 @@ fn parse_registry_json(registry: &Path, bytes: &[u8]) -> Result<(RegistryJson, V
     Ok((parsed, value))
 }
 
+fn validate_registry_target(
+    registry: &RegistryJson,
+    audit: &EntityAuditArtifact,
+) -> Result<(), Refusal> {
+    let expected = audit.metadata.registry_snapshot.id.as_str();
+    if registry.id == expected {
+        return Ok(());
+    }
+
+    Err(EntityRefusalKind::RegistrySnapshot.to_refusal(
+        "Promotion target registry id does not match the audited registry snapshot",
+        json!({
+            "stage": "promote",
+            "field": "registry_id",
+            "expected": expected,
+            "actual": &registry.id,
+            "writes_performed": false
+        }),
+        Some("Use the registry captured by the passing audit snapshot".to_string()),
+    ))
+}
+
+fn validate_existing_profile_metadata(
+    registry_value: &Value,
+    profile: &EntityProfileReference,
+) -> Result<(), Refusal> {
+    let Some(existing) = registry_value.get("entity_profile") else {
+        return Ok(());
+    };
+
+    compare_registry_profile_field(existing, "id", &profile.id)?;
+    compare_registry_profile_field(existing, "version", &profile.version)?;
+    compare_registry_profile_field(existing, "entity_type", &profile.entity_type)?;
+    compare_registry_profile_field(existing, "identity_semantics", &profile.identity_semantics)?;
+    compare_registry_profile_field(existing, "canonical_type", &profile.canonical_type)?;
+
+    let namespaces = existing.get("patch_namespaces").unwrap_or(&Value::Null);
+    compare_registry_profile_field(
+        namespaces,
+        "patch_namespaces.aliases",
+        &profile.patch_namespaces.aliases,
+    )?;
+    compare_registry_profile_field(
+        namespaces,
+        "patch_namespaces.distinct",
+        &profile.patch_namespaces.distinct,
+    )?;
+    compare_registry_profile_field(
+        namespaces,
+        "patch_namespaces.relations",
+        &profile.patch_namespaces.relations,
+    )?;
+
+    if let Some(expected) = &profile.content_hash {
+        compare_registry_profile_field(existing, "content_hash", expected)?;
+    }
+
+    Ok(())
+}
+
+fn registry_profile_metadata_matches(
+    registry_value: &Value,
+    profile: &EntityProfileReference,
+) -> bool {
+    registry_value.get("entity_profile").is_some()
+        && validate_existing_profile_metadata(registry_value, profile).is_ok()
+}
+
+fn compare_registry_profile_field(
+    value: &Value,
+    field: &'static str,
+    expected: &str,
+) -> Result<(), Refusal> {
+    let leaf = field.rsplit('.').next().unwrap_or(field);
+    let actual = value
+        .get(leaf)
+        .and_then(Value::as_str)
+        .unwrap_or("<missing>");
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(registry_profile_refusal(field, expected, actual))
+    }
+}
+
+fn registry_profile_refusal(field: &'static str, expected: &str, actual: &str) -> Refusal {
+    EntityRefusalKind::ArtifactContract.to_refusal(
+        "Promotion target registry profile metadata does not match the audited profile",
+        json!({
+            "stage": "promote",
+            "field": field,
+            "expected": expected,
+            "actual": actual,
+            "writes_performed": false
+        }),
+        Some(
+            "Use a registry whose entity_profile matches the audited profile semantics".to_string(),
+        ),
+    )
+}
+
 fn validate_requested_version(next: &str) -> Result<String, Refusal> {
     let trimmed = ascii_trim(next);
     if trimmed.is_empty() {
@@ -566,6 +683,7 @@ fn build_registry_bytes(
     mut registry_value: Value,
     next_version: &str,
     entry_count_after: usize,
+    profile: &EntityProfileReference,
 ) -> Result<Vec<u8>, Refusal> {
     let Some(object) = registry_value.as_object_mut() else {
         return Err(Refusal::bad_registry(
@@ -581,7 +699,58 @@ fn build_registry_bytes(
         "entry_count".to_string(),
         Value::Number(serde_json::Number::from(entry_count_after)),
     );
+    object.insert(
+        "entity_profile".to_string(),
+        registry_profile_metadata(profile),
+    );
     to_pretty_bytes(&registry_value)
+}
+
+fn registry_profile_metadata(profile: &EntityProfileReference) -> Value {
+    let mut object = serde_json::Map::new();
+    object.insert("id".to_string(), Value::String(profile.id.clone()));
+    object.insert(
+        "version".to_string(),
+        Value::String(profile.version.clone()),
+    );
+    object.insert(
+        "entity_type".to_string(),
+        Value::String(profile.entity_type.clone()),
+    );
+    object.insert(
+        "identity_semantics".to_string(),
+        Value::String(profile.identity_semantics.clone()),
+    );
+    object.insert(
+        "canonical_type".to_string(),
+        Value::String(profile.canonical_type.clone()),
+    );
+    object.insert(
+        "patch_namespaces".to_string(),
+        Value::Object({
+            let mut namespaces = serde_json::Map::new();
+            namespaces.insert(
+                "aliases".to_string(),
+                Value::String(profile.patch_namespaces.aliases.clone()),
+            );
+            namespaces.insert(
+                "distinct".to_string(),
+                Value::String(profile.patch_namespaces.distinct.clone()),
+            );
+            namespaces.insert(
+                "relations".to_string(),
+                Value::String(profile.patch_namespaces.relations.clone()),
+            );
+            namespaces
+        }),
+    );
+    if let Some(content_hash) = &profile.content_hash {
+        object.insert(
+            "content_hash".to_string(),
+            Value::String(content_hash.clone()),
+        );
+    }
+    Value::Object(object)
 }
 
 fn build_alias_bytes(

@@ -4,5 +4,18 @@
   "description": "promote/apply fixture registry",
   "updated": "2026-06-26",
   "entry_count": 2,
-  "owner": "test-suite"
+  "owner": "test-suite",
+  "entity_profile": {
+    "id": "cmbs_tenant_label",
+    "version": "0.1.0",
+    "entity_type": "tenant_label",
+    "identity_semantics": "canonical_display_label",
+    "canonical_type": "tenant_label",
+    "patch_namespaces": {
+      "aliases": "cmbs_tenant_label.aliases",
+      "distinct": "cmbs_tenant_label.distinct",
+      "relations": "cmbs_tenant_label.relations"
+    },
+    "content_hash": "blake3:profile"
+  }
 }
