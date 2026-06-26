@@ -77,6 +77,69 @@
     "_org_registry_version",
     "_org_rule_id"
   ],
+  "hard_negative_fixture": "tests/fixtures/entity/regab/hard_negatives/role_capacity_guards.json",
+  "required_boundary_cases": [
+    {
+      "id": "pnc_midland_bank_division",
+      "fixture_case_id": "REGAB-I002-PNC-MIDLAND-DIVISION",
+      "required_guard": "bank_vs_loan_services_division",
+      "review_priority": "high",
+      "required_outcome": "distinct_or_review",
+      "org_mentions_required": true,
+      "surface_values": [
+        "PNC Bank, National Association",
+        "Midland Loan Services, a division of PNC Bank, National Association"
+      ]
+    },
+    {
+      "id": "wells_fargo_servicing_division",
+      "fixture_case_id": "REGAB-HIER-002-WELLS-FARGO-SERVICING-DIVISION",
+      "required_guard": "bank_vs_loan_services_division",
+      "review_priority": "high",
+      "required_outcome": "distinct_or_review",
+      "org_mentions_required": true,
+      "surface_values": [
+        "Wells Fargo Bank, National Association",
+        "Wells Fargo Commercial Mortgage Servicing, a division of Wells Fargo Bank, National Association"
+      ]
+    },
+    {
+      "id": "platform_category_label",
+      "fixture_case_id": "REGAB-I003-PLATFORM-LABEL",
+      "required_guard": "platform_category_label",
+      "review_priority": "critical",
+      "required_outcome": "review_or_escrow",
+      "org_mentions_required": true,
+      "surface_values": [
+        "Wells Fargo Commercial Mortgage Securities Platform",
+        "Wells Fargo Bank, National Association"
+      ]
+    },
+    {
+      "id": "auditor_subject_role_conflict",
+      "fixture_case_id": "REGAB-ROLE-AUDITOR-SUBJECT-CONFLICT",
+      "required_guard": "auditor_subject_party_role_conflict",
+      "review_priority": "critical",
+      "required_outcome": "review_or_escrow",
+      "org_mentions_required": true,
+      "surface_values": [
+        "KPMG LLP",
+        "KPMG Securitization Trust 2024-C1"
+      ]
+    },
+    {
+      "id": "parent_subsidiary_depositor_spv",
+      "fixture_case_id": "REGAB-PARENT-SUBSIDIARY-DEPOSITOR-SPV",
+      "required_guard": "parent_subsidiary_boundary",
+      "review_priority": "high",
+      "required_outcome": "review_or_escrow",
+      "org_mentions_required": false,
+      "surface_values": [
+        "ACME Depositor LLC",
+        "ACME Mortgage Trust 2024-C1"
+      ]
+    }
+  ],
   "required_cases": [
     "REGAB-I001 org_mentions shape accepted without parser rewrite",
     "REGAB-I002 PNC vs Midland remains distinct or reviewable",

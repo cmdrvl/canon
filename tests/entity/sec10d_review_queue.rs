@@ -50,7 +50,7 @@ fn sec10d_review_queue_groups_repeated_regab_firm_ambiguity() {
     }
 
     let pnc = &artifact.review_items[0];
-    assert_eq!(pnc.review_id, "review:surf_regab_pnc_bank");
+    assert_eq!(pnc.review_id, "review:surf_regab_pnc_001_bank");
     assert_eq!(pnc.affected_rows, 84);
     assert!(
         pnc.priority_reasons
@@ -84,7 +84,7 @@ fn REGAB_I002_I003_sec10d_review_queue_keeps_hard_negatives_reviewable() {
         .collect::<BTreeMap<_, _>>();
 
     let platform = items_by_review_id
-        .get("review:surf_regab_platform_label")
+        .get("review:surf_regab_platform_001_label")
         .expect("platform label review item");
     assert_eq!(platform.state, SolveReconciliationState::Contradiction);
     assert!(
@@ -101,7 +101,7 @@ fn REGAB_I002_I003_sec10d_review_queue_keeps_hard_negatives_reviewable() {
     );
 
     let acme = items_by_review_id
-        .get("review:surf_regab_acme_servicer")
+        .get("review:surf_regab_acme_001_servicer")
         .expect("unresolved exact lookup review item");
     assert!(
         acme.priority_reasons
@@ -197,8 +197,8 @@ fn solve_artifact() -> SolveArtifact {
 fn edge_records() -> Vec<EdgeEvidenceRecord> {
     vec![
         guarded_edge_record(GuardedEdge {
-            left_surface_id: "surf_regab_pnc_bank",
-            right_surface_id: "surf_regab_midland_division",
+            left_surface_id: "surf_regab_pnc_001_bank",
+            right_surface_id: "surf_regab_pnc_002_midland_division",
             left_name: "PNC Bank, National Association",
             right_name: "Midland Loan Services, a division of PNC Bank, National Association",
             left_role: "servicer",
@@ -209,8 +209,8 @@ fn edge_records() -> Vec<EdgeEvidenceRecord> {
             relation: "division_of",
         }),
         guarded_edge_record(GuardedEdge {
-            left_surface_id: "surf_regab_platform_label",
-            right_surface_id: "surf_regab_wells_fargo_bank",
+            left_surface_id: "surf_regab_platform_001_label",
+            right_surface_id: "surf_regab_platform_002_wells_fargo_bank",
             left_name: "Wells Fargo Commercial Mortgage Securities Platform",
             right_name: "Wells Fargo Bank, National Association",
             left_role: "platform",
@@ -221,8 +221,8 @@ fn edge_records() -> Vec<EdgeEvidenceRecord> {
             relation: "platform_to_firm_context",
         }),
         guarded_edge_record(GuardedEdge {
-            left_surface_id: "surf_regab_kpmg_auditor",
-            right_surface_id: "surf_regab_kpmg_subject_party",
+            left_surface_id: "surf_regab_kpmg_001_auditor",
+            right_surface_id: "surf_regab_kpmg_002_subject_party",
             left_name: "KPMG LLP",
             right_name: "KPMG Securitization Trust 2024-C1",
             left_role: "auditor",
@@ -233,8 +233,8 @@ fn edge_records() -> Vec<EdgeEvidenceRecord> {
             relation: "role_context_conflict",
         }),
         guarded_edge_record(GuardedEdge {
-            left_surface_id: "surf_regab_acme_servicer",
-            right_surface_id: "surf_regab_acme_agent",
+            left_surface_id: "surf_regab_acme_001_servicer",
+            right_surface_id: "surf_regab_acme_002_agent",
             left_name: "Acme Review Analytics LLC",
             right_name: "Acme Review Analytics Servicing Agent LLC",
             left_role: "subservicer",
@@ -291,63 +291,63 @@ fn guarded_edge_record(edge: GuardedEdge<'_>) -> EdgeEvidenceRecord {
 
 fn surface_provenance() -> Vec<SolveSurfaceProvenance> {
     vec![
-        provenance("surf_regab_pnc_bank", 52, 11),
-        provenance("surf_regab_midland_division", 32, 5),
-        provenance("surf_regab_platform_label", 18, 5),
-        provenance("surf_regab_wells_fargo_bank", 13, 3),
-        provenance("surf_regab_kpmg_auditor", 12, 3),
-        provenance("surf_regab_kpmg_subject_party", 9, 3),
-        provenance("surf_regab_acme_servicer", 7, 2),
-        provenance("surf_regab_acme_agent", 4, 1),
+        provenance("surf_regab_pnc_001_bank", 52, 11),
+        provenance("surf_regab_pnc_002_midland_division", 32, 5),
+        provenance("surf_regab_platform_001_label", 18, 5),
+        provenance("surf_regab_platform_002_wells_fargo_bank", 13, 3),
+        provenance("surf_regab_kpmg_001_auditor", 12, 3),
+        provenance("surf_regab_kpmg_002_subject_party", 9, 3),
+        provenance("surf_regab_acme_001_servicer", 7, 2),
+        provenance("surf_regab_acme_002_agent", 4, 1),
     ]
 }
 
 fn provenance_samples() -> Vec<ReviewProvenanceSample> {
     vec![
         sample(
-            "surf_regab_pnc_bank",
+            "surf_regab_pnc_001_bank",
             "regab-fixture-001",
             "regab_servicer_schedules:DEAL-PNC-2025",
             "PNC Bank, National Association",
         ),
         sample(
-            "surf_regab_midland_division",
+            "surf_regab_pnc_002_midland_division",
             "regab-fixture-002",
             "regab_servicer_schedules:DEAL-PNC-2025",
             "Midland Loan Services, a division of PNC Bank, National Association",
         ),
         sample(
-            "surf_regab_wells_fargo_bank",
+            "surf_regab_platform_002_wells_fargo_bank",
             "regab-fixture-003",
             "regab_servicer_schedules:DEAL-WF-2025",
             "Wells Fargo Bank, National Association",
         ),
         sample(
-            "surf_regab_platform_label",
+            "surf_regab_platform_001_label",
             "regab-fixture-005",
             "regab_platform_rosters:DEAL-WF-2025",
             "Wells Fargo Commercial Mortgage Securities Platform",
         ),
         sample(
-            "surf_regab_kpmg_auditor",
+            "surf_regab_kpmg_001_auditor",
             "regab-fixture-006",
             "regab_attestations:DEAL-KPMG-2025",
             "KPMG LLP",
         ),
         sample(
-            "surf_regab_kpmg_subject_party",
+            "surf_regab_kpmg_002_subject_party",
             "regab-fixture-007",
             "regab_attestations:DEAL-KPMG-2025",
             "KPMG Securitization Trust 2024-C1",
         ),
         sample(
-            "surf_regab_acme_servicer",
+            "surf_regab_acme_001_servicer",
             "regab-fixture-008",
             "regab_servicer_schedules:DEAL-ACME-2025",
             "Acme Review Analytics LLC",
         ),
         sample(
-            "surf_regab_acme_agent",
+            "surf_regab_acme_002_agent",
             "regab-fixture-009",
             "regab_servicer_schedules:DEAL-ACME-2025",
             "Acme Review Analytics Servicing Agent LLC",
@@ -358,26 +358,26 @@ fn provenance_samples() -> Vec<ReviewProvenanceSample> {
 fn relation_hints() -> Vec<ReviewRelationHint> {
     vec![
         review_relation(
-            "surf_regab_pnc_bank",
-            "surf_regab_midland_division",
+            "surf_regab_pnc_001_bank",
+            "surf_regab_pnc_002_midland_division",
             "division_of",
             "regab_bank_division_boundary",
         ),
         review_relation(
-            "surf_regab_platform_label",
-            "surf_regab_wells_fargo_bank",
+            "surf_regab_platform_001_label",
+            "surf_regab_platform_002_wells_fargo_bank",
             "platform_to_firm_context",
             "regab_platform_label_guard",
         ),
         review_relation(
-            "surf_regab_kpmg_auditor",
-            "surf_regab_kpmg_subject_party",
+            "surf_regab_kpmg_001_auditor",
+            "surf_regab_kpmg_002_subject_party",
             "role_context_conflict",
             "regab_auditor_subject_role_conflict",
         ),
         review_relation(
-            "surf_regab_acme_servicer",
-            "surf_regab_acme_agent",
+            "surf_regab_acme_001_servicer",
+            "surf_regab_acme_002_agent",
             "capacity_conflict",
             "regab_role_capacity_conflict",
         ),

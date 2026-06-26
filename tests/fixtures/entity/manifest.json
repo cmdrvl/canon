@@ -476,10 +476,13 @@
         "tests/fixtures/entity/regab/org_mentions/expected_summary.json",
         "tests/fixtures/entity/regab/sec10d_contract/manifest.json"
       ],
-      "expected_artifacts": [{"path": "tests/fixtures/entity/regab/regab_i002_solve.json", "schema_version": "canon_entity_solve.v0", "hash_policy": "byte_stable", "summary_counters": ["cannot_link_count", "auto_merge_count"]}],
+      "expected_artifacts": [
+        {"path": "tests/fixtures/entity/regab/regab_i002_solve.json", "schema_version": "canon_entity_solve.v0", "hash_policy": "byte_stable", "summary_counters": ["cannot_link_count", "auto_merge_count"]},
+        {"path": "tests/fixtures/entity/regab/review/sec10d_review_queue_expected.json", "schema_version": "canon_entity_review_queue.v0", "hash_policy": "byte_stable", "summary_counters": ["review_items", "review_group_count"]}
+      ],
       "expected_outcome": {"kind": "success", "refusal_code": null},
       "gates": ["G06", "G13"],
-      "owning_tests": ["regab_hierarchy_antimerge", "regab_profile_integration", "sec10d_contract_snapshots", "REGAB-I002"]
+      "owning_tests": ["regab_hierarchy_antimerge", "regab_profile_integration", "sec10d_contract_snapshots", "sec10d_review_queue", "REGAB-I002"]
     },
     {
       "id": "REGAB-I003",
@@ -493,10 +496,13 @@
         "tests/fixtures/entity/regab/org_mentions/expected_summary.json",
         "tests/fixtures/entity/regab/sec10d_contract/manifest.json"
       ],
-      "expected_artifacts": [{"path": "tests/fixtures/entity/regab/regab_i003_solve.json", "schema_version": "canon_entity_solve.v0", "hash_policy": "byte_stable", "summary_counters": ["review_group_count", "auto_merge_count"]}],
+      "expected_artifacts": [
+        {"path": "tests/fixtures/entity/regab/regab_i003_solve.json", "schema_version": "canon_entity_solve.v0", "hash_policy": "byte_stable", "summary_counters": ["review_group_count", "auto_merge_count"]},
+        {"path": "tests/fixtures/entity/regab/review/sec10d_review_queue_expected.json", "schema_version": "canon_entity_review_queue.v0", "hash_policy": "byte_stable", "summary_counters": ["review_items", "review_group_count"]}
+      ],
       "expected_outcome": {"kind": "success", "refusal_code": null},
       "gates": ["G06", "G13"],
-      "owning_tests": ["regab_platform_label_boundary", "regab_profile_integration", "sec10d_contract_snapshots", "REGAB-I003"]
+      "owning_tests": ["regab_platform_label_boundary", "regab_profile_integration", "sec10d_contract_snapshots", "sec10d_review_queue", "REGAB-I003"]
     },
     {
       "id": "REGAB-I004",

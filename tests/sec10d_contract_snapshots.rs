@@ -124,6 +124,74 @@ fn sec10d_snowflake_append_only_fields() {
     }
 }
 
+#[test]
+fn sec10d_regab_boundary_cases_remain_review_or_distinct() {
+    let manifest = manifest();
+    let expected_summary = read_json_value(fixture_root().join("expected_summary.json"));
+    let hard_negative_cases = hard_negative_cases(&manifest);
+    let org_mentions_names = read_jsonl_objects(fixture_root().join("org_mentions.jsonl"))
+        .into_iter()
+        .map(|object| object["org_name"].as_str().expect("org_name").to_string())
+        .collect::<BTreeSet<_>>();
+
+    let boundary_cases = manifest["required_boundary_cases"]
+        .as_array()
+        .expect("required boundary cases array");
+    assert_eq!(boundary_cases.len(), 5);
+
+    for boundary in boundary_cases {
+        let fixture_case_id = boundary["fixture_case_id"]
+            .as_str()
+            .expect("fixture case id");
+        let hard_negative = hard_negative_cases
+            .get(fixture_case_id)
+            .unwrap_or_else(|| panic!("missing hard-negative fixture case {fixture_case_id}"));
+        assert_eq!(hard_negative["guard"], boundary["required_guard"]);
+        assert_eq!(
+            hard_negative["expected_review_priority"],
+            boundary["review_priority"]
+        );
+        assert_eq!(hard_negative["expected_auto_merge"], false);
+        assert!(
+            matches!(
+                boundary["required_outcome"]
+                    .as_str()
+                    .expect("required outcome"),
+                "distinct_or_review" | "review_or_escrow"
+            ),
+            "unsupported boundary outcome {}",
+            boundary["required_outcome"]
+        );
+
+        if boundary["org_mentions_required"].as_bool().unwrap_or(false) {
+            for surface in string_array(&boundary["surface_values"]) {
+                assert!(
+                    org_mentions_names.contains(&surface),
+                    "org_mentions fixture must cover boundary surface {surface}"
+                );
+            }
+        }
+    }
+
+    let resolved = resolved_ids_by_name(&expected_summary);
+    assert_ne!(
+        resolved["PNC Bank, National Association"],
+        resolved["Midland Loan Services, a division of PNC Bank, National Association"],
+        "PNC and Midland must not collapse to the same reviewed firm"
+    );
+    assert_ne!(
+        resolved["Wells Fargo Bank, National Association"],
+        resolved["Wells Fargo Commercial Mortgage Servicing, a division of Wells Fargo Bank, National Association"],
+        "Wells Fargo bank and servicing division must not collapse"
+    );
+
+    let unresolved = string_array(&expected_summary["unresolved_surfaces"])
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    assert!(unresolved.contains("Wells Fargo Commercial Mortgage Securities Platform"));
+    assert!(unresolved.contains("KPMG Securitization Trust 2024-C1"));
+}
+
 fn assert_snapshot_hashes(manifest: &Value) {
     for snapshot in manifest["snapshots"].as_array().expect("snapshots array") {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -145,6 +213,42 @@ fn assert_snapshot_hashes(manifest: &Value) {
     }
 }
 
+fn hard_negative_cases(manifest: &Value) -> BTreeMap<String, Value> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        manifest["hard_negative_fixture"]
+            .as_str()
+            .expect("fixture path"),
+    );
+    read_json_value(path)["cases"]
+        .as_array()
+        .expect("hard-negative cases array")
+        .iter()
+        .map(|case| {
+            (
+                case["id"].as_str().expect("case id").to_string(),
+                case.clone(),
+            )
+        })
+        .collect()
+}
+
+fn resolved_ids_by_name(expected_summary: &Value) -> BTreeMap<String, String> {
+    expected_summary["exact_resolved_surfaces"]
+        .as_array()
+        .expect("exact resolved surfaces array")
+        .iter()
+        .map(|surface| {
+            (
+                surface["org_name"].as_str().expect("org name").to_string(),
+                surface["canonical_id"]
+                    .as_str()
+                    .expect("canonical id")
+                    .to_string(),
+            )
+        })
+        .collect()
+}
+
 fn string_array(value: &Value) -> Vec<String> {
     value
         .as_array()
@@ -152,6 +256,10 @@ fn string_array(value: &Value) -> Vec<String> {
         .iter()
         .map(|item| item.as_str().expect("string").to_string())
         .collect()
+}
+
+fn read_json_value(path: impl AsRef<Path>) -> Value {
+    serde_json::from_str(&fs::read_to_string(path).expect("json opens")).expect("json parses")
 }
 
 fn read_jsonl_objects(path: impl AsRef<Path>) -> Vec<Map<String, Value>> {
