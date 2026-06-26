@@ -1,0 +1,48 @@
+{
+  "schema_version": "canon.entity.stress_generator.v0",
+  "id": "cmbs_500k_stress",
+  "gate_id": "G11",
+  "seed": 424242,
+  "profile_id": "cmbs_tenant_label",
+  "row_count": 500000,
+  "deal_count": 3000,
+  "raw_unique_surface_count": 25000,
+  "prepared_surface_count": 25000,
+  "exact_resolved_surface_count": 5000,
+  "exact_bucket_count": 18000,
+  "largest_exact_bucket_size": 8000,
+  "review_group_count": 1500,
+  "hard_negative_family_count": 64,
+  "repeated_ambiguity_family_count": 1500,
+  "ci_sample_row_count": 128,
+  "ci_sample_surface_count": 4096,
+  "view_name": "tenant_core",
+  "operator_id": "ngram_topk:cmbs_500k",
+  "topk": {
+    "k": 25,
+    "candidate_cap": 25
+  },
+  "virtual_candidate_stream": {
+    "emitted_candidates_per_surface": 12,
+    "suppressed_candidates_per_surface": 4
+  },
+  "exact_bucket_probe": {
+    "bucket_value": "sears",
+    "surface_id": "surf:cmbs-sears-exact-bucket",
+    "row_count": 8000,
+    "deal_count": 934
+  },
+  "expected": {
+    "candidate_pairs_per_surface_p95_max": 25,
+    "candidate_pairs_per_surface_p99_max": 25,
+    "exact_bucket_pair_expansion_count": 0,
+    "review_group_count_max": 2000,
+    "max_exact_bucket_size": 10000,
+    "generated_static_artifact_policy": "do_not_commit_generated_500k_rows",
+    "first_row_signatures": [
+      "cmbs-000000|DEAL-001242|Sears Auto Center #24242|sears_auto_center:24242",
+      "cmbs-000001|DEAL-000161|SEARS LLC #24249|sears:24249",
+      "cmbs-000002|DEAL-002080|Sears #24256|sears:24256"
+    ]
+  }
+}
