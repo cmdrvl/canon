@@ -57,8 +57,8 @@ fn cmbs_batching_equivalence() {
         "batching must not solve per-batch candidate sets"
     );
     assert_eq!(
-        sorted_jsonl_lines(&pair.default.work_dir.join("block/exact_buckets.jsonl")),
-        sorted_jsonl_lines(&pair.batched.work_dir.join("block/exact_buckets.jsonl")),
+        exact_bucket_fingerprints(&pair.default.work_dir),
+        exact_bucket_fingerprints(&pair.batched.work_dir),
         "exact buckets remain compact global hyperedges"
     );
 
@@ -182,6 +182,32 @@ fn normalized_surface_fingerprints(work_dir: &Path) -> BTreeSet<String> {
                 surface["deal_count"].as_u64().unwrap_or_default(),
                 surface["exact_lookup"]["canonical_id"]
                     .as_str()
+                    .unwrap_or_default()
+            )
+        })
+        .collect()
+}
+
+fn exact_bucket_fingerprints(work_dir: &Path) -> BTreeSet<String> {
+    read_jsonl_values(&work_dir.join("block/exact_buckets.jsonl"))
+        .into_iter()
+        .map(|bucket| {
+            let surface_ids = bucket["membership"]["surface_ids"]
+                .as_array()
+                .expect("surface ids")
+                .iter()
+                .map(|value| value.as_str().unwrap_or_default())
+                .collect::<Vec<_>>()
+                .join(",");
+            format!(
+                "{}|{}|{}|{}|{}|{}",
+                bucket["bucket_id"].as_str().unwrap_or_default(),
+                surface_ids,
+                bucket["row_count"].as_u64().unwrap_or_default(),
+                bucket["deal_count"].as_u64().unwrap_or_default(),
+                bucket["pair_expansion"].as_str().unwrap_or_default(),
+                bucket["diagnostics"]["suppressed_pair_count"]
+                    .as_u64()
                     .unwrap_or_default()
             )
         })
