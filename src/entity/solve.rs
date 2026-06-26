@@ -141,6 +141,70 @@ pub struct SolveComponentConstraintReport {
     pub components: Vec<SolveComponentConstraintDecision>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SolveNewIdPolicy {
+    DelegateToPromotion,
+    EscrowOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolveReconciliationConfig {
+    pub minimum_adjusted_support_units: ScoreUnits,
+    pub new_id_policy: SolveNewIdPolicy,
+}
+
+impl SolveReconciliationConfig {
+    pub const fn delegate_new_ids(minimum_adjusted_support_units: ScoreUnits) -> Self {
+        Self {
+            minimum_adjusted_support_units,
+            new_id_policy: SolveNewIdPolicy::DelegateToPromotion,
+        }
+    }
+
+    pub const fn escrow_only(minimum_adjusted_support_units: ScoreUnits) -> Self {
+        Self {
+            minimum_adjusted_support_units,
+            new_id_policy: SolveNewIdPolicy::EscrowOnly,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SolveReconciliationState {
+    ResolvedExisting,
+    PromotableNew,
+    Escrow,
+    Conflict,
+    Contradiction,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolveReconciliationDecision {
+    pub component_id: String,
+    pub state: SolveReconciliationState,
+    pub reason: String,
+    pub surface_ids: Vec<String>,
+    pub incumbent_canonical_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_id: Option<String>,
+    pub constraint_action: SolveComponentAction,
+    pub support_score_units: ScoreUnits,
+    pub adjusted_support_score_units: ScoreUnits,
+    pub hard_cannot_link_count: u64,
+    pub soft_anti_merge_warning_count: u64,
+    pub review_priority_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolveReconciliationReport {
+    pub summary: BTreeMap<String, u64>,
+    pub decisions: Vec<SolveReconciliationDecision>,
+}
+
 pub fn evaluate_solve_budget(
     components: &[SolveComponentBudgetInput],
     config: SolveBudgetConfig,
@@ -231,6 +295,190 @@ pub fn evaluate_signed_graph_components(
         summary: component_constraint_summary(&decisions),
         components: decisions,
     }
+}
+
+pub fn reconcile_signed_graph_components(
+    graph: &EntityEvidenceGraph,
+    config: SolveReconciliationConfig,
+) -> SolveReconciliationReport {
+    let constraint_report = evaluate_signed_graph_components(graph);
+    let incumbent_ids = graph
+        .surface_nodes
+        .iter()
+        .filter_map(|node| {
+            node.incumbent_canonical_id
+                .as_ref()
+                .map(|canonical_id| (node.surface_id.clone(), canonical_id.clone()))
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    let mut decisions = constraint_report
+        .components
+        .into_iter()
+        .map(|component| reconcile_component(component, &incumbent_ids, config))
+        .collect::<Vec<_>>();
+    decisions.sort_by(reconciliation_decision_cmp);
+
+    SolveReconciliationReport {
+        summary: reconciliation_summary(&decisions),
+        decisions,
+    }
+}
+
+fn reconcile_component(
+    component: SolveComponentConstraintDecision,
+    incumbent_ids: &BTreeMap<String, String>,
+    config: SolveReconciliationConfig,
+) -> SolveReconciliationDecision {
+    let component_incumbent_ids = component_incumbent_ids(&component.surface_ids, incumbent_ids);
+    let hard_cannot_link_count = component.hard_cannot_link_violations.len() as u64;
+    let soft_anti_merge_warning_count = component.soft_anti_merge_warnings.len() as u64;
+
+    let (state, reason, canonical_id, candidate_id) =
+        if component.action == SolveComponentAction::Contradiction {
+            (
+                SolveReconciliationState::Contradiction,
+                "hard_cannot_link_constraint",
+                None,
+                None,
+            )
+        } else if component_incumbent_ids.len() > 1 {
+            (
+                SolveReconciliationState::Conflict,
+                "multiple_incumbent_canonical_ids",
+                None,
+                None,
+            )
+        } else if let Some(canonical_id) = component_incumbent_ids.first() {
+            if component.action == SolveComponentAction::Review {
+                (
+                    SolveReconciliationState::Escrow,
+                    "incumbent_component_requires_review",
+                    None,
+                    None,
+                )
+            } else {
+                (
+                    SolveReconciliationState::ResolvedExisting,
+                    "single_incumbent_inherits_existing_id",
+                    Some(canonical_id.clone()),
+                    None,
+                )
+            }
+        } else if component.adjusted_support_score_units < config.minimum_adjusted_support_units {
+            (
+                SolveReconciliationState::Escrow,
+                "below_support_threshold",
+                None,
+                None,
+            )
+        } else if component.action == SolveComponentAction::Review {
+            (
+                SolveReconciliationState::Escrow,
+                "soft_anti_merge_requires_review",
+                None,
+                None,
+            )
+        } else {
+            match config.new_id_policy {
+                SolveNewIdPolicy::DelegateToPromotion => (
+                    SolveReconciliationState::PromotableNew,
+                    "new_id_delegated_to_promotion_policy",
+                    None,
+                    Some(promotable_candidate_id(&component.component_id)),
+                ),
+                SolveNewIdPolicy::EscrowOnly => (
+                    SolveReconciliationState::Escrow,
+                    "new_id_promotion_deferred_by_policy",
+                    None,
+                    None,
+                ),
+            }
+        };
+
+    SolveReconciliationDecision {
+        component_id: component.component_id,
+        state,
+        reason: reason.to_string(),
+        surface_ids: component.surface_ids,
+        incumbent_canonical_ids: component_incumbent_ids,
+        canonical_id,
+        candidate_id,
+        constraint_action: component.action,
+        support_score_units: component.raw_support_score_units,
+        adjusted_support_score_units: component.adjusted_support_score_units,
+        hard_cannot_link_count,
+        soft_anti_merge_warning_count,
+        review_priority_reasons: component.review_priority_reasons,
+    }
+}
+
+fn component_incumbent_ids(
+    surface_ids: &[String],
+    incumbent_ids: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let mut ids = surface_ids
+        .iter()
+        .filter_map(|surface_id| incumbent_ids.get(surface_id).cloned())
+        .collect::<Vec<_>>();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+fn promotable_candidate_id(component_id: &str) -> String {
+    let suffix = component_id
+        .strip_prefix("component:")
+        .unwrap_or(component_id)
+        .replace(':', "_");
+    format!("candidate:{suffix}")
+}
+
+fn reconciliation_summary(decisions: &[SolveReconciliationDecision]) -> BTreeMap<String, u64> {
+    let component_count = decisions.len() as u64;
+    let resolved_existing_count =
+        reconciliation_state_count(decisions, SolveReconciliationState::ResolvedExisting);
+    let promotable_new_count =
+        reconciliation_state_count(decisions, SolveReconciliationState::PromotableNew);
+    let escrow_count = reconciliation_state_count(decisions, SolveReconciliationState::Escrow);
+    let conflict_count = reconciliation_state_count(decisions, SolveReconciliationState::Conflict);
+    let contradiction_count =
+        reconciliation_state_count(decisions, SolveReconciliationState::Contradiction);
+
+    BTreeMap::from([
+        ("component_count".to_string(), component_count),
+        (
+            "resolved_existing_count".to_string(),
+            resolved_existing_count,
+        ),
+        ("promotable_new_count".to_string(), promotable_new_count),
+        ("escrow_count".to_string(), escrow_count),
+        ("conflict_count".to_string(), conflict_count),
+        ("contradiction_count".to_string(), contradiction_count),
+    ])
+}
+
+fn reconciliation_state_count(
+    decisions: &[SolveReconciliationDecision],
+    state: SolveReconciliationState,
+) -> u64 {
+    decisions
+        .iter()
+        .filter(|decision| decision.state == state)
+        .count() as u64
+}
+
+fn reconciliation_decision_cmp(
+    left: &SolveReconciliationDecision,
+    right: &SolveReconciliationDecision,
+) -> std::cmp::Ordering {
+    left.component_id
+        .cmp(&right.component_id)
+        .then_with(|| left.surface_ids.cmp(&right.surface_ids))
+        .then_with(|| {
+            left.incumbent_canonical_ids
+                .cmp(&right.incumbent_canonical_ids)
+        })
 }
 
 fn evaluate_component_constraints(
