@@ -1,0 +1,5 @@
+source_row_id,deal_id,loan_id,property_id,raw_tenant_name,alias_surfaces_json,mention_surfaces_json
+enp002-row-001,deal-a,loan-001,prop-001,Sears LLC,"[""Sears Roebuck""]",[]
+enp002-row-002,deal-a,loan-002,prop-001,SEARS LLC,,[]
+enp002-row-003,deal-b,loan-003,prop-002,Sears,,[]
+enp002-row-004,deal-c,loan-004,prop-003,Sears Auto Center,,[]

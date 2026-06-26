@@ -1,0 +1,4 @@
+source_row_id,deal_id,loan_id,property_id,raw_tenant_name,alias_surfaces_json,mention_surfaces_json
+enp005-row-001,deal-a,loan-001,prop-001,SEARS LLC,"[""Sears""]",[]
+enp005-row-002,deal-a,loan-002,prop-001,Sears,,[]
+enp005-row-003,deal-b,loan-003,prop-002,Unknown Shop,,[]

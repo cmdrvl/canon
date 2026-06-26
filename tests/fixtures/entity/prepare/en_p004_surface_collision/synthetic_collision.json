@@ -1,0 +1,24 @@
+{
+  "schema_version": "canon.entity.prepare.synthetic_surface_collision.v0",
+  "hash_algorithm": "constant",
+  "expected_surface_id": "surf:cmbs_tenant_label:constant:collision",
+  "collision_policy": "refuse_without_silent_rekey",
+  "existing_material": {
+    "version": "canon_entity_surface_id.v0",
+    "profile_id": "cmbs_tenant_label",
+    "normalized_view": {
+      "name": "tenant_core",
+      "value": "sears"
+    },
+    "raw_surfaces": ["Sears LLC"]
+  },
+  "colliding_material": {
+    "version": "canon_entity_surface_id.v0",
+    "profile_id": "cmbs_tenant_label",
+    "normalized_view": {
+      "name": "tenant_core",
+      "value": "sears auto center"
+    },
+    "raw_surfaces": ["Sears Auto Center"]
+  }
+}

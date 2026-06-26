@@ -1,0 +1,8 @@
+[
+  {
+    "input": "Sears",
+    "canonical_id": "TNT-SEARS",
+    "canonical_type": "tenant_label",
+    "rule_id": "TENANT_ALIAS"
+  }
+]
