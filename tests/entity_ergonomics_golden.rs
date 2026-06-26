@@ -270,6 +270,27 @@ fn entity_doctor_lint_golden_reports_actionable_robot_diagnostics() {
     assert!(human.contains("sidecar_snapshot_drift"));
 }
 
+#[test]
+fn entity_ergonomics_golden_manifest_references_parseable_supplemental_goldens() {
+    let manifest = json_fixture(GOLDEN_MANIFEST);
+    let supplemental = manifest["supplemental_goldens"]
+        .as_object()
+        .expect("supplemental goldens");
+    let expected_schemas = [
+        ("explain_cases", "canon.entity.explain_goldens.v0"),
+        ("summary_robot", "canon.entity.summary_robot_golden.v0"),
+        ("doctor_lint", "canon.entity.doctor_lint_golden.v0"),
+    ];
+
+    for (key, expected_schema) in expected_schemas {
+        let path = supplemental[key]
+            .as_str()
+            .unwrap_or_else(|| panic!("missing supplemental golden {key}"));
+        let golden = json_fixture(path);
+        assert_eq!(golden["schema_version"], expected_schema);
+    }
+}
+
 fn assert_explain_projection(
     result: &canon::entity::runtime::types::ExplainResult,
     manifest: &Value,

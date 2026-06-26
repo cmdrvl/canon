@@ -1,6 +1,11 @@
 {
   "schema_version": "canon.entity.ergonomics_golden.v0",
   "fixture_id": "entity-ergonomics-final-goldens-v0",
+  "supplemental_goldens": {
+    "explain_cases": "tests/fixtures/entity/ergonomics/explain_goldens.json",
+    "summary_robot": "tests/fixtures/entity/ergonomics/summary_robot_golden.json",
+    "doctor_lint": "tests/fixtures/entity/ergonomics/doctor_lint_golden.json"
+  },
   "explain": {
     "bundle": "tests/fixtures/entity/operator_journey/explain/reconstruction_bundle.json",
     "queries": {
