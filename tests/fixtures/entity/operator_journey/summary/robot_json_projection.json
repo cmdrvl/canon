@@ -1,0 +1,113 @@
+{
+  "run": {
+    "version": "canon_entity_operator_summary.v0",
+    "profile_id": "cmbs_tenant_label",
+    "registry_id": "cmbs-tenants",
+    "counts": {
+      "anti_merge_groups": 1,
+      "exact_resolved_surfaces": 7,
+      "prepared_surfaces": 12,
+      "promotable_aliases": 4,
+      "review_groups": 2,
+      "row_count": 15
+    },
+    "cache_status": {
+      "index": "hit"
+    },
+    "next_command": "canon entity review export work/solve/solve.json --emit json",
+    "next_command_keys": ["apply", "audit", "promote", "resume", "review_export"],
+    "telemetry_links": {
+      "block_artifact": "block/block.json",
+      "candidate_records": "block/candidates.jsonl",
+      "decision_ledger": "solve/decision_ledger.jsonl",
+      "edge_artifact": "edge/edge.json",
+      "edge_records": "edge/edges.jsonl",
+      "index_artifact": "index.json",
+      "prepare_artifact": "prepare/prepare.json",
+      "run_artifact": "run.json",
+      "solve_artifact": "solve/solve.json",
+      "surfaces": "prepare/surfaces.jsonl"
+    },
+    "top_unresolved_tokens": [
+      {"key": "sears", "count": 2},
+      {"key": "buffet", "count": 1}
+    ],
+    "top_anti_merge_reasons": [
+      {"key": "related_brand_family_not_same_tenant_label", "count": 3}
+    ]
+  },
+  "stages": {
+    "apply": {
+      "stage": "apply",
+      "artifact_version": "canon_entity_apply.v0",
+      "counts": {
+        "anti_merge_groups": 1,
+        "exact_resolved_surfaces": 7,
+        "prepared_surfaces": 12,
+        "promotable_aliases": 4,
+        "review_groups": 2,
+        "row_count": 15
+      },
+      "next_command": "canon entity apply apply/apply.json",
+      "next_command_keys": ["apply"],
+      "telemetry_links": {
+        "artifact": "apply/apply.json",
+        "telemetry": "telemetry/apply.json"
+      }
+    },
+    "block": {
+      "stage": "block",
+      "artifact_version": "canon_entity_block.v0",
+      "counts": {
+        "anti_merge_groups": 1,
+        "exact_resolved_surfaces": 7,
+        "prepared_surfaces": 12,
+        "promotable_aliases": 4,
+        "review_groups": 2,
+        "row_count": 15
+      },
+      "next_command": "canon entity edge block/block.json",
+      "next_command_keys": ["edge"],
+      "telemetry_links": {
+        "artifact": "block/block.json",
+        "telemetry": "telemetry/block.json"
+      }
+    },
+    "prepare": {
+      "stage": "prepare",
+      "artifact_version": "canon_entity_prepare.v0",
+      "counts": {
+        "anti_merge_groups": 1,
+        "exact_resolved_surfaces": 7,
+        "prepared_surfaces": 12,
+        "promotable_aliases": 4,
+        "review_groups": 2,
+        "row_count": 15
+      },
+      "next_command": "canon entity block prepare/prepare.json",
+      "next_command_keys": ["block"],
+      "telemetry_links": {
+        "artifact": "prepare/prepare.json",
+        "telemetry": "telemetry/prepare.json"
+      }
+    },
+    "solve": {
+      "stage": "solve",
+      "artifact_version": "canon_entity_solve.v0",
+      "counts": {
+        "anti_merge_groups": 1,
+        "exact_resolved_surfaces": 7,
+        "prepared_surfaces": 12,
+        "promotable_aliases": 4,
+        "review_groups": 2,
+        "row_count": 15
+      },
+      "next_command": "canon entity review_export solve/solve.json",
+      "next_command_keys": ["review_export"],
+      "telemetry_links": {
+        "artifact": "solve/solve.json",
+        "telemetry": "telemetry/solve.json"
+      }
+    }
+  }
+}

@@ -423,7 +423,10 @@ fn primary_next_command(commands: &BTreeMap<String, String>) -> String {
 
 fn primary_next_command_key(commands: &BTreeMap<String, String>) -> String {
     for key in ["review_export", "audit", "promote", "apply", "resume"] {
-        if commands.get(key).is_some_and(|command| !command.trim().is_empty()) {
+        if commands
+            .get(key)
+            .is_some_and(|command| !command.trim().is_empty())
+        {
             return key.to_string();
         }
     }
