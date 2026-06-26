@@ -55,6 +55,11 @@ fn entity_ngram_index_builds_sorted_postings_and_tracks_common_terms() {
         first.ngram_layout.common_posting_diagnostics[0].configured_limit,
         1
     );
+    assert_eq!(first.diagnostics.surface_count, 4);
+    assert_eq!(first.diagnostics.ngram_count, 10);
+    assert_eq!(first.diagnostics.total_posting_count, 12);
+    assert_eq!(first.diagnostics.common_ngram_count, 1);
+    assert_eq!(first.diagnostics.largest_ngram_posting_size, 3);
     assert!(first.ngram_layout.validate_reload().is_ok());
 }
 
@@ -92,6 +97,69 @@ fn entity_ngram_index_top_k_prunes_deterministically() {
     assert_eq!(result.dropped.len(), 1);
     assert_eq!(result.dropped[0].candidate_surface_id, "surf:003");
     assert_eq!(result.dropped[0].reason, TopKDropReason::TopKLimit);
+}
+
+#[test]
+fn ngram_posting_caps_emit_budget_diagnostics() {
+    let index = EntityNgramIndex::build(
+        &[
+            EntityNgramSurface::new("surf:003", "sears"),
+            EntityNgramSurface::new("surf:002", "sears auto"),
+            EntityNgramSurface::new("surf:001", "sears retail"),
+        ],
+        EntityNgramBuildConfig {
+            ngram: NgramConfig::new(3).expect("width"),
+            common_posting_limit: 2,
+        },
+    )
+    .expect("index builds");
+
+    assert_eq!(index.diagnostics.common_ngram_count, 3);
+    assert_eq!(index.diagnostics.largest_ngram_posting_size, 3);
+    assert_eq!(
+        index
+            .ngram_layout
+            .common_posting_diagnostics
+            .iter()
+            .map(|diagnostic| (
+                diagnostic.key.as_str(),
+                diagnostic.posting_count,
+                diagnostic.configured_limit,
+            ))
+            .collect::<Vec<_>>(),
+        [("ars", 3, 2), ("ear", 3, 2), ("sea", 3, 2)]
+    );
+}
+
+#[test]
+fn entity_ngram_index_duplicate_surface_keys_are_order_independent() {
+    let first = EntityNgramIndex::build(
+        &[
+            EntityNgramSurface::new("surf:001", "zeta tenant"),
+            EntityNgramSurface::new("surf:001", "alpha tenant"),
+            EntityNgramSurface::new("surf:002", "alpha tenent"),
+        ],
+        sample_config(),
+    )
+    .expect("index builds");
+    let second = EntityNgramIndex::build(
+        &[
+            EntityNgramSurface::new("surf:002", "alpha tenent"),
+            EntityNgramSurface::new("surf:001", "alpha tenant"),
+            EntityNgramSurface::new("surf:001", "zeta tenant"),
+        ],
+        sample_config(),
+    )
+    .expect("index builds");
+
+    assert_eq!(first, second);
+    let result = first
+        .top_k_for_surface(
+            "surf:002",
+            TopKConfig::new("cmbs_tenant_label", "ngram_topk:tenant_core", 1),
+        )
+        .expect("top-k result");
+    assert_eq!(result.candidates[0].normalized_key, "alpha tenant");
 }
 
 fn sample_index() -> EntityNgramIndex {

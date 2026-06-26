@@ -56,6 +56,7 @@ pub struct EntityNgramIndex {
     pub version: String,
     pub surface_ids: Vec<String>,
     pub ngram_layout: PostingLayout,
+    pub diagnostics: EntityNgramDiagnostics,
     surfaces: Vec<NormalizedNgramSurface>,
 }
 
@@ -64,6 +65,15 @@ struct NormalizedNgramSurface {
     surface_id: String,
     normalized_key: String,
     ngrams: BTreeMap<String, u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityNgramDiagnostics {
+    pub surface_count: u32,
+    pub ngram_count: usize,
+    pub total_posting_count: usize,
+    pub common_ngram_count: usize,
+    pub largest_ngram_posting_size: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,18 +94,21 @@ impl EntityNgramIndex {
         config: EntityNgramBuildConfig,
     ) -> Result<Self, EntityNgramIndexError> {
         let normalized = normalize_surfaces(surfaces, config.ngram);
-        let surface_count = u32::try_from(normalized.len()).expect("ngram surface count fits u32");
+        let surface_count = u32::try_from(normalized.len())
+            .map_err(|_| PostingLayoutError::SurfaceCountOverflow(normalized.len()))?;
         let surface_ids = normalized
             .iter()
             .map(|surface| surface.surface_id.clone())
             .collect::<Vec<_>>();
         let ngram_layout =
             build_ngram_layout(surface_count, &normalized, config.common_posting_limit)?;
+        let diagnostics = EntityNgramDiagnostics::from_layout(surface_count, &ngram_layout);
 
         Ok(Self {
             version: CANON_ENTITY_NGRAM_INDEX_VERSION.to_string(),
             surface_ids,
             ngram_layout,
+            diagnostics,
             surfaces: normalized,
         })
     }
@@ -177,7 +190,9 @@ fn normalize_surfaces(
                 ngrams: BTreeMap::new(),
             });
 
-        if entry.normalized_key.is_empty() && !surface.normalized_key.trim().is_empty() {
+        if !surface.normalized_key.trim().is_empty()
+            && (entry.normalized_key.is_empty() || surface.normalized_key < entry.normalized_key)
+        {
             entry.normalized_key = surface.normalized_key.clone();
         }
 
@@ -240,4 +255,24 @@ fn ngram_symbol_table(surfaces: &[NormalizedNgramSurface]) -> NgramSymbolTable {
 
 fn saturating_u32(value: u64) -> u32 {
     u32::try_from(value).unwrap_or(u32::MAX)
+}
+
+impl EntityNgramDiagnostics {
+    fn from_layout(surface_count: u32, layout: &PostingLayout) -> Self {
+        let posting_sizes = posting_lengths(layout);
+        Self {
+            surface_count,
+            ngram_count: layout.dictionary.len(),
+            total_posting_count: layout.postings.len(),
+            common_ngram_count: layout.common_posting_diagnostics.len(),
+            largest_ngram_posting_size: posting_sizes.into_iter().max().unwrap_or(0),
+        }
+    }
+}
+
+fn posting_lengths(layout: &PostingLayout) -> impl Iterator<Item = usize> + '_ {
+    layout
+        .term_offsets
+        .windows(2)
+        .map(|window| window[1].saturating_sub(window[0]))
 }

@@ -2,6 +2,8 @@
 
 #[path = "entity/apply_streaming.rs"]
 mod apply_streaming;
+#[path = "entity/bead_parallelism_contract.rs"]
+mod bead_parallelism_contract;
 #[path = "entity/index_ngram.rs"]
 mod index_ngram;
 #[path = "entity/postings_layout.rs"]
