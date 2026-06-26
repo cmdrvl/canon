@@ -1,0 +1,6 @@
+{"ordering_group":"sears_support_edges","rank":0,"metric":"token_set_ratio","left":"sears roebuck","surface_id":"surf:sears_roebuck_llc","right":"sears roebuck llc","expected_score_units":8000}
+{"ordering_group":"sears_support_edges","rank":1,"metric":"token_set_ratio","left":"sears roebuck","surface_id":"surf:roebuck_holdings","right":"roebuck holdings","expected_score_units":5000}
+{"ordering_group":"sears_support_edges","rank":2,"metric":"token_set_ratio","left":"sears roebuck","surface_id":"surf:sears_auto_center","right":"sears auto center","expected_score_units":4000}
+{"ordering_group":"sears_support_edges","rank":3,"metric":"token_set_ratio","left":"sears roebuck","surface_id":"surf:kmart","right":"kmart","expected_score_units":0}
+{"ordering_group":"tie_break_edges","rank":0,"metric":"token_set_ratio","left":"sears roebuck","surface_id":"surf:roebuck_holdings","right":"roebuck holdings","expected_score_units":5000}
+{"ordering_group":"tie_break_edges","rank":1,"metric":"token_set_ratio","left":"sears roebuck","surface_id":"surf:sears_holdings","right":"sears holdings","expected_score_units":5000}
