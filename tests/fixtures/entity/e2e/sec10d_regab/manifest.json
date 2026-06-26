@@ -1,0 +1,124 @@
+{
+  "schema_version": "canon.entity.sec10d_regab_e2e.v0",
+  "profile_id": "regab_firm_identity",
+  "purpose": "Small sec10d Reg AB end-to-end regression over canon-owned org_mentions fixtures.",
+  "fixture_paths": {
+    "org_mentions_csv": "tests/fixtures/entity/regab/org_mentions/org_mentions.csv",
+    "org_mentions_jsonl": "tests/fixtures/entity/regab/org_mentions/org_mentions.jsonl",
+    "profile_strategy_yaml": "tests/fixtures/entity/profiles/regab_firm_identity.yaml",
+    "registry_snapshot": "tests/fixtures/entity/regab/sec10d_baseline_public/registry_snapshot/firms",
+    "expected_summary": "tests/fixtures/entity/regab/org_mentions/expected_summary.json",
+    "selected_snowflake_enrichment_jsonl": "tests/fixtures/entity/regab/org_mentions/applied_org_enrichment.jsonl"
+  },
+  "expected_counts": {
+    "row_count": 8,
+    "prepared_surfaces": 8,
+    "exact_resolved_surfaces": 5,
+    "unresolved_surfaces": 3,
+    "candidate_pairs": 21,
+    "edge_records": 21,
+    "solved_entities": 5,
+    "review_items": 0,
+    "audit_gates": 3,
+    "apply_rows": 8,
+    "apply_resolved": 5,
+    "apply_unresolved": 3
+  },
+  "selected_apply_source_row_ids": [
+    "regab-fixture-001",
+    "regab-fixture-005"
+  ],
+  "boundary_expectations": [
+    {
+      "id": "REGAB-I002-PNC-BANK",
+      "surface": "PNC Bank, National Association",
+      "prepare_status": "resolved",
+      "canonical_id": "ORG-034",
+      "apply_status": "resolved_exact"
+    },
+    {
+      "id": "REGAB-I002-MIDLAND-DIVISION",
+      "surface": "Midland Loan Services, a division of PNC Bank, National Association",
+      "prepare_status": "resolved",
+      "canonical_id": "ORG-035",
+      "apply_status": "resolved_exact"
+    },
+    {
+      "id": "REGAB-HIER-002-WELLS-FARGO-BANK",
+      "surface": "Wells Fargo Bank, National Association",
+      "prepare_status": "resolved",
+      "canonical_id": "ORG-012",
+      "apply_status": "resolved_exact"
+    },
+    {
+      "id": "REGAB-HIER-002-WELLS-FARGO-SERVICING-DIVISION",
+      "surface": "Wells Fargo Commercial Mortgage Servicing, a division of Wells Fargo Bank, National Association",
+      "prepare_status": "resolved",
+      "canonical_id": "ORG-053",
+      "apply_status": "resolved_exact"
+    },
+    {
+      "id": "REGAB-I003-PLATFORM-LABEL",
+      "surface": "Wells Fargo Commercial Mortgage Securities Platform",
+      "prepare_status": "unresolved",
+      "canonical_id": null,
+      "apply_status": "review_required"
+    },
+    {
+      "id": "REGAB-I003-AUDITOR",
+      "surface": "KPMG LLP",
+      "prepare_status": "resolved",
+      "canonical_id": "ORG-042",
+      "apply_status": "resolved_exact"
+    },
+    {
+      "id": "REGAB-I003-AUDITOR-SUBJECT",
+      "surface": "KPMG Securitization Trust 2024-C1",
+      "prepare_status": "unresolved",
+      "canonical_id": null,
+      "apply_status": "review_required"
+    },
+    {
+      "id": "REGAB-UNRESOLVED-EXACT-LOOKUP-MISS",
+      "surface": "Acme Review Analytics LLC",
+      "prepare_status": "unresolved",
+      "canonical_id": null,
+      "apply_status": "review_required"
+    }
+  ],
+  "must_remain_distinct": [
+    {
+      "left": "PNC Bank, National Association",
+      "right": "Midland Loan Services, a division of PNC Bank, National Association"
+    },
+    {
+      "left": "Wells Fargo Bank, National Association",
+      "right": "Wells Fargo Commercial Mortgage Servicing, a division of Wells Fargo Bank, National Association"
+    }
+  ],
+  "assertions": [
+    {
+      "id": "REGAB-I001",
+      "behavior": "org_mentions.csv is accepted without parser-field rewrites"
+    },
+    {
+      "id": "REGAB-I002",
+      "behavior": "PNC Bank and Midland Loan Services remain distinct exact registry firms"
+    },
+    {
+      "id": "REGAB-I003",
+      "behavior": "platform/category labels and auditor/subject conflicts remain review-required when unresolved"
+    },
+    {
+      "id": "REGAB-I004",
+      "behavior": "Snowflake-facing enrichment appends org fields while preserving raw parser evidence"
+    }
+  ],
+  "runtime_forbidden": [
+    "frontier model call",
+    "network call",
+    "runtime model download",
+    "Python ML runtime",
+    "unsafe Rust"
+  ]
+}
