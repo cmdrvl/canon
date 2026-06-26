@@ -229,3 +229,60 @@ fn sec10d_regab_registry_snapshot_fixture_matches_baseline_metadata() {
         read_json(public_slice_root().join("registry_snapshot/firms/regab-org-seed-20260623.json"));
     assert_eq!(seed.as_array().unwrap().len(), 42);
 }
+
+#[test]
+fn sec10d_regab_profile_fixtures_are_present_and_shaped() {
+    let root = fixture_root();
+
+    let i001 = read_json(root.join("regab_i001_prepare.json"));
+    assert_eq!(i001["version"], "canon_entity_prepare.v0");
+    assert_eq!(i001["fixture_id"], "REGAB-I001");
+    assert_eq!(i001["summary"]["raw_unique_surfaces"], 46);
+    assert_eq!(i001["summary"]["prepared_surfaces"], 46);
+
+    let i002 = read_json(root.join("regab_i002_solve.json"));
+    assert_eq!(i002["version"], "canon_entity_solve.v0");
+    assert_eq!(i002["fixture_id"], "REGAB-I002");
+    assert_eq!(i002["summary"]["cannot_link_count"], 2);
+    assert_eq!(i002["summary"]["auto_merge_count"], 0);
+
+    let mut platform_reader =
+        csv::Reader::from_path(root.join("regab_i003_platform_label.csv")).expect("platform csv");
+    let platform_headers: Vec<String> = platform_reader
+        .headers()
+        .expect("platform headers")
+        .iter()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        platform_headers,
+        [
+            "source_row_id",
+            "dataset",
+            "doc_id",
+            "accession",
+            "filing_cik",
+            "field_name",
+            "org_name",
+            "role_context",
+            "capacity",
+            "subject_role",
+            "alias_surfaces_json",
+            "mention_surfaces_json",
+        ]
+    );
+    assert_eq!(platform_reader.records().count(), 2);
+
+    let i003 = read_json(root.join("regab_i003_solve.json"));
+    assert_eq!(i003["version"], "canon_entity_solve.v0");
+    assert_eq!(i003["fixture_id"], "REGAB-I003");
+    assert_eq!(i003["summary"]["review_group_count"], 2);
+    assert_eq!(i003["summary"]["auto_merge_count"], 0);
+
+    let i004 = read_json(root.join("regab_i004_apply.json"));
+    assert_eq!(i004["version"], "canon_entity_apply.v0");
+    assert_eq!(i004["fixture_id"], "REGAB-I004");
+    assert_eq!(i004["summary"]["rows"], 46);
+    assert_eq!(i004["summary"]["resolved"], 46);
+    assert_eq!(i004["summary"]["raw_field_mutations"], 0);
+}

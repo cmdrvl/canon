@@ -1,0 +1,9 @@
+{
+  "version": "canon_entity_prepare.v0",
+  "fixture_id": "REGAB-I001",
+  "profile": "regab_firm_identity",
+  "summary": {
+    "raw_unique_surfaces": 46,
+    "prepared_surfaces": 46
+  }
+}

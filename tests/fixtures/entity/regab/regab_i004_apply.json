@@ -1,0 +1,10 @@
+{
+  "version": "canon_entity_apply.v0",
+  "fixture_id": "REGAB-I004",
+  "profile": "regab_firm_identity",
+  "summary": {
+    "rows": 46,
+    "resolved": 46,
+    "raw_field_mutations": 0
+  }
+}
