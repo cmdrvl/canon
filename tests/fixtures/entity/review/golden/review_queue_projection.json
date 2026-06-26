@@ -1,0 +1,144 @@
+{
+  "version": "canon_entity_review_queue.v0",
+  "summary_counts": {
+    "review_deals_covered": 60,
+    "review_group_count": 2,
+    "review_items": 2,
+    "review_rows_covered": 153
+  },
+  "summary_labels": {
+    "grouping": "ambiguity_pattern",
+    "include": "all"
+  },
+  "json_items": [
+    {
+      "review_id": "review:surf_sears",
+      "ambiguity_key": "contradiction:hard_cannot_link_constraint",
+      "component_id": "component:surf:sears",
+      "state": "contradiction",
+      "proposed_action": "confirm_distinct_or_request_override",
+      "review_priority_units": 6400,
+      "priority_reasons": [
+        "hard_cannot_link",
+        "high_deal_count",
+        "high_row_count",
+        "support_and_cannot_link"
+      ],
+      "affected_rows": 100,
+      "affected_deals": 40,
+      "surface_ids": ["surf:sears", "surf:sears_auto"],
+      "positive_evidence_reason_codes": ["positive_identity_evidence"],
+      "negative_evidence_reason_codes": ["distinct_identity_evidence"],
+      "relation_hints": [
+        {
+          "left_surface_id": "surf:sears",
+          "right_surface_id": "surf:sears_auto",
+          "relation": "related_brand_family",
+          "reason_code": "same_brand_family_review_only"
+        }
+      ],
+      "provenance_raw_values": ["Sears", "Sears Auto Center"]
+    },
+    {
+      "review_id": "review:surf_pnc_bank",
+      "ambiguity_key": "contradiction:hard_cannot_link_constraint",
+      "component_id": "component:surf:pnc_bank",
+      "state": "contradiction",
+      "proposed_action": "confirm_distinct_or_request_override",
+      "review_priority_units": 5718,
+      "priority_reasons": [
+        "hard_cannot_link",
+        "high_deal_count",
+        "high_row_count",
+        "support_and_cannot_link"
+      ],
+      "affected_rows": 53,
+      "affected_deals": 20,
+      "surface_ids": ["surf:pnc_bank", "surf:pnc_midland_loan_services"],
+      "positive_evidence_reason_codes": ["positive_identity_evidence"],
+      "negative_evidence_reason_codes": ["distinct_identity_evidence"],
+      "relation_hints": [
+        {
+          "left_surface_id": "surf:pnc_bank",
+          "right_surface_id": "surf:pnc_midland_loan_services",
+          "relation": "master_special_servicer_platform",
+          "reason_code": "servicer_relation_review_only"
+        }
+      ],
+      "provenance_raw_values": [
+        "PNC Bank",
+        "PNC Midland Loan Services"
+      ]
+    }
+  ],
+  "csv_headers": [
+    "review_id",
+    "review_priority_units",
+    "priority_reasons_json",
+    "affected_rows",
+    "affected_deals",
+    "component_id",
+    "state",
+    "proposed_action",
+    "surface_ids_json",
+    "positive_evidence_json",
+    "anti_merge_evidence_json",
+    "relation_hints_json",
+    "provenance_samples_json"
+  ],
+  "csv_rows": [
+    {
+      "review_id": "review:surf_sears",
+      "review_priority_units": 6400,
+      "priority_reasons": [
+        "hard_cannot_link",
+        "high_deal_count",
+        "high_row_count",
+        "support_and_cannot_link"
+      ],
+      "affected_rows": 100,
+      "affected_deals": 40,
+      "component_id": "component:surf:sears",
+      "state": "contradiction",
+      "proposed_action": "confirm_distinct_or_request_override",
+      "surface_ids": ["surf:sears", "surf:sears_auto"],
+      "relation_hints": [
+        {
+          "left_surface_id": "surf:sears",
+          "right_surface_id": "surf:sears_auto",
+          "relation": "related_brand_family",
+          "reason_code": "same_brand_family_review_only"
+        }
+      ],
+      "provenance_raw_values": ["Sears", "Sears Auto Center"]
+    },
+    {
+      "review_id": "review:surf_pnc_bank",
+      "review_priority_units": 5718,
+      "priority_reasons": [
+        "hard_cannot_link",
+        "high_deal_count",
+        "high_row_count",
+        "support_and_cannot_link"
+      ],
+      "affected_rows": 53,
+      "affected_deals": 20,
+      "component_id": "component:surf:pnc_bank",
+      "state": "contradiction",
+      "proposed_action": "confirm_distinct_or_request_override",
+      "surface_ids": ["surf:pnc_bank", "surf:pnc_midland_loan_services"],
+      "relation_hints": [
+        {
+          "left_surface_id": "surf:pnc_bank",
+          "right_surface_id": "surf:pnc_midland_loan_services",
+          "relation": "master_special_servicer_platform",
+          "reason_code": "servicer_relation_review_only"
+        }
+      ],
+      "provenance_raw_values": [
+        "PNC Bank",
+        "PNC Midland Loan Services"
+      ]
+    }
+  ]
+}

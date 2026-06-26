@@ -1,0 +1,34 @@
+{
+  "decisions": [
+    {
+      "review_id": "review:surf_sears",
+      "action": "distinct_confirmed",
+      "operator_id": "operator@example.com",
+      "source_review_queue_hash": "blake3:review-queue-golden",
+      "profile_id": "cmbs_tenant_label",
+      "profile_version": "0.1.0",
+      "entity_type": "tenant_label",
+      "identity_semantics": "canonical_display_label",
+      "strategy_hash": "blake3:strategy",
+      "registry_snapshot_hash": "blake3:registry",
+      "surface_ids": ["surf:sears", "surf:sears_auto"],
+      "reason_code": "review_distinct_confirmed",
+      "note": "operator confirmed Sears Auto Center is a distinct tenant label"
+    },
+    {
+      "review_id": "review:surf_pnc_bank",
+      "action": "relation_confirmed",
+      "operator_id": "operator@example.com",
+      "source_review_queue_hash": "blake3:review-queue-golden",
+      "profile_id": "cmbs_tenant_label",
+      "profile_version": "0.1.0",
+      "entity_type": "tenant_label",
+      "identity_semantics": "canonical_display_label",
+      "strategy_hash": "blake3:strategy",
+      "registry_snapshot_hash": "blake3:registry",
+      "surface_ids": ["surf:pnc_bank", "surf:pnc_midland_loan_services"],
+      "reason_code": "master_special_servicer_platform",
+      "note": "operator confirmed PNC and Midland are related but not the same tenant label"
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "accepted_decisions": 2,
+  "ledger_event_types": ["distinct_confirmed", "relation_confirmed"],
+  "ledger_reason_codes": [
+    "review_distinct_confirmed",
+    "master_special_servicer_platform"
+  ],
+  "replay_summary_counts": {
+    "alias_patch_count": 0,
+    "cannot_link_patch_count": 1,
+    "derived_patch_count": 3,
+    "distinct_patch_count": 1,
+    "events_replayed": 2,
+    "idempotent_duplicate_count": 0,
+    "override_proof_count": 0,
+    "promotion_revert_count": 0,
+    "relation_patch_count": 1
+  },
+  "patch_projection": {
+    "aliases": 0,
+    "distinct": [
+      {
+        "profile_id": "cmbs_tenant_label",
+        "identity_semantics": "canonical_display_label",
+        "namespace": "cmbs_tenant_label.distinct",
+        "left": "surf:sears",
+        "right": "surf:sears_auto",
+        "reason": "review_distinct_confirmed"
+      }
+    ],
+    "cannot_link": [
+      {
+        "profile_id": "cmbs_tenant_label",
+        "identity_semantics": "canonical_display_label",
+        "left": "surf:sears",
+        "right": "surf:sears_auto",
+        "hard_cannot_link": true,
+        "reason": "review_distinct_confirmed"
+      }
+    ],
+    "relations": [
+      {
+        "profile_id": "cmbs_tenant_label",
+        "identity_semantics": "canonical_display_label",
+        "namespace": "cmbs_tenant_label.relations",
+        "left": "surf:pnc_bank",
+        "right": "surf:pnc_midland_loan_services",
+        "reason": "master_special_servicer_platform"
+      }
+    ],
+    "overrides": 0
+  }
+}
