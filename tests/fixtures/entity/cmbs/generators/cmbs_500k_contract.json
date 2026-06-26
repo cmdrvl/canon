@@ -1,0 +1,118 @@
+{
+  "schema_version": "canon.entity.cmbs_500k_generator.v0",
+  "id": "cmbs_500k_fixture_shape",
+  "gate_id": "G11",
+  "seed": 424242,
+  "profile_id": "cmbs_tenant_label",
+  "identity_semantics": "canonical_display_label",
+  "row_count": 500000,
+  "deal_count": 3000,
+  "raw_unique_surface_count": 60000,
+  "normalized_unique_surface_count": 25000,
+  "canonical_label_count": 8000,
+  "physical_batch_deal_count": 100,
+  "generator_policy": {
+    "commit_static_generated_rows": false,
+    "operator_command": "cargo test --test cmbs_500k cmbs_500k_stress -- --ignored --nocapture",
+    "fixture_materialization": "streamed_from_seed"
+  },
+  "families": [
+    {
+      "id": "sears_family",
+      "row_count": 80000,
+      "raw_unique_surface_count": 9000,
+      "normalized_unique_surface_count": 4000,
+      "canonical_label_count": 1200,
+      "exact_registry_hit_surface_count": 500,
+      "hard_negative_group_count": 4,
+      "review_group_count": 300
+    },
+    {
+      "id": "fitness_family",
+      "row_count": 65000,
+      "raw_unique_surface_count": 6000,
+      "normalized_unique_surface_count": 2500,
+      "canonical_label_count": 900,
+      "exact_registry_hit_surface_count": 600,
+      "hard_negative_group_count": 2,
+      "review_group_count": 0
+    },
+    {
+      "id": "food_dba_family",
+      "row_count": 70000,
+      "raw_unique_surface_count": 10000,
+      "normalized_unique_surface_count": 4500,
+      "canonical_label_count": 1500,
+      "exact_registry_hit_surface_count": 400,
+      "hard_negative_group_count": 0,
+      "review_group_count": 400
+    },
+    {
+      "id": "address_property_family",
+      "row_count": 45000,
+      "raw_unique_surface_count": 6000,
+      "normalized_unique_surface_count": 2500,
+      "canonical_label_count": 700,
+      "exact_registry_hit_surface_count": 300,
+      "hard_negative_group_count": 250,
+      "review_group_count": 250
+    },
+    {
+      "id": "national_retail_family",
+      "row_count": 110000,
+      "raw_unique_surface_count": 12000,
+      "normalized_unique_surface_count": 5000,
+      "canonical_label_count": 2000,
+      "exact_registry_hit_surface_count": 1400,
+      "hard_negative_group_count": 50,
+      "review_group_count": 0
+    },
+    {
+      "id": "local_services_family",
+      "row_count": 95000,
+      "raw_unique_surface_count": 14000,
+      "normalized_unique_surface_count": 5500,
+      "canonical_label_count": 1700,
+      "exact_registry_hit_surface_count": 1000,
+      "hard_negative_group_count": 0,
+      "review_group_count": 550
+    },
+    {
+      "id": "placeholder_family",
+      "row_count": 35000,
+      "raw_unique_surface_count": 3000,
+      "normalized_unique_surface_count": 1000,
+      "canonical_label_count": 0,
+      "exact_registry_hit_surface_count": 0,
+      "hard_negative_group_count": 0,
+      "review_group_count": 0
+    }
+  ],
+  "candidate_model": {
+    "operator_id": "ngram_topk:cmbs_500k",
+    "candidate_cap": 25,
+    "run_candidate_cap": 400000,
+    "surface_p50_emitted": 12,
+    "surface_p95_emitted": 12,
+    "surface_p99_emitted": 18,
+    "surface_max_emitted": 25,
+    "suppressed_candidates_per_surface": 2
+  },
+  "exact_bucket_model": {
+    "identity_view": "tenant_core",
+    "operator_id": "exact_view:tenant_core",
+    "expected_exact_bucket_count": 8000,
+    "expected_pair_expansion_count": 0,
+    "expected_membership_record_count": 25000,
+    "placeholder_bucket_values": ["0", "unknown", "vacant", "na", "n/a", "none", "placeholder:0"]
+  },
+  "expected": {
+    "candidate_pairs_per_surface_p95_max": 25,
+    "candidate_pairs_per_surface_p99_max": 100,
+    "exact_bucket_pair_expansion_count": 0,
+    "review_group_count_max": 2000,
+    "largest_exact_bucket_size_max": 200,
+    "io_budget_refusal_code": "E_ENTITY_IO_BUDGET",
+    "candidate_budget_refusal_code": "E_ENTITY_CANDIDATE_BUDGET"
+  }
+}

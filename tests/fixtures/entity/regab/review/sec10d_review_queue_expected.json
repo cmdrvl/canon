@@ -1,0 +1,134 @@
+{
+  "version": "canon_entity_review_queue.v0",
+  "source_solve_hash_prefix": "blake3:",
+  "summary_counts": {
+    "review_items": 4,
+    "review_group_count": 4,
+    "review_rows_covered": 147,
+    "review_deals_covered": 33
+  },
+  "summary_labels": {
+    "grouping": "ambiguity_pattern",
+    "include": "all"
+  },
+  "items": [
+    {
+      "review_id": "review:surf_regab_pnc_bank",
+      "ambiguity_key": "contradiction:hard_cannot_link_constraint",
+      "state": "contradiction",
+      "proposed_action": "confirm_distinct_or_request_override",
+      "affected_rows": 84,
+      "affected_deals": 16,
+      "priority_reasons": [
+        "hard_cannot_link",
+        "high_deal_count",
+        "high_row_count",
+        "regab_bank_division_boundary",
+        "support_and_cannot_link"
+      ],
+      "surface_ids": [
+        "surf_regab_midland_division",
+        "surf_regab_pnc_bank"
+      ],
+      "relation_hints": 1,
+      "provenance_samples": 2,
+      "strongest_positive_reason_codes": [
+        "regab_same_family_high_recall_candidate"
+      ],
+      "strongest_negative_reason_codes": [
+        "regab_bank_division_boundary"
+      ],
+      "raw_values": [
+        "Midland Loan Services, a division of PNC Bank, National Association",
+        "PNC Bank, National Association"
+      ]
+    },
+    {
+      "review_id": "review:surf_regab_platform_label",
+      "ambiguity_key": "contradiction:hard_cannot_link_constraint",
+      "state": "contradiction",
+      "proposed_action": "confirm_distinct_or_request_override",
+      "affected_rows": 31,
+      "affected_deals": 8,
+      "priority_reasons": [
+        "hard_cannot_link",
+        "regab_platform_label_guard",
+        "support_and_cannot_link"
+      ],
+      "surface_ids": [
+        "surf_regab_platform_label",
+        "surf_regab_wells_fargo_bank"
+      ],
+      "relation_hints": 1,
+      "provenance_samples": 2,
+      "strongest_positive_reason_codes": [
+        "regab_shared_platform_family_candidate"
+      ],
+      "strongest_negative_reason_codes": [
+        "regab_platform_label_guard"
+      ],
+      "raw_values": [
+        "Wells Fargo Bank, National Association",
+        "Wells Fargo Commercial Mortgage Securities Platform"
+      ]
+    },
+    {
+      "review_id": "review:surf_regab_kpmg_auditor",
+      "ambiguity_key": "contradiction:hard_cannot_link_constraint",
+      "state": "contradiction",
+      "proposed_action": "confirm_distinct_or_request_override",
+      "affected_rows": 21,
+      "affected_deals": 6,
+      "priority_reasons": [
+        "hard_cannot_link",
+        "regab_auditor_subject_role_conflict",
+        "support_and_cannot_link"
+      ],
+      "surface_ids": [
+        "surf_regab_kpmg_auditor",
+        "surf_regab_kpmg_subject_party"
+      ],
+      "relation_hints": 1,
+      "provenance_samples": 2,
+      "strongest_positive_reason_codes": [
+        "regab_shared_auditor_token_candidate"
+      ],
+      "strongest_negative_reason_codes": [
+        "regab_auditor_subject_role_conflict"
+      ],
+      "raw_values": [
+        "KPMG LLP",
+        "KPMG Securitization Trust 2024-C1"
+      ]
+    },
+    {
+      "review_id": "review:surf_regab_acme_servicer",
+      "ambiguity_key": "contradiction:hard_cannot_link_constraint",
+      "state": "contradiction",
+      "proposed_action": "confirm_distinct_or_request_override",
+      "affected_rows": 11,
+      "affected_deals": 3,
+      "priority_reasons": [
+        "hard_cannot_link",
+        "regab_role_capacity_conflict",
+        "support_and_cannot_link"
+      ],
+      "surface_ids": [
+        "surf_regab_acme_agent",
+        "surf_regab_acme_servicer"
+      ],
+      "relation_hints": 1,
+      "provenance_samples": 2,
+      "strongest_positive_reason_codes": [
+        "regab_unresolved_exact_lookup_candidate"
+      ],
+      "strongest_negative_reason_codes": [
+        "regab_role_capacity_conflict"
+      ],
+      "raw_values": [
+        "Acme Review Analytics LLC",
+        "Acme Review Analytics Servicing Agent LLC"
+      ]
+    }
+  ]
+}

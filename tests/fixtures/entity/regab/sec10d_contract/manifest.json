@@ -1,0 +1,86 @@
+{
+  "schema_version": "canon.entity.sec10d_contract_manifest.v0",
+  "profile_id": "regab_firm_identity",
+  "identity_semantics": "same_firm_or_reviewed_alias",
+  "source_baseline": {
+    "artifact": "sec10d_regab_org_canon_baseline_20260623T204557Z.zip",
+    "sha256": "5766b83bb2e1bad3736b1d78fa7ea1433d929d1f3d936762fdfbdba7cc9bdf3b",
+    "documented_in": "docs/SEC10D_REGAB_BENCHMARKS.md"
+  },
+  "fixture_root": "tests/fixtures/entity/regab/org_mentions",
+  "snapshots": [
+    {
+      "path": "tests/fixtures/entity/regab/org_mentions/org_mentions.csv",
+      "role": "accepted_org_mentions_csv_input",
+      "byte_count": 4347,
+      "blake3": "0ce501befce05f09dae3c82821cfffd20967a6c17f2833e052d5702cf3c70359"
+    },
+    {
+      "path": "tests/fixtures/entity/regab/org_mentions/org_mentions.jsonl",
+      "role": "accepted_org_mentions_jsonl_input",
+      "byte_count": 7841,
+      "blake3": "c14376c4e8b7f92bff545088c18f9d4dcaebe7a5e8e1b19eb93b086aafec8380"
+    },
+    {
+      "path": "tests/fixtures/entity/regab/org_mentions/applied_org_enrichment.jsonl",
+      "role": "snowflake_append_only_enrichment_output",
+      "byte_count": 2432,
+      "blake3": "0b2b867057174dd6ded1e735e868c6ddae1dd114d2b0b8abac10dfd37f2f850d"
+    },
+    {
+      "path": "tests/fixtures/entity/regab/org_mentions/expected_summary.json",
+      "role": "machine_expected_summary",
+      "byte_count": 3782,
+      "blake3": "a561594505a9c1ae95c5fc5487685c6a9bc4c99cb4ac0c424e994a9952cb5d84"
+    },
+    {
+      "path": "tests/fixtures/entity/regab/org_mentions/expected_apply.csv",
+      "role": "machine_expected_apply_csv",
+      "byte_count": 3902,
+      "blake3": "5b23fdfe2c2a3d84a0a50398c65c161858e79e8ac83bb7e156763e87ea5db288"
+    }
+  ],
+  "required_org_mentions_columns": [
+    "source_row_id",
+    "record_id",
+    "dataset",
+    "record_version",
+    "field_name",
+    "org_name",
+    "doc_id",
+    "as_of_date",
+    "filing_cik",
+    "accession",
+    "filing_form",
+    "filed_date",
+    "period",
+    "source_exhibit_document_name",
+    "source_exhibit_type",
+    "source_item",
+    "role_context",
+    "capacity",
+    "capacity_normalized",
+    "reporting_party_capacity",
+    "platform_capacity",
+    "platform_capacity_normalized",
+    "subject_role",
+    "deal_key",
+    "transaction_name",
+    "alias_surfaces_json",
+    "mention_surfaces_json"
+  ],
+  "approved_snowflake_org_suffixes": [
+    "_org_canon_id",
+    "_org_canonical_name",
+    "_org_resolution_status",
+    "_org_registry_id",
+    "_org_registry_version",
+    "_org_rule_id"
+  ],
+  "required_cases": [
+    "REGAB-I001 org_mentions shape accepted without parser rewrite",
+    "REGAB-I002 PNC vs Midland remains distinct or reviewable",
+    "REGAB-I003 platform/category labels do not auto-resolve as firms",
+    "REGAB-I004 Snowflake-facing enrichment is append-only"
+  ]
+}

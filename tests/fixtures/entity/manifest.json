@@ -455,11 +455,14 @@
       "source_kind": "production_derived_redacted",
       "ci_tier": "normal_ci",
       "record_size": {"rows": 46, "surfaces": 46},
-      "input_files": ["tests/fixtures/entity/regab/sec10d_baseline_public/org_mentions_selected.csv"],
+      "input_files": [
+        "tests/fixtures/entity/regab/sec10d_baseline_public/org_mentions_selected.csv",
+        "tests/fixtures/entity/regab/sec10d_contract/manifest.json"
+      ],
       "expected_artifacts": [{"path": "tests/fixtures/entity/regab/regab_i001_prepare.json", "schema_version": "canon_entity_prepare.v0", "hash_policy": "byte_stable", "summary_counters": ["raw_unique_surfaces", "prepared_surfaces"]}],
       "expected_outcome": {"kind": "success", "refusal_code": null},
       "gates": ["G03", "G13"],
-      "owning_tests": ["regab_profile_prepare_contract", "regab_profile_integration", "REGAB-I001"]
+      "owning_tests": ["regab_profile_prepare_contract", "regab_profile_integration", "sec10d_contract_snapshots", "REGAB-I001"]
     },
     {
       "id": "REGAB-I002",
@@ -470,12 +473,13 @@
       "record_size": {"rows": 2, "surfaces": 2},
       "input_files": [
         "tests/fixtures/entity/regab/sec10d_baseline_public/org_mentions_selected.csv",
-        "tests/fixtures/entity/regab/org_mentions/expected_summary.json"
+        "tests/fixtures/entity/regab/org_mentions/expected_summary.json",
+        "tests/fixtures/entity/regab/sec10d_contract/manifest.json"
       ],
       "expected_artifacts": [{"path": "tests/fixtures/entity/regab/regab_i002_solve.json", "schema_version": "canon_entity_solve.v0", "hash_policy": "byte_stable", "summary_counters": ["cannot_link_count", "auto_merge_count"]}],
       "expected_outcome": {"kind": "success", "refusal_code": null},
       "gates": ["G06", "G13"],
-      "owning_tests": ["regab_hierarchy_antimerge", "regab_profile_integration", "REGAB-I002"]
+      "owning_tests": ["regab_hierarchy_antimerge", "regab_profile_integration", "sec10d_contract_snapshots", "REGAB-I002"]
     },
     {
       "id": "REGAB-I003",
@@ -486,12 +490,13 @@
       "record_size": {"rows": 2, "surfaces": 2},
       "input_files": [
         "tests/fixtures/entity/regab/regab_i003_platform_label.csv",
-        "tests/fixtures/entity/regab/org_mentions/expected_summary.json"
+        "tests/fixtures/entity/regab/org_mentions/expected_summary.json",
+        "tests/fixtures/entity/regab/sec10d_contract/manifest.json"
       ],
       "expected_artifacts": [{"path": "tests/fixtures/entity/regab/regab_i003_solve.json", "schema_version": "canon_entity_solve.v0", "hash_policy": "byte_stable", "summary_counters": ["review_group_count", "auto_merge_count"]}],
       "expected_outcome": {"kind": "success", "refusal_code": null},
       "gates": ["G06", "G13"],
-      "owning_tests": ["regab_platform_label_boundary", "regab_profile_integration", "REGAB-I003"]
+      "owning_tests": ["regab_platform_label_boundary", "regab_profile_integration", "sec10d_contract_snapshots", "REGAB-I003"]
     },
     {
       "id": "REGAB-I004",
@@ -502,12 +507,13 @@
       "record_size": {"rows": 46, "surfaces": 46},
       "input_files": [
         "tests/fixtures/entity/regab/sec10d_baseline_public/enriched_samples/regab_servicer_schedules.selected.jsonl",
-        "tests/fixtures/entity/regab/org_mentions/applied_org_enrichment.jsonl"
+        "tests/fixtures/entity/regab/org_mentions/applied_org_enrichment.jsonl",
+        "tests/fixtures/entity/regab/sec10d_contract/manifest.json"
       ],
       "expected_artifacts": [{"path": "tests/fixtures/entity/regab/regab_i004_apply.json", "schema_version": "canon_entity_apply.v0", "hash_policy": "byte_stable", "summary_counters": ["rows", "resolved", "raw_field_mutations"]}],
       "expected_outcome": {"kind": "success", "refusal_code": null},
       "gates": ["G01", "G13"],
-      "owning_tests": ["regab_apply_append_only", "regab_profile_integration", "sec10d_apply_fields", "REGAB-I004"]
+      "owning_tests": ["regab_apply_append_only", "regab_profile_integration", "sec10d_apply_fields", "sec10d_contract_snapshots", "REGAB-I004"]
     },
     {
       "id": "STRESS-CMBS-500K",
