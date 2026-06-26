@@ -10,8 +10,9 @@ use crate::{
     Refusal,
     entity::{
         budget::{BudgetLimit, BudgetStage, find_budget_policy},
-        contracts::CANON_ENTITY_BLOCK_VERSION,
+        contracts::{CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION},
         error::EntityRefusalKind,
+        score::{ScoreBreakdown, ScoreContribution, ScoreLane, ScoreUnits, accumulate_score_units},
     },
 };
 use serde::{Deserialize, Serialize};
@@ -67,6 +68,89 @@ pub struct EdgeScoringPermit {
     pub candidate_record_count: u64,
     pub max_edge_records: u64,
     pub partial_edge_artifact_written: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EdgeEvidenceRecord {
+    pub version: String,
+    pub left_surface_id: String,
+    pub right_surface_id: String,
+    pub hits: Vec<EdgeEvidenceHit>,
+    pub pair_score_total: ScoreUnits,
+    pub score_breakdown: ScoreBreakdown,
+    pub has_hard_cannot_link: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EdgeEvidenceHit {
+    pub lane: ScoreLane,
+    pub namespace: String,
+    pub operator_id: String,
+    pub reason_code: String,
+    pub score_units: ScoreUnits,
+    pub hard_cannot_link: bool,
+    pub explanation: String,
+}
+
+impl EdgeEvidenceHit {
+    pub fn new(
+        lane: ScoreLane,
+        namespace: impl Into<String>,
+        operator_id: impl Into<String>,
+        reason_code: impl Into<String>,
+        score_units: ScoreUnits,
+        hard_cannot_link: bool,
+        explanation: impl Into<String>,
+    ) -> Self {
+        Self {
+            lane,
+            namespace: namespace.into(),
+            operator_id: operator_id.into(),
+            reason_code: reason_code.into(),
+            score_units,
+            hard_cannot_link,
+            explanation: explanation.into(),
+        }
+    }
+}
+
+pub fn build_edge_evidence_record(
+    left_surface_id: impl Into<String>,
+    right_surface_id: impl Into<String>,
+    hits: Vec<EdgeEvidenceHit>,
+) -> Result<EdgeEvidenceRecord, Refusal> {
+    let left_surface_id = left_surface_id.into();
+    let right_surface_id = right_surface_id.into();
+    validate_surface_pair(&left_surface_id, &right_surface_id)?;
+
+    let mut hits = hits;
+    for hit in &hits {
+        validate_edge_hit(hit)?;
+    }
+    hits.sort_by(edge_evidence_hit_cmp);
+
+    let score_breakdown = accumulate_score_units(hits.iter().map(|hit| {
+        ScoreContribution::new(
+            hit.lane,
+            format!("{}:{}", hit.namespace, hit.operator_id),
+            hit.reason_code.clone(),
+            hit.score_units,
+        )
+    }));
+    let pair_score_total = score_breakdown.total_score_units;
+    let has_hard_cannot_link = hits
+        .iter()
+        .any(|hit| hit.lane == ScoreLane::AntiMerge && hit.hard_cannot_link);
+
+    Ok(EdgeEvidenceRecord {
+        version: CANON_ENTITY_EDGE_VERSION.to_string(),
+        left_surface_id,
+        right_surface_id,
+        hits,
+        pair_score_total,
+        score_breakdown,
+        has_hard_cannot_link,
+    })
 }
 
 pub fn validate_edge_candidate_artifact_before_scoring(
@@ -217,6 +301,57 @@ fn artifact_contract_refusal(message: &'static str, detail: serde_json::Value) -
                 .to_string(),
         ),
     )
+}
+
+fn validate_surface_pair(left_surface_id: &str, right_surface_id: &str) -> Result<(), Refusal> {
+    if left_surface_id.trim().is_empty()
+        || right_surface_id.trim().is_empty()
+        || left_surface_id >= right_surface_id
+    {
+        return Err(artifact_contract_refusal(
+            "Edge evidence surface IDs must be a deterministic non-empty pair",
+            json!({
+                "stage": EDGE_STAGE,
+                "reason": "invalid_surface_pair",
+                "left_surface_id": left_surface_id,
+                "right_surface_id": right_surface_id,
+                "partial_edge_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_edge_hit(hit: &EdgeEvidenceHit) -> Result<(), Refusal> {
+    for (field, value) in [
+        ("namespace", hit.namespace.as_str()),
+        ("operator_id", hit.operator_id.as_str()),
+        ("reason_code", hit.reason_code.as_str()),
+    ] {
+        if value.trim().is_empty() {
+            return Err(artifact_contract_refusal(
+                "Edge evidence hit is missing required metadata",
+                json!({
+                    "stage": EDGE_STAGE,
+                    "reason": "missing_evidence_hit_field",
+                    "field": field,
+                    "partial_edge_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
+                }),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn edge_evidence_hit_cmp(left: &EdgeEvidenceHit, right: &EdgeEvidenceHit) -> std::cmp::Ordering {
+    left.lane
+        .cmp(&right.lane)
+        .then_with(|| left.namespace.cmp(&right.namespace))
+        .then_with(|| left.operator_id.cmp(&right.operator_id))
+        .then_with(|| left.reason_code.cmp(&right.reason_code))
+        .then_with(|| right.score_units.cmp(&left.score_units))
+        .then_with(|| right.hard_cannot_link.cmp(&left.hard_cannot_link))
+        .then_with(|| left.explanation.cmp(&right.explanation))
 }
 
 fn candidate_budget_refusal(

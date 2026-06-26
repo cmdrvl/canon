@@ -51,6 +51,9 @@ mod cmbs_normalization;
 #[path = "entity/cmbs_tenant_id_allocator.rs"]
 mod cmbs_tenant_id_allocator;
 
+#[path = "entity/edge_score_units.rs"]
+mod edge_score_units;
+
 #[path = "entity/regab_normalization.rs"]
 mod regab_normalization;
 #[path = "entity/solve_budget.rs"]
