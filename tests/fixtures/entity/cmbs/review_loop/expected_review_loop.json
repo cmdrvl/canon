@@ -1,0 +1,23 @@
+{
+  "schema_version": "canon.entity.cmbs_review_loop.v0",
+  "profile_id": "cmbs_tenant_label",
+  "review_export": {
+    "expected_review_items": 1,
+    "expected_review_id": "review:surf_sears",
+    "expected_surface_ids": ["surf:sears", "surf:sears_auto"],
+    "affected_rows": 112,
+    "affected_deals": 37,
+    "priority_reason_codes": [
+      "high_deal_count",
+      "high_row_count",
+      "support_and_cannot_link"
+    ]
+  },
+  "review_import": {
+    "action": "distinct_confirmed",
+    "operator_id": "cmbs-reviewer@example.com",
+    "reason_code": "cmbs_distinct_tenant_label_confirmed",
+    "note": "operator confirmed Sears Auto Center is a distinct tenant label"
+  },
+  "non_goals": ["promotion", "apply"]
+}
