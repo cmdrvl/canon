@@ -27,6 +27,7 @@ pub mod prepare;
 pub mod profile;
 pub mod profiles;
 pub mod relation;
+pub mod review;
 pub mod runtime;
 pub mod schema;
 pub mod score;

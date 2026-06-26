@@ -1,0 +1,30 @@
+{
+  "version": "canon_entity_review_queue.v0",
+  "source_solve_hash_prefix": "blake3:",
+  "summary_counts": {
+    "review_items": 1,
+    "review_group_count": 1,
+    "review_rows_covered": 100,
+    "review_deals_covered": 40
+  },
+  "summary_labels": {
+    "grouping": "ambiguity_pattern",
+    "include": "all"
+  },
+  "first_item": {
+    "review_id": "review:surf_sears",
+    "state": "contradiction",
+    "proposed_action": "confirm_distinct_or_request_override",
+    "affected_rows": 100,
+    "affected_deals": 40,
+    "priority_reasons": [
+      "hard_cannot_link",
+      "high_deal_count",
+      "high_row_count",
+      "support_and_cannot_link"
+    ],
+    "surface_ids": ["surf:sears", "surf:sears_auto"],
+    "relation_hints": 1,
+    "provenance_samples": 2
+  }
+}
