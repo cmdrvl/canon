@@ -62,12 +62,12 @@ fn cmbs_tenant_sample_benchmark_manifest_covers_required_behavioral_benchmarks()
     let manifest = json_fixture(MANIFEST_PATH);
     let doc = text_fixture("docs/CMBS_TENANT_BENCHMARKS.md");
     let required = strings(&manifest["required_benchmarks"]);
-    let contract = manifest["benchmark_contract"]
-        .as_array()
-        .expect("benchmark contract");
-    let by_id = contract
+    let assertions = manifest["benchmark_assertions"]
+        .as_object()
+        .expect("benchmark assertions");
+    let by_id = assertions
         .iter()
-        .map(|benchmark| (benchmark["id"].as_str().expect("benchmark id"), benchmark))
+        .map(|(id, benchmark)| (id.as_str(), benchmark))
         .collect::<BTreeMap<_, _>>();
 
     assert_eq!(required.len(), 13);
@@ -80,14 +80,18 @@ fn cmbs_tenant_sample_benchmark_manifest_covers_required_behavioral_benchmarks()
             "docs/CMBS_TENANT_BENCHMARKS.md omits {id}"
         );
         assert!(
-            !strings(&benchmark["gate_ids"]).is_empty(),
-            "{id} must name gates"
+            benchmark["tier"]
+                .as_str()
+                .is_some_and(|tier| !tier.trim().is_empty()),
+            "{id} must name a tier"
         );
         assert!(
-            !strings(&benchmark["evidence_fields"]).is_empty(),
-            "{id} must name evidence fields"
+            benchmark["failure_meaning"]
+                .as_str()
+                .is_some_and(|meaning| !meaning.trim().is_empty()),
+            "{id} must explain failure meaning"
         );
-        for assertion in strings(&benchmark["behavioral_assertions"]) {
+        for assertion in strings(&benchmark["assertions"]) {
             assert!(
                 !assertion.contains("exists"),
                 "{id} has artifact-exists assertion: {assertion}"

@@ -405,35 +405,6 @@
       ]
     }
   ],
-  "performance_contract": {
-    "candidate_pairs_per_surface_p95_max": 25,
-    "candidate_pairs_per_surface_p99_max": 100,
-    "exact_bucket_pair_expansion_count": 0,
-    "wall_clock_enforcement": "operator_release_only_after_telemetry_baseline",
-    "normal_ci_wall_clock_assertions": false
-  },
-  "prohibited_runtime_dependencies": [
-    "network",
-    "frontier_model_call",
-    "runtime_model_download",
-    "python_ml_runtime",
-    "general_ml_framework"
-  ],
-  "normalization_reason_codes_required": [
-    "legal_suffix_removed",
-    "punctuation_folded",
-    "repeated_spaces_folded",
-    "all_caps_folded",
-    "store_number_stripped",
-    "leading_record_number_stripped"
-  ],
-  "candidate_recall_policy": {
-    "must_link_pairs": "candidate_or_compact_exact_bucket"
-  },
-  "hard_negative_policy": {
-    "auto_merge_allowed": false,
-    "allowed_outcomes": ["cannot_link", "no_edge", "review", "escrow"]
-  },
   "required_benchmarks": [
     "CMBS-SRC-001",
     "CMBS-EXTRACT-001",

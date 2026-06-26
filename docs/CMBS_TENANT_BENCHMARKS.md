@@ -26,6 +26,12 @@ contract should include:
 Do not turn this into artifact-exists testing. Every benchmark below has a
 behavioral assertion.
 
+Committed selector contracts live under
+`tests/fixtures/entity/cmbs/sample_selectors/`. They pin which source rows or
+semantic cases a small CI fixture must cover without committing the full public
+CSV. Regenerating selected fixtures requires the public CSV and the pinned
+source hash; normal CI validates the selector and manifest contracts only.
+
 ---
 
 ## Source Profile
