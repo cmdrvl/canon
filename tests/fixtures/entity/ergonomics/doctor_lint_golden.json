@@ -1,0 +1,58 @@
+{
+  "schema_version": "canon.entity.doctor_lint_golden.v0",
+  "report_version": "canon_entity_lint.v0",
+  "ok": false,
+  "summary": {
+    "total_findings": 14,
+    "errors": 14,
+    "warnings": 0,
+    "info": 0
+  },
+  "categories": [
+    "missing_profile",
+    "missing_registry",
+    "over_budget_candidates",
+    "patch_conflict",
+    "profile_mismatch",
+    "runtime_guard_failure",
+    "sidecar_snapshot_drift",
+    "stale_artifact",
+    "unsafe_review_import",
+    "unsupported_operator"
+  ],
+  "finding_ids": [
+    "stale_artifact:solve",
+    "missing_registry",
+    "missing_profile:cmbs_tenant_label",
+    "profile_mismatch",
+    "candidate_budget_exceeded",
+    "unsafe_review_import:source_hash",
+    "unsafe_review_import:profile",
+    "unsafe_review_import:override",
+    "runtime_guard:no_network_or_model_runtime",
+    "unsupported_operator:embedding_similarity",
+    "unsupported_operator:token_strip_all_terms",
+    "patch_conflict:patch:sears-auto-center",
+    "patch_conflict:patch:duplicate-alias",
+    "sidecar_drift:work/sidecars/cannot-link.jsonl"
+  ],
+  "robot_schema": "canon.entity.lint.robot.v0",
+  "retryable_after_fix": true,
+  "command_count": 12,
+  "commands": [
+    "Add an explicit approved override decision event, then rerun canon entity review import",
+    "Create or point --registry at a versioned entity registry, then rerun canon entity",
+    "Import review decisions only into artifacts from the same entity profile",
+    "Re-export review decisions from the current artifact, then rerun canon entity review import",
+    "Rebuild sidecars from the current registry snapshot, then rerun canon entity audit",
+    "Remove or adjudicate contradictory patch entries, then rerun canon entity audit",
+    "Rerun canon entity from the stale stage so artifact-chain hashes line up",
+    "Run canon entity profile list or provide --profile <PROFILE|YAML>, then rerun canon entity",
+    "Run strategy lint/doctor and replace the unsupported operator, then rerun canon entity",
+    "Tighten blocking configuration or raise the explicit candidate budget, then rerun canon entity block",
+    "Use artifacts and sidecars produced by the same entity profile, then rerun canon entity",
+    "cargo test --test entity_operator_journey entity_runtime_guard -- --nocapture"
+  ],
+  "next_command": "Rerun canon entity from the stale stage so artifact-chain hashes line up",
+  "human_summary": "entity lint: ok=false findings=14 errors=14 warnings=0 categories=missing_profile,missing_registry,over_budget_candidates,patch_conflict,profile_mismatch,runtime_guard_failure,sidecar_snapshot_drift,stale_artifact,unsafe_review_import,unsupported_operator next_command=Rerun canon entity from the stale stage so artifact-chain hashes line up"
+}

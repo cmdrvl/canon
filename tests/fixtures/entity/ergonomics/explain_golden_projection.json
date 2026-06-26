@@ -1,0 +1,125 @@
+{
+  "version": "canon.entity.explain_golden_projection.v0",
+  "selectors": [
+    {
+      "selector": {"kind": "surface_id", "value": "surf:cmbs:sears"},
+      "artifact_version": "canon_entity_explain.v0",
+      "state": "RESOLVED_EXISTING",
+      "canonical_id": "TNT-SEARS",
+      "registry": "cmbs-tenants@2026.06.25",
+      "next_action": "replay exact apply against the promoted registry snapshot",
+      "rows": {
+        "backbone": ["row-sears-001", "row-sears-002"],
+        "attached": ["row-sears-dba"]
+      },
+      "surface_ids": ["surf:cmbs:auto", "surf:cmbs:sears", "surf:cmbs:sears-dba"],
+      "candidate_pairs": [
+        {"pair": ["row-sears-001", "row-auto-001"], "score": -100, "operators": ["cannot_link:tenant_label_scope"]},
+        {"pair": ["row-sears-001", "row-sears-002"], "score": 50, "operators": ["exact_view:tenant_label"]},
+        {"pair": ["row-sears-001", "row-sears-dba"], "score": 0, "operators": ["relation_hint:dba_alias"]}
+      ],
+      "support": [
+        {"kind": "support", "namespace": "tenant_name", "operator_id": "exact_view:tenant_label", "score": 50, "pair": ["row-sears-001", "row-sears-002"]},
+        {"kind": "support", "namespace": "relation_hint", "operator_id": "relation_hint:dba_alias", "score": 0, "pair": ["row-sears-001", "row-sears-dba"]}
+      ],
+      "anti_merge": [
+        {"kind": "cannot_link", "namespace": "anti_merge", "operator_id": "cannot_link:tenant_label_scope", "score": -100, "pair": ["row-sears-001", "row-auto-001"]}
+      ],
+      "review_ids": ["review-sears-alias"],
+      "promotion": [
+        {
+          "decision": "PROMOTE",
+          "canonical_id": "TNT-SEARS",
+          "registry_version_after": "2026.06.26",
+          "writes": {
+            "mapping_files": ["aliases.json"],
+            "new_entity_entries": 0,
+            "existing_alias_entries": 1,
+            "pending_cluster_entries": 0,
+            "cannot_link_entries": 1
+          }
+        }
+      ]
+    },
+    {
+      "selector": {"kind": "row_id", "value": "row-sears-dba"},
+      "artifact_version": "canon_entity_explain.v0",
+      "state": "RESOLVED_EXISTING",
+      "canonical_id": "TNT-SEARS",
+      "registry": "cmbs-tenants@2026.06.25",
+      "next_action": "replay exact apply against the promoted registry snapshot",
+      "rows": {
+        "backbone": ["row-sears-001", "row-sears-002"],
+        "attached": ["row-sears-dba"]
+      },
+      "surface_ids": ["surf:cmbs:auto", "surf:cmbs:sears", "surf:cmbs:sears-dba"],
+      "candidate_pairs": [
+        {"pair": ["row-sears-001", "row-auto-001"], "score": -100, "operators": ["cannot_link:tenant_label_scope"]},
+        {"pair": ["row-sears-001", "row-sears-002"], "score": 50, "operators": ["exact_view:tenant_label"]},
+        {"pair": ["row-sears-001", "row-sears-dba"], "score": 0, "operators": ["relation_hint:dba_alias"]}
+      ],
+      "support": [
+        {"kind": "support", "namespace": "tenant_name", "operator_id": "exact_view:tenant_label", "score": 50, "pair": ["row-sears-001", "row-sears-002"]},
+        {"kind": "support", "namespace": "relation_hint", "operator_id": "relation_hint:dba_alias", "score": 0, "pair": ["row-sears-001", "row-sears-dba"]}
+      ],
+      "anti_merge": [
+        {"kind": "cannot_link", "namespace": "anti_merge", "operator_id": "cannot_link:tenant_label_scope", "score": -100, "pair": ["row-sears-001", "row-auto-001"]}
+      ],
+      "review_ids": ["review-sears-alias"],
+      "promotion": [
+        {
+          "decision": "PROMOTE",
+          "canonical_id": "TNT-SEARS",
+          "registry_version_after": "2026.06.26",
+          "writes": {
+            "mapping_files": ["aliases.json"],
+            "new_entity_entries": 0,
+            "existing_alias_entries": 1,
+            "pending_cluster_entries": 0,
+            "cannot_link_entries": 1
+          }
+        }
+      ]
+    },
+    {
+      "selector": {"kind": "canonical_id", "value": "TNT-SEARS"},
+      "artifact_version": "canon_entity_explain.v0",
+      "state": "RESOLVED_EXISTING",
+      "canonical_id": "TNT-SEARS",
+      "registry": "cmbs-tenants@2026.06.25",
+      "next_action": "replay exact apply against the promoted registry snapshot",
+      "rows": {
+        "backbone": ["row-sears-001", "row-sears-002"],
+        "attached": ["row-sears-dba"]
+      },
+      "surface_ids": ["surf:cmbs:auto", "surf:cmbs:sears", "surf:cmbs:sears-dba"],
+      "candidate_pairs": [
+        {"pair": ["row-sears-001", "row-auto-001"], "score": -100, "operators": ["cannot_link:tenant_label_scope"]},
+        {"pair": ["row-sears-001", "row-sears-002"], "score": 50, "operators": ["exact_view:tenant_label"]},
+        {"pair": ["row-sears-001", "row-sears-dba"], "score": 0, "operators": ["relation_hint:dba_alias"]}
+      ],
+      "support": [
+        {"kind": "support", "namespace": "tenant_name", "operator_id": "exact_view:tenant_label", "score": 50, "pair": ["row-sears-001", "row-sears-002"]},
+        {"kind": "support", "namespace": "relation_hint", "operator_id": "relation_hint:dba_alias", "score": 0, "pair": ["row-sears-001", "row-sears-dba"]}
+      ],
+      "anti_merge": [
+        {"kind": "cannot_link", "namespace": "anti_merge", "operator_id": "cannot_link:tenant_label_scope", "score": -100, "pair": ["row-sears-001", "row-auto-001"]}
+      ],
+      "review_ids": ["review-sears-alias"],
+      "promotion": [
+        {
+          "decision": "PROMOTE",
+          "canonical_id": "TNT-SEARS",
+          "registry_version_after": "2026.06.26",
+          "writes": {
+            "mapping_files": ["aliases.json"],
+            "new_entity_entries": 0,
+            "existing_alias_entries": 1,
+            "pending_cluster_entries": 0,
+            "cannot_link_entries": 1
+          }
+        }
+      ]
+    }
+  ]
+}

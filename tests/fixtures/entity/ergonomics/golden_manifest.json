@@ -1,0 +1,116 @@
+{
+  "schema_version": "canon.entity.ergonomics_golden.v0",
+  "fixture_id": "entity-ergonomics-final-goldens-v0",
+  "explain": {
+    "bundle": "tests/fixtures/entity/operator_journey/explain/reconstruction_bundle.json",
+    "queries": {
+      "row": {
+        "row_id": "row-sears-001",
+        "expected_canonical_id": "TNT-SEARS",
+        "expected_surface_id": "surf:cmbs:sears"
+      },
+      "surface": {
+        "surface_id": "surf:cmbs:sears",
+        "expected_canonical_id": "TNT-SEARS",
+        "expected_normalized_view": "sears"
+      },
+      "canonical": {
+        "canonical_id": "TNT-SEARS",
+        "expected_row_count": 3,
+        "expected_surface_ids": ["surf:cmbs:sears", "surf:cmbs:sears-dba"]
+      }
+    },
+    "required_sections": [
+      "normalized_views",
+      "candidates",
+      "positive_evidence",
+      "anti_merge_evidence",
+      "relation_hints",
+      "solver_decision",
+      "review_decisions",
+      "promotion_provenance"
+    ],
+    "expected_counts": {
+      "candidates": 3,
+      "positive_evidence_min": 2,
+      "anti_merge_evidence": 1,
+      "review_decisions": 1,
+      "promotion_provenance": 1
+    },
+    "expected_next_action": "replay exact apply against the promoted registry snapshot"
+  },
+  "summary": {
+    "robot_projection": "tests/fixtures/entity/operator_journey/summary/robot_summary_projection.json",
+    "required_count_keys": [
+      "row_count",
+      "raw_unique_names",
+      "prepared_surfaces",
+      "exact_resolved_surfaces",
+      "operator_review_groups",
+      "anti_merge_groups"
+    ],
+    "expected_run_counts": {
+      "row_count": 15,
+      "raw_unique_names": 15,
+      "prepared_surfaces": 14,
+      "exact_resolved_surfaces": 7,
+      "operator_review_groups": 2,
+      "anti_merge_groups": 2
+    },
+    "required_stage_names": ["prepare", "block", "solve", "apply"],
+    "required_next_command_keys": ["apply", "audit", "promote", "resume", "review_export"],
+    "required_telemetry_link_keys": [
+      "block_artifact",
+      "candidate_records",
+      "decision_ledger",
+      "edge_artifact",
+      "edge_records",
+      "index_artifact",
+      "prepare_artifact",
+      "run_artifact",
+      "solve_artifact",
+      "surfaces"
+    ],
+    "top_unresolved_tokens": ["buffet", "china", "sears"],
+    "top_anti_merge_reasons": [
+      "related_brand_family_not_same_tenant_label",
+      "successor_or_operator_not_display_label"
+    ]
+  },
+  "doctor_lint": {
+    "expected_total_findings": 14,
+    "expected_categories": [
+      "stale_artifact",
+      "missing_registry",
+      "missing_profile",
+      "profile_mismatch",
+      "over_budget_candidates",
+      "unsafe_review_import",
+      "runtime_guard_failure",
+      "unsupported_operator",
+      "patch_conflict",
+      "sidecar_snapshot_drift"
+    ],
+    "expected_robot_actions": [
+      "regenerate_stale_artifact",
+      "fix_registry_path",
+      "fix_profile_path",
+      "isolate_artifacts_by_profile",
+      "review_blocking_budget",
+      "reexport_review_queue",
+      "reject_cross_profile_review_import",
+      "require_override_approval",
+      "rerun_after_runtime_guard_fix",
+      "replace_strategy_operator",
+      "resolve_patch_conflict",
+      "rebuild_sidecar_snapshot"
+    ],
+    "required_robot_command_fragments": [
+      "Rerun canon entity from the stale stage",
+      "Create or point --registry",
+      "canon entity profile list",
+      "replace the unsupported operator",
+      "Rebuild sidecars"
+    ]
+  }
+}

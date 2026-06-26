@@ -1,0 +1,174 @@
+{
+  "schema_version": "canon.entity.explain_goldens.v0",
+  "source_fixture": "tests/fixtures/entity/operator_journey/explain/reconstruction_bundle.json",
+  "cases": [
+    {
+      "selector": {
+        "kind": "row_id",
+        "value": "row-sears-001"
+      },
+      "artifact_version": "canon_entity_explain.v0",
+      "state": "RESOLVED_EXISTING",
+      "canonical_id": "TNT-SEARS",
+      "registry": "cmbs-tenants@2026.06.25",
+      "next_action": "replay exact apply against the promoted registry snapshot",
+      "counts": {
+        "surfaces": 3,
+        "candidates": 3,
+        "support_evidence": 2,
+        "anti_merge_evidence": 1,
+        "review_decisions": 1,
+        "promotion_provenance": 1
+      },
+      "surface_ids": [
+        "surf:cmbs:auto",
+        "surf:cmbs:sears",
+        "surf:cmbs:sears-dba"
+      ],
+      "normalized_views": {
+        "surf:cmbs:auto": {
+          "tenant_label": "sears auto center"
+        },
+        "surf:cmbs:sears": {
+          "tenant_label": "sears"
+        },
+        "surf:cmbs:sears-dba": {
+          "tenant_label": "sears roebuck"
+        }
+      },
+      "candidate_pairs": [
+        "row-sears-001->row-auto-001:-100",
+        "row-sears-001->row-sears-002:50",
+        "row-sears-001->row-sears-dba:0"
+      ],
+      "support_operators": [
+        "relation_hint:relation_hint:dba_alias",
+        "tenant_name:exact_view:tenant_label"
+      ],
+      "anti_merge_operators": [
+        "anti_merge:cannot_link:tenant_label_scope"
+      ],
+      "review_decisions": [
+        "review-sears-alias:accept_aliases"
+      ],
+      "promotion": {
+        "decision": "PROMOTE",
+        "registry_version_after": "2026.06.26",
+        "existing_alias_entries": 1,
+        "cannot_link_entries": 1
+      }
+    },
+    {
+      "selector": {
+        "kind": "surface_id",
+        "value": "surf:cmbs:sears"
+      },
+      "artifact_version": "canon_entity_explain.v0",
+      "state": "RESOLVED_EXISTING",
+      "canonical_id": "TNT-SEARS",
+      "registry": "cmbs-tenants@2026.06.25",
+      "next_action": "replay exact apply against the promoted registry snapshot",
+      "counts": {
+        "surfaces": 3,
+        "candidates": 3,
+        "support_evidence": 2,
+        "anti_merge_evidence": 1,
+        "review_decisions": 1,
+        "promotion_provenance": 1
+      },
+      "surface_ids": [
+        "surf:cmbs:auto",
+        "surf:cmbs:sears",
+        "surf:cmbs:sears-dba"
+      ],
+      "normalized_views": {
+        "surf:cmbs:auto": {
+          "tenant_label": "sears auto center"
+        },
+        "surf:cmbs:sears": {
+          "tenant_label": "sears"
+        },
+        "surf:cmbs:sears-dba": {
+          "tenant_label": "sears roebuck"
+        }
+      },
+      "candidate_pairs": [
+        "row-sears-001->row-auto-001:-100",
+        "row-sears-001->row-sears-002:50",
+        "row-sears-001->row-sears-dba:0"
+      ],
+      "support_operators": [
+        "relation_hint:relation_hint:dba_alias",
+        "tenant_name:exact_view:tenant_label"
+      ],
+      "anti_merge_operators": [
+        "anti_merge:cannot_link:tenant_label_scope"
+      ],
+      "review_decisions": [
+        "review-sears-alias:accept_aliases"
+      ],
+      "promotion": {
+        "decision": "PROMOTE",
+        "registry_version_after": "2026.06.26",
+        "existing_alias_entries": 1,
+        "cannot_link_entries": 1
+      }
+    },
+    {
+      "selector": {
+        "kind": "canonical_id",
+        "value": "TNT-SEARS"
+      },
+      "artifact_version": "canon_entity_explain.v0",
+      "state": "RESOLVED_EXISTING",
+      "canonical_id": "TNT-SEARS",
+      "registry": "cmbs-tenants@2026.06.25",
+      "next_action": "replay exact apply against the promoted registry snapshot",
+      "counts": {
+        "surfaces": 3,
+        "candidates": 3,
+        "support_evidence": 2,
+        "anti_merge_evidence": 1,
+        "review_decisions": 1,
+        "promotion_provenance": 1
+      },
+      "surface_ids": [
+        "surf:cmbs:auto",
+        "surf:cmbs:sears",
+        "surf:cmbs:sears-dba"
+      ],
+      "normalized_views": {
+        "surf:cmbs:auto": {
+          "tenant_label": "sears auto center"
+        },
+        "surf:cmbs:sears": {
+          "tenant_label": "sears"
+        },
+        "surf:cmbs:sears-dba": {
+          "tenant_label": "sears roebuck"
+        }
+      },
+      "candidate_pairs": [
+        "row-sears-001->row-auto-001:-100",
+        "row-sears-001->row-sears-002:50",
+        "row-sears-001->row-sears-dba:0"
+      ],
+      "support_operators": [
+        "relation_hint:relation_hint:dba_alias",
+        "tenant_name:exact_view:tenant_label"
+      ],
+      "anti_merge_operators": [
+        "anti_merge:cannot_link:tenant_label_scope"
+      ],
+      "review_decisions": [
+        "review-sears-alias:accept_aliases"
+      ],
+      "promotion": {
+        "decision": "PROMOTE",
+        "registry_version_after": "2026.06.26",
+        "existing_alias_entries": 1,
+        "cannot_link_entries": 1
+      }
+    }
+  ]
+}
