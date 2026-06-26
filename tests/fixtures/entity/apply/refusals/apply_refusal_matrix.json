@@ -1,0 +1,45 @@
+{
+  "version": "canon_entity_apply_refusal_matrix.v0",
+  "cases": [
+    {
+      "id": "apply_stale_registry_snapshot",
+      "refusal_code": "E_ENTITY_REGISTRY_SNAPSHOT",
+      "required_detail_fields": [
+        "stage",
+        "field",
+        "expected_registry_snapshot_hash",
+        "actual_registry_snapshot_hash",
+        "output_path",
+        "writes_performed"
+      ],
+      "writes_performed": false
+    },
+    {
+      "id": "apply_unresolved_full_resolution",
+      "refusal_code": "E_ENTITY_APPLY_UNRESOLVED",
+      "required_detail_fields": [
+        "stage",
+        "field",
+        "rows",
+        "resolved",
+        "unresolved",
+        "output_path",
+        "writes_performed"
+      ],
+      "writes_performed": false
+    },
+    {
+      "id": "apply_malformed_sidecar",
+      "refusal_code": "E_ENTITY_ARTIFACT_CONTRACT",
+      "required_detail_fields": [
+        "stage",
+        "field",
+        "expected",
+        "actual",
+        "output_path",
+        "writes_performed"
+      ],
+      "writes_performed": false
+    }
+  ]
+}

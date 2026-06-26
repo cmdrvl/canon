@@ -3,7 +3,8 @@
 use canon::{
     RefusalCode,
     entity::apply::{
-        ApplyCanonicalResolution, ApplyRegistryReference, ApplyStreamRequest, run_apply_streaming,
+        ApplyCanonicalResolution, ApplyRegistryReference, ApplySafetyCheck, ApplyStreamRequest,
+        run_apply_streaming,
     },
 };
 use std::{collections::BTreeMap, fs};
@@ -29,6 +30,7 @@ fn EN_A001_apply_exact_replay_preserves_raw_fields_and_appends_canonical_metadat
         lookup_column: "tenant_name",
         registry: registry(),
         resolutions: &resolutions(),
+        safety: ApplySafetyCheck::default(),
         require_full_resolution: true,
         target_rows_per_chunk: 1024,
     })
@@ -69,6 +71,7 @@ fn E_ENTITY_APPLY_UNRESOLVED_refuses_full_resolution_before_output_write() {
         lookup_column: "tenant_name",
         registry: registry(),
         resolutions: &resolutions(),
+        safety: ApplySafetyCheck::default(),
         require_full_resolution: true,
         target_rows_per_chunk: 1024,
     })

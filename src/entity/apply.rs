@@ -48,6 +48,22 @@ pub struct ApplyCanonicalResolution {
     pub rule_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ApplySafetyCheck {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_registry_snapshot_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual_registry_snapshot_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_sidecar_artifact_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual_sidecar_artifact_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_sidecar_snapshot_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual_sidecar_snapshot_hash: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct ApplyStreamRequest<'a> {
     pub rows: &'a Path,
@@ -55,6 +71,7 @@ pub struct ApplyStreamRequest<'a> {
     pub lookup_column: &'a str,
     pub registry: ApplyRegistryReference,
     pub resolutions: &'a BTreeMap<String, ApplyCanonicalResolution>,
+    pub safety: ApplySafetyCheck,
     pub require_full_resolution: bool,
     pub target_rows_per_chunk: u64,
 }
@@ -106,6 +123,7 @@ struct LineEnding {
 
 pub fn run_apply_streaming(request: ApplyStreamRequest<'_>) -> Result<ApplyRunArtifact, Refusal> {
     let format = apply_input_format(request.rows)?;
+    validate_apply_safety(&request)?;
     let inspection = inspect_apply_input(
         request.rows,
         request.lookup_column,
@@ -178,6 +196,81 @@ fn inspect_apply_input(
         }
         ApplyInputFormat::Jsonl => inspect_apply_jsonl(rows, lookup_column, resolutions),
     }
+}
+
+fn validate_apply_safety(request: &ApplyStreamRequest<'_>) -> Result<(), Refusal> {
+    let safety = &request.safety;
+    if let (Some(expected), Some(actual)) = (
+        safety.expected_registry_snapshot_hash.as_deref(),
+        safety.actual_registry_snapshot_hash.as_deref(),
+    ) && expected != actual
+    {
+        return Err(apply_registry_snapshot_refusal(request, expected, actual));
+    }
+
+    match (
+        safety.expected_sidecar_artifact_version.as_deref(),
+        safety.actual_sidecar_artifact_version.as_deref(),
+    ) {
+        (Some(expected), Some(actual)) if expected != actual => {
+            return Err(apply_sidecar_refusal(
+                request,
+                "sidecar_artifact_version",
+                Some(expected),
+                Some(actual),
+            ));
+        }
+        (Some(expected), None) => {
+            return Err(apply_sidecar_refusal(
+                request,
+                "sidecar_artifact_version",
+                Some(expected),
+                None,
+            ));
+        }
+        (None, Some(actual)) => {
+            return Err(apply_sidecar_refusal(
+                request,
+                "sidecar_artifact_version",
+                None,
+                Some(actual),
+            ));
+        }
+        _ => {}
+    }
+
+    match (
+        safety.expected_sidecar_snapshot_hash.as_deref(),
+        safety.actual_sidecar_snapshot_hash.as_deref(),
+    ) {
+        (Some(expected), Some(actual)) if expected != actual => {
+            return Err(apply_sidecar_refusal(
+                request,
+                "sidecar_snapshot_hash",
+                Some(expected),
+                Some(actual),
+            ));
+        }
+        (Some(expected), None) => {
+            return Err(apply_sidecar_refusal(
+                request,
+                "sidecar_snapshot_hash",
+                Some(expected),
+                None,
+            ));
+        }
+        (None, Some(actual)) => {
+            return Err(apply_sidecar_refusal(
+                request,
+                "sidecar_snapshot_hash",
+                None,
+                Some(actual),
+            ));
+        }
+        _ => {}
+    }
+
+    Ok(())
 }
 
 fn inspect_apply_csv(
@@ -917,6 +1010,49 @@ fn input_contract_refusal(
         message,
         json!({ "row_number": row_number, "field": field, "error": error }),
         None,
+    )
+}
+
+fn apply_registry_snapshot_refusal(
+    request: &ApplyStreamRequest<'_>,
+    expected: &str,
+    actual: &str,
+) -> Refusal {
+    EntityRefusalKind::RegistrySnapshot.to_refusal(
+        "Apply registry snapshot does not match the artifact being replayed",
+        json!({
+            "stage": "apply",
+            "field": "registry_snapshot_hash",
+            "expected_registry_snapshot_hash": expected,
+            "actual_registry_snapshot_hash": actual,
+            "registry_id": request.registry.id.as_str(),
+            "registry_version": request.registry.version.as_str(),
+            "output_path": request.output.display().to_string(),
+            "writes_performed": false
+        }),
+        Some("Re-run apply with the registry snapshot used by promotion".to_string()),
+    )
+}
+
+fn apply_sidecar_refusal(
+    request: &ApplyStreamRequest<'_>,
+    field: &'static str,
+    expected: Option<&str>,
+    actual: Option<&str>,
+) -> Refusal {
+    EntityRefusalKind::ArtifactContract.to_refusal(
+        "Apply sidecar artifact does not match the replay contract",
+        json!({
+            "stage": "apply",
+            "field": field,
+            "expected": expected,
+            "actual": actual,
+            "registry_id": request.registry.id.as_str(),
+            "registry_version": request.registry.version.as_str(),
+            "output_path": request.output.display().to_string(),
+            "writes_performed": false
+        }),
+        Some("Use the sidecar artifact produced by the matching promotion run".to_string()),
     )
 }
 

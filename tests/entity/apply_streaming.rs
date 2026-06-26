@@ -1,5 +1,6 @@
 use canon::entity::apply::{
-    ApplyCanonicalResolution, ApplyRegistryReference, ApplyStreamRequest, run_apply_streaming,
+    ApplyCanonicalResolution, ApplyRegistryReference, ApplySafetyCheck, ApplyStreamRequest,
+    run_apply_streaming,
 };
 use canon::entity::stream::{EntityStreamFormat, EntityStreamStage};
 use std::collections::BTreeMap;
@@ -27,6 +28,7 @@ fn apply_streaming_exact_replay_preserves_raw_csv_bytes() {
         lookup_column: "raw_tenant_name",
         registry: registry(),
         resolutions: &resolutions(),
+        safety: ApplySafetyCheck::default(),
         require_full_resolution: false,
         target_rows_per_chunk: 2,
     })
@@ -89,6 +91,7 @@ fn apply_batch_size_equivalence() {
         lookup_column: "raw_tenant_name",
         registry: registry(),
         resolutions: &resolutions,
+        safety: ApplySafetyCheck::default(),
         require_full_resolution: false,
         target_rows_per_chunk: 1,
     })
@@ -99,6 +102,7 @@ fn apply_batch_size_equivalence() {
         lookup_column: "raw_tenant_name",
         registry: registry(),
         resolutions: &resolutions,
+        safety: ApplySafetyCheck::default(),
         require_full_resolution: false,
         target_rows_per_chunk: 3,
     })
@@ -133,6 +137,7 @@ fn apply_streaming_jsonl_appends_fields_without_rewriting_raw_object() {
         lookup_column: "raw_tenant_name",
         registry: registry(),
         resolutions: &resolutions,
+        safety: ApplySafetyCheck::default(),
         require_full_resolution: false,
         target_rows_per_chunk: 4,
     })
