@@ -4,9 +4,15 @@
 //! normalization and legal-form contracts, but keep Reg AB review cues explicit
 //! so related regulated entities are not collapsed by a generic string view.
 
-use crate::namekit::{
-    legal_suffix::{LegalSuffixAnalysis, LegalSuffixProfile, analyze_legal_suffixes},
-    normalize::{NamekitNormalization, normalize_normality},
+use crate::{
+    entity::{
+        edge::EdgeEvidenceHit,
+        score::{ScoreLane, ScoreUnits},
+    },
+    namekit::{
+        legal_suffix::{LegalSuffixAnalysis, LegalSuffixProfile, analyze_legal_suffixes},
+        normalize::{NamekitNormalization, normalize_normality},
+    },
 };
 use serde::Serialize;
 
@@ -45,6 +51,123 @@ impl RegabReviewCue {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegabFirmGuardKind {
+    BankLoanServicesDivision,
+    PlatformCategoryLabel,
+    ServicerSubservicerAgentRoleConflict,
+    AuditorSubjectPartyRoleConflict,
+    ParentSubsidiaryBoundary,
+    SameFamilyDifferentRegulatedEntity,
+}
+
+impl RegabFirmGuardKind {
+    pub const fn from_code(code: &str) -> Option<Self> {
+        match code.as_bytes() {
+            b"bank_vs_loan_services_division" => Some(Self::BankLoanServicesDivision),
+            b"platform_category_label" => Some(Self::PlatformCategoryLabel),
+            b"servicer_subservicer_agent_role_conflict" => {
+                Some(Self::ServicerSubservicerAgentRoleConflict)
+            }
+            b"auditor_subject_party_role_conflict" => Some(Self::AuditorSubjectPartyRoleConflict),
+            b"parent_subsidiary_boundary" => Some(Self::ParentSubsidiaryBoundary),
+            b"same_family_different_regulated_entity" => {
+                Some(Self::SameFamilyDifferentRegulatedEntity)
+            }
+            _ => None,
+        }
+    }
+
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::BankLoanServicesDivision => "bank_vs_loan_services_division",
+            Self::PlatformCategoryLabel => "platform_category_label",
+            Self::ServicerSubservicerAgentRoleConflict => {
+                "servicer_subservicer_agent_role_conflict"
+            }
+            Self::AuditorSubjectPartyRoleConflict => "auditor_subject_party_role_conflict",
+            Self::ParentSubsidiaryBoundary => "parent_subsidiary_boundary",
+            Self::SameFamilyDifferentRegulatedEntity => "same_family_different_regulated_entity",
+        }
+    }
+
+    pub const fn operator_id(self) -> &'static str {
+        match self {
+            Self::BankLoanServicesDivision => "division_boundary:regab_firm_identity",
+            Self::PlatformCategoryLabel => "platform_label_guard:regab_firm_identity",
+            Self::ServicerSubservicerAgentRoleConflict => "role_conflict:regab_firm_identity",
+            Self::AuditorSubjectPartyRoleConflict => "role_conflict:regab_firm_identity",
+            Self::ParentSubsidiaryBoundary => "role_conflict:regab_parent_subsidiary",
+            Self::SameFamilyDifferentRegulatedEntity => {
+                "protected_token_conflict:regab_regulated_entity"
+            }
+        }
+    }
+
+    pub const fn reason_code(self) -> &'static str {
+        match self {
+            Self::BankLoanServicesDivision => "regab_bank_division_boundary",
+            Self::PlatformCategoryLabel => "regab_platform_label_guard",
+            Self::ServicerSubservicerAgentRoleConflict => "regab_role_capacity_conflict",
+            Self::AuditorSubjectPartyRoleConflict => "regab_auditor_subject_role_conflict",
+            Self::ParentSubsidiaryBoundary => "regab_parent_subsidiary_boundary",
+            Self::SameFamilyDifferentRegulatedEntity => "regab_same_family_distinct_entity",
+        }
+    }
+
+    pub const fn review_priority(self) -> &'static str {
+        match self {
+            Self::PlatformCategoryLabel | Self::AuditorSubjectPartyRoleConflict => "critical",
+            Self::BankLoanServicesDivision
+            | Self::ServicerSubservicerAgentRoleConflict
+            | Self::ParentSubsidiaryBoundary
+            | Self::SameFamilyDifferentRegulatedEntity => "high",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegabFirmGuardRequest<'a> {
+    pub namespace: &'a str,
+    pub guard: RegabFirmGuardKind,
+    pub left_name: &'a str,
+    pub right_name: &'a str,
+    pub left_role: Option<&'a str>,
+    pub right_role: Option<&'a str>,
+    pub score_units: ScoreUnits,
+}
+
+pub fn regab_firm_guard_hit(request: RegabFirmGuardRequest<'_>) -> Option<EdgeEvidenceHit> {
+    let left_name = request.left_name.trim();
+    let right_name = request.right_name.trim();
+    if left_name.is_empty() || right_name.is_empty() {
+        return None;
+    }
+
+    let left = normalize_regab_firm_name(left_name);
+    let right = normalize_regab_firm_name(right_name);
+    Some(EdgeEvidenceHit::new(
+        ScoreLane::AntiMerge,
+        request.namespace,
+        request.guard.operator_id(),
+        request.guard.reason_code(),
+        request.score_units,
+        true,
+        format!(
+            "regab guard={} left_core={} right_core={} left_cues={} right_cues={} left_role={} right_role={} review_priority={} score_units={}",
+            request.guard.code(),
+            left.firm_core,
+            right.firm_core,
+            cue_codes(&left.review_cues),
+            cue_codes(&right.review_cues),
+            optional_value(request.left_role),
+            optional_value(request.right_role),
+            request.guard.review_priority(),
+            request.score_units.as_u32()
+        ),
+    ))
+}
+
 pub fn normalize_regab_firm_name(raw: &str) -> RegabFirmNormalization {
     let base = normalize_normality(raw);
     let legal_form =
@@ -69,6 +192,23 @@ pub fn normalize_regab_firm_name(raw: &str) -> RegabFirmNormalization {
         review_cues,
         reason_codes,
     }
+}
+
+fn cue_codes(cues: &[RegabReviewCue]) -> String {
+    if cues.is_empty() {
+        return "none".to_string();
+    }
+    cues.iter()
+        .map(|cue| cue.code())
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
+fn optional_value(value: Option<&str>) -> &str {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("none")
 }
 
 fn regulated_form_key(tokens: &[String]) -> String {

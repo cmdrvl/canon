@@ -66,9 +66,9 @@ mod edge_support;
 #[path = "entity/edge_tfidf.rs"]
 mod edge_tfidf;
 
-#[path = "entity/regab_normalization.rs"]
-mod regab_normalization;
 #[path = "entity/regab_hard_negatives.rs"]
 mod regab_hard_negatives;
+#[path = "entity/regab_normalization.rs"]
+mod regab_normalization;
 #[path = "entity/solve_budget.rs"]
 mod solve_budget;

@@ -1,0 +1,127 @@
+{
+  "version": "canon_entity_regab_hard_negative_fixture.v0",
+  "profile_id": "regab_firm_identity",
+  "identity_semantics": "same_firm_or_reviewed_alias",
+  "merge_policy": "no_silent_parent_division_or_role_collapse",
+  "cases": [
+    {
+      "id": "REGAB-I002-PNC-MIDLAND-DIVISION",
+      "benchmark_id": "REGAB-I002",
+      "left": "PNC Bank, National Association",
+      "right": "Midland Loan Services, a division of PNC Bank, National Association",
+      "surface_ids": [
+        "surf:regab:midland_loan_services_division_pnc_bank_na",
+        "surf:regab:pnc_bank_na"
+      ],
+      "left_role": "servicer",
+      "right_role": "master_servicer",
+      "guard": "bank_vs_loan_services_division",
+      "relation": "division_of",
+      "expected_review_priority": "high",
+      "expected_auto_merge": false,
+      "expected_cues": ["division_boundary"]
+    },
+    {
+      "id": "REGAB-HIER-002-WELLS-FARGO-SERVICING-DIVISION",
+      "benchmark_id": "REGAB-I002",
+      "left": "Wells Fargo Bank, National Association",
+      "right": "Wells Fargo Commercial Mortgage Servicing, a division of Wells Fargo Bank, National Association",
+      "surface_ids": [
+        "surf:regab:wells_fargo_bank_na",
+        "surf:regab:wells_fargo_commercial_mortgage_servicing_division"
+      ],
+      "left_role": "servicer",
+      "right_role": "servicing_division",
+      "guard": "bank_vs_loan_services_division",
+      "relation": "division_of",
+      "expected_review_priority": "high",
+      "expected_auto_merge": false,
+      "expected_cues": ["division_boundary"]
+    },
+    {
+      "id": "REGAB-I003-PLATFORM-LABEL",
+      "benchmark_id": "REGAB-I003",
+      "left": "Wells Fargo Commercial Mortgage Securities Platform",
+      "right": "Wells Fargo Bank N.A.",
+      "surface_ids": [
+        "surf:regab:wells_fargo_bank_na",
+        "surf:regab:wells_fargo_commercial_mortgage_securities_platform"
+      ],
+      "left_role": "platform",
+      "right_role": "regulated_firm",
+      "guard": "platform_category_label",
+      "relation": "platform_to_firm_context",
+      "expected_review_priority": "critical",
+      "expected_auto_merge": false,
+      "expected_cues": ["platform_label_guard"]
+    },
+    {
+      "id": "REGAB-ROLE-SERVICER-AGENT-CONFLICT",
+      "benchmark_id": "REGAB-I003",
+      "left": "Wells Fargo Bank, National Association",
+      "right": "Wells Fargo Securities, LLC",
+      "surface_ids": [
+        "surf:regab:wells_fargo_bank_na",
+        "surf:regab:wells_fargo_securities_llc"
+      ],
+      "left_role": "servicer",
+      "right_role": "agent",
+      "guard": "servicer_subservicer_agent_role_conflict",
+      "relation": "same_family_role_context",
+      "expected_review_priority": "high",
+      "expected_auto_merge": false,
+      "expected_cues": []
+    },
+    {
+      "id": "REGAB-ROLE-AUDITOR-SUBJECT-CONFLICT",
+      "benchmark_id": "REGAB-I003",
+      "left": "KPMG LLP",
+      "right": "KPMG Securitization Trust 2024-C1",
+      "surface_ids": [
+        "surf:regab:kpmg_llp",
+        "surf:regab:kpmg_securitization_trust_2024_c1"
+      ],
+      "left_role": "auditor",
+      "right_role": "subject_party",
+      "guard": "auditor_subject_party_role_conflict",
+      "relation": "role_context_conflict",
+      "expected_review_priority": "critical",
+      "expected_auto_merge": false,
+      "expected_cues": []
+    },
+    {
+      "id": "REGAB-PARENT-SUBSIDIARY-DEPOSITOR-SPV",
+      "benchmark_id": "REGAB-I003",
+      "left": "ACME Depositor LLC",
+      "right": "ACME Mortgage Trust 2024-C1",
+      "surface_ids": [
+        "surf:regab:acme_depositor_llc",
+        "surf:regab:acme_mortgage_trust_2024_c1"
+      ],
+      "left_role": "depositor",
+      "right_role": "subject_party",
+      "guard": "parent_subsidiary_boundary",
+      "relation": "parent_subsidiary_context",
+      "expected_review_priority": "high",
+      "expected_auto_merge": false,
+      "expected_cues": []
+    },
+    {
+      "id": "REGAB-SAME-FAMILY-PNC-CAPITAL-MARKETS",
+      "benchmark_id": "REGAB-I002",
+      "left": "PNC Bank N.A.",
+      "right": "PNC Capital Markets LLC",
+      "surface_ids": [
+        "surf:regab:pnc_bank_na",
+        "surf:regab:pnc_capital_markets_llc"
+      ],
+      "left_role": "regulated_bank",
+      "right_role": "affiliate",
+      "guard": "same_family_different_regulated_entity",
+      "relation": "parent_subsidiary_context",
+      "expected_review_priority": "high",
+      "expected_auto_merge": false,
+      "expected_cues": []
+    }
+  ]
+}
