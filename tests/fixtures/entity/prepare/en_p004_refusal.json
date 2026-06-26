@@ -1,0 +1,7 @@
+{
+  "version": "canon_refusal.v0",
+  "fixture_id": "EN-P004",
+  "code": "E_ENTITY_SURFACE_ID_COLLISION",
+  "collision_policy": "refuse_without_silent_rekey",
+  "test_seam": "src/entity/surface_id.rs::tests::EN_P004_synthetic_surface_hash_collision_refuses"
+}

@@ -1,0 +1,13 @@
+{
+  "version": "canon_entity_prepare.v0",
+  "fixture_id": "EN-P005",
+  "summary_at_least": {
+    "exact_resolved_surfaces": 1
+  },
+  "resolved_sample": {
+    "raw_surface": "Computershare",
+    "canonical_id": "ORG-022",
+    "canonical_type": "firm",
+    "rule_id": "REGAB_EXACT_ALIAS"
+  }
+}

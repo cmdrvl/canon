@@ -1,0 +1,10 @@
+{
+  "version": "canon_refusal.v0",
+  "fixture_id": "EN-P003",
+  "code": "E_ENTITY_INPUT_CONTRACT",
+  "message_contains": "alias_surfaces_json",
+  "mutation_guard": {
+    "prepare_json_absent": true,
+    "surfaces_jsonl_absent": true
+  }
+}

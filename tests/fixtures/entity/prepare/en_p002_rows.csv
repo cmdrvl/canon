@@ -1,0 +1,7 @@
+source_row_id,deal_id,loan_id,property_id,raw_tenant_name,alias_surfaces_json,mention_surfaces_json
+row-1,deal-1,loan-1,prop-1,Sears LLC,,[]
+row-2,deal-1,loan-2,prop-1,Sears,,[]
+row-3,deal-2,loan-3,prop-2,Sears Auto Center,,[]
+row-4,deal-3,loan-4,prop-3,Kmart LLC,,[]
+row-5,deal-3,loan-5,prop-3,KMART,,[]
+row-6,deal-3,loan-6,prop-3,KMART LLC,,[]

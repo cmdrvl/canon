@@ -1,0 +1,30 @@
+{
+  "version": "canon_entity_prepare.v0",
+  "fixture_id": "EN-P001",
+  "summary": {
+    "row_count": 6,
+    "prepared_observations": 6,
+    "raw_unique_surfaces": 4,
+    "prepared_surfaces": 1,
+    "exact_resolved_surfaces": 0,
+    "unresolved_surfaces": 1,
+    "alias_surface_count": 1,
+    "mention_surface_count": 0
+  },
+  "surfaces": [
+    {
+      "surface_key": "cmbs_tenant_label:sears",
+      "primary_surface": "SEARS",
+      "tenant_core": "sears",
+      "raw_variants": ["SEARS", "SEARS LLC", "Sears", "Sears LLC"],
+      "alias_surfaces": ["Sears Roebuck"],
+      "mention_surfaces": [],
+      "row_count": 6,
+      "deal_count": 3,
+      "exact_lookup": {
+        "status": "unresolved",
+        "canonical_id": null
+      }
+    }
+  ]
+}

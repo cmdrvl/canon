@@ -10,6 +10,8 @@ mod prepare_artifact;
 mod prepare_dedupe;
 #[path = "entity/prepare_exact_lookup.rs"]
 mod prepare_exact_lookup;
+#[path = "entity/prepare_golden.rs"]
+mod prepare_golden;
 #[path = "entity/prepare_streaming.rs"]
 mod prepare_streaming;
 #[path = "entity/surface_id.rs"]
@@ -25,3 +27,5 @@ mod cmbs_tenant_id_allocator;
 
 #[path = "entity/regab_normalization.rs"]
 mod regab_normalization;
+#[path = "entity/solve_budget.rs"]
+mod solve_budget;
