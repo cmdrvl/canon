@@ -19,7 +19,6 @@ pub mod profile;
 pub mod profiles;
 pub mod runtime;
 pub mod schema;
-pub mod solve;
 pub mod score;
 pub mod stream;
 pub mod surface_id;
