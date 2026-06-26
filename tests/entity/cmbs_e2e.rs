@@ -433,8 +433,8 @@ fn mini_e2e_review_edge() -> EdgeEvidenceRecord {
                 "cmbs_tenant_label.distinct",
                 "operator_patch",
                 "related_brand_family_not_same_tenant_label",
-                9_000,
-                true,
+                1_000,
+                false,
             ),
         ],
     )
