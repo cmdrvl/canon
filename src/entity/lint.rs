@@ -17,6 +17,7 @@ pub const ENTITY_LINT_REPORT_VERSION: &str = "canon_entity_lint.v0";
 pub struct EntityLintRequest {
     pub artifacts: Vec<EntityArtifactFreshnessCheck>,
     pub registry: Option<EntityRegistryPresenceCheck>,
+    pub profile_presence: Option<EntityProfilePresenceCheck>,
     pub profile: Option<EntityProfileConsistencyCheck>,
     pub candidate_budget: Option<EntityCandidateBudgetCheck>,
     pub review_import: Option<EntityReviewImportSafetyCheck>,
@@ -36,6 +37,12 @@ pub struct EntityArtifactFreshnessCheck {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityRegistryPresenceCheck {
     pub registry_path: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityProfilePresenceCheck {
+    pub profile_id: String,
+    pub profile_path: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,6 +139,9 @@ pub fn lint_entity_workbench(request: EntityLintRequest) -> EntityLintReport {
     findings.extend(stale_artifact_findings(&request.artifacts));
     if let Some(registry) = &request.registry {
         findings.extend(missing_registry_findings(registry));
+    }
+    if let Some(profile_presence) = &request.profile_presence {
+        findings.extend(missing_profile_findings(profile_presence));
     }
     if let Some(profile) = &request.profile
         && (profile.expected_profile_id != profile.actual_profile_id
@@ -242,12 +252,25 @@ pub fn lint_entity_workbench(request: EntityLintRequest) -> EntityLintReport {
 }
 
 pub fn render_entity_lint_summary(report: &EntityLintReport) -> String {
+    let categories = report
+        .findings
+        .iter()
+        .map(|finding| finding.category.as_str())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+        .join(",");
     format!(
-        "entity lint: ok={} findings={} errors={} warnings={} next_command={}",
+        "entity lint: ok={} findings={} errors={} warnings={} categories={} next_command={}",
         report.ok,
         report.summary.total_findings,
         report.summary.errors,
         report.summary.warnings,
+        if categories.is_empty() {
+            "-"
+        } else {
+            categories.as_str()
+        },
         report.next_command
     )
 }
@@ -290,6 +313,25 @@ fn missing_registry_findings(check: &EntityRegistryPresenceCheck) -> Vec<EntityL
             }),
             "Create or point --registry at a versioned entity registry, then rerun canon entity",
             "fix_registry_path",
+        )]
+    }
+}
+
+fn missing_profile_findings(check: &EntityProfilePresenceCheck) -> Vec<EntityLintFinding> {
+    if check.profile_path.exists() {
+        Vec::new()
+    } else {
+        vec![finding(
+            format!("missing_profile:{}", check.profile_id),
+            "error",
+            "missing_profile",
+            "Entity profile template or YAML path is missing",
+            json!({
+                "profile_id": check.profile_id,
+                "profile_path": path_display(&check.profile_path)
+            }),
+            "Run canon entity profile list or provide --profile <PROFILE|YAML>, then rerun canon entity",
+            "fix_profile_path",
         )]
     }
 }

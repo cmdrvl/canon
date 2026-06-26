@@ -3,9 +3,9 @@
 use canon::entity::lint::{
     ENTITY_LINT_REPORT_VERSION, EntityArtifactFreshnessCheck, EntityCandidateBudgetCheck,
     EntityLintRequest, EntityPatchConflictCheck, EntityProfileConsistencyCheck,
-    EntityRegistryPresenceCheck, EntityReviewImportSafetyCheck, EntityRuntimeGuardCheck,
-    EntitySidecarSnapshotCheck, EntityUnsupportedOperatorCheck, lint_entity_workbench,
-    render_entity_lint_summary,
+    EntityProfilePresenceCheck, EntityRegistryPresenceCheck, EntityReviewImportSafetyCheck,
+    EntityRuntimeGuardCheck, EntitySidecarSnapshotCheck, EntityUnsupportedOperatorCheck,
+    lint_entity_workbench, render_entity_lint_summary,
 };
 use std::{collections::BTreeSet, fs};
 
@@ -13,6 +13,7 @@ use std::{collections::BTreeSet, fs};
 fn entity_doctor_lint_reports_required_diagnostics_with_robot_next_commands() {
     let temp = tempfile::tempdir().expect("tempdir");
     let missing_registry = temp.path().join("missing-registry");
+    let missing_profile = temp.path().join("profiles").join("cmbs.yaml");
     let report = lint_entity_workbench(EntityLintRequest {
         artifacts: vec![EntityArtifactFreshnessCheck {
             stage: "edge".to_string(),
@@ -21,6 +22,10 @@ fn entity_doctor_lint_reports_required_diagnostics_with_robot_next_commands() {
         }],
         registry: Some(EntityRegistryPresenceCheck {
             registry_path: missing_registry.clone(),
+        }),
+        profile_presence: Some(EntityProfilePresenceCheck {
+            profile_id: "cmbs_tenant_label".to_string(),
+            profile_path: missing_profile.clone(),
         }),
         profile: Some(EntityProfileConsistencyCheck {
             expected_profile_id: "cmbs_tenant_label".to_string(),
@@ -64,7 +69,7 @@ fn entity_doctor_lint_reports_required_diagnostics_with_robot_next_commands() {
 
     assert_eq!(report.version, ENTITY_LINT_REPORT_VERSION);
     assert!(!report.ok);
-    assert_eq!(report.summary.total_findings, 11);
+    assert_eq!(report.summary.total_findings, 12);
     assert_eq!(report.summary.errors, report.summary.total_findings);
     assert!(report.next_command.contains("Rerun canon entity"));
     assert!(report.robot.retryable_after_fix);
@@ -85,6 +90,7 @@ fn entity_doctor_lint_reports_required_diagnostics_with_robot_next_commands() {
     for required in [
         "stale_artifact",
         "missing_registry",
+        "missing_profile",
         "profile_mismatch",
         "over_budget_candidates",
         "unsafe_review_import",
@@ -109,6 +115,61 @@ fn entity_doctor_lint_reports_required_diagnostics_with_robot_next_commands() {
         missing_registry.display().to_string()
     );
     assert!(missing_registry_finding.next_command.contains("--registry"));
+
+    let missing_profile_finding = report
+        .findings
+        .iter()
+        .find(|finding| finding.category == "missing_profile")
+        .expect("missing profile diagnostic");
+    assert_eq!(
+        missing_profile_finding.id,
+        "missing_profile:cmbs_tenant_label"
+    );
+    assert_eq!(
+        missing_profile_finding.detail["profile_path"],
+        missing_profile.display().to_string()
+    );
+    assert!(
+        missing_profile_finding
+            .next_command
+            .contains("canon entity profile list")
+    );
+
+    let human = render_entity_lint_summary(&report);
+    assert!(human.contains("ok=false"));
+    assert!(human.contains("findings=12"));
+    assert!(human.contains("categories="));
+    for required in [
+        "missing_profile",
+        "missing_registry",
+        "profile_mismatch",
+        "stale_artifact",
+        "unsafe_review_import",
+    ] {
+        assert!(human.contains(required), "human summary omits {required}");
+    }
+    assert!(human.contains("next_command=Rerun canon entity"));
+    assert!(
+        report
+            .robot
+            .commands
+            .iter()
+            .any(|command| command.contains("Create or point --registry"))
+    );
+    assert!(
+        report
+            .robot
+            .commands
+            .iter()
+            .any(|command| command.contains("Disable network/model runtime path"))
+    );
+    assert!(
+        report
+            .robot
+            .commands
+            .iter()
+            .any(|command| command.contains("canon entity profile list"))
+    );
 }
 
 #[test]

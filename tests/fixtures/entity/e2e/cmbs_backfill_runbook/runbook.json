@@ -1,0 +1,132 @@
+{
+  "schema_version": "canon.entity.cmbs_backfill_runbook.v0",
+  "fixture_id": "cmbs-3000-deal-backfill-runbook-v0",
+  "profile_id": "cmbs_tenant_label",
+  "identity_semantics": "canonical_display_label",
+  "canonical_type": "tenant_label",
+  "production_backfill": {
+    "deal_count": 3000,
+    "tenant_row_count": 500000,
+    "physical_batch_deal_count": 100,
+    "physical_batch_count": 30,
+    "batch_unit": "deal",
+    "logical_surface_corpus": "global",
+    "logical_index_scope": "global",
+    "registry_memory": "global"
+  },
+  "small_fixture": {
+    "observations_path": "tests/fixtures/entity/cmbs/small_book/observations.csv",
+    "strategy_path": "tests/fixtures/entity/profiles/cmbs_tenant_label.yaml",
+    "review_queue_path": "tests/fixtures/entity/cmbs/small_book/review_queue.csv",
+    "expected_summary_path": "tests/fixtures/entity/cmbs/small_book/expected_summary.json",
+    "promotion_manifest_path": "tests/fixtures/entity/cmbs/promotion_loop/manifest.json",
+    "target_rows_per_physical_batch": 4,
+    "deal_by_deal_probe_rows_per_batch": 1,
+    "expected_rows": 15,
+    "expected_deals": 12,
+    "expected_raw_unique_names": 15,
+    "expected_review_group_count": 2
+  },
+  "stage_commands": [
+    {
+      "stage": "prepare",
+      "command": "canon entity prepare tenants/*.jsonl --profile cmbs_tenant_label --registry registries/cmbs-tenants --work-dir work/cmbs-tenants"
+    },
+    {
+      "stage": "index",
+      "command": "canon entity index build work/cmbs-tenants/prepare --strategy strategies/cmbs_tenant_label.yaml --out work/cmbs-tenants/index"
+    },
+    {
+      "stage": "block",
+      "command": "canon entity block work/cmbs-tenants/prepare --index work/cmbs-tenants/index --strategy strategies/cmbs_tenant_label.yaml --out work/cmbs-tenants/blocks.jsonl"
+    },
+    {
+      "stage": "edge",
+      "command": "canon entity edge work/cmbs-tenants/prepare --candidates work/cmbs-tenants/blocks.jsonl --strategy strategies/cmbs_tenant_label.yaml --registry registries/cmbs-tenants --out work/cmbs-tenants/edges.jsonl"
+    },
+    {
+      "stage": "solve",
+      "command": "canon entity solve work/cmbs-tenants/prepare --edges work/cmbs-tenants/edges.jsonl --strategy strategies/cmbs_tenant_label.yaml --registry registries/cmbs-tenants --out work/cmbs-tenants/solve.json"
+    },
+    {
+      "stage": "review_export",
+      "command": "canon entity review export work/cmbs-tenants/solve.json --include escrow --emit csv > work/cmbs-tenants/review.csv"
+    },
+    {
+      "stage": "audit",
+      "command": "canon entity audit work/cmbs-tenants/solve.json --suite suites/cmbs-backfill > work/cmbs-tenants/audit.json"
+    },
+    {
+      "stage": "review_import",
+      "command": "canon entity review import work/cmbs-tenants/review.csv --registry registries/cmbs-tenants --next-version <VERSION> --audit work/cmbs-tenants/audit.json"
+    },
+    {
+      "stage": "promote",
+      "command": "canon entity promote work/cmbs-tenants/solve.json --audit work/cmbs-tenants/audit.json --registry registries/cmbs-tenants --next-version <VERSION> > work/cmbs-tenants/promote.json"
+    },
+    {
+      "stage": "apply",
+      "command": "canon entity apply tenants/*.jsonl --registry registries/cmbs-tenants --column raw_tenant_name --out work/cmbs-tenants/tenants.canon.jsonl"
+    },
+    {
+      "stage": "run_wrapper",
+      "command": "canon entity run tenants/*.jsonl --profile cmbs_tenant_label --strategy strategies/cmbs_tenant_label.yaml --registry registries/cmbs-tenants --work-dir work/cmbs-tenants-2026-06 --emit summary"
+    }
+  ],
+  "required_log_fields": [
+    "row_count",
+    "raw_unique_names",
+    "prepared_surfaces",
+    "index_surfaces",
+    "candidate_pairs",
+    "candidate_pairs_per_surface_p95",
+    "candidate_pairs_per_surface_p99",
+    "exact_bucket_pair_expansion_count",
+    "solved_entities",
+    "review_group_count",
+    "anti_merge_groups",
+    "cache_status",
+    "artifact_hashes",
+    "next_commands"
+  ],
+  "candidate_caps": {
+    "candidate_pairs_per_unique_surface_p95_max": 25,
+    "candidate_pairs_per_unique_surface_p99_max": 25,
+    "exact_bucket_pair_expansion_count": 0,
+    "review_group_count_max": 2000
+  },
+  "cache_contract": {
+    "keyed_layers": ["prepare", "index"],
+    "unchanged_rerun": "reuse_hash_keyed_caches",
+    "changed_profile_or_strategy": "refuse_stale_artifacts",
+    "small_fixture_observed_index_status": "rebuilt"
+  },
+  "duplicate_mint_guard": {
+    "canonical_id": "TNT-SEARS",
+    "aliases": ["Sears", "SEARS LLC", "Sears Roebuck & Co."],
+    "forbidden_canonical_ids": ["TNT-SEARS-2", "TNT-SEARS-3"],
+    "failure_mode": "deal_by_deal_duplicate_minting"
+  },
+  "review_grouping": {
+    "sears_ambiguity": {
+      "review_group_id": "review:sears-family-distinct",
+      "reason_code": "related_brand_family_not_same_tenant_label",
+      "row_count": 4,
+      "deal_count": 4,
+      "expected_group_count": 1
+    },
+    "china_king_ambiguity": {
+      "review_group_id": "review:china-king-buffet",
+      "reason_code": "dba_typo_review",
+      "row_count": 2,
+      "deal_count": 2,
+      "expected_group_count": 1
+    }
+  },
+  "stress_hooks": {
+    "contract_path": "tests/fixtures/entity/stress/generators/cmbs_500k_contract.json",
+    "ci_probe_command": "cargo test --test cmbs_500k cmbs_500k_fixture_shape -- --nocapture",
+    "ignored_command": "cargo test --test cmbs_500k cmbs_500k_stress -- --ignored --nocapture",
+    "generated_static_artifact_policy": "do_not_commit_generated_500k_rows"
+  }
+}
