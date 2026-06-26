@@ -16,9 +16,9 @@
     "profile_init": "canon entity profile init cmbs_tenant_label --output cmbs_tenant_label.yaml",
     "cmbs_backfill_run": "canon entity run tenants/*.jsonl --profile cmbs_tenant_label --strategy strategies/cmbs_tenant_label.yaml --registry registries/cmbs-tenants --work-dir work/cmbs-tenants-2026-06 --emit summary",
     "sec10d_regab_run": "canon entity run org_mentions.csv --profile regab_firm_identity --strategy regab_firm_identity.yaml --registry registry_snapshot/firms --work-dir work/sec10d-regab --emit summary",
-    "summary_robot_json": "canon entity run tenants/*.jsonl --emit json",
+    "summary_robot_json": "canon entity run tenants/*.jsonl --profile cmbs_tenant_label --strategy strategies/cmbs_tenant_label.yaml --registry registries/cmbs-tenants --work-dir work/cmbs-tenants-2026-06 --emit json",
     "explain": "canon entity explain work/cmbs-tenants/solve.json --surface-id surf:cmbs:sears --emit summary",
-    "doctor_lint": "canon entity lint work/cmbs-tenants --emit json",
+    "doctor_lint": "cargo test --test entity entity_doctor_lint -- --nocapture",
     "runtime_guard": "cargo test --test entity_operator_journey entity_runtime_guard -- --nocapture"
   },
   "fixture_paths": {
@@ -26,15 +26,38 @@
     "sec10d_regab_manifest": "tests/fixtures/entity/e2e/sec10d_regab/manifest.json",
     "summary_robot_projection": "tests/fixtures/entity/operator_journey/summary/robot_summary_projection.json",
     "explain_bundle": "tests/fixtures/entity/operator_journey/explain/reconstruction_bundle.json",
+    "ledger_expected": "tests/fixtures/entity/review/ledger/merge_confirmed_expected.json",
+    "regab_public_mentions_summary": "tests/fixtures/entity/regab/sec10d_baseline_public/org_mentions_summary.json",
+    "regab_public_resolution_summary": "tests/fixtures/entity/regab/sec10d_baseline_public/org_resolution_summary.json",
     "eval_targets": "tests/fixtures/entity/evals/entity_eval_performance_targets.json"
   },
+  "refusals": [
+    {
+      "code": "E_ENTITY_PROFILE",
+      "context": "unknown profile template or missing profile YAML",
+      "next_command": "canon entity profile list --emit json"
+    },
+    {
+      "code": "E_ENTITY_REVIEW_IMPORT",
+      "context": "stale or cross-profile review queue",
+      "next_command": "canon entity review export work/cmbs-tenants/solve.json --include escrow --emit csv"
+    },
+    {
+      "code": "E_ENTITY_RUNTIME_GUARD",
+      "context": "hidden network/model/Python runtime dependency",
+      "next_command": "cargo test --test entity_operator_journey entity_runtime_guard -- --nocapture"
+    }
+  ],
   "required_release_gates": ["G08", "G13", "G15", "ER-RUNTIME-001"],
   "required_explain_sections": [
     "normalized_views",
     "candidates",
     "positive_evidence",
     "anti_merge_evidence",
+    "relation_hints",
+    "solver_decision",
     "review_decisions",
+    "ledger_events",
     "promotion_provenance"
   ],
   "required_robot_fields": [
@@ -49,6 +72,7 @@
     "runtime_model_downloads_allowed": false,
     "python_ml_runtime_allowed": false,
     "general_ml_framework_runtime_allowed": false,
+    "dense_embedding_service_allowed_for_large_corpora": false,
     "runtime_guard_verdict_required": true,
     "forbidden_runtime_paths": [
       "frontier model call",

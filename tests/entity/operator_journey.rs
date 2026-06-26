@@ -2,12 +2,12 @@
 
 use canon::entity::{
     lint::{
-        EntityLintRequest, EntityProfilePresenceCheck, EntityRuntimeGuardCheck,
-        lint_entity_workbench,
+        EntityArtifactFreshnessCheck, EntityLintRequest, EntityProfilePresenceCheck,
+        EntityRuntimeGuardCheck, lint_entity_workbench, render_entity_lint_summary,
     },
     runtime::{
         explain::explain_from_artifact_value,
-        types::{EntityState, EvidenceKind, ExplainQuery, PromotionDecision},
+        types::{EntityState, EvidenceKind, ExplainQuery, InheritanceMode, PromotionDecision},
     },
 };
 use serde_json::Value;
@@ -42,6 +42,8 @@ fn entity_operator_journey_composes_final_acceptance_fixtures() {
     );
 
     assert_commands_are_operator_runnable(&manifest);
+    assert_refusal_handoffs_are_actionable(&manifest);
+    assert_profile_cli_journey(&manifest);
     assert_fixture_paths_exist(&manifest);
     assert_cmbs_backfill_contract(&manifest);
     assert_sec10d_regab_contract(&manifest);
@@ -67,6 +69,7 @@ fn entity_runtime_guard_contract_blocks_network_model_python_runtime() {
         "runtime_model_downloads_allowed",
         "python_ml_runtime_allowed",
         "general_ml_framework_runtime_allowed",
+        "dense_embedding_service_allowed_for_large_corpora",
     ] {
         assert_eq!(guard[key], false, "manifest runtime guard {key}");
         assert_eq!(eval_guard[key], false, "eval runtime guard {key}");
@@ -110,15 +113,66 @@ fn assert_commands_are_operator_runnable(manifest: &Value) {
             .get(command_name.as_str())
             .and_then(Value::as_str)
             .unwrap_or_else(|| panic!("missing command {command_name}"));
-        assert!(
-            command.starts_with("canon entity ") || command.starts_with("cargo test "),
-            "{command_name} command is not operator-runnable: {command}"
-        );
-        assert!(
-            !command.contains("python") && !command.contains("curl "),
-            "{command_name} command hides a forbidden runtime path: {command}"
-        );
+        assert_actionable_command(command);
+        assert_local_runtime_command(command);
     }
+}
+
+fn assert_refusal_handoffs_are_actionable(manifest: &Value) {
+    let refusals = manifest["refusals"].as_array().expect("refusal handoffs");
+    assert!(!refusals.is_empty(), "journey includes refusal handoffs");
+    for refusal in refusals {
+        assert!(
+            refusal["code"]
+                .as_str()
+                .expect("refusal code")
+                .starts_with("E_"),
+            "refusal codes remain machine-readable"
+        );
+        let next_command = refusal["next_command"]
+            .as_str()
+            .expect("refusal next command");
+        assert_actionable_command(next_command);
+        assert_local_runtime_command(next_command);
+    }
+}
+
+fn assert_profile_cli_journey(manifest: &Value) {
+    let catalog = canon_json(["entity", "profile", "list", "--emit", "json"]);
+    let listed = catalog["profiles"]
+        .as_array()
+        .expect("profile catalog")
+        .iter()
+        .map(|profile| profile["profile"].as_str().expect("profile id"))
+        .collect::<BTreeSet<_>>();
+    for profile in ["cmbs_tenant_label", "regab_firm_identity"] {
+        assert!(listed.contains(profile), "profile {profile} is listed");
+    }
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let output = temp.path().join("cmbs_tenant_label.yaml");
+    let report = canon_json([
+        "entity",
+        "profile",
+        "init",
+        "cmbs_tenant_label",
+        "--output",
+        output.to_str().expect("profile path"),
+    ]);
+    assert_eq!(report["template_valid"], true);
+    assert!(
+        report["next_command"]
+            .as_str()
+            .expect("profile init next command")
+            .contains("canon entity prepare")
+    );
+    let yaml = fs::read_to_string(output).expect("profile template exists");
+    assert!(yaml.contains("canonical_display_label"));
+
+    let init_command = manifest["commands"]["profile_init"]
+        .as_str()
+        .expect("profile init command");
+    assert!(init_command.contains("cmbs_tenant_label"));
 }
 
 fn assert_fixture_paths_exist(manifest: &Value) {
@@ -171,6 +225,26 @@ fn assert_cmbs_backfill_contract(manifest: &Value) {
             "run_wrapper"
         ]
     );
+    for stage in runbook["stage_commands"]
+        .as_array()
+        .expect("stage commands")
+    {
+        let command = stage["command"].as_str().expect("stage command");
+        assert_actionable_command(command);
+        assert_local_runtime_command(command);
+    }
+    let log_fields = strings(&runbook["required_log_fields"]);
+    for field in [
+        "row_count",
+        "cache_status",
+        "artifact_hashes",
+        "next_commands",
+    ] {
+        assert!(
+            log_fields.contains(&field.to_string()),
+            "missing log field {field}"
+        );
+    }
 }
 
 fn assert_sec10d_regab_contract(manifest: &Value) {
@@ -200,6 +274,22 @@ fn assert_sec10d_regab_contract(manifest: &Value) {
     ] {
         assert!(forbidden.contains(term), "Reg AB missing guard {term}");
     }
+
+    let mentions = json_file(&fixture_path(path(
+        manifest,
+        "regab_public_mentions_summary",
+    )));
+    let resolution = json_file(&fixture_path(path(
+        manifest,
+        "regab_public_resolution_summary",
+    )));
+    assert_eq!(mentions["mention_count"], 127_991);
+    assert_eq!(mentions["unique_surface_count"], 46);
+    assert_eq!(resolution["canon_exit"], 0);
+    assert_eq!(resolution["mention_count"], 127_991);
+    assert_eq!(resolution["resolved_mentions"], 127_991);
+    assert_eq!(resolution["unresolved_mentions"], 0);
+    assert_eq!(resolution["registry"]["registry_id"], "firms");
 }
 
 fn assert_summary_robot_json_contract(manifest: &Value) {
@@ -244,6 +334,22 @@ fn assert_explain_contract(manifest: &Value) {
     .expect("explain reconstructs operator journey fixture");
     assert_eq!(artifact.result.state, EntityState::ResolvedExisting);
     assert_eq!(artifact.result.canonical_id.as_deref(), Some("TNT-SEARS"));
+    assert_eq!(
+        artifact
+            .result
+            .registry_snapshot
+            .as_ref()
+            .map(|snapshot| (snapshot.id.as_str(), snapshot.version.as_str())),
+        Some(("cmbs-tenants", "2026.06.25"))
+    );
+    assert_eq!(
+        artifact.result.next_action.as_deref(),
+        Some("replay exact apply against the promoted registry snapshot")
+    );
+    assert_eq!(
+        artifact.result.inheritance.mode,
+        InheritanceMode::SingleIncumbentOverlap
+    );
 
     let required = strings(&manifest["required_explain_sections"]);
     assert!(required.contains(&"normalized_views".to_string()));
@@ -256,7 +362,7 @@ fn assert_explain_contract(manifest: &Value) {
         }),
         "explain must reconstruct normalized views"
     );
-    assert!(required.contains(&"candidates".to_string()) && !artifact.result.candidates.is_empty());
+    assert!(required.contains(&"candidates".to_string()) && artifact.result.candidates.len() == 3);
     assert!(
         required.contains(&"positive_evidence".to_string())
             && artifact
@@ -266,12 +372,28 @@ fn assert_explain_contract(manifest: &Value) {
                 .any(|evidence| evidence.kind == EvidenceKind::Support)
     );
     assert!(
+        required.contains(&"relation_hints".to_string())
+            && artifact
+                .result
+                .positive_evidence
+                .iter()
+                .any(|evidence| evidence.namespace == "relation_hint"
+                    && evidence.operator_id == "relation_hint:dba_alias")
+    );
+    assert!(
         required.contains(&"anti_merge_evidence".to_string())
-            && !artifact.result.anti_merge_evidence.is_empty()
+            && artifact.result.anti_merge_evidence.iter().any(|evidence| {
+                evidence.kind == EvidenceKind::CannotLink
+                    && evidence.operator_id == "cannot_link:tenant_label_scope"
+            })
     );
     assert!(
         required.contains(&"review_decisions".to_string())
             && !artifact.result.review_decisions.is_empty()
+    );
+    assert!(
+        required.contains(&"solver_decision".to_string())
+            && artifact.result.state == EntityState::ResolvedExisting
     );
     assert!(
         required.contains(&"promotion_provenance".to_string())
@@ -281,11 +403,29 @@ fn assert_explain_contract(manifest: &Value) {
                 .iter()
                 .any(|record| record.decision == PromotionDecision::Promote)
     );
+    assert_eq!(
+        artifact.result.promotion_provenance[0]
+            .registry_version_after
+            .as_deref(),
+        Some("2026.06.26")
+    );
+
+    let ledger = json_file(&fixture_path(path(manifest, "ledger_expected")));
+    assert!(required.contains(&"ledger_events".to_string()));
+    assert_eq!(ledger["version"], "canon_entity_decision_ledger.v0");
+    assert_eq!(ledger["event_version"], "decision_event.v0");
+    assert_eq!(ledger["summary_counts"]["events"], 1);
+    assert_eq!(ledger["summary_labels"]["ledger"], "append_only");
 }
 
 fn assert_doctor_lint_contract() {
     let temp = tempfile::tempdir().expect("tempdir");
     let report = lint_entity_workbench(EntityLintRequest {
+        artifacts: vec![EntityArtifactFreshnessCheck {
+            stage: "solve".to_string(),
+            expected_hash: "blake3:expected".to_string(),
+            actual_hash: "blake3:stale".to_string(),
+        }],
         profile_presence: Some(EntityProfilePresenceCheck {
             profile_id: "cmbs_tenant_label".to_string(),
             profile_path: temp.path().join("missing-profile.yaml"),
@@ -298,7 +438,9 @@ fn assert_doctor_lint_contract() {
         ..EntityLintRequest::default()
     });
     assert!(!report.ok);
+    assert!(report.next_command.contains("Rerun canon entity"));
     assert!(report.robot.retryable_after_fix);
+    assert!(render_entity_lint_summary(&report).contains("runtime_guard_failure"));
     assert!(
         report
             .findings
@@ -318,6 +460,47 @@ fn assert_doctor_lint_contract() {
             .iter()
             .all(|command| !command.trim().is_empty())
     );
+}
+
+fn assert_actionable_command(command: &str) {
+    assert!(!command.trim().is_empty(), "command must be non-empty");
+    assert!(
+        command.starts_with("canon entity ") || command.starts_with("cargo test "),
+        "unexpected operator command prefix: {command}"
+    );
+}
+
+fn assert_local_runtime_command(command: &str) {
+    let lower = command.to_ascii_lowercase();
+    for forbidden in [
+        "python",
+        "pip ",
+        "uv ",
+        "curl ",
+        "wget ",
+        "http://",
+        "https://",
+        "openai",
+        "anthropic",
+        "frontier_model",
+        "model_download",
+    ] {
+        assert!(
+            !lower.contains(forbidden),
+            "operator command has forbidden runtime dependency token {forbidden}: {command}"
+        );
+    }
+}
+
+fn canon_json<const N: usize>(args: [&str; N]) -> Value {
+    let output = assert_cmd::cargo::cargo_bin_cmd!("canon")
+        .args(args)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    serde_json::from_slice(&output).expect("canon json")
 }
 
 fn path<'a>(manifest: &'a Value, key: &str) -> &'a str {

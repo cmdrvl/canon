@@ -1,0 +1,62 @@
+{
+  "schema_version": "canon.entity.cmbs_mini_e2e.v0",
+  "fixture_id": "cmbs-small-mini-e2e-v0",
+  "stage_order": [
+    "prepare",
+    "index",
+    "block",
+    "edge",
+    "solve",
+    "review_export",
+    "audit",
+    "review_import",
+    "promote",
+    "apply",
+    "run_wrapper"
+  ],
+  "expected_stage_versions": {
+    "prepare": "canon_entity_prepare.v0",
+    "index": "canon_entity_index.v0",
+    "block": "canon_entity_block.v0",
+    "edge": "canon_entity_edge.v0",
+    "solve": "canon_entity_solve.v0",
+    "review_export": "canon_entity_review_queue.v0",
+    "audit": "canon_entity_audit.v0",
+    "review_import": "canon_entity_decision_ledger.v0",
+    "promote": "canon_entity_promote.v0",
+    "apply": "canon_entity_apply.v0",
+    "run_wrapper": "canon_entity_run.v0"
+  },
+  "review": {
+    "expected_review_group_count": 1,
+    "repeated_ambiguity": {
+      "row_count": 4,
+      "deal_count": 4,
+      "expected_group_count": 1
+    }
+  },
+  "promotion": {
+    "registry_version_before": "2026.06.26-mini-before",
+    "registry_version_after": "2026.06.26-mini-after",
+    "expected_aliases": [
+      {
+        "input": "SEARS LLC",
+        "canonical_id": "TNT-SEARS",
+        "canonical_type": "tenant_label",
+        "rule_id": "ENTITY_REVIEW_PROMOTE"
+      },
+      {
+        "input": "Sears",
+        "canonical_id": "TNT-SEARS",
+        "canonical_type": "tenant_label",
+        "rule_id": "ENTITY_REVIEW_PROMOTE"
+      },
+      {
+        "input": "Sears Roebuck & Co.",
+        "canonical_id": "TNT-SEARS",
+        "canonical_type": "tenant_label",
+        "rule_id": "ENTITY_REVIEW_PROMOTE"
+      }
+    ]
+  }
+}
