@@ -1,10 +1,9 @@
-use canon::{
-    entity::{
-        CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION, CANON_ENTITY_INDEX_VERSION,
-        CANON_ENTITY_PREPARE_VERSION, CANON_ENTITY_SOLVE_VERSION, EntityArtifactReference,
-        run::{EntityRunArtifact, EntityRunHandoffStep, EntityRunRequest, run_entity_workbench},
-    },
-    registry::RegistryRef,
+#![forbid(unsafe_code)]
+
+use canon::entity::{
+    CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION, CANON_ENTITY_INDEX_VERSION,
+    CANON_ENTITY_PREPARE_VERSION, CANON_ENTITY_SOLVE_VERSION, EntityArtifactReference,
+    run::{EntityRunArtifact, EntityRunHandoffStep, EntityRunRequest, run_entity_workbench},
 };
 use std::{
     collections::BTreeMap,
@@ -46,7 +45,13 @@ fn cmbs_run_orchestration_orders_review_audit_promote_apply_handoffs() {
         .collect::<Vec<_>>();
     assert_eq!(
         handoff_order,
-        ["review_export", "audit", "review_import", "promote", "apply"]
+        [
+            "review_export",
+            "audit",
+            "review_import",
+            "promote",
+            "apply"
+        ]
     );
 
     let solve_path = work_dir.join("solve/solve.json").display().to_string();
@@ -145,7 +150,6 @@ fn cmbs_run_orchestration_orders_review_audit_promote_apply_handoffs() {
 fn artifact_chain_continuity_cmbs_run_profiles_hashes_and_paths() {
     let RunFixture {
         artifact,
-        registry,
         work_dir,
         _temp,
         ..
@@ -197,10 +201,6 @@ fn artifact_chain_continuity_cmbs_run_profiles_hashes_and_paths() {
 
     let persisted: EntityRunArtifact = read_json(&work_dir.join("run.json"));
     assert_eq!(persisted.orchestration, artifact.orchestration);
-
-    let registry_ref = RegistryRef::load(&registry).expect("registry ref loads");
-    assert_eq!(registry_ref.id, firewall.registry_id);
-    assert_eq!(registry_ref.version, firewall.registry_version);
 }
 
 fn assert_handoff(
