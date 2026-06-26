@@ -317,6 +317,7 @@ pub fn validate_block_exact_bucket_size_limit(
             "stage": BLOCK_STAGE,
             "artifact": BLOCK_CANDIDATE_ARTIFACT,
             "reason": "exact_bucket_size_exceeded",
+            "refusal_code": breach.refusal_code.as_str(),
             "operator_id": operator_id.into(),
             "bucket_id": bucket_id.into(),
             "policy_id": breach.policy_id,
@@ -324,6 +325,7 @@ pub fn validate_block_exact_bucket_size_limit(
             "configured": breach.configured,
             "budget": breach,
             "pair_expansion": EXACT_BUCKET_PAIR_EXPANSION_FORBIDDEN,
+            "candidate_artifact_bytes": 0,
             "candidate_artifact_written": false,
             "partial_candidate_artifact_written": false
         }),
@@ -1109,6 +1111,7 @@ fn block_candidate_budget_refusal(
             "candidate_pairs_per_surface_p50": diagnostics.candidate_pairs_per_surface_p50,
             "candidate_pairs_per_surface_p95": diagnostics.candidate_pairs_per_surface_p95,
             "candidate_pairs_per_surface_p99": diagnostics.candidate_pairs_per_surface_p99,
+            "candidate_artifact_bytes": 0,
             "candidate_artifact_written": BLOCK_PARTIAL_CANDIDATE_ARTIFACT_WRITTEN_ON_REFUSAL,
             "partial_candidate_artifact_written": BLOCK_PARTIAL_CANDIDATE_ARTIFACT_WRITTEN_ON_REFUSAL
         }),

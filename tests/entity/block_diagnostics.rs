@@ -7,7 +7,9 @@ use canon::{
             AliasPatchMatchBlockOperator, AliasPatchPair, BlockCandidateBudgetConfig,
             BlockCandidateGenerationRequest, BlockCandidateOperator, NgramTopKBlockOperator,
             RareTokenOverlapBlockOperator, generate_block_candidates,
+            validate_block_exact_bucket_size_limit,
         },
+        budget::BudgetLimit,
         diagnostics::{block_index_limit_refusal, summarize_block_candidate_diagnostics},
         index::ngram_index::{EntityNgramBuildConfig, EntityNgramIndex, EntityNgramSurface},
         postings::{EntityPostingBuildConfig, EntityPostingIndex, EntityPostingSurface},
@@ -63,6 +65,16 @@ fn entity_block_diagnostics_summary_is_stable_and_operator_facing() {
         ["ngram_topk:tenant_core", "alias_patch_match"]
     );
     assert!(summary.top_large_postings.is_empty());
+    assert!(summary.boundary_refusals.iter().any(|boundary| {
+        boundary.boundary == BudgetLimit::MaxCandidatesPerRun
+            && boundary.policy_id == "block.max_candidates_per_run"
+            && boundary.refusal_code == "E_ENTITY_CANDIDATE_BUDGET"
+    }));
+    assert!(summary.boundary_refusals.iter().any(|boundary| {
+        boundary.boundary == BudgetLimit::MaxExactBucketSize
+            && boundary.policy_id == "block.max_exact_bucket_size"
+            && boundary.refusal_code == "E_ENTITY_INDEX_LIMIT"
+    }));
 }
 
 #[test]
@@ -95,6 +107,7 @@ fn EN_B005_candidate_budget_refuses_before_artifact_write() {
         2
     );
     assert_eq!(refusal.detail["stage"], "block");
+    assert_eq!(refusal.detail["candidate_artifact_bytes"], 0);
     assert_eq!(refusal.detail["candidate_artifact_written"], json!(false));
     assert_eq!(
         refusal.detail["partial_candidate_artifact_written"],
@@ -145,6 +158,7 @@ fn E_ENTITY_CANDIDATE_BUDGET_refusal_reports_exact_boundary() {
             .is_some_and(|value| value > 0)
     );
     assert_eq!(refusal.detail["configured"], 0);
+    assert_eq!(refusal.detail["candidate_artifact_bytes"], 0);
 }
 
 #[test]
@@ -167,12 +181,39 @@ fn E_ENTITY_INDEX_LIMIT_refusal_reports_large_bucket_boundary() {
     assert_eq!(refusal.detail["subject_kind"], "exact_bucket");
     assert_eq!(refusal.detail["observed"], 8_000);
     assert_eq!(refusal.detail["configured"], 100);
+    assert_eq!(refusal.detail["refusal_code"], "E_ENTITY_INDEX_LIMIT");
+    assert_eq!(refusal.detail["candidate_artifact_bytes"], 0);
     assert_eq!(refusal.detail["candidate_artifact_written"], json!(false));
     assert!(
         refusal
             .next_command
             .as_deref()
             .is_some_and(|command| command.contains("compact exact-bucket"))
+    );
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn E_ENTITY_INDEX_LIMIT_exact_bucket_validator_reports_boundary_code() {
+    let refusal =
+        validate_block_exact_bucket_size_limit("exact_bucket:tenant_core", "sears", 8_000, 100)
+            .expect_err("oversized exact bucket refuses");
+
+    assert_eq!(refusal.code, RefusalCode::EEntityIndexLimit);
+    assert_eq!(refusal.detail["stage"], "block");
+    assert_eq!(refusal.detail["artifact"], "candidate_artifact");
+    assert_eq!(refusal.detail["reason"], "exact_bucket_size_exceeded");
+    assert_eq!(refusal.detail["refusal_code"], "E_ENTITY_INDEX_LIMIT");
+    assert_eq!(refusal.detail["policy_id"], "block.max_exact_bucket_size");
+    assert_eq!(refusal.detail["operator_id"], "exact_bucket:tenant_core");
+    assert_eq!(refusal.detail["bucket_id"], "sears");
+    assert_eq!(refusal.detail["observed"], 8_000);
+    assert_eq!(refusal.detail["configured"], 100);
+    assert_eq!(refusal.detail["candidate_artifact_bytes"], 0);
+    assert_eq!(refusal.detail["candidate_artifact_written"], json!(false));
+    assert_eq!(
+        refusal.detail["partial_candidate_artifact_written"],
+        json!(false)
     );
 }
 
@@ -196,6 +237,7 @@ fn large_posting_diagnostics_are_sorted_and_counted() {
     let summary = summarize_block_candidate_diagnostics(&budget, &result, 2);
 
     assert!(result.candidates.is_empty());
+    assert_eq!(result.diagnostics.large_buckets_suppressed, 16);
     assert_eq!(summary.observed.large_buckets_suppressed, 16);
     assert_eq!(
         summary.top_large_postings,

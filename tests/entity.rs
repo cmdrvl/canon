@@ -4,6 +4,8 @@
 mod apply_streaming;
 #[path = "entity/bead_parallelism_contract.rs"]
 mod bead_parallelism_contract;
+#[path = "entity/block_artifact.rs"]
+mod block_artifact;
 #[path = "entity/block_candidates.rs"]
 mod block_candidates;
 #[path = "entity/block_diagnostics.rs"]

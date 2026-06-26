@@ -25,6 +25,7 @@ pub struct BlockDiagnosticsSummary {
     pub stage: String,
     pub configured: BlockConfiguredLimits,
     pub observed: BlockObservedDiagnostics,
+    pub boundary_refusals: Vec<BlockBoundaryRefusalDiagnostic>,
     pub top_blocking_operators_by_yield: Vec<BlockOperatorYieldDiagnostic>,
     pub top_large_postings: Vec<BlockLargePostingDiagnostic>,
 }
@@ -64,6 +65,13 @@ pub struct BlockOperatorYieldDiagnostic {
 pub struct BlockLargePostingDiagnostic {
     pub operator_id: String,
     pub suppressed_posting_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockBoundaryRefusalDiagnostic {
+    pub policy_id: String,
+    pub boundary: BudgetLimit,
+    pub refusal_code: String,
 }
 
 pub fn summarize_block_candidate_diagnostics(
@@ -108,14 +116,10 @@ pub fn summarize_block_candidate_diagnostics(
             pairs_per_surface_p99: result.diagnostics.candidate_pairs_per_surface_p99,
             max_candidates_for_surface: result.diagnostics.max_candidates_for_surface,
             max_candidates_for_operator: result.diagnostics.max_candidates_for_operator,
-            large_buckets_suppressed: result
-                .diagnostics
-                .operator_diagnostics
-                .iter()
-                .map(|operator| operator.large_posting_suppressed_count)
-                .sum(),
+            large_buckets_suppressed: result.diagnostics.large_buckets_suppressed,
             candidate_artifact_bytes,
         },
+        boundary_refusals: block_boundary_refusals(),
         top_blocking_operators_by_yield,
         top_large_postings,
     }
@@ -138,6 +142,7 @@ pub fn block_index_limit_refusal(
             "stage": "block",
             "artifact": "candidate_artifact",
             "reason": "index_limit_exceeded",
+            "refusal_code": breach.refusal_code.as_str(),
             "policy_id": breach.policy_id,
             "operator_id": operator_id.into(),
             "subject_kind": subject_kind.into(),
@@ -151,6 +156,26 @@ pub fn block_index_limit_refusal(
         }),
         Some(policy.next_command.to_string()),
     )
+}
+
+fn block_boundary_refusals() -> Vec<BlockBoundaryRefusalDiagnostic> {
+    [
+        BudgetLimit::MaxCandidatesPerSurface,
+        BudgetLimit::MaxCandidatesPerOperator,
+        BudgetLimit::MaxCandidatesPerRun,
+        BudgetLimit::MaxExactBucketSize,
+    ]
+    .into_iter()
+    .map(|boundary| {
+        let policy = find_budget_policy(BudgetStage::Block, boundary)
+            .expect("block budget boundary policy is defined");
+        BlockBoundaryRefusalDiagnostic {
+            policy_id: policy.id.to_string(),
+            boundary,
+            refusal_code: policy.refusal_code.as_str().to_string(),
+        }
+    })
+    .collect()
 }
 
 fn operator_yield(operator: &BlockOperatorCandidateDiagnostics) -> BlockOperatorYieldDiagnostic {
