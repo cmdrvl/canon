@@ -49,7 +49,9 @@ fn cmbs_apply_loop_appends_canonical_fields_and_preserves_raw_columns() {
 
     let temp = tempfile::tempdir().expect("tempdir");
     let output = temp.path().join("tenants.canon.csv");
-    let artifact = run_apply_streaming(apply_request(&manifest, &output))
+    let rows = repo_path(ROWS_PATH);
+    let resolutions = resolutions();
+    let artifact = run_apply_streaming(apply_request(&manifest, &rows, &resolutions, &output))
         .expect("CMBS apply exact replay succeeds");
 
     assert_eq!(artifact.version, "canon_entity_apply.v0");
@@ -71,12 +73,14 @@ fn apply_streaming_exact_replay_cmbs_apply_loop_is_byte_stable() {
     let manifest = manifest();
     let temp = tempfile::tempdir().expect("tempdir");
     let output = temp.path().join("tenants.canon.csv");
+    let rows = repo_path(ROWS_PATH);
+    let resolutions = resolutions();
 
-    let first =
-        run_apply_streaming(apply_request(&manifest, &output)).expect("first CMBS apply succeeds");
+    let first = run_apply_streaming(apply_request(&manifest, &rows, &resolutions, &output))
+        .expect("first CMBS apply succeeds");
     let first_bytes = fs::read(&output).expect("first output bytes");
-    let second =
-        run_apply_streaming(apply_request(&manifest, &output)).expect("second CMBS apply succeeds");
+    let second = run_apply_streaming(apply_request(&manifest, &rows, &resolutions, &output))
+        .expect("second CMBS apply succeeds");
     let second_bytes = fs::read(&output).expect("second output bytes");
 
     assert_eq!(first_bytes, second_bytes);
@@ -84,16 +88,21 @@ fn apply_streaming_exact_replay_cmbs_apply_loop_is_byte_stable() {
     assert_eq!(first.streaming.chunks, second.streaming.chunks);
 }
 
-fn apply_request<'a>(manifest: &'a ApplyLoopManifest, output: &'a Path) -> ApplyStreamRequest<'a> {
+fn apply_request<'a>(
+    manifest: &'a ApplyLoopManifest,
+    rows: &'a Path,
+    resolutions: &'a BTreeMap<String, ApplyCanonicalResolution>,
+    output: &'a Path,
+) -> ApplyStreamRequest<'a> {
     ApplyStreamRequest {
-        rows: &repo_path(ROWS_PATH),
+        rows,
         output,
         lookup_column: &manifest.lookup_column,
         registry: ApplyRegistryReference {
             id: manifest.registry.id.clone(),
             version: manifest.registry.version.clone(),
         },
-        resolutions: &resolutions(),
+        resolutions,
         safety: ApplySafetyCheck {
             expected_profile_id: Some(manifest.profile_id.clone()),
             actual_profile_id: Some(manifest.profile_id.clone()),
