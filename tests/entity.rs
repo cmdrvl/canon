@@ -2,6 +2,8 @@
 
 #[path = "entity/apply_streaming.rs"]
 mod apply_streaming;
+#[path = "entity/index_ngram.rs"]
+mod index_ngram;
 #[path = "entity/postings_layout.rs"]
 mod postings_layout;
 #[path = "entity/prepare_artifact.rs"]

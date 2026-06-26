@@ -266,3 +266,6 @@ pub fn required_index_hash_fields() -> &'static [EntityHashField] {
         EntityHashField::NamekitHash,
     ]
 }
+
+#[path = "ngram_index.rs"]
+pub mod ngram_index;
