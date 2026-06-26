@@ -1,0 +1,14 @@
+[
+  {
+    "canonical_id": "TNT-KMART",
+    "canonical_type": "tenant_label",
+    "input": "Kmart",
+    "rule_id": "ENTITY_REVIEW_PROMOTE"
+  },
+  {
+    "canonical_id": "TNT-SEARS",
+    "canonical_type": "tenant_label",
+    "input": "SEARS, LLC",
+    "rule_id": "ENTITY_REVIEW_PROMOTE"
+  }
+]

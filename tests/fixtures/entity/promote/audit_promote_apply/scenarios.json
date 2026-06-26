@@ -1,0 +1,17 @@
+{
+  "version": "canon_entity_audit_promote_apply_golden.v0",
+  "scenarios": [
+    {
+      "id": "EN-PR001",
+      "assertion": "stale audit refusal preserves registry, sidecar, and decision ledger bytes"
+    },
+    {
+      "id": "EN-PR002",
+      "assertion": "accepted aliases update registry version and entry_count, pass lint, and resolve through ordinary exact lookup"
+    },
+    {
+      "id": "EN-A001",
+      "assertion": "apply after promotion preserves raw CSV fields and appends canonical metadata deterministically"
+    }
+  ]
+}

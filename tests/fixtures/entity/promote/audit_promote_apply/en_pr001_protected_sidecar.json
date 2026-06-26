@@ -1,0 +1,7 @@
+{
+  "version": "canon_entity_promotion_sidecar.v0",
+  "artifact_content_hash": "blake3:protected-sidecar",
+  "summary": {
+    "cannot_link_count": 1
+  }
+}
