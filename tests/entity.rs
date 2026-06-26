@@ -20,6 +20,8 @@ mod surface_id;
 #[path = "entity/profile_regab.rs"]
 mod profile_regab;
 
+#[path = "entity/cmbs_hard_negatives.rs"]
+mod cmbs_hard_negatives;
 #[path = "entity/cmbs_normalization.rs"]
 mod cmbs_normalization;
 #[path = "entity/cmbs_tenant_id_allocator.rs"]

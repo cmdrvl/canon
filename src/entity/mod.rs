@@ -20,6 +20,7 @@ pub mod profiles;
 pub mod runtime;
 pub mod schema;
 pub mod score;
+pub mod solve;
 pub mod stream;
 pub mod surface_id;
 pub mod topk;

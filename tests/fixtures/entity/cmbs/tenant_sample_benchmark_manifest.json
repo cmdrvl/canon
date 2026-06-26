@@ -40,6 +40,17 @@
   ],
   "must_link_clusters": [
     {
+      "id": "TNT-SEARS",
+      "label": "Sears",
+      "observations": 4,
+      "variants": [
+        "SEARS LLC",
+        "Sears",
+        "Sears Roebuck & Co.",
+        "Sears #1234"
+      ]
+    },
+    {
       "id": "TNT-238-SAND-ISLAND-PROPERTY",
       "label": "238 Sand Island Property",
       "observations": 1072,
@@ -176,6 +187,22 @@
     }
   ],
   "hard_negative_pairs": [
+    [
+      "Sears",
+      "Sears Auto Center"
+    ],
+    [
+      "Sears",
+      "Kmart"
+    ],
+    [
+      "Sears",
+      "Transform SR LLC"
+    ],
+    [
+      "Sears",
+      "Sears Holdings"
+    ],
     ["2020 Auto Body, LLC", "2020 Broadway Ave"],
     ["100 Riverside Parking LLC", "220 Riverside Parking LLC"],
     ["100 Riverside Parking LLC", "100 Forsyth Restaurant LLC"],
