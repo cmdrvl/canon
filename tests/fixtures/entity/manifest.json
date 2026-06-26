@@ -445,7 +445,8 @@
       "input_files": [
         "tests/fixtures/entity/stress/generators/cmbs_500k_contract.json",
         "tests/fixtures/entity/stress/expected_metrics/cmbs_500k_metrics.json",
-        "tests/fixtures/entity/stress/expected_metrics/stress_expected_metrics.json"
+        "tests/fixtures/entity/stress/expected_metrics/stress_expected_metrics.json",
+        "tests/fixtures/entity/perf/baselines/stress_baseline_artifacts.json"
       ],
       "expected_artifacts": [{"path": "target/entity-evals/cmbs-500k/solve.json", "schema_version": "canon_entity_solve.v0", "hash_policy": "telemetry_hash_recorded", "summary_counters": ["exact_bucket_pair_expansion_count", "review_group_count", "candidate_pairs_per_surface_p95"]}],
       "expected_outcome": {"kind": "success", "refusal_code": null},
@@ -535,7 +536,8 @@
       "input_files": [
         "tests/fixtures/entity/stress/generators/cmbs_500k_contract.json",
         "tests/fixtures/entity/stress/expected_metrics/cmbs_500k_metrics.json",
-        "tests/fixtures/entity/stress/expected_metrics/stress_expected_metrics.json"
+        "tests/fixtures/entity/stress/expected_metrics/stress_expected_metrics.json",
+        "tests/fixtures/entity/perf/baselines/stress_baseline_artifacts.json"
       ],
       "expected_artifacts": [{"path": "target/entity-evals/stress-cmbs-500k/telemetry.json", "schema_version": "canon.entity.eval_result.v0", "hash_policy": "telemetry_hash_recorded", "summary_counters": ["raw_row_count", "prepared_surface_count", "candidate_pair_count", "peak_memory_bytes"]}],
       "expected_outcome": {"kind": "success", "refusal_code": null},
@@ -552,7 +554,8 @@
       "input_files": [
         "tests/fixtures/entity/stress/generators/unique_500k_contract.json",
         "tests/fixtures/entity/stress/expected_metrics/unique_500k_metrics.json",
-        "tests/fixtures/entity/stress/expected_metrics/stress_expected_metrics.json"
+        "tests/fixtures/entity/stress/expected_metrics/stress_expected_metrics.json",
+        "tests/fixtures/entity/perf/baselines/stress_baseline_artifacts.json"
       ],
       "expected_artifacts": [{"path": "target/entity-evals/stress-unique-500k/telemetry.json", "schema_version": "canon.entity.eval_result.v0", "hash_policy": "telemetry_hash_recorded", "summary_counters": ["prepared_surface_count", "candidate_pair_count", "refusal_code", "peak_memory_bytes"]}],
       "expected_outcome": {"kind": "refusal", "refusal_code": "E_ENTITY_CANDIDATE_BUDGET"},
