@@ -1,0 +1,48 @@
+{
+  "version": "canon_entity_blocking_golden_manifest.v0",
+  "artifact_version": "canon_entity_block.v0",
+  "bucket_version": "canon_entity_block_bucket.v0",
+  "profile_id": "cmbs_tenant_label",
+  "fixtures": {
+    "EN-B001": {
+      "name": "exact_bucket_8000_sears",
+      "row_count": 8000,
+      "expected_summary": {
+        "exact_bucket_count": 1,
+        "exact_bucket_pair_expansion_count": 0,
+        "bucket_assertion_records": 1
+      }
+    },
+    "EN-B002": {
+      "name": "large_common_token_bucket",
+      "surface_count": 64,
+      "expected_summary": {
+        "candidate_pairs": 0,
+        "candidate_pairs_emitted": 0,
+        "large_buckets_suppressed": 64
+      }
+    },
+    "EN-B003": {
+      "name": "sears_vs_sears_llc_support",
+      "left_surface_id": "surf:cmbs:001",
+      "right_surface_id": "surf:cmbs:002",
+      "expected_operator": "rare_token_overlap:tenant_tokens"
+    },
+    "EN-B004": {
+      "name": "sears_vs_sears_auto_relation_context",
+      "left_surface_id": "surf:cmbs:001",
+      "right_surface_id": "surf:cmbs:004",
+      "expected_support_operator": "rare_token_overlap:tenant_tokens",
+      "expected_relation_operator": "relation_hint:tenant_related_distinct",
+      "expected_summary": {
+        "relation_hint_count": 1
+      }
+    },
+    "EN-B005": {
+      "name": "candidate_cap_exceeded",
+      "expected_refusal_code": "E_ENTITY_CANDIDATE_BUDGET",
+      "expected_reason": "candidate_budget_exceeded",
+      "candidate_artifact_written": false
+    }
+  }
+}

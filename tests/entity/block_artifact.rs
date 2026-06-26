@@ -24,12 +24,14 @@ use canon::{
         postings::{EntityPostingBuildConfig, EntityPostingIndex, EntityPostingSurface},
     },
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 #[test]
 #[allow(non_snake_case)]
 fn EN_B001_block_artifact_records_hashes_payloads_and_stable_order() {
+    let manifest = golden_manifest();
+    let expected = &manifest["fixtures"]["EN-B001"];
     let posting_index = candidate_posting_index();
     let candidates = generate_block_candidates(BlockCandidateGenerationRequest {
         profile_id: "cmbs_tenant_label".to_string(),
@@ -90,12 +92,24 @@ fn EN_B001_block_artifact_records_hashes_payloads_and_stable_order() {
     }));
     assert_eq!(artifact.summary.counts["candidate_pairs"], 1);
     assert_eq!(artifact.summary.counts["block_hits"], 1);
-    assert_eq!(artifact.summary.counts["exact_bucket_count"], 1);
+    assert_eq!(
+        artifact.summary.counts["exact_bucket_count"],
+        expected["expected_summary"]["exact_bucket_count"]
+            .as_u64()
+            .expect("fixture exact_bucket_count")
+    );
     assert_eq!(
         artifact.summary.counts["exact_bucket_pair_expansion_count"],
-        0
+        expected["expected_summary"]["exact_bucket_pair_expansion_count"]
+            .as_u64()
+            .expect("fixture exact_bucket_pair_expansion_count")
     );
-    assert_eq!(artifact.summary.counts["bucket_assertion_records"], 1);
+    assert_eq!(
+        artifact.summary.counts["bucket_assertion_records"],
+        expected["expected_summary"]["bucket_assertion_records"]
+            .as_u64()
+            .expect("fixture bucket_assertion_records")
+    );
     assert_eq!(
         artifact.summary.counts["candidate_artifact_bytes"],
         candidates.diagnostics.candidate_artifact_bytes
@@ -107,7 +121,10 @@ fn EN_B001_block_artifact_records_hashes_payloads_and_stable_order() {
     assert_eq!(candidate.right_surface_id, "surf:cmbs:002");
     assert_eq!(candidate.block_hits[0].operator_id, "alias_patch_match");
     let assertion = &bucket.assertions[0];
-    assert_eq!(assertion.row_count, 8_000);
+    assert_eq!(
+        assertion.row_count,
+        expected["row_count"].as_u64().expect("fixture row_count")
+    );
     assert_eq!(assertion.expanded_pair_count(), 0);
     assert_eq!(
         assertion.pair_expansion,
@@ -272,6 +289,8 @@ fn entity_block_artifact_refuses_unstable_candidate_order() {
 #[test]
 #[allow(non_snake_case)]
 fn EN_B002_common_token_bucket_stays_bounded_in_artifact_summary() {
+    let manifest = golden_manifest();
+    let expected = &manifest["fixtures"]["EN-B002"];
     let posting_index = common_bank_posting_index(64);
     let candidates = generate_block_candidates(BlockCandidateGenerationRequest {
         profile_id: "cmbs_tenant_label".to_string(),
@@ -298,15 +317,32 @@ fn EN_B002_common_token_bucket_stays_bounded_in_artifact_summary() {
     })
     .expect("bounded empty payload still emits summary");
 
-    assert_eq!(artifact.summary.counts["candidate_pairs"], 0);
-    assert_eq!(artifact.summary.counts["large_buckets_suppressed"], 64);
-    assert_eq!(artifact.summary.counts["candidate_pairs_emitted"], 0);
+    assert_eq!(
+        artifact.summary.counts["candidate_pairs"],
+        expected["expected_summary"]["candidate_pairs"]
+            .as_u64()
+            .expect("fixture candidate_pairs")
+    );
+    assert_eq!(
+        artifact.summary.counts["large_buckets_suppressed"],
+        expected["expected_summary"]["large_buckets_suppressed"]
+            .as_u64()
+            .expect("fixture large_buckets_suppressed")
+    );
+    assert_eq!(
+        artifact.summary.counts["candidate_pairs_emitted"],
+        expected["expected_summary"]["candidate_pairs_emitted"]
+            .as_u64()
+            .expect("fixture candidate_pairs_emitted")
+    );
     validate_block_candidate_artifact_contract(&artifact).expect("artifact contract validates");
 }
 
 #[test]
 #[allow(non_snake_case)]
 fn EN_B003_sears_llc_support_candidate_is_emitted() {
+    let manifest = golden_manifest();
+    let expected = &manifest["fixtures"]["EN-B003"];
     let posting_index = candidate_posting_index();
     let candidates = generate_block_candidates(BlockCandidateGenerationRequest {
         profile_id: "cmbs_tenant_label".to_string(),
@@ -322,10 +358,22 @@ fn EN_B003_sears_llc_support_candidate_is_emitted() {
     })
     .expect("Sears alias support candidates emit");
 
-    let support = candidate_pair(&candidates.candidates, "surf:cmbs:001", "surf:cmbs:002");
+    let support = candidate_pair(
+        &candidates.candidates,
+        expected["left_surface_id"]
+            .as_str()
+            .expect("fixture left surface"),
+        expected["right_surface_id"]
+            .as_str()
+            .expect("fixture right surface"),
+    );
     assert_eq!(support.version, "canon_entity_block.v0");
     assert!(support.block_hits.iter().any(|hit| {
-        hit.operator_id == "rare_token_overlap:tenant_tokens" && hit.score_units > 0
+        hit.operator_id
+            == expected["expected_operator"]
+                .as_str()
+                .expect("fixture operator")
+            && hit.score_units > 0
     }));
 
     let artifact = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
@@ -347,6 +395,8 @@ fn EN_B003_sears_llc_support_candidate_is_emitted() {
 #[test]
 #[allow(non_snake_case)]
 fn EN_B004_sears_auto_candidate_retains_relation_context() {
+    let manifest = golden_manifest();
+    let expected = &manifest["fixtures"]["EN-B004"];
     let posting_index = sears_auto_posting_index();
     let candidates = generate_block_candidates(BlockCandidateGenerationRequest {
         profile_id: "cmbs_tenant_label".to_string(),
@@ -375,14 +425,34 @@ fn EN_B004_sears_auto_candidate_retains_relation_context() {
     })
     .expect("Sears Auto relation context candidates emit");
 
-    let related = candidate_pair(&candidates.candidates, "surf:cmbs:001", "surf:cmbs:004");
+    let related = candidate_pair(
+        &candidates.candidates,
+        expected["left_surface_id"]
+            .as_str()
+            .expect("fixture left surface"),
+        expected["right_surface_id"]
+            .as_str()
+            .expect("fixture right surface"),
+    );
     let operators = related
         .block_hits
         .iter()
         .map(|hit| hit.operator_id.as_str())
         .collect::<Vec<_>>();
-    assert!(operators.contains(&"rare_token_overlap:tenant_tokens"));
-    assert!(operators.contains(&"relation_hint:tenant_related_distinct"));
+    assert!(
+        operators.contains(
+            &expected["expected_support_operator"]
+                .as_str()
+                .expect("fixture support operator")
+        )
+    );
+    assert!(
+        operators.contains(
+            &expected["expected_relation_operator"]
+                .as_str()
+                .expect("fixture relation operator")
+        )
+    );
 
     let artifact = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
         index: sample_index_header(),
@@ -395,13 +465,20 @@ fn EN_B004_sears_auto_candidate_retains_relation_context() {
     })
     .expect("EN-B004 block artifact builds");
 
-    assert_eq!(artifact.summary.counts["relation_hint_count"], 1);
+    assert_eq!(
+        artifact.summary.counts["relation_hint_count"],
+        expected["expected_summary"]["relation_hint_count"]
+            .as_u64()
+            .expect("fixture relation_hint_count")
+    );
     validate_block_candidate_artifact_contract(&artifact).expect("artifact contract validates");
 }
 
 #[test]
 #[allow(non_snake_case)]
 fn EN_B005_candidate_budget_refuses_before_artifact_summary() {
+    let manifest = golden_manifest();
+    let expected = &manifest["fixtures"]["EN-B005"];
     let posting_index = candidate_posting_index();
     let refusal = generate_block_candidates(BlockCandidateGenerationRequest {
         profile_id: "cmbs_tenant_label".to_string(),
@@ -421,8 +498,33 @@ fn EN_B005_candidate_budget_refuses_before_artifact_summary() {
     .expect_err("over-budget candidate generation refuses before artifact");
 
     assert_eq!(refusal.code, RefusalCode::EEntityCandidateBudget);
-    assert_eq!(refusal.detail["reason"], "candidate_budget_exceeded");
-    assert_eq!(refusal.detail["candidate_artifact_written"], json!(false));
+    assert_eq!(
+        refusal.code.to_string(),
+        expected["expected_refusal_code"]
+            .as_str()
+            .expect("fixture refusal code")
+    );
+    assert_eq!(
+        refusal.detail["reason"],
+        expected["expected_reason"]
+            .as_str()
+            .expect("fixture reason")
+    );
+    assert_eq!(
+        refusal.detail["candidate_artifact_written"],
+        json!(
+            expected["candidate_artifact_written"]
+                .as_bool()
+                .expect("fixture artifact written")
+        )
+    );
+}
+
+fn golden_manifest() -> Value {
+    serde_json::from_str(include_str!(
+        "../fixtures/entity/block/blocking_golden_manifest.json"
+    ))
+    .expect("blocking golden manifest parses")
 }
 
 fn en_b001_bucket_assertions() -> canon::entity::block::ExactBucketBlockResult {
