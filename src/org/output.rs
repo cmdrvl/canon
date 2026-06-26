@@ -138,11 +138,12 @@ pub fn render_promote_summary(artifact: &PromoteArtifact) -> String {
 
 pub fn render_explain_summary(artifact: &ExplainArtifact) -> String {
     format!(
-        "{} -> {} | canonical_id={}, escrow_id={}, backbone_rows={}, attached_rows={}, witnesses={}, surfaces={}, candidates={}, support={}, anti_merge={}, review_decisions={}, promotions={}",
+        "{} -> {} | canonical_id={}, escrow_id={}, registry={}, backbone_rows={}, attached_rows={}, witnesses={}, surfaces={}, candidates={}, support={}, anti_merge={}, review_decisions={}, promotions={}, next_action={}",
         explain_query_label(&artifact.query),
         entity_state_label(artifact.result.state),
         option_label(artifact.result.canonical_id.as_deref()),
         option_label(artifact.result.escrow_id.as_deref()),
+        registry_label(artifact.result.registry_snapshot.as_ref()),
         artifact.result.backbone_rows.len(),
         artifact.result.attached_rows.len(),
         artifact.result.witness_chain.len(),
@@ -152,6 +153,7 @@ pub fn render_explain_summary(artifact: &ExplainArtifact) -> String {
         artifact.result.anti_merge_evidence.len(),
         artifact.result.review_decisions.len(),
         artifact.result.promotion_provenance.len(),
+        option_label(artifact.result.next_action.as_deref()),
     )
 }
 
@@ -213,6 +215,12 @@ fn explain_query_label(query: &ExplainQuery) -> String {
 
 fn option_label(value: Option<&str>) -> &str {
     value.unwrap_or("-")
+}
+
+fn registry_label(registry: Option<&super::types::RegistrySnapshot>) -> String {
+    registry
+        .map(|registry| format!("{}@{}", registry.id, registry.version))
+        .unwrap_or_else(|| "-".to_string())
 }
 
 fn entity_state_label(state: super::types::EntityState) -> &'static str {
@@ -468,7 +476,7 @@ mod tests {
         );
         assert_eq!(
             render_explain_summary(&explain_artifact),
-            "row row-9 -> RESOLVED_EXISTING | canonical_id=IC-123abc456def, escrow_id=-, backbone_rows=2, attached_rows=0, witnesses=1, surfaces=0, candidates=0, support=0, anti_merge=0, review_decisions=0, promotions=0"
+            "row row-9 -> RESOLVED_EXISTING | canonical_id=IC-123abc456def, escrow_id=-, registry=-, backbone_rows=2, attached_rows=0, witnesses=1, surfaces=0, candidates=0, support=0, anti_merge=0, review_decisions=0, promotions=0, next_action=-"
         );
         assert_eq!(
             render_audit_summary(&audit_artifact),

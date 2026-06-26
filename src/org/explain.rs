@@ -139,6 +139,8 @@ fn explain_with_context(
         review_decisions,
         promotion_provenance,
     );
+    explain_result.registry_snapshot = Some(result.registry.clone());
+    explain_result.next_action = Some(explain_next_action(&explain_result));
 
     Ok(ExplainArtifact {
         version: CANON_ENTITY_EXPLAIN_VERSION.to_string(),
@@ -897,6 +899,22 @@ fn promotion_provenance_from_artifacts(
             registry_version_after: Some(artifact.registry.version_after.clone()),
         })
         .collect()
+}
+
+fn explain_next_action(result: &ExplainResult) -> String {
+    if !result.promotion_provenance.is_empty() {
+        "replay exact apply against the promoted registry snapshot".to_string()
+    } else if !result.review_decisions.is_empty() {
+        "promote accepted review decisions after audit passes".to_string()
+    } else if result.escrow_id.is_some() {
+        "export the escrow review queue and import an operator decision".to_string()
+    } else if !result.anti_merge_evidence.is_empty() {
+        "keep the non-merge evidence with the review packet".to_string()
+    } else if result.canonical_id.is_some() {
+        "no action required; resolved entity is explainable".to_string()
+    } else {
+        "review unresolved evidence before promotion".to_string()
+    }
 }
 
 fn pending_backbone_rows(pending: &PendingClusterRecord, all_rows: &[String]) -> Vec<String> {

@@ -1,0 +1,243 @@
+{
+  "result": {
+    "version": "canon_entity_solve.v0",
+    "strategy": {
+      "id": "cmbs_tenant_label.v1",
+      "version": "0.1.0",
+      "content_hash": "blake3:strategy-cmbs"
+    },
+    "registry": {
+      "id": "cmbs-tenants",
+      "version": "2026.06.25",
+      "source": "tests/fixtures/registries/cmbs-tenants",
+      "lookup_snapshot_hash": "blake3:lookup-cmbs",
+      "escrow_snapshot_hash": "blake3:escrow-cmbs"
+    },
+    "summary": {
+      "observations": 4,
+      "resolved_existing": 2,
+      "promotable_new": 0,
+      "abstain_low_evidence": 0,
+      "abstain_conflict": 0
+    },
+    "entities": [
+      {
+        "state": "RESOLVED_EXISTING",
+        "canonical_id": "TNT-SEARS",
+        "backbone_rows": ["row-sears-001", "row-sears-002"],
+        "attached_rows": ["row-sears-dba"],
+        "all_rows": ["row-sears-001", "row-sears-002", "row-sears-dba"],
+        "aliases": ["Sears", "Sears Roebuck"],
+        "anchors": [],
+        "merge_witnesses": [],
+        "inheritance": {
+          "mode": "single_incumbent_overlap",
+          "incumbent_ids": ["TNT-SEARS"]
+        },
+        "eligible_writeback_aliases": ["Sears Roebuck"]
+      },
+      {
+        "state": "RESOLVED_EXISTING",
+        "canonical_id": "TNT-SEARS-AUTO",
+        "backbone_rows": ["row-auto-001"],
+        "attached_rows": [],
+        "all_rows": ["row-auto-001"],
+        "aliases": ["Sears Auto Center"],
+        "anchors": [],
+        "merge_witnesses": [],
+        "inheritance": {
+          "mode": "single_incumbent_overlap",
+          "incumbent_ids": ["TNT-SEARS-AUTO"]
+        },
+        "eligible_writeback_aliases": []
+      }
+    ],
+    "abstentions": [],
+    "contradictions": [],
+    "proposed_registry_patch": {
+      "mapping_files": ["aliases.json"],
+      "new_entity_entries": 0,
+      "existing_alias_entries": 1
+    },
+    "proposed_escrow_patch": {
+      "pending_cluster_entries": 0,
+      "cannot_link_entries": 1
+    }
+  },
+  "edges": [
+    {
+      "version": "canon_entity_edge.v0",
+      "strategy": {
+        "id": "cmbs_tenant_label.v1",
+        "version": "0.1.0",
+        "content_hash": "blake3:strategy-cmbs"
+      },
+      "registry_snapshot": {
+        "id": "cmbs-tenants",
+        "version": "2026.06.25",
+        "source": "tests/fixtures/registries/cmbs-tenants",
+        "lookup_snapshot_hash": "blake3:lookup-cmbs",
+        "escrow_snapshot_hash": "blake3:escrow-cmbs"
+      },
+      "left_row_id": "row-sears-001",
+      "right_row_id": "row-sears-002",
+      "hits": [
+        {
+          "kind": "support",
+          "namespace": "tenant_name",
+          "operator_id": "exact_view:tenant_label",
+          "score": 50,
+          "explanation": "normalized tenant label views match"
+        }
+      ],
+      "pair_score_by_namespace": {
+        "tenant_name": 50
+      },
+      "pair_score_total": 50,
+      "has_must_link": false,
+      "has_cannot_link": false
+    },
+    {
+      "version": "canon_entity_edge.v0",
+      "strategy": {
+        "id": "cmbs_tenant_label.v1",
+        "version": "0.1.0",
+        "content_hash": "blake3:strategy-cmbs"
+      },
+      "registry_snapshot": {
+        "id": "cmbs-tenants",
+        "version": "2026.06.25",
+        "source": "tests/fixtures/registries/cmbs-tenants",
+        "lookup_snapshot_hash": "blake3:lookup-cmbs",
+        "escrow_snapshot_hash": "blake3:escrow-cmbs"
+      },
+      "left_row_id": "row-sears-001",
+      "right_row_id": "row-sears-dba",
+      "hits": [
+        {
+          "kind": "support",
+          "namespace": "relation_hint",
+          "operator_id": "relation_hint:dba_alias",
+          "score": 0,
+          "explanation": "d/b/a wording explains a reviewable alias candidate without raising merge score"
+        }
+      ],
+      "pair_score_by_namespace": {
+        "relation_hint": 0
+      },
+      "pair_score_total": 0,
+      "has_must_link": false,
+      "has_cannot_link": false
+    },
+    {
+      "version": "canon_entity_edge.v0",
+      "strategy": {
+        "id": "cmbs_tenant_label.v1",
+        "version": "0.1.0",
+        "content_hash": "blake3:strategy-cmbs"
+      },
+      "registry_snapshot": {
+        "id": "cmbs-tenants",
+        "version": "2026.06.25",
+        "source": "tests/fixtures/registries/cmbs-tenants",
+        "lookup_snapshot_hash": "blake3:lookup-cmbs",
+        "escrow_snapshot_hash": "blake3:escrow-cmbs"
+      },
+      "left_row_id": "row-sears-001",
+      "right_row_id": "row-auto-001",
+      "hits": [
+        {
+          "kind": "cannot_link",
+          "namespace": "anti_merge",
+          "operator_id": "cannot_link:tenant_label_scope",
+          "score": -100,
+          "explanation": "Sears Auto Center remains a distinct tenant label unless explicitly reviewed"
+        }
+      ],
+      "pair_score_by_namespace": {},
+      "pair_score_total": -100,
+      "has_must_link": false,
+      "has_cannot_link": true
+    }
+  ],
+  "pending_clusters": [],
+  "surfaces": [
+    {
+      "surface_id": "surf:cmbs:sears",
+      "primary_surface": "Sears",
+      "row_ids": ["row-sears-002", "row-sears-001"],
+      "row_count": 2,
+      "normalized_views": {
+        "tenant_label": "sears"
+      },
+      "provenance": {
+        "deal_ids": ["DEAL-001", "DEAL-002"],
+        "source_rows": ["row-sears-001", "row-sears-002"]
+      }
+    },
+    {
+      "surface_id": "surf:cmbs:sears-dba",
+      "primary_surface": "Sears d/b/a Sears Roebuck",
+      "row_ids": ["row-sears-dba"],
+      "row_count": 1,
+      "normalized_views": {
+        "tenant_label": "sears roebuck"
+      },
+      "provenance": {
+        "deal_ids": ["DEAL-003"]
+      }
+    },
+    {
+      "surface_id": "surf:cmbs:auto",
+      "primary_surface": "Sears Auto Center",
+      "row_ids": ["row-auto-001"],
+      "row_count": 1,
+      "normalized_views": {
+        "tenant_label": "sears auto center"
+      },
+      "provenance": {
+        "deal_ids": ["DEAL-004"]
+      }
+    }
+  ],
+  "review_decisions": [
+    {
+      "review_id": "review-sears-alias",
+      "category": "resolved",
+      "state": "RESOLVED_EXISTING",
+      "canonical_id": "TNT-SEARS",
+      "source_row_ids": ["row-sears-001", "row-sears-dba"],
+      "surface_ids": ["surf:cmbs:sears", "surf:cmbs:sears-dba"],
+      "proposed_action": "accept_aliases",
+      "decision": "accept_aliases"
+    },
+    {
+      "review_id": "review-unrelated",
+      "category": "resolved",
+      "state": "RESOLVED_EXISTING",
+      "canonical_id": "TNT-UNRELATED",
+      "source_row_ids": ["row-unrelated"],
+      "surface_ids": ["surf:cmbs:unrelated"],
+      "proposed_action": "accept_aliases",
+      "decision": "skip"
+    }
+  ],
+  "promotion_provenance": [
+    {
+      "artifact_version": "canon_entity_promote.v0",
+      "canonical_id": "TNT-SEARS",
+      "row_ids": ["row-sears-001", "row-sears-002", "row-sears-dba"],
+      "surface_ids": ["surf:cmbs:sears", "surf:cmbs:sears-dba"],
+      "decision": "PROMOTE",
+      "writes": {
+        "mapping_files": ["aliases.json"],
+        "new_entity_entries": 0,
+        "existing_alias_entries": 1,
+        "pending_cluster_entries": 0,
+        "cannot_link_entries": 1
+      },
+      "registry_version_before": "2026.06.25",
+      "registry_version_after": "2026.06.26"
+    }
+  ]
+}

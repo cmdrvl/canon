@@ -395,11 +395,16 @@ fn build_and_write_edge(
         .iter()
         .map(|surface| (surface.surface_id.as_str(), surface))
         .collect::<BTreeMap<_, _>>();
-    let edge_records = block
+    let mut edge_records = block
         .candidates
         .iter()
         .map(|candidate| relation_hint_edge(candidate, &namespace, &surface_lookup))
         .collect::<Result<Vec<_>, _>>()?;
+    edge_records.sort_by(|left, right| {
+        left.left_surface_id
+            .cmp(&right.left_surface_id)
+            .then_with(|| left.right_surface_id.cmp(&right.right_surface_id))
+    });
     let artifact = build_edge_evidence_artifact_contract(EdgeEvidenceArtifactRequest {
         block: block.artifact.clone(),
         strategy,

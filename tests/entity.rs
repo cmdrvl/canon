@@ -65,6 +65,8 @@ mod edge_score_units;
 mod edge_support;
 #[path = "entity/edge_tfidf.rs"]
 mod edge_tfidf;
+#[path = "entity/explain_acceptance.rs"]
+mod explain_acceptance;
 
 #[path = "entity/regab_hard_negatives.rs"]
 mod regab_hard_negatives;

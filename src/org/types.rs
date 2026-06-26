@@ -669,6 +669,10 @@ pub struct ExplainResult {
     pub canonical_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub escrow_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registry_snapshot: Option<RegistrySnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_action: Option<String>,
     #[serde(default)]
     pub backbone_rows: Vec<String>,
     #[serde(default)]
