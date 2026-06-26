@@ -1,0 +1,8 @@
+{
+  "id": "cmbs-tenants",
+  "version": "1.0.1",
+  "description": "promote/apply fixture registry",
+  "updated": "2026-06-26",
+  "entry_count": 2,
+  "owner": "test-suite"
+}

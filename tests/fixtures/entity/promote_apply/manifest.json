@@ -1,0 +1,20 @@
+{
+  "version": "canon_entity_promote_apply_fixtures.v0",
+  "cases": [
+    {
+      "id": "EN-PR001",
+      "fixture": "registry_before",
+      "assertion": "stale audit refusal leaves registry files byte-equivalent to registry_before"
+    },
+    {
+      "id": "EN-PR002",
+      "fixture": "registry_after",
+      "assertion": "accepted aliases produce registry_after with version bump, entry_count update, and lint-clean exact aliases"
+    },
+    {
+      "id": "EN-A001",
+      "fixture": "apply_expected.csv",
+      "assertion": "apply appends canonical metadata while preserving every raw input field"
+    }
+  ]
+}
