@@ -1,0 +1,135 @@
+{
+  "schema_version": "canon.entity.cmbs_e2e_operator_summary.v0",
+  "fixture_id": "cmbs-small-book-e2e-v0",
+  "profile_id": "cmbs_tenant_label",
+  "identity_semantics": "canonical_display_label",
+  "canonical_type": "tenant_label",
+  "source": {
+    "rows": 15,
+    "deals": 12,
+    "properties": 12,
+    "raw_unique_names": 15,
+    "fixture_path": "tests/fixtures/entity/cmbs/small_book/observations.csv"
+  },
+  "prepared_surfaces": {
+    "count": 10,
+    "normalized_expected_count": 10,
+    "exact_resolved_count": 3,
+    "run_artifact_count": 14,
+    "exact_resolved_surface_count": 3,
+    "exact_resolved_row_count": 8,
+    "global_surface_scope": "all_deals"
+  },
+  "run_artifact": {
+    "prepared_surfaces": 14,
+    "exact_resolved_surfaces": 7
+  },
+  "exact_resolved_surfaces": [
+    {
+      "normalized_surface": "sears",
+      "canonical_id": "TNT-SEARS",
+      "row_count": 3,
+      "deal_count": 3,
+      "property_count": 3
+    },
+    {
+      "normalized_surface": "24 hour fitness",
+      "canonical_id": "TNT-24-HOUR-FITNESS",
+      "row_count": 3,
+      "deal_count": 3,
+      "property_count": 3
+    },
+    {
+      "normalized_surface": "238 sand island property",
+      "canonical_id": "TNT-238-SAND-ISLAND-PROPERTY",
+      "row_count": 2,
+      "deal_count": 2,
+      "property_count": 2
+    }
+  ],
+  "review": {
+    "group_count": 2,
+    "rows_covered": 6,
+    "groups": [
+      {
+        "id": "review:china-king-buffet",
+        "reason_code": "dba_typo_review",
+        "row_count": 2,
+        "deal_count": 2,
+        "suggested_action": "review_alias_or_keep_distinct"
+      },
+      {
+        "id": "review:sears-family-distinct",
+        "reason_code": "related_brand_family_not_same_tenant_label",
+        "row_count": 4,
+        "deal_count": 4,
+        "suggested_action": "confirm_distinct_or_relation"
+      }
+    ]
+  },
+  "promotion": {
+    "promotable_aliases": [
+      {
+        "input": "SEARS LLC",
+        "canonical_id": "TNT-SEARS",
+        "canonical_type": "tenant_label",
+        "rule_id": "ENTITY_REVIEW_PROMOTE"
+      },
+      {
+        "input": "Sears",
+        "canonical_id": "TNT-SEARS",
+        "canonical_type": "tenant_label",
+        "rule_id": "ENTITY_REVIEW_PROMOTE"
+      }
+    ]
+  },
+  "cache": {
+    "index_status": "rebuilt"
+  },
+  "operator_summary": {
+    "top_unresolved_tokens": [
+      {
+        "token": "buffet",
+        "count": 2
+      },
+      {
+        "token": "china",
+        "count": 2
+      },
+      {
+        "token": "sears",
+        "count": 2
+      }
+    ],
+    "top_anti_merge_reasons": [
+      {
+        "reason_code": "related_brand_family_not_same_tenant_label",
+        "count": 3
+      },
+      {
+        "reason_code": "successor_or_operator_not_display_label",
+        "count": 1
+      }
+    ],
+    "next_commands": [
+      "review_export",
+      "audit",
+      "promote",
+      "apply"
+    ]
+  },
+  "apply": {
+    "rows": 15,
+    "resolved": 8,
+    "unresolved": 7,
+    "expected_output": "tests/fixtures/entity/cmbs/e2e/expected_apply.csv",
+    "canonical_fields": [
+      "canonical_id",
+      "canonical_type",
+      "canonical_status",
+      "canonical_registry_id",
+      "canonical_registry_version",
+      "canonical_rule_id"
+    ]
+  }
+}
