@@ -499,10 +499,12 @@ fn EN_B005_candidate_budget_refuses_before_artifact_summary() {
 
     assert_eq!(refusal.code, RefusalCode::EEntityCandidateBudget);
     assert_eq!(
-        refusal.code.to_string(),
-        expected["expected_refusal_code"]
-            .as_str()
-            .expect("fixture refusal code")
+        serde_json::to_value(&refusal.code).expect("refusal code serializes"),
+        json!(
+            expected["expected_refusal_code"]
+                .as_str()
+                .expect("fixture refusal code")
+        )
     );
     assert_eq!(
         refusal.detail["reason"],
