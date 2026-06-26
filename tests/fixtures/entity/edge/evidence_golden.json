@@ -1,0 +1,66 @@
+{
+  "cases": [
+    {
+      "case_id": "sears_sears_llc_support",
+      "left_surface_id": "surf:sears",
+      "right_surface_id": "surf:sears_llc",
+      "expected_lanes": ["support", "support"],
+      "expected_reason_codes": ["exact_tenant_core", "tenant_core_similarity"],
+      "expected_pair_score_total": 10000,
+      "expected_hard_cannot_link": false
+    },
+    {
+      "case_id": "sears_auto_center_relation_cannot_link",
+      "left_surface_id": "surf:sears",
+      "right_surface_id": "surf:sears_auto_center",
+      "expected_lanes": ["support", "anti_merge", "relation_hint"],
+      "expected_reason_codes": [
+        "tenant_core_similarity",
+        "protected_token_conflict",
+        "related_brand_family"
+      ],
+      "expected_pair_score_total": 10000,
+      "expected_hard_cannot_link": true
+    },
+    {
+      "case_id": "sears_kmart_relation_distinctness",
+      "left_surface_id": "surf:kmart",
+      "right_surface_id": "surf:sears",
+      "expected_lanes": ["relation_hint"],
+      "expected_reason_codes": ["same_parent_or_sponsor"],
+      "expected_pair_score_total": 0,
+      "expected_hard_cannot_link": false
+    },
+    {
+      "case_id": "pnc_midland_role_anti_merge",
+      "left_surface_id": "surf:midland",
+      "right_surface_id": "surf:pnc",
+      "expected_lanes": ["anti_merge"],
+      "expected_reason_codes": ["role_capacity_conflict"],
+      "expected_pair_score_total": 0,
+      "expected_hard_cannot_link": true
+    },
+    {
+      "case_id": "platform_category_label_non_firm",
+      "left_surface_id": "surf:loan_services_platform",
+      "right_surface_id": "surf:midland",
+      "expected_lanes": ["anti_merge"],
+      "expected_reason_codes": ["platform_category_label"],
+      "expected_pair_score_total": 0,
+      "expected_hard_cannot_link": true
+    },
+    {
+      "case_id": "alias_distinct_relation_patch_routing",
+      "left_surface_id": "surf:sears",
+      "right_surface_id": "surf:transform_sr",
+      "expected_lanes": ["support", "anti_merge", "relation_hint"],
+      "expected_reason_codes": [
+        "alias_patch_match",
+        "distinct_patch",
+        "relation_patch_hint"
+      ],
+      "expected_pair_score_total": 10000,
+      "expected_hard_cannot_link": true
+    }
+  ]
+}

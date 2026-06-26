@@ -55,6 +55,8 @@ mod cmbs_tenant_id_allocator;
 mod edge_artifact;
 #[path = "entity/edge_cannot_link.rs"]
 mod edge_cannot_link;
+#[path = "entity/edge_evidence_golden.rs"]
+mod edge_evidence_golden;
 #[path = "entity/edge_relation_hints.rs"]
 mod edge_relation_hints;
 #[path = "entity/edge_score_units.rs"]
@@ -66,5 +68,7 @@ mod edge_tfidf;
 
 #[path = "entity/regab_normalization.rs"]
 mod regab_normalization;
+#[path = "entity/regab_hard_negatives.rs"]
+mod regab_hard_negatives;
 #[path = "entity/solve_budget.rs"]
 mod solve_budget;
