@@ -6,6 +6,7 @@
 
 pub mod apply;
 pub mod artifact_chain;
+pub mod block;
 pub mod block_artifact;
 pub mod budget;
 pub mod cache;
