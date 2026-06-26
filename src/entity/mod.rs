@@ -41,6 +41,7 @@ pub mod score;
 pub mod sidecar;
 pub mod solve;
 pub mod stream;
+pub mod summary;
 pub mod surface_id;
 pub mod telemetry;
 pub mod tfidf_evidence;

@@ -1,0 +1,28 @@
+{
+  "version": "canon_entity_operator_summary.v0",
+  "profile_id": "cmbs_tenant_label",
+  "registry_id": "cmbs-tenants",
+  "registry_version": "2026.06.26",
+  "counts": {
+    "row_count": 15,
+    "deal_count": 12,
+    "raw_unique_names": 15,
+    "prepared_surfaces": 14,
+    "exact_resolved_surfaces": 7,
+    "operator_review_groups": 2,
+    "anti_merge_groups": 2
+  },
+  "cache_status": {
+    "index": "rebuilt"
+  },
+  "top_unresolved_tokens": [
+    {"key": "buffet", "count": 2},
+    {"key": "china", "count": 2},
+    {"key": "sears", "count": 2}
+  ],
+  "top_anti_merge_reasons": [
+    {"key": "related_brand_family_not_same_tenant_label", "count": 3},
+    {"key": "successor_or_operator_not_display_label", "count": 1}
+  ],
+  "next_command_keys": ["apply", "audit", "promote", "resume", "review_export"]
+}
