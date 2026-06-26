@@ -1,0 +1,10 @@
+{
+  "alias_patches": 0,
+  "distinct_patches": 1,
+  "relation_patches": 0,
+  "cannot_link_sidecars": 1,
+  "profile_id": "cmbs_tenant_label",
+  "identity_semantics": "canonical_display_label",
+  "namespace": "cmbs_tenant_label.distinct",
+  "hard_cannot_link": true
+}
