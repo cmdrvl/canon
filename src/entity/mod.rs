@@ -19,6 +19,7 @@ pub mod runtime;
 pub mod schema;
 pub mod stream;
 pub mod surface_id;
+pub mod topk;
 
 pub use contracts::*;
 pub use profile::EntityProfileDocument;
