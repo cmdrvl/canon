@@ -48,13 +48,17 @@ fn bead_parallelism_contract_flags_broad_runtime_source_reservations() {
 
 #[test]
 fn bead_parallelism_contract_requires_parallel_split_verification_commands() {
-    let parallel_split = active_entity_workbench_beads()
+    // Status-agnostic: the parallel-split lane map is a durable contract that
+    // must hold across the whole project history, including after every bead is
+    // closed at completion. Scanning only active beads would make this guard
+    // vacuous (and fail its non-empty check) once the workbench is finished.
+    let parallel_split = all_entity_workbench_beads()
         .into_iter()
         .filter(|issue| has_label(issue, "parallel-split"))
         .collect::<Vec<_>>();
     assert!(
         !parallel_split.is_empty(),
-        "expected active parallel-split entity-workbench beads"
+        "expected parallel-split entity-workbench beads"
     );
 
     let missing = parallel_split
@@ -70,7 +74,7 @@ fn bead_parallelism_contract_requires_parallel_split_verification_commands() {
     );
 }
 
-fn active_entity_workbench_beads() -> Vec<BeadIssue> {
+fn all_entity_workbench_beads() -> Vec<BeadIssue> {
     std::fs::read_to_string(".beads/issues.jsonl")
         .expect("read .beads/issues.jsonl")
         .lines()
@@ -80,8 +84,16 @@ fn active_entity_workbench_beads() -> Vec<BeadIssue> {
             serde_json::from_str::<BeadIssue>(line)
                 .unwrap_or_else(|error| panic!("parse bead JSONL line {}: {error}", index + 1))
         })
-        .filter(|issue| issue.status != "closed")
         .filter(|issue| has_label(issue, "entity-workbench"))
+        .collect()
+}
+
+// Active (open / in-progress) entity-workbench beads. Used by guards that only
+// make sense for work still in flight (e.g. broad-reservation drift).
+fn active_entity_workbench_beads() -> Vec<BeadIssue> {
+    all_entity_workbench_beads()
+        .into_iter()
+        .filter(|issue| issue.status != "closed")
         .collect()
 }
 
