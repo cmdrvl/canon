@@ -29,6 +29,7 @@ pub mod postings;
 pub mod prepare;
 pub mod profile;
 pub mod profiles;
+pub mod promote;
 pub mod relation;
 pub mod review;
 pub mod review_import;
