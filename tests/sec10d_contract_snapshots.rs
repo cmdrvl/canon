@@ -91,7 +91,7 @@ fn sec10d_snowflake_append_only_fields() {
     );
 
     for enriched in read_jsonl_objects(fixture_root().join("applied_org_enrichment.jsonl")) {
-        for key in enriched.keys().filter(|key| key.starts_with("canonical_")) {
+        if let Some(key) = enriched.keys().find(|key| key.starts_with("canonical_")) {
             panic!("sec10d enriched JSONL must not use generic apply field {key}");
         }
 

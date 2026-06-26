@@ -235,9 +235,7 @@ fn assert_handoff(
     assert_eq!(step.requires_audit, requires_audit);
 }
 
-fn handoff_steps_by_stage<'a>(
-    artifact: &'a EntityRunArtifact,
-) -> BTreeMap<&'a str, &'a EntityRunHandoffStep> {
+fn handoff_steps_by_stage(artifact: &EntityRunArtifact) -> BTreeMap<&str, &EntityRunHandoffStep> {
     artifact
         .orchestration
         .handoff_steps

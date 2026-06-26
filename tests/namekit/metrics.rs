@@ -181,7 +181,7 @@ fn deterministic_score_units() {
     }
 
     for (group, mut rows) in ordering_groups() {
-        rows.sort_by(|left, right| left.rank.cmp(&right.rank));
+        rows.sort_by_key(|row| row.rank);
         let expected = rows
             .iter()
             .map(|row| row.surface_id.as_str())

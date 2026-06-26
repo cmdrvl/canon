@@ -47,11 +47,11 @@ const ORG_V1_PROFILE: &str = "bdc_issuer";
 
 enum EntityRunExecution {
     Legacy {
-        artifact: entity_runtime::SolveRunArtifact,
+        artifact: Box<entity_runtime::SolveRunArtifact>,
         candidate_pairs: u64,
     },
     Workbench {
-        artifact: entity::run::EntityRunArtifact,
+        artifact: Box<entity::run::EntityRunArtifact>,
         candidate_pairs: u64,
     },
 }
@@ -1270,7 +1270,7 @@ fn run_entity_run_pipeline(run: &EntityRunCli) -> Result<EntityRunExecution, Can
             })
             .map_err(|refusal| refusal.to_canon_output())?;
             return Ok(EntityRunExecution::Workbench {
-                artifact: result.artifact,
+                artifact: Box::new(result.artifact),
                 candidate_pairs: result.candidate_pairs,
             });
         }
@@ -1310,7 +1310,7 @@ fn run_entity_run_pipeline(run: &EntityRunCli) -> Result<EntityRunExecution, Can
         .map_err(create_entity_refusal)?;
 
     Ok(EntityRunExecution::Legacy {
-        artifact,
+        artifact: Box::new(artifact),
         candidate_pairs: edges.len() as u64,
     })
 }

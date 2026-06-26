@@ -532,6 +532,7 @@ fn build_and_write_solve(
     Ok(artifact)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_artifact(
     request: EntityRunRequest<'_>,
     base_strategy: &BaseStrategyReference,
@@ -727,7 +728,6 @@ fn run_orchestration(
                 required_prior_stages: vec!["audit".to_string(), "review_import".to_string()],
                 requires_audit: true,
                 enforces_profile_firewall: true,
-                ..EntityRunHandoffStep::default()
             },
             EntityRunHandoffStep {
                 stage: "apply".to_string(),
@@ -743,7 +743,6 @@ fn run_orchestration(
                 required_prior_stages: vec!["promote".to_string()],
                 requires_audit: true,
                 enforces_profile_firewall: true,
-                ..EntityRunHandoffStep::default()
             },
         ],
     }

@@ -63,6 +63,7 @@ pub struct EntityProfileTemplateInitOutput {
     pub next_command: String,
 }
 
+#[allow(clippy::result_large_err)]
 pub fn list_profile_templates() -> Result<EntityProfileTemplateCatalog, CanonOutput> {
     let profiles = profile_templates()
         .iter()
@@ -74,6 +75,7 @@ pub fn list_profile_templates() -> Result<EntityProfileTemplateCatalog, CanonOut
     })
 }
 
+#[allow(clippy::result_large_err)]
 pub fn init_profile_template(
     profile_id: &str,
     output: &Path,
@@ -106,12 +108,14 @@ pub fn init_profile_template(
     })
 }
 
+#[allow(clippy::result_large_err)]
 pub fn profile_template_yaml(profile_id: &str) -> Result<&'static str, CanonOutput> {
     let template = find_profile_template(profile_id)?;
     template.validate()?;
     Ok(template.yaml)
 }
 
+#[allow(clippy::result_large_err)]
 fn find_profile_template(profile_id: &str) -> Result<&'static ProfileTemplate, CanonOutput> {
     profile_templates()
         .iter()
@@ -131,6 +135,7 @@ struct ProfileTemplate {
 }
 
 impl ProfileTemplate {
+    #[allow(clippy::result_large_err)]
     fn validate(self) -> Result<EntityProfileDocument, CanonOutput> {
         EntityProfileDocument::from_yaml_str(self.yaml).map_err(|error| {
             EntityRefusalKind::Profile
@@ -150,6 +155,7 @@ impl ProfileTemplate {
         })
     }
 
+    #[allow(clippy::result_large_err)]
     fn summary(self) -> Result<EntityProfileTemplateSummary, CanonOutput> {
         let profile = self.validate()?;
         Ok(EntityProfileTemplateSummary {

@@ -622,9 +622,7 @@ fn registry_json_files(registry: &Path) -> Result<Vec<PathBuf>, Refusal> {
         let path = entry.map_err(|error| io_refusal(registry, error))?.path();
         if path.file_name() == Some(OsStr::new("registry.json"))
             || path.file_name() == Some(OsStr::new("_build.json"))
-            || !path
-                .extension()
-                .is_some_and(|extension| extension == "json")
+            || path.extension() != Some(OsStr::new("json"))
         {
             continue;
         }

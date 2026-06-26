@@ -273,9 +273,9 @@ fn review_queue_rows() -> Vec<BTreeMap<String, String>> {
         .expect("review queue csv parses")
 }
 
-fn grouped_by_surface<'a>(
-    rows: &'a [BTreeMap<String, String>],
-) -> BTreeMap<&'a str, Vec<&'a BTreeMap<String, String>>> {
+fn grouped_by_surface(
+    rows: &[BTreeMap<String, String>],
+) -> BTreeMap<&str, Vec<&BTreeMap<String, String>>> {
     let mut groups = BTreeMap::<&str, Vec<&BTreeMap<String, String>>>::new();
     for row in rows {
         groups
