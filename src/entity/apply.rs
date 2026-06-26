@@ -24,8 +24,14 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 pub const DEFAULT_APPLY_ROWS_PER_CHUNK: u64 = 1024;
-pub const APPLY_CANONICAL_FIELDS: &[&str] =
-    &["canonical_id", "canonical_type", "canonical_rule_id"];
+pub const APPLY_CANONICAL_FIELDS: &[&str] = &[
+    "canonical_id",
+    "canonical_type",
+    "canonical_status",
+    "canonical_registry_id",
+    "canonical_registry_version",
+    "canonical_rule_id",
+];
 
 const MAX_APPLY_PROVENANCE_SAMPLES: usize = 16;
 
@@ -42,12 +48,6 @@ pub struct ApplyCanonicalResolution {
     pub rule_id: String,
 }
 
-impl ApplyCanonicalResolution {
-    fn fields(&self) -> [&str; 3] {
-        [&self.canonical_id, &self.canonical_type, &self.rule_id]
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct ApplyStreamRequest<'a> {
     pub rows: &'a Path,
@@ -55,6 +55,7 @@ pub struct ApplyStreamRequest<'a> {
     pub lookup_column: &'a str,
     pub registry: ApplyRegistryReference,
     pub resolutions: &'a BTreeMap<String, ApplyCanonicalResolution>,
+    pub require_full_resolution: bool,
     pub target_rows_per_chunk: u64,
 }
 
@@ -85,6 +86,8 @@ enum ApplyInputFormat {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ApplyInputInspection {
     row_count: u64,
+    resolved: u64,
+    unresolved: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,7 +106,15 @@ struct LineEnding {
 
 pub fn run_apply_streaming(request: ApplyStreamRequest<'_>) -> Result<ApplyRunArtifact, Refusal> {
     let format = apply_input_format(request.rows)?;
-    let inspection = inspect_apply_input(request.rows, request.lookup_column, format)?;
+    let inspection = inspect_apply_input(
+        request.rows,
+        request.lookup_column,
+        request.resolutions,
+        format,
+    )?;
+    if request.require_full_resolution && inspection.unresolved > 0 {
+        return Err(apply_unresolved_refusal(&request, &inspection));
+    }
     let byte_count = fs::metadata(request.rows)
         .map_err(|error| {
             io_budget_refusal(
@@ -158,17 +169,21 @@ pub fn run_apply_streaming(request: ApplyStreamRequest<'_>) -> Result<ApplyRunAr
 fn inspect_apply_input(
     rows: &Path,
     lookup_column: &str,
+    resolutions: &BTreeMap<String, ApplyCanonicalResolution>,
     format: ApplyInputFormat,
 ) -> Result<ApplyInputInspection, Refusal> {
     match format {
-        ApplyInputFormat::Csv(delimiter) => inspect_apply_csv(rows, lookup_column, delimiter),
-        ApplyInputFormat::Jsonl => inspect_apply_jsonl(rows, lookup_column),
+        ApplyInputFormat::Csv(delimiter) => {
+            inspect_apply_csv(rows, lookup_column, resolutions, delimiter)
+        }
+        ApplyInputFormat::Jsonl => inspect_apply_jsonl(rows, lookup_column, resolutions),
     }
 }
 
 fn inspect_apply_csv(
     rows: &Path,
     lookup_column: &str,
+    resolutions: &BTreeMap<String, ApplyCanonicalResolution>,
     delimiter: u8,
 ) -> Result<ApplyInputInspection, Refusal> {
     let mut reader = open_apply_reader(rows)?;
@@ -190,10 +205,12 @@ fn inspect_apply_csv(
         ));
     }
     let headers = parse_csv_record(&line, delimiter, 0, "headers")?;
-    let _lookup_index = csv_lookup_index(&headers, lookup_column)?;
+    let lookup_index = csv_lookup_index(&headers, lookup_column)?;
     validate_no_canonical_csv_headers(&headers)?;
 
     let mut row_count = 0u64;
+    let mut resolved = 0u64;
+    let mut unresolved = 0u64;
     loop {
         line.clear();
         let bytes_read = reader.read_until(b'\n', &mut line).map_err(|error| {
@@ -211,17 +228,33 @@ fn inspect_apply_csv(
             continue;
         }
         let row_number = row_count + 1;
-        let _record = parse_csv_record(&line, delimiter, row_number, "row")?;
+        let record = parse_csv_record(&line, delimiter, row_number, "row")?;
+        let lookup_value = record.get(lookup_index).unwrap_or("").trim();
+        if resolutions.contains_key(lookup_value) {
+            resolved += 1;
+        } else {
+            unresolved += 1;
+        }
         row_count += 1;
     }
 
-    Ok(ApplyInputInspection { row_count })
+    Ok(ApplyInputInspection {
+        row_count,
+        resolved,
+        unresolved,
+    })
 }
 
-fn inspect_apply_jsonl(rows: &Path, lookup_column: &str) -> Result<ApplyInputInspection, Refusal> {
+fn inspect_apply_jsonl(
+    rows: &Path,
+    lookup_column: &str,
+    resolutions: &BTreeMap<String, ApplyCanonicalResolution>,
+) -> Result<ApplyInputInspection, Refusal> {
     let mut reader = open_apply_reader(rows)?;
     let mut line = Vec::new();
     let mut row_count = 0u64;
+    let mut resolved = 0u64;
+    let mut unresolved = 0u64;
 
     loop {
         line.clear();
@@ -241,19 +274,21 @@ fn inspect_apply_jsonl(rows: &Path, lookup_column: &str) -> Result<ApplyInputIns
         }
         let row_number = row_count + 1;
         let object = parse_json_object(&line, row_number)?;
-        if !object.contains_key(lookup_column) {
-            return Err(input_contract_refusal(
-                "Apply JSONL row is missing the lookup column",
-                row_number,
-                lookup_column,
-                "missing field".to_string(),
-            ));
+        let lookup_value = json_lookup_value(&object, lookup_column, row_number)?;
+        if resolutions.contains_key(lookup_value.as_str()) {
+            resolved += 1;
+        } else {
+            unresolved += 1;
         }
         validate_no_canonical_json_fields(&object, row_number)?;
         row_count += 1;
     }
 
-    Ok(ApplyInputInspection { row_count })
+    Ok(ApplyInputInspection {
+        row_count,
+        resolved,
+        unresolved,
+    })
 }
 
 fn write_apply_output(
@@ -284,6 +319,7 @@ fn write_apply_output(
         ApplyInputFormat::Csv(delimiter) => write_apply_csv(
             request.rows,
             request.lookup_column,
+            &request.registry,
             request.resolutions,
             delimiter,
             chunks,
@@ -292,6 +328,7 @@ fn write_apply_output(
         ApplyInputFormat::Jsonl => write_apply_jsonl(
             request.rows,
             request.lookup_column,
+            &request.registry,
             request.resolutions,
             chunks,
             &mut writer,
@@ -302,6 +339,7 @@ fn write_apply_output(
 fn write_apply_csv<W: Write>(
     rows: &Path,
     lookup_column: &str,
+    registry: &ApplyRegistryReference,
     resolutions: &BTreeMap<String, ApplyCanonicalResolution>,
     delimiter: u8,
     chunks: &[EntityStreamChunkMetadata],
@@ -320,7 +358,12 @@ fn write_apply_csv<W: Write>(
     let headers = parse_csv_record(&line, delimiter, 0, "headers")?;
     let lookup_index = csv_lookup_index(&headers, lookup_column)?;
     validate_no_canonical_csv_headers(&headers)?;
-    write_csv_line_with_appended_fields(writer, &line, delimiter, APPLY_CANONICAL_FIELDS)?;
+    write_csv_line_with_appended_fields(
+        writer,
+        &line,
+        delimiter,
+        &apply_canonical_header_fields(),
+    )?;
 
     let mut result = ApplyWriteResult {
         row_count: 0,
@@ -356,9 +399,7 @@ fn write_apply_csv<W: Write>(
         let record = parse_csv_record(&line, delimiter, row_number, "row")?;
         let lookup_value = record.get(lookup_index).unwrap_or("").trim();
         let resolution = resolutions.get(lookup_value);
-        let fields = resolution
-            .map(ApplyCanonicalResolution::fields)
-            .unwrap_or(["", "", ""]);
+        let fields = csv_canonical_fields(registry, resolution);
         write_csv_line_with_appended_fields(writer, &line, delimiter, &fields)?;
         update_apply_write_result(
             &mut result,
@@ -377,6 +418,7 @@ fn write_apply_csv<W: Write>(
 fn write_apply_jsonl<W: Write>(
     rows: &Path,
     lookup_column: &str,
+    registry: &ApplyRegistryReference,
     resolutions: &BTreeMap<String, ApplyCanonicalResolution>,
     chunks: &[EntityStreamChunkMetadata],
     writer: &mut W,
@@ -417,7 +459,8 @@ fn write_apply_jsonl<W: Write>(
         let lookup_value = json_lookup_value(&object, lookup_column, row_number)?;
         validate_no_canonical_json_fields(&object, row_number)?;
         let resolution = resolutions.get(lookup_value.as_str());
-        let appended = json_line_with_appended_fields(&line, resolution, object.is_empty())?;
+        let appended =
+            json_line_with_appended_fields(&line, registry, resolution, object.is_empty())?;
         writer.write_all(&appended).map_err(|error| {
             io_budget_refusal("Failed to write apply output row", rows, error.to_string())
         })?;
@@ -478,11 +521,42 @@ fn chunk_for_row(
         .or_else(|| chunks.last())
 }
 
+fn apply_canonical_header_fields() -> Vec<String> {
+    APPLY_CANONICAL_FIELDS
+        .iter()
+        .map(|field| (*field).to_string())
+        .collect()
+}
+
+fn csv_canonical_fields(
+    registry: &ApplyRegistryReference,
+    resolution: Option<&ApplyCanonicalResolution>,
+) -> Vec<String> {
+    match resolution {
+        Some(resolution) => vec![
+            resolution.canonical_id.clone(),
+            resolution.canonical_type.clone(),
+            "resolved".to_string(),
+            registry.id.clone(),
+            registry.version.clone(),
+            resolution.rule_id.clone(),
+        ],
+        None => vec![
+            String::new(),
+            String::new(),
+            "unresolved".to_string(),
+            registry.id.clone(),
+            registry.version.clone(),
+            String::new(),
+        ],
+    }
+}
+
 fn write_csv_line_with_appended_fields<W: Write>(
     writer: &mut W,
     line: &[u8],
     delimiter: u8,
-    fields: &[&str],
+    fields: &[String],
 ) -> Result<(), Refusal> {
     let ending = line_ending(line);
     writer
@@ -521,7 +595,7 @@ fn write_csv_line_with_appended_fields<W: Write>(
     Ok(())
 }
 
-fn encode_csv_fields(fields: &[&str], delimiter: u8) -> Result<Vec<u8>, Refusal> {
+fn encode_csv_fields(fields: &[String], delimiter: u8) -> Result<Vec<u8>, Refusal> {
     let mut writer = WriterBuilder::new()
         .delimiter(delimiter)
         .from_writer(Vec::new());
@@ -550,6 +624,7 @@ fn encode_csv_fields(fields: &[&str], delimiter: u8) -> Result<Vec<u8>, Refusal>
 
 fn json_line_with_appended_fields(
     line: &[u8],
+    registry: &ApplyRegistryReference,
     resolution: Option<&ApplyCanonicalResolution>,
     object_is_empty: bool,
 ) -> Result<Vec<u8>, Refusal> {
@@ -559,14 +634,17 @@ fn json_line_with_appended_fields(
     if !object_is_empty {
         output.extend_from_slice(b",");
     }
-    let fields = json_canonical_fields(resolution)?;
+    let fields = json_canonical_fields(registry, resolution)?;
     output.extend_from_slice(fields.as_bytes());
     output.extend_from_slice(&line[close_index..body_end]);
     output.extend_from_slice(&line[body_end..]);
     Ok(output)
 }
 
-fn json_canonical_fields(resolution: Option<&ApplyCanonicalResolution>) -> Result<String, Refusal> {
+fn json_canonical_fields(
+    registry: &ApplyRegistryReference,
+    resolution: Option<&ApplyCanonicalResolution>,
+) -> Result<String, Refusal> {
     let mut fields = Vec::with_capacity(APPLY_CANONICAL_FIELDS.len());
     match resolution {
         Some(resolution) => {
@@ -575,11 +653,23 @@ fn json_canonical_fields(resolution: Option<&ApplyCanonicalResolution>) -> Resul
                 "canonical_type",
                 Some(&resolution.canonical_type),
             )?);
+            fields.push(json_field("canonical_status", Some("resolved"))?);
+            fields.push(json_field("canonical_registry_id", Some(&registry.id))?);
+            fields.push(json_field(
+                "canonical_registry_version",
+                Some(&registry.version),
+            )?);
             fields.push(json_field("canonical_rule_id", Some(&resolution.rule_id))?);
         }
         None => {
             fields.push(json_field("canonical_id", None)?);
             fields.push(json_field("canonical_type", None)?);
+            fields.push(json_field("canonical_status", Some("unresolved"))?);
+            fields.push(json_field("canonical_registry_id", Some(&registry.id))?);
+            fields.push(json_field(
+                "canonical_registry_version",
+                Some(&registry.version),
+            )?);
             fields.push(json_field("canonical_rule_id", None)?);
         }
     }
@@ -827,6 +917,27 @@ fn input_contract_refusal(
         message,
         json!({ "row_number": row_number, "field": field, "error": error }),
         None,
+    )
+}
+
+fn apply_unresolved_refusal(
+    request: &ApplyStreamRequest<'_>,
+    inspection: &ApplyInputInspection,
+) -> Refusal {
+    EntityRefusalKind::ApplyUnresolved.to_refusal(
+        "Apply was configured to require full resolution but unresolved rows remain",
+        json!({
+            "stage": "apply",
+            "field": request.lookup_column,
+            "rows": inspection.row_count,
+            "resolved": inspection.resolved,
+            "unresolved": inspection.unresolved,
+            "registry_id": request.registry.id.as_str(),
+            "registry_version": request.registry.version.as_str(),
+            "output_path": request.output.display().to_string(),
+            "writes_performed": false
+        }),
+        Some("Promote more aliases or rerun with partial output allowed".to_string()),
     )
 }
 
