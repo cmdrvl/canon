@@ -42,8 +42,9 @@ use crate::{
         },
         postings::{EntityPostingBuildConfig, EntityPostingIndex, EntityPostingSurface},
         prepare::{
-            PrepareRunArtifact, PrepareRunRequest, PreparedExactLookupStatus,
-            PreparedSurfaceRecord, run_prepare,
+            DEFAULT_PREPARE_ROWS_PER_CHUNK, PrepareRunArtifact, PrepareRunRequest,
+            PreparedExactLookupStatus, PreparedSurfaceRecord,
+            run_prepare_with_target_rows_per_chunk,
         },
         score::{ScoreLane, ScoreUnits},
         solve::{
@@ -79,6 +80,27 @@ pub struct EntityRunRequest<'a> {
     pub strategy: &'a Path,
     pub registry: &'a Path,
     pub work_dir: &'a Path,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntityRunBatchConfig {
+    pub target_rows_per_batch: u64,
+}
+
+impl EntityRunBatchConfig {
+    pub const fn new(target_rows_per_batch: u64) -> Self {
+        Self {
+            target_rows_per_batch,
+        }
+    }
+}
+
+impl Default for EntityRunBatchConfig {
+    fn default() -> Self {
+        Self {
+            target_rows_per_batch: DEFAULT_PREPARE_ROWS_PER_CHUNK,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,14 +162,24 @@ struct BaseStrategyReference {
 }
 
 pub fn run_entity_workbench(request: EntityRunRequest<'_>) -> Result<EntityRunResult, Refusal> {
+    run_entity_workbench_with_batching(request, EntityRunBatchConfig::default())
+}
+
+pub fn run_entity_workbench_with_batching(
+    request: EntityRunRequest<'_>,
+    batch_config: EntityRunBatchConfig,
+) -> Result<EntityRunResult, Refusal> {
     let base_strategy = load_base_strategy_reference(request)
         .map_err(|refusal| with_run_context(refusal, "strategy", request))?;
-    let prepare = run_prepare(PrepareRunRequest {
-        rows: request.rows,
-        profile: request.profile,
-        registry: request.registry,
-        work_dir: request.work_dir,
-    })
+    let prepare = run_prepare_with_target_rows_per_chunk(
+        PrepareRunRequest {
+            rows: request.rows,
+            profile: request.profile,
+            registry: request.registry,
+            work_dir: request.work_dir,
+        },
+        batch_config.target_rows_per_batch,
+    )
     .map_err(|refusal| with_run_context(refusal, "prepare", request))?;
     let surfaces = read_surfaces(request.work_dir, &prepare)
         .map_err(|refusal| with_run_context(refusal, "prepare", request))?;
@@ -551,6 +583,14 @@ fn run_summary(
                 surfaces.len().try_into().expect("surface count fits u64"),
             ),
             (
+                "physical_batch_count".to_string(),
+                prepare.streaming.telemetry.chunk_count,
+            ),
+            (
+                "max_physical_batch_rows".to_string(),
+                prepare.streaming.telemetry.max_chunk_rows,
+            ),
+            (
                 "exact_resolved_surfaces".to_string(),
                 exact_resolved_surfaces,
             ),
@@ -604,6 +644,15 @@ fn run_summary(
             (
                 "strategy_source".to_string(),
                 request.strategy.display().to_string(),
+            ),
+            (
+                "batching_mode".to_string(),
+                if prepare.streaming.telemetry.chunk_count > 1 {
+                    "physical_batches"
+                } else {
+                    "single_batch"
+                }
+                .to_string(),
             ),
             ("status".to_string(), "completed".to_string()),
         ]),

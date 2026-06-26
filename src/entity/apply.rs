@@ -32,6 +32,14 @@ pub const APPLY_CANONICAL_FIELDS: &[&str] = &[
     "canonical_registry_version",
     "canonical_rule_id",
 ];
+pub const SEC10D_ORG_FIELD_SUFFIXES: &[&str] = &[
+    "_org_canon_id",
+    "_org_canonical_name",
+    "_org_resolution_status",
+    "_org_registry_id",
+    "_org_registry_version",
+    "_org_rule_id",
+];
 
 const MAX_APPLY_PROVENANCE_SAMPLES: usize = 16;
 
@@ -82,6 +90,27 @@ pub struct ApplyStreamRequest<'a> {
     pub safety: ApplySafetyCheck,
     pub require_full_resolution: bool,
     pub target_rows_per_chunk: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct Sec10dOrgApplyStreamRequest<'a> {
+    pub rows: &'a Path,
+    pub output: &'a Path,
+    pub lookup_column: &'a str,
+    pub field_name_column: &'a str,
+    pub registry: ApplyRegistryReference,
+    pub resolutions: &'a BTreeMap<String, Sec10dOrgApplyResolution>,
+    pub safety: ApplySafetyCheck,
+    pub require_full_resolution: bool,
+    pub target_rows_per_chunk: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Sec10dOrgApplyResolution {
+    pub canonical_id: String,
+    pub canonical_name: String,
+    pub resolution_status: String,
+    pub rule_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -192,6 +221,106 @@ pub fn run_apply_streaming(request: ApplyStreamRequest<'_>) -> Result<ApplyRunAr
     Ok(artifact)
 }
 
+pub fn run_sec10d_org_apply_streaming(
+    request: Sec10dOrgApplyStreamRequest<'_>,
+) -> Result<ApplyRunArtifact, Refusal> {
+    let format = apply_input_format(request.rows)?;
+    if !matches!(format, ApplyInputFormat::Jsonl) {
+        return Err(EntityRefusalKind::InputContract.to_refusal(
+            "sec10d org apply output requires JSONL or NDJSON input rows",
+            json!({
+                "stage": "apply",
+                "expected": "jsonl",
+                "actual": format!("{:?}", entity_stream_format(format)).to_ascii_lowercase(),
+                "writes_performed": false
+            }),
+            Some("Re-export org_mentions as JSONL, then rerun canon entity apply".to_string()),
+        ));
+    }
+
+    let generic_resolutions = BTreeMap::new();
+    validate_apply_safety(&ApplyStreamRequest {
+        rows: request.rows,
+        output: request.output,
+        lookup_column: request.lookup_column,
+        registry: request.registry.clone(),
+        resolutions: &generic_resolutions,
+        safety: request.safety.clone(),
+        require_full_resolution: request.require_full_resolution,
+        target_rows_per_chunk: request.target_rows_per_chunk,
+    })?;
+
+    let inspection = inspect_sec10d_org_jsonl(
+        request.rows,
+        request.lookup_column,
+        request.field_name_column,
+        request.resolutions,
+    )?;
+    if request.require_full_resolution && inspection.unresolved > 0 {
+        return Err(apply_unresolved_refusal(
+            &ApplyStreamRequest {
+                rows: request.rows,
+                output: request.output,
+                lookup_column: request.lookup_column,
+                registry: request.registry.clone(),
+                resolutions: &generic_resolutions,
+                safety: request.safety.clone(),
+                require_full_resolution: request.require_full_resolution,
+                target_rows_per_chunk: request.target_rows_per_chunk,
+            },
+            &inspection,
+        ));
+    }
+
+    let byte_count = fs::metadata(request.rows)
+        .map_err(|error| {
+            io_budget_refusal(
+                "Failed to inspect apply input rows",
+                request.rows,
+                error.to_string(),
+            )
+        })?
+        .len();
+    let content_hash = witness::hash_file(request.rows).map_err(|error| {
+        io_budget_refusal(
+            "Failed to hash apply input rows",
+            request.rows,
+            error.to_string(),
+        )
+    })?;
+    let input = EntityStreamInput::new(
+        EntityStreamStage::Apply,
+        EntityStreamFormat::Jsonl,
+        request.rows.display().to_string(),
+        content_hash,
+        inspection.row_count,
+        byte_count,
+    );
+    let chunks = deterministic_chunk_metadata(&input, request.target_rows_per_chunk)?;
+    let telemetry = stream_telemetry(&input, &chunks);
+    let write_result = write_sec10d_org_jsonl_output(&request, &chunks)?;
+
+    let mut artifact = ApplyRunArtifact {
+        version: CANON_ENTITY_APPLY_VERSION.to_string(),
+        artifact_content_hash: String::new(),
+        registry: request.registry.clone(),
+        summary: BTreeMap::from([
+            ("rows".to_string(), write_result.row_count),
+            ("resolved".to_string(), write_result.resolved),
+            ("unresolved".to_string(), write_result.unresolved),
+        ]),
+        streaming: ApplyStreamingDiagnostics {
+            input,
+            chunks,
+            telemetry,
+            provenance_samples: write_result.provenance_samples,
+        },
+        output_path: request.output.display().to_string(),
+    };
+    artifact.artifact_content_hash = hash_apply_artifact_without_self(&artifact)?;
+    Ok(artifact)
+}
+
 fn inspect_apply_input(
     rows: &Path,
     lookup_column: &str,
@@ -204,6 +333,55 @@ fn inspect_apply_input(
         }
         ApplyInputFormat::Jsonl => inspect_apply_jsonl(rows, lookup_column, resolutions),
     }
+}
+
+fn inspect_sec10d_org_jsonl(
+    rows: &Path,
+    lookup_column: &str,
+    field_name_column: &str,
+    resolutions: &BTreeMap<String, Sec10dOrgApplyResolution>,
+) -> Result<ApplyInputInspection, Refusal> {
+    let mut reader = open_apply_reader(rows)?;
+    let mut line = Vec::new();
+    let mut inspection = ApplyInputInspection {
+        row_count: 0,
+        resolved: 0,
+        unresolved: 0,
+    };
+
+    loop {
+        line.clear();
+        let bytes_read = reader.read_until(b'\n', &mut line).map_err(|error| {
+            input_contract_refusal(
+                "Failed to read apply JSONL row",
+                inspection.row_count + 1,
+                lookup_column,
+                error.to_string(),
+            )
+        })?;
+        if bytes_read == 0 {
+            break;
+        }
+        if blank_line(&line) {
+            continue;
+        }
+
+        let row_number = inspection.row_count + 1;
+        let object = parse_json_object(&line, row_number)?;
+        let lookup_value = json_lookup_value(&object, lookup_column, row_number)?;
+        let field_name = json_lookup_value(&object, field_name_column, row_number)?;
+        validate_no_sec10d_org_json_fields(&object, row_number)?;
+        sec10d_org_field_prefix(&field_name, row_number)?;
+
+        inspection.row_count += 1;
+        if resolutions.contains_key(lookup_value.as_str()) {
+            inspection.resolved += 1;
+        } else {
+            inspection.unresolved += 1;
+        }
+    }
+
+    Ok(inspection)
 }
 
 fn validate_apply_safety(request: &ApplyStreamRequest<'_>) -> Result<(), Refusal> {
@@ -604,6 +782,98 @@ fn write_apply_jsonl<W: Write>(
     Ok(result)
 }
 
+fn write_sec10d_org_jsonl_output(
+    request: &Sec10dOrgApplyStreamRequest<'_>,
+    chunks: &[EntityStreamChunkMetadata],
+) -> Result<ApplyWriteResult, Refusal> {
+    if let Some(parent) = request.output.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|error| {
+            io_budget_refusal(
+                "Failed to create apply output directory",
+                request.output,
+                error.to_string(),
+            )
+        })?;
+    }
+    let mut writer = File::create(request.output).map_err(|error| {
+        io_budget_refusal(
+            "Failed to create apply output",
+            request.output,
+            error.to_string(),
+        )
+    })?;
+    let mut reader = open_apply_reader(request.rows)?;
+    let mut line = Vec::new();
+    let mut result = ApplyWriteResult {
+        row_count: 0,
+        resolved: 0,
+        unresolved: 0,
+        provenance_samples: Vec::new(),
+    };
+    let mut byte_offset = 0u64;
+
+    loop {
+        line.clear();
+        let bytes_read = reader.read_until(b'\n', &mut line).map_err(|error| {
+            input_contract_refusal(
+                "Failed to read apply JSONL row",
+                result.row_count + 1,
+                request.lookup_column,
+                error.to_string(),
+            )
+        })?;
+        if bytes_read == 0 {
+            break;
+        }
+        if blank_line(&line) {
+            writer.write_all(&line).map_err(|error| {
+                io_budget_refusal(
+                    "Failed to write apply output row",
+                    request.rows,
+                    error.to_string(),
+                )
+            })?;
+            byte_offset += u64::try_from(line.len()).expect("line length fits u64");
+            continue;
+        }
+
+        let row_number = result.row_count + 1;
+        let object = parse_json_object(&line, row_number)?;
+        let lookup_value = json_lookup_value(&object, request.lookup_column, row_number)?;
+        let field_name = json_lookup_value(&object, request.field_name_column, row_number)?;
+        validate_no_sec10d_org_json_fields(&object, row_number)?;
+        let prefix = sec10d_org_field_prefix(&field_name, row_number)?;
+        let resolution = request.resolutions.get(lookup_value.as_str());
+        let appended = json_line_with_appended_sec10d_org_fields(
+            &line,
+            &prefix,
+            &request.registry,
+            resolution,
+            object.is_empty(),
+        )?;
+        writer.write_all(&appended).map_err(|error| {
+            io_budget_refusal(
+                "Failed to write apply output row",
+                request.rows,
+                error.to_string(),
+            )
+        })?;
+        update_apply_write_result(
+            &mut result,
+            resolution.is_some(),
+            &lookup_value,
+            byte_offset,
+            u64::try_from(line.len()).expect("line length fits u64"),
+            chunks,
+        );
+        byte_offset += u64::try_from(line.len()).expect("line length fits u64");
+    }
+
+    Ok(result)
+}
+
 fn update_apply_write_result(
     result: &mut ApplyWriteResult,
     resolved: bool,
@@ -767,6 +1037,26 @@ fn json_line_with_appended_fields(
     Ok(output)
 }
 
+fn json_line_with_appended_sec10d_org_fields(
+    line: &[u8],
+    prefix: &str,
+    registry: &ApplyRegistryReference,
+    resolution: Option<&Sec10dOrgApplyResolution>,
+    object_is_empty: bool,
+) -> Result<Vec<u8>, Refusal> {
+    let (body_end, close_index) = json_object_close_index(line)?;
+    let mut output = Vec::with_capacity(line.len() + 192);
+    output.extend_from_slice(&line[..close_index]);
+    if !object_is_empty {
+        output.extend_from_slice(b",");
+    }
+    let fields = json_sec10d_org_fields(prefix, registry, resolution)?;
+    output.extend_from_slice(fields.as_bytes());
+    output.extend_from_slice(&line[close_index..body_end]);
+    output.extend_from_slice(&line[body_end..]);
+    Ok(output)
+}
+
 fn json_canonical_fields(
     registry: &ApplyRegistryReference,
     resolution: Option<&ApplyCanonicalResolution>,
@@ -800,6 +1090,118 @@ fn json_canonical_fields(
         }
     }
     Ok(fields.join(","))
+}
+
+fn json_sec10d_org_fields(
+    prefix: &str,
+    registry: &ApplyRegistryReference,
+    resolution: Option<&Sec10dOrgApplyResolution>,
+) -> Result<String, Refusal> {
+    let mut fields = Vec::with_capacity(SEC10D_ORG_FIELD_SUFFIXES.len());
+    match resolution {
+        Some(resolution) => {
+            fields.push(json_field(
+                &format!("{prefix}_org_canon_id"),
+                Some(&resolution.canonical_id),
+            )?);
+            fields.push(json_field(
+                &format!("{prefix}_org_canonical_name"),
+                Some(&resolution.canonical_name),
+            )?);
+            fields.push(json_field(
+                &format!("{prefix}_org_resolution_status"),
+                Some(&resolution.resolution_status),
+            )?);
+            fields.push(json_field(
+                &format!("{prefix}_org_registry_id"),
+                Some(&registry.id),
+            )?);
+            fields.push(json_field(
+                &format!("{prefix}_org_registry_version"),
+                Some(&registry.version),
+            )?);
+            fields.push(json_field(
+                &format!("{prefix}_org_rule_id"),
+                Some(&resolution.rule_id),
+            )?);
+        }
+        None => {
+            fields.push(json_field(&format!("{prefix}_org_canon_id"), None)?);
+            fields.push(json_field(&format!("{prefix}_org_canonical_name"), None)?);
+            fields.push(json_field(
+                &format!("{prefix}_org_resolution_status"),
+                Some("review_required"),
+            )?);
+            fields.push(json_field(
+                &format!("{prefix}_org_registry_id"),
+                Some(&registry.id),
+            )?);
+            fields.push(json_field(
+                &format!("{prefix}_org_registry_version"),
+                Some(&registry.version),
+            )?);
+            fields.push(json_field(&format!("{prefix}_org_rule_id"), None)?);
+        }
+    }
+    Ok(fields.join(","))
+}
+
+fn sec10d_org_field_prefix(field_name: &str, row_number: u64) -> Result<String, Refusal> {
+    let field_name = field_name.trim();
+    let raw_prefix = field_name.strip_suffix("_name").unwrap_or(field_name);
+    let mut prefix = String::with_capacity(raw_prefix.len());
+    let mut previous_was_separator = false;
+
+    for character in raw_prefix.chars() {
+        if character.is_ascii_alphanumeric() {
+            prefix.push(character.to_ascii_lowercase());
+            previous_was_separator = false;
+        } else if character == '_' || character == '-' || character.is_ascii_whitespace() {
+            if !previous_was_separator && !prefix.is_empty() {
+                prefix.push('_');
+                previous_was_separator = true;
+            }
+        } else {
+            return Err(input_contract_refusal(
+                "Apply JSONL field_name cannot be converted to a Snowflake org field prefix",
+                row_number,
+                "field_name",
+                field_name.to_string(),
+            ));
+        }
+    }
+
+    while prefix.ends_with('_') {
+        prefix.pop();
+    }
+    if prefix.is_empty() {
+        return Err(input_contract_refusal(
+            "Apply JSONL field_name cannot be empty for sec10d org enrichment",
+            row_number,
+            "field_name",
+            field_name.to_string(),
+        ));
+    }
+    Ok(prefix)
+}
+
+fn validate_no_sec10d_org_json_fields(
+    object: &Map<String, Value>,
+    row_number: u64,
+) -> Result<(), Refusal> {
+    if let Some(field) = object.keys().find(|key| {
+        SEC10D_ORG_FIELD_SUFFIXES
+            .iter()
+            .any(|suffix| key.ends_with(suffix))
+    }) {
+        return Err(input_contract_refusal(
+            "Apply JSONL row already contains a sec10d org canonical field",
+            row_number,
+            field,
+            "canonical field collision".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn json_field(key: &str, value: Option<&str>) -> Result<String, Refusal> {
@@ -1041,7 +1443,13 @@ fn input_contract_refusal(
 ) -> Refusal {
     EntityRefusalKind::InputContract.to_refusal(
         message,
-        json!({ "row_number": row_number, "field": field, "error": error }),
+        json!({
+            "stage": "apply",
+            "row_number": row_number,
+            "field": field,
+            "error": error,
+            "writes_performed": false
+        }),
         None,
     )
 }

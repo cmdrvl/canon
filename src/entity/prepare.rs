@@ -34,7 +34,7 @@ const BUILTIN_CMBS_TENANT_LABEL_PROFILE: &str =
     include_str!("../../tests/fixtures/entity/profiles/cmbs_tenant_label.yaml");
 const BUILTIN_REGAB_FIRM_IDENTITY_PROFILE: &str =
     include_str!("../../tests/fixtures/entity/profiles/regab_firm_identity.yaml");
-const DEFAULT_PREPARE_ROWS_PER_CHUNK: u64 = 1024;
+pub const DEFAULT_PREPARE_ROWS_PER_CHUNK: u64 = 1024;
 const MAX_PREPARE_PROVENANCE_SAMPLES: usize = 16;
 const MAX_SURFACE_PROVENANCE_SAMPLES: usize = 8;
 const PREPARE_NAMEKIT_VERSION: &str = "namekit.v0";
@@ -502,11 +502,17 @@ pub fn stream_prepare_path(
 }
 
 pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact, Refusal> {
+    run_prepare_with_target_rows_per_chunk(request, DEFAULT_PREPARE_ROWS_PER_CHUNK)
+}
+
+pub fn run_prepare_with_target_rows_per_chunk(
+    request: PrepareRunRequest<'_>,
+    target_rows_per_chunk: u64,
+) -> Result<PrepareRunArtifact, Refusal> {
     let loaded_profile = load_prepare_profile_with_hash(request.profile)?;
     let mut contract = PrepareInputContract::for_builtin_profile(&loaded_profile.document)?;
     contract.profile.content_hash = Some(loaded_profile.content_hash);
-    let stream_output =
-        stream_prepare_path(request.rows, &contract, DEFAULT_PREPARE_ROWS_PER_CHUNK)?;
+    let stream_output = stream_prepare_path(request.rows, &contract, target_rows_per_chunk)?;
     let observations = stream_output.observations;
     let registry_snapshot = load_prepare_registry_snapshot(request.registry)?;
     let mut surfaces = prepare_surface_records(&observations)?;

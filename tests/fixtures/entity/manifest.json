@@ -507,7 +507,7 @@
       "expected_artifacts": [{"path": "tests/fixtures/entity/regab/regab_i004_apply.json", "schema_version": "canon_entity_apply.v0", "hash_policy": "byte_stable", "summary_counters": ["rows", "resolved", "raw_field_mutations"]}],
       "expected_outcome": {"kind": "success", "refusal_code": null},
       "gates": ["G01", "G13"],
-      "owning_tests": ["regab_apply_append_only", "regab_profile_integration", "REGAB-I004"]
+      "owning_tests": ["regab_apply_append_only", "regab_profile_integration", "sec10d_apply_fields", "REGAB-I004"]
     },
     {
       "id": "STRESS-CMBS-500K",

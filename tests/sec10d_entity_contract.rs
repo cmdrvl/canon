@@ -5,7 +5,9 @@ use canon::{
     entity::{
         apply::{
             APPLY_CANONICAL_FIELDS, ApplyCanonicalResolution, ApplyRegistryReference,
-            ApplySafetyCheck, ApplyStreamRequest, run_apply_streaming,
+            ApplySafetyCheck, ApplyStreamRequest, SEC10D_ORG_FIELD_SUFFIXES,
+            Sec10dOrgApplyResolution, Sec10dOrgApplyStreamRequest, run_apply_streaming,
+            run_sec10d_org_apply_streaming,
         },
         prepare::{PrepareInputContract, project_prepare_csv_reader},
         profile::EntityProfileDocument,
@@ -55,12 +57,25 @@ const ORG_MENTIONS_COLUMNS: &[&str] = &[
 #[derive(Debug, Deserialize)]
 struct ExpectedSummary {
     source: BTreeMap<String, u64>,
+    exact_resolved_surfaces: Vec<ResolvedSurface>,
+    unresolved_surfaces: Vec<String>,
     apply: ExpectedApply,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResolvedSurface {
+    org_name: String,
+    canonical_id: String,
+    canonical_type: String,
+    rule_id: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct ExpectedApply {
     registry: ApplyRegistryReference,
+    rows: u64,
+    resolved: u64,
+    unresolved: u64,
     canonical_fields: Vec<String>,
     downstream_org_fields: Vec<String>,
 }
@@ -221,6 +236,125 @@ fn sec10d_entity_contract_freezes_input_columns_and_append_only_org_fields() {
 }
 
 #[test]
+fn sec10d_apply_fields_regab_i004_jsonl_snowflake_contract() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let output = temp.path().join("org_mentions.applied.jsonl");
+    let expected = expected_summary();
+    let resolutions = sec10d_resolution_table(&expected);
+    assert!(
+        expected
+            .exact_resolved_surfaces
+            .iter()
+            .all(|surface| surface.canonical_type == "firm")
+    );
+
+    let artifact = run_sec10d_org_apply_streaming(Sec10dOrgApplyStreamRequest {
+        rows: &org_mentions_jsonl(),
+        output: &output,
+        lookup_column: "org_name",
+        field_name_column: "field_name",
+        registry: expected.apply.registry.clone(),
+        resolutions: &resolutions,
+        safety: ApplySafetyCheck::default(),
+        require_full_resolution: false,
+        target_rows_per_chunk: 3,
+    })
+    .expect("sec10d org apply fixture runs");
+
+    assert_eq!(artifact.registry, expected.apply.registry);
+    assert_eq!(artifact.summary["rows"], expected.apply.rows);
+    assert_eq!(artifact.summary["resolved"], expected.apply.resolved);
+    assert_eq!(artifact.summary["unresolved"], expected.apply.unresolved);
+
+    let source_rows = read_jsonl_objects(org_mentions_jsonl())
+        .into_iter()
+        .map(|object| {
+            (
+                object["source_row_id"]
+                    .as_str()
+                    .expect("source_row_id")
+                    .to_string(),
+                object,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let output_text = fs::read_to_string(&output).expect("apply output opens");
+    let output_lines = output_text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect::<Vec<_>>();
+    let output_rows = read_jsonl_objects(&output);
+    assert_eq!(output_rows.len(), source_rows.len());
+    assert_eq!(output_lines.len(), output_rows.len());
+
+    let unresolved = expected
+        .unresolved_surfaces
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    for (line, enriched) in output_lines.iter().zip(output_rows.iter()) {
+        let source_row_id = enriched["source_row_id"].as_str().expect("source_row_id");
+        let source = source_rows
+            .get(source_row_id)
+            .unwrap_or_else(|| panic!("unknown output source row {source_row_id}"));
+        for (field, value) in source {
+            assert_eq!(
+                enriched.get(field),
+                Some(value),
+                "sec10d raw parser field {field} changed for {source_row_id}"
+            );
+        }
+        for field in APPLY_CANONICAL_FIELDS {
+            assert!(
+                !enriched.contains_key(*field),
+                "sec10d JSONL apply must not append generic {field}"
+            );
+        }
+
+        let field_name = enriched["field_name"].as_str().expect("field_name");
+        let prefix = field_name
+            .strip_suffix("_name")
+            .unwrap_or(field_name)
+            .to_string();
+        let org_fields = downstream_org_field_names(&prefix);
+        assert_eq!(
+            enriched
+                .keys()
+                .filter(|field| field.contains("_org_"))
+                .cloned()
+                .collect::<BTreeSet<_>>(),
+            org_fields.iter().cloned().collect::<BTreeSet<_>>()
+        );
+        assert_org_field_order(line, &org_fields);
+
+        let org_name = enriched["org_name"].as_str().expect("org_name");
+        assert_eq!(enriched[org_fields[3].as_str()], expected.apply.registry.id);
+        assert_eq!(
+            enriched[org_fields[4].as_str()],
+            expected.apply.registry.version
+        );
+        if let Some(resolution) = resolutions.get(org_name) {
+            assert_eq!(enriched[org_fields[0].as_str()], resolution.canonical_id);
+            assert_eq!(enriched[org_fields[1].as_str()], resolution.canonical_name);
+            assert_eq!(
+                enriched[org_fields[2].as_str()],
+                resolution.resolution_status
+            );
+            assert_eq!(enriched[org_fields[5].as_str()], resolution.rule_id);
+        } else {
+            assert!(
+                unresolved.contains(org_name),
+                "unexpected unresolved {org_name}"
+            );
+            assert!(enriched[org_fields[0].as_str()].is_null());
+            assert!(enriched[org_fields[1].as_str()].is_null());
+            assert_eq!(enriched[org_fields[2].as_str()], "review_required");
+            assert!(enriched[org_fields[5].as_str()].is_null());
+        }
+    }
+}
+
+#[test]
 fn sec10d_entity_contract_refuses_missing_required_input_and_unresolved_apply() {
     let profile = EntityProfileDocument::from_yaml_str(REGAB_PROFILE).expect("valid profile");
     let contract = PrepareInputContract::for_builtin_profile(&profile).expect("prepare contract");
@@ -265,6 +399,50 @@ fn stage<'a>(artifact: &'a EntityRunArtifact, stage_name: &str) -> &'a EntityRun
 
 fn expected_summary() -> ExpectedSummary {
     read_json(&fixture_root().join("expected_summary.json"))
+}
+
+fn sec10d_resolution_table(
+    expected: &ExpectedSummary,
+) -> BTreeMap<String, Sec10dOrgApplyResolution> {
+    expected
+        .exact_resolved_surfaces
+        .iter()
+        .map(|surface| {
+            (
+                surface.org_name.clone(),
+                Sec10dOrgApplyResolution {
+                    canonical_id: surface.canonical_id.clone(),
+                    canonical_name: surface.org_name.clone(),
+                    resolution_status: "resolved_exact".to_string(),
+                    rule_id: surface.rule_id.clone(),
+                },
+            )
+        })
+        .collect()
+}
+
+fn downstream_org_field_names(prefix: &str) -> Vec<String> {
+    SEC10D_ORG_FIELD_SUFFIXES
+        .iter()
+        .map(|suffix| format!("{prefix}{suffix}"))
+        .collect()
+}
+
+fn assert_org_field_order(line: &str, fields: &[String]) {
+    let mut previous_position = None;
+    for field in fields {
+        let quoted = format!("\"{field}\"");
+        let position = line
+            .find(&quoted)
+            .unwrap_or_else(|| panic!("missing {field} in output line"));
+        if let Some(previous_position) = previous_position {
+            assert!(
+                position > previous_position,
+                "downstream org fields must be appended in deterministic order"
+            );
+        }
+        previous_position = Some(position);
+    }
 }
 
 fn csv_maps(path: impl AsRef<Path>) -> (Vec<String>, Vec<BTreeMap<String, String>>) {
