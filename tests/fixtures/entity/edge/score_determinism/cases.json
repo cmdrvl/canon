@@ -1,0 +1,141 @@
+{
+  "version": "canon_entity_edge_score_determinism.v0",
+  "edge_case": {
+    "left_surface_id": "surf:tie:001",
+    "right_surface_id": "surf:tie:002",
+    "hits": [
+      {
+        "lane": "relation_hint",
+        "namespace": "ontology",
+        "operator_id": "relation_hint:brand_family",
+        "reason_code": "related_brand_family",
+        "score_units": 10000,
+        "hard_cannot_link": false,
+        "explanation": "same brand family is review context only"
+      },
+      {
+        "lane": "support",
+        "namespace": "metric",
+        "operator_id": "tfidf_cosine",
+        "reason_code": "rare_token_support",
+        "score_units": 5000,
+        "hard_cannot_link": false,
+        "explanation": "rare token support score_units=5000"
+      },
+      {
+        "lane": "support",
+        "namespace": "metric",
+        "operator_id": "jaro_winkler",
+        "reason_code": "tenant_core_similarity",
+        "score_units": 5000,
+        "hard_cannot_link": false,
+        "explanation": "tenant core similarity score_units=5000"
+      },
+      {
+        "lane": "anti_merge",
+        "namespace": "tenant_role",
+        "operator_id": "protected_token_conflict",
+        "reason_code": "protected_token_conflict",
+        "score_units": 9500,
+        "hard_cannot_link": true,
+        "explanation": "protected token conflict score_units=9500"
+      }
+    ],
+    "expected_pair_score_total": 10000,
+    "expected_raw_support_score_units": 10000,
+    "expected_hit_order": [
+      ["support", "metric", "jaro_winkler", "tenant_core_similarity", 5000],
+      ["support", "metric", "tfidf_cosine", "rare_token_support", 5000],
+      ["anti_merge", "tenant_role", "protected_token_conflict", "protected_token_conflict", 9500],
+      ["relation_hint", "ontology", "relation_hint:brand_family", "related_brand_family", 10000]
+    ]
+  },
+  "threshold_cases": [
+    {
+      "candidate_id": "cand:accepted_exact_threshold",
+      "left_surface_id": "surf:threshold:001",
+      "right_surface_id": "surf:threshold:002",
+      "score_units": 9000,
+      "threshold_units": 9000,
+      "hard_cannot_link": false,
+      "expected_reason": "accepted",
+      "expected_accepted": true
+    },
+    {
+      "candidate_id": "cand:below_threshold",
+      "left_surface_id": "surf:threshold:003",
+      "right_surface_id": "surf:threshold:004",
+      "score_units": 8999,
+      "threshold_units": 9000,
+      "hard_cannot_link": false,
+      "expected_reason": "below_threshold",
+      "expected_accepted": false
+    },
+    {
+      "candidate_id": "cand:hard_cannot_link",
+      "left_surface_id": "surf:threshold:005",
+      "right_surface_id": "surf:threshold:006",
+      "score_units": 10000,
+      "threshold_units": 1,
+      "hard_cannot_link": true,
+      "expected_reason": "hard_cannot_link",
+      "expected_accepted": false
+    }
+  ],
+  "candidate_order": [
+    {
+      "candidate_id": "cand:b",
+      "left_surface_id": "surf:002",
+      "right_surface_id": "surf:003",
+      "score_units": 9500,
+      "hard_cannot_link": false
+    },
+    {
+      "candidate_id": "cand:a",
+      "left_surface_id": "surf:002",
+      "right_surface_id": "surf:004",
+      "score_units": 9500,
+      "hard_cannot_link": false
+    },
+    {
+      "candidate_id": "cand:a",
+      "left_surface_id": "surf:001",
+      "right_surface_id": "surf:004",
+      "score_units": 9500,
+      "hard_cannot_link": false
+    },
+    {
+      "candidate_id": "cand:c",
+      "left_surface_id": "surf:001",
+      "right_surface_id": "surf:005",
+      "score_units": 9000,
+      "hard_cannot_link": false
+    }
+  ],
+  "expected_candidate_order": [
+    ["cand:a", "surf:001", "surf:004", 9500],
+    ["cand:a", "surf:002", "surf:004", 9500],
+    ["cand:b", "surf:002", "surf:003", 9500],
+    ["cand:c", "surf:001", "surf:005", 9000]
+  ],
+  "tfidf_cases": [
+    {
+      "case_id": "rare_roebuck_support",
+      "left_surface_id": "surf:roebuck_holdings",
+      "right_surface_id": "surf:sears_roebuck",
+      "expected_score_units": 4999,
+      "expected_reason_code": "rare_token_support",
+      "expected_top_contributor": "roebuck",
+      "expected_max_shared_idf_units": 1600
+    },
+    {
+      "case_id": "common_sears_downweighted",
+      "left_surface_id": "surf:sears_llc",
+      "right_surface_id": "surf:sears_roebuck",
+      "expected_score_units": 4042,
+      "expected_reason_code": "common_token_downweighted",
+      "expected_top_contributor": "sears",
+      "expected_max_shared_idf_units": 1400
+    }
+  ]
+}
