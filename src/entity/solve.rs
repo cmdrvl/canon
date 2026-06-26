@@ -7,10 +7,15 @@
 use crate::Refusal;
 use crate::entity::{
     budget::{BudgetEnforcement, BudgetLimit, BudgetStage, find_budget_policy},
+    contracts::{
+        CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION, CANON_ENTITY_SOLVE_VERSION,
+        EntityArtifactMetadata, EntityArtifactReference, EntityDeterministicSummary,
+    },
     error::EntityRefusalKind,
     graph::{CannotLinkEvidenceEdge, EntityEvidenceGraph, SignedEvidenceEdge},
     score::ScoreUnits,
 };
+use crate::witness;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -248,6 +253,136 @@ pub struct SolveDiagnosticsReport {
     pub review_group_seeds: Vec<SolveReviewGroupSeed>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SolveArtifactRequest {
+    pub metadata: EntityArtifactMetadata,
+    pub graph: EntityEvidenceGraph,
+    pub config: SolveReconciliationConfig,
+    pub provenance: Vec<SolveSurfaceProvenance>,
+    pub decision_ledger_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolveEntityRecord {
+    pub component_id: String,
+    pub state: SolveReconciliationState,
+    pub reason: String,
+    pub surface_ids: Vec<String>,
+    pub incumbent_canonical_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_id: Option<String>,
+    pub support_score_units: ScoreUnits,
+    pub adjusted_support_score_units: ScoreUnits,
+    pub hard_cannot_link_count: u64,
+    pub soft_anti_merge_warning_count: u64,
+    pub review_priority_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolveArtifact {
+    pub version: String,
+    pub artifact_content_hash: String,
+    pub metadata: EntityArtifactMetadata,
+    pub summary: EntityDeterministicSummary,
+    pub upstream_artifacts: Vec<EntityArtifactReference>,
+    pub entities: Vec<SolveEntityRecord>,
+    pub review_groups: Vec<SolveReviewGroupSeed>,
+    pub diagnostics: SolveDiagnosticsReport,
+    pub decision_ledger_path: String,
+}
+
+pub fn build_solve_artifact_contract(
+    request: SolveArtifactRequest,
+) -> Result<SolveArtifact, Refusal> {
+    validate_solve_metadata(&request.metadata)?;
+    if request.decision_ledger_path.trim().is_empty() {
+        return Err(solve_artifact_refusal(
+            "Solve artifact decision ledger path is required",
+            json!({
+                "stage": "solve",
+                "field": "decision_ledger_path",
+                "writes_performed": false
+            }),
+        ));
+    }
+
+    let upstream_artifacts = required_solve_upstream_artifacts(&request.metadata)?;
+    let diagnostics = build_solve_diagnostics(&request.graph, request.config, &request.provenance);
+    let reconciliation = reconcile_signed_graph_components(&request.graph, request.config);
+    let entities = solve_entity_records(reconciliation.decisions);
+    let summary = solve_artifact_summary(&entities, &diagnostics);
+    let mut metadata = request.metadata;
+    metadata.artifact_content_hash.clear();
+    metadata.upstream_artifacts = upstream_artifacts.clone();
+
+    let mut artifact = SolveArtifact {
+        version: CANON_ENTITY_SOLVE_VERSION.to_string(),
+        artifact_content_hash: String::new(),
+        metadata,
+        summary,
+        upstream_artifacts,
+        entities,
+        review_groups: diagnostics.review_group_seeds.clone(),
+        diagnostics,
+        decision_ledger_path: request.decision_ledger_path,
+    };
+    artifact.artifact_content_hash = hash_solve_artifact_without_self(&artifact)?;
+    artifact.metadata.artifact_content_hash = artifact.artifact_content_hash.clone();
+    Ok(artifact)
+}
+
+pub fn validate_solve_artifact_contract(artifact: &SolveArtifact) -> Result<(), Refusal> {
+    if artifact.version != CANON_ENTITY_SOLVE_VERSION {
+        return Err(solve_artifact_refusal(
+            "Solve artifact has the wrong contract version",
+            json!({
+                "stage": "solve",
+                "reason": "wrong_version",
+                "expected": CANON_ENTITY_SOLVE_VERSION,
+                "actual": artifact.version
+            }),
+        ));
+    }
+    validate_solve_metadata(&artifact.metadata)?;
+    required_solve_upstream_artifacts(&artifact.metadata)?;
+    if artifact.upstream_artifacts != artifact.metadata.upstream_artifacts {
+        return Err(solve_artifact_refusal(
+            "Solve artifact upstream references must match metadata",
+            json!({
+                "stage": "solve",
+                "field": "upstream_artifacts"
+            }),
+        ));
+    }
+    if artifact.metadata.artifact_content_hash != artifact.artifact_content_hash {
+        return Err(solve_artifact_refusal(
+            "Solve artifact metadata hash does not match artifact hash",
+            json!({
+                "stage": "solve",
+                "field": "metadata.artifact_content_hash",
+                "expected": artifact.artifact_content_hash,
+                "actual": artifact.metadata.artifact_content_hash
+            }),
+        ));
+    }
+    let expected = hash_solve_artifact_without_self(artifact)?;
+    if artifact.artifact_content_hash != expected {
+        return Err(solve_artifact_refusal(
+            "Solve artifact content hash is stale",
+            json!({
+                "stage": "solve",
+                "field": "artifact_content_hash",
+                "expected": expected,
+                "actual": artifact.artifact_content_hash
+            }),
+        ));
+    }
+    validate_review_groups_reference_entities(artifact)?;
+    Ok(())
+}
+
 pub fn evaluate_solve_budget(
     components: &[SolveComponentBudgetInput],
     config: SolveBudgetConfig,
@@ -406,6 +541,232 @@ pub fn build_solve_diagnostics(
         components,
         review_group_seeds,
     }
+}
+
+fn validate_solve_metadata(metadata: &EntityArtifactMetadata) -> Result<(), Refusal> {
+    if !metadata.profile.is_complete() {
+        return Err(solve_artifact_refusal(
+            "Solve artifact profile metadata is incomplete",
+            json!({
+                "stage": "solve",
+                "field": "metadata.profile"
+            }),
+        ));
+    }
+    if metadata.strategy.id.trim().is_empty()
+        || metadata.strategy.version.trim().is_empty()
+        || metadata.strategy.content_hash.trim().is_empty()
+    {
+        return Err(solve_artifact_refusal(
+            "Solve artifact strategy metadata is incomplete",
+            json!({
+                "stage": "solve",
+                "field": "metadata.strategy"
+            }),
+        ));
+    }
+    if metadata.registry_snapshot.id.trim().is_empty()
+        || metadata.registry_snapshot.version.trim().is_empty()
+        || metadata
+            .registry_snapshot
+            .lookup_snapshot_hash
+            .trim()
+            .is_empty()
+    {
+        return Err(solve_artifact_refusal(
+            "Solve artifact registry snapshot metadata is incomplete",
+            json!({
+                "stage": "solve",
+                "field": "metadata.registry_snapshot"
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn required_solve_upstream_artifacts(
+    metadata: &EntityArtifactMetadata,
+) -> Result<Vec<EntityArtifactReference>, Refusal> {
+    require_upstream_artifact(metadata, CANON_ENTITY_BLOCK_VERSION)?;
+    require_upstream_artifact(metadata, CANON_ENTITY_EDGE_VERSION)?;
+    let mut upstream_artifacts = metadata.upstream_artifacts.clone();
+    upstream_artifacts.sort_by(upstream_artifact_cmp);
+    Ok(upstream_artifacts)
+}
+
+fn require_upstream_artifact(
+    metadata: &EntityArtifactMetadata,
+    version: &str,
+) -> Result<(), Refusal> {
+    let Some(reference) = metadata
+        .upstream_artifacts
+        .iter()
+        .find(|reference| reference.version == version)
+    else {
+        return Err(solve_artifact_refusal(
+            "Solve artifact requires upstream block and edge artifact hashes",
+            json!({
+                "stage": "solve",
+                "field": "metadata.upstream_artifacts",
+                "missing_version": version
+            }),
+        ));
+    };
+    if reference.content_hash.trim().is_empty() {
+        return Err(solve_artifact_refusal(
+            "Solve artifact upstream artifact hash is required",
+            json!({
+                "stage": "solve",
+                "field": "metadata.upstream_artifacts.content_hash",
+                "version": version
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn solve_entity_records(decisions: Vec<SolveReconciliationDecision>) -> Vec<SolveEntityRecord> {
+    let mut entities = decisions
+        .into_iter()
+        .map(|decision| SolveEntityRecord {
+            component_id: decision.component_id,
+            state: decision.state,
+            reason: decision.reason,
+            surface_ids: decision.surface_ids,
+            incumbent_canonical_ids: decision.incumbent_canonical_ids,
+            canonical_id: decision.canonical_id,
+            candidate_id: decision.candidate_id,
+            support_score_units: decision.support_score_units,
+            adjusted_support_score_units: decision.adjusted_support_score_units,
+            hard_cannot_link_count: decision.hard_cannot_link_count,
+            soft_anti_merge_warning_count: decision.soft_anti_merge_warning_count,
+            review_priority_reasons: decision.review_priority_reasons,
+        })
+        .collect::<Vec<_>>();
+    entities.sort_by(solve_entity_record_cmp);
+    entities
+}
+
+fn solve_artifact_summary(
+    entities: &[SolveEntityRecord],
+    diagnostics: &SolveDiagnosticsReport,
+) -> EntityDeterministicSummary {
+    let mut counts = BTreeMap::from([
+        ("entity_count".to_string(), entities.len() as u64),
+        (
+            "resolved_existing".to_string(),
+            entity_state_count(entities, SolveReconciliationState::ResolvedExisting),
+        ),
+        (
+            "promotable_new".to_string(),
+            entity_state_count(entities, SolveReconciliationState::PromotableNew),
+        ),
+        (
+            "escrow".to_string(),
+            entity_state_count(entities, SolveReconciliationState::Escrow),
+        ),
+        (
+            "contradictions".to_string(),
+            entity_state_count(entities, SolveReconciliationState::Contradiction),
+        ),
+        (
+            "conflicts".to_string(),
+            entity_state_count(entities, SolveReconciliationState::Conflict),
+        ),
+        (
+            "review_group_count".to_string(),
+            diagnostics.review_group_seeds.len() as u64,
+        ),
+    ]);
+    for (key, value) in &diagnostics.summary {
+        counts.insert(format!("diagnostics_{key}"), *value);
+    }
+
+    EntityDeterministicSummary {
+        counts,
+        labels: BTreeMap::from([(
+            "decision_ledger".to_string(),
+            "required_before_review_import_or_promotion".to_string(),
+        )]),
+    }
+}
+
+fn entity_state_count(entities: &[SolveEntityRecord], state: SolveReconciliationState) -> u64 {
+    entities
+        .iter()
+        .filter(|entity| entity.state == state)
+        .count() as u64
+}
+
+fn validate_review_groups_reference_entities(artifact: &SolveArtifact) -> Result<(), Refusal> {
+    let component_ids = artifact
+        .entities
+        .iter()
+        .map(|entity| entity.component_id.as_str())
+        .collect::<BTreeSet<_>>();
+    for seed in &artifact.review_groups {
+        if !component_ids.contains(seed.component_id.as_str()) {
+            return Err(solve_artifact_refusal(
+                "Solve artifact review group references an unknown component",
+                json!({
+                    "stage": "solve",
+                    "field": "review_groups.component_id",
+                    "component_id": seed.component_id
+                }),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn hash_solve_artifact_without_self(artifact: &SolveArtifact) -> Result<String, Refusal> {
+    let mut hashable = artifact.clone();
+    hashable.artifact_content_hash.clear();
+    hashable.metadata.artifact_content_hash.clear();
+    let bytes = serde_json::to_vec(&hashable).map_err(|error| {
+        solve_artifact_refusal(
+            "Failed to hash solve artifact",
+            json!({
+                "stage": "solve",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    Ok(witness::hash_bytes(&bytes))
+}
+
+fn upstream_artifact_cmp(
+    left: &EntityArtifactReference,
+    right: &EntityArtifactReference,
+) -> std::cmp::Ordering {
+    left.version
+        .cmp(&right.version)
+        .then_with(|| left.content_hash.cmp(&right.content_hash))
+}
+
+fn solve_entity_record_cmp(
+    left: &SolveEntityRecord,
+    right: &SolveEntityRecord,
+) -> std::cmp::Ordering {
+    left.component_id
+        .cmp(&right.component_id)
+        .then_with(|| left.surface_ids.cmp(&right.surface_ids))
+        .then_with(|| {
+            left.incumbent_canonical_ids
+                .cmp(&right.incumbent_canonical_ids)
+        })
+}
+
+fn solve_artifact_refusal(message: &'static str, detail: serde_json::Value) -> Refusal {
+    EntityRefusalKind::ArtifactContract.to_refusal(
+        message,
+        detail,
+        Some(
+            "canon entity solve <ROWS> --edges <EDGE_ARTIFACT.json> --registry <REGISTRY_DIR>"
+                .to_string(),
+        ),
+    )
 }
 
 fn solve_component_diagnostics(
