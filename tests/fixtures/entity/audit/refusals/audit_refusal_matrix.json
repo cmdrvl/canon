@@ -1,0 +1,41 @@
+{
+  "version": "canon_entity_audit_refusal_matrix.v0",
+  "cases": [
+    {
+      "id": "audit_stale_registry_snapshot",
+      "refusal_code": "E_ENTITY_REGISTRY_SNAPSHOT",
+      "required_detail_fields": [
+        "stage",
+        "field",
+        "expected",
+        "actual",
+        "writes_performed"
+      ],
+      "writes_performed": false
+    },
+    {
+      "id": "audit_missing_certified_result",
+      "refusal_code": "E_ENTITY_AUDIT_GATE",
+      "required_detail_fields": [
+        "stage",
+        "field",
+        "expected",
+        "actual",
+        "writes_performed"
+      ],
+      "writes_performed": false
+    },
+    {
+      "id": "audit_failed_required_gate",
+      "refusal_code": "E_ENTITY_AUDIT_GATE",
+      "required_detail_fields": [
+        "stage",
+        "gate_id",
+        "expected",
+        "actual",
+        "writes_performed"
+      ],
+      "writes_performed": false
+    }
+  ]
+}

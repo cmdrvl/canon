@@ -139,24 +139,28 @@ fn validate_certified_artifacts(
     result_hash: &str,
 ) -> Result<Vec<EntityArtifactReference>, Refusal> {
     if result_hash.trim().is_empty() {
-        return Err(audit_artifact_refusal(
+        return Err(audit_gate_preflight_refusal(
             "Audit result artifact must carry a content hash",
             json!({
                 "stage": EntityChainStage::Audit.as_str(),
                 "field": "result.artifact_content_hash",
+                "expected": "non_empty_hash",
+                "actual": result_hash,
                 "writes_performed": false
             }),
         ));
     }
     for artifact in &artifacts {
         if artifact.version.trim().is_empty() || artifact.content_hash.trim().is_empty() {
-            return Err(audit_artifact_refusal(
+            return Err(audit_gate_preflight_refusal(
                 "Audit certified artifact references must be non-empty",
                 json!({
                     "stage": EntityChainStage::Audit.as_str(),
                     "field": "certified_artifacts",
                     "version": artifact.version,
                     "content_hash": artifact.content_hash,
+                    "expected": "non_empty_version_and_hash",
+                    "actual": "missing_version_or_hash",
                     "writes_performed": false
                 }),
             ));
@@ -168,12 +172,17 @@ fn validate_certified_artifacts(
         .iter()
         .any(|artifact| artifact.version == result_version && artifact.content_hash == result_hash)
     {
-        return Err(audit_artifact_refusal(
+        return Err(audit_gate_preflight_refusal(
             "Audit must certify the exact result artifact being promoted",
             json!({
                 "stage": EntityChainStage::Audit.as_str(),
                 "field": "certified_artifacts",
                 "expected": format!("{result_version}@{result_hash}"),
+                "actual": artifacts
+                    .iter()
+                    .map(|artifact| format!("{}@{}", artifact.version, artifact.content_hash))
+                    .collect::<Vec<_>>()
+                    .join(","),
                 "writes_performed": false
             }),
         ));
@@ -309,5 +318,13 @@ fn audit_artifact_refusal(message: &'static str, detail: serde_json::Value) -> R
         message,
         detail,
         Some("canon entity audit <RESULT.json> --suite <SUITE_DIR>".to_string()),
+    )
+}
+
+fn audit_gate_preflight_refusal(message: &'static str, detail: serde_json::Value) -> Refusal {
+    EntityRefusalKind::AuditGate.to_refusal(
+        message,
+        detail,
+        Some("Fix the audited artifact set, then rerun canon entity audit".to_string()),
     )
 }
