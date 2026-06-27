@@ -265,6 +265,14 @@ fn entity_namespace_cli() {
     let describe_stdout = String::from_utf8(describe.get_output().stdout.clone()).unwrap();
     let describe_json: Value =
         serde_json::from_str(&describe_stdout).expect("--describe should output valid JSON");
+    // Regression guard: the embedded operator.json contract version must track the
+    // crate version. A release bump that updates Cargo.toml but forgets operator.json
+    // would otherwise ship a stale contract (and fail `doctor health`).
+    assert_eq!(
+        describe_json["version"].as_str(),
+        Some(env!("CARGO_PKG_VERSION")),
+        "operator.json version must match the crate version; bump operator.json when bumping Cargo.toml"
+    );
     let usage = describe_json["invocation"]["usage"]
         .as_array()
         .expect("describe invocation usage should be an array");
