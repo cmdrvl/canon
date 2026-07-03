@@ -363,7 +363,7 @@ fn build_and_write_block(
         profile_id: index.artifact.metadata.profile.id.clone(),
         posting_index: &index.postings,
         ngram_index: Some(&index.ngrams),
-        budget_config: BlockCandidateBudgetConfig::new(100, 1_000, 25_000),
+        budget_config: BlockCandidateBudgetConfig::new(100, 25_000, 25_000),
         operators: vec![
             BlockCandidateOperator::NgramTopK(NgramTopKBlockOperator::new(
                 "ngram_topk:run",
