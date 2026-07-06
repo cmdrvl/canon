@@ -44,6 +44,7 @@ use std::{
 };
 
 const ORG_V1_PROFILE: &str = "bdc_issuer";
+const LEGACY_ENTITY_MAX_CANDIDATE_PAIR_EXPANSIONS: u64 = 25_000_000;
 
 enum EntityRunExecution {
     Legacy {
@@ -1301,6 +1302,40 @@ fn run_entity_run_pipeline(run: &EntityRunCli) -> Result<EntityRunExecution, Can
         .map_err(create_entity_refusal)?;
     let observations = entity_runtime::projection::project_input(&run.rows, &strategy, None, None)
         .map_err(create_entity_refusal)?;
+    let candidate_estimate =
+        entity_runtime::block::estimate_candidate_block_pairs(&strategy, &observations, &incumbent)
+            .map_err(create_entity_refusal)?;
+    if candidate_estimate.total_pair_expansions > LEGACY_ENTITY_MAX_CANDIDATE_PAIR_EXPANSIONS {
+        return Err(refusal::create_refusal(
+            RefusalCode::EEntityCandidateBudget,
+            "Legacy entity run candidate budget exceeded before candidate emission".to_string(),
+            serde_json::json!({
+                "stage": "block",
+                "reason": "legacy_candidate_pair_budget_exceeded",
+                "policy_id": "legacy_entity_run.max_candidate_pair_expansions",
+                "observed": candidate_estimate.total_pair_expansions,
+                "configured": LEGACY_ENTITY_MAX_CANDIDATE_PAIR_EXPANSIONS,
+                "row_count": observations.len(),
+                "strategy_id": strategy.id,
+                "strategy_version": strategy.version,
+                "max_operator_pair_expansions": candidate_estimate.max_operator_pair_expansions,
+                "max_bucket": {
+                    "operator_id": candidate_estimate.max_bucket_operator_id,
+                    "value": candidate_estimate.max_bucket_value,
+                    "row_count": candidate_estimate.max_bucket_row_count,
+                    "pair_expansions": candidate_estimate.max_bucket_pair_expansions
+                },
+                "partial_candidate_artifact_written": false,
+                "partial_run_artifact_written": false
+            }),
+            Some(format!(
+                "Use canon entity run {} --profile <PROFILE> --strategy {} --registry {} --work-dir <DIR>, or reduce duplicate physical rows before legacy run",
+                run.rows.display(),
+                run.strategy.display(),
+                run.registry.display()
+            )),
+        ));
+    }
     let blocks =
         entity_runtime::block::build_candidate_blocks(&strategy, &observations, &incumbent)
             .map_err(create_entity_refusal)?;

@@ -3,6 +3,7 @@ use canon::{
     entity::error::{EntityRefusalKind, entity_refusal},
 };
 use serde_json::{Value, json};
+use std::{fs, process::Command};
 
 #[test]
 fn entity_refusal_codes_serialize_to_stable_strings() {
@@ -94,6 +95,66 @@ fn entity_refusal_can_override_next_command() {
             .as_deref()
             .unwrap()
             .contains("--max-candidates-per-surface 64")
+    );
+}
+
+#[test]
+fn legacy_entity_run_refuses_dense_candidate_expansion_before_emission() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let rows = temp.path().join("dense_org_mentions.csv");
+    let mut csv = String::from(
+        "source_row_id,record_id,dataset,record_version,field_name,org_name,doc_id,as_of_date,filing_cik,accession,filing_form,filed_date,period,source_exhibit_document_name,source_exhibit_type,source_item,role_context,capacity,capacity_normalized,reporting_party_capacity,platform_capacity,platform_capacity_normalized,subject_role,deal_key,transaction_name,alias_surfaces_json,mention_surfaces_json\n",
+    );
+    for index in 0..7_100 {
+        csv.push_str(&format!(
+            "row-{index:04},record-{index:04},regab_servicer_schedules,sec10d.regab_servicer_schedule.v0,servicer_name,Trimont LLC,doc-1,2026-03-31,0000000000,0000000000-26-000001,10-K,2026-03-31,2025-12-31,fixture.htm,EX-35,1123,servicer_name:servicer,Servicer,servicer,master servicer,,,,DEAL-1,Deal 1,[],[]\n"
+        ));
+    }
+    fs::write(&rows, csv).expect("dense rows fixture");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "run",
+            rows.to_str().expect("rows path"),
+            "--strategy",
+            "tests/fixtures/entity/strategies/regab_firm_identity.yaml",
+            "--registry",
+            "tests/fixtures/entity/regab/sec10d_baseline_public/registry_snapshot/firms",
+            "--emit",
+            "json",
+            "--no-witness",
+        ])
+        .output()
+        .expect("canon entity run executes");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        output.stderr.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).expect("refusal JSON");
+    assert_eq!(value["outcome"], "REFUSAL");
+    assert_eq!(value["refusal"]["code"], "E_ENTITY_CANDIDATE_BUDGET");
+    assert_eq!(
+        value["refusal"]["detail"]["reason"],
+        "legacy_candidate_pair_budget_exceeded"
+    );
+    assert_eq!(
+        value["refusal"]["detail"]["partial_candidate_artifact_written"],
+        json!(false)
+    );
+    assert_eq!(
+        value["refusal"]["detail"]["max_bucket"]["operator_id"],
+        "exact_view:firm_core"
+    );
+    assert_eq!(value["refusal"]["detail"]["max_bucket"]["value"], "trimont");
+    assert!(
+        value["refusal"]["detail"]["observed"]
+            .as_u64()
+            .expect("observed count")
+            > 25_000_000
     );
 }
 

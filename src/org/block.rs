@@ -53,6 +53,16 @@ struct PreparedObservation {
     registry_ids: BTreeSet<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CandidateBlockEstimate {
+    pub total_pair_expansions: u64,
+    pub max_operator_pair_expansions: u64,
+    pub max_bucket_pair_expansions: u64,
+    pub max_bucket_row_count: u64,
+    pub max_bucket_operator_id: String,
+    pub max_bucket_value: String,
+}
+
 pub fn build_candidate_blocks(
     strategy: &EntityStrategy,
     observations: &[ProjectedObservation],
@@ -94,6 +104,145 @@ pub fn build_candidate_blocks(
                 .collect(),
         })
         .collect())
+}
+
+pub fn estimate_candidate_block_pairs(
+    strategy: &EntityStrategy,
+    observations: &[ProjectedObservation],
+    incumbent: &IncumbentMemory,
+) -> EntityResult<CandidateBlockEstimate> {
+    let prepared = prepare_observations(strategy, observations, incumbent);
+    let mut estimate = CandidateBlockEstimate {
+        total_pair_expansions: 0,
+        max_operator_pair_expansions: 0,
+        max_bucket_pair_expansions: 0,
+        max_bucket_row_count: 0,
+        max_bucket_operator_id: String::new(),
+        max_bucket_value: String::new(),
+    };
+
+    for operator in &strategy.blocking {
+        let operator_id = match operator.op.as_str() {
+            "exact_view" => {
+                let view = required_string_param(operator, "view")?;
+                require_known_view(strategy, &view)?;
+                let buckets = value_buckets_for_prepared(
+                    &prepared,
+                    format!("exact_view:{view}"),
+                    |observation| observation.view_values.get(&view),
+                );
+                add_bucket_estimate(&mut estimate, buckets);
+                continue;
+            }
+            "shared_anchor" => {
+                let anchor = required_string_param(operator, "anchor")?;
+                if !strategy.observations.anchor_fields.contains_key(&anchor) {
+                    return Err(strategy_error(
+                        "Blocking operator references an unknown anchor namespace",
+                        json!({ "anchor": anchor }),
+                    ));
+                }
+                let buckets = value_buckets_for_prepared(
+                    &prepared,
+                    format!("shared_anchor:{anchor}"),
+                    |observation| observation.anchors.get(&anchor),
+                );
+                add_bucket_estimate(&mut estimate, buckets);
+                continue;
+            }
+            "registry_alias_match" => "registry_alias_match".to_string(),
+            "rare_token_overlap" => {
+                let left_view = required_string_param(operator, "left_view")?;
+                let right_view = required_string_param(operator, "right_view")?;
+                require_known_view(strategy, &left_view)?;
+                require_known_view(strategy, &right_view)?;
+                format!("rare_token_overlap:{left_view}:{right_view}")
+            }
+            other => {
+                return Err(strategy_error(
+                    "Unsupported blocking operator for block generation",
+                    json!({ "operator": other }),
+                ));
+            }
+        };
+
+        let operator_pairs = match operator.op.as_str() {
+            "registry_alias_match" => {
+                let buckets = value_buckets_for_prepared(&prepared, operator_id, |observation| {
+                    Some(&observation.registry_ids)
+                });
+                add_bucket_estimate(&mut estimate, buckets);
+                continue;
+            }
+            "rare_token_overlap" => choose_two(prepared.len() as u64),
+            _ => 0,
+        };
+        estimate.total_pair_expansions = estimate
+            .total_pair_expansions
+            .saturating_add(operator_pairs);
+        estimate.max_operator_pair_expansions =
+            estimate.max_operator_pair_expansions.max(operator_pairs);
+        if operator_pairs > estimate.max_bucket_pair_expansions {
+            estimate.max_bucket_pair_expansions = operator_pairs;
+            estimate.max_bucket_row_count = prepared.len() as u64;
+            estimate.max_bucket_operator_id = operator_id;
+            estimate.max_bucket_value = "<all_rows>".to_string();
+        }
+    }
+
+    Ok(estimate)
+}
+
+fn value_buckets_for_prepared<'a, F>(
+    prepared: &'a [PreparedObservation],
+    operator_id: String,
+    values: F,
+) -> Vec<(String, String, u64)>
+where
+    F: Fn(&'a PreparedObservation) -> Option<&'a BTreeSet<String>>,
+{
+    let mut buckets = BTreeMap::<String, u64>::new();
+    for observation in prepared {
+        if let Some(values) = values(observation) {
+            for value in values {
+                *buckets.entry(value.clone()).or_default() += 1;
+            }
+        }
+    }
+
+    buckets
+        .into_iter()
+        .map(|(value, row_count)| (operator_id.clone(), value, row_count))
+        .collect()
+}
+
+fn add_bucket_estimate(estimate: &mut CandidateBlockEstimate, buckets: Vec<(String, String, u64)>) {
+    let mut operator_pairs = BTreeMap::<String, u64>::new();
+    for (operator_id, value, row_count) in buckets {
+        let bucket_pairs = choose_two(row_count);
+        estimate.total_pair_expansions =
+            estimate.total_pair_expansions.saturating_add(bucket_pairs);
+        *operator_pairs.entry(operator_id.clone()).or_default() = operator_pairs
+            .get(&operator_id)
+            .copied()
+            .unwrap_or_default()
+            .saturating_add(bucket_pairs);
+
+        if bucket_pairs > estimate.max_bucket_pair_expansions {
+            estimate.max_bucket_pair_expansions = bucket_pairs;
+            estimate.max_bucket_row_count = row_count;
+            estimate.max_bucket_operator_id = operator_id;
+            estimate.max_bucket_value = value;
+        }
+    }
+    if let Some(operator_max) = operator_pairs.values().copied().max() {
+        estimate.max_operator_pair_expansions =
+            estimate.max_operator_pair_expansions.max(operator_max);
+    }
+}
+
+fn choose_two(count: u64) -> u64 {
+    count.saturating_mul(count.saturating_sub(1)) / 2
 }
 
 fn prepare_observations(
@@ -750,6 +899,46 @@ mod tests {
                 "shared_anchor:lei".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn candidate_pair_estimate_reports_dense_exact_bucket_before_expansion() {
+        let strategy = test_strategy(vec![operator(
+            "exact_view",
+            &[("view", json!("core_name"))],
+        )]);
+        let incumbent = incumbent_memory();
+        let observations = (0..1_001)
+            .map(|index| observation(&format!("row-{index:04}"), "Computershare Trust Company"))
+            .collect::<Vec<_>>();
+
+        let estimate =
+            estimate_candidate_block_pairs(&strategy, &observations, &incumbent).unwrap();
+
+        assert_eq!(estimate.total_pair_expansions, 500_500);
+        assert_eq!(estimate.max_operator_pair_expansions, 500_500);
+        assert_eq!(estimate.max_bucket_pair_expansions, 500_500);
+        assert_eq!(estimate.max_bucket_row_count, 1_001);
+        assert_eq!(estimate.max_bucket_operator_id, "exact_view:core_name");
+        assert_eq!(estimate.max_bucket_value, "computershare trust");
+    }
+
+    #[test]
+    fn candidate_pair_estimate_includes_registry_alias_buckets() {
+        let strategy = test_strategy(vec![operator("registry_alias_match", &[])]);
+        let mut incumbent = incumbent_memory();
+        incumbent.alias_entries = vec![alias_entry("Trimont LLC", "ORG-001")];
+        let observations = (0..4)
+            .map(|index| observation(&format!("row-{index}"), "Trimont LLC"))
+            .collect::<Vec<_>>();
+
+        let estimate =
+            estimate_candidate_block_pairs(&strategy, &observations, &incumbent).unwrap();
+
+        assert_eq!(estimate.total_pair_expansions, 6);
+        assert_eq!(estimate.max_bucket_pair_expansions, 6);
+        assert_eq!(estimate.max_bucket_operator_id, "registry_alias_match");
+        assert_eq!(estimate.max_bucket_value, "ORG-001");
     }
 
     fn test_strategy(blocking: Vec<StrategyOperator>) -> EntityStrategy {
