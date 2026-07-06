@@ -1,5 +1,5 @@
 strategy_id: regab_firm_identity.v1
-strategy_version: "0.1.0"
+strategy_version: "0.1.1"
 entity_type: organization
 description: "Resolve reviewed Reg AB firm aliases from sec10d org_mentions observations"
 id_prefix: "ORG"
@@ -35,29 +35,19 @@ normalize:
 blocking:
   - op: exact_view
     view: firm_core
-  - op: rare_token_overlap
-    left_view: firm_tokens
-    right_view: firm_tokens
-    min_tokens: 1
-    min_idf: 1.0
-  - op: shared_anchor
-    anchor: accession
   - op: registry_alias_match
 
 evidence:
   must_link:
-    - op: shared_anchor
-      anchor: accession
+    - op: registry_alias_match
   support:
     - op: exact_view
       view: firm_core
-      score: 32
+      score: 8
     - op: categorical_equal
       field: field_name
-      score: 4
-  cannot_link:
-    - op: conflicting_anchor
-      anchor: cik
+      score: 2
+  cannot_link: []
 
 solver:
   score_mode: namespace_max_sum
@@ -81,9 +71,9 @@ reconcile:
 
 anchors:
   precedence: [accession, cik]
-  trusted_for_must_link: [accession]
-  trusted_for_single_doc_promotion: [accession]
-  support_only: [cik]
+  trusted_for_must_link: []
+  trusted_for_single_doc_promotion: []
+  support_only: [accession, cik]
   require_unique_for_attachment: true
 
 promotion:

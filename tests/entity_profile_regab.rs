@@ -187,4 +187,35 @@ fn assert_regab_strategy_contract(strategy: &EntityStrategy) {
             .context_fields
             .contains(&"platform_capacity".to_string())
     );
+    assert_eq!(
+        strategy
+            .evidence
+            .must_link
+            .iter()
+            .map(|operator| operator.op.as_str())
+            .collect::<Vec<_>>(),
+        ["registry_alias_match"]
+    );
+    assert!(
+        strategy.evidence.cannot_link.is_empty(),
+        "filing CIK/accession are document context, not Reg AB firm identity cannot-link evidence"
+    );
+    let exact_support = strategy
+        .evidence
+        .support
+        .iter()
+        .find(|operator| operator.op == "exact_view")
+        .expect("exact_view support remains available for review evidence");
+    assert_eq!(exact_support.params.get("score"), Some(&json!(8)));
+    assert!(
+        exact_support
+            .params
+            .get("score")
+            .and_then(Value::as_i64)
+            .is_some_and(|score| score < strategy.solver.backbone_score_min),
+        "exact-name support must not form Reg AB firm merges without reviewed registry aliases"
+    );
+    assert!(strategy.anchors.trusted_for_must_link.is_empty());
+    assert!(strategy.anchors.trusted_for_single_doc_promotion.is_empty());
+    assert_eq!(strategy.anchors.support_only, ["accession", "cik"]);
 }

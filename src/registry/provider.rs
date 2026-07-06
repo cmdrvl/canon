@@ -792,13 +792,7 @@ fn openfigi_auth_header_value(provider_options: &BTreeMap<String, String>) -> Op
         .get("api_key")
         .cloned()
         .or_else(|| env::var("OPENFIGI_API_KEY").ok())
-        .and_then(|value| {
-            if value.trim().is_empty() {
-                None
-            } else {
-                Some(value)
-            }
-        })
+        .filter(|value| !value.trim().is_empty())
 }
 
 fn openfigi_mapping_filters(
@@ -1058,13 +1052,7 @@ fn push_mapping(
 }
 
 fn normalize_nonempty(value: Option<&str>) -> Option<&str> {
-    value.and_then(|candidate| {
-        if candidate.trim().is_empty() {
-            None
-        } else {
-            Some(candidate)
-        }
-    })
+    value.filter(|candidate| !candidate.trim().is_empty())
 }
 
 #[cfg(test)]
@@ -1594,7 +1582,7 @@ mod tests {
         let api_key = schema
             .options
             .iter()
-            .find(|option| option.key == "api_key")
+            .find(|option| option.key.as_str().eq("api_key"))
             .expect("api_key option present");
         assert!(api_key.secret);
         assert_eq!(api_key.env_fallback.as_deref(), Some("OPENFIGI_API_KEY"));
