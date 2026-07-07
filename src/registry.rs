@@ -4,6 +4,9 @@ use crate::{
     RegistryDiffVersion, RegistryMeta,
 };
 pub use build::{RegistryBuildError, RegistryBuildErrorKind, RegistryBuildRequest, build_registry};
+pub use export::{
+    RegistryExportFormat, RegistryExportOutput, RegistryExportRequest, export_registry,
+};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -14,6 +17,7 @@ use std::time::SystemTime;
 
 mod add_entry;
 mod build;
+mod export;
 mod id_scheme;
 mod mint;
 mod next_id;

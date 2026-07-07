@@ -328,6 +328,7 @@ canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
 canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <YAML> --registry <DIR> [--gold <JSONL>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon doctor [health [--json]|capabilities [--json]|robot-docs|--robot-triage]
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [OPTIONS]
+canon registry export --format dbt-seed|search-index --registry <REGISTRY> --out <PATH> [OPTIONS]
 canon registry providers [--emit json|summary]
 canon registry provider-schema <PROVIDER> [--emit json|summary]
 canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
@@ -386,6 +387,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `doctor [health [--json]\|capabilities [--json]\|robot-docs\|--robot-triage]` | Read-only compiled-contract diagnostics for agents. Does not read inputs, registries, SQLite indexes, or witness ledgers, does not contact providers, and has no `--fix` mode. |
 | `resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <YAML> --registry <DIR> [--gold <JSONL>] [--write-back] [--emit json\|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>]` | Cross-tape structural resolution workbench. Loads two tapes, filters candidates, scores matches, optionally evaluates gold, and writes matched ID pairs back to the registry when explicitly requested. |
 | `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides such as OpenFIGI `id_type`, `base_url`, `api_key`, or mapping filters like `exchCode=US`. |
+| `registry export --format dbt-seed\|search-index --registry <DIR> --out <PATH>` | Export a versioned registry as a deterministic dbt seed CSV or a self-describing SQLite search index, with optional source-file, canonical-type, and rule-id-prefix filters. |
 | `registry providers [--emit json\|summary]` | List the registry build providers available for materialization, with their seed-column support and a pointer to each provider's schema command. |
 | `registry provider-schema <PROVIDER> [--emit json\|summary]` | Emit one provider's machine-readable `--provider-config` option contract — keys, types, enum values, secret flags, env fallbacks, defaults, mutual exclusions, interval encoding, and examples. Deterministic and offline; never contacts the provider. |
 | `registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain\|json]` | Read the existing canonical IDs for a self-authored namespace and suggest the next deterministic ID. Uses `registry.json.default_id_scheme` when `PREFIX` is omitted. |
@@ -420,7 +422,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `1` | PARTIAL or UNRESOLVED (some or all inputs unresolved) |
 | `2` | REFUSAL or CLI error |
 
-`canon registry diff`, `canon registry audit`, and `canon registry lint` exit `0` when the report succeeds and `2` on refusal. Lint findings are represented inside `canon_registry_lint.v0` rather than via exit status. `canon registry build`, `registry next-id`, `registry add-entry`, `registry mint`, and `registry default-id-scheme` exit `0` when their report or write succeeds and `2` on refusal. Provider failures from `registry build` are preserved in the JSON report and warned on stderr. `add-entry` and `mint` restore the original files if their post-write lint gate finds errors.
+`canon registry diff`, `canon registry audit`, `canon registry export`, and `canon registry lint` exit `0` when the report succeeds and `2` on refusal. Lint findings are represented inside `canon_registry_lint.v0` rather than via exit status. `canon registry build`, `registry next-id`, `registry add-entry`, `registry mint`, and `registry default-id-scheme` exit `0` when their report or write succeeds and `2` on refusal. Provider failures from `registry build` are preserved in the JSON report and warned on stderr. `add-entry` and `mint` restore the original files if their post-write lint gate finds errors.
 
 `canon strategy profile`, `canon strategy register`, `canon strategy update`, `canon strategy deprecate`, `canon strategy promote`, `canon strategy list`, `canon strategy explain`, and `canon strategy diff` exit `0` when their reports or writes succeed and `2` on refusal. `canon strategy audit` exits `0` when all fixtures pass, `1` when deterministic fixture checks fail, and `2` on refusal. `canon strategy resolve` exits `0` for a schema EXACT/COMPATIBLE or task EXACT match, `1` for schema PARTIAL/UNRESOLVED or task UNRESOLVED, and `2` on refusal.
 
@@ -495,6 +497,30 @@ Preflight a registry before production use:
 ```bash
 canon registry lint registries/org/ --profile auto --emit summary
 ```
+
+Export a context-scoped dbt seed snapshot:
+
+```bash
+canon registry export \
+  --format dbt-seed \
+  --registry registries/funds/ \
+  --namespace funds \
+  --canonical-type fund \
+  --out seeds/canon_funds.csv \
+  --schema-out models/schema.yml \
+  --anti-collapse-test-out tests/assert_canon_funds_no_collapse.sql
+```
+
+Export a generic SQLite search index for serving endpoints:
+
+```bash
+canon registry export \
+  --format search-index \
+  --registry registries/funds/ \
+  --out artifacts/funds.search.sqlite
+```
+
+Both export formats preserve the registry boundary: they snapshot exact registry knowledge with version, content hash, source file, rule, alias kind, normalized key, and `canonical_iri` provenance. They do not add serving coverage facts or call providers.
 
 Materialize a registry from a provider-backed seed corpus. `openfigi` supports `cusip`, `isin`, and `sedol` seed columns by inference, or an explicit `--provider-config id_type=ID_CUSIP|ID_ISIN|ID_SEDOL`; use `--provider-config base_url=...` for local twins and tests. Corpus-wide OpenFIGI mapping filters pass through to every mapping job when supplied as provider config, including `exchCode`, `micCode`, `currency`, `marketSecDes`, `securityType`, `securityType2`, `optionType`, `includeUnlistedEquities`, `strike`, `contractSize`, `coupon`, `expiration`, and `maturity`. These filters narrow provider materialization only; normal canon lookup still reads static registry files and never calls OpenFIGI. For CMBS-style corpora, extract identifiers from the source tapes, normalize and dedupe them, split CUSIP/ISIN/SEDOL into separate seed files, run one build per id type, publish the resulting static registries, and use `--incremental` for follow-up corpus refreshes:
 

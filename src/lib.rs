@@ -24,13 +24,13 @@ use crate::cli::{
     EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewImportCli, EntityReviewInclude,
     EntityReviewSubcommand, EntityRunCli, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand,
     RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli,
-    RegistryDiffCli, RegistryEmitMode, RegistryLintCli, RegistryLintProfile, RegistryMintCli,
-    RegistryNextIdCli, RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli,
-    RegistrySubcommand, RegistryVersionBumpMode, ResolveCli, ResolveEmitMode, StrategyAuditCli,
-    StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli, StrategyGradeArg,
-    StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
-    StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
-    StrategyUpdateCli,
+    RegistryDiffCli, RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryLintCli,
+    RegistryLintProfile, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
+    RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode,
+    ResolveCli, ResolveEmitMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
+    StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
+    StrategyProfileCli, StrategyPromoteCli, StrategyRegisterCli, StrategyResolveCli,
+    StrategyStatusArg, StrategySubcommand, StrategyUpdateCli,
 };
 use crate::entity::runtime as entity_runtime;
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
@@ -145,6 +145,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
         CanonCommand::Doctor(args) => doctor::run(args),
         CanonCommand::Resolve(resolve) => run_resolve_command(resolve),
         CanonCommand::Registry(command) => match &command.command {
+            RegistrySubcommand::Export(export) => run_registry_export(export),
             RegistrySubcommand::NextId(next_id) => run_registry_next_id(next_id),
             RegistrySubcommand::AddEntry(add_entry) => run_registry_add_entry(add_entry),
             RegistrySubcommand::Mint(mint) => run_registry_mint(mint),
@@ -1014,6 +1015,43 @@ fn registry_version_bump(bump: RegistryVersionBumpMode) -> registry::RegistryVer
         RegistryVersionBumpMode::Patch => registry::RegistryVersionBump::Patch,
         RegistryVersionBumpMode::Minor => registry::RegistryVersionBump::Minor,
         RegistryVersionBumpMode::Major => registry::RegistryVersionBump::Major,
+    }
+}
+
+fn run_registry_export(export: &RegistryExportCli) -> Result<u8, Box<dyn Error>> {
+    let format = match export.format {
+        RegistryExportFormatCli::DbtSeed => registry::RegistryExportFormat::DbtSeed,
+        RegistryExportFormatCli::SearchIndex => registry::RegistryExportFormat::SearchIndex,
+    };
+    let request = registry::RegistryExportRequest {
+        registry: export.registry.clone(),
+        format,
+        out: export.out.clone(),
+        namespace: export.namespace.clone(),
+        source_files: export.source_files.clone(),
+        canonical_types: export.canonical_types.clone(),
+        rule_id_prefixes: export.rule_id_prefixes.clone(),
+        canonical_iri_prefix: export.canonical_iri_prefix.clone(),
+        schema_out: export.schema_out.clone(),
+        anti_collapse_test_out: export.anti_collapse_test_out.clone(),
+    };
+
+    match registry::export_registry(request) {
+        Ok(output) => {
+            match export.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => println!("{}", output.render_summary()),
+            }
+            Ok(0)
+        }
+        Err(refusal) => {
+            let output = refusal.to_canon_output();
+            match export.emit {
+                RegistryEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
+                RegistryEmitMode::Summary => eprintln!("{}", serde_json::to_string(&output)?),
+            }
+            Ok(2)
+        }
     }
 }
 

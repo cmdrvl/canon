@@ -1,0 +1,901 @@
+use super::{MappingFile, load_registry_definition};
+use crate::{Refusal, RefusalCode, RegistryMeta};
+use chrono::{SecondsFormat, Utc};
+use rusqlite::{Connection, params};
+use serde::Serialize;
+use serde_json::json;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs::{self, File},
+    path::{Path, PathBuf},
+};
+
+const EXPORT_VERSION: &str = "canon_registry_export.v0";
+const SEARCH_INDEX_ARTIFACT_VERSION: &str = "canon_registry_search_index.v0";
+const NORMALIZATION_SPEC_ID: &str = "canon_registry_search_key.v0";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RegistryExportFormat {
+    DbtSeed,
+    SearchIndex,
+}
+
+impl RegistryExportFormat {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::DbtSeed => "dbt-seed",
+            Self::SearchIndex => "search-index",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryExportRequest {
+    pub registry: PathBuf,
+    pub format: RegistryExportFormat,
+    pub out: PathBuf,
+    pub namespace: Option<String>,
+    pub source_files: Vec<String>,
+    pub canonical_types: Vec<String>,
+    pub rule_id_prefixes: Vec<String>,
+    pub canonical_iri_prefix: String,
+    pub schema_out: Option<PathBuf>,
+    pub anti_collapse_test_out: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RegistryExportFilters {
+    pub namespace: Option<String>,
+    pub source_files: Vec<String>,
+    pub canonical_types: Vec<String>,
+    pub rule_id_prefixes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RegistryExportSummary {
+    pub source_entry_count: usize,
+    pub filtered_entry_count: usize,
+    pub exported_alias_count: usize,
+    pub exported_entity_count: usize,
+    pub skipped_filter_count: usize,
+    pub skipped_shadowed_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RegistryExportOutput {
+    pub version: String,
+    pub format: String,
+    pub registry: RegistryMeta,
+    pub output_path: String,
+    pub content_hash: String,
+    pub normalization_spec: String,
+    pub filters: RegistryExportFilters,
+    pub summary: RegistryExportSummary,
+    pub files: Vec<String>,
+}
+
+impl RegistryExportOutput {
+    pub fn render_summary(&self) -> String {
+        format!(
+            "{} {} export: {} aliases, {} entities -> {} ({})",
+            self.registry.id,
+            self.format,
+            self.summary.exported_alias_count,
+            self.summary.exported_entity_count,
+            self.output_path,
+            self.content_hash
+        )
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ExportRow {
+    namespace: Option<String>,
+    input: String,
+    normalized_key: String,
+    canonical_id: String,
+    canonical_iri: String,
+    canonical_type: String,
+    alias_kind: String,
+    rule_id: String,
+    match_source: String,
+    registry_id: String,
+    registry_version: String,
+    source_file: String,
+    entry_order: usize,
+}
+
+#[derive(Debug, Clone)]
+struct EntityRow {
+    canonical_id: String,
+    canonical_iri: String,
+    canonical_type: String,
+    display_name: String,
+    normalized_display_key: String,
+    alias_count: usize,
+    display_rank: u8,
+}
+
+#[derive(Debug, Clone)]
+struct ExportPlan {
+    registry: RegistryMeta,
+    filters: RegistryExportFilters,
+    source_entry_count: usize,
+    filtered_entry_count: usize,
+    skipped_filter_count: usize,
+    skipped_shadowed_count: usize,
+    rows: Vec<ExportRow>,
+    entities: Vec<EntityRow>,
+    content_hash: String,
+}
+
+pub fn export_registry(request: RegistryExportRequest) -> Result<RegistryExportOutput, Refusal> {
+    validate_request(&request)?;
+    let plan = plan_export(&request)?;
+
+    let mut files = vec![request.out.display().to_string()];
+    match request.format {
+        RegistryExportFormat::DbtSeed => {
+            write_dbt_seed(&request.out, &plan.rows)?;
+            if let Some(schema_out) = &request.schema_out {
+                write_dbt_schema(schema_out, &request.out)?;
+                files.push(schema_out.display().to_string());
+            }
+            if let Some(test_out) = &request.anti_collapse_test_out {
+                write_anti_collapse_test(test_out, &request.out)?;
+                files.push(test_out.display().to_string());
+            }
+        }
+        RegistryExportFormat::SearchIndex => {
+            write_search_index(&request.out, &request, &plan)?;
+        }
+    }
+
+    Ok(RegistryExportOutput {
+        version: EXPORT_VERSION.to_string(),
+        format: request.format.as_str().to_string(),
+        registry: plan.registry,
+        output_path: request.out.display().to_string(),
+        content_hash: plan.content_hash,
+        normalization_spec: NORMALIZATION_SPEC_ID.to_string(),
+        filters: plan.filters,
+        summary: RegistryExportSummary {
+            source_entry_count: plan.source_entry_count,
+            filtered_entry_count: plan.filtered_entry_count,
+            exported_alias_count: plan.rows.len(),
+            exported_entity_count: plan.entities.len(),
+            skipped_filter_count: plan.skipped_filter_count,
+            skipped_shadowed_count: plan.skipped_shadowed_count,
+        },
+        files,
+    })
+}
+
+fn validate_request(request: &RegistryExportRequest) -> Result<(), Refusal> {
+    if request.canonical_iri_prefix.trim().is_empty() {
+        return Err(parse_refusal(
+            "Registry export requires a non-empty --canonical-iri-prefix",
+            json!({ "canonical_iri_prefix": request.canonical_iri_prefix }),
+            "canon registry export --canonical-iri-prefix cmdrvl:",
+        ));
+    }
+
+    if matches!(request.format, RegistryExportFormat::DbtSeed)
+        && request.namespace.as_deref().unwrap_or("").trim().is_empty()
+    {
+        return Err(parse_refusal(
+            "canon registry export --format dbt-seed requires --namespace",
+            json!({ "format": request.format.as_str() }),
+            "canon registry export --format dbt-seed --namespace <CONTEXT> --registry <DIR> --out <seed.csv>",
+        ));
+    }
+
+    if matches!(request.format, RegistryExportFormat::SearchIndex)
+        && (request.schema_out.is_some() || request.anti_collapse_test_out.is_some())
+    {
+        return Err(parse_refusal(
+            "dbt scaffold outputs are only valid with --format dbt-seed",
+            json!({
+                "format": request.format.as_str(),
+                "schema_out": request.schema_out.as_ref().map(|path| path.display().to_string()),
+                "anti_collapse_test_out": request.anti_collapse_test_out.as_ref().map(|path| path.display().to_string()),
+            }),
+            "Remove --schema-out/--anti-collapse-test-out or use --format dbt-seed",
+        ));
+    }
+
+    Ok(())
+}
+
+fn plan_export(request: &RegistryExportRequest) -> Result<ExportPlan, Refusal> {
+    let (_, registry, mapping_files) =
+        load_registry_definition(&request.registry).map_err(|error| {
+            Refusal::bad_registry(&request.registry.display().to_string(), &error.to_string())
+        })?;
+
+    let filters = RegistryExportFilters {
+        namespace: request.namespace.clone(),
+        source_files: sorted_unique(request.source_files.clone()),
+        canonical_types: sorted_unique(request.canonical_types.clone()),
+        rule_id_prefixes: sorted_unique(request.rule_id_prefixes.clone()),
+    };
+    let source_entry_count = mapping_files.iter().map(|file| file.entries.len()).sum();
+    let (rows, filtered_entry_count, skipped_filter_count, skipped_shadowed_count) = collect_rows(
+        &registry,
+        &mapping_files,
+        &filters,
+        &request.canonical_iri_prefix,
+    );
+    let entities = collect_entities(&rows);
+    let content_hash = hash_logical_export(request.format, &registry, &filters, &rows, &entities)?;
+
+    Ok(ExportPlan {
+        registry,
+        filters,
+        source_entry_count,
+        filtered_entry_count,
+        skipped_filter_count,
+        skipped_shadowed_count,
+        rows,
+        entities,
+        content_hash,
+    })
+}
+
+fn collect_rows(
+    registry: &RegistryMeta,
+    mapping_files: &[MappingFile],
+    filters: &RegistryExportFilters,
+    canonical_iri_prefix: &str,
+) -> (Vec<ExportRow>, usize, usize, usize) {
+    let mut rows = Vec::new();
+    let mut seen_inputs = BTreeSet::new();
+    let mut filtered_entry_count = 0;
+    let mut skipped_filter_count = 0;
+    let mut skipped_shadowed_count = 0;
+
+    for mapping_file in mapping_files {
+        let source_file = mapping_file
+            .path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+        for (entry_order, entry) in mapping_file.entries.iter().enumerate() {
+            if !passes_filters(
+                entry.canonical_type.as_str(),
+                entry.rule_id.as_str(),
+                &source_file,
+                filters,
+            ) {
+                skipped_filter_count += 1;
+                continue;
+            }
+            filtered_entry_count += 1;
+            let input = ascii_trim(&entry.input).to_string();
+            if !seen_inputs.insert(input.clone()) {
+                skipped_shadowed_count += 1;
+                continue;
+            }
+            rows.push(ExportRow {
+                namespace: filters.namespace.clone(),
+                normalized_key: normalize_search_key(&input),
+                canonical_iri: canonical_iri(&entry.canonical_id, canonical_iri_prefix),
+                alias_kind: infer_alias_kind(
+                    &input,
+                    &entry.canonical_id,
+                    &entry.canonical_type,
+                    &entry.rule_id,
+                ),
+                match_source: infer_match_source(&entry.rule_id),
+                input,
+                canonical_id: entry.canonical_id.clone(),
+                canonical_type: entry.canonical_type.clone(),
+                rule_id: entry.rule_id.clone(),
+                registry_id: registry.id.clone(),
+                registry_version: registry.version.clone(),
+                source_file: source_file.clone(),
+                entry_order,
+            });
+        }
+    }
+
+    (
+        rows,
+        filtered_entry_count,
+        skipped_filter_count,
+        skipped_shadowed_count,
+    )
+}
+
+fn passes_filters(
+    canonical_type: &str,
+    rule_id: &str,
+    source_file: &str,
+    filters: &RegistryExportFilters,
+) -> bool {
+    (filters.source_files.is_empty()
+        || filters
+            .source_files
+            .iter()
+            .any(|value| value == source_file))
+        && (filters.canonical_types.is_empty()
+            || filters
+                .canonical_types
+                .iter()
+                .any(|value| value == canonical_type))
+        && (filters.rule_id_prefixes.is_empty()
+            || filters
+                .rule_id_prefixes
+                .iter()
+                .any(|prefix| rule_id.starts_with(prefix)))
+}
+
+fn collect_entities(rows: &[ExportRow]) -> Vec<EntityRow> {
+    let mut entities = BTreeMap::<(String, String), EntityRow>::new();
+    for row in rows {
+        let key = (row.canonical_type.clone(), row.canonical_id.clone());
+        let rank = alias_display_rank(&row.alias_kind);
+        let entry = entities.entry(key).or_insert_with(|| EntityRow {
+            canonical_id: row.canonical_id.clone(),
+            canonical_iri: row.canonical_iri.clone(),
+            canonical_type: row.canonical_type.clone(),
+            display_name: row.input.clone(),
+            normalized_display_key: row.normalized_key.clone(),
+            alias_count: 0,
+            display_rank: rank,
+        });
+        entry.alias_count += 1;
+        if rank < entry.display_rank {
+            entry.display_name = row.input.clone();
+            entry.normalized_display_key = row.normalized_key.clone();
+            entry.display_rank = rank;
+        }
+    }
+
+    entities.into_values().collect()
+}
+
+fn write_dbt_seed(path: &Path, rows: &[ExportRow]) -> Result<(), Refusal> {
+    ensure_parent_dir(path)?;
+    let file = File::create(path).map_err(|error| io_refusal(path, error))?;
+    let mut writer = csv::Writer::from_writer(file);
+    writer
+        .write_record([
+            "namespace",
+            "source_input",
+            "normalized_key",
+            "canonical_id",
+            "canonical_iri",
+            "canonical_type",
+            "alias_kind",
+            "rule_id",
+            "match_source",
+            "registry_id",
+            "registry_version",
+            "registry_content_hash",
+            "source_file",
+            "entry_order",
+        ])
+        .map_err(|error| io_refusal(path, error))?;
+
+    let content_hash = hash_rows_only(rows)?;
+    for row in rows {
+        writer
+            .write_record([
+                row.namespace.as_deref().unwrap_or_default(),
+                &row.input,
+                &row.normalized_key,
+                &row.canonical_id,
+                &row.canonical_iri,
+                &row.canonical_type,
+                &row.alias_kind,
+                &row.rule_id,
+                &row.match_source,
+                &row.registry_id,
+                &row.registry_version,
+                &content_hash,
+                &row.source_file,
+                &row.entry_order.to_string(),
+            ])
+            .map_err(|error| io_refusal(path, error))?;
+    }
+    writer.flush().map_err(|error| io_refusal(path, error))?;
+    Ok(())
+}
+
+fn write_dbt_schema(path: &Path, seed_path: &Path) -> Result<(), Refusal> {
+    ensure_parent_dir(path)?;
+    let seed_name = dbt_seed_name(seed_path);
+    let body = format!(
+        "version: 2\nseeds:\n  - name: {seed_name}\n    columns:\n      - name: namespace\n        tests:\n          - not_null\n      - name: normalized_key\n        tests:\n          - not_null\n      - name: canonical_id\n        tests:\n          - not_null\n      - name: canonical_iri\n        tests:\n          - not_null\n      - name: registry_version\n        tests:\n          - not_null\n      - name: registry_content_hash\n        tests:\n          - not_null\n"
+    );
+    fs::write(path, body).map_err(|error| io_refusal(path, error))
+}
+
+fn write_anti_collapse_test(path: &Path, seed_path: &Path) -> Result<(), Refusal> {
+    ensure_parent_dir(path)?;
+    let seed_name = dbt_seed_name(seed_path);
+    let body = format!(
+        "select\n  namespace,\n  normalized_key\nfrom {{{{ ref('{seed_name}') }}}}\ngroup by 1, 2\nhaving count(distinct canonical_id) > 1\n"
+    );
+    fs::write(path, body).map_err(|error| io_refusal(path, error))
+}
+
+fn write_search_index(
+    path: &Path,
+    request: &RegistryExportRequest,
+    plan: &ExportPlan,
+) -> Result<(), Refusal> {
+    ensure_parent_dir(path)?;
+    let mut conn = Connection::open(path).map_err(|error| io_refusal(path, error))?;
+    conn.execute_batch(RESET_SEARCH_INDEX_SCHEMA)
+        .map_err(|error| io_refusal(path, error))?;
+    conn.execute_batch(SEARCH_INDEX_SCHEMA)
+        .map_err(|error| io_refusal(path, error))?;
+
+    let tx = conn
+        .transaction()
+        .map_err(|error| io_refusal(path, error))?;
+    insert_search_metadata(&tx, request, plan, path)?;
+    insert_search_scoring_spec(&tx, path)?;
+    insert_entities(&tx, &plan.entities, path)?;
+    insert_aliases(&tx, &plan.rows, path)?;
+    insert_external_keys(&tx, &plan.rows, path)?;
+    tx.commit().map_err(|error| io_refusal(path, error))?;
+    Ok(())
+}
+
+fn insert_search_metadata(
+    conn: &Connection,
+    request: &RegistryExportRequest,
+    plan: &ExportPlan,
+    path: &Path,
+) -> Result<(), Refusal> {
+    let generated_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let normalization_spec = json!({
+        "id": NORMALIZATION_SPEC_ID,
+        "description": "ASCII uppercase, then remove every non A-Z/0-9 character",
+        "steps": ["ascii_uppercase", "drop_non_ascii_alphanumeric"],
+    });
+    let metadata = [
+        (
+            "artifact_version",
+            SEARCH_INDEX_ARTIFACT_VERSION.to_string(),
+        ),
+        ("registry_id", plan.registry.id.clone()),
+        ("registry_version", plan.registry.version.clone()),
+        ("registry_source", plan.registry.source.clone()),
+        ("format", request.format.as_str().to_string()),
+        ("content_hash", plan.content_hash.clone()),
+        ("generated_at", generated_at),
+        ("normalization_spec_id", NORMALIZATION_SPEC_ID.to_string()),
+        ("normalization_spec", normalization_spec.to_string()),
+        ("canonical_iri_prefix", request.canonical_iri_prefix.clone()),
+        ("namespace", request.namespace.clone().unwrap_or_default()),
+        (
+            "filters",
+            serde_json::to_string(&plan.filters).map_err(|error| {
+                parse_refusal(
+                    "Failed to serialize registry export filters",
+                    json!({ "error": error.to_string() }),
+                    "Rerun canon registry export with valid filters",
+                )
+            })?,
+        ),
+    ];
+    for (key, value) in metadata {
+        conn.execute(
+            "INSERT INTO metadata (key, value) VALUES (?, ?)",
+            params![key, value],
+        )
+        .map_err(|error| io_refusal(path, error))?;
+    }
+    Ok(())
+}
+
+fn insert_search_scoring_spec(conn: &Connection, path: &Path) -> Result<(), Refusal> {
+    let tiers = [
+        ("exact", 100, "normalized key equals query key"),
+        ("prefix", 80, "normalized key starts with query key"),
+        ("contains", 60, "normalized key contains query key"),
+        ("reverse_contains", 50, "query key contains normalized key"),
+        ("text_contains", 40, "raw alias contains raw query text"),
+    ];
+    for (tier, score, description) in tiers {
+        conn.execute(
+            "INSERT INTO scoring_tiers (tier, score, description) VALUES (?, ?, ?)",
+            params![tier, score, description],
+        )
+        .map_err(|error| io_refusal(path, error))?;
+    }
+
+    let field_weights = [
+        ("alias", 1.0_f64),
+        ("canonical_id", 1.0),
+        ("canonical_iri", 1.0),
+    ];
+    for (field, weight) in field_weights {
+        conn.execute(
+            "INSERT INTO field_weights (field, weight) VALUES (?, ?)",
+            params![field, weight],
+        )
+        .map_err(|error| io_refusal(path, error))?;
+    }
+
+    let alias_kind_weights = [
+        ("id", 1.10_f64),
+        ("name", 1.05),
+        ("short", 1.04),
+        ("ticker", 1.04),
+        ("variant", 1.00),
+        ("alias", 1.00),
+        ("key", 1.00),
+    ];
+    for (alias_kind, weight) in alias_kind_weights {
+        conn.execute(
+            "INSERT INTO alias_kind_weights (alias_kind, weight) VALUES (?, ?)",
+            params![alias_kind, weight],
+        )
+        .map_err(|error| io_refusal(path, error))?;
+    }
+    Ok(())
+}
+
+fn insert_entities(conn: &Connection, entities: &[EntityRow], path: &Path) -> Result<(), Refusal> {
+    for entity in entities {
+        conn.execute(
+            "INSERT INTO entities (canonical_id, canonical_iri, canonical_type, display_name, normalized_display_key, alias_count) VALUES (?, ?, ?, ?, ?, ?)",
+            params![
+                entity.canonical_id,
+                entity.canonical_iri,
+                entity.canonical_type,
+                entity.display_name,
+                entity.normalized_display_key,
+                entity.alias_count as i64,
+            ],
+        )
+        .map_err(|error| io_refusal(path, error))?;
+    }
+    Ok(())
+}
+
+fn insert_aliases(conn: &Connection, rows: &[ExportRow], path: &Path) -> Result<(), Refusal> {
+    for row in rows {
+        conn.execute(
+            "INSERT INTO aliases (alias, normalized_key, alias_kind, canonical_id, canonical_iri, canonical_type, rule_id, match_source, source_file, entry_order, registry_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params![
+                row.input,
+                row.normalized_key,
+                row.alias_kind,
+                row.canonical_id,
+                row.canonical_iri,
+                row.canonical_type,
+                row.rule_id,
+                row.match_source,
+                row.source_file,
+                row.entry_order as i64,
+                row.registry_version,
+            ],
+        )
+        .map_err(|error| io_refusal(path, error))?;
+    }
+    conn.execute(
+        "INSERT INTO aliases_fts (rowid, alias, normalized_key, canonical_id, canonical_iri) SELECT id, alias, normalized_key, canonical_id, canonical_iri FROM aliases",
+        [],
+    )
+    .map_err(|error| io_refusal(path, error))?;
+    Ok(())
+}
+
+fn insert_external_keys(conn: &Connection, rows: &[ExportRow], path: &Path) -> Result<(), Refusal> {
+    let mut keys = BTreeSet::new();
+    for row in rows {
+        keys.insert((
+            row.canonical_type.clone(),
+            row.canonical_id.clone(),
+            row.canonical_type.clone(),
+            row.canonical_id.clone(),
+            row.canonical_iri.clone(),
+            "canonical_id".to_string(),
+        ));
+        if matches!(row.alias_kind.as_str(), "id" | "key" | "ticker") {
+            keys.insert((
+                row.canonical_type.clone(),
+                row.canonical_id.clone(),
+                row.alias_kind.clone(),
+                row.input.clone(),
+                row.canonical_iri.clone(),
+                "alias".to_string(),
+            ));
+        }
+    }
+    for (canonical_type, canonical_id, key_namespace, key_value, canonical_iri, source) in keys {
+        conn.execute(
+            "INSERT INTO external_keys (canonical_type, canonical_id, key_namespace, key_value, canonical_iri, source) VALUES (?, ?, ?, ?, ?, ?)",
+            params![canonical_type, canonical_id, key_namespace, key_value, canonical_iri, source],
+        )
+        .map_err(|error| io_refusal(path, error))?;
+    }
+    Ok(())
+}
+
+const RESET_SEARCH_INDEX_SCHEMA: &str = r#"
+DROP TABLE IF EXISTS aliases_fts;
+DROP TABLE IF EXISTS alias_kind_weights;
+DROP TABLE IF EXISTS field_weights;
+DROP TABLE IF EXISTS scoring_tiers;
+DROP TABLE IF EXISTS external_keys;
+DROP TABLE IF EXISTS aliases;
+DROP TABLE IF EXISTS entities;
+DROP TABLE IF EXISTS metadata;
+"#;
+
+const SEARCH_INDEX_SCHEMA: &str = r#"
+CREATE TABLE metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE entities (
+    canonical_id TEXT NOT NULL,
+    canonical_iri TEXT NOT NULL,
+    canonical_type TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    normalized_display_key TEXT NOT NULL,
+    alias_count INTEGER NOT NULL,
+    PRIMARY KEY (canonical_type, canonical_id)
+);
+
+CREATE TABLE aliases (
+    id INTEGER PRIMARY KEY,
+    alias TEXT NOT NULL,
+    normalized_key TEXT NOT NULL,
+    alias_kind TEXT NOT NULL,
+    canonical_id TEXT NOT NULL,
+    canonical_iri TEXT NOT NULL,
+    canonical_type TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    match_source TEXT NOT NULL,
+    source_file TEXT NOT NULL,
+    entry_order INTEGER NOT NULL,
+    registry_version TEXT NOT NULL
+);
+
+CREATE INDEX idx_aliases_normalized_key ON aliases(normalized_key);
+CREATE INDEX idx_aliases_canonical_iri ON aliases(canonical_iri);
+CREATE INDEX idx_aliases_kind_key ON aliases(alias_kind, normalized_key);
+
+CREATE TABLE external_keys (
+    canonical_type TEXT NOT NULL,
+    canonical_id TEXT NOT NULL,
+    key_namespace TEXT NOT NULL,
+    key_value TEXT NOT NULL,
+    canonical_iri TEXT NOT NULL,
+    source TEXT NOT NULL,
+    PRIMARY KEY (canonical_type, canonical_id, key_namespace, key_value)
+);
+
+CREATE INDEX idx_external_keys_lookup ON external_keys(key_namespace, key_value);
+
+CREATE TABLE scoring_tiers (
+    tier TEXT PRIMARY KEY,
+    score INTEGER NOT NULL,
+    description TEXT NOT NULL
+);
+
+CREATE TABLE field_weights (
+    field TEXT PRIMARY KEY,
+    weight REAL NOT NULL
+);
+
+CREATE TABLE alias_kind_weights (
+    alias_kind TEXT PRIMARY KEY,
+    weight REAL NOT NULL
+);
+
+CREATE VIRTUAL TABLE aliases_fts
+USING fts5(alias, normalized_key, canonical_id, canonical_iri, content='aliases', content_rowid='id');
+"#;
+
+fn hash_logical_export(
+    format: RegistryExportFormat,
+    registry: &RegistryMeta,
+    filters: &RegistryExportFilters,
+    rows: &[ExportRow],
+    entities: &[EntityRow],
+) -> Result<String, Refusal> {
+    let value = json!({
+        "format": format.as_str(),
+        "registry": registry,
+        "filters": filters,
+        "rows": rows,
+        "entities": entities.iter().map(|entity| {
+            json!({
+                "canonical_id": entity.canonical_id,
+                "canonical_iri": entity.canonical_iri,
+                "canonical_type": entity.canonical_type,
+                "display_name": entity.display_name,
+                "normalized_display_key": entity.normalized_display_key,
+                "alias_count": entity.alias_count,
+            })
+        }).collect::<Vec<_>>(),
+    });
+    hash_json_value(&value)
+}
+
+fn hash_rows_only(rows: &[ExportRow]) -> Result<String, Refusal> {
+    hash_json_value(&json!({ "rows": rows }))
+}
+
+fn hash_json_value(value: &serde_json::Value) -> Result<String, Refusal> {
+    let bytes = serde_json::to_vec(value).map_err(|error| {
+        parse_refusal(
+            "Failed to serialize registry export hash input",
+            json!({ "error": error.to_string() }),
+            "Rerun canon registry export after validating registry JSON",
+        )
+    })?;
+    Ok(format!("blake3:{}", blake3::hash(&bytes).to_hex()))
+}
+
+pub fn normalize_search_key(value: &str) -> String {
+    value
+        .chars()
+        .filter_map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                Some(ch.to_ascii_uppercase())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn infer_alias_kind(
+    input: &str,
+    canonical_id: &str,
+    canonical_type: &str,
+    rule_id: &str,
+) -> String {
+    let rule = rule_id.to_ascii_uppercase();
+    let canonical_type_upper = canonical_type.to_ascii_uppercase();
+    if normalize_search_key(input) == normalize_search_key(canonical_id) {
+        return "id".to_string();
+    }
+    if rule.contains("TICKER") || canonical_type_upper == "TICKER" {
+        return "ticker".to_string();
+    }
+    if rule.contains("SHORT") {
+        return "short".to_string();
+    }
+    if rule.contains("NAME") || rule.contains("TRUST") {
+        return "name".to_string();
+    }
+    if rule.contains("VARIANT") || rule.contains("ALIAS") || rule.contains("BRAND") {
+        return "variant".to_string();
+    }
+    if looks_like_key(input) {
+        return "key".to_string();
+    }
+    "alias".to_string()
+}
+
+fn infer_match_source(rule_id: &str) -> String {
+    let rule = rule_id.to_ascii_uppercase();
+    if rule.contains("BRAND") {
+        "registry_brand".to_string()
+    } else if rule.contains("CANON") {
+        "canon".to_string()
+    } else {
+        "registry_exact".to_string()
+    }
+}
+
+fn looks_like_key(value: &str) -> bool {
+    let value = ascii_trim(value);
+    !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == ':')
+        && value.chars().any(|ch| ch.is_ascii_digit())
+}
+
+fn alias_display_rank(alias_kind: &str) -> u8 {
+    match alias_kind {
+        "name" => 0,
+        "id" => 1,
+        "short" | "ticker" => 2,
+        "variant" | "alias" => 3,
+        "key" => 4,
+        _ => 5,
+    }
+}
+
+fn canonical_iri(canonical_id: &str, prefix: &str) -> String {
+    if canonical_id.starts_with(prefix)
+        || canonical_id.starts_with("cmdrvl:")
+        || canonical_id.starts_with("urn:")
+        || canonical_id.contains("://")
+    {
+        canonical_id.to_string()
+    } else {
+        format!("{prefix}{canonical_id}")
+    }
+}
+
+fn sorted_unique(values: Vec<String>) -> Vec<String> {
+    values
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn ascii_trim(value: &str) -> &str {
+    value.trim_matches(|ch: char| ch.is_ascii_whitespace())
+}
+
+fn dbt_seed_name(path: &Path) -> String {
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("canon_registry_seed")
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn ensure_parent_dir(path: &Path) -> Result<(), Refusal> {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|error| io_refusal(parent, error))?;
+    }
+    Ok(())
+}
+
+fn io_refusal(path: &Path, error: impl std::error::Error) -> Refusal {
+    Refusal {
+        code: RefusalCode::EIo,
+        message: format!("Registry export failed at '{}': {}", path.display(), error),
+        detail: json!({
+            "path": path.display().to_string(),
+            "error": error.to_string(),
+        }),
+        next_command: Some(
+            "Check output paths and permissions, then rerun canon registry export".to_string(),
+        ),
+    }
+}
+
+fn parse_refusal(message: &str, detail: serde_json::Value, next_command: &str) -> Refusal {
+    Refusal {
+        code: RefusalCode::EParse,
+        message: message.to_string(),
+        detail,
+        next_command: Some(next_command.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_search_key;
+
+    #[test]
+    fn search_key_is_ascii_upper_alnum_only() {
+        assert_eq!(
+            normalize_search_key("Wells Fargo 2020-C58"),
+            "WELLSFARGO2020C58"
+        );
+        assert_eq!(normalize_search_key("wfcm-2020_c58"), "WFCM2020C58");
+        assert_eq!(normalize_search_key(" café "), "CAF");
+    }
+}

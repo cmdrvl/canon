@@ -202,6 +202,8 @@ pub struct StrategyCommand {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum RegistrySubcommand {
+    /// Export a registry as a downstream serving or transform artifact
+    Export(RegistryExportCli),
     /// Suggest the next canonical ID for a self-authored registry namespace
     #[command(name = "next-id")]
     NextId(RegistryNextIdCli),
@@ -226,6 +228,63 @@ pub enum RegistrySubcommand {
     /// Show the --provider-config option schema for one provider
     #[command(name = "provider-schema")]
     ProviderSchema(RegistryProviderSchemaCli),
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+pub enum RegistryExportFormatCli {
+    /// Deterministic CSV seed for dbt or SQL transform tools
+    #[value(name = "dbt-seed")]
+    DbtSeed,
+    /// Self-describing SQLite search artifact for serving endpoints
+    #[value(name = "search-index")]
+    SearchIndex,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct RegistryExportCli {
+    /// Registry directory to export
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Export format
+    #[arg(long, value_enum)]
+    pub format: RegistryExportFormatCli,
+
+    /// Output artifact path
+    #[arg(long)]
+    pub out: PathBuf,
+
+    /// Required context namespace for dbt-seed exports; optional metadata for search-index exports
+    #[arg(long)]
+    pub namespace: Option<String>,
+
+    /// Include only entries from this root-level mapping file; repeatable
+    #[arg(long = "source-file")]
+    pub source_files: Vec<String>,
+
+    /// Include only entries with this canonical_type; repeatable
+    #[arg(long = "canonical-type")]
+    pub canonical_types: Vec<String>,
+
+    /// Include only entries whose rule_id starts with this prefix; repeatable
+    #[arg(long = "rule-id-prefix")]
+    pub rule_id_prefixes: Vec<String>,
+
+    /// Prefix used to materialize canonical_iri from a bare canonical_id
+    #[arg(long = "canonical-iri-prefix", default_value = "cmdrvl:")]
+    pub canonical_iri_prefix: String,
+
+    /// Optional companion dbt schema.yml path; only valid with --format dbt-seed
+    #[arg(long = "schema-out")]
+    pub schema_out: Option<PathBuf>,
+
+    /// Optional dbt singular test SQL path guarding normalized-key collapse
+    #[arg(long = "anti-collapse-test-out")]
+    pub anti_collapse_test_out: Option<PathBuf>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]

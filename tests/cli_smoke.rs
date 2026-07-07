@@ -2329,6 +2329,230 @@ fn test_registry_build_materializes_registry_and_resolves() {
 }
 
 #[test]
+fn test_registry_export_dbt_seed_writes_seed_and_scaffolds() {
+    let temp_dir = tempdir().unwrap();
+    let registry_dir = temp_dir.path().join("registry");
+    std::fs::create_dir_all(&registry_dir).unwrap();
+    write_registry_metadata(&registry_dir, "funds", "2026.07.07", 3);
+    write_mapping_file(
+        &registry_dir,
+        "fund-aliases.json",
+        serde_json::json!([
+            {
+                "input": "Alpha Fund II",
+                "canonical_id": "FUND-0001",
+                "canonical_type": "fund",
+                "rule_id": "FUND_NAME"
+            },
+            {
+                "input": "ALPHA-II",
+                "canonical_id": "FUND-0001",
+                "canonical_type": "fund",
+                "rule_id": "FUND_TICKER"
+            },
+            {
+                "input": "0001234567",
+                "canonical_id": "FUND-0001",
+                "canonical_type": "fund",
+                "rule_id": "FUND_KEY"
+            }
+        ]),
+    );
+
+    let seed_path = temp_dir.path().join("canon_funds.csv");
+    let schema_path = temp_dir.path().join("schema.yml");
+    let test_path = temp_dir.path().join("anti_collapse.sql");
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "export",
+            "--format",
+            "dbt-seed",
+            "--registry",
+            registry_dir.to_str().unwrap(),
+            "--namespace",
+            "funds",
+            "--canonical-type",
+            "fund",
+            "--out",
+            seed_path.to_str().unwrap(),
+            "--schema-out",
+            schema_path.to_str().unwrap(),
+            "--anti-collapse-test-out",
+            test_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["version"], "canon_registry_export.v0");
+    assert_eq!(payload["format"], "dbt-seed");
+    assert_eq!(payload["summary"]["exported_alias_count"], 3);
+    assert_eq!(payload["summary"]["exported_entity_count"], 1);
+    assert!(
+        payload["content_hash"]
+            .as_str()
+            .unwrap()
+            .starts_with("blake3:")
+    );
+
+    let mut reader = csv::Reader::from_path(&seed_path).unwrap();
+    let headers = reader.headers().unwrap().clone();
+    assert!(headers.iter().any(|name| name == "canonical_iri"));
+    let records = reader
+        .records()
+        .collect::<Result<Vec<_>, csv::Error>>()
+        .unwrap();
+    assert_eq!(records.len(), 3);
+    let first = &records[0];
+    assert_eq!(
+        first.get(headers.iter().position(|h| h == "namespace").unwrap()),
+        Some("funds")
+    );
+    assert_eq!(
+        first.get(headers.iter().position(|h| h == "normalized_key").unwrap()),
+        Some("ALPHAFUNDII")
+    );
+    assert_eq!(
+        first.get(headers.iter().position(|h| h == "canonical_iri").unwrap()),
+        Some("cmdrvl:FUND-0001")
+    );
+    assert!(
+        std::fs::read_to_string(schema_path)
+            .unwrap()
+            .contains("seeds:")
+    );
+    assert!(
+        std::fs::read_to_string(test_path)
+            .unwrap()
+            .contains("count(distinct canonical_id) > 1")
+    );
+}
+
+#[test]
+fn test_registry_export_dbt_seed_requires_namespace() {
+    let temp_dir = tempdir().unwrap();
+    write_registry_metadata(temp_dir.path(), "funds", "2026.07.07", 0);
+    let seed_path = temp_dir.path().join("seed.csv");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "export",
+            "--format",
+            "dbt-seed",
+            "--registry",
+            temp_dir.path().to_str().unwrap(),
+            "--out",
+            seed_path.to_str().unwrap(),
+        ])
+        .assert()
+        .code(2);
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["outcome"], "REFUSAL");
+    assert_eq!(payload["refusal"]["code"], "E_PARSE");
+    assert!(
+        payload["refusal"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("requires --namespace")
+    );
+}
+
+#[test]
+fn test_registry_export_search_index_writes_generic_sqlite_artifact() {
+    let temp_dir = tempdir().unwrap();
+    let registry_dir = temp_dir.path().join("registry");
+    std::fs::create_dir_all(&registry_dir).unwrap();
+    write_registry_metadata(&registry_dir, "funds", "2026.07.07", 3);
+    write_mapping_file(
+        &registry_dir,
+        "fund-aliases.json",
+        serde_json::json!([
+            {
+                "input": "Alpha Fund II",
+                "canonical_id": "FUND-0001",
+                "canonical_type": "fund",
+                "rule_id": "FUND_NAME"
+            },
+            {
+                "input": "ALPHA-II",
+                "canonical_id": "FUND-0001",
+                "canonical_type": "fund",
+                "rule_id": "FUND_TICKER"
+            },
+            {
+                "input": "0001234567",
+                "canonical_id": "FUND-0001",
+                "canonical_type": "fund",
+                "rule_id": "FUND_KEY"
+            }
+        ]),
+    );
+
+    let sqlite_path = temp_dir.path().join("funds-search.sqlite");
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "registry",
+            "export",
+            "--format",
+            "search-index",
+            "--registry",
+            registry_dir.to_str().unwrap(),
+            "--out",
+            sqlite_path.to_str().unwrap(),
+            "--emit",
+            "summary",
+        ])
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    assert!(stdout.contains("search-index export: 3 aliases, 1 entities"));
+
+    let conn = rusqlite::Connection::open(sqlite_path).unwrap();
+    let artifact_version: String = conn
+        .query_row(
+            "SELECT value FROM metadata WHERE key = 'artifact_version'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(artifact_version, "canon_registry_search_index.v0");
+
+    let iri: String = conn
+        .query_row(
+            "SELECT canonical_iri FROM aliases WHERE normalized_key = 'ALPHAFUNDII'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(iri, "cmdrvl:FUND-0001");
+
+    let entity_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM entities", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(entity_count, 1);
+
+    let exact_score: i64 = conn
+        .query_row(
+            "SELECT score FROM scoring_tiers WHERE tier = 'exact'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(exact_score, 100);
+
+    let fts_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM aliases_fts", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(fts_count, 3);
+}
+
+#[test]
 fn test_registry_build_incremental_carries_forward_existing_entries() {
     let temp_dir = tempdir().unwrap();
     let initial_seed_path = temp_dir.path().join("seed-initial.csv");
