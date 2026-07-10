@@ -1,44 +1,77 @@
-# Decision: port ER techniques natively; retire the concrete matcher adapters
+# Deferred decision space: matcher techniques and interoperability after core acceptance
 
-> 2026-07-10 (operator + assessment). Supersedes the "ship OpenRefine/Splink/Dedupe adapters"
-> shape of P09. Applies the CMD+RVL house style: when an external tool wraps an open, visible
-> technique, port the technique — don't take a subprocess dependency on the tool.
+> Updated 2026-07-10 by operator direction. The filename is retained as historical context, but
+> this document no longer commits Canon to porting or integrating any named matcher. P00-P12 and
+> the sec10d migration proceed without Dedupe, Splink, OpenRefine, active learning, or email review.
 
-## Finding
-None of the three proposed adapters wraps anything opaque:
-- **Splink** = Fellegi–Sunter probabilistic linkage + EM-estimated m/u weights (textbook 1969).
-  Its unique asset is a SQL scale backend (DuckDB/Spark), not the math.
-- **Dedupe** = active learning + a logistic pair-scorer + learned predicate blocking (documented).
-- **OpenRefine** = not a matcher at all here (`bd-z4by`); it's a review-GUI interchange ("treat
-  OpenRefine as a review *client*"). Its clustering methods are standard and already native in `bd-21nh`.
+## Decision now
 
-The plan already requires native to be the complete default (`bd-wv6j`) and requires adapters to
-prove marginal lift to justify maintenance (`bd-y2ti`). So adapters are a redundant second layer:
-we must build native regardless, then build + maintain + differentially-evaluate each adapter to
-justify wrapping math we can own in a few hundred lines of deterministic Rust. Native evidence is
-also *trusted, deterministic, fully-provenanced* — strictly more aligned with the exact/reviewed/
-replayable thesis than untrusted, nondeterministic subprocess suggestions.
+1. Build and empirically accept the domain-neutral native core first: exact replay, bounded native
+   retrieval, typed evidence, hard anti-merge controls, calibration, abstention, review artifacts,
+   promotion, and immutable registry accretion.
+2. Keep the evidence IR and project boundaries expressive enough that a future native technique,
+   bounded external matcher, or reconciliation client can contribute candidates or evidence with
+   zero promotion authority.
+3. Defer P09 and all technique-specific work until the final core acceptance has produced real
+   failure slices, scale measurements, and operator demand. These options must not block v1.
+4. Do not claim parity with a third-party tool merely because one underlying algorithm is known.
+   Any later replacement claim requires a source-pinned behavioral inventory and differential proof.
 
-## What is genuinely non-portable (and why it doesn't matter here)
-- Splink's SQL scale engine — relevant only at billions of pairs; irrelevant at our scale.
-- OpenRefine's GUI — Canon builds its own review flywheel (P04).
-- An operator's pre-trained external model — an adoption convenience, kept available via the
-  generic seam below.
+## Decision options retained for later
 
-## Decision
-1. **Port the techniques natively** (new beads):
-   - Fellegi–Sunter + EM probabilistic scoring as a native evidence operator (P07.9).
-   - Learned predicate blocking as a native candidate operator serving the recall gate (P07.10).
-   - Active-learning query strategy folded into the review flywheel — the unresolved inbox *is*
-     the active learner (P04.10).
-   Phonetic/ngram/fingerprint clustering is already native (`bd-21nh`).
-2. **Keep the generic seam** `bd-3ofg` (matcher adapter conformance contract) as the sole retained
-   adapter surface — an optional bring-your-own external matcher on-ramp, built on demand only.
-3. **Retire the three concrete adapters** `bd-cuy5` (Splink), `bd-3m42` (Dedupe), `bd-z4by`
-   (OpenRefine): closed, not first-set. Reopen a specific one only if a real operator arrives with
-   a real model/workflow to bring. `bd-y2ti` differential eval narrows to native-operator ablation
-   (native-only vs baseline), reusing the P12 ablation harness.
+### Option A — port a technique or model into Rust
 
-## Effect
-Same capability, native and trusted; no per-tool subprocess/pinned-env/digest/determinism ceremony;
-the thesis gets tighter. The generic `bd-3ofg` seam preserves optionality at near-zero standing cost.
+Use `cmdrvl-tabfm` as the local precedent, not an informal rewrite. A future Dedupe, Splink, or
+other port starts in a separately scoped project or packet with:
+
+- pinned upstream commit, dependencies, license, and source hashes;
+- a behavior/spec inventory covering preprocessing, blocking, scoring, clustering, missingness,
+  training, serialization, randomness, and failure semantics;
+- a pinned reference oracle with frozen input/output and intermediate fixtures;
+- a layered differential-parity ladder and measured numeric/determinism floor;
+- provenance, discrepancy, performance, and negative-evidence ledgers;
+- adversarial, metamorphic, scale, and second-machine replay gates;
+- an explicit decision about which capabilities are intentionally not ported.
+
+Only the typed candidate/evidence output crosses into Canon. The port cannot write registries,
+review decisions, or promotion receipts.
+
+### Option B — bounded external matcher adapter
+
+Implement the generic adapter contract only when an operator brings a real model or workflow whose
+maintenance cost is justified by measured lift. Pin tool/model/config/input digests, sandbox the
+runner, validate typed output, and compare it against the same sealed P12 corpus. Absence or failure
+of the adapter must leave native behavior and registry state unchanged.
+
+### Option C — standard reconciliation interoperability
+
+Expose or consume a transport-neutral reconciliation protocol, such as the W3C Entity
+Reconciliation API used by OpenRefine, without making OpenRefine a dependency or authority. This is
+an adoption/client option: candidates and human judgments still enter Canon through stable IDs,
+review imports, decision ledgers, audit, and promotion.
+
+### Option D — no integration
+
+If the accepted native core meets quality, scale, and review-cost goals, keep named-tool work
+unimplemented. The generic artifacts remain sufficient future optionality.
+
+## Evidence that triggers a later decision
+
+A specific option may move out of backlog only when at least one of these exists:
+
+- a reproducible candidate-recall, precision, calibration, or review-yield gap on a sealed corpus;
+- a measured scale/resource limit that native bounded retrieval cannot satisfy;
+- an operator-owned trained model, review workflow, or interoperability requirement;
+- a compelling maintenance/adoption case with acceptable license and security posture.
+
+The selected option gets a new or reopened implementation packet with files, invariants, refusal
+codes, test matrices, commands, and acceptance evidence. A generic desire for optionality is not
+enough.
+
+## Non-negotiables
+
+- No named matcher, Python runtime, UI, email provider, or network service is required by core.
+- Learned or probabilistic output is uncertain evidence, never trusted identity authority.
+- Training/development data cannot read sealed acceptance labels.
+- Every model/operator result is bound to inputs, feature schema, parameters, code, and policy.
+- Optional work cannot weaken native acceptance or delay the sec10d migration.

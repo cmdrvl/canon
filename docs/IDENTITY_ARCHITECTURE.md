@@ -36,6 +36,41 @@ This is the central distinction that reconciles the core plan with
 `canon` can host deterministic resolution workbenches that compile messy
 observations into versioned registries.**
 
+### Strategy Doctrine
+
+`canon strategy` is canonical procedural knowledge, not exact lookup. A
+strategy is selected under a typed doctrine, executed locally under a bounded
+policy, audited with deterministic fixtures, and only then allowed to promote
+procedural or registry-mutating consequences.
+
+The canonical typed kinds are:
+
+| Kind | Selection key | Allowed inputs | Declared outputs | Compatibility | Promotion target |
+|------|---------------|----------------|------------------|---------------|------------------|
+| `identity-evidence` | profile id + skill hash | profiled observations | evidence bundle + registry-knowledge proposal | profile-scoped | audited, review-gated registry knowledge |
+| `record-linkage` | linkage map id + skill hash | two-tape records | linkage bundle + registry-knowledge proposal | field-map-scoped | audited, review-gated registry knowledge |
+| `schema-transform` | schema fingerprint + skill hash | schema/profile artifact | frozen script pointer | exact / compatible / partial / unresolved schema tiers | versioned strategy registry champion |
+| `task-transform` | exact task key + skill hash | exact task request | frozen script pointer | exact only | versioned strategy registry champion |
+
+Doctrine rules:
+
+1. Cross-kind selection is impossible. A strategy key, input contract,
+   compatibility relation, and promotion target must all agree on one typed
+   kind.
+2. Exact lookup remains exact lookup. Strategy selection or execution is never
+   part of `canon <INPUT> --registry ... --column ...` and is never part of exact lookup.
+3. Transform kinds select procedural champions; they do not create same-entity
+   claims by themselves.
+4. Evidence and linkage kinds may manufacture audited proposals for registry
+   updates, but only through the workbench path and its audit/review gates.
+5. Mixed schema/task/profile/linkage contracts are migration errors, not
+   operator discretion.
+
+Current implementation note: the existing runtime surfaces in `canon strategy`
+are schema-transform and task-transform registry champions. Identity-evidence
+and record-linkage are the canonical doctrine for future typed procedural
+strategies and must remain outside the exact lookup kernel.
+
 ---
 
 ## Why This Is Not A Contradiction

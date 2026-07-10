@@ -21,6 +21,7 @@ mod export;
 mod id_scheme;
 mod mint;
 mod next_id;
+pub mod package;
 mod provider;
 
 pub use add_entry::{
@@ -32,12 +33,20 @@ pub use id_scheme::{
 };
 pub use mint::{RegistryMintOutput, RegistryMintRequest, mint};
 pub use next_id::{RegistryNextIdOutput, RegistryNextIdRequest, next_id};
+pub use package::{
+    REGISTRY_PACKAGE_SCHEMA_VERSION, RegistryPackage, RegistryPackageAttachmentDescriptor,
+    RegistryPackageDependencyReference, RegistryPackageDeploymentProjection,
+    RegistryPackageDescriptor, RegistryPackageError, RegistryPackageErrorKind,
+    RegistryPackageIdentityRules, RegistryPackageLayouts, RegistryPackageRegistryIdentity,
+    canonical_package_bytes, compile_registry_package, parse_registry_package,
+    validate_registry_package,
+};
 pub use provider::{
     ProviderCatalogEntry, ProviderExample, ProviderOption, ProviderSchema, provider_catalog,
     provider_schema,
 };
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct RegistryJson {
     id: String,
     version: String,
@@ -46,6 +55,9 @@ struct RegistryJson {
     #[allow(dead_code)]
     updated: String,
     entry_count: usize,
+    #[serde(default)]
+    canonical_iri_namespace: Option<String>,
+    #[allow(dead_code)]
     #[serde(default)]
     default_id_scheme: Option<DefaultIdScheme>,
 }

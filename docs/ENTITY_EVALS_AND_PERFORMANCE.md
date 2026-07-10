@@ -5,6 +5,9 @@
 >
 > Machine-readable contract:
 > `tests/fixtures/entity/evals/entity_eval_performance_targets.json`
+>
+> Discovery-quality report schema:
+> `schemas/canon.entity.quality.v1.schema.json`
 
 This document is the working target for implementation agents. The CMBS tenant
 and sec10d Reg AB benchmark docs define domain-specific fixtures; this document
@@ -88,6 +91,146 @@ The JSON result is the source of truth. The markdown summary is for operators.
 Normal CI must never require the 500k stress workload or the full sec10d zip.
 It must still prove that the benchmark contract is real and that fixtures are
 parseable, representative, and anti-theatrical.
+
+---
+
+## Discovery-Quality Contract (`canon.entity.quality.v1`)
+
+Exact replay is a floor, not a discovery score. `canon entity` should report
+how much of an eval corpus was already solvable from the registry snapshot, but
+that replay coverage cannot satisfy non-exact discovery gates. Repeating
+physical exact rows may change replay row counters only; it must not change
+non-exact discovery numerators, denominators, ranks, confidence intervals, or
+gate outcomes.
+
+The machine-readable report shape is
+`schemas/canon.entity.quality.v1.schema.json`. It is domain-neutral: no CMBS,
+Reg AB, tenant, obligor, or hierarchy-specific vocabulary belongs in the core
+contract.
+
+### Strata
+
+Every labeled logical case must live in exactly one stratum:
+
+| Stratum ID | Meaning | Counts toward non-exact discovery scores |
+|------------|---------|------------------------------------------|
+| `exact_known_replay` | Already resolvable from the input registry snapshot before discovery work begins. | No |
+| `withheld_alias_incumbent` | A withheld alias should map onto an incumbent canonical entity. | Yes |
+| `novel_multi_observation` | Multiple observations belong to the same novel entity and discovery must create that equivalence. | Yes |
+| `directional_cross_source` | The same entity must be linked across source boundaries or directional contexts. | Yes |
+| `related_or_hierarchy_distinct` | The records are related, hierarchical, or confusable, but must not auto-merge as the same entity. | Yes |
+| `genuinely_unresolved` | Evidence is intentionally insufficient for auto-linking and should end in review or explicit refusal. | Yes |
+
+The first four strata test whether the engine can discover new same-entity
+knowledge safely. `related_or_hierarchy_distinct` measures anti-merge behavior.
+`genuinely_unresolved` measures whether the engine can abstain honestly without
+being scored as a discovery failure. A name-only ambiguity that reaches review
+or explicit refusal in `genuinely_unresolved` is a correct outcome, not a
+measured miss.
+
+### Outcome Accounting
+
+Every labeled logical case must be classified as exactly one of:
+
+- `correct`
+- `review`
+- `explicit_refusal`
+- `measured_miss`
+
+Measured misses must also name one stage:
+
+| `miss_stage` | Meaning |
+|--------------|---------|
+| `candidate_generation` | The true pair never surfaced in the bounded candidate set or compact exact-bucket assertion. |
+| `evidence_scoring` | The true pair surfaced, but evidence/scoring failed to preserve it as a viable same-entity decision. |
+| `solver` | The candidate and evidence existed, but the final deterministic decision abstained, split, or otherwise missed the labeled same-entity case. |
+
+Over-abstain on a labeled same-entity case is therefore a `solver` miss, not a
+candidate-generation miss. `exact_known_replay` is reported separately as
+`correct_exact_replay`; it never enters the non-exact discovery score
+denominators.
+
+### Metric Contract
+
+Every rate metric records `sample_count`, `numerator`, `denominator`, `value`,
+and a 95% Wilson confidence interval. Rank and resource metrics still record
+`sample_count`, but may set `confidence_interval_95` to `null` when no rate
+interpretation exists. When a denominator is zero, the metric must emit:
+
+```text
+value = null
+confidence_interval_95 = null
+gate_status = not_applicable
+```
+
+Required metrics:
+
+| Metric ID | Denominator | Notes |
+|-----------|-------------|-------|
+| `candidate_recall_at_50` | Labeled same-entity discovery cases in the three non-exact must-link strata | Success means the true pair surfaced within top-50 or a compact exact-bucket assertion. Excludes `exact_known_replay`. |
+| `true_pair_rank` | Same denominator, restricted to surfaced same-entity cases | Report deterministic rank summaries such as p50/p95/worst. |
+| `auto_link_precision` | All non-exact auto-link decisions | Penalized by every false merge, including hard negatives. |
+| `auto_link_recall` | All labeled same-entity discovery cases | This is the labeled must-link recall gate. |
+| `pairwise_precision` / `pairwise_recall` / `pairwise_f1` | Non-exact labeled discovery clusters only | `exact_known_replay` is excluded. |
+| `b_cubed_precision` / `b_cubed_recall` / `b_cubed_f1` | Non-exact labeled discovery clusters only | `exact_known_replay` is excluded. |
+| `hard_negative_false_merges` | Non-exact labeled distinct or hierarchy cases | Report counts by severity class. |
+| `abstention_precision` | Cases that reached review or refusal | Measures whether abstention was used on truly ambiguous cases rather than obvious misses. |
+| `review_coverage` | Discovery cases that require human escalation | Measures whether the queue covers the right unresolved cases. |
+| `review_yield` | Reviewed cases | Measures how often review produces durable alias/distinct/refusal knowledge. |
+| `exact_replay_coverage` | `exact_known_replay` only | Reported, but never mixed into non-exact discovery gates. |
+| `accounted_case_rate` | All non-exact labeled cases | Must be `1.0`: every case is correct, review, refusal, or a measured miss. |
+| `candidate_pairs_per_surface_p95` / `candidate_pairs_per_surface_p99` / `wall_clock_seconds` / `peak_memory_bytes` | Resource samples | Structural/resource metrics that exact replay rows cannot improve. |
+
+### Severity Classes
+
+False merges must report a severity class:
+
+| Severity | Meaning |
+|----------|---------|
+| `critical` | Unsafe same-entity merge across a labeled distinct / hierarchy boundary. Stop-ship in the core contract. |
+| `high` | Strongly harmful incorrect merge with broad repair cost. |
+| `medium` | Wrong merge with bounded local repair cost. |
+| `low` | Wrong merge with narrow or reversible impact. |
+
+Domain packages may add stricter severity rules, but they may not silently
+weaken `critical`.
+
+### Initial Gates
+
+The initial cross-domain release gates are:
+
+- `candidate_recall_at_50 >= 0.995`
+- `auto_link_precision >= 0.995`
+- `auto_link_recall >= 0.98`
+- `hard_negative_false_merges.critical == 0`
+- `accounted_case_rate == 1.0`
+
+`exact_replay_coverage` is always reported, but it is informational. It cannot
+turn a failing discovery gate into a passing one.
+
+### Waivers
+
+Threshold-lowering after a holdout reveal is not freeform. The contract allows
+only explicit waivers with all of:
+
+- `waiver_bead_id`
+- `holdout_id`
+- `metric_id`
+- `gate_id`
+- `old_threshold`
+- `new_threshold`
+- `reason`
+- `approved_by`
+- `approved_at`
+- `scope`
+- `replacement_holdout_id` or `expires_at`
+
+Rules:
+
+- Lowering a threshold requires a new versioned holdout or an explicit waiver bead.
+- Exact replay rows cannot justify lowering a non-exact discovery threshold.
+- A waiver must name the exact metric/gate/scope being changed.
+- The core contract does not waive `hard_negative_false_merges.critical == 0`.
 
 ---
 

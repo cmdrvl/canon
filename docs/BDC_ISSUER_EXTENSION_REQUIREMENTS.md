@@ -18,10 +18,11 @@ design (cheap), not a fork after release (expensive).
 
 ## R1 — dba / holding-company surfaces (contract: bd-3hz3 normalization)
 - **Real:** `Rocket Bidco, Inc. (dba Recochem)`; later filings say `Recochem` / `Recochem Holdings`.
-- **Requirement:** the normalization bundle emits BOTH the legal surface (`Rocket Bidco, Inc.`)
-  and the operating/dba surface (`Recochem`) from one raw string via a generic
-  parenthetical-capacity split — no company dictionary — each traced to the raw value, each a
-  blocking key.
+- **Requirement:** the normalization bundle preserves the raw value and emits BOTH the legal
+  surface (`Rocket Bidco, Inc.`) and operating/dba surface (`Recochem`) as typed, provenance-linked
+  views via a generic parenthetical-capacity split — no company dictionary. Either view may
+  retrieve candidates, but neither view grants merge authority and legal-form/holdco/SPV tokens
+  remain available as protected distinctions.
 - **Test:** candidate recall@50 retrieves `Rocket Bidco, Inc. (dba Recochem)` ↔ `Recochem
   Holdings`; the dba surface appears as a first-class blocking key in miss forensics (bd-21nh).
 
@@ -41,19 +42,22 @@ design (cheap), not a fork after release (expensive).
 ## R3 — anti-merge veto on lookalikes (contracts: bd-1w3y evidence IR; bd-3hz3 protected features)
 - **Real:** `Idera, Inc.` (software) vs `Idera Pharmaceuticals` (biotech) — high name similarity,
   DIFFERENT entities.
-- **Requirement:** normalization marks the distinguishing token / `industry` as a **protected
-  feature** (not normalized away); a domain operator emits a **cannot-link veto** in the evidence
-  IR that overrides positive name similarity (epic invariant: "hard cannot-link vetoes positive
-  similarity").
-- **Test:** same-name / different-industry issuers do NOT auto-merge; the veto is visible in the
-  per-decision evidence waterfall (bd-393u).
+- **Requirement:** normalization preserves distinguishing name tokens. `industry` remains typed
+  contextual evidence because the same issuer may be classified differently by different filers.
+  A hard cannot-link veto requires an authoritative incompatibility or explicit reviewed
+  distinctness; industry disagreement alone can lower confidence or force review, never prove
+  non-identity.
+- **Test:** the Idera lookalikes do NOT auto-merge; differing name tokens and industry context are
+  visible in the evidence waterfall (bd-393u). A same-issuer fixture with inconsistent industry
+  labels must remain linkable/reviewable rather than receiving a hard veto.
 
 ## R4 — cross-BDC co-occurrence as evidence (contract: bd-1mr6 packaged evidence operators)
 - **Real:** `Recochem` is held by GSBD, ARCC, and Golub in the same quarter. With no LEI for
   private borrowers, "who holds it" is a primary signal.
-- **Requirement:** a generic evidence operator computes a **relational feature over the
+- **Requirement:** a generic evidence operator may compute a **relational feature over the
   assignment graph** — "observations co-held by ≥N distinct filers" — emitted as
-  context/support evidence, never as authority. (The evidence IR already declares
+  context/support evidence, never as authority or hard merge evidence. Its marginal value must be
+  established by leakage-resistant ablation. (The evidence IR already declares
   pair/hyperedge/record-link support; confirm the operator set can express the group-by-filer
   count, else add it as a GENERIC operator — useful beyond BDC.)
 - **Test:** a name co-held across 3 filers gets more support / ranks above a singleton; but
@@ -73,11 +77,11 @@ design (cheap), not a fork after release (expensive).
 - Every R above lands on an **existing open P06/P07 contract** — nothing here asks Canon core
   to know "BDC". R2/R5 also reuse the deterministic-alias-accretion pattern already blessed in
   bd-2gf3.
-- **The one genuine risk is R1/R4 recall.** Mitigations, in order, all short of forking: (a)
-  native declarative blocking + this normalization bundle; (b) if the bd-21nh recall gate shows
-  a shortfall, the **Splink candidate adapter (bd-cuy5)** through the evidence boundary — zero
-  core change; (c) only then, a **generic** relational/co-occurrence blocker in core (a widen-
-  the-contract change, not a domain branch).
+- **The one genuine risk is R1/R4 recall.** First use the accepted native candidate operators and
+  this normalization bundle. If bd-21nh still shows a sealed-corpus shortfall, record the failure
+  slice and revisit the deferred P09 option space after core acceptance: a separately proven native
+  technique port, bounded external adapter, or generic relational candidate operator. No named
+  matcher or speculative operator blocks the core architecture.
 - **Corpus dependency:** R1–R5 acceptance tests need a labeled BDC issuer gold corpus
   (must-link/cannot-link). We are well-positioned to bootstrap it from tournament output: 44
   funds × thousands of issuer strings with quarter/industry/instrument context, with the

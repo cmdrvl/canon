@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.identity.fact.v1.schema.json",
+  "title": "canon.identity.fact.v1",
+  "description": "Deterministic bitemporal identity assertions with provenance, trust, and correction links. Facts are assertions, not automatically trusted truth, and compiled exact lookup snapshots remain explicit.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "fact_id",
+    "assertion_key",
+    "conflict_key",
+    "subject_id",
+    "predicate",
+    "object_id",
+    "valid_time",
+    "recorded_time",
+    "source_locator",
+    "materialization_digest",
+    "assertion_status",
+    "trust_policy_ref"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon.identity.fact.v1"
+    },
+    "fact_id": {
+      "$ref": "#/$defs/blake3_hash"
+    },
+    "assertion_key": {
+      "$ref": "#/$defs/blake3_hash"
+    },
+    "conflict_key": {
+      "$ref": "#/$defs/blake3_hash"
+    },
+    "subject_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "predicate": {
+      "type": "string",
+      "minLength": 1
+    },
+    "object_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "valid_time": {
+      "$ref": "#/$defs/time_interval"
+    },
+    "recorded_time": {
+      "$ref": "#/$defs/recorded_time"
+    },
+    "source_locator": {
+      "$ref": "#/$defs/source_locator"
+    },
+    "materialization_digest": {
+      "$ref": "#/$defs/blake3_hash"
+    },
+    "assertion_status": {
+      "$ref": "#/$defs/assertion_status"
+    },
+    "trust_policy_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "supersedes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/blake3_hash"
+      },
+      "uniqueItems": true
+    },
+    "retracts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/blake3_hash"
+      },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "blake3_hash": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "interval_boundary": {
+      "type": "string",
+      "enum": [
+        "inclusive",
+        "exclusive",
+        "open"
+      ]
+    },
+    "assertion_status": {
+      "type": "string",
+      "enum": [
+        "asserted",
+        "accepted",
+        "disputed",
+        "retracted",
+        "superseded"
+      ]
+    },
+    "time_interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start_bound",
+        "end_bound"
+      ],
+      "properties": {
+        "start_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "start_bound": {
+          "$ref": "#/$defs/interval_boundary"
+        },
+        "end_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end_bound": {
+          "$ref": "#/$defs/interval_boundary"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "start_at"
+            ]
+          },
+          "then": {
+            "properties": {
+              "start_bound": {
+                "enum": [
+                  "inclusive",
+                  "exclusive"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "start_bound": {
+                "const": "open"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "end_at"
+            ]
+          },
+          "then": {
+            "properties": {
+              "end_bound": {
+                "enum": [
+                  "inclusive",
+                  "exclusive"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "end_bound": {
+                "const": "open"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "recorded_time": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/time_interval"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "start_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "start_bound": {
+              "$ref": "#/$defs/interval_boundary"
+            },
+            "end_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "end_bound": {
+              "$ref": "#/$defs/interval_boundary"
+            },
+            "transaction_seq": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "start_at"
+              ]
+            },
+            {
+              "required": [
+                "end_at"
+              ]
+            },
+            {
+              "required": [
+                "transaction_seq"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "source_locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_system",
+        "locator"
+      ],
+      "properties": {
+        "source_system": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fragment": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope_type",
+        "scope_id"
+      ],
+      "properties": {
+        "scope_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
