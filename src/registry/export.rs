@@ -51,7 +51,7 @@ pub struct RegistryExportFilters {
     pub rule_id_prefixes: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct RegistryExportSummary {
     pub source_entry_count: usize,
     pub filtered_entry_count: usize,
@@ -105,7 +105,7 @@ struct ExportRow {
     entry_order: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 struct EntityRow {
     canonical_id: String,
     canonical_iri: String,
@@ -113,11 +113,12 @@ struct EntityRow {
     display_name: String,
     normalized_display_key: String,
     alias_count: usize,
+    #[serde(skip_serializing)]
     display_rank: u8,
 }
 
 #[derive(Debug, Clone)]
-struct ExportPlan {
+struct RegistryExportSnapshot {
     registry: RegistryMeta,
     filters: RegistryExportFilters,
     source_entry_count: usize,
@@ -126,48 +127,107 @@ struct ExportPlan {
     skipped_shadowed_count: usize,
     rows: Vec<ExportRow>,
     entities: Vec<EntityRow>,
+    snapshot_hash: String,
+}
+
+impl RegistryExportSnapshot {
+    fn summary(&self) -> RegistryExportSummary {
+        RegistryExportSummary {
+            source_entry_count: self.source_entry_count,
+            filtered_entry_count: self.filtered_entry_count,
+            exported_alias_count: self.rows.len(),
+            exported_entity_count: self.entities.len(),
+            skipped_filter_count: self.skipped_filter_count,
+            skipped_shadowed_count: self.skipped_shadowed_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RegistryExportPlannedFileRole {
+    PrimaryArtifact,
+    DbtSchema,
+    DbtAntiCollapseTest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RegistryExportPlannedFile {
+    path: PathBuf,
+    role: RegistryExportPlannedFileRole,
+}
+
+#[derive(Debug, Clone)]
+struct RegistryExportExecutionPlan {
+    request: RegistryExportRequest,
+    snapshot: RegistryExportSnapshot,
+    files: Vec<RegistryExportPlannedFile>,
     content_hash: String,
 }
 
-pub fn export_registry(request: RegistryExportRequest) -> Result<RegistryExportOutput, Refusal> {
-    validate_request(&request)?;
-    let plan = plan_export(&request)?;
+#[derive(Clone, Copy)]
+struct RegistryExportBackendContract {
+    id: &'static str,
+    plan_files: fn(&RegistryExportRequest) -> Vec<RegistryExportPlannedFile>,
+    execute: fn(&RegistryExportExecutionPlan) -> Result<(), Refusal>,
+}
 
-    let mut files = vec![request.out.display().to_string()];
-    match request.format {
-        RegistryExportFormat::DbtSeed => {
-            write_dbt_seed(&request.out, &plan.rows)?;
-            if let Some(schema_out) = &request.schema_out {
-                write_dbt_schema(schema_out, &request.out)?;
-                files.push(schema_out.display().to_string());
-            }
-            if let Some(test_out) = &request.anti_collapse_test_out {
-                write_anti_collapse_test(test_out, &request.out)?;
-                files.push(test_out.display().to_string());
-            }
-        }
-        RegistryExportFormat::SearchIndex => {
-            write_search_index(&request.out, &request, &plan)?;
+impl RegistryExportFormat {
+    fn backend_contract(self) -> RegistryExportBackendContract {
+        match self {
+            Self::DbtSeed => RegistryExportBackendContract {
+                id: self.as_str(),
+                plan_files: plan_dbt_seed_files,
+                execute: execute_dbt_seed_backend,
+            },
+            Self::SearchIndex => RegistryExportBackendContract {
+                id: self.as_str(),
+                plan_files: plan_search_index_files,
+                execute: execute_search_index_backend,
+            },
         }
     }
+}
+
+pub fn export_registry(request: RegistryExportRequest) -> Result<RegistryExportOutput, Refusal> {
+    let plan = plan_registry_export(request)?;
+    execute_registry_export_plan(&plan)
+}
+
+fn plan_registry_export(
+    request: RegistryExportRequest,
+) -> Result<RegistryExportExecutionPlan, Refusal> {
+    validate_request(&request)?;
+    let snapshot = build_export_snapshot(&request)?;
+    let backend = request.format.backend_contract();
+
+    Ok(RegistryExportExecutionPlan {
+        content_hash: hash_backend_export(request.format, &snapshot)?,
+        files: (backend.plan_files)(&request),
+        request,
+        snapshot,
+    })
+}
+
+fn execute_registry_export_plan(
+    plan: &RegistryExportExecutionPlan,
+) -> Result<RegistryExportOutput, Refusal> {
+    let backend = plan.request.format.backend_contract();
+    (backend.execute)(plan)?;
 
     Ok(RegistryExportOutput {
         version: EXPORT_VERSION.to_string(),
-        format: request.format.as_str().to_string(),
-        registry: plan.registry,
-        output_path: request.out.display().to_string(),
-        content_hash: plan.content_hash,
+        format: backend.id.to_string(),
+        registry: plan.snapshot.registry.clone(),
+        output_path: plan.request.out.display().to_string(),
+        content_hash: plan.content_hash.clone(),
         normalization_spec: NORMALIZATION_SPEC_ID.to_string(),
-        filters: plan.filters,
-        summary: RegistryExportSummary {
-            source_entry_count: plan.source_entry_count,
-            filtered_entry_count: plan.filtered_entry_count,
-            exported_alias_count: plan.rows.len(),
-            exported_entity_count: plan.entities.len(),
-            skipped_filter_count: plan.skipped_filter_count,
-            skipped_shadowed_count: plan.skipped_shadowed_count,
-        },
-        files,
+        filters: plan.snapshot.filters.clone(),
+        summary: plan.snapshot.summary(),
+        files: plan
+            .files
+            .iter()
+            .map(|file| file.path.display().to_string())
+            .collect(),
     })
 }
 
@@ -207,7 +267,9 @@ fn validate_request(request: &RegistryExportRequest) -> Result<(), Refusal> {
     Ok(())
 }
 
-fn plan_export(request: &RegistryExportRequest) -> Result<ExportPlan, Refusal> {
+fn build_export_snapshot(
+    request: &RegistryExportRequest,
+) -> Result<RegistryExportSnapshot, Refusal> {
     let (_, registry, mapping_files) =
         load_registry_definition(&request.registry).map_err(|error| {
             Refusal::bad_registry(&request.registry.display().to_string(), &error.to_string())
@@ -227,9 +289,9 @@ fn plan_export(request: &RegistryExportRequest) -> Result<ExportPlan, Refusal> {
         &request.canonical_iri_prefix,
     );
     let entities = collect_entities(&rows);
-    let content_hash = hash_logical_export(request.format, &registry, &filters, &rows, &entities)?;
+    let snapshot_hash = hash_snapshot(&registry, &filters, &rows, &entities)?;
 
-    Ok(ExportPlan {
+    Ok(RegistryExportSnapshot {
         registry,
         filters,
         source_entry_count,
@@ -238,7 +300,7 @@ fn plan_export(request: &RegistryExportRequest) -> Result<ExportPlan, Refusal> {
         skipped_shadowed_count,
         rows,
         entities,
-        content_hash,
+        snapshot_hash,
     })
 }
 
@@ -422,11 +484,54 @@ fn write_anti_collapse_test(path: &Path, seed_path: &Path) -> Result<(), Refusal
     fs::write(path, body).map_err(|error| io_refusal(path, error))
 }
 
-fn write_search_index(
-    path: &Path,
-    request: &RegistryExportRequest,
-    plan: &ExportPlan,
-) -> Result<(), Refusal> {
+fn execute_dbt_seed_backend(plan: &RegistryExportExecutionPlan) -> Result<(), Refusal> {
+    write_dbt_seed(&plan.request.out, &plan.snapshot.rows)?;
+    for file in &plan.files {
+        match file.role {
+            RegistryExportPlannedFileRole::PrimaryArtifact => {}
+            RegistryExportPlannedFileRole::DbtSchema => {
+                write_dbt_schema(&file.path, &plan.request.out)?;
+            }
+            RegistryExportPlannedFileRole::DbtAntiCollapseTest => {
+                write_anti_collapse_test(&file.path, &plan.request.out)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn execute_search_index_backend(plan: &RegistryExportExecutionPlan) -> Result<(), Refusal> {
+    write_search_index(&plan.request.out, plan)
+}
+
+fn plan_dbt_seed_files(request: &RegistryExportRequest) -> Vec<RegistryExportPlannedFile> {
+    let mut files = vec![RegistryExportPlannedFile {
+        path: request.out.clone(),
+        role: RegistryExportPlannedFileRole::PrimaryArtifact,
+    }];
+    if let Some(path) = &request.schema_out {
+        files.push(RegistryExportPlannedFile {
+            path: path.clone(),
+            role: RegistryExportPlannedFileRole::DbtSchema,
+        });
+    }
+    if let Some(path) = &request.anti_collapse_test_out {
+        files.push(RegistryExportPlannedFile {
+            path: path.clone(),
+            role: RegistryExportPlannedFileRole::DbtAntiCollapseTest,
+        });
+    }
+    files
+}
+
+fn plan_search_index_files(request: &RegistryExportRequest) -> Vec<RegistryExportPlannedFile> {
+    vec![RegistryExportPlannedFile {
+        path: request.out.clone(),
+        role: RegistryExportPlannedFileRole::PrimaryArtifact,
+    }]
+}
+
+fn write_search_index(path: &Path, plan: &RegistryExportExecutionPlan) -> Result<(), Refusal> {
     ensure_parent_dir(path)?;
     let mut conn = Connection::open(path).map_err(|error| io_refusal(path, error))?;
     conn.execute_batch(RESET_SEARCH_INDEX_SCHEMA)
@@ -437,19 +542,18 @@ fn write_search_index(
     let tx = conn
         .transaction()
         .map_err(|error| io_refusal(path, error))?;
-    insert_search_metadata(&tx, request, plan, path)?;
+    insert_search_metadata(&tx, plan, path)?;
     insert_search_scoring_spec(&tx, path)?;
-    insert_entities(&tx, &plan.entities, path)?;
-    insert_aliases(&tx, &plan.rows, path)?;
-    insert_external_keys(&tx, &plan.rows, path)?;
+    insert_entities(&tx, &plan.snapshot.entities, path)?;
+    insert_aliases(&tx, &plan.snapshot.rows, path)?;
+    insert_external_keys(&tx, &plan.snapshot.rows, path)?;
     tx.commit().map_err(|error| io_refusal(path, error))?;
     Ok(())
 }
 
 fn insert_search_metadata(
     conn: &Connection,
-    request: &RegistryExportRequest,
-    plan: &ExportPlan,
+    plan: &RegistryExportExecutionPlan,
     path: &Path,
 ) -> Result<(), Refusal> {
     let generated_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
@@ -463,19 +567,26 @@ fn insert_search_metadata(
             "artifact_version",
             SEARCH_INDEX_ARTIFACT_VERSION.to_string(),
         ),
-        ("registry_id", plan.registry.id.clone()),
-        ("registry_version", plan.registry.version.clone()),
-        ("registry_source", plan.registry.source.clone()),
-        ("format", request.format.as_str().to_string()),
+        ("registry_id", plan.snapshot.registry.id.clone()),
+        ("registry_version", plan.snapshot.registry.version.clone()),
+        ("registry_source", plan.snapshot.registry.source.clone()),
+        ("format", plan.request.format.as_str().to_string()),
         ("content_hash", plan.content_hash.clone()),
+        ("snapshot_hash", plan.snapshot.snapshot_hash.clone()),
         ("generated_at", generated_at),
         ("normalization_spec_id", NORMALIZATION_SPEC_ID.to_string()),
         ("normalization_spec", normalization_spec.to_string()),
-        ("canonical_iri_prefix", request.canonical_iri_prefix.clone()),
-        ("namespace", request.namespace.clone().unwrap_or_default()),
+        (
+            "canonical_iri_prefix",
+            plan.request.canonical_iri_prefix.clone(),
+        ),
+        (
+            "namespace",
+            plan.request.namespace.clone().unwrap_or_default(),
+        ),
         (
             "filters",
-            serde_json::to_string(&plan.filters).map_err(|error| {
+            serde_json::to_string(&plan.snapshot.filters).map_err(|error| {
                 parse_refusal(
                     "Failed to serialize registry export filters",
                     json!({ "error": error.to_string() }),
@@ -698,28 +809,31 @@ CREATE VIRTUAL TABLE aliases_fts
 USING fts5(alias, normalized_key, canonical_id, canonical_iri, content='aliases', content_rowid='id');
 "#;
 
-fn hash_logical_export(
+fn hash_backend_export(
     format: RegistryExportFormat,
+    snapshot: &RegistryExportSnapshot,
+) -> Result<String, Refusal> {
+    let value = json!({
+        "format": format.as_str(),
+        "registry": &snapshot.registry,
+        "filters": &snapshot.filters,
+        "rows": &snapshot.rows,
+        "entities": &snapshot.entities,
+    });
+    hash_json_value(&value)
+}
+
+fn hash_snapshot(
     registry: &RegistryMeta,
     filters: &RegistryExportFilters,
     rows: &[ExportRow],
     entities: &[EntityRow],
 ) -> Result<String, Refusal> {
     let value = json!({
-        "format": format.as_str(),
         "registry": registry,
         "filters": filters,
         "rows": rows,
-        "entities": entities.iter().map(|entity| {
-            json!({
-                "canonical_id": entity.canonical_id,
-                "canonical_iri": entity.canonical_iri,
-                "canonical_type": entity.canonical_type,
-                "display_name": entity.display_name,
-                "normalized_display_key": entity.normalized_display_key,
-                "alias_count": entity.alias_count,
-            })
-        }).collect::<Vec<_>>(),
+        "entities": entities,
     });
     hash_json_value(&value)
 }

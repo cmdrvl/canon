@@ -472,6 +472,79 @@ pub struct SealedCorpusAblationEvidence {
     pub case_ids: Vec<String>,
 }
 
+#[cfg_attr(test, allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SplitConformanceFixture {
+    #[serde(flatten)]
+    pub corpus: EvaluationCorpus,
+    pub split_conformance: SplitConformanceHarness,
+}
+
+#[cfg_attr(test, allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SplitConformanceHarness {
+    pub holdout_mode: HoldoutMode,
+    pub labels_accessible_to_strategy: bool,
+    pub manifest_commitment_digest: String,
+    pub holdout_label_commitment_digest: String,
+    pub records: Vec<SplitConformanceRecord>,
+}
+
+#[cfg_attr(test, allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HoldoutMode {
+    AliasDisjoint,
+    EntityDisjoint,
+    TimeForward,
+}
+
+impl HoldoutMode {
+    #[cfg_attr(test, allow(dead_code))]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::AliasDisjoint => "alias_disjoint",
+            Self::EntityDisjoint => "entity_disjoint",
+            Self::TimeForward => "time_forward",
+        }
+    }
+}
+
+#[cfg_attr(test, allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SplitConformanceRecord {
+    pub observation_id: String,
+    pub partition: CorpusPartition,
+    pub canonical_entity_key: String,
+    pub alias_group_key: String,
+    pub source_family_key: String,
+    pub mutation_seed_key: String,
+    pub row_fingerprint: String,
+    pub label_commitment_digest: String,
+    pub adjudication_ref: String,
+    pub confidence_basis_points: u16,
+}
+
+#[cfg_attr(test, allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SplitConformanceReport {
+    pub version: String,
+    pub corpus_id: String,
+    pub corpus_version: String,
+    pub corpus_digest: String,
+    pub split_conformance_digest: String,
+    pub holdout_mode: HoldoutMode,
+    pub labels_accessible_to_strategy: bool,
+    pub manifest_commitment_digest: String,
+    pub holdout_label_commitment_digest: String,
+    pub partition_counts: BTreeMap<String, usize>,
+    pub exact_replay_observation_count: usize,
+    pub protected_holdout_observation_count: usize,
+    pub physical_row_count: usize,
+    pub unique_row_fingerprint_count: usize,
+    pub forbidden_boundary_counts: BTreeMap<String, usize>,
+}
+
 pub fn finalize_corpus(mut corpus: EvaluationCorpus) -> EvaluationResult<EvaluationCorpus> {
     if corpus.version.trim().is_empty() {
         corpus.version = evaluation_corpus_schema_version().to_string();
@@ -925,6 +998,171 @@ pub fn canonical_sealed_corpus_quality_report_bytes(
     serde_json::to_vec(&report).map_err(|error| {
         artifact_contract_error(format!(
             "failed to serialize sealed corpus quality report: {error}"
+        ))
+    })
+}
+
+#[cfg_attr(test, allow(dead_code))]
+pub fn finalize_split_conformance_fixture(
+    fixture: SplitConformanceFixture,
+) -> EvaluationResult<SplitConformanceFixture> {
+    let corpus = finalize_corpus(fixture.corpus)?;
+    let dataset_map = corpus
+        .datasets
+        .iter()
+        .map(|dataset| (dataset.dataset_id.clone(), dataset))
+        .collect::<BTreeMap<_, _>>();
+    let observation_map = corpus
+        .observations
+        .iter()
+        .map(|observation| (observation.observation_id.clone(), observation))
+        .collect::<BTreeMap<_, _>>();
+    let adjudication_map = corpus
+        .adjudications
+        .iter()
+        .map(|adjudication| (adjudication.adjudication_id.clone(), adjudication))
+        .collect::<BTreeMap<_, _>>();
+    let split_conformance = normalize_split_conformance(
+        fixture.split_conformance,
+        &observation_map,
+        &dataset_map,
+        &adjudication_map,
+    )?;
+    Ok(SplitConformanceFixture {
+        corpus,
+        split_conformance,
+    })
+}
+
+#[cfg_attr(test, allow(dead_code))]
+pub fn split_conformance_report(
+    fixture: &SplitConformanceFixture,
+) -> EvaluationResult<SplitConformanceReport> {
+    let fixture = finalize_split_conformance_fixture(fixture.clone())?;
+    let corpus_digest = corpus_digest(&fixture.corpus)?;
+    let split_conformance_digest = split_conformance_digest(&fixture.split_conformance)?;
+    let observation_map = fixture
+        .corpus
+        .observations
+        .iter()
+        .map(|observation| (observation.observation_id.clone(), observation))
+        .collect::<BTreeMap<_, _>>();
+    let mut partition_counts = BTreeMap::new();
+    for record in &fixture.split_conformance.records {
+        increment_count(&mut partition_counts, record.partition.as_str());
+    }
+
+    let exact_replay_observation_count = fixture
+        .split_conformance
+        .records
+        .iter()
+        .filter(|record| record.partition == CorpusPartition::ExactReplay)
+        .count();
+    let protected_holdout_observation_count = fixture
+        .split_conformance
+        .records
+        .iter()
+        .filter(|record| record.partition == CorpusPartition::Holdout)
+        .count();
+    let unique_row_fingerprint_count = fixture
+        .split_conformance
+        .records
+        .iter()
+        .map(|record| record.row_fingerprint.clone())
+        .collect::<BTreeSet<_>>()
+        .len();
+
+    let training_records = fixture
+        .split_conformance
+        .records
+        .iter()
+        .filter(|record| is_training_partition(record.partition))
+        .collect::<Vec<_>>();
+    let holdout_records = fixture
+        .split_conformance
+        .records
+        .iter()
+        .filter(|record| record.partition == CorpusPartition::Holdout)
+        .collect::<Vec<_>>();
+    let mut forbidden_boundary_counts = BTreeMap::new();
+    forbidden_boundary_counts.insert(
+        "alias_group".to_string(),
+        shared_key_count(&training_records, &holdout_records, |record| {
+            record.alias_group_key.clone()
+        }),
+    );
+    forbidden_boundary_counts.insert(
+        "surface_fingerprint".to_string(),
+        shared_key_count(&training_records, &holdout_records, |record| {
+            observation_map
+                .get(&record.observation_id)
+                .expect("observation validated")
+                .surface_fingerprint
+                .clone()
+        }),
+    );
+    forbidden_boundary_counts.insert(
+        "source_family".to_string(),
+        shared_key_count(&training_records, &holdout_records, |record| {
+            record.source_family_key.clone()
+        }),
+    );
+    forbidden_boundary_counts.insert(
+        "mutation_seed".to_string(),
+        shared_key_count(&training_records, &holdout_records, |record| {
+            record.mutation_seed_key.clone()
+        }),
+    );
+    forbidden_boundary_counts.insert(
+        "row_fingerprint".to_string(),
+        shared_key_count(&training_records, &holdout_records, |record| {
+            record.row_fingerprint.clone()
+        }),
+    );
+    if fixture.split_conformance.holdout_mode == HoldoutMode::EntityDisjoint {
+        forbidden_boundary_counts.insert(
+            "canonical_entity".to_string(),
+            shared_key_count(&training_records, &holdout_records, |record| {
+                record.canonical_entity_key.clone()
+            }),
+        );
+    }
+    if fixture.split_conformance.holdout_mode == HoldoutMode::TimeForward {
+        let time_regressions =
+            count_time_regressions(&training_records, &holdout_records, &observation_map)?;
+        forbidden_boundary_counts.insert("time_regression".to_string(), time_regressions);
+    }
+
+    Ok(SplitConformanceReport {
+        version: "evaluation.corpus.split_conformance_report".to_string(),
+        corpus_id: fixture.corpus.corpus_id.clone(),
+        corpus_version: fixture.corpus.corpus_version.clone(),
+        corpus_digest,
+        split_conformance_digest,
+        holdout_mode: fixture.split_conformance.holdout_mode,
+        labels_accessible_to_strategy: fixture.split_conformance.labels_accessible_to_strategy,
+        manifest_commitment_digest: fixture.split_conformance.manifest_commitment_digest.clone(),
+        holdout_label_commitment_digest: fixture
+            .split_conformance
+            .holdout_label_commitment_digest
+            .clone(),
+        partition_counts,
+        exact_replay_observation_count,
+        protected_holdout_observation_count,
+        physical_row_count: fixture.split_conformance.records.len(),
+        unique_row_fingerprint_count,
+        forbidden_boundary_counts,
+    })
+}
+
+#[cfg_attr(test, allow(dead_code))]
+pub fn canonical_split_conformance_report_bytes(
+    fixture: &SplitConformanceFixture,
+) -> EvaluationResult<Vec<u8>> {
+    let report = split_conformance_report(fixture)?;
+    serde_json::to_vec(&report).map_err(|error| {
+        artifact_contract_error(format!(
+            "failed to serialize split conformance report: {error}"
         ))
     })
 }
@@ -1646,6 +1884,295 @@ fn normalize_quality_case(
     Ok(case)
 }
 
+#[cfg_attr(test, allow(dead_code))]
+fn normalize_split_conformance(
+    mut split: SplitConformanceHarness,
+    observation_map: &BTreeMap<String, &CorpusObservation>,
+    dataset_map: &BTreeMap<String, &CorpusDataset>,
+    adjudication_map: &BTreeMap<String, &AdjudicationRecord>,
+) -> EvaluationResult<SplitConformanceHarness> {
+    if split.labels_accessible_to_strategy {
+        return Err(compatibility_policy_error(
+            "split_conformance.labels_accessible_to_strategy must remain false",
+        ));
+    }
+    split.manifest_commitment_digest = normalized_hash(
+        &split.manifest_commitment_digest,
+        "split_conformance.manifest_commitment_digest",
+    )?;
+    split.holdout_label_commitment_digest = normalized_hash(
+        &split.holdout_label_commitment_digest,
+        "split_conformance.holdout_label_commitment_digest",
+    )?;
+    split.records = dedupe_components(
+        split
+            .records
+            .into_iter()
+            .map(|record| {
+                normalize_split_conformance_record(
+                    record,
+                    observation_map,
+                    dataset_map,
+                    adjudication_map,
+                )
+            })
+            .collect::<EvaluationResult<Vec<_>>>()?,
+        |record| record.observation_id.clone(),
+        "split conformance record",
+    )?;
+    if split.records.is_empty() {
+        return Err(artifact_contract_error(
+            "split_conformance.records must include at least one observation binding",
+        ));
+    }
+    validate_split_conformance_coverage(&split.records, observation_map)?;
+    validate_split_conformance_boundaries(&split, observation_map)?;
+    Ok(split)
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn normalize_split_conformance_record(
+    mut record: SplitConformanceRecord,
+    observation_map: &BTreeMap<String, &CorpusObservation>,
+    dataset_map: &BTreeMap<String, &CorpusDataset>,
+    adjudication_map: &BTreeMap<String, &AdjudicationRecord>,
+) -> EvaluationResult<SplitConformanceRecord> {
+    record.observation_id = normalized_component_id(
+        &record.observation_id,
+        "split_conformance.record.observation_id",
+    )?;
+    let observation = observation_map.get(&record.observation_id).ok_or_else(|| {
+        missing_reference_error(format!(
+            "split_conformance.record references unknown observation {}",
+            record.observation_id
+        ))
+    })?;
+    let dataset = dataset_map
+        .get(&observation.dataset_id)
+        .expect("dataset validated");
+    if dataset.partition != record.partition {
+        return Err(compatibility_policy_error(format!(
+            "split_conformance record {} declares partition {} but observation dataset uses {}",
+            record.observation_id,
+            record.partition.as_str(),
+            dataset.partition.as_str()
+        )));
+    }
+    record.canonical_entity_key = normalized_component_id(
+        &record.canonical_entity_key,
+        "split_conformance.record.canonical_entity_key",
+    )?;
+    record.alias_group_key = normalized_component_id(
+        &record.alias_group_key,
+        "split_conformance.record.alias_group_key",
+    )?;
+    record.source_family_key = normalized_component_id(
+        &record.source_family_key,
+        "split_conformance.record.source_family_key",
+    )?;
+    record.mutation_seed_key = normalized_component_id(
+        &record.mutation_seed_key,
+        "split_conformance.record.mutation_seed_key",
+    )?;
+    record.row_fingerprint = normalized_hash(
+        &record.row_fingerprint,
+        "split_conformance.record.row_fingerprint",
+    )?;
+    record.label_commitment_digest = normalized_hash(
+        &record.label_commitment_digest,
+        "split_conformance.record.label_commitment_digest",
+    )?;
+    record.adjudication_ref = normalized_component_id(
+        &record.adjudication_ref,
+        "split_conformance.record.adjudication_ref",
+    )?;
+    let adjudication = adjudication_map
+        .get(&record.adjudication_ref)
+        .ok_or_else(|| {
+            missing_reference_error(format!(
+                "split_conformance record {} references unknown adjudication {}",
+                record.observation_id, record.adjudication_ref
+            ))
+        })?;
+    if record.confidence_basis_points > 10_000 {
+        return Err(artifact_contract_error(
+            "split_conformance.record.confidence_basis_points must be between 0 and 10000",
+        ));
+    }
+    if record.confidence_basis_points != adjudication.confidence_basis_points {
+        return Err(inconsistent_label_error(format!(
+            "split_conformance record {} declares confidence {} but adjudication {} uses {}",
+            record.observation_id,
+            record.confidence_basis_points,
+            record.adjudication_ref,
+            adjudication.confidence_basis_points
+        )));
+    }
+    Ok(record)
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn validate_split_conformance_coverage(
+    records: &[SplitConformanceRecord],
+    observation_map: &BTreeMap<String, &CorpusObservation>,
+) -> EvaluationResult<()> {
+    let actual = records
+        .iter()
+        .map(|record| record.observation_id.clone())
+        .collect::<BTreeSet<_>>();
+    let expected = observation_map.keys().cloned().collect::<BTreeSet<_>>();
+    if actual == expected {
+        return Ok(());
+    }
+
+    let missing = expected
+        .difference(&actual)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    let extra = actual
+        .difference(&expected)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(missing_reference_error(format!(
+        "split_conformance coverage drifted; missing=[{missing}] extra=[{extra}]"
+    )))
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn validate_split_conformance_boundaries(
+    split: &SplitConformanceHarness,
+    observation_map: &BTreeMap<String, &CorpusObservation>,
+) -> EvaluationResult<()> {
+    let training_records = split
+        .records
+        .iter()
+        .filter(|record| is_training_partition(record.partition))
+        .collect::<Vec<_>>();
+    let holdout_records = split
+        .records
+        .iter()
+        .filter(|record| record.partition == CorpusPartition::Holdout)
+        .collect::<Vec<_>>();
+    if training_records.is_empty() || holdout_records.is_empty() {
+        return Err(compatibility_policy_error(
+            "split_conformance requires both training-side and holdout observations",
+        ));
+    }
+
+    reject_shared_boundary_key(
+        &training_records,
+        &holdout_records,
+        |record| record.alias_group_key.clone(),
+        "alias_group_key leaked across the tuning/holdout boundary",
+    )?;
+    reject_shared_boundary_key(
+        &training_records,
+        &holdout_records,
+        |record| {
+            observation_map
+                .get(&record.observation_id)
+                .expect("observation validated")
+                .surface_fingerprint
+                .clone()
+        },
+        "surface_fingerprint leaked across the tuning/holdout boundary",
+    )?;
+    reject_shared_boundary_key(
+        &training_records,
+        &holdout_records,
+        |record| record.source_family_key.clone(),
+        "source_family_key leaked across the tuning/holdout boundary",
+    )?;
+    reject_shared_boundary_key(
+        &training_records,
+        &holdout_records,
+        |record| record.mutation_seed_key.clone(),
+        "mutation_seed_key leaked across the tuning/holdout boundary",
+    )?;
+    reject_shared_boundary_key(
+        &training_records,
+        &holdout_records,
+        |record| record.row_fingerprint.clone(),
+        "row_fingerprint leaked across the tuning/holdout boundary",
+    )?;
+    if split.holdout_mode == HoldoutMode::EntityDisjoint {
+        reject_shared_boundary_key(
+            &training_records,
+            &holdout_records,
+            |record| record.canonical_entity_key.clone(),
+            "canonical_entity_key leaked across an entity-disjoint holdout boundary",
+        )?;
+    }
+    if split.holdout_mode == HoldoutMode::TimeForward {
+        validate_time_forward_boundary(&training_records, &holdout_records, observation_map)?;
+    }
+
+    Ok(())
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn reject_shared_boundary_key<F>(
+    training_records: &[&SplitConformanceRecord],
+    holdout_records: &[&SplitConformanceRecord],
+    key_fn: F,
+    message: &str,
+) -> EvaluationResult<()>
+where
+    F: Fn(&SplitConformanceRecord) -> String,
+{
+    let training = training_records
+        .iter()
+        .map(|record| key_fn(record))
+        .collect::<BTreeSet<_>>();
+    let holdout = holdout_records
+        .iter()
+        .map(|record| key_fn(record))
+        .collect::<BTreeSet<_>>();
+    if let Some(shared) = training.intersection(&holdout).next() {
+        return Err(partition_leakage_error(format!("{message}: {shared}")));
+    }
+    Ok(())
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn validate_time_forward_boundary(
+    training_records: &[&SplitConformanceRecord],
+    holdout_records: &[&SplitConformanceRecord],
+    observation_map: &BTreeMap<String, &CorpusObservation>,
+) -> EvaluationResult<()> {
+    let latest_training = training_records
+        .iter()
+        .map(|record| observation_timestamp(record, observation_map))
+        .collect::<EvaluationResult<Vec<_>>>()?
+        .into_iter()
+        .max()
+        .ok_or_else(|| {
+            compatibility_policy_error(
+                "time_forward split_conformance requires at least one timed training observation",
+            )
+        })?;
+    let earliest_holdout = holdout_records
+        .iter()
+        .map(|record| observation_timestamp(record, observation_map))
+        .collect::<EvaluationResult<Vec<_>>>()?
+        .into_iter()
+        .min()
+        .ok_or_else(|| {
+            compatibility_policy_error(
+                "time_forward split_conformance requires at least one timed holdout observation",
+            )
+        })?;
+    if latest_training >= earliest_holdout {
+        return Err(partition_leakage_error(format!(
+            "time_forward holdout must begin after tuning data; latest training timestamp {} overlaps earliest holdout {}",
+            latest_training, earliest_holdout
+        )));
+    }
+    Ok(())
+}
+
 fn require_observation(
     observation_id: &str,
     observation_map: &BTreeMap<String, &CorpusObservation>,
@@ -1688,6 +2215,29 @@ fn normalize_partition_list(mut partitions: Vec<CorpusPartition>) -> Vec<CorpusP
     partitions.sort();
     partitions.dedup();
     partitions
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn is_training_partition(partition: CorpusPartition) -> bool {
+    matches!(partition, CorpusPartition::Train | CorpusPartition::Tune)
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn observation_timestamp(
+    record: &SplitConformanceRecord,
+    observation_map: &BTreeMap<String, &CorpusObservation>,
+) -> EvaluationResult<String> {
+    observation_map
+        .get(&record.observation_id)
+        .expect("observation validated")
+        .observed_at
+        .clone()
+        .ok_or_else(|| {
+            compatibility_policy_error(format!(
+                "split_conformance record {} requires observed_at for time_forward mode",
+                record.observation_id
+            ))
+        })
 }
 
 fn typed_metric_key(ontology_id: &str, role_or_kind: &str) -> String {
@@ -1855,10 +2405,65 @@ fn harness_digest(harness: &SealedCorpusQualityHarness) -> EvaluationResult<Stri
 }
 
 #[cfg_attr(test, allow(dead_code))]
+fn split_conformance_digest(split: &SplitConformanceHarness) -> EvaluationResult<String> {
+    let bytes = serde_json::to_vec(split).map_err(|error| {
+        artifact_contract_error(format!(
+            "failed to serialize split conformance harness: {error}"
+        ))
+    })?;
+    Ok(blake3_digest(&bytes))
+}
+
+#[cfg_attr(test, allow(dead_code))]
 fn basis_points(numerator: usize, denominator: usize) -> Option<u16> {
     if denominator == 0 {
         return None;
     }
     let scaled = (numerator * 10_000 + (denominator / 2)) / denominator;
     u16::try_from(scaled).ok()
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn shared_key_count<F>(
+    training_records: &[&SplitConformanceRecord],
+    holdout_records: &[&SplitConformanceRecord],
+    key_fn: F,
+) -> usize
+where
+    F: Fn(&SplitConformanceRecord) -> String,
+{
+    let training = training_records
+        .iter()
+        .map(|record| key_fn(record))
+        .collect::<BTreeSet<_>>();
+    let holdout = holdout_records
+        .iter()
+        .map(|record| key_fn(record))
+        .collect::<BTreeSet<_>>();
+    training.intersection(&holdout).count()
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn count_time_regressions(
+    training_records: &[&SplitConformanceRecord],
+    holdout_records: &[&SplitConformanceRecord],
+    observation_map: &BTreeMap<String, &CorpusObservation>,
+) -> EvaluationResult<usize> {
+    let latest_training = training_records
+        .iter()
+        .map(|record| observation_timestamp(record, observation_map))
+        .collect::<EvaluationResult<Vec<_>>>()?
+        .into_iter()
+        .max();
+    let holdout_times = holdout_records
+        .iter()
+        .map(|record| observation_timestamp(record, observation_map))
+        .collect::<EvaluationResult<Vec<_>>>()?;
+    let Some(latest_training) = latest_training else {
+        return Ok(0);
+    };
+    Ok(holdout_times
+        .into_iter()
+        .filter(|timestamp| timestamp <= &latest_training)
+        .count())
 }

@@ -1,4 +1,13 @@
 use assert_cmd::Command;
+use canon::{
+    RegistryDiffEntry,
+    registry::{
+        REGISTRY_PACKAGE_SCHEMA_VERSION, RegistryPackage, RegistryPackageAttachmentDescriptor,
+        RegistryPackageDependencyReference, RegistryPackageDeploymentProjection,
+        RegistryPackageDescriptor, RegistryPackageIdentityRules, RegistryPackageLayouts,
+        RegistryPackageRegistryIdentity, canonical_package_bytes, parse_registry_package,
+    },
+};
 use csv::{ReaderBuilder, StringRecord};
 use serde::Serialize;
 use serde_json::Value;
@@ -260,6 +269,60 @@ fn invariant_jsonl_partition() {
         let summary_total = json["summary"]["total"].as_u64().unwrap() as usize;
         let expected_total = observed.values.len() + observed.special_reasons.len();
         assert_eq!(summary_total, expected_total, "seed {}", seed);
+    }
+}
+
+#[test]
+fn invariant_registry_package_serialize_parse_fixed_point() {
+    for seed in SEEDS {
+        let package = generated_registry_package(seed);
+        let bytes = canonical_package_bytes(&package).expect("canonical bytes");
+        let reparsed = parse_registry_package(&bytes).expect("registry package reparses");
+
+        assert_eq!(
+            canonical_package_bytes(&reparsed).expect("reparsed canonical bytes"),
+            bytes,
+            "seed {}",
+            seed
+        );
+        assert_eq!(
+            reparsed.content_digest, package.content_digest,
+            "seed {}",
+            seed
+        );
+        assert_eq!(reparsed.registry, package.registry, "seed {}", seed);
+    }
+}
+
+#[test]
+fn invariant_registry_package_semantic_permutations_keep_canonical_bytes() {
+    for seed in SEEDS {
+        let package = generated_registry_package(seed);
+        let mut permuted = package.clone();
+        permuted.file_descriptors.reverse();
+        permuted.attachments.reverse();
+        permuted.dependency_references.reverse();
+        permuted.allowed_sidecars.reverse();
+        permuted.deployment_projections.reverse();
+        permuted.lookup_entries.reverse();
+        permuted.identity.identity_exclusions.reverse();
+        for descriptor in &mut permuted.file_descriptors {
+            descriptor.path = descriptor.path.replace('/', "\\");
+        }
+        if let Some(build_provenance) = permuted.build_provenance.as_mut() {
+            build_provenance.path = build_provenance.path.replace('/', "\\");
+        }
+        for attachment in &mut permuted.attachments {
+            attachment.path = attachment.path.replace('/', "\\");
+        }
+        permuted.content_digest = registry_package_digest_for_test(&permuted);
+
+        assert_eq!(
+            canonical_package_bytes(&package).expect("base bytes"),
+            canonical_package_bytes(&permuted).expect("permuted bytes"),
+            "seed {}",
+            seed
+        );
     }
 }
 
@@ -593,4 +656,155 @@ fn hex_to_string_lossy(hex: &str) -> String {
 
 fn is_blank_record(record: &StringRecord) -> bool {
     record.iter().all(|field| field.trim().is_empty())
+}
+
+fn generated_registry_package(seed: u64) -> RegistryPackage {
+    let base_entries = vec![
+        RegistryDiffEntry {
+            input: format!("CUSIP-{seed}-A"),
+            canonical_id: format!("CANON-{seed}-A"),
+            canonical_type: "ticker".to_string(),
+            rule_id: "RULE_A".to_string(),
+        },
+        RegistryDiffEntry {
+            input: format!("CUSIP-{seed}-B"),
+            canonical_id: format!("CANON-{seed}-B"),
+            canonical_type: "isin".to_string(),
+            rule_id: "RULE_B".to_string(),
+        },
+    ];
+    let mut lookup_entries = base_entries.clone();
+    if seed.is_multiple_of(2) {
+        lookup_entries.push(RegistryDiffEntry {
+            input: format!("CUSIP-{seed}-C"),
+            canonical_id: format!("CANON-{seed}-C"),
+            canonical_type: "lei".to_string(),
+            rule_id: "RULE_C".to_string(),
+        });
+    }
+
+    let file_descriptors = vec![
+        RegistryPackageDescriptor {
+            path: "mappings/a-primary.json".to_string(),
+            kind: "mapping".to_string(),
+            content_digest: fake_digest(&format!("primary:{seed}")),
+            bytes: 128 + seed,
+            entry_count: Some(base_entries.len()),
+        },
+        RegistryPackageDescriptor {
+            path: "mappings/z-secondary.json".to_string(),
+            kind: "mapping".to_string(),
+            content_digest: fake_digest(&format!("secondary:{seed}")),
+            bytes: 64 + seed,
+            entry_count: Some(lookup_entries.len().saturating_sub(base_entries.len())),
+        },
+        RegistryPackageDescriptor {
+            path: "registry.json".to_string(),
+            kind: "registry_metadata".to_string(),
+            content_digest: fake_digest(&format!("registry:{seed}")),
+            bytes: 96 + seed,
+            entry_count: None,
+        },
+    ];
+
+    let build_provenance = seed.is_multiple_of(3).then(|| RegistryPackageDescriptor {
+        path: "_build.json".to_string(),
+        kind: "build_provenance".to_string(),
+        content_digest: fake_digest(&format!("build:{seed}")),
+        bytes: 48 + seed,
+        entry_count: None,
+    });
+
+    let attachments = if seed.is_multiple_of(2) {
+        vec![RegistryPackageAttachmentDescriptor {
+            path: "_attachments/audit.json".to_string(),
+            kind: "audit".to_string(),
+            content_digest: fake_digest(&format!("attachment:{seed}")),
+            bytes: 32 + seed,
+        }]
+    } else {
+        Vec::new()
+    };
+
+    let mut package = RegistryPackage {
+        schema_version: REGISTRY_PACKAGE_SCHEMA_VERSION.to_string(),
+        registry: RegistryPackageRegistryIdentity {
+            id: format!("registry-{seed}"),
+            version: format!("1.{}.{}", seed % 7, seed % 5),
+        },
+        content_digest: String::new(),
+        entry_count: lookup_entries.len(),
+        effective_mapping_count: lookup_entries.len(),
+        canonical_iri_namespace: Some(format!("https://example.test/generated/{seed}/")),
+        file_descriptors,
+        build_provenance,
+        attachments,
+        dependency_references: vec![
+            RegistryPackageDependencyReference {
+                id: format!("dep-{seed}-a"),
+                version: "1.0.0".to_string(),
+                content_digest: fake_digest(&format!("dep:{seed}:a")),
+            },
+            RegistryPackageDependencyReference {
+                id: format!("dep-{seed}-b"),
+                version: "2.0.0".to_string(),
+                content_digest: fake_digest(&format!("dep:{seed}:b")),
+            },
+        ],
+        allowed_sidecars: vec![
+            "audit".to_string(),
+            "gold".to_string(),
+            "strategy".to_string(),
+            "signature".to_string(),
+            "relation".to_string(),
+            "escrow".to_string(),
+        ],
+        deployment_projections: vec![
+            RegistryPackageDeploymentProjection {
+                kind: "dbt-seed".to_string(),
+                first_class: true,
+                identity_excluded: true,
+            },
+            RegistryPackageDeploymentProjection {
+                kind: "search-index".to_string(),
+                first_class: true,
+                identity_excluded: true,
+            },
+        ],
+        lookup_entries,
+        identity: RegistryPackageIdentityRules {
+            hash_algorithm: "blake3".to_string(),
+            descriptor_ordering: "normalized_path_lexicographic".to_string(),
+            mapping_precedence: "filename_lexicographic_then_entry_order".to_string(),
+            identity_exclusions: vec![
+                "_index.sqlite".to_string(),
+                "absolute_paths".to_string(),
+                "derived_caches".to_string(),
+                "mtime".to_string(),
+                "provider_credentials".to_string(),
+                "secrets".to_string(),
+            ],
+            secret_material_policy: "never_include_secrets_in_package_manifest".to_string(),
+        },
+        layouts: RegistryPackageLayouts {
+            directory_layout: "registry-package-dir.v1".to_string(),
+            archive_layout: "registry-package-archive.v1".to_string(),
+            attachment_root: "_attachments/".to_string(),
+        },
+    };
+    package.content_digest = registry_package_digest_for_test(&package);
+    package
+}
+
+fn registry_package_digest_for_test(package: &RegistryPackage) -> String {
+    let mut digest_view = package.clone();
+    digest_view.content_digest.clear();
+    format!(
+        "blake3:{}",
+        blake3::hash(&canonical_package_bytes(&digest_view).unwrap()).to_hex()
+    )
+}
+
+fn fake_digest(label: &str) -> String {
+    format!("blake3:{}", blake3::hash(label.as_bytes()).to_hex())
 }

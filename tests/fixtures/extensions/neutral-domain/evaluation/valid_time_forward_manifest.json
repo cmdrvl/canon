@@ -1,0 +1,60 @@
+{
+  "version": "canon.evaluation.corpus.v1",
+  "corpus_id": "pkg.neutral.evaluation.time_forward",
+  "corpus_version": "0.2.2",
+  "provenance": {
+    "manifest_locator": "tests/fixtures/extensions/neutral-domain/evaluation/valid_time_forward_manifest.json",
+    "source_snapshot_locator": "tests/fixtures/extensions/neutral-domain/evaluation/observations.jsonl",
+    "source_snapshot_digest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "generated_at": "2026-07-10T22:42:00Z",
+    "exact_replay_runner_ref": "runner.neutral:split_time_forward_v1"
+  },
+  "licenses": [
+    {"license_id": "license.public.cc0", "license_expression": "CC0-1.0", "redistributable": true, "attribution_required": false, "usage_notice": "Neutral public fixture only."}
+  ],
+  "redaction_classes": [
+    {"redaction_id": "redaction.public_fixture", "raw_content_retained": false, "export_surface_fingerprints_only": true, "private_path_allowed": false}
+  ],
+  "execution_policy": {
+    "tuning_partitions": ["train", "tune"],
+    "scoring_partitions": ["holdout", "exact_replay"],
+    "holdout_labels_sealed_from_tuning": true,
+    "exact_replay_partition_separate": true
+  },
+  "datasets": [
+    {"dataset_id": "dataset.train.public", "partition": "train", "storage_kind": "public_fixture", "source_locator": "tests/fixtures/extensions/neutral-domain/evaluation/observations.jsonl#train", "content_digest": "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "license_id": "license.public.cc0", "redaction_id": "redaction.public_fixture"},
+    {"dataset_id": "dataset.tune.public", "partition": "tune", "storage_kind": "public_fixture", "source_locator": "tests/fixtures/extensions/neutral-domain/evaluation/observations.jsonl#tune", "content_digest": "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "license_id": "license.public.cc0", "redaction_id": "redaction.public_fixture"},
+    {"dataset_id": "dataset.holdout.public", "partition": "holdout", "storage_kind": "public_fixture", "source_locator": "tests/fixtures/extensions/neutral-domain/evaluation/observations.jsonl#holdout", "content_digest": "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "license_id": "license.public.cc0", "redaction_id": "redaction.public_fixture"},
+    {"dataset_id": "dataset.exact.public", "partition": "exact_replay", "storage_kind": "public_fixture", "source_locator": "tests/fixtures/extensions/neutral-domain/evaluation/observations.jsonl#exact", "content_digest": "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "license_id": "license.public.cc0", "redaction_id": "redaction.public_fixture"}
+  ],
+  "observations": [
+    {"observation_id": "obs.train.alpha.seed", "dataset_id": "dataset.train.public", "subject_key": "atlas_train", "split_group_id": "grp.train.alpha", "surface_fingerprint": "blake3:1111111111111111111111111111111111111111111111111111111111111111", "locator": {"kind": "opaque_record_ref", "locator": "observations.jsonl#obs.train.alpha.seed", "content_digest": "blake3:0101010101010101010101010101010101010101010101010101010101010101"}, "observed_at": "2026-01-10"},
+    {"observation_id": "obs.tune.beta.seed", "dataset_id": "dataset.tune.public", "subject_key": "beacon_tune", "split_group_id": "grp.tune.beta", "surface_fingerprint": "blake3:2222222222222222222222222222222222222222222222222222222222222222", "locator": {"kind": "opaque_record_ref", "locator": "observations.jsonl#obs.tune.beta.seed", "content_digest": "blake3:0202020202020202020202020202020202020202020202020202020202020202"}, "observed_at": "2026-01-20"},
+    {"observation_id": "obs.hold.future.alpha", "dataset_id": "dataset.holdout.public", "subject_key": "atlas_future", "split_group_id": "grp.hold.future.alpha", "surface_fingerprint": "blake3:6666666666666666666666666666666666666666666666666666666666666666", "locator": {"kind": "opaque_record_ref", "locator": "observations.jsonl#obs.hold.future.alpha", "content_digest": "blake3:0808080808080808080808080808080808080808080808080808080808080808"}, "observed_at": "2026-03-01"},
+    {"observation_id": "obs.exact.alpha.left", "dataset_id": "dataset.exact.public", "subject_key": "atlas_exact", "split_group_id": "grp.exact.alpha.left", "surface_fingerprint": "blake3:7777777777777777777777777777777777777777777777777777777777777777", "locator": {"kind": "opaque_record_ref", "locator": "observations.jsonl#obs.exact.alpha.left", "content_digest": "blake3:0404040404040404040404040404040404040404040404040404040404040404"}, "observed_at": "2025-12-31"},
+    {"observation_id": "obs.exact.alpha.right", "dataset_id": "dataset.exact.public", "subject_key": "atlas_exact", "split_group_id": "grp.exact.alpha.right", "surface_fingerprint": "blake3:7777777777777777777777777777777777777777777777777777777777777777", "locator": {"kind": "opaque_record_ref", "locator": "observations.jsonl#obs.exact.alpha.right", "content_digest": "blake3:0505050505050505050505050505050505050505050505050505050505050505"}, "observed_at": "2025-12-31"}
+  ],
+  "adjudications": [
+    {"adjudication_id": "adj.high", "decision": "accepted", "confidence_basis_points": 9300, "reviewer_set_digest": "blake3:1919191919191919191919191919191919191919191919191919191919191919", "note_digest": "blake3:2020202020202020202020202020202020202020202020202020202020202020"}
+  ],
+  "cluster_labels": [],
+  "cross_dataset_pairs": [],
+  "identifiers": [],
+  "hard_negatives": [],
+  "relationships": [],
+  "assignments": [],
+  "temporal_changes": [],
+  "split_conformance": {
+    "holdout_mode": "time_forward",
+    "labels_accessible_to_strategy": false,
+    "manifest_commitment_digest": "blake3:efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+    "holdout_label_commitment_digest": "blake3:fafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafa",
+    "records": [
+      {"observation_id": "obs.train.alpha.seed", "partition": "train", "canonical_entity_key": "entity.alpha", "alias_group_key": "alias.alpha.seed", "source_family_key": "source.alpha.train", "mutation_seed_key": "mutation.alpha.train", "row_fingerprint": "blake3:8888888888888888888888888888888888888888888888888888888888888888", "label_commitment_digest": "blake3:1212121212121212121212121212121212121212121212121212121212121212", "adjudication_ref": "adj.high", "confidence_basis_points": 9300},
+      {"observation_id": "obs.tune.beta.seed", "partition": "tune", "canonical_entity_key": "entity.beta", "alias_group_key": "alias.beta.seed", "source_family_key": "source.beta.tune", "mutation_seed_key": "mutation.beta.tune", "row_fingerprint": "blake3:9999999999999999999999999999999999999999999999999999999999999999", "label_commitment_digest": "blake3:1313131313131313131313131313131313131313131313131313131313131313", "adjudication_ref": "adj.high", "confidence_basis_points": 9300},
+      {"observation_id": "obs.hold.future.alpha", "partition": "holdout", "canonical_entity_key": "entity.alpha", "alias_group_key": "alias.alpha.future", "source_family_key": "source.alpha.future", "mutation_seed_key": "mutation.alpha.future", "row_fingerprint": "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "label_commitment_digest": "blake3:1717171717171717171717171717171717171717171717171717171717171717", "adjudication_ref": "adj.high", "confidence_basis_points": 9300},
+      {"observation_id": "obs.exact.alpha.left", "partition": "exact_replay", "canonical_entity_key": "entity.alpha", "alias_group_key": "alias.alpha.seed", "source_family_key": "source.alpha.exact", "mutation_seed_key": "mutation.alpha.exact", "row_fingerprint": "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "label_commitment_digest": "blake3:1818181818181818181818181818181818181818181818181818181818181818", "adjudication_ref": "adj.high", "confidence_basis_points": 9300},
+      {"observation_id": "obs.exact.alpha.right", "partition": "exact_replay", "canonical_entity_key": "entity.alpha", "alias_group_key": "alias.alpha.seed", "source_family_key": "source.alpha.exact", "mutation_seed_key": "mutation.alpha.exact", "row_fingerprint": "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "label_commitment_digest": "blake3:1818181818181818181818181818181818181818181818181818181818181818", "adjudication_ref": "adj.high", "confidence_basis_points": 9300}
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{"observation_id":"obs.train.alpha.seed","dataset_id":"dataset.train.public","surface":"Atlas Cooperative"}
+{"observation_id":"obs.tune.beta.seed","dataset_id":"dataset.tune.public","surface":"Beacon Workshop"}
+{"observation_id":"obs.hold.alpha.alias","dataset_id":"dataset.holdout.public","surface":"Atlas Co-op"}
+{"observation_id":"obs.hold.gamma.left","dataset_id":"dataset.holdout.public","surface":"Cinder Studio North"}
+{"observation_id":"obs.hold.delta.right","dataset_id":"dataset.holdout.public","surface":"Delta Foundry East"}
+{"observation_id":"obs.hold.future.alpha","dataset_id":"dataset.holdout.public","surface":"Atlas Cooperative Future"}
+{"observation_id":"obs.exact.alpha.left","dataset_id":"dataset.exact.public","surface":"Atlas Cooperative"}
+{"observation_id":"obs.exact.alpha.right","dataset_id":"dataset.exact.public","surface":"Atlas Cooperative"}
