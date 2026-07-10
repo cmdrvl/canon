@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 
 pub mod cli;
+pub mod distribution {
+    pub mod package;
+}
 pub mod doctor;
 pub mod entity;
 pub mod inbox;
@@ -28,14 +31,15 @@ use crate::cli::{
     EntityProfileListCli, EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand,
     EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewImportCli, EntityReviewInclude,
     EntityReviewSubcommand, EntityRunCli, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand,
-    RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli,
-    RegistryDiffCli, RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryLintCli,
-    RegistryLintProfile, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
-    RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode,
-    ResolveCli, ResolveEmitMode, StrategyAuditCli, StrategyCommand, StrategyDeprecateCli,
-    StrategyDiffCli, StrategyExplainCli, StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli,
-    StrategyProfileCli, StrategyPromoteCli, StrategyRegisterCli, StrategyResolveCli,
-    StrategyStatusArg, StrategySubcommand, StrategyUpdateCli,
+    PackageCli, PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
+    RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryExportCli,
+    RegistryExportFormatCli, RegistryLintCli, RegistryLintProfile, RegistryMintCli,
+    RegistryNextIdCli, RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli,
+    RegistrySubcommand, RegistryVersionBumpMode, ResolveCli, ResolveEmitMode, StrategyAuditCli,
+    StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli, StrategyGradeArg,
+    StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
+    StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
+    StrategyUpdateCli,
 };
 use crate::entity::runtime as entity_runtime;
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
@@ -43,6 +47,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     error::Error,
     ffi::OsString,
+    fs,
     io::Write,
     path::{Path, PathBuf},
     time::Instant,
@@ -148,6 +153,7 @@ pub fn run(cli: Cli) -> Result<u8, Box<dyn Error>> {
 fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
     match command {
         CanonCommand::Doctor(args) => doctor::run(args),
+        CanonCommand::Package(package) => run_package_command(package),
         CanonCommand::Resolve(resolve) => run_resolve_command(resolve),
         CanonCommand::Registry(command) => match &command.command {
             RegistrySubcommand::Export(export) => run_registry_export(export),
@@ -167,6 +173,84 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
         CanonCommand::Entity(command) => run_entity_command(command),
         CanonCommand::Strategy(command) => run_strategy_command(command),
     }
+}
+
+fn run_package_command(package: &PackageCli) -> Result<u8, Box<dyn Error>> {
+    match &package.command {
+        PackageSubcommand::Pack(args) => {
+            let package_bytes = fs::read(&args.package)?;
+            let archive_bytes =
+                distribution::package::pack_local_package(&args.root, &package_bytes)?;
+            fs::write(&args.out, archive_bytes)?;
+            Ok(0)
+        }
+        PackageSubcommand::Inspect(args) => {
+            let archive_bytes = fs::read(&args.archive)?;
+            let inspection = distribution::package::inspect_local_package(&archive_bytes)?;
+            emit_package_inspection(&inspection, &args.emit)?;
+            Ok(0)
+        }
+        PackageSubcommand::Verify(args) => {
+            let archive_bytes = fs::read(&args.archive)?;
+            let verification = distribution::package::verify_local_package(&archive_bytes)?;
+            emit_package_verification(&verification, &args.emit)?;
+            Ok(0)
+        }
+        PackageSubcommand::Unpack(args) => {
+            let archive_bytes = fs::read(&args.archive)?;
+            let verification =
+                distribution::package::unpack_local_package(&archive_bytes, &args.target)?;
+            emit_package_verification(&verification, &args.emit)?;
+            Ok(0)
+        }
+    }
+}
+
+fn emit_package_inspection(
+    inspection: &distribution::package::LocalPackageInspection,
+    emit: &RegistryEmitMode,
+) -> Result<(), Box<dyn Error>> {
+    match emit {
+        RegistryEmitMode::Json => println!("{}", serde_json::to_string(inspection)?),
+        RegistryEmitMode::Summary => {
+            let bytes = inspection
+                .inventory
+                .iter()
+                .map(|file| file.bytes)
+                .sum::<u64>();
+            println!(
+                "{}@{} archive {} | {} files, {} bytes, {} dependencies, {} capabilities",
+                inspection.package.package_id,
+                inspection.package.package_version,
+                inspection.archive_digest,
+                inspection.inventory.len(),
+                bytes,
+                inspection.dependencies.len(),
+                inspection.capabilities.len()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn emit_package_verification(
+    verification: &distribution::package::LocalPackageVerification,
+    emit: &RegistryEmitMode,
+) -> Result<(), Box<dyn Error>> {
+    match emit {
+        RegistryEmitMode::Json => println!("{}", serde_json::to_string(verification)?),
+        RegistryEmitMode::Summary => {
+            println!(
+                "{} verified | {} files, {} bytes, package {}, bytes {}",
+                verification.archive_digest,
+                verification.verified_files,
+                verification.verified_bytes,
+                verification.package_content_digest,
+                verification.package_bytes_digest
+            );
+        }
+    }
+    Ok(())
 }
 
 fn run_resolve_command(resolve_cli: &ResolveCli) -> Result<u8, Box<dyn Error>> {
@@ -2034,7 +2118,9 @@ const KNOWN_CORE_FLAGS: [&str; 14] = [
 
 /// Top-level subcommands, for disambiguating a misspelled subcommand that clap
 /// otherwise swallows as the optional positional input.
-const KNOWN_SUBCOMMANDS: [&str; 5] = ["doctor", "resolve", "registry", "entity", "strategy"];
+const KNOWN_SUBCOMMANDS: [&str; 6] = [
+    "doctor", "package", "resolve", "registry", "entity", "strategy",
+];
 
 /// Classic dynamic-programming Levenshtein edit distance.
 fn levenshtein(a: &str, b: &str) -> usize {

@@ -13,6 +13,10 @@
       "canon <INPUT> --registry <DIR> --column <COL> [OPTIONS]",
       "canon doctor [health [--json]|capabilities [--json]|robot-docs|--robot-triage]",
       "canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
+      "canon package pack --root <DIR> --package <package.json> --out <ARCHIVE>",
+      "canon package inspect <ARCHIVE> [--emit json|summary]",
+      "canon package verify <ARCHIVE> [--emit json|summary]",
+      "canon package unpack <ARCHIVE> --target <EMPTY_DIR> [--emit json|summary]",
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "canon registry export --format dbt-seed|search-index --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]",
       "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
@@ -126,6 +130,132 @@
         { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if either tape exceeds N data rows" },
         { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if either tape exceeds N bytes" },
         { "name": "no_witness", "flag": "--no-witness", "type": "flag", "description": "Suppress witness ledger recording for canon resolve" }
+      ]
+    },
+    {
+      "name": "package pack",
+      "usage": "canon package pack --root <DIR> --package <package.json> --out <ARCHIVE>",
+      "description": "Create a deterministic single-file local package archive from an explicit source tree and canonical package JSON bytes",
+      "output_mode": "file",
+      "output_schema": "canon.local.package.archive.v1",
+      "status": "implemented",
+      "read_only": false,
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": { "meaning": "local package archive written successfully", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "root", "flag": "--root", "type": "directory_path", "required": true, "description": "Package root directory to normalize and archive" },
+        { "name": "package", "flag": "--package", "type": "file_path", "required": true, "description": "Canonical package JSON bytes to bind into package.json" },
+        { "name": "out", "flag": "--out", "type": "file_path", "required": true, "description": "Single-file local package archive output path" }
+      ]
+    },
+    {
+      "name": "package inspect",
+      "usage": "canon package inspect <ARCHIVE> [--emit json|summary]",
+      "description": "Inspect a local package archive offline and emit structured inventory, provenance, licenses, dependencies, and capabilities without unpacking",
+      "output_mode": "mixed",
+      "output_schema": "canon.local.package.archive.v1",
+      "status": "implemented",
+      "read_only": true,
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": { "meaning": "local package archive inspected successfully", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "archive", "type": "file_path", "required": true, "position": 0, "description": "Local package archive to inspect" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (structured inspection) or summary" }
+      ]
+    },
+    {
+      "name": "package verify",
+      "usage": "canon package verify <ARCHIVE> [--emit json|summary]",
+      "description": "Verify local package archive digests, file inventory, normalized paths and modes, and semantic package contracts offline",
+      "output_mode": "mixed",
+      "output_schema": "canon.local.package.archive.v1",
+      "status": "implemented",
+      "read_only": true,
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": { "meaning": "local package archive verified successfully", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "archive", "type": "file_path", "required": true, "position": 0, "description": "Local package archive to verify" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (structured verification) or summary" }
+      ]
+    },
+    {
+      "name": "package unpack",
+      "usage": "canon package unpack <ARCHIVE> --target <EMPTY_DIR> [--emit json|summary]",
+      "description": "Verify and unpack a local package archive into an explicit existing empty target directory without overwriting existing content",
+      "output_mode": "mixed",
+      "output_schema": "canon.local.package.archive.v1",
+      "status": "implemented",
+      "read_only": false,
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": { "meaning": "local package archive verified and unpacked successfully", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
+      },
+      "options": [
+        { "name": "archive", "type": "file_path", "required": true, "position": 0, "description": "Local package archive to unpack" },
+        { "name": "target", "flag": "--target", "type": "directory_path", "required": true, "description": "Existing empty target directory" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (structured verification) or summary" }
       ]
     },
     {

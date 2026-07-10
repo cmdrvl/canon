@@ -1,4 +1,7 @@
-use super::{MappingFile, load_registry_definition};
+use super::{
+    MappingFile, load_registry_definition,
+    package::{REGISTRY_PACKAGE_SCHEMA_VERSION, compile_registry_package},
+};
 use crate::{Refusal, RefusalCode, RegistryMeta};
 use chrono::{SecondsFormat, Utc};
 use rusqlite::{Connection, params};
@@ -120,6 +123,7 @@ struct EntityRow {
 #[derive(Debug, Clone)]
 struct RegistryExportSnapshot {
     registry: RegistryMeta,
+    package: RegistryExportPackage,
     filters: RegistryExportFilters,
     source_entry_count: usize,
     filtered_entry_count: usize,
@@ -128,6 +132,16 @@ struct RegistryExportSnapshot {
     rows: Vec<ExportRow>,
     entities: Vec<EntityRow>,
     snapshot_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct RegistryExportPackage {
+    schema_version: String,
+    id: String,
+    version: String,
+    content_digest: String,
+    entry_count: usize,
+    effective_mapping_count: usize,
 }
 
 impl RegistryExportSnapshot {
@@ -274,6 +288,7 @@ fn build_export_snapshot(
         load_registry_definition(&request.registry).map_err(|error| {
             Refusal::bad_registry(&request.registry.display().to_string(), &error.to_string())
         })?;
+    let package = build_export_package(request)?;
 
     let filters = RegistryExportFilters {
         namespace: request.namespace.clone(),
@@ -289,10 +304,11 @@ fn build_export_snapshot(
         &request.canonical_iri_prefix,
     );
     let entities = collect_entities(&rows);
-    let snapshot_hash = hash_snapshot(&registry, &filters, &rows, &entities)?;
+    let snapshot_hash = hash_snapshot(&registry, &package, &filters, &rows, &entities)?;
 
     Ok(RegistryExportSnapshot {
         registry,
+        package,
         filters,
         source_entry_count,
         filtered_entry_count,
@@ -301,6 +317,23 @@ fn build_export_snapshot(
         rows,
         entities,
         snapshot_hash,
+    })
+}
+
+fn build_export_package(request: &RegistryExportRequest) -> Result<RegistryExportPackage, Refusal> {
+    let package = compile_registry_package(&request.registry).map_err(|error| {
+        Refusal::bad_registry(
+            &request.registry.display().to_string(),
+            &format!("failed to compile registry package for export: {error}"),
+        )
+    })?;
+    Ok(RegistryExportPackage {
+        schema_version: REGISTRY_PACKAGE_SCHEMA_VERSION.to_string(),
+        id: package.registry.id,
+        version: package.registry.version,
+        content_digest: package.content_digest,
+        entry_count: package.entry_count,
+        effective_mapping_count: package.effective_mapping_count,
     })
 }
 
@@ -418,10 +451,11 @@ fn collect_entities(rows: &[ExportRow]) -> Vec<EntityRow> {
     entities.into_values().collect()
 }
 
-fn write_dbt_seed(path: &Path, rows: &[ExportRow]) -> Result<(), Refusal> {
+fn write_dbt_seed(path: &Path, plan: &RegistryExportExecutionPlan) -> Result<(), Refusal> {
     ensure_parent_dir(path)?;
     let file = File::create(path).map_err(|error| io_refusal(path, error))?;
     let mut writer = csv::Writer::from_writer(file);
+    let package = &plan.snapshot.package;
     writer
         .write_record([
             "namespace",
@@ -436,13 +470,17 @@ fn write_dbt_seed(path: &Path, rows: &[ExportRow]) -> Result<(), Refusal> {
             "registry_id",
             "registry_version",
             "registry_content_hash",
+            "registry_package_id",
+            "registry_package_version",
+            "registry_package_digest",
+            "registry_package_schema_version",
             "source_file",
             "entry_order",
         ])
         .map_err(|error| io_refusal(path, error))?;
 
-    let content_hash = hash_rows_only(rows)?;
-    for row in rows {
+    let content_hash = hash_rows_only(&plan.snapshot.rows)?;
+    for row in &plan.snapshot.rows {
         writer
             .write_record([
                 row.namespace.as_deref().unwrap_or_default(),
@@ -457,6 +495,10 @@ fn write_dbt_seed(path: &Path, rows: &[ExportRow]) -> Result<(), Refusal> {
                 &row.registry_id,
                 &row.registry_version,
                 &content_hash,
+                &package.id,
+                &package.version,
+                &package.content_digest,
+                &package.schema_version,
                 &row.source_file,
                 &row.entry_order.to_string(),
             ])
@@ -470,7 +512,7 @@ fn write_dbt_schema(path: &Path, seed_path: &Path) -> Result<(), Refusal> {
     ensure_parent_dir(path)?;
     let seed_name = dbt_seed_name(seed_path);
     let body = format!(
-        "version: 2\nseeds:\n  - name: {seed_name}\n    columns:\n      - name: namespace\n        tests:\n          - not_null\n      - name: normalized_key\n        tests:\n          - not_null\n      - name: canonical_id\n        tests:\n          - not_null\n      - name: canonical_iri\n        tests:\n          - not_null\n      - name: registry_version\n        tests:\n          - not_null\n      - name: registry_content_hash\n        tests:\n          - not_null\n"
+        "version: 2\nseeds:\n  - name: {seed_name}\n    description: Canon registry export seed with immutable package provenance.\n    columns:\n      - name: namespace\n        tests:\n          - not_null\n      - name: source_input\n        tests:\n          - not_null\n      - name: normalized_key\n        tests:\n          - not_null\n      - name: canonical_id\n        tests:\n          - not_null\n      - name: canonical_iri\n        tests:\n          - not_null\n      - name: canonical_type\n        tests:\n          - not_null\n      - name: alias_kind\n        tests:\n          - not_null\n      - name: rule_id\n        tests:\n          - not_null\n      - name: match_source\n        tests:\n          - not_null\n      - name: registry_id\n        tests:\n          - not_null\n      - name: registry_version\n        tests:\n          - not_null\n      - name: registry_content_hash\n        tests:\n          - not_null\n      - name: registry_package_id\n        tests:\n          - not_null\n      - name: registry_package_version\n        tests:\n          - not_null\n      - name: registry_package_digest\n        tests:\n          - not_null\n      - name: registry_package_schema_version\n        tests:\n          - not_null\n      - name: source_file\n        tests:\n          - not_null\n      - name: entry_order\n        tests:\n          - not_null\n"
     );
     fs::write(path, body).map_err(|error| io_refusal(path, error))
 }
@@ -479,13 +521,13 @@ fn write_anti_collapse_test(path: &Path, seed_path: &Path) -> Result<(), Refusal
     ensure_parent_dir(path)?;
     let seed_name = dbt_seed_name(seed_path);
     let body = format!(
-        "select\n  namespace,\n  normalized_key\nfrom {{{{ ref('{seed_name}') }}}}\ngroup by 1, 2\nhaving count(distinct canonical_id) > 1\n"
+        "select\n  namespace,\n  normalized_key,\n  count(*) as source_alias_count,\n  count(distinct canonical_id) as canonical_id_count\nfrom {{{{ ref('{seed_name}') }}}}\ngroup by 1, 2\nhaving count(distinct canonical_id) > 1\n"
     );
     fs::write(path, body).map_err(|error| io_refusal(path, error))
 }
 
 fn execute_dbt_seed_backend(plan: &RegistryExportExecutionPlan) -> Result<(), Refusal> {
-    write_dbt_seed(&plan.request.out, &plan.snapshot.rows)?;
+    write_dbt_seed(&plan.request.out, plan)?;
     for file in &plan.files {
         match file.role {
             RegistryExportPlannedFileRole::PrimaryArtifact => {}
@@ -570,6 +612,19 @@ fn insert_search_metadata(
         ("registry_id", plan.snapshot.registry.id.clone()),
         ("registry_version", plan.snapshot.registry.version.clone()),
         ("registry_source", plan.snapshot.registry.source.clone()),
+        (
+            "registry_package_schema_version",
+            plan.snapshot.package.schema_version.clone(),
+        ),
+        ("registry_package_id", plan.snapshot.package.id.clone()),
+        (
+            "registry_package_version",
+            plan.snapshot.package.version.clone(),
+        ),
+        (
+            "registry_package_digest",
+            plan.snapshot.package.content_digest.clone(),
+        ),
         ("format", plan.request.format.as_str().to_string()),
         ("content_hash", plan.content_hash.clone()),
         ("snapshot_hash", plan.snapshot.snapshot_hash.clone()),
@@ -815,7 +870,8 @@ fn hash_backend_export(
 ) -> Result<String, Refusal> {
     let value = json!({
         "format": format.as_str(),
-        "registry": &snapshot.registry,
+        "registry": registry_hash_identity(&snapshot.registry),
+        "package": &snapshot.package,
         "filters": &snapshot.filters,
         "rows": &snapshot.rows,
         "entities": &snapshot.entities,
@@ -825,12 +881,14 @@ fn hash_backend_export(
 
 fn hash_snapshot(
     registry: &RegistryMeta,
+    package: &RegistryExportPackage,
     filters: &RegistryExportFilters,
     rows: &[ExportRow],
     entities: &[EntityRow],
 ) -> Result<String, Refusal> {
     let value = json!({
-        "registry": registry,
+        "registry": registry_hash_identity(registry),
+        "package": package,
         "filters": filters,
         "rows": rows,
         "entities": entities,
@@ -840,6 +898,13 @@ fn hash_snapshot(
 
 fn hash_rows_only(rows: &[ExportRow]) -> Result<String, Refusal> {
     hash_json_value(&json!({ "rows": rows }))
+}
+
+fn registry_hash_identity(registry: &RegistryMeta) -> serde_json::Value {
+    json!({
+        "id": registry.id,
+        "version": registry.version,
+    })
 }
 
 fn hash_json_value(value: &serde_json::Value) -> Result<String, Refusal> {

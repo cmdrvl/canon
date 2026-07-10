@@ -127,6 +127,8 @@ pub enum StrategyKeyTypeArg {
 pub enum CanonCommand {
     /// Read-only health, capabilities, and robot-oriented diagnostics
     Doctor(DoctorArgs),
+    /// Local package archive operations
+    Package(PackageCli),
     /// Cross-tape structural resolution workbench
     Resolve(ResolveCli),
     /// Registry maintenance and inspection commands
@@ -136,6 +138,73 @@ pub enum CanonCommand {
     Entity(EntityCommand),
     /// Frozen script strategy registry commands
     Strategy(StrategyCommand),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct PackageCli {
+    #[command(subcommand)]
+    pub command: PackageSubcommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum PackageSubcommand {
+    /// Create a deterministic local package archive from canonical package bytes
+    Pack(PackagePackCli),
+    /// Extract structured package inventory and metadata without writing files
+    Inspect(PackageInspectCli),
+    /// Verify package archive digests and semantic package contracts
+    Verify(PackageVerifyCli),
+    /// Unpack a verified package archive into an existing empty target directory
+    Unpack(PackageUnpackCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct PackagePackCli {
+    /// Package root directory to normalize and archive
+    #[arg(long)]
+    pub root: PathBuf,
+
+    /// Canonical package JSON bytes to bind into package.json
+    #[arg(long)]
+    pub package: PathBuf,
+
+    /// Single-file local archive output path
+    #[arg(long)]
+    pub out: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct PackageInspectCli {
+    /// Local package archive to inspect
+    pub archive: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct PackageVerifyCli {
+    /// Local package archive to verify
+    pub archive: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct PackageUnpackCli {
+    /// Local package archive to unpack
+    pub archive: PathBuf,
+
+    /// Existing empty target directory
+    #[arg(long)]
+    pub target: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -2422,5 +2491,51 @@ mod tests {
         assert!(matches!(cli.emit, EmitMode::Csv));
         assert_eq!(cli.canon_column, Some("id_canon".to_string()));
         assert_eq!(cli.map_out, Some(PathBuf::from("mapping.json")));
+    }
+
+    #[test]
+    fn test_cli_package_local_argument_shapes() {
+        let pack = Cli::try_parse_from([
+            "canon",
+            "package",
+            "pack",
+            "--root",
+            "pkg-root",
+            "--package",
+            "package.json",
+            "--out",
+            "pkg.canonpkg",
+        ])
+        .unwrap();
+        let Some(CanonCommand::Package(package)) = pack.command else {
+            panic!("expected package command");
+        };
+        assert!(matches!(package.command, PackageSubcommand::Pack(_)));
+        if let PackageSubcommand::Pack(args) = package.command {
+            assert_eq!(args.root, PathBuf::from("pkg-root"));
+            assert_eq!(args.package, PathBuf::from("package.json"));
+            assert_eq!(args.out, PathBuf::from("pkg.canonpkg"));
+        }
+
+        let unpack = Cli::try_parse_from([
+            "canon",
+            "package",
+            "unpack",
+            "pkg.canonpkg",
+            "--target",
+            "target",
+            "--emit",
+            "summary",
+        ])
+        .unwrap();
+        let Some(CanonCommand::Package(package)) = unpack.command else {
+            panic!("expected package command");
+        };
+        assert!(matches!(package.command, PackageSubcommand::Unpack(_)));
+        if let PackageSubcommand::Unpack(args) = package.command {
+            assert_eq!(args.archive, PathBuf::from("pkg.canonpkg"));
+            assert_eq!(args.target, PathBuf::from("target"));
+            assert!(matches!(args.emit, RegistryEmitMode::Summary));
+        }
     }
 }

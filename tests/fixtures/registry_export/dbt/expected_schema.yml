@@ -1,0 +1,59 @@
+version: 2
+seeds:
+  - name: canon_registry_seed
+    description: Canon registry export seed with immutable package provenance.
+    columns:
+      - name: namespace
+        tests:
+          - not_null
+      - name: source_input
+        tests:
+          - not_null
+      - name: normalized_key
+        tests:
+          - not_null
+      - name: canonical_id
+        tests:
+          - not_null
+      - name: canonical_iri
+        tests:
+          - not_null
+      - name: canonical_type
+        tests:
+          - not_null
+      - name: alias_kind
+        tests:
+          - not_null
+      - name: rule_id
+        tests:
+          - not_null
+      - name: match_source
+        tests:
+          - not_null
+      - name: registry_id
+        tests:
+          - not_null
+      - name: registry_version
+        tests:
+          - not_null
+      - name: registry_content_hash
+        tests:
+          - not_null
+      - name: registry_package_id
+        tests:
+          - not_null
+      - name: registry_package_version
+        tests:
+          - not_null
+      - name: registry_package_digest
+        tests:
+          - not_null
+      - name: registry_package_schema_version
+        tests:
+          - not_null
+      - name: source_file
+        tests:
+          - not_null
+      - name: entry_order
+        tests:
+          - not_null

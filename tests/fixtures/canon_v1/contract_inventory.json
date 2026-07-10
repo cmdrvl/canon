@@ -91,6 +91,38 @@
       "action": "preserve"
     },
     {
+      "id": "canon package pack",
+      "family": "distribution",
+      "clap_path": "package pack",
+      "operator_name": "package pack",
+      "primary_contracts": ["canon.local.package.archive.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon package inspect",
+      "family": "distribution",
+      "clap_path": "package inspect",
+      "operator_name": "package inspect",
+      "primary_contracts": ["canon.local.package.archive.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon package verify",
+      "family": "distribution",
+      "clap_path": "package verify",
+      "operator_name": "package verify",
+      "primary_contracts": ["canon.local.package.archive.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon package unpack",
+      "family": "distribution",
+      "clap_path": "package unpack",
+      "operator_name": "package unpack",
+      "primary_contracts": ["canon.local.package.archive.v1"],
+      "action": "preserve"
+    },
+    {
       "id": "canon registry export",
       "family": "registry",
       "clap_path": "registry export",
@@ -446,6 +478,27 @@
       "action": "preserve",
       "access_boundary": "internal_source_only",
       "source_path": "src/distribution/oci.rs"
+    },
+    {
+      "id": "canon.local.package.archive.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "public_cli_contract",
+      "source_path": "src/distribution/package.rs"
+    },
+    {
+      "id": "canon-local-package-archive.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "public_cli_contract",
+      "source_path": "src/distribution/package.rs"
+    },
+    {
+      "id": "canon-local-package-dir.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "public_cli_contract",
+      "source_path": "src/distribution/package.rs"
     },
     { "id": "canon.identity.scope.v1", "family": "identity", "action": "preserve" },
     {
