@@ -1,0 +1,277 @@
+{
+  "version": "canon.evaluation.corpus.v1",
+  "corpus_id": "pkg.synthetic.quality.neutral",
+  "corpus_version": "0.1.0",
+  "provenance": {
+    "manifest_locator": "tests/fixtures/canon_v1/quality/corpus/neutral_manifest.json",
+    "source_snapshot_locator": "tests/fixtures/canon_v1/quality/corpus/neutral_observations.jsonl",
+    "source_snapshot_digest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "generated_at": "2026-07-10T22:00:00Z",
+    "exact_replay_runner_ref": "runner.synthetic:neutral_quality_v1"
+  },
+  "licenses": [
+    {
+      "license_id": "license.public.cc0",
+      "license_expression": "CC0-1.0",
+      "redistributable": true,
+      "attribution_required": false,
+      "usage_notice": "Neutral public fixture only."
+    }
+  ],
+  "redaction_classes": [
+    {
+      "redaction_id": "redaction.public_fixture",
+      "raw_content_retained": false,
+      "export_surface_fingerprints_only": true,
+      "private_path_allowed": false
+    }
+  ],
+  "execution_policy": {
+    "tuning_partitions": [
+      "train",
+      "tune"
+    ],
+    "scoring_partitions": [
+      "holdout",
+      "exact_replay"
+    ],
+    "holdout_labels_sealed_from_tuning": true,
+    "exact_replay_partition_separate": true
+  },
+  "datasets": [
+    {
+      "dataset_id": "dataset.train.public",
+      "partition": "train",
+      "storage_kind": "public_fixture",
+      "source_locator": "tests/fixtures/canon_v1/quality/corpus/neutral_observations.jsonl#train",
+      "content_digest": "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "license_id": "license.public.cc0",
+      "redaction_id": "redaction.public_fixture"
+    },
+    {
+      "dataset_id": "dataset.tune.public",
+      "partition": "tune",
+      "storage_kind": "public_fixture",
+      "source_locator": "tests/fixtures/canon_v1/quality/corpus/neutral_observations.jsonl#tune",
+      "content_digest": "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "license_id": "license.public.cc0",
+      "redaction_id": "redaction.public_fixture"
+    },
+    {
+      "dataset_id": "dataset.holdout.public",
+      "partition": "holdout",
+      "storage_kind": "public_fixture",
+      "source_locator": "tests/fixtures/canon_v1/quality/corpus/neutral_observations.jsonl#holdout",
+      "content_digest": "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "license_id": "license.public.cc0",
+      "redaction_id": "redaction.public_fixture"
+    },
+    {
+      "dataset_id": "dataset.exact.public",
+      "partition": "exact_replay",
+      "storage_kind": "public_fixture",
+      "source_locator": "tests/fixtures/canon_v1/quality/corpus/neutral_observations.jsonl#exact_replay",
+      "content_digest": "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "license_id": "license.public.cc0",
+      "redaction_id": "redaction.public_fixture"
+    }
+  ],
+  "observations": [
+    {
+      "observation_id": "obs.train.seed",
+      "dataset_id": "dataset.train.public",
+      "subject_key": "train_seed",
+      "split_group_id": "grp.train.seed",
+      "surface_fingerprint": "blake3:1111111111111111111111111111111111111111111111111111111111111111",
+      "locator": {
+        "kind": "opaque_record_ref",
+        "locator": "neutral_observations.jsonl#obs.train.seed",
+        "content_digest": "blake3:1212121212121212121212121212121212121212121212121212121212121212"
+      },
+      "observed_at": "2026-07-10"
+    },
+    {
+      "observation_id": "obs.train.peer",
+      "dataset_id": "dataset.train.public",
+      "subject_key": "train_peer",
+      "split_group_id": "grp.train.peer",
+      "surface_fingerprint": "blake3:1313131313131313131313131313131313131313131313131313131313131313",
+      "locator": {
+        "kind": "opaque_record_ref",
+        "locator": "neutral_observations.jsonl#obs.train.peer",
+        "content_digest": "blake3:1414141414141414141414141414141414141414141414141414141414141414"
+      },
+      "observed_at": "2026-07-10"
+    },
+    {
+      "observation_id": "obs.tune.seed",
+      "dataset_id": "dataset.tune.public",
+      "subject_key": "tune_seed",
+      "split_group_id": "grp.tune.seed",
+      "surface_fingerprint": "blake3:1515151515151515151515151515151515151515151515151515151515151515",
+      "locator": {
+        "kind": "opaque_record_ref",
+        "locator": "neutral_observations.jsonl#obs.tune.seed",
+        "content_digest": "blake3:1616161616161616161616161616161616161616161616161616161616161616"
+      },
+      "observed_at": "2026-07-10"
+    },
+    {
+      "observation_id": "obs.hold.alpha.left",
+      "dataset_id": "dataset.holdout.public",
+      "subject_key": "hold_alpha",
+      "split_group_id": "grp.hold.alpha",
+      "surface_fingerprint": "blake3:1717171717171717171717171717171717171717171717171717171717171717",
+      "locator": {
+        "kind": "opaque_record_ref",
+        "locator": "neutral_observations.jsonl#obs.hold.alpha.left",
+        "content_digest": "blake3:1818181818181818181818181818181818181818181818181818181818181818"
+      },
+      "observed_at": "2026-07-10"
+    },
+    {
+      "observation_id": "obs.hold.alpha.right",
+      "dataset_id": "dataset.holdout.public",
+      "subject_key": "hold_alpha",
+      "split_group_id": "grp.hold.alpha",
+      "surface_fingerprint": "blake3:1919191919191919191919191919191919191919191919191919191919191919",
+      "locator": {
+        "kind": "opaque_record_ref",
+        "locator": "neutral_observations.jsonl#obs.hold.alpha.right",
+        "content_digest": "blake3:2020202020202020202020202020202020202020202020202020202020202020"
+      },
+      "observed_at": "2026-07-10"
+    },
+    {
+      "observation_id": "obs.hold.beta.left",
+      "dataset_id": "dataset.holdout.public",
+      "subject_key": "hold_beta",
+      "split_group_id": "grp.hold.beta",
+      "surface_fingerprint": "blake3:2121212121212121212121212121212121212121212121212121212121212121",
+      "locator": {
+        "kind": "opaque_record_ref",
+        "locator": "neutral_observations.jsonl#obs.hold.beta.left",
+        "content_digest": "blake3:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "observed_at": "2026-07-10"
+    },
+    {
+      "observation_id": "obs.hold.beta.right",
+      "dataset_id": "dataset.holdout.public",
+      "subject_key": "hold_beta",
+      "split_group_id": "grp.hold.beta",
+      "surface_fingerprint": "blake3:2323232323232323232323232323232323232323232323232323232323232323",
+      "locator": {
+        "kind": "opaque_record_ref",
+        "locator": "neutral_observations.jsonl#obs.hold.beta.right",
+        "content_digest": "blake3:2424242424242424242424242424242424242424242424242424242424242424"
+      },
+      "observed_at": "2026-07-10"
+    },
+    {
+      "observation_id": "obs.replay.left",
+      "dataset_id": "dataset.exact.public",
+      "subject_key": "exact_floor",
+      "split_group_id": "grp.exact.floor",
+      "surface_fingerprint": "blake3:2525252525252525252525252525252525252525252525252525252525252525",
+      "locator": {
+        "kind": "opaque_record_ref",
+        "locator": "neutral_observations.jsonl#obs.replay.left",
+        "content_digest": "blake3:2626262626262626262626262626262626262626262626262626262626262626"
+      },
+      "observed_at": "2026-07-10"
+    },
+    {
+      "observation_id": "obs.replay.right",
+      "dataset_id": "dataset.exact.public",
+      "subject_key": "exact_floor",
+      "split_group_id": "grp.exact.floor",
+      "surface_fingerprint": "blake3:2727272727272727272727272727272727272727272727272727272727272727",
+      "locator": {
+        "kind": "opaque_record_ref",
+        "locator": "neutral_observations.jsonl#obs.replay.right",
+        "content_digest": "blake3:2828282828282828282828282828282828282828282828282828282828282828"
+      },
+      "observed_at": "2026-07-10"
+    }
+  ],
+  "adjudications": [
+    {
+      "adjudication_id": "adj.high",
+      "decision": "accepted",
+      "confidence_basis_points": 9700,
+      "reviewer_set_digest": "blake3:2929292929292929292929292929292929292929292929292929292929292929",
+      "note_digest": "blake3:3030303030303030303030303030303030303030303030303030303030303030"
+    }
+  ],
+  "cluster_labels": [
+    {
+      "cluster_id": "cluster.hold.alpha",
+      "observation_ids": [
+        "obs.hold.alpha.left",
+        "obs.hold.alpha.right"
+      ],
+      "adjudication_ref": "adj.high"
+    },
+    {
+      "cluster_id": "cluster.hold.beta",
+      "observation_ids": [
+        "obs.hold.beta.left",
+        "obs.hold.beta.right"
+      ],
+      "adjudication_ref": "adj.high"
+    },
+    {
+      "cluster_id": "cluster.exact.floor",
+      "observation_ids": [
+        "obs.replay.left",
+        "obs.replay.right"
+      ],
+      "adjudication_ref": "adj.high"
+    }
+  ],
+  "cross_dataset_pairs": [],
+  "identifiers": [],
+  "hard_negatives": [],
+  "relationships": [],
+  "assignments": [],
+  "temporal_changes": [],
+  "quality_harness": {
+    "labels_sealed": true,
+    "cases": [
+      {
+        "case_id": "case.exact.floor",
+        "left_observation_id": "obs.replay.left",
+        "right_observation_id": "obs.replay.right",
+        "stratum": "exact_known_replay",
+        "label_disposition": "same_entity",
+        "outcome": "correct",
+        "miss_stage": null,
+        "ablation_id": null,
+        "evidence_locator": "quality_harness.case.exact.floor"
+      },
+      {
+        "case_id": "case.hold.alias.alpha",
+        "left_observation_id": "obs.hold.alpha.left",
+        "right_observation_id": "obs.hold.alpha.right",
+        "stratum": "withheld_alias_incumbent",
+        "label_disposition": "same_entity",
+        "outcome": "correct",
+        "miss_stage": null,
+        "ablation_id": null,
+        "evidence_locator": "quality_harness.case.hold.alias.alpha"
+      },
+      {
+        "case_id": "case.hold.novel.beta",
+        "left_observation_id": "obs.hold.beta.left",
+        "right_observation_id": "obs.hold.beta.right",
+        "stratum": "novel_multi_observation",
+        "label_disposition": "same_entity",
+        "outcome": "measured_miss",
+        "miss_stage": "solver",
+        "ablation_id": "ablation.surface_tokens",
+        "evidence_locator": "quality_harness.case.hold.novel.beta"
+      }
+    ]
+  }
+}

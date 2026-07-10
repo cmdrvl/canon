@@ -29,6 +29,11 @@ fn base_package() -> RegistryPackage {
     compile_registry_package(fixture_dir().as_path()).expect("fixture package compiles")
 }
 
+fn digest(hex: char) -> String {
+    assert!(hex.is_ascii_digit() || ('a'..='f').contains(&hex));
+    format!("blake3:{}", hex.to_string().repeat(64))
+}
+
 fn package_digest_for_test(package: &RegistryPackage) -> String {
     let mut digest_view = package.clone();
     digest_view.content_digest.clear();
@@ -79,7 +84,7 @@ fn registry_package_mapping_provenance_and_attachment_changes_change_digest() {
         serde_json::to_vec_pretty(&serde_json::json!({
             "version": "canon_registry_build.v0",
             "source": "mock",
-            "seed_hash": "blake3:seed-1"
+            "seed_hash": digest('1')
         }))
         .unwrap(),
     )
@@ -93,13 +98,13 @@ fn registry_package_mapping_provenance_and_attachment_changes_change_digest() {
         .push(RegistryPackageAttachmentDescriptor {
             path: "_attachments/audit.json".to_string(),
             kind: "audit".to_string(),
-            content_digest: "blake3:audit-payload".to_string(),
+            content_digest: digest('a'),
             bytes: 42,
         });
     attachment_package.content_digest.clear();
     let error =
         parse_registry_package(&canonical_package_bytes(&attachment_package).unwrap()).unwrap_err();
-    assert_eq!(error.kind, RegistryPackageErrorKind::InvalidPackageDigest);
+    assert_eq!(error.kind, RegistryPackageErrorKind::InvalidContentDigest);
     attachment_package.content_digest = package_digest_for_test(&attachment_package);
     let attachment_bytes = canonical_package_bytes(&attachment_package).unwrap();
     let parsed = parse_registry_package(&attachment_bytes).unwrap();
@@ -131,7 +136,7 @@ fn registry_package_refuses_unknown_duplicate_and_path_traversal_descriptors() {
     duplicate.file_descriptors.push(RegistryPackageDescriptor {
         path: "mappings.json".to_string(),
         kind: "mapping".to_string(),
-        content_digest: "blake3:duplicate".to_string(),
+        content_digest: digest('d'),
         bytes: 1,
         entry_count: Some(1),
     });
@@ -147,7 +152,7 @@ fn registry_package_refuses_unknown_duplicate_and_path_traversal_descriptors() {
         .push(RegistryPackageAttachmentDescriptor {
             path: "../audit.json".to_string(),
             kind: "audit".to_string(),
-            content_digest: "blake3:audit".to_string(),
+            content_digest: digest('e'),
             bytes: 1,
         });
     let error = validate_registry_package(&traversal).unwrap_err();
@@ -155,6 +160,44 @@ fn registry_package_refuses_unknown_duplicate_and_path_traversal_descriptors() {
         error.kind,
         RegistryPackageErrorKind::PathTraversalDescriptor
     );
+}
+
+#[test]
+fn registry_package_refuses_short_non_hex_uppercase_and_missing_digests() {
+    let package = base_package();
+
+    let mut short = package.clone();
+    short.file_descriptors[0].content_digest = "blake3:abcd".to_string();
+    let error = validate_registry_package(&short).unwrap_err();
+    assert_eq!(error.kind, RegistryPackageErrorKind::InvalidContentDigest);
+
+    let mut non_hex = package.clone();
+    non_hex
+        .attachments
+        .push(RegistryPackageAttachmentDescriptor {
+            path: "_attachments/audit.json".to_string(),
+            kind: "audit".to_string(),
+            content_digest: format!("blake3:{}g", "a".repeat(63)),
+            bytes: 1,
+        });
+    let error = validate_registry_package(&non_hex).unwrap_err();
+    assert_eq!(error.kind, RegistryPackageErrorKind::InvalidContentDigest);
+
+    let mut uppercase = package.clone();
+    uppercase.content_digest = format!("blake3:{}", "A".repeat(64));
+    let error = validate_registry_package(&uppercase).unwrap_err();
+    assert_eq!(error.kind, RegistryPackageErrorKind::InvalidContentDigest);
+
+    let mut missing = package.clone();
+    missing
+        .dependency_references
+        .push(RegistryPackageDependencyReference {
+            id: "dep-a".to_string(),
+            version: "1.0.0".to_string(),
+            content_digest: String::new(),
+        });
+    let error = validate_registry_package(&missing).unwrap_err();
+    assert_eq!(error.kind, RegistryPackageErrorKind::InvalidContentDigest);
 }
 
 #[test]
@@ -184,13 +227,13 @@ fn registry_package_cross_platform_descriptor_order_is_digest_stable() {
         attachments: vec![RegistryPackageAttachmentDescriptor {
             path: "_attachments\\audit.json".to_string(),
             kind: "audit".to_string(),
-            content_digest: "blake3:audit".to_string(),
+            content_digest: digest('e'),
             bytes: 1,
         }],
         dependency_references: vec![RegistryPackageDependencyReference {
             id: "dep-b".to_string(),
             version: "2.0.0".to_string(),
-            content_digest: "blake3:dep-b".to_string(),
+            content_digest: digest('b'),
         }],
         allowed_sidecars: vec![
             "escrow".to_string(),

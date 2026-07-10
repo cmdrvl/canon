@@ -22,7 +22,7 @@
     },
     "artifact_content_hash": {
       "type": "string",
-      "pattern": "^blake3:"
+      "pattern": "^blake3:[0-9a-f]{64}$"
     },
     "policy": {
       "$ref": "#/$defs/privacy_policy"
@@ -172,7 +172,7 @@
         },
         "fingerprint": {
           "type": "string",
-          "pattern": "^blake3:"
+          "pattern": "^blake3:[0-9a-f]{64}$"
         }
       }
     },
@@ -313,7 +313,7 @@
         },
         "content_hash": {
           "type": "string",
-          "pattern": "^blake3:"
+          "pattern": "^blake3:[0-9a-f]{64}$"
         }
       }
     },
@@ -336,7 +336,7 @@
       "properties": {
         "event_key": {
           "type": "string",
-          "pattern": "^blake3:"
+          "pattern": "^blake3:[0-9a-f]{64}$"
         },
         "event_kind": {
           "$ref": "#/$defs/event_kind"

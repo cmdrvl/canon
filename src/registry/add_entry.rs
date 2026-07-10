@@ -1,4 +1,7 @@
-use super::{DefaultIdScheme, MappingFile, load_registry_definition};
+use super::{
+    DefaultIdScheme, MappingFile, PlannedMutationState, acquire_registry_mutation_guard,
+    load_registry_definition, planned_file_mutation, validate_planned_mutations,
+};
 use crate::{
     Refusal, RefusalCode, RegistryMeta,
     registry_lint::{RegistryLintOutput, RegistryLintProfile, RegistryLintSeverity},
@@ -8,9 +11,13 @@ use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
     ffi::OsStr,
-    fs,
+    fs::{self, OpenOptions},
+    io::Write,
     path::{Path, PathBuf},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+const TEMP_FILE_STALE_AFTER: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegistryVersionBump {
@@ -621,6 +628,39 @@ fn commit_add_entry_plan(
         fs::read(&plan.alias_path).map_err(|error| io_refusal(&plan.alias_path, error))?;
     let registry_original =
         fs::read(&plan.registry_path).map_err(|error| io_refusal(&plan.registry_path, error))?;
+    let planned_mutations = vec![
+        planned_file_mutation(&plan.alias_path, &alias_original, &plan.alias_bytes),
+        planned_file_mutation(
+            &plan.registry_path,
+            &registry_original,
+            &plan.registry_bytes,
+        ),
+    ];
+    let registry_dir = plan
+        .registry_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    let _guard = acquire_registry_mutation_guard(&registry_dir)
+        .map_err(|error| io_refusal(&registry_dir, error))?;
+    match validate_planned_mutations(&planned_mutations)
+        .map_err(|error| io_refusal(&registry_dir, error))?
+    {
+        PlannedMutationState::Ready => {}
+        PlannedMutationState::AlreadyApplied => return Ok(plan.output),
+        PlannedMutationState::Stale {
+            path,
+            expected_hash,
+            actual_hash,
+        } => {
+            return Err(stale_write_plan_refusal(
+                &registry_dir,
+                &path,
+                &expected_hash,
+                &actual_hash,
+            ));
+        }
+    }
 
     if let Err(error) = write_atomic(&plan.alias_path, &plan.alias_bytes) {
         return Err(io_refusal(&plan.alias_path, error));
@@ -693,17 +733,21 @@ fn restore_originals(
 }
 
 pub(super) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    cleanup_stale_temp_siblings(path)?;
     let temp_path = temp_sibling(path);
-    if temp_path.exists() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            format!("temporary path already exists: {}", temp_path.display()),
-        ));
-    }
-    if let Err(error) = fs::write(&temp_path, bytes) {
+    let mut temp_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_path)?;
+    if let Err(error) = temp_file.write_all(bytes) {
         let _ = fs::remove_file(&temp_path);
         return Err(error);
     }
+    if let Err(error) = temp_file.sync_all() {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error);
+    }
+    drop(temp_file);
     if let Err(error) = fs::rename(&temp_path, path) {
         let _ = fs::remove_file(&temp_path);
         return Err(error);
@@ -716,7 +760,47 @@ fn temp_sibling(path: &Path) -> PathBuf {
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("registry-file");
-    path.with_file_name(format!("{file_name}.canon-add-entry.tmp"))
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    path.with_file_name(format!(
+        "{file_name}.canon-add-entry.{}.{}.tmp",
+        std::process::id(),
+        unique
+    ))
+}
+
+fn cleanup_stale_temp_siblings(path: &Path) -> std::io::Result<()> {
+    let Some(parent) = path.parent() else {
+        return Ok(());
+    };
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("registry-file");
+    let prefix = format!("{file_name}.canon-add-entry.");
+    let now = SystemTime::now();
+    for entry in fs::read_dir(parent)? {
+        let entry = entry?;
+        let entry_path = entry.path();
+        let Some(name) = entry_path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !name.starts_with(&prefix) || !name.ends_with(".tmp") {
+            continue;
+        }
+        let age = entry
+            .metadata()?
+            .modified()
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .unwrap_or_default();
+        if age >= TEMP_FILE_STALE_AFTER {
+            let _ = fs::remove_file(&entry_path);
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn parse_refusal(
@@ -770,4 +854,24 @@ pub(super) fn io_refusal(path: &Path, error: std::io::Error) -> Refusal {
         }),
         next_command: Some("Check paths and permissions, then rerun".to_string()),
     }
+}
+
+fn stale_write_plan_refusal(
+    registry: &Path,
+    path: &Path,
+    expected_hash: &str,
+    actual_hash: &str,
+) -> Refusal {
+    bad_registry_refusal(
+        registry,
+        "Registry mutation plan is stale relative to the current on-disk snapshot",
+        json!({
+            "field": "write_plan_hash",
+            "path": path.display().to_string(),
+            "expected_hash": expected_hash,
+            "actual_hash": actual_hash,
+            "writes_performed": false
+        }),
+        "Rebuild the registry mutation plan against the current files, then rerun",
+    )
 }

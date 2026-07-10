@@ -543,9 +543,18 @@ fn canonical_timestamp(value: &str, field: &str) -> InboxResult<String> {
 
 fn normalized_hash(value: &str, field: &str) -> InboxResult<String> {
     let value = value.trim();
-    if value.is_empty() || !value.starts_with("blake3:") {
+    let Some(hex) = value.strip_prefix("blake3:") else {
         return Err(corrupt_reference_error(format!(
-            "{field} must be a non-empty blake3 hash"
+            "{field} must be a blake3 digest with 64 lowercase hex characters"
+        )));
+    };
+    if hex.len() != 64
+        || !hex
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(corrupt_reference_error(format!(
+            "{field} must be a blake3 digest with 64 lowercase hex characters"
         )));
     }
     Ok(value.to_string())

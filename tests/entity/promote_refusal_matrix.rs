@@ -61,10 +61,7 @@ fn promote_refusal_matrix_fixture_locks_promote_stage_cases() {
             "promote_registry_snapshot_mismatch",
             "E_ENTITY_REGISTRY_SNAPSHOT",
         ),
-        (
-            "promote_atomic_temp_collision",
-            "E_ENTITY_ARTIFACT_CONTRACT",
-        ),
+        ("promote_abandoned_atomic_temp_recovery", "NONE"),
         ("promote_idempotent_replay", "NONE"),
     ] {
         let case = by_id.get(id).unwrap_or_else(|| panic!("missing {id}"));
@@ -75,9 +72,10 @@ fn promote_refusal_matrix_fixture_locks_promote_stage_cases() {
                 .any(|field| field == "writes_performed"),
             "{id} must require writes_performed"
         );
-        assert!(
-            !case.writes_performed,
-            "{id} must not mutate protected artifacts during refusal or replay"
+        let expected_writes = id == "promote_abandoned_atomic_temp_recovery";
+        assert_eq!(
+            case.writes_performed, expected_writes,
+            "{id} writes_performed fixture mismatch"
         );
     }
 }
@@ -109,14 +107,13 @@ fn promote_refusal_no_mutation_on_stale_audit() {
 }
 
 #[test]
-fn promote_refusal_no_mutation_on_atomic_registry_temp_collision() {
+fn promote_recovers_without_touching_abandoned_atomic_temp_artifact() {
     let registry = make_registry("1.0.0", json!([]));
     let registry_temp = registry.path().join("registry.json.canon-promote.tmp");
     fs::write(&registry_temp, b"preexisting temp").expect("registry temp");
-    let before = registry_tree_hash(registry.path());
     let audit = passing_audit();
 
-    let refusal = promote_registry_aliases(EntityPromoteRegistryRequest {
+    let output = promote_registry_aliases(EntityPromoteRegistryRequest {
         registry: registry.path().to_path_buf(),
         alias_file: "aliases.json".to_string(),
         next_version: "1.0.1".to_string(),
@@ -125,12 +122,14 @@ fn promote_refusal_no_mutation_on_atomic_registry_temp_collision() {
         aliases: vec![sears_alias()],
         no_lint: true,
     })
-    .expect_err("registry temp collision refuses");
+    .expect("abandoned fixed-name temp artifact does not block unique atomic writes");
 
-    assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
-    assert_eq!(refusal.detail["stage"], "promote");
-    assert_eq!(refusal.detail["writes_performed"], false);
-    assert_eq!(registry_tree_hash(registry.path()), before);
+    assert_eq!(output.registry.version_after, "1.0.1");
+    assert_eq!(output.registry.entry_count_after, 1);
+    assert_eq!(
+        output.touched_files,
+        vec!["aliases.json".to_string(), "registry.json".to_string()]
+    );
     assert_eq!(
         fs::read_to_string(&registry_temp).expect("registry temp after"),
         "preexisting temp"

@@ -361,6 +361,7 @@ pub fn validate_registry_package(package: &RegistryPackage) -> Result<(), Regist
     for dependency in &canonical.dependency_references {
         validate_digest(&dependency.content_digest)?;
     }
+    validate_digest(&canonical.content_digest)?;
 
     let expected_digest = package_digest(&canonical)?;
     if canonical.content_digest != expected_digest {
@@ -501,7 +502,17 @@ fn sidecar_kind_rank(kind: &str) -> usize {
 }
 
 fn validate_digest(digest: &str) -> Result<(), RegistryPackageError> {
-    if digest.starts_with("blake3:") && digest.len() > "blake3:".len() {
+    let Some(hex) = digest.strip_prefix("blake3:") else {
+        return Err(RegistryPackageError::new(
+            RegistryPackageErrorKind::InvalidContentDigest,
+            format!("invalid content digest {digest}"),
+        ));
+    };
+    if hex.len() == 64
+        && hex
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
         Ok(())
     } else {
         Err(RegistryPackageError::new(
@@ -597,7 +608,7 @@ mod tests {
                 id: "pkg".to_string(),
                 version: "1.0.0".to_string(),
             },
-            content_digest: "blake3:placeholder".to_string(),
+            content_digest: hash_bytes(b"package"),
             entry_count: 1,
             effective_mapping_count: 1,
             canonical_iri_namespace: None,
@@ -605,14 +616,14 @@ mod tests {
                 RegistryPackageDescriptor {
                     path: "z\\mapping.json".to_string(),
                     kind: MAPPING_KIND.to_string(),
-                    content_digest: "blake3:z".to_string(),
+                    content_digest: hash_bytes(b"z"),
                     bytes: 1,
                     entry_count: Some(1),
                 },
                 RegistryPackageDescriptor {
                     path: "a/registry.json".to_string(),
                     kind: REGISTRY_METADATA_KIND.to_string(),
-                    content_digest: "blake3:a".to_string(),
+                    content_digest: hash_bytes(b"a"),
                     bytes: 1,
                     entry_count: None,
                 },
@@ -621,7 +632,7 @@ mod tests {
             attachments: vec![RegistryPackageAttachmentDescriptor {
                 path: "attachments\\audit.json".to_string(),
                 kind: "audit".to_string(),
-                content_digest: "blake3:audit".to_string(),
+                content_digest: hash_bytes(b"audit"),
                 bytes: 1,
             }],
             dependency_references: Vec::new(),
@@ -707,7 +718,15 @@ mod tests {
         assert_eq!(compiled.registry.id, "fixture");
         assert_eq!(compiled.entry_count, 1);
         assert_eq!(compiled.effective_mapping_count, 1);
-        assert!(compiled.content_digest.starts_with("blake3:"));
+        assert_eq!(compiled.content_digest.len(), "blake3:".len() + 64);
+        assert!(
+            compiled
+                .content_digest
+                .strip_prefix("blake3:")
+                .expect("compiled content digest prefix")
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        );
         Ok(())
     }
 }

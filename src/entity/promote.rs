@@ -16,6 +16,10 @@ use crate::{
         },
         error::EntityRefusalKind,
     },
+    registry::{
+        PlannedMutationState, acquire_registry_mutation_guard, planned_file_mutation,
+        validate_planned_mutations,
+    },
     registry_lint::{self, RegistryLintOutput, RegistryLintProfile},
 };
 use serde::{Deserialize, Serialize};
@@ -23,9 +27,13 @@ use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
     ffi::OsStr,
-    fs,
+    fs::{self, OpenOptions},
+    io::Write,
     path::{Path, PathBuf},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+const TEMP_FILE_STALE_AFTER: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityPromoteRegistryRequest {
@@ -172,6 +180,45 @@ pub fn promote_registry_aliases(
         &request.audit.metadata.profile,
     )?;
     let alias_bytes = build_alias_bytes(&alias_original, &aliases)?;
+    let planned_mutations = vec![
+        planned_file_mutation(&alias_path, &alias_original, &alias_bytes),
+        planned_file_mutation(&registry_path, &registry_original, &registry_bytes),
+    ];
+    let _guard = acquire_registry_mutation_guard(&request.registry)
+        .map_err(|error| io_refusal(&request.registry, error))?;
+    match validate_planned_mutations(&planned_mutations)
+        .map_err(|error| io_refusal(&request.registry, error))?
+    {
+        PlannedMutationState::Ready => {}
+        PlannedMutationState::AlreadyApplied => {
+            let lint = lint_current_registry(&request.registry, request.no_lint)?;
+            return Ok(EntityPromoteRegistryOutput {
+                version: CANON_ENTITY_PROMOTE_VERSION.to_string(),
+                audit_artifact_hash: request.audit.artifact_content_hash,
+                registry: EntityPromoteRegistrySummary {
+                    id: registry_json.id,
+                    version_before: registry_json.version.clone(),
+                    version_after: next_version,
+                    entry_count_before: registry_json.entry_count,
+                    entry_count_after,
+                },
+                aliases,
+                touched_files: vec![],
+                lint,
+            });
+        }
+        PlannedMutationState::Stale {
+            path,
+            expected_hash,
+            actual_hash,
+        } => {
+            return Err(stale_registry_snapshot_refusal(
+                &path,
+                &expected_hash,
+                &actual_hash,
+            ));
+        }
+    }
 
     write_atomic(&alias_path, &alias_bytes).map_err(|error| io_refusal(&alias_path, error))?;
     if let Err(error) = write_atomic(&registry_path, &registry_bytes) {
@@ -834,17 +881,21 @@ fn restore_originals(
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    cleanup_stale_temp_siblings(path)?;
     let temp_path = temp_sibling(path);
-    if temp_path.exists() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            format!("temporary path already exists: {}", temp_path.display()),
-        ));
-    }
-    if let Err(error) = fs::write(&temp_path, bytes) {
+    let mut temp_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_path)?;
+    if let Err(error) = temp_file.write_all(bytes) {
         let _ = fs::remove_file(&temp_path);
         return Err(error);
     }
+    if let Err(error) = temp_file.sync_all() {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error);
+    }
+    drop(temp_file);
     if let Err(error) = fs::rename(&temp_path, path) {
         let _ = fs::remove_file(&temp_path);
         return Err(error);
@@ -857,7 +908,47 @@ fn temp_sibling(path: &Path) -> PathBuf {
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("registry-file");
-    path.with_file_name(format!("{file_name}.canon-promote.tmp"))
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    path.with_file_name(format!(
+        "{file_name}.canon-promote.{}.{}.tmp",
+        std::process::id(),
+        unique
+    ))
+}
+
+fn cleanup_stale_temp_siblings(path: &Path) -> std::io::Result<()> {
+    let Some(parent) = path.parent() else {
+        return Ok(());
+    };
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("registry-file");
+    let prefix = format!("{file_name}.canon-promote.");
+    let now = SystemTime::now();
+    for entry in fs::read_dir(parent)? {
+        let entry = entry?;
+        let entry_path = entry.path();
+        let Some(name) = entry_path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !name.starts_with(&prefix) || !name.ends_with(".tmp") {
+            continue;
+        }
+        let age = entry
+            .metadata()?
+            .modified()
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .unwrap_or_default();
+        if age >= TEMP_FILE_STALE_AFTER {
+            let _ = fs::remove_file(&entry_path);
+        }
+    }
+    Ok(())
 }
 
 fn ascii_trim(value: &str) -> &str {
@@ -871,6 +962,25 @@ fn promote_refusal(message: &'static str, detail: serde_json::Value) -> Refusal 
         Some(
             "canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <REGISTRY_DIR>"
                 .to_string(),
+        ),
+    )
+}
+
+fn stale_registry_snapshot_refusal(path: &Path, expected_hash: &str, actual_hash: &str) -> Refusal {
+    EntityRefusalKind::RegistrySnapshot.to_refusal(
+        "Current registry snapshot changed before promotion commit",
+        json!({
+            "stage": "promote",
+            "field": "registry_snapshot_hash",
+            "path": path.display().to_string(),
+            "expected": expected_hash,
+            "actual": actual_hash,
+            "expected_registry_snapshot_hash": expected_hash,
+            "actual_registry_snapshot_hash": actual_hash,
+            "writes_performed": false
+        }),
+        Some(
+            "Re-run promote from the current registry snapshot before applying aliases".to_string(),
         ),
     )
 }

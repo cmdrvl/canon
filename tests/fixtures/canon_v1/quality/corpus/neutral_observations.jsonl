@@ -1,0 +1,9 @@
+{"observation_id":"obs.train.seed","dataset_id":"dataset.train.public","surface":"Atlas Seed Company"}
+{"observation_id":"obs.train.peer","dataset_id":"dataset.train.public","surface":"Atlas Peer Works"}
+{"observation_id":"obs.tune.seed","dataset_id":"dataset.tune.public","surface":"Beacon Tune Cooperative"}
+{"observation_id":"obs.hold.alpha.left","dataset_id":"dataset.holdout.public","surface":"North Harbor Labs"}
+{"observation_id":"obs.hold.alpha.right","dataset_id":"dataset.holdout.public","surface":"North Harbor Laboratory"}
+{"observation_id":"obs.hold.beta.left","dataset_id":"dataset.holdout.public","surface":"South Ridge Studio"}
+{"observation_id":"obs.hold.beta.right","dataset_id":"dataset.holdout.public","surface":"South Ridge Atelier"}
+{"observation_id":"obs.replay.left","dataset_id":"dataset.exact.public","surface":"Exact Floor Archive"}
+{"observation_id":"obs.replay.right","dataset_id":"dataset.exact.public","surface":"Exact Floor Archive"}

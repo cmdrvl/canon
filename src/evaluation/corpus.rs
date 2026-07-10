@@ -334,6 +334,144 @@ pub struct EvaluationMetricSnapshot {
     pub exact_replay_coverage: ExactReplayCoverage,
 }
 
+#[cfg_attr(test, allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SealedCorpusQualityFixture {
+    #[serde(flatten)]
+    pub corpus: EvaluationCorpus,
+    pub quality_harness: SealedCorpusQualityHarness,
+}
+
+#[cfg_attr(test, allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SealedCorpusQualityHarness {
+    pub labels_sealed: bool,
+    pub cases: Vec<SealedCorpusQualityCase>,
+}
+
+#[cfg_attr(test, allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiscoveryQualityStratum {
+    ExactKnownReplay,
+    WithheldAliasIncumbent,
+    NovelMultiObservation,
+    DirectionalCrossSource,
+    RelatedOrHierarchyDistinct,
+    GenuinelyUnresolved,
+}
+
+impl DiscoveryQualityStratum {
+    #[cfg_attr(test, allow(dead_code))]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::ExactKnownReplay => "exact_known_replay",
+            Self::WithheldAliasIncumbent => "withheld_alias_incumbent",
+            Self::NovelMultiObservation => "novel_multi_observation",
+            Self::DirectionalCrossSource => "directional_cross_source",
+            Self::RelatedOrHierarchyDistinct => "related_or_hierarchy_distinct",
+            Self::GenuinelyUnresolved => "genuinely_unresolved",
+        }
+    }
+}
+
+#[cfg_attr(test, allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SealedCaseOutcome {
+    Correct,
+    Review,
+    ExplicitRefusal,
+    MeasuredMiss,
+}
+
+impl SealedCaseOutcome {
+    #[cfg_attr(test, allow(dead_code))]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Correct => "correct",
+            Self::Review => "review",
+            Self::ExplicitRefusal => "explicit_refusal",
+            Self::MeasuredMiss => "measured_miss",
+        }
+    }
+}
+
+#[cfg_attr(test, allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MissStage {
+    CandidateGeneration,
+    EvidenceScoring,
+    Solver,
+}
+
+impl MissStage {
+    #[cfg_attr(test, allow(dead_code))]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::CandidateGeneration => "candidate_generation",
+            Self::EvidenceScoring => "evidence_scoring",
+            Self::Solver => "solver",
+        }
+    }
+}
+
+#[cfg_attr(test, allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SealedCorpusQualityCase {
+    pub case_id: String,
+    pub left_observation_id: String,
+    pub right_observation_id: String,
+    pub stratum: DiscoveryQualityStratum,
+    pub label_disposition: PairDisposition,
+    pub outcome: SealedCaseOutcome,
+    pub miss_stage: Option<MissStage>,
+    pub ablation_id: Option<String>,
+    pub evidence_locator: String,
+}
+
+#[cfg_attr(test, allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SealedCorpusQualityReport {
+    pub version: String,
+    pub corpus_id: String,
+    pub corpus_version: String,
+    pub corpus_digest: String,
+    pub quality_harness_digest: String,
+    pub labels_sealed: bool,
+    pub discovery_case_count: usize,
+    pub exact_replay_case_count: usize,
+    pub correct_discovery_case_count: usize,
+    pub discovery_success_basis_points: Option<u16>,
+    pub outcome_counts: BTreeMap<String, usize>,
+    pub stratum_counts: BTreeMap<String, usize>,
+    pub miss_stage_counts: BTreeMap<String, usize>,
+    pub miss_evidence: Vec<SealedCorpusMissEvidence>,
+    pub ablation_evidence: Vec<SealedCorpusAblationEvidence>,
+}
+
+#[cfg_attr(test, allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SealedCorpusMissEvidence {
+    pub case_id: String,
+    pub left_observation_id: String,
+    pub right_observation_id: String,
+    pub stratum: DiscoveryQualityStratum,
+    pub miss_stage: MissStage,
+    pub ablation_id: Option<String>,
+    pub evidence_locator: String,
+}
+
+#[cfg_attr(test, allow(dead_code))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SealedCorpusAblationEvidence {
+    pub ablation_id: String,
+    pub affected_case_count: usize,
+    pub measured_miss_count: usize,
+    pub case_ids: Vec<String>,
+}
+
 pub fn finalize_corpus(mut corpus: EvaluationCorpus) -> EvaluationResult<EvaluationCorpus> {
     if corpus.version.trim().is_empty() {
         corpus.version = evaluation_corpus_schema_version().to_string();
@@ -665,6 +803,129 @@ pub fn deterministic_metrics(
         temporal_change_counts_by_type,
         adjudication_confidence_bands,
         exact_replay_coverage,
+    })
+}
+
+#[cfg_attr(test, allow(dead_code))]
+pub fn finalize_sealed_corpus_quality_fixture(
+    fixture: SealedCorpusQualityFixture,
+) -> EvaluationResult<SealedCorpusQualityFixture> {
+    let corpus = finalize_corpus(fixture.corpus)?;
+    let dataset_map = corpus
+        .datasets
+        .iter()
+        .map(|dataset| (dataset.dataset_id.clone(), dataset))
+        .collect::<BTreeMap<_, _>>();
+    let observation_map = corpus
+        .observations
+        .iter()
+        .map(|observation| (observation.observation_id.clone(), observation))
+        .collect::<BTreeMap<_, _>>();
+    let quality_harness =
+        normalize_quality_harness(fixture.quality_harness, &observation_map, &dataset_map)?;
+    Ok(SealedCorpusQualityFixture {
+        corpus,
+        quality_harness,
+    })
+}
+
+#[cfg_attr(test, allow(dead_code))]
+pub fn sealed_corpus_quality_report(
+    fixture: &SealedCorpusQualityFixture,
+) -> EvaluationResult<SealedCorpusQualityReport> {
+    let fixture = finalize_sealed_corpus_quality_fixture(fixture.clone())?;
+    let corpus_digest = corpus_digest(&fixture.corpus)?;
+    let quality_harness_digest = harness_digest(&fixture.quality_harness)?;
+    let mut outcome_counts = BTreeMap::new();
+    let mut stratum_counts = BTreeMap::new();
+    let mut miss_stage_counts = BTreeMap::new();
+    let mut miss_evidence = Vec::new();
+    let mut ablations = BTreeMap::<String, Vec<&SealedCorpusQualityCase>>::new();
+    let mut discovery_case_count = 0usize;
+    let mut exact_replay_case_count = 0usize;
+    let mut correct_discovery_case_count = 0usize;
+
+    for case in &fixture.quality_harness.cases {
+        increment_count(&mut outcome_counts, case.outcome.as_str());
+        increment_count(&mut stratum_counts, case.stratum.as_str());
+        if case.stratum == DiscoveryQualityStratum::ExactKnownReplay {
+            exact_replay_case_count += 1;
+        } else {
+            discovery_case_count += 1;
+            if case.outcome == SealedCaseOutcome::Correct {
+                correct_discovery_case_count += 1;
+            }
+        }
+        if let Some(miss_stage) = case.miss_stage {
+            increment_count(&mut miss_stage_counts, miss_stage.as_str());
+        }
+        if case.outcome == SealedCaseOutcome::MeasuredMiss {
+            miss_evidence.push(SealedCorpusMissEvidence {
+                case_id: case.case_id.clone(),
+                left_observation_id: case.left_observation_id.clone(),
+                right_observation_id: case.right_observation_id.clone(),
+                stratum: case.stratum,
+                miss_stage: case
+                    .miss_stage
+                    .expect("measured misses validated to include miss stage"),
+                ablation_id: case.ablation_id.clone(),
+                evidence_locator: case.evidence_locator.clone(),
+            });
+        }
+        if let Some(ablation_id) = &case.ablation_id {
+            ablations.entry(ablation_id.clone()).or_default().push(case);
+        }
+    }
+
+    let mut ablation_evidence = ablations
+        .into_iter()
+        .map(|(ablation_id, mut cases)| {
+            cases.sort_by(|left, right| left.case_id.cmp(&right.case_id));
+            SealedCorpusAblationEvidence {
+                ablation_id,
+                affected_case_count: cases.len(),
+                measured_miss_count: cases
+                    .iter()
+                    .filter(|case| case.outcome == SealedCaseOutcome::MeasuredMiss)
+                    .count(),
+                case_ids: cases.into_iter().map(|case| case.case_id.clone()).collect(),
+            }
+        })
+        .collect::<Vec<_>>();
+    ablation_evidence.sort_by(|left, right| left.ablation_id.cmp(&right.ablation_id));
+    miss_evidence.sort_by(|left, right| left.case_id.cmp(&right.case_id));
+
+    Ok(SealedCorpusQualityReport {
+        version: "canon.evaluation.corpus.quality_report".to_string(),
+        corpus_id: fixture.corpus.corpus_id.clone(),
+        corpus_version: fixture.corpus.corpus_version.clone(),
+        corpus_digest,
+        quality_harness_digest,
+        labels_sealed: fixture.quality_harness.labels_sealed,
+        discovery_case_count,
+        exact_replay_case_count,
+        correct_discovery_case_count,
+        discovery_success_basis_points: basis_points(
+            correct_discovery_case_count,
+            discovery_case_count,
+        ),
+        outcome_counts,
+        stratum_counts,
+        miss_stage_counts,
+        miss_evidence,
+        ablation_evidence,
+    })
+}
+
+#[cfg_attr(test, allow(dead_code))]
+pub fn canonical_sealed_corpus_quality_report_bytes(
+    fixture: &SealedCorpusQualityFixture,
+) -> EvaluationResult<Vec<u8>> {
+    let report = sealed_corpus_quality_report(fixture)?;
+    serde_json::to_vec(&report).map_err(|error| {
+        artifact_contract_error(format!(
+            "failed to serialize sealed corpus quality report: {error}"
+        ))
     })
 }
 
@@ -1258,6 +1519,133 @@ fn normalize_provenance(mut provenance: CorpusProvenance) -> EvaluationResult<Co
     Ok(provenance)
 }
 
+#[cfg_attr(test, allow(dead_code))]
+fn normalize_quality_harness(
+    mut harness: SealedCorpusQualityHarness,
+    observation_map: &BTreeMap<String, &CorpusObservation>,
+    dataset_map: &BTreeMap<String, &CorpusDataset>,
+) -> EvaluationResult<SealedCorpusQualityHarness> {
+    if !harness.labels_sealed {
+        return Err(compatibility_policy_error(
+            "quality_harness.labels_sealed must remain true",
+        ));
+    }
+    harness.cases = dedupe_components(
+        harness
+            .cases
+            .into_iter()
+            .map(|case| normalize_quality_case(case, observation_map, dataset_map))
+            .collect::<EvaluationResult<Vec<_>>>()?,
+        |case| case.case_id.clone(),
+        "quality harness case",
+    )?;
+    if harness.cases.is_empty() {
+        return Err(artifact_contract_error(
+            "quality_harness.cases must include at least one sealed scoring case",
+        ));
+    }
+    Ok(harness)
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn normalize_quality_case(
+    mut case: SealedCorpusQualityCase,
+    observation_map: &BTreeMap<String, &CorpusObservation>,
+    dataset_map: &BTreeMap<String, &CorpusDataset>,
+) -> EvaluationResult<SealedCorpusQualityCase> {
+    case.case_id = normalized_component_id(&case.case_id, "quality_harness.case_id")?;
+    case.left_observation_id = normalized_component_id(
+        &case.left_observation_id,
+        "quality_harness.left_observation_id",
+    )?;
+    case.right_observation_id = normalized_component_id(
+        &case.right_observation_id,
+        "quality_harness.right_observation_id",
+    )?;
+    if case.left_observation_id == case.right_observation_id {
+        return Err(artifact_contract_error(
+            "quality_harness cases must reference two different observations",
+        ));
+    }
+    require_observation(
+        &case.left_observation_id,
+        observation_map,
+        "quality_harness.left_observation_id",
+    )?;
+    require_observation(
+        &case.right_observation_id,
+        observation_map,
+        "quality_harness.right_observation_id",
+    )?;
+    if case.label_disposition != PairDisposition::SameEntity {
+        return Err(compatibility_policy_error(
+            "quality_harness currently supports only same_entity labels",
+        ));
+    }
+    case.evidence_locator =
+        normalized_non_empty(&case.evidence_locator, "quality_harness.evidence_locator")?;
+    case.ablation_id = case
+        .ablation_id
+        .map(|ablation_id| normalized_component_id(&ablation_id, "quality_harness.ablation_id"))
+        .transpose()?;
+
+    match case.outcome {
+        SealedCaseOutcome::MeasuredMiss if case.miss_stage.is_none() => {
+            return Err(artifact_contract_error(
+                "quality_harness measured_miss cases must declare miss_stage",
+            ));
+        }
+        outcome if outcome != SealedCaseOutcome::MeasuredMiss && case.miss_stage.is_some() => {
+            return Err(artifact_contract_error(
+                "quality_harness miss_stage is only allowed on measured_miss cases",
+            ));
+        }
+        _ => {}
+    }
+
+    let left_dataset = dataset_map
+        .get(
+            &observation_map
+                .get(&case.left_observation_id)
+                .expect("left observation validated")
+                .dataset_id,
+        )
+        .expect("left dataset validated");
+    let right_dataset = dataset_map
+        .get(
+            &observation_map
+                .get(&case.right_observation_id)
+                .expect("right observation validated")
+                .dataset_id,
+        )
+        .expect("right dataset validated");
+    if left_dataset.partition != right_dataset.partition {
+        return Err(compatibility_policy_error(format!(
+            "quality_harness case {} must stay within one scoring partition",
+            case.case_id
+        )));
+    }
+    match case.stratum {
+        DiscoveryQualityStratum::ExactKnownReplay => {
+            if left_dataset.partition != CorpusPartition::ExactReplay {
+                return Err(compatibility_policy_error(format!(
+                    "quality_harness exact replay case {} must use exact_replay observations",
+                    case.case_id
+                )));
+            }
+        }
+        _ => {
+            if left_dataset.partition != CorpusPartition::Holdout {
+                return Err(compatibility_policy_error(format!(
+                    "quality_harness discovery case {} must use holdout observations",
+                    case.case_id
+                )));
+            }
+        }
+    }
+    Ok(case)
+}
+
 fn require_observation(
     observation_id: &str,
     observation_map: &BTreeMap<String, &CorpusObservation>,
@@ -1454,4 +1842,23 @@ fn compatibility_policy_error(message: impl Into<String>) -> EvaluationError {
 
 fn blake3_digest(bytes: &[u8]) -> String {
     format!("blake3:{}", blake3::hash(bytes).to_hex())
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn harness_digest(harness: &SealedCorpusQualityHarness) -> EvaluationResult<String> {
+    let bytes = serde_json::to_vec(harness).map_err(|error| {
+        artifact_contract_error(format!(
+            "failed to serialize sealed corpus quality harness: {error}"
+        ))
+    })?;
+    Ok(blake3_digest(&bytes))
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn basis_points(numerator: usize, denominator: usize) -> Option<u16> {
+    if denominator == 0 {
+        return None;
+    }
+    let scaled = (numerator * 10_000 + (denominator / 2)) / denominator;
+    u16::try_from(scaled).ok()
 }

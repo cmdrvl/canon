@@ -1,6 +1,8 @@
 use super::{
-    MappingFile, add_entry, load_registry_definition,
+    MappingFile, PlannedMutationState, acquire_registry_mutation_guard, add_entry,
+    load_registry_definition,
     next_id::{RegistryNextIdRequest, next_id},
+    planned_file_mutation, validate_planned_mutations,
 };
 use crate::{
     Refusal,
@@ -311,6 +313,46 @@ fn commit_mint_plan(mut plan: RegistryMintPlan) -> Result<RegistryMintOutput, Re
             path.clone(),
             fs::read(path).map_err(|error| add_entry::io_refusal(path, error))?,
         );
+    }
+    let mut planned_mutations = vec![planned_file_mutation(
+        &plan.registry_path,
+        originals
+            .get(&plan.registry_path)
+            .expect("registry original bytes"),
+        &plan.registry_bytes,
+    )];
+    for (path, bytes) in &plan.alias_writes {
+        planned_mutations.push(planned_file_mutation(
+            path,
+            originals.get(path).expect("alias original bytes"),
+            bytes,
+        ));
+    }
+    let _guard = acquire_registry_mutation_guard(&plan.registry_dir)
+        .map_err(|error| add_entry::io_refusal(&plan.registry_dir, error))?;
+    match validate_planned_mutations(&planned_mutations)
+        .map_err(|error| add_entry::io_refusal(&plan.registry_dir, error))?
+    {
+        PlannedMutationState::Ready => {}
+        PlannedMutationState::AlreadyApplied => return Ok(plan.output),
+        PlannedMutationState::Stale {
+            path,
+            expected_hash,
+            actual_hash,
+        } => {
+            return Err(add_entry::bad_registry_refusal(
+                &plan.registry_dir,
+                "Registry mint plan is stale relative to the current on-disk snapshot",
+                json!({
+                    "field": "write_plan_hash",
+                    "path": path.display().to_string(),
+                    "expected_hash": expected_hash,
+                    "actual_hash": actual_hash,
+                    "writes_performed": false
+                }),
+                "Rebuild the mint plan against the current files, then rerun",
+            ));
+        }
     }
 
     for (path, bytes) in &plan.alias_writes {

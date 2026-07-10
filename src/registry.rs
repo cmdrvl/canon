@@ -12,9 +12,11 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 mod add_entry;
 mod build;
@@ -149,12 +151,102 @@ CREATE INDEX IF NOT EXISTS idx_input ON entries(input);
 "#;
 
 const INDEX_SCHEMA_VERSION: &str = "canon.registry_index.v1";
+const INDEX_LEASE_SUFFIX: &str = ".canon-index.lock";
+const REGISTRY_MUTATION_LOCK_NAME: &str = ".canon-registry-mutation.lock";
+const LEASE_STALE_AFTER: Duration = Duration::from_secs(30);
+const LEASE_RETRY_DELAY: Duration = Duration::from_millis(25);
 
 #[derive(Debug)]
 struct IndexTarget {
     cache_db_path: PathBuf,
     db_path: PathBuf,
     force_rebuild: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PlannedFileMutation {
+    pub path: PathBuf,
+    pub expected_hash: String,
+    pub proposed_hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PlannedMutationState {
+    Ready,
+    AlreadyApplied,
+    Stale {
+        path: PathBuf,
+        expected_hash: String,
+        actual_hash: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AdvisoryLeaseFile {
+    pid: u32,
+    created_unix_secs: u64,
+    purpose: String,
+}
+
+#[derive(Debug)]
+pub(crate) struct AdvisoryLeaseGuard {
+    path: PathBuf,
+}
+
+impl Drop for AdvisoryLeaseGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+pub(crate) fn hash_bytes(bytes: &[u8]) -> String {
+    format!("blake3:{}", blake3::hash(bytes).to_hex())
+}
+
+pub(crate) fn planned_file_mutation(
+    path: &Path,
+    expected_bytes: &[u8],
+    proposed_bytes: &[u8],
+) -> PlannedFileMutation {
+    PlannedFileMutation {
+        path: path.to_path_buf(),
+        expected_hash: hash_bytes(expected_bytes),
+        proposed_hash: hash_bytes(proposed_bytes),
+    }
+}
+
+pub(crate) fn validate_planned_mutations(
+    mutations: &[PlannedFileMutation],
+) -> io::Result<PlannedMutationState> {
+    let mut already_applied = true;
+    for mutation in mutations {
+        let actual_hash = hash_bytes(&fs::read(&mutation.path)?);
+        if actual_hash != mutation.expected_hash && actual_hash != mutation.proposed_hash {
+            return Ok(PlannedMutationState::Stale {
+                path: mutation.path.clone(),
+                expected_hash: mutation.expected_hash.clone(),
+                actual_hash,
+            });
+        }
+        if actual_hash != mutation.proposed_hash {
+            already_applied = false;
+        }
+    }
+
+    if already_applied {
+        Ok(PlannedMutationState::AlreadyApplied)
+    } else {
+        Ok(PlannedMutationState::Ready)
+    }
+}
+
+pub(crate) fn acquire_registry_mutation_guard(
+    registry_dir: &Path,
+) -> io::Result<AdvisoryLeaseGuard> {
+    acquire_advisory_lease(
+        &registry_dir.join(REGISTRY_MUTATION_LOCK_NAME),
+        "registry-mutation",
+    )
 }
 
 pub fn load_registry(registry_dir: &Path) -> Result<Registry, Box<dyn Error>> {
@@ -523,6 +615,11 @@ fn build_index(
     source_digest: &str,
     mapping_files: &[MappingFile],
 ) -> Result<(), Box<dyn Error>> {
+    let _lease = acquire_index_builder_guard(db_path)?;
+    if db_path.exists() && !should_rebuild_index(db_path, source_digest)? {
+        return Ok(());
+    }
+
     let parent = db_path.parent().ok_or_else(|| {
         format!(
             "Registry index path does not have a parent directory: {}",
@@ -736,6 +833,7 @@ fn materialize_working_index(
     working_db_path: &Path,
     source_digest: &str,
 ) -> Result<(), Box<dyn Error>> {
+    let _lease = acquire_index_builder_guard(working_db_path)?;
     if !should_rebuild_index(working_db_path, source_digest)? {
         return Ok(());
     }
@@ -806,6 +904,76 @@ fn install_copied_index(
             .into())
         }
     }
+}
+
+fn acquire_index_builder_guard(db_path: &Path) -> io::Result<AdvisoryLeaseGuard> {
+    acquire_advisory_lease(&index_lease_path(db_path), "registry-index-builder")
+}
+
+fn index_lease_path(db_path: &Path) -> PathBuf {
+    let file_name = db_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("registry-index.sqlite");
+    db_path.with_file_name(format!("{file_name}{INDEX_LEASE_SUFFIX}"))
+}
+
+fn acquire_advisory_lease(lock_path: &Path, purpose: &str) -> io::Result<AdvisoryLeaseGuard> {
+    loop {
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(lock_path)
+        {
+            Ok(mut file) => {
+                let payload = AdvisoryLeaseFile {
+                    pid: std::process::id(),
+                    created_unix_secs: current_unix_secs(),
+                    purpose: purpose.to_string(),
+                };
+                let mut bytes = serde_json::to_vec(&payload)
+                    .map_err(|error| io::Error::other(format!("serialize lease: {error}")))?;
+                bytes.push(b'\n');
+                file.write_all(&bytes)?;
+                file.sync_all()?;
+                return Ok(AdvisoryLeaseGuard {
+                    path: lock_path.to_path_buf(),
+                });
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                if lease_is_stale(lock_path)? {
+                    match fs::remove_file(lock_path) {
+                        Ok(()) => continue,
+                        Err(remove_error) if remove_error.kind() == io::ErrorKind::NotFound => {
+                            continue;
+                        }
+                        Err(remove_error) => return Err(remove_error),
+                    }
+                }
+                thread::sleep(LEASE_RETRY_DELAY);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn lease_is_stale(lock_path: &Path) -> io::Result<bool> {
+    let bytes = match fs::read(lock_path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    let created_unix_secs = serde_json::from_slice::<AdvisoryLeaseFile>(&bytes)
+        .map(|lease| lease.created_unix_secs)
+        .unwrap_or(0);
+    Ok(current_unix_secs().saturating_sub(created_unix_secs) >= LEASE_STALE_AFTER.as_secs())
+}
+
+fn current_unix_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 #[cfg(test)]

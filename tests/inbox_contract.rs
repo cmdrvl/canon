@@ -19,6 +19,22 @@ fn schema_declares_non_registry_deterministic_contract() {
         schema["properties"]["version"]["const"],
         CANON_UNRESOLVED_INBOX_VERSION
     );
+    assert_eq!(
+        schema["properties"]["artifact_content_hash"]["pattern"],
+        "^blake3:[0-9a-f]{64}$"
+    );
+    assert_eq!(
+        schema["$defs"]["surface_fingerprint"]["properties"]["fingerprint"]["pattern"],
+        "^blake3:[0-9a-f]{64}$"
+    );
+    assert_eq!(
+        schema["$defs"]["raw_value_reference"]["properties"]["content_hash"]["pattern"],
+        "^blake3:[0-9a-f]{64}$"
+    );
+    assert_eq!(
+        schema["$defs"]["item"]["properties"]["event_key"]["pattern"],
+        "^blake3:[0-9a-f]{64}$"
+    );
     assert!(
         schema["description"]
             .as_str()
@@ -99,8 +115,8 @@ fn unicode_contract_round_trips() {
     let mut artifact = sample_artifact(InboxExportMode::Retained);
     artifact.items[0].field_name = "issuer_名称".to_string();
     artifact.items[0].surface_fingerprints = vec![
-        sample_fingerprint("alias", "blake3:33333333333333333333333333333333"),
-        sample_fingerprint("primary", "blake3:22222222222222222222222222222222"),
+        sample_fingerprint("alias", digest('3')),
+        sample_fingerprint("primary", digest('2')),
     ];
     artifact.items[0].profile_ref = Some(ProfileFieldRef {
         profile_id: "sec10d_租户".to_string(),
@@ -141,6 +157,27 @@ fn corrupt_reference_is_rejected() {
     artifact.items[0].raw_values[0].content_hash = "sha256:bad".to_string();
     let error = finalize_artifact(artifact).expect_err("bad raw reference should fail");
     assert_eq!(error.code, InboxErrorCode::CorruptReference);
+}
+
+#[test]
+fn strict_digest_validation_rejects_short_non_hex_uppercase_and_missing_values() {
+    let cases = [
+        ("short", "blake3:abcd".to_string(), true),
+        ("non_hex", format!("blake3:{}g", "a".repeat(63)), true),
+        ("uppercase", format!("blake3:{}", "A".repeat(64)), true),
+        ("missing", String::new(), false),
+    ];
+
+    for (label, invalid_digest, use_fingerprint) in cases {
+        let mut artifact = sample_artifact(InboxExportMode::Retained);
+        if use_fingerprint {
+            artifact.items[0].surface_fingerprints[0].fingerprint = invalid_digest;
+        } else {
+            artifact.items[0].raw_values[0].content_hash = invalid_digest;
+        }
+        let error = finalize_artifact(artifact).expect_err(&format!("case {label} should fail"));
+        assert_eq!(error.code, InboxErrorCode::CorruptReference, "{label}");
+    }
 }
 
 #[test]
@@ -215,8 +252,8 @@ fn sample_item() -> UnresolvedInboxItem {
             profile_version: "1.0.0".to_string(),
         }),
         surface_fingerprints: vec![
-            sample_fingerprint("alias", "blake3:11111111111111111111111111111111"),
-            sample_fingerprint("primary", "blake3:00000000000000000000000000000000"),
+            sample_fingerprint("alias", digest('1')),
+            sample_fingerprint("primary", digest('0')),
         ],
         namespace_hints: vec![NamespaceHint {
             namespace: "issuer_name".to_string(),
@@ -250,15 +287,23 @@ fn sample_item() -> UnresolvedInboxItem {
         raw_values: vec![ExternalRawValueReference {
             store: "vault://canon".to_string(),
             locator: "raw/issuer_name/project.alpha/run-001/row-7".to_string(),
-            content_hash: "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            content_hash: digest('a'),
         }],
     }
 }
 
-fn sample_fingerprint(surface_role: &str, fingerprint: &str) -> NormalizedSurfaceFingerprint {
+fn sample_fingerprint(
+    surface_role: &str,
+    fingerprint: impl Into<String>,
+) -> NormalizedSurfaceFingerprint {
     NormalizedSurfaceFingerprint {
         normalizer_id: "namekit.v0/ascii_trim_lower".to_string(),
         surface_role: surface_role.to_string(),
-        fingerprint: fingerprint.to_string(),
+        fingerprint: fingerprint.into(),
     }
+}
+
+fn digest(hex: char) -> String {
+    assert!(hex.is_ascii_digit() || ('a'..='f').contains(&hex));
+    format!("blake3:{}", hex.to_string().repeat(64))
 }
