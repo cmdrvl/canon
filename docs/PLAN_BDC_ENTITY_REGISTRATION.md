@@ -38,9 +38,20 @@ Today these are distinct strings. Without entity resolution, the same company
 appears as 3-5 rows in downstream analytics. Cross-quarter investment continuity
 (Layer 3) is impossible without first knowing which names refer to the same company.
 
-80%+ of BDC investments are private. There is no CUSIP, no FIGI, no Bloomberg
-ticker. The portfolio company name is the only identifier. Entity resolution must
-work from names alone.
+80%+ of BDC investments are private. There is no CUSIP, no ISIN, no Bloomberg
+ticker in the filing. The portfolio company name is the only identifier IN THE
+FILING, so entity resolution must work from names alone.
+
+> **CORRECTION (2026-07-10, live OpenFIGI probe — see
+> `cmdrvl-soi/docs/FINDINGS_FIGI_COVERAGE_BDC_LOANS.md`):** the claim that these
+> instruments have "no FIGI" is WRONG. ~100% of a 28-borrower sample (BSL-heavy AND
+> middle-market/private) resolve to loan-instrument FIGIs (`marketSector=Corp`,
+> `securityType2 ∈ {TERM, REV, DELAY-DRAW TERM, PIK TERM, ...}`). FIGI carries no
+> CUSIP/ISIN for them (so `/mapping` is out; you must `/search` by name), and each
+> borrower returns MANY tranche FIGIs — so the problem is not coverage but
+> tranche disambiguation (R6, `bd-12px`) to pick the correct FIGI per holding. This
+> means we can likely ADOPT a FIGI as the instrument anchor for the majority (gated
+> on a confident attribute match) and mint IN-* only for the residual. See `bd-12xm`.
 
 ---
 
