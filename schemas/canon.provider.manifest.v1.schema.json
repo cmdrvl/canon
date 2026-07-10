@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.provider.manifest.v1.schema.json",
+  "title": "canon.provider.manifest.v1",
+  "description": "Contract for a generic frozen-source provider materializer SDK. Acquisition stays outside the deterministic offline build. The provider consumes only explicit frozen files and a source manifest, then emits typed facts, quarantined rows, diagnostics, provenance locators, semantic diffs, and a content-addressed package without reading undeclared files.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "provider_id",
+    "provider_version",
+    "source_manifest_version",
+    "capabilities",
+    "parser",
+    "mapping",
+    "policies",
+    "limits",
+    "licenses",
+    "semantic_diff_dimensions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "canon.provider.manifest.v1"
+    },
+    "provider_id": {
+      "$ref": "#/$defs/package_id"
+    },
+    "provider_version": {
+      "$ref": "#/$defs/semver"
+    },
+    "source_manifest_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/capability"
+      },
+      "uniqueItems": true
+    },
+    "parser": {
+      "$ref": "#/$defs/parser_contract"
+    },
+    "mapping": {
+      "$ref": "#/$defs/mapping_contract"
+    },
+    "policies": {
+      "$ref": "#/$defs/build_policies"
+    },
+    "limits": {
+      "$ref": "#/$defs/build_limits"
+    },
+    "licenses": {
+      "$ref": "#/$defs/license_contract"
+    },
+    "semantic_diff_dimensions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/semantic_diff_dimension"
+      },
+      "uniqueItems": true
+    }
+  },
+  "x-canon-contract": {
+    "acquisition_boundary": "acquisition is optional and external; offline build consumes only explicit frozen files plus a source manifest",
+    "offline_build_only": true,
+    "no_undeclared_file_reads": true,
+    "typed_fact_provenance_required": true,
+    "quarantine_and_diagnostics_preserved": true,
+    "semantic_diff_required": true
+  },
+  "$defs": {
+    "package_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "component_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._:-]*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "capability": {
+      "type": "string",
+      "enum": [
+        "frozen_source_only",
+        "streaming_parser",
+        "checkpoint_resume",
+        "quarantine_rows",
+        "semantic_diff"
+      ]
+    },
+    "source_format": {
+      "type": "string",
+      "enum": [
+        "delimited_utf8",
+        "json_lines_utf8"
+      ]
+    },
+    "checkpoint_unit": {
+      "type": "string",
+      "enum": [
+        "record_ordinal"
+      ]
+    },
+    "undeclared_file_policy": {
+      "type": "string",
+      "enum": [
+        "reject"
+      ]
+    },
+    "duplicate_fact_policy": {
+      "type": "string",
+      "enum": [
+        "reject_build",
+        "quarantine_later_duplicates"
+      ]
+    },
+    "semantic_diff_dimension": {
+      "type": "string",
+      "enum": [
+        "facts",
+        "quarantine",
+        "diagnostics",
+        "source_revision"
+      ]
+    },
+    "parser_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_format",
+        "streaming",
+        "checkpoint_unit",
+        "required_fields"
+      ],
+      "properties": {
+        "source_format": {
+          "$ref": "#/$defs/source_format"
+        },
+        "streaming": {
+          "type": "boolean"
+        },
+        "checkpoint_unit": {
+          "$ref": "#/$defs/checkpoint_unit"
+        },
+        "required_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "mapping_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fact_schema",
+        "fact_key_description",
+        "provenance_locator_kind",
+        "quarantine_reason_codes"
+      ],
+      "properties": {
+        "fact_schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fact_key_description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provenance_locator_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "quarantine_reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "build_policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "acquisition_separate_from_build",
+        "offline_build_only",
+        "undeclared_file_policy",
+        "duplicate_fact_policy"
+      ],
+      "properties": {
+        "acquisition_separate_from_build": {
+          "type": "boolean"
+        },
+        "offline_build_only": {
+          "type": "boolean"
+        },
+        "undeclared_file_policy": {
+          "$ref": "#/$defs/undeclared_file_policy"
+        },
+        "duplicate_fact_policy": {
+          "$ref": "#/$defs/duplicate_fact_policy"
+        }
+      }
+    },
+    "build_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_input_bytes",
+        "max_rows",
+        "max_facts",
+        "max_quarantine_rows",
+        "max_diagnostics"
+      ],
+      "properties": {
+        "max_input_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_facts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_quarantine_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_diagnostics": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "license_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_license_expression",
+        "output_license_expression",
+        "attribution_required"
+      ],
+      "properties": {
+        "source_license_expression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output_license_expression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attribution_required": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
