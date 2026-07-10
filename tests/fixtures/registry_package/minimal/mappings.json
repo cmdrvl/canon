@@ -1,0 +1,14 @@
+[
+  {
+    "input": "AAPL",
+    "canonical_id": "BBG000B9XRY4",
+    "canonical_type": "composite_figi",
+    "rule_id": "OPENFIGI"
+  },
+  {
+    "input": "MSFT",
+    "canonical_id": "BBG000BPH459",
+    "canonical_type": "composite_figi",
+    "rule_id": "OPENFIGI"
+  }
+]

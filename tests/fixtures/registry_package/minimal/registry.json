@@ -1,0 +1,8 @@
+{
+  "id": "minimal-registry",
+  "version": "1.0.0",
+  "description": "Minimal registry package fixture",
+  "updated": "2026-07-10",
+  "entry_count": 2,
+  "canonical_iri_namespace": "https://example.test/canon/minimal/"
+}

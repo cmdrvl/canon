@@ -1,0 +1,561 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.strategy.v1.schema.json",
+  "title": "canon.strategy.v1",
+  "description": "Typed canonical procedural strategy doctrine. Strategies are selected procedural knowledge, not exact lookup execution.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "kind",
+    "selection_key",
+    "allowed_inputs",
+    "declared_outputs",
+    "capability_requirements",
+    "execution_policy",
+    "audit_fixtures",
+    "compatibility",
+    "promotion"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon.strategy.v1"
+    },
+    "kind": {
+      "$ref": "#/$defs/strategy_kind"
+    },
+    "selection_key": {
+      "$ref": "#/$defs/selection_key"
+    },
+    "allowed_inputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/allowed_input"
+      }
+    },
+    "declared_outputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/output_kind"
+      },
+      "uniqueItems": true
+    },
+    "capability_requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/capability"
+      },
+      "uniqueItems": true
+    },
+    "execution_policy": {
+      "$ref": "#/$defs/execution_policy"
+    },
+    "audit_fixtures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/audit_fixture"
+      },
+      "uniqueItems": true
+    },
+    "compatibility": {
+      "$ref": "#/$defs/compatibility"
+    },
+    "promotion": {
+      "$ref": "#/$defs/promotion"
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/identity_evidence_definition"
+    },
+    {
+      "$ref": "#/$defs/record_linkage_definition"
+    },
+    {
+      "$ref": "#/$defs/schema_transform_definition"
+    },
+    {
+      "$ref": "#/$defs/task_transform_definition"
+    }
+  ],
+  "$defs": {
+    "strategy_kind": {
+      "type": "string",
+      "enum": [
+        "identity-evidence",
+        "record-linkage",
+        "schema-transform",
+        "task-transform"
+      ]
+    },
+    "selection_key": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/identity_evidence_key"
+        },
+        {
+          "$ref": "#/$defs/record_linkage_key"
+        },
+        {
+          "$ref": "#/$defs/schema_transform_key"
+        },
+        {
+          "$ref": "#/$defs/task_transform_key"
+        }
+      ]
+    },
+    "identity_evidence_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "profile_id",
+        "skill_hash"
+      ],
+      "properties": {
+        "type": {
+          "const": "identity-evidence"
+        },
+        "profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "skill_hash": {
+          "type": "string",
+          "pattern": "^blake3:"
+        }
+      }
+    },
+    "record_linkage_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "linkage_map_id",
+        "skill_hash"
+      ],
+      "properties": {
+        "type": {
+          "const": "record-linkage"
+        },
+        "linkage_map_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "skill_hash": {
+          "type": "string",
+          "pattern": "^blake3:"
+        }
+      }
+    },
+    "schema_transform_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_fingerprint",
+        "skill_hash"
+      ],
+      "properties": {
+        "type": {
+          "const": "schema-transform"
+        },
+        "schema_fingerprint": {
+          "type": "string",
+          "pattern": "^blake3:"
+        },
+        "skill_hash": {
+          "type": "string",
+          "pattern": "^blake3:"
+        }
+      }
+    },
+    "task_transform_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "task",
+        "skill_hash"
+      ],
+      "properties": {
+        "type": {
+          "const": "task-transform"
+        },
+        "task": {
+          "type": "string",
+          "minLength": 1
+        },
+        "skill_hash": {
+          "type": "string",
+          "pattern": "^blake3:"
+        }
+      }
+    },
+    "allowed_input": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/profiled_observations_input"
+        },
+        {
+          "$ref": "#/$defs/two_tape_records_input"
+        },
+        {
+          "$ref": "#/$defs/schema_profile_input"
+        },
+        {
+          "$ref": "#/$defs/exact_task_input"
+        }
+      ]
+    },
+    "profiled_observations_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "profile_id"
+      ],
+      "properties": {
+        "type": {
+          "const": "profiled-observations"
+        },
+        "profile_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "two_tape_records_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "linkage_map_id"
+      ],
+      "properties": {
+        "type": {
+          "const": "two-tape-records"
+        },
+        "linkage_map_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "schema_profile_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "schema_source"
+      ],
+      "properties": {
+        "type": {
+          "const": "schema-profile"
+        },
+        "schema_source": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "exact_task_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "task"
+      ],
+      "properties": {
+        "type": {
+          "const": "exact-task"
+        },
+        "task": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "output_kind": {
+      "type": "string",
+      "enum": [
+        "evidence-bundle",
+        "linkage-bundle",
+        "frozen-script-pointer",
+        "registry-knowledge-proposal"
+      ]
+    },
+    "capability": {
+      "type": "string",
+      "enum": [
+        "deterministic-local-execution",
+        "no-live-network",
+        "pinned-dependencies",
+        "audit-fixtures-required",
+        "exact-lookup-boundary",
+        "review-gate-for-registry-mutation"
+      ]
+    },
+    "execution_mode": {
+      "type": "string",
+      "enum": [
+        "workbench-execution",
+        "selection-only"
+      ]
+    },
+    "execution_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "deterministic_replay",
+        "exact_lookup_phase",
+        "permits_live_network",
+        "requires_pinned_dependencies"
+      ],
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/execution_mode"
+        },
+        "deterministic_replay": {
+          "type": "boolean"
+        },
+        "exact_lookup_phase": {
+          "type": "boolean",
+          "const": false
+        },
+        "permits_live_network": {
+          "type": "boolean",
+          "const": false
+        },
+        "requires_pinned_dependencies": {
+          "type": "boolean"
+        }
+      }
+    },
+    "audit_fixture": {
+      "type": "string",
+      "enum": [
+        "deterministic-stdout-suite",
+        "holdout-pairs",
+        "hard-negatives",
+        "review-queue",
+        "linkage-gold"
+      ]
+    },
+    "compatibility_kind": {
+      "type": "string",
+      "enum": [
+        "profile-scoped",
+        "field-map-scoped",
+        "schema-tiered",
+        "task-exact-only"
+      ]
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "relation"
+      ],
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/compatibility_kind"
+        },
+        "relation": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "promotion_target": {
+      "type": "string",
+      "enum": [
+        "strategy-registry-champion",
+        "registry-knowledge-promotion"
+      ]
+    },
+    "promotion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "requires_version_bump",
+        "requires_audit",
+        "allows_operator_attestation",
+        "requires_review_gate"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/promotion_target"
+        },
+        "requires_version_bump": {
+          "type": "boolean"
+        },
+        "requires_audit": {
+          "type": "boolean"
+        },
+        "allows_operator_attestation": {
+          "type": "boolean"
+        },
+        "requires_review_gate": {
+          "type": "boolean"
+        }
+      }
+    },
+    "identity_evidence_definition": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "identity-evidence"
+        },
+        "selection_key": {
+          "$ref": "#/$defs/identity_evidence_key"
+        },
+        "allowed_inputs": {
+          "items": {
+            "$ref": "#/$defs/profiled_observations_input"
+          }
+        },
+        "declared_outputs": {
+          "contains": {
+            "const": "evidence-bundle"
+          }
+        },
+        "compatibility": {
+          "properties": {
+            "type": {
+              "const": "profile-scoped"
+            }
+          }
+        },
+        "promotion": {
+          "properties": {
+            "target": {
+              "const": "registry-knowledge-promotion"
+            }
+          }
+        }
+      }
+    },
+    "record_linkage_definition": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "record-linkage"
+        },
+        "selection_key": {
+          "$ref": "#/$defs/record_linkage_key"
+        },
+        "allowed_inputs": {
+          "items": {
+            "$ref": "#/$defs/two_tape_records_input"
+          }
+        },
+        "declared_outputs": {
+          "contains": {
+            "const": "linkage-bundle"
+          }
+        },
+        "compatibility": {
+          "properties": {
+            "type": {
+              "const": "field-map-scoped"
+            }
+          }
+        },
+        "promotion": {
+          "properties": {
+            "target": {
+              "const": "registry-knowledge-promotion"
+            }
+          }
+        }
+      }
+    },
+    "schema_transform_definition": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "schema-transform"
+        },
+        "selection_key": {
+          "$ref": "#/$defs/schema_transform_key"
+        },
+        "allowed_inputs": {
+          "items": {
+            "$ref": "#/$defs/schema_profile_input"
+          }
+        },
+        "declared_outputs": {
+          "items": {
+            "const": "frozen-script-pointer"
+          }
+        },
+        "compatibility": {
+          "properties": {
+            "type": {
+              "const": "schema-tiered"
+            }
+          }
+        },
+        "promotion": {
+          "properties": {
+            "target": {
+              "const": "strategy-registry-champion"
+            }
+          }
+        }
+      }
+    },
+    "task_transform_definition": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "task-transform"
+        },
+        "selection_key": {
+          "$ref": "#/$defs/task_transform_key"
+        },
+        "allowed_inputs": {
+          "items": {
+            "$ref": "#/$defs/exact_task_input"
+          }
+        },
+        "declared_outputs": {
+          "items": {
+            "const": "frozen-script-pointer"
+          }
+        },
+        "compatibility": {
+          "properties": {
+            "type": {
+              "const": "task-exact-only"
+            }
+          }
+        },
+        "promotion": {
+          "properties": {
+            "target": {
+              "const": "strategy-registry-champion"
+            }
+          }
+        }
+      }
+    }
+  },
+  "x-canon-contract": {
+    "exact_lookup_boundary": "Strategy selection and execution never become part of exact identifier lookup.",
+    "typed_kinds": [
+      "identity-evidence",
+      "record-linkage",
+      "schema-transform",
+      "task-transform"
+    ]
+  }
+}
