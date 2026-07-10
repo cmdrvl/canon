@@ -72,6 +72,29 @@ design (cheap), not a fork after release (expensive).
 - **Test:** entity-disjoint + time-forward discovery benchmark (bd-2w13) recovers the rename
   without a same-quarter leak; the alias history is queryable as-of.
 
+## R6 — attribute-corroborated linkage (contracts: bd-1w3y evidence IR; bd-1rlk scorer; bd-3bst assignment)
+- **Real:** matching our parse ↔ DERA per holding. Names are formatted differently (DERA's
+  `investment_identifier_axis` is a concatenated breadcrumb; ours is a clean `portfolio_company`),
+  but within a filing the STRUCTURED columns line up: fair value, cost, par/principal, interest
+  rate, maturity date, industry. A name-only match manufactured 400–1861% false conflicts because
+  it couldn't align tranches; matching on the numeric/date columns aligns them uniquely.
+- **Requirement:** the evidence IR + scorer must combine **non-name structured comparison
+  features** (numeric-within-tolerance on FV/cost/par, exact/near date on maturity, rate match,
+  categorical industry) alongside the name feature into one match decision — so a strong
+  structured agreement resolves an ambiguous name, and each tranche (1st lien vs 2nd lien vs
+  equity of the same issuer) aligns to its DERA counterpart by its distinct FV/rate/maturity. The
+  instrument/tranche is an ASSIGNMENT on the resolved issuer (bd-3bst), not a second identity: the
+  ISSUER is resolved (name + attributes); the tranche is a typed holding fact hung off it.
+- **Bootstrap value:** a high-confidence structured match yields a labeled name correspondence
+  ("DERA aggregate string" ↔ "our clean name") for free — auto-generating the must-link pairs the
+  R1/R4 resolver and the gold corpus (bd-epmu) train on, at scale, without hand labeling.
+- **Test:** on a filing with multi-tranche issuers, matching on FV+cost+maturity aligns each
+  tranche to its DERA row and recovers the correct issuer name pair; the numeric/date features
+  must carry the linkage when name similarity alone is below threshold; and the emitted labeled
+  pairs feed the corpus.
+- **Note:** current canon lookup is exact byte-match only — this is a CANON-V1 engine capability
+  (multi-feature record linkage), core to the evidence engine, not an add-on.
+
 ## What this implies for the plan (the "on top" verdict)
 
 - Every R above lands on an **existing open P06/P07 contract** — nothing here asks Canon core
