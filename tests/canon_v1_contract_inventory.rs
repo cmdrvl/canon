@@ -50,6 +50,9 @@ struct CommandRow {
 #[derive(Debug, Deserialize)]
 struct ContractRow {
     id: String,
+    access_boundary: Option<String>,
+    crate_module: Option<String>,
+    source_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -218,6 +221,61 @@ fn canon_v1_contract_inventory_freezes_current_incompatibility_rows() {
     assert!(
         !inventory.unresolved_decisions.is_empty(),
         "inventory should keep unresolved decisions visible"
+    );
+}
+
+#[test]
+fn canon_v1_contract_inventory_marks_reviewed_public_contract_boundaries() {
+    let inventory = inventory();
+    let boundaries = inventory
+        .contract_rows
+        .iter()
+        .filter_map(|row| {
+            row.crate_module.as_ref().map(|module| {
+                (
+                    row.id.as_str(),
+                    row.access_boundary.as_deref(),
+                    module.as_str(),
+                )
+            })
+        })
+        .collect::<BTreeSet<_>>();
+
+    assert!(
+        boundaries.contains(&(
+            "canon.identity.fact.v1",
+            Some("public_crate_api"),
+            "canon::temporal"
+        )),
+        "canon.identity.fact.v1 should be marked as a public crate contract"
+    );
+    assert!(
+        boundaries.contains(&(
+            "canon.unresolved.inbox.v1",
+            Some("public_crate_api"),
+            "canon::inbox"
+        )),
+        "canon.unresolved.inbox.v1 should be marked as a public crate contract"
+    );
+
+    let extension_ontology = inventory
+        .contract_rows
+        .iter()
+        .find(|row| row.id == "canon.extension.ontology.v1")
+        .expect("canon.extension.ontology.v1 row present");
+    assert_eq!(
+        extension_ontology.access_boundary.as_deref(),
+        Some("internal_source_only"),
+        "canon.extension.ontology.v1 should be explicitly marked as non-public"
+    );
+    assert_eq!(
+        extension_ontology.source_path.as_deref(),
+        Some("src/extensions/ontology.rs"),
+        "canon.extension.ontology.v1 should record its internal owner path"
+    );
+    assert!(
+        extension_ontology.crate_module.is_none(),
+        "internal-only contract rows should not claim a public canon:: path"
     );
 }
 

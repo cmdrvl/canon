@@ -173,7 +173,7 @@ Required metrics:
 | `auto_link_recall` | All labeled same-entity discovery cases | This is the labeled must-link recall gate. |
 | `pairwise_precision` / `pairwise_recall` / `pairwise_f1` | Non-exact labeled discovery clusters only | `exact_known_replay` is excluded. |
 | `b_cubed_precision` / `b_cubed_recall` / `b_cubed_f1` | Non-exact labeled discovery clusters only | `exact_known_replay` is excluded. |
-| `hard_negative_false_merges` | Non-exact labeled distinct or hierarchy cases | Report counts by severity class. |
+| `hard_negative_false_merges` | Non-exact labeled distinct or hierarchy cases | Report the total count in `metrics.hard_negative_false_merges.value`, with the critical/high/medium/low breakout in `severity_counts`. |
 | `abstention_precision` | Cases that reached review or refusal | Measures whether abstention was used on truly ambiguous cases rather than obvious misses. |
 | `review_coverage` | Discovery cases that require human escalation | Measures whether the queue covers the right unresolved cases. |
 | `review_yield` | Reviewed cases | Measures how often review produces durable alias/distinct/refusal knowledge. |
@@ -207,6 +207,12 @@ The initial cross-domain release gates are:
 
 `exact_replay_coverage` is always reported, but it is informational. It cannot
 turn a failing discovery gate into a passing one.
+
+The hard-negative metric family and its release gate are intentionally split:
+`metrics.hard_negative_false_merges` reports the total counted false merges for
+the distinct/hierarchy denominator, while `critical_false_merges_max` reads the
+critical severity bucket at `severity_counts.critical`. The critical gate does
+not infer its observed value from the total metric count.
 
 ### Waivers
 

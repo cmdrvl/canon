@@ -3,6 +3,7 @@
 pub mod cli;
 pub mod doctor;
 pub mod entity;
+pub mod inbox;
 pub mod input;
 pub mod lookup;
 pub mod namekit;
@@ -12,6 +13,10 @@ pub mod refusal;
 pub mod registry;
 pub mod registry_lint;
 pub mod resolve;
+pub mod temporal;
+pub mod strategy {
+    pub mod types;
+}
 pub mod strategy_audit;
 pub mod strategy_profile;
 pub mod strategy_registry;

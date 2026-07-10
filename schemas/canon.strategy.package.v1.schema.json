@@ -1,0 +1,443 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.strategy.package.v1.schema.json",
+  "title": "canon.strategy.package.v1",
+  "description": "Content-addressed frozen strategy package with pinned runtime, pinned dependency lock, declared entrypoints, audit fixture corpus hashes, provenance, and read-only tamper verification semantics. This packages canonical procedural knowledge for strategy reuse and audit; it is distinct from registry packages and is never exact lookup data.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "canon.strategy.package.v1"
+    },
+    "package_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "package_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "content_digest": {
+      "$ref": "#/$defs/blake3Digest"
+    },
+    "strategy": {
+      "$ref": "#/$defs/strategy"
+    },
+    "manifest": {
+      "$ref": "#/$defs/descriptor"
+    },
+    "runtime": {
+      "$ref": "#/$defs/runtime"
+    },
+    "dependency_lock": {
+      "$ref": "#/$defs/dependencyLock"
+    },
+    "entrypoints": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/entrypoint"
+      }
+    },
+    "fixtures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/fixture"
+      }
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/capability"
+      },
+      "uniqueItems": true
+    },
+    "audit_contract": {
+      "$ref": "#/$defs/auditContract"
+    },
+    "license_expression": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signature_references": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/signatureReference"
+      }
+    },
+    "identity": {
+      "$ref": "#/$defs/identityRules"
+    },
+    "layouts": {
+      "$ref": "#/$defs/layouts"
+    }
+  },
+  "required": [
+    "schema_version",
+    "package_id",
+    "package_version",
+    "content_digest",
+    "strategy",
+    "manifest",
+    "runtime",
+    "dependency_lock",
+    "entrypoints",
+    "fixtures",
+    "provenance",
+    "capabilities",
+    "audit_contract",
+    "license_expression",
+    "signature_references",
+    "identity",
+    "layouts"
+  ],
+  "$defs": {
+    "blake3Digest": {
+      "type": "string",
+      "pattern": "^blake3:.+$"
+    },
+    "descriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_digest": {
+          "$ref": "#/$defs/blake3Digest"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "content_digest",
+        "bytes"
+      ]
+    },
+    "strategyKind": {
+      "type": "string",
+      "enum": [
+        "identity-evidence",
+        "record-linkage",
+        "schema-transform",
+        "task-transform"
+      ]
+    },
+    "strategySelection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "identity-evidence" },
+            "profile_id": { "type": "string", "minLength": 1 },
+            "skill_hash": { "$ref": "#/$defs/blake3Digest" }
+          },
+          "required": ["type", "profile_id", "skill_hash"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "record-linkage" },
+            "linkage_map_id": { "type": "string", "minLength": 1 },
+            "skill_hash": { "$ref": "#/$defs/blake3Digest" }
+          },
+          "required": ["type", "linkage_map_id", "skill_hash"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "schema-transform" },
+            "schema_fingerprint": { "$ref": "#/$defs/blake3Digest" },
+            "skill_hash": { "$ref": "#/$defs/blake3Digest" }
+          },
+          "required": ["type", "schema_fingerprint", "skill_hash"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "task-transform" },
+            "task": { "type": "string", "minLength": 1 },
+            "skill_hash": { "$ref": "#/$defs/blake3Digest" }
+          },
+          "required": ["type", "task", "skill_hash"]
+        }
+      ]
+    },
+    "strategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/strategyKind"
+        },
+        "selection": {
+          "$ref": "#/$defs/strategySelection"
+        }
+      },
+      "required": [
+        "kind",
+        "selection"
+      ]
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtime": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "interface": {
+          "type": "string",
+          "minLength": 1
+        },
+        "descriptor": {
+          "allOf": [
+            { "$ref": "#/$defs/descriptor" },
+            {
+              "properties": {
+                "kind": { "const": "runtime-lock" }
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "runtime",
+        "version",
+        "interface",
+        "descriptor"
+      ]
+    },
+    "dependencyLock": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ecosystem": {
+          "type": "string",
+          "minLength": 1
+        },
+        "descriptor": {
+          "allOf": [
+            { "$ref": "#/$defs/descriptor" },
+            {
+              "properties": {
+                "kind": { "const": "dependency-lock" }
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "ecosystem",
+        "descriptor"
+      ]
+    },
+    "entrypoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "descriptor": {
+          "allOf": [
+            { "$ref": "#/$defs/descriptor" },
+            {
+              "properties": {
+                "kind": { "const": "entrypoint" }
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "argv",
+        "descriptor"
+      ]
+    },
+    "fixtureRole": {
+      "type": "string",
+      "enum": [
+        "input",
+        "expected-stdout",
+        "expected-exit-code",
+        "golden-summary"
+      ]
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "suite_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "$ref": "#/$defs/fixtureRole"
+        },
+        "descriptor": {
+          "allOf": [
+            { "$ref": "#/$defs/descriptor" },
+            {
+              "properties": {
+                "kind": { "const": "fixture" }
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "suite_id",
+        "role",
+        "descriptor"
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_ref": { "type": "string", "minLength": 1 },
+        "project_ref": { "type": "string", "minLength": 1 },
+        "run_ref": { "type": "string", "minLength": 1 },
+        "builder_ref": { "type": "string", "minLength": 1 }
+      },
+      "required": [
+        "source_ref",
+        "project_ref",
+        "run_ref",
+        "builder_ref"
+      ]
+    },
+    "capability": {
+      "type": "string",
+      "enum": [
+        "deterministic-local-execution",
+        "no-live-network",
+        "pinned-dependencies",
+        "audit-fixtures-required",
+        "read-only-verify"
+      ]
+    },
+    "auditMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "expected": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "name",
+        "expected"
+      ]
+    },
+    "auditContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "verification_mode": {
+          "const": "read-only"
+        },
+        "fixture_corpus_digest": {
+          "$ref": "#/$defs/blake3Digest"
+        },
+        "expected_metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/auditMetric"
+          }
+        }
+      },
+      "required": [
+        "verification_mode",
+        "fixture_corpus_digest",
+        "expected_metrics"
+      ]
+    },
+    "signatureReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "reference": { "type": "string", "minLength": 1 },
+        "content_digest": { "$ref": "#/$defs/blake3Digest" }
+      },
+      "required": [
+        "kind",
+        "reference",
+        "content_digest"
+      ]
+    },
+    "identityRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hash_algorithm": { "const": "blake3" },
+        "descriptor_ordering": { "const": "normalized_path_lexicographic" },
+        "root_escape_policy": { "const": "reject_absolute_and_parent_segments" },
+        "undeclared_file_policy": { "const": "reject_undeclared_files" },
+        "link_policy": { "const": "reject_symlink_and_hardlink_descriptors" }
+      },
+      "required": [
+        "hash_algorithm",
+        "descriptor_ordering",
+        "root_escape_policy",
+        "undeclared_file_policy",
+        "link_policy"
+      ]
+    },
+    "layouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "directory_layout": { "const": "strategy-package-dir.v1" },
+        "archive_layout": { "const": "strategy-package-archive.v1" }
+      },
+      "required": [
+        "directory_layout",
+        "archive_layout"
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "distinct_from": "canon.registry.package.v1",
+    "selection_boundary": "Package content carries canonical procedural knowledge, not registry lookup entries.",
+    "root_escape_policy": "Relative normalized paths only; absolute paths, parent traversal, symlink descriptors, hard links, and undeclared files are rejected.",
+    "declared_descriptor_kinds": [
+      "package-manifest",
+      "runtime-lock",
+      "dependency-lock",
+      "entrypoint",
+      "fixture"
+    ]
+  }
+}

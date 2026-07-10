@@ -362,10 +362,29 @@
     { "id": "canon.doctor.health.v1", "family": "doctor", "action": "preserve" },
     { "id": "canon.doctor.triage.v1", "family": "doctor", "action": "preserve" },
     { "id": "canon.entity.lint.robot.v0", "family": "entity", "action": "preserve" },
+    {
+      "id": "canon.extension.ontology.v1",
+      "family": "extension",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/extensions/ontology.rs"
+    },
     { "id": "canon.evidence.v1", "family": "evidence", "action": "preserve" },
-    { "id": "canon.identity.fact.v1", "family": "identity", "action": "preserve" },
+    {
+      "id": "canon.identity.fact.v1",
+      "family": "identity",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::temporal"
+    },
     { "id": "canon.identity.scope.v1", "family": "identity", "action": "preserve" },
-    { "id": "canon.unresolved.inbox.v1", "family": "inbox", "action": "preserve" },
+    {
+      "id": "canon.unresolved.inbox.v1",
+      "family": "inbox",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::inbox"
+    },
     { "id": "canon_entity_apply.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_apply.v1", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_artifact_chain.v0", "family": "entity", "action": "preserve" },

@@ -1,9 +1,6 @@
 #![forbid(unsafe_code)]
 
-#[path = "../src/inbox/mod.rs"]
-mod inbox;
-
-use inbox::{
+use canon::inbox::{
     CANON_UNRESOLVED_INBOX_VERSION, CandidateStatus, ExternalRawValueReference, InboxErrorCode,
     InboxEventKind, InboxExportMode, InboxFieldRole, InboxOccurrenceRef, InboxPrivacyPolicy,
     InboxReasonCode, NamespaceHint, NormalizedSurfaceFingerprint, PrivacyClass, ProfileFieldRef,
@@ -178,9 +175,9 @@ fn sample_artifact(view: InboxExportMode) -> UnresolvedInboxArtifact {
             policy_id: "policy.default".to_string(),
             raw_value_retention: RawValueRetention::ExternalReference,
             default_export_mode: view,
-            merge_mode: inbox::InboxMergeMode::Strict,
+            merge_mode: canon::inbox::InboxMergeMode::Strict,
         },
-        summary: inbox::InboxSummary::default(),
+        summary: canon::inbox::InboxSummary::default(),
         items: vec![item],
     }
 }
@@ -225,7 +222,7 @@ fn sample_item() -> UnresolvedInboxItem {
             namespace: "issuer_name".to_string(),
             source: "column".to_string(),
         }],
-        candidate_summary: inbox::CandidateSummary {
+        candidate_summary: canon::inbox::CandidateSummary {
             status: CandidateStatus::Rejected,
             candidate_count: 2,
             best_score_band: Some("0.80-0.89".to_string()),
@@ -240,7 +237,7 @@ fn sample_item() -> UnresolvedInboxItem {
         }),
         first_seen_at: "2026-07-10T14:05:00Z".to_string(),
         last_seen_at: "2026-07-10T14:05:00Z".to_string(),
-        occurrence_summary: inbox::OccurrenceSummary::default(),
+        occurrence_summary: canon::inbox::OccurrenceSummary::default(),
         occurrences: vec![InboxOccurrenceRef {
             project_ref: "project.alpha".to_string(),
             run_ref: "run-001".to_string(),

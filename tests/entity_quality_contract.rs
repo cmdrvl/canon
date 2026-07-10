@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -368,6 +368,439 @@ fn gate_threshold(schema: &Value, gate_id: &str) -> Value {
         .clone()
 }
 
+fn metric_instance(
+    numerator: Option<u64>,
+    denominator: u64,
+    denominator_behavior: &str,
+    sample_count: u64,
+    value: Option<f64>,
+    confidence_interval_95: Option<(f64, f64)>,
+) -> Value {
+    let ci = confidence_interval_95
+        .map(|(low, high)| json!([low, high]))
+        .unwrap_or(Value::Null);
+    json!({
+        "confidence_interval_95": ci,
+        "denominator": denominator,
+        "denominator_behavior": denominator_behavior,
+        "numerator": numerator,
+        "sample_count": sample_count,
+        "value": value,
+    })
+}
+
+fn gate_result_instance(
+    metric_id: &str,
+    observed_value: Option<f64>,
+    operator: &str,
+    status: &str,
+    threshold: Option<f64>,
+) -> Value {
+    json!({
+        "metric_id": metric_id,
+        "observed_value": observed_value,
+        "operator": operator,
+        "status": status,
+        "threshold": threshold,
+        "waiver_bead_id": Value::Null,
+    })
+}
+
+fn resource_metric_instance(sample_count: u64, unit: &str, value: Option<f64>) -> Value {
+    json!({
+        "sample_count": sample_count,
+        "unit": unit,
+        "value": value,
+    })
+}
+
+fn minimal_quality_report() -> Value {
+    json!({
+        "schema_version": "canon.entity.quality.v1",
+        "doc": "docs/ENTITY_EVALS_AND_PERFORMANCE.md",
+        "gates": {
+            "candidate_recall_at_50_min": gate_result_instance(
+                "candidate_recall_at_50",
+                Some(1.0),
+                ">=",
+                "pass",
+                Some(0.995),
+            ),
+            "auto_link_precision_min": gate_result_instance(
+                "auto_link_precision",
+                Some(1.0),
+                ">=",
+                "pass",
+                Some(0.995),
+            ),
+            "auto_link_recall_min": gate_result_instance(
+                "auto_link_recall",
+                Some(1.0),
+                ">=",
+                "pass",
+                Some(0.98),
+            ),
+            "critical_false_merges_max": gate_result_instance(
+                "hard_negative_false_merges",
+                Some(0.0),
+                "==",
+                "pass",
+                Some(0.0),
+            ),
+            "accounted_case_rate_min": gate_result_instance(
+                "accounted_case_rate",
+                Some(1.0),
+                "==",
+                "pass",
+                Some(1.0),
+            ),
+        },
+        "metrics": {
+            "abstention_precision": metric_instance(
+                Some(0),
+                0,
+                "non_exact_discovery_only",
+                0,
+                None,
+                None,
+            ),
+            "accounted_case_rate": metric_instance(
+                Some(2),
+                2,
+                "all_non_exact_labeled_cases",
+                2,
+                Some(1.0),
+                Some((0.0, 1.0)),
+            ),
+            "auto_link_precision": metric_instance(
+                Some(1),
+                1,
+                "non_exact_discovery_only",
+                1,
+                Some(1.0),
+                Some((0.0, 1.0)),
+            ),
+            "auto_link_recall": metric_instance(
+                Some(1),
+                1,
+                "non_exact_discovery_only",
+                1,
+                Some(1.0),
+                Some((0.0, 1.0)),
+            ),
+            "b_cubed_f1": metric_instance(
+                Some(1),
+                1,
+                "non_exact_discovery_only",
+                1,
+                Some(1.0),
+                Some((0.0, 1.0)),
+            ),
+            "b_cubed_precision": metric_instance(
+                Some(1),
+                1,
+                "non_exact_discovery_only",
+                1,
+                Some(1.0),
+                Some((0.0, 1.0)),
+            ),
+            "b_cubed_recall": metric_instance(
+                Some(1),
+                1,
+                "non_exact_discovery_only",
+                1,
+                Some(1.0),
+                Some((0.0, 1.0)),
+            ),
+            "candidate_recall_at_50": metric_instance(
+                Some(1),
+                1,
+                "non_exact_discovery_only",
+                1,
+                Some(1.0),
+                Some((0.0, 1.0)),
+            ),
+            "exact_replay_coverage": metric_instance(
+                Some(0),
+                0,
+                "exact_replay_only",
+                0,
+                None,
+                None,
+            ),
+            "hard_negative_false_merges": metric_instance(
+                Some(0),
+                1,
+                "distinct_or_hierarchy_only",
+                1,
+                Some(0.0),
+                None,
+            ),
+            "pairwise_f1": metric_instance(
+                Some(1),
+                1,
+                "non_exact_discovery_only",
+                1,
+                Some(1.0),
+                Some((0.0, 1.0)),
+            ),
+            "pairwise_precision": metric_instance(
+                Some(1),
+                1,
+                "non_exact_discovery_only",
+                1,
+                Some(1.0),
+                Some((0.0, 1.0)),
+            ),
+            "pairwise_recall": metric_instance(
+                Some(1),
+                1,
+                "non_exact_discovery_only",
+                1,
+                Some(1.0),
+                Some((0.0, 1.0)),
+            ),
+            "review_coverage": metric_instance(
+                Some(0),
+                0,
+                "non_exact_discovery_only",
+                0,
+                None,
+                None,
+            ),
+            "review_yield": metric_instance(
+                Some(0),
+                0,
+                "non_exact_discovery_only",
+                0,
+                None,
+                None,
+            ),
+            "true_pair_rank": metric_instance(
+                None,
+                1,
+                "non_exact_discovery_only",
+                1,
+                Some(1.0),
+                None,
+            ),
+        },
+        "resources": {
+            "candidate_pairs_per_surface_p95": resource_metric_instance(1, "count", Some(1.0)),
+            "candidate_pairs_per_surface_p99": resource_metric_instance(1, "count", Some(1.0)),
+            "peak_memory_bytes": resource_metric_instance(1, "bytes", Some(1024.0)),
+            "wall_clock_seconds": resource_metric_instance(1, "seconds", Some(0.1)),
+        },
+        "severity_counts": {
+            "critical": 0,
+            "high": 0,
+            "low": 0,
+            "medium": 0,
+        },
+        "stage_miss_counts": {
+            "candidate_generation": 0,
+            "evidence_scoring": 0,
+            "solver": 0,
+        },
+        "stratum_counts": {
+            "directional_cross_source": 0,
+            "exact_known_replay": 0,
+            "genuinely_unresolved": 0,
+            "novel_multi_observation": 0,
+            "related_or_hierarchy_distinct": 1,
+            "withheld_alias_incumbent": 1,
+        },
+        "waivers": [],
+    })
+}
+
+fn validate_quality_report_instance(instance: &Value) -> Result<(), Vec<String>> {
+    let root = schema();
+    let mut errors = Vec::new();
+    validate_schema_node(&root, &root, instance, "$", &mut errors);
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
+}
+
+fn validate_schema_node(
+    root: &Value,
+    schema: &Value,
+    instance: &Value,
+    path: &str,
+    errors: &mut Vec<String>,
+) {
+    if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
+        let resolved = resolve_local_ref(root, reference);
+        validate_schema_node(root, resolved, instance, path, errors);
+    }
+
+    if let Some(options) = schema.get("oneOf").and_then(Value::as_array) {
+        let match_count = options
+            .iter()
+            .filter(|option| {
+                let mut option_errors = Vec::new();
+                validate_schema_node(root, option, instance, path, &mut option_errors);
+                option_errors.is_empty()
+            })
+            .count();
+        if match_count != 1 {
+            errors.push(format!(
+                "{path}: expected exactly one matching schema branch, found {match_count}"
+            ));
+        }
+    }
+
+    if let Some(constant) = schema.get("const")
+        && instance != constant
+    {
+        errors.push(format!(
+            "{path}: expected const {constant}, found {instance}"
+        ));
+    }
+
+    if let Some(allowed_values) = schema.get("enum").and_then(Value::as_array)
+        && !allowed_values.iter().any(|allowed| allowed == instance)
+    {
+        errors.push(format!(
+            "{path}: expected one of {allowed_values:?}, found {instance}"
+        ));
+    }
+
+    if let Some(expected_type) = schema.get("type").and_then(Value::as_str)
+        && !matches_schema_type(instance, expected_type)
+    {
+        errors.push(format!(
+            "{path}: expected type {expected_type}, found {instance}"
+        ));
+        return;
+    }
+
+    if let Some(minimum) = schema.get("minimum").and_then(Value::as_f64)
+        && let Some(value) = instance.as_f64()
+        && value < minimum
+    {
+        errors.push(format!("{path}: value {value} is below minimum {minimum}"));
+    }
+
+    if let Some(maximum) = schema.get("maximum").and_then(Value::as_f64)
+        && let Some(value) = instance.as_f64()
+        && value > maximum
+    {
+        errors.push(format!("{path}: value {value} exceeds maximum {maximum}"));
+    }
+
+    if let Some(required) = schema.get("required").and_then(Value::as_array)
+        && let Some(object) = instance.as_object()
+    {
+        for field in required {
+            let field = field.as_str().expect("required field name");
+            if !object.contains_key(field) {
+                errors.push(format!("{path}: missing required property {field}"));
+            }
+        }
+    }
+
+    if let Some(properties) = schema.get("properties").and_then(Value::as_object)
+        && let Some(object) = instance.as_object()
+    {
+        let additional_properties_forbidden =
+            schema.get("additionalProperties") == Some(&Value::Bool(false));
+        for (key, value) in object {
+            if let Some(property_schema) = properties.get(key) {
+                validate_schema_node(root, property_schema, value, &path_join(path, key), errors);
+            } else if additional_properties_forbidden {
+                errors.push(format!("{path}: unexpected property {key}"));
+            }
+        }
+    }
+
+    if let Some(min_items) = schema.get("minItems").and_then(Value::as_u64)
+        && let Some(array) = instance.as_array()
+        && (array.len() as u64) < min_items
+    {
+        errors.push(format!(
+            "{path}: expected at least {min_items} items, found {}",
+            array.len()
+        ));
+    }
+
+    if let Some(max_items) = schema.get("maxItems").and_then(Value::as_u64)
+        && let Some(array) = instance.as_array()
+        && (array.len() as u64) > max_items
+    {
+        errors.push(format!(
+            "{path}: expected at most {max_items} items, found {}",
+            array.len()
+        ));
+    }
+
+    if let Some(items) = schema.get("items")
+        && let Some(array) = instance.as_array()
+    {
+        match items {
+            Value::Array(item_schemas) => {
+                for (index, item) in array.iter().enumerate().take(item_schemas.len()) {
+                    validate_schema_node(
+                        root,
+                        &item_schemas[index],
+                        item,
+                        &format!("{path}[{index}]"),
+                        errors,
+                    );
+                }
+                if schema.get("additionalItems") == Some(&Value::Bool(false))
+                    && array.len() > item_schemas.len()
+                {
+                    errors.push(format!(
+                        "{path}: expected at most {} tuple items, found {}",
+                        item_schemas.len(),
+                        array.len()
+                    ));
+                }
+            }
+            Value::Object(_) => {
+                for (index, item) in array.iter().enumerate() {
+                    validate_schema_node(root, items, item, &format!("{path}[{index}]"), errors);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn resolve_local_ref<'a>(root: &'a Value, reference: &str) -> &'a Value {
+    let pointer = reference
+        .strip_prefix('#')
+        .unwrap_or_else(|| panic!("expected local ref, got {reference}"));
+    root.pointer(pointer)
+        .unwrap_or_else(|| panic!("missing ref target {reference}"))
+}
+
+fn matches_schema_type(instance: &Value, expected_type: &str) -> bool {
+    match expected_type {
+        "array" => instance.is_array(),
+        "integer" => {
+            instance.as_i64().is_some()
+                || instance.as_u64().is_some()
+                || instance
+                    .as_f64()
+                    .is_some_and(|value| (value.fract()).abs() <= f64::EPSILON)
+        }
+        "null" => instance.is_null(),
+        "number" => instance.as_f64().is_some(),
+        "object" => instance.is_object(),
+        "string" => instance.as_str().is_some(),
+        other => panic!("unsupported schema type {other}"),
+    }
+}
+
+fn path_join(path: &str, segment: &str) -> String {
+    format!("{path}.{segment}")
+}
+
 #[test]
 fn quality_schema_declares_required_contract_components() {
     let schema = schema();
@@ -467,6 +900,25 @@ fn quality_schema_declares_required_contract_components() {
         gate_threshold(&schema, "critical_false_merges_max")["waivable"],
         false
     );
+    assert_eq!(
+        gate_threshold(&schema, "critical_false_merges_max")["observed_value_pointer"],
+        "/severity_counts/critical"
+    );
+
+    let hard_negative_metric = schema["x-canon-contract"]["metric_contract"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|metric| metric["id"] == "hard_negative_false_merges")
+        .expect("hard-negative metric contract");
+    assert_eq!(
+        hard_negative_metric["count_value_pointer"],
+        "/metrics/hard_negative_false_merges/value"
+    );
+    assert_eq!(
+        hard_negative_metric["severity_breakout_pointer"],
+        "/severity_counts"
+    );
 
     let waiver_policy = &schema["x-canon-contract"]["waiver_policy"];
     assert_eq!(
@@ -522,11 +974,38 @@ fn quality_doc_cross_references_schema_and_rules() {
         "candidate_generation",
         "evidence_scoring",
         "solver",
+        "metrics.hard_negative_false_merges.value",
+        "severity_counts.critical",
         "Lowering a threshold requires a new versioned holdout or an explicit waiver bead.",
         "The core contract does not waive `hard_negative_false_merges.critical == 0`.",
     ] {
         assert!(text.contains(required), "doc omits {required}");
     }
+}
+
+#[test]
+fn minimal_quality_report_instance_validates_against_schema() {
+    if let Err(errors) = validate_quality_report_instance(&minimal_quality_report()) {
+        panic!("expected minimal quality report to validate, errors: {errors:#?}");
+    }
+}
+
+#[test]
+fn minimal_quality_report_rejects_missing_hard_negative_metric() {
+    let mut invalid = minimal_quality_report();
+    invalid["metrics"]
+        .as_object_mut()
+        .expect("metrics object")
+        .remove("hard_negative_false_merges");
+
+    let errors =
+        validate_quality_report_instance(&invalid).expect_err("schema should reject bad report");
+    assert!(
+        errors.iter().any(|error| {
+            error.contains("$.metrics") && error.contains("hard_negative_false_merges")
+        }),
+        "expected missing hard-negative metric error, got {errors:#?}"
+    );
 }
 
 #[test]

@@ -1,17 +1,14 @@
 #![forbid(unsafe_code)]
 
-#[path = "../src/strategy/types.rs"]
-mod strategy_types;
-
-use serde_json::{Value, json};
-use std::collections::BTreeSet;
-use strategy_types::{
+use canon::strategy::types::{
     LegacyStrategyFootprint, StrategyAllowedInput, StrategyAuditFixtureKind,
     StrategyCapabilityRequirement, StrategyCompatibility, StrategyCompatibilityKind,
     StrategyDefinition, StrategyDoctrineErrorCode, StrategyExecutionMode, StrategyExecutionPolicy,
     StrategyKind, StrategyOutputKind, StrategyPromotionSemantics, StrategyPromotionTarget,
     StrategySelectionKey, classify_legacy_footprint, strategy_schema_version,
 };
+use serde_json::{Value, json};
+use std::collections::BTreeSet;
 
 const STRATEGY_SCHEMA_JSON: &str = include_str!("../schemas/canon.strategy.v1.schema.json");
 const ARCHITECTURE_DOC: &str = include_str!("../docs/IDENTITY_ARCHITECTURE.md");

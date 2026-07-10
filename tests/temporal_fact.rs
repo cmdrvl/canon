@@ -1,14 +1,11 @@
 #![forbid(unsafe_code)]
 
-#[path = "../src/temporal/mod.rs"]
-mod temporal;
-
-use serde_json::Value;
-use temporal::{
+use canon::temporal::{
     AssertionStatus, CANON_IDENTITY_FACT_VERSION, FactScope, IdentityFact, IntervalBoundary,
     RecordedTime, SourceLocator, TemporalErrorCode, TimeInterval, canonical_fact_set_bytes,
     canonical_json_bytes, finalize_fact, finalize_facts,
 };
+use serde_json::Value;
 
 const SCHEMA_JSON: &str = include_str!("../schemas/canon.identity.fact.v1.schema.json");
 

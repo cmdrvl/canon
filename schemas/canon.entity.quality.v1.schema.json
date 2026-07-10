@@ -109,6 +109,7 @@
             "non_exact_discovery_only",
             "exact_replay_only",
             "all_non_exact_labeled_cases",
+            "distinct_or_hierarchy_only",
             "resource_sample"
           ],
           "type": "string"
@@ -333,6 +334,10 @@
         "exact_replay_coverage": {
           "$ref": "#/$defs/metric"
         },
+        "hard_negative_false_merges": {
+          "$ref": "#/$defs/metric",
+          "description": "Total hard-negative false merges across all severities. The critical release gate reads severity_counts.critical."
+        },
         "pairwise_f1": {
           "$ref": "#/$defs/metric"
         },
@@ -362,6 +367,7 @@
         "b_cubed_recall",
         "candidate_recall_at_50",
         "exact_replay_coverage",
+        "hard_negative_false_merges",
         "pairwise_f1",
         "pairwise_precision",
         "pairwise_recall",
@@ -400,6 +406,7 @@
     },
     "severity_counts": {
       "additionalProperties": false,
+      "description": "Critical/high/medium/low breakout for hard_negative_false_merges. The critical release gate reads severity_counts.critical.",
       "properties": {
         "critical": {
           "$ref": "#/$defs/count"
@@ -518,8 +525,10 @@
         "waivable": true
       },
       {
+        "description": "Stop-ship gate over the critical severity bucket from severity_counts.",
         "gate_id": "critical_false_merges_max",
         "metric_id": "hard_negative_false_merges",
+        "observed_value_pointer": "/severity_counts/critical",
         "operator": "==",
         "severity": "critical",
         "threshold": 0,
@@ -616,11 +625,13 @@
       },
       {
         "description": "Severity-tagged count of false merges on labeled distinct or hierarchy cases.",
+        "count_value_pointer": "/metrics/hard_negative_false_merges/value",
         "excluded_strata": [
           "exact_known_replay"
         ],
         "id": "hard_negative_false_merges",
-        "kind": "count"
+        "kind": "count",
+        "severity_breakout_pointer": "/severity_counts"
       },
       {
         "description": "Precision of abstentions that correctly land ambiguous cases in review or explicit refusal rather than guessing.",
