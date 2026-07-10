@@ -52,6 +52,16 @@ FILING, so entity resolution must work from names alone.
 > tranche disambiguation (R6, `bd-12px`) to pick the correct FIGI per holding. This
 > means we can likely ADOPT a FIGI as the instrument anchor for the majority (gated
 > on a confident attribute match) and mint IN-* only for the residual. See `bd-12xm`.
+>
+> **CORRECTION 2 (same day):** CLO tranches ALSO have FIGIs — under `marketSector=Mtge`
+> (`securityType=LL`), NOT `Corp`. An earlier pass mis-classified CLO holdings as
+> "no FIGI → mint" because of a `Corp`-only filter. Live re-probe: the CLO
+> *subordinated/equity* tranches BDCs hold resolve cleanly (e.g. Dryden 43 → `DRSLF
+> 2016-43I SUB`). On the OXSQ demo, 23/26 CLO holdings resolved to their SUB-tranche
+> FIGIs (deal + subordinated-tranche match). Net: FIGI covers BOTH corporate loans
+> (`Corp`) AND CLO tranches (`Mtge`); the uncovered residual is only private
+> equity/warrants/preferred/SPV shells (unsecuritized). The core value is the
+> **crosswalk** (filing prose → the FIGI that already exists), not minting.
 
 ---
 
