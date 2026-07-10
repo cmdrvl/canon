@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.provider.reconcile.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "package_id",
+    "package_version",
+    "field_maps",
+    "evidence_policy"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon.provider.reconcile.v1"
+    },
+    "package_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "package_version": {
+      "$ref": "#/$defs/semver"
+    },
+    "field_maps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/field_map"
+      }
+    },
+    "evidence_policy": {
+      "$ref": "#/$defs/evidence_policy"
+    },
+    "documentation": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/documentation_ref"
+      },
+      "default": []
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9._-]+$"
+    },
+    "opaque_ref": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9._-]+:[a-zA-Z0-9._:-]+$"
+    },
+    "field_path": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9._-]+$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "field_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "map_id",
+        "evidence_kind",
+        "left_provider_id",
+        "left_namespace",
+        "left_scope_id",
+        "left_type_ref",
+        "right_provider_id",
+        "right_namespace",
+        "right_scope_id",
+        "right_type_ref",
+        "left_field_path",
+        "right_field_path",
+        "comparator"
+      ],
+      "properties": {
+        "map_id": {
+          "$ref": "#/$defs/opaque_ref"
+        },
+        "evidence_kind": {
+          "type": "string",
+          "enum": [
+            "proposed_identity",
+            "proposed_relationship",
+            "cannot_link"
+          ]
+        },
+        "left_provider_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "left_namespace": {
+          "$ref": "#/$defs/opaque_ref"
+        },
+        "left_scope_id": {
+          "$ref": "#/$defs/opaque_ref"
+        },
+        "left_type_ref": {
+          "$ref": "#/$defs/opaque_ref"
+        },
+        "right_provider_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "right_namespace": {
+          "$ref": "#/$defs/opaque_ref"
+        },
+        "right_scope_id": {
+          "$ref": "#/$defs/opaque_ref"
+        },
+        "right_type_ref": {
+          "$ref": "#/$defs/opaque_ref"
+        },
+        "left_field_path": {
+          "$ref": "#/$defs/field_path"
+        },
+        "right_field_path": {
+          "$ref": "#/$defs/field_path"
+        },
+        "comparator": {
+          "type": "string",
+          "enum": [
+            "exact"
+          ]
+        },
+        "relationship_term_id": {
+          "$ref": "#/$defs/opaque_ref"
+        }
+      }
+    },
+    "evidence_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stale_after_days",
+        "unsafe_namespace_policy",
+        "unsafe_scope_policy",
+        "unsafe_type_policy",
+        "missing_link_policy",
+        "one_to_many_policy",
+        "stale_link_policy",
+        "conflict_policy",
+        "registry_write_policy"
+      ],
+      "properties": {
+        "stale_after_days": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "unsafe_namespace_policy": {
+          "const": "abstain"
+        },
+        "unsafe_scope_policy": {
+          "const": "abstain"
+        },
+        "unsafe_type_policy": {
+          "const": "abstain"
+        },
+        "missing_link_policy": {
+          "const": "review"
+        },
+        "one_to_many_policy": {
+          "const": "review"
+        },
+        "stale_link_policy": {
+          "const": "review"
+        },
+        "conflict_policy": {
+          "const": "review"
+        },
+        "registry_write_policy": {
+          "const": "never_implicit"
+        }
+      }
+    },
+    "documentation_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "uri"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uri": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    }
+  },
+  "x-canon-contract": {
+    "evidence_only": true,
+    "native_namespace_reinterpretation_forbidden": true,
+    "implicit_registry_writes_forbidden": true,
+    "unsafe_scope_type_mismatch_abstains": true,
+    "review_states": [
+      "missing_link",
+      "one_to_many",
+      "stale_link",
+      "conflicting_link"
+    ],
+    "evidence_kinds": [
+      "proposed_identity",
+      "proposed_relationship",
+      "cannot_link"
+    ]
+  }
+}

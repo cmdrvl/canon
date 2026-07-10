@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.project.lock.v1.schema.json",
+  "title": "canon.project.lock.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "project_digest",
+    "inputs",
+    "resolved_refs",
+    "lock_digest"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "canon.project.lock.v1"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "project_digest": {
+      "$ref": "#/$defs/blake3_digest"
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/input_digest"
+      }
+    },
+    "resolved_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/resolved_ref"
+      }
+    },
+    "lock_digest": {
+      "$ref": "#/$defs/blake3_digest"
+    }
+  },
+  "$defs": {
+    "blake3_digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-fA-F]{64}$"
+    },
+    "input_digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_id",
+        "relative_path",
+        "content_digest"
+      ],
+      "properties": {
+        "input_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relative_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_digest": {
+          "$ref": "#/$defs/blake3_digest"
+        }
+      }
+    },
+    "resolved_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref_id",
+        "kind",
+        "resolved_digest"
+      ],
+      "properties": {
+        "ref_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "package",
+            "strategy",
+            "policy",
+            "tool_contract"
+          ]
+        },
+        "resolved_digest": {
+          "$ref": "#/$defs/blake3_digest"
+        }
+      }
+    }
+  },
+  "x-canon-contract": {
+    "deterministic_sort_order": true,
+    "read_only_verify": true,
+    "explicit_refresh_only": true,
+    "reject_absolute_paths": true,
+    "reject_secret_like_values": true,
+    "reject_timestamps_in_hash": true
+  }
+}
