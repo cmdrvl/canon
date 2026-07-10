@@ -1,0 +1,656 @@
+{
+  "contract_schema_path": "schemas/canon.entity.quality.v1.schema.json",
+  "cases": [
+    {
+      "description": "Exact replay is reported, but the non-exact discovery strata pass cleanly.",
+      "events": [
+        {
+          "expected_class": "exact_replay",
+          "logical_id": "replay-1",
+          "physical_id": "replay-1",
+          "resolution": "correct_exact_replay",
+          "severity": null,
+          "stratum": "exact_known_replay",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "alias-1",
+          "physical_id": "alias-1",
+          "resolution": "correct_auto_link",
+          "severity": null,
+          "stratum": "withheld_alias_incumbent",
+          "top_50_hit": true,
+          "true_pair_rank": 1
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "novel-1",
+          "physical_id": "novel-1",
+          "resolution": "correct_auto_link",
+          "severity": null,
+          "stratum": "novel_multi_observation",
+          "top_50_hit": true,
+          "true_pair_rank": 2
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "cross-1",
+          "physical_id": "cross-1",
+          "resolution": "correct_auto_link",
+          "severity": null,
+          "stratum": "directional_cross_source",
+          "top_50_hit": true,
+          "true_pair_rank": 1
+        },
+        {
+          "expected_class": "distinct",
+          "logical_id": "distinct-1",
+          "physical_id": "distinct-1",
+          "resolution": "correct_distinct",
+          "severity": "critical",
+          "stratum": "related_or_hierarchy_distinct",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "unresolved",
+          "logical_id": "unresolved-1",
+          "physical_id": "unresolved-1",
+          "resolution": "correct_review",
+          "severity": null,
+          "stratum": "genuinely_unresolved",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        }
+      ],
+      "expected": {
+        "accounted_case_rate": {
+          "denominator": 5,
+          "numerator": 5,
+          "value": 1.0
+        },
+        "auto_link_precision": {
+          "denominator": 3,
+          "numerator": 3,
+          "value": 1.0
+        },
+        "auto_link_recall": {
+          "denominator": 3,
+          "numerator": 3,
+          "value": 1.0
+        },
+        "candidate_recall_at_50": {
+          "denominator": 3,
+          "numerator": 3,
+          "value": 1.0
+        },
+        "critical_false_merges": 0,
+        "discovery_case_count": 5,
+        "exact_replay_case_count": 1,
+        "exact_replay_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "gate_status": {
+          "accounted_case_rate_min": "pass",
+          "auto_link_precision_min": "pass",
+          "auto_link_recall_min": "pass",
+          "candidate_recall_at_50_min": "pass",
+          "critical_false_merges_max": "pass"
+        },
+        "physical_event_count": 6,
+        "stage_miss_counts": {
+          "candidate_generation": 0,
+          "evidence_scoring": 0,
+          "solver": 0
+        },
+        "unique_logical_event_count": 6
+      },
+      "id": "planted_perfect"
+    },
+    {
+      "description": "Candidate miss and evidence-scoring miss are both counted and stay separate.",
+      "events": [
+        {
+          "expected_class": "exact_replay",
+          "logical_id": "replay-1",
+          "physical_id": "replay-1",
+          "resolution": "correct_exact_replay",
+          "severity": null,
+          "stratum": "exact_known_replay",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "alias-1",
+          "physical_id": "alias-1",
+          "resolution": "correct_auto_link",
+          "severity": null,
+          "stratum": "withheld_alias_incumbent",
+          "top_50_hit": true,
+          "true_pair_rank": 1
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "novel-1",
+          "physical_id": "novel-1",
+          "resolution": "candidate_generation_miss",
+          "severity": null,
+          "stratum": "novel_multi_observation",
+          "top_50_hit": false,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "cross-1",
+          "physical_id": "cross-1",
+          "resolution": "evidence_scoring_miss",
+          "severity": null,
+          "stratum": "directional_cross_source",
+          "top_50_hit": true,
+          "true_pair_rank": 12
+        },
+        {
+          "expected_class": "distinct",
+          "logical_id": "distinct-1",
+          "physical_id": "distinct-1",
+          "resolution": "correct_distinct",
+          "severity": "critical",
+          "stratum": "related_or_hierarchy_distinct",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "unresolved",
+          "logical_id": "unresolved-1",
+          "physical_id": "unresolved-1",
+          "resolution": "correct_review",
+          "severity": null,
+          "stratum": "genuinely_unresolved",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        }
+      ],
+      "expected": {
+        "accounted_case_rate": {
+          "denominator": 5,
+          "numerator": 5,
+          "value": 1.0
+        },
+        "auto_link_precision": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "auto_link_recall": {
+          "denominator": 3,
+          "numerator": 1,
+          "value": 0.3333333333333333
+        },
+        "candidate_recall_at_50": {
+          "denominator": 3,
+          "numerator": 2,
+          "value": 0.6666666666666666
+        },
+        "critical_false_merges": 0,
+        "discovery_case_count": 5,
+        "exact_replay_case_count": 1,
+        "exact_replay_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "gate_status": {
+          "accounted_case_rate_min": "pass",
+          "auto_link_precision_min": "pass",
+          "auto_link_recall_min": "fail",
+          "candidate_recall_at_50_min": "fail",
+          "critical_false_merges_max": "pass"
+        },
+        "physical_event_count": 6,
+        "stage_miss_counts": {
+          "candidate_generation": 1,
+          "evidence_scoring": 1,
+          "solver": 0
+        },
+        "unique_logical_event_count": 6
+      },
+      "id": "missed_candidate"
+    },
+    {
+      "description": "A critical false merge must fail precision and the non-waivable critical-merge gate.",
+      "events": [
+        {
+          "expected_class": "exact_replay",
+          "logical_id": "replay-1",
+          "physical_id": "replay-1",
+          "resolution": "correct_exact_replay",
+          "severity": null,
+          "stratum": "exact_known_replay",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "alias-1",
+          "physical_id": "alias-1",
+          "resolution": "correct_auto_link",
+          "severity": null,
+          "stratum": "withheld_alias_incumbent",
+          "top_50_hit": true,
+          "true_pair_rank": 1
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "novel-1",
+          "physical_id": "novel-1",
+          "resolution": "correct_auto_link",
+          "severity": null,
+          "stratum": "novel_multi_observation",
+          "top_50_hit": true,
+          "true_pair_rank": 1
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "cross-1",
+          "physical_id": "cross-1",
+          "resolution": "correct_auto_link",
+          "severity": null,
+          "stratum": "directional_cross_source",
+          "top_50_hit": true,
+          "true_pair_rank": 1
+        },
+        {
+          "expected_class": "distinct",
+          "logical_id": "distinct-1",
+          "physical_id": "distinct-1",
+          "resolution": "false_merge",
+          "severity": "critical",
+          "stratum": "related_or_hierarchy_distinct",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "unresolved",
+          "logical_id": "unresolved-1",
+          "physical_id": "unresolved-1",
+          "resolution": "correct_review",
+          "severity": null,
+          "stratum": "genuinely_unresolved",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        }
+      ],
+      "expected": {
+        "accounted_case_rate": {
+          "denominator": 5,
+          "numerator": 5,
+          "value": 1.0
+        },
+        "auto_link_precision": {
+          "denominator": 4,
+          "numerator": 3,
+          "value": 0.75
+        },
+        "auto_link_recall": {
+          "denominator": 3,
+          "numerator": 3,
+          "value": 1.0
+        },
+        "candidate_recall_at_50": {
+          "denominator": 3,
+          "numerator": 3,
+          "value": 1.0
+        },
+        "critical_false_merges": 1,
+        "discovery_case_count": 5,
+        "exact_replay_case_count": 1,
+        "exact_replay_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "gate_status": {
+          "accounted_case_rate_min": "pass",
+          "auto_link_precision_min": "fail",
+          "auto_link_recall_min": "pass",
+          "candidate_recall_at_50_min": "pass",
+          "critical_false_merges_max": "fail"
+        },
+        "physical_event_count": 6,
+        "stage_miss_counts": {
+          "candidate_generation": 0,
+          "evidence_scoring": 0,
+          "solver": 0
+        },
+        "unique_logical_event_count": 6
+      },
+      "id": "false_merge"
+    },
+    {
+      "description": "A surfaced true pair that still abstains is a solver miss, not a candidate miss.",
+      "events": [
+        {
+          "expected_class": "exact_replay",
+          "logical_id": "replay-1",
+          "physical_id": "replay-1",
+          "resolution": "correct_exact_replay",
+          "severity": null,
+          "stratum": "exact_known_replay",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "alias-1",
+          "physical_id": "alias-1",
+          "resolution": "correct_auto_link",
+          "severity": null,
+          "stratum": "withheld_alias_incumbent",
+          "top_50_hit": true,
+          "true_pair_rank": 1
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "novel-1",
+          "physical_id": "novel-1",
+          "resolution": "solver_miss",
+          "severity": null,
+          "stratum": "novel_multi_observation",
+          "top_50_hit": true,
+          "true_pair_rank": 3
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "cross-1",
+          "physical_id": "cross-1",
+          "resolution": "correct_auto_link",
+          "severity": null,
+          "stratum": "directional_cross_source",
+          "top_50_hit": true,
+          "true_pair_rank": 1
+        },
+        {
+          "expected_class": "distinct",
+          "logical_id": "distinct-1",
+          "physical_id": "distinct-1",
+          "resolution": "correct_distinct",
+          "severity": "critical",
+          "stratum": "related_or_hierarchy_distinct",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "unresolved",
+          "logical_id": "unresolved-1",
+          "physical_id": "unresolved-1",
+          "resolution": "correct_review",
+          "severity": null,
+          "stratum": "genuinely_unresolved",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        }
+      ],
+      "expected": {
+        "accounted_case_rate": {
+          "denominator": 5,
+          "numerator": 5,
+          "value": 1.0
+        },
+        "auto_link_precision": {
+          "denominator": 2,
+          "numerator": 2,
+          "value": 1.0
+        },
+        "auto_link_recall": {
+          "denominator": 3,
+          "numerator": 2,
+          "value": 0.6666666666666666
+        },
+        "candidate_recall_at_50": {
+          "denominator": 3,
+          "numerator": 3,
+          "value": 1.0
+        },
+        "critical_false_merges": 0,
+        "discovery_case_count": 5,
+        "exact_replay_case_count": 1,
+        "exact_replay_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "gate_status": {
+          "accounted_case_rate_min": "pass",
+          "auto_link_precision_min": "pass",
+          "auto_link_recall_min": "fail",
+          "candidate_recall_at_50_min": "pass",
+          "critical_false_merges_max": "pass"
+        },
+        "physical_event_count": 6,
+        "stage_miss_counts": {
+          "candidate_generation": 0,
+          "evidence_scoring": 0,
+          "solver": 1
+        },
+        "unique_logical_event_count": 6
+      },
+      "id": "over_abstain"
+    },
+    {
+      "description": "Repeating exact-known physical rows does not change non-exact discovery scores.",
+      "events": [
+        {
+          "expected_class": "exact_replay",
+          "logical_id": "replay-1",
+          "physical_id": "replay-1-a",
+          "resolution": "correct_exact_replay",
+          "severity": null,
+          "stratum": "exact_known_replay",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "exact_replay",
+          "logical_id": "replay-1",
+          "physical_id": "replay-1-b",
+          "resolution": "correct_exact_replay",
+          "severity": null,
+          "stratum": "exact_known_replay",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "exact_replay",
+          "logical_id": "replay-1",
+          "physical_id": "replay-1-c",
+          "resolution": "correct_exact_replay",
+          "severity": null,
+          "stratum": "exact_known_replay",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "alias-1",
+          "physical_id": "alias-1",
+          "resolution": "correct_auto_link",
+          "severity": null,
+          "stratum": "withheld_alias_incumbent",
+          "top_50_hit": true,
+          "true_pair_rank": 1
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "novel-1",
+          "physical_id": "novel-1",
+          "resolution": "correct_auto_link",
+          "severity": null,
+          "stratum": "novel_multi_observation",
+          "top_50_hit": true,
+          "true_pair_rank": 2
+        },
+        {
+          "expected_class": "must_link",
+          "logical_id": "cross-1",
+          "physical_id": "cross-1",
+          "resolution": "correct_auto_link",
+          "severity": null,
+          "stratum": "directional_cross_source",
+          "top_50_hit": true,
+          "true_pair_rank": 1
+        },
+        {
+          "expected_class": "distinct",
+          "logical_id": "distinct-1",
+          "physical_id": "distinct-1",
+          "resolution": "correct_distinct",
+          "severity": "critical",
+          "stratum": "related_or_hierarchy_distinct",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "unresolved",
+          "logical_id": "unresolved-1",
+          "physical_id": "unresolved-1",
+          "resolution": "correct_review",
+          "severity": null,
+          "stratum": "genuinely_unresolved",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        }
+      ],
+      "expected": {
+        "accounted_case_rate": {
+          "denominator": 5,
+          "numerator": 5,
+          "value": 1.0
+        },
+        "auto_link_precision": {
+          "denominator": 3,
+          "numerator": 3,
+          "value": 1.0
+        },
+        "auto_link_recall": {
+          "denominator": 3,
+          "numerator": 3,
+          "value": 1.0
+        },
+        "candidate_recall_at_50": {
+          "denominator": 3,
+          "numerator": 3,
+          "value": 1.0
+        },
+        "critical_false_merges": 0,
+        "discovery_case_count": 5,
+        "exact_replay_case_count": 1,
+        "exact_replay_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "gate_status": {
+          "accounted_case_rate_min": "pass",
+          "auto_link_precision_min": "pass",
+          "auto_link_recall_min": "pass",
+          "candidate_recall_at_50_min": "pass",
+          "critical_false_merges_max": "pass"
+        },
+        "physical_event_count": 8,
+        "stage_miss_counts": {
+          "candidate_generation": 0,
+          "evidence_scoring": 0,
+          "solver": 0
+        },
+        "unique_logical_event_count": 6
+      },
+      "id": "duplicate_row"
+    },
+    {
+      "description": "A stratum with zero denominator reports null rates and not_applicable gates rather than fake zeros.",
+      "events": [
+        {
+          "expected_class": "exact_replay",
+          "logical_id": "replay-1",
+          "physical_id": "replay-1",
+          "resolution": "correct_exact_replay",
+          "severity": null,
+          "stratum": "exact_known_replay",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "distinct",
+          "logical_id": "distinct-1",
+          "physical_id": "distinct-1",
+          "resolution": "correct_distinct",
+          "severity": "critical",
+          "stratum": "related_or_hierarchy_distinct",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        },
+        {
+          "expected_class": "unresolved",
+          "logical_id": "unresolved-1",
+          "physical_id": "unresolved-1",
+          "resolution": "correct_explicit_refusal",
+          "severity": null,
+          "stratum": "genuinely_unresolved",
+          "top_50_hit": null,
+          "true_pair_rank": null
+        }
+      ],
+      "expected": {
+        "accounted_case_rate": {
+          "denominator": 2,
+          "numerator": 2,
+          "value": 1.0
+        },
+        "auto_link_precision": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "auto_link_recall": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "candidate_recall_at_50": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "critical_false_merges": 0,
+        "discovery_case_count": 2,
+        "exact_replay_case_count": 1,
+        "exact_replay_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "gate_status": {
+          "accounted_case_rate_min": "pass",
+          "auto_link_precision_min": "not_applicable",
+          "auto_link_recall_min": "not_applicable",
+          "candidate_recall_at_50_min": "not_applicable",
+          "critical_false_merges_max": "pass"
+        },
+        "physical_event_count": 3,
+        "stage_miss_counts": {
+          "candidate_generation": 0,
+          "evidence_scoring": 0,
+          "solver": 0
+        },
+        "unique_logical_event_count": 3
+      },
+      "id": "empty_stratum"
+    }
+  ],
+  "schema_version": "canon.entity.quality.contract_cases.v1"
+}

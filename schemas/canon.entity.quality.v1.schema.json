@@ -1,0 +1,754 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.entity.quality.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "confidence_interval_95": {
+      "oneOf": [
+        {
+          "additionalItems": false,
+          "items": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "gate_result": {
+      "additionalProperties": false,
+      "properties": {
+        "metric_id": {
+          "type": "string"
+        },
+        "observed_value": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operator": {
+          "enum": [
+            ">=",
+            "==",
+            "<="
+          ],
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "not_applicable",
+            "waived"
+          ],
+          "type": "string"
+        },
+        "threshold": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "waiver_bead_id": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "metric_id",
+        "observed_value",
+        "operator",
+        "status",
+        "threshold",
+        "waiver_bead_id"
+      ],
+      "type": "object"
+    },
+    "metric": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence_interval_95": {
+          "$ref": "#/$defs/confidence_interval_95"
+        },
+        "denominator": {
+          "$ref": "#/$defs/count"
+        },
+        "denominator_behavior": {
+          "enum": [
+            "non_exact_discovery_only",
+            "exact_replay_only",
+            "all_non_exact_labeled_cases",
+            "resource_sample"
+          ],
+          "type": "string"
+        },
+        "numerator": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/count"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sample_count": {
+          "$ref": "#/$defs/count"
+        },
+        "value": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "confidence_interval_95",
+        "denominator",
+        "denominator_behavior",
+        "numerator",
+        "sample_count",
+        "value"
+      ],
+      "type": "object"
+    },
+    "resource_metric": {
+      "additionalProperties": false,
+      "properties": {
+        "sample_count": {
+          "$ref": "#/$defs/count"
+        },
+        "unit": {
+          "enum": [
+            "count",
+            "seconds",
+            "bytes"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "sample_count",
+        "unit",
+        "value"
+      ],
+      "type": "object"
+    },
+    "waiver": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_at": {
+          "type": "string"
+        },
+        "approved_by": {
+          "type": "string"
+        },
+        "expires_at": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gate_id": {
+          "type": "string"
+        },
+        "holdout_id": {
+          "type": "string"
+        },
+        "metric_id": {
+          "type": "string"
+        },
+        "new_threshold": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "old_threshold": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "replacement_holdout_id": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope": {
+          "enum": [
+            "threshold_lowering",
+            "resource_budget",
+            "stratum_override"
+          ],
+          "type": "string"
+        },
+        "waiver_bead_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "approved_at",
+        "approved_by",
+        "expires_at",
+        "gate_id",
+        "holdout_id",
+        "metric_id",
+        "new_threshold",
+        "old_threshold",
+        "reason",
+        "replacement_holdout_id",
+        "scope",
+        "waiver_bead_id"
+      ],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Domain-neutral discovery-quality report contract for canon entity.",
+  "properties": {
+    "doc": {
+      "const": "docs/ENTITY_EVALS_AND_PERFORMANCE.md"
+    },
+    "gates": {
+      "additionalProperties": false,
+      "properties": {
+        "accounted_case_rate_min": {
+          "$ref": "#/$defs/gate_result"
+        },
+        "auto_link_precision_min": {
+          "$ref": "#/$defs/gate_result"
+        },
+        "auto_link_recall_min": {
+          "$ref": "#/$defs/gate_result"
+        },
+        "candidate_recall_at_50_min": {
+          "$ref": "#/$defs/gate_result"
+        },
+        "critical_false_merges_max": {
+          "$ref": "#/$defs/gate_result"
+        }
+      },
+      "required": [
+        "accounted_case_rate_min",
+        "auto_link_precision_min",
+        "auto_link_recall_min",
+        "candidate_recall_at_50_min",
+        "critical_false_merges_max"
+      ],
+      "type": "object"
+    },
+    "metrics": {
+      "additionalProperties": false,
+      "properties": {
+        "abstention_precision": {
+          "$ref": "#/$defs/metric"
+        },
+        "accounted_case_rate": {
+          "$ref": "#/$defs/metric"
+        },
+        "auto_link_precision": {
+          "$ref": "#/$defs/metric"
+        },
+        "auto_link_recall": {
+          "$ref": "#/$defs/metric"
+        },
+        "b_cubed_f1": {
+          "$ref": "#/$defs/metric"
+        },
+        "b_cubed_precision": {
+          "$ref": "#/$defs/metric"
+        },
+        "b_cubed_recall": {
+          "$ref": "#/$defs/metric"
+        },
+        "candidate_recall_at_50": {
+          "$ref": "#/$defs/metric"
+        },
+        "exact_replay_coverage": {
+          "$ref": "#/$defs/metric"
+        },
+        "pairwise_f1": {
+          "$ref": "#/$defs/metric"
+        },
+        "pairwise_precision": {
+          "$ref": "#/$defs/metric"
+        },
+        "pairwise_recall": {
+          "$ref": "#/$defs/metric"
+        },
+        "review_coverage": {
+          "$ref": "#/$defs/metric"
+        },
+        "review_yield": {
+          "$ref": "#/$defs/metric"
+        },
+        "true_pair_rank": {
+          "$ref": "#/$defs/metric"
+        }
+      },
+      "required": [
+        "abstention_precision",
+        "accounted_case_rate",
+        "auto_link_precision",
+        "auto_link_recall",
+        "b_cubed_f1",
+        "b_cubed_precision",
+        "b_cubed_recall",
+        "candidate_recall_at_50",
+        "exact_replay_coverage",
+        "pairwise_f1",
+        "pairwise_precision",
+        "pairwise_recall",
+        "review_coverage",
+        "review_yield",
+        "true_pair_rank"
+      ],
+      "type": "object"
+    },
+    "resources": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_pairs_per_surface_p95": {
+          "$ref": "#/$defs/resource_metric"
+        },
+        "candidate_pairs_per_surface_p99": {
+          "$ref": "#/$defs/resource_metric"
+        },
+        "peak_memory_bytes": {
+          "$ref": "#/$defs/resource_metric"
+        },
+        "wall_clock_seconds": {
+          "$ref": "#/$defs/resource_metric"
+        }
+      },
+      "required": [
+        "candidate_pairs_per_surface_p95",
+        "candidate_pairs_per_surface_p99",
+        "peak_memory_bytes",
+        "wall_clock_seconds"
+      ],
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "canon.entity.quality.v1"
+    },
+    "severity_counts": {
+      "additionalProperties": false,
+      "properties": {
+        "critical": {
+          "$ref": "#/$defs/count"
+        },
+        "high": {
+          "$ref": "#/$defs/count"
+        },
+        "low": {
+          "$ref": "#/$defs/count"
+        },
+        "medium": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "required": [
+        "critical",
+        "high",
+        "low",
+        "medium"
+      ],
+      "type": "object"
+    },
+    "stage_miss_counts": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_generation": {
+          "$ref": "#/$defs/count"
+        },
+        "evidence_scoring": {
+          "$ref": "#/$defs/count"
+        },
+        "solver": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "required": [
+        "candidate_generation",
+        "evidence_scoring",
+        "solver"
+      ],
+      "type": "object"
+    },
+    "stratum_counts": {
+      "additionalProperties": false,
+      "properties": {
+        "directional_cross_source": {
+          "$ref": "#/$defs/count"
+        },
+        "exact_known_replay": {
+          "$ref": "#/$defs/count"
+        },
+        "genuinely_unresolved": {
+          "$ref": "#/$defs/count"
+        },
+        "novel_multi_observation": {
+          "$ref": "#/$defs/count"
+        },
+        "related_or_hierarchy_distinct": {
+          "$ref": "#/$defs/count"
+        },
+        "withheld_alias_incumbent": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "required": [
+        "directional_cross_source",
+        "exact_known_replay",
+        "genuinely_unresolved",
+        "novel_multi_observation",
+        "related_or_hierarchy_distinct",
+        "withheld_alias_incumbent"
+      ],
+      "type": "object"
+    },
+    "waivers": {
+      "items": {
+        "$ref": "#/$defs/waiver"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "doc",
+    "gates",
+    "metrics",
+    "resources",
+    "schema_version",
+    "severity_counts",
+    "stage_miss_counts",
+    "stratum_counts",
+    "waivers"
+  ],
+  "title": "canon.entity.quality.v1",
+  "type": "object",
+  "x-canon-contract": {
+    "gates": [
+      {
+        "gate_id": "candidate_recall_at_50_min",
+        "metric_id": "candidate_recall_at_50",
+        "operator": ">=",
+        "threshold": 0.995,
+        "waivable": true
+      },
+      {
+        "gate_id": "auto_link_precision_min",
+        "metric_id": "auto_link_precision",
+        "operator": ">=",
+        "threshold": 0.995,
+        "waivable": true
+      },
+      {
+        "gate_id": "auto_link_recall_min",
+        "metric_id": "auto_link_recall",
+        "operator": ">=",
+        "threshold": 0.98,
+        "waivable": true
+      },
+      {
+        "gate_id": "critical_false_merges_max",
+        "metric_id": "hard_negative_false_merges",
+        "operator": "==",
+        "severity": "critical",
+        "threshold": 0,
+        "waivable": false
+      },
+      {
+        "gate_id": "accounted_case_rate_min",
+        "metric_id": "accounted_case_rate",
+        "operator": "==",
+        "threshold": 1,
+        "waivable": false
+      }
+    ],
+    "metric_contract": [
+      {
+        "description": "True pair appears in the bounded top-50 candidate set or compact exact-bucket assertion.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "candidate_recall_at_50",
+        "kind": "rate"
+      },
+      {
+        "description": "Distribution summary over surfaced same-entity true-pair ranks.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "true_pair_rank",
+        "kind": "rank"
+      },
+      {
+        "description": "Precision over all non-exact auto-link decisions.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "auto_link_precision",
+        "kind": "rate"
+      },
+      {
+        "description": "Recall over labeled same-entity discovery cases; this is the labeled must-link recall gate.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "auto_link_recall",
+        "kind": "rate"
+      },
+      {
+        "description": "Pairwise cluster precision over non-exact discovery cases.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "pairwise_precision",
+        "kind": "rate"
+      },
+      {
+        "description": "Pairwise cluster recall over non-exact discovery cases.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "pairwise_recall",
+        "kind": "rate"
+      },
+      {
+        "description": "Pairwise cluster F1 over non-exact discovery cases.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "pairwise_f1",
+        "kind": "rate"
+      },
+      {
+        "description": "B-cubed precision over non-exact discovery cases.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "b_cubed_precision",
+        "kind": "rate"
+      },
+      {
+        "description": "B-cubed recall over non-exact discovery cases.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "b_cubed_recall",
+        "kind": "rate"
+      },
+      {
+        "description": "B-cubed F1 over non-exact discovery cases.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "b_cubed_f1",
+        "kind": "rate"
+      },
+      {
+        "description": "Severity-tagged count of false merges on labeled distinct or hierarchy cases.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "hard_negative_false_merges",
+        "kind": "count"
+      },
+      {
+        "description": "Precision of abstentions that correctly land ambiguous cases in review or explicit refusal rather than guessing.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "abstention_precision",
+        "kind": "rate"
+      },
+      {
+        "description": "Coverage of cases that correctly surface to review when automated resolution is not justified.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "review_coverage",
+        "kind": "rate"
+      },
+      {
+        "description": "Fraction of reviewed cases that produce durable alias/distinct/refusal knowledge.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "review_yield",
+        "kind": "rate"
+      },
+      {
+        "description": "Coverage of exact registry-known replay, reported separately from discovery.",
+        "excluded_strata": [],
+        "id": "exact_replay_coverage",
+        "kind": "rate"
+      },
+      {
+        "description": "Every non-exact labeled case is classified as correct, review, explicit refusal, or measured miss.",
+        "excluded_strata": [
+          "exact_known_replay"
+        ],
+        "id": "accounted_case_rate",
+        "kind": "rate"
+      }
+    ],
+    "principles": {
+      "candidate_stage_misses_are_separate": true,
+      "discovery_scores_use_logical_cases_not_repeated_rows": true,
+      "domain_neutral_core_contract": true,
+      "exact_replay_excluded_from_non_exact_discovery_scores": true,
+      "exact_replay_rows_cannot_improve_resource_metrics": true
+    },
+    "severity_classes": [
+      {
+        "description": "Unsafe same-entity merge across a labeled distinct or hierarchy boundary.",
+        "id": "critical"
+      },
+      {
+        "description": "Strongly harmful incorrect merge with broad repair cost.",
+        "id": "high"
+      },
+      {
+        "description": "Wrong merge with bounded local repair cost.",
+        "id": "medium"
+      },
+      {
+        "description": "Wrong merge with narrow or reversible impact.",
+        "id": "low"
+      }
+    ],
+    "stage_miss_ids": [
+      "candidate_generation",
+      "evidence_scoring",
+      "solver"
+    ],
+    "strata": [
+      {
+        "description": "Already solvable from the registry snapshot before discovery work begins.",
+        "discovery_score_eligible": false,
+        "id": "exact_known_replay"
+      },
+      {
+        "description": "A withheld alias should map onto an incumbent canonical entity.",
+        "discovery_score_eligible": true,
+        "id": "withheld_alias_incumbent"
+      },
+      {
+        "description": "Multiple observations belong to the same novel entity.",
+        "discovery_score_eligible": true,
+        "id": "novel_multi_observation"
+      },
+      {
+        "description": "The same entity must be linked across source boundaries or directional contexts.",
+        "discovery_score_eligible": true,
+        "id": "directional_cross_source"
+      },
+      {
+        "description": "Related, hierarchical, or confusable records that must not auto-merge as the same entity.",
+        "discovery_score_eligible": true,
+        "id": "related_or_hierarchy_distinct"
+      },
+      {
+        "description": "Evidence is intentionally insufficient for auto-linking and should end in review or explicit refusal.",
+        "discovery_score_eligible": true,
+        "id": "genuinely_unresolved"
+      }
+    ],
+    "waiver_policy": {
+      "exact_replay_rows_cannot_justify_threshold_lowering": true,
+      "non_waivable_gate_ids": [
+        "critical_false_merges_max",
+        "accounted_case_rate_min"
+      ],
+      "required_fields": [
+        "waiver_bead_id",
+        "holdout_id",
+        "metric_id",
+        "gate_id",
+        "old_threshold",
+        "new_threshold",
+        "reason",
+        "approved_by",
+        "approved_at",
+        "scope",
+        "replacement_holdout_id",
+        "expires_at"
+      ],
+      "threshold_lowering_requires_new_holdout_or_explicit_waiver": true
+    },
+    "zero_denominator_behavior": {
+      "confidence_interval_95": null,
+      "gate_status": "not_applicable",
+      "value": null
+    }
+  }
+}

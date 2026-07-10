@@ -362,6 +362,7 @@
     { "id": "canon.doctor.health.v1", "family": "doctor", "action": "preserve" },
     { "id": "canon.doctor.triage.v1", "family": "doctor", "action": "preserve" },
     { "id": "canon.entity.lint.robot.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon.unresolved.inbox.v1", "family": "inbox", "action": "preserve" },
     { "id": "canon_entity_apply.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_artifact_chain.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_audit.v0", "family": "entity", "action": "preserve" },
@@ -573,6 +574,11 @@
       "id": "sec10d-handoff-binding",
       "subject": "sec10d migration references inside canon-owned fixtures and docs",
       "notes": "Local sec10d fixtures already point at entity prepare/run/review flows, but the final cutover sequence for downstream handoff docs is still open."
+    },
+    {
+      "id": "schema-only-quality-contract-coverage",
+      "subject": "canon.entity.quality.v1",
+      "notes": "schemas/canon.entity.quality.v1.schema.json already declares canon.entity.quality.v1, but the current contract-inventory test only derives shipped contracts from src/ and operator.json. Promote this into contract_rows when the inventory gate expands to schema-declared contracts as well."
     }
   ]
 }

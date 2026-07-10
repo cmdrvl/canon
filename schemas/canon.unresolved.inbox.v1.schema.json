@@ -1,0 +1,461 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.unresolved.inbox.v1.schema.json",
+  "title": "canon.unresolved.inbox.v1",
+  "description": "Deterministic evidence about missing coverage. This artifact is not a shadow registry and does not assert identity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "view",
+    "artifact_content_hash",
+    "policy",
+    "summary",
+    "items"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon.unresolved.inbox.v1"
+    },
+    "view": {
+      "$ref": "#/$defs/export_mode"
+    },
+    "artifact_content_hash": {
+      "type": "string",
+      "pattern": "^blake3:"
+    },
+    "policy": {
+      "$ref": "#/$defs/privacy_policy"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    }
+  },
+  "$defs": {
+    "export_mode": {
+      "type": "string",
+      "enum": [
+        "redacted",
+        "retained",
+        "fingerprints_only"
+      ]
+    },
+    "raw_value_retention": {
+      "type": "string",
+      "enum": [
+        "omit",
+        "external_reference"
+      ]
+    },
+    "merge_mode": {
+      "type": "string",
+      "enum": [
+        "strict"
+      ]
+    },
+    "event_kind": {
+      "type": "string",
+      "enum": [
+        "exact_lookup",
+        "cluster_abstention",
+        "link_abstention",
+        "candidate_rejected"
+      ]
+    },
+    "reason_code": {
+      "type": "string",
+      "enum": [
+        "no_matching_rule",
+        "empty_value",
+        "missing_field",
+        "null_value",
+        "non_scalar_value",
+        "ambiguous_candidates",
+        "score_below_threshold",
+        "budget_exceeded",
+        "cannot_link"
+      ]
+    },
+    "field_role": {
+      "type": "string",
+      "enum": [
+        "lookup_input",
+        "name_field",
+        "anchor_field",
+        "context_field",
+        "candidate_pair"
+      ]
+    },
+    "privacy_class": {
+      "type": "string",
+      "enum": [
+        "public",
+        "internal",
+        "restricted",
+        "secret"
+      ]
+    },
+    "candidate_status": {
+      "type": "string",
+      "enum": [
+        "none",
+        "ambiguous",
+        "rejected",
+        "budget_limited"
+      ]
+    },
+    "privacy_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_id",
+        "raw_value_retention",
+        "default_export_mode",
+        "merge_mode"
+      ],
+      "properties": {
+        "policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "raw_value_retention": {
+          "$ref": "#/$defs/raw_value_retention"
+        },
+        "default_export_mode": {
+          "$ref": "#/$defs/export_mode"
+        },
+        "merge_mode": {
+          "$ref": "#/$defs/merge_mode"
+        }
+      }
+    },
+    "profile_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id",
+        "profile_version"
+      ],
+      "properties": {
+        "profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "profile_version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "surface_fingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "normalizer_id",
+        "surface_role",
+        "fingerprint"
+      ],
+      "properties": {
+        "normalizer_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "surface_role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^blake3:"
+        }
+      }
+    },
+    "namespace_hint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "namespace",
+        "source"
+      ],
+      "properties": {
+        "namespace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "candidate_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "candidate_count"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/candidate_status"
+        },
+        "candidate_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "best_score_band": {
+          "type": "string"
+        },
+        "rejection_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "temporal_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "occurrence_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "project_ref",
+        "run_ref",
+        "source_ref",
+        "seen_at"
+      ],
+      "properties": {
+        "project_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "run_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "record_ref": {
+          "type": "string"
+        },
+        "seen_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "occurrence_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_occurrences",
+        "distinct_projects",
+        "distinct_runs",
+        "distinct_sources"
+      ],
+      "properties": {
+        "total_occurrences": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "distinct_projects": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "distinct_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "distinct_sources": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "raw_value_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "store",
+        "locator",
+        "content_hash"
+      ],
+      "properties": {
+        "store": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^blake3:"
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_key",
+        "event_kind",
+        "reason_code",
+        "field_name",
+        "field_role",
+        "surface_fingerprints",
+        "candidate_summary",
+        "first_seen_at",
+        "last_seen_at",
+        "occurrence_summary",
+        "occurrences"
+      ],
+      "properties": {
+        "event_key": {
+          "type": "string",
+          "pattern": "^blake3:"
+        },
+        "event_kind": {
+          "$ref": "#/$defs/event_kind"
+        },
+        "reason_code": {
+          "$ref": "#/$defs/reason_code"
+        },
+        "field_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "field_role": {
+          "$ref": "#/$defs/field_role"
+        },
+        "profile_ref": {
+          "$ref": "#/$defs/profile_ref"
+        },
+        "surface_fingerprints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/surface_fingerprint"
+          }
+        },
+        "namespace_hints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/namespace_hint"
+          }
+        },
+        "candidate_summary": {
+          "$ref": "#/$defs/candidate_summary"
+        },
+        "temporal_scope": {
+          "$ref": "#/$defs/temporal_scope"
+        },
+        "first_seen_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "last_seen_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "occurrence_summary": {
+          "$ref": "#/$defs/occurrence_summary"
+        },
+        "occurrences": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/occurrence_ref"
+          }
+        },
+        "privacy_class": {
+          "$ref": "#/$defs/privacy_class"
+        },
+        "raw_values_redacted": {
+          "type": "boolean"
+        },
+        "raw_values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/raw_value_reference"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_items",
+        "total_occurrences",
+        "redacted_items",
+        "retained_raw_reference_count",
+        "by_reason_code",
+        "by_event_kind",
+        "by_privacy_class"
+      ],
+      "properties": {
+        "total_items": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_occurrences": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "redacted_items": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "retained_raw_reference_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_reason_code": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_event_kind": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_privacy_class": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}
