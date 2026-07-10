@@ -1,0 +1,596 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.temporal.compile.v1.schema.json",
+  "title": "canon.temporal.compile.v1",
+  "description": "Deterministic compilation envelope that freezes as-of identity alias facts into an immutable exact lookup snapshot. Relationship sidecars stay projection-only, conflicts abstain by default, and the emitted registry snapshot remains compatible with the unchanged registry package backends.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "valid_at",
+    "known_as_of",
+    "policy_id",
+    "registry_package",
+    "relation_sidecars",
+    "mapping_proofs",
+    "omissions"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon.temporal.compile.v1"
+    },
+    "valid_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "known_as_of": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "policy_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "registry_package": {
+      "$ref": "#/$defs/registry_package"
+    },
+    "parent_snapshot": {
+      "$ref": "#/$defs/dependency_reference"
+    },
+    "relation_sidecars": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/relation_sidecar"
+      }
+    },
+    "mapping_proofs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/mapping_proof"
+      }
+    },
+    "omissions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/omission"
+      }
+    }
+  },
+  "x-canon-contract": {
+    "conflict_default": "abstain",
+    "relation_sidecars_affect_lookup": false,
+    "parent_snapshot_mode": "dependency_reference",
+    "backend_compatibility": [
+      "canon.registry.package.v1",
+      "dbt-seed",
+      "search-index"
+    ]
+  },
+  "$defs": {
+    "blake3_digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_system": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "time_interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start_bound",
+        "end_bound"
+      ],
+      "properties": {
+        "start_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "start_bound": {
+          "type": "string",
+          "enum": [
+            "inclusive",
+            "exclusive",
+            "open"
+          ]
+        },
+        "end_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end_bound": {
+          "type": "string",
+          "enum": [
+            "inclusive",
+            "exclusive",
+            "open"
+          ]
+        }
+      }
+    },
+    "recorded_time": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/time_interval"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "start_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "start_bound": {
+              "type": "string",
+              "enum": [
+                "inclusive",
+                "exclusive",
+                "open"
+              ]
+            },
+            "end_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "end_bound": {
+              "type": "string",
+              "enum": [
+                "inclusive",
+                "exclusive",
+                "open"
+              ]
+            },
+            "transaction_seq": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      ]
+    },
+    "source_locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_system",
+        "locator"
+      ],
+      "properties": {
+        "source_system": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fragment": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "dependency_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "content_digest"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_digest": {
+          "$ref": "#/$defs/blake3_digest"
+        }
+      }
+    },
+    "lookup_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input",
+        "canonical_id",
+        "canonical_type",
+        "rule_id"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_type": {
+          "const": "entity"
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "descriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "kind",
+        "content_digest",
+        "bytes"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "registry_metadata",
+            "mapping",
+            "build_provenance"
+          ]
+        },
+        "content_digest": {
+          "$ref": "#/$defs/blake3_digest"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entry_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "deployment_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "first_class",
+        "identity_excluded"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "dbt-seed",
+            "search-index"
+          ]
+        },
+        "first_class": {
+          "type": "boolean"
+        },
+        "identity_excluded": {
+          "type": "boolean"
+        }
+      }
+    },
+    "identity_rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hash_algorithm",
+        "descriptor_ordering",
+        "mapping_precedence",
+        "identity_exclusions",
+        "secret_material_policy"
+      ],
+      "properties": {
+        "hash_algorithm": {
+          "const": "blake3"
+        },
+        "descriptor_ordering": {
+          "const": "normalized_path_lexicographic"
+        },
+        "mapping_precedence": {
+          "const": "filename_lexicographic_then_entry_order"
+        },
+        "identity_exclusions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "secret_material_policy": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "layouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "directory_layout",
+        "archive_layout",
+        "attachment_root"
+      ],
+      "properties": {
+        "directory_layout": {
+          "type": "string",
+          "minLength": 1
+        },
+        "archive_layout": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attachment_root": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "registry_package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "registry",
+        "content_digest",
+        "entry_count",
+        "effective_mapping_count",
+        "file_descriptors",
+        "attachments",
+        "dependency_references",
+        "allowed_sidecars",
+        "deployment_projections",
+        "lookup_entries",
+        "identity",
+        "layouts"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "canon.registry.package.v1"
+        },
+        "registry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "version"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "content_digest": {
+          "$ref": "#/$defs/blake3_digest"
+        },
+        "entry_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "effective_mapping_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "canonical_iri_namespace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file_descriptors": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/descriptor"
+          }
+        },
+        "build_provenance": {
+          "$ref": "#/$defs/descriptor"
+        },
+        "attachments": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "dependency_references": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dependency_reference"
+          }
+        },
+        "allowed_sidecars": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "audit",
+              "gold",
+              "strategy",
+              "signature",
+              "relation",
+              "escrow"
+            ]
+          }
+        },
+        "deployment_projections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/deployment_projection"
+          }
+        },
+        "lookup_entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/lookup_entry"
+          }
+        },
+        "identity": {
+          "$ref": "#/$defs/identity_rules"
+        },
+        "layouts": {
+          "$ref": "#/$defs/layouts"
+        }
+      }
+    },
+    "relation_sidecar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "path",
+        "content_digest",
+        "relation_count"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_digest": {
+          "$ref": "#/$defs/blake3_digest"
+        },
+        "relation_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "mapping_proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input",
+        "canonical_id",
+        "canonical_type",
+        "rule_id",
+        "claim_id",
+        "valid_time",
+        "recorded_time",
+        "source_locator",
+        "scope",
+        "trust_policy_ref",
+        "materialization_digest"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_type": {
+          "const": "entity"
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "claim_id": {
+          "$ref": "#/$defs/blake3_digest"
+        },
+        "valid_time": {
+          "$ref": "#/$defs/time_interval"
+        },
+        "recorded_time": {
+          "$ref": "#/$defs/recorded_time"
+        },
+        "source_locator": {
+          "$ref": "#/$defs/source_locator"
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "trust_policy_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "materialization_digest": {
+          "$ref": "#/$defs/blake3_digest"
+        },
+        "policy_clause_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "omission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "subject_key",
+        "message"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "enum": [
+            "conflict_abstained",
+            "scope_excluded",
+            "non_global_visibility",
+            "relation_sidecar_only"
+          ]
+        },
+        "subject_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "claim_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/blake3_digest"
+          }
+        },
+        "policy_clause_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

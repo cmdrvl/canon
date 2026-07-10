@@ -369,6 +369,20 @@
       "access_boundary": "internal_source_only",
       "source_path": "src/extensions/ontology.rs"
     },
+    {
+      "id": "canon.extension.identifier.v1",
+      "family": "extension",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/extensions/identifier.rs"
+    },
+    {
+      "id": "canon.extension.vocabulary.v1",
+      "family": "extension",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/extensions/vocabulary.rs"
+    },
     { "id": "canon.evidence.v1", "family": "evidence", "action": "preserve" },
     {
       "id": "canon.identity.fact.v1",
@@ -419,6 +433,13 @@
       "action": "preserve",
       "access_boundary": "internal_source_only",
       "source_path": "src/temporal/conflict.rs"
+    },
+    {
+      "id": "canon.temporal.compile.v1",
+      "family": "temporal",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/temporal/compile.rs"
     },
     {
       "id": "canon.unresolved.inbox.v1",
@@ -503,6 +524,55 @@
       "action": "preserve",
       "access_boundary": "internal_source_only",
       "source_path": "src/distribution/oci.rs"
+    },
+    {
+      "id": "canon.strategy.audit_receipt.v1",
+      "family": "strategy",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/strategy/registry.rs"
+    },
+    {
+      "id": "canon.strategy.explain.v1",
+      "family": "strategy",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/strategy/explain.rs"
+    },
+    {
+      "id": "canon.strategy.project_lock.v1",
+      "family": "strategy",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/strategy/registry.rs"
+    },
+    {
+      "id": "canon.strategy.promotion.v1",
+      "family": "strategy",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/strategy/registry.rs"
+    },
+    {
+      "id": "canon.strategy.registry.v1",
+      "family": "strategy",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/strategy/registry.rs"
+    },
+    {
+      "id": "canon.strategy.selection.v1",
+      "family": "strategy",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/strategy/registry.rs"
+    },
+    {
+      "id": "canon.strategy.use.v1",
+      "family": "strategy",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/strategy/registry.rs"
     },
     { "id": "canon_registry_provider_schema.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_providers.v0", "family": "registry", "action": "preserve" },

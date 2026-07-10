@@ -1,0 +1,429 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.extension.identifier.v1.schema.json",
+  "title": "canon.extension.identifier.v1",
+  "description": "Domain-neutral identifier namespace extension contract. Canon accepts opaque namespace IDs, safe declared validator primitives, and separately pinned trust policies so projects can add namespaces without teaching the core binary real-world authorities or guessing bare strings into a namespace.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "package_id",
+    "package_version",
+    "namespaces",
+    "validators",
+    "trust_policies"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon.extension.identifier.v1"
+    },
+    "package_id": {
+      "$ref": "#/$defs/package_id"
+    },
+    "package_version": {
+      "$ref": "#/$defs/semver"
+    },
+    "namespaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/namespace_definition"
+      }
+    },
+    "validators": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/validator_definition"
+      }
+    },
+    "trust_policies": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/trust_policy"
+      }
+    }
+  },
+  "x-canon-contract": {
+    "bare_strings_are_not_namespaced": true,
+    "namespace_binding_required": "field mappings must declare namespace_ref, validator_ref, and trust_policy_ref explicitly",
+    "validator_execution_model": "declared_safe_primitives_only",
+    "independent_invalidation_refs": [
+      "namespace_digest",
+      "validator_digest",
+      "policy_digest"
+    ],
+    "exclusive_conflicts_emit": "typed anti-merge or historical-only evidence",
+    "domain_specific_core_enums_forbidden": true
+  },
+  "$defs": {
+    "blake3_hash": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "package_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "component_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._:-]*$"
+    },
+    "namespace_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._:-]*:[a-z0-9][a-z0-9._:-]*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "normalization_mode": {
+      "type": "string",
+      "enum": [
+        "ascii_trim",
+        "ascii_trim_upper",
+        "ascii_trim_upper_alnum"
+      ]
+    },
+    "temporal_scope": {
+      "type": "string",
+      "enum": [
+        "persistent",
+        "valid_time_optional",
+        "historical_reuse"
+      ]
+    },
+    "scope_kind": {
+      "type": "string",
+      "enum": [
+        "global",
+        "scoped_by_declared_key"
+      ]
+    },
+    "display_policy": {
+      "type": "string",
+      "enum": [
+        "full",
+        "last4"
+      ]
+    },
+    "redaction_policy": {
+      "type": "string",
+      "enum": [
+        "cleartext_allowed",
+        "mask_all_but_last4"
+      ]
+    },
+    "reuse_policy": {
+      "type": "string",
+      "enum": [
+        "never",
+        "allow_historical_non_overlapping"
+      ]
+    },
+    "string_list": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/non_empty_string"
+      },
+      "uniqueItems": true
+    },
+    "namespace_definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "namespace_id",
+        "namespace_uri",
+        "applicable_object_types",
+        "normalization",
+        "temporal_scope",
+        "scope_kind",
+        "display_policy",
+        "redaction_policy"
+      ],
+      "properties": {
+        "namespace_id": {
+          "$ref": "#/$defs/namespace_id"
+        },
+        "namespace_uri": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "applicable_object_types": {
+          "$ref": "#/$defs/string_list"
+        },
+        "normalization": {
+          "$ref": "#/$defs/normalization_mode"
+        },
+        "temporal_scope": {
+          "$ref": "#/$defs/temporal_scope"
+        },
+        "scope_kind": {
+          "$ref": "#/$defs/scope_kind"
+        },
+        "display_policy": {
+          "$ref": "#/$defs/display_policy"
+        },
+        "redaction_policy": {
+          "$ref": "#/$defs/redaction_policy"
+        }
+      }
+    },
+    "validator_check": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "min_length",
+            "max_length"
+          ],
+          "properties": {
+            "kind": {
+              "const": "digits"
+            },
+            "min_length": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_length": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "min_length",
+            "max_length"
+          ],
+          "properties": {
+            "kind": {
+              "const": "ascii_alphanumeric"
+            },
+            "min_length": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_length": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "min_length",
+            "max_length"
+          ],
+          "properties": {
+            "kind": {
+              "const": "luhn_checksum"
+            },
+            "min_length": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_length": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "separator",
+            "segment_count",
+            "segment_min_length",
+            "segment_max_length",
+            "charset"
+          ],
+          "properties": {
+            "kind": {
+              "const": "scoped_segments"
+            },
+            "separator": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1
+            },
+            "segment_count": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "segment_min_length": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "segment_max_length": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "charset": {
+              "type": "string",
+              "enum": [
+                "upper_alnum",
+                "digits"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "validator_definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validator_id",
+        "max_input_bytes",
+        "checks"
+      ],
+      "properties": {
+        "validator_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "max_input_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/validator_check"
+          }
+        }
+      }
+    },
+    "trust_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_id",
+        "single_value_per_object",
+        "single_object_per_value",
+        "reuse_policy",
+        "source_trust_hints"
+      ],
+      "properties": {
+        "policy_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "single_value_per_object": {
+          "type": "boolean"
+        },
+        "single_object_per_value": {
+          "type": "boolean"
+        },
+        "reuse_policy": {
+          "$ref": "#/$defs/reuse_policy"
+        },
+        "source_trust_hints": {
+          "$ref": "#/$defs/string_list"
+        }
+      }
+    },
+    "namespace_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_id",
+        "namespace_id",
+        "namespace_digest"
+      ],
+      "properties": {
+        "package_id": {
+          "$ref": "#/$defs/package_id"
+        },
+        "namespace_id": {
+          "$ref": "#/$defs/namespace_id"
+        },
+        "namespace_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        }
+      }
+    },
+    "validator_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_id",
+        "validator_id",
+        "validator_digest"
+      ],
+      "properties": {
+        "package_id": {
+          "$ref": "#/$defs/package_id"
+        },
+        "validator_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "validator_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        }
+      }
+    },
+    "trust_policy_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_id",
+        "policy_id",
+        "policy_digest"
+      ],
+      "properties": {
+        "package_id": {
+          "$ref": "#/$defs/package_id"
+        },
+        "policy_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "policy_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        }
+      }
+    },
+    "field_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field_path",
+        "object_type",
+        "namespace",
+        "validator",
+        "trust_policy"
+      ],
+      "properties": {
+        "field_path": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "object_type": {
+          "$ref": "#/$defs/component_id"
+        },
+        "namespace": {
+          "$ref": "#/$defs/namespace_ref"
+        },
+        "validator": {
+          "$ref": "#/$defs/validator_ref"
+        },
+        "trust_policy": {
+          "$ref": "#/$defs/trust_policy_ref"
+        }
+      }
+    }
+  }
+}
