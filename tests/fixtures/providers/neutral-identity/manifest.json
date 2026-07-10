@@ -1,0 +1,74 @@
+{
+  "fixture_manifest_version": "neutral_provider_fixture.v1",
+  "provider_manifest": {
+    "schema_version": "canon.provider.manifest.v1",
+    "provider_id": "pkg.neutral.identity_provider",
+    "provider_version": "1.0.0",
+    "source_manifest_version": "neutral_source_manifest.v1",
+    "capabilities": [
+      "frozen_source_only",
+      "streaming_parser",
+      "quarantine_rows",
+      "semantic_diff"
+    ],
+    "parser": {
+      "source_format": "json_lines_utf8",
+      "streaming": true,
+      "checkpoint_unit": "record_ordinal",
+      "required_fields": [
+        "record_id",
+        "record_kind",
+        "cohort",
+        "as_of"
+      ]
+    },
+    "mapping": {
+      "fact_schema": "canon.provider.neutral_identity_fact.v1",
+      "fact_key_description": "fact keys encode family, subject, relation or attribute, and source record id",
+      "provenance_locator_kind": "jsonl_record_and_field",
+      "quarantine_reason_codes": [
+        "duplicate_fact_key",
+        "malformed_record",
+        "missing_provenance",
+        "unknown_record_kind"
+      ]
+    },
+    "policies": {
+      "acquisition_separate_from_build": true,
+      "offline_build_only": true,
+      "undeclared_file_policy": "reject",
+      "duplicate_fact_policy": "reject_build"
+    },
+    "limits": {
+      "max_input_bytes": 20000,
+      "max_rows": 64,
+      "max_facts": 64,
+      "max_quarantine_rows": 16,
+      "max_diagnostics": 16
+    },
+    "licenses": {
+      "source_license_expression": "LicenseRef-Neutral-Fixture",
+      "output_license_expression": "LicenseRef-Neutral-Facts",
+      "attribution_required": false
+    },
+    "semantic_diff_dimensions": [
+      "facts",
+      "source_revision"
+    ]
+  },
+  "source_path": "source.jsonl",
+  "source_media_type": "application/x-ndjson",
+  "source_manifest_version": "neutral_source_manifest.v1",
+  "source_id": "neutral_identity_source",
+  "source_version": "2026.03.01",
+  "source_revision": "subset-a-r1",
+  "selection_predicate": "cohort == subset-a",
+  "package_bindings": {
+    "ontology_package": "pkg.neutral.ontology@blake3:1111111111111111111111111111111111111111111111111111111111111111",
+    "identity_vocabulary_package": "pkg.neutral.identity_vocab@blake3:2222222222222222222222222222222222222222222222222222222222222222",
+    "relationship_vocabulary_package": "pkg.neutral.relationship_vocab@blake3:3333333333333333333333333333333333333333333333333333333333333333",
+    "status_vocabulary_package": "pkg.neutral.status_vocab@blake3:4444444444444444444444444444444444444444444444444444444444444444",
+    "exception_vocabulary_package": "pkg.neutral.exception_vocab@blake3:5555555555555555555555555555555555555555555555555555555555555555",
+    "identifier_namespace_package": "pkg.neutral.identifier_namespace@blake3:6666666666666666666666666666666666666666666666666666666666666666"
+  }
+}

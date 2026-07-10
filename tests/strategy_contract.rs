@@ -1,11 +1,12 @@
 #![forbid(unsafe_code)]
 
 use canon::strategy::types::{
-    LegacyStrategyFootprint, StrategyAllowedInput, StrategyAuditFixtureKind,
-    StrategyCapabilityRequirement, StrategyCompatibility, StrategyCompatibilityKind,
-    StrategyDefinition, StrategyDoctrineErrorCode, StrategyExecutionMode, StrategyExecutionPolicy,
-    StrategyKind, StrategyOutputKind, StrategyPromotionSemantics, StrategyPromotionTarget,
-    StrategySelectionKey, classify_legacy_footprint, strategy_schema_version,
+    LegacyStrategyFootprint, STRATEGY_KIND_DOCTRINE_AUTHORITY, STRATEGY_SCHEMA_SCOPE,
+    StrategyAllowedInput, StrategyAuditFixtureKind, StrategyCapabilityRequirement,
+    StrategyCompatibility, StrategyCompatibilityKind, StrategyDefinition,
+    StrategyDoctrineErrorCode, StrategyExecutionMode, StrategyExecutionPolicy, StrategyKind,
+    StrategyOutputKind, StrategyPromotionSemantics, StrategyPromotionTarget, StrategySelectionKey,
+    classify_legacy_footprint, strategy_schema_version,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -42,6 +43,20 @@ fn strategy_schema_declares_typed_kinds_and_lookup_boundary() {
             .as_str()
             .unwrap()
             .contains("never")
+    );
+    assert_eq!(
+        schema["x-canon-contract"]["schema_scope"],
+        STRATEGY_SCHEMA_SCOPE
+    );
+    assert_eq!(
+        schema["x-canon-contract"]["kind_specific_doctrine_authority"],
+        STRATEGY_KIND_DOCTRINE_AUTHORITY
+    );
+    assert!(
+        schema["x-canon-contract"]["kind_specific_doctrine_boundary"]
+            .as_str()
+            .unwrap()
+            .contains("Rust validation remains authoritative")
     );
 }
 
@@ -100,6 +115,67 @@ fn unknown_kind_and_incompatible_fields_are_rejected() {
         .validate()
         .expect_err("validate rejects lookup-phase execution");
     assert_eq!(error.code, StrategyDoctrineErrorCode::IncompatibleFields);
+}
+
+#[test]
+fn structurally_valid_schema_transform_still_needs_rust_doctrine_validation() {
+    let structurally_valid: StrategyDefinition = serde_json::from_value(json!({
+        "version": "canon.strategy.v1",
+        "kind": "schema-transform",
+        "selection_key": {
+            "type": "schema-transform",
+            "schema_fingerprint": "blake3:schema",
+            "skill_hash": "blake3:skill"
+        },
+        "allowed_inputs": [
+            {
+                "type": "schema-profile",
+                "schema_source": "canon_strategy_profile.v0"
+            }
+        ],
+        "declared_outputs": ["frozen-script-pointer"],
+        "capability_requirements": [
+            "deterministic-local-execution",
+            "no-live-network",
+            "pinned-dependencies",
+            "audit-fixtures-required",
+            "exact-lookup-boundary"
+        ],
+        "execution_policy": {
+            "mode": "selection-only",
+            "deterministic_replay": true,
+            "exact_lookup_phase": false,
+            "permits_live_network": false,
+            "requires_pinned_dependencies": false
+        },
+        "audit_fixtures": ["deterministic-stdout-suite"],
+        "compatibility": {
+            "type": "schema-tiered",
+            "relation": "same-columns-types-cardinality-tiers"
+        },
+        "promotion": {
+            "target": "strategy-registry-champion",
+            "requires_version_bump": true,
+            "requires_audit": true,
+            "allows_operator_attestation": true,
+            "requires_review_gate": false
+        }
+    }))
+    .expect("structural schema envelope still deserializes");
+
+    let error = structurally_valid
+        .validate()
+        .expect_err("rust doctrine validator rejects invalid pinned-dependency policy");
+    assert_eq!(error.code, StrategyDoctrineErrorCode::IncompatibleFields);
+    assert_eq!(
+        error.message,
+        "pinned dependency policy does not match the selected execution mode"
+    );
+    assert!(
+        error
+            .next_action
+            .contains("selection-only transform strategies require pinned dependencies")
+    );
 }
 
 #[test]

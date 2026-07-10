@@ -411,6 +411,13 @@
       "access_boundary": "internal_source_only",
       "source_path": "src/extensions/source_mapping.rs"
     },
+    {
+      "id": "canon.project.v1",
+      "family": "project",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/project/manifest.rs"
+    },
     { "id": "canon.evidence.v1", "family": "evidence", "action": "preserve" },
     {
       "id": "canon.identity.fact.v1",

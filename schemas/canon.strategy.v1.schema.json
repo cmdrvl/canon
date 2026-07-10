@@ -551,6 +551,9 @@
   },
   "x-canon-contract": {
     "exact_lookup_boundary": "Strategy selection and execution never become part of exact identifier lookup.",
+    "schema_scope": "structural-envelope",
+    "kind_specific_doctrine_authority": "rust::canon::strategy::types::StrategyDefinition::validate",
+    "kind_specific_doctrine_boundary": "JSON Schema constrains the tagged structural envelope and selected cross-kind invariants, while Rust validation remains authoritative for kind-specific capability, execution, audit-fixture, and promotion doctrine.",
     "typed_kinds": [
       "identity-evidence",
       "record-linkage",

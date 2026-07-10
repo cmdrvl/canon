@@ -1,0 +1,669 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.evaluation.corpus.v1.schema.json",
+  "title": "canon.evaluation.corpus.v1",
+  "description": "Generic domain-owned gold corpus and hard-negative evaluation contract. The manifest carries only deterministic references, digests, labels, partitions, adjudication confidence, provenance, license, and redaction metadata so operators can evaluate private or public corpora without checking raw content into Canon.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "corpus_id",
+    "corpus_version",
+    "provenance",
+    "licenses",
+    "redaction_classes",
+    "execution_policy",
+    "datasets",
+    "observations",
+    "adjudications",
+    "cluster_labels",
+    "cross_dataset_pairs",
+    "identifiers",
+    "hard_negatives",
+    "relationships",
+    "assignments",
+    "temporal_changes"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon.evaluation.corpus.v1"
+    },
+    "corpus_id": {
+      "$ref": "#/$defs/package_id"
+    },
+    "corpus_version": {
+      "$ref": "#/$defs/semver"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "licenses": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/license_grant"
+      }
+    },
+    "redaction_classes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/redaction_class"
+      }
+    },
+    "execution_policy": {
+      "$ref": "#/$defs/execution_policy"
+    },
+    "datasets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/dataset"
+      }
+    },
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/observation"
+      }
+    },
+    "adjudications": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/adjudication"
+      }
+    },
+    "cluster_labels": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/cluster_label"
+      }
+    },
+    "cross_dataset_pairs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/cross_dataset_pair"
+      }
+    },
+    "identifiers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/identifier_label"
+      }
+    },
+    "hard_negatives": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/hard_negative"
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/relationship_label"
+      }
+    },
+    "assignments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/assignment_label"
+      }
+    },
+    "temporal_changes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/temporal_change_label"
+      }
+    }
+  },
+  "x-canon-contract": {
+    "manifest_shape_shared_across_private_and_public_corpora": true,
+    "raw_corpus_content_in_tree_forbidden": true,
+    "hard_negatives_and_abstentions_first_class": true,
+    "holdout_and_exact_replay_sealed_from_tuning": true,
+    "split_group_leakage_checks_required": true,
+    "exact_replay_partition_required": true,
+    "unknown_ontology_and_role_ids_use_opaque_component_ids": true,
+    "deterministic_metrics_required": true
+  },
+  "$defs": {
+    "package_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "component_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._:-]*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "blake3_hash": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "partition": {
+      "type": "string",
+      "enum": [
+        "train",
+        "tune",
+        "holdout",
+        "exact_replay"
+      ]
+    },
+    "storage_kind": {
+      "type": "string",
+      "enum": [
+        "public_fixture",
+        "private_path_ref",
+        "remote_artifact_ref"
+      ]
+    },
+    "adjudication_decision": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "rejected",
+        "abstain"
+      ]
+    },
+    "pair_disposition": {
+      "type": "string",
+      "enum": [
+        "same_entity",
+        "distinct_entity",
+        "related_entity",
+        "abstain"
+      ]
+    },
+    "hard_negative_severity": {
+      "type": "string",
+      "enum": [
+        "low",
+        "high",
+        "critical"
+      ]
+    },
+    "relationship_disposition": {
+      "type": "string",
+      "enum": [
+        "present",
+        "absent",
+        "uncertain"
+      ]
+    },
+    "temporal_disposition": {
+      "type": "string",
+      "enum": [
+        "stable",
+        "changed",
+        "ended",
+        "uncertain"
+      ]
+    },
+    "component_list": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/component_id"
+      },
+      "uniqueItems": true
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_locator",
+        "source_snapshot_locator",
+        "source_snapshot_digest",
+        "generated_at",
+        "exact_replay_runner_ref"
+      ],
+      "properties": {
+        "manifest_locator": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "source_snapshot_locator": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "source_snapshot_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        },
+        "generated_at": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "exact_replay_runner_ref": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "license_grant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "license_id",
+        "license_expression",
+        "redistributable",
+        "attribution_required",
+        "usage_notice"
+      ],
+      "properties": {
+        "license_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "license_expression": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "redistributable": {
+          "type": "boolean"
+        },
+        "attribution_required": {
+          "type": "boolean"
+        },
+        "usage_notice": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "redaction_class": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "redaction_id",
+        "raw_content_retained",
+        "export_surface_fingerprints_only",
+        "private_path_allowed"
+      ],
+      "properties": {
+        "redaction_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "raw_content_retained": {
+          "type": "boolean"
+        },
+        "export_surface_fingerprints_only": {
+          "type": "boolean"
+        },
+        "private_path_allowed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "execution_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tuning_partitions",
+        "scoring_partitions",
+        "holdout_labels_sealed_from_tuning",
+        "exact_replay_partition_separate"
+      ],
+      "properties": {
+        "tuning_partitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/partition"
+          },
+          "uniqueItems": true
+        },
+        "scoring_partitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/partition"
+          },
+          "uniqueItems": true
+        },
+        "holdout_labels_sealed_from_tuning": {
+          "type": "boolean"
+        },
+        "exact_replay_partition_separate": {
+          "type": "boolean"
+        }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dataset_id",
+        "partition",
+        "storage_kind",
+        "source_locator",
+        "content_digest",
+        "license_id",
+        "redaction_id"
+      ],
+      "properties": {
+        "dataset_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "partition": {
+          "$ref": "#/$defs/partition"
+        },
+        "storage_kind": {
+          "$ref": "#/$defs/storage_kind"
+        },
+        "source_locator": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "content_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        },
+        "license_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "redaction_id": {
+          "$ref": "#/$defs/component_id"
+        }
+      }
+    },
+    "observation_locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "locator",
+        "content_digest"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "csv_row",
+            "json_pointer",
+            "opaque_record_ref"
+          ]
+        },
+        "locator": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "content_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observation_id",
+        "dataset_id",
+        "subject_key",
+        "split_group_id",
+        "surface_fingerprint",
+        "locator"
+      ],
+      "properties": {
+        "observation_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "dataset_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "subject_key": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "split_group_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "surface_fingerprint": {
+          "$ref": "#/$defs/blake3_hash"
+        },
+        "locator": {
+          "$ref": "#/$defs/observation_locator"
+        },
+        "observed_at": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "adjudication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adjudication_id",
+        "decision",
+        "confidence_basis_points",
+        "reviewer_set_digest",
+        "note_digest"
+      ],
+      "properties": {
+        "adjudication_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "decision": {
+          "$ref": "#/$defs/adjudication_decision"
+        },
+        "confidence_basis_points": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "reviewer_set_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        },
+        "note_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        }
+      }
+    },
+    "cluster_label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cluster_id",
+        "observation_ids",
+        "adjudication_ref"
+      ],
+      "properties": {
+        "cluster_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "observation_ids": {
+          "$ref": "#/$defs/component_list"
+        },
+        "adjudication_ref": {
+          "$ref": "#/$defs/component_id"
+        }
+      }
+    },
+    "cross_dataset_pair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pair_id",
+        "left_observation_id",
+        "right_observation_id",
+        "disposition",
+        "adjudication_ref"
+      ],
+      "properties": {
+        "pair_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "left_observation_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "right_observation_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "disposition": {
+          "$ref": "#/$defs/pair_disposition"
+        },
+        "adjudication_ref": {
+          "$ref": "#/$defs/component_id"
+        }
+      }
+    },
+    "identifier_label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identifier_id",
+        "observation_id",
+        "namespace_id",
+        "value_fingerprint",
+        "adjudication_ref"
+      ],
+      "properties": {
+        "identifier_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "observation_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "namespace_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "value_fingerprint": {
+          "$ref": "#/$defs/blake3_hash"
+        },
+        "adjudication_ref": {
+          "$ref": "#/$defs/component_id"
+        }
+      }
+    },
+    "hard_negative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hard_negative_id",
+        "left_observation_id",
+        "right_observation_id",
+        "severity",
+        "reason_code",
+        "adjudication_ref"
+      ],
+      "properties": {
+        "hard_negative_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "left_observation_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "right_observation_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "severity": {
+          "$ref": "#/$defs/hard_negative_severity"
+        },
+        "reason_code": {
+          "$ref": "#/$defs/component_id"
+        },
+        "adjudication_ref": {
+          "$ref": "#/$defs/component_id"
+        }
+      }
+    },
+    "relationship_label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relationship_id",
+        "left_observation_id",
+        "right_observation_id",
+        "ontology_id",
+        "role_id",
+        "disposition",
+        "adjudication_ref"
+      ],
+      "properties": {
+        "relationship_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "left_observation_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "right_observation_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "ontology_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "role_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "disposition": {
+          "$ref": "#/$defs/relationship_disposition"
+        },
+        "adjudication_ref": {
+          "$ref": "#/$defs/component_id"
+        }
+      }
+    },
+    "assignment_label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assignment_id",
+        "observation_id",
+        "assignee_key",
+        "ontology_id",
+        "role_id",
+        "adjudication_ref"
+      ],
+      "properties": {
+        "assignment_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "observation_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "assignee_key": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "ontology_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "role_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "adjudication_ref": {
+          "$ref": "#/$defs/component_id"
+        }
+      }
+    },
+    "temporal_change_label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "change_id",
+        "previous_observation_id",
+        "next_observation_id",
+        "ontology_id",
+        "change_kind_id",
+        "disposition",
+        "adjudication_ref"
+      ],
+      "properties": {
+        "change_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "previous_observation_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "next_observation_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "ontology_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "change_kind_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "disposition": {
+          "$ref": "#/$defs/temporal_disposition"
+        },
+        "adjudication_ref": {
+          "$ref": "#/$defs/component_id"
+        }
+      }
+    }
+  }
+}

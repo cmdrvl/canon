@@ -1,0 +1,74 @@
+schema_version = "canon.project.v1"
+project_id = "project.synthetic.alpha"
+
+[review]
+cannot_link_max_score_basis_points = 3000
+review_required_min_score_basis_points = 7000
+auto_promote_min_score_basis_points = 9500
+
+[temporal]
+valid_at = "2026-07-10T00:00:00Z"
+known_as_of = "2026-07-09T00:00:00Z"
+
+[budgets]
+max_input_bytes = 1048576
+max_rows = 50000
+max_candidates = 5000
+max_review_items = 1000
+max_runtime_seconds = 600
+
+[runtime]
+offline_build_only = true
+network_policy = "deny_all"
+declared_hosts = []
+
+[[packages]]
+alias = "registry"
+kind = "registry_package"
+id = "pkg.synthetic.registry"
+version = "1.0.0"
+content_hash = "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+[[packages]]
+alias = "strategy"
+kind = "strategy_package"
+id = "pkg.synthetic.strategy"
+version = "1.0.0"
+content_hash = "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+[[packages]]
+alias = "profile"
+kind = "entity_profile_package"
+id = "pkg.synthetic.profile"
+version = "1.0.0"
+content_hash = "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+[[packages]]
+alias = "mapping"
+kind = "source_mapping_package"
+id = "pkg.synthetic.mapping"
+version = "1.0.0"
+content_hash = "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+
+[[sources]]
+source_id = "source_alpha"
+path = "input/minimal.csv"
+format = "csv"
+mapping_package = "mapping"
+mapping_profile = "pkg.synthetic:contacts"
+required = true
+
+[[outputs]]
+output_id = "summary"
+kind = "summary_json"
+path = "out/summary.json"
+redact_identity = false
+
+[[modes]]
+mode_id = "cluster_default"
+kind = "cluster"
+source_ids = ["source_alpha"]
+registry_package = "registry"
+strategy_package = "strategy"
+profile_package = "profile"
+output_ids = ["summary"]

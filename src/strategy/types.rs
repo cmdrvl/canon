@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, error::Error, fmt};
 
+pub const STRATEGY_SCHEMA_SCOPE: &str = "structural-envelope";
+pub const STRATEGY_KIND_DOCTRINE_AUTHORITY: &str =
+    "rust::canon::strategy::types::StrategyDefinition::validate";
+
 pub fn strategy_schema_version() -> &'static str {
     concat!("canon.strategy", ".v1")
 }

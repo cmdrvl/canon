@@ -1,0 +1,456 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.project.v1.schema.json",
+  "title": "canon.project.v1",
+  "description": "Declarative Canon project manifest boundary. A project names explicit sources, pinned packages, cluster or link modes, outputs, review thresholds, temporal scope, resource budgets, network policy, secret handles, and opaque extension activations without embedding executable behavior or ambient configuration discovery.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "packages",
+    "sources",
+    "modes",
+    "outputs",
+    "review",
+    "temporal",
+    "budgets",
+    "runtime"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "canon.project.v1"
+    },
+    "project_id": {
+      "$ref": "#/$defs/package_id"
+    },
+    "packages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/package_binding"
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/source_declaration"
+      }
+    },
+    "modes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/execution_mode"
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/output_declaration"
+      }
+    },
+    "review": {
+      "$ref": "#/$defs/review_thresholds"
+    },
+    "temporal": {
+      "$ref": "#/$defs/temporal_scope"
+    },
+    "budgets": {
+      "$ref": "#/$defs/resource_budgets"
+    },
+    "runtime": {
+      "$ref": "#/$defs/runtime_policy"
+    },
+    "secrets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/secret_handle"
+      }
+    },
+    "extensions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/extension_activation"
+      }
+    }
+  },
+  "x-canon-contract": {
+    "declarative_only": true,
+    "paths_resolve_relative_to_manifest": true,
+    "ambient_configuration_forbidden": true,
+    "secret_handles_only": true,
+    "unknown_extensions_supported": true,
+    "precedence_rules": [
+      "package aliases are the only package indirection surface",
+      "relative paths resolve against the manifest location",
+      "mode output_ids are explicit and never discovered from the filesystem",
+      "resource budgets are project-local and cannot be silently overridden"
+    ]
+  },
+  "$defs": {
+    "package_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "opaque_ref": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*:[a-z0-9][a-z0-9._-]*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "blake3_hash": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-fA-F]{64}$"
+    },
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "allOf": [
+        {
+          "not": {
+            "pattern": "(^/|^[A-Za-z]:|\\\\|(^|/)\\.\\.(/|$))"
+          }
+        }
+      ]
+    },
+    "package_kind": {
+      "type": "string",
+      "enum": [
+        "registry_package",
+        "strategy_package",
+        "entity_profile_package",
+        "source_mapping_package",
+        "extension_package"
+      ]
+    },
+    "source_format": {
+      "type": "string",
+      "enum": [
+        "csv",
+        "tsv",
+        "jsonl",
+        "parquet"
+      ]
+    },
+    "mode_kind": {
+      "type": "string",
+      "enum": [
+        "cluster",
+        "link"
+      ]
+    },
+    "output_kind": {
+      "type": "string",
+      "enum": [
+        "summary_json",
+        "review_queue_csv",
+        "registry_snapshot_json",
+        "artifact_bundle_dir",
+        "diagnostics_jsonl"
+      ]
+    },
+    "network_policy": {
+      "type": "string",
+      "enum": [
+        "deny_all",
+        "allow_declared_hosts"
+      ]
+    },
+    "secret_handle_ref": {
+      "type": "string",
+      "pattern": "^(env:|keyring:|op://|aws-sm://|gcp-sm://).+$"
+    },
+    "package_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "alias",
+        "kind",
+        "id",
+        "version",
+        "content_hash"
+      ],
+      "properties": {
+        "alias": {
+          "$ref": "#/$defs/package_id"
+        },
+        "kind": {
+          "$ref": "#/$defs/package_kind"
+        },
+        "id": {
+          "$ref": "#/$defs/package_id"
+        },
+        "version": {
+          "$ref": "#/$defs/semver"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/blake3_hash"
+        }
+      }
+    },
+    "source_declaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "path",
+        "format",
+        "mapping_package",
+        "mapping_profile",
+        "required"
+      ],
+      "properties": {
+        "source_id": {
+          "$ref": "#/$defs/package_id"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "format": {
+          "$ref": "#/$defs/source_format"
+        },
+        "mapping_package": {
+          "$ref": "#/$defs/package_id"
+        },
+        "mapping_profile": {
+          "$ref": "#/$defs/opaque_ref"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "execution_mode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode_id",
+        "kind",
+        "source_ids",
+        "registry_package",
+        "strategy_package",
+        "profile_package",
+        "output_ids"
+      ],
+      "properties": {
+        "mode_id": {
+          "$ref": "#/$defs/package_id"
+        },
+        "kind": {
+          "$ref": "#/$defs/mode_kind"
+        },
+        "source_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/package_id"
+          },
+          "uniqueItems": true
+        },
+        "registry_package": {
+          "$ref": "#/$defs/package_id"
+        },
+        "strategy_package": {
+          "$ref": "#/$defs/package_id"
+        },
+        "profile_package": {
+          "$ref": "#/$defs/package_id"
+        },
+        "output_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/package_id"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "output_declaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "output_id",
+        "kind",
+        "path",
+        "redact_identity"
+      ],
+      "properties": {
+        "output_id": {
+          "$ref": "#/$defs/package_id"
+        },
+        "kind": {
+          "$ref": "#/$defs/output_kind"
+        },
+        "path": {
+          "$ref": "#/$defs/relative_path"
+        },
+        "redact_identity": {
+          "type": "boolean"
+        }
+      }
+    },
+    "review_thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cannot_link_max_score_basis_points",
+        "review_required_min_score_basis_points",
+        "auto_promote_min_score_basis_points"
+      ],
+      "properties": {
+        "cannot_link_max_score_basis_points": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "review_required_min_score_basis_points": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "auto_promote_min_score_basis_points": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      }
+    },
+    "temporal_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "valid_at",
+        "known_as_of"
+      ],
+      "properties": {
+        "valid_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "known_as_of": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope_ref": {
+          "$ref": "#/$defs/opaque_ref"
+        }
+      }
+    },
+    "resource_budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_input_bytes",
+        "max_rows",
+        "max_candidates",
+        "max_review_items",
+        "max_runtime_seconds"
+      ],
+      "properties": {
+        "max_input_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_candidates": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_review_items": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_runtime_seconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "runtime_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "offline_build_only",
+        "network_policy",
+        "declared_hosts"
+      ],
+      "properties": {
+        "offline_build_only": {
+          "type": "boolean"
+        },
+        "network_policy": {
+          "$ref": "#/$defs/network_policy"
+        },
+        "declared_hosts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "secret_handle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "handle",
+        "purpose"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/package_id"
+        },
+        "handle": {
+          "$ref": "#/$defs/secret_handle_ref"
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "extension_activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "extension_id",
+        "package",
+        "entrypoint",
+        "mode_ids"
+      ],
+      "properties": {
+        "extension_id": {
+          "$ref": "#/$defs/package_id"
+        },
+        "package": {
+          "$ref": "#/$defs/package_id"
+        },
+        "entrypoint": {
+          "$ref": "#/$defs/opaque_ref"
+        },
+        "mode_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/package_id"
+          },
+          "uniqueItems": true
+        },
+        "config_path": {
+          "$ref": "#/$defs/relative_path"
+        }
+      }
+    }
+  }
+}
