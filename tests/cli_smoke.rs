@@ -1530,43 +1530,52 @@ fn test_strategy_audit_cli_produces_register_compatible_proof() {
             "--suite",
             suite_dir.to_str().unwrap(),
         ])
-        .assert()
-        .success();
-    let audit_stdout = String::from_utf8(audit.get_output().stdout.clone()).unwrap();
-    let audit_json: Value = serde_json::from_str(&audit_stdout).unwrap();
-    assert_eq!(audit_json["version"], "canon_strategy_audit.v0");
-    assert_eq!(audit_json["passed"], true);
-    assert_eq!(audit_json["decision"], "PROCEED");
-    assert_eq!(audit_json["sealed"], true);
-    std::fs::write(&audit_path, audit_stdout).unwrap();
+        .assert();
 
-    Command::new(env!("CARGO_BIN_EXE_canon"))
-        .args([
-            "strategy",
-            "register",
-            "--registry",
-            registry_dir.path().to_str().unwrap(),
-            "--schema",
-            schema_path.to_str().unwrap(),
-            "--skill",
-            skill_path.to_str().unwrap(),
-            "--script",
-            script_path.to_str().unwrap(),
-            "--script-id",
-            "audited-script.v1",
-            "--language",
-            "sh",
-            "--verify",
-            audit_path.to_str().unwrap(),
-            "--assess",
-            audit_path.to_str().unwrap(),
-            "--airlock",
-            audit_path.to_str().unwrap(),
-            "--next-version",
-            "0.2.0",
-        ])
-        .assert()
-        .success();
+    if cfg!(target_os = "macos") {
+        let audit = audit.success();
+        let audit_stdout = String::from_utf8(audit.get_output().stdout.clone()).unwrap();
+        let audit_json: Value = serde_json::from_str(&audit_stdout).unwrap();
+        assert_eq!(audit_json["version"], "canon_strategy_audit.v0");
+        assert_eq!(audit_json["passed"], true);
+        assert_eq!(audit_json["decision"], "PROCEED");
+        assert_eq!(audit_json["sealed"], true);
+        std::fs::write(&audit_path, audit_stdout).unwrap();
+
+        Command::new(env!("CARGO_BIN_EXE_canon"))
+            .args([
+                "strategy",
+                "register",
+                "--registry",
+                registry_dir.path().to_str().unwrap(),
+                "--schema",
+                schema_path.to_str().unwrap(),
+                "--skill",
+                skill_path.to_str().unwrap(),
+                "--script",
+                script_path.to_str().unwrap(),
+                "--script-id",
+                "audited-script.v1",
+                "--language",
+                "sh",
+                "--verify",
+                audit_path.to_str().unwrap(),
+                "--assess",
+                audit_path.to_str().unwrap(),
+                "--airlock",
+                audit_path.to_str().unwrap(),
+                "--next-version",
+                "0.2.0",
+            ])
+            .assert()
+            .success();
+    } else {
+        let audit = audit.code(2);
+        let audit_stdout = String::from_utf8(audit.get_output().stdout.clone()).unwrap();
+        let audit_json: Value = serde_json::from_str(&audit_stdout).unwrap();
+        assert_eq!(audit_json["outcome"], "REFUSAL");
+        assert_eq!(audit_json["refusal"]["code"], "E_STRATEGY_INPUT_CONTRACT");
+    }
 }
 
 #[test]

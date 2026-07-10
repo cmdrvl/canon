@@ -377,7 +377,49 @@
       "access_boundary": "public_crate_api",
       "crate_module": "canon::temporal"
     },
+    {
+      "id": "canon.identity.fact.package.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/distribution/oci.rs"
+    },
     { "id": "canon.identity.scope.v1", "family": "identity", "action": "preserve" },
+    {
+      "id": "canon.promotion.attestation.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/distribution/oci.rs"
+    },
+    {
+      "id": "canon.review.attestation.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/distribution/oci.rs"
+    },
+    {
+      "id": "canon.temporal.alias.v1",
+      "family": "temporal",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/temporal/alias.rs"
+    },
+    {
+      "id": "canon.temporal.conflict_artifact.v1",
+      "family": "temporal",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/temporal/conflict.rs"
+    },
+    {
+      "id": "canon.temporal.conflict_policy.v1",
+      "family": "temporal",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/temporal/conflict.rs"
+    },
     {
       "id": "canon.unresolved.inbox.v1",
       "family": "inbox",
@@ -455,6 +497,13 @@
     { "id": "canon_registry_next_id.v0", "family": "registry", "action": "preserve" },
     { "id": "canon.registry_index.v1", "family": "registry", "action": "preserve" },
     { "id": "canon.registry.package.v1", "family": "registry", "action": "preserve" },
+    {
+      "id": "canon.strategy.package.v1",
+      "family": "strategy",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/distribution/oci.rs"
+    },
     { "id": "canon_registry_provider_schema.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_providers.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_search_index.v0", "family": "registry", "action": "preserve" },
@@ -468,7 +517,14 @@
     { "id": "canon_strategy_list.v0", "family": "strategy", "action": "preserve" },
     { "id": "canon_strategy_profile.v0", "family": "strategy", "action": "preserve" },
     { "id": "canon_strategy_register.v0", "family": "strategy", "action": "preserve" },
-    { "id": "canon_strategy_resolve.v0", "family": "strategy", "action": "preserve" }
+    { "id": "canon_strategy_resolve.v0", "family": "strategy", "action": "preserve" },
+    {
+      "id": "canon_strategy_runner.darwin.v1",
+      "family": "strategy",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/strategy/runner.rs"
+    }
   ],
   "incompatibility_rows": [
     {

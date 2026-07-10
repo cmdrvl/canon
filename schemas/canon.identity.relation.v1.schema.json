@@ -1,0 +1,342 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.identity.relation.v1.schema.json",
+  "title": "canon.identity.relation.v1",
+  "description": "Generic directed relationship facts for hierarchy, role, succession, and related-context edges. These edges carry provenance, validity intervals, policy-driven graph constraints, and review state, but they never become aliases solely because records are connected. Identity implication defaults to none; equality requires a separate identity fact.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "relation_id",
+    "edge_key",
+    "subject",
+    "relation",
+    "object",
+    "valid_time",
+    "provenance",
+    "policy_ref",
+    "constraints",
+    "identity_implication",
+    "review"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon.identity.relation.v1"
+    },
+    "relation_id": {
+      "$ref": "#/$defs/blake3_hash"
+    },
+    "edge_key": {
+      "$ref": "#/$defs/blake3_hash"
+    },
+    "subject": {
+      "$ref": "#/$defs/relation_endpoint"
+    },
+    "relation": {
+      "$ref": "#/$defs/relation_kind_ref"
+    },
+    "object": {
+      "$ref": "#/$defs/relation_endpoint"
+    },
+    "valid_time": {
+      "$ref": "#/$defs/time_interval"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "policy_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "constraints": {
+      "$ref": "#/$defs/cardinality_constraints"
+    },
+    "identity_implication": {
+      "$ref": "#/$defs/identity_implication"
+    },
+    "review": {
+      "$ref": "#/$defs/relation_review"
+    }
+  },
+  "x-canon-contract": {
+    "identity_implication_default": "none",
+    "same_as_boundary": "Relationship edges are not equality facts. Equality, alias creation, and exact lookup changes require a separate identity fact.",
+    "review_concepts": [
+      "same",
+      "distinct",
+      "related",
+      "uncertain"
+    ],
+    "policy_driven_constraints": [
+      "max_objects_per_subject",
+      "max_subjects_per_object",
+      "overlap_policy",
+      "cycle_policy"
+    ]
+  },
+  "$defs": {
+    "blake3_hash": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "rfc3339_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "interval_boundary": {
+      "type": "string",
+      "enum": [
+        "inclusive",
+        "exclusive",
+        "open"
+      ]
+    },
+    "extension_vocabulary_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "package_digest",
+        "vocabulary",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "const": "extension"
+        },
+        "package_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        },
+        "vocabulary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "core_entity_type_class": {
+      "type": "string",
+      "enum": [
+        "account",
+        "asset",
+        "document",
+        "event",
+        "instrument",
+        "location",
+        "organization",
+        "person",
+        "process"
+      ]
+    },
+    "core_relation_class": {
+      "type": "string",
+      "enum": [
+        "hierarchy",
+        "role",
+        "succession",
+        "association"
+      ]
+    },
+    "entity_type_ref": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "class"
+          ],
+          "properties": {
+            "kind": {
+              "const": "core"
+            },
+            "class": {
+              "$ref": "#/$defs/core_entity_type_class"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/extension_vocabulary_ref"
+        }
+      ]
+    },
+    "relation_kind_ref": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "class"
+          ],
+          "properties": {
+            "kind": {
+              "const": "core"
+            },
+            "class": {
+              "$ref": "#/$defs/core_relation_class"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/extension_vocabulary_ref"
+        }
+      ]
+    },
+    "relation_endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity_id",
+        "entity_type"
+      ],
+      "properties": {
+        "identity_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entity_type": {
+          "$ref": "#/$defs/entity_type_ref"
+        }
+      }
+    },
+    "time_interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start_bound",
+        "end_bound"
+      ],
+      "properties": {
+        "start_at": {
+          "$ref": "#/$defs/rfc3339_timestamp"
+        },
+        "start_bound": {
+          "$ref": "#/$defs/interval_boundary"
+        },
+        "end_at": {
+          "$ref": "#/$defs/rfc3339_timestamp"
+        },
+        "end_bound": {
+          "$ref": "#/$defs/interval_boundary"
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_system",
+        "locator"
+      ],
+      "properties": {
+        "source_system": {
+          "type": "string",
+          "minLength": 1
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fragment": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observed_at": {
+          "$ref": "#/$defs/rfc3339_timestamp"
+        }
+      }
+    },
+    "cycle_policy": {
+      "type": "string",
+      "enum": [
+        "allow_directed_cycle",
+        "disallow_directed_cycle",
+        "review_directed_cycle"
+      ]
+    },
+    "overlap_policy": {
+      "type": "string",
+      "enum": [
+        "allow_overlapping_targets",
+        "disallow_overlapping_targets",
+        "review_overlapping_targets"
+      ]
+    },
+    "cardinality_constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "overlap_policy",
+        "cycle_policy"
+      ],
+      "properties": {
+        "max_objects_per_subject": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_subjects_per_object": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "overlap_policy": {
+          "$ref": "#/$defs/overlap_policy"
+        },
+        "cycle_policy": {
+          "$ref": "#/$defs/cycle_policy"
+        }
+      }
+    },
+    "identity_implication_mode": {
+      "type": "string",
+      "enum": [
+        "none",
+        "supported_by_separate_equality_fact"
+      ]
+    },
+    "identity_implication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/identity_implication_mode"
+        },
+        "equality_fact_ref": {
+          "$ref": "#/$defs/blake3_hash"
+        }
+      }
+    },
+    "review_disposition": {
+      "type": "string",
+      "enum": [
+        "same",
+        "distinct",
+        "related",
+        "uncertain"
+      ]
+    },
+    "relation_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "disposition",
+        "reason_code"
+      ],
+      "properties": {
+        "disposition": {
+          "$ref": "#/$defs/review_disposition"
+        },
+        "reason_code": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
