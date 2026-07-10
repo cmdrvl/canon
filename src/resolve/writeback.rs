@@ -114,6 +114,7 @@ pub fn write_back_matches(request: WriteBackRequest<'_>) -> ResolveResult<WriteB
         )
     })?;
 
+    sync_registry_entry_count(request.registry_dir)?;
     append_entries_to_index(&registry, &mapping_file, &entries)?;
 
     // Re-open through the normal registry loader so the derived SQLite index is
@@ -353,6 +354,163 @@ fn default_mapping_file_name() -> String {
     format!("resolve-matches-{}.json", Utc::now().format("%Y%m%d"))
 }
 
+fn sync_registry_entry_count(registry_dir: &Path) -> ResolveResult<()> {
+    let registry_path = registry_dir.join("registry.json");
+    let bytes = fs::read(&registry_path).map_err(|error| {
+        writeback_error(
+            format!(
+                "Failed to read registry metadata '{}' during resolve write-back: {}",
+                registry_path.display(),
+                error
+            ),
+            json!({
+                "registry_json": registry_path.display().to_string(),
+                "error": error.to_string()
+            }),
+        )
+    })?;
+
+    let mut value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
+        writeback_error(
+            format!(
+                "Failed to parse registry metadata '{}' during resolve write-back: {}",
+                registry_path.display(),
+                error
+            ),
+            json!({
+                "registry_json": registry_path.display().to_string(),
+                "error": error.to_string()
+            }),
+        )
+    })?;
+
+    let entry_count = registry_entry_count(registry_dir)?;
+    let object = value.as_object_mut().ok_or_else(|| {
+        writeback_error(
+            format!(
+                "Registry metadata '{}' must be a JSON object",
+                registry_path.display()
+            ),
+            json!({ "registry_json": registry_path.display().to_string() }),
+        )
+    })?;
+    object.insert("entry_count".to_string(), json!(entry_count));
+
+    let bytes = serde_json::to_vec_pretty(&value).map_err(|error| {
+        writeback_error(
+            format!(
+                "Failed to serialize registry metadata '{}' during resolve write-back: {}",
+                registry_path.display(),
+                error
+            ),
+            json!({
+                "registry_json": registry_path.display().to_string(),
+                "error": error.to_string()
+            }),
+        )
+    })?;
+    fs::write(&registry_path, bytes).map_err(|error| {
+        writeback_error(
+            format!(
+                "Failed to update registry metadata '{}' during resolve write-back: {}",
+                registry_path.display(),
+                error
+            ),
+            json!({
+                "registry_json": registry_path.display().to_string(),
+                "error": error.to_string()
+            }),
+        )
+    })?;
+
+    Ok(())
+}
+
+fn registry_entry_count(registry_dir: &Path) -> ResolveResult<usize> {
+    let mut total = 0usize;
+    let entries = fs::read_dir(registry_dir).map_err(|error| {
+        writeback_error(
+            format!(
+                "Failed to read registry directory '{}' during resolve write-back: {}",
+                registry_dir.display(),
+                error
+            ),
+            json!({
+                "registry": registry_dir.display().to_string(),
+                "error": error.to_string()
+            }),
+        )
+    })?;
+
+    for entry in entries {
+        let path = entry
+            .map_err(|error| {
+                writeback_error(
+                    format!(
+                        "Failed to enumerate registry directory '{}' during resolve write-back: {}",
+                        registry_dir.display(),
+                        error
+                    ),
+                    json!({
+                        "registry": registry_dir.display().to_string(),
+                        "error": error.to_string()
+                    }),
+                )
+            })?
+            .path();
+
+        if !path.is_file() {
+            continue;
+        }
+
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !file_name.ends_with(".json") || matches!(file_name, "registry.json" | "_build.json") {
+            continue;
+        }
+
+        let bytes = fs::read(&path).map_err(|error| {
+            writeback_error(
+                format!(
+                    "Failed to read mapping file '{}' during resolve write-back: {}",
+                    path.display(),
+                    error
+                ),
+                json!({
+                    "mapping_file": path.display().to_string(),
+                    "error": error.to_string()
+                }),
+            )
+        })?;
+        let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
+            writeback_error(
+                format!(
+                    "Failed to parse mapping file '{}' during resolve write-back: {}",
+                    path.display(),
+                    error
+                ),
+                json!({
+                    "mapping_file": path.display().to_string(),
+                    "error": error.to_string()
+                }),
+            )
+        })?;
+        let array = value.as_array().ok_or_else(|| {
+            writeback_error(
+                format!(
+                    "Mapping file '{}' must contain a JSON array",
+                    path.display()
+                ),
+                json!({ "mapping_file": path.display().to_string() }),
+            )
+        })?;
+        total += array.len();
+    }
+
+    Ok(total)
+}
+
 fn validate_mapping_file_name(file_name: &str) -> ResolveResult<()> {
     let path = Path::new(file_name);
     if path.components().count() != 1
@@ -429,16 +587,18 @@ mod tests {
         }
     }
 
-    fn write_registry_json(path: &Path) {
+    fn write_registry_json(path: &Path, entry_count: usize) {
         std::fs::write(
             path.join("registry.json"),
-            r#"{
+            format!(
+                r#"{{
   "id": "resolve-loans",
   "version": "0.1.0",
   "description": "Resolve write-back test registry",
   "updated": "2026-05-06",
-  "entry_count": 0
-}"#,
+  "entry_count": {entry_count}
+}}"#
+            ),
         )
         .unwrap();
     }
@@ -453,7 +613,8 @@ mod tests {
 
     fn temp_registry(existing_entries: serde_json::Value) -> TempDir {
         let temp_dir = tempfile::tempdir().unwrap();
-        write_registry_json(temp_dir.path());
+        let entry_count = existing_entries.as_array().unwrap().len();
+        write_registry_json(temp_dir.path(), entry_count);
         if !existing_entries.as_array().unwrap().is_empty() {
             write_mapping(temp_dir.path(), "existing.json", existing_entries);
         }

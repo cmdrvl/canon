@@ -5,9 +5,13 @@
 //! not perform matching, candidate generation, or promotion.
 
 use crate::Refusal;
-use crate::entity::{EntityPatchNamespaces, EntityProfileReference, error::EntityRefusalKind};
+use crate::entity::{
+    EntityContractKind, EntityGovernanceContractSlice, EntityPatchNamespaces,
+    EntityProfileReference, EntityTypedReference, error::EntityRefusalKind,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use serde_yaml::Value as YamlValue;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -34,7 +38,15 @@ pub struct EntityProfileDocument {
 
 impl EntityProfileDocument {
     pub fn from_yaml_str(input: &str) -> Result<Self, EntityProfileError> {
-        let profile = serde_yaml::from_str::<Self>(input).map_err(|error| {
+        let value = serde_yaml::from_str::<YamlValue>(input).map_err(|error| {
+            EntityProfileError::new(
+                EntityRefusalKind::Profile,
+                "Entity profile YAML is malformed",
+                json!({ "error": error.to_string() }),
+            )
+        })?;
+        ensure_entity_profile_kind(&value)?;
+        let profile = serde_yaml::from_value::<Self>(value).map_err(|error| {
             EntityProfileError::new(
                 EntityRefusalKind::Profile,
                 "Entity profile YAML is malformed",
@@ -256,6 +268,67 @@ impl EntityProfileDocument {
                 ));
             }
         }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityProfileContractEnvelope {
+    pub kind: EntityContractKind,
+    #[serde(flatten)]
+    pub profile: EntityProfileDocument,
+    pub evidence_policy: EntityTypedReference,
+    pub review_policy: EntityTypedReference,
+    pub promotion_policy: EntityTypedReference,
+    pub frozen_executable_strategy: EntityTypedReference,
+}
+
+impl EntityProfileContractEnvelope {
+    pub fn from_yaml_str(input: &str) -> Result<Self, EntityProfileError> {
+        let value = serde_yaml::from_str::<YamlValue>(input).map_err(|error| {
+            EntityProfileError::new(
+                EntityRefusalKind::Profile,
+                "Entity profile YAML is malformed",
+                json!({ "error": error.to_string() }),
+            )
+        })?;
+        ensure_entity_profile_kind(&value)?;
+        let envelope = serde_yaml::from_value::<Self>(value).map_err(|error| {
+            EntityProfileError::new(
+                EntityRefusalKind::Profile,
+                "Entity profile YAML is malformed",
+                json!({ "error": error.to_string() }),
+            )
+        })?;
+        envelope.validate()?;
+        Ok(envelope)
+    }
+
+    pub fn validate(&self) -> Result<(), EntityProfileError> {
+        if self.kind != EntityContractKind::EntityProfile {
+            return Err(wrong_contract_kind(
+                EntityRefusalKind::Profile,
+                EntityContractKind::EntityProfile,
+                self.kind,
+            ));
+        }
+        self.profile.validate()?;
+        ensure_complete_reference(
+            "evidence_policy",
+            &self.evidence_policy,
+            EntityContractKind::EvidencePolicy,
+        )?;
+        ensure_complete_reference(
+            "frozen_executable_strategy",
+            &self.frozen_executable_strategy,
+            EntityContractKind::FrozenExecutableStrategy,
+        )?;
+        EntityGovernanceContractSlice {
+            review_policy: self.review_policy.clone(),
+            promotion_policy: self.promotion_policy.clone(),
+        }
+        .validate()
+        .map_err(map_typed_contract_error)?;
         Ok(())
     }
 }
@@ -604,6 +677,123 @@ fn unsupported_operator(lane: &str, op: &str) -> EntityProfileError {
             "lane": lane,
             "operator": op,
             "next_command": "Run strategy lint/doctor and replace the unsupported operator"
+        }),
+    )
+}
+
+fn ensure_entity_profile_kind(value: &YamlValue) -> Result<(), EntityProfileError> {
+    if let Some(actual_kind) = detect_profile_input_kind(value)
+        && actual_kind != EntityContractKind::EntityProfile
+    {
+        return Err(wrong_contract_kind(
+            EntityRefusalKind::Profile,
+            EntityContractKind::EntityProfile,
+            actual_kind,
+        ));
+    }
+    Ok(())
+}
+
+fn detect_profile_input_kind(value: &YamlValue) -> Option<EntityContractKind> {
+    let mapping = value.as_mapping()?;
+    if let Some(kind) = mapping
+        .get(YamlValue::String("kind".to_string()))
+        .and_then(YamlValue::as_str)
+    {
+        return parse_contract_kind(kind);
+    }
+
+    let has_profile_shape = mapping.contains_key(YamlValue::String("profile".to_string()))
+        || mapping.contains_key(YamlValue::String("normalized_views".to_string()))
+        || mapping.contains_key(YamlValue::String("patch_namespaces".to_string()));
+    if has_profile_shape {
+        return Some(EntityContractKind::EntityProfile);
+    }
+
+    let looks_like_legacy_linkage = mapping.contains_key(YamlValue::String("strategy_id".into()))
+        || mapping.contains_key(YamlValue::String("identity".into()))
+        || mapping.contains_key(YamlValue::String("assertions".into()));
+    if looks_like_legacy_linkage {
+        return Some(EntityContractKind::LinkageMap);
+    }
+
+    if mapping.contains_key(YamlValue::String("language".into()))
+        || mapping.contains_key(YamlValue::String("script_id".into()))
+        || mapping.contains_key(YamlValue::String("entrypoint".into()))
+    {
+        return Some(EntityContractKind::FrozenExecutableStrategy);
+    }
+
+    None
+}
+
+fn parse_contract_kind(kind: &str) -> Option<EntityContractKind> {
+    serde_json::from_value(json!(kind)).ok()
+}
+
+fn wrong_contract_kind(
+    refusal_kind: EntityRefusalKind,
+    expected_kind: EntityContractKind,
+    actual_kind: EntityContractKind,
+) -> EntityProfileError {
+    EntityProfileError::new(
+        refusal_kind,
+        "Entity profile loader received the wrong contract kind",
+        json!({
+            "expected_kind": expected_kind,
+            "actual_kind": actual_kind,
+            "recovery": "Pass an entity profile document here and keep linkage maps, policies, and frozen executable strategies on their own typed paths"
+        }),
+    )
+}
+
+fn ensure_complete_reference(
+    field: &str,
+    reference: &EntityTypedReference,
+    expected_kind: EntityContractKind,
+) -> Result<(), EntityProfileError> {
+    if reference.kind != Some(expected_kind) {
+        return Err(EntityProfileError::new(
+            EntityRefusalKind::Profile,
+            "Entity profile contract envelope contains the wrong reference kind",
+            json!({
+                "field": field,
+                "expected_kind": expected_kind,
+                "actual_kind": reference.kind
+            }),
+        ));
+    }
+    if !reference.is_complete_as(expected_kind) {
+        return Err(EntityProfileError::new(
+            EntityRefusalKind::Profile,
+            "Entity profile contract envelope contains an incomplete typed reference",
+            json!({
+                "field": field,
+                "expected_kind": expected_kind,
+                "actual_kind": reference.kind
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn map_typed_contract_error(error: crate::entity::EntityTypedContractError) -> EntityProfileError {
+    let message = match error.code {
+        crate::entity::EntityTypedContractErrorCode::WrongKind => {
+            "Entity profile contract envelope contains the wrong reference kind"
+        }
+        crate::entity::EntityTypedContractErrorCode::IncompleteReference => {
+            "Entity profile contract envelope contains an incomplete typed reference"
+        }
+    };
+
+    EntityProfileError::new(
+        EntityRefusalKind::Profile,
+        message,
+        json!({
+            "field": error.field,
+            "expected_kind": error.expected_kind,
+            "actual_kind": error.actual_kind
         }),
     )
 }

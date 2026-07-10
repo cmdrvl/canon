@@ -1,0 +1,328 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.identity.scope.v1.schema.json",
+  "title": "canon.identity.scope.v1",
+  "description": "Qualified identity references and scope semantics for exact lookup, temporal facts, and compiled snapshots. Type, namespace, and scope prevent accidental reuse across incompatible contexts, and unknown extension vocabularies must be pinned by content-addressed package.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "identifier_value",
+    "canonical_type",
+    "namespace",
+    "scope"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon.identity.scope.v1"
+    },
+    "identifier_value": {
+      "type": "string",
+      "minLength": 1
+    },
+    "canonical_type": {
+      "$ref": "#/$defs/canonical_type_ref"
+    },
+    "namespace": {
+      "$ref": "#/$defs/identifier_namespace_ref"
+    },
+    "scope": {
+      "$ref": "#/$defs/identity_scope"
+    }
+  },
+  "x-canon-contract": {
+    "core_canonical_type_classes": [
+      "account",
+      "asset",
+      "document",
+      "event",
+      "instrument",
+      "location",
+      "organization",
+      "person",
+      "process"
+    ],
+    "core_identifier_namespace_classes": [
+      "canonical_id",
+      "external_global_id",
+      "source_local_id",
+      "dataset_local_id",
+      "alias_surface"
+    ],
+    "core_scope_dimensions": [
+      "dataset",
+      "jurisdiction",
+      "source_system",
+      "profile"
+    ],
+    "compatibility_states": [
+      "equal",
+      "compatible",
+      "requires_explicit_evidence",
+      "incompatible"
+    ]
+  },
+  "$defs": {
+    "blake3_hash": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "extension_vocabulary_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "package_digest",
+        "vocabulary",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "const": "extension"
+        },
+        "package_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        },
+        "vocabulary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "core_canonical_type_class": {
+      "type": "string",
+      "enum": [
+        "account",
+        "asset",
+        "document",
+        "event",
+        "instrument",
+        "location",
+        "organization",
+        "person",
+        "process"
+      ]
+    },
+    "core_identifier_namespace_class": {
+      "type": "string",
+      "enum": [
+        "canonical_id",
+        "external_global_id",
+        "source_local_id",
+        "dataset_local_id",
+        "alias_surface"
+      ]
+    },
+    "core_scope_dimension": {
+      "type": "string",
+      "enum": [
+        "dataset",
+        "jurisdiction",
+        "source_system",
+        "profile"
+      ]
+    },
+    "canonical_type_ref": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "class"
+          ],
+          "properties": {
+            "kind": {
+              "const": "core"
+            },
+            "class": {
+              "$ref": "#/$defs/core_canonical_type_class"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/extension_vocabulary_ref"
+        }
+      ]
+    },
+    "identifier_namespace_ref": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "class"
+          ],
+          "properties": {
+            "kind": {
+              "const": "core"
+            },
+            "class": {
+              "$ref": "#/$defs/core_identifier_namespace_class"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/extension_vocabulary_ref"
+        }
+      ]
+    },
+    "scope_dimension_ref": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "dimension"
+          ],
+          "properties": {
+            "kind": {
+              "const": "core"
+            },
+            "dimension": {
+              "$ref": "#/$defs/core_scope_dimension"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/extension_vocabulary_ref"
+        }
+      ]
+    },
+    "scope_binding": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "binding",
+            "value"
+          ],
+          "properties": {
+            "binding": {
+              "const": "exact"
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "binding"
+          ],
+          "properties": {
+            "binding": {
+              "const": "unknown"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "binding"
+          ],
+          "properties": {
+            "binding": {
+              "const": "inherit"
+            }
+          }
+        }
+      ]
+    },
+    "scope_dimension_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dimension",
+        "binding"
+      ],
+      "properties": {
+        "dimension": {
+          "$ref": "#/$defs/scope_dimension_ref"
+        },
+        "binding": {
+          "$ref": "#/$defs/scope_binding"
+        }
+      }
+    },
+    "identity_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scope_dimension_binding"
+          }
+        }
+      }
+    },
+    "fact_header": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_type",
+        "namespace",
+        "scope"
+      ],
+      "properties": {
+        "canonical_type": {
+          "$ref": "#/$defs/canonical_type_ref"
+        },
+        "namespace": {
+          "$ref": "#/$defs/identifier_namespace_ref"
+        },
+        "scope": {
+          "$ref": "#/$defs/identity_scope"
+        }
+      }
+    },
+    "snapshot_header": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_type",
+        "namespace",
+        "scope"
+      ],
+      "properties": {
+        "canonical_type": {
+          "$ref": "#/$defs/canonical_type_ref"
+        },
+        "namespace": {
+          "$ref": "#/$defs/identifier_namespace_ref"
+        },
+        "scope": {
+          "$ref": "#/$defs/identity_scope"
+        }
+      }
+    },
+    "cross_scope_alias_policy": {
+      "type": "string",
+      "enum": [
+        "same_scope_only",
+        "require_explicit_evidence"
+      ]
+    },
+    "exact_lookup_qualification": {
+      "type": "string",
+      "enum": [
+        "qualified_match",
+        "requires_explicit_evidence",
+        "incompatible",
+        "different_value"
+      ]
+    }
+  }
+}

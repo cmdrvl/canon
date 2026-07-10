@@ -368,6 +368,206 @@ pub const ENTITY_REFUSAL_CODES: &[&str] = &[
     "E_ENTITY_IO_BUDGET",
 ];
 
+pub fn entity_profile_contract_schema_version() -> &'static str {
+    concat!("canon.entity.profile", ".v1")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EntityContractKind {
+    EntityProfile,
+    LinkageMap,
+    EvidencePolicy,
+    ReviewPolicy,
+    PromotionPolicy,
+    FrozenExecutableStrategy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EntityContractDescendant {
+    ClusterLineage,
+    LinkageLineage,
+    ReviewLineage,
+    PromotionLineage,
+}
+
+impl EntityContractKind {
+    pub const fn invalidated_descendants(self) -> &'static [EntityContractDescendant] {
+        use EntityContractDescendant::{
+            ClusterLineage, LinkageLineage, PromotionLineage, ReviewLineage,
+        };
+
+        match self {
+            Self::EntityProfile => &[ClusterLineage, ReviewLineage, PromotionLineage],
+            Self::LinkageMap => &[LinkageLineage],
+            Self::EvidencePolicy => &[
+                ClusterLineage,
+                LinkageLineage,
+                ReviewLineage,
+                PromotionLineage,
+            ],
+            Self::ReviewPolicy => &[ReviewLineage, PromotionLineage],
+            Self::PromotionPolicy => &[PromotionLineage],
+            Self::FrozenExecutableStrategy => &[
+                ClusterLineage,
+                LinkageLineage,
+                ReviewLineage,
+                PromotionLineage,
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct EntityTypedReference {
+    pub kind: Option<EntityContractKind>,
+    pub id: String,
+    pub version: String,
+    pub content_hash: String,
+}
+
+impl EntityTypedReference {
+    pub fn is_complete_as(&self, expected: EntityContractKind) -> bool {
+        self.kind == Some(expected)
+            && !self.id.trim().is_empty()
+            && !self.version.trim().is_empty()
+            && is_blake3_hash(&self.content_hash)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EntityTypedContractErrorCode {
+    WrongKind,
+    IncompleteReference,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityTypedContractError {
+    pub code: EntityTypedContractErrorCode,
+    pub field: String,
+    pub expected_kind: EntityContractKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual_kind: Option<EntityContractKind>,
+}
+
+impl EntityTypedContractError {
+    fn wrong_kind(
+        field: impl Into<String>,
+        expected_kind: EntityContractKind,
+        actual_kind: Option<EntityContractKind>,
+    ) -> Self {
+        Self {
+            code: EntityTypedContractErrorCode::WrongKind,
+            field: field.into(),
+            expected_kind,
+            actual_kind,
+        }
+    }
+
+    fn incomplete(field: impl Into<String>, expected_kind: EntityContractKind) -> Self {
+        Self {
+            code: EntityTypedContractErrorCode::IncompleteReference,
+            field: field.into(),
+            expected_kind,
+            actual_kind: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct EntityClusterContractSlice {
+    pub profile: EntityTypedReference,
+    pub evidence_policy: EntityTypedReference,
+    pub frozen_executable_strategy: EntityTypedReference,
+}
+
+impl EntityClusterContractSlice {
+    pub fn validate(&self) -> Result<(), EntityTypedContractError> {
+        validate_typed_reference("profile", &self.profile, EntityContractKind::EntityProfile)?;
+        validate_typed_reference(
+            "evidence_policy",
+            &self.evidence_policy,
+            EntityContractKind::EvidencePolicy,
+        )?;
+        validate_typed_reference(
+            "frozen_executable_strategy",
+            &self.frozen_executable_strategy,
+            EntityContractKind::FrozenExecutableStrategy,
+        )?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct EntityLinkageContractSlice {
+    pub linkage_map: EntityTypedReference,
+    pub evidence_policy: EntityTypedReference,
+    pub frozen_executable_strategy: EntityTypedReference,
+}
+
+impl EntityLinkageContractSlice {
+    pub fn validate(&self) -> Result<(), EntityTypedContractError> {
+        validate_typed_reference(
+            "linkage_map",
+            &self.linkage_map,
+            EntityContractKind::LinkageMap,
+        )?;
+        validate_typed_reference(
+            "evidence_policy",
+            &self.evidence_policy,
+            EntityContractKind::EvidencePolicy,
+        )?;
+        validate_typed_reference(
+            "frozen_executable_strategy",
+            &self.frozen_executable_strategy,
+            EntityContractKind::FrozenExecutableStrategy,
+        )?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct EntityGovernanceContractSlice {
+    pub review_policy: EntityTypedReference,
+    pub promotion_policy: EntityTypedReference,
+}
+
+impl EntityGovernanceContractSlice {
+    pub fn validate(&self) -> Result<(), EntityTypedContractError> {
+        validate_typed_reference(
+            "review_policy",
+            &self.review_policy,
+            EntityContractKind::ReviewPolicy,
+        )?;
+        validate_typed_reference(
+            "promotion_policy",
+            &self.promotion_policy,
+            EntityContractKind::PromotionPolicy,
+        )?;
+        Ok(())
+    }
+}
+
+fn validate_typed_reference(
+    field: &str,
+    reference: &EntityTypedReference,
+    expected_kind: EntityContractKind,
+) -> Result<(), EntityTypedContractError> {
+    if reference.kind != Some(expected_kind) {
+        return Err(EntityTypedContractError::wrong_kind(
+            field,
+            expected_kind,
+            reference.kind,
+        ));
+    }
+    if !reference.is_complete_as(expected_kind) {
+        return Err(EntityTypedContractError::incomplete(field, expected_kind));
+    }
+    Ok(())
+}
+
 /// Profile identity metadata required by invariant I10.
 ///
 /// Profiles define entity semantics; this prevents a tenant display-label run

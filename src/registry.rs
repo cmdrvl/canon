@@ -2,6 +2,7 @@ use crate::{
     Registry, RegistryDiffChangeType, RegistryDiffChangedEntry, RegistryDiffEntry,
     RegistryDiffOutput, RegistryDiffRemovedEntry, RegistryDiffSummary, RegistryDiffValue,
     RegistryDiffVersion, RegistryMeta,
+    paths::{self, RegistryIndexCacheMode},
 };
 pub use build::{RegistryBuildError, RegistryBuildErrorKind, RegistryBuildRequest, build_registry};
 pub use export::{
@@ -13,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 mod add_entry;
 mod build;
@@ -147,26 +148,44 @@ CREATE TABLE IF NOT EXISTS entries (
 CREATE INDEX IF NOT EXISTS idx_input ON entries(input);
 "#;
 
+const INDEX_SCHEMA_VERSION: &str = "canon.registry_index.v1";
+
+#[derive(Debug)]
+struct IndexTarget {
+    cache_db_path: PathBuf,
+    db_path: PathBuf,
+    force_rebuild: bool,
+}
+
 pub fn load_registry(registry_dir: &Path) -> Result<Registry, Box<dyn Error>> {
     let (registry_json, registry_meta, mapping_files) = load_registry_definition(registry_dir)?;
+    let source_digest = compute_registry_source_digest(registry_dir)?;
+    let index_target = resolve_index_target(registry_dir, &source_digest)?;
 
-    // Build or validate SQLite index
-    let db_path = registry_dir.join("_index.sqlite");
-    let needs_rebuild = should_rebuild_index(&db_path, registry_dir, &registry_json.version)?;
+    let needs_rebuild = index_target.force_rebuild
+        || should_rebuild_index(&index_target.cache_db_path, &source_digest)?;
 
     if needs_rebuild {
         eprintln!("Building registry index for {}", registry_meta.id);
         build_index(
-            &db_path,
+            &index_target.cache_db_path,
             &registry_json.version,
+            &source_digest,
             &mapping_files,
-            registry_dir,
+        )?;
+    }
+
+    if index_target.db_path != index_target.cache_db_path {
+        materialize_working_index(
+            &index_target.cache_db_path,
+            &index_target.db_path,
+            &source_digest,
         )?;
     }
 
     Ok(Registry {
         meta: registry_meta,
-        db_path,
+        db_path: index_target.db_path,
     })
 }
 
@@ -357,27 +376,8 @@ fn classify_change(
 }
 
 fn discover_mapping_files(registry_dir: &Path) -> Result<Vec<MappingFile>, Box<dyn Error>> {
-    let mut mapping_files = Vec::new();
-
-    let entries = fs::read_dir(registry_dir)
-        .map_err(|e| format!("Failed to read registry directory: {}", e))?;
-
-    let mut json_files = Vec::new();
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
-
-        if path.is_file()
-            && path.extension() == Some("json".as_ref())
-            && path.file_name() != Some("registry.json".as_ref())
-            && path.file_name() != Some("_build.json".as_ref())
-        {
-            json_files.push(path);
-        }
-    }
-
-    // Sort files by filename for deterministic precedence
-    json_files.sort();
+    let json_files = discover_mapping_file_paths(registry_dir)?;
+    let mut mapping_files = Vec::with_capacity(json_files.len());
 
     for path in json_files {
         let content = fs::read_to_string(&path)
@@ -405,11 +405,31 @@ fn discover_mapping_files(registry_dir: &Path) -> Result<Vec<MappingFile>, Box<d
     Ok(mapping_files)
 }
 
-fn should_rebuild_index(
-    db_path: &Path,
-    registry_dir: &Path,
-    version: &str,
-) -> Result<bool, Box<dyn Error>> {
+fn discover_mapping_file_paths(registry_dir: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let mut mapping_files = Vec::new();
+
+    let entries = fs::read_dir(registry_dir)
+        .map_err(|e| format!("Failed to read registry directory: {}", e))?;
+
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_file()
+            && path.extension() == Some("json".as_ref())
+            && path.file_name() != Some("registry.json".as_ref())
+            && path.file_name() != Some("_build.json".as_ref())
+        {
+            mapping_files.push(path);
+        }
+    }
+
+    // Sort files by filename for deterministic precedence
+    mapping_files.sort();
+    Ok(mapping_files)
+}
+
+fn should_rebuild_index(db_path: &Path, source_digest: &str) -> Result<bool, Box<dyn Error>> {
     if !db_path.exists() {
         return Ok(true);
     }
@@ -421,133 +441,370 @@ fn should_rebuild_index(
     };
 
     // Check if metadata table exists and has correct version
-    let stored_version: Result<String, _> = conn.query_row(
-        "SELECT value FROM metadata WHERE key = 'version'",
+    let stored_schema_version: Result<String, _> = conn.query_row(
+        "SELECT value FROM metadata WHERE key = 'schema_version'",
         [],
         |row| row.get(0),
     );
 
-    let stored_version = match stored_version {
+    let stored_schema_version = match stored_schema_version {
         Ok(v) => v,
         Err(_) => return Ok(true), // No version metadata, rebuild
     };
 
-    if stored_version != version {
-        return Ok(true); // Version changed, rebuild
+    if stored_schema_version != INDEX_SCHEMA_VERSION {
+        return Ok(true);
     }
 
-    // Check file modification times
-    let stored_max_mtime: Result<u64, _> = conn
+    let stored_source_digest: Result<String, _> = conn.query_row(
+        "SELECT value FROM metadata WHERE key = 'source_digest'",
+        [],
+        |row| row.get(0),
+    );
+
+    let stored_source_digest = match stored_source_digest {
+        Ok(value) => value,
+        Err(_) => return Ok(true),
+    };
+
+    let stored_entry_count: Result<i64, _> = conn
         .query_row(
-            "SELECT value FROM metadata WHERE key = 'max_mtime'",
+            "SELECT value FROM metadata WHERE key = 'entry_count'",
             [],
             |row| row.get::<_, String>(0),
         )
-        .and_then(|s| {
-            s.parse::<u64>()
-                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))
+        .and_then(|value| {
+            value
+                .parse::<i64>()
+                .map_err(|error| rusqlite::Error::ToSqlConversionFailure(error.into()))
         });
 
-    let stored_max_mtime = match stored_max_mtime {
-        Ok(t) => t,
-        Err(_) => return Ok(true), // No mtime metadata, rebuild
+    let stored_entry_count = match stored_entry_count {
+        Ok(value) => value,
+        Err(_) => return Ok(true),
     };
 
-    let current_max_mtime = get_max_mtime(registry_dir)?;
-    Ok(current_max_mtime > stored_max_mtime)
-}
+    let actual_entry_count: i64 =
+        match conn.query_row("SELECT COUNT(*) FROM entries", [], |row| row.get(0)) {
+            Ok(value) => value,
+            Err(_) => return Ok(true),
+        };
 
-fn get_max_mtime(registry_dir: &Path) -> Result<u64, Box<dyn Error>> {
-    let mut max_mtime = 0;
-
-    let entries = fs::read_dir(registry_dir)?;
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
-
-        if path.is_file() && path.extension() == Some("json".as_ref()) {
-            let metadata = fs::metadata(&path)?;
-            let mtime = metadata
-                .modified()?
-                .duration_since(SystemTime::UNIX_EPOCH)?
-                .as_secs();
-            max_mtime = max_mtime.max(mtime);
-        }
+    if actual_entry_count != stored_entry_count {
+        return Ok(true);
     }
 
-    Ok(max_mtime)
+    Ok(stored_source_digest != source_digest)
+}
+
+fn compute_registry_source_digest(registry_dir: &Path) -> Result<String, Box<dyn Error>> {
+    let mut hasher = blake3::Hasher::new();
+    let registry_json_path = registry_dir.join("registry.json");
+    let mut files = vec![registry_json_path];
+    files.extend(discover_mapping_file_paths(registry_dir)?);
+
+    for path in files {
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| format!("Invalid UTF-8 registry path: {}", path.display()))?;
+        hasher.update(file_name.as_bytes());
+        hasher.update(&[0]);
+        hasher.update(&fs::read(&path)?);
+        hasher.update(&[0xff]);
+    }
+
+    Ok(format!("blake3:{}", hasher.finalize().to_hex()))
 }
 
 fn build_index(
     db_path: &Path,
     version: &str,
+    source_digest: &str,
     mapping_files: &[MappingFile],
-    registry_dir: &Path,
 ) -> Result<(), Box<dyn Error>> {
-    let use_memory_db = !can_write_to_dir(registry_dir);
+    let parent = db_path.parent().ok_or_else(|| {
+        format!(
+            "Registry index path does not have a parent directory: {}",
+            db_path.display()
+        )
+    })?;
+    fs::create_dir_all(parent)?;
 
-    if use_memory_db {
-        eprintln!("Warning: Registry directory not writable, using in-memory index");
-        // For now, we'll still try to write to disk but handle the error gracefully
+    let temp_path = temporary_index_path(parent, db_path);
+    if temp_path.exists() {
+        let _ = fs::remove_file(&temp_path);
     }
 
-    let conn =
-        Connection::open(db_path).map_err(|e| format!("Failed to create SQLite index: {}", e))?;
+    let build_result = (|| -> Result<(), Box<dyn Error>> {
+        let conn = Connection::open(&temp_path)
+            .map_err(|e| format!("Failed to create SQLite index: {}", e))?;
 
-    // Create schema
-    conn.execute_batch(SCHEMA_SQL)?;
+        conn.execute_batch(SCHEMA_SQL)?;
+        conn.execute("DELETE FROM metadata", [])?;
+        conn.execute("DELETE FROM entries", [])?;
+        conn.execute(
+            "INSERT INTO metadata (key, value) VALUES ('schema_version', ?)",
+            [INDEX_SCHEMA_VERSION],
+        )?;
+        conn.execute(
+            "INSERT INTO metadata (key, value) VALUES ('registry_version', ?)",
+            [version],
+        )?;
+        conn.execute(
+            "INSERT INTO metadata (key, value) VALUES ('source_digest', ?)",
+            [source_digest],
+        )?;
+        conn.execute(
+            "INSERT INTO metadata (key, value) VALUES ('entry_count', ?)",
+            [mapping_files
+                .iter()
+                .map(|mapping_file| mapping_file.entries.len())
+                .sum::<usize>()
+                .to_string()],
+        )?;
 
-    // Clear existing data
-    conn.execute("DELETE FROM metadata", [])?;
-    conn.execute("DELETE FROM entries", [])?;
+        let mut stmt = conn.prepare(
+            "INSERT INTO entries (input, canonical_id, canonical_type, rule_id, source_file, entry_order) VALUES (?, ?, ?, ?, ?, ?)"
+        )?;
 
-    // Insert metadata
-    let max_mtime = get_max_mtime(registry_dir)?;
-    conn.execute(
-        "INSERT INTO metadata (key, value) VALUES ('version', ?)",
-        [version],
-    )?;
-    conn.execute(
-        "INSERT INTO metadata (key, value) VALUES ('max_mtime', ?)",
-        [&max_mtime.to_string()],
-    )?;
+        for mapping_file in mapping_files {
+            let source_file = mapping_file
+                .path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("unknown");
 
-    // Insert entries
-    let mut stmt = conn.prepare(
-        "INSERT INTO entries (input, canonical_id, canonical_type, rule_id, source_file, entry_order) VALUES (?, ?, ?, ?, ?, ?)"
-    )?;
-
-    for mapping_file in mapping_files {
-        let source_file = mapping_file
-            .path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("unknown");
-
-        for (entry_order, entry) in mapping_file.entries.iter().enumerate() {
-            stmt.execute([
-                &entry.input,
-                &entry.canonical_id,
-                &entry.canonical_type,
-                &entry.rule_id,
-                source_file,
-                &entry_order.to_string(),
-            ])?;
+            for (entry_order, entry) in mapping_file.entries.iter().enumerate() {
+                stmt.execute([
+                    &entry.input,
+                    &entry.canonical_id,
+                    &entry.canonical_type,
+                    &entry.rule_id,
+                    source_file,
+                    &entry_order.to_string(),
+                ])?;
+            }
         }
+
+        drop(stmt);
+        drop(conn);
+        Ok(())
+    })();
+
+    if let Err(error) = build_result {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error);
     }
 
-    Ok(())
+    install_built_index(&temp_path, db_path, source_digest)
 }
 
-fn can_write_to_dir(dir: &Path) -> bool {
-    // Try to create a temporary file to test writability
-    let test_file = dir.join(".write_test_tmp");
-    match fs::write(&test_file, b"test") {
-        Ok(_) => {
-            let _ = fs::remove_file(&test_file);
-            true
+fn resolve_index_target(
+    registry_dir: &Path,
+    source_digest: &str,
+) -> Result<IndexTarget, Box<dyn Error>> {
+    match paths::registry_index_cache_mode() {
+        RegistryIndexCacheMode::Managed => match paths::prepare_registry_index_cache_dir() {
+            Ok(cache_dir) => {
+                let cache_db_path = cache_dir.join(index_file_name(source_digest));
+                let db_path = if registry_is_read_only(registry_dir)? {
+                    cache_db_path.clone()
+                } else {
+                    temporary_cache_db_path(registry_dir, source_digest)?
+                };
+
+                Ok(IndexTarget {
+                    cache_db_path,
+                    db_path,
+                    force_rebuild: false,
+                })
+            }
+            Err(error) => {
+                eprintln!(
+                    "Warning: managed registry cache unavailable ({}); using temporary external index",
+                    error
+                );
+                let db_path = temporary_cache_db_path(registry_dir, source_digest)?;
+                Ok(IndexTarget {
+                    cache_db_path: db_path.clone(),
+                    db_path,
+                    force_rebuild: true,
+                })
+            }
+        },
+        RegistryIndexCacheMode::NoCache => {
+            let db_path = temporary_cache_db_path(registry_dir, source_digest)?;
+            Ok(IndexTarget {
+                cache_db_path: db_path.clone(),
+                db_path,
+                force_rebuild: true,
+            })
         }
-        Err(_) => false,
+    }
+}
+
+fn index_file_name(source_digest: &str) -> String {
+    let digest = source_digest
+        .strip_prefix("blake3:")
+        .unwrap_or(source_digest);
+    format!("{digest}.sqlite")
+}
+
+fn registry_is_read_only(registry_dir: &Path) -> Result<bool, Box<dyn Error>> {
+    Ok(fs::metadata(registry_dir)?.permissions().readonly())
+}
+
+fn temporary_cache_db_path(
+    registry_dir: &Path,
+    source_digest: &str,
+) -> Result<PathBuf, Box<dyn Error>> {
+    let dir = std::env::temp_dir()
+        .join("canon")
+        .join("registry-indexes")
+        .join(std::process::id().to_string());
+    fs::create_dir_all(&dir)?;
+    Ok(dir.join(working_index_file_name(registry_dir, source_digest)))
+}
+
+fn working_index_file_name(registry_dir: &Path, source_digest: &str) -> String {
+    let digest = source_digest
+        .strip_prefix("blake3:")
+        .unwrap_or(source_digest);
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(registry_dir.to_string_lossy().as_bytes());
+    format!("{digest}-{}.sqlite", hasher.finalize().to_hex())
+}
+
+fn temporary_index_path(parent: &Path, db_path: &Path) -> PathBuf {
+    let stem = db_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("registry-index");
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    parent.join(format!(".{stem}.{unique}.tmp"))
+}
+
+fn install_built_index(
+    temp_path: &Path,
+    db_path: &Path,
+    source_digest: &str,
+) -> Result<(), Box<dyn Error>> {
+    match fs::rename(temp_path, db_path) {
+        Ok(()) => Ok(()),
+        Err(rename_error) => {
+            if db_path.exists() && !should_rebuild_index(db_path, source_digest)? {
+                let _ = fs::remove_file(temp_path);
+                return Ok(());
+            }
+
+            if db_path.exists() {
+                fs::remove_file(db_path).map_err(|remove_error| {
+                    format!(
+                        "Failed to replace registry index {} after rename error {}: {}",
+                        db_path.display(),
+                        rename_error,
+                        remove_error
+                    )
+                })?;
+                fs::rename(temp_path, db_path).map_err(|retry_error| {
+                    format!(
+                        "Failed to install rebuilt registry index {}: {}",
+                        db_path.display(),
+                        retry_error
+                    )
+                })?;
+                return Ok(());
+            }
+
+            let _ = fs::remove_file(temp_path);
+            Err(format!(
+                "Failed to install registry index {}: {}",
+                db_path.display(),
+                rename_error
+            )
+            .into())
+        }
+    }
+}
+
+fn materialize_working_index(
+    cache_db_path: &Path,
+    working_db_path: &Path,
+    source_digest: &str,
+) -> Result<(), Box<dyn Error>> {
+    if !should_rebuild_index(working_db_path, source_digest)? {
+        return Ok(());
+    }
+
+    let parent = working_db_path.parent().ok_or_else(|| {
+        format!(
+            "Working registry index path does not have a parent directory: {}",
+            working_db_path.display()
+        )
+    })?;
+    fs::create_dir_all(parent)?;
+
+    let temp_path = temporary_index_path(parent, working_db_path);
+    if temp_path.exists() {
+        let _ = fs::remove_file(&temp_path);
+    }
+
+    fs::copy(cache_db_path, &temp_path).map_err(|error| {
+        format!(
+            "Failed to copy registry cache {} to working index {}: {}",
+            cache_db_path.display(),
+            working_db_path.display(),
+            error
+        )
+    })?;
+
+    install_copied_index(&temp_path, working_db_path, source_digest)
+}
+
+fn install_copied_index(
+    temp_path: &Path,
+    working_db_path: &Path,
+    source_digest: &str,
+) -> Result<(), Box<dyn Error>> {
+    match fs::rename(temp_path, working_db_path) {
+        Ok(()) => Ok(()),
+        Err(rename_error) => {
+            if working_db_path.exists() && !should_rebuild_index(working_db_path, source_digest)? {
+                let _ = fs::remove_file(temp_path);
+                return Ok(());
+            }
+
+            if working_db_path.exists() {
+                fs::remove_file(working_db_path).map_err(|remove_error| {
+                    format!(
+                        "Failed to replace working registry index {} after rename error {}: {}",
+                        working_db_path.display(),
+                        rename_error,
+                        remove_error
+                    )
+                })?;
+                fs::rename(temp_path, working_db_path).map_err(|retry_error| {
+                    format!(
+                        "Failed to install working registry index {}: {}",
+                        working_db_path.display(),
+                        retry_error
+                    )
+                })?;
+                return Ok(());
+            }
+
+            let _ = fs::remove_file(temp_path);
+            Err(format!(
+                "Failed to install working registry index {}: {}",
+                working_db_path.display(),
+                rename_error
+            )
+            .into())
+        }
     }
 }
 
@@ -624,6 +881,8 @@ mod tests {
         assert_eq!(registry.meta.id, "test-registry");
         assert_eq!(registry.meta.version, "1.0.0");
         assert!(registry.db_path.exists());
+        assert!(!temp_dir.path().join("_index.sqlite").exists());
+        assert!(!registry.db_path.starts_with(temp_dir.path()));
 
         Ok(())
     }

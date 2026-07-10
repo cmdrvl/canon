@@ -8,13 +8,21 @@ use serde_json::{Value, json};
 
 const TOOL_NAME: &str = "canon";
 const WITNESS_ENV: &str = "EPISTEMIC_WITNESS";
+const REGISTRY_INDEX_MODE_ENV: &str = "CANON_REGISTRY_INDEX_MODE";
 
 pub(crate) const CANONICAL_ROOT: &str = "~/.cmdrvl";
 pub(crate) const CANONICAL_WITNESS: &str = "~/.cmdrvl/state/witness/witness.jsonl";
+pub(crate) const CANONICAL_REGISTRY_INDEX_CACHE: &str = "~/.cmdrvl/cache/registry-indexes";
 pub(crate) const MIGRATION_LOG: &str = "~/.cmdrvl/migrations/applied.jsonl";
 pub(crate) const DEPRECATION_NOTICES: &str = "~/.cmdrvl/notices/deprecated-paths.jsonl";
 pub(crate) const LEGACY_HOME_WITNESS: &str = "~/.epistemic/witness.jsonl";
 pub(crate) const LEGACY_RELATIVE_WITNESS: &str = ".epistemic/witness.jsonl";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RegistryIndexCacheMode {
+    Managed,
+    NoCache,
+}
 
 pub(crate) fn default_witness_path() -> PathBuf {
     default_witness_path_from_env(env_value)
@@ -29,6 +37,14 @@ pub(crate) fn prepare_witness_path_for_append() -> io::Result<PathBuf> {
     Ok(path)
 }
 
+pub(crate) fn registry_index_cache_mode() -> RegistryIndexCacheMode {
+    registry_index_cache_mode_from_env(env_value)
+}
+
+pub(crate) fn prepare_registry_index_cache_dir() -> io::Result<PathBuf> {
+    prepare_registry_index_cache_dir_from_env(env_value)
+}
+
 pub(crate) fn config_footprint() -> Value {
     json!({
         "schema": "cmdrvl.config_footprint.v1",
@@ -36,13 +52,18 @@ pub(crate) fn config_footprint() -> Value {
         "canonical_root": CANONICAL_ROOT,
         "managed_config_paths": [],
         "managed_state_paths": [CANONICAL_WITNESS],
-        "managed_cache_paths": [],
+        "managed_cache_paths": [CANONICAL_REGISTRY_INDEX_CACHE],
         "managed_lock_paths": [],
         "env_overrides": [
             {
                 "name": WITNESS_ENV,
                 "path_class": "witness_ledger",
                 "behavior": "explicit operator override; no implicit migration is performed for override paths"
+            },
+            {
+                "name": REGISTRY_INDEX_MODE_ENV,
+                "path_class": "registry_index_cache",
+                "behavior": "set to no-cache to disable persistent registry index reuse and rebuild into a temporary external path"
             }
         ],
         "legacy_paths": [LEGACY_HOME_WITNESS, LEGACY_RELATIVE_WITNESS],
@@ -63,6 +84,41 @@ where
     }
 
     canonical_witness_path_from_env(get_env)
+}
+
+fn registry_index_cache_mode_from_env<F>(get_env: F) -> RegistryIndexCacheMode
+where
+    F: Fn(&str) -> Option<OsString> + Copy,
+{
+    match non_empty_env(get_env, REGISTRY_INDEX_MODE_ENV)
+        .and_then(|value| value.into_string().ok())
+        .map(|value| value.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("no-cache") | Some("nocache") | Some("memory") | Some("in-memory") => {
+            RegistryIndexCacheMode::NoCache
+        }
+        _ => RegistryIndexCacheMode::Managed,
+    }
+}
+
+fn registry_index_cache_dir_from_env<F>(get_env: F) -> PathBuf
+where
+    F: Fn(&str) -> Option<OsString> + Copy,
+{
+    cmdrvl_root_from_env(get_env)
+        .join("cache")
+        .join("registry-indexes")
+}
+
+fn prepare_registry_index_cache_dir_from_env<F>(get_env: F) -> io::Result<PathBuf>
+where
+    F: Fn(&str) -> Option<OsString> + Copy,
+{
+    let path = registry_index_cache_dir_from_env(get_env);
+    fs::create_dir_all(&path)?;
+    harden_directory(&path)?;
+    Ok(path)
 }
 
 fn ensure_witness_migrated_from_env<F>(get_env: F) -> io::Result<()>
@@ -365,7 +421,43 @@ mod tests {
 
         assert_eq!(footprint["tool"], TOOL_NAME);
         assert_eq!(footprint["managed_state_paths"][0], CANONICAL_WITNESS);
+        assert_eq!(
+            footprint["managed_cache_paths"][0],
+            CANONICAL_REGISTRY_INDEX_CACHE
+        );
         assert_eq!(footprint["legacy_migration_required"], true);
         assert_eq!(footprint["self_contained"], true);
+    }
+
+    #[test]
+    fn registry_index_cache_mode_defaults_to_managed() {
+        assert_eq!(
+            registry_index_cache_mode_from_env(env_map(&[])),
+            RegistryIndexCacheMode::Managed
+        );
+    }
+
+    #[test]
+    fn registry_index_cache_mode_accepts_no_cache_aliases() {
+        let values = [(REGISTRY_INDEX_MODE_ENV, OsString::from("memory"))];
+        assert_eq!(
+            registry_index_cache_mode_from_env(env_map(&values)),
+            RegistryIndexCacheMode::NoCache
+        );
+
+        let values = [(REGISTRY_INDEX_MODE_ENV, OsString::from("no-cache"))];
+        assert_eq!(
+            registry_index_cache_mode_from_env(env_map(&values)),
+            RegistryIndexCacheMode::NoCache
+        );
+    }
+
+    #[test]
+    fn registry_index_cache_dir_uses_cmdrvl_root() {
+        let values = [("HOME", OsString::from("/tmp/home"))];
+        assert_eq!(
+            registry_index_cache_dir_from_env(env_map(&values)),
+            PathBuf::from("/tmp/home/.cmdrvl/cache/registry-indexes")
+        );
     }
 }

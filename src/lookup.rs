@@ -1,7 +1,7 @@
 #[cfg(test)]
 use crate::SpecialReason;
 use crate::{InputValues, Mapping, Registry, ResolveResult, Summary, UnresolvedEntry};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OpenFlags, params};
 
 /// Resolve input values against registry and return mapping results
 pub fn resolve_values(
@@ -9,8 +9,11 @@ pub fn resolve_values(
     input_values: &InputValues,
 ) -> Result<ResolveResult, LookupError> {
     // Open SQLite connection
-    let conn = Connection::open(&registry.db_path)
-        .map_err(|e| LookupError::Database(format!("Cannot open registry database: {}", e)))?;
+    let conn = Connection::open_with_flags(
+        &registry.db_path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| LookupError::Database(format!("Cannot open registry database: {}", e)))?;
 
     // Resolve regular values
     let mut mappings = Vec::new();

@@ -1,5 +1,8 @@
 use super::{ResolveError, ResolveErrorCode, ResolveOperatorSpec, ResolveResult, ResolveStrategy};
+use crate::entity::EntityContractKind;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use serde_yaml::Value as YamlValue;
 use std::{fs, path::Path};
 
 const SUPPORTED_OPERATORS: &[&str] = &[
@@ -31,6 +34,16 @@ pub fn load_strategy(path: &Path) -> ResolveResult<ResolveStrategy> {
 }
 
 pub fn parse_strategy_bytes(bytes: &[u8]) -> ResolveResult<ResolveStrategy> {
+    let value = serde_yaml::from_slice::<YamlValue>(bytes).map_err(|error| {
+        ResolveError::with_detail(
+            ResolveErrorCode::Strategy,
+            format!("Resolve strategy YAML is invalid: {error}"),
+            json!({
+                "reason": error.to_string()
+            }),
+        )
+    })?;
+    ensure_linkage_map_kind(&value)?;
     let mut strategy: ResolveStrategy = serde_yaml::from_slice(bytes).map_err(|error| {
         ResolveError::with_detail(
             ResolveErrorCode::Strategy,
@@ -44,6 +57,29 @@ pub fn parse_strategy_bytes(bytes: &[u8]) -> ResolveResult<ResolveStrategy> {
     strategy.content_hash = format!("blake3:{}", blake3::hash(bytes).to_hex());
     validate_strategy(&strategy)?;
     Ok(strategy)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LinkageMapDocument {
+    pub kind: EntityContractKind,
+    #[serde(flatten)]
+    pub strategy: ResolveStrategy,
+}
+
+impl LinkageMapDocument {
+    pub fn from_legacy_strategy(strategy: ResolveStrategy) -> Self {
+        Self {
+            kind: EntityContractKind::LinkageMap,
+            strategy,
+        }
+    }
+
+    pub fn validate(&self) -> ResolveResult<()> {
+        if self.kind != EntityContractKind::LinkageMap {
+            return Err(wrong_kind_error(self.kind));
+        }
+        validate_strategy(&self.strategy)
+    }
 }
 
 pub fn validate_strategy(strategy: &ResolveStrategy) -> ResolveResult<()> {
@@ -288,6 +324,73 @@ fn require_non_negative_integer(
 
 fn strategy_error(message: impl Into<String>, detail: serde_json::Value) -> ResolveError {
     ResolveError::with_detail(ResolveErrorCode::Strategy, message, detail)
+}
+
+fn ensure_linkage_map_kind(value: &YamlValue) -> ResolveResult<()> {
+    let Some(actual_kind) = detect_resolve_input_kind(value) else {
+        return Ok(());
+    };
+
+    if actual_kind == EntityContractKind::LinkageMap {
+        return Ok(());
+    }
+
+    Err(wrong_kind_error(actual_kind))
+}
+
+fn detect_resolve_input_kind(value: &YamlValue) -> Option<EntityContractKind> {
+    let mapping = value.as_mapping()?;
+    if let Some(kind) = mapping
+        .get(YamlValue::String("kind".to_string()))
+        .and_then(YamlValue::as_str)
+    {
+        return parse_contract_kind(kind);
+    }
+
+    let looks_like_profile = mapping.contains_key(YamlValue::String("profile".into()))
+        || mapping.contains_key(YamlValue::String("normalized_views".into()))
+        || mapping.contains_key(YamlValue::String("patch_namespaces".into()));
+    if looks_like_profile {
+        return Some(EntityContractKind::EntityProfile);
+    }
+
+    let looks_like_frozen_strategy = mapping.contains_key(YamlValue::String("script_id".into()))
+        || mapping.contains_key(YamlValue::String("language".into()))
+        || mapping.contains_key(YamlValue::String("entrypoint".into()));
+    if looks_like_frozen_strategy {
+        return Some(EntityContractKind::FrozenExecutableStrategy);
+    }
+
+    let looks_like_evidence_policy = mapping.contains_key(YamlValue::String("support".into()))
+        || mapping.contains_key(YamlValue::String("cannot_link".into()))
+        || mapping.contains_key(YamlValue::String("relation_hints".into()));
+    if looks_like_evidence_policy {
+        return Some(EntityContractKind::EvidencePolicy);
+    }
+
+    let looks_like_legacy_linkage = mapping.contains_key(YamlValue::String("strategy_id".into()))
+        || mapping.contains_key(YamlValue::String("identity".into()))
+        || mapping.contains_key(YamlValue::String("assertions".into()));
+    if looks_like_legacy_linkage {
+        return Some(EntityContractKind::LinkageMap);
+    }
+
+    None
+}
+
+fn parse_contract_kind(kind: &str) -> Option<EntityContractKind> {
+    serde_json::from_value(json!(kind)).ok()
+}
+
+fn wrong_kind_error(actual_kind: EntityContractKind) -> ResolveError {
+    strategy_error(
+        "canon resolve expected a linkage-map contract",
+        json!({
+            "expected_kind": EntityContractKind::LinkageMap,
+            "actual_kind": actual_kind,
+            "recovery": "Pass a linkage-map document here; entity profiles, policies, and frozen executable strategies must stay on their own typed paths"
+        }),
+    )
 }
 
 #[cfg(test)]
