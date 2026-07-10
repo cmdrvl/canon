@@ -1,0 +1,578 @@
+{
+  "schema_version": "canon_v1_contract_inventory.v0",
+  "bead": "bd-glo7",
+  "command_rows": [
+    {
+      "id": "canon <INPUT>",
+      "family": "core",
+      "clap_path": null,
+      "operator_name": null,
+      "primary_contracts": ["canon.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon",
+      "family": "core",
+      "clap_path": null,
+      "operator_name": null,
+      "primary_contracts": [],
+      "action": "preserve"
+    },
+    {
+      "id": "canon --version",
+      "family": "core",
+      "clap_path": null,
+      "operator_name": null,
+      "primary_contracts": [],
+      "action": "preserve"
+    },
+    {
+      "id": "canon --describe",
+      "family": "core",
+      "clap_path": null,
+      "operator_name": null,
+      "primary_contracts": ["operator.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon --schema",
+      "family": "core",
+      "clap_path": null,
+      "operator_name": null,
+      "primary_contracts": ["canon.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon doctor",
+      "family": "doctor",
+      "clap_path": null,
+      "operator_name": "doctor",
+      "primary_contracts": ["canon.doctor.health.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon doctor --robot-triage",
+      "family": "doctor",
+      "clap_path": null,
+      "operator_name": null,
+      "primary_contracts": ["canon.doctor.triage.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon doctor health",
+      "family": "doctor",
+      "clap_path": "doctor health",
+      "operator_name": null,
+      "primary_contracts": ["canon.doctor.health.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon doctor capabilities",
+      "family": "doctor",
+      "clap_path": "doctor capabilities",
+      "operator_name": null,
+      "primary_contracts": ["canon.doctor.capabilities.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon doctor robot-docs",
+      "family": "doctor",
+      "clap_path": "doctor robot-docs",
+      "operator_name": null,
+      "primary_contracts": [],
+      "action": "preserve"
+    },
+    {
+      "id": "canon resolve",
+      "family": "resolve",
+      "clap_path": "resolve",
+      "operator_name": "resolve",
+      "primary_contracts": ["canon_resolve.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon registry export",
+      "family": "registry",
+      "clap_path": "registry export",
+      "operator_name": "registry export",
+      "primary_contracts": ["canon_registry_export.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon registry next-id",
+      "family": "registry",
+      "clap_path": "registry next-id",
+      "operator_name": "registry next-id",
+      "primary_contracts": ["canon_registry_next_id.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon registry add-entry",
+      "family": "registry",
+      "clap_path": "registry add-entry",
+      "operator_name": "registry add-entry",
+      "primary_contracts": ["canon_registry_add_entry.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon registry mint",
+      "family": "registry",
+      "clap_path": "registry mint",
+      "operator_name": "registry mint",
+      "primary_contracts": ["canon_registry_mint.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon registry default-id-scheme",
+      "family": "registry",
+      "clap_path": "registry default-id-scheme",
+      "operator_name": "registry default-id-scheme",
+      "primary_contracts": ["canon_registry_default_id_scheme.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon registry diff",
+      "family": "registry",
+      "clap_path": "registry diff",
+      "operator_name": "registry diff",
+      "primary_contracts": ["canon_registry_diff.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon registry audit",
+      "family": "registry",
+      "clap_path": "registry audit",
+      "operator_name": "registry audit",
+      "primary_contracts": ["canon_registry_audit.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon registry build",
+      "family": "registry",
+      "clap_path": "registry build",
+      "operator_name": "registry build",
+      "primary_contracts": ["canon_registry_build.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon registry lint",
+      "family": "registry",
+      "clap_path": "registry lint",
+      "operator_name": "registry lint",
+      "primary_contracts": ["canon_registry_lint.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon registry providers",
+      "family": "registry",
+      "clap_path": "registry providers",
+      "operator_name": "registry providers",
+      "primary_contracts": ["canon_registry_providers.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon registry provider-schema",
+      "family": "registry",
+      "clap_path": "registry provider-schema",
+      "operator_name": "registry provider-schema",
+      "primary_contracts": ["canon_registry_provider_schema.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon strategy profile",
+      "family": "strategy",
+      "clap_path": "strategy profile",
+      "operator_name": "strategy profile",
+      "primary_contracts": ["canon_strategy_profile.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon strategy audit",
+      "family": "strategy",
+      "clap_path": "strategy audit",
+      "operator_name": "strategy audit",
+      "primary_contracts": ["canon_strategy_audit.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon strategy resolve",
+      "family": "strategy",
+      "clap_path": "strategy resolve",
+      "operator_name": "strategy resolve",
+      "primary_contracts": ["canon_strategy_resolve.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon strategy register",
+      "family": "strategy",
+      "clap_path": "strategy register",
+      "operator_name": "strategy register",
+      "primary_contracts": ["canon_strategy_register.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon strategy update",
+      "family": "strategy",
+      "clap_path": "strategy update",
+      "operator_name": "strategy update",
+      "primary_contracts": ["canon_strategy_lifecycle.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon strategy deprecate",
+      "family": "strategy",
+      "clap_path": "strategy deprecate",
+      "operator_name": "strategy deprecate",
+      "primary_contracts": ["canon_strategy_lifecycle.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon strategy promote",
+      "family": "strategy",
+      "clap_path": "strategy promote",
+      "operator_name": "strategy promote",
+      "primary_contracts": ["canon_strategy_lifecycle.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon strategy list",
+      "family": "strategy",
+      "clap_path": "strategy list",
+      "operator_name": "strategy list",
+      "primary_contracts": ["canon_strategy_list.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon strategy explain",
+      "family": "strategy",
+      "clap_path": "strategy explain",
+      "operator_name": "strategy explain",
+      "primary_contracts": ["canon_strategy_explain.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon strategy diff",
+      "family": "strategy",
+      "clap_path": "strategy diff",
+      "operator_name": "strategy diff",
+      "primary_contracts": ["canon_strategy_diff.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity run",
+      "family": "entity",
+      "clap_path": "entity run",
+      "operator_name": "entity run",
+      "primary_contracts": ["canon_entity_run.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity prepare",
+      "family": "entity",
+      "clap_path": "entity prepare",
+      "operator_name": null,
+      "primary_contracts": ["canon_entity_prepare.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity block",
+      "family": "entity",
+      "clap_path": "entity block",
+      "operator_name": "entity block",
+      "primary_contracts": ["canon_entity_block.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity edge",
+      "family": "entity",
+      "clap_path": "entity edge",
+      "operator_name": "entity edge",
+      "primary_contracts": ["canon_entity_edge.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity solve",
+      "family": "entity",
+      "clap_path": "entity solve",
+      "operator_name": "entity solve",
+      "primary_contracts": ["canon_entity_solve.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity audit",
+      "family": "entity",
+      "clap_path": "entity audit",
+      "operator_name": "entity audit",
+      "primary_contracts": ["canon_entity_audit.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity promote",
+      "family": "entity",
+      "clap_path": "entity promote",
+      "operator_name": "entity promote",
+      "primary_contracts": ["canon_entity_promote.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity explain",
+      "family": "entity",
+      "clap_path": "entity explain",
+      "operator_name": "entity explain",
+      "primary_contracts": ["canon_entity_explain.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity profile list",
+      "family": "entity",
+      "clap_path": "entity profile list",
+      "operator_name": null,
+      "primary_contracts": ["canon_entity_profile_templates.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity profile init",
+      "family": "entity",
+      "clap_path": "entity profile init",
+      "operator_name": null,
+      "primary_contracts": ["canon_entity_profile_templates.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity review export",
+      "family": "entity",
+      "clap_path": "entity review export",
+      "operator_name": "entity review export",
+      "primary_contracts": ["canon_entity_review_export.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity review import",
+      "family": "entity",
+      "clap_path": "entity review import",
+      "operator_name": "entity review import",
+      "primary_contracts": ["canon_entity_review_import.v0"],
+      "action": "preserve"
+    }
+  ],
+  "contract_rows": [
+    { "id": "operator.v0", "family": "operator", "action": "preserve" },
+    { "id": "canon.v0", "family": "core", "action": "preserve" },
+    { "id": "canon.doctor.capabilities.v1", "family": "doctor", "action": "preserve" },
+    { "id": "canon.doctor.health.v1", "family": "doctor", "action": "preserve" },
+    { "id": "canon.doctor.triage.v1", "family": "doctor", "action": "preserve" },
+    { "id": "canon.entity.lint.robot.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_apply.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_artifact_chain.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_audit.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_benchmark_telemetry.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_block.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_block_bucket.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_cache.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_cmbs_tenant_id_allocator.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_decision_ledger.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_edge.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_explain.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_index.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_index_diagnostic.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_index_disk_bundle.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_lint.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_ngram_index.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_operator_summary.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_postings.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_prepare.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_profile_templates.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_projection.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_promote.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_promotion_proof.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_promotion_sidecar.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_review_export.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_review_import.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_review_queue.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_run.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_schema_bundle.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_score.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_solve.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_stream.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_surface_id.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_surface_row.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_topk.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_namekit.v0", "family": "namekit", "action": "preserve" },
+    { "id": "canon_namekit_cmbs_tenant.v0", "family": "namekit", "action": "preserve" },
+    { "id": "canon_namekit_explain.v0", "family": "namekit", "action": "preserve" },
+    { "id": "canon_namekit_ids.v0", "family": "namekit", "action": "preserve" },
+    { "id": "canon_namekit_legal_form.v0", "family": "namekit", "action": "preserve" },
+    { "id": "canon_namekit_ngram.v0", "family": "namekit", "action": "preserve" },
+    { "id": "canon_namekit_normalize.v0", "family": "namekit", "action": "preserve" },
+    { "id": "canon_namekit_similarity.v0", "family": "namekit", "action": "preserve" },
+    { "id": "canon_namekit_tfidf.v0", "family": "namekit", "action": "preserve" },
+    { "id": "canon_namekit_tokenize.v0", "family": "namekit", "action": "preserve" },
+    { "id": "canon_regab_firm_normalize.v0", "family": "regab", "action": "preserve" },
+    { "id": "canon_registry_add_entry.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_audit.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_build.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_default_id_scheme.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_diff.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_export.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_lint.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_mint.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_next_id.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_provider_schema.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_providers.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_search_index.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_search_key.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_resolve.v0", "family": "resolve", "action": "preserve" },
+    { "id": "canon_strategy_audit.v0", "family": "strategy", "action": "preserve" },
+    { "id": "canon_strategy_diff.v0", "family": "strategy", "action": "preserve" },
+    { "id": "canon_strategy_entry.v1", "family": "strategy", "action": "preserve" },
+    { "id": "canon_strategy_explain.v0", "family": "strategy", "action": "preserve" },
+    { "id": "canon_strategy_lifecycle.v0", "family": "strategy", "action": "preserve" },
+    { "id": "canon_strategy_list.v0", "family": "strategy", "action": "preserve" },
+    { "id": "canon_strategy_profile.v0", "family": "strategy", "action": "preserve" },
+    { "id": "canon_strategy_register.v0", "family": "strategy", "action": "preserve" },
+    { "id": "canon_strategy_resolve.v0", "family": "strategy", "action": "preserve" }
+  ],
+  "incompatibility_rows": [
+    {
+      "id": "entity-clap-leaves-missing-from-operator-json",
+      "subjects": [
+        "canon entity prepare",
+        "canon entity profile list",
+        "canon entity profile init"
+      ],
+      "action": "preserve_or_add_operator_rows",
+      "owner": "bd-glo7",
+      "cutover": "Before any CANON-V1 surface pruning or operator.json regeneration",
+      "test_owner": "tests/canon_v1_contract_inventory.rs",
+      "evidence": ["src/cli.rs", "operator.json", "README.md", "docs/PLAN_CANON.md"],
+      "status": "open",
+      "notes": "Clap ships these entity workbench commands today, but operator.json does not advertise them as separate subcommand rows."
+    },
+    {
+      "id": "entity-run-dual-engine-shares-one-command-and-one-version",
+      "subjects": ["canon entity run", "canon_entity_run.v0"],
+      "action": "migrate_with_new_artifact_version",
+      "owner": "bd-glo7",
+      "cutover": "Before P00.2 collapses the legacy org runtime into one artifact-backed entity engine",
+      "test_owner": "tests/canon_v1_contract_inventory.rs",
+      "evidence": ["src/lib.rs", "src/org/types.rs", "src/entity/run.rs", "operator.json"],
+      "status": "open",
+      "notes": "src/lib.rs dispatches to legacy SolveRunArtifact when --profile/--work-dir are absent and to EntityRunArtifact when both are present, but both shapes claim canon_entity_run.v0."
+    },
+    {
+      "id": "legacy-org-runtime-still-backs-shipped-entity-surfaces",
+      "subjects": [
+        "canon entity block",
+        "canon entity edge",
+        "canon entity solve",
+        "canon entity audit",
+        "canon entity promote",
+        "canon entity explain",
+        "canon entity review export",
+        "canon entity review import"
+      ],
+      "action": "replace_directly",
+      "owner": "bd-glo7",
+      "cutover": "Before removing any org-era consumers or claiming one unified entity engine",
+      "test_owner": "tests/canon_v1_contract_inventory.rs",
+      "evidence": ["src/lib.rs", "src/org/types.rs", "src/org/output.rs", "src/entity/run.rs"],
+      "status": "open",
+      "notes": "These shipped canon entity commands still route through legacy org modules even though canon now also ships artifact-backed entity contracts and run orchestration."
+    },
+    {
+      "id": "shared-canon-entity-version-ids-span-legacy-and-workbench-contracts",
+      "subjects": [
+        "canon_entity_projection.v0",
+        "canon_entity_block.v0",
+        "canon_entity_edge.v0",
+        "canon_entity_solve.v0",
+        "canon_entity_run.v0",
+        "canon_entity_audit.v0",
+        "canon_entity_promote.v0",
+        "canon_entity_explain.v0"
+      ],
+      "action": "migrate_with_new_artifact_version",
+      "owner": "bd-glo7",
+      "cutover": "Before any downstream cutover that assumes one JSON shape per canon_entity_* version id",
+      "test_owner": "tests/canon_v1_contract_inventory.rs",
+      "evidence": ["src/org/types.rs", "src/entity/contracts.rs", "src/entity/schema.rs", "tests/fixtures/entity/contracts/entity_artifact_goldens.json"],
+      "status": "open",
+      "notes": "The entity namespace currently mixes legacy org structs and newer workbench/schema contracts under overlapping canon_entity_*.v0 identifiers."
+    },
+    {
+      "id": "docs-and-plan-omit-prepare-profile-and-run-workdir-options",
+      "subjects": [
+        "canon entity run",
+        "canon entity prepare",
+        "canon entity profile list",
+        "canon entity profile init"
+      ],
+      "action": "preserve_or_update_docs",
+      "owner": "bd-glo7",
+      "cutover": "Before claiming the CANON-V1 CLI contract is frozen outside this matrix",
+      "test_owner": "tests/canon_v1_contract_inventory.rs",
+      "evidence": ["README.md", "docs/PLAN_CANON.md", "src/cli.rs", "operator.json"],
+      "status": "open",
+      "notes": "README and PLAN_CANON describe entity run/review but omit the shipped prepare/profile leaves and the --profile/--work-dir switch that flips entity run into artifact-backed mode."
+    },
+    {
+      "id": "operator-json-status-null-on-implemented-rows",
+      "subjects": [
+        "registry build",
+        "registry providers",
+        "registry provider-schema",
+        "registry diff",
+        "registry audit",
+        "registry lint",
+        "strategy profile",
+        "strategy audit",
+        "strategy resolve",
+        "strategy register",
+        "strategy update",
+        "strategy deprecate",
+        "strategy promote",
+        "strategy list",
+        "strategy explain",
+        "strategy diff",
+        "entity run",
+        "entity block",
+        "entity edge",
+        "entity solve",
+        "entity audit",
+        "entity promote",
+        "entity review export",
+        "entity review import",
+        "entity explain"
+      ],
+      "action": "replace_directly",
+      "owner": "bd-glo7",
+      "cutover": "Before operator.json becomes the sole generated contract inventory for downstream agents",
+      "test_owner": "tests/canon_v1_contract_inventory.rs",
+      "evidence": ["operator.json", "src/lib.rs", "tests/provider_schema.rs"],
+      "status": "open",
+      "notes": "Many operator.json subcommand rows have null status even though the implementations are shipped and exercised by tests."
+    }
+  ],
+  "unresolved_decisions": [
+    {
+      "id": "entity-prepare-public-surface",
+      "subject": "canon entity prepare and canon entity profile *",
+      "notes": "The repo ships and tests these commands today, but the future contract may either keep them public or fold them into a single run-only workbench."
+    },
+    {
+      "id": "version-bump-vs-in-place-cutover",
+      "subject": "overlapping canon_entity_*.v0 identifiers",
+      "notes": "The matrix names the collisions but does not decide whether CANON-V1 should mint new version ids or replace legacy shapes in place."
+    },
+    {
+      "id": "operator-json-granularity",
+      "subject": "one operator row per family vs one row per Clap leaf",
+      "notes": "doctor is intentionally grouped today; entity prepare/profile are missing entirely. The repo has not yet chosen the permanent operator.json granularity rule."
+    },
+    {
+      "id": "sec10d-handoff-binding",
+      "subject": "sec10d migration references inside canon-owned fixtures and docs",
+      "notes": "Local sec10d fixtures already point at entity prepare/run/review flows, but the final cutover sequence for downstream handoff docs is still open."
+    }
+  ]
+}
