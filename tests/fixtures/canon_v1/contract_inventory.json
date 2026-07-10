@@ -383,6 +383,20 @@
       "access_boundary": "internal_source_only",
       "source_path": "src/extensions/vocabulary.rs"
     },
+    {
+      "id": "canon.entity.profile.v1",
+      "family": "extension",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/extensions/profile.rs"
+    },
+    {
+      "id": "canon.relation.policy.v1",
+      "family": "extension",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/extensions/relation_policy.rs"
+    },
     { "id": "canon.evidence.v1", "family": "evidence", "action": "preserve" },
     {
       "id": "canon.identity.fact.v1",

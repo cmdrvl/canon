@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cmdrvl.com/schemas/canon.entity.profile.v1.schema.json",
   "title": "canon.entity.profile.v1",
-  "description": "Typed entity profile configuration. Profiles are configuration, not linkage maps, policy bundles, or frozen executable strategies.",
+  "description": "Typed entity profile configuration and portable package envelope. Profiles are configuration, not linkage maps, policy bundles, or frozen executable strategies.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -78,9 +78,93 @@
     },
     "frozen_executable_strategy": {
       "$ref": "#/$defs/frozen_strategy_ref"
+    },
+    "ontology_package": {
+      "$ref": "#/$defs/ontology_package_ref"
+    },
+    "identifier_package": {
+      "$ref": "#/$defs/identifier_package_ref"
+    },
+    "vocabulary_package": {
+      "$ref": "#/$defs/vocabulary_package_ref"
+    },
+    "evidence_package": {
+      "$ref": "#/$defs/evidence_package_ref"
+    },
+    "normalization_packages": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/normalization_package_ref"
+      },
+      "uniqueItems": true
+    },
+    "available_capabilities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/capability"
+      },
+      "uniqueItems": true
+    },
+    "field_mappings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/field_mapping"
+      }
+    },
+    "execution_modes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/execution_mode"
+      }
+    },
+    "limits": {
+      "$ref": "#/$defs/limits"
+    },
+    "expected_outputs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "project_overrides": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/project_override"
+      }
     }
   },
   "$defs": {
+    "capability": {
+      "type": "string",
+      "enum": [
+        "prepare",
+        "index",
+        "block",
+        "evidence",
+        "solve_cluster",
+        "solve_link",
+        "review",
+        "promote",
+        "apply"
+      ]
+    },
+    "mode_kind": {
+      "type": "string",
+      "enum": [
+        "cluster",
+        "link"
+      ]
+    },
+    "link_direction": {
+      "type": "string",
+      "enum": [
+        "source_to_target",
+        "target_to_source",
+        "bidirectional"
+      ]
+    },
     "normalized_view": {
       "type": "object",
       "additionalProperties": false,
@@ -195,7 +279,12 @@
             "evidence-policy",
             "review-policy",
             "promotion-policy",
-            "frozen-executable-strategy"
+            "frozen-executable-strategy",
+            "ontology-package",
+            "identifier-package",
+            "vocabulary-package",
+            "normalization-package",
+            "evidence-package"
           ]
         },
         "id": {
@@ -211,6 +300,26 @@
           "pattern": "^blake3:.+"
         }
       }
+    },
+    "package_reference": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/typed_reference"
+        },
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "ontology-package",
+                "identifier-package",
+                "vocabulary-package",
+                "normalization-package",
+                "evidence-package"
+              ]
+            }
+          }
+        }
+      ]
     },
     "evidence_policy_ref": {
       "allOf": [
@@ -267,6 +376,211 @@
           }
         }
       ]
+    },
+    "ontology_package_ref": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/package_reference"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "ontology-package"
+            }
+          }
+        }
+      ]
+    },
+    "identifier_package_ref": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/package_reference"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "identifier-package"
+            }
+          }
+        }
+      ]
+    },
+    "vocabulary_package_ref": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/package_reference"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "vocabulary-package"
+            }
+          }
+        }
+      ]
+    },
+    "normalization_package_ref": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/package_reference"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "normalization-package"
+            }
+          }
+        }
+      ]
+    },
+    "evidence_package_ref": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/package_reference"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "evidence-package"
+            }
+          }
+        }
+      ]
+    },
+    "field_mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field_path",
+        "object_type",
+        "field_role",
+        "required"
+      ],
+      "properties": {
+        "field_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "object_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "field_role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "normalized_view": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "execution_mode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "source_object_type",
+        "required_capabilities",
+        "field_paths",
+        "outputs"
+      ],
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/mode_kind"
+        },
+        "source_object_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_object_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "link_direction": {
+          "$ref": "#/$defs/link_direction"
+        },
+        "required_capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/capability"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "field_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_observation_fields",
+        "max_candidate_pairs",
+        "max_outputs"
+      ],
+      "properties": {
+        "max_observation_fields": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_candidate_pairs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_outputs": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "project_override": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "default_value",
+        "artifact_header_key",
+        "project_lock_key"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default_value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_header_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "project_lock_key": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     }
   },
   "x-canon-contract": {
@@ -278,6 +592,22 @@
       "promotion-policy",
       "frozen-executable-strategy"
     ],
+    "portable_package_fields": [
+      "ontology_package",
+      "identifier_package",
+      "vocabulary_package",
+      "evidence_package",
+      "normalization_packages",
+      "available_capabilities",
+      "field_mappings",
+      "execution_modes",
+      "limits",
+      "expected_outputs",
+      "project_overrides"
+    ],
+    "cluster_and_link_modes_supported": true,
+    "override_visibility": "Profile defaults and project overrides must be visible in artifact headers and project locks.",
+    "unknown_field_refusal": "Field mappings and execution mode field_paths must resolve only declared views and fields.",
     "wrong_kind_refusal": "canon entity and canon resolve must refuse the wrong typed contract kind instead of treating arbitrary YAML as executable strategy input.",
     "legacy_linkage_yaml_destination": "Existing resolve YAML migrates losslessly by preserving the current field-map vocabulary and adding kind=linkage-map in the typed destination."
   }

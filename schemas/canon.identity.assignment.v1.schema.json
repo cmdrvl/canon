@@ -1,0 +1,372 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.identity.assignment.v1.schema.json",
+  "title": "canon.identity.assignment.v1",
+  "description": "Generic typed assignment facts over the temporal relationship boundary. An assignment says that a typed subject held an opaque role and points either to a resolved assignee entity or an unresolved disclosed observation, with valid and known intervals, source locator provenance, status, and package-pinned policy references. Assignment facts do not create aliases or same-as evidence on their own.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "assignment_id",
+    "assignment_key",
+    "subject",
+    "role",
+    "assignee",
+    "valid_time",
+    "known_time",
+    "policy_ref",
+    "constraints",
+    "status",
+    "provenance"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon.identity.assignment.v1"
+    },
+    "assignment_id": {
+      "$ref": "#/$defs/blake3_hash"
+    },
+    "assignment_key": {
+      "$ref": "#/$defs/blake3_hash"
+    },
+    "subject": {
+      "$ref": "#/$defs/subject"
+    },
+    "role": {
+      "$ref": "#/$defs/role_ref"
+    },
+    "assignee": {
+      "$ref": "#/$defs/assignee"
+    },
+    "valid_time": {
+      "$ref": "#/$defs/time_interval"
+    },
+    "known_time": {
+      "$ref": "#/$defs/time_interval"
+    },
+    "policy_ref": {
+      "$ref": "#/$defs/policy_ref"
+    },
+    "constraints": {
+      "$ref": "#/$defs/assignment_constraints"
+    },
+    "status": {
+      "$ref": "#/$defs/assignment_status"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    }
+  },
+  "x-canon-contract": {
+    "identity_boundary": "Assignment facts remain independent from alias creation, same-as promotion, and exact lookup changes. Any alias write requires a separate identity review artifact.",
+    "unresolved_assignee_boundary": "Assignments may preserve unresolved disclosed observations without inventing entity identifiers.",
+    "domain_semantics_boundary": "Opaque role IDs and domain policy semantics enter only through pinned vocabulary and policy package digests.",
+    "projection_boundary": "Generic projections retain raw disclosed values and source locators without rewriting identity state."
+  },
+  "$defs": {
+    "blake3_hash": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "rfc3339_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "interval_boundary": {
+      "type": "string",
+      "enum": [
+        "inclusive",
+        "exclusive",
+        "open"
+      ]
+    },
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "extension_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "package_digest",
+        "vocabulary",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "const": "extension"
+        },
+        "package_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        },
+        "vocabulary": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "value": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "core_entity_type_class": {
+      "type": "string",
+      "enum": [
+        "account",
+        "asset",
+        "document",
+        "event",
+        "instrument",
+        "location",
+        "organization",
+        "person",
+        "process"
+      ]
+    },
+    "entity_type_ref": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "class"
+          ],
+          "properties": {
+            "kind": {
+              "const": "core"
+            },
+            "class": {
+              "$ref": "#/$defs/core_entity_type_class"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/extension_ref"
+        }
+      ]
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity_id",
+        "entity_type"
+      ],
+      "properties": {
+        "identity_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "entity_type": {
+          "$ref": "#/$defs/entity_type_ref"
+        }
+      }
+    },
+    "opaque_role_term_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*:[a-z0-9][a-z0-9._-]*$"
+    },
+    "role_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_digest",
+        "term_id"
+      ],
+      "properties": {
+        "package_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        },
+        "term_id": {
+          "$ref": "#/$defs/opaque_role_term_id"
+        }
+      }
+    },
+    "assignee_entity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "identity_id",
+        "entity_type"
+      ],
+      "properties": {
+        "kind": {
+          "const": "entity"
+        },
+        "identity_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "entity_type": {
+          "$ref": "#/$defs/entity_type_ref"
+        }
+      }
+    },
+    "assignee_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "disclosed_value",
+        "entity_type"
+      ],
+      "properties": {
+        "kind": {
+          "const": "observation"
+        },
+        "disclosed_value": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "entity_type": {
+          "$ref": "#/$defs/entity_type_ref"
+        }
+      }
+    },
+    "assignee": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/assignee_entity"
+        },
+        {
+          "$ref": "#/$defs/assignee_observation"
+        }
+      ]
+    },
+    "time_interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start_bound",
+        "end_bound"
+      ],
+      "properties": {
+        "start_at": {
+          "$ref": "#/$defs/rfc3339_timestamp"
+        },
+        "start_bound": {
+          "$ref": "#/$defs/interval_boundary"
+        },
+        "end_at": {
+          "$ref": "#/$defs/rfc3339_timestamp"
+        },
+        "end_bound": {
+          "$ref": "#/$defs/interval_boundary"
+        }
+      }
+    },
+    "policy_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_digest",
+        "policy_id"
+      ],
+      "properties": {
+        "package_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        },
+        "policy_id": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "assignment_conflict_policy": {
+      "type": "string",
+      "enum": [
+        "allow_conflicting_claims",
+        "disallow_conflicting_claims",
+        "review_conflicting_claims"
+      ]
+    },
+    "assignment_successor_policy": {
+      "type": "string",
+      "enum": [
+        "allow_parallel_assignments",
+        "require_non_overlapping_successors",
+        "review_overlapping_successors"
+      ]
+    },
+    "assignment_constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allow_unresolved_assignee",
+        "conflict_policy",
+        "successor_policy"
+      ],
+      "properties": {
+        "max_active_assignees_per_subject_role": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "allow_unresolved_assignee": {
+          "type": "boolean"
+        },
+        "conflict_policy": {
+          "$ref": "#/$defs/assignment_conflict_policy"
+        },
+        "successor_policy": {
+          "$ref": "#/$defs/assignment_successor_policy"
+        }
+      }
+    },
+    "assignment_status_code": {
+      "type": "string",
+      "enum": [
+        "asserted",
+        "disputed",
+        "retracted",
+        "corrected"
+      ]
+    },
+    "assignment_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "reason_code"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/assignment_status_code"
+        },
+        "reason_code": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "supersedes_assignment_id": {
+          "$ref": "#/$defs/blake3_hash"
+        }
+      }
+    },
+    "raw_fields": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/non_empty_string"
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_system",
+        "locator"
+      ],
+      "properties": {
+        "source_system": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "locator": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "fragment": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "observed_at": {
+          "$ref": "#/$defs/rfc3339_timestamp"
+        },
+        "raw_fields": {
+          "$ref": "#/$defs/raw_fields"
+        }
+      }
+    }
+  }
+}

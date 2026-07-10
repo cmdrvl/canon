@@ -1,0 +1,367 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.normalization.bundle.v1.schema.json",
+  "title": "canon.normalization.bundle.v1",
+  "description": "Content-addressed, evidence-preserving normalization bundle contract. Bundles compose deterministic generic primitives into named string or token views, preserve raw observations and step traces, declare protected features for anti-merge evidence, and optionally admit only constrained read-only runner extensions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "package_id",
+    "package_version",
+    "max_input_bytes",
+    "protected_features",
+    "views"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon.normalization.bundle.v1"
+    },
+    "package_id": {
+      "$ref": "#/$defs/package_id"
+    },
+    "package_version": {
+      "$ref": "#/$defs/semver"
+    },
+    "max_input_bytes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "protected_features": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/protected_feature"
+      }
+    },
+    "views": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/view"
+      }
+    }
+  },
+  "x-canon-contract": {
+    "domain_dictionaries_forbidden_in_core": true,
+    "raw_observation_preserved": true,
+    "step_trace_rule_ids_required": true,
+    "cluster_and_link_reuse_named_views": true,
+    "protected_differences_available_for_antimerge": true,
+    "safe_extension_boundary": "read_only_deterministic_runner_adapters_only"
+  },
+  "$defs": {
+    "package_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "component_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._:-]*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "blake3_hash": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "literal_tokens": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9_]+$"
+      },
+      "uniqueItems": true
+    },
+    "consumer_mode": {
+      "type": "string",
+      "enum": [
+        "cluster",
+        "link"
+      ]
+    },
+    "view_kind": {
+      "type": "string",
+      "enum": [
+        "string",
+        "tokens"
+      ]
+    },
+    "protected_feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "feature_id",
+        "tokens"
+      ],
+      "properties": {
+        "feature_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "tokens": {
+          "$ref": "#/$defs/literal_tokens"
+        }
+      }
+    },
+    "runner_extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "extension_id",
+        "package_digest",
+        "verification_mode",
+        "deterministic",
+        "allows_network",
+        "writes_files",
+        "max_input_bytes",
+        "adapter"
+      ],
+      "properties": {
+        "extension_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "package_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        },
+        "verification_mode": {
+          "type": "string",
+          "enum": [
+            "read_only_verify"
+          ]
+        },
+        "deterministic": {
+          "type": "boolean"
+        },
+        "allows_network": {
+          "type": "boolean"
+        },
+        "writes_files": {
+          "type": "boolean"
+        },
+        "max_input_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "adapter": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "adapter",
+                "from",
+                "to"
+              ],
+              "properties": {
+                "adapter": {
+                  "const": "literal_replace"
+                },
+                "from": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "to": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "adapter",
+                "tokens"
+              ],
+              "properties": {
+                "adapter": {
+                  "const": "drop_literal_tokens"
+                },
+                "tokens": {
+                  "$ref": "#/$defs/literal_tokens"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "primitive": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "ascii_trim"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "collapse_whitespace"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "lowercase_ascii"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "latin_ascii_fold"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "punctuation_to_space"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "tokens"
+          ],
+          "properties": {
+            "kind": {
+              "const": "drop_literal_tokens"
+            },
+            "tokens": {
+              "$ref": "#/$defs/literal_tokens"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "sort_tokens"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "dedupe_tokens"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "extension"
+          ],
+          "properties": {
+            "kind": {
+              "const": "runner_extension"
+            },
+            "extension": {
+              "$ref": "#/$defs/runner_extension"
+            }
+          }
+        }
+      ]
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule_id",
+        "primitive"
+      ],
+      "properties": {
+        "rule_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "primitive": {
+          "$ref": "#/$defs/primitive"
+        }
+      }
+    },
+    "view": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "view_id",
+        "output_kind",
+        "consumer_modes",
+        "protected_feature_refs",
+        "steps"
+      ],
+      "properties": {
+        "view_id": {
+          "$ref": "#/$defs/component_id"
+        },
+        "output_kind": {
+          "$ref": "#/$defs/view_kind"
+        },
+        "consumer_modes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/consumer_mode"
+          },
+          "uniqueItems": true
+        },
+        "protected_feature_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/component_id"
+          },
+          "uniqueItems": true
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        }
+      }
+    }
+  }
+}
