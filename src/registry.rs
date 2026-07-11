@@ -26,6 +26,7 @@ mod mint;
 mod next_id;
 pub mod package;
 mod provider;
+pub mod transaction;
 
 pub use add_entry::{
     RegistryAddEntryOutput, RegistryAddEntryPlan, RegistryAddEntryRequest, RegistryVersionBump,

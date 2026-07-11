@@ -15,6 +15,7 @@ use std::{
 
 const EXPORT_VERSION: &str = "canon_registry_export.v0";
 const SEARCH_INDEX_ARTIFACT_VERSION: &str = "canon_registry_search_index.v0";
+const SEARCH_INDEX_SCHEMA_VERSION: &str = "canon_registry_search_index_schema.v1";
 const NORMALIZATION_SPEC_ID: &str = "canon_registry_search_key.v0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -585,6 +586,7 @@ fn write_search_index(path: &Path, plan: &RegistryExportExecutionPlan) -> Result
         .transaction()
         .map_err(|error| io_refusal(path, error))?;
     insert_search_metadata(&tx, plan, path)?;
+    insert_search_capabilities(&tx, path)?;
     insert_search_scoring_spec(&tx, path)?;
     insert_entities(&tx, &plan.snapshot.entities, path)?;
     insert_aliases(&tx, &plan.snapshot.rows, path)?;
@@ -609,9 +611,28 @@ fn insert_search_metadata(
             "artifact_version",
             SEARCH_INDEX_ARTIFACT_VERSION.to_string(),
         ),
+        ("schema_version", SEARCH_INDEX_SCHEMA_VERSION.to_string()),
+        ("artifact_role", "serving_projection".to_string()),
+        (
+            "cache_policy",
+            "standalone_export_not_internal_cache".to_string(),
+        ),
+        ("open_mode", "read_only_serving".to_string()),
+        (
+            "identity_contract",
+            "exact registry snapshot; search normalization is serving-only".to_string(),
+        ),
         ("registry_id", plan.snapshot.registry.id.clone()),
         ("registry_version", plan.snapshot.registry.version.clone()),
         ("registry_source", plan.snapshot.registry.source.clone()),
+        (
+            "registry_entry_count",
+            plan.snapshot.package.entry_count.to_string(),
+        ),
+        (
+            "registry_effective_mapping_count",
+            plan.snapshot.package.effective_mapping_count.to_string(),
+        ),
         (
             "registry_package_schema_version",
             plan.snapshot.package.schema_version.clone(),
@@ -629,6 +650,27 @@ fn insert_search_metadata(
         ("content_hash", plan.content_hash.clone()),
         ("snapshot_hash", plan.snapshot.snapshot_hash.clone()),
         ("generated_at", generated_at),
+        (
+            "source_entry_count",
+            plan.snapshot.source_entry_count.to_string(),
+        ),
+        (
+            "filtered_entry_count",
+            plan.snapshot.filtered_entry_count.to_string(),
+        ),
+        ("exported_alias_count", plan.snapshot.rows.len().to_string()),
+        (
+            "exported_entity_count",
+            plan.snapshot.entities.len().to_string(),
+        ),
+        (
+            "skipped_filter_count",
+            plan.snapshot.skipped_filter_count.to_string(),
+        ),
+        (
+            "skipped_shadowed_count",
+            plan.snapshot.skipped_shadowed_count.to_string(),
+        ),
         ("normalization_spec_id", NORMALIZATION_SPEC_ID.to_string()),
         ("normalization_spec", normalization_spec.to_string()),
         (
@@ -654,6 +696,60 @@ fn insert_search_metadata(
         conn.execute(
             "INSERT INTO metadata (key, value) VALUES (?, ?)",
             params![key, value],
+        )
+        .map_err(|error| io_refusal(path, error))?;
+    }
+    Ok(())
+}
+
+fn insert_search_capabilities(conn: &Connection, path: &Path) -> Result<(), Refusal> {
+    let capabilities = [
+        (
+            "exact_alias_lookup",
+            true,
+            "aliases.alias preserves exact registry aliases after ASCII-trim",
+        ),
+        (
+            "normalized_key_search",
+            true,
+            "aliases.normalized_key is a serving key only and never changes canonical identity",
+        ),
+        (
+            "fts_alias_search",
+            true,
+            "aliases_fts indexes alias, normalized_key, canonical_id, and canonical_iri",
+        ),
+        (
+            "canonical_iri_projection",
+            true,
+            "aliases, entities, and external_keys carry canonical_iri",
+        ),
+        (
+            "source_rule_provenance",
+            true,
+            "aliases carry source_file, entry_order, rule_id, match_source, and registry_version",
+        ),
+        (
+            "registry_package_trace",
+            true,
+            "metadata pins registry package id, version, schema version, and digest",
+        ),
+        (
+            "standalone_export",
+            true,
+            "artifact is a deployment export distinct from Canon internal registry caches",
+        ),
+        (
+            "mutable_internal_cache",
+            false,
+            "search-index exports are not used as Canon derived lookup caches",
+        ),
+    ];
+
+    for (capability, enabled, description) in capabilities {
+        conn.execute(
+            "INSERT INTO capabilities (capability, enabled, description) VALUES (?, ?, ?)",
+            params![capability, if enabled { 1_i64 } else { 0_i64 }, description],
         )
         .map_err(|error| io_refusal(path, error))?;
     }
@@ -729,7 +825,7 @@ fn insert_entities(conn: &Connection, entities: &[EntityRow], path: &Path) -> Re
 fn insert_aliases(conn: &Connection, rows: &[ExportRow], path: &Path) -> Result<(), Refusal> {
     for row in rows {
         conn.execute(
-            "INSERT INTO aliases (alias, normalized_key, alias_kind, canonical_id, canonical_iri, canonical_type, rule_id, match_source, source_file, entry_order, registry_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO aliases (alias, normalized_key, alias_kind, canonical_id, canonical_iri, canonical_type, rule_id, match_source, source_file, entry_order, registry_id, registry_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             params![
                 row.input,
                 row.normalized_key,
@@ -741,6 +837,7 @@ fn insert_aliases(conn: &Connection, rows: &[ExportRow], path: &Path) -> Result<
                 row.match_source,
                 row.source_file,
                 row.entry_order as i64,
+                row.registry_id,
                 row.registry_version,
             ],
         )
@@ -791,6 +888,7 @@ DROP TABLE IF EXISTS aliases_fts;
 DROP TABLE IF EXISTS alias_kind_weights;
 DROP TABLE IF EXISTS field_weights;
 DROP TABLE IF EXISTS scoring_tiers;
+DROP TABLE IF EXISTS capabilities;
 DROP TABLE IF EXISTS external_keys;
 DROP TABLE IF EXISTS aliases;
 DROP TABLE IF EXISTS entities;
@@ -825,6 +923,7 @@ CREATE TABLE aliases (
     match_source TEXT NOT NULL,
     source_file TEXT NOT NULL,
     entry_order INTEGER NOT NULL,
+    registry_id TEXT NOT NULL,
     registry_version TEXT NOT NULL
 );
 
@@ -843,6 +942,12 @@ CREATE TABLE external_keys (
 );
 
 CREATE INDEX idx_external_keys_lookup ON external_keys(key_namespace, key_value);
+
+CREATE TABLE capabilities (
+    capability TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+    description TEXT NOT NULL
+);
 
 CREATE TABLE scoring_tiers (
     tier TEXT PRIMARY KEY,

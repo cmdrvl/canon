@@ -2,7 +2,9 @@
 
 pub mod cli;
 pub mod distribution {
+    pub mod backend;
     pub mod package;
+    pub mod trust;
 }
 pub mod doctor;
 pub mod entity;

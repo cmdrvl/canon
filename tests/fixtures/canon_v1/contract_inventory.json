@@ -500,6 +500,62 @@
       "access_boundary": "public_cli_contract",
       "source_path": "src/distribution/package.rs"
     },
+    {
+      "id": "canon.distribution.backend.filesystem.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::distribution::backend"
+    },
+    {
+      "id": "canon.filesystem-publication-lock.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/distribution/backend.rs"
+    },
+    {
+      "id": "canon.local-test.blake3-keyed.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::distribution::trust"
+    },
+    {
+      "id": "canon.publication.conflict.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::distribution::backend"
+    },
+    {
+      "id": "canon.publication.receipt.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::distribution::backend"
+    },
+    {
+      "id": "canon.trust.attestation.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::distribution::trust"
+    },
+    {
+      "id": "canon.trust.policy.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "public_schema",
+      "source_path": "schemas/canon.trust.policy.v1.schema.json"
+    },
+    {
+      "id": "canon.trust.verification.receipt.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::distribution::trust"
+    },
     { "id": "canon.identity.scope.v1", "family": "identity", "action": "preserve" },
     {
       "id": "canon.promotion.attestation.v1",
@@ -679,6 +735,7 @@
     { "id": "canon_registry_provider_schema.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_providers.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_search_index.v0", "family": "registry", "action": "preserve" },
+    { "id": "canon_registry_search_index_schema.v1", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_search_key.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_resolve.v0", "family": "resolve", "action": "preserve" },
     { "id": "canon_strategy_audit.v0", "family": "strategy", "action": "preserve" },
