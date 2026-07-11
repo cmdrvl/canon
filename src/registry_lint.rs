@@ -3,6 +3,10 @@ use crate::{
     entity::runtime::types::{
         AnchorValue, CannotLinkFact, PendingClusterRecord, RowPair, TrustedAnchorRecord,
     },
+    registry::package::{
+        RegistryPackage, RegistryPackageError, RegistryPackageFindingSeverity,
+        RegistryPackageVerificationFinding, compile_registry_package, verify_registry_package,
+    },
     strategy_registry::{
         StrategyAttestationGrade, StrategyEntryKey, StrategyEntryStatus, StrategyRegistryEntry,
         StrategySchemaShape,
@@ -23,6 +27,7 @@ pub enum RegistryLintProfile {
     Standard,
     Org,
     Strategy,
+    Package,
     Auto,
 }
 
@@ -32,6 +37,7 @@ impl RegistryLintProfile {
             Self::Standard => "standard",
             Self::Org => "org",
             Self::Strategy => "strategy",
+            Self::Package => "package",
             Self::Auto => "auto",
         }
     }
@@ -228,6 +234,7 @@ pub fn lint(
         RegistryLintProfile::Standard => lint_standard(&mut context),
         RegistryLintProfile::Org => lint_org(&mut context),
         RegistryLintProfile::Strategy => lint_strategy(&mut context),
+        RegistryLintProfile::Package => lint_package(&mut context),
         RegistryLintProfile::Auto => unreachable!("auto is resolved before lint dispatch"),
     }
 
@@ -248,6 +255,38 @@ pub fn lint(
         version: "canon_registry_lint.v0".to_string(),
         requested_profile: requested_profile.as_str().to_string(),
         profile: profile.as_str().to_string(),
+        registry: context.registry,
+        summary,
+        findings: context.findings,
+        next_command,
+    })
+}
+
+pub fn lint_registry_package(
+    registry_dir: &Path,
+    package: &RegistryPackage,
+) -> Result<RegistryLintOutput, RegistryPackageError> {
+    let (registry, registry_findings) = read_registry_metadata(registry_dir);
+    let mut context = LintContext::new(registry_dir, registry);
+    context.findings.extend(registry_findings);
+    append_package_verify_findings(&mut context, package)?;
+    context.findings.sort_by(|left, right| {
+        left.severity
+            .cmp(&right.severity)
+            .then_with(|| left.category.cmp(&right.category))
+            .then_with(|| left.code.cmp(&right.code))
+            .then_with(|| left.path.cmp(&right.path))
+            .then_with(|| left.line.cmp(&right.line))
+            .then_with(|| left.message.cmp(&right.message))
+    });
+
+    let summary = summarize_findings(&context.findings, RegistryLintProfile::Package);
+    let next_command = next_command_for_summary(&summary).to_string();
+
+    Ok(RegistryLintOutput {
+        version: "canon_registry_lint.v0".to_string(),
+        requested_profile: RegistryLintProfile::Package.as_str().to_string(),
+        profile: RegistryLintProfile::Package.as_str().to_string(),
         registry: context.registry,
         summary,
         findings: context.findings,
@@ -384,6 +423,75 @@ fn lint_standard(context: &mut LintContext) {
     check_entry_count(context, records.len(), "standard_entries");
     check_duplicate_inputs(context, &records);
     check_index_status(context, &mapping_files);
+}
+
+fn lint_package(context: &mut LintContext) {
+    match compile_registry_package(&context.registry_dir) {
+        Ok(package) => {
+            if let Err(error) = append_package_verify_findings(context, &package) {
+                context.finding(
+                    RegistryLintSeverity::Error,
+                    "registry_package",
+                    "package_verify_failed",
+                    format!("Registry package verification failed: {error}"),
+                    FindingLocation::default(),
+                    json!({
+                        "error_kind": format!("{:?}", error.kind),
+                        "error": error.message,
+                    }),
+                    "Repair registry package material, then rerun canon registry lint",
+                );
+            }
+        }
+        Err(error) => context.finding(
+            RegistryLintSeverity::Error,
+            "registry_package",
+            "package_compile_failed",
+            format!("Registry package could not be compiled for lint: {error}"),
+            FindingLocation::default(),
+            json!({
+                "error_kind": format!("{:?}", error.kind),
+                "error": error.message,
+            }),
+            "Repair registry package material, then rerun canon registry lint",
+        ),
+    }
+}
+
+fn append_package_verify_findings(
+    context: &mut LintContext,
+    package: &RegistryPackage,
+) -> Result<(), RegistryPackageError> {
+    let report = verify_registry_package(&context.registry_dir, package)?;
+    context
+        .findings
+        .extend(report.findings.into_iter().map(package_finding_to_lint));
+    Ok(())
+}
+
+fn package_finding_to_lint(finding: RegistryPackageVerificationFinding) -> RegistryLintFinding {
+    let severity = match finding.severity {
+        RegistryPackageFindingSeverity::Error => RegistryLintSeverity::Error,
+        RegistryPackageFindingSeverity::Warning => RegistryLintSeverity::Warning,
+        RegistryPackageFindingSeverity::Info => RegistryLintSeverity::Info,
+    };
+    let next_command = match severity {
+        RegistryLintSeverity::Error => {
+            "Repair or rebuild the registry package, then rerun canon registry lint"
+        }
+        RegistryLintSeverity::Warning => "Review package warning findings before promotion",
+        RegistryLintSeverity::Info => "No package lint action required",
+    };
+    RegistryLintFinding {
+        severity,
+        category: "registry_package".to_string(),
+        code: finding.code,
+        message: finding.message,
+        path: finding.path,
+        line: None,
+        detail: finding.detail,
+        next_command: next_command.to_string(),
+    }
 }
 
 fn lint_strategy(context: &mut LintContext) {

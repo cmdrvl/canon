@@ -42,7 +42,12 @@ pub const CANON_ENTITY_PROJECT_VERSION_V1: &str = "canon_entity_project.v1";
 pub const CANON_ENTITY_PREPARE_VERSION_V1: &str = "canon_entity_prepare.v1";
 pub const CANON_ENTITY_INDEX_VERSION_V1: &str = "canon_entity_index.v1";
 pub const CANON_ENTITY_BLOCK_VERSION_V1: &str = "canon_entity_block.v1";
-pub const CANON_ENTITY_EDGE_VERSION_V1: &str = "canon_entity_edge.v1";
+/// Final public v1 scoring artifact.
+///
+/// Legacy implementation internals still use "edge" for v0 records, but the
+/// artifact-backed public stage is `canon entity evidence` and has no `edge`
+/// compatibility alias.
+pub const CANON_ENTITY_EVIDENCE_VERSION_V1: &str = "canon_entity_evidence.v1";
 pub const CANON_ENTITY_SOLVE_VERSION_V1: &str = "canon_entity_solve.v1";
 pub const CANON_ENTITY_RUN_VERSION_V1: &str = "canon_entity_run.v1";
 pub const CANON_ENTITY_REVIEW_VERSION_V1: &str = "canon_entity_review.v1";
@@ -56,7 +61,7 @@ pub const ENTITY_ARTIFACT_V1_VERSIONS: &[&str] = &[
     CANON_ENTITY_PREPARE_VERSION_V1,
     CANON_ENTITY_INDEX_VERSION_V1,
     CANON_ENTITY_BLOCK_VERSION_V1,
-    CANON_ENTITY_EDGE_VERSION_V1,
+    CANON_ENTITY_EVIDENCE_VERSION_V1,
     CANON_ENTITY_SOLVE_VERSION_V1,
     CANON_ENTITY_RUN_VERSION_V1,
     CANON_ENTITY_REVIEW_VERSION_V1,
@@ -76,7 +81,7 @@ pub const LEGACY_ENTITY_BLOCK_VERSIONS: &[&str] = &[
     CANON_ENTITY_BLOCK_VERSION,
     CANON_ENTITY_BLOCK_BUCKET_VERSION,
 ];
-pub const LEGACY_ENTITY_EDGE_VERSIONS: &[&str] = &[CANON_ENTITY_EDGE_VERSION];
+pub const LEGACY_ENTITY_EVIDENCE_VERSIONS: &[&str] = &[CANON_ENTITY_EDGE_VERSION];
 pub const LEGACY_ENTITY_SOLVE_VERSIONS: &[&str] = &[CANON_ENTITY_SOLVE_VERSION];
 pub const LEGACY_ENTITY_RUN_VERSIONS: &[&str] = &[CANON_ENTITY_RUN_VERSION];
 pub const LEGACY_ENTITY_REVIEW_VERSIONS: &[&str] = &[
@@ -100,7 +105,7 @@ pub enum EntityArtifactStageV1 {
     Prepare,
     Index,
     Block,
-    Edge,
+    Evidence,
     Solve,
     Run,
     Review,
@@ -117,7 +122,7 @@ impl EntityArtifactStageV1 {
             Self::Prepare => "prepare",
             Self::Index => "index",
             Self::Block => "block",
-            Self::Edge => "edge",
+            Self::Evidence => "evidence",
             Self::Solve => "solve",
             Self::Run => "run",
             Self::Review => "review",
@@ -134,7 +139,7 @@ impl EntityArtifactStageV1 {
             Self::Prepare => "canon entity prepare",
             Self::Index => "canon entity index build",
             Self::Block => "canon entity block",
-            Self::Edge => "canon entity edge",
+            Self::Evidence => "canon entity evidence",
             Self::Solve => "canon entity solve",
             Self::Run => "canon entity run",
             Self::Review => "canon entity review",
@@ -151,7 +156,7 @@ impl EntityArtifactStageV1 {
             Self::Prepare => "prepare",
             Self::Index => "index",
             Self::Block => "block",
-            Self::Edge => "edge",
+            Self::Evidence => "evidence",
             Self::Solve => "solve",
             Self::Run => "run",
             Self::Review => "review",
@@ -231,15 +236,15 @@ pub const ENTITY_ARTIFACT_V1_CONTRACTS: &[EntityArtifactContractDescriptor] = &[
         legacy_versions: LEGACY_ENTITY_BLOCK_VERSIONS,
     },
     EntityArtifactContractDescriptor {
-        stage: EntityArtifactStageV1::Edge,
-        command: EntityArtifactStageV1::Edge.command(),
-        artifact_version: CANON_ENTITY_EDGE_VERSION_V1,
-        schema_key: CANON_ENTITY_EDGE_VERSION_V1,
-        stage_dir: EntityArtifactStageV1::Edge.stage_dir(),
-        artifact_relpath: "edge/edge.json",
-        payload_relpath: "edge/evidence.jsonl",
+        stage: EntityArtifactStageV1::Evidence,
+        command: EntityArtifactStageV1::Evidence.command(),
+        artifact_version: CANON_ENTITY_EVIDENCE_VERSION_V1,
+        schema_key: CANON_ENTITY_EVIDENCE_VERSION_V1,
+        stage_dir: EntityArtifactStageV1::Evidence.stage_dir(),
+        artifact_relpath: "evidence/evidence.json",
+        payload_relpath: "evidence/evidence.jsonl",
         payload_kind: EntityArtifactPayloadKind::Jsonl,
-        legacy_versions: LEGACY_ENTITY_EDGE_VERSIONS,
+        legacy_versions: LEGACY_ENTITY_EVIDENCE_VERSIONS,
     },
     EntityArtifactContractDescriptor {
         stage: EntityArtifactStageV1::Solve,
@@ -883,7 +888,7 @@ mod tests {
                 CANON_ENTITY_PREPARE_VERSION_V1,
                 CANON_ENTITY_INDEX_VERSION_V1,
                 CANON_ENTITY_BLOCK_VERSION_V1,
-                CANON_ENTITY_EDGE_VERSION_V1,
+                CANON_ENTITY_EVIDENCE_VERSION_V1,
                 CANON_ENTITY_SOLVE_VERSION_V1,
                 CANON_ENTITY_RUN_VERSION_V1,
                 CANON_ENTITY_REVIEW_VERSION_V1,

@@ -1,6 +1,7 @@
 use crate::{
     cli::{DoctorArgs, DoctorCommand, DoctorJsonArgs},
     paths,
+    registry::package::REGISTRY_PACKAGE_VERIFY_SCHEMA_VERSION,
 };
 use serde_json::{Value, json};
 use std::error::Error;
@@ -84,6 +85,7 @@ fn health_payload() -> Value {
         "observed_paths": observed_paths(),
         "config_footprint": paths::config_footprint(),
         "composition": composition_payload(),
+        "registry_package_verification": registry_package_verification_payload(),
         "side_effects": side_effects(),
         "fixers": []
     })
@@ -129,6 +131,7 @@ fn capabilities_payload() -> Value {
         },
         "config_footprint": paths::config_footprint(),
         "composition": composition_payload(),
+        "registry_package_verification": registry_package_verification_payload(),
         "side_effects": side_effects(),
         "fixers": []
     })
@@ -164,6 +167,19 @@ fn composition_payload() -> Value {
     })
 }
 
+fn registry_package_verification_payload() -> Value {
+    json!({
+        "verify_schema": REGISTRY_PACKAGE_VERIFY_SCHEMA_VERSION,
+        "lint_profile": "package",
+        "scope": [
+            "recompute registry package descriptors and digest from local files",
+            "validate effective mappings, entry counts, duplicate inputs, provenance descriptors, sidecar scopes, dependency pins, and signature attachment references",
+            "emit deterministic robot JSON or summary findings without mutating registry state"
+        ],
+        "trust_boundary": "Package integrity verification is structural and does not approve signer identity, attestation policy, or promotion trust."
+    })
+}
+
 fn triage_payload() -> Value {
     let health = health_payload();
     let ok = health.get("ok").and_then(Value::as_bool).unwrap_or(false);
@@ -182,6 +198,7 @@ fn triage_payload() -> Value {
         "read_only": true,
         "checks": checks,
         "config_footprint": paths::config_footprint(),
+        "registry_package_verification": registry_package_verification_payload(),
         "side_effects": side_effects(),
         "fixers": [],
         "recommended_next_steps": [

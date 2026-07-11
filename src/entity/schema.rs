@@ -682,12 +682,12 @@ mod tests {
     use super::*;
     use crate::RefusalCode;
     use crate::entity::contracts::{
-        CANON_ENTITY_AUDIT_VERSION_V1, CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_EDGE_VERSION_V1,
-        CANON_ENTITY_EXPLAIN_VERSION_V1, CANON_ENTITY_INDEX_VERSION_V1,
-        CANON_ENTITY_PREPARE_VERSION_V1, CANON_ENTITY_PROJECT_VERSION_V1,
-        CANON_ENTITY_PROMOTE_VERSION_V1, CANON_ENTITY_REVIEW_VERSION_V1,
-        CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1, ENTITY_ARTIFACT_V1_CONTRACTS,
-        EntityArtifactStageV1,
+        CANON_ENTITY_AUDIT_VERSION_V1, CANON_ENTITY_BLOCK_VERSION_V1,
+        CANON_ENTITY_EVIDENCE_VERSION_V1, CANON_ENTITY_EXPLAIN_VERSION_V1,
+        CANON_ENTITY_INDEX_VERSION_V1, CANON_ENTITY_PREPARE_VERSION_V1,
+        CANON_ENTITY_PROJECT_VERSION_V1, CANON_ENTITY_PROMOTE_VERSION_V1,
+        CANON_ENTITY_REVIEW_VERSION_V1, CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1,
+        ENTITY_ARTIFACT_V1_CONTRACTS, EntityArtifactStageV1,
     };
     use serde_json::{Map, json};
 
@@ -961,7 +961,7 @@ mod tests {
             EntityArtifactStageV1::Prepare => ("surfaces_path", "prepare/surfaces.jsonl"),
             EntityArtifactStageV1::Index => ("postings_path", "index/postings.bin"),
             EntityArtifactStageV1::Block => ("candidates_path", "block/candidates.jsonl"),
-            EntityArtifactStageV1::Edge => ("evidence_path", "edge/evidence.jsonl"),
+            EntityArtifactStageV1::Evidence => ("evidence_path", "evidence/evidence.jsonl"),
             EntityArtifactStageV1::Solve => ("entities_path", "solve/entities.jsonl"),
             EntityArtifactStageV1::Run => ("run_manifest_path", "run/manifest.json"),
             EntityArtifactStageV1::Review => ("review_queue_path", "review/queue.jsonl"),
@@ -990,15 +990,15 @@ mod tests {
                 "schema-index",
                 "index"
             )]),
-            EntityArtifactStageV1::Edge => json!([upstream(
+            EntityArtifactStageV1::Evidence => json!([upstream(
                 CANON_ENTITY_BLOCK_VERSION_V1,
                 "schema-block",
                 "block"
             )]),
             EntityArtifactStageV1::Solve => json!([upstream(
-                CANON_ENTITY_EDGE_VERSION_V1,
-                "schema-edge",
-                "edge"
+                CANON_ENTITY_EVIDENCE_VERSION_V1,
+                "schema-evidence",
+                "evidence"
             )]),
             EntityArtifactStageV1::Run => json!([upstream(
                 CANON_ENTITY_SOLVE_VERSION_V1,

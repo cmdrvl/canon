@@ -1,7 +1,7 @@
 use crate::{
     distribution::backend::{
-        FilesystemPublicationBackend, PublicationConflictReceipt, PublicationError,
-        PublicationErrorKind, PublicationReceipt, PublicationRequest, PublishedPackageRef,
+        PublicationBackend, PublicationConflictReceipt, PublicationError, PublicationErrorKind,
+        PublicationReceipt, PublicationRequest, PublishedPackageRef,
     },
     registry::{canonical_package_bytes, compile_registry_package, parse_registry_package},
 };
@@ -62,7 +62,7 @@ impl fmt::Display for RegistryTransactionError {
 impl std::error::Error for RegistryTransactionError {}
 
 pub fn publish_registry_transaction(
-    backend: &FilesystemPublicationBackend,
+    backend: &impl PublicationBackend,
     transaction: RegistryPublicationTransaction,
 ) -> Result<RegistryPublicationOutput, RegistryTransactionError> {
     let package = compile_registry_package(&transaction.registry_dir).map_err(|error| {

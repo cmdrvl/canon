@@ -37,6 +37,8 @@ struct Inventory {
     command_rows: Vec<CommandRow>,
     contract_rows: Vec<ContractRow>,
     incompatibility_rows: Vec<IncompatibilityRow>,
+    cutover_decisions: Vec<CutoverDecision>,
+    bd_h9jn_scaffold: BdH9jnScaffold,
     unresolved_decisions: Vec<UnresolvedDecision>,
 }
 
@@ -59,6 +61,28 @@ struct ContractRow {
 struct IncompatibilityRow {
     id: String,
     subjects: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CutoverDecision {
+    id: String,
+    owner: String,
+    status: String,
+    subject: String,
+    decision: String,
+    selected_public_command: Option<String>,
+    selected_artifact_version: Option<String>,
+    selected_artifact_family: Option<String>,
+    selected_public_commands: Option<Vec<String>>,
+    legacy_versions: Option<Vec<String>>,
+    acceptance_criteria: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BdH9jnScaffold {
+    thread_id: String,
+    reservation_paths: Vec<String>,
+    acceptance_criteria: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,6 +134,13 @@ fn canon_v1_contract_inventory_covers_shipped_commands_and_contract_ids() {
             .map(|row| row.id.as_str()),
         "unresolved decision ids",
     );
+    assert_unique(
+        inventory
+            .cutover_decisions
+            .iter()
+            .map(|row| row.id.as_str()),
+        "cutover decision ids",
+    );
 
     let inventory_command_ids = inventory
         .command_rows
@@ -137,14 +168,21 @@ fn canon_v1_contract_inventory_covers_shipped_commands_and_contract_ids() {
     let actual_contract_ids = shipped_contract_ids();
 
     println!(
-        "canon_v1 contract inventory: command_rows={}, clap_leafs={}, operator_rows={}, contract_rows={}, incompatibilities={}, unresolved={}",
+        "canon_v1 contract inventory: command_rows={}, clap_leafs={}, operator_rows={}, contract_rows={}, incompatibilities={}, cutover_decisions={}, unresolved={}",
         inventory.command_rows.len(),
         actual_clap_paths.len(),
         actual_operator_names.len(),
         actual_contract_ids.len(),
         inventory.incompatibility_rows.len(),
+        inventory.cutover_decisions.len(),
         inventory.unresolved_decisions.len(),
     );
+    for decision in &inventory.cutover_decisions {
+        println!(
+            "decided {}: {} :: {}",
+            decision.id, decision.subject, decision.decision
+        );
+    }
     for decision in &inventory.unresolved_decisions {
         println!(
             "unresolved {}: {} :: {}",
@@ -219,8 +257,128 @@ fn canon_v1_contract_inventory_freezes_current_incompatibility_rows() {
     assert_eq!(actual_subjects, expected_subjects);
 
     assert!(
-        !inventory.unresolved_decisions.is_empty(),
-        "inventory should keep unresolved decisions visible"
+        inventory.unresolved_decisions.iter().all(|row| !matches!(
+            row.id.as_str(),
+            "entity-prepare-public-surface"
+                | "version-bump-vs-in-place-cutover"
+                | "operator-json-granularity"
+        )),
+        "bd-1cdf cutover decisions should move out of unresolved_decisions"
+    );
+}
+
+#[test]
+fn canon_v1_contract_inventory_freezes_bd_h9jn_cutover_decisions() {
+    let inventory = inventory();
+    let decisions = inventory
+        .cutover_decisions
+        .iter()
+        .map(|row| (row.id.as_str(), row))
+        .collect::<std::collections::BTreeMap<_, _>>();
+
+    let public_name = decisions
+        .get("bd-h9jn-public-scoring-name")
+        .expect("public scoring name decision present");
+    assert_eq!(public_name.owner, "bd-1cdf");
+    assert_eq!(public_name.status, "decided");
+    assert_eq!(
+        public_name.selected_public_command.as_deref(),
+        Some("canon entity evidence")
+    );
+    assert_eq!(
+        public_name.selected_artifact_version.as_deref(),
+        Some("canon_entity_evidence.v1")
+    );
+    assert_eq!(
+        public_name.legacy_versions.as_ref(),
+        Some(&vec!["canon_entity_edge.v0".to_string()])
+    );
+    assert!(
+        public_name
+            .decision
+            .contains("no `edge` compatibility alias")
+            || public_name
+                .decision
+                .contains("Do not keep `canon entity edge`")
+    );
+
+    let legacy_policy = decisions
+        .get("bd-h9jn-v0-legacy-policy")
+        .expect("legacy policy decision present");
+    assert_eq!(
+        legacy_policy.selected_artifact_family.as_deref(),
+        Some("canon_entity_*.v1")
+    );
+    assert!(
+        legacy_policy
+            .acceptance_criteria
+            .iter()
+            .any(|criterion| criterion.contains("No public command emits `canon_entity_*.v0`")),
+        "legacy v0 policy should forbid public v0 emission"
+    );
+
+    let prepare_profile = decisions
+        .get("bd-h9jn-public-prepare-profile")
+        .expect("prepare/profile decision present");
+    let selected = prepare_profile
+        .selected_public_commands
+        .as_ref()
+        .expect("prepare/profile selected commands");
+    assert_eq!(
+        selected,
+        &[
+            "canon entity prepare".to_string(),
+            "canon entity profile list".to_string(),
+            "canon entity profile init".to_string()
+        ]
+    );
+
+    let contract_ids = inventory
+        .contract_rows
+        .iter()
+        .map(|row| row.id.as_str())
+        .collect::<BTreeSet<_>>();
+    assert!(
+        contract_ids.contains("canon_entity_evidence.v1"),
+        "v1 evidence contract row should be present"
+    );
+    assert!(
+        !contract_ids.contains("canon_entity_edge.v1"),
+        "edge.v1 must not remain as a final public v1 contract"
+    );
+}
+
+#[test]
+fn canon_v1_contract_inventory_freezes_bd_h9jn_scaffold_handoff() {
+    let inventory = inventory();
+    assert_eq!(inventory.bd_h9jn_scaffold.thread_id, "bd-h9jn");
+    assert_eq!(
+        inventory.bd_h9jn_scaffold.reservation_paths,
+        vec![
+            "src/cli.rs".to_string(),
+            "src/lib.rs".to_string(),
+            "src/entity/mod.rs".to_string(),
+            "src/entity/runtime.rs".to_string(),
+            "tests/cli_smoke.rs".to_string(),
+            "tests/fixtures/canon_v1/help/entity_help.txt".to_string(),
+            "tests/fixtures/canon_v1/help/entity_link_help.txt".to_string()
+        ]
+    );
+    assert!(
+        inventory
+            .bd_h9jn_scaffold
+            .acceptance_criteria
+            .iter()
+            .any(|criterion| criterion.contains("no `edge` alias")),
+        "bd-h9jn acceptance should forbid a public edge alias"
+    );
+    assert!(
+        inventory
+            .bd_h9jn_scaffold
+            .acceptance_criteria
+            .iter()
+            .any(|criterion| criterion.contains("structured refusals")),
+        "bd-h9jn acceptance should preserve refusal routing for legacy paths"
     );
 }
 

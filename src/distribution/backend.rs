@@ -13,6 +13,9 @@ use std::{
 pub const FILESYSTEM_BACKEND_SCHEMA_VERSION: &str = "canon.distribution.backend.filesystem.v1";
 pub const PUBLICATION_RECEIPT_SCHEMA_VERSION: &str = "canon.publication.receipt.v1";
 pub const PUBLICATION_CONFLICT_SCHEMA_VERSION: &str = "canon.publication.conflict.v1";
+pub const FILESYSTEM_BACKEND_KIND: &str = "filesystem";
+pub const PROVIDER_URI_HANDLING_DEFERRED: &str =
+    "provider_specific_uri_handling_deferred_until_backend_cas_and_oci_contracts_are_stable";
 
 const OBJECT_ROOT: &str = "objects/blake3";
 const PACKAGE_ROOT: &str = "packages";
@@ -25,24 +28,34 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(1);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackendCapabilities {
     pub schema_version: String,
+    pub backend_kind: String,
     pub content_addressed_objects: bool,
+    pub read_by_digest: bool,
     pub create_if_absent: bool,
     pub compare_and_swap_tags: bool,
     pub immutable_package_history: bool,
+    pub list_declared_ancestry: bool,
     pub deterministic_conflict_receipts: bool,
     pub atomic_replace_requires_same_filesystem: bool,
+    pub requires_network: bool,
+    pub provider_specific_uri_handling: String,
 }
 
 impl BackendCapabilities {
     pub fn filesystem() -> Self {
         Self {
             schema_version: FILESYSTEM_BACKEND_SCHEMA_VERSION.to_string(),
+            backend_kind: FILESYSTEM_BACKEND_KIND.to_string(),
             content_addressed_objects: true,
+            read_by_digest: true,
             create_if_absent: true,
             compare_and_swap_tags: true,
             immutable_package_history: true,
+            list_declared_ancestry: true,
             deterministic_conflict_receipts: true,
             atomic_replace_requires_same_filesystem: true,
+            requires_network: false,
+            provider_specific_uri_handling: PROVIDER_URI_HANDLING_DEFERRED.to_string(),
         }
     }
 }
@@ -67,6 +80,32 @@ pub struct PublicationRequest {
     pub expected_base: PublishedPackageRef,
     pub expected_channel_digest: Option<String>,
     pub candidate_package_bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImmutableObjectWrite {
+    pub digest: String,
+    pub created: bool,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelCompareAndSwapRequest {
+    pub channel: String,
+    pub expected_base: PublishedPackageRef,
+    pub expected_channel_digest: Option<String>,
+    pub candidate: PublishedPackageRef,
+    pub object_path: String,
+    pub history_path: String,
+    pub candidate_immutably_stored: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelCompareAndSwapReceipt {
+    pub outcome: PublicationOutcome,
+    pub previous_channel_digest: Option<String>,
+    pub current_head: PublishedPackageRef,
+    pub tag_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -161,6 +200,37 @@ impl From<io::Error> for PublicationError {
     }
 }
 
+/// Minimal publication seam for immutable package objects plus mutable channel
+/// heads. Implementations must report their safety capabilities up front and
+/// refuse publication when they cannot enforce content-addressed create-if-absent
+/// object writes and compare-and-swap channel updates.
+#[allow(dead_code)]
+pub trait PublicationBackend {
+    fn capabilities(&self) -> &BackendCapabilities;
+
+    fn publish(&self, request: PublicationRequest) -> Result<PublicationReceipt, PublicationError>;
+
+    fn current_head(&self, channel: &str) -> Result<Option<PublishedPackageRef>, PublicationError>;
+
+    fn read_by_digest(&self, digest: &str) -> Result<Option<Vec<u8>>, PublicationError>;
+
+    fn create_immutable_object_if_absent(
+        &self,
+        digest: &str,
+        bytes: &[u8],
+    ) -> Result<ImmutableObjectWrite, PublicationError>;
+
+    fn compare_and_swap_channel(
+        &self,
+        request: ChannelCompareAndSwapRequest,
+    ) -> Result<ChannelCompareAndSwapReceipt, PublicationError>;
+
+    fn list_ancestry(
+        &self,
+        package: &PublishedPackageRef,
+    ) -> Result<Vec<PublicationAncestry>, PublicationError>;
+}
+
 #[derive(Debug, Clone)]
 pub struct FilesystemPublicationBackend {
     root: PathBuf,
@@ -190,7 +260,6 @@ struct ChannelTag {
 struct ReceiptPaths<'a> {
     object_path: &'a Path,
     history_path: &'a Path,
-    tag_path: &'a Path,
 }
 
 struct LockGuard {
@@ -211,6 +280,18 @@ impl FilesystemPublicationBackend {
         }
     }
 
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn with_capabilities_for_test(
+        root: impl Into<PathBuf>,
+        capabilities: BackendCapabilities,
+    ) -> Self {
+        Self {
+            root: root.into(),
+            capabilities,
+        }
+    }
+
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -223,14 +304,61 @@ impl FilesystemPublicationBackend {
         &self,
         request: PublicationRequest,
     ) -> Result<PublicationReceipt, PublicationError> {
+        <Self as PublicationBackend>::publish(self, request)
+    }
+
+    pub fn current_head(
+        &self,
+        channel: &str,
+    ) -> Result<Option<PublishedPackageRef>, PublicationError> {
+        <Self as PublicationBackend>::current_head(self, channel)
+    }
+
+    #[allow(dead_code)]
+    pub fn read_by_digest(&self, digest: &str) -> Result<Option<Vec<u8>>, PublicationError> {
+        <Self as PublicationBackend>::read_by_digest(self, digest)
+    }
+
+    pub fn create_immutable_object_if_absent(
+        &self,
+        digest: &str,
+        bytes: &[u8],
+    ) -> Result<ImmutableObjectWrite, PublicationError> {
+        <Self as PublicationBackend>::create_immutable_object_if_absent(self, digest, bytes)
+    }
+
+    pub fn compare_and_swap_channel(
+        &self,
+        request: ChannelCompareAndSwapRequest,
+    ) -> Result<ChannelCompareAndSwapReceipt, PublicationError> {
+        <Self as PublicationBackend>::compare_and_swap_channel(self, request)
+    }
+
+    #[allow(dead_code)]
+    pub fn list_ancestry(
+        &self,
+        package: &PublishedPackageRef,
+    ) -> Result<Vec<PublicationAncestry>, PublicationError> {
+        <Self as PublicationBackend>::list_ancestry(self, package)
+    }
+}
+
+impl PublicationBackend for FilesystemPublicationBackend {
+    fn capabilities(&self) -> &BackendCapabilities {
+        &self.capabilities
+    }
+
+    fn publish(&self, request: PublicationRequest) -> Result<PublicationReceipt, PublicationError> {
         self.ensure_safe_capabilities()?;
         validate_publication_request(&request)?;
         let candidate = candidate_from_package_bytes(&request.candidate_package_bytes)?;
         fs::create_dir_all(&self.root)?;
 
-        let object_path = self.object_path(&candidate.package.content_digest)?;
-        let object_created =
-            create_content_addressed_file(&object_path, &request.candidate_package_bytes)?;
+        let object_write = self.create_immutable_object_if_absent(
+            &candidate.package.content_digest,
+            &request.candidate_package_bytes,
+        )?;
+        let object_path = self.root.join(&object_write.path);
 
         let history_record = PackageHistoryRecord {
             schema_version: PUBLICATION_RECEIPT_SCHEMA_VERSION.to_string(),
@@ -243,32 +371,111 @@ impl FilesystemPublicationBackend {
         let history_path = self.history_path(&history_record)?;
         let history_bytes = canonical_json_bytes(&history_record)?;
         let history_created = create_content_addressed_file(&history_path, &history_bytes)?;
-        let candidate_immutably_stored = object_created || history_created || object_path.exists();
+        let candidate_immutably_stored =
+            object_write.created || history_created || object_path.exists();
+        let history_path_string = relative_path_string(&self.root, &history_path)?;
+
+        let cas = self.compare_and_swap_channel(ChannelCompareAndSwapRequest {
+            channel: request.channel.clone(),
+            expected_base: request.expected_base.clone(),
+            expected_channel_digest: request.expected_channel_digest.clone(),
+            candidate: candidate.package.clone(),
+            object_path: object_write.path,
+            history_path: history_path_string,
+            candidate_immutably_stored,
+        })?;
+
+        self.receipt_from_cas(
+            cas,
+            &request,
+            &candidate.package,
+            ReceiptPaths {
+                object_path: &object_path,
+                history_path: &history_path,
+            },
+        )
+    }
+
+    fn current_head(&self, channel: &str) -> Result<Option<PublishedPackageRef>, PublicationError> {
+        Ok(self.read_tag(channel)?.map(|tag| tag.package))
+    }
+
+    fn read_by_digest(&self, digest: &str) -> Result<Option<Vec<u8>>, PublicationError> {
+        validate_digest(digest)?;
+        let path = self.object_path(digest)?;
+        match fs::read(&path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(PublicationError::new(
+                PublicationErrorKind::Io,
+                format!(
+                    "failed to read immutable object {}: {error}",
+                    path.display()
+                ),
+            )),
+        }
+    }
+
+    fn create_immutable_object_if_absent(
+        &self,
+        digest: &str,
+        bytes: &[u8],
+    ) -> Result<ImmutableObjectWrite, PublicationError> {
+        validate_digest(digest)?;
+        let candidate = candidate_from_package_bytes(bytes)?;
+        if candidate.package.content_digest != digest {
+            return Err(PublicationError::new(
+                PublicationErrorKind::InvalidPackage,
+                format!(
+                    "immutable object digest mismatch: expected {digest}, found {}",
+                    candidate.package.content_digest
+                ),
+            ));
+        }
+        let path = self.object_path(digest)?;
+        let created = create_content_addressed_file(&path, bytes)?;
+        Ok(ImmutableObjectWrite {
+            digest: digest.to_string(),
+            created,
+            path: relative_path_string(&self.root, &path)?,
+        })
+    }
+
+    fn compare_and_swap_channel(
+        &self,
+        request: ChannelCompareAndSwapRequest,
+    ) -> Result<ChannelCompareAndSwapReceipt, PublicationError> {
+        self.ensure_safe_capabilities()?;
+        validate_channel_preconditions(
+            &request.channel,
+            &request.expected_base,
+            request.expected_channel_digest.as_ref(),
+        )?;
+        validate_digest(&request.candidate.content_digest)?;
 
         let tag_path = self.tag_path(&request.channel);
         let _guard = acquire_lock(&self.lock_path(&request.channel))?;
         let current = self.read_tag(&request.channel)?;
         if let Some(current_tag) = &current
-            && current_tag.package.content_digest == candidate.package.content_digest
+            && current_tag.package.content_digest == request.candidate.content_digest
         {
-            return self.receipt(
-                PublicationOutcome::AlreadyPublished,
-                &request,
-                &candidate.package,
-                current.as_ref(),
-                ReceiptPaths {
-                    object_path: &object_path,
-                    history_path: &history_path,
-                    tag_path: &tag_path,
-                },
-            );
+            return Ok(ChannelCompareAndSwapReceipt {
+                outcome: PublicationOutcome::AlreadyPublished,
+                previous_channel_digest: current
+                    .as_ref()
+                    .map(|tag| tag.package.content_digest.clone()),
+                current_head: request.candidate,
+                tag_path: relative_path_string(&self.root, &tag_path)?,
+            });
         }
 
         if let Some(conflict) = channel_precondition_conflict(
-            &request,
-            &candidate.package,
+            &request.channel,
+            &request.expected_base,
+            request.expected_channel_digest.as_ref(),
+            &request.candidate,
             current.as_ref(),
-            candidate_immutably_stored,
+            request.candidate_immutably_stored,
         ) {
             return Err(PublicationError::conflict(conflict));
         }
@@ -276,33 +483,53 @@ impl FilesystemPublicationBackend {
         let tag = ChannelTag {
             schema_version: PUBLICATION_RECEIPT_SCHEMA_VERSION.to_string(),
             channel: request.channel.clone(),
-            package: candidate.package.clone(),
-            parent: request.expected_base.clone(),
-            object_path: relative_path_string(&self.root, &object_path)?,
-            history_path: relative_path_string(&self.root, &history_path)?,
+            package: request.candidate.clone(),
+            parent: request.expected_base,
+            object_path: request.object_path,
+            history_path: request.history_path,
         };
         atomic_replace(&tag_path, &canonical_json_bytes(&tag)?)?;
 
-        self.receipt(
-            PublicationOutcome::Published,
-            &request,
-            &candidate.package,
-            current.as_ref(),
-            ReceiptPaths {
-                object_path: &object_path,
-                history_path: &history_path,
-                tag_path: &tag_path,
-            },
-        )
+        Ok(ChannelCompareAndSwapReceipt {
+            outcome: PublicationOutcome::Published,
+            previous_channel_digest: current.map(|tag| tag.package.content_digest),
+            current_head: request.candidate,
+            tag_path: relative_path_string(&self.root, &tag_path)?,
+        })
     }
 
-    pub fn current_head(
+    fn list_ancestry(
         &self,
-        channel: &str,
-    ) -> Result<Option<PublishedPackageRef>, PublicationError> {
-        Ok(self.read_tag(channel)?.map(|tag| tag.package))
+        package: &PublishedPackageRef,
+    ) -> Result<Vec<PublicationAncestry>, PublicationError> {
+        let path = self.history_path_for_package(package)?;
+        match fs::read(&path) {
+            Ok(bytes) => {
+                let record: PackageHistoryRecord =
+                    serde_json::from_slice(&bytes).map_err(|error| {
+                        PublicationError::new(
+                            PublicationErrorKind::Parse,
+                            format!(
+                                "failed to parse package history {}: {error}",
+                                path.display()
+                            ),
+                        )
+                    })?;
+                Ok(vec![PublicationAncestry {
+                    parent: record.parent,
+                    child: record.package,
+                }])
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => Err(PublicationError::new(
+                PublicationErrorKind::Io,
+                format!("failed to read package history {}: {error}", path.display()),
+            )),
+        }
     }
+}
 
+impl FilesystemPublicationBackend {
     fn read_tag(&self, channel: &str) -> Result<Option<ChannelTag>, PublicationError> {
         let path = self.tag_path(channel);
         match fs::read(&path) {
@@ -323,10 +550,12 @@ impl FilesystemPublicationBackend {
     fn ensure_safe_capabilities(&self) -> Result<(), PublicationError> {
         let capabilities = &self.capabilities;
         if capabilities.content_addressed_objects
+            && capabilities.read_by_digest
             && capabilities.create_if_absent
             && capabilities.compare_and_swap_tags
             && capabilities.immutable_package_history
             && capabilities.deterministic_conflict_receipts
+            && !capabilities.requires_network
         {
             Ok(())
         } else {
@@ -345,15 +574,19 @@ impl FilesystemPublicationBackend {
     }
 
     fn history_path(&self, record: &PackageHistoryRecord) -> Result<PathBuf, PublicationError> {
+        self.history_path_for_package(&record.package)
+    }
+
+    fn history_path_for_package(
+        &self,
+        package: &PublishedPackageRef,
+    ) -> Result<PathBuf, PublicationError> {
         Ok(self
             .root
             .join(PACKAGE_ROOT)
-            .join(sanitize_component(&record.package.package_id)?)
-            .join(sanitize_component(&record.package.package_version)?)
-            .join(format!(
-                "{}.json",
-                digest_hex(&record.package.content_digest)?
-            )))
+            .join(sanitize_component(&package.package_id)?)
+            .join(sanitize_component(&package.package_version)?)
+            .join(format!("{}.json", digest_hex(&package.content_digest)?)))
     }
 
     fn tag_path(&self, channel: &str) -> PathBuf {
@@ -368,25 +601,24 @@ impl FilesystemPublicationBackend {
             .join(format!("{}.lock", sanitize_component_lossy(channel)))
     }
 
-    fn receipt(
+    fn receipt_from_cas(
         &self,
-        outcome: PublicationOutcome,
+        cas: ChannelCompareAndSwapReceipt,
         request: &PublicationRequest,
         package: &PublishedPackageRef,
-        previous: Option<&ChannelTag>,
         paths: ReceiptPaths<'_>,
     ) -> Result<PublicationReceipt, PublicationError> {
         Ok(PublicationReceipt {
             schema_version: PUBLICATION_RECEIPT_SCHEMA_VERSION.to_string(),
-            outcome,
+            outcome: cas.outcome,
             channel: request.channel.clone(),
             package: package.clone(),
             expected_base: request.expected_base.clone(),
-            previous_channel_digest: previous.map(|tag| tag.package.content_digest.clone()),
-            current_channel_digest: package.content_digest.clone(),
+            previous_channel_digest: cas.previous_channel_digest,
+            current_channel_digest: cas.current_head.content_digest,
             object_path: relative_path_string(&self.root, paths.object_path)?,
             history_path: relative_path_string(&self.root, paths.history_path)?,
-            tag_path: relative_path_string(&self.root, paths.tag_path)?,
+            tag_path: cas.tag_path,
             ancestry: PublicationAncestry {
                 parent: request.expected_base.clone(),
                 child: package.clone(),
@@ -436,29 +668,43 @@ pub fn candidate_from_package_bytes(
 }
 
 fn validate_publication_request(request: &PublicationRequest) -> Result<(), PublicationError> {
-    if request.channel.trim().is_empty() {
+    validate_channel_preconditions(
+        &request.channel,
+        &request.expected_base,
+        request.expected_channel_digest.as_ref(),
+    )
+}
+
+fn validate_channel_preconditions(
+    channel: &str,
+    expected_base: &PublishedPackageRef,
+    expected_channel_digest: Option<&String>,
+) -> Result<(), PublicationError> {
+    if channel.trim().is_empty() {
         return Err(PublicationError::new(
             PublicationErrorKind::MissingExpectedBase,
             "publication requires a non-empty channel",
         ));
     }
-    if request.expected_base.package_version.trim().is_empty()
-        || request.expected_base.content_digest.trim().is_empty()
+    if expected_base.package_version.trim().is_empty()
+        || expected_base.content_digest.trim().is_empty()
     {
         return Err(PublicationError::new(
             PublicationErrorKind::MissingExpectedBase,
             "publication requires expected base digest and version",
         ));
     }
-    validate_digest(&request.expected_base.content_digest)?;
-    if let Some(expected) = &request.expected_channel_digest {
+    validate_digest(&expected_base.content_digest)?;
+    if let Some(expected) = expected_channel_digest {
         validate_digest(expected)?;
     }
     Ok(())
 }
 
 fn channel_precondition_conflict(
-    request: &PublicationRequest,
+    channel: &str,
+    expected_base: &PublishedPackageRef,
+    expected_channel_digest: Option<&String>,
     candidate: &PublishedPackageRef,
     current: Option<&ChannelTag>,
     candidate_immutably_stored: bool,
@@ -466,9 +712,9 @@ fn channel_precondition_conflict(
     let conflict = |kind: &str, reason: String| PublicationConflictReceipt {
         schema_version: PUBLICATION_CONFLICT_SCHEMA_VERSION.to_string(),
         conflict_kind: kind.to_string(),
-        channel: request.channel.clone(),
-        expected_base: request.expected_base.clone(),
-        expected_channel_digest: request.expected_channel_digest.clone(),
+        channel: channel.to_string(),
+        expected_base: expected_base.clone(),
+        expected_channel_digest: expected_channel_digest.cloned(),
         actual_head: current.map(|tag| tag.package.clone()),
         candidate: candidate.clone(),
         candidate_immutably_stored,
@@ -478,13 +724,13 @@ fn channel_precondition_conflict(
 
     match current {
         Some(tag) => {
-            if let Some(expected) = &request.expected_channel_digest {
+            if let Some(expected) = expected_channel_digest {
                 if expected != &tag.package.content_digest {
                     return Some(conflict(
                         "tag_conflict",
                         format!(
                             "channel {} moved from expected digest {} to actual digest {}",
-                            request.channel, expected, tag.package.content_digest
+                            channel, expected, tag.package.content_digest
                         ),
                     ));
                 }
@@ -493,21 +739,21 @@ fn channel_precondition_conflict(
                     "tag_exists",
                     format!(
                         "channel {} already points at {} and create-if-absent was requested",
-                        request.channel, tag.package.content_digest
+                        channel, tag.package.content_digest
                     ),
                 ));
             }
 
-            if tag.package.content_digest != request.expected_base.content_digest
-                || tag.package.package_version != request.expected_base.package_version
+            if tag.package.content_digest != expected_base.content_digest
+                || tag.package.package_version != expected_base.package_version
             {
                 return Some(conflict(
                     "stale_base",
                     format!(
                         "expected base {}@{} ({}) does not match actual head {}@{} ({})",
-                        request.expected_base.package_id,
-                        request.expected_base.package_version,
-                        request.expected_base.content_digest,
+                        expected_base.package_id,
+                        expected_base.package_version,
+                        expected_base.content_digest,
                         tag.package.package_id,
                         tag.package.package_version,
                         tag.package.content_digest
@@ -516,12 +762,12 @@ fn channel_precondition_conflict(
             }
             None
         }
-        None => request.expected_channel_digest.as_ref().map(|expected| {
+        None => expected_channel_digest.map(|expected| {
             conflict(
                 "missing_head",
                 format!(
                     "channel {} has no head but caller expected {}",
-                    request.channel, expected
+                    channel, expected
                 ),
             )
         }),

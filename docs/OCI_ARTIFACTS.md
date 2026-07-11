@@ -4,6 +4,42 @@
 not replace Canon package semantics. The semantic identity remains the package's
 canonical `blake3:` digest and schema contract.
 
+## Publication Backend Boundary
+
+Canon publication is filesystem-first and cloud-free by default. The default
+engine uses local files for immutable package objects, package history, and
+channel tags. No AWS SDK, vendor object-store SDK, cloud CLI wrapper, or default
+network path is part of the core publication backend.
+
+The minimal backend seam is intentionally small:
+
+- report typed backend capabilities before any mutation
+- read an immutable package by digest
+- create an immutable object with create-if-absent semantics
+- inspect the current channel head
+- update a channel head with compare-and-swap semantics
+- list declared package ancestry where the backend can support it
+- return deterministic publication receipts, conflict receipts, or refusals
+
+Every registry mutation and package publication must include an expected base digest
+and version. Mutable channel updates also carry the caller's expected current
+channel digest when the channel is known to exist. The candidate package is built
+and verified first, then stored immutably, and only then may the backend attempt
+the mutable channel compare-and-swap.
+
+Required mutation capabilities are content-addressed object storage,
+create-if-absent writes, compare-and-swap tag updates, immutable package history,
+and deterministic conflict receipts. A backend that cannot enforce these
+properties must refuse mutation rather than emulate CAS with an unsafe read/write
+sequence.
+
+The explicit decision is that provider-specific URI handling remains deferred.
+Native handling for locations such as `s3://`, `gs://`, or `az://` can be
+considered later only after the CAS and OCI contracts are stable and repeated
+real use justifies the dependency and maintenance cost. Until then, external
+wrappers may push or mirror immutable package objects, while Canon core keeps
+mutable head changes inside the explicit publication transaction.
+
 ## Media Types
 
 Primary payload media types are derived directly from Canon schema ids:

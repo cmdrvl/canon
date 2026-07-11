@@ -620,7 +620,7 @@
     { "id": "canon_entity_cmbs_tenant_id_allocator.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_decision_ledger.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_edge.v0", "family": "entity", "action": "preserve" },
-    { "id": "canon_entity_edge.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_evidence.v1", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_explain.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_explain.v1", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_index.v0", "family": "entity", "action": "preserve" },
@@ -676,6 +676,7 @@
     { "id": "canon_registry_next_id.v0", "family": "registry", "action": "preserve" },
     { "id": "canon.registry_index.v1", "family": "registry", "action": "preserve" },
     { "id": "canon.registry.package.v1", "family": "registry", "action": "preserve" },
+    { "id": "canon.registry.package.verify.v1", "family": "registry", "action": "preserve" },
     {
       "id": "canon.strategy.package.v1",
       "family": "strategy",
@@ -876,22 +877,84 @@
       "notes": "Many operator.json subcommand rows have null status even though the implementations are shipped and exercised by tests."
     }
   ],
+  "cutover_decisions": [
+    {
+      "id": "bd-h9jn-public-scoring-name",
+      "owner": "bd-1cdf",
+      "status": "decided",
+      "subject": "edge vs evidence public naming",
+      "decision": "Use `canon entity evidence` as the final public v1 scoring stage. Do not keep `canon entity edge` as a compatibility alias.",
+      "selected_public_command": "canon entity evidence",
+      "selected_artifact_version": "canon_entity_evidence.v1",
+      "legacy_versions": ["canon_entity_edge.v0"],
+      "acceptance_criteria": [
+        "bd-h9jn removes the public `canon entity edge` leaf while preserving internal edge-record implementation names only where they are not public contract text.",
+        "bd-h9jn exposes `canon entity evidence` in Clap help, subprocess smoke tests, dispatch request typing, and operator/help fixtures.",
+        "v1 solve/run artifact metadata references `canon_entity_evidence.v1`; legacy `canon_entity_edge.v0` is accepted only as a compatibility-firewall input that produces an actionable refusal."
+      ]
+    },
+    {
+      "id": "bd-h9jn-v0-legacy-policy",
+      "owner": "bd-1cdf",
+      "status": "decided",
+      "subject": "v0 legacy refusal vs v1 artifact emission path",
+      "decision": "Public entity commands emit v1 artifacts only after bd-h9jn. Legacy v0 entity artifacts and the old no-profile/no-work-dir run path become structured-refusal inputs, not alternate emission paths.",
+      "selected_artifact_family": "canon_entity_*.v1",
+      "legacy_versions": [
+        "canon_entity_projection.v0",
+        "canon_entity_block.v0",
+        "canon_entity_edge.v0",
+        "canon_entity_solve.v0",
+        "canon_entity_run.v0",
+        "canon_entity_audit.v0",
+        "canon_entity_promote.v0",
+        "canon_entity_explain.v0"
+      ],
+      "acceptance_criteria": [
+        "`canon entity run` no longer selects a legacy engine from omitted `--profile`/`--work-dir`; it either compiles an explicit project/run request or refuses with the shared entity refusal envelope.",
+        "Each stage validates consumed artifact versions through the v1 compatibility firewall and returns `E_ENTITY_ARTIFACT_CONTRACT` with a concrete rerun command for stale v0 artifacts.",
+        "No public command emits `canon_entity_*.v0` artifacts after the scaffold cutover."
+      ]
+    },
+    {
+      "id": "bd-h9jn-public-prepare-profile",
+      "owner": "bd-1cdf",
+      "status": "decided",
+      "subject": "prepare/profile public commands",
+      "decision": "`canon entity prepare`, `canon entity profile list`, and `canon entity profile init` remain public commands. Entity operator metadata should use one row per public entity leaf.",
+      "selected_public_commands": [
+        "canon entity prepare",
+        "canon entity profile list",
+        "canon entity profile init"
+      ],
+      "acceptance_criteria": [
+        "bd-h9jn keeps prepare/profile leaves in Clap and covers them in help/smoke tests.",
+        "operator.json granularity for entity uses one row per public leaf, including prepare/profile/link/evidence; doctor grouping is not precedent for hiding entity leaves.",
+        "No final public entity leaf depends on implicit domain defaults such as org, BDC, or CMBS-specific wording."
+      ]
+    }
+  ],
+  "bd_h9jn_scaffold": {
+    "thread_id": "bd-h9jn",
+    "reservation_paths": [
+      "src/cli.rs",
+      "src/lib.rs",
+      "src/entity/mod.rs",
+      "src/entity/runtime.rs",
+      "tests/cli_smoke.rs",
+      "tests/fixtures/canon_v1/help/entity_help.txt",
+      "tests/fixtures/canon_v1/help/entity_link_help.txt"
+    ],
+    "acceptance_criteria": [
+      "Agent Mail reserves exactly the listed paths before editing; no directory reservations or extra files without a prior coordination update.",
+      "Final public grammar includes `prepare`, `index build`, `block`, `evidence`, `solve`, `run`, `review`, `audit`, `promote`, `apply`, `explain`, and `link` with no `edge` alias.",
+      "`canon entity link <REFERENCE> <TARGET>` compiles to the same typed request/artifact family as the equivalent project manifest.",
+      "Run/project and explicit stage execution share typed request boundaries and emit/refuse through the same routing code.",
+      "Legacy v0 entity artifacts and omitted-profile legacy dispatch produce actionable structured refusals instead of v0 output.",
+      "Help and smoke fixtures contain no org wording, ambiguous engine switch, or domain-specific defaults."
+    ]
+  },
   "unresolved_decisions": [
-    {
-      "id": "entity-prepare-public-surface",
-      "subject": "canon entity prepare and canon entity profile *",
-      "notes": "The repo ships and tests these commands today, but the future contract may either keep them public or fold them into a single run-only workbench."
-    },
-    {
-      "id": "version-bump-vs-in-place-cutover",
-      "subject": "overlapping canon_entity_*.v0 identifiers",
-      "notes": "The matrix names the collisions but does not decide whether CANON-V1 should mint new version ids or replace legacy shapes in place."
-    },
-    {
-      "id": "operator-json-granularity",
-      "subject": "one operator row per family vs one row per Clap leaf",
-      "notes": "doctor is intentionally grouped today; entity prepare/profile are missing entirely. The repo has not yet chosen the permanent operator.json granularity rule."
-    },
     {
       "id": "sec10d-handoff-binding",
       "subject": "sec10d migration references inside canon-owned fixtures and docs",
