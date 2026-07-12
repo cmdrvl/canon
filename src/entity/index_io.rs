@@ -390,7 +390,17 @@ fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), Refusal> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| write_io_refusal(path, error))?;
     }
-    fs::write(path, bytes).map_err(|error| write_io_refusal(path, error))
+    let tmp_path = temporary_sibling_path(path);
+    fs::write(&tmp_path, bytes).map_err(|error| write_io_refusal(&tmp_path, error))?;
+    fs::rename(&tmp_path, path).map_err(|error| write_io_refusal(path, error))
+}
+
+fn temporary_sibling_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("artifact");
+    path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()))
 }
 
 fn enforce_write_budget<I>(max_artifact_bytes: Option<u64>, byte_lengths: I) -> Result<(), Refusal>

@@ -161,9 +161,9 @@ fn entity_namespace_registry_lint_and_build_still_use_exact_registry_lookup() {
 }
 
 #[test]
-fn entity_namespace_resolve_path_matches_existing_golden() {
-    let actual = json_stdout(
-        &[
+fn entity_namespace_rejects_removed_resolve_and_advertises_entity_link() {
+    let rejected = canon_command()
+        .args([
             "resolve",
             "tests/fixtures/resolve/tapes/reference_loans.csv",
             "tests/fixtures/resolve/tapes/target_loans.csv",
@@ -172,16 +172,33 @@ fn entity_namespace_resolve_path_matches_existing_golden() {
             "--registry",
             "tests/fixtures/registries/resolve-servicers",
             "--no-witness",
-        ],
-        1,
+        ])
+        .assert()
+        .code(2);
+    let stdout = &rejected.get_output().stdout;
+    assert!(
+        stdout.is_empty(),
+        "removed top-level resolve command must not emit a legacy artifact"
     );
-    let expected: Value = serde_json::from_str(
-        &fs::read_to_string(
-            manifest_dir().join("tests/fixtures/resolve/golden/minimal_artifact.json"),
-        )
-        .expect("resolve golden fixture"),
-    )
-    .expect("resolve golden JSON");
+    assert!(
+        serde_json::from_slice::<Value>(stdout).is_err(),
+        "removed top-level resolve command must not emit structured legacy JSON"
+    );
 
-    assert_eq!(actual, expected);
+    let describe = json_stdout(&["--describe"], 0);
+    let subcommands = describe["subcommands"]
+        .as_array()
+        .expect("describe subcommands");
+    assert!(
+        subcommands
+            .iter()
+            .any(|entry| entry["name"].as_str() == Some("entity link")),
+        "describe must expose entity link"
+    );
+    assert!(
+        subcommands.iter().all(|entry| !entry["name"]
+            .as_str()
+            .is_some_and(|name| name == "resolve" || name.starts_with("resolve "))),
+        "describe must not expose a top-level resolve command"
+    );
 }

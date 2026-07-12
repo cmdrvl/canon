@@ -25,7 +25,9 @@ These commands work now and guard the eval/performance contract itself:
 
 ```bash
 cargo test --test entity_eval_performance_contract -- --nocapture
+cargo test --test entity_evidence_ablation -- --nocapture
 cargo test sec10d_regab -- --nocapture
+jq '.' tests/fixtures/canon_v1/quality/ablation_cases.json
 jq '.' tests/fixtures/entity/evals/entity_eval_performance_targets.json
 jq '.' tests/fixtures/entity/cmbs/tenant_sample_benchmark_manifest.json
 jq '.' tests/fixtures/entity/regab/sec10d_regab_benchmark_manifest.json
@@ -550,6 +552,115 @@ These are non-negotiable. They apply before wall-clock targets:
 | 500k unique stress | bounded completion or deterministic refusal |
 
 If a structural gate fails, the run fails even if wall-clock time looks good.
+
+---
+
+## Evidence Ablation Program
+
+The ablation program is diagnostic. It exists to prove which generic evidence
+families move same-entity decisions, where false merges enter, and which stage
+lost each labeled pair. It is not a license to bake corpus strings, domain
+dictionaries, or benchmark thresholds into Canon defaults.
+
+The planted fixture for this program is
+`tests/fixtures/canon_v1/quality/ablation_cases.json`. It is intentionally
+split into runtime inputs and hidden labels. Candidate generation, retrieval,
+evidence extraction, scoring, clustering, and linking may read only the
+runtime-input portion. Labels and expected ablation outcomes are evaluation-only
+material.
+
+This slice defines the design and fixture contract only. A future public
+command must wire the compiled eval loop before any release claim says evidence
+ablation is implemented end to end.
+
+### Ablation Families
+
+Every ablation run should report the baseline with one family disabled, the
+family-only diagnostic run when meaningful, and the full-system union.
+
+| Family ID | What It Tests | Shortcut Guardrail |
+|-----------|---------------|--------------------|
+| `exact_alias` | Exact alias or exact retained surface evidence. | Must not become fuzzy matching. |
+| `normalized_name` | Generic normalization-preserving name equivalence. | No domain dictionary, suffix whitelist, or corpus-specific rewrite by default. |
+| `char_token_similarity` | Character and token similarity features. | Similarity alone cannot override strong contradiction. |
+| `sparse_retrieval` | TF-IDF or equivalent sparse candidate retrieval. | Retrieval is candidate admission, not a merge decision. |
+| `trusted_anchors` | Trusted identifiers or reviewed external anchors. | Anchor namespace trust must be explicit and profile/configured. |
+| `address_web_domain_anchors` | Address, URL, host, or web-domain anchors. | Domain co-ownership and shared locations are not identity by default. |
+| `contextual_cooccurrence` | Source-local context and repeated co-occurrence. | Co-occurrence is support only when the profile exposes reusable context fields. |
+| `source_priors` | Source reliability and source-specific prior evidence. | Priors cannot force identity without entity evidence. |
+| `relationship_evidence` | Parent, subsidiary, servicer, agent, hierarchy, or other relationships. | Relationship evidence is non-equivalence unless separately supported. |
+| `full_system_union` | The combined deterministic candidate and scoring system. | Must expose marginal contribution and cannot hide family failures. |
+
+No family owns a default threshold in this document or in the planted fixture.
+Thresholds, weights, and domain policies belong in explicit profile or strategy
+configuration and must be reported in the run artifact hash inputs.
+
+### Stage-Local Reason Codes
+
+Each false negative, false positive, and avoidable abstention should record one
+stage-local reason code. The `miss` form explains where a labeled true pair was
+lost. The `admission` form explains where a labeled false pair entered or
+survived too far.
+
+| Stage | Miss Code | Admission Code |
+|-------|-----------|----------------|
+| `normalization` | `normalization.miss` | `normalization.admission` |
+| `retrieval` | `retrieval.miss` | `retrieval.admission` |
+| `evidence_extraction` | `evidence_extraction.miss` | `evidence_extraction.admission` |
+| `scoring` | `scoring.miss` | `scoring.admission` |
+| `constraint` | `constraint.miss` | `constraint.admission` |
+| `cluster` | `cluster.miss` | `cluster.admission` |
+| `link` | `link.miss` | `link.admission` |
+| `policy` | `policy.miss` | `policy.admission` |
+
+Reason codes are local to the first stage where the case became unrecoverable
+or unsafe. A later stage may report secondary diagnostics, but the primary code
+must stay deterministic for the same inputs.
+
+### Planted Fixture Shape
+
+Each ablation case should contain:
+
+- `runtime_inputs`: observations, neutral pair ids, and evidence records the
+  command is allowed to read.
+- `hidden_labels`: planted same-entity and distinct labels, expected outcomes,
+  and reason codes. This section must not be read by candidate generation or
+  solving.
+- one family under test, with planted true and false pairs for the roles
+  `necessary`, `misleading`, `absent`, `duplicated`, and `contradictory`.
+
+The roles mean:
+
+| Role | Required Behavior |
+|------|-------------------|
+| `necessary` | Disabling the family causes a true-pair miss or lets a false pair through. |
+| `misleading` | The family creates attractive evidence for a false pair that later evidence or policy must reject. |
+| `absent` | The family contributes no evidence; the engine must not fabricate support. |
+| `duplicated` | Duplicate family evidence must be deduped and must not inflate confidence. |
+| `contradictory` | Support and contradiction must both survive into explanation and scoring. |
+
+Relationship evidence has an extra rule: a relationship edge may support review,
+explanation, blocking, or a cannot-link decision, but it is not same-entity
+evidence unless an independent non-relationship family also supports the merge.
+Parent-child, agent-principal, successor, manager, and hierarchy relations are
+therefore false-merge risks, not aliases.
+
+### Future Public Command Contract
+
+The eventual public loop should produce one machine artifact per suite with:
+
+- per-family disabled, family-only, and full-system results;
+- candidate recall, auto-link precision/recall, review volume, calibration,
+  wall-clock, and memory deltas by family;
+- all false negatives, false positives, and avoidable abstentions grouped by the
+  stage-local reason codes above;
+- unchanged hidden labels across reruns, with sealed holdouts excluded until the
+  declared gate;
+- artifact hashes for inputs, profile/configuration, registry snapshots,
+  ablation family set, and output.
+
+The command must fail closed if it cannot prove that candidate generation and
+solving did not read hidden labels.
 
 ---
 

@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.accretion.metrics.v1.schema.json",
+  "title": "canon.accretion.metrics.v1",
+  "description": "Versioned privacy-safe metrics for measuring exact coverage gain, review yield, drift, regressions, and accretion velocity from frozen corpus and project receipt digests. The artifact records counts and digests only; it must not contain raw identity values or make canonical identity assertions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "report_content_hash",
+    "identity_status",
+    "report_id",
+    "generated_at",
+    "privacy",
+    "comparison_basis",
+    "baseline",
+    "comparison",
+    "deltas",
+    "attribution",
+    "attribution_total",
+    "unattributed_resolved_delta",
+    "warning_codes",
+    "summary"
+  ],
+  "properties": {
+    "version": { "const": "canon.accretion.metrics.v1" },
+    "report_content_hash": { "$ref": "#/$defs/blake3_digest" },
+    "identity_status": { "const": "metrics_only_no_identity_assertion" },
+    "report_id": { "type": "string", "minLength": 1 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["classification", "redaction", "raw_identity_values_recorded"],
+      "properties": {
+        "classification": { "type": "string", "minLength": 1 },
+        "redaction": { "type": "string", "minLength": 1 },
+        "raw_identity_values_recorded": {
+          "const": false,
+          "description": "Accretion metrics are privacy-safe by construction and record only counts, policy identifiers, and content digests."
+        }
+      }
+    },
+    "comparison_basis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "like_for_like",
+        "same_corpus_digest",
+        "same_policy_digest",
+        "baseline_corpus_digest",
+        "comparison_corpus_digest",
+        "baseline_policy_digest",
+        "comparison_policy_digest"
+      ],
+      "properties": {
+        "like_for_like": { "type": "boolean" },
+        "same_corpus_digest": { "type": "boolean" },
+        "same_policy_digest": { "type": "boolean" },
+        "baseline_corpus_digest": { "$ref": "#/$defs/blake3_digest" },
+        "comparison_corpus_digest": { "$ref": "#/$defs/blake3_digest" },
+        "baseline_policy_digest": { "$ref": "#/$defs/blake3_digest" },
+        "comparison_policy_digest": { "$ref": "#/$defs/blake3_digest" }
+      }
+    },
+    "baseline": { "$ref": "#/$defs/snapshot_metrics" },
+    "comparison": { "$ref": "#/$defs/snapshot_metrics" },
+    "deltas": { "$ref": "#/$defs/deltas" },
+    "attribution": { "$ref": "#/$defs/attribution" },
+    "attribution_total": { "type": "integer", "minimum": 0 },
+    "unattributed_resolved_delta": { "type": "integer" },
+    "warning_codes": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "corpus_or_policy_changed",
+          "exact_coverage_decreased",
+          "hard_negative_regression_increased",
+          "repeat_unresolved_after_promotion_increased",
+          "resolved_delta_attribution_mismatch"
+        ]
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["headline", "lines"],
+      "properties": {
+        "headline": { "type": "string", "minLength": 1 },
+        "lines": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "blake3_digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "snapshot_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshot_id",
+        "corpus",
+        "registry",
+        "totals",
+        "exact_coverage",
+        "unresolved_group_rate",
+        "ambiguity_rate",
+        "contradiction_rate",
+        "review_yield",
+        "repeat_unresolved_rate"
+      ],
+      "properties": {
+        "snapshot_id": { "type": "string", "minLength": 1 },
+        "corpus": { "$ref": "#/$defs/corpus" },
+        "registry": { "$ref": "#/$defs/registry" },
+        "strategy_digest": { "$ref": "#/$defs/blake3_digest" },
+        "project_receipt_digest": { "$ref": "#/$defs/blake3_digest" },
+        "totals": { "$ref": "#/$defs/totals" },
+        "exact_coverage": { "$ref": "#/$defs/ratio" },
+        "unresolved_group_rate": { "$ref": "#/$defs/ratio" },
+        "ambiguity_rate": { "$ref": "#/$defs/ratio" },
+        "contradiction_rate": { "$ref": "#/$defs/ratio" },
+        "review_yield": { "$ref": "#/$defs/ratio" },
+        "repeat_unresolved_rate": { "$ref": "#/$defs/ratio" }
+      }
+    },
+    "corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["corpus_id", "corpus_digest", "policy_digest"],
+      "properties": {
+        "corpus_id": { "type": "string", "minLength": 1 },
+        "corpus_digest": { "$ref": "#/$defs/blake3_digest" },
+        "policy_digest": { "$ref": "#/$defs/blake3_digest" }
+      }
+    },
+    "registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registry_id", "registry_version", "registry_digest"],
+      "properties": {
+        "registry_id": { "type": "string", "minLength": 1 },
+        "registry_version": { "type": "string", "minLength": 1 },
+        "registry_digest": { "$ref": "#/$defs/blake3_digest" }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_inputs",
+        "resolved_inputs",
+        "unresolved_groups",
+        "ambiguous_groups",
+        "contradiction_groups",
+        "reviewed_groups",
+        "promoted_groups",
+        "hard_negative_regressions",
+        "repeat_unresolved_after_promotion",
+        "temporal_effect_groups"
+      ],
+      "properties": {
+        "total_inputs": { "type": "integer", "minimum": 0 },
+        "resolved_inputs": { "type": "integer", "minimum": 0 },
+        "unresolved_groups": { "type": "integer", "minimum": 0 },
+        "ambiguous_groups": { "type": "integer", "minimum": 0 },
+        "contradiction_groups": { "type": "integer", "minimum": 0 },
+        "reviewed_groups": { "type": "integer", "minimum": 0 },
+        "promoted_groups": { "type": "integer", "minimum": 0 },
+        "hard_negative_regressions": { "type": "integer", "minimum": 0 },
+        "repeat_unresolved_after_promotion": { "type": "integer", "minimum": 0 },
+        "temporal_effect_groups": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "ratio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["numerator", "denominator", "basis_points"],
+      "properties": {
+        "numerator": { "type": "integer", "minimum": 0 },
+        "denominator": { "type": "integer", "minimum": 0 },
+        "basis_points": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "deltas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resolved_inputs",
+        "exact_coverage_basis_points",
+        "unresolved_groups",
+        "unresolved_group_rate_basis_points",
+        "ambiguous_groups",
+        "ambiguity_rate_basis_points",
+        "contradiction_groups",
+        "contradiction_rate_basis_points",
+        "review_yield_basis_points",
+        "hard_negative_regressions",
+        "repeat_unresolved_after_promotion",
+        "temporal_effect_groups"
+      ],
+      "properties": {
+        "resolved_inputs": { "type": "integer" },
+        "exact_coverage_basis_points": { "type": "integer" },
+        "unresolved_groups": { "type": "integer" },
+        "unresolved_group_rate_basis_points": { "type": "integer" },
+        "ambiguous_groups": { "type": "integer" },
+        "ambiguity_rate_basis_points": { "type": "integer" },
+        "contradiction_groups": { "type": "integer" },
+        "contradiction_rate_basis_points": { "type": "integer" },
+        "review_yield_basis_points": { "type": "integer" },
+        "hard_negative_regressions": { "type": "integer" },
+        "repeat_unresolved_after_promotion": { "type": "integer" },
+        "temporal_effect_groups": { "type": "integer" }
+      }
+    },
+    "attribution": {
+      "type": "object",
+      "description": "Separates exact coverage gains into explicit causes so registry bloat, remaps, provider additions, policy changes, and temporal effects are visible.",
+      "additionalProperties": false,
+      "required": [
+        "new_aliases",
+        "new_entities",
+        "remaps",
+        "provider_additions",
+        "temporal_effects",
+        "policy_changes"
+      ],
+      "properties": {
+        "new_aliases": { "type": "integer", "minimum": 0 },
+        "new_entities": { "type": "integer", "minimum": 0 },
+        "remaps": { "type": "integer", "minimum": 0 },
+        "provider_additions": { "type": "integer", "minimum": 0 },
+        "temporal_effects": { "type": "integer", "minimum": 0 },
+        "policy_changes": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

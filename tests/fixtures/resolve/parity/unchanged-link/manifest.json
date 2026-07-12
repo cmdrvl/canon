@@ -1,0 +1,86 @@
+{
+  "version": "canon.resolve.unchanged_link_manifest.v1",
+  "fixture_id": "resolve-entity-link-unchanged-input-parity",
+  "source_mapping_package": "source_mapping.canon.source.mapping.v1.json",
+  "source_mapping_runtime_use": false,
+  "runtime_inputs": {
+    "reference": {
+      "path": "tests/fixtures/resolve/parity/unchanged-link/reference_loans.link.csv",
+      "sha256": "fc3c5528a0a08096f4bca31bf9933982dfa675d34333fb663af0d23e7122149f",
+      "blake3": "blake3:10fd9d07226a919d876b8e7147f7c06ec13fc677b435048b2d8f10d6a67e7210"
+    },
+    "target": {
+      "path": "tests/fixtures/resolve/parity/unchanged-link/target_loans.link.csv",
+      "sha256": "95f35549f9ebe57453531537790bbab21f3543c2efd0d0a26bd584d1f2aa9dac",
+      "blake3": "blake3:5260b4d421eea22ef0ce51b67ead67e01ae16b992545512d62f0ff4d1b6ad8b2"
+    }
+  },
+  "source_mapping_artifact": {
+    "path": "tests/fixtures/resolve/parity/unchanged-link/source_mapping.canon.source.mapping.v1.json",
+    "blake3": "blake3:7128ef0ff5971577588ad5314fe81a40117c7bf070e07b0aa18b235e341d74e7"
+  },
+  "historical_sources": {
+    "reference_csv": {
+      "path": "tests/fixtures/resolve/tapes/reference_loans.csv",
+      "sha256": "7d2c257a1c2cb5c5cff8f3273a6d1cfb404601d68ae81547c382a535b015bbc9"
+    },
+    "target_csv": {
+      "path": "tests/fixtures/resolve/tapes/target_loans.csv",
+      "sha256": "3eee0f199ee6088d64265c4a6aba1187d2cc3fd0968d9d0910ec76afcdc8e824"
+    },
+    "reference_jsonl": {
+      "path": "tests/fixtures/resolve/tapes/reference_loans.jsonl",
+      "sha256": "8a55d148dd20c42bfdf51c33557a745125d8a8938a930b702f5256c89fe70a84"
+    },
+    "target_jsonl": {
+      "path": "tests/fixtures/resolve/tapes/target_loans.jsonl",
+      "sha256": "cb14fe3698dd0bbf3812e1e05ccbce34a23f6cfbaefbc953785c191fbe8ed680"
+    }
+  },
+  "supporting_artifacts": {
+    "strategy": {
+      "path": "tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml",
+      "sha256": "01adb12969665a4005c00e4b0920930a1e2b113c8e7352cf823d21e49f35cb10",
+      "blake3": "221d8bc8945f68cbb4aeca4bca5808b4092d2b0c161d9fa0e090279dbc546d92"
+    },
+    "gold": {
+      "path": "tests/fixtures/resolve/gold/loan_matches.jsonl",
+      "sha256": "8875d69b2058f15dbe813eeedab7b2dd38319eed35f59f6eada6f46f616ebf2b"
+    }
+  },
+  "field_projection": {
+    "reference": {
+      "source_row_id": "loan_id",
+      "deal_id": "deal",
+      "loan_id": "loan_id",
+      "property_id": "trustee_loan_number",
+      "raw_tenant_name": "servicer"
+    },
+    "target": {
+      "source_row_id": "deal|loan_number",
+      "deal_id": "deal",
+      "loan_id": "loan_number",
+      "property_id": "loan_number",
+      "raw_tenant_name": "servicer_name or UNKNOWN when blank"
+    }
+  },
+  "parity_contract": {
+    "same_input_bytes_consumed_by": [
+      "produce_legacy_resolve_parity",
+      "canon entity link"
+    ],
+    "runtime_source_mapping_application": "forbidden",
+    "non_comparable_public_wrapper_fields": [
+      "materialized_rows_path",
+      "shared_run_artifact",
+      "stage_artifacts",
+      "work_dir scoped artifact paths"
+    ]
+  },
+  "refusal_contract": {
+    "max_candidates_zero": {
+      "internal_code": "too_many_candidates",
+      "public_code": "E_TOO_MANY_CANDIDATES"
+    }
+  }
+}

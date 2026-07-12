@@ -12,9 +12,17 @@ use crate::{
     entity::{
         audit::EntityAuditArtifact,
         contracts::{
-            CANON_ENTITY_AUDIT_VERSION, CANON_ENTITY_PROMOTE_VERSION, EntityProfileReference,
+            CANON_ENTITY_AUDIT_VERSION, CANON_ENTITY_AUDIT_VERSION_V1,
+            CANON_ENTITY_PROMOTE_VERSION, CANON_ENTITY_PROMOTE_VERSION_V1,
+            CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactStageV1,
+            EntityProfileReference,
         },
         error::EntityRefusalKind,
+        review::{
+            lifecycle_metadata_v1, required_value_string, set_v1_self_hash, source_reference_v1,
+            value_string_or, value_u64_or,
+        },
+        schema::validate_artifact_v1_core_contract,
     },
     registry::{
         PlannedMutationState, acquire_registry_mutation_guard, planned_file_mutation,
@@ -277,6 +285,129 @@ pub fn promote_registry_aliases(
         touched_files: vec![request.alias_file, "registry.json".to_string()],
         lint,
     })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityPromoteV1Request {
+    pub result_artifact: Value,
+    pub audit_artifact: Value,
+    pub registry: PathBuf,
+    pub next_version: String,
+}
+
+pub fn promote_entity_v1(request: EntityPromoteV1Request) -> Result<Value, Refusal> {
+    validate_promote_v1_source(&request.result_artifact)?;
+    validate_promote_v1_audit(&request.result_artifact, &request.audit_artifact)?;
+    let aliases = promoted_aliases_from_v1_result(&request.result_artifact)?;
+    let registry_path = request.registry.join("registry.json");
+    let registry_original =
+        fs::read(&registry_path).map_err(|error| io_refusal(&registry_path, error))?;
+    let (registry_json, registry_value) =
+        parse_registry_json(&request.registry, &registry_original)?;
+    validate_v1_registry_snapshot(&registry_json, &request.result_artifact)?;
+    let requested_version = validate_requested_version(&request.next_version)?;
+    let next_version = validate_next_version(&registry_json.version, &requested_version)?;
+
+    let alias_path = request.registry.join("aliases.json");
+    let alias_original = if alias_path.exists() {
+        fs::read(&alias_path).map_err(|error| io_refusal(&alias_path, error))?
+    } else {
+        b"[]\n".to_vec()
+    };
+    let existing_aliases = parse_alias_entries(&request.registry, &alias_path, &alias_original)?;
+    let existing_inputs = existing_aliases
+        .iter()
+        .map(|alias| alias.input.clone())
+        .collect::<BTreeSet<_>>();
+    for alias in &aliases {
+        if existing_inputs.contains(&alias.input) {
+            return Err(promote_refusal(
+                "Promotion alias already exists in the registry",
+                json!({
+                    "stage": "promote",
+                    "field": "input",
+                    "input": alias.input,
+                    "writes_performed": false
+                }),
+            ));
+        }
+    }
+
+    let entry_count_after = registry_json
+        .entry_count
+        .checked_add(aliases.len())
+        .ok_or_else(|| {
+            promote_refusal(
+                "Registry entry_count is too large to increment",
+                json!({
+                    "stage": "promote",
+                    "entry_count": registry_json.entry_count,
+                    "aliases_to_add": aliases.len(),
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    let profile = v1_profile_reference(&request.result_artifact)?;
+    let registry_bytes =
+        build_registry_bytes(registry_value, &next_version, entry_count_after, &profile)?;
+    let alias_bytes = build_alias_bytes(&alias_original, &aliases)?;
+    let planned_mutations = vec![
+        planned_file_mutation(&alias_path, &alias_original, &alias_bytes),
+        planned_file_mutation(&registry_path, &registry_original, &registry_bytes),
+    ];
+    let _guard = acquire_registry_mutation_guard(&request.registry)
+        .map_err(|error| io_refusal(&request.registry, error))?;
+    match validate_planned_mutations(&planned_mutations)
+        .map_err(|error| io_refusal(&request.registry, error))?
+    {
+        PlannedMutationState::Ready => {}
+        PlannedMutationState::AlreadyApplied => {
+            return build_promote_v1_artifact(
+                &request.result_artifact,
+                &request.audit_artifact,
+                &registry_json,
+                &next_version,
+                entry_count_after,
+                aliases,
+                false,
+            );
+        }
+        PlannedMutationState::Stale {
+            path,
+            expected_hash,
+            actual_hash,
+        } => {
+            return Err(stale_registry_snapshot_refusal(
+                &path,
+                &expected_hash,
+                &actual_hash,
+            ));
+        }
+    }
+
+    write_atomic(&alias_path, &alias_bytes).map_err(|error| io_refusal(&alias_path, error))?;
+    if let Err(error) = write_atomic(&registry_path, &registry_bytes) {
+        let _ = write_atomic(&alias_path, &alias_original);
+        return Err(io_refusal(&registry_path, error));
+    }
+
+    build_promote_v1_artifact(
+        &request.result_artifact,
+        &request.audit_artifact,
+        &registry_json,
+        &next_version,
+        entry_count_after,
+        aliases,
+        true,
+    )
+}
+
+pub fn render_promote_v1_summary(artifact: &Value) -> String {
+    let registry = value_string_or(artifact, &["registry", "id"], "<registry>");
+    let before = value_string_or(artifact, &["registry", "version_before"], "<before>");
+    let after = value_string_or(artifact, &["registry", "version_after"], "<after>");
+    let aliases = value_u64_or(artifact, &["summary", "counts", "promoted_aliases"], 0);
+    format!("{registry} promote v1 {before} -> {after} aliases={aliases}")
 }
 
 fn validate_promotion_audit(
@@ -722,6 +853,242 @@ impl From<&EntityPromotedAlias> for RegistryAliasEntry {
             rule_id: alias.rule_id.clone(),
         }
     }
+}
+
+fn validate_promote_v1_source(artifact: &Value) -> Result<(), Refusal> {
+    let contract = validate_artifact_v1_core_contract(artifact)?;
+    if !matches!(
+        contract.artifact_version,
+        CANON_ENTITY_RUN_VERSION_V1 | CANON_ENTITY_SOLVE_VERSION_V1
+    ) {
+        return Err(promote_refusal(
+            "Promotion requires a canon_entity_run.v1 or canon_entity_solve.v1 artifact",
+            json!({
+                "stage": "promote",
+                "field": "version",
+                "expected": [CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1],
+                "actual": contract.artifact_version,
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_promote_v1_audit(result: &Value, audit: &Value) -> Result<(), Refusal> {
+    let contract = validate_artifact_v1_core_contract(audit)?;
+    if contract.artifact_version != CANON_ENTITY_AUDIT_VERSION_V1 {
+        return Err(audit_gate_refusal(
+            "audit_version",
+            CANON_ENTITY_AUDIT_VERSION_V1,
+            contract.artifact_version,
+        ));
+    }
+    let result_hash = required_value_string(result, &["artifact_content_hash"], "result hash")?;
+    let audited_hash = required_value_string(
+        audit,
+        &["audited_artifact", "content_hash"],
+        "audited_artifact.content_hash",
+    )?;
+    compare_audit_gate_field("audited_artifact_hash", result_hash, audited_hash)?;
+    if value_string_or(audit, &["summary", "labels", "status"], "") != "passed" {
+        return Err(audit_gate_refusal(
+            "audit_status",
+            "passed",
+            value_string_or(audit, &["summary", "labels", "status"], "<missing>"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_v1_registry_snapshot(registry: &RegistryJson, result: &Value) -> Result<(), Refusal> {
+    let expected_id = required_value_string(
+        result,
+        &["metadata", "registry_snapshot", "id"],
+        "metadata.registry_snapshot.id",
+    )?;
+    let expected_version = required_value_string(
+        result,
+        &["metadata", "registry_snapshot", "version"],
+        "metadata.registry_snapshot.version",
+    )?;
+    if registry.id != expected_id {
+        return Err(EntityRefusalKind::RegistrySnapshot.to_refusal(
+            "Promotion target registry id does not match the v1 result snapshot",
+            json!({
+                "stage": "promote",
+                "field": "registry_id",
+                "expected": expected_id,
+                "actual": registry.id,
+                "writes_performed": false
+            }),
+            Some("Use the registry captured by the result artifact".to_string()),
+        ));
+    }
+    if registry.version != expected_version {
+        return Err(EntityRefusalKind::RegistrySnapshot.to_refusal(
+            "Promotion target registry version does not match the v1 result snapshot",
+            json!({
+                "stage": "promote",
+                "field": "registry_version",
+                "expected": expected_version,
+                "actual": registry.version,
+                "writes_performed": false
+            }),
+            Some("Rerun the entity result against the current registry snapshot".to_string()),
+        ));
+    }
+    Ok(())
+}
+
+fn promoted_aliases_from_v1_result(result: &Value) -> Result<Vec<EntityPromotedAlias>, Refusal> {
+    let mut aliases = ["promotable_aliases", "promotion_aliases", "aliases"]
+        .into_iter()
+        .filter_map(|field| result.get(field).and_then(Value::as_array))
+        .flat_map(|items| items.iter())
+        .filter_map(alias_from_value)
+        .collect::<Vec<_>>();
+    if aliases.is_empty() {
+        aliases = result
+            .get("entities")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flat_map(|items| items.iter())
+            .flat_map(entity_aliases_from_value)
+            .collect();
+    }
+    validate_aliases(Path::new("."), Path::new("aliases.json"), &aliases)
+}
+
+fn alias_from_value(value: &Value) -> Option<EntityPromotedAlias> {
+    Some(EntityPromotedAlias {
+        input: value.get("input")?.as_str()?.to_string(),
+        canonical_id: value.get("canonical_id")?.as_str()?.to_string(),
+        canonical_type: value
+            .get("canonical_type")
+            .and_then(Value::as_str)
+            .unwrap_or("entity")
+            .to_string(),
+        rule_id: value
+            .get("rule_id")
+            .and_then(Value::as_str)
+            .unwrap_or("ENTITY_V1_PROMOTE")
+            .to_string(),
+    })
+}
+
+fn entity_aliases_from_value(value: &Value) -> Vec<EntityPromotedAlias> {
+    let Some(canonical_id) = value.get("canonical_id").and_then(Value::as_str) else {
+        return Vec::new();
+    };
+    let canonical_type = value
+        .get("canonical_type")
+        .and_then(Value::as_str)
+        .unwrap_or("entity");
+    value
+        .get("alias_inputs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flat_map(|aliases| aliases.iter())
+        .filter_map(Value::as_str)
+        .map(|input| EntityPromotedAlias {
+            input: input.to_string(),
+            canonical_id: canonical_id.to_string(),
+            canonical_type: canonical_type.to_string(),
+            rule_id: "ENTITY_V1_PROMOTE".to_string(),
+        })
+        .collect()
+}
+
+fn v1_profile_reference(result: &Value) -> Result<EntityProfileReference, Refusal> {
+    let profile = result
+        .get("metadata")
+        .and_then(|metadata| metadata.get("profile"))
+        .cloned()
+        .ok_or_else(|| {
+            promote_refusal(
+                "Promotion result is missing profile metadata",
+                json!({
+                    "stage": "promote",
+                    "field": "metadata.profile",
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    serde_json::from_value::<EntityProfileReference>(profile).map_err(|error| {
+        promote_refusal(
+            "Promotion result profile metadata is malformed",
+            json!({
+                "stage": "promote",
+                "field": "metadata.profile",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })
+}
+
+fn build_promote_v1_artifact(
+    result: &Value,
+    audit: &Value,
+    registry: &RegistryJson,
+    next_version: &str,
+    entry_count_after: usize,
+    aliases: Vec<EntityPromotedAlias>,
+    wrote_registry: bool,
+) -> Result<Value, Refusal> {
+    let metadata = lifecycle_metadata_v1(
+        audit,
+        EntityArtifactStageV1::Promote,
+        vec![source_reference_v1(audit)?],
+    )?;
+    let result_hash = required_value_string(result, &["artifact_content_hash"], "result hash")?;
+    let audit_hash = required_value_string(audit, &["artifact_content_hash"], "audit hash")?;
+    let alias_values = aliases
+        .iter()
+        .map(|alias| {
+            json!({
+                "input": alias.input,
+                "canonical_id": alias.canonical_id,
+                "canonical_type": alias.canonical_type,
+                "rule_id": alias.rule_id
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut artifact = json!({
+        "version": CANON_ENTITY_PROMOTE_VERSION_V1,
+        "artifact_content_hash": "",
+        "metadata": metadata,
+        "summary": {
+            "counts": {
+                "promoted_aliases": alias_values.len() as u64,
+                "registry_entries_after": entry_count_after as u64
+            },
+            "labels": {
+                "stage": "promote",
+                "status": "applied"
+            }
+        },
+        "promotion_manifest_path": "promote/sidecar.json",
+        "source_result": {
+            "content_hash": result_hash
+        },
+        "audit": {
+            "version": CANON_ENTITY_AUDIT_VERSION_V1,
+            "content_hash": audit_hash
+        },
+        "registry": {
+            "id": registry.id,
+            "version_before": registry.version,
+            "version_after": next_version,
+            "entry_count_before": registry.entry_count,
+            "entry_count_after": entry_count_after,
+            "wrote_registry": wrote_registry
+        },
+        "aliases": alias_values
+    });
+    set_v1_self_hash(&mut artifact)?;
+    Ok(artifact)
 }
 
 fn build_registry_bytes(

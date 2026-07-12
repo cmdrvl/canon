@@ -200,6 +200,42 @@ pub fn validate_edge_evidence_artifact_contract(
     Ok(())
 }
 
+pub fn validate_edge_evidence_payload_hashes(
+    artifact: &EdgeEvidenceArtifact,
+    edge_records: &[EdgeEvidenceRecord],
+    bucket_assertions: &[ExactBucketAssertion],
+) -> Result<(), Refusal> {
+    let edge_records_hash = hash_jsonl_records(edge_records)?;
+    if edge_records_hash != artifact.edge_records_hash {
+        return Err(edge_artifact_refusal(
+            "Edge evidence JSONL does not match edge artifact hash",
+            json!({
+                "stage": "edge",
+                "reason": "stale_edge_records",
+                "expected": artifact.edge_records_hash,
+                "actual": edge_records_hash,
+                "writes_performed": false
+            }),
+        ));
+    }
+
+    let bucket_assertions_hash = hash_jsonl_records(bucket_assertions)?;
+    if bucket_assertions_hash != artifact.bucket_assertions_hash {
+        return Err(edge_artifact_refusal(
+            "Exact bucket JSONL does not match edge artifact hash",
+            json!({
+                "stage": "edge",
+                "reason": "stale_exact_bucket_assertions",
+                "expected": artifact.bucket_assertions_hash,
+                "actual": bucket_assertions_hash,
+                "writes_performed": false
+            }),
+        ));
+    }
+
+    Ok(())
+}
+
 fn validate_edge_records(
     edge_records: &[EdgeEvidenceRecord],
     candidate_records: &[BlockCandidateRecord],

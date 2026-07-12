@@ -1,0 +1,245 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.review.policy.v1.schema.json",
+  "title": "canon.review.policy.v1",
+  "description": "Domain-neutral review presentation and escalation policy package. Packages map opaque ontology, namespace, and relation IDs into labels, evidence groups, required rationale, risk tiers, two-person approval rules, and allowed safe actions without changing Canon patch semantics.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "package_id", "package_version", "policies", "labels", "documentation"],
+  "properties": {
+    "version": { "const": "canon.review.policy.v1" },
+    "package_id": { "$ref": "#/$defs/package_id" },
+    "package_version": { "$ref": "#/$defs/semver" },
+    "policies": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/policy" }
+    },
+    "labels": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/label_mapping" }
+    },
+    "documentation": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/documentation_ref" }
+    }
+  },
+  "x-canon-contract": {
+    "safe_actions": [
+      "same",
+      "distinct",
+      "related",
+      "successor",
+      "alias_scope",
+      "assignment",
+      "new_entity",
+      "defer",
+      "reject"
+    ],
+    "presentation_only": true,
+    "unknown_refs_render_as_opaque_values": true,
+    "relation_only_evidence_never_implies_identity": true,
+    "high_risk_overrides_require_hash_bound_approval": true,
+    "imports_compile_to_typed_patches": true,
+    "domain_specific_core_enums_forbidden": true
+  },
+  "$defs": {
+    "blake3_hash": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "package_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "opaque_ref": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*:[a-z0-9][a-z0-9._-]*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "documentation_uri": {
+      "type": "string",
+      "minLength": 1,
+      "allOf": [
+        { "not": { "pattern": "(^/|\\\\|(^|/)\\.\\.(/|$))" } },
+        { "anyOf": [{ "pattern": "^https?://" }, { "pattern": "^[^:]+$" }] }
+      ]
+    },
+    "documentation_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "uri"],
+      "properties": {
+        "label": { "$ref": "#/$defs/non_empty_string" },
+        "uri": { "$ref": "#/$defs/documentation_uri" }
+      }
+    },
+    "ref_kind": {
+      "type": "string",
+      "enum": ["ontology", "namespace", "relation", "evidence_group", "action"]
+    },
+    "safe_action": {
+      "type": "string",
+      "enum": [
+        "same",
+        "distinct",
+        "related",
+        "successor",
+        "alias_scope",
+        "assignment",
+        "new_entity",
+        "defer",
+        "reject"
+      ]
+    },
+    "evidence_kind": {
+      "type": "string",
+      "enum": ["identity", "distinct", "relation_only", "succession", "context", "missing", "override"]
+    },
+    "risk_tier": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"]
+    },
+    "patch_kind": {
+      "type": "string",
+      "enum": [
+        "alias",
+        "cannot_link",
+        "relation",
+        "successor_relation",
+        "alias_scope",
+        "assignment",
+        "new_entity",
+        "defer",
+        "reject"
+      ]
+    },
+    "label_mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref_id", "ref_kind", "label"],
+      "properties": {
+        "ref_id": { "$ref": "#/$defs/opaque_ref" },
+        "ref_kind": { "$ref": "#/$defs/ref_kind" },
+        "label": { "$ref": "#/$defs/non_empty_string" },
+        "help_text": { "$ref": "#/$defs/non_empty_string" }
+      }
+    },
+    "evidence_group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "group_id",
+        "label",
+        "namespace_refs",
+        "relation_refs",
+        "ontology_refs",
+        "evidence_kinds",
+        "risk_tier",
+        "required_rationale"
+      ],
+      "properties": {
+        "group_id": { "$ref": "#/$defs/opaque_ref" },
+        "label": { "$ref": "#/$defs/non_empty_string" },
+        "namespace_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/opaque_ref" },
+          "uniqueItems": true
+        },
+        "relation_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/opaque_ref" },
+          "uniqueItems": true
+        },
+        "ontology_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/opaque_ref" },
+          "uniqueItems": true
+        },
+        "evidence_kinds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence_kind" },
+          "uniqueItems": true
+        },
+        "risk_tier": { "$ref": "#/$defs/risk_tier" },
+        "required_rationale": { "type": "boolean" }
+      }
+    },
+    "two_person_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_approvals", "approval_role_refs"],
+      "properties": {
+        "min_approvals": { "type": "integer", "minimum": 1 },
+        "approval_role_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/opaque_ref" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "action_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "label",
+        "patch_kind",
+        "risk_tier",
+        "required_rationale",
+        "allowed_evidence_kinds"
+      ],
+      "properties": {
+        "action": { "$ref": "#/$defs/safe_action" },
+        "label": { "$ref": "#/$defs/non_empty_string" },
+        "patch_kind": { "$ref": "#/$defs/patch_kind" },
+        "risk_tier": { "$ref": "#/$defs/risk_tier" },
+        "required_rationale": { "type": "boolean" },
+        "allowed_evidence_kinds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence_kind" },
+          "uniqueItems": true
+        },
+        "two_person_rule": { "$ref": "#/$defs/two_person_rule" }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_id", "evidence_groups", "action_rules", "documentation_refs"],
+      "properties": {
+        "policy_id": { "$ref": "#/$defs/opaque_ref" },
+        "evidence_groups": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence_group" }
+        },
+        "action_rules": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/action_rule" }
+        },
+        "documentation_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/documentation_uri" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "policy_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package_digest", "policy_id"],
+      "properties": {
+        "package_digest": { "$ref": "#/$defs/blake3_hash" },
+        "policy_id": { "$ref": "#/$defs/opaque_ref" }
+      }
+    }
+  }
+}

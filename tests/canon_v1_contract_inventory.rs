@@ -162,6 +162,13 @@ fn canon_v1_contract_inventory_covers_shipped_commands_and_contract_ids() {
         .iter()
         .map(|row| row.id.clone())
         .collect::<BTreeSet<_>>();
+    assert!(
+        !inventory
+            .command_rows
+            .iter()
+            .any(|row| row.clap_path.as_deref() == Some("entity edge")),
+        "stale public entity edge Clap leaf inventory row must not remain"
+    );
 
     let actual_clap_paths = clap_leaf_commands();
     let actual_operator_names = operator_subcommands();
@@ -242,6 +249,9 @@ fn canon_v1_contract_inventory_freezes_current_incompatibility_rows() {
         .find(|row| row.id == "entity-clap-leaves-missing-from-operator-json")
         .expect("missing operator coverage row");
     let expected_subjects = [
+        "canon entity apply",
+        "canon entity candidate-recall",
+        "canon entity index build",
         "canon entity prepare",
         "canon entity profile list",
         "canon entity profile init",
@@ -434,6 +444,26 @@ fn canon_v1_contract_inventory_marks_reviewed_public_contract_boundaries() {
     assert!(
         extension_ontology.crate_module.is_none(),
         "internal-only contract rows should not claim a public canon:: path"
+    );
+
+    let legacy_resolve = inventory
+        .contract_rows
+        .iter()
+        .find(|row| row.id == "canon_resolve.v0")
+        .expect("canon_resolve.v0 row present");
+    assert_eq!(
+        legacy_resolve.access_boundary.as_deref(),
+        Some("internal_source_only"),
+        "canon_resolve.v0 should be explicitly marked as historical internal evidence"
+    );
+    assert_eq!(
+        legacy_resolve.source_path.as_deref(),
+        Some("src/resolve/types.rs"),
+        "canon_resolve.v0 should record the source-only owner path"
+    );
+    assert!(
+        legacy_resolve.crate_module.is_none(),
+        "canon_resolve.v0 should not claim a public crate module"
     );
 }
 

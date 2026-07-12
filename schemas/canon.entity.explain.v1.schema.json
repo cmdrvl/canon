@@ -1,0 +1,336 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.entity.explain.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.entity.explain.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_entity_explain.v1",
+      "type": "string"
+    },
+    "decision_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "outcome": {
+      "$ref": "#/$defs/outcome"
+    },
+    "subject_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "source_artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/source_artifact"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "pagination": {
+      "$ref": "#/$defs/pagination"
+    },
+    "lanes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vetoes": {
+          "$ref": "#/$defs/lane"
+        },
+        "positive_score_contributions": {
+          "$ref": "#/$defs/lane"
+        },
+        "context": {
+          "$ref": "#/$defs/lane"
+        },
+        "missing_evidence": {
+          "$ref": "#/$defs/lane"
+        },
+        "policy_clauses": {
+          "$ref": "#/$defs/lane"
+        },
+        "registry_facts": {
+          "$ref": "#/$defs/lane"
+        },
+        "candidate_context": {
+          "$ref": "#/$defs/lane"
+        },
+        "solver_decisions": {
+          "$ref": "#/$defs/lane"
+        },
+        "review_overrides": {
+          "$ref": "#/$defs/lane"
+        }
+      },
+      "required": [
+        "vetoes",
+        "positive_score_contributions",
+        "context",
+        "missing_evidence",
+        "policy_clauses",
+        "registry_facts",
+        "candidate_context",
+        "solver_decisions",
+        "review_overrides"
+      ]
+    },
+    "human_summary": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "decision_id",
+    "outcome",
+    "subject_ids",
+    "source_artifacts",
+    "summary",
+    "pagination",
+    "lanes",
+    "human_summary"
+  ],
+  "$defs": {
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "exact_existing",
+        "new_cluster",
+        "linked",
+        "ambiguous",
+        "contradictory",
+        "blocked_by_veto",
+        "below_threshold",
+        "review_overridden"
+      ]
+    },
+    "entry_kind": {
+      "type": "string",
+      "enum": [
+        "veto",
+        "positive_score_contribution",
+        "context",
+        "missing_evidence",
+        "policy_clause",
+        "registry_fact",
+        "candidate_context",
+        "solver_decision",
+        "review_override"
+      ]
+    },
+    "source_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_kind": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "content_hash": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_kind",
+        "version",
+        "content_hash"
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total_entries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "positive_score_units": {
+          "type": "integer"
+        },
+        "negative_score_units": {
+          "type": "integer"
+        },
+        "observed_score_units": {
+          "type": "integer"
+        },
+        "threshold_score_units": {
+          "type": "integer"
+        },
+        "counterfactual": {
+          "$ref": "#/$defs/counterfactual"
+        },
+        "counts_by_lane": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "required": [
+        "total_entries",
+        "positive_score_units",
+        "negative_score_units",
+        "observed_score_units",
+        "threshold_score_units",
+        "counterfactual",
+        "counts_by_lane"
+      ]
+    },
+    "counterfactual": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy_decision": {
+          "type": "string",
+          "enum": [
+            "threshold_satisfied",
+            "blocked_by_veto",
+            "ambiguous",
+            "contradictory",
+            "below_threshold",
+            "review_overridden"
+          ]
+        },
+        "additional_score_units_to_threshold": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "hard_veto_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "competing_context_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "policy_decision",
+        "hard_veto_count",
+        "competing_context_count"
+      ]
+    },
+    "pagination": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "page": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "per_page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "total_entries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "page_entries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "next_page": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "page",
+        "per_page",
+        "total_entries",
+        "page_entries"
+      ]
+    },
+    "lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lane": {
+          "type": "string"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entry"
+          }
+        }
+      },
+      "required": [
+        "lane",
+        "entries"
+      ]
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entry_id": {
+          "type": "string"
+        },
+        "entry_kind": {
+          "$ref": "#/$defs/entry_kind"
+        },
+        "source_kind": {
+          "type": "string"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "target_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "operator_id": {
+          "type": "string"
+        },
+        "reason_code": {
+          "type": "string"
+        },
+        "score_units": {
+          "type": "integer"
+        },
+        "hard_veto": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "redacted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ordinal",
+        "entry_id",
+        "entry_kind",
+        "source_kind",
+        "source_id",
+        "target_ids",
+        "score_units",
+        "hard_veto",
+        "summary",
+        "redacted"
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "frozen_artifacts_only": true,
+    "raw_sensitive_payload_forbidden": true,
+    "deterministic_pagination_required": true,
+    "merge_authority": "none"
+  }
+}

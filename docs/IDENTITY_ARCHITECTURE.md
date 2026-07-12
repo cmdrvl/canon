@@ -1,14 +1,15 @@
 # Canon Identity Architecture
 
-> Canon has one registry substrate and multiple identity workflows. The core
-> lookup path stays exact. Resolution workbenches manufacture new registry
-> knowledge through deterministic, auditable evidence pipelines.
+> Current architecture note. Canon is an identity compiler: messy local evidence
+> is converted into reviewed, versioned registry knowledge; production replay is
+> exact lookup against that registry. Historical plans remain useful context only
+> when they agree with this boundary.
 
 ---
 
 ## Doctrine
 
-`canon` should be understood as two layers:
+`canon` should be understood as three cooperating layers:
 
 1. **Lookup kernel**
    - Command family: `canon <INPUT> --registry <DIR> --column <COLUMN>`
@@ -18,11 +19,11 @@
    - Invariant: no fuzzy matching, no clustering, no live enrichment, no
      heuristic guessing at resolution time.
 
-2. **Resolution workbenches**
-   - Command families: `canon entity` and `canon resolve` today. `canon entity`
-     is the direct replacement for the generic observation -> evidence -> solve
-     -> audit -> promote workbench formerly embodied by the legacy org
-     plan; no long-lived compatibility alias is promised.
+2. **Evidence workbenches**
+   - Command family: `canon entity`. Cluster mode handles one profiled corpus;
+     link mode handles two row sets through the same artifact-backed workbench.
+     No long-lived compatibility alias is promised for superseded workbench
+     namespaces.
    - Contract: run a bounded deterministic strategy against frozen local inputs,
      emit candidates/evidence/solve/audit/review artifacts, then promote accepted
      registry updates.
@@ -31,10 +32,29 @@
    - Invariant: sophisticated evidence is allowed only before promotion. Once
      promoted, ordinary `canon` runs still resolve through exact registry lookup.
 
+3. **Distribution and extension surfaces**
+   - Command families and workflows: `canon registry export`, `canon package`,
+     project-mode dispatch paths, temporal snapshot tools, provider
+     materializers, and out-of-tree extensions.
+   - Contract: package, ship, project, audit, or specialize registry knowledge
+     without changing the lookup kernel.
+   - Output: dbt seeds, SQLite search indexes, signed packages, project locks,
+     temporal comparison artifacts, provider snapshots, and extension-owned
+     profiles or adapters.
+   - Invariant: industry ontology, provider knowledge, and domain-specific
+     decision policy live outside the core defaults unless explicitly packaged
+     and audited by the operator.
+
 This is the central distinction that reconciles the core plan with
-`canon entity`: **core `canon` is not a generic entity-resolution engine, but
-`canon` can host deterministic resolution workbenches that compile messy
-observations into versioned registries.**
+`canon entity`: **core `canon` is not a probabilistic entity-resolution runtime,
+but `canon` can host deterministic resolution workbenches that compile messy
+observations into reviewed versioned registries.**
+
+The lifecycle is:
+
+```text
+messy evidence -> deterministic artifacts -> audit/review -> versioned registry -> exact replay
+```
 
 ### Strategy Doctrine
 
@@ -71,6 +91,22 @@ are schema-transform and task-transform registry champions. Identity-evidence
 and record-linkage are the canonical doctrine for future typed procedural
 strategies and must remain outside the exact lookup kernel.
 
+### Cluster Mode And Link Mode
+
+`canon entity` has two public shapes:
+
+- **Cluster mode** (`canon entity run` and its stage commands) groups profiled
+  observations inside one corpus. It can produce solved clusters, review
+  queues/inboxes, escrow, and promotion proposals.
+- **Link mode** (`canon entity link <REFERENCE> <TARGET>`) aligns two row sets
+  through the same typed request and artifact path as project mode. It is a
+  cross-source linkage workflow, not a public `edge` alias and not a shortcut
+  around evidence, audit, or review.
+
+Both modes may use support evidence, anti-merge evidence, and relation hints.
+Relationship or hierarchy evidence must remain a relation hint unless a separate
+profile-approved equality signal supports a same-entity decision.
+
 ---
 
 ## Why This Is Not A Contradiction
@@ -92,9 +128,10 @@ flat versioned registry that the lookup kernel can resolve exactly.
 
 So the precise product claim is:
 
-> `canon` is not an MDM platform. It is a canonical identity workbench: exact
-> lookup for production resolution, plus deterministic domain workbenches for
-> creating and auditing the registries that lookup depends on.
+> `canon` is not an MDM platform. It is a registry-centered identity compiler:
+> exact lookup for production replay, plus deterministic local workbenches for
+> creating, auditing, packaging, and projecting the registries that lookup
+> depends on.
 
 ---
 
@@ -106,11 +143,36 @@ So the precise product claim is:
 | Provider-backed registry maintenance | `canon registry build/diff/audit/lint` | Implemented | Registry entries | Provider-backed materialization, diff, audit, lint | Versioned registry files |
 | Self-authored registry maintenance | `canon registry next-id/add-entry/mint/default-id-scheme` | Implemented | Operator-chosen canonical IDs and aliases | Exact alias authoring under a local ID convention; not a resolution workbench | Flat mapping entries plus `registry.json` metadata |
 | Strategy registry | `canon strategy` | Implemented | Schema and skill to frozen script | Deterministic script selection | Versioned strategy registry |
-| Profiled entity workbench | `canon entity` | Current generic workbench namespace | Profile-scoped observations such as tenant labels, legal entities, funds, people, brands, or properties | Native Rust normalization, bounded blocking, typed merge evidence, anti-merge evidence, deterministic solver, abstention | Alias entries, anchor sidecars, cannot-link sidecars, escrow sidecars, proofs |
+| Profiled entity workbench | `canon entity` | Current generic workbench namespace | Profile-scoped observations such as legal entities, funds, people, brands, properties, assets, or domain-extension observations | Native Rust normalization, bounded blocking, typed support evidence, anti-merge evidence, relation hints, deterministic solver, abstention | Alias entries, anchor sidecars, cannot-link sidecars, escrow sidecars, proofs |
 | Organization identity legacy plan | Legacy org plan only | Superseded by `canon entity`; no compatibility alias promised | Organization observation to `org_canon_id` in legacy BDC/issuer-like profiles | Blocking, typed evidence, deterministic solver, abstention | Alias entries, anchor sidecars, escrow sidecars, proofs |
-| Cross-tape structural resolution | `canon resolve` | Implemented v0 | Record in reference tape to record in target tape | Structural evidence under an explicit two-tape strategy; deterministic abstention on unmatched/ambiguous records | `canon_resolve.v0` evidence and optional flat cross-reference registry entries |
+| Cross-source linkage | `canon entity link` | Implemented under the generic entity workbench namespace | Record in reference rows to record in target rows | Structural evidence under an explicit link strategy; deterministic abstention on unmatched/ambiguous records; shared entity artifacts plus decision projection | `canon_entity_link.v0` with `canon_entity_link_decisions.v0` and optional flat cross-reference registry entries |
 | Property/address identity | Future workbench | Planned | Property observation to property canonical ID | Address/geospatial/name evidence under deterministic strategy | Property registry entries and proofs |
 | Fuzzy suggestions | Future assistive workflow only | Deferred | Unresolved value to suggested candidate | Probabilistic candidate generation, never auto-accepted | Human-approved registry entries only |
+
+## Extension Boundary
+
+Extensions are allowed to add profiles, adapters, strategy packages, provider
+materializers, review policy, schema projections, and domain-specific
+documentation. They are not allowed to smuggle domain knowledge into the core
+lookup defaults or change the runtime match rule.
+
+Core Canon may define the neutral contract for:
+
+- how observations become prepared surfaces
+- how candidates, evidence, solves, reviews, packages, project locks, temporal
+  snapshots, and exports are represented
+- how refusals and witness records behave
+
+Extensions own:
+
+- ontology and vocabulary choices
+- provider-specific semantics and credentials
+- domain thresholds and review policy
+- adapter-specific field mappings
+- commercial or private registry content
+
+That separation lets Canon run standalone on local registries while still
+supporting richer packaged deployments.
 
 ---
 
@@ -153,22 +215,25 @@ local ID allocation, not a new matching mode.
 
 ## Documentation Map
 
-- `docs/PLAN_CANON.md`: source of truth for the core lookup kernel, registry
+- `docs/PLAN_CANON.md`: current source of truth for the core lookup kernel, registry
   substrate, refusal semantics, exact-match invariants, and shared release
   contract.
-- `docs/PLAN_ENTITY_WORKBENCH.md`: direct-replacement plan for renaming the generic
+- `docs/PLAN_ENTITY_WORKBENCH.md`: current workbench plan for the generic
   workbench to `canon entity`, adding native Rust namekit primitives,
-  first-class anti-merge evidence, CMBS tenant-label support, performance
+  first-class anti-merge evidence, profile package support, performance
   hardening, and smoother operator ergonomics.
-- `docs/PLAN_ORG_IDENTITY_TOURNAMENT.md`: legacy organization-identity plan
-  retained for historical implementation context; active public workbench docs
-  should use `canon entity`.
-- `docs/PLAN_STRUCTURAL_RESOLUTION.md`: source of truth for the implemented
-  v0 `canon resolve` cross-tape structural record workbench; it should not be
-  read as current core lookup behavior.
-- `docs/PLAN_BDC_ENTITY_REGISTRATION.md`: domain bootstrap plan that fit under
-  the legacy organization workbench model and should migrate with that
-  workbench to `canon entity`.
+- `docs/PLAN_ORG_IDENTITY_TOURNAMENT.md`: historical organization-identity plan
+  retained for implementation archaeology. Do not present it as the active
+  public namespace or current architecture; active docs should use
+  `canon entity`.
+- `docs/PLAN_STRUCTURAL_RESOLUTION.md`: historical/internal source for the
+  preserved cross-tape decision engine now surfaced through `canon entity link`;
+  it should not be read as current core lookup behavior or as a separate public
+  namespace.
+- `docs/PLAN_BDC_ENTITY_REGISTRATION.md`: historical/domain bootstrap plan that
+  fit under the legacy organization workbench model. Domain-specific knowledge
+  belongs in packages, profiles, registries, or extensions, not in Canon core
+  defaults.
 
 When these documents appear to disagree, use this hierarchy:
 

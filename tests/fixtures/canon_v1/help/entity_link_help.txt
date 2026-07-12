@@ -1,0 +1,56 @@
+Link two row sets through the artifact-backed entity workbench
+
+Usage: canon entity link [OPTIONS] --strategy <STRATEGY> --registry <REGISTRY> <REFERENCE> <TARGET>
+
+Arguments:
+  <REFERENCE>
+          Reference rows
+
+  <TARGET>
+          Target rows
+
+Options:
+      --profile <PROFILE>
+          Entity profile id or YAML path; required for successful execution
+
+      --strategy <STRATEGY>
+          Strategy YAML file
+
+      --registry <REGISTRY>
+          Entity registry directory
+
+      --gold <GOLD>
+          Gold cross-reference JSONL file for link scoring
+
+      --write-back
+          Write matched ID pairs back into a new registry mapping file
+
+      --max-candidates <MAX_CANDIDATES>
+          Refuse if a target record has more than N surviving candidates
+
+      --max-rows <MAX_ROWS>
+          Refuse if either input exceeds N data rows
+
+      --max-bytes <MAX_BYTES>
+          Refuse if either input exceeds N bytes
+
+      --work-dir <WORK_DIR>
+          Work directory for artifact-backed stages; required for successful execution
+
+      --suite <SUITE>
+          Run a frozen audit suite and write audit.json under --work-dir
+
+      --emit <EMIT>
+          Output mode
+
+          Possible values:
+          - json:    Structured entity JSON artifact (default)
+          - summary: Human-readable entity summary
+
+          [default: json]
+
+      --no-witness
+          Suppress witness ledger append
+
+  -h, --help
+          Print help (see a summary with '-h')

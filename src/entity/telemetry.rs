@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, env, fmt, thread, time::Duration};
 
 pub const CANON_ENTITY_BENCHMARK_TELEMETRY_VERSION: &str = "canon_entity_benchmark_telemetry.v0";
+pub const CANON_ENTITY_CANDIDATE_RECALL_VERSION: &str = "canon_entity_candidate_recall.v0";
+pub const CANDIDATE_RECALL_CUTOFFS: [usize; 5] = [1, 5, 10, 25, 50];
 
 pub const REQUIRED_TELEMETRY_FIELDS: &[&str] = &[
     "run_id",
@@ -65,6 +67,219 @@ pub const REQUIRED_TELEMETRY_STAGE_IDS: &[&str] = &[
 
 pub const FORBIDDEN_TELEMETRY_PAYLOAD_KEYS: &[&str] =
     &["raw_rows", "source_rows", "operator_notes", "private_notes"];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CandidateRecallStratum {
+    ExactKnown,
+    WithheldAlias,
+    NovelCluster,
+    DirectionalLink,
+}
+
+impl CandidateRecallStratum {
+    pub const fn all() -> [Self; 4] {
+        [
+            Self::ExactKnown,
+            Self::WithheldAlias,
+            Self::NovelCluster,
+            Self::DirectionalLink,
+        ]
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CandidateRecallMissReason {
+    AbsentNormalizedEvidence,
+    OperatorCoverage,
+    PostingSuppression,
+    CandidateCap,
+    ProfileMapping,
+    AnchorConflict,
+    MalformedGold,
+}
+
+impl CandidateRecallMissReason {
+    pub const fn next_action(self) -> &'static str {
+        match self {
+            Self::AbsentNormalizedEvidence => {
+                "Add normalized evidence for the paired stable observation ids"
+            }
+            Self::OperatorCoverage => "Add or tune a retrieval operator for this stratum",
+            Self::PostingSuppression => {
+                "Inspect common posting suppression and exact-bucket compact evidence"
+            }
+            Self::CandidateCap => "Raise or retune candidate caps after reviewing pair volume",
+            Self::ProfileMapping => "Fix profile observation-id mapping before retrieval",
+            Self::AnchorConflict => "Inspect trusted-anchor policy for conflicting evidence",
+            Self::MalformedGold => "Repair the malformed gold must-link record",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CandidateRecallGoldPair {
+    pub gold_pair_id: String,
+    pub left_surface_id: String,
+    pub right_surface_id: String,
+    pub stratum: CandidateRecallStratum,
+}
+
+impl CandidateRecallGoldPair {
+    pub fn new(
+        gold_pair_id: impl Into<String>,
+        left_surface_id: impl Into<String>,
+        right_surface_id: impl Into<String>,
+        stratum: CandidateRecallStratum,
+    ) -> Self {
+        Self {
+            gold_pair_id: gold_pair_id.into(),
+            left_surface_id: left_surface_id.into(),
+            right_surface_id: right_surface_id.into(),
+            stratum,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CandidateRecallAtK {
+    pub k: usize,
+    pub hits: u64,
+    pub total: u64,
+    pub recall: f64,
+}
+
+impl CandidateRecallAtK {
+    pub fn new(k: usize, hits: u64, total: u64) -> Self {
+        Self {
+            k,
+            hits,
+            total,
+            recall: if total == 0 {
+                0.0
+            } else {
+                hits as f64 / total as f64
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CandidateRecallStratumReport {
+    pub stratum: CandidateRecallStratum,
+    pub recall_at_k: Vec<CandidateRecallAtK>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CandidateRecallOperatorReport {
+    pub operator_id: String,
+    pub recall_at_k: Vec<CandidateRecallAtK>,
+    pub marginal_hits_at_50: u64,
+    pub emitted_candidate_count: u64,
+    pub suppressed_candidate_count: u64,
+    pub large_posting_suppressed_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CandidateRecallRankRecord {
+    pub gold_pair_id: String,
+    pub stratum: CandidateRecallStratum,
+    pub operator_id: String,
+    pub rank: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CandidateRecallMissForensic {
+    pub gold_pair_id: String,
+    pub left_surface_id: String,
+    pub right_surface_id: String,
+    pub stratum: CandidateRecallStratum,
+    pub reason: CandidateRecallMissReason,
+    pub best_rank: Option<usize>,
+    pub operator_ids_checked: Vec<String>,
+    pub candidate_cap_effective: bool,
+    pub large_bucket_suppression: bool,
+    pub next_action: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CandidateRecallCapEffects {
+    pub candidate_pairs_suppressed_by_cap: u64,
+    pub suppressed_candidate_count: u64,
+    pub max_candidates_for_surface: u64,
+    pub max_candidates_for_operator: u64,
+    pub candidate_budget_validated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CandidateRecallOperatorSuppression {
+    pub operator_id: String,
+    pub suppressed_candidate_count: u64,
+    pub large_posting_suppressed_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CandidateRecallSuppressionReport {
+    pub large_buckets_suppressed: u64,
+    pub operators: Vec<CandidateRecallOperatorSuppression>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CandidateRecallExactBucketReport {
+    pub exact_bucket_count: u64,
+    pub pair_expansion_policy: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EntityCandidateRecallReport {
+    pub version: String,
+    pub cutoffs: Vec<usize>,
+    pub total_gold_pairs: u64,
+    pub union_recall_at_k: Vec<CandidateRecallAtK>,
+    pub strata: Vec<CandidateRecallStratumReport>,
+    pub operators: Vec<CandidateRecallOperatorReport>,
+    pub true_pair_ranks: Vec<CandidateRecallRankRecord>,
+    pub misses_at_50: Vec<CandidateRecallMissForensic>,
+    pub cap_effects: CandidateRecallCapEffects,
+    pub large_bucket_suppression: CandidateRecallSuppressionReport,
+    pub exact_buckets: CandidateRecallExactBucketReport,
+}
+
+impl EntityCandidateRecallReport {
+    pub fn validate(&self) -> Result<(), EntityTelemetryValidationError> {
+        if self.version != CANON_ENTITY_CANDIDATE_RECALL_VERSION {
+            return Err(EntityTelemetryValidationError::new(
+                "version",
+                format!(
+                    "expected {CANON_ENTITY_CANDIDATE_RECALL_VERSION}, got {}",
+                    self.version
+                ),
+            ));
+        }
+        if self.cutoffs != CANDIDATE_RECALL_CUTOFFS {
+            return Err(EntityTelemetryValidationError::new(
+                "cutoffs",
+                "candidate recall cutoffs must be exactly 1,5,10,25,50",
+            ));
+        }
+        for miss in &self.misses_at_50 {
+            if miss.gold_pair_id.trim().is_empty() {
+                return Err(EntityTelemetryValidationError::new(
+                    "misses_at_50.gold_pair_id",
+                    "must not be empty",
+                ));
+            }
+            if miss.left_surface_id.trim().is_empty() || miss.right_surface_id.trim().is_empty() {
+                return Err(EntityTelemetryValidationError::new(
+                    "misses_at_50.surface_id",
+                    "must not be empty",
+                ));
+            }
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntityTelemetryMachine {

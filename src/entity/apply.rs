@@ -16,12 +16,14 @@ use crate::entity::{
 };
 use crate::{Refusal, witness};
 use csv::{ReaderBuilder, StringRecord, WriterBuilder};
+use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const DEFAULT_APPLY_ROWS_PER_CHUNK: u64 = 1024;
 pub const APPLY_CANONICAL_FIELDS: &[&str] = &[
@@ -42,6 +44,7 @@ pub const SEC10D_ORG_FIELD_SUFFIXES: &[&str] = &[
 ];
 
 const MAX_APPLY_PROVENANCE_SAMPLES: usize = 16;
+const APPLY_TEMP_FILE_STALE_AFTER: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ApplyRegistryReference {
@@ -93,6 +96,17 @@ pub struct ApplyStreamRequest<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub struct ApplyRegistryStreamRequest<'a> {
+    pub rows: &'a Path,
+    pub output: &'a Path,
+    pub lookup_column: &'a str,
+    pub registry_dir: &'a Path,
+    pub safety: ApplySafetyCheck,
+    pub require_full_resolution: bool,
+    pub target_rows_per_chunk: u64,
+}
+
+#[derive(Debug, Clone)]
 pub struct Sec10dOrgApplyStreamRequest<'a> {
     pub rows: &'a Path,
     pub output: &'a Path,
@@ -126,6 +140,10 @@ pub struct ApplyRunArtifact {
     pub version: String,
     pub artifact_content_hash: String,
     pub registry: ApplyRegistryReference,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry_snapshot_hash: Option<String>,
+    #[serde(default)]
+    pub output_content_hash: String,
     pub summary: BTreeMap<String, u64>,
     pub streaming: ApplyStreamingDiagnostics,
     pub output_path: String,
@@ -199,11 +217,14 @@ pub fn run_apply_streaming(request: ApplyStreamRequest<'_>) -> Result<ApplyRunAr
 
     let write_result = write_apply_output(&request, format, &chunks)?;
     debug_assert_eq!(write_result.row_count, inspection.row_count);
+    let output_content_hash = hash_apply_output(request.output)?;
 
     let mut artifact = ApplyRunArtifact {
         version: CANON_ENTITY_APPLY_VERSION.to_string(),
         artifact_content_hash: String::new(),
         registry: request.registry.clone(),
+        registry_snapshot_hash: request.safety.actual_registry_snapshot_hash.clone(),
+        output_content_hash,
         summary: BTreeMap::from([
             ("rows".to_string(), write_result.row_count),
             ("resolved".to_string(), write_result.resolved),
@@ -219,6 +240,50 @@ pub fn run_apply_streaming(request: ApplyStreamRequest<'_>) -> Result<ApplyRunAr
     };
     artifact.artifact_content_hash = hash_apply_artifact_without_self(&artifact)?;
     Ok(artifact)
+}
+
+pub fn run_apply_streaming_from_registry(
+    request: ApplyRegistryStreamRequest<'_>,
+) -> Result<ApplyRunArtifact, Refusal> {
+    let registry = crate::registry::load_registry(request.registry_dir).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Apply could not load the versioned registry",
+            json!({
+                "stage": "apply",
+                "registry": request.registry_dir.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Fix registry.json or mapping files, then rerun canon entity apply".to_string()),
+        )
+    })?;
+    let resolutions = apply_resolutions_from_registry(&registry)?;
+    let registry_snapshot_hash = apply_registry_snapshot_hash(request.registry_dir)?;
+    let (profile_id, identity_semantics) = apply_registry_profile_metadata(request.registry_dir)?;
+    let mut safety = request.safety;
+    if safety.actual_registry_snapshot_hash.is_none() {
+        safety.actual_registry_snapshot_hash = Some(registry_snapshot_hash);
+    }
+    if safety.actual_profile_id.is_none() {
+        safety.actual_profile_id = profile_id;
+    }
+    if safety.actual_identity_semantics.is_none() {
+        safety.actual_identity_semantics = identity_semantics;
+    }
+
+    run_apply_streaming(ApplyStreamRequest {
+        rows: request.rows,
+        output: request.output,
+        lookup_column: request.lookup_column,
+        registry: ApplyRegistryReference {
+            id: registry.meta.id,
+            version: registry.meta.version,
+        },
+        resolutions: &resolutions,
+        safety,
+        require_full_resolution: request.require_full_resolution,
+        target_rows_per_chunk: request.target_rows_per_chunk,
+    })
 }
 
 pub fn run_sec10d_org_apply_streaming(
@@ -299,11 +364,14 @@ pub fn run_sec10d_org_apply_streaming(
     let chunks = deterministic_chunk_metadata(&input, request.target_rows_per_chunk)?;
     let telemetry = stream_telemetry(&input, &chunks);
     let write_result = write_sec10d_org_jsonl_output(&request, &chunks)?;
+    let output_content_hash = hash_apply_output(request.output)?;
 
     let mut artifact = ApplyRunArtifact {
         version: CANON_ENTITY_APPLY_VERSION.to_string(),
         artifact_content_hash: String::new(),
         registry: request.registry.clone(),
+        registry_snapshot_hash: request.safety.actual_registry_snapshot_hash.clone(),
+        output_content_hash,
         summary: BTreeMap::from([
             ("rows".to_string(), write_result.row_count),
             ("resolved".to_string(), write_result.resolved),
@@ -533,7 +601,7 @@ fn inspect_apply_csv(
         }
         let row_number = row_count + 1;
         let record = parse_csv_record(&line, delimiter, row_number, "row")?;
-        let lookup_value = record.get(lookup_index).unwrap_or("").trim();
+        let lookup_value = ascii_trim(record.get(lookup_index).unwrap_or(""));
         if resolutions.contains_key(lookup_value) {
             resolved += 1;
         } else {
@@ -600,26 +668,7 @@ fn write_apply_output(
     format: ApplyInputFormat,
     chunks: &[EntityStreamChunkMetadata],
 ) -> Result<ApplyWriteResult, Refusal> {
-    if let Some(parent) = request.output.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        fs::create_dir_all(parent).map_err(|error| {
-            io_budget_refusal(
-                "Failed to create apply output directory",
-                parent,
-                error.to_string(),
-            )
-        })?;
-    }
-    let mut writer = File::create(request.output).map_err(|error| {
-        io_budget_refusal(
-            "Failed to create apply output",
-            request.output,
-            error.to_string(),
-        )
-    })?;
-
-    match format {
+    write_apply_output_atomic(request.output, |writer| match format {
         ApplyInputFormat::Csv(delimiter) => write_apply_csv(
             request.rows,
             request.lookup_column,
@@ -627,7 +676,7 @@ fn write_apply_output(
             request.resolutions,
             delimiter,
             chunks,
-            &mut writer,
+            writer,
         ),
         ApplyInputFormat::Jsonl => write_apply_jsonl(
             request.rows,
@@ -635,9 +684,9 @@ fn write_apply_output(
             &request.registry,
             request.resolutions,
             chunks,
-            &mut writer,
+            writer,
         ),
-    }
+    })
 }
 
 fn write_apply_csv<W: Write>(
@@ -701,7 +750,7 @@ fn write_apply_csv<W: Write>(
 
         let row_number = result.row_count + 1;
         let record = parse_csv_record(&line, delimiter, row_number, "row")?;
-        let lookup_value = record.get(lookup_index).unwrap_or("").trim();
+        let lookup_value = ascii_trim(record.get(lookup_index).unwrap_or(""));
         let resolution = resolutions.get(lookup_value);
         let fields = csv_canonical_fields(registry, resolution);
         write_csv_line_with_appended_fields(writer, &line, delimiter, &fields)?;
@@ -786,92 +835,76 @@ fn write_sec10d_org_jsonl_output(
     request: &Sec10dOrgApplyStreamRequest<'_>,
     chunks: &[EntityStreamChunkMetadata],
 ) -> Result<ApplyWriteResult, Refusal> {
-    if let Some(parent) = request.output.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        fs::create_dir_all(parent).map_err(|error| {
-            io_budget_refusal(
-                "Failed to create apply output directory",
-                request.output,
-                error.to_string(),
-            )
-        })?;
-    }
-    let mut writer = File::create(request.output).map_err(|error| {
-        io_budget_refusal(
-            "Failed to create apply output",
-            request.output,
-            error.to_string(),
-        )
-    })?;
-    let mut reader = open_apply_reader(request.rows)?;
-    let mut line = Vec::new();
-    let mut result = ApplyWriteResult {
-        row_count: 0,
-        resolved: 0,
-        unresolved: 0,
-        provenance_samples: Vec::new(),
-    };
-    let mut byte_offset = 0u64;
+    write_apply_output_atomic(request.output, |writer| {
+        let mut reader = open_apply_reader(request.rows)?;
+        let mut line = Vec::new();
+        let mut result = ApplyWriteResult {
+            row_count: 0,
+            resolved: 0,
+            unresolved: 0,
+            provenance_samples: Vec::new(),
+        };
+        let mut byte_offset = 0u64;
 
-    loop {
-        line.clear();
-        let bytes_read = reader.read_until(b'\n', &mut line).map_err(|error| {
-            input_contract_refusal(
-                "Failed to read apply JSONL row",
-                result.row_count + 1,
-                request.lookup_column,
-                error.to_string(),
-            )
-        })?;
-        if bytes_read == 0 {
-            break;
-        }
-        if blank_line(&line) {
-            writer.write_all(&line).map_err(|error| {
+        loop {
+            line.clear();
+            let bytes_read = reader.read_until(b'\n', &mut line).map_err(|error| {
+                input_contract_refusal(
+                    "Failed to read apply JSONL row",
+                    result.row_count + 1,
+                    request.lookup_column,
+                    error.to_string(),
+                )
+            })?;
+            if bytes_read == 0 {
+                break;
+            }
+            if blank_line(&line) {
+                writer.write_all(&line).map_err(|error| {
+                    io_budget_refusal(
+                        "Failed to write apply output row",
+                        request.rows,
+                        error.to_string(),
+                    )
+                })?;
+                byte_offset += u64::try_from(line.len()).expect("line length fits u64");
+                continue;
+            }
+
+            let row_number = result.row_count + 1;
+            let object = parse_json_object(&line, row_number)?;
+            let lookup_value = json_lookup_value(&object, request.lookup_column, row_number)?;
+            let field_name = json_lookup_value(&object, request.field_name_column, row_number)?;
+            validate_no_sec10d_org_json_fields(&object, row_number)?;
+            let prefix = sec10d_org_field_prefix(&field_name, row_number)?;
+            let resolution = request.resolutions.get(lookup_value.as_str());
+            let appended = json_line_with_appended_sec10d_org_fields(
+                &line,
+                &prefix,
+                &request.registry,
+                resolution,
+                object.is_empty(),
+            )?;
+            writer.write_all(&appended).map_err(|error| {
                 io_budget_refusal(
                     "Failed to write apply output row",
                     request.rows,
                     error.to_string(),
                 )
             })?;
+            update_apply_write_result(
+                &mut result,
+                resolution.is_some(),
+                &lookup_value,
+                byte_offset,
+                u64::try_from(line.len()).expect("line length fits u64"),
+                chunks,
+            );
             byte_offset += u64::try_from(line.len()).expect("line length fits u64");
-            continue;
         }
 
-        let row_number = result.row_count + 1;
-        let object = parse_json_object(&line, row_number)?;
-        let lookup_value = json_lookup_value(&object, request.lookup_column, row_number)?;
-        let field_name = json_lookup_value(&object, request.field_name_column, row_number)?;
-        validate_no_sec10d_org_json_fields(&object, row_number)?;
-        let prefix = sec10d_org_field_prefix(&field_name, row_number)?;
-        let resolution = request.resolutions.get(lookup_value.as_str());
-        let appended = json_line_with_appended_sec10d_org_fields(
-            &line,
-            &prefix,
-            &request.registry,
-            resolution,
-            object.is_empty(),
-        )?;
-        writer.write_all(&appended).map_err(|error| {
-            io_budget_refusal(
-                "Failed to write apply output row",
-                request.rows,
-                error.to_string(),
-            )
-        })?;
-        update_apply_write_result(
-            &mut result,
-            resolution.is_some(),
-            &lookup_value,
-            byte_offset,
-            u64::try_from(line.len()).expect("line length fits u64"),
-            chunks,
-        );
-        byte_offset += u64::try_from(line.len()).expect("line length fits u64");
-    }
-
-    Ok(result)
+        Ok(result)
+    })
 }
 
 fn update_apply_write_result(
@@ -1147,7 +1180,7 @@ fn json_sec10d_org_fields(
 }
 
 fn sec10d_org_field_prefix(field_name: &str, row_number: u64) -> Result<String, Refusal> {
-    let field_name = field_name.trim();
+    let field_name = ascii_trim(field_name);
     let raw_prefix = field_name.strip_suffix("_name").unwrap_or(field_name);
     let mut prefix = String::with_capacity(raw_prefix.len());
     let mut previous_was_separator = false;
@@ -1296,7 +1329,7 @@ fn json_lookup_value(
         ));
     };
     match value {
-        Value::String(text) => Ok(text.trim().to_string()),
+        Value::String(text) => Ok(ascii_trim(text).to_string()),
         Value::Number(number) => Ok(number.to_string()),
         Value::Bool(value) => Ok(value.to_string()),
         Value::Null | Value::Array(_) | Value::Object(_) => Err(input_contract_refusal(
@@ -1427,12 +1460,374 @@ fn hash_apply_artifact_without_self(artifact: &ApplyRunArtifact) -> Result<Strin
     Ok(witness::hash_bytes(&bytes))
 }
 
+fn hash_apply_output(output: &Path) -> Result<String, Refusal> {
+    witness::hash_file(output).map_err(|error| {
+        io_budget_refusal(
+            "Failed to hash apply output rows",
+            output,
+            error.to_string(),
+        )
+    })
+}
+
 fn io_budget_refusal(message: &str, path: &Path, error: String) -> Refusal {
     EntityRefusalKind::IoBudget.to_refusal(
         message,
         json!({ "path": path.display().to_string(), "error": error }),
         None,
     )
+}
+
+fn write_apply_output_atomic<F>(output: &Path, write: F) -> Result<ApplyWriteResult, Refusal>
+where
+    F: FnOnce(&mut File) -> Result<ApplyWriteResult, Refusal>,
+{
+    if let Some(parent) = output.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).map_err(|error| {
+            io_budget_refusal(
+                "Failed to create apply output directory",
+                parent,
+                error.to_string(),
+            )
+        })?;
+    }
+    cleanup_stale_apply_temp_siblings(output).map_err(|error| {
+        io_budget_refusal(
+            "Failed to clean stale apply output temp files",
+            output,
+            error.to_string(),
+        )
+    })?;
+    let temp_path = apply_temp_sibling(output);
+    let mut writer = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_path)
+        .map_err(|error| {
+            io_budget_refusal(
+                "Failed to create temporary apply output",
+                &temp_path,
+                error.to_string(),
+            )
+        })?;
+
+    let result = match write(&mut writer) {
+        Ok(result) => result,
+        Err(refusal) => {
+            drop(writer);
+            let _ = fs::remove_file(&temp_path);
+            return Err(refusal);
+        }
+    };
+
+    if let Err(error) = writer.flush() {
+        drop(writer);
+        let _ = fs::remove_file(&temp_path);
+        return Err(io_budget_refusal(
+            "Failed to flush temporary apply output",
+            &temp_path,
+            error.to_string(),
+        ));
+    }
+    if let Err(error) = writer.sync_all() {
+        drop(writer);
+        let _ = fs::remove_file(&temp_path);
+        return Err(io_budget_refusal(
+            "Failed to sync temporary apply output",
+            &temp_path,
+            error.to_string(),
+        ));
+    }
+    drop(writer);
+
+    if let Err(error) = fs::rename(&temp_path, output) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(io_budget_refusal(
+            "Failed to install apply output atomically",
+            output,
+            error.to_string(),
+        ));
+    }
+
+    Ok(result)
+}
+
+fn apply_resolutions_from_registry(
+    registry: &crate::Registry,
+) -> Result<BTreeMap<String, ApplyCanonicalResolution>, Refusal> {
+    let conn = Connection::open_with_flags(
+        &registry.db_path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Apply could not open the registry lookup index",
+            json!({
+                "stage": "apply",
+                "registry_id": registry.meta.id.as_str(),
+                "registry_version": registry.meta.version.as_str(),
+                "db_path": registry.db_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Rebuild or repair the registry index, then rerun canon entity apply".to_string()),
+        )
+    })?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT input, canonical_id, canonical_type, rule_id
+             FROM entries
+             ORDER BY source_file ASC, entry_order ASC",
+        )
+        .map_err(|error| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Apply could not prepare the registry lookup query",
+                json!({
+                    "stage": "apply",
+                    "registry_id": registry.meta.id.as_str(),
+                    "registry_version": registry.meta.version.as_str(),
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+                Some(
+                    "Rebuild or repair the registry index, then rerun canon entity apply"
+                        .to_string(),
+                ),
+            )
+        })?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                ApplyCanonicalResolution {
+                    canonical_id: row.get::<_, String>(1)?,
+                    canonical_type: row.get::<_, String>(2)?,
+                    rule_id: row.get::<_, String>(3)?,
+                },
+            ))
+        })
+        .map_err(|error| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Apply could not read the registry lookup index",
+                json!({
+                    "stage": "apply",
+                    "registry_id": registry.meta.id.as_str(),
+                    "registry_version": registry.meta.version.as_str(),
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+                Some(
+                    "Rebuild or repair the registry index, then rerun canon entity apply"
+                        .to_string(),
+                ),
+            )
+        })?;
+
+    let mut resolutions = BTreeMap::new();
+    for row in rows {
+        let (input, resolution) = row.map_err(|error| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Apply could not materialize a registry lookup row",
+                json!({
+                    "stage": "apply",
+                    "registry_id": registry.meta.id.as_str(),
+                    "registry_version": registry.meta.version.as_str(),
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+                Some(
+                    "Rebuild or repair the registry index, then rerun canon entity apply"
+                        .to_string(),
+                ),
+            )
+        })?;
+        resolutions.entry(input).or_insert(resolution);
+    }
+    Ok(resolutions)
+}
+
+fn apply_registry_snapshot_hash(registry_dir: &Path) -> Result<String, Refusal> {
+    let mut files = vec![registry_dir.join("registry.json")];
+    files.extend(apply_mapping_file_paths(registry_dir)?);
+    files.sort();
+    let mut hasher = blake3::Hasher::new();
+    for path in files {
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| {
+                EntityRefusalKind::ArtifactContract.to_refusal(
+                    "Apply registry path is not valid UTF-8",
+                    json!({
+                        "stage": "apply",
+                        "path": path.display().to_string(),
+                        "writes_performed": false
+                    }),
+                    Some("Rename the registry file, then rerun canon entity apply".to_string()),
+                )
+            })?;
+        let bytes = fs::read(&path).map_err(|error| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Apply could not hash the registry snapshot",
+                json!({
+                    "stage": "apply",
+                    "path": path.display().to_string(),
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+                Some("Fix registry file permissions, then rerun canon entity apply".to_string()),
+            )
+        })?;
+        hasher.update(file_name.as_bytes());
+        hasher.update(&[0]);
+        hasher.update(&bytes);
+        hasher.update(&[0xff]);
+    }
+    Ok(format!("blake3:{}", hasher.finalize().to_hex()))
+}
+
+fn apply_registry_profile_metadata(
+    registry_dir: &Path,
+) -> Result<(Option<String>, Option<String>), Refusal> {
+    #[derive(Deserialize)]
+    struct RegistryProfile {
+        id: Option<String>,
+        identity_semantics: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    struct RegistryJson {
+        #[serde(default)]
+        entity_profile: Option<RegistryProfile>,
+    }
+
+    let registry_json_path = registry_dir.join("registry.json");
+    let content = fs::read_to_string(&registry_json_path).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Apply could not read registry profile metadata",
+            json!({
+                "stage": "apply",
+                "path": registry_json_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Fix registry.json, then rerun canon entity apply".to_string()),
+        )
+    })?;
+    let registry_json = serde_json::from_str::<RegistryJson>(&content).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Apply could not parse registry profile metadata",
+            json!({
+                "stage": "apply",
+                "path": registry_json_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Fix registry.json, then rerun canon entity apply".to_string()),
+        )
+    })?;
+    Ok(registry_json
+        .entity_profile
+        .map(|profile| (profile.id, profile.identity_semantics))
+        .unwrap_or((None, None)))
+}
+
+fn apply_mapping_file_paths(registry_dir: &Path) -> Result<Vec<PathBuf>, Refusal> {
+    let entries = fs::read_dir(registry_dir).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Apply could not read the registry directory",
+            json!({
+                "stage": "apply",
+                "registry": registry_dir.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Fix the registry directory, then rerun canon entity apply".to_string()),
+        )
+    })?;
+    let mut files = Vec::new();
+    for entry in entries {
+        let path = entry
+            .map_err(|error| {
+                EntityRefusalKind::ArtifactContract.to_refusal(
+                    "Apply could not inspect a registry directory entry",
+                    json!({
+                        "stage": "apply",
+                        "registry": registry_dir.display().to_string(),
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                    Some("Fix the registry directory, then rerun canon entity apply".to_string()),
+                )
+            })?
+            .path();
+        if path.is_file()
+            && path.extension().and_then(|extension| extension.to_str()) == Some("json")
+            && path.file_name().and_then(|name| name.to_str()) != Some("registry.json")
+            && path.file_name().and_then(|name| name.to_str()) != Some("_build.json")
+        {
+            files.push(path);
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
+fn apply_temp_sibling(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("apply-output");
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    path.with_file_name(format!(
+        "{file_name}.canon-apply.{}.{}.tmp",
+        std::process::id(),
+        unique
+    ))
+}
+
+fn cleanup_stale_apply_temp_siblings(path: &Path) -> std::io::Result<()> {
+    let Some(parent) = path.parent() else {
+        return Ok(());
+    };
+    if parent.as_os_str().is_empty() {
+        return Ok(());
+    }
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("apply-output");
+    let prefix = format!("{file_name}.canon-apply.");
+    let now = SystemTime::now();
+    for entry in fs::read_dir(parent)? {
+        let entry = entry?;
+        let entry_path = entry.path();
+        let Some(name) = entry_path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !name.starts_with(&prefix) || !name.ends_with(".tmp") {
+            continue;
+        }
+        let age = entry
+            .metadata()?
+            .modified()
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .unwrap_or_default();
+        if age >= APPLY_TEMP_FILE_STALE_AFTER {
+            let _ = fs::remove_file(&entry_path);
+        }
+    }
+    Ok(())
+}
+
+fn ascii_trim(value: &str) -> &str {
+    value.trim_matches(|ch: char| ch.is_ascii_whitespace())
 }
 
 fn input_contract_refusal(
@@ -1548,4 +1943,121 @@ pub fn default_apply_output_path(rows: &Path) -> PathBuf {
         .unwrap_or("out");
     output.set_extension(format!("canon.{extension}"));
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::RefusalCode;
+    use std::fs;
+
+    #[test]
+    fn registry_backed_apply_replays_exact_aliases_and_ascii_trim_only() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let registry = temp.path().join("registry");
+        let rows = temp.path().join("rows.csv");
+        let output = temp.path().join("rows.canon.csv");
+        write_registry(&registry);
+        fs::write(&rows, "tenant_name,amount\n Sears\t,10\nSears\u{00a0},20\n").expect("rows");
+
+        let artifact = run_apply_streaming_from_registry(ApplyRegistryStreamRequest {
+            rows: &rows,
+            output: &output,
+            lookup_column: "tenant_name",
+            registry_dir: &registry,
+            safety: ApplySafetyCheck::default(),
+            require_full_resolution: false,
+            target_rows_per_chunk: DEFAULT_APPLY_ROWS_PER_CHUNK,
+        })
+        .expect("registry-backed apply succeeds");
+
+        assert_eq!(artifact.registry.id, "cmbs-tenants");
+        assert_eq!(artifact.registry.version, "1.0.0");
+        assert_eq!(artifact.summary["rows"], 2);
+        assert_eq!(artifact.summary["resolved"], 1);
+        assert_eq!(artifact.summary["unresolved"], 1);
+        assert_eq!(
+            fs::read_to_string(&output).expect("apply output"),
+            concat!(
+                "tenant_name,amount,canonical_id,canonical_type,canonical_status,",
+                "canonical_registry_id,canonical_registry_version,canonical_rule_id\n",
+                " Sears\t,10,TNT-SEARS,tenant_label,resolved,cmbs-tenants,1.0.0,",
+                "ENTITY_REVIEW_PROMOTE\n",
+                "Sears\u{00a0},20,,,unresolved,cmbs-tenants,1.0.0,\n",
+            )
+        );
+    }
+
+    #[test]
+    fn registry_backed_apply_populates_snapshot_hash_and_refuses_stale_registry_before_write() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let registry = temp.path().join("registry");
+        let rows = temp.path().join("rows.csv");
+        let output = temp.path().join("rows.canon.csv");
+        write_registry(&registry);
+        fs::write(&rows, "tenant_name\nSears\n").expect("rows");
+        fs::write(&output, "sentinel output\n").expect("sentinel");
+
+        let refusal = run_apply_streaming_from_registry(ApplyRegistryStreamRequest {
+            rows: &rows,
+            output: &output,
+            lookup_column: "tenant_name",
+            registry_dir: &registry,
+            safety: ApplySafetyCheck {
+                expected_registry_snapshot_hash: Some("blake3:not-current".to_string()),
+                ..ApplySafetyCheck::default()
+            },
+            require_full_resolution: true,
+            target_rows_per_chunk: DEFAULT_APPLY_ROWS_PER_CHUNK,
+        })
+        .expect_err("stale registry refuses");
+
+        assert_eq!(refusal.code, RefusalCode::EEntityRegistrySnapshot);
+        assert_eq!(refusal.detail["stage"], "apply");
+        assert_eq!(
+            refusal.detail["expected_registry_snapshot_hash"],
+            "blake3:not-current"
+        );
+        assert!(
+            refusal.detail["actual_registry_snapshot_hash"]
+                .as_str()
+                .is_some_and(|hash| hash.starts_with("blake3:"))
+        );
+        assert_eq!(refusal.detail["writes_performed"], false);
+        assert_eq!(
+            fs::read_to_string(&output).expect("output after refusal"),
+            "sentinel output\n"
+        );
+    }
+
+    fn write_registry(path: &Path) {
+        fs::create_dir_all(path).expect("registry dir");
+        fs::write(
+            path.join("registry.json"),
+            r#"{
+  "id": "cmbs-tenants",
+  "version": "1.0.0",
+  "description": "apply test registry",
+  "updated": "2026-07-11",
+  "entry_count": 1,
+  "entity_profile": {
+    "id": "cmbs_tenant_label",
+    "identity_semantics": "canonical_display_label"
+  }
+}"#,
+        )
+        .expect("registry.json");
+        fs::write(
+            path.join("aliases.json"),
+            r#"[
+  {
+    "input": "Sears",
+    "canonical_id": "TNT-SEARS",
+    "canonical_type": "tenant_label",
+    "rule_id": "ENTITY_REVIEW_PROMOTE"
+  }
+]"#,
+        )
+        .expect("aliases.json");
+    }
 }

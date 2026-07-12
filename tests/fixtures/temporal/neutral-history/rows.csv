@@ -1,0 +1,10 @@
+row_id,subject_id,canonical_id,source_system,valid_from,valid_to,recorded_at,transaction_seq,assertion_status,scope_type,scope_id,digest_seed
+orion-old,alias:orion-old,org:orion,neutral-feed,2026-01-01T00:00:00Z,2026-05-31T23:59:59Z,2026-01-05T00:00:00Z,1,accepted,portfolio,neutral,a
+orion-renamed,alias:orion-renamed,org:orion,neutral-feed,2026-06-01T00:00:00Z,2026-12-31T23:59:59Z,2026-06-02T00:00:00Z,2,accepted,portfolio,neutral,b
+mesa-left,alias:mesa-left,org:mesa-left,neutral-feed,2026-01-01T00:00:00Z,2026-12-31T23:59:59Z,2026-01-05T00:00:00Z,3,accepted,portfolio,neutral,c
+mesa-right,alias:mesa-right,org:mesa-right,neutral-feed,2026-01-01T00:00:00Z,2026-12-31T23:59:59Z,2026-01-05T00:00:00Z,4,accepted,portfolio,neutral,d
+river-platform,alias:river-platform,org:river-combined,neutral-feed,2026-01-01T00:00:00Z,2026-12-31T23:59:59Z,2026-01-05T00:00:00Z,5,accepted,portfolio,neutral,e
+harbor-predecessor,alias:harbor-license,org:harbor-predecessor,neutral-feed,2026-01-01T00:00:00Z,2026-06-30T23:59:59Z,2026-01-05T00:00:00Z,6,accepted,portfolio,neutral,f
+harbor-successor,alias:harbor-license,org:harbor-successor,neutral-feed,2026-07-01T00:00:00Z,2026-12-31T23:59:59Z,2026-07-02T00:00:00Z,7,accepted,portfolio,neutral,1
+ledger-original,alias:ledger,org:ledger-alpha,neutral-feed,2026-01-01T00:00:00Z,2026-12-31T23:59:59Z,2026-01-05T00:00:00Z,8,accepted,portfolio,neutral,2
+steady,alias:steady,org:steady,neutral-feed,2026-01-01T00:00:00Z,2026-12-31T23:59:59Z,2026-01-05T00:00:00Z,9,accepted,portfolio,neutral,3

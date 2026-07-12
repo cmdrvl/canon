@@ -1,0 +1,432 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.project.plan.v1.schema.json",
+  "title": "canon.project.plan.v1",
+  "description": "Deterministic dry-run project execution DAG compiled from a validated canon project manifest and lockfile. Planning is pure: it records runnable nodes, cache decisions, review pauses, mutation gates, and declared exports without probing providers or mutating registries.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "plan_kind",
+    "manifest_digest",
+    "lock_digest",
+    "graph_hash",
+    "summary",
+    "nodes"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "canon.project.plan.v1"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "plan_kind": {
+      "const": "dry_run"
+    },
+    "manifest_digest": {
+      "$ref": "#/$defs/blake3_digest"
+    },
+    "lock_digest": {
+      "$ref": "#/$defs/blake3_digest"
+    },
+    "plan_artifact_path": {
+      "$ref": "#/$defs/path"
+    },
+    "graph_hash": {
+      "$ref": "#/$defs/blake3_digest"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "next_commands": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/diagnostic"
+      }
+    }
+  },
+  "x-canon-contract": {
+    "deterministic_sort_order": true,
+    "pure_dry_run": true,
+    "no_provider_probe": true,
+    "requires_manifest_lock_coverage": true,
+    "detects_cycles": true,
+    "detects_missing_producers": true,
+    "detects_output_collisions": true,
+    "distinguishes_node_classes": [
+      "computation",
+      "external_materialization",
+      "review_pause",
+      "mutation_gate",
+      "export"
+    ],
+    "agents_use_next_commands": true
+  },
+  "$defs": {
+    "blake3_digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-fA-F]{64}$"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "node_kind": {
+      "type": "string",
+      "enum": [
+        "intake",
+        "normalize",
+        "external_materialization",
+        "index",
+        "block",
+        "evidence",
+        "solve",
+        "link",
+        "evaluate",
+        "review",
+        "promote",
+        "exact_replay",
+        "export"
+      ]
+    },
+    "node_class": {
+      "type": "string",
+      "enum": [
+        "computation",
+        "external_materialization",
+        "review_pause",
+        "mutation_gate",
+        "export"
+      ]
+    },
+    "cache_decision": {
+      "type": "string",
+      "enum": [
+        "hit",
+        "miss",
+        "not_eligible"
+      ]
+    },
+    "side_effect_kind": {
+      "type": "string",
+      "enum": [
+        "reads_input",
+        "writes_artifact",
+        "may_use_network",
+        "pauses_for_review",
+        "mutates_registry",
+        "exports_operator_artifact"
+      ]
+    },
+    "output_materialization": {
+      "type": "string",
+      "enum": [
+        "planned_artifact",
+        "external_snapshot",
+        "review_queue",
+        "mutation_preview",
+        "declared_output"
+      ]
+    },
+    "error_code": {
+      "type": "string",
+      "enum": [
+        "artifact_contract",
+        "manifest_policy",
+        "lock_drift",
+        "missing_producer",
+        "cycle",
+        "incompatible_mode",
+        "output_collision",
+        "review_policy",
+        "cache_policy"
+      ]
+    },
+    "hash_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref_id",
+        "content_hash"
+      ],
+      "properties": {
+        "ref_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_hash": {
+          "$ref": "#/$defs/blake3_digest"
+        }
+      }
+    },
+    "node_output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "output_id",
+        "path",
+        "content_hash",
+        "materialization"
+      ],
+      "properties": {
+        "output_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/blake3_digest"
+        },
+        "materialization": {
+          "$ref": "#/$defs/output_materialization"
+        }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eligible",
+        "decision",
+        "cache_key",
+        "reason"
+      ],
+      "properties": {
+        "eligible": {
+          "type": "boolean"
+        },
+        "decision": {
+          "$ref": "#/$defs/cache_decision"
+        },
+        "cache_key": {
+          "$ref": "#/$defs/blake3_digest"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "side_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "description"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/side_effect_kind"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "refusal_condition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/error_code"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "next_command": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/error_code"
+        },
+        "node_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node_id",
+        "kind",
+        "class",
+        "command",
+        "cache",
+        "runnable"
+      ],
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "$ref": "#/$defs/node_kind"
+        },
+        "class": {
+          "$ref": "#/$defs/node_class"
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "content_hash_inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hash_ref"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node_output"
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "cache": {
+          "$ref": "#/$defs/cache"
+        },
+        "side_effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/side_effect"
+          }
+        },
+        "refusal_conditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/refusal_condition"
+          }
+        },
+        "runnable": {
+          "type": "boolean"
+        },
+        "blocked_by": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_nodes",
+        "edge_count",
+        "computation_nodes",
+        "external_materialization_nodes",
+        "review_pause_nodes",
+        "mutation_gate_nodes",
+        "export_nodes",
+        "cache_hits",
+        "cache_misses",
+        "runnable_nodes",
+        "blocked_nodes"
+      ],
+      "properties": {
+        "total_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "edge_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "computation_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "external_materialization_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "review_pause_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mutation_gate_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "export_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_hits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_misses": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "runnable_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked_nodes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

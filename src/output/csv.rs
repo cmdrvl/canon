@@ -58,7 +58,7 @@ pub fn emit_csv<W: Write>(
         let canonical_value = if is_blank_record(&record) {
             ""
         } else {
-            let lookup_value = record.get(column_index).unwrap_or("").trim();
+            let lookup_value = ascii_trim(record.get(column_index).unwrap_or(""));
             if lookup_value.is_empty() {
                 ""
             } else {
@@ -83,7 +83,11 @@ pub fn emit_csv<W: Write>(
 }
 
 fn is_blank_record(record: &StringRecord) -> bool {
-    record.iter().all(|field| field.trim().is_empty())
+    record.iter().all(|field| ascii_trim(field).is_empty())
+}
+
+fn ascii_trim(value: &str) -> &str {
+    value.trim_matches(|ch: char| ch.is_ascii_whitespace())
 }
 
 #[derive(Debug)]
@@ -280,6 +284,30 @@ mod tests {
             let output_text = String::from_utf8(output).unwrap();
             assert_eq!(output_text, expected_csv);
         }
+    }
+
+    #[test]
+    fn lookup_uses_ascii_trim_only() {
+        let file = create_csv_file("id,name\n A001\t,Alice\nA001\u{00a0},NotAlice\n");
+        let mut resolve_map = HashMap::new();
+        resolve_map.insert("A001".to_string(), Some("CANON-A".to_string()));
+
+        let mut output = Vec::new();
+        emit_csv(
+            file.path(),
+            &resolve_map,
+            "id",
+            "id__canon",
+            b',',
+            &mut output,
+        )
+        .unwrap();
+
+        let output_text = String::from_utf8(output).unwrap();
+        assert_eq!(
+            output_text,
+            "id,name,id__canon\n A001\t,Alice,CANON-A\nA001\u{00a0},NotAlice,\n"
+        );
     }
 
     #[test]

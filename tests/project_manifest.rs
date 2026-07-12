@@ -1,10 +1,6 @@
 #![forbid(unsafe_code)]
 
-#[allow(dead_code)]
-#[path = "../src/project/mod.rs"]
-mod project;
-
-use project::{
+use canon::project::{
     ProjectManifestError, ProjectManifestErrorCode, ProjectModeKind, ProjectNetworkPolicy,
     canonical_project_manifest_bytes, load_project_manifest_toml, project_manifest_digest,
     project_manifest_projection, project_manifest_schema_version,

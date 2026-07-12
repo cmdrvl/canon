@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.inbox.priority_policy.v1.schema.json",
+  "title": "canon.inbox.priority_policy.v1",
+  "description": "Versioned deterministic policy for ranking unresolved inbox work by expected coverage value. This is queue triage only and makes no canonical identity assertion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_id",
+    "revision",
+    "as_of",
+    "component_weights",
+    "caps",
+    "role_criticality",
+    "exposure_bands",
+    "candidate_readiness"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "canon.inbox.priority_policy.v1"
+    },
+    "policy_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revision": {
+      "type": "string",
+      "minLength": 1
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Deterministic ranking time used for age and drift components."
+    },
+    "component_weights": {
+      "type": "object",
+      "description": "Signed integer multipliers for decomposable expected coverage value components.",
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "required": [
+        "recurrence",
+        "distinct_sources",
+        "distinct_subjects",
+        "distinct_projects",
+        "role_criticality",
+        "exposure_band",
+        "downstream_consumers",
+        "candidate_readiness",
+        "ambiguity_cost",
+        "review_effort",
+        "age",
+        "drift"
+      ],
+      "properties": {
+        "recurrence": { "type": "integer" },
+        "distinct_sources": { "type": "integer" },
+        "distinct_subjects": { "type": "integer" },
+        "distinct_projects": { "type": "integer" },
+        "role_criticality": { "type": "integer" },
+        "exposure_band": { "type": "integer" },
+        "downstream_consumers": { "type": "integer" },
+        "candidate_readiness": { "type": "integer" },
+        "ambiguity_cost": { "type": "integer" },
+        "review_effort": { "type": "integer" },
+        "age": { "type": "integer" },
+        "drift": { "type": "integer" }
+      }
+    },
+    "caps": {
+      "type": "object",
+      "description": "Upper bounds that make outlier handling explicit and deterministic.",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "properties": {
+        "recurrence": { "type": "integer", "minimum": 0 },
+        "distinct_sources": { "type": "integer", "minimum": 0 },
+        "distinct_subjects": { "type": "integer", "minimum": 0 },
+        "distinct_projects": { "type": "integer", "minimum": 0 },
+        "downstream_consumers": { "type": "integer", "minimum": 0 },
+        "ambiguity_cost": { "type": "integer", "minimum": 0 },
+        "review_effort": { "type": "integer", "minimum": 0 },
+        "age": { "type": "integer", "minimum": 0 },
+        "drift": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "role_criticality": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "properties": {
+        "lookup_input": { "type": "integer" },
+        "name_field": { "type": "integer" },
+        "anchor_field": { "type": "integer" },
+        "context_field": { "type": "integer" },
+        "candidate_pair": { "type": "integer" }
+      }
+    },
+    "exposure_bands": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["band", "min_occurrences", "score_units"],
+        "properties": {
+          "band": { "type": "string", "minLength": 1 },
+          "min_occurrences": { "type": "integer", "minimum": 0 },
+          "score_units": { "type": "integer" }
+        }
+      }
+    },
+    "candidate_readiness": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "properties": {
+        "none": { "type": "integer" },
+        "ambiguous": { "type": "integer" },
+        "rejected": { "type": "integer" },
+        "budget_limited": { "type": "integer" }
+      }
+    },
+    "event_signals": {
+      "type": "object",
+      "description": "Optional ranking-only context keyed by unresolved inbox event_key. This reranks without rewriting source events.",
+      "additionalProperties": {
+        "$ref": "#/$defs/event_signal"
+      }
+    }
+  },
+  "$defs": {
+    "event_signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "registry_id": { "type": "string", "minLength": 1 },
+        "source_partition": { "type": "string", "minLength": 1 },
+        "exposure_band": { "type": "string", "minLength": 1 },
+        "distinct_subjects": { "type": "integer", "minimum": 0 },
+        "downstream_consumers": { "type": "integer", "minimum": 0 },
+        "review_effort_units": { "type": "integer", "minimum": 0 },
+        "drift_events": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

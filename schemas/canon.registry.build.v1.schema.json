@@ -1,0 +1,312 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.registry.build.v1.schema.json",
+  "title": "canon.registry.build.v1",
+  "description": "Domain-neutral registry build contract for compiling pinned external ontology, namespace, vocabulary, fact, review, trust/conflict, temporal, and projection packages into immutable exact-alias registry artifacts. Core Canon treats all domain IDs as opaque values, emits relation sidecars instead of identity implications, and keeps restricted values out of public-thin manifests.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "build_id",
+    "registry_id",
+    "registry_version",
+    "visibility",
+    "build_options",
+    "package_pins",
+    "facts",
+    "relationships",
+    "licenses"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon.registry.build.v1"
+    },
+    "build_id": {
+      "$ref": "#/$defs/non_empty_string"
+    },
+    "registry_id": {
+      "$ref": "#/$defs/non_empty_string"
+    },
+    "registry_version": {
+      "$ref": "#/$defs/non_empty_string"
+    },
+    "visibility": {
+      "$ref": "#/$defs/visibility"
+    },
+    "build_options": {
+      "$ref": "#/$defs/build_options"
+    },
+    "package_pins": {
+      "type": "array",
+      "minItems": 8,
+      "items": {
+        "$ref": "#/$defs/package_pin"
+      }
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/domain_fact"
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/relationship_fact"
+      }
+    },
+    "licenses": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/license_ref"
+      }
+    }
+  },
+  "x-canon-contract": {
+    "generic_domain_ids_only": true,
+    "unknown_domain_ids_round_trip": true,
+    "rebuild_byte_stable": true,
+    "semantic_diff_exposes_additions_remaps_conflicts_package_changes": true,
+    "relation_sidecars_do_not_imply_identity": true,
+    "restricted_public_manifest_leak_forbidden": true,
+    "domain_specific_core_enums_forbidden": true,
+    "required_package_kinds": [
+      "ontology",
+      "namespace",
+      "vocabulary",
+      "fact",
+      "review",
+      "trust_conflict",
+      "temporal",
+      "projection"
+    ]
+  },
+  "$defs": {
+    "blake3_hash": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "opaque_domain_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Opaque namespaced or external domain ID. The core compiler must not inspect or reinterpret this value."
+    },
+    "package_kind": {
+      "type": "string",
+      "enum": [
+        "ontology",
+        "namespace",
+        "vocabulary",
+        "fact",
+        "review",
+        "trust_conflict",
+        "temporal",
+        "projection"
+      ]
+    },
+    "visibility": {
+      "type": "string",
+      "enum": [
+        "public_thin",
+        "local_private"
+      ]
+    },
+    "license_redistribution": {
+      "type": "string",
+      "enum": [
+        "public",
+        "internal",
+        "restricted"
+      ]
+    },
+    "build_options": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "include_restricted_values",
+        "restricted_manifest_policy"
+      ],
+      "properties": {
+        "include_restricted_values": {
+          "type": "boolean"
+        },
+        "restricted_manifest_policy": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "package_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_kind",
+        "package_id",
+        "package_version",
+        "package_digest",
+        "license_id",
+        "restricted"
+      ],
+      "properties": {
+        "package_kind": {
+          "$ref": "#/$defs/package_kind"
+        },
+        "package_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "package_version": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "package_digest": {
+          "$ref": "#/$defs/blake3_hash"
+        },
+        "license_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "restricted": {
+          "type": "boolean"
+        }
+      }
+    },
+    "license_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "license_id",
+        "label",
+        "uri",
+        "redistribution"
+      ],
+      "properties": {
+        "license_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "label": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "uri": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "redistribution": {
+          "$ref": "#/$defs/license_redistribution"
+        }
+      }
+    },
+    "provenance_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_package_id",
+        "public_ref",
+        "license_id"
+      ],
+      "properties": {
+        "source_package_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "public_ref": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "license_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "restricted_detail": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "domain_fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fact_id",
+        "domain_id",
+        "canonical_id",
+        "alias",
+        "namespace_id",
+        "source_package_id",
+        "proof_refs",
+        "provenance",
+        "restricted_value"
+      ],
+      "properties": {
+        "fact_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "domain_id": {
+          "$ref": "#/$defs/opaque_domain_id"
+        },
+        "canonical_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "alias": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "namespace_id": {
+          "$ref": "#/$defs/opaque_domain_id"
+        },
+        "source_package_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "proof_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/non_empty_string"
+          }
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance_ref"
+        },
+        "restricted_value": {
+          "type": "boolean"
+        }
+      }
+    },
+    "relationship_fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relationship_id",
+        "left_domain_id",
+        "right_domain_id",
+        "relation_type_id",
+        "source_package_id",
+        "proof_refs",
+        "provenance",
+        "restricted_value"
+      ],
+      "properties": {
+        "relationship_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "left_domain_id": {
+          "$ref": "#/$defs/opaque_domain_id"
+        },
+        "right_domain_id": {
+          "$ref": "#/$defs/opaque_domain_id"
+        },
+        "relation_type_id": {
+          "$ref": "#/$defs/opaque_domain_id"
+        },
+        "source_package_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "proof_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/non_empty_string"
+          }
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance_ref"
+        },
+        "restricted_value": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

@@ -91,9 +91,14 @@ fn entity_run_cmbs_emits_chained_stage_artifacts() {
     }
     assert!(work_dir.join("prepare/surfaces.jsonl").exists());
     assert!(work_dir.join("block/candidates.jsonl").exists());
+    assert!(work_dir.join("block/diagnostics.json").exists());
     assert!(work_dir.join("block/exact_buckets.jsonl").exists());
     assert!(work_dir.join("edge/edges.jsonl").exists());
     assert!(work_dir.join("solve/decision_ledger.jsonl").exists());
+    assert_eq!(
+        artifact.work_dir.candidate_diagnostics_path,
+        "block/diagnostics.json"
+    );
 
     let persisted: EntityRunArtifact = read_json(&work_dir.join("run.json"));
     assert_eq!(persisted, artifact);
@@ -139,6 +144,11 @@ fn entity_run_cmbs_cli_summary_uses_artifact_backed_path() {
         run_json["summary"]["labels"]["profile_id"],
         "cmbs_tenant_label"
     );
+    assert_eq!(
+        run_json["work_dir"]["candidate_diagnostics_path"],
+        "block/diagnostics.json"
+    );
+    assert!(work_dir.join("block/diagnostics.json").exists());
 }
 
 #[test]

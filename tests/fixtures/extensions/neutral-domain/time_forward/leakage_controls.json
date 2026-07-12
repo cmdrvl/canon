@@ -1,0 +1,54 @@
+{
+  "cases": [
+    {
+      "case_id": "holdout_dictionary_leak",
+      "family": "entity_disjoint",
+      "trial_id": "entity_disjoint.neutral.planted",
+      "channel": "dictionary",
+      "protected_set": "holdout_entity",
+      "locator": "strategy/dictionary/generated",
+      "value": "Beta Workshop LLC",
+      "expected_error": "entity_disjoint_leak"
+    },
+    {
+      "case_id": "future_alias_leak",
+      "family": "time_forward",
+      "trial_id": "time_forward.neutral.cutoff",
+      "channel": "alias",
+      "protected_set": "future_observation",
+      "locator": "registry/aliases/pre_cutoff",
+      "value": "Harbor Signal Renewed",
+      "expected_error": "future_leakage"
+    },
+    {
+      "case_id": "future_anchor_leak",
+      "family": "time_forward",
+      "trial_id": "time_forward.neutral.cutoff",
+      "channel": "anchor",
+      "protected_set": "future_observation",
+      "locator": "policy/anchors/generated",
+      "value": "obs.eval.new",
+      "expected_error": "future_leakage"
+    },
+    {
+      "case_id": "future_threshold_leak",
+      "family": "time_forward",
+      "trial_id": "time_forward.neutral.cutoff",
+      "channel": "threshold",
+      "protected_set": "future_observation",
+      "locator": "policy/thresholds/tuned",
+      "value": "entity.time.relationship",
+      "expected_error": "future_leakage"
+    },
+    {
+      "case_id": "future_patch_leak",
+      "family": "time_forward",
+      "trial_id": "time_forward.neutral.cutoff",
+      "channel": "patch",
+      "protected_set": "future_observation",
+      "locator": "normalization/patches/post_cutoff",
+      "value": "Future Nova Labs",
+      "expected_error": "future_leakage"
+    }
+  ]
+}

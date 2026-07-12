@@ -6,7 +6,9 @@
 
 ## canon — What This Project Does
 
-`canon` resolves messy identifiers to canonical IDs using versioned registries. It is the **canonicalization tool** in the spine pipeline:
+`canon` compiles accepted identity knowledge into versioned registries and then
+replays that knowledge through exact lookup. It is the **canonicalization tool**
+in the spine pipeline:
 
 ```
 canon → rvl    (canonicalize IDs, then compare)
@@ -38,9 +40,24 @@ canon registry add-entry --registry registries/people/ \
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
+### Product Boundary
+
+Use this mental model in code, tests, docs, and bead comments:
+
+```text
+messy evidence -> deterministic artifacts -> audit/review -> versioned registry -> exact replay
+```
+
+The default `canon <INPUT> --registry ... --column ...` path is exact runtime
+lookup only. Uncertain evidence belongs in workbench artifacts such as
+`canon entity`, `canon resolve`, strategy packages, project workflows, temporal
+comparisons, or out-of-tree extensions. Do not imply that Canon core ships
+industry ontology, provider knowledge, or probabilistic runtime lookup.
+
 ### Source of Truth
 
 - **Spec:** [`docs/PLAN_CANON.md`](./docs/PLAN_CANON.md) — all behavior must follow this document
+- **Boundary:** [`docs/IDENTITY_ARCHITECTURE.md`](./docs/IDENTITY_ARCHITECTURE.md) — exact runtime vs build-time evidence, entity cluster/link modes, and extension firewall
 - **Harness notes:** [`CODEX.md`](./CODEX.md), [`CLAUDE.md`](./CLAUDE.md), and [`GEMINI.md`](./GEMINI.md) — runner-specific caveats only
 - Do not invent behavior not present in the plan
 
@@ -54,6 +71,8 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 | `src/input/` | CSV and JSONL parsing, column extraction |
 | `src/registry/` | Registry loading, validation, SQLite index |
 | `src/resolve/` | Lookup logic, dedup, match precedence |
+| `src/entity/` | Build-time entity workbench artifacts, cluster/link flows, review, and promotion |
+| `src/project/` | Project manifests, locks, and reproducible workflow planning |
 | `src/output/` | JSON and CSV output formatting |
 | `src/refusal/` | Refusal envelope, codes, details |
 | `src/witness/` | Witness append behavior (BLAKE3 hashing) |
@@ -90,6 +109,12 @@ Same input + same registry version = byte-identical output. No randomness, no he
 ### 2. Exact match only (v0)
 
 Matching is exact byte match after ASCII-trim. No case normalization, no punctuation stripping, no stemming, no fuzzy logic. The registry is the complete source of truth. If matching behavior changes, it is a **breaking change**.
+
+Workbench evidence does not loosen this invariant. `canon entity`, `canon
+resolve`, provider materialization, strategy selection, project workflows,
+packages, temporal snapshots, and extensions may create or validate registry
+knowledge before promotion. Once promoted, normal lookup still resolves only
+through exact registry entries.
 
 ### 3. Summary invariant
 

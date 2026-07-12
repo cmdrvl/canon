@@ -18,7 +18,10 @@ use crate::entity::{
 use crate::witness;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -260,6 +263,21 @@ pub struct SolveArtifactRequest {
     pub config: SolveReconciliationConfig,
     pub provenance: Vec<SolveSurfaceProvenance>,
     pub decision_ledger_path: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntitySolveStageRequest<'a> {
+    pub rows: &'a Path,
+    pub profile: &'a str,
+    pub strategy: &'a Path,
+    pub evidence: &'a Path,
+    pub registry: &'a Path,
+    pub work_dir: &'a Path,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntitySolveStageOutput {
+    pub artifact: SolveArtifact,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

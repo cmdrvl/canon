@@ -81,6 +81,38 @@ fn entity_contracts_golden_validate_against_schema_snapshots() {
 }
 
 #[test]
+fn review_queue_schema_allows_optional_source_link_hash() {
+    let bundle = schema_bundle();
+    let defs = bundle["$defs"].as_object().expect("schema defs object");
+    let schema = defs
+        .get("canon_entity_review_queue.v0")
+        .expect("review queue schema");
+    let properties = schema["properties"]
+        .as_object()
+        .expect("review queue properties");
+    assert_eq!(
+        properties["source_link_hash"]["$ref"], "#/$defs/hash",
+        "source_link_hash must use the shared hash definition"
+    );
+
+    let required = schema["required"]
+        .as_array()
+        .expect("review queue required list");
+    assert!(
+        !required
+            .iter()
+            .any(|field| field.as_str() == Some("source_link_hash")),
+        "source_link_hash must remain optional for solve-only review queues"
+    );
+
+    let solve_only = golden_artifact("canon_entity_review_queue.v0");
+    assert!(solve_only.get("source_link_hash").is_none());
+    validate_artifact_core_contract(&solve_only).expect("solve-only review queue remains valid");
+    assert_required_fields_present("canon_entity_review_queue.v0", schema, &solve_only);
+    assert_no_extra_top_level_fields("canon_entity_review_queue.v0", schema, &solve_only);
+}
+
+#[test]
 fn artifact_schema_required_fields_refuse_with_entity_artifact_contract() {
     assert_required_field_refusal(&["metadata", "profile", "identity_semantics"]);
     assert_required_field_refusal(&["metadata", "strategy", "content_hash"]);

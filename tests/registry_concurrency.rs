@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use canon::{
-    InputFormat, InputValues, RefusalCode, SpecialReason,
+    InputFormat, InputValues, Refusal, RefusalCode, SpecialReason,
     entity::{
         CANON_ENTITY_DECISION_LEDGER_VERSION, CANON_ENTITY_SOLVE_VERSION, EntityArtifactHeader,
         EntityArtifactMetadata, EntityArtifactReference, EntityDeterministicSummary,
@@ -21,7 +21,7 @@ use canon::{
         schema::CANON_ENTITY_REVIEW_QUEUE_VERSION,
     },
     lookup::resolve_values,
-    registry::{RegistryAddEntryRequest, add_entry, load_registry, mint},
+    registry::{RegistryAddEntryOutput, RegistryAddEntryRequest, add_entry, load_registry, mint},
 };
 use serde_json::{Value, json};
 use std::{
@@ -113,6 +113,85 @@ fn write_lease(path: &Path, purpose: &str, created_unix_secs: u64) -> Result<(),
 fn release_after_plans(lock_path: PathBuf) {
     thread::sleep(Duration::from_millis(500));
     fs::remove_file(lock_path).expect("release precreated lock");
+}
+
+fn run_add_entries_together(
+    requests: [RegistryAddEntryRequest; 2],
+) -> Vec<Result<RegistryAddEntryOutput, Refusal>> {
+    let barrier = Arc::new(Barrier::new(3));
+    let handles = requests
+        .into_iter()
+        .map(|request| {
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                add_entry(request)
+            })
+        })
+        .collect::<Vec<_>>();
+
+    barrier.wait();
+    handles
+        .into_iter()
+        .map(|handle| handle.join().expect("thread completes"))
+        .collect::<Vec<_>>()
+}
+
+fn assert_stale_write_plan_refusal(refusal: &Refusal) {
+    assert_eq!(refusal.code, RefusalCode::EBadRegistry);
+    assert_eq!(refusal.detail["field"], "write_plan_hash");
+    assert_eq!(refusal.detail["writes_performed"], false);
+    assert!(
+        refusal.detail["expected_hash"]
+            .as_str()
+            .expect("expected hash")
+            .starts_with("blake3:")
+    );
+    assert!(
+        refusal.detail["actual_hash"]
+            .as_str()
+            .expect("actual hash")
+            .starts_with("blake3:")
+    );
+}
+
+fn assert_identical_add_entry_refusal(refusal: &Refusal) {
+    if refusal.code == RefusalCode::EBadRegistry && refusal.detail["field"] == "write_plan_hash" {
+        assert_stale_write_plan_refusal(refusal);
+        return;
+    }
+
+    assert_eq!(refusal.code, RefusalCode::EParse);
+    assert_eq!(refusal.detail["input"], "Alpha");
+    assert_eq!(refusal.detail["existing"]["canonical_id"], "PPL-001");
+    assert_eq!(refusal.detail["existing"]["canonical_type"], "person");
+    assert_eq!(refusal.detail["existing"]["rule_id"], "MANUAL");
+}
+
+fn registry_metadata(path: &Path) -> Value {
+    read_json(&path.join("registry.json"))
+}
+
+fn alias_entries(path: &Path) -> Vec<Value> {
+    read_json(&path.join("aliases.json"))
+        .as_array()
+        .expect("aliases array")
+        .clone()
+}
+
+fn entries_by_input(entries: &[Value]) -> BTreeMap<String, String> {
+    entries
+        .iter()
+        .map(|entry| {
+            (
+                entry["input"].as_str().expect("entry input").to_string(),
+                entry["canonical_id"]
+                    .as_str()
+                    .expect("entry canonical id")
+                    .to_string(),
+            )
+        })
+        .collect()
 }
 
 fn input_values(values: &[&str]) -> InputValues {
@@ -334,71 +413,53 @@ fn concurrent_load_registry_recovers_stale_builder_lease_and_cleans_it_up()
 }
 
 #[test]
-fn concurrent_conflicting_add_entry_reports_stale_write_plan() -> Result<(), Box<dyn Error>> {
+fn concurrent_conflicting_add_entry_never_loses_committed_write() -> Result<(), Box<dyn Error>> {
     let registry = make_registry("1.0.0", json!([]))?;
-    let lock_path = registry.path().join(MUTATION_LOCK_NAME);
-    write_lease(&lock_path, "registry-mutation", current_unix_secs())?;
-
-    let barrier = Arc::new(Barrier::new(3));
-    let requests = [
+    let results = run_add_entries_together([
         add_entry_request(registry.path(), "PPL-001", "Alpha"),
         add_entry_request(registry.path(), "PPL-002", "Beta"),
-    ];
-    let handles = requests
-        .into_iter()
-        .map(|request| {
-            let barrier = Arc::clone(&barrier);
-            thread::spawn(move || {
-                barrier.wait();
-                add_entry(request)
-            })
-        })
+    ]);
+    let successes = results
+        .iter()
+        .filter_map(|result| result.as_ref().ok())
         .collect::<Vec<_>>();
-
-    barrier.wait();
-    release_after_plans(lock_path);
-    let results = handles
-        .into_iter()
-        .map(|handle| handle.join().expect("thread completes"))
-        .collect::<Vec<_>>();
-
-    let successes = results.iter().filter(|result| result.is_ok()).count();
     let refusals = results
         .iter()
         .filter_map(|result| result.as_ref().err())
         .collect::<Vec<_>>();
+    let entries = alias_entries(registry.path());
+    let entries_by_input = entries_by_input(&entries);
+    let registry_json = registry_metadata(registry.path());
 
-    assert_eq!(successes, 1);
-    assert_eq!(refusals.len(), 1);
-    assert_eq!(refusals[0].code, RefusalCode::EBadRegistry);
-    assert_eq!(refusals[0].detail["field"], "write_plan_hash");
-    assert_eq!(refusals[0].detail["writes_performed"], false);
-    assert!(
-        refusals[0].detail["expected_hash"]
-            .as_str()
-            .expect("expected hash")
-            .starts_with("blake3:")
-    );
-    assert!(
-        refusals[0].detail["actual_hash"]
-            .as_str()
-            .expect("actual hash")
-            .starts_with("blake3:")
-    );
-
-    let aliases = read_json(&registry.path().join("aliases.json"));
-    let entries = aliases.as_array().expect("aliases array");
-    assert_eq!(entries.len(), 1);
-    assert_eq!(
-        read_json(&registry.path().join("registry.json"))["version"],
-        "1.0.1"
-    );
-    match (
-        entries[0]["input"].as_str().expect("input"),
-        entries[0]["canonical_id"].as_str().expect("canonical id"),
-    ) {
-        ("Alpha", "PPL-001") | ("Beta", "PPL-002") => {}
-        other => panic!("unexpected surviving entry: {other:?}"),
+    match (successes.len(), refusals.len()) {
+        (1, 1) => {
+            assert_stale_write_plan_refusal(refusals[0]);
+            assert_eq!(entries.len(), 1);
+            assert_eq!(registry_json["version"], "1.0.1");
+            assert_eq!(registry_json["entry_count"], 1);
+            assert_eq!(
+                entries_by_input.get(&successes[0].alias_entry.input),
+                Some(&successes[0].alias_entry.canonical_id)
+            );
+            match entries_by_input.iter().next().expect("one entry") {
+                (input, canonical_id)
+                    if (input.as_str(), canonical_id.as_str()) == ("Alpha", "PPL-001")
+                        || (input.as_str(), canonical_id.as_str()) == ("Beta", "PPL-002") => {}
+                other => panic!("unexpected surviving entry: {other:?}"),
+            }
+        }
+        (2, 0) => {
+            assert_eq!(
+                entries.len(),
+                2,
+                "two successful concurrent add-entry calls lost an update"
+            );
+            assert_eq!(registry_json["version"], "1.0.2");
+            assert_eq!(registry_json["entry_count"], 2);
+            assert_eq!(entries_by_input.get("Alpha"), Some(&"PPL-001".to_string()));
+            assert_eq!(entries_by_input.get("Beta"), Some(&"PPL-002".to_string()));
+        }
+        other => panic!("unexpected concurrent add-entry outcome: {other:?}"),
     }
     Ok(())
 }
@@ -407,37 +468,27 @@ fn concurrent_conflicting_add_entry_reports_stale_write_plan() -> Result<(), Box
 fn concurrent_identical_add_entry_replays_without_duplicate_entries() -> Result<(), Box<dyn Error>>
 {
     let registry = make_registry("1.0.0", json!([]))?;
-    let lock_path = registry.path().join(MUTATION_LOCK_NAME);
-    write_lease(&lock_path, "registry-mutation", current_unix_secs())?;
-
-    let barrier = Arc::new(Barrier::new(3));
-    let registry_dir = registry.path().to_path_buf();
-    let handles = (0..2)
-        .map(|_| {
-            let barrier = Arc::clone(&barrier);
-            let request = add_entry_request(&registry_dir, "PPL-001", "Alpha");
-            thread::spawn(move || {
-                barrier.wait();
-                add_entry(request)
-            })
-        })
+    let results = run_add_entries_together([
+        add_entry_request(registry.path(), "PPL-001", "Alpha"),
+        add_entry_request(registry.path(), "PPL-001", "Alpha"),
+    ]);
+    let successes = results.iter().filter(|result| result.is_ok()).count();
+    let refusals = results
+        .iter()
+        .filter_map(|result| result.as_ref().err())
         .collect::<Vec<_>>();
+    match (successes, refusals.len()) {
+        (2, 0) => {}
+        (1, 1) => assert_identical_add_entry_refusal(refusals[0]),
+        other => panic!("unexpected concurrent identical add-entry outcome: {other:?}"),
+    }
 
-    barrier.wait();
-    release_after_plans(lock_path);
-    let results = handles
-        .into_iter()
-        .map(|handle| handle.join().expect("thread completes"))
-        .collect::<Vec<_>>();
-
-    assert!(results.iter().all(|result| result.is_ok()));
-    let aliases = read_json(&registry.path().join("aliases.json"));
-    let entries = aliases.as_array().expect("aliases array");
+    let entries = alias_entries(registry.path());
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0]["input"], "Alpha");
     assert_eq!(entries[0]["canonical_id"], "PPL-001");
 
-    let registry_json = read_json(&registry.path().join("registry.json"));
+    let registry_json = registry_metadata(registry.path());
     assert_eq!(registry_json["version"], "1.0.1");
     assert_eq!(registry_json["entry_count"], 1);
     Ok(())

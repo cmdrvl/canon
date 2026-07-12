@@ -12,11 +12,12 @@
     "usage": [
       "canon <INPUT> --registry <DIR> --column <COL> [OPTIONS]",
       "canon doctor [health [--json]|capabilities [--json]|robot-docs|--robot-triage]",
-      "canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
       "canon package pack --root <DIR> --package <package.json> --out <ARCHIVE>",
       "canon package inspect <ARCHIVE> [--emit json|summary]",
       "canon package verify <ARCHIVE> [--emit json|summary]",
       "canon package unpack <ARCHIVE> --target <EMPTY_DIR> [--emit json|summary]",
+      "canon package push --archive <ARCHIVE> --registry <OCI_BASE_URL> --repository <REPOSITORY> [--tag <TAG>] [--emit json|summary]",
+      "canon package pull --registry <OCI_BASE_URL> --repository <REPOSITORY> --cache <DIR> (--digest <sha256:...>|--tag <TAG>) [--emit json|summary]",
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "canon registry export --format dbt-seed|search-index --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]",
       "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
@@ -32,14 +33,23 @@
       "canon strategy register --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VERSION> [--rule-id <RULE>] [--emit json|summary]",
       "canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
       "canon entity run <ROWS> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--suite <SUITE_DIR>] [--emit json|summary] [--no-witness]",
+      "canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--suite <SUITE_DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
+      "canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]",
       "canon entity block <ROWS> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
-      "canon entity edge <ROWS> --strategy <STRATEGY.yaml> --candidates <BLOCK.jsonl> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
-      "canon entity solve <ROWS> --strategy <STRATEGY.yaml> --edges <EDGES.jsonl> --registry <REGISTRY_DIR> [--emit json|summary]",
+      "canon entity evidence <ROWS> --strategy <STRATEGY.yaml> --candidates <BLOCK.jsonl> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
+      "canon entity solve <ROWS> --strategy <STRATEGY.yaml> --evidence <EVIDENCE.jsonl> --registry <REGISTRY_DIR> [--emit json|summary]",
       "canon entity audit <RESULT.json> --suite <SUITE_DIR> [--emit json|summary]",
       "canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <REGISTRY_DIR> --next-version <VERSION> [--emit json|summary]",
       "canon entity review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]",
       "canon entity review import <REVIEW.json|csv> --registry <REGISTRY_DIR> --next-version <VERSION> [--audit <AUDIT.json>] [--emit json|summary]",
-      "canon entity explain <RESULT.json> --row <SOURCE_ROW_ID>|--canon-id <CANON_ID>|--escrow-id <ESCROW_ID> [--emit json|summary]"
+      "canon entity explain <RESULT.json> --row <SOURCE_ROW_ID>|--canon-id <CANON_ID>|--escrow-id <ESCROW_ID> [--emit json|summary]",
+      "canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]",
+      "canon inbox show --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json|summary]",
+      "canon inbox explain --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json|summary]",
+      "canon inbox stats --inbox <INBOX.json> [--policy <POLICY.json>] [--emit json|summary]",
+      "canon inbox export-review --inbox <INBOX.json> [--out <REVIEW.json>] [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--emit json|summary]",
+      "canon inbox apply-review --inbox <INBOX.json> --review <REVIEW.json> --expected-inbox-hash <HASH> --out <GROUPS.json> [--emit json|summary]",
+      "canon inbox plan-entity --inbox <INBOX.json> --expected-inbox-hash <HASH> --out <REQUEST.json> [--event-key <KEY>...] [--mode cluster|link] [--limit <N>] [--emit json|summary]"
     ],
     "output_mode": "mixed",
     "output_schema": "canon.v0",
@@ -107,11 +117,207 @@
       }
     },
     {
-      "name": "resolve",
-      "usage": "canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
-      "description": "Run the cross-tape structural resolution workbench and emit canon_resolve.v0 evidence before optional registry write-back",
+      "name": "inbox list",
+      "usage": "canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]",
+      "description": "Rank unresolved inbox items with stable filtering, pagination, cursors, and next commands without making identity decisions",
       "output_mode": "mixed",
-      "output_schema": "canon_resolve.v0",
+      "output_schema": "canon.inbox.list.v1",
+      "status": "implemented",
+      "read_only": true,
+      "identity_status": "no_identity_decision",
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": { "meaning": "ranked page emitted", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI, cursor, policy, or inbox artifact error", "domain": "error" }
+      }
+    },
+    {
+      "name": "inbox show",
+      "usage": "canon inbox show --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json|summary]",
+      "description": "Show one unresolved inbox item with ranking context and exact next commands",
+      "output_mode": "mixed",
+      "output_schema": "canon.inbox.show.v1",
+      "status": "implemented",
+      "read_only": true,
+      "identity_status": "no_identity_decision",
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": { "meaning": "item emitted", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI, policy, or inbox artifact error", "domain": "error" }
+      }
+    },
+    {
+      "name": "inbox explain",
+      "usage": "canon inbox explain --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json|summary]",
+      "description": "Explain one unresolved inbox item's priority components, sensitivity, and provenance without deciding identity",
+      "output_mode": "mixed",
+      "output_schema": "canon.inbox.explain.v1",
+      "status": "implemented",
+      "read_only": true,
+      "identity_status": "no_identity_decision",
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": { "meaning": "explanation emitted", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI, policy, or inbox artifact error", "domain": "error" }
+      }
+    },
+    {
+      "name": "inbox stats",
+      "usage": "canon inbox stats --inbox <INBOX.json> [--policy <POLICY.json>] [--emit json|summary]",
+      "description": "Emit deterministic inbox and ranking summaries",
+      "output_mode": "mixed",
+      "output_schema": "canon.inbox.stats.v1",
+      "status": "implemented",
+      "read_only": true,
+      "identity_status": "no_identity_decision",
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": { "meaning": "stats emitted", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI, policy, or inbox artifact error", "domain": "error" }
+      }
+    },
+    {
+      "name": "inbox export-review",
+      "usage": "canon inbox export-review --inbox <INBOX.json> [--out <REVIEW.json>] [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--emit json|summary]",
+      "description": "Export selected unresolved inbox items to a stable review JSON artifact; writes only an explicit --out path when supplied",
+      "output_mode": "mixed",
+      "output_schema": "canon.inbox.review_export.v1",
+      "status": "implemented",
+      "read_only": false,
+      "identity_status": "no_identity_decision",
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": { "meaning": "review artifact emitted and optionally written", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI, cursor, policy, inbox, or output error", "domain": "error" }
+      }
+    },
+    {
+      "name": "inbox apply-review",
+      "usage": "canon inbox apply-review --inbox <INBOX.json> --review <REVIEW.json> --expected-inbox-hash <HASH> --out <GROUPS.json> [--emit json|summary]",
+      "description": "Apply explicit review decisions to produce a grouped unresolved artifact; requires the expected inbox hash and never mutates the source inbox",
+      "output_mode": "mixed",
+      "output_schema": "canon.inbox.review_apply.v1",
+      "status": "implemented",
+      "read_only": false,
+      "identity_status": "no_identity_decision",
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": { "meaning": "grouped unresolved artifact written to explicit output path", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI, stale hash, review, inbox, or output error", "domain": "error" }
+      }
+    },
+    {
+      "name": "inbox plan-entity",
+      "usage": "canon inbox plan-entity --inbox <INBOX.json> --expected-inbox-hash <HASH> --out <REQUEST.json> [--event-key <KEY>...] [--mode cluster|link] [--limit <N>] [--emit json|summary]",
+      "description": "Create a bounded entity workbench request from selected inbox items without choosing or asserting identity",
+      "output_mode": "mixed",
+      "output_schema": "canon.inbox.entity_plan.v1",
+      "status": "implemented",
+      "read_only": false,
+      "identity_status": "no_identity_decision",
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": { "meaning": "bounded entity request written to explicit output path", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI, stale hash, selection, inbox, or output error", "domain": "error" }
+      }
+    },
+    {
+      "name": "entity link",
+      "usage": "canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--suite <SUITE_DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
+      "description": "Link two row sets through the artifact-backed entity workbench and emit canon_entity_link.v0 with deterministic link decisions before optional registry write-back",
+      "output_mode": "mixed",
+      "output_schema": "canon_entity_link.v0",
       "status": "implemented",
       "exit_codes": {
         "0": { "meaning": "all target records matched", "domain": "positive" },
@@ -119,17 +325,37 @@
         "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
       },
       "options": [
-        { "name": "reference_tape", "type": "file_path", "required": true, "position": 0, "description": "Authoritative/reference CSV, TSV, JSONL, or NDJSON tape" },
-        { "name": "target_tape", "type": "file_path", "required": true, "position": 1, "description": "Target CSV, TSV, JSONL, or NDJSON tape to match against the reference" },
-        { "name": "strategy", "flag": "--strategy", "type": "file_path", "required": true, "description": "Resolve strategy YAML file" },
-        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Registry used for canon_match lookups and optional write-back" },
+        { "name": "reference", "type": "file_path", "required": true, "position": 0, "description": "Reference CSV, TSV, JSONL, or NDJSON rows" },
+        { "name": "target", "type": "file_path", "required": true, "position": 1, "description": "Target CSV, TSV, JSONL, or NDJSON rows to link against the reference" },
+        { "name": "profile", "flag": "--profile", "type": "string", "description": "Entity profile id or YAML path; required for successful execution, and omission refuses without writes" },
+        { "name": "strategy", "flag": "--strategy", "type": "file_path", "required": true, "description": "Entity link strategy YAML file" },
+        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Registry used for exact lookups and optional link write-back" },
+        { "name": "work_dir", "flag": "--work-dir", "type": "directory_path", "description": "Work directory for artifact-backed link stages; required for successful execution, and omission refuses without writes" },
+        { "name": "suite", "flag": "--suite", "type": "directory_path", "description": "Frozen evaluation suite directory; when present, writes audit.json under --work-dir before optional write-back" },
         { "name": "gold", "flag": "--gold", "type": "file_path", "description": "Gold cross-reference JSONL file for scoring" },
         { "name": "write_back", "flag": "--write-back", "type": "flag", "description": "Write matched ID pairs to a new registry mapping file after gates pass" },
-        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_resolve.v0) or summary" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_entity_link.v0) or summary" },
         { "name": "max_candidates", "flag": "--max-candidates", "type": "integer", "description": "Refuse if a target record has more than N surviving candidates" },
-        { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if either tape exceeds N data rows" },
-        { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if either tape exceeds N bytes" },
-        { "name": "no_witness", "flag": "--no-witness", "type": "flag", "description": "Suppress witness ledger recording for canon resolve" }
+        { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if either input exceeds N data rows" },
+        { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if either input exceeds N bytes" },
+        { "name": "no_witness", "flag": "--no-witness", "type": "flag", "description": "Suppress witness ledger recording for canon entity link" }
+      ]
+    },
+    {
+      "name": "entity alias-withholding",
+      "usage": "canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]",
+      "description": "Compile a source-bound alias-withholding execution envelope into a deterministic identifier-redacted report; require exact clean-registry parity, derivation-validated link-to-surface bindings, explicit evaluated-pair/collapse/relation-control disposition, native chain validation, reviewed one-entry promotion, and exact replay without accepting self-declared outcomes",
+      "output_mode": "mixed",
+      "output_schema": "canon.evaluation.alias_withholding.v1",
+      "status": "implemented",
+      "read_only": true,
+      "exit_codes": {
+        "0": { "meaning": "alias-withholding report emitted successfully", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI or artifact contract error", "domain": "error" }
+      },
+      "options": [
+        { "name": "manifest", "flag": "--manifest", "type": "file_path", "required": true, "description": "Alias-withholding execution envelope JSON" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon.evaluation.alias_withholding.v1) or summary" }
       ]
     },
     {
@@ -256,6 +482,75 @@
         { "name": "archive", "type": "file_path", "required": true, "position": 0, "description": "Local package archive to unpack" },
         { "name": "target", "flag": "--target", "type": "directory_path", "required": true, "description": "Existing empty target directory" },
         { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (structured verification) or summary" }
+      ]
+    },
+    {
+      "name": "package push",
+      "usage": "canon package push --archive <ARCHIVE> --registry <OCI_BASE_URL> --repository <REPOSITORY> [--tag <TAG>] [--emit json|summary]",
+      "description": "Verify a local package archive and publish it to an OCI Distribution-compatible registry by immutable manifest digest; optional tag upload is recorded separately",
+      "output_mode": "mixed",
+      "output_schema": "canon.oci.package.publish.receipt.v1",
+      "status": "implemented",
+      "read_only": false,
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": true
+      },
+      "exit_codes": {
+        "0": { "meaning": "package manifest and missing blobs published idempotently", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI, local verification, cache, or OCI transport error", "domain": "error" }
+      },
+      "options": [
+        { "name": "archive", "flag": "--archive", "type": "file_path", "required": true, "description": "Local package archive to verify and publish" },
+        { "name": "registry", "flag": "--registry", "type": "url", "required": true, "description": "OCI Distribution registry base URL" },
+        { "name": "repository", "flag": "--repository", "type": "string", "required": true, "description": "OCI repository name such as canon/registry" },
+        { "name": "tag", "flag": "--tag", "type": "string", "description": "Optional mutable tag to write after publishing the immutable manifest digest" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (publish receipt) or summary" }
+      ]
+    },
+    {
+      "name": "package pull",
+      "usage": "canon package pull --registry <OCI_BASE_URL> --repository <REPOSITORY> --cache <DIR> (--digest <sha256:...>|--tag <TAG>) [--emit json|summary]",
+      "description": "Pull a package from an OCI Distribution-compatible registry into an external content cache, resolving a mutable tag exactly once when requested and always verifying local package semantics",
+      "output_mode": "mixed",
+      "output_schema": "canon.oci.package.pull.receipt.v1",
+      "status": "implemented",
+      "read_only": false,
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "uses_network": true
+      },
+      "exit_codes": {
+        "0": { "meaning": "package pulled, cached, and semantically verified", "domain": "positive" },
+        "2": { "meaning": "REFUSAL / CLI, cache, verification, digest, or OCI transport error", "domain": "error" }
+      },
+      "options": [
+        { "name": "registry", "flag": "--registry", "type": "url", "required": true, "description": "OCI Distribution registry base URL" },
+        { "name": "repository", "flag": "--repository", "type": "string", "required": true, "description": "OCI repository name such as canon/registry" },
+        { "name": "cache", "flag": "--cache", "type": "directory_path", "required": true, "description": "External content cache directory for verified package and OCI blob materialization" },
+        { "name": "digest", "flag": "--digest", "type": "string", "description": "Immutable OCI manifest digest to pull; mutually exclusive with --tag" },
+        { "name": "tag", "flag": "--tag", "type": "string", "description": "Mutable tag to resolve once before pulling the resolved manifest digest; mutually exclusive with --digest" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (pull receipt) or summary" }
       ]
     },
     {
@@ -790,26 +1085,26 @@
       ]
     },
     {
-      "name": "entity edge",
-      "usage": "canon entity edge <ROWS> --strategy <STRATEGY.yaml> --candidates <BLOCK.jsonl> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
-      "description": "Generate typed evidence edges for blocked entity candidates",
+      "name": "entity evidence",
+      "usage": "canon entity evidence <ROWS> --strategy <STRATEGY.yaml> --candidates <BLOCK.jsonl> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
+      "description": "Score typed evidence for blocked entity candidates",
       "output_mode": "mixed",
-      "output_schema": "canon_entity_edge.v0",
+      "output_schema": "canon_entity_evidence.v1",
       "exit_codes": {
-        "0": { "meaning": "edge artifact emitted successfully", "domain": "positive" },
+        "0": { "meaning": "evidence artifact emitted successfully", "domain": "positive" },
         "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
       },
       "options": [
         { "name": "strategy", "flag": "--strategy", "type": "file_path", "required": true, "description": "Entity strategy YAML file" },
         { "name": "candidates", "flag": "--candidates", "type": "file_path", "required": true, "description": "canon_entity_block.v0 JSONL candidate artifact" },
         { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Entity registry directory" },
-        { "name": "emit", "flag": "--emit", "type": "string", "default": "jsonl", "description": "Output mode: jsonl (canon_entity_edge.v0 records) or summary" }
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "jsonl", "description": "Output mode: jsonl (canon_entity_evidence.v1 records) or summary" }
       ]
     },
     {
       "name": "entity solve",
-      "usage": "canon entity solve <ROWS> --strategy <STRATEGY.yaml> --edges <EDGES.jsonl> --registry <REGISTRY_DIR> [--emit json|summary]",
-      "description": "Solve deterministic entity assignments from evidence edges",
+      "usage": "canon entity solve <ROWS> --strategy <STRATEGY.yaml> --evidence <EVIDENCE.jsonl> --registry <REGISTRY_DIR> [--emit json|summary]",
+      "description": "Solve deterministic entity assignments from evidence artifacts",
       "output_mode": "mixed",
       "output_schema": "canon_entity_solve.v0",
       "exit_codes": {
@@ -818,7 +1113,7 @@
       },
       "options": [
         { "name": "strategy", "flag": "--strategy", "type": "file_path", "required": true, "description": "Entity strategy YAML file" },
-        { "name": "edges", "flag": "--edges", "type": "file_path", "required": true, "description": "canon_entity_edge.v0 JSONL edge artifact" },
+        { "name": "evidence", "flag": "--evidence", "type": "file_path", "required": true, "description": "canon_entity_evidence.v1 JSONL evidence artifact" },
         { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Entity registry directory" },
         { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_entity_solve.v0) or summary" }
       ]
@@ -946,14 +1241,14 @@
     { "code": "E_STRATEGY_INPUT_CONTRACT", "message": "Strategy schema profile, skill identity, or script metadata is invalid", "action": "fix_input" },
     { "code": "E_STRATEGY_PROOF_INVALID", "message": "Strategy registration proof artifacts did not pass required gates", "action": "fix_input" },
     { "code": "E_STRATEGY_VERSION_BUMP_REQUIRED", "message": "Strategy registration requires an explicit next registry version", "action": "adjust_input" },
-    { "code": "E_BAD_STRATEGY", "message": "Resolve strategy YAML is malformed or semantically invalid", "action": "fix_input" },
-    { "code": "E_TOO_MANY_CANDIDATES", "message": "Resolve candidate filtering produced more candidates than allowed", "action": "retry_with_flag", "flag": "--max-candidates" },
+    { "code": "E_BAD_STRATEGY", "message": "Entity link strategy YAML is malformed or semantically invalid", "action": "fix_input" },
+    { "code": "E_TOO_MANY_CANDIDATES", "message": "Entity link candidate filtering produced more candidates than allowed", "action": "retry_with_flag", "flag": "--max-candidates" },
     { "code": "E_EMPTY_TAPE", "message": "Reference or target tape has zero processable records", "action": "fix_input" },
-    { "code": "E_INCOMPATIBLE_TAPES", "message": "Resolve strategy leaves no comparable structural fields across tapes", "action": "fix_input" }
+    { "code": "E_INCOMPATIBLE_TAPES", "message": "Entity link strategy leaves no comparable structural fields across input row sets", "action": "fix_input" }
   ],
 
   "capabilities": {
-    "formats": ["csv", "jsonl"],
+    "formats": ["csv", "tsv", "jsonl", "ndjson"],
     "profile_aware": false,
     "strategy_registry": true,
     "cross_tape_resolution": "implemented_v0",

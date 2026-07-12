@@ -26,6 +26,8 @@ pub struct BlockCandidateArtifact {
     pub upstream_artifacts: Vec<EntityArtifactReference>,
     pub candidate_records_path: String,
     pub candidate_records_hash: String,
+    pub candidate_diagnostics_path: String,
+    pub candidate_diagnostics_hash: String,
     pub bucket_assertions_hash: String,
 }
 
@@ -34,6 +36,7 @@ pub struct BlockCandidateArtifactRequest {
     pub index: EntityArtifactHeader,
     pub strategy: EntityStrategyReference,
     pub candidate_records_path: String,
+    pub candidate_diagnostics_path: String,
     pub candidate_records: Vec<BlockCandidateRecord>,
     pub bucket_assertions: Vec<ExactBucketAssertion>,
     pub known_surface_ids: Vec<String>,
@@ -69,6 +72,16 @@ pub fn build_block_candidate_artifact_contract(
             }),
         ));
     }
+    if request.candidate_diagnostics_path.trim().is_empty() {
+        return Err(block_artifact_refusal(
+            "Block artifact candidate diagnostics path is required",
+            json!({
+                "stage": "block",
+                "field": "candidate_diagnostics_path",
+                "writes_performed": false
+            }),
+        ));
+    }
 
     let mut upstream_artifacts = request.index.metadata.upstream_artifacts.clone();
     upstream_artifacts.push(EntityArtifactReference {
@@ -83,6 +96,7 @@ pub fn build_block_candidate_artifact_contract(
         &request.diagnostics,
     )?;
     let candidate_records_hash = hash_jsonl_records(&request.candidate_records)?;
+    let candidate_diagnostics_hash = hash_compact_json(&request.diagnostics)?;
     let bucket_assertions_hash = hash_jsonl_records(&request.bucket_assertions)?;
 
     let mut artifact = BlockCandidateArtifact {
@@ -93,6 +107,8 @@ pub fn build_block_candidate_artifact_contract(
         upstream_artifacts,
         candidate_records_path: request.candidate_records_path,
         candidate_records_hash,
+        candidate_diagnostics_path: request.candidate_diagnostics_path,
+        candidate_diagnostics_hash,
         bucket_assertions_hash,
     };
     artifact.artifact_content_hash = hash_block_artifact_without_self(&artifact)?;
@@ -130,6 +146,26 @@ pub fn validate_block_candidate_artifact_contract(
             json!({
                 "stage": "block",
                 "field": "candidate_records_hash",
+                "writes_performed": false
+            }),
+        ));
+    }
+    if artifact.candidate_diagnostics_path.trim().is_empty() {
+        return Err(block_artifact_refusal(
+            "Block artifact candidate diagnostics path is required",
+            json!({
+                "stage": "block",
+                "field": "candidate_diagnostics_path",
+                "writes_performed": false
+            }),
+        ));
+    }
+    if artifact.candidate_diagnostics_hash.trim().is_empty() {
+        return Err(block_artifact_refusal(
+            "Block artifact candidate diagnostics hash is required",
+            json!({
+                "stage": "block",
+                "field": "candidate_diagnostics_hash",
                 "writes_performed": false
             }),
         ));
@@ -209,6 +245,57 @@ pub fn validate_block_candidate_artifact_contract(
             }),
         ));
     }
+    Ok(())
+}
+
+pub fn validate_block_candidate_payload_hashes(
+    artifact: &BlockCandidateArtifact,
+    candidate_records: &[BlockCandidateRecord],
+    diagnostics: &BlockCandidateGenerationDiagnostics,
+    bucket_assertions: &[ExactBucketAssertion],
+) -> Result<(), Refusal> {
+    let candidate_records_hash = hash_jsonl_records(candidate_records)?;
+    if candidate_records_hash != artifact.candidate_records_hash {
+        return Err(block_artifact_refusal(
+            "Block candidate JSONL does not match block artifact hash",
+            json!({
+                "stage": "block",
+                "reason": "stale_candidate_records",
+                "expected": artifact.candidate_records_hash,
+                "actual": candidate_records_hash,
+                "writes_performed": false
+            }),
+        ));
+    }
+
+    let candidate_diagnostics_hash = hash_compact_json(diagnostics)?;
+    if candidate_diagnostics_hash != artifact.candidate_diagnostics_hash {
+        return Err(block_artifact_refusal(
+            "Block candidate diagnostics JSON does not match block artifact hash",
+            json!({
+                "stage": "block",
+                "reason": "stale_candidate_diagnostics",
+                "expected": artifact.candidate_diagnostics_hash,
+                "actual": candidate_diagnostics_hash,
+                "writes_performed": false
+            }),
+        ));
+    }
+
+    let bucket_assertions_hash = hash_jsonl_records(bucket_assertions)?;
+    if bucket_assertions_hash != artifact.bucket_assertions_hash {
+        return Err(block_artifact_refusal(
+            "Exact bucket JSONL does not match block artifact hash",
+            json!({
+                "stage": "block",
+                "reason": "stale_exact_bucket_assertions",
+                "expected": artifact.bucket_assertions_hash,
+                "actual": bucket_assertions_hash,
+                "writes_performed": false
+            }),
+        ));
+    }
+
     Ok(())
 }
 
@@ -683,6 +770,20 @@ fn hash_jsonl_records<T: Serialize>(records: &[T]) -> Result<String, Refusal> {
         })?;
         bytes.push(b'\n');
     }
+    Ok(witness::hash_bytes(&bytes))
+}
+
+fn hash_compact_json<T: Serialize>(value: &T) -> Result<String, Refusal> {
+    let bytes = serde_json::to_vec(value).map_err(|error| {
+        block_artifact_refusal(
+            "Failed to hash block compact JSON artifact",
+            json!({
+                "stage": "block",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
     Ok(witness::hash_bytes(&bytes))
 }
 

@@ -320,6 +320,18 @@
         "candidate_records_path": {
           "type": "string"
         },
+        "candidate_records_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "candidate_diagnostics_path": {
+          "type": "string"
+        },
+        "candidate_diagnostics_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "bucket_assertions_hash": {
+          "$ref": "#/$defs/hash"
+        },
         "metadata": {
           "$ref": "#/$defs/metadata"
         },
@@ -340,6 +352,10 @@
       "required": [
         "artifact_content_hash",
         "candidate_records_path",
+        "candidate_records_hash",
+        "candidate_diagnostics_path",
+        "candidate_diagnostics_hash",
+        "bucket_assertions_hash",
         "metadata",
         "summary",
         "upstream_artifacts",
@@ -787,6 +803,9 @@
           },
           "minItems": 1,
           "type": "array"
+        },
+        "source_link_hash": {
+          "$ref": "#/$defs/hash"
         },
         "source_solve_hash": {
           "$ref": "#/$defs/hash"

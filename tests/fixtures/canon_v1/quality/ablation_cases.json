@@ -1,0 +1,1387 @@
+{
+  "schema_version": "canon.entity.evidence_ablation_cases.v0",
+  "doc": "docs/ENTITY_EVALS_AND_PERFORMANCE.md#evidence-ablation-program",
+  "policy": {
+    "domain_specific_shortcuts_allowed": false,
+    "default_thresholds": [],
+    "threshold_policy": "No threshold, weight, suffix list, corpus string, or domain dictionary is a Canon default. Those values must come from explicit profile or strategy configuration and be reported in artifact hashes.",
+    "relationship_evidence": {
+      "equivalence_default": false,
+      "requires_independent_equivalence_support": true,
+      "allowed_without_independent_support": [
+        "block",
+        "explain",
+        "review",
+        "cannot_link"
+      ],
+      "forbidden_without_independent_support": [
+        "auto_link",
+        "cluster_merge"
+      ]
+    }
+  },
+  "hidden_label_policy": {
+    "label_visibility": "evaluation_only",
+    "candidate_generation_must_not_read": [
+      "hidden_labels",
+      "expected_by_ablation",
+      "oracle_pairs"
+    ],
+    "runtime_reader_paths": [
+      "cases[].runtime_inputs"
+    ],
+    "label_reader_paths": [
+      "cases[].hidden_labels"
+    ]
+  },
+  "evidence_families": [
+    {
+      "family_id": "exact_alias",
+      "display_name": "Exact alias",
+      "equivalence_default": true,
+      "default_threshold": null,
+      "ablation_mode": "disable_family"
+    },
+    {
+      "family_id": "normalized_name",
+      "display_name": "Normalized name",
+      "equivalence_default": true,
+      "default_threshold": null,
+      "ablation_mode": "disable_family"
+    },
+    {
+      "family_id": "char_token_similarity",
+      "display_name": "Character and token similarity",
+      "equivalence_default": false,
+      "default_threshold": null,
+      "ablation_mode": "disable_family"
+    },
+    {
+      "family_id": "sparse_retrieval",
+      "display_name": "Sparse retrieval or TF-IDF equivalent",
+      "equivalence_default": false,
+      "default_threshold": null,
+      "ablation_mode": "disable_family"
+    },
+    {
+      "family_id": "trusted_anchors",
+      "display_name": "Trusted anchors",
+      "equivalence_default": true,
+      "default_threshold": null,
+      "ablation_mode": "disable_family"
+    },
+    {
+      "family_id": "address_web_domain_anchors",
+      "display_name": "Address and web-domain anchors",
+      "equivalence_default": false,
+      "default_threshold": null,
+      "ablation_mode": "disable_family"
+    },
+    {
+      "family_id": "contextual_cooccurrence",
+      "display_name": "Contextual co-occurrence",
+      "equivalence_default": false,
+      "default_threshold": null,
+      "ablation_mode": "disable_family"
+    },
+    {
+      "family_id": "source_priors",
+      "display_name": "Source priors",
+      "equivalence_default": false,
+      "default_threshold": null,
+      "ablation_mode": "disable_family"
+    },
+    {
+      "family_id": "relationship_evidence",
+      "display_name": "Relationship evidence",
+      "equivalence_default": false,
+      "requires_independent_equivalence_support": true,
+      "default_threshold": null,
+      "ablation_mode": "disable_family"
+    },
+    {
+      "family_id": "full_system_union",
+      "display_name": "Full-system union",
+      "equivalence_default": false,
+      "default_threshold": null,
+      "ablation_mode": "union_baseline"
+    }
+  ],
+  "stage_reason_codes": [
+    {
+      "code": "normalization.miss",
+      "stage": "normalization",
+      "kind": "miss"
+    },
+    {
+      "code": "normalization.admission",
+      "stage": "normalization",
+      "kind": "admission"
+    },
+    {
+      "code": "retrieval.miss",
+      "stage": "retrieval",
+      "kind": "miss"
+    },
+    {
+      "code": "retrieval.admission",
+      "stage": "retrieval",
+      "kind": "admission"
+    },
+    {
+      "code": "evidence_extraction.miss",
+      "stage": "evidence_extraction",
+      "kind": "miss"
+    },
+    {
+      "code": "evidence_extraction.admission",
+      "stage": "evidence_extraction",
+      "kind": "admission"
+    },
+    {
+      "code": "scoring.miss",
+      "stage": "scoring",
+      "kind": "miss"
+    },
+    {
+      "code": "scoring.admission",
+      "stage": "scoring",
+      "kind": "admission"
+    },
+    {
+      "code": "constraint.miss",
+      "stage": "constraint",
+      "kind": "miss"
+    },
+    {
+      "code": "constraint.admission",
+      "stage": "constraint",
+      "kind": "admission"
+    },
+    {
+      "code": "cluster.miss",
+      "stage": "cluster",
+      "kind": "miss"
+    },
+    {
+      "code": "cluster.admission",
+      "stage": "cluster",
+      "kind": "admission"
+    },
+    {
+      "code": "link.miss",
+      "stage": "link",
+      "kind": "miss"
+    },
+    {
+      "code": "link.admission",
+      "stage": "link",
+      "kind": "admission"
+    },
+    {
+      "code": "policy.miss",
+      "stage": "policy",
+      "kind": "miss"
+    },
+    {
+      "code": "policy.admission",
+      "stage": "policy",
+      "kind": "admission"
+    }
+  ],
+  "roles": [
+    {
+      "role": "necessary",
+      "description": "Disabling this family should create a true-pair miss or a false-pair admission."
+    },
+    {
+      "role": "misleading",
+      "description": "This family creates attractive evidence for a false pair that must be rejected or sent to review."
+    },
+    {
+      "role": "absent",
+      "description": "This family contributes no evidence and the system must not fabricate support."
+    },
+    {
+      "role": "duplicated",
+      "description": "Duplicate evidence from this family must be deduplicated before scoring."
+    },
+    {
+      "role": "contradictory",
+      "description": "Support and contradiction from this family must both survive explanation and scoring."
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "ablation.exact_alias",
+      "family_under_test": "exact_alias",
+      "purpose": "Exact alias evidence is necessary for one planted same-entity pair but must not override planted distinct labels.",
+      "runtime_inputs": {
+        "candidate_generation_view": {
+          "allowed_paths": [
+            "runtime_inputs.observations",
+            "runtime_inputs.evidence"
+          ],
+          "forbidden_paths": [
+            "hidden_labels",
+            "expected_by_ablation",
+            "oracle_pairs"
+          ]
+        },
+        "observations": [
+          "obs.exact_alias.01",
+          "obs.exact_alias.02",
+          "obs.exact_alias.03",
+          "obs.exact_alias.04"
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev.exact_alias.necessary.support",
+            "family_id": "exact_alias",
+            "pair_id": "pair.exact_alias.necessary.01",
+            "role": "necessary",
+            "polarity": "support",
+            "dedupe_key": "exact_alias:necessary:01"
+          },
+          {
+            "evidence_id": "ev.exact_alias.misleading.support",
+            "family_id": "exact_alias",
+            "pair_id": "pair.exact_alias.misleading.02",
+            "role": "misleading",
+            "polarity": "support",
+            "dedupe_key": "exact_alias:misleading:02"
+          },
+          {
+            "evidence_id": "ev.exact_alias.duplicated.support.a",
+            "family_id": "exact_alias",
+            "pair_id": "pair.exact_alias.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "exact_alias:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.exact_alias.duplicated.support.b",
+            "family_id": "exact_alias",
+            "pair_id": "pair.exact_alias.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "exact_alias:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.exact_alias.contradictory.support",
+            "family_id": "exact_alias",
+            "pair_id": "pair.exact_alias.contradictory.01",
+            "role": "contradictory",
+            "polarity": "support",
+            "dedupe_key": "exact_alias:contradictory:support"
+          },
+          {
+            "evidence_id": "ev.exact_alias.contradictory.contradiction",
+            "family_id": "exact_alias",
+            "pair_id": "pair.exact_alias.contradictory.01",
+            "role": "contradictory",
+            "polarity": "contradiction",
+            "dedupe_key": "exact_alias:contradictory:contradiction"
+          }
+        ]
+      },
+      "hidden_labels": {
+        "planted_pair_roles": [
+          {
+            "role": "necessary",
+            "true_pair_id": "pair.exact_alias.necessary.01",
+            "false_pair_id": "pair.exact_alias.necessary.02",
+            "miss_reason": "retrieval.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "misleading",
+            "true_pair_id": "pair.exact_alias.misleading.01",
+            "false_pair_id": "pair.exact_alias.misleading.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "absent",
+            "true_pair_id": "pair.exact_alias.absent.01",
+            "false_pair_id": "pair.exact_alias.absent.02",
+            "miss_reason": "evidence_extraction.miss",
+            "admission_reason": "evidence_extraction.admission"
+          },
+          {
+            "role": "duplicated",
+            "true_pair_id": "pair.exact_alias.duplicated.01",
+            "false_pair_id": "pair.exact_alias.duplicated.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "contradictory",
+            "true_pair_id": "pair.exact_alias.contradictory.01",
+            "false_pair_id": "pair.exact_alias.contradictory.02",
+            "miss_reason": "constraint.miss",
+            "admission_reason": "constraint.admission"
+          }
+        ],
+        "expected_by_ablation": {
+          "without_family_under_test": "necessary true pair is missed; misleading false pair should no longer have this evidence family as support",
+          "with_family_only": "misleading and contradictory false pairs reject or review rather than auto-link"
+        }
+      }
+    },
+    {
+      "case_id": "ablation.normalized_name",
+      "family_under_test": "normalized_name",
+      "purpose": "Generic normalization can recover surface variation without introducing corpus-specific rewrites.",
+      "runtime_inputs": {
+        "candidate_generation_view": {
+          "allowed_paths": [
+            "runtime_inputs.observations",
+            "runtime_inputs.evidence"
+          ],
+          "forbidden_paths": [
+            "hidden_labels",
+            "expected_by_ablation",
+            "oracle_pairs"
+          ]
+        },
+        "observations": [
+          "obs.normalized_name.01",
+          "obs.normalized_name.02",
+          "obs.normalized_name.03",
+          "obs.normalized_name.04"
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev.normalized_name.necessary.support",
+            "family_id": "normalized_name",
+            "pair_id": "pair.normalized_name.necessary.01",
+            "role": "necessary",
+            "polarity": "support",
+            "dedupe_key": "normalized_name:necessary:01"
+          },
+          {
+            "evidence_id": "ev.normalized_name.misleading.support",
+            "family_id": "normalized_name",
+            "pair_id": "pair.normalized_name.misleading.02",
+            "role": "misleading",
+            "polarity": "support",
+            "dedupe_key": "normalized_name:misleading:02"
+          },
+          {
+            "evidence_id": "ev.normalized_name.duplicated.support.a",
+            "family_id": "normalized_name",
+            "pair_id": "pair.normalized_name.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "normalized_name:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.normalized_name.duplicated.support.b",
+            "family_id": "normalized_name",
+            "pair_id": "pair.normalized_name.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "normalized_name:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.normalized_name.contradictory.support",
+            "family_id": "normalized_name",
+            "pair_id": "pair.normalized_name.contradictory.01",
+            "role": "contradictory",
+            "polarity": "support",
+            "dedupe_key": "normalized_name:contradictory:support"
+          },
+          {
+            "evidence_id": "ev.normalized_name.contradictory.contradiction",
+            "family_id": "normalized_name",
+            "pair_id": "pair.normalized_name.contradictory.01",
+            "role": "contradictory",
+            "polarity": "contradiction",
+            "dedupe_key": "normalized_name:contradictory:contradiction"
+          }
+        ]
+      },
+      "hidden_labels": {
+        "planted_pair_roles": [
+          {
+            "role": "necessary",
+            "true_pair_id": "pair.normalized_name.necessary.01",
+            "false_pair_id": "pair.normalized_name.necessary.02",
+            "miss_reason": "normalization.miss",
+            "admission_reason": "normalization.admission"
+          },
+          {
+            "role": "misleading",
+            "true_pair_id": "pair.normalized_name.misleading.01",
+            "false_pair_id": "pair.normalized_name.misleading.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "absent",
+            "true_pair_id": "pair.normalized_name.absent.01",
+            "false_pair_id": "pair.normalized_name.absent.02",
+            "miss_reason": "evidence_extraction.miss",
+            "admission_reason": "evidence_extraction.admission"
+          },
+          {
+            "role": "duplicated",
+            "true_pair_id": "pair.normalized_name.duplicated.01",
+            "false_pair_id": "pair.normalized_name.duplicated.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "contradictory",
+            "true_pair_id": "pair.normalized_name.contradictory.01",
+            "false_pair_id": "pair.normalized_name.contradictory.02",
+            "miss_reason": "constraint.miss",
+            "admission_reason": "constraint.admission"
+          }
+        ],
+        "expected_by_ablation": {
+          "without_family_under_test": "necessary true pair is missed at normalization or retrieval",
+          "with_family_only": "normalized-name-only misleading pairs reject or review"
+        }
+      }
+    },
+    {
+      "case_id": "ablation.char_token_similarity",
+      "family_under_test": "char_token_similarity",
+      "purpose": "Similarity evidence can admit useful near names but cannot become an unchecked merge rule.",
+      "runtime_inputs": {
+        "candidate_generation_view": {
+          "allowed_paths": [
+            "runtime_inputs.observations",
+            "runtime_inputs.evidence"
+          ],
+          "forbidden_paths": [
+            "hidden_labels",
+            "expected_by_ablation",
+            "oracle_pairs"
+          ]
+        },
+        "observations": [
+          "obs.char_token_similarity.01",
+          "obs.char_token_similarity.02",
+          "obs.char_token_similarity.03",
+          "obs.char_token_similarity.04"
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev.char_token_similarity.necessary.support",
+            "family_id": "char_token_similarity",
+            "pair_id": "pair.char_token_similarity.necessary.01",
+            "role": "necessary",
+            "polarity": "support",
+            "dedupe_key": "char_token_similarity:necessary:01"
+          },
+          {
+            "evidence_id": "ev.char_token_similarity.misleading.support",
+            "family_id": "char_token_similarity",
+            "pair_id": "pair.char_token_similarity.misleading.02",
+            "role": "misleading",
+            "polarity": "support",
+            "dedupe_key": "char_token_similarity:misleading:02"
+          },
+          {
+            "evidence_id": "ev.char_token_similarity.duplicated.support.a",
+            "family_id": "char_token_similarity",
+            "pair_id": "pair.char_token_similarity.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "char_token_similarity:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.char_token_similarity.duplicated.support.b",
+            "family_id": "char_token_similarity",
+            "pair_id": "pair.char_token_similarity.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "char_token_similarity:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.char_token_similarity.contradictory.support",
+            "family_id": "char_token_similarity",
+            "pair_id": "pair.char_token_similarity.contradictory.01",
+            "role": "contradictory",
+            "polarity": "support",
+            "dedupe_key": "char_token_similarity:contradictory:support"
+          },
+          {
+            "evidence_id": "ev.char_token_similarity.contradictory.contradiction",
+            "family_id": "char_token_similarity",
+            "pair_id": "pair.char_token_similarity.contradictory.01",
+            "role": "contradictory",
+            "polarity": "contradiction",
+            "dedupe_key": "char_token_similarity:contradictory:contradiction"
+          }
+        ]
+      },
+      "hidden_labels": {
+        "planted_pair_roles": [
+          {
+            "role": "necessary",
+            "true_pair_id": "pair.char_token_similarity.necessary.01",
+            "false_pair_id": "pair.char_token_similarity.necessary.02",
+            "miss_reason": "retrieval.miss",
+            "admission_reason": "retrieval.admission"
+          },
+          {
+            "role": "misleading",
+            "true_pair_id": "pair.char_token_similarity.misleading.01",
+            "false_pair_id": "pair.char_token_similarity.misleading.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "absent",
+            "true_pair_id": "pair.char_token_similarity.absent.01",
+            "false_pair_id": "pair.char_token_similarity.absent.02",
+            "miss_reason": "evidence_extraction.miss",
+            "admission_reason": "evidence_extraction.admission"
+          },
+          {
+            "role": "duplicated",
+            "true_pair_id": "pair.char_token_similarity.duplicated.01",
+            "false_pair_id": "pair.char_token_similarity.duplicated.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "contradictory",
+            "true_pair_id": "pair.char_token_similarity.contradictory.01",
+            "false_pair_id": "pair.char_token_similarity.contradictory.02",
+            "miss_reason": "constraint.miss",
+            "admission_reason": "constraint.admission"
+          }
+        ],
+        "expected_by_ablation": {
+          "without_family_under_test": "near-name true pair drops from candidate coverage",
+          "with_family_only": "high-similarity false pair rejects or reviews"
+        }
+      }
+    },
+    {
+      "case_id": "ablation.sparse_retrieval",
+      "family_under_test": "sparse_retrieval",
+      "purpose": "Sparse retrieval admits candidates that exact or local similarity alone may miss.",
+      "runtime_inputs": {
+        "candidate_generation_view": {
+          "allowed_paths": [
+            "runtime_inputs.observations",
+            "runtime_inputs.evidence"
+          ],
+          "forbidden_paths": [
+            "hidden_labels",
+            "expected_by_ablation",
+            "oracle_pairs"
+          ]
+        },
+        "observations": [
+          "obs.sparse_retrieval.01",
+          "obs.sparse_retrieval.02",
+          "obs.sparse_retrieval.03",
+          "obs.sparse_retrieval.04"
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev.sparse_retrieval.necessary.support",
+            "family_id": "sparse_retrieval",
+            "pair_id": "pair.sparse_retrieval.necessary.01",
+            "role": "necessary",
+            "polarity": "support",
+            "dedupe_key": "sparse_retrieval:necessary:01"
+          },
+          {
+            "evidence_id": "ev.sparse_retrieval.misleading.support",
+            "family_id": "sparse_retrieval",
+            "pair_id": "pair.sparse_retrieval.misleading.02",
+            "role": "misleading",
+            "polarity": "support",
+            "dedupe_key": "sparse_retrieval:misleading:02"
+          },
+          {
+            "evidence_id": "ev.sparse_retrieval.duplicated.support.a",
+            "family_id": "sparse_retrieval",
+            "pair_id": "pair.sparse_retrieval.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "sparse_retrieval:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.sparse_retrieval.duplicated.support.b",
+            "family_id": "sparse_retrieval",
+            "pair_id": "pair.sparse_retrieval.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "sparse_retrieval:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.sparse_retrieval.contradictory.support",
+            "family_id": "sparse_retrieval",
+            "pair_id": "pair.sparse_retrieval.contradictory.01",
+            "role": "contradictory",
+            "polarity": "support",
+            "dedupe_key": "sparse_retrieval:contradictory:support"
+          },
+          {
+            "evidence_id": "ev.sparse_retrieval.contradictory.contradiction",
+            "family_id": "sparse_retrieval",
+            "pair_id": "pair.sparse_retrieval.contradictory.01",
+            "role": "contradictory",
+            "polarity": "contradiction",
+            "dedupe_key": "sparse_retrieval:contradictory:contradiction"
+          }
+        ]
+      },
+      "hidden_labels": {
+        "planted_pair_roles": [
+          {
+            "role": "necessary",
+            "true_pair_id": "pair.sparse_retrieval.necessary.01",
+            "false_pair_id": "pair.sparse_retrieval.necessary.02",
+            "miss_reason": "retrieval.miss",
+            "admission_reason": "retrieval.admission"
+          },
+          {
+            "role": "misleading",
+            "true_pair_id": "pair.sparse_retrieval.misleading.01",
+            "false_pair_id": "pair.sparse_retrieval.misleading.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "absent",
+            "true_pair_id": "pair.sparse_retrieval.absent.01",
+            "false_pair_id": "pair.sparse_retrieval.absent.02",
+            "miss_reason": "retrieval.miss",
+            "admission_reason": "retrieval.admission"
+          },
+          {
+            "role": "duplicated",
+            "true_pair_id": "pair.sparse_retrieval.duplicated.01",
+            "false_pair_id": "pair.sparse_retrieval.duplicated.02",
+            "miss_reason": "retrieval.miss",
+            "admission_reason": "retrieval.admission"
+          },
+          {
+            "role": "contradictory",
+            "true_pair_id": "pair.sparse_retrieval.contradictory.01",
+            "false_pair_id": "pair.sparse_retrieval.contradictory.02",
+            "miss_reason": "constraint.miss",
+            "admission_reason": "constraint.admission"
+          }
+        ],
+        "expected_by_ablation": {
+          "without_family_under_test": "candidate recall drops before scoring",
+          "with_family_only": "retrieved-only false pair remains unlinked"
+        }
+      }
+    },
+    {
+      "case_id": "ablation.trusted_anchors",
+      "family_under_test": "trusted_anchors",
+      "purpose": "Trusted identifiers are strong only when namespace trust is explicit.",
+      "runtime_inputs": {
+        "candidate_generation_view": {
+          "allowed_paths": [
+            "runtime_inputs.observations",
+            "runtime_inputs.evidence"
+          ],
+          "forbidden_paths": [
+            "hidden_labels",
+            "expected_by_ablation",
+            "oracle_pairs"
+          ]
+        },
+        "observations": [
+          "obs.trusted_anchors.01",
+          "obs.trusted_anchors.02",
+          "obs.trusted_anchors.03",
+          "obs.trusted_anchors.04"
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev.trusted_anchors.necessary.support",
+            "family_id": "trusted_anchors",
+            "pair_id": "pair.trusted_anchors.necessary.01",
+            "role": "necessary",
+            "polarity": "support",
+            "dedupe_key": "trusted_anchors:necessary:01"
+          },
+          {
+            "evidence_id": "ev.trusted_anchors.misleading.support",
+            "family_id": "trusted_anchors",
+            "pair_id": "pair.trusted_anchors.misleading.02",
+            "role": "misleading",
+            "polarity": "support",
+            "dedupe_key": "trusted_anchors:misleading:02"
+          },
+          {
+            "evidence_id": "ev.trusted_anchors.duplicated.support.a",
+            "family_id": "trusted_anchors",
+            "pair_id": "pair.trusted_anchors.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "trusted_anchors:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.trusted_anchors.duplicated.support.b",
+            "family_id": "trusted_anchors",
+            "pair_id": "pair.trusted_anchors.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "trusted_anchors:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.trusted_anchors.contradictory.support",
+            "family_id": "trusted_anchors",
+            "pair_id": "pair.trusted_anchors.contradictory.01",
+            "role": "contradictory",
+            "polarity": "support",
+            "dedupe_key": "trusted_anchors:contradictory:support"
+          },
+          {
+            "evidence_id": "ev.trusted_anchors.contradictory.contradiction",
+            "family_id": "trusted_anchors",
+            "pair_id": "pair.trusted_anchors.contradictory.01",
+            "role": "contradictory",
+            "polarity": "contradiction",
+            "dedupe_key": "trusted_anchors:contradictory:contradiction"
+          }
+        ]
+      },
+      "hidden_labels": {
+        "planted_pair_roles": [
+          {
+            "role": "necessary",
+            "true_pair_id": "pair.trusted_anchors.necessary.01",
+            "false_pair_id": "pair.trusted_anchors.necessary.02",
+            "miss_reason": "evidence_extraction.miss",
+            "admission_reason": "evidence_extraction.admission"
+          },
+          {
+            "role": "misleading",
+            "true_pair_id": "pair.trusted_anchors.misleading.01",
+            "false_pair_id": "pair.trusted_anchors.misleading.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "absent",
+            "true_pair_id": "pair.trusted_anchors.absent.01",
+            "false_pair_id": "pair.trusted_anchors.absent.02",
+            "miss_reason": "evidence_extraction.miss",
+            "admission_reason": "evidence_extraction.admission"
+          },
+          {
+            "role": "duplicated",
+            "true_pair_id": "pair.trusted_anchors.duplicated.01",
+            "false_pair_id": "pair.trusted_anchors.duplicated.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "contradictory",
+            "true_pair_id": "pair.trusted_anchors.contradictory.01",
+            "false_pair_id": "pair.trusted_anchors.contradictory.02",
+            "miss_reason": "constraint.miss",
+            "admission_reason": "constraint.admission"
+          }
+        ],
+        "expected_by_ablation": {
+          "without_family_under_test": "trusted-id true pair requires weaker evidence or review",
+          "with_family_only": "untrusted or contradictory anchor cannot force a merge"
+        }
+      }
+    },
+    {
+      "case_id": "ablation.address_web_domain_anchors",
+      "family_under_test": "address_web_domain_anchors",
+      "purpose": "Address and web-domain anchors support candidates but shared locations and domains remain false-merge risks.",
+      "runtime_inputs": {
+        "candidate_generation_view": {
+          "allowed_paths": [
+            "runtime_inputs.observations",
+            "runtime_inputs.evidence"
+          ],
+          "forbidden_paths": [
+            "hidden_labels",
+            "expected_by_ablation",
+            "oracle_pairs"
+          ]
+        },
+        "observations": [
+          "obs.address_web_domain_anchors.01",
+          "obs.address_web_domain_anchors.02",
+          "obs.address_web_domain_anchors.03",
+          "obs.address_web_domain_anchors.04"
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev.address_web_domain_anchors.necessary.support",
+            "family_id": "address_web_domain_anchors",
+            "pair_id": "pair.address_web_domain_anchors.necessary.01",
+            "role": "necessary",
+            "polarity": "support",
+            "dedupe_key": "address_web_domain_anchors:necessary:01"
+          },
+          {
+            "evidence_id": "ev.address_web_domain_anchors.misleading.support",
+            "family_id": "address_web_domain_anchors",
+            "pair_id": "pair.address_web_domain_anchors.misleading.02",
+            "role": "misleading",
+            "polarity": "support",
+            "dedupe_key": "address_web_domain_anchors:misleading:02"
+          },
+          {
+            "evidence_id": "ev.address_web_domain_anchors.duplicated.support.a",
+            "family_id": "address_web_domain_anchors",
+            "pair_id": "pair.address_web_domain_anchors.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "address_web_domain_anchors:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.address_web_domain_anchors.duplicated.support.b",
+            "family_id": "address_web_domain_anchors",
+            "pair_id": "pair.address_web_domain_anchors.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "address_web_domain_anchors:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.address_web_domain_anchors.contradictory.support",
+            "family_id": "address_web_domain_anchors",
+            "pair_id": "pair.address_web_domain_anchors.contradictory.01",
+            "role": "contradictory",
+            "polarity": "support",
+            "dedupe_key": "address_web_domain_anchors:contradictory:support"
+          },
+          {
+            "evidence_id": "ev.address_web_domain_anchors.contradictory.contradiction",
+            "family_id": "address_web_domain_anchors",
+            "pair_id": "pair.address_web_domain_anchors.contradictory.01",
+            "role": "contradictory",
+            "polarity": "contradiction",
+            "dedupe_key": "address_web_domain_anchors:contradictory:contradiction"
+          }
+        ]
+      },
+      "hidden_labels": {
+        "planted_pair_roles": [
+          {
+            "role": "necessary",
+            "true_pair_id": "pair.address_web_domain_anchors.necessary.01",
+            "false_pair_id": "pair.address_web_domain_anchors.necessary.02",
+            "miss_reason": "evidence_extraction.miss",
+            "admission_reason": "evidence_extraction.admission"
+          },
+          {
+            "role": "misleading",
+            "true_pair_id": "pair.address_web_domain_anchors.misleading.01",
+            "false_pair_id": "pair.address_web_domain_anchors.misleading.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "absent",
+            "true_pair_id": "pair.address_web_domain_anchors.absent.01",
+            "false_pair_id": "pair.address_web_domain_anchors.absent.02",
+            "miss_reason": "evidence_extraction.miss",
+            "admission_reason": "evidence_extraction.admission"
+          },
+          {
+            "role": "duplicated",
+            "true_pair_id": "pair.address_web_domain_anchors.duplicated.01",
+            "false_pair_id": "pair.address_web_domain_anchors.duplicated.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "contradictory",
+            "true_pair_id": "pair.address_web_domain_anchors.contradictory.01",
+            "false_pair_id": "pair.address_web_domain_anchors.contradictory.02",
+            "miss_reason": "constraint.miss",
+            "admission_reason": "constraint.admission"
+          }
+        ],
+        "expected_by_ablation": {
+          "without_family_under_test": "anchor-only true pair drops to review or miss",
+          "with_family_only": "shared address or shared domain false pair rejects or reviews"
+        }
+      }
+    },
+    {
+      "case_id": "ablation.contextual_cooccurrence",
+      "family_under_test": "contextual_cooccurrence",
+      "purpose": "Contextual co-occurrence helps repeated weak surfaces but does not replace direct entity evidence.",
+      "runtime_inputs": {
+        "candidate_generation_view": {
+          "allowed_paths": [
+            "runtime_inputs.observations",
+            "runtime_inputs.evidence"
+          ],
+          "forbidden_paths": [
+            "hidden_labels",
+            "expected_by_ablation",
+            "oracle_pairs"
+          ]
+        },
+        "observations": [
+          "obs.contextual_cooccurrence.01",
+          "obs.contextual_cooccurrence.02",
+          "obs.contextual_cooccurrence.03",
+          "obs.contextual_cooccurrence.04"
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev.contextual_cooccurrence.necessary.support",
+            "family_id": "contextual_cooccurrence",
+            "pair_id": "pair.contextual_cooccurrence.necessary.01",
+            "role": "necessary",
+            "polarity": "support",
+            "dedupe_key": "contextual_cooccurrence:necessary:01"
+          },
+          {
+            "evidence_id": "ev.contextual_cooccurrence.misleading.support",
+            "family_id": "contextual_cooccurrence",
+            "pair_id": "pair.contextual_cooccurrence.misleading.02",
+            "role": "misleading",
+            "polarity": "support",
+            "dedupe_key": "contextual_cooccurrence:misleading:02"
+          },
+          {
+            "evidence_id": "ev.contextual_cooccurrence.duplicated.support.a",
+            "family_id": "contextual_cooccurrence",
+            "pair_id": "pair.contextual_cooccurrence.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "contextual_cooccurrence:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.contextual_cooccurrence.duplicated.support.b",
+            "family_id": "contextual_cooccurrence",
+            "pair_id": "pair.contextual_cooccurrence.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "contextual_cooccurrence:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.contextual_cooccurrence.contradictory.support",
+            "family_id": "contextual_cooccurrence",
+            "pair_id": "pair.contextual_cooccurrence.contradictory.01",
+            "role": "contradictory",
+            "polarity": "support",
+            "dedupe_key": "contextual_cooccurrence:contradictory:support"
+          },
+          {
+            "evidence_id": "ev.contextual_cooccurrence.contradictory.contradiction",
+            "family_id": "contextual_cooccurrence",
+            "pair_id": "pair.contextual_cooccurrence.contradictory.01",
+            "role": "contradictory",
+            "polarity": "contradiction",
+            "dedupe_key": "contextual_cooccurrence:contradictory:contradiction"
+          }
+        ]
+      },
+      "hidden_labels": {
+        "planted_pair_roles": [
+          {
+            "role": "necessary",
+            "true_pair_id": "pair.contextual_cooccurrence.necessary.01",
+            "false_pair_id": "pair.contextual_cooccurrence.necessary.02",
+            "miss_reason": "evidence_extraction.miss",
+            "admission_reason": "evidence_extraction.admission"
+          },
+          {
+            "role": "misleading",
+            "true_pair_id": "pair.contextual_cooccurrence.misleading.01",
+            "false_pair_id": "pair.contextual_cooccurrence.misleading.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "absent",
+            "true_pair_id": "pair.contextual_cooccurrence.absent.01",
+            "false_pair_id": "pair.contextual_cooccurrence.absent.02",
+            "miss_reason": "evidence_extraction.miss",
+            "admission_reason": "evidence_extraction.admission"
+          },
+          {
+            "role": "duplicated",
+            "true_pair_id": "pair.contextual_cooccurrence.duplicated.01",
+            "false_pair_id": "pair.contextual_cooccurrence.duplicated.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "contradictory",
+            "true_pair_id": "pair.contextual_cooccurrence.contradictory.01",
+            "false_pair_id": "pair.contextual_cooccurrence.contradictory.02",
+            "miss_reason": "constraint.miss",
+            "admission_reason": "constraint.admission"
+          }
+        ],
+        "expected_by_ablation": {
+          "without_family_under_test": "context-dependent true pair loses supporting context",
+          "with_family_only": "co-occurrence-only false pair rejects or reviews"
+        }
+      }
+    },
+    {
+      "case_id": "ablation.source_priors",
+      "family_under_test": "source_priors",
+      "purpose": "Source priors calibrate evidence reliability but cannot force identity.",
+      "runtime_inputs": {
+        "candidate_generation_view": {
+          "allowed_paths": [
+            "runtime_inputs.observations",
+            "runtime_inputs.evidence"
+          ],
+          "forbidden_paths": [
+            "hidden_labels",
+            "expected_by_ablation",
+            "oracle_pairs"
+          ]
+        },
+        "observations": [
+          "obs.source_priors.01",
+          "obs.source_priors.02",
+          "obs.source_priors.03",
+          "obs.source_priors.04"
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev.source_priors.necessary.support",
+            "family_id": "source_priors",
+            "pair_id": "pair.source_priors.necessary.01",
+            "role": "necessary",
+            "polarity": "support",
+            "dedupe_key": "source_priors:necessary:01"
+          },
+          {
+            "evidence_id": "ev.source_priors.misleading.support",
+            "family_id": "source_priors",
+            "pair_id": "pair.source_priors.misleading.02",
+            "role": "misleading",
+            "polarity": "support",
+            "dedupe_key": "source_priors:misleading:02"
+          },
+          {
+            "evidence_id": "ev.source_priors.duplicated.support.a",
+            "family_id": "source_priors",
+            "pair_id": "pair.source_priors.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "source_priors:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.source_priors.duplicated.support.b",
+            "family_id": "source_priors",
+            "pair_id": "pair.source_priors.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "source_priors:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.source_priors.contradictory.support",
+            "family_id": "source_priors",
+            "pair_id": "pair.source_priors.contradictory.01",
+            "role": "contradictory",
+            "polarity": "support",
+            "dedupe_key": "source_priors:contradictory:support"
+          },
+          {
+            "evidence_id": "ev.source_priors.contradictory.contradiction",
+            "family_id": "source_priors",
+            "pair_id": "pair.source_priors.contradictory.01",
+            "role": "contradictory",
+            "polarity": "contradiction",
+            "dedupe_key": "source_priors:contradictory:contradiction"
+          }
+        ]
+      },
+      "hidden_labels": {
+        "planted_pair_roles": [
+          {
+            "role": "necessary",
+            "true_pair_id": "pair.source_priors.necessary.01",
+            "false_pair_id": "pair.source_priors.necessary.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "misleading",
+            "true_pair_id": "pair.source_priors.misleading.01",
+            "false_pair_id": "pair.source_priors.misleading.02",
+            "miss_reason": "policy.miss",
+            "admission_reason": "policy.admission"
+          },
+          {
+            "role": "absent",
+            "true_pair_id": "pair.source_priors.absent.01",
+            "false_pair_id": "pair.source_priors.absent.02",
+            "miss_reason": "policy.miss",
+            "admission_reason": "policy.admission"
+          },
+          {
+            "role": "duplicated",
+            "true_pair_id": "pair.source_priors.duplicated.01",
+            "false_pair_id": "pair.source_priors.duplicated.02",
+            "miss_reason": "scoring.miss",
+            "admission_reason": "scoring.admission"
+          },
+          {
+            "role": "contradictory",
+            "true_pair_id": "pair.source_priors.contradictory.01",
+            "false_pair_id": "pair.source_priors.contradictory.02",
+            "miss_reason": "policy.miss",
+            "admission_reason": "policy.admission"
+          }
+        ],
+        "expected_by_ablation": {
+          "without_family_under_test": "calibration-sensitive true pair may fall to review",
+          "with_family_only": "prior-only false pair rejects or reviews"
+        }
+      }
+    },
+    {
+      "case_id": "ablation.relationship_evidence",
+      "family_under_test": "relationship_evidence",
+      "purpose": "Relationship edges improve explanation and review but are never same-entity evidence by themselves.",
+      "runtime_inputs": {
+        "candidate_generation_view": {
+          "allowed_paths": [
+            "runtime_inputs.observations",
+            "runtime_inputs.evidence"
+          ],
+          "forbidden_paths": [
+            "hidden_labels",
+            "expected_by_ablation",
+            "oracle_pairs"
+          ]
+        },
+        "observations": [
+          "obs.relationship_evidence.01",
+          "obs.relationship_evidence.02",
+          "obs.relationship_evidence.03",
+          "obs.relationship_evidence.04"
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev.relationship_evidence.necessary.support",
+            "family_id": "relationship_evidence",
+            "pair_id": "pair.relationship_evidence.necessary.01",
+            "role": "necessary",
+            "polarity": "support",
+            "dedupe_key": "relationship_evidence:necessary:01"
+          },
+          {
+            "evidence_id": "ev.relationship_evidence.misleading.support",
+            "family_id": "relationship_evidence",
+            "pair_id": "pair.relationship_evidence.misleading.02",
+            "role": "misleading",
+            "polarity": "support",
+            "dedupe_key": "relationship_evidence:misleading:02"
+          },
+          {
+            "evidence_id": "ev.relationship_evidence.duplicated.support.a",
+            "family_id": "relationship_evidence",
+            "pair_id": "pair.relationship_evidence.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "relationship_evidence:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.relationship_evidence.duplicated.support.b",
+            "family_id": "relationship_evidence",
+            "pair_id": "pair.relationship_evidence.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "relationship_evidence:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.relationship_evidence.contradictory.support",
+            "family_id": "relationship_evidence",
+            "pair_id": "pair.relationship_evidence.contradictory.01",
+            "role": "contradictory",
+            "polarity": "support",
+            "dedupe_key": "relationship_evidence:contradictory:support"
+          },
+          {
+            "evidence_id": "ev.relationship_evidence.contradictory.contradiction",
+            "family_id": "relationship_evidence",
+            "pair_id": "pair.relationship_evidence.contradictory.01",
+            "role": "contradictory",
+            "polarity": "contradiction",
+            "dedupe_key": "relationship_evidence:contradictory:contradiction"
+          }
+        ]
+      },
+      "hidden_labels": {
+        "relationship_policy": "non_equivalence_unless_separately_supported",
+        "planted_pair_roles": [
+          {
+            "role": "necessary",
+            "true_pair_id": "pair.relationship_evidence.necessary.01",
+            "false_pair_id": "pair.relationship_evidence.necessary.02",
+            "miss_reason": "link.miss",
+            "admission_reason": "link.admission"
+          },
+          {
+            "role": "misleading",
+            "true_pair_id": "pair.relationship_evidence.misleading.01",
+            "false_pair_id": "pair.relationship_evidence.misleading.02",
+            "miss_reason": "policy.miss",
+            "admission_reason": "policy.admission"
+          },
+          {
+            "role": "absent",
+            "true_pair_id": "pair.relationship_evidence.absent.01",
+            "false_pair_id": "pair.relationship_evidence.absent.02",
+            "miss_reason": "link.miss",
+            "admission_reason": "link.admission"
+          },
+          {
+            "role": "duplicated",
+            "true_pair_id": "pair.relationship_evidence.duplicated.01",
+            "false_pair_id": "pair.relationship_evidence.duplicated.02",
+            "miss_reason": "cluster.miss",
+            "admission_reason": "cluster.admission"
+          },
+          {
+            "role": "contradictory",
+            "true_pair_id": "pair.relationship_evidence.contradictory.01",
+            "false_pair_id": "pair.relationship_evidence.contradictory.02",
+            "miss_reason": "policy.miss",
+            "admission_reason": "policy.admission"
+          }
+        ],
+        "expected_by_ablation": {
+          "without_family_under_test": "relationship explanations and cannot-link support disappear",
+          "with_family_only": "no relationship-only pair may auto-link or cluster-merge"
+        }
+      }
+    },
+    {
+      "case_id": "ablation.full_system_union",
+      "family_under_test": "full_system_union",
+      "purpose": "The union run exposes marginal family effects without hiding individual failures.",
+      "runtime_inputs": {
+        "candidate_generation_view": {
+          "allowed_paths": [
+            "runtime_inputs.observations",
+            "runtime_inputs.evidence"
+          ],
+          "forbidden_paths": [
+            "hidden_labels",
+            "expected_by_ablation",
+            "oracle_pairs"
+          ]
+        },
+        "observations": [
+          "obs.full_system_union.01",
+          "obs.full_system_union.02",
+          "obs.full_system_union.03",
+          "obs.full_system_union.04"
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev.full_system_union.necessary.support",
+            "family_id": "full_system_union",
+            "pair_id": "pair.full_system_union.necessary.01",
+            "role": "necessary",
+            "polarity": "support",
+            "dedupe_key": "full_system_union:necessary:01"
+          },
+          {
+            "evidence_id": "ev.full_system_union.misleading.support",
+            "family_id": "full_system_union",
+            "pair_id": "pair.full_system_union.misleading.02",
+            "role": "misleading",
+            "polarity": "support",
+            "dedupe_key": "full_system_union:misleading:02"
+          },
+          {
+            "evidence_id": "ev.full_system_union.duplicated.support.a",
+            "family_id": "full_system_union",
+            "pair_id": "pair.full_system_union.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "full_system_union:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.full_system_union.duplicated.support.b",
+            "family_id": "full_system_union",
+            "pair_id": "pair.full_system_union.duplicated.01",
+            "role": "duplicated",
+            "polarity": "support",
+            "dedupe_key": "full_system_union:duplicated:shared"
+          },
+          {
+            "evidence_id": "ev.full_system_union.contradictory.support",
+            "family_id": "full_system_union",
+            "pair_id": "pair.full_system_union.contradictory.01",
+            "role": "contradictory",
+            "polarity": "support",
+            "dedupe_key": "full_system_union:contradictory:support"
+          },
+          {
+            "evidence_id": "ev.full_system_union.contradictory.contradiction",
+            "family_id": "full_system_union",
+            "pair_id": "pair.full_system_union.contradictory.01",
+            "role": "contradictory",
+            "polarity": "contradiction",
+            "dedupe_key": "full_system_union:contradictory:contradiction"
+          }
+        ]
+      },
+      "hidden_labels": {
+        "planted_pair_roles": [
+          {
+            "role": "necessary",
+            "true_pair_id": "pair.full_system_union.necessary.01",
+            "false_pair_id": "pair.full_system_union.necessary.02",
+            "miss_reason": "link.miss",
+            "admission_reason": "link.admission"
+          },
+          {
+            "role": "misleading",
+            "true_pair_id": "pair.full_system_union.misleading.01",
+            "false_pair_id": "pair.full_system_union.misleading.02",
+            "miss_reason": "policy.miss",
+            "admission_reason": "policy.admission"
+          },
+          {
+            "role": "absent",
+            "true_pair_id": "pair.full_system_union.absent.01",
+            "false_pair_id": "pair.full_system_union.absent.02",
+            "miss_reason": "link.miss",
+            "admission_reason": "link.admission"
+          },
+          {
+            "role": "duplicated",
+            "true_pair_id": "pair.full_system_union.duplicated.01",
+            "false_pair_id": "pair.full_system_union.duplicated.02",
+            "miss_reason": "cluster.miss",
+            "admission_reason": "cluster.admission"
+          },
+          {
+            "role": "contradictory",
+            "true_pair_id": "pair.full_system_union.contradictory.01",
+            "false_pair_id": "pair.full_system_union.contradictory.02",
+            "miss_reason": "policy.miss",
+            "admission_reason": "policy.admission"
+          }
+        ],
+        "expected_by_ablation": {
+          "without_family_under_test": "not applicable; union is the comparison baseline",
+          "with_family_only": "union report must expose per-family marginal results instead of one opaque score"
+        }
+      }
+    }
+  ]
+}

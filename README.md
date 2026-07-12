@@ -18,21 +18,37 @@ brew install cmdrvl/tap/canon
 
 ---
 
-The same loan appears as CUSIP `037833100` in one system, ISIN `US0378331005` in another, and ticker `AAPL` in a third. Three vendors, three identifiers, one entity. Your reconciliation pipeline needs them to be the same row. Right now, the mapping lives in a VLOOKUP chain, an unmaintained Python script, or someone's head.
+The same real-world thing appears as a CUSIP in one file, an ISIN in another,
+a vendor label in a third, and a manually reviewed alias in a fourth. Your
+pipeline needs those rows to replay as one canonical ID, but the evidence that
+gets you there may be incomplete, contradictory, or worth human review.
 
-**canon resolves identifiers against versioned registries — deterministic, traceable, reproducible.** Every resolution records which registry version was used, which rule produced the match, and what didn't match. Same input plus same registry version equals same output, every time. No fuzzy matching, no silent normalization, no guessing.
+**canon is an identity compiler: messy evidence -> reviewed versioned registry
+-> exact replay.** The runtime lookup command is deliberately simple: it takes
+one input value and resolves it by exact match against a local versioned
+registry. The uncertain work happens before that, in workbenches that prepare
+observations, build candidates, score evidence, abstain when needed, export
+review queues/inboxes, and promote only accepted knowledge back into registry
+files.
 
-Architecturally, `canon` has two layers. The core lookup kernel is exact and boring on purpose. Resolution workbenches such as `canon entity` and `canon resolve` run offline evidence pipelines that create, audit, review, and promote new registry knowledge. Once promoted, production lookup is still exact registry lookup. See [`docs/IDENTITY_ARCHITECTURE.md`](docs/IDENTITY_ARCHITECTURE.md) for the boundary.
+That boundary is the product. `canon` can help create registries, package them,
+export them to dbt/search consumers, compare temporal snapshots, and run
+project workflows. It does not ship industry ontology, provider knowledge, or a
+probabilistic runtime lookup engine. Domain expertise lives in registries,
+profiles, strategies, packages, or out-of-tree extensions that operators choose
+and audit. See [`docs/IDENTITY_ARCHITECTURE.md`](docs/IDENTITY_ARCHITECTURE.md)
+for the boundary.
 
 ### What makes this different
 
-- **Versioned registries** — every resolution is pinned to a registry version with semver. When the registry updates, `canon registry diff` tells you exactly what changed. Registries are plain JSON directories — inspectable in git, diffable, no database required.
+- **Exact replay from versioned registries** — every runtime resolution is pinned to a registry version. When the registry updates, `canon registry diff` tells you exactly what changed. Registries are plain JSON directories with derived indexes and provenance, inspectable in git and reproducible in CI.
 - **Pipeline composable** — `canon --emit csv` appends a `<column>__canon` column to your CSV. Pipe the output directly into `rvl` or `shape`: `canon nov.csv --column cusip --emit csv | rvl - dec.canon.csv --key cusip__canon`.
 - **Full traceability** — every mapping includes `rule_id`, `canonical_type`, and `confidence`. Every unresolved entry includes the reason. Every result is auditable.
 - **Deduplication built in** — input values are deduplicated before lookup. 500 unique CUSIPs produce 500 mapping entries whether your file has 500 rows or 500,000.
 - **Self-authored registries** — use `canon registry default-id-scheme`, `next-id`, `add-entry`, and `mint` to maintain local alias registries without hand-editing mapping JSON.
-- **Entity workbench** — `canon entity` resolves profiled entity observations that appear under different names across documents via a deterministic multi-stage workbench: prepare surfaces, build indexes, block candidates, score evidence, solve clusters, audit against evaluation suites, review if needed, and promote into the registry.
-- **Cross-tape structural resolution** — `canon resolve` compares two local tapes under an explicit YAML strategy, emits `canon_resolve.v0` evidence, and can write matched ID pairs back into a flat registry when explicitly requested.
+- **Evidence workbenches** — `canon entity` compiles profiled observations into registry proposals. Cluster mode finds same-entity groups within one corpus; link mode aligns a reference corpus to a target corpus through the same artifact path. Both keep relationship evidence separate from equivalence merge evidence.
+- **Cross-source structural linkage** — `canon entity link` aligns two local row sets under an explicit YAML strategy, emits `canon_entity_link.v0` with deterministic link decisions, and can write matched ID pairs back into a flat registry when explicitly requested.
+- **Distribution surfaces** — `canon registry export` preserves dbt seed and SQLite search-index consumers; package, project, and temporal workflows move the same registry knowledge through reproducible deployment and snapshot checks.
 
 ---
 
@@ -74,6 +90,29 @@ $ canon tape.csv --registry registries/cusip-isin/ --column cusip | jq '.unresol
 $ canon tape.csv --registry registries/cusip-isin/ --column cusip > /dev/null 2>&1
 $ echo $?  # 0 = all resolved, 1 = partial/unresolved, 2 = refused
 ```
+
+---
+
+## Identity Compiler Workflow Map
+
+Start with exact lookup. Add build-time evidence only when the registry does not
+yet know enough.
+
+| Workflow | Purpose | Boundary |
+|----------|---------|----------|
+| `canon <INPUT> --registry <DIR> --column <COLUMN>` | Replay accepted registry knowledge into JSON or CSV outputs. | Exact runtime lookup only. |
+| `canon registry mint/add-entry/default-id-scheme/next-id` | Maintain self-authored aliases and ID conventions. | Operator-accepted facts become flat mapping entries. |
+| `canon registry build/providers/provider-schema` | Materialize provider-backed seed mappings into local registry files. | Provider calls happen during maintenance, never during runtime lookup. |
+| `canon entity run` | Cluster profiled observations inside one corpus and propose registry knowledge. | Deterministic artifacts, audit, review inbox, promotion. |
+| `canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json\|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` | Link two row sets through the same typed artifact path used by project mode. | Cross-source linkage; relation evidence is not an equivalence shortcut. Profile and work-dir are required for execution; omissions write nothing. |
+| `canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json>` | Compile artifact-backed withheld-alias trials into a JSON or summary report. | Strict execution envelope only; outcomes are derived from referenced artifacts, not self-declared. |
+| `canon registry export --format dbt-seed|search-index` | Project exact registry knowledge into transform or serving artifacts. | Deterministic downstream snapshots; no new matching semantics. |
+| Package, project, and temporal workflows | Move registries and strategies through reproducible deployment, project locks, and snapshot comparison. | They package and check knowledge; they do not change exact lookup. |
+| Extensions and adapters | Add profiles, source mappings, provider materializers, and domain policies out of tree. | Domain expertise stays outside Canon core defaults unless explicitly packaged and audited. |
+
+The accretion loop is intentionally repetitive: unresolved or ambiguous evidence
+enters a workbench, review accepts only defensible knowledge, the registry gets
+a new version, and future production runs replay that version exactly.
 
 ---
 
@@ -149,8 +188,8 @@ Each mapping file is an array of entries:
 
 ```json
 {"input": "037833100", "canonical_id": "AAPL", "canonical_type": "ticker", "rule_id": "CUSIP_TO_TICKER"}
-{"input": "Wells Fargo", "canonical_id": "C-00012", "canonical_type": "counterparty_id", "rule_id": "COUNTERPARTY_ALIAS"}
-{"input": "WFB", "canonical_id": "C-00012", "canonical_type": "counterparty_id", "rule_id": "COUNTERPARTY_ALIAS"}
+{"input": "Alpha Entity LLC", "canonical_id": "ENT-00012", "canonical_type": "entity", "rule_id": "REVIEWED_ALIAS"}
+{"input": "Alpha Entity", "canonical_id": "ENT-00012", "canonical_type": "entity", "rule_id": "REVIEWED_ALIAS"}
 ```
 
 Registries are versioned with semver, inspectable in git, and diffable. A SQLite derived index is built automatically for fast lookups against large registries. `_build.json` is reserved for materializer provenance and is ignored during normal resolution.
@@ -286,9 +325,9 @@ canon tape.csv --registry registries/cusip-isin/ --column cusip \
 
 **When to use canon:**
 - Normalizing identifiers before reconciliation (`canon --emit csv | rvl`)
-- Resolving counterparty aliases across vendor datasets
+- Resolving reviewed aliases across vendor datasets
 - Running deterministic entity resolution when the domain has modeled observations, anchors, context fields, audit suites, and a versioned registry (`canon entity`)
-- Building cross-reference registries from two tapes that describe the same records with different IDs (`canon resolve`)
+- Building cross-reference registries from two row sets that describe the same records with different IDs (`canon entity link`)
 - Building audit trails for regulatory mappings (every resolution traceable)
 
 **When canon might not be ideal:**
@@ -325,7 +364,6 @@ cargo build --release
 
 ```bash
 canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
-canon resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <YAML> --registry <DIR> [--gold <JSONL>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon doctor [health [--json]|capabilities [--json]|robot-docs|--robot-triage]
 canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [OPTIONS]
 canon registry export --format dbt-seed|search-index --registry <REGISTRY> --out <PATH> [OPTIONS]
@@ -344,8 +382,10 @@ canon strategy resolve --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) -
 canon strategy register --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --grade operator-attested|proof-attested --next-version <VER> [--operator <ID> --reason <TEXT>] [--verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json>] [--emit json|summary] [--no-witness]
 canon strategy update|deprecate|promote|list|explain [OPTIONS]
 canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]
-canon entity run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json|summary]
-canon entity block|edge|solve|audit|promote|explain|review [OPTIONS]
+canon entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--emit json|summary] [--no-witness]
+canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
+canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
+canon entity prepare|index build|block|evidence|solve|audit|promote|apply|explain|review [OPTIONS]
 canon entity review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]
 canon entity review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]
 ```
@@ -385,7 +425,6 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | Subcommand | Description |
 |------------|-------------|
 | `doctor [health [--json]\|capabilities [--json]\|robot-docs\|--robot-triage]` | Read-only compiled-contract diagnostics for agents. Does not read inputs, registries, SQLite indexes, or witness ledgers, does not contact providers, and has no `--fix` mode. |
-| `resolve <REFERENCE_TAPE> <TARGET_TAPE> --strategy <YAML> --registry <DIR> [--gold <JSONL>] [--write-back] [--emit json\|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>]` | Cross-tape structural resolution workbench. Loads two tapes, filters candidates, scores matches, optionally evaluates gold, and writes matched ID pairs back to the registry when explicitly requested. |
 | `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides such as OpenFIGI `id_type`, `base_url`, `api_key`, or mapping filters like `exchCode=US`. |
 | `registry export --format dbt-seed\|search-index --registry <DIR> --out <PATH>` | Export a versioned registry as a deterministic dbt seed CSV or a self-describing SQLite search index, with optional source-file, canonical-type, and rule-id-prefix filters. |
 | `registry providers [--emit json\|summary]` | List the registry build providers available for materialization, with their seed-column support and a pointer to each provider's schema command. |
@@ -404,12 +443,15 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `strategy update|deprecate|promote` | Update an active champion, mark it deprecated without deleting history, or promote an operator-attested champion to proof-attested. Mutations emit before/after registry-hash receipts and append witness records unless `--no-witness` is passed. |
 | `strategy list|explain` | Inspect mixed schema/task strategy registries, provenance, grade, status, source file, entry order, and active-resolution behavior without hand-reading `_strategy/entries.json`. |
 | `strategy diff --old <DIR> --new <DIR> [--emit json\|summary]` | Compare frozen-script strategy registry versions by typed key plus skill hash, including grade/status/attestation changes. |
-| `entity run <ROWS> --strategy <YAML> --registry <DIR> [--suite <DIR>] [--emit json\|summary]` | Run the full deterministic entity pipeline (prepare → index → block → edge → solve, optional audit + promote). |
-| `entity block <ROWS> --strategy <YAML> --registry <DIR> [--emit jsonl\|summary]` | Generate candidate neighborhoods via blocking operators. |
-| `entity edge <ROWS> --strategy <YAML> --candidates <JSONL> --registry <DIR> [--emit jsonl\|summary]` | Score typed evidence edges for blocked candidate pairs. |
-| `entity solve <ROWS> --strategy <YAML> --edges <JSONL> --registry <DIR> [--emit json\|summary]` | Solve deterministic identity assignments from evidence edges. |
+| `entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--emit json\|summary]` | Run the cluster-mode artifact pipeline (prepare -> index -> block -> evidence -> solve, optional audit). |
+| `entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json\|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` | Run link mode for aligning two row sets through the same typed request and artifact path as project mode, with optional suite/gold scoring and explicit registry write-back. Profile and work-dir are required for successful execution even though generated syntax shows them bracketed; omissions write nothing. |
+| `entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json\|summary]` | Compile a strict execution envelope into an alias-withholding report. The envelope references clean registry, candidate, link, run/solve, review, audit, leak-scan, assignment-firewall, and optional promotion/replay artifacts; Canon derives outcomes from those artifacts and refuses self-declared results. |
+| `entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit jsonl\|summary]` | Generate candidate neighborhoods via blocking operators. |
+| `entity evidence <ROWS> [--profile <PROFILE>] --strategy <YAML> --candidates <JSONL> --registry <DIR> [--work-dir <DIR>] [--emit jsonl\|summary]` | Score typed evidence for blocked candidate pairs. Relationship evidence remains a relation hint unless a separate equality fact or support lane justifies equivalence. |
+| `entity solve <ROWS> [--profile <PROFILE>] --strategy <YAML> --evidence <JSONL> --registry <DIR> [--work-dir <DIR>] [--emit json\|summary]` | Solve deterministic identity assignments from evidence artifacts. |
 | `entity audit <RESULT> --suite <DIR> [--emit json\|summary]` | Validate a solve/run artifact against a frozen evaluation suite. |
 | `entity promote <RESULT> --audit <JSON> --registry <DIR> --next-version <VER> [--emit json\|summary]` | Write audited results into registry aliases and escrow sidecars. |
+| `entity apply <RESULT> --rows <ROWS> --registry <DIR> [--work-dir <DIR>] [--emit json\|summary]` | Replay accepted assignments from a solve or run artifact onto input rows without changing the registry. |
 | `entity review export <RESULT> [--emit json\|csv] [--include resolved\|escrow\|contradictions\|all]` | Produce a deterministic human-adjudication queue with stable review IDs and evidence context. |
 | `entity review import <REVIEW> --registry <DIR> --next-version <VER> [--audit <JSON>] [--emit json\|summary]` | Import reviewed decisions into alias, anchor, and escrow patches with proof hashes. |
 | `entity explain <RESULT> --row <ID>\|--canon-id <ID>\|--escrow-id <ID> [--emit json\|summary]` | Proof trace for one row, canonical entity, or escrow entity. |
@@ -426,7 +468,12 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 
 `canon strategy profile`, `canon strategy register`, `canon strategy update`, `canon strategy deprecate`, `canon strategy promote`, `canon strategy list`, `canon strategy explain`, and `canon strategy diff` exit `0` when their reports or writes succeed and `2` on refusal. `canon strategy audit` exits `0` when all fixtures pass, `1` when deterministic fixture checks fail, and `2` on refusal. `canon strategy resolve` exits `0` for a schema EXACT/COMPATIBLE or task EXACT match, `1` for schema PARTIAL/UNRESOLVED or task UNRESOLVED, and `2` on refusal.
 
-`canon resolve` exits `0` when every target record is matched, `1` when any target record is unmatched or ambiguous, and `2` on refusal. In `summary` mode, refusal JSON is written to stderr.
+`canon entity link` exits `0` when every target record is matched, `1` when any target record is unmatched or ambiguous, and `2` on refusal. In `summary` mode, refusal JSON is written to stderr.
+
+`canon entity alias-withholding` exits `0` when it emits a JSON or summary
+report from a valid execution envelope and `2` when the envelope or any
+referenced artifact refuses validation. It does not use exit `1` for benchmark
+outcomes.
 
 `canon doctor` exits `0` when it emits a read-only report and `2` for CLI usage errors such as unsupported `--fix`. Its JSON schemas are `canon.doctor.health.v1`, `canon.doctor.capabilities.v1`, and `canon.doctor.triage.v1`.
 
@@ -522,7 +569,7 @@ canon registry export \
 
 Both export formats preserve the registry boundary: they snapshot exact registry knowledge with version, content hash, source file, rule, alias kind, normalized key, and `canonical_iri` provenance. They do not add serving coverage facts or call providers.
 
-Materialize a registry from a provider-backed seed corpus. `openfigi` supports `cusip`, `isin`, and `sedol` seed columns by inference, or an explicit `--provider-config id_type=ID_CUSIP|ID_ISIN|ID_SEDOL`; use `--provider-config base_url=...` for local twins and tests. Corpus-wide OpenFIGI mapping filters pass through to every mapping job when supplied as provider config, including `exchCode`, `micCode`, `currency`, `marketSecDes`, `securityType`, `securityType2`, `optionType`, `includeUnlistedEquities`, `strike`, `contractSize`, `coupon`, `expiration`, and `maturity`. These filters narrow provider materialization only; normal canon lookup still reads static registry files and never calls OpenFIGI. For CMBS-style corpora, extract identifiers from the source tapes, normalize and dedupe them, split CUSIP/ISIN/SEDOL into separate seed files, run one build per id type, publish the resulting static registries, and use `--incremental` for follow-up corpus refreshes:
+Materialize a registry from a provider-backed seed corpus. `openfigi` supports `cusip`, `isin`, and `sedol` seed columns by inference, or an explicit `--provider-config id_type=ID_CUSIP|ID_ISIN|ID_SEDOL`; use `--provider-config base_url=...` for local twins and tests. Corpus-wide OpenFIGI mapping filters pass through to every mapping job when supplied as provider config, including `exchCode`, `micCode`, `currency`, `marketSecDes`, `securityType`, `securityType2`, `optionType`, `includeUnlistedEquities`, `strike`, `contractSize`, `coupon`, `expiration`, and `maturity`. These filters narrow provider materialization only; normal canon lookup still reads static registry files and never calls OpenFIGI. For identifier-heavy corpora, extract identifiers from the source tapes, normalize and dedupe them, split CUSIP/ISIN/SEDOL into separate seed files, run one build per id type, publish the resulting static registries, and use `--incremental` for follow-up corpus refreshes:
 
 ```bash
 OPENFIGI_API_KEY=xxx \
@@ -663,10 +710,10 @@ canon strategy diff \
   --emit summary
 ```
 
-Resolve counterparty aliases:
+Resolve reviewed aliases:
 
 ```bash
-canon counterparties.csv --registry registries/counterparty-cmbs/ --column servicer_name \
+canon aliases.csv --registry registries/entities/ --column entity_label \
   | jq '.summary'
 ```
 
@@ -685,20 +732,37 @@ canon tape.csv --registry registries/cusip-isin/ --column cusip \
 
 ---
 
-## Cross-Tape Structural Resolution (`canon resolve`)
+## Cross-Source Linkage (`canon entity link`)
 
-`canon resolve` is for the moment before a registry exists. Give it a reference tape, a target tape, and a YAML strategy that says how fields correspond. It builds an in-memory graph, filters candidate pairs, scores deterministic assertions, and emits a `canon_resolve.v0` evidence artifact.
+`canon entity link` is for the moment before a cross-reference registry exists.
+Give it reference rows, target rows, and a YAML strategy that says how fields
+correspond. It runs under the entity workbench namespace, preserves
+reference/target directionality, filters candidate pairs, scores deterministic
+assertions, and emits `canon_entity_link.v0` with a
+`canon_entity_link_decisions.v0` decision projection.
 
-This is still not the core lookup path. The normal `canon <INPUT> --registry ...` command does exact lookup only. `canon resolve` is a workbench for manufacturing audited cross-reference entries that normal lookup can use later.
+This is still not the core lookup path. The normal
+`canon <INPUT> --registry ...` command does exact lookup only. Link mode is a
+workbench for manufacturing audited cross-reference entries that normal lookup
+can use later. There is no public compatibility alias for the superseded
+standalone resolve namespace.
+
+`--profile` and `--work-dir` stay bracketed in generated-help syntax because
+the parser emits a structured `E_ENTITY_INPUT_CONTRACT` refusal when either is
+omitted. Successful link execution requires both flags, and omission performs
+no writes.
 
 Run the fixture corpus as JSON:
 
 ```bash
-canon resolve \
+canon entity link \
   tests/fixtures/resolve/tapes/reference_loans.csv \
   tests/fixtures/resolve/tapes/target_loans.csv \
+  --profile cmbs_tenant_label \
   --strategy tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml \
   --registry tests/fixtures/registries/resolve-servicers \
+  --work-dir work/entity-link \
+  --suite suites/cmbs_link.v1/ \
   --gold tests/fixtures/resolve/gold/loan_matches.jsonl \
   --no-witness
 ```
@@ -706,11 +770,14 @@ canon resolve \
 Summary mode is compact for operators:
 
 ```bash
-canon resolve \
+canon entity link \
   tests/fixtures/resolve/tapes/reference_loans.csv \
   tests/fixtures/resolve/tapes/target_loans.csv \
+  --profile cmbs_tenant_label \
   --strategy tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml \
   --registry tests/fixtures/registries/resolve-servicers \
+  --work-dir work/entity-link \
+  --suite suites/cmbs_link.v1/ \
   --emit summary \
   --no-witness
 ```
@@ -718,16 +785,24 @@ canon resolve \
 Write-back is explicit. It writes only flat ID mappings, never structural attributes:
 
 ```bash
-canon resolve reference.csv target.csv \
+canon entity link reference.csv target.csv \
+  --profile entity_profile \
   --strategy strategies/cmbs_loans.yaml \
   --registry registries/cmbs-loans/ \
+  --work-dir work/entity-link \
+  --suite suites/cmbs_link.v1/ \
   --gold gold/loan_matches.jsonl \
   --write-back
 ```
 
-If `--gold` is provided, any gold regression suppresses write-back. Without `--gold`, write-back is still allowed, but the safety gate is the explicit `--write-back` flag plus the emitted evidence artifact. Review the artifact and version the registry before using it as production lookup knowledge.
+If `--gold` is provided, any gold regression suppresses write-back. Without
+`--gold`, write-back is still allowed, but the safety gate is the explicit
+`--write-back` flag plus the emitted link artifact. Review the artifact and
+version the registry before using it as production lookup knowledge.
 
-Implemented v0 limits: exactly two tapes, deterministic local operators only, no address parser, no geocoder, no fuzzy matching, no persistent attribute store, and no automatic registry version bump.
+Implemented v0 limits: exactly two row sets, deterministic local operators
+only, no address parser, no geocoder, no fuzzy matching, no persistent
+attribute store, and no automatic registry version bump.
 
 ---
 
@@ -787,17 +862,61 @@ canon tape.csv --registry registries/cusip-isin/ --column cusip \
 
 ## Entity Workbench (`canon entity`)
 
-The same entity appears as "Wells Fargo & Company" in one document, "Wells Fargo Bank, N.A." in another, and "WFB" in a third. Three names, one issuer. `canon entity` resolves profiled observations via a deterministic multi-stage pipeline — no ML models, no probabilistic matching, no black boxes.
+The same entity appears as "Wells Fargo & Company" in one document, "Wells Fargo Bank, N.A." in another, and "WFB" in a third. Three names, one issuer. `canon entity` compiles profiled observations into reviewed registry knowledge through deterministic artifacts — no ML model dependency, no live provider lookup, no open-ended runtime guessing.
 
-The pipeline is YAML-driven: a **strategy file** defines which fields to observe, how to normalize names, which blocking operators generate candidates, how to score evidence, and what thresholds the solver uses to merge or abstain. Same strategy + same input + same registry = same output, every time.
+The pipeline is YAML-driven: a **strategy file** defines which fields to observe, how to normalize names, which blocking operators generate candidates, how to score evidence, and what thresholds the solver uses to merge, link, review, or abstain. Same strategy + same input + same registry = same artifacts, every time.
 
 `canon entity` is a resolution workbench, not the core lookup path. It manufactures registry knowledge through evidence, audit, review, and promotion. After promotion, ordinary `canon` runs still resolve the resulting aliases through exact lookup.
+
+There are two public entity modes:
+
+- **Cluster mode:** `canon entity run` groups observations inside one profiled corpus and emits solved clusters, escrow, review, and promotion artifacts.
+- **Link mode:** `canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` aligns two row sets through the same typed request and artifact path used by project mode. It is for cross-source linkage, not a hidden alias for edge scoring.
+
+`canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json>` is an
+evaluation compiler for artifact-backed withheld-alias trials. The manifest is
+a strict execution envelope: it names a benchmark plus native execution
+manifests whose paths are loaded relative to the envelope, including clean
+registry, candidate-recall, link/run/solve, review, audit, leak-scan,
+assignment-firewall, and optional promotion/exact-replay artifacts. The command
+emits a JSON report by default or a compact `--emit summary` report; it refuses
+invalid envelopes or stale/missing/tampered artifacts with exit 2. It does not
+accept caller-declared decisions or outcomes, does not write registry files, and
+does not change ordinary exact lookup semantics. The real clean registry must
+exactly match the retained benchmark mappings; leakage and assignment checks
+read nonempty concrete source files bound to the validated chain. Credited
+attachments additionally require a rebuilt solve review queue, typed native
+review-import receipt, exact one-entry sandbox registry diff, and ordinary exact
+replay. CLI output hashes identifiers and paths so the public report can retain
+counts, statuses, and evidence digests without disclosing source surfaces.
+
+Link observation IDs and prepared `surface_id` values are separate namespaces.
+The link artifact therefore carries a hash-bound observation/surface sidecar;
+alias-withholding re-derives it from the materialized rows plus the supplied run
+profile/strategy before joining candidate, solve, review, and promotion evidence.
+Reports distinguish `evaluated_pair`, `prepared_surface_collapse`, and
+`relation_policy_control`. A prepared-surface collapse binds two distinct link
+observations to one derived surface, receives no candidate rank or recall
+denominator credit, and is reported as collapse/accretion rather than retrieval.
+Non-identity relation-policy controls are also excluded from candidate recall,
+forbid promotion/replay, and surface any automatic attachment as an
+`unsupported_guess` false merge.
+
+Artifact-native review receipts are available through the public Rust library
+surface (`build_native_review_artifact` plus `import_native_review_decisions`).
+For a derivation-proven collapse, a singleton cluster Alias decision is valid
+only with an explicit target canonical ID and exact exported-surface equality.
+The current `canon entity review export/import` commands continue to expose the
+queue/v1 and legacy CLI contracts; native artifact/decision CLI wiring is a
+separate review-workbench deliverable rather than an implied compatibility shim.
 
 ```bash
 # Full pipeline in one command:
 $ canon entity run rows.csv \
+    --profile entity_profile \
     --strategy strategy.yaml \
     --registry registries/entities/ \
+    --work-dir work/entity-run \
     --suite eval/holdout/ \
     --emit summary
 
@@ -808,9 +927,11 @@ audit: holdout 98/98 pass, perturbation stability 0.998
 Or run stages individually for inspection:
 
 ```bash
-$ canon entity block rows.csv --strategy strategy.yaml --registry registries/entities/ > blocks.jsonl
-$ canon entity edge rows.csv --strategy strategy.yaml --candidates blocks.jsonl --registry registries/entities/ > edges.jsonl
-$ canon entity solve rows.csv --strategy strategy.yaml --edges edges.jsonl --registry registries/entities/ > result.json
+$ canon entity prepare rows.csv --profile entity_profile --registry registries/entities/ --work-dir work/entity
+$ canon entity index build rows.csv --profile entity_profile --strategy strategy.yaml --registry registries/entities/ --work-dir work/entity
+$ canon entity block rows.csv --profile entity_profile --strategy strategy.yaml --registry registries/entities/ --work-dir work/entity > blocks.jsonl
+$ canon entity evidence rows.csv --profile entity_profile --strategy strategy.yaml --candidates blocks.jsonl --registry registries/entities/ --work-dir work/entity > evidence.jsonl
+$ canon entity solve rows.csv --profile entity_profile --strategy strategy.yaml --evidence evidence.jsonl --registry registries/entities/ --work-dir work/entity > result.json
 $ canon entity audit result.json --suite eval/holdout/ > audit.json
 $ canon entity review export result.json --include all --emit csv > review.csv
 $ canon entity review import review.csv --audit audit.json --registry registries/entities/ --next-version 2.1.0
@@ -837,13 +958,14 @@ Candidate neighborhood generation. Blocking operators reduce the O(n²) comparis
 | `shared_anchor` | Blocks on shared anchor values (LEI, CIK, FIGI) |
 | `registry_alias_match` | Blocks on existing registry alias matches |
 
-### Edge
+### Evidence
 
-Typed evidence scoring. Each candidate pair receives evidence edges:
+Typed evidence scoring. Each candidate pair receives lane-tagged evidence:
 
-- **Must-link** — strong deterministic evidence (shared trusted anchor, registry alias match)
 - **Support** — scored positive evidence (exact name view match, acronym-plus-token, categorical field equality)
+- **Trusted anchors** — explicit configured identifiers that can support equality when the profile says they are identity anchors
 - **Cannot-link** — negative evidence (conflicting anchor values in the same namespace)
+- **Relation hints** — relationship, hierarchy, or contextual evidence that may explain why records co-occur but must not silently become equivalence merge evidence
 
 ### Solve
 
@@ -894,7 +1016,7 @@ Returns the full evidence chain: which blocking operator surfaced the pair, whic
 
 | Limitation | Detail |
 |------------|--------|
-| **Exact match only (core lookup)** | Core `canon` lookup uses exact byte match after ASCII-trim. `canon entity` and `canon resolve` add deterministic workbenches, not fuzzy/phonetic matching in the lookup kernel. |
+| **Exact match only (core lookup)** | Core `canon` lookup uses exact byte match after ASCII-trim. `canon entity` cluster and link modes add deterministic workbenches, not fuzzy/phonetic matching in the lookup kernel. |
 | **Flat registries** | No subdirectories in v0. All mapping files must be at the registry root. |
 | **CSV-only for `--emit csv`** | JSONL input cannot use `--emit csv` mode. |
 
@@ -908,9 +1030,16 @@ Short for *canonical*. The tool produces canonical identifiers — one true ID f
 
 ### Is this entity resolution?
 
-Yes. `canon entity` performs deterministic profiled entity resolution, and `canon resolve` performs deterministic two-tape structural record resolution. Both use YAML-driven evidence pipelines and emit audit artifacts. Core `canon` without a workbench subcommand still resolves identifiers via exact lookup against versioned registries.
+Yes. `canon entity` performs deterministic profiled entity resolution. Cluster
+mode groups observations inside one corpus, and link mode aligns reference and
+target row sets for structural record linkage. Both use YAML-driven evidence
+pipelines and emit audit artifacts. Core `canon` without a workbench subcommand
+still resolves identifiers via exact lookup against versioned registries.
 
-The important boundary is that entity resolution happens in workbench commands such as `canon entity` and `canon resolve`, then accepted knowledge is promoted into registries. The default lookup command never performs open-ended fuzzy matching at resolution time.
+The important boundary is that entity resolution happens in workbench commands
+under `canon entity`, then accepted knowledge is promoted into registries. The
+default lookup command never performs open-ended fuzzy matching at resolution
+time.
 
 ### How does canon relate to rvl?
 

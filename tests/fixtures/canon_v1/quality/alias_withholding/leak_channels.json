@@ -1,0 +1,40 @@
+{
+  "cases": [
+    {
+      "case_id": "mapping_file_alias_copy",
+      "channel": "mapping_file",
+      "locator": "mappings.json#/0/input",
+      "leak_value": "ACME, Inc."
+    },
+    {
+      "case_id": "search_index_term_copy",
+      "channel": "search_index",
+      "locator": "_index/search_terms/ENT-001",
+      "leak_value": "ACME, Inc."
+    },
+    {
+      "case_id": "cache_value_copy",
+      "channel": "cache",
+      "locator": "_cache/blocking/withheld",
+      "leak_value": "ACME, Inc."
+    },
+    {
+      "case_id": "normalization_patch_copy",
+      "channel": "normalization_patch",
+      "locator": "_patches/normalize.json#/ops/0/value",
+      "leak_value": "ACME, Inc."
+    },
+    {
+      "case_id": "generated_corpus_copy",
+      "channel": "generated_corpus",
+      "locator": "generated/holdout.jsonl:1",
+      "leak_value": "ACME, Inc."
+    },
+    {
+      "case_id": "display_name_copy",
+      "channel": "display_name_copy",
+      "locator": "registry.json#/display_name",
+      "leak_value": "ACME, Inc."
+    }
+  ]
+}

@@ -1,82 +1,12 @@
 use assert_cmd::Command;
 use csv::Writer;
 use serde_json::{Value, json};
-use std::{fs, path::Path};
+use std::{collections::BTreeSet, fs, path::Path};
 use tempfile::tempdir;
 
 const TEST_STRATEGY: &str = r#"
-strategy_id: bdc_org_graph.v1
+strategy_id: cmbs_tenant_scaling.v1
 strategy_version: 0.1.0
-entity_type: organization
-description: Synthetic org scaling fixture
-id_prefix: IC
-
-observations:
-  name_fields: [portfolio_company]
-  required_side_fields: [alias_surfaces_json]
-  context_fields: [industry]
-  anchor_fields:
-    lei: lei
-
-normalize:
-  views:
-    core_name:
-      - lowercase
-      - strip_legal_suffixes
-      - normalize_whitespace
-
-blocking:
-  - op: exact_view
-    view: core_name
-  - op: shared_anchor
-    anchor: lei
-
-evidence:
-  must_link:
-    - op: shared_anchor
-      anchor: lei
-  support:
-    - op: exact_view
-      view: core_name
-      score: 32
-  cannot_link:
-    - op: conflicting_anchor
-      anchor: lei
-
-solver:
-  score_mode: namespace_max_sum
-  component_score_mode: core_best_pair_sum
-  merge_policy: reciprocal_best
-  backbone_score_min: 32
-  backbone_requires_positive_name: true
-  attach_score_min: 28
-  abstain_margin: 6
-  max_cluster_diameter: 2
-  require_positive_name_evidence: true
-  attach_requires_backbone_contact: true
-  score_against_backbone_only: true
-  attachments_do_not_chain: true
-
-reconcile:
-  single_incumbent_overlap: inherit
-  multi_incumbent_overlap: abstain_conflict
-  allow_incumbent_merge: false
-  allow_alias_writeback_for_resolved_existing: true
-
-anchors:
-  precedence: [lei]
-  trusted_for_must_link: [lei]
-  trusted_for_single_doc_promotion: [lei]
-  support_only: []
-  require_unique_for_attachment: true
-
-promotion:
-  write_states: [PROMOTABLE_NEW, RESOLVED_EXISTING]
-  require_zero_anchor_conflicts: true
-  require_holdout_non_regression: true
-  require_perturbation_stability_gte: 0.995
-  min_distinct_docs: 2
-  allow_single_doc_if_unique_anchor: true
 "#;
 
 fn canon() -> Command {
@@ -111,49 +41,43 @@ fn write_strategy(path: &Path) {
     fs::write(path, TEST_STRATEGY).unwrap();
 }
 
+fn count(payload: &Value, name: &str) -> u64 {
+    payload["summary"]["counts"][name]
+        .as_u64()
+        .unwrap_or_else(|| panic!("missing summary count {name}"))
+}
+
+fn read_json(path: &Path) -> Value {
+    serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
+}
+
 fn write_entity_rows(path: &Path) {
     let mut writer = Writer::from_path(path).unwrap();
     writer
         .write_record([
             "source_row_id",
-            "doc_id",
-            "as_of_date",
-            "portfolio_company",
+            "deal_id",
+            "loan_id",
+            "property_id",
+            "raw_tenant_name",
             "alias_surfaces_json",
-            "industry",
-            "lei",
+            "mention_surfaces_json",
         ])
         .unwrap();
 
-    for group in 0..4 {
-        let company = format!("Group {} Holdings", group + 1);
-        let alias = format!(r#"["{}"]"#, company.to_uppercase());
-        let lei = format!("549300GROUP{:02}", group + 1);
-        for member in 0..4 {
-            writer
-                .write_record([
-                    format!("group-{group}-row-{member}"),
-                    format!("doc-group-{group}-{member}"),
-                    "2026-03-24".to_string(),
-                    company.clone(),
-                    alias.clone(),
-                    "software".to_string(),
-                    lei.clone(),
-                ])
-                .unwrap();
-        }
-    }
-
-    for noise in 0..4 {
+    for row_number in 0..20 {
+        let entity_ordinal = row_number % 4;
+        let variant_ordinal = (row_number / 4) % 4;
+        let source_ordinal = (row_number / 16) % 2;
         writer
             .write_record([
-                format!("noise-row-{noise}"),
-                format!("noise-doc-{noise}"),
-                "2026-03-24".to_string(),
-                format!("Noise Entity {noise}"),
+                format!("row-{row_number:02}"),
+                format!("D{source_ordinal:02}"),
+                format!("L{entity_ordinal:02}"),
+                format!("P{variant_ordinal:02}"),
+                format!("Native Entity {entity_ordinal:02} Variant {variant_ordinal:02}"),
                 "[]".to_string(),
-                "other".to_string(),
-                String::new(),
+                "[]".to_string(),
             ])
             .unwrap();
     }
@@ -168,77 +92,95 @@ fn write_lookup_input(path: &Path) {
 #[test]
 fn entity_cli_scaling_stays_within_structural_budgets() {
     let temp_dir = tempdir().unwrap();
-    let registry_dir = temp_dir.path().join("org-registry");
+    let registry_dir = temp_dir.path().join("scale-registry");
     let strategy_path = temp_dir.path().join("strategy.yaml");
     let rows_path = temp_dir.path().join("rows.csv");
-    let block_path = temp_dir.path().join("blocks.jsonl");
-    let edge_path = temp_dir.path().join("edges.jsonl");
+    let work_dir = temp_dir.path().join("work");
 
-    write_registry_metadata(&registry_dir, "bdc-issuers", "2026.03.01", 0);
+    write_registry_metadata(&registry_dir, "entity-scale-registry", "2026.03.01", 0);
     write_strategy(&strategy_path);
     write_entity_rows(&rows_path);
-
-    let block_assert = canon()
-        .arg("entity")
-        .arg("block")
-        .arg(&rows_path)
-        .arg("--strategy")
-        .arg(&strategy_path)
-        .arg("--registry")
-        .arg(&registry_dir)
-        .assert()
-        .success();
-    let block_stdout = String::from_utf8(block_assert.get_output().stdout.clone()).unwrap();
-    let block_lines = block_stdout.lines().collect::<Vec<_>>();
-    assert_eq!(block_lines.len(), 24, "candidate-pair budget changed");
-    for line in &block_lines {
-        let record: Value = serde_json::from_str(line).unwrap();
-        assert_eq!(record["version"], "canon_entity_block.v0");
-    }
-    fs::write(&block_path, block_stdout).unwrap();
-
-    let edge_assert = canon()
-        .arg("entity")
-        .arg("edge")
-        .arg(&rows_path)
-        .arg("--strategy")
-        .arg(&strategy_path)
-        .arg("--candidates")
-        .arg(&block_path)
-        .arg("--registry")
-        .arg(&registry_dir)
-        .assert()
-        .success();
-    let edge_stdout = String::from_utf8(edge_assert.get_output().stdout.clone()).unwrap();
-    let edge_lines = edge_stdout.lines().collect::<Vec<_>>();
-    assert_eq!(edge_lines.len(), 24, "edge-count budget changed");
-    for line in &edge_lines {
-        let record: Value = serde_json::from_str(line).unwrap();
-        assert_eq!(record["version"], "canon_entity_edge.v0");
-    }
-    fs::write(&edge_path, edge_stdout).unwrap();
 
     let run_assert = canon()
         .arg("entity")
         .arg("run")
         .arg(&rows_path)
+        .arg("--profile")
+        .arg("cmbs_tenant_label")
         .arg("--strategy")
         .arg(&strategy_path)
         .arg("--registry")
         .arg(&registry_dir)
+        .arg("--work-dir")
+        .arg(&work_dir)
         .arg("--no-witness")
+        .arg("--emit")
+        .arg("json")
         .assert()
         .success();
     let run_payload: Value = serde_json::from_slice(&run_assert.get_output().stdout).unwrap();
 
     assert_eq!(run_payload["version"], "canon_entity_run.v0");
-    assert_eq!(run_payload["summary"]["observations"], 20);
-    assert_eq!(run_payload["summary"]["resolved_existing"], 0);
-    assert_eq!(run_payload["summary"]["promotable_new"], 16);
-    assert_eq!(run_payload["summary"]["abstain_low_evidence"], 4);
-    assert_eq!(run_payload["summary"]["abstain_conflict"], 0);
-    assert_eq!(run_payload["entities"].as_array().unwrap().len(), 4);
-    assert_eq!(run_payload["contradictions"].as_array().unwrap().len(), 0);
+    assert!(
+        run_payload["artifact_content_hash"]
+            .as_str()
+            .unwrap()
+            .starts_with("blake3:")
+    );
+
+    assert_eq!(count(&run_payload, "row_count"), 20);
+    assert_eq!(count(&run_payload, "prepared_surfaces"), 16);
+    assert_eq!(count(&run_payload, "index_surfaces"), 16);
+    assert_eq!(count(&run_payload, "exact_resolved_surfaces"), 0);
+
+    let candidate_pairs = count(&run_payload, "candidate_pairs");
+    let edge_records = count(&run_payload, "edge_records");
+    let solved_entities = count(&run_payload, "solved_entities");
+    let review_groups = count(&run_payload, "review_group_count");
+    assert!(
+        candidate_pairs > 0 && candidate_pairs <= 128,
+        "candidate pair budget changed: {candidate_pairs}"
+    );
+    assert!(
+        edge_records > 0 && edge_records <= candidate_pairs,
+        "edge budget changed: edge_records={edge_records} candidate_pairs={candidate_pairs}"
+    );
+    assert!(
+        solved_entities <= 16,
+        "solve cardinality exceeded prepared surfaces: {solved_entities}"
+    );
+    assert!(
+        review_groups <= solved_entities,
+        "review groups exceeded solved entity count: review_groups={review_groups} solved_entities={solved_entities}"
+    );
+
+    let stages = run_payload["stage_artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|stage| stage["stage"].as_str().unwrap())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        stages,
+        BTreeSet::from(["block", "edge", "index", "prepare", "solve"])
+    );
+
+    assert!(work_dir.join("run.json").exists());
+    assert!(work_dir.join("prepare").join("prepare.json").exists());
+    assert!(work_dir.join("index.json").exists());
+    assert!(work_dir.join("index").join("postings.json").exists());
+    assert!(work_dir.join("block").join("block.json").exists());
+    assert!(work_dir.join("block").join("candidates.jsonl").exists());
+    assert!(work_dir.join("edge").join("edge.json").exists());
+    assert!(work_dir.join("edge").join("edges.jsonl").exists());
+    assert!(work_dir.join("solve").join("solve.json").exists());
+
+    let block_artifact = read_json(&work_dir.join("block").join("block.json"));
+    let edge_artifact = read_json(&work_dir.join("edge").join("edge.json"));
+    assert_eq!(block_artifact["version"], "canon_entity_block.v0");
+    assert_eq!(edge_artifact["version"], "canon_entity_edge.v0");
+    assert_eq!(count(&block_artifact, "candidate_pairs"), candidate_pairs);
+    assert_eq!(count(&edge_artifact, "edge_records"), edge_records);
 }
 
 #[test]

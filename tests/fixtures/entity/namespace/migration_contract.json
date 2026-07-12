@@ -25,7 +25,7 @@
     "required_usage_prefixes": [
       "canon entity run",
       "canon entity block",
-      "canon entity edge",
+      "canon entity evidence",
       "canon entity solve",
       "canon entity audit",
       "canon entity promote",
@@ -36,7 +36,7 @@
     "required_subcommands": [
       { "name": "entity run", "output_schema": "canon_entity_run.v0" },
       { "name": "entity block", "output_schema": "canon_entity_block.v0" },
-      { "name": "entity edge", "output_schema": "canon_entity_edge.v0" },
+      { "name": "entity evidence", "output_schema": "canon_entity_evidence.v1" },
       { "name": "entity solve", "output_schema": "canon_entity_solve.v0" },
       { "name": "entity audit", "output_schema": "canon_entity_audit.v0" },
       { "name": "entity promote", "output_schema": "canon_entity_promote.v0" },
@@ -48,7 +48,9 @@
       "canon org",
       "org run",
       "canon_org",
-      "CANON_ORG"
+      "CANON_ORG",
+      "canon entity edge",
+      "canon_entity_edge"
     ]
   }
 }

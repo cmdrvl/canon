@@ -1,0 +1,63 @@
+{
+  "version": "canon.resolve.unchanged_input_decision_projection.v1",
+  "fixture_id": "resolve-entity-link-unchanged-input-parity",
+  "projection": {
+    "strategy": {
+      "id": "cmbs-loan-match.v1",
+      "version": "0.1.0",
+      "content_hash": "blake3:221d8bc8945f68cbb4aeca4bca5808b4092d2b0c161d9fa0e090279dbc546d92"
+    },
+    "registry": {
+      "id": "resolve-servicers",
+      "version": "0.1.0"
+    },
+    "reference": {
+      "rows_path": "tests/fixtures/resolve/parity/unchanged-link/reference_loans.link.csv",
+      "row_count": 10
+    },
+    "target": {
+      "rows_path": "tests/fixtures/resolve/parity/unchanged-link/target_loans.link.csv",
+      "row_count": 12
+    },
+    "summary": {
+      "target_records": 12,
+      "matched": 9,
+      "unmatched": 2,
+      "ambiguous": 1,
+      "match_rate": 0.75
+    },
+    "matches": [
+      { "target_id": "WFCM2019-C50|1", "reference_id": "223232", "canonical_id": "223232", "score": 1.0000000000000002 },
+      { "target_id": "WFCM2019-C50|2", "reference_id": "223233", "canonical_id": "223233", "score": 1.0000000000000002 },
+      { "target_id": "WFCM2019-C50|3", "reference_id": "223234", "canonical_id": "223234", "score": 1.0000000000000002 },
+      { "target_id": "WFCM2019-C50|4", "reference_id": "223235", "canonical_id": "223235", "score": 1.0000000000000002 },
+      { "target_id": "WFCM2019-C50|5", "reference_id": "223236", "canonical_id": "223236", "score": 1.0000000000000002 },
+      { "target_id": "WFCM2019-C50|6", "reference_id": "223237", "canonical_id": "223237", "score": 1.0000000000000002 },
+      { "target_id": "WFCM2019-C50|7", "reference_id": "223238", "canonical_id": "223238", "score": 1.0000000000000002 },
+      { "target_id": "WFCM2019-C50|8", "reference_id": "223239", "canonical_id": "223239", "score": 1.0000000000000002 },
+      { "target_id": "WFCM2019-C50|9", "reference_id": "223240", "canonical_id": "223240", "score": 1.0000000000000002 }
+    ],
+    "unmatched": [
+      { "target_id": "WFCM2019-C50|404", "reason": "no_candidates" },
+      { "target_id": "WFCM2019-C50|NULLSERV", "reason": "no_candidates" }
+    ],
+    "ambiguous": [
+      {
+        "target_id": "WFCM2019-C50|AMB",
+        "reason": "insufficient_ambiguity_gap",
+        "candidate_reference_ids": ["223240", "223241"]
+      }
+    ],
+    "gold_score": {
+      "total": 9,
+      "correct": 9,
+      "incorrect": 0,
+      "unmatched_in_gold": 0,
+      "accuracy": 1.0,
+      "regressions": []
+    },
+    "read_only": {
+      "write_back_present": false
+    }
+  }
+}

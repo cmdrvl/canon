@@ -19,21 +19,51 @@ fn canon_command() -> Command {
 
 fn refusal(args: &[&str]) -> Value {
     let assert = canon_command().args(args).assert().code(2);
+    assert!(
+        !assert.get_output().stdout.is_empty(),
+        "refusal must emit structured JSON on stdout; stderr: {}",
+        String::from_utf8_lossy(&assert.get_output().stderr)
+    );
     serde_json::from_slice(&assert.get_output().stdout).expect("refusal stdout is json")
+}
+
+fn entity_link_refusal(
+    reference: &str,
+    target: &str,
+    strategy: &str,
+    extra_args: &[&str],
+) -> Value {
+    let temp_dir = tempdir().unwrap();
+    let work_dir = temp_dir.path().join("entity-link-work");
+    let mut args = vec![
+        "entity",
+        "link",
+        reference,
+        target,
+        "--profile",
+        "cmbs_tenant_label",
+        "--strategy",
+        strategy,
+        "--registry",
+        "tests/fixtures/registries/resolve-servicers",
+        "--work-dir",
+        work_dir.to_str().unwrap(),
+        "--emit",
+        "json",
+        "--no-witness",
+    ];
+    args.extend_from_slice(extra_args);
+    refusal(&args)
 }
 
 #[test]
 fn malformed_strategy_refuses_with_bad_strategy() {
-    let payload = refusal(&[
-        "resolve",
+    let payload = entity_link_refusal(
         "tests/fixtures/resolve/tapes/reference_loans.csv",
         "tests/fixtures/resolve/tapes/target_loans.csv",
-        "--strategy",
         "tests/fixtures/resolve/strategies/malformed_missing_threshold.yaml",
-        "--registry",
-        "tests/fixtures/registries/resolve-servicers",
-        "--no-witness",
-    ]);
+        &[],
+    );
 
     assert_eq!(payload["outcome"], "REFUSAL");
     assert_eq!(payload["refusal"]["code"], "E_BAD_STRATEGY");
@@ -47,16 +77,12 @@ fn malformed_strategy_refuses_with_bad_strategy() {
 
 #[test]
 fn empty_target_tape_refuses_with_empty_tape() {
-    let payload = refusal(&[
-        "resolve",
+    let payload = entity_link_refusal(
         "tests/fixtures/resolve/tapes/reference_loans.csv",
         "tests/fixtures/resolve/tapes/empty_target.csv",
-        "--strategy",
         "tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml",
-        "--registry",
-        "tests/fixtures/registries/resolve-servicers",
-        "--no-witness",
-    ]);
+        &[],
+    );
 
     assert_eq!(payload["refusal"]["code"], "E_EMPTY_TAPE");
     assert_eq!(payload["refusal"]["detail"]["side"], "target");
@@ -64,16 +90,12 @@ fn empty_target_tape_refuses_with_empty_tape() {
 
 #[test]
 fn too_many_candidates_refusal_reports_target_and_limit() {
-    let payload = refusal(&[
-        "resolve",
+    let payload = entity_link_refusal(
         "tests/fixtures/resolve/tapes/too_many_candidates_reference.csv",
         "tests/fixtures/resolve/tapes/too_many_candidates_target.csv",
-        "--strategy",
         "tests/fixtures/resolve/strategies/too_many_candidates.yaml",
-        "--registry",
-        "tests/fixtures/registries/resolve-servicers",
-        "--no-witness",
-    ]);
+        &[],
+    );
 
     assert_eq!(payload["refusal"]["code"], "E_TOO_MANY_CANDIDATES");
     assert_eq!(
@@ -86,16 +108,12 @@ fn too_many_candidates_refusal_reports_target_and_limit() {
 
 #[test]
 fn missing_column_refusal_includes_available_columns() {
-    let payload = refusal(&[
-        "resolve",
+    let payload = entity_link_refusal(
         "tests/fixtures/resolve/tapes/reference_loans.csv",
         "tests/fixtures/resolve/tapes/missing_column_target.csv",
-        "--strategy",
         "tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml",
-        "--registry",
-        "tests/fixtures/registries/resolve-servicers",
-        "--no-witness",
-    ]);
+        &[],
+    );
 
     assert_eq!(payload["refusal"]["code"], "E_COLUMN_NOT_FOUND");
     assert_eq!(payload["refusal"]["detail"]["side"], "target");
@@ -109,18 +127,12 @@ fn missing_column_refusal_includes_available_columns() {
 
 #[test]
 fn max_rows_refusal_uses_existing_too_large_envelope() {
-    let payload = refusal(&[
-        "resolve",
+    let payload = entity_link_refusal(
         "tests/fixtures/resolve/tapes/reference_loans.csv",
         "tests/fixtures/resolve/tapes/target_loans.csv",
-        "--strategy",
         "tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml",
-        "--registry",
-        "tests/fixtures/registries/resolve-servicers",
-        "--max-rows",
-        "1",
-        "--no-witness",
-    ]);
+        &["--max-rows", "1"],
+    );
 
     assert_eq!(payload["refusal"]["code"], "E_TOO_LARGE");
     assert_eq!(payload["refusal"]["detail"]["limit_type"], "max_rows");

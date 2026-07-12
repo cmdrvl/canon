@@ -8,11 +8,14 @@ use canon::strategy::types::{
     StrategyOutputKind, StrategyPromotionSemantics, StrategyPromotionTarget, StrategySelectionKey,
     classify_legacy_footprint, strategy_schema_version,
 };
+use canon::strategy_registry::{StrategyCatalogRequest, list};
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, fs, path::Path};
+use tempfile::tempdir;
 
 const STRATEGY_SCHEMA_JSON: &str = include_str!("../schemas/canon.strategy.v1.schema.json");
 const ARCHITECTURE_DOC: &str = include_str!("../docs/IDENTITY_ARCHITECTURE.md");
+const STRATEGY_REGISTRY_SOURCE: &str = include_str!("../src/strategy_registry.rs");
 
 #[test]
 fn strategy_schema_declares_typed_kinds_and_lookup_boundary() {
@@ -266,6 +269,95 @@ fn canonical_kind_catalog_is_complete_and_stable() {
     assert_eq!(strategy_schema_version(), "canon.strategy.v1");
 }
 
+#[test]
+fn strategy_registry_loader_is_typed_v1_only() {
+    assert!(!STRATEGY_REGISTRY_SOURCE.contains("StrategyRegistryEntryLegacy"));
+    assert!(!STRATEGY_REGISTRY_SOURCE.contains("StrategyRegistryEntryRaw"));
+    assert!(!STRATEGY_REGISTRY_SOURCE.contains("#[serde(untagged)]"));
+
+    let registry = tempdir().expect("temp registry");
+    write_strategy_registry(
+        registry.path(),
+        vec![typed_task_registry_entry("normalize_vendor_extract")],
+    );
+
+    let catalog = list(StrategyCatalogRequest {
+        registry_dir: registry.path(),
+        key_type: None,
+        grade: None,
+        status: None,
+    })
+    .expect("typed v1 registry lists");
+
+    assert_eq!(catalog.entries.len(), 1);
+    assert_eq!(
+        catalog.entries[0].task.as_deref(),
+        Some("normalize_vendor_extract")
+    );
+    assert_eq!(catalog.entries[0].skill_hash, "blake3:skill-task");
+}
+
+#[test]
+fn legacy_or_partial_strategy_entries_refuse_instead_of_migrating() {
+    let legacy = tempdir().expect("legacy registry");
+    write_strategy_registry(
+        legacy.path(),
+        vec![json!({
+            "schema_fingerprint": "blake3:legacy-schema",
+            "schema": {"columns": [{"name": "vendor", "type": "string"}]},
+            "skill_hash": "blake3:skill-legacy",
+            "script": {
+                "id": "legacy-script",
+                "path": "scripts/legacy.py",
+                "language": "python",
+                "content_hash": "blake3:legacy-script"
+            },
+            "proofs": typed_proofs(),
+            "rule_id": "STRATEGY_CHAMPION"
+        })],
+    );
+
+    let legacy_error = list(StrategyCatalogRequest {
+        registry_dir: legacy.path(),
+        key_type: None,
+        grade: None,
+        status: None,
+    })
+    .expect_err("legacy v0 shape refuses");
+    assert!(
+        legacy_error
+            .message
+            .contains("failed to parse strategy file")
+            || legacy_error.message.contains("missing field `key`"),
+        "unexpected legacy refusal: {}",
+        legacy_error.message
+    );
+
+    let missing_skill = tempdir().expect("missing skill registry");
+    let mut partial = typed_task_registry_entry("normalize_vendor_extract");
+    partial
+        .as_object_mut()
+        .expect("entry object")
+        .remove("skill_hash");
+    write_strategy_registry(missing_skill.path(), vec![partial]);
+
+    let partial_error = list(StrategyCatalogRequest {
+        registry_dir: missing_skill.path(),
+        key_type: None,
+        grade: None,
+        status: None,
+    })
+    .expect_err("typed v1 entry missing required skill_hash refuses");
+    assert!(
+        partial_error
+            .message
+            .contains("failed to parse strategy file")
+            || partial_error.message.contains("missing field `skill_hash`"),
+        "unexpected partial-v1 refusal: {}",
+        partial_error.message
+    );
+}
+
 fn typed_fixtures() -> Vec<Value> {
     vec![
         serde_json::to_value(typed_identity_evidence()).unwrap(),
@@ -321,6 +413,70 @@ fn typed_identity_evidence() -> StrategyDefinition {
             requires_review_gate: true,
         },
     }
+}
+
+fn write_strategy_registry(path: &Path, entries: Vec<Value>) {
+    fs::write(
+        path.join("registry.json"),
+        serde_json::to_string_pretty(&json!({
+            "id": "strategy-test",
+            "version": "0.1.0",
+            "description": "typed strategy registry test",
+            "updated": "2026-07-11",
+            "entry_count": entries.len()
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let strategy_dir = path.join("_strategy");
+    fs::create_dir_all(&strategy_dir).unwrap();
+    fs::write(
+        strategy_dir.join("entries.json"),
+        serde_json::to_string_pretty(&entries).unwrap(),
+    )
+    .unwrap();
+}
+
+fn typed_task_registry_entry(task: &str) -> Value {
+    json!({
+        "entry_schema_version": "canon_strategy_entry.v1",
+        "key": {
+            "type": "task",
+            "task": task,
+            "skill_hash": "blake3:skill-task"
+        },
+        "grade": "proof-attested",
+        "status": "active",
+        "skill_hash": "blake3:skill-task",
+        "script": {
+            "id": "normalize-vendor.v1",
+            "path": "scripts/normalize_vendor.py",
+            "language": "python",
+            "content_hash": "blake3:script-task"
+        },
+        "proofs": typed_proofs(),
+        "rule_id": "STRATEGY_CHAMPION"
+    })
+}
+
+fn typed_proofs() -> Value {
+    json!({
+        "verify": {
+            "path": "evidence/verify.json",
+            "content_hash": "blake3:verify",
+            "decision": "PASS"
+        },
+        "assess": {
+            "path": "evidence/assess.json",
+            "content_hash": "blake3:assess",
+            "decision": "PROCEED"
+        },
+        "airlock": {
+            "path": "evidence/airlock.json",
+            "content_hash": "blake3:airlock",
+            "decision": "PASS"
+        }
+    })
 }
 
 fn typed_record_linkage() -> StrategyDefinition {

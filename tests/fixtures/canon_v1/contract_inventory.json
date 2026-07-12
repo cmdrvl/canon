@@ -83,14 +83,6 @@
       "action": "preserve"
     },
     {
-      "id": "canon resolve",
-      "family": "resolve",
-      "clap_path": "resolve",
-      "operator_name": "resolve",
-      "primary_contracts": ["canon_resolve.v0"],
-      "action": "preserve"
-    },
-    {
       "id": "canon package pack",
       "family": "distribution",
       "clap_path": "package pack",
@@ -120,6 +112,102 @@
       "clap_path": "package unpack",
       "operator_name": "package unpack",
       "primary_contracts": ["canon.local.package.archive.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon package push",
+      "family": "distribution",
+      "clap_path": "package push",
+      "operator_name": "package push",
+      "primary_contracts": ["canon.oci.package.publish.receipt.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon package pull",
+      "family": "distribution",
+      "clap_path": "package pull",
+      "operator_name": "package pull",
+      "primary_contracts": ["canon.oci.package.pull.receipt.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon project init",
+      "family": "project",
+      "clap_path": "project init",
+      "operator_name": null,
+      "primary_contracts": ["canon.project.cli.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon project validate",
+      "family": "project",
+      "clap_path": "project validate",
+      "operator_name": null,
+      "primary_contracts": ["canon.project.cli.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon project describe",
+      "family": "project",
+      "clap_path": "project describe",
+      "operator_name": null,
+      "primary_contracts": ["canon.project.cli.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon inbox list",
+      "family": "inbox",
+      "clap_path": "inbox list",
+      "operator_name": "inbox list",
+      "primary_contracts": ["canon.inbox.list.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon inbox show",
+      "family": "inbox",
+      "clap_path": "inbox show",
+      "operator_name": "inbox show",
+      "primary_contracts": ["canon.inbox.show.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon inbox explain",
+      "family": "inbox",
+      "clap_path": "inbox explain",
+      "operator_name": "inbox explain",
+      "primary_contracts": ["canon.inbox.explain.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon inbox stats",
+      "family": "inbox",
+      "clap_path": "inbox stats",
+      "operator_name": "inbox stats",
+      "primary_contracts": ["canon.inbox.stats.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon inbox export-review",
+      "family": "inbox",
+      "clap_path": "inbox export-review",
+      "operator_name": "inbox export-review",
+      "primary_contracts": ["canon.inbox.review_export.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon inbox apply-review",
+      "family": "inbox",
+      "clap_path": "inbox apply-review",
+      "operator_name": "inbox apply-review",
+      "primary_contracts": ["canon.inbox.review_apply.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon inbox plan-entity",
+      "family": "inbox",
+      "clap_path": "inbox plan-entity",
+      "operator_name": "inbox plan-entity",
+      "primary_contracts": ["canon.inbox.entity_plan.v1"],
       "action": "preserve"
     },
     {
@@ -307,6 +395,14 @@
       "action": "preserve"
     },
     {
+      "id": "canon entity index build",
+      "family": "entity",
+      "clap_path": "entity index build",
+      "operator_name": null,
+      "primary_contracts": ["canon_entity_index_build.v0"],
+      "action": "preserve"
+    },
+    {
       "id": "canon entity block",
       "family": "entity",
       "clap_path": "entity block",
@@ -315,11 +411,19 @@
       "action": "preserve"
     },
     {
-      "id": "canon entity edge",
+      "id": "canon entity candidate-recall",
       "family": "entity",
-      "clap_path": "entity edge",
-      "operator_name": "entity edge",
-      "primary_contracts": ["canon_entity_edge.v0"],
+      "clap_path": "entity candidate-recall",
+      "operator_name": null,
+      "primary_contracts": ["canon_entity_candidate_recall.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity evidence",
+      "family": "entity",
+      "clap_path": "entity evidence",
+      "operator_name": "entity evidence",
+      "primary_contracts": ["canon_entity_evidence.v1"],
       "action": "preserve"
     },
     {
@@ -328,6 +432,29 @@
       "clap_path": "entity solve",
       "operator_name": "entity solve",
       "primary_contracts": ["canon_entity_solve.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity link",
+      "family": "entity",
+      "clap_path": "entity link",
+      "operator_name": "entity link",
+      "primary_contracts": ["canon_entity_link.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity alias-withholding",
+      "family": "entity",
+      "clap_path": "entity alias-withholding",
+      "operator_name": "entity alias-withholding",
+      "primary_contracts": [
+        "canon.evaluation.alias_withholding.v1",
+        "canon.evaluation.alias_withholding.execution_manifest.v0",
+        "canon.evaluation.alias_withholding.native_engine_evidence.v0",
+        "canon.evaluation.alias_withholding.assignment_firewall.v0",
+        "canon.evaluation.alias_withholding.leakage_scan.v0",
+        "canon_entity_native_review_import.v0"
+      ],
       "action": "preserve"
     },
     {
@@ -344,6 +471,14 @@
       "clap_path": "entity promote",
       "operator_name": "entity promote",
       "primary_contracts": ["canon_entity_promote.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity apply",
+      "family": "entity",
+      "clap_path": "entity apply",
+      "operator_name": null,
+      "primary_contracts": ["canon_entity_apply.v0"],
       "action": "preserve"
     },
     {
@@ -738,7 +873,13 @@
     { "id": "canon_registry_search_index.v0", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_search_index_schema.v1", "family": "registry", "action": "preserve" },
     { "id": "canon_registry_search_key.v0", "family": "registry", "action": "preserve" },
-    { "id": "canon_resolve.v0", "family": "resolve", "action": "preserve" },
+    {
+      "id": "canon_resolve.v0",
+      "family": "resolve",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/resolve/types.rs"
+    },
     { "id": "canon_strategy_audit.v0", "family": "strategy", "action": "preserve" },
     { "id": "canon_strategy_diff.v0", "family": "strategy", "action": "preserve" },
     { "id": "canon_strategy_entry.v1", "family": "strategy", "action": "preserve" },
@@ -754,12 +895,64 @@
       "action": "preserve",
       "access_boundary": "internal_source_only",
       "source_path": "src/strategy/runner.rs"
-    }
+    },
+    { "id": "canon-offline-mirror-cache.v1", "family": "distribution", "action": "preserve" },
+    { "id": "canon.accretion.metrics.v1", "family": "telemetry", "action": "preserve" },
+    { "id": "canon.baseline.compare.v1", "family": "baseline", "action": "preserve" },
+    { "id": "canon.baseline.v1", "family": "baseline", "action": "preserve" },
+    { "id": "canon.evaluation.alias_withholding.v1", "family": "evaluation", "action": "preserve" },
+    { "id": "canon.evaluation.alias_withholding.assignment_firewall.v0", "family": "evaluation", "action": "preserve" },
+    { "id": "canon.evaluation.alias_withholding.execution_manifest.v0", "family": "evaluation", "action": "preserve" },
+    { "id": "canon.evaluation.alias_withholding.leakage_scan.v0", "family": "evaluation", "action": "preserve" },
+    { "id": "canon.evaluation.alias_withholding.native_engine_evidence.v0", "family": "evaluation", "action": "preserve" },
+    { "id": "canon.evaluation.generalization.v1", "family": "evaluation", "action": "preserve" },
+    { "id": "canon.export.projection.v1", "family": "registry", "action": "preserve" },
+    { "id": "canon.inbox.entity_plan.v1", "family": "inbox", "action": "preserve" },
+    { "id": "canon.inbox.explain.v1", "family": "inbox", "action": "preserve" },
+    { "id": "canon.inbox.list.v1", "family": "inbox", "action": "preserve" },
+    { "id": "canon.inbox.priority_policy.v1", "family": "inbox", "action": "preserve" },
+    { "id": "canon.inbox.priority_ranking.v1", "family": "inbox", "action": "preserve" },
+    { "id": "canon.inbox.review_apply.v1", "family": "inbox", "action": "preserve" },
+    { "id": "canon.inbox.review_export.v1", "family": "inbox", "action": "preserve" },
+    { "id": "canon.inbox.show.v1", "family": "inbox", "action": "preserve" },
+    { "id": "canon.inbox.stats.v1", "family": "inbox", "action": "preserve" },
+    { "id": "canon.oci.config.v1", "family": "distribution", "action": "preserve" },
+    { "id": "canon.oci.package.publish.receipt.v1", "family": "distribution", "action": "preserve" },
+    { "id": "canon.oci.package.pull.receipt.v1", "family": "distribution", "action": "preserve" },
+    { "id": "canon.offline.mirror.bundle.v1", "family": "distribution", "action": "preserve" },
+    { "id": "canon.operator.safety_matrix.v1", "family": "operator", "action": "preserve" },
+    { "id": "canon.project.cli.v1", "family": "project", "action": "preserve" },
+    { "id": "canon.project.plan.v1", "family": "project", "action": "preserve" },
+    { "id": "canon.project.run.v1", "family": "project", "action": "preserve" },
+    { "id": "canon.project.state.v1", "family": "project", "action": "preserve" },
+    { "id": "canon.registry.build.v1", "family": "registry", "action": "preserve" },
+    { "id": "canon.registry.merge_plan.v1", "family": "registry", "action": "preserve" },
+    { "id": "canon.registry.temporal_projection_contract.v1", "family": "registry", "action": "preserve" },
+    { "id": "canon.review.policy.v1", "family": "extension", "action": "preserve" },
+    { "id": "canon.strategy.tournament.v1", "family": "strategy", "action": "preserve" },
+    { "id": "canon.temporal.diff.v1", "family": "temporal", "action": "preserve" },
+    { "id": "canon.temporal.explain.v1", "family": "temporal", "action": "preserve" },
+    { "id": "canon.unresolved.groups.v1", "family": "inbox", "action": "preserve" },
+    { "id": "canon.usage_context.v1", "family": "context", "action": "preserve" },
+    { "id": "canon_entity_candidate_recall.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_dispatch_plan.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_index_build.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_link.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_link_decisions.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_link_observation_surface_bindings.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_multisource_link.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_native_review.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_native_review_import.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_native_scale_generator.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_native_scale_proof.v0", "family": "entity", "action": "preserve" }
   ],
   "incompatibility_rows": [
     {
       "id": "entity-clap-leaves-missing-from-operator-json",
       "subjects": [
+        "canon entity apply",
+        "canon entity candidate-recall",
+        "canon entity index build",
         "canon entity prepare",
         "canon entity profile list",
         "canon entity profile init"
@@ -787,7 +980,6 @@
       "id": "legacy-org-runtime-still-backs-shipped-entity-surfaces",
       "subjects": [
         "canon entity block",
-        "canon entity edge",
         "canon entity solve",
         "canon entity audit",
         "canon entity promote",
@@ -860,7 +1052,7 @@
         "strategy diff",
         "entity run",
         "entity block",
-        "entity edge",
+        "entity evidence",
         "entity solve",
         "entity audit",
         "entity promote",

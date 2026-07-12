@@ -99,28 +99,49 @@ fn entity_refusal_can_override_next_command() {
 }
 
 #[test]
-fn legacy_entity_run_refuses_dense_candidate_expansion_before_emission() {
+fn artifact_backed_entity_run_refuses_dense_candidate_expansion_before_emission() {
     let temp = tempfile::tempdir().expect("tempdir");
     let rows = temp.path().join("dense_org_mentions.csv");
     let mut csv = String::from(
         "source_row_id,record_id,dataset,record_version,field_name,org_name,doc_id,as_of_date,filing_cik,accession,filing_form,filed_date,period,source_exhibit_document_name,source_exhibit_type,source_item,role_context,capacity,capacity_normalized,reporting_party_capacity,platform_capacity,platform_capacity_normalized,subject_role,deal_key,transaction_name,alias_surfaces_json,mention_surfaces_json\n",
     );
-    for index in 0..7_100 {
-        csv.push_str(&format!(
-            "row-{index:04},record-{index:04},regab_servicer_schedules,sec10d.regab_servicer_schedule.v0,servicer_name,Trimont LLC,doc-1,2026-03-31,0000000000,0000000000-26-000001,10-K,2026-03-31,2025-12-31,fixture.htm,EX-35,1123,servicer_name:servicer,Servicer,servicer,master servicer,,,,DEAL-1,Deal 1,[],[]\n"
-        ));
+    let groups = [
+        "aurora",
+        "borealis",
+        "cascade",
+        "driftwood",
+        "emberline",
+        "frostline",
+        "granite",
+        "harborview",
+        "ironwood",
+        "juniper",
+        "keystone",
+    ];
+    for (group_index, group) in groups.iter().enumerate() {
+        for member in 0..100 {
+            let index = group_index * 100 + member;
+            csv.push_str(&format!(
+                "row-{index:04},record-{index:04},regab_servicer_schedules,sec10d.regab_servicer_schedule.v0,servicer_name,Budget {group} Shared Servicing Firm {member:03} LLC,doc-1,2026-03-31,0000000000,0000000000-26-000001,10-K,2026-03-31,2025-12-31,fixture.htm,EX-35,1123,servicer_name:servicer,Servicer,servicer,master servicer,,,,DEAL-1,Deal 1,[],[]\n"
+            ));
+        }
     }
     fs::write(&rows, csv).expect("dense rows fixture");
+    let work_dir = temp.path().join("entity-work");
 
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .args([
             "entity",
             "run",
             rows.to_str().expect("rows path"),
+            "--profile",
+            "regab_firm_identity",
             "--strategy",
             "tests/fixtures/entity/strategies/regab_firm_identity.yaml",
             "--registry",
             "tests/fixtures/entity/regab/sec10d_baseline_public/registry_snapshot/firms",
+            "--work-dir",
+            work_dir.to_str().expect("work dir path"),
             "--emit",
             "json",
             "--no-witness",
@@ -137,25 +158,44 @@ fn legacy_entity_run_refuses_dense_candidate_expansion_before_emission() {
     let value: Value = serde_json::from_slice(&output.stdout).expect("refusal JSON");
     assert_eq!(value["outcome"], "REFUSAL");
     assert_eq!(value["refusal"]["code"], "E_ENTITY_CANDIDATE_BUDGET");
+    assert_eq!(value["refusal"]["detail"]["stage"], "block");
     assert_eq!(
         value["refusal"]["detail"]["reason"],
-        "legacy_candidate_pair_budget_exceeded"
+        "candidate_budget_exceeded"
+    );
+    assert_non_empty_string(&value["refusal"]["detail"]["policy_id"]);
+    assert_eq!(
+        value["refusal"]["detail"]["policy_id"],
+        value["refusal"]["detail"]["budget"]["policy_id"]
+    );
+    let observed = value["refusal"]["detail"]["observed"]
+        .as_u64()
+        .expect("observed count");
+    let configured = value["refusal"]["detail"]["configured"]
+        .as_u64()
+        .expect("configured budget");
+    assert!(
+        observed > configured,
+        "expected native budget breach, observed={observed}, configured={configured}"
+    );
+    assert_eq!(
+        value["refusal"]["detail"]["budget"]["observed"],
+        json!(observed)
+    );
+    assert_eq!(
+        value["refusal"]["detail"]["budget"]["configured"],
+        json!(configured)
+    );
+    assert_eq!(
+        value["refusal"]["detail"]["candidate_artifact_written"],
+        json!(false)
     );
     assert_eq!(
         value["refusal"]["detail"]["partial_candidate_artifact_written"],
         json!(false)
     );
-    assert_eq!(
-        value["refusal"]["detail"]["max_bucket"]["operator_id"],
-        "exact_view:firm_core"
-    );
-    assert_eq!(value["refusal"]["detail"]["max_bucket"]["value"], "trimont");
-    assert!(
-        value["refusal"]["detail"]["observed"]
-            .as_u64()
-            .expect("observed count")
-            > 25_000_000
-    );
+    assert!(!work_dir.join("block/candidates.jsonl").exists());
+    assert!(!work_dir.join("block/block.json").exists());
 }
 
 fn assert_non_empty_string(value: &Value) {

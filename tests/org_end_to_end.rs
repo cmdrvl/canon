@@ -6,6 +6,9 @@ use std::{
 };
 use tempfile::TempDir;
 
+mod common;
+use common::{canon_bin, write_registry_metadata_full};
+
 const VALID_STRATEGY: &str = r#"
 strategy_id: bdc_org_graph.v1
 strategy_version: "0.1.0"
@@ -106,9 +109,11 @@ struct EntityFixture {
     _temp_dir: TempDir,
     registry_dir: PathBuf,
     witness_path: PathBuf,
-    result_path: PathBuf,
+    run_path: PathBuf,
+    solve_path: PathBuf,
     audit_path: PathBuf,
-    result_json: Value,
+    run_json: Value,
+    solve_json: Value,
 }
 
 impl EntityFixture {
@@ -116,7 +121,7 @@ impl EntityFixture {
         let temp_dir = TempDir::new().expect("temp dir");
         let registry_dir = temp_dir.path().join("registry");
         fs::create_dir_all(&registry_dir).expect("registry dir");
-        write_registry_metadata(&registry_dir, "bdc-issuers", "2026.03.01", 0);
+        write_org_registry_metadata(&registry_dir, "bdc-issuers", "2026.03.01", 0);
 
         let strategy_path = temp_dir.path().join("strategy.yaml");
         fs::write(&strategy_path, VALID_STRATEGY).expect("strategy");
@@ -125,7 +130,9 @@ impl EntityFixture {
         write_rows_csv(&rows_path, false);
 
         let witness_path = temp_dir.path().join("witness.jsonl");
-        let result_path = temp_dir.path().join("result.json");
+        let work_dir = temp_dir.path().join("work");
+        let run_path = work_dir.join("run.json");
+        let solve_path = work_dir.join("solve").join("solve.json");
         let audit_path = temp_dir.path().join("audit.json");
 
         let output = canon_cmd(&witness_path)
@@ -133,23 +140,25 @@ impl EntityFixture {
                 "entity",
                 "run",
                 rows_path.to_str().unwrap(),
+                "--profile",
+                "regab_firm_identity",
                 "--strategy",
                 strategy_path.to_str().unwrap(),
                 "--registry",
                 registry_dir.to_str().unwrap(),
+                "--work-dir",
+                work_dir.to_str().unwrap(),
             ])
             .assert()
             .success();
-        let result_stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
-        let result_json: Value = serde_json::from_str(&result_stdout).expect("result json");
-        fs::write(&result_path, &result_stdout).expect("write result");
+        let run_stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+        let run_json: Value = serde_json::from_str(&run_stdout).expect("run json");
+        let solve_json: Value =
+            serde_json::from_slice(&fs::read(&solve_path).expect("solve artifact"))
+                .expect("solve json");
         fs::write(
             &audit_path,
-            serde_json::to_vec_pretty(&build_matching_audit(
-                &result_json,
-                result_stdout.as_bytes(),
-            ))
-            .unwrap(),
+            serde_json::to_vec_pretty(&minimal_audit_artifact()).unwrap(),
         )
         .expect("write audit");
 
@@ -157,123 +166,72 @@ impl EntityFixture {
             _temp_dir: temp_dir,
             registry_dir,
             witness_path,
-            result_path,
+            run_path,
+            solve_path,
             audit_path,
-            result_json,
+            run_json,
+            solve_json,
         }
     }
 }
 
 fn canon_cmd(witness_path: &Path) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_canon"));
+    let mut command = canon_bin();
     command.env("EPISTEMIC_WITNESS", witness_path);
     command
 }
 
-fn write_registry_metadata(path: &Path, id: &str, version: &str, entry_count: usize) {
-    let registry_json = json!({
-        "id": id,
-        "version": version,
-        "description": "org test registry",
-        "updated": "2026-03-24",
-        "entry_count": entry_count,
-    });
-    fs::write(
-        path.join("registry.json"),
-        serde_json::to_vec_pretty(&registry_json).unwrap(),
-    )
-    .unwrap();
+fn canon_args_from_emitted_command(command: &str) -> Vec<String> {
+    let mut tokens = command
+        .split_whitespace()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    assert_eq!(tokens.first().map(String::as_str), Some("canon"));
+    tokens.remove(0);
+    tokens
+}
+
+fn write_org_registry_metadata(path: &Path, id: &str, version: &str, entry_count: usize) {
+    write_registry_metadata_full(
+        path,
+        id,
+        version,
+        entry_count,
+        "org test registry",
+        "2026-03-24",
+    );
 }
 
 fn write_rows_csv(path: &Path, malformed_side_fields: bool) {
     let mut writer = csv::Writer::from_path(path).expect("csv writer");
+    if malformed_side_fields {
+        writer
+            .write_record(["source_row_id", "field_name", "org_name"])
+            .unwrap();
+        writer
+            .write_record(["row-1", "issuer", "Acme Corp."])
+            .unwrap();
+        writer.flush().unwrap();
+        return;
+    }
+
     writer
-        .write_record([
-            "source_row_id",
-            "doc_id",
-            "as_of_date",
-            "portfolio_company",
-            "alias_surfaces_json",
-            "mention_surfaces_json",
-            "industry",
-            "investment_type",
-            "lei",
-            "figi",
-            "cik",
-        ])
+        .write_record(["source_row_id", "field_name", "org_name", "dataset"])
         .unwrap();
     writer
-        .write_record([
-            "row-1",
-            "doc-a",
-            "2026-03-01",
-            "Acme Corp.",
-            if malformed_side_fields {
-                "{\"broken\""
-            } else {
-                "[\"ACME Corporation\"]"
-            },
-            "[]",
-            "Software",
-            "Equity",
-            "LEI-1",
-            "",
-            "",
-        ])
+        .write_record(["row-1", "issuer", "Acme Corp.", "doc-a"])
         .unwrap();
     writer
-        .write_record([
-            "row-2",
-            "doc-b",
-            "2026-03-02",
-            "ACME Corporation",
-            "[\"Acme Corp.\"]",
-            "[]",
-            "Software",
-            "Equity",
-            "LEI-1",
-            "",
-            "",
-        ])
+        .write_record(["row-2", "issuer", "ACME Corporation", "doc-b"])
         .unwrap();
     writer.flush().unwrap();
 }
 
-fn build_matching_audit(result_json: &Value, result_bytes: &[u8]) -> Value {
+fn minimal_audit_artifact() -> Value {
     json!({
         "version": "canon_entity_audit.v0",
-        "result": {
-            "version": result_json["version"],
-            "content_hash": blake3_string(result_bytes),
-            "strategy_content_hash": result_json["strategy"]["content_hash"],
-            "lookup_snapshot_hash": result_json["registry"]["lookup_snapshot_hash"],
-            "escrow_snapshot_hash": result_json["registry"]["escrow_snapshot_hash"],
-        },
-        "suite": {
-            "id": "bdc_org_eval.v1"
-        },
-        "summary": {
-            "decision": "PROMOTE",
-            "hard_gates_passed": true
-        },
-        "metrics": {
-            "gold_pair_f1": 0.99,
-            "anchor_consistency": 1.0,
-            "anchor_conflicts": 0,
-            "holdout_score": 0.99,
-            "contradiction_rate": 0.0,
-            "perturbation_stability": 1.0,
-            "continuity_gain": 0.1,
-            "compression_gain": 0.1,
-            "registry_churn": 0.0,
-            "escrow_reuse_rate": 0.0
-        },
-        "gate_failures": []
+        "summary": {"decision": "PROMOTE", "hard_gates_passed": true}
     })
-}
-
-fn blake3_string(bytes: &[u8]) -> String {
-    format!("blake3:{}", blake3::hash(bytes).to_hex())
 }
 
 #[test]
@@ -291,19 +249,36 @@ fn entity_describe_includes_command_family() {
 }
 
 #[test]
-fn entity_run_and_promote_happy_path_succeeds() {
+fn entity_run_public_contract_succeeds_with_profile_and_work_dir() {
     let fixture = EntityFixture::new();
 
-    assert_eq!(fixture.result_json["version"], "canon_entity_run.v0");
-    assert_eq!(fixture.result_json["summary"]["promotable_new"], 2);
+    assert_eq!(fixture.run_json["version"], "canon_entity_run.v0");
+    assert_eq!(
+        fixture.run_json["metadata"]["profile"]["id"],
+        "regab_firm_identity"
+    );
+    assert_eq!(fixture.run_json["summary"]["counts"]["row_count"], 2);
+    assert_eq!(fixture.run_json["summary"]["labels"]["status"], "completed");
+    assert_eq!(fixture.solve_json["version"], "canon_entity_solve.v0");
+    assert_eq!(
+        fixture.solve_json["metadata"]["profile"]["id"],
+        "regab_firm_identity"
+    );
+    assert!(fixture.run_path.exists());
+    assert!(fixture.solve_path.exists());
     let witness_body = fs::read_to_string(&fixture.witness_path).expect("witness ledger");
     assert!(witness_body.contains("\"subcommand\":\"entity.run\""));
+}
+
+#[test]
+fn entity_promote_refuses_current_artifact_until_lifecycle_cutover() {
+    let fixture = EntityFixture::new();
 
     let output = canon_cmd(&fixture.witness_path)
         .args([
             "entity",
             "promote",
-            fixture.result_path.to_str().unwrap(),
+            fixture.solve_path.to_str().unwrap(),
             "--audit",
             fixture.audit_path.to_str().unwrap(),
             "--registry",
@@ -312,75 +287,61 @@ fn entity_run_and_promote_happy_path_succeeds() {
             "2026.03.02",
         ])
         .assert()
-        .success();
+        .code(2);
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
-    let payload: Value = serde_json::from_str(&stdout).expect("promote json");
+    let refusal: Value = serde_json::from_str(&stdout).expect("promote refusal");
 
-    assert_eq!(payload["version"], "canon_entity_promote.v0");
-    assert_eq!(payload["registry"]["version_before"], "2026.03.01");
-    assert_eq!(payload["registry"]["version_after"], "2026.03.02");
-    assert_eq!(payload["writes"]["new_entity_entries"], 2);
-    assert!(fixture.registry_dir.join("org-20260302.json").exists());
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_PARSE");
+    assert_eq!(
+        refusal["refusal"]["detail"]["artifact"],
+        "entity result artifact"
+    );
+    assert!(
+        refusal["refusal"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("missing field `observations`")
+    );
 }
 
 #[test]
-fn entity_review_export_and_import_happy_path_succeeds() {
+fn entity_review_export_accepts_current_native_solve_artifact() {
     let fixture = EntityFixture::new();
 
-    let export = canon_cmd(&fixture.witness_path)
-        .args([
-            "entity",
-            "review",
-            "export",
-            fixture.result_path.to_str().unwrap(),
-            "--include",
-            "resolved",
-        ])
+    let emitted_review = fixture.run_json["next_commands"]["review_export"]
+        .as_str()
+        .expect("review export handoff command");
+    assert!(emitted_review.contains(fixture.solve_path.to_str().unwrap()));
+    let export_csv = canon_cmd(&fixture.witness_path)
+        .args(canon_args_from_emitted_command(emitted_review))
         .assert()
         .success();
-    let mut review_json: Value =
-        serde_json::from_slice(&export.get_output().stdout).expect("review json");
-    assert_eq!(review_json["version"], "canon_entity_review_export.v0");
-    for item in review_json["items"].as_array_mut().expect("review items") {
-        item["decision"] = item["proposed_action"].clone();
-    }
-    let review_path = fixture.result_path.with_file_name("review.json");
-    fs::write(
-        &review_path,
-        serde_json::to_vec_pretty(&review_json).unwrap(),
-    )
-    .unwrap();
+    let review_csv = String::from_utf8(export_csv.get_output().stdout.clone()).unwrap();
+    let mut reader = csv::Reader::from_reader(review_csv.as_bytes());
+    assert!(
+        reader
+            .headers()
+            .unwrap()
+            .iter()
+            .any(|header| header == "review_id")
+    );
 
-    let import = canon_cmd(&fixture.witness_path)
-        .args([
-            "entity",
-            "review",
-            "import",
-            review_path.to_str().unwrap(),
-            "--audit",
-            fixture.audit_path.to_str().unwrap(),
-            "--registry",
-            fixture.registry_dir.to_str().unwrap(),
-            "--next-version",
-            "2026.03.03",
-        ])
+    let export_json = canon_cmd(&fixture.witness_path)
+        .args(canon_args_from_emitted_command(
+            &emitted_review.replace("--emit csv", "--emit json"),
+        ))
         .assert()
         .success();
-    let payload: Value = serde_json::from_slice(&import.get_output().stdout).expect("import json");
+    let review: Value =
+        serde_json::from_slice(&export_json.get_output().stdout).expect("review export");
 
-    assert_eq!(payload["version"], "canon_entity_review_import.v0");
-    assert!(
-        fixture
-            .registry_dir
-            .join("org-review-20260303.json")
-            .exists()
+    assert_eq!(review["version"], "canon_entity_review_queue.v0");
+    assert_eq!(
+        review["source_solve_hash"],
+        fixture.solve_json["artifact_content_hash"]
     );
-    assert!(
-        fixture
-            .registry_dir
-            .join("_reviews/20260303.proof.json")
-            .exists()
-    );
+    assert!(review["review_items"].is_array());
 }
 
 #[test]
@@ -388,7 +349,7 @@ fn entity_run_refuses_malformed_side_fields() {
     let temp_dir = TempDir::new().expect("temp dir");
     let registry_dir = temp_dir.path().join("registry");
     fs::create_dir_all(&registry_dir).unwrap();
-    write_registry_metadata(&registry_dir, "bdc-issuers", "2026.03.01", 0);
+    write_org_registry_metadata(&registry_dir, "bdc-issuers", "2026.03.01", 0);
 
     let strategy_path = temp_dir.path().join("strategy.yaml");
     fs::write(&strategy_path, VALID_STRATEGY).unwrap();
@@ -400,10 +361,14 @@ fn entity_run_refuses_malformed_side_fields() {
             "entity",
             "run",
             rows_path.to_str().unwrap(),
+            "--profile",
+            "regab_firm_identity",
             "--strategy",
             strategy_path.to_str().unwrap(),
             "--registry",
             registry_dir.to_str().unwrap(),
+            "--work-dir",
+            temp_dir.path().join("work").to_str().unwrap(),
             "--no-witness",
         ])
         .assert()
@@ -413,27 +378,18 @@ fn entity_run_refuses_malformed_side_fields() {
 
     assert_eq!(refusal["outcome"], "REFUSAL");
     assert_eq!(refusal["refusal"]["code"], "E_ENTITY_INPUT_CONTRACT");
+    assert_eq!(refusal["refusal"]["detail"]["field"], "dataset");
 }
 
 #[test]
-fn entity_promote_refuses_stale_audit_result_mismatch() {
+fn entity_promote_refuses_current_run_artifact_before_registry_checks() {
     let fixture = EntityFixture::new();
-    let mut stale_result = fixture.result_json.clone();
-    stale_result["summary"]["observations"] = json!(99);
-    let stale_result_path = fixture
-        .result_path
-        .with_file_name("result-stale-audit-mismatch.json");
-    fs::write(
-        &stale_result_path,
-        serde_json::to_vec_pretty(&stale_result).unwrap(),
-    )
-    .unwrap();
 
     let output = canon_cmd(&fixture.witness_path)
         .args([
             "entity",
             "promote",
-            stale_result_path.to_str().unwrap(),
+            fixture.run_path.to_str().unwrap(),
             "--audit",
             fixture.audit_path.to_str().unwrap(),
             "--registry",
@@ -447,72 +403,30 @@ fn entity_promote_refuses_stale_audit_result_mismatch() {
     let refusal: Value = serde_json::from_str(&stdout).expect("refusal json");
 
     assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_PARSE");
     assert!(
         refusal["refusal"]["message"]
             .as_str()
             .unwrap()
-            .contains("does not match the result artifact")
+            .contains("missing field `observations`")
     );
 }
 
 #[test]
-fn entity_promote_refuses_stale_registry_and_same_version() {
+fn entity_run_records_registry_snapshot_and_handoff_commands() {
     let fixture = EntityFixture::new();
 
-    let stale_registry = json!({
-        "id": "bdc-issuers",
-        "version": "2026.03.99",
-        "description": "org test registry",
-        "updated": "2026-03-24",
-        "entry_count": 0,
-    });
-    fs::write(
-        fixture.registry_dir.join("registry.json"),
-        serde_json::to_vec_pretty(&stale_registry).unwrap(),
-    )
-    .unwrap();
-
-    let stale_output = canon_cmd(&fixture.witness_path)
-        .args([
-            "entity",
-            "promote",
-            fixture.result_path.to_str().unwrap(),
-            "--audit",
-            fixture.audit_path.to_str().unwrap(),
-            "--registry",
-            fixture.registry_dir.to_str().unwrap(),
-            "--next-version",
-            "2026.03.02",
-        ])
-        .assert()
-        .code(2);
-    let stale_stdout = String::from_utf8(stale_output.get_output().stdout.clone()).unwrap();
-    let stale_refusal: Value = serde_json::from_str(&stale_stdout).expect("refusal json");
     assert_eq!(
-        stale_refusal["refusal"]["code"],
-        "E_ENTITY_REGISTRY_SNAPSHOT"
+        fixture.run_json["metadata"]["registry_snapshot"]["id"],
+        "bdc-issuers"
     );
-
-    write_registry_metadata(&fixture.registry_dir, "bdc-issuers", "2026.03.01", 0);
-    let same_version = canon_cmd(&fixture.witness_path)
-        .args([
-            "entity",
-            "promote",
-            fixture.result_path.to_str().unwrap(),
-            "--audit",
-            fixture.audit_path.to_str().unwrap(),
-            "--registry",
-            fixture.registry_dir.to_str().unwrap(),
-            "--next-version",
-            "2026.03.01",
-        ])
-        .assert()
-        .code(2);
-    let same_version_stdout = String::from_utf8(same_version.get_output().stdout.clone()).unwrap();
-    let same_version_refusal: Value =
-        serde_json::from_str(&same_version_stdout).expect("refusal json");
     assert_eq!(
-        same_version_refusal["refusal"]["code"],
-        "E_ENTITY_REGISTRY_SNAPSHOT"
+        fixture.run_json["metadata"]["registry_snapshot"]["version"],
+        "2026.03.01"
     );
+    let promote = fixture.run_json["next_commands"]["promote"]
+        .as_str()
+        .expect("promote next command");
+    assert!(promote.contains("work/solve/solve.json"));
+    assert!(promote.contains("--audit"));
 }

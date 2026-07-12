@@ -1,0 +1,67 @@
+{
+  "scenario": "temporal-neutral-history",
+  "before_mappings": {
+    "alias:harbor-license": "org:harbor-predecessor",
+    "alias:ledger": "org:ledger-alpha",
+    "alias:mesa-left": "org:mesa-left",
+    "alias:mesa-right": "org:mesa-right",
+    "alias:orion-old": "org:orion",
+    "alias:river-platform": "org:river-combined",
+    "alias:steady": "org:steady"
+  },
+  "after_mappings": {
+    "alias:harbor-license": "org:harbor-successor",
+    "alias:ledger": "org:ledger-beta",
+    "alias:mesa-left": "org:mesa-combined",
+    "alias:mesa-right": "org:mesa-combined",
+    "alias:orion-renamed": "org:orion",
+    "alias:river-east": "org:river-east",
+    "alias:river-west": "org:river-west",
+    "alias:steady": "org:steady"
+  },
+  "change_classes": {
+    "alias:harbor-license": "canonical_remap",
+    "alias:ledger": "correction",
+    "alias:mesa-left": "correction",
+    "alias:mesa-right": "correction",
+    "alias:orion-old": "expired_fact",
+    "alias:orion-renamed": "new_fact",
+    "alias:river-east": "new_fact",
+    "alias:river-platform": "retraction",
+    "alias:river-west": "new_fact",
+    "alias:steady": "no_change"
+  },
+  "diff_summary": {
+    "compared_subject_count": 10,
+    "changed_subject_count": 9,
+    "total_matching_change_count": 10,
+    "by_change_class": {
+      "canonical_remap": 1,
+      "correction": 3,
+      "expired_fact": 1,
+      "new_fact": 3,
+      "no_change": 1,
+      "retraction": 1
+    }
+  },
+  "evidence": {
+    "rename": [
+      "alias:orion-renamed"
+    ],
+    "merge": [
+      "alias:mesa-left",
+      "alias:mesa-right"
+    ],
+    "split": [
+      "alias:river-east",
+      "alias:river-platform",
+      "alias:river-west"
+    ],
+    "succession": [
+      "alias:harbor-license"
+    ],
+    "late_correction": [
+      "alias:ledger"
+    ]
+  }
+}

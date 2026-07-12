@@ -218,6 +218,7 @@ fn sample_block_artifact(
         index: sample_index_header(),
         strategy: sample_block_strategy(),
         candidate_records_path: "block/candidates.jsonl".to_string(),
+        candidate_diagnostics_path: "block/diagnostics.json".to_string(),
         candidate_records: candidate_records.clone(),
         bucket_assertions,
         known_surface_ids: vec![

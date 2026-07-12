@@ -14,13 +14,24 @@ use crate::{
         error::EntityRefusalKind,
         index::ngram_index::{EntityNgramIndex, EntityNgramIndexError},
         postings::{EntityPostingIndex, PostingLayoutError},
+        telemetry::{
+            CANDIDATE_RECALL_CUTOFFS, CANON_ENTITY_CANDIDATE_RECALL_VERSION, CandidateRecallAtK,
+            CandidateRecallCapEffects, CandidateRecallExactBucketReport, CandidateRecallGoldPair,
+            CandidateRecallMissForensic, CandidateRecallMissReason, CandidateRecallOperatorReport,
+            CandidateRecallOperatorSuppression, CandidateRecallRankRecord, CandidateRecallStratum,
+            CandidateRecallStratumReport, CandidateRecallSuppressionReport,
+            EntityCandidateRecallReport,
+        },
         topk::{TopKCandidateInput, TopKConfig, prune_top_k_candidates},
     },
     namekit::tfidf::RARE_TOKEN_MIN_IDF_UNITS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 
 pub const BLOCK_STAGE: &str = "block";
 pub const BLOCK_CANDIDATE_ARTIFACT: &str = "candidate_artifact";
@@ -192,6 +203,134 @@ pub struct BlockCandidateGenerationDiagnostics {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityNativeBlockScaleReport {
+    pub candidate_record_count: u64,
+    pub candidate_pairs_emitted: u64,
+    pub candidate_pairs_suppressed_by_cap: u64,
+    pub suppressed_candidate_count: u64,
+    pub large_buckets_suppressed: u64,
+    pub candidate_pairs_per_surface_p50: u64,
+    pub candidate_pairs_per_surface_p95: u64,
+    pub candidate_pairs_per_surface_p99: u64,
+    pub max_candidates_for_surface: u64,
+    pub max_candidates_for_operator: u64,
+    pub candidate_artifact_bytes: u64,
+    pub candidate_budget_validated: bool,
+    pub partial_candidate_artifact_written: bool,
+    pub operator_yield: Vec<BlockOperatorYield>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityNativeBlockBudgetRefusalProof {
+    pub refusal_code: String,
+    pub stage: String,
+    pub reason: String,
+    pub policy_id: String,
+    pub observed: u64,
+    pub configured: u64,
+    pub candidate_artifact_bytes: u64,
+    pub candidate_artifact_written: bool,
+    pub partial_candidate_artifact_written: bool,
+}
+
+pub fn native_block_scale_report(
+    diagnostics: &BlockCandidateGenerationDiagnostics,
+) -> EntityNativeBlockScaleReport {
+    EntityNativeBlockScaleReport {
+        candidate_record_count: diagnostics.candidate_record_count,
+        candidate_pairs_emitted: diagnostics.candidate_pairs_emitted,
+        candidate_pairs_suppressed_by_cap: diagnostics.candidate_pairs_suppressed_by_cap,
+        suppressed_candidate_count: diagnostics.suppressed_candidate_count,
+        large_buckets_suppressed: diagnostics.large_buckets_suppressed,
+        candidate_pairs_per_surface_p50: diagnostics.candidate_pairs_per_surface_p50,
+        candidate_pairs_per_surface_p95: diagnostics.candidate_pairs_per_surface_p95,
+        candidate_pairs_per_surface_p99: diagnostics.candidate_pairs_per_surface_p99,
+        max_candidates_for_surface: diagnostics.max_candidates_for_surface,
+        max_candidates_for_operator: diagnostics.max_candidates_for_operator,
+        candidate_artifact_bytes: diagnostics.candidate_artifact_bytes,
+        candidate_budget_validated: diagnostics.candidate_budget.validated,
+        partial_candidate_artifact_written: diagnostics.partial_candidate_artifact_written,
+        operator_yield: diagnostics.operator_yield.clone(),
+    }
+}
+
+pub fn native_block_budget_refusal_proof(
+    config: &BlockCandidateBudgetConfig,
+    observations: &[BlockCandidateBudgetObservation],
+) -> Result<EntityNativeBlockBudgetRefusalProof, Refusal> {
+    let refusal =
+        match validate_block_candidate_budget_before_artifact_emission(config, observations) {
+            Ok(_) => {
+                return Err(EntityRefusalKind::CandidateBudget.to_refusal(
+                    "Native block budget proof requires an over-limit observation",
+                    json!({
+                        "stage": BLOCK_STAGE,
+                        "reason": "budget_proof_not_over_limit",
+                        "configured_limits": {
+                            "max_candidates_per_surface": config.max_candidates_per_surface,
+                            "max_candidates_per_operator": config.max_candidates_per_operator,
+                            "max_candidates_per_run": config.max_candidates_per_run
+                        },
+                        "writes_performed": false
+                    }),
+                    Some(
+                        "Lower one native proof budget limit or increase proof observations"
+                            .to_string(),
+                    ),
+                ));
+            }
+            Err(refusal) => refusal,
+        };
+
+    Ok(EntityNativeBlockBudgetRefusalProof {
+        refusal_code: refusal_code_string(&refusal),
+        stage: refusal
+            .detail
+            .get("stage")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(BLOCK_STAGE)
+            .to_string(),
+        reason: refusal
+            .detail
+            .get("reason")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("candidate_budget_exceeded")
+            .to_string(),
+        policy_id: refusal
+            .detail
+            .get("policy_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("block.max_candidates_per_run")
+            .to_string(),
+        observed: refusal
+            .detail
+            .get("observed")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_default(),
+        configured: refusal
+            .detail
+            .get("configured")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_default(),
+        candidate_artifact_bytes: refusal
+            .detail
+            .get("candidate_artifact_bytes")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_default(),
+        candidate_artifact_written: refusal
+            .detail
+            .get("candidate_artifact_written")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        partial_candidate_artifact_written: refusal
+            .detail
+            .get("partial_candidate_artifact_written")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BlockOperatorCandidateDiagnostics {
     pub operator_id: String,
     pub input_candidate_count: u64,
@@ -207,6 +346,31 @@ pub struct BlockOperatorYield {
     pub emitted_candidate_count: u64,
     pub suppressed_candidate_count: u64,
     pub large_posting_suppressed_count: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntityBlockStageRequest<'a> {
+    pub rows: &'a Path,
+    pub profile: &'a str,
+    pub strategy: &'a Path,
+    pub registry: &'a Path,
+    pub work_dir: &'a Path,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityBlockStageOutput {
+    pub artifact: crate::entity::block_artifact::BlockCandidateArtifact,
+    pub candidates: Vec<BlockCandidateRecord>,
+    pub exact_buckets: Vec<ExactBucketAssertion>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CandidateRecallEvaluationRequest<'a> {
+    pub candidate_records: &'a [BlockCandidateRecord],
+    pub diagnostics: &'a BlockCandidateGenerationDiagnostics,
+    pub gold_pairs: &'a [CandidateRecallGoldPair],
+    pub surface_ids: &'a [String],
+    pub exact_bucket_count: u64,
 }
 
 pub fn generate_block_candidates(
@@ -296,6 +460,418 @@ pub fn generate_block_candidates(
         },
         candidates,
     })
+}
+
+pub fn evaluate_candidate_recall(
+    request: CandidateRecallEvaluationRequest<'_>,
+) -> EntityCandidateRecallReport {
+    let cutoffs = CANDIDATE_RECALL_CUTOFFS.to_vec();
+    let surface_ids = request
+        .surface_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let operator_ranks = candidate_recall_operator_ranks(request.candidate_records);
+    let operator_ids = candidate_recall_operator_ids(request.diagnostics, &operator_ranks);
+    let union_ranks = candidate_recall_union_ranks(&operator_ranks);
+
+    let union_recall_at_k =
+        candidate_recall_at_k(request.gold_pairs, &surface_ids, &union_ranks, &cutoffs);
+    let strata = CandidateRecallStratum::all()
+        .into_iter()
+        .map(|stratum| {
+            let pairs = request
+                .gold_pairs
+                .iter()
+                .filter(|pair| pair.stratum == stratum)
+                .collect::<Vec<_>>();
+            CandidateRecallStratumReport {
+                stratum,
+                recall_at_k: candidate_recall_at_k_for_refs(
+                    &pairs,
+                    &surface_ids,
+                    &union_ranks,
+                    &cutoffs,
+                ),
+            }
+        })
+        .collect::<Vec<_>>();
+    let operators = operator_ids
+        .iter()
+        .map(|operator_id| {
+            let ranks = operator_ranks.get(operator_id).cloned().unwrap_or_default();
+            let diagnostic = operator_diagnostic_totals(operator_id, request.diagnostics);
+            CandidateRecallOperatorReport {
+                operator_id: operator_id.clone(),
+                recall_at_k: candidate_recall_at_k(
+                    request.gold_pairs,
+                    &surface_ids,
+                    &ranks,
+                    &cutoffs,
+                ),
+                marginal_hits_at_50: marginal_operator_hits_at_50(
+                    operator_id,
+                    request.gold_pairs,
+                    &surface_ids,
+                    &operator_ranks,
+                ),
+                emitted_candidate_count: diagnostic.emitted_candidate_count,
+                suppressed_candidate_count: diagnostic.suppressed_candidate_count,
+                large_posting_suppressed_count: diagnostic.large_posting_suppressed_count,
+            }
+        })
+        .collect::<Vec<_>>();
+    let true_pair_ranks =
+        candidate_recall_rank_records(request.gold_pairs, &surface_ids, &operator_ranks);
+    let misses_at_50 = candidate_recall_misses_at_50(
+        request.gold_pairs,
+        &surface_ids,
+        &union_ranks,
+        &operator_ids,
+        request.diagnostics,
+    );
+
+    EntityCandidateRecallReport {
+        version: CANON_ENTITY_CANDIDATE_RECALL_VERSION.to_string(),
+        cutoffs,
+        total_gold_pairs: request.gold_pairs.len() as u64,
+        union_recall_at_k,
+        strata,
+        operators,
+        true_pair_ranks,
+        misses_at_50,
+        cap_effects: CandidateRecallCapEffects {
+            candidate_pairs_suppressed_by_cap: request
+                .diagnostics
+                .candidate_pairs_suppressed_by_cap,
+            suppressed_candidate_count: request.diagnostics.suppressed_candidate_count,
+            max_candidates_for_surface: request.diagnostics.max_candidates_for_surface,
+            max_candidates_for_operator: request.diagnostics.max_candidates_for_operator,
+            candidate_budget_validated: request.diagnostics.candidate_budget.validated,
+        },
+        large_bucket_suppression: CandidateRecallSuppressionReport {
+            large_buckets_suppressed: request.diagnostics.large_buckets_suppressed,
+            operators: request
+                .diagnostics
+                .operator_diagnostics
+                .iter()
+                .map(|diagnostic| CandidateRecallOperatorSuppression {
+                    operator_id: diagnostic.operator_id.clone(),
+                    suppressed_candidate_count: diagnostic.suppressed_candidate_count,
+                    large_posting_suppressed_count: diagnostic.large_posting_suppressed_count,
+                })
+                .collect(),
+        },
+        exact_buckets: CandidateRecallExactBucketReport {
+            exact_bucket_count: request.exact_bucket_count,
+            pair_expansion_policy: "compact_no_pair_expansion".to_string(),
+        },
+    }
+}
+
+type CandidateRecallPairKey = (String, String);
+type CandidateRecallRankMap = BTreeMap<CandidateRecallPairKey, usize>;
+type CandidateRecallOperatorRankMap = BTreeMap<String, CandidateRecallRankMap>;
+
+fn candidate_recall_operator_ranks(
+    candidate_records: &[BlockCandidateRecord],
+) -> CandidateRecallOperatorRankMap {
+    let mut ranks = CandidateRecallOperatorRankMap::new();
+    for record in candidate_records {
+        let Some(pair) = ordered_surface_pair(&record.left_surface_id, &record.right_surface_id)
+        else {
+            continue;
+        };
+        for hit in &record.block_hits {
+            let rank = hit.rank.unwrap_or(1).max(1);
+            ranks
+                .entry(hit.operator_id.clone())
+                .or_default()
+                .entry(pair.clone())
+                .and_modify(|current| *current = (*current).min(rank))
+                .or_insert(rank);
+        }
+    }
+    ranks
+}
+
+fn candidate_recall_operator_ids(
+    diagnostics: &BlockCandidateGenerationDiagnostics,
+    operator_ranks: &CandidateRecallOperatorRankMap,
+) -> Vec<String> {
+    let mut operator_ids = BTreeSet::<String>::new();
+    operator_ids.extend(operator_ranks.keys().cloned());
+    operator_ids.extend(
+        diagnostics
+            .operator_yield
+            .iter()
+            .map(|diagnostic| diagnostic.operator_id.clone()),
+    );
+    operator_ids.extend(
+        diagnostics
+            .operator_diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.operator_id.clone()),
+    );
+    operator_ids.into_iter().collect()
+}
+
+fn candidate_recall_union_ranks(
+    operator_ranks: &CandidateRecallOperatorRankMap,
+) -> CandidateRecallRankMap {
+    let mut union = CandidateRecallRankMap::new();
+    for ranks in operator_ranks.values() {
+        for (pair, rank) in ranks {
+            union
+                .entry(pair.clone())
+                .and_modify(|current| *current = (*current).min(*rank))
+                .or_insert(*rank);
+        }
+    }
+    union
+}
+
+fn candidate_recall_at_k(
+    gold_pairs: &[CandidateRecallGoldPair],
+    surface_ids: &BTreeSet<&str>,
+    ranks: &CandidateRecallRankMap,
+    cutoffs: &[usize],
+) -> Vec<CandidateRecallAtK> {
+    let refs = gold_pairs.iter().collect::<Vec<_>>();
+    candidate_recall_at_k_for_refs(&refs, surface_ids, ranks, cutoffs)
+}
+
+fn candidate_recall_at_k_for_refs(
+    gold_pairs: &[&CandidateRecallGoldPair],
+    surface_ids: &BTreeSet<&str>,
+    ranks: &CandidateRecallRankMap,
+    cutoffs: &[usize],
+) -> Vec<CandidateRecallAtK> {
+    let total = gold_pairs.len() as u64;
+    cutoffs
+        .iter()
+        .map(|k| {
+            let hits = gold_pairs
+                .iter()
+                .filter(|pair| {
+                    normalized_gold_pair_key(pair, surface_ids)
+                        .and_then(|key| ranks.get(&key).copied())
+                        .is_some_and(|rank| rank <= *k)
+                })
+                .count() as u64;
+            CandidateRecallAtK::new(*k, hits, total)
+        })
+        .collect()
+}
+
+fn candidate_recall_rank_records(
+    gold_pairs: &[CandidateRecallGoldPair],
+    surface_ids: &BTreeSet<&str>,
+    operator_ranks: &CandidateRecallOperatorRankMap,
+) -> Vec<CandidateRecallRankRecord> {
+    let mut records = Vec::new();
+    for pair in gold_pairs {
+        let Some(pair_key) = normalized_gold_pair_key(pair, surface_ids) else {
+            continue;
+        };
+        for (operator_id, ranks) in operator_ranks {
+            let Some(rank) = ranks.get(&pair_key).copied() else {
+                continue;
+            };
+            if rank <= 50 {
+                records.push(CandidateRecallRankRecord {
+                    gold_pair_id: pair.gold_pair_id.clone(),
+                    stratum: pair.stratum,
+                    operator_id: operator_id.clone(),
+                    rank,
+                });
+            }
+        }
+    }
+    records.sort_by(|left, right| {
+        left.gold_pair_id
+            .cmp(&right.gold_pair_id)
+            .then_with(|| left.operator_id.cmp(&right.operator_id))
+            .then_with(|| left.rank.cmp(&right.rank))
+    });
+    records
+}
+
+fn marginal_operator_hits_at_50(
+    operator_id: &str,
+    gold_pairs: &[CandidateRecallGoldPair],
+    surface_ids: &BTreeSet<&str>,
+    operator_ranks: &CandidateRecallOperatorRankMap,
+) -> u64 {
+    let Some(ranks) = operator_ranks.get(operator_id) else {
+        return 0;
+    };
+    gold_pairs
+        .iter()
+        .filter(|pair| {
+            let Some(pair_key) = normalized_gold_pair_key(pair, surface_ids) else {
+                return false;
+            };
+            if !ranks.get(&pair_key).is_some_and(|rank| *rank <= 50) {
+                return false;
+            }
+            operator_ranks
+                .iter()
+                .all(|(other_operator_id, other_ranks)| {
+                    other_operator_id == operator_id
+                        || !other_ranks.get(&pair_key).is_some_and(|rank| *rank <= 50)
+                })
+        })
+        .count() as u64
+}
+
+fn candidate_recall_misses_at_50(
+    gold_pairs: &[CandidateRecallGoldPair],
+    surface_ids: &BTreeSet<&str>,
+    union_ranks: &CandidateRecallRankMap,
+    operator_ids: &[String],
+    diagnostics: &BlockCandidateGenerationDiagnostics,
+) -> Vec<CandidateRecallMissForensic> {
+    let mut misses = gold_pairs
+        .iter()
+        .filter_map(|pair| {
+            let status = classify_gold_pair(pair, surface_ids);
+            let best_rank = match &status {
+                CandidateRecallGoldPairStatus::Candidate(pair_key) => {
+                    union_ranks.get(pair_key).copied()
+                }
+                CandidateRecallGoldPairStatus::Malformed
+                | CandidateRecallGoldPairStatus::ProfileMapping => None,
+            };
+            if best_rank.is_some_and(|rank| rank <= 50) {
+                return None;
+            }
+            let reason = candidate_recall_miss_reason(&status, best_rank, diagnostics);
+            Some(CandidateRecallMissForensic {
+                gold_pair_id: pair.gold_pair_id.clone(),
+                left_surface_id: pair.left_surface_id.clone(),
+                right_surface_id: pair.right_surface_id.clone(),
+                stratum: pair.stratum,
+                reason,
+                best_rank,
+                operator_ids_checked: operator_ids.to_vec(),
+                candidate_cap_effective: diagnostics.candidate_pairs_suppressed_by_cap > 0
+                    || diagnostics.suppressed_candidate_count > 0,
+                large_bucket_suppression: diagnostics.large_buckets_suppressed > 0,
+                next_action: reason.next_action().to_string(),
+            })
+        })
+        .collect::<Vec<_>>();
+    misses.sort_by(|left, right| {
+        left.gold_pair_id
+            .cmp(&right.gold_pair_id)
+            .then_with(|| left.left_surface_id.cmp(&right.left_surface_id))
+            .then_with(|| left.right_surface_id.cmp(&right.right_surface_id))
+    });
+    misses
+}
+
+fn candidate_recall_miss_reason(
+    status: &CandidateRecallGoldPairStatus,
+    best_rank: Option<usize>,
+    diagnostics: &BlockCandidateGenerationDiagnostics,
+) -> CandidateRecallMissReason {
+    match status {
+        CandidateRecallGoldPairStatus::Malformed => CandidateRecallMissReason::MalformedGold,
+        CandidateRecallGoldPairStatus::ProfileMapping => CandidateRecallMissReason::ProfileMapping,
+        CandidateRecallGoldPairStatus::Candidate(_) => {
+            if best_rank.is_some_and(|rank| rank > 50)
+                || diagnostics.candidate_pairs_suppressed_by_cap > 0
+                || diagnostics.suppressed_candidate_count > 0
+            {
+                CandidateRecallMissReason::CandidateCap
+            } else if diagnostics.large_buckets_suppressed > 0 {
+                CandidateRecallMissReason::PostingSuppression
+            } else if diagnostics
+                .operator_diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.emitted_candidate_count == 0)
+            {
+                CandidateRecallMissReason::AbsentNormalizedEvidence
+            } else {
+                CandidateRecallMissReason::OperatorCoverage
+            }
+        }
+    }
+}
+
+fn operator_diagnostic_totals(
+    operator_id: &str,
+    diagnostics: &BlockCandidateGenerationDiagnostics,
+) -> BlockOperatorCandidateDiagnostics {
+    let mut total = BlockOperatorCandidateDiagnostics {
+        operator_id: operator_id.to_string(),
+        input_candidate_count: 0,
+        eligible_candidate_count: 0,
+        emitted_candidate_count: 0,
+        suppressed_candidate_count: 0,
+        large_posting_suppressed_count: 0,
+    };
+    for diagnostic in diagnostics
+        .operator_diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.operator_id == operator_id)
+    {
+        total.input_candidate_count = total
+            .input_candidate_count
+            .saturating_add(diagnostic.input_candidate_count);
+        total.eligible_candidate_count = total
+            .eligible_candidate_count
+            .saturating_add(diagnostic.eligible_candidate_count);
+        total.emitted_candidate_count = total
+            .emitted_candidate_count
+            .saturating_add(diagnostic.emitted_candidate_count);
+        total.suppressed_candidate_count = total
+            .suppressed_candidate_count
+            .saturating_add(diagnostic.suppressed_candidate_count);
+        total.large_posting_suppressed_count = total
+            .large_posting_suppressed_count
+            .saturating_add(diagnostic.large_posting_suppressed_count);
+    }
+    total
+}
+
+enum CandidateRecallGoldPairStatus {
+    Candidate(CandidateRecallPairKey),
+    ProfileMapping,
+    Malformed,
+}
+
+fn classify_gold_pair(
+    pair: &CandidateRecallGoldPair,
+    surface_ids: &BTreeSet<&str>,
+) -> CandidateRecallGoldPairStatus {
+    if pair.left_surface_id.trim().is_empty()
+        || pair.right_surface_id.trim().is_empty()
+        || pair.left_surface_id == pair.right_surface_id
+    {
+        return CandidateRecallGoldPairStatus::Malformed;
+    }
+    if !surface_ids.contains(pair.left_surface_id.as_str())
+        || !surface_ids.contains(pair.right_surface_id.as_str())
+    {
+        return CandidateRecallGoldPairStatus::ProfileMapping;
+    }
+    ordered_surface_pair(&pair.left_surface_id, &pair.right_surface_id)
+        .map_or(CandidateRecallGoldPairStatus::Malformed, |pair| {
+            CandidateRecallGoldPairStatus::Candidate(pair)
+        })
+}
+
+fn normalized_gold_pair_key(
+    pair: &CandidateRecallGoldPair,
+    surface_ids: &BTreeSet<&str>,
+) -> Option<CandidateRecallPairKey> {
+    match classify_gold_pair(pair, surface_ids) {
+        CandidateRecallGoldPairStatus::Candidate(pair) => Some(pair),
+        CandidateRecallGoldPairStatus::ProfileMapping
+        | CandidateRecallGoldPairStatus::Malformed => None,
+    }
 }
 
 pub fn validate_block_exact_bucket_size_limit(
@@ -871,6 +1447,13 @@ fn usize_to_u64(value: usize) -> u64 {
 
 fn u128_to_u32_saturating(value: u128) -> u32 {
     u32::try_from(value).unwrap_or(u32::MAX)
+}
+
+fn refusal_code_string(refusal: &Refusal) -> String {
+    serde_json::to_value(&refusal.code)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_else(|| format!("{:?}", refusal.code))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

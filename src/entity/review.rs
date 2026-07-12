@@ -5,19 +5,25 @@
 use crate::{
     Refusal,
     entity::{
-        CANON_ENTITY_SOLVE_VERSION, EntityArtifactMetadata, EntityArtifactReference,
-        EntityDeterministicSummary,
+        CANON_ENTITY_REVIEW_VERSION_V1, CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION,
+        CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactMetadata, EntityArtifactReference,
+        EntityArtifactStageV1, EntityDeterministicSummary,
         error::EntityRefusalKind,
+        run::link::{
+            ENTITY_LINK_VERSION, EntityLinkArtifact, validate_entity_link_artifact_contract,
+        },
         schema::CANON_ENTITY_REVIEW_QUEUE_VERSION,
+        schema::{compute_entity_v1_self_hash, validate_artifact_v1_core_contract},
         solve::{
             SolveArtifact, SolveComponentDiagnostics, SolveEvidenceCut, SolveReconciliationState,
             SolveReviewGroupSeed, validate_solve_artifact_contract,
         },
     },
+    resolve::{AmbiguousRecord, CandidateScore, MatchRecord, UnmatchedRecord},
     witness,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,6 +67,12 @@ pub struct ReviewQueueRequest {
     pub relation_hints: Vec<ReviewRelationHint>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinkReviewQueueRequest {
+    pub link_artifact: EntityLinkArtifact,
+    pub include: ReviewExportInclude,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReviewQueueArtifact {
     pub version: String,
@@ -68,6 +80,8 @@ pub struct ReviewQueueArtifact {
     pub metadata: EntityArtifactMetadata,
     pub summary: EntityDeterministicSummary,
     pub source_solve_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_link_hash: Option<String>,
     pub review_items: Vec<ReviewQueueItem>,
 }
 
@@ -152,6 +166,61 @@ pub fn build_review_queue_artifact(
         metadata,
         summary,
         source_solve_hash,
+        source_link_hash: None,
+        review_items,
+    };
+    artifact.artifact_content_hash = hash_review_queue_without_self(&artifact)?;
+    artifact.metadata.artifact_content_hash = artifact.artifact_content_hash.clone();
+    Ok(artifact)
+}
+
+pub fn build_link_review_queue_artifact(
+    request: LinkReviewQueueRequest,
+) -> Result<ReviewQueueArtifact, Refusal> {
+    validate_entity_link_artifact_contract(&request.link_artifact)?;
+    if request
+        .link_artifact
+        .shared_solve_artifact
+        .content_hash
+        .trim()
+        .is_empty()
+    {
+        return Err(review_refusal(
+            EntityRefusalKind::ArtifactContract,
+            "Link review export requires a hashed solve source",
+            json!({
+                "stage": "review_export",
+                "field": "source_solve_hash"
+            }),
+        ));
+    }
+    let source_solve_hash = request
+        .link_artifact
+        .shared_solve_artifact
+        .content_hash
+        .clone();
+    let source_link_hash = request.link_artifact.artifact_content_hash.clone();
+    let mut metadata = request.link_artifact.metadata.clone();
+    metadata.artifact_content_hash.clear();
+    metadata.upstream_artifacts = vec![
+        EntityArtifactReference {
+            version: ENTITY_LINK_VERSION.to_string(),
+            content_hash: source_link_hash.clone(),
+        },
+        request.link_artifact.shared_solve_artifact.clone(),
+    ];
+    metadata.upstream_artifacts.sort_by(artifact_ref_cmp);
+
+    let mut review_items = review_items_from_link(&request.link_artifact, request.include);
+    review_items.sort_by(review_item_cmp);
+    let summary = review_queue_summary(&review_items, request.include);
+    let mut artifact = ReviewQueueArtifact {
+        version: CANON_ENTITY_REVIEW_QUEUE_VERSION.to_string(),
+        artifact_content_hash: String::new(),
+        metadata,
+        summary,
+        source_solve_hash,
+        source_link_hash: Some(source_link_hash),
         review_items,
     };
     artifact.artifact_content_hash = hash_review_queue_without_self(&artifact)?;
@@ -188,7 +257,7 @@ pub fn render_review_queue_csv(artifact: &ReviewQueueArtifact) -> Result<String,
                 item.affected_rows.to_string(),
                 item.affected_deals.to_string(),
                 item.component_id.clone(),
-                format!("{:?}", item.state).to_ascii_lowercase(),
+                review_state_label(item.state).to_string(),
                 item.proposed_action.clone(),
                 serde_json::to_string(&item.surface_ids).map_err(json_refusal)?,
                 serde_json::to_string(&item.strongest_positive_cut).map_err(json_refusal)?,
@@ -221,6 +290,198 @@ pub fn render_review_queue_csv(artifact: &ReviewQueueArtifact) -> Result<String,
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewV1ExportRequest {
+    pub result_artifact: Value,
+    pub include: ReviewExportInclude,
+}
+
+pub fn build_review_v1_artifact(request: ReviewV1ExportRequest) -> Result<Value, Refusal> {
+    validate_review_v1_source(&request.result_artifact)?;
+    let source_hash = required_value_string(
+        &request.result_artifact,
+        &["artifact_content_hash"],
+        "artifact_content_hash",
+    )?;
+    let source_version = required_value_string(&request.result_artifact, &["version"], "version")?;
+    let source_ref = source_reference_v1(&request.result_artifact)?;
+    let metadata = lifecycle_metadata_v1(
+        &request.result_artifact,
+        EntityArtifactStageV1::Review,
+        vec![source_ref],
+    )?;
+    let review_items = review_items_from_v1_result(&request.result_artifact, request.include);
+    let review_item_count = review_items.len() as u64;
+    let source_review_groups = summary_count_any(
+        &request.result_artifact,
+        &["review_groups", "review_group_count", "review_items"],
+    );
+    let effective_review_groups = review_item_count.max(source_review_groups);
+    let rows = required_value_u64(
+        &request.result_artifact,
+        &["metadata", "input", "row_count"],
+    )
+    .unwrap_or(0);
+
+    let mut artifact = json!({
+        "version": CANON_ENTITY_REVIEW_VERSION_V1,
+        "artifact_content_hash": "",
+        "metadata": metadata,
+        "summary": {
+            "counts": {
+                "review_items": review_item_count,
+                "review_group_count": effective_review_groups,
+                "review_rows_covered": rows
+            },
+            "labels": {
+                "stage": "review",
+                "include": request.include.as_str(),
+                "source_version": source_version
+            }
+        },
+        "review_queue_path": "review/queue.jsonl",
+        "source_result": {
+            "version": source_version,
+            "content_hash": source_hash
+        },
+        "include": request.include.as_str(),
+        "review_items": review_items,
+        "next_commands": {
+            "audit": "canon entity audit <RESULT.json> --suite <SUITE_DIR>",
+            "review_import": "canon entity review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER>",
+            "promote": "canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <REGISTRY> --next-version <VER>"
+        }
+    });
+    set_v1_self_hash(&mut artifact)?;
+    Ok(artifact)
+}
+
+pub fn render_review_v1_csv(artifact: &Value) -> Result<String, Refusal> {
+    validate_review_v1_artifact(artifact)?;
+    let mut writer = csv::Writer::from_writer(Vec::new());
+    writer
+        .write_record([
+            "review_id",
+            "decision",
+            "operator_id",
+            "reason_code",
+            "surface_ids_json",
+            "review_context_json",
+            "item_json",
+        ])
+        .map_err(csv_refusal)?;
+
+    let context = review_context_for_csv(artifact)?;
+    let items = artifact
+        .get("review_items")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if items.is_empty() {
+        writer
+            .write_record([
+                "__context__".to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
+                "[]".to_string(),
+                context,
+                "{}".to_string(),
+            ])
+            .map_err(csv_refusal)?;
+    } else {
+        for item in items {
+            let review_id = item
+                .get("review_id")
+                .and_then(Value::as_str)
+                .unwrap_or("review:unknown")
+                .to_string();
+            let surface_ids = item
+                .get("surface_ids")
+                .cloned()
+                .unwrap_or_else(|| Value::Array(Vec::new()));
+            writer
+                .write_record([
+                    review_id,
+                    item.get("decision")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                    item.get("operator_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                    item.get("reason_code")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                    serde_json::to_string(&surface_ids).map_err(json_refusal)?,
+                    context.clone(),
+                    serde_json::to_string(&item).map_err(json_refusal)?,
+                ])
+                .map_err(csv_refusal)?;
+        }
+    }
+
+    let bytes = writer.into_inner().map_err(|error| {
+        review_refusal(
+            EntityRefusalKind::ReviewImport,
+            "Failed to finalize review v1 CSV",
+            json!({
+                "stage": "review",
+                "error": error.to_string()
+            }),
+        )
+    })?;
+    String::from_utf8(bytes).map_err(|error| {
+        review_refusal(
+            EntityRefusalKind::ReviewImport,
+            "Review v1 CSV was not UTF-8",
+            json!({
+                "stage": "review",
+                "error": error.to_string()
+            }),
+        )
+    })
+}
+
+pub fn render_review_v1_summary(artifact: &Value) -> String {
+    let profile = value_string_or(artifact, &["metadata", "profile", "id"], "<profile>");
+    let registry_id = value_string_or(
+        artifact,
+        &["metadata", "registry_snapshot", "id"],
+        "<registry>",
+    );
+    let registry_version = value_string_or(
+        artifact,
+        &["metadata", "registry_snapshot", "version"],
+        "<version>",
+    );
+    let items = value_u64_or(artifact, &["summary", "counts", "review_items"], 0);
+    let groups = value_u64_or(artifact, &["summary", "counts", "review_group_count"], 0);
+    format!(
+        "{} review v1 registry={}@{} items={} groups={}",
+        profile, registry_id, registry_version, items, groups
+    )
+}
+
+pub fn validate_review_v1_artifact(artifact: &Value) -> Result<(), Refusal> {
+    let contract = validate_artifact_v1_core_contract(artifact)?;
+    if contract.artifact_version != CANON_ENTITY_REVIEW_VERSION_V1 {
+        return Err(review_refusal(
+            EntityRefusalKind::ArtifactContract,
+            "Review import requires a canon_entity_review.v1 artifact",
+            json!({
+                "stage": "review",
+                "field": "version",
+                "expected": CANON_ENTITY_REVIEW_VERSION_V1,
+                "actual": contract.artifact_version
+            }),
+        ));
+    }
+    Ok(())
+}
+
 fn review_items_from_solve(
     solve_artifact: &SolveArtifact,
     include: ReviewExportInclude,
@@ -245,6 +506,460 @@ fn review_items_from_solve(
             review_item(component, seed, provenance_samples, relation_hints)
         })
         .collect()
+}
+
+fn review_items_from_link(
+    link_artifact: &EntityLinkArtifact,
+    include: ReviewExportInclude,
+) -> Vec<ReviewQueueItem> {
+    let resolved = matches!(
+        include,
+        ReviewExportInclude::Resolved | ReviewExportInclude::All
+    )
+    .then(|| {
+        link_artifact
+            .decision_artifact
+            .matches
+            .iter()
+            .map(review_item_from_match)
+            .collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
+    let escrow = matches!(
+        include,
+        ReviewExportInclude::Escrow | ReviewExportInclude::All
+    )
+    .then(|| {
+        link_artifact
+            .decision_artifact
+            .ambiguous
+            .iter()
+            .map(review_item_from_ambiguous)
+            .chain(
+                link_artifact
+                    .decision_artifact
+                    .unmatched
+                    .iter()
+                    .map(review_item_from_unmatched),
+            )
+            .collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
+    resolved.into_iter().chain(escrow).collect()
+}
+
+fn review_item_from_match(record: &MatchRecord) -> ReviewQueueItem {
+    let relation_hints = link_relation_hints(
+        &record.target_id,
+        [record.reference_id.as_str()].into_iter(),
+        "directional_match",
+    );
+    let surface_ids = link_surface_ids(
+        &record.target_id,
+        [record.reference_id.as_str()].into_iter(),
+    );
+    ReviewQueueItem {
+        review_id: link_review_id(
+            "resolved",
+            &record.target_id,
+            "directional_match",
+            [record.reference_id.as_str()].into_iter(),
+        ),
+        ambiguity_key: format!("link:resolved:{}", record.target_id),
+        component_id: record.target_id.clone(),
+        state: SolveReconciliationState::ResolvedExisting,
+        proposed_action: "audit_directional_match".to_string(),
+        review_priority_units: 500,
+        priority_reasons: vec!["directional_match".to_string()],
+        affected_rows: 1,
+        affected_deals: 0,
+        surface_ids,
+        strongest_positive_cut: None,
+        strongest_negative_cut: None,
+        relation_hints,
+        provenance_samples: Vec::new(),
+    }
+}
+
+fn review_item_from_ambiguous(record: &AmbiguousRecord) -> ReviewQueueItem {
+    let candidate_ids = sorted_candidate_reference_ids(&record.candidates);
+    let relation_hints = link_relation_hints(
+        &record.target_id,
+        candidate_ids.iter().map(String::as_str),
+        "directional_candidate",
+    );
+    let surface_ids = link_surface_ids(&record.target_id, candidate_ids.iter().map(String::as_str));
+    ReviewQueueItem {
+        review_id: link_review_id(
+            "escrow",
+            &record.target_id,
+            "ambiguous",
+            candidate_ids.iter().map(String::as_str),
+        ),
+        ambiguity_key: format!("link:ambiguous:{}", record.target_id),
+        component_id: record.target_id.clone(),
+        state: SolveReconciliationState::Escrow,
+        proposed_action: "review_directional_abstention".to_string(),
+        review_priority_units: 2_000,
+        priority_reasons: vec!["ambiguous".to_string()],
+        affected_rows: 1,
+        affected_deals: 0,
+        surface_ids,
+        strongest_positive_cut: None,
+        strongest_negative_cut: None,
+        relation_hints,
+        provenance_samples: Vec::new(),
+    }
+}
+
+fn review_item_from_unmatched(record: &UnmatchedRecord) -> ReviewQueueItem {
+    let candidate_ids = record
+        .best_candidate
+        .as_ref()
+        .map(|candidate| vec![candidate.reference_id.clone()])
+        .unwrap_or_default();
+    let relation_hints = link_relation_hints(
+        &record.target_id,
+        candidate_ids.iter().map(String::as_str),
+        "directional_near_miss",
+    );
+    let surface_ids = link_surface_ids(&record.target_id, candidate_ids.iter().map(String::as_str));
+    ReviewQueueItem {
+        review_id: link_review_id(
+            "escrow",
+            &record.target_id,
+            "unmatched",
+            candidate_ids.iter().map(String::as_str),
+        ),
+        ambiguity_key: format!("link:unmatched:{}", record.target_id),
+        component_id: record.target_id.clone(),
+        state: SolveReconciliationState::Escrow,
+        proposed_action: "review_directional_abstention".to_string(),
+        review_priority_units: 2_000,
+        priority_reasons: vec!["unmatched".to_string()],
+        affected_rows: 1,
+        affected_deals: 0,
+        surface_ids,
+        strongest_positive_cut: None,
+        strongest_negative_cut: None,
+        relation_hints,
+        provenance_samples: Vec::new(),
+    }
+}
+
+fn sorted_candidate_reference_ids(candidates: &[CandidateScore]) -> Vec<String> {
+    let mut ids = candidates
+        .iter()
+        .map(|candidate| candidate.reference_id.clone())
+        .collect::<Vec<_>>();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+fn link_relation_hints<'a>(
+    target_id: &str,
+    reference_ids: impl Iterator<Item = &'a str>,
+    reason_code: &str,
+) -> Vec<ReviewRelationHint> {
+    let mut hints = reference_ids
+        .map(|reference_id| ReviewRelationHint {
+            left_surface_id: target_id.to_string(),
+            right_surface_id: reference_id.to_string(),
+            relation: "candidate".to_string(),
+            reason_code: reason_code.to_string(),
+        })
+        .collect::<Vec<_>>();
+    hints.sort_by(relation_hint_cmp);
+    hints
+}
+
+fn link_surface_ids<'a>(
+    target_id: &str,
+    reference_ids: impl Iterator<Item = &'a str>,
+) -> Vec<String> {
+    let mut surface_ids = std::iter::once(target_id.to_string())
+        .chain(reference_ids.map(str::to_string))
+        .collect::<Vec<_>>();
+    surface_ids.sort();
+    surface_ids.dedup();
+    surface_ids
+}
+
+fn link_review_id<'a>(
+    partition: &str,
+    target_id: &str,
+    reason: &str,
+    reference_ids: impl Iterator<Item = &'a str>,
+) -> String {
+    let mut references = reference_ids.map(str::to_string).collect::<Vec<_>>();
+    references.sort();
+    references.dedup();
+    let material = BTreeMap::from([
+        ("partition", json!(partition)),
+        ("target_id", json!(target_id)),
+        ("reason", json!(reason)),
+        ("reference_ids", json!(references)),
+    ]);
+    let bytes = serde_json::to_vec(&material).expect("semantic review ID material serializes");
+    format!("review:link:{}", witness::hash_bytes(&bytes))
+}
+
+fn validate_review_v1_source(artifact: &Value) -> Result<(), Refusal> {
+    let contract = validate_artifact_v1_core_contract(artifact)?;
+    if !matches!(
+        contract.artifact_version,
+        CANON_ENTITY_RUN_VERSION_V1 | CANON_ENTITY_SOLVE_VERSION_V1
+    ) {
+        return Err(review_refusal(
+            EntityRefusalKind::ArtifactContract,
+            "Review export requires a canon_entity_run.v1 or canon_entity_solve.v1 artifact",
+            json!({
+                "stage": "review",
+                "field": "version",
+                "expected": [CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1],
+                "actual": contract.artifact_version
+            }),
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn lifecycle_metadata_v1(
+    source: &Value,
+    stage: EntityArtifactStageV1,
+    upstream_artifacts: Vec<Value>,
+) -> Result<Value, Refusal> {
+    let contract = crate::entity::entity_artifact_v1_contract_for_version(match stage {
+        EntityArtifactStageV1::Review => CANON_ENTITY_REVIEW_VERSION_V1,
+        EntityArtifactStageV1::Audit => crate::entity::CANON_ENTITY_AUDIT_VERSION_V1,
+        EntityArtifactStageV1::Promote => crate::entity::CANON_ENTITY_PROMOTE_VERSION_V1,
+        EntityArtifactStageV1::Explain => crate::entity::CANON_ENTITY_EXPLAIN_VERSION_V1,
+        _ => {
+            return Err(review_refusal(
+                EntityRefusalKind::ArtifactContract,
+                "Unsupported v1 lifecycle metadata stage",
+                json!({
+                    "stage": stage.as_str()
+                }),
+            ));
+        }
+    })
+    .ok_or_else(|| {
+        review_refusal(
+            EntityRefusalKind::ArtifactContract,
+            "Missing registered v1 lifecycle contract",
+            json!({
+                "stage": stage.as_str()
+            }),
+        )
+    })?;
+    let source_metadata = source
+        .get("metadata")
+        .and_then(Value::as_object)
+        .ok_or_else(|| missing_v1_field("metadata"))?;
+    let mut metadata = source_metadata.clone();
+    metadata.insert(
+        "schema".to_string(),
+        json!({
+            "key": contract.schema_key,
+            "content_hash": format!("blake3:schema-{}", stage.as_str())
+        }),
+    );
+    let root_dir = source_metadata
+        .get("workdir")
+        .and_then(Value::as_object)
+        .and_then(|workdir| workdir.get("root_dir"))
+        .and_then(Value::as_str)
+        .unwrap_or("target/entity-work");
+    metadata.insert(
+        "workdir".to_string(),
+        json!({
+            "root_dir": root_dir,
+            "stage_dir": contract.stage_dir,
+            "artifact_relpath": contract.artifact_relpath,
+            "payload_relpath": contract.payload_relpath
+        }),
+    );
+    metadata.insert(
+        "upstream_artifacts".to_string(),
+        Value::Array(upstream_artifacts),
+    );
+    metadata.insert(
+        "artifact_content_hash".to_string(),
+        Value::String(String::new()),
+    );
+    Ok(Value::Object(metadata))
+}
+
+pub(crate) fn source_reference_v1(source: &Value) -> Result<Value, Refusal> {
+    Ok(json!({
+        "version": required_value_string(source, &["version"], "version")?,
+        "schema_key": required_value_string(source, &["metadata", "schema", "key"], "metadata.schema.key")?,
+        "schema_hash": required_value_string(source, &["metadata", "schema", "content_hash"], "metadata.schema.content_hash")?,
+        "content_hash": required_value_string(source, &["artifact_content_hash"], "artifact_content_hash")?
+    }))
+}
+
+pub(crate) fn set_v1_self_hash(artifact: &mut Value) -> Result<(), Refusal> {
+    seed_v1_self_hash_placeholders(artifact)?;
+    let hash = compute_entity_v1_self_hash(artifact)?;
+    let object = artifact
+        .as_object_mut()
+        .ok_or_else(|| missing_v1_field("$"))?;
+    object.insert(
+        "artifact_content_hash".to_string(),
+        Value::String(hash.clone()),
+    );
+    let metadata = object
+        .get_mut("metadata")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| missing_v1_field("metadata"))?;
+    metadata.insert("artifact_content_hash".to_string(), Value::String(hash));
+    Ok(())
+}
+
+fn seed_v1_self_hash_placeholders(artifact: &mut Value) -> Result<(), Refusal> {
+    let object = artifact
+        .as_object_mut()
+        .ok_or_else(|| missing_v1_field("$"))?;
+    object.insert(
+        "artifact_content_hash".to_string(),
+        Value::String("blake3:placeholder".to_string()),
+    );
+    let metadata = object
+        .get_mut("metadata")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| missing_v1_field("metadata"))?;
+    metadata.insert(
+        "artifact_content_hash".to_string(),
+        Value::String("blake3:placeholder".to_string()),
+    );
+    Ok(())
+}
+
+pub(crate) fn required_value_string<'a>(
+    value: &'a Value,
+    path: &[&str],
+    rendered_path: &str,
+) -> Result<&'a str, Refusal> {
+    descend_value(value, path)
+        .and_then(Value::as_str)
+        .filter(|text| !text.trim().is_empty())
+        .ok_or_else(|| missing_v1_field(rendered_path))
+}
+
+pub(crate) fn required_value_u64(value: &Value, path: &[&str]) -> Result<u64, Refusal> {
+    descend_value(value, path)
+        .and_then(Value::as_u64)
+        .ok_or_else(|| missing_v1_field(&path.join(".")))
+}
+
+pub(crate) fn value_string_or<'a>(value: &'a Value, path: &[&str], fallback: &'a str) -> &'a str {
+    descend_value(value, path)
+        .and_then(Value::as_str)
+        .unwrap_or(fallback)
+}
+
+pub(crate) fn value_u64_or(value: &Value, path: &[&str], fallback: u64) -> u64 {
+    descend_value(value, path)
+        .and_then(Value::as_u64)
+        .unwrap_or(fallback)
+}
+
+pub(crate) fn descend_value<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
+    let mut current = value;
+    for segment in path {
+        current = current.get(*segment)?;
+    }
+    Some(current)
+}
+
+pub(crate) fn missing_v1_field(path: &str) -> Refusal {
+    review_refusal(
+        EntityRefusalKind::ArtifactContract,
+        "Entity v1 lifecycle artifact is missing required context",
+        json!({
+            "stage": "review",
+            "field": path,
+            "writes_performed": false
+        }),
+    )
+}
+
+fn summary_count_any(value: &Value, keys: &[&str]) -> u64 {
+    keys.iter()
+        .find_map(|key| descend_value(value, &["summary", "counts", key]).and_then(Value::as_u64))
+        .unwrap_or(0)
+}
+
+fn review_items_from_v1_result(result: &Value, include: ReviewExportInclude) -> Vec<Value> {
+    let mut items = [
+        "review_items",
+        "review_groups",
+        "entities",
+        "abstentions",
+        "contradictions",
+    ]
+    .into_iter()
+    .filter_map(|field| result.get(field).and_then(Value::as_array))
+    .flat_map(|items| items.iter().cloned())
+    .filter(|item| v1_item_included(item, include))
+    .map(normalize_v1_review_item)
+    .collect::<Vec<_>>();
+    items.sort_by(|left, right| {
+        value_string_or(left, &["review_id"], "").cmp(value_string_or(right, &["review_id"], ""))
+    });
+    items
+}
+
+fn v1_item_included(item: &Value, include: ReviewExportInclude) -> bool {
+    let state = value_string_or(item, &["state"], "");
+    match include {
+        ReviewExportInclude::Resolved => {
+            matches!(state, "resolved" | "resolved_existing" | "promotable_new")
+        }
+        ReviewExportInclude::Escrow => matches!(state, "escrow" | "pending" | "abstained"),
+        ReviewExportInclude::Contradictions => matches!(state, "contradiction" | "conflict"),
+        ReviewExportInclude::All => true,
+    }
+}
+
+fn normalize_v1_review_item(item: Value) -> Value {
+    let mut object = item.as_object().cloned().unwrap_or_else(Map::new);
+    let review_id = object
+        .get("review_id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            let source = object
+                .get("component_id")
+                .or_else(|| object.get("canonical_id"))
+                .or_else(|| object.get("escrow_id"))
+                .and_then(Value::as_str)
+                .unwrap_or("item");
+            format!("review:{}", source.replace([':', '/'], "_"))
+        });
+    object.insert("review_id".to_string(), Value::String(review_id));
+    object
+        .entry("decision".to_string())
+        .or_insert_with(|| Value::String(String::new()));
+    object
+        .entry("reason_code".to_string())
+        .or_insert_with(|| Value::String("operator_review_required".to_string()));
+    Value::Object(object)
+}
+
+fn review_context_for_csv(artifact: &Value) -> Result<String, Refusal> {
+    let context = json!({
+        "version": artifact.get("version").cloned().unwrap_or(Value::Null),
+        "artifact_content_hash": artifact.get("artifact_content_hash").cloned().unwrap_or(Value::Null),
+        "metadata": artifact.get("metadata").cloned().unwrap_or(Value::Null),
+        "summary": artifact.get("summary").cloned().unwrap_or(Value::Null),
+        "review_queue_path": artifact.get("review_queue_path").cloned().unwrap_or(Value::Null),
+        "source_result": artifact.get("source_result").cloned().unwrap_or(Value::Null)
+    });
+    serde_json::to_string(&context).map_err(json_refusal)
 }
 
 fn review_item(
@@ -359,6 +1074,16 @@ fn proposed_review_action(state: SolveReconciliationState) -> String {
     .to_string()
 }
 
+const fn review_state_label(state: SolveReconciliationState) -> &'static str {
+    match state {
+        SolveReconciliationState::ResolvedExisting => "resolved_existing",
+        SolveReconciliationState::PromotableNew => "promotable_new",
+        SolveReconciliationState::Escrow => "escrow",
+        SolveReconciliationState::Conflict => "conflict",
+        SolveReconciliationState::Contradiction => "contradiction",
+    }
+}
+
 fn relation_hints_for_component(
     surface_ids: &[String],
     relation_hints: &[ReviewRelationHint],
@@ -435,6 +1160,15 @@ fn hash_review_queue_without_self(artifact: &ReviewQueueArtifact) -> Result<Stri
         )
     })?;
     Ok(witness::hash_bytes(&bytes))
+}
+
+fn artifact_ref_cmp(
+    left: &EntityArtifactReference,
+    right: &EntityArtifactReference,
+) -> std::cmp::Ordering {
+    left.version
+        .cmp(&right.version)
+        .then_with(|| left.content_hash.cmp(&right.content_hash))
 }
 
 fn stable_component_suffix(component_id: &str) -> String {

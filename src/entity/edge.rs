@@ -17,6 +17,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::path::Path;
 
 pub const EDGE_STAGE: &str = "edge";
 pub const EDGE_CANDIDATE_ARTIFACT: &str = "candidate_artifact";
@@ -112,6 +113,24 @@ impl EdgeEvidenceHit {
             explanation: explanation.into(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntityEvidenceStageRequest<'a> {
+    pub rows: &'a Path,
+    pub profile: &'a str,
+    pub strategy: &'a Path,
+    pub candidates: &'a Path,
+    pub registry: &'a Path,
+    pub work_dir: &'a Path,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityEvidenceStageOutput {
+    pub artifact: crate::entity::edge_artifact::EdgeEvidenceArtifact,
+    pub records: Vec<EdgeEvidenceRecord>,
+    pub candidate_records: Vec<crate::entity::block::BlockCandidateRecord>,
+    pub exact_buckets: Vec<crate::entity::block_artifact::ExactBucketAssertion>,
 }
 
 pub fn build_edge_evidence_record(

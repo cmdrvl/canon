@@ -1,6 +1,7 @@
 use super::{
-    DefaultIdScheme, MappingFile, PlannedMutationState, acquire_registry_mutation_guard,
-    load_registry_definition, planned_file_mutation, validate_planned_mutations,
+    DefaultIdScheme, MappingFile, PlannedFileMutation, PlannedMutationState,
+    acquire_registry_mutation_guard, hash_bytes, load_registry_definition,
+    validate_planned_mutations,
 };
 use crate::{
     Refusal, RefusalCode, RegistryMeta,
@@ -95,6 +96,8 @@ impl RegistryAddEntryOutput {
 pub struct RegistryAddEntryPlan {
     pub registry_path: PathBuf,
     pub alias_path: PathBuf,
+    expected_registry_hash: String,
+    expected_alias_hash: String,
     pub registry_bytes: Vec<u8>,
     pub alias_bytes: Vec<u8>,
     pub lint_enabled: bool,
@@ -107,6 +110,8 @@ pub fn add_entry(request: RegistryAddEntryRequest) -> Result<RegistryAddEntryOut
 }
 
 pub fn plan_add_entry(request: RegistryAddEntryRequest) -> Result<RegistryAddEntryPlan, Refusal> {
+    let _guard = acquire_registry_mutation_guard(&request.registry)
+        .map_err(|error| io_refusal(&request.registry, error))?;
     let registry_path = request.registry.join("registry.json");
     let (registry_json, registry_meta, mapping_files) = load_registry_definition(&request.registry)
         .map_err(|error| {
@@ -165,15 +170,21 @@ pub fn plan_add_entry(request: RegistryAddEntryRequest) -> Result<RegistryAddEnt
             "Repair registry.json entry_count, then rerun",
         )
     })?;
-    let registry_bytes = build_registry_bytes(
+    let registry_source_bytes =
+        fs::read(&registry_path).map_err(|error| io_refusal(&registry_path, error))?;
+    let alias_source_bytes =
+        fs::read(&alias_path).map_err(|error| io_refusal(&alias_path, error))?;
+
+    let registry_bytes = build_registry_bytes_from_source(
         &request.registry,
-        &registry_path,
+        &registry_source_bytes,
         &version_after,
         entry_count_after,
     )?;
-    let alias_bytes = build_alias_bytes(
+    let alias_bytes = build_alias_bytes_from_source(
         &request.registry,
         &alias_path,
+        &alias_source_bytes,
         &input,
         &canonical_id,
         &canonical_type,
@@ -212,6 +223,8 @@ pub fn plan_add_entry(request: RegistryAddEntryRequest) -> Result<RegistryAddEnt
     Ok(RegistryAddEntryPlan {
         registry_path,
         alias_path,
+        expected_registry_hash: hash_bytes(&registry_source_bytes),
+        expected_alias_hash: hash_bytes(&alias_source_bytes),
         registry_bytes,
         alias_bytes,
         lint_enabled: !request.no_lint,
@@ -535,7 +548,16 @@ pub(super) fn build_registry_bytes(
     entry_count_after: usize,
 ) -> Result<Vec<u8>, Refusal> {
     let bytes = fs::read(registry_path).map_err(|error| io_refusal(registry_path, error))?;
-    let mut value: Value = serde_json::from_slice(&bytes).map_err(|error| {
+    build_registry_bytes_from_source(registry, &bytes, version_after, entry_count_after)
+}
+
+fn build_registry_bytes_from_source(
+    registry: &Path,
+    source_bytes: &[u8],
+    version_after: &str,
+    entry_count_after: usize,
+) -> Result<Vec<u8>, Refusal> {
+    let mut value: Value = serde_json::from_slice(source_bytes).map_err(|error| {
         Refusal::bad_registry(
             &registry.display().to_string(),
             &format!("Failed to parse registry.json: {error}"),
@@ -558,9 +580,19 @@ pub(super) fn build_registry_bytes(
     to_pretty_bytes(&value, registry)
 }
 
-fn build_alias_bytes(
+pub(super) fn build_alias_bytes_with_entries(
     registry: &Path,
     alias_path: &Path,
+    new_entries: &[RegistryAddEntryAliasEntry],
+) -> Result<Vec<u8>, Refusal> {
+    let bytes = fs::read(alias_path).map_err(|error| io_refusal(alias_path, error))?;
+    build_alias_bytes_with_entries_from_source(registry, alias_path, &bytes, new_entries)
+}
+
+fn build_alias_bytes_from_source(
+    registry: &Path,
+    alias_path: &Path,
+    source_bytes: &[u8],
     input: &str,
     canonical_id: &str,
     canonical_type: &str,
@@ -578,16 +610,16 @@ fn build_alias_bytes(
         canonical_type: canonical_type.to_string(),
         rule_id: rule_id.to_string(),
     };
-    build_alias_bytes_with_entries(registry, alias_path, &[entry])
+    build_alias_bytes_with_entries_from_source(registry, alias_path, source_bytes, &[entry])
 }
 
-pub(super) fn build_alias_bytes_with_entries(
+fn build_alias_bytes_with_entries_from_source(
     registry: &Path,
     alias_path: &Path,
+    source_bytes: &[u8],
     new_entries: &[RegistryAddEntryAliasEntry],
 ) -> Result<Vec<u8>, Refusal> {
-    let bytes = fs::read(alias_path).map_err(|error| io_refusal(alias_path, error))?;
-    let mut entries: Vec<Value> = serde_json::from_slice(&bytes).map_err(|error| {
+    let mut entries: Vec<Value> = serde_json::from_slice(source_bytes).map_err(|error| {
         Refusal::bad_registry(
             &registry.display().to_string(),
             &format!(
@@ -624,18 +656,6 @@ pub(super) fn to_pretty_bytes<T: Serialize + ?Sized>(
 fn commit_add_entry_plan(
     mut plan: RegistryAddEntryPlan,
 ) -> Result<RegistryAddEntryOutput, Refusal> {
-    let alias_original =
-        fs::read(&plan.alias_path).map_err(|error| io_refusal(&plan.alias_path, error))?;
-    let registry_original =
-        fs::read(&plan.registry_path).map_err(|error| io_refusal(&plan.registry_path, error))?;
-    let planned_mutations = vec![
-        planned_file_mutation(&plan.alias_path, &alias_original, &plan.alias_bytes),
-        planned_file_mutation(
-            &plan.registry_path,
-            &registry_original,
-            &plan.registry_bytes,
-        ),
-    ];
     let registry_dir = plan
         .registry_path
         .parent()
@@ -643,6 +663,22 @@ fn commit_add_entry_plan(
         .to_path_buf();
     let _guard = acquire_registry_mutation_guard(&registry_dir)
         .map_err(|error| io_refusal(&registry_dir, error))?;
+    let alias_original =
+        fs::read(&plan.alias_path).map_err(|error| io_refusal(&plan.alias_path, error))?;
+    let registry_original =
+        fs::read(&plan.registry_path).map_err(|error| io_refusal(&plan.registry_path, error))?;
+    let planned_mutations = vec![
+        PlannedFileMutation {
+            path: plan.alias_path.clone(),
+            expected_hash: plan.expected_alias_hash.clone(),
+            proposed_hash: hash_bytes(&plan.alias_bytes),
+        },
+        PlannedFileMutation {
+            path: plan.registry_path.clone(),
+            expected_hash: plan.expected_registry_hash.clone(),
+            proposed_hash: hash_bytes(&plan.registry_bytes),
+        },
+    ];
     match validate_planned_mutations(&planned_mutations)
         .map_err(|error| io_refusal(&registry_dir, error))?
     {
@@ -874,4 +910,107 @@ fn stale_write_plan_refusal(
         }),
         "Rebuild the registry mutation plan against the current files, then rerun",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+    use tempfile::TempDir;
+
+    fn pretty_bytes(value: Value) -> Vec<u8> {
+        let mut bytes = serde_json::to_vec_pretty(&value).expect("serialize fixture");
+        bytes.push(b'\n');
+        bytes
+    }
+
+    fn make_registry() -> TempDir {
+        let temp = TempDir::new().expect("temp registry");
+        fs::write(
+            temp.path().join("registry.json"),
+            pretty_bytes(json!({
+                "id": "people",
+                "version": "1.0.0",
+                "description": "add-entry plan fixture",
+                "updated": "2026-07-11",
+                "entry_count": 0
+            })),
+        )
+        .expect("write registry metadata");
+        fs::write(temp.path().join("aliases.json"), pretty_bytes(json!([])))
+            .expect("write aliases");
+        temp
+    }
+
+    fn add_entry_request(
+        registry: &Path,
+        canonical_id: &str,
+        input: &str,
+    ) -> RegistryAddEntryRequest {
+        RegistryAddEntryRequest {
+            registry: registry.to_path_buf(),
+            alias_file: "aliases.json".to_string(),
+            canonical_id: canonical_id.to_string(),
+            input: input.to_string(),
+            rule_id: "MANUAL".to_string(),
+            canonical_type: Some("person".to_string()),
+            bump: None,
+            next_version: None,
+            no_lint: true,
+        }
+    }
+
+    fn read_json(path: &Path) -> Value {
+        serde_json::from_slice(&fs::read(path).expect("read JSON fixture"))
+            .expect("parse JSON fixture")
+    }
+
+    #[test]
+    fn stale_conflicting_add_entry_plan_refuses_without_lost_update() {
+        let registry = make_registry();
+        let first = plan_add_entry(add_entry_request(registry.path(), "PPL-001", "Alpha"))
+            .expect("first plan");
+        let second = plan_add_entry(add_entry_request(registry.path(), "PPL-002", "Beta"))
+            .expect("second plan");
+
+        commit_add_entry_plan(first).expect("first commit wins");
+        let refusal = commit_add_entry_plan(second).expect_err("stale second plan refuses");
+
+        assert_eq!(refusal.code, RefusalCode::EBadRegistry);
+        assert_eq!(refusal.detail["field"], "write_plan_hash");
+        assert_eq!(refusal.detail["writes_performed"], false);
+
+        let aliases = read_json(&registry.path().join("aliases.json"));
+        let entries = aliases.as_array().expect("aliases array");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["input"], "Alpha");
+        assert_eq!(entries[0]["canonical_id"], "PPL-001");
+
+        let registry_json = read_json(&registry.path().join("registry.json"));
+        assert_eq!(registry_json["version"], "1.0.1");
+        assert_eq!(registry_json["entry_count"], 1);
+    }
+
+    #[test]
+    fn identical_precomputed_add_entry_plans_replay_without_duplication() {
+        let registry = make_registry();
+        let first = plan_add_entry(add_entry_request(registry.path(), "PPL-001", "Alpha"))
+            .expect("first plan");
+        let second = plan_add_entry(add_entry_request(registry.path(), "PPL-001", "Alpha"))
+            .expect("second identical plan");
+
+        let first_output = commit_add_entry_plan(first).expect("first commit");
+        let replay_output = commit_add_entry_plan(second).expect("identical replay");
+        assert_eq!(replay_output, first_output);
+
+        let aliases = read_json(&registry.path().join("aliases.json"));
+        let entries = aliases.as_array().expect("aliases array");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["input"], "Alpha");
+        assert_eq!(entries[0]["canonical_id"], "PPL-001");
+
+        let registry_json = read_json(&registry.path().join("registry.json"));
+        assert_eq!(registry_json["version"], "1.0.1");
+        assert_eq!(registry_json["entry_count"], 1);
+    }
 }

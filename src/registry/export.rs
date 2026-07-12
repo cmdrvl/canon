@@ -3,7 +3,7 @@ use super::{
     package::{REGISTRY_PACKAGE_SCHEMA_VERSION, compile_registry_package},
 };
 use crate::{Refusal, RefusalCode, RegistryMeta};
-use chrono::{SecondsFormat, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use rusqlite::{Connection, params};
 use serde::Serialize;
 use serde_json::json;
@@ -90,6 +90,81 @@ impl RegistryExportOutput {
             self.content_hash
         )
     }
+
+    pub fn temporal_projection_contract_json(
+        &self,
+        compiled_snapshot_digest: &str,
+        valid_at: &str,
+        known_as_of: &str,
+        scope_ref: Option<&str>,
+    ) -> Result<serde_json::Value, Refusal> {
+        let compiled_snapshot_digest =
+            normalized_blake3_digest(compiled_snapshot_digest, "compiled_snapshot_digest")?;
+        let temporal = normalize_export_temporal_scope(valid_at, known_as_of)?;
+        let scope_ref = scope_ref
+            .map(|scope| normalized_non_empty(scope, "scope_ref"))
+            .transpose()?;
+        let current_format_preserves_relationship_validity =
+            matches!(self.format.as_str(), "dbt-seed" | "search-index");
+
+        Ok(json!({
+            "version": "canon.registry.temporal_projection_contract.v1",
+            "registry": {
+                "id": self.registry.id,
+                "version": self.registry.version,
+            },
+            "format": self.format,
+            "content_hash": self.content_hash,
+            "compiled_snapshot_digest": compiled_snapshot_digest,
+            "valid_at": temporal.valid_at,
+            "known_as_of": temporal.known_as_of,
+            "mode": temporal.mode,
+            "calendar": "gregorian",
+            "timezone": "UTC",
+            "precision": temporal.precision,
+            "date_only_values_are_fabricated": false,
+            "scope_ref": scope_ref,
+            "current_format": {
+                "preserves_compiled_snapshot_identity": true,
+                "preserves_relationship_validity": current_format_preserves_relationship_validity,
+                "relationship_validity_contract": if current_format_preserves_relationship_validity {
+                    "projection rows identify the compiled snapshot and relationship sidecars retain valid-time/known-time intervals"
+                } else {
+                    "format is represented as a planned projection contract only"
+                },
+            },
+            "portable_projection_formats": [
+                {
+                    "format": "dbt-seed",
+                    "compiled_snapshot_fields": ["compiled_snapshot_digest", "valid_at", "known_as_of", "scope_ref"],
+                    "relationship_validity": "sidecar_reference"
+                },
+                {
+                    "format": "search-index",
+                    "compiled_snapshot_fields": ["metadata.compiled_snapshot_digest", "metadata.valid_at", "metadata.known_as_of", "metadata.scope_ref"],
+                    "relationship_validity": "metadata_and_relation_sidecar_reference"
+                },
+                {
+                    "format": "parquet",
+                    "compiled_snapshot_fields": ["compiled_snapshot_digest", "valid_at", "known_as_of", "scope_ref"],
+                    "relationship_validity": "typed_interval_columns"
+                },
+                {
+                    "format": "rdf",
+                    "compiled_snapshot_fields": ["canon:compiledSnapshotDigest", "canon:validAt", "canon:knownAsOf", "canon:scopeRef"],
+                    "relationship_validity": "valid_time_named_graph_or_reified_interval"
+                }
+            ]
+        }))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ExportTemporalScope {
+    mode: &'static str,
+    valid_at: String,
+    known_as_of: String,
+    precision: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1158,6 +1233,100 @@ fn io_refusal(path: &Path, error: impl std::error::Error) -> Refusal {
             "Check output paths and permissions, then rerun canon registry export".to_string(),
         ),
     }
+}
+
+fn normalize_export_temporal_scope(
+    valid_at: &str,
+    known_as_of: &str,
+) -> Result<ExportTemporalScope, Refusal> {
+    let valid_at = normalized_non_empty(valid_at, "valid_at")?;
+    let known_as_of = normalized_non_empty(known_as_of, "known_as_of")?;
+    let valid_timeless = valid_at.eq_ignore_ascii_case("timeless");
+    let known_timeless = known_as_of.eq_ignore_ascii_case("timeless");
+    match (valid_timeless, known_timeless) {
+        (true, true) => Ok(ExportTemporalScope {
+            mode: "timeless",
+            valid_at: "timeless".to_string(),
+            known_as_of: "timeless".to_string(),
+            precision: "not_applicable",
+        }),
+        (true, false) | (false, true) => Err(parse_refusal(
+            "temporal export timeless mode must set both valid_at and known_as_of to timeless",
+            json!({
+                "valid_at": valid_at,
+                "known_as_of": known_as_of,
+            }),
+            "Use valid_at=timeless and known_as_of=timeless, or provide two RFC3339 instants",
+        )),
+        (false, false) => Ok(ExportTemporalScope {
+            mode: "as_of",
+            valid_at: canonical_export_instant(&valid_at, "valid_at")?,
+            known_as_of: canonical_export_instant(&known_as_of, "known_as_of")?,
+            precision: "instant",
+        }),
+    }
+}
+
+fn canonical_export_instant(value: &str, field: &str) -> Result<String, Refusal> {
+    if is_date_only(value) {
+        return Err(parse_refusal(
+            "temporal export instants must not fabricate timestamps from date-only disclosures",
+            json!({ "field": field, "value": value }),
+            "Provide an RFC3339 instant with an explicit timezone, or use timeless mode",
+        ));
+    }
+    let parsed = DateTime::parse_from_rfc3339(value).map_err(|error| {
+        parse_refusal(
+            "temporal export instants must be RFC3339 with an explicit timezone",
+            json!({ "field": field, "value": value, "error": error.to_string() }),
+            "Provide an RFC3339 instant such as 2026-07-10T12:00:00Z",
+        )
+    })?;
+    Ok(parsed
+        .with_timezone(&Utc)
+        .to_rfc3339_opts(SecondsFormat::Secs, true))
+}
+
+fn normalized_blake3_digest(value: &str, field: &str) -> Result<String, Refusal> {
+    let value = normalized_non_empty(value, field)?;
+    let Some(hex) = value.strip_prefix("blake3:") else {
+        return Err(parse_refusal(
+            "temporal export digest must use blake3:<hex> encoding",
+            json!({ "field": field, "value": value }),
+            "Pass the compiled temporal snapshot digest from the temporal compile artifact",
+        ));
+    };
+    if hex.len() == 64 && hex.chars().all(|character| character.is_ascii_hexdigit()) {
+        return Ok(format!("blake3:{}", hex.to_ascii_lowercase()));
+    }
+    Err(parse_refusal(
+        "temporal export digest must contain a 64-character hex digest",
+        json!({ "field": field, "value": value }),
+        "Pass the compiled temporal snapshot digest from the temporal compile artifact",
+    ))
+}
+
+fn normalized_non_empty(value: &str, field: &str) -> Result<String, Refusal> {
+    let normalized = value.trim().to_string();
+    if normalized.is_empty() {
+        return Err(parse_refusal(
+            "temporal export metadata field is required",
+            json!({ "field": field }),
+            "Provide all temporal projection metadata fields",
+        ));
+    }
+    Ok(normalized)
+}
+
+fn is_date_only(value: &str) -> bool {
+    value.len() == "YYYY-MM-DD".len()
+        && value.chars().enumerate().all(|(index, character)| {
+            if matches!(index, 4 | 7) {
+                character == '-'
+            } else {
+                character.is_ascii_digit()
+            }
+        })
 }
 
 fn parse_refusal(message: &str, detail: serde_json::Value, next_command: &str) -> Refusal {

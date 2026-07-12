@@ -1,0 +1,13 @@
+scenario: temporal-neutral-history
+registry_id: temporal-neutral-registry
+registry_version: 1.0.0
+policy_ref: policy.neutral-history
+snapshots:
+  - id: before
+    valid_at: "2026-04-01T00:00:00Z"
+    known_as_of: "2026-04-01T00:00:00Z"
+    policy_version: "1"
+  - id: after
+    valid_at: "2026-08-01T00:00:00Z"
+    known_as_of: "2026-09-15T00:00:00Z"
+    policy_version: "1"

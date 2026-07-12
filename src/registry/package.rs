@@ -1,5 +1,5 @@
 use super::{effective_entries, load_registry_definition};
-use crate::RegistryDiffEntry;
+use crate::{RegistryDiffEntry, RegistryDiffValue};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -10,6 +10,7 @@ use std::{
 
 pub const REGISTRY_PACKAGE_SCHEMA_VERSION: &str = "canon.registry.package.v1";
 pub const REGISTRY_PACKAGE_VERIFY_SCHEMA_VERSION: &str = "canon.registry.package.verify.v1";
+pub const REGISTRY_MERGE_PLAN_SCHEMA_VERSION: &str = "canon.registry.merge_plan.v1";
 
 const REGISTRY_METADATA_KIND: &str = "registry_metadata";
 const MAPPING_KIND: &str = "mapping";
@@ -197,6 +198,690 @@ impl RegistryPackageVerificationReport {
             self.summary.warnings,
             self.summary.info,
         )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryMergePlan {
+    pub schema_version: String,
+    pub registry: RegistryPackageRegistryIdentity,
+    pub base: RegistryMergePackageRef,
+    pub ours: RegistryMergePackageRef,
+    pub theirs: RegistryMergePackageRef,
+    pub requires_operator_decision: bool,
+    pub summary: RegistryMergeSummary,
+    pub changes: Vec<RegistryMergeChange>,
+    pub proposed_write_plan: Vec<RegistryMergeWriteAction>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryMergePackageRef {
+    pub id: String,
+    pub version: String,
+    pub content_digest: String,
+    pub entry_count: usize,
+    pub effective_mapping_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryMergeSummary {
+    pub total_inputs: usize,
+    pub unchanged: usize,
+    pub idempotent: usize,
+    pub auto_mergeable: usize,
+    pub operator_decisions: usize,
+    pub conflicts: usize,
+    pub deletions: usize,
+    pub package_changes: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegistryMergeChangeKind {
+    Additive,
+    Idempotent,
+    AliasTargetConflict,
+    CanonicalTypeConflict,
+    RuleIdConflict,
+    Deletion,
+    TemporalOverlap,
+    SidecarScope,
+    ProvenanceChange,
+    PackageMetadataChange,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegistryMergeDecision {
+    AutoMerge,
+    OperatorDecisionRequired,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryMergeChange {
+    pub kind: RegistryMergeChangeKind,
+    pub decision: RegistryMergeDecision,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base: Option<RegistryDiffValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ours: Option<RegistryDiffValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theirs: Option<RegistryDiffValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proposed_entry: Option<RegistryDiffEntry>,
+    pub explanation: String,
+    pub blast_radius: RegistryMergeBlastRadius,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryMergeBlastRadius {
+    pub affected_inputs: usize,
+    pub affected_canonical_ids: Vec<String>,
+    pub package_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegistryMergeWriteAction {
+    pub action: String,
+    pub input: String,
+    pub canonical_id: String,
+    pub canonical_type: String,
+    pub rule_id: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RegistryMergePlanErrorKind {
+    Package(RegistryPackageErrorKind),
+    UnsupportedSchemaVersion,
+    RegistryIdMismatch,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegistryMergePlanError {
+    pub kind: RegistryMergePlanErrorKind,
+    pub message: String,
+}
+
+impl RegistryMergePlanError {
+    fn new(kind: RegistryMergePlanErrorKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+        }
+    }
+}
+
+impl fmt::Display for RegistryMergePlanError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for RegistryMergePlanError {}
+
+impl From<RegistryPackageError> for RegistryMergePlanError {
+    fn from(error: RegistryPackageError) -> Self {
+        Self {
+            kind: RegistryMergePlanErrorKind::Package(error.kind),
+            message: error.message,
+        }
+    }
+}
+
+pub fn plan_registry_merge(
+    base_dir: &Path,
+    ours_dir: &Path,
+    theirs_dir: &Path,
+) -> Result<RegistryMergePlan, RegistryMergePlanError> {
+    let base = compile_registry_package(base_dir)?;
+    let ours = compile_registry_package(ours_dir)?;
+    let theirs = compile_registry_package(theirs_dir)?;
+    plan_registry_package_merge(&base, &ours, &theirs)
+}
+
+pub fn plan_registry_package_merge(
+    base: &RegistryPackage,
+    ours: &RegistryPackage,
+    theirs: &RegistryPackage,
+) -> Result<RegistryMergePlan, RegistryMergePlanError> {
+    let base = canonicalized_package(base, true)?;
+    let ours = canonicalized_package(ours, true)?;
+    let theirs = canonicalized_package(theirs, true)?;
+    validate_merge_package_identity(&base, &ours, &theirs)?;
+
+    let base_entries = entries_by_input(&base);
+    let ours_entries = entries_by_input(&ours);
+    let theirs_entries = entries_by_input(&theirs);
+    let mut inputs = BTreeSet::new();
+    inputs.extend(base_entries.keys().cloned());
+    inputs.extend(ours_entries.keys().cloned());
+    inputs.extend(theirs_entries.keys().cloned());
+
+    let mut changes = Vec::new();
+    let mut unchanged = 0usize;
+    for input in &inputs {
+        let base_entry = base_entries.get(input);
+        let ours_entry = ours_entries.get(input);
+        let theirs_entry = theirs_entries.get(input);
+        if base_entry == ours_entry && base_entry == theirs_entry {
+            unchanged += 1;
+            continue;
+        }
+        changes.push(classify_entry_merge(
+            input,
+            base_entry,
+            ours_entry,
+            theirs_entry,
+        ));
+    }
+
+    push_package_level_changes(&mut changes, &base, &ours, &theirs);
+    let proposed_write_plan = proposed_write_actions(&changes);
+    let summary = summarize_merge(inputs.len(), unchanged, &changes);
+    let requires_operator_decision = changes
+        .iter()
+        .any(|change| change.decision == RegistryMergeDecision::OperatorDecisionRequired);
+
+    Ok(RegistryMergePlan {
+        schema_version: REGISTRY_MERGE_PLAN_SCHEMA_VERSION.to_string(),
+        registry: RegistryPackageRegistryIdentity {
+            id: base.registry.id.clone(),
+            version: base.registry.version.clone(),
+        },
+        base: merge_package_ref(&base),
+        ours: merge_package_ref(&ours),
+        theirs: merge_package_ref(&theirs),
+        requires_operator_decision,
+        summary,
+        changes,
+        proposed_write_plan,
+    })
+}
+
+fn validate_merge_package_identity(
+    base: &RegistryPackage,
+    ours: &RegistryPackage,
+    theirs: &RegistryPackage,
+) -> Result<(), RegistryMergePlanError> {
+    for package in [base, ours, theirs] {
+        if package.schema_version != REGISTRY_PACKAGE_SCHEMA_VERSION {
+            return Err(RegistryMergePlanError::new(
+                RegistryMergePlanErrorKind::UnsupportedSchemaVersion,
+                format!(
+                    "unsupported registry package schema_version {}",
+                    package.schema_version
+                ),
+            ));
+        }
+    }
+
+    if base.registry.id != ours.registry.id || base.registry.id != theirs.registry.id {
+        return Err(RegistryMergePlanError::new(
+            RegistryMergePlanErrorKind::RegistryIdMismatch,
+            format!(
+                "cannot merge registry packages with different ids: base={}, ours={}, theirs={}",
+                base.registry.id, ours.registry.id, theirs.registry.id
+            ),
+        ));
+    }
+
+    Ok(())
+}
+
+fn entries_by_input(package: &RegistryPackage) -> BTreeMap<String, RegistryDiffEntry> {
+    package
+        .lookup_entries
+        .iter()
+        .cloned()
+        .map(|entry| (entry.input.clone(), entry))
+        .collect()
+}
+
+fn merge_package_ref(package: &RegistryPackage) -> RegistryMergePackageRef {
+    RegistryMergePackageRef {
+        id: package.registry.id.clone(),
+        version: package.registry.version.clone(),
+        content_digest: package.content_digest.clone(),
+        entry_count: package.entry_count,
+        effective_mapping_count: package.effective_mapping_count,
+    }
+}
+
+fn classify_entry_merge(
+    input: &str,
+    base: Option<&RegistryDiffEntry>,
+    ours: Option<&RegistryDiffEntry>,
+    theirs: Option<&RegistryDiffEntry>,
+) -> RegistryMergeChange {
+    let (kind, decision, explanation, proposed_entry) = if ours == theirs {
+        match ours {
+            Some(entry) if base.is_none() => (
+                RegistryMergeChangeKind::Idempotent,
+                RegistryMergeDecision::AutoMerge,
+                format!(
+                    "both branches add the same mapping for '{input}'; planner can propose one deterministic add-entry action"
+                ),
+                Some(entry.clone()),
+            ),
+            Some(entry) => (
+                classify_changed_entry(input, base, entry),
+                RegistryMergeDecision::OperatorDecisionRequired,
+                format!(
+                    "both branches change existing mapping for '{input}' identically; explicit registry mutation is still required"
+                ),
+                None,
+            ),
+            None => (
+                RegistryMergeChangeKind::Deletion,
+                RegistryMergeDecision::OperatorDecisionRequired,
+                format!(
+                    "both branches remove '{input}'; deletion requires an explicit registry mutation"
+                ),
+                None,
+            ),
+        }
+    } else if ours == base {
+        classify_single_branch_entry_change(input, "theirs", base, theirs)
+    } else if theirs == base {
+        classify_single_branch_entry_change(input, "ours", base, ours)
+    } else if is_temporal_entry_merge(input, base, ours, theirs) {
+        (
+            RegistryMergeChangeKind::TemporalOverlap,
+            RegistryMergeDecision::OperatorDecisionRequired,
+            format!(
+                "both branches change temporal-looking facts for '{input}'; overlapping temporal assertions require operator review"
+            ),
+            None,
+        )
+    } else if ours.is_none() || theirs.is_none() {
+        (
+            RegistryMergeChangeKind::Deletion,
+            RegistryMergeDecision::OperatorDecisionRequired,
+            format!(
+                "one branch removes '{input}' while the other changes it; deletion/change conflicts require operator review"
+            ),
+            None,
+        )
+    } else if let (Some(ours_entry), Some(theirs_entry)) = (ours, theirs) {
+        let kind = classify_conflicting_entries(ours_entry, theirs_entry);
+        (
+            kind,
+            RegistryMergeDecision::OperatorDecisionRequired,
+            format!(
+                "both branches make incompatible identity assertions for '{input}'; the planner will not choose a winner"
+            ),
+            None,
+        )
+    } else {
+        (
+            RegistryMergeChangeKind::Deletion,
+            RegistryMergeDecision::OperatorDecisionRequired,
+            format!(
+                "one branch removes '{input}' while the other changes it; deletion/change conflicts require operator review"
+            ),
+            None,
+        )
+    };
+
+    RegistryMergeChange {
+        kind,
+        decision,
+        input: Some(input.to_string()),
+        base: base.map(diff_value),
+        ours: ours.map(diff_value),
+        theirs: theirs.map(diff_value),
+        proposed_entry,
+        explanation,
+        blast_radius: entry_blast_radius(base, ours, theirs),
+    }
+}
+
+fn classify_single_branch_entry_change(
+    input: &str,
+    branch: &str,
+    base: Option<&RegistryDiffEntry>,
+    changed: Option<&RegistryDiffEntry>,
+) -> (
+    RegistryMergeChangeKind,
+    RegistryMergeDecision,
+    String,
+    Option<RegistryDiffEntry>,
+) {
+    match (base, changed) {
+        (None, Some(entry)) => (
+            RegistryMergeChangeKind::Additive,
+            RegistryMergeDecision::AutoMerge,
+            format!(
+                "{branch} adds '{input}' while the other branch is unchanged; planner can propose an add-entry action"
+            ),
+            Some(entry.clone()),
+        ),
+        (Some(_), None) => (
+            RegistryMergeChangeKind::Deletion,
+            RegistryMergeDecision::OperatorDecisionRequired,
+            format!("{branch} removes '{input}'; deletions require explicit operator review"),
+            None,
+        ),
+        (Some(_), Some(entry)) => (
+            classify_changed_entry(input, base, entry),
+            RegistryMergeDecision::OperatorDecisionRequired,
+            format!(
+                "{branch} changes existing mapping for '{input}'; existing identity assertions are not auto-rewritten"
+            ),
+            None,
+        ),
+        (None, None) => (
+            RegistryMergeChangeKind::Deletion,
+            RegistryMergeDecision::OperatorDecisionRequired,
+            format!("{branch} removes absent mapping '{input}'; operator review is required"),
+            None,
+        ),
+    }
+}
+
+fn classify_changed_entry(
+    input: &str,
+    base: Option<&RegistryDiffEntry>,
+    changed: &RegistryDiffEntry,
+) -> RegistryMergeChangeKind {
+    if is_temporal_entry_merge(input, base, Some(changed), None) {
+        return RegistryMergeChangeKind::TemporalOverlap;
+    }
+    match base {
+        Some(base) if base.canonical_id != changed.canonical_id => {
+            RegistryMergeChangeKind::AliasTargetConflict
+        }
+        Some(base) if base.canonical_type != changed.canonical_type => {
+            RegistryMergeChangeKind::CanonicalTypeConflict
+        }
+        Some(base) if base.rule_id != changed.rule_id => RegistryMergeChangeKind::RuleIdConflict,
+        _ => RegistryMergeChangeKind::PackageMetadataChange,
+    }
+}
+
+fn classify_conflicting_entries(
+    ours: &RegistryDiffEntry,
+    theirs: &RegistryDiffEntry,
+) -> RegistryMergeChangeKind {
+    if ours.canonical_id != theirs.canonical_id {
+        RegistryMergeChangeKind::AliasTargetConflict
+    } else if ours.canonical_type != theirs.canonical_type {
+        RegistryMergeChangeKind::CanonicalTypeConflict
+    } else {
+        RegistryMergeChangeKind::RuleIdConflict
+    }
+}
+
+fn diff_value(entry: &RegistryDiffEntry) -> RegistryDiffValue {
+    RegistryDiffValue {
+        canonical_id: entry.canonical_id.clone(),
+        canonical_type: entry.canonical_type.clone(),
+        rule_id: entry.rule_id.clone(),
+    }
+}
+
+fn entry_blast_radius(
+    base: Option<&RegistryDiffEntry>,
+    ours: Option<&RegistryDiffEntry>,
+    theirs: Option<&RegistryDiffEntry>,
+) -> RegistryMergeBlastRadius {
+    let mut canonical_ids = BTreeSet::new();
+    for entry in [base, ours, theirs].into_iter().flatten() {
+        canonical_ids.insert(entry.canonical_id.clone());
+    }
+    RegistryMergeBlastRadius {
+        affected_inputs: 1,
+        affected_canonical_ids: canonical_ids.into_iter().collect(),
+        package_paths: Vec::new(),
+    }
+}
+
+fn is_temporal_entry_merge(
+    input: &str,
+    base: Option<&RegistryDiffEntry>,
+    ours: Option<&RegistryDiffEntry>,
+    theirs: Option<&RegistryDiffEntry>,
+) -> bool {
+    temporal_text(input)
+        || [base, ours, theirs].into_iter().flatten().any(|entry| {
+            temporal_text(&entry.canonical_id)
+                || temporal_text(&entry.canonical_type)
+                || temporal_text(&entry.rule_id)
+        })
+}
+
+fn temporal_text(value: &str) -> bool {
+    value.to_ascii_lowercase().contains("temporal")
+}
+
+fn push_package_level_changes(
+    changes: &mut Vec<RegistryMergeChange>,
+    base: &RegistryPackage,
+    ours: &RegistryPackage,
+    theirs: &RegistryPackage,
+) {
+    push_package_change(
+        changes,
+        RegistryMergeChangeKind::PackageMetadataChange,
+        "canonical_iri_namespace",
+        vec!["registry.canonical_iri_namespace".to_string()],
+        &base.canonical_iri_namespace,
+        &ours.canonical_iri_namespace,
+        &theirs.canonical_iri_namespace,
+    );
+    push_package_change(
+        changes,
+        RegistryMergeChangeKind::ProvenanceChange,
+        "build_provenance",
+        build_provenance_paths(base, ours, theirs),
+        &base.build_provenance,
+        &ours.build_provenance,
+        &theirs.build_provenance,
+    );
+    push_package_change(
+        changes,
+        RegistryMergeChangeKind::SidecarScope,
+        "attachments",
+        attachment_paths(&base.attachments, &ours.attachments, &theirs.attachments),
+        &base.attachments,
+        &ours.attachments,
+        &theirs.attachments,
+    );
+    push_package_change(
+        changes,
+        RegistryMergeChangeKind::PackageMetadataChange,
+        "dependency_references",
+        dependency_paths(base, ours, theirs),
+        &base.dependency_references,
+        &ours.dependency_references,
+        &theirs.dependency_references,
+    );
+    push_package_change(
+        changes,
+        RegistryMergeChangeKind::SidecarScope,
+        "allowed_sidecars",
+        vec!["package.allowed_sidecars".to_string()],
+        &base.allowed_sidecars,
+        &ours.allowed_sidecars,
+        &theirs.allowed_sidecars,
+    );
+    push_package_change(
+        changes,
+        RegistryMergeChangeKind::PackageMetadataChange,
+        "deployment_projections",
+        vec!["package.deployment_projections".to_string()],
+        &base.deployment_projections,
+        &ours.deployment_projections,
+        &theirs.deployment_projections,
+    );
+    push_package_change(
+        changes,
+        RegistryMergeChangeKind::PackageMetadataChange,
+        "identity_rules",
+        vec!["package.identity".to_string()],
+        &base.identity,
+        &ours.identity,
+        &theirs.identity,
+    );
+    push_package_change(
+        changes,
+        RegistryMergeChangeKind::SidecarScope,
+        "layouts",
+        vec!["package.layouts".to_string()],
+        &base.layouts,
+        &ours.layouts,
+        &theirs.layouts,
+    );
+}
+
+fn push_package_change<T: PartialEq>(
+    changes: &mut Vec<RegistryMergeChange>,
+    mut kind: RegistryMergeChangeKind,
+    label: &str,
+    mut package_paths: Vec<String>,
+    base: &T,
+    ours: &T,
+    theirs: &T,
+) {
+    if base == ours && base == theirs {
+        return;
+    }
+
+    package_paths.sort();
+    package_paths.dedup();
+    if package_paths.iter().any(|path| temporal_text(path))
+        && base != ours
+        && base != theirs
+        && ours != theirs
+    {
+        kind = RegistryMergeChangeKind::TemporalOverlap;
+    }
+    changes.push(RegistryMergeChange {
+        kind,
+        decision: RegistryMergeDecision::OperatorDecisionRequired,
+        input: None,
+        base: None,
+        ours: None,
+        theirs: None,
+        proposed_entry: None,
+        explanation: if ours == theirs {
+            format!("{label} changed identically in both branches; package metadata still requires explicit operator review")
+        } else {
+            format!("{label} changed differently across branches; package metadata requires operator review")
+        },
+        blast_radius: RegistryMergeBlastRadius {
+            affected_inputs: 0,
+            affected_canonical_ids: Vec::new(),
+            package_paths,
+        },
+    });
+}
+
+fn attachment_paths(
+    base: &[RegistryPackageAttachmentDescriptor],
+    ours: &[RegistryPackageAttachmentDescriptor],
+    theirs: &[RegistryPackageAttachmentDescriptor],
+) -> Vec<String> {
+    base.iter()
+        .chain(ours)
+        .chain(theirs)
+        .map(|attachment| attachment.path.clone())
+        .collect()
+}
+
+fn build_provenance_paths(
+    base: &RegistryPackage,
+    ours: &RegistryPackage,
+    theirs: &RegistryPackage,
+) -> Vec<String> {
+    [base, ours, theirs]
+        .into_iter()
+        .filter_map(|package| package.build_provenance.as_ref())
+        .map(|descriptor| descriptor.path.clone())
+        .collect()
+}
+
+fn dependency_paths(
+    base: &RegistryPackage,
+    ours: &RegistryPackage,
+    theirs: &RegistryPackage,
+) -> Vec<String> {
+    [base, ours, theirs]
+        .into_iter()
+        .flat_map(|package| &package.dependency_references)
+        .map(|dependency| format!("dependency:{}@{}", dependency.id, dependency.version))
+        .collect()
+}
+
+fn proposed_write_actions(changes: &[RegistryMergeChange]) -> Vec<RegistryMergeWriteAction> {
+    changes
+        .iter()
+        .filter(|change| change.decision == RegistryMergeDecision::AutoMerge)
+        .filter_map(|change| {
+            let entry = change.proposed_entry.as_ref()?;
+            Some(RegistryMergeWriteAction {
+                action: "registry_add_entry".to_string(),
+                input: entry.input.clone(),
+                canonical_id: entry.canonical_id.clone(),
+                canonical_type: entry.canonical_type.clone(),
+                rule_id: entry.rule_id.clone(),
+                reason: match change.kind {
+                    RegistryMergeChangeKind::Additive => {
+                        "non_conflicting_branch_addition".to_string()
+                    }
+                    RegistryMergeChangeKind::Idempotent => {
+                        "idempotent_addition_in_both_branches".to_string()
+                    }
+                    _ => "auto_mergeable_registry_entry".to_string(),
+                },
+            })
+        })
+        .collect()
+}
+
+fn summarize_merge(
+    total_inputs: usize,
+    unchanged: usize,
+    changes: &[RegistryMergeChange],
+) -> RegistryMergeSummary {
+    RegistryMergeSummary {
+        total_inputs,
+        unchanged,
+        idempotent: changes
+            .iter()
+            .filter(|change| change.kind == RegistryMergeChangeKind::Idempotent)
+            .count(),
+        auto_mergeable: changes
+            .iter()
+            .filter(|change| change.decision == RegistryMergeDecision::AutoMerge)
+            .count(),
+        operator_decisions: changes
+            .iter()
+            .filter(|change| change.decision == RegistryMergeDecision::OperatorDecisionRequired)
+            .count(),
+        conflicts: changes
+            .iter()
+            .filter(|change| {
+                matches!(
+                    change.kind,
+                    RegistryMergeChangeKind::AliasTargetConflict
+                        | RegistryMergeChangeKind::CanonicalTypeConflict
+                        | RegistryMergeChangeKind::RuleIdConflict
+                        | RegistryMergeChangeKind::TemporalOverlap
+                )
+            })
+            .count(),
+        deletions: changes
+            .iter()
+            .filter(|change| change.kind == RegistryMergeChangeKind::Deletion)
+            .count(),
+        package_changes: changes
+            .iter()
+            .filter(|change| change.input.is_none())
+            .count(),
     }
 }
 

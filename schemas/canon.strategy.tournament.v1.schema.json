@@ -1,0 +1,324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.strategy.tournament.v1.schema.json",
+  "title": "canon.strategy.tournament.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "tournament_id",
+    "strategy_kind",
+    "package_digest",
+    "partitions",
+    "ranking_policy",
+    "summary",
+    "candidates",
+    "content_hash"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon.strategy.tournament.v1"
+    },
+    "tournament_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "strategy_kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "package_digest": {
+      "$ref": "#/$defs/blake3_digest"
+    },
+    "partitions": {
+      "$ref": "#/$defs/partitions"
+    },
+    "ranking_policy": {
+      "$ref": "#/$defs/ranking_policy"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/candidate_report"
+      }
+    },
+    "content_hash": {
+      "$ref": "#/$defs/blake3_digest"
+    }
+  },
+  "$defs": {
+    "blake3_digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "partition_role": {
+      "enum": [
+        "train",
+        "tune",
+        "holdout"
+      ]
+    },
+    "partitions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "train",
+        "tune",
+        "holdout"
+      ],
+      "properties": {
+        "train": {
+          "$ref": "#/$defs/partition"
+        },
+        "tune": {
+          "$ref": "#/$defs/partition"
+        },
+        "holdout": {
+          "$ref": "#/$defs/partition"
+        }
+      }
+    },
+    "partition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "partition_id",
+        "corpus_digest",
+        "labels_digest",
+        "row_count"
+      ],
+      "properties": {
+        "partition_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "corpus_digest": {
+          "$ref": "#/$defs/blake3_digest"
+        },
+        "labels_digest": {
+          "$ref": "#/$defs/blake3_digest"
+        },
+        "row_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "ranking_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "partition_role",
+        "metric_order"
+      ],
+      "properties": {
+        "partition_role": {
+          "enum": [
+            "train",
+            "tune"
+          ]
+        },
+        "metric_order": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/metric_rule"
+          }
+        }
+      }
+    },
+    "metric_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric",
+        "goal"
+      ],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "minLength": 1
+        },
+        "goal": {
+          "enum": [
+            "maximize",
+            "minimize"
+          ]
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_count",
+        "ranking_partition",
+        "ranking_metrics",
+        "holdout_evaluations",
+        "failed_candidates",
+        "decision"
+      ],
+      "properties": {
+        "candidate_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ranking_partition": {
+          "enum": [
+            "train",
+            "tune"
+          ]
+        },
+        "ranking_metrics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "holdout_evaluations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_candidates": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "decision": {
+          "const": "recommend_review_no_auto_promotion"
+        }
+      }
+    },
+    "candidate_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rank",
+        "candidate_id",
+        "package_digest",
+        "ranking_status",
+        "ranking_metrics",
+        "hard_negative_failures",
+        "resource_cost",
+        "recommendation"
+      ],
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package_digest": {
+          "$ref": "#/$defs/blake3_digest"
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "ranking_status": {
+          "enum": [
+            "passed",
+            "resource_failure",
+            "policy_denied",
+            "runner_failure"
+          ]
+        },
+        "ranking_metrics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "holdout_metrics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "hard_negative_failures": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resource_cost": {
+          "$ref": "#/$defs/resource_cost"
+        },
+        "regressions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "uncertainty": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/uncertainty"
+          }
+        },
+        "recommendation": {
+          "enum": [
+            "candidate_for_operator_review",
+            "not_selected"
+          ]
+        }
+      }
+    },
+    "resource_cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wall_ms",
+        "peak_memory_bytes",
+        "output_bytes"
+      ],
+      "properties": {
+        "wall_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "peak_memory_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "uncertainty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric",
+        "lower",
+        "upper"
+      ],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lower": {
+          "type": "integer"
+        },
+        "upper": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  "x-canon-contract": {
+    "candidate_ordering": "status, declared non-holdout ranking metrics, candidate_id",
+    "holdout_access_during_candidate_generation": "rejected",
+    "holdout_ranking_policy": "rejected",
+    "metric_values": "signed integers; fractional metrics must be pre-scaled by the caller",
+    "promotion": "never automatic; tournament output is a recommendation for explicit operator review"
+  }
+}

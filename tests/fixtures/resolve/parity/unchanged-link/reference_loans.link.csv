@@ -1,0 +1,11 @@
+loan_id,deal,trustee_loan_number,property_address,city,state,upb,rate,servicer,maturity_date,origination_date,property_type,source_row_id,deal_id,property_id,raw_tenant_name
+223232,WFCM2019-C50,1,100 Main St,Austin,TX,2450000,0.045,Wells Fargo Bank N.A.,2030-06-01,2019-04-15,retail,223232,WFCM2019-C50,1,Wells Fargo Bank N.A.
+223233,WFCM2019-C50,2,200 Market St,Denver,CO,5100000,0.052,JPMorgan,2031-07-15,2019-04-16,office,223233,WFCM2019-C50,2,JPMorgan
+223234,WFCM2019-C50,3,300 Lake Ave,Chicago,IL,3750000,0.047,KeyBank National Association,2032-01-10,2019-04-17,multifamily,223234,WFCM2019-C50,3,KeyBank National Association
+223235,WFCM2019-C50,4,400 Pine Rd,Raleigh,NC,1250000,0.039,Wells Fargo Bank N.A.,2029-12-01,2019-04-18,industrial,223235,WFCM2019-C50,4,Wells Fargo Bank N.A.
+223236,WFCM2019-C50,5,500 Oak Blvd,Columbus,OH,8200000,0.055,Midland Loan Services,2033-03-20,2019-04-19,hotel,223236,WFCM2019-C50,5,Midland Loan Services
+223237,WFCM2019-C50,6,600 Elm St,Phoenix,AZ,2250000,0.041,Wells Fargo Bank N.A.,2030-09-30,2019-04-20,retail,223237,WFCM2019-C50,6,Wells Fargo Bank N.A.
+223238,WFCM2019-C50,7,700 Hill Dr,Nashville,TN,9300000,0.061,Berkadia Commercial Mortgage,2034-11-05,2019-04-21,office,223238,WFCM2019-C50,7,Berkadia Commercial Mortgage
+223239,WFCM2019-C50,8,800 River Pkwy,Pittsburgh,PA,4100000,0.049,PNC Bank,2031-05-25,2019-04-22,multifamily,223239,WFCM2019-C50,8,PNC Bank
+223240,WFCM2019-C50,9,900 Harbor Way,Miami,FL,6600000,0.057,Wells Fargo Bank N.A.,2034-07-01,2019-04-23,retail,223240,WFCM2019-C50,9,Wells Fargo Bank N.A.
+223241,WFCM2019-C50,10,900 Harbor Way,Miami,FL,6650000,0.057,Wells Fargo Bank N.A.,2034-07-03,2019-04-23,retail,223241,WFCM2019-C50,10,Wells Fargo Bank N.A.

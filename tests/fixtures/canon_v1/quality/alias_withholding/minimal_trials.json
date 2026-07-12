@@ -1,0 +1,159 @@
+{
+  "version": "canon.evaluation.alias_withholding.v1",
+  "benchmark_id": "alias-withholding.synthetic.minimal",
+  "registry": {
+    "registry_id": "registry.synthetic.incumbents",
+    "registry_version": "2026.07.11"
+  },
+  "policy_digest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "trials": [
+    {
+      "trial_id": "trial.punctuation.attach",
+      "entity": {
+        "canonical_id": "ENT-001",
+        "display_name": "Acme Inc",
+        "aliases": [
+          {
+            "alias_id": "alias.primary",
+            "value": "Acme Inc",
+            "alias_class": "punctuation_case",
+            "reviewed": true,
+            "eligible": true
+          },
+          {
+            "alias_id": "alias.withheld",
+            "value": "ACME, Inc.",
+            "alias_class": "punctuation_case",
+            "reviewed": true,
+            "eligible": true
+          }
+        ],
+        "trusted_identifiers": [
+          {
+            "identifier_id": "id.acme.synthetic",
+            "namespace_id": "synthetic:id",
+            "value": "SYN-ACME-001"
+          }
+        ],
+        "permissible_context": [
+          {
+            "context_id": "ctx.acme.registry",
+            "context_kind": "review_summary",
+            "value": "incumbent has reviewed primary alias and trusted synthetic id"
+          }
+        ]
+      },
+      "withheld_alias": {
+        "alias_id": "alias.withheld",
+        "observation_id": "obs.withheld.acme",
+        "surface": "ACME, Inc.",
+        "alias_class": "punctuation_case",
+        "relation_policy": "same_entity_allowed"
+      },
+      "retained_alias_ids": [
+        "alias.primary"
+      ],
+      "evaluation": {
+        "candidate_rank": 1,
+        "decision": "attach",
+        "candidate_canonical_id": "ENT-001",
+        "evidence_lanes": [
+          {
+            "lane_id": "surface_tokens",
+            "support_basis_points": 9200,
+            "contradiction_basis_points": 0,
+            "public_evidence_ref": "evidence.synthetic:surface_tokens"
+          },
+          {
+            "lane_id": "trusted_identifier_context",
+            "support_basis_points": 8500,
+            "contradiction_basis_points": 0,
+            "public_evidence_ref": "evidence.synthetic:identifier_context"
+          }
+        ],
+        "abstention_action": "no_action",
+        "review_action": "promote_alias",
+        "promotion_replay": {
+          "approved": true,
+          "promoted_registry_digest": "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "exact_replay_canonical_id": "ENT-001"
+        }
+      },
+      "leakage_probes": [
+        {
+          "channel": "search_index",
+          "locator": "index/entity_terms/ENT-001",
+          "value": "Acme Inc"
+        }
+      ]
+    },
+    {
+      "trial_id": "trial.division.unsupported_guess",
+      "entity": {
+        "canonical_id": "ENT-002",
+        "display_name": "Northwind Holdings",
+        "aliases": [
+          {
+            "alias_id": "alias.holdings",
+            "value": "Northwind Holdings",
+            "alias_class": "evidence_rich",
+            "reviewed": true,
+            "eligible": true
+          },
+          {
+            "alias_id": "alias.division",
+            "value": "Northwind East Division",
+            "alias_class": "name_only",
+            "reviewed": true,
+            "eligible": true
+          }
+        ],
+        "trusted_identifiers": [
+          {
+            "identifier_id": "id.northwind.synthetic",
+            "namespace_id": "synthetic:id",
+            "value": "SYN-NORTHWIND-002"
+          }
+        ],
+        "permissible_context": [
+          {
+            "context_id": "ctx.northwind.relation",
+            "context_kind": "relation_policy",
+            "value": "division labels require explicit relation policy and do not imply identity"
+          }
+        ]
+      },
+      "withheld_alias": {
+        "alias_id": "alias.division",
+        "observation_id": "obs.withheld.division",
+        "surface": "Northwind East Division",
+        "alias_class": "name_only",
+        "relation_policy": "division_label"
+      },
+      "retained_alias_ids": [
+        "alias.holdings"
+      ],
+      "evaluation": {
+        "candidate_rank": 1,
+        "decision": "attach",
+        "candidate_canonical_id": "ENT-002",
+        "evidence_lanes": [
+          {
+            "lane_id": "name_overlap",
+            "support_basis_points": 7000,
+            "contradiction_basis_points": 0,
+            "public_evidence_ref": "evidence.synthetic:name_overlap"
+          }
+        ],
+        "abstention_action": "defer_review",
+        "review_action": "record_cannot_link",
+        "promotion_replay": {
+          "approved": false,
+          "promoted_registry_digest": "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "exact_replay_canonical_id": null
+        }
+      },
+      "leakage_probes": []
+    }
+  ]
+}

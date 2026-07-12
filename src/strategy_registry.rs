@@ -125,7 +125,7 @@ pub struct StrategyDeprecation {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StrategyRegistryEntry {
     pub entry_schema_version: String,
     pub key: StrategyEntryKey,
@@ -156,45 +156,6 @@ impl StrategyRegistryEntry {
     pub fn is_active(&self) -> bool {
         self.status == StrategyEntryStatus::Active
     }
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum StrategyRegistryEntryRaw {
-    V1(Box<StrategyRegistryEntryV1>),
-    Legacy(Box<StrategyRegistryEntryLegacy>),
-}
-
-#[derive(Deserialize)]
-struct StrategyRegistryEntryV1 {
-    #[serde(default = "default_entry_schema_version")]
-    entry_schema_version: String,
-    key: StrategyEntryKey,
-    #[serde(default)]
-    schema: Option<StrategySchemaShape>,
-    grade: StrategyAttestationGrade,
-    status: StrategyEntryStatus,
-    #[serde(default)]
-    skill_hash: Option<String>,
-    script: FrozenScript,
-    #[serde(default)]
-    proofs: Option<StrategyProofs>,
-    #[serde(default)]
-    operator_attestation: Option<StrategyOperatorAttestation>,
-    #[serde(default)]
-    deprecation: Option<StrategyDeprecation>,
-    #[serde(default = "default_rule_id")]
-    rule_id: String,
-}
-
-#[derive(Deserialize)]
-struct StrategyRegistryEntryLegacy {
-    schema_fingerprint: String,
-    schema: StrategySchemaShape,
-    skill_hash: String,
-    script: FrozenScript,
-    proofs: StrategyProofs,
-    rule_id: String,
 }
 
 struct BuiltEntryKey {
@@ -228,59 +189,6 @@ struct ReceiptInput {
     status_after: StrategyEntryStatus,
     script: FrozenScript,
     entry_order: usize,
-}
-
-impl<'de> Deserialize<'de> for StrategyRegistryEntry {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let raw = StrategyRegistryEntryRaw::deserialize(deserializer)?;
-        Ok(match raw {
-            StrategyRegistryEntryRaw::V1(entry) => {
-                let skill_hash = entry
-                    .skill_hash
-                    .unwrap_or_else(|| entry.key.skill_hash().to_string());
-                StrategyRegistryEntry {
-                    entry_schema_version: entry.entry_schema_version,
-                    key: entry.key,
-                    schema: entry.schema,
-                    grade: entry.grade,
-                    status: entry.status,
-                    skill_hash,
-                    script: entry.script,
-                    proofs: entry.proofs,
-                    operator_attestation: entry.operator_attestation,
-                    deprecation: entry.deprecation,
-                    rule_id: entry.rule_id,
-                }
-            }
-            StrategyRegistryEntryRaw::Legacy(entry) => StrategyRegistryEntry {
-                entry_schema_version: STRATEGY_ENTRY_SCHEMA_VERSION.to_string(),
-                key: StrategyEntryKey::Schema {
-                    schema_fingerprint: entry.schema_fingerprint,
-                    skill_hash: entry.skill_hash.clone(),
-                },
-                schema: Some(entry.schema),
-                grade: StrategyAttestationGrade::ProofAttested,
-                status: StrategyEntryStatus::Active,
-                skill_hash: entry.skill_hash,
-                script: entry.script,
-                proofs: Some(entry.proofs),
-                operator_attestation: None,
-                deprecation: None,
-                rule_id: entry.rule_id,
-            },
-        })
-    }
-}
-
-fn default_entry_schema_version() -> String {
-    STRATEGY_ENTRY_SCHEMA_VERSION.to_string()
-}
-
-fn default_rule_id() -> String {
-    DEFAULT_RULE_ID.to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

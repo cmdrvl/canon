@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+#[path = "entity/apply_cli.rs"]
+mod apply_cli;
 #[path = "entity/apply_streaming.rs"]
 mod apply_streaming;
 #[path = "entity/bead_parallelism_contract.rs"]
@@ -18,6 +20,8 @@ mod block_exact_bucket_hyperedge;
 mod blocking_golden;
 #[path = "entity/cache_reload.rs"]
 mod cache_reload;
+#[path = "entity/index_cli.rs"]
+mod index_cli;
 #[path = "entity/index_fixture_support.rs"]
 mod index_fixture_support;
 #[path = "entity/index_golden.rs"]
@@ -26,6 +30,10 @@ mod index_golden;
 mod index_io;
 #[path = "entity/index_ngram.rs"]
 mod index_ngram;
+#[path = "entity/lifecycle_cli.rs"]
+mod lifecycle_cli;
+#[path = "entity/pipeline_cli.rs"]
+mod pipeline_cli;
 #[path = "entity/postings_layout.rs"]
 mod postings_layout;
 #[path = "entity/prepare_artifact.rs"]

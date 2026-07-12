@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -156,6 +157,52 @@ pub struct ProjectTemporalScope {
     pub scope_ref: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectTemporalMode {
+    Timeless,
+    AsOf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectTemporalPackageRole {
+    ProviderFacts,
+    ReviewedFacts,
+    ScopeVocabulary,
+    TrustPolicy,
+    CompiledSnapshot,
+    RelationProjection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectTemporalPackageRef {
+    pub alias: String,
+    pub role: ProjectTemporalPackageRole,
+    pub id: String,
+    pub version: String,
+    pub content_hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectTemporalContract {
+    pub mode: ProjectTemporalMode,
+    pub valid_at: String,
+    pub known_as_of: String,
+    pub calendar: String,
+    pub timezone: String,
+    pub precision: String,
+    pub date_only_values_are_fabricated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fact_packages: Vec<ProjectTemporalPackageRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub policy_packages: Vec<ProjectTemporalPackageRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub projection_packages: Vec<ProjectTemporalPackageRef>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectResourceBudgets {
     pub max_input_bytes: u64,
@@ -292,6 +339,13 @@ pub fn canonical_project_manifest_bytes(manifest: &ProjectManifest) -> ProjectRe
 pub fn project_manifest_digest(manifest: &ProjectManifest) -> ProjectResult<String> {
     let bytes = canonical_project_manifest_bytes(manifest)?;
     Ok(format!("blake3:{}", blake3::hash(&bytes).to_hex()))
+}
+
+pub fn project_temporal_contract(
+    manifest: &ProjectManifest,
+) -> ProjectResult<ProjectTemporalContract> {
+    let manifest = finalize_project_manifest(manifest.clone())?;
+    build_project_temporal_contract(&manifest)
 }
 
 pub fn project_manifest_projection(
@@ -868,16 +922,7 @@ pub fn finalize_project_manifest(mut manifest: ProjectManifest) -> ProjectResult
             .transpose()?;
     }
 
-    manifest.temporal.valid_at =
-        normalized_non_empty(&manifest.temporal.valid_at, "temporal.valid_at")?;
-    manifest.temporal.known_as_of =
-        normalized_non_empty(&manifest.temporal.known_as_of, "temporal.known_as_of")?;
-    manifest.temporal.scope_ref = manifest
-        .temporal
-        .scope_ref
-        .as_deref()
-        .map(|scope| normalized_opaque_ref(scope, "temporal.scope_ref"))
-        .transpose()?;
+    manifest.temporal = normalize_temporal_scope(manifest.temporal)?;
 
     validate_review_thresholds(&manifest.review)?;
     validate_resource_budgets(&manifest.budgets)?;
@@ -890,6 +935,7 @@ pub fn finalize_project_manifest(mut manifest: ProjectManifest) -> ProjectResult
     validate_unique_secrets(&manifest.secrets)?;
     validate_unique_extensions(&manifest.extensions)?;
     validate_cross_references(&manifest)?;
+    build_project_temporal_contract(&manifest)?;
 
     sort_manifest(&mut manifest);
     Ok(manifest)
@@ -1003,6 +1049,160 @@ fn build_temporal_scope(
         known_as_of,
         scope_ref,
     })
+}
+
+fn normalize_temporal_scope(
+    mut temporal: ProjectTemporalScope,
+) -> ProjectResult<ProjectTemporalScope> {
+    temporal.valid_at = normalized_non_empty(&temporal.valid_at, "temporal.valid_at")?;
+    temporal.known_as_of = normalized_non_empty(&temporal.known_as_of, "temporal.known_as_of")?;
+
+    let valid_timeless = is_timeless_marker(&temporal.valid_at);
+    let known_timeless = is_timeless_marker(&temporal.known_as_of);
+    match (valid_timeless, known_timeless) {
+        (true, true) => {
+            temporal.valid_at = "timeless".to_string();
+            temporal.known_as_of = "timeless".to_string();
+        }
+        (true, false) | (false, true) => {
+            return Err(compatibility_policy_error(
+                "temporal timeless mode must set both valid_at and known_as_of to \"timeless\"",
+            ));
+        }
+        (false, false) => {
+            temporal.valid_at = canonical_instant(&temporal.valid_at, "temporal.valid_at")?;
+            temporal.known_as_of =
+                canonical_instant(&temporal.known_as_of, "temporal.known_as_of")?;
+        }
+    }
+
+    temporal.scope_ref = temporal
+        .scope_ref
+        .as_deref()
+        .map(|scope| normalized_opaque_ref(scope, "temporal.scope_ref"))
+        .transpose()?;
+    Ok(temporal)
+}
+
+fn build_project_temporal_contract(
+    manifest: &ProjectManifest,
+) -> ProjectResult<ProjectTemporalContract> {
+    let mode = if is_timeless_marker(&manifest.temporal.valid_at)
+        && is_timeless_marker(&manifest.temporal.known_as_of)
+    {
+        ProjectTemporalMode::Timeless
+    } else {
+        ProjectTemporalMode::AsOf
+    };
+
+    let mut fact_packages = Vec::new();
+    let mut policy_packages = Vec::new();
+    let mut projection_packages = Vec::new();
+    for package in &manifest.packages {
+        let Some(role) = temporal_package_role(package) else {
+            continue;
+        };
+        let package_ref = ProjectTemporalPackageRef {
+            alias: package.alias.clone(),
+            role,
+            id: package.id.clone(),
+            version: package.version.clone(),
+            content_hash: package.content_hash.clone(),
+        };
+        match role {
+            ProjectTemporalPackageRole::ProviderFacts
+            | ProjectTemporalPackageRole::ReviewedFacts => fact_packages.push(package_ref),
+            ProjectTemporalPackageRole::ScopeVocabulary
+            | ProjectTemporalPackageRole::TrustPolicy => policy_packages.push(package_ref),
+            ProjectTemporalPackageRole::CompiledSnapshot
+            | ProjectTemporalPackageRole::RelationProjection => {
+                projection_packages.push(package_ref)
+            }
+        }
+    }
+
+    fact_packages.sort_by(|left, right| left.alias.cmp(&right.alias));
+    policy_packages.sort_by(|left, right| left.alias.cmp(&right.alias));
+    projection_packages.sort_by(|left, right| left.alias.cmp(&right.alias));
+
+    Ok(ProjectTemporalContract {
+        mode,
+        valid_at: manifest.temporal.valid_at.clone(),
+        known_as_of: manifest.temporal.known_as_of.clone(),
+        calendar: "gregorian".to_string(),
+        timezone: "UTC".to_string(),
+        precision: if mode == ProjectTemporalMode::Timeless {
+            "not_applicable".to_string()
+        } else {
+            "instant".to_string()
+        },
+        date_only_values_are_fabricated: false,
+        scope_ref: manifest.temporal.scope_ref.clone(),
+        fact_packages,
+        policy_packages,
+        projection_packages,
+    })
+}
+
+fn temporal_package_role(package: &ProjectPackageBinding) -> Option<ProjectTemporalPackageRole> {
+    let alias = temporal_signal(&package.alias);
+    let id = temporal_signal(&package.id);
+    let signal = format!("{alias}.{id}");
+    if signal.contains("provider.fact") || signal.contains("facts.provider") {
+        Some(ProjectTemporalPackageRole::ProviderFacts)
+    } else if signal.contains("reviewed.fact") || signal.contains("facts.reviewed") {
+        Some(ProjectTemporalPackageRole::ReviewedFacts)
+    } else if signal.contains("scope.vocab") || signal.contains("vocabulary.scope") {
+        Some(ProjectTemporalPackageRole::ScopeVocabulary)
+    } else if signal.contains("trust.policy") || signal.contains("policy.trust") {
+        Some(ProjectTemporalPackageRole::TrustPolicy)
+    } else if signal.contains("compiled.snapshot")
+        || signal.contains("temporal.snapshot")
+        || signal.contains("snapshot.temporal")
+    {
+        Some(ProjectTemporalPackageRole::CompiledSnapshot)
+    } else if signal.contains("relation.projection")
+        || signal.contains("relationship.projection")
+        || signal.contains("relation.sidecar")
+    {
+        Some(ProjectTemporalPackageRole::RelationProjection)
+    } else {
+        None
+    }
+}
+
+fn temporal_signal(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| match character {
+            '-' | '_' | ':' | '/' => '.',
+            other => other.to_ascii_lowercase(),
+        })
+        .collect()
+}
+
+fn is_timeless_marker(value: &str) -> bool {
+    value.trim().eq_ignore_ascii_case("timeless")
+}
+
+fn canonical_instant(value: &str, field: &str) -> ProjectResult<String> {
+    let trimmed = normalized_non_empty(value, field)?;
+    if trimmed.len() == "YYYY-MM-DD".len()
+        && trimmed.chars().enumerate().all(|(index, character)| {
+            matches!(index, 4 | 7) && character == '-'
+                || !matches!(index, 4 | 7) && character.is_ascii_digit()
+        })
+    {
+        return Err(compatibility_policy_error(format!(
+            "{field} must be an RFC3339 instant with an explicit timezone; date-only values must not be promoted to fabricated timestamps"
+        )));
+    }
+    let parsed = DateTime::parse_from_rfc3339(&trimmed).map_err(|error| {
+        compatibility_policy_error(format!("{field} must be an RFC3339 instant: {error}"))
+    })?;
+    Ok(parsed
+        .with_timezone(&Utc)
+        .to_rfc3339_opts(SecondsFormat::Secs, true))
 }
 
 fn build_resource_budgets(

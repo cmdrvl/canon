@@ -3,20 +3,28 @@
 pub mod cli;
 pub mod distribution {
     pub mod backend;
+    pub mod cache;
+    pub mod oci;
     pub mod package;
+    pub mod remote;
     pub mod trust;
 }
 pub mod doctor;
 pub mod entity;
+pub mod evaluation;
+mod fs_safety;
 pub mod inbox;
 pub mod input;
 pub mod lookup;
 pub mod namekit;
+pub mod operator;
 pub mod output;
 pub mod paths;
+pub mod project;
 pub mod refusal;
 pub mod registry;
 pub mod registry_lint;
+#[doc(hidden)]
 pub mod resolve;
 pub mod temporal;
 pub mod strategy {
@@ -28,17 +36,19 @@ pub mod strategy_registry;
 pub mod witness;
 
 use crate::cli::{
-    CanonCommand, Cli, EntityAuditCli, EntityBlockCli, EntityCommand, EntityEdgeCli,
-    EntityEmitMode, EntityExplainCli, EntityPrepareCli, EntityProfileCommand, EntityProfileInitCli,
-    EntityProfileListCli, EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand,
-    EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewImportCli, EntityReviewInclude,
-    EntityReviewSubcommand, EntityRunCli, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand,
-    PackageCli, PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
+    CanonCommand, Cli, EntityAliasWithholdingCli, EntityApplyCli, EntityAuditCli, EntityBlockCli,
+    EntityCandidateRecallCli, EntityCommand, EntityEmitMode, EntityEvidenceCli, EntityExplainCli,
+    EntityIndexBuildCli, EntityIndexCommand, EntityIndexSubcommand, EntityLinkCli,
+    EntityPrepareCli, EntityProfileCommand, EntityProfileInitCli, EntityProfileListCli,
+    EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand, EntityReviewExportCli,
+    EntityReviewExportEmitMode, EntityReviewImportCli, EntityReviewInclude, EntityReviewSubcommand,
+    EntityRunCli, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, PackageCli,
+    PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
     RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryExportCli,
     RegistryExportFormatCli, RegistryLintCli, RegistryLintProfile, RegistryMintCli,
     RegistryNextIdCli, RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli,
-    RegistrySubcommand, RegistryVersionBumpMode, ResolveCli, ResolveEmitMode, StrategyAuditCli,
-    StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli, StrategyGradeArg,
+    RegistrySubcommand, RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand,
+    StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli, StrategyGradeArg,
     StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
     StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
     StrategyUpdateCli,
@@ -46,27 +56,20 @@ use crate::cli::{
 use crate::entity::runtime as entity_runtime;
 use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     error::Error,
     ffi::OsString,
     fs,
     io::Write,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     time::Instant,
 };
 
 const ORG_V1_PROFILE: &str = "bdc_issuer";
-const LEGACY_ENTITY_MAX_CANDIDATE_PAIR_EXPANSIONS: u64 = 25_000_000;
 
-enum EntityRunExecution {
-    Legacy {
-        artifact: Box<entity_runtime::SolveRunArtifact>,
-        candidate_pairs: u64,
-    },
-    Workbench {
-        artifact: Box<entity::run::EntityRunArtifact>,
-        candidate_pairs: u64,
-    },
+struct EntityRunExecution {
+    artifact: Box<entity::run::EntityRunArtifact>,
+    candidate_pairs: u64,
 }
 
 // Entry point function
@@ -156,7 +159,8 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
     match command {
         CanonCommand::Doctor(args) => doctor::run(args),
         CanonCommand::Package(package) => run_package_command(package),
-        CanonCommand::Resolve(resolve) => run_resolve_command(resolve),
+        CanonCommand::Project(project) => project::cli::run(project),
+        CanonCommand::Inbox(inbox) => inbox::cli::run(inbox),
         CanonCommand::Registry(command) => match &command.command {
             RegistrySubcommand::Export(export) => run_registry_export(export),
             RegistrySubcommand::NextId(next_id) => run_registry_next_id(next_id),
@@ -203,6 +207,46 @@ fn run_package_command(package: &PackageCli) -> Result<u8, Box<dyn Error>> {
             let verification =
                 distribution::package::unpack_local_package(&archive_bytes, &args.target)?;
             emit_package_verification(&verification, &args.emit)?;
+            Ok(0)
+        }
+        PackageSubcommand::Push(args) => {
+            let archive_bytes = fs::read(&args.archive)?;
+            let remote = distribution::remote::OciRemote::new(&args.registry, &args.repository);
+            let receipt = distribution::remote::publish_package_by_immutable_digest(
+                &remote,
+                &archive_bytes,
+                args.tag.as_deref(),
+                distribution::remote::OciRemotePolicy::online(),
+            )?;
+            emit_package_publish_receipt(&receipt, &args.emit)?;
+            Ok(0)
+        }
+        PackageSubcommand::Pull(args) => {
+            let remote = distribution::remote::OciRemote::new(&args.registry, &args.repository);
+            let cache = distribution::cache::ContentCache::new(&args.cache);
+            let receipt = if let Some(digest) = &args.digest {
+                distribution::remote::pull_package_by_immutable_digest(
+                    &remote,
+                    digest,
+                    &cache,
+                    distribution::remote::OciRemotePolicy::online(),
+                )?
+            } else if let Some(tag) = &args.tag {
+                let resolved = distribution::remote::resolve_tag_once(
+                    &remote,
+                    tag,
+                    distribution::remote::OciRemotePolicy::online(),
+                )?;
+                distribution::remote::pull_resolved_package(
+                    &remote,
+                    &resolved,
+                    &cache,
+                    distribution::remote::OciRemotePolicy::online(),
+                )?
+            } else {
+                return Err("package pull requires --digest or --tag".into());
+            };
+            emit_package_pull_receipt(&receipt, &args.emit)?;
             Ok(0)
         }
     }
@@ -255,37 +299,55 @@ fn emit_package_verification(
     Ok(())
 }
 
-fn run_resolve_command(resolve_cli: &ResolveCli) -> Result<u8, Box<dyn Error>> {
-    let request = resolve::ResolveRequest {
-        reference_tape: resolve_cli.reference_tape.clone(),
-        target_tape: resolve_cli.target_tape.clone(),
-        strategy: resolve_cli.strategy.clone(),
-        registry: resolve_cli.registry.clone(),
-        gold: resolve_cli.gold.clone(),
-        write_back: resolve_cli.write_back,
-        max_candidates: resolve_cli.max_candidates,
-        max_rows: resolve_cli.max_rows,
-        max_bytes: resolve_cli.max_bytes,
-        no_witness: resolve_cli.no_witness,
-    };
-
-    match resolve::run(request) {
-        Ok(output) => {
-            match resolve_cli.emit {
-                ResolveEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
-                ResolveEmitMode::Summary => println!("{}", output.render_summary()),
-            }
-            Ok(output.exit_code())
-        }
-        Err(error) => {
-            let output = create_resolve_refusal(error);
-            match resolve_cli.emit {
-                ResolveEmitMode::Json => println!("{}", serde_json::to_string(&output)?),
-                ResolveEmitMode::Summary => eprintln!("{}", serde_json::to_string(&output)?),
-            }
-            Ok(2)
+fn emit_package_publish_receipt(
+    receipt: &distribution::remote::OciPublishReceipt,
+    emit: &RegistryEmitMode,
+) -> Result<(), Box<dyn Error>> {
+    match emit {
+        RegistryEmitMode::Json => println!("{}", serde_json::to_string(receipt)?),
+        RegistryEmitMode::Summary => {
+            let tag = receipt.tag.as_deref().unwrap_or("-");
+            println!(
+                "{}@{} published | archive {}, package {}, tag {}, pushed {} blobs, reused {} blobs",
+                receipt.repository,
+                receipt.manifest_digest,
+                receipt.package_archive_digest,
+                receipt.package_content_digest,
+                tag,
+                receipt.pushed_blobs.len(),
+                receipt.reused_blobs.len()
+            );
         }
     }
+    Ok(())
+}
+
+fn emit_package_pull_receipt(
+    receipt: &distribution::remote::OciPullReceipt,
+    emit: &RegistryEmitMode,
+) -> Result<(), Box<dyn Error>> {
+    match emit {
+        RegistryEmitMode::Json => println!("{}", serde_json::to_string(receipt)?),
+        RegistryEmitMode::Summary => {
+            let resolved = receipt
+                .resolved_from_tag
+                .as_ref()
+                .map(|reference| reference.tag.as_str())
+                .unwrap_or("-");
+            println!(
+                "{}@{} pulled | archive {}, package {}, cached {}, files {}, bytes {}, resolved-tag {}",
+                receipt.repository,
+                receipt.manifest_digest,
+                receipt.package_archive_digest,
+                receipt.package_content_digest,
+                receipt.package_cache_path,
+                receipt.verified_files,
+                receipt.verified_bytes,
+                resolved
+            );
+        }
+    }
+    Ok(())
 }
 
 fn run_strategy_command(command: &StrategyCommand) -> Result<u8, Box<dyn Error>> {
@@ -674,11 +736,18 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
     match &command.command {
         EntitySubcommand::Run(run) => run_entity_run_command(run),
         EntitySubcommand::Prepare(prepare) => run_entity_prepare_command(prepare),
+        EntitySubcommand::Index(index) => run_entity_index_command(index),
         EntitySubcommand::Block(block) => run_entity_block_command(block),
-        EntitySubcommand::Edge(edge) => run_entity_edge_command(edge),
+        EntitySubcommand::CandidateRecall(recall) => run_entity_candidate_recall_command(recall),
+        EntitySubcommand::AliasWithholding(alias_withholding) => {
+            run_entity_alias_withholding_command(alias_withholding)
+        }
+        EntitySubcommand::Evidence(evidence) => run_entity_evidence_command(evidence),
         EntitySubcommand::Solve(solve) => run_entity_solve_command(solve),
+        EntitySubcommand::Link(link) => run_entity_link_command(link),
         EntitySubcommand::Audit(audit) => run_entity_audit_command(audit),
         EntitySubcommand::Promote(promote) => run_entity_promote_command(promote),
+        EntitySubcommand::Apply(apply) => run_entity_apply_command(apply),
         EntitySubcommand::Explain(explain) => run_entity_explain_command(explain),
         EntitySubcommand::Profile(profile) => run_entity_profile_command(profile),
         EntitySubcommand::Review(review) => run_entity_review_command(review),
@@ -689,50 +758,7 @@ fn run_entity_run_command(run: &EntityRunCli) -> Result<u8, Box<dyn Error>> {
     let started = Instant::now();
 
     match run_entity_run_pipeline(run) {
-        Ok(EntityRunExecution::Legacy {
-            artifact,
-            candidate_pairs,
-        }) => {
-            let artifact_bytes = serde_json::to_vec(&artifact)?;
-            if let Some(suite_dir) = run.suite.as_deref()
-                && let Err(refusal_output) = entity_runtime::audit::audit(
-                    &artifact,
-                    &artifact_bytes,
-                    entity_runtime::audit::AuditContext {
-                        suite_dir,
-                        profile: ORG_V1_PROFILE,
-                        budget_usage: entity_runtime::audit::AuditBudgetUsage {
-                            runtime_seconds: started.elapsed().as_secs(),
-                            candidate_pairs,
-                        },
-                        baseline: None,
-                        promoted_with_prior_escrow_count: 0,
-                    },
-                )
-                .map_err(create_entity_refusal)
-            {
-                return emit_entity_refusal(
-                    refusal_output,
-                    true,
-                    matches!(run.emit, EntityEmitMode::Summary),
-                );
-            }
-
-            let output = match run.emit {
-                EntityEmitMode::Json => entity_runtime::output::emit_run_json(&artifact)?,
-                EntityEmitMode::Summary => entity_runtime::output::render_run_summary(&artifact),
-            };
-            emit_entity_output(&output, matches!(run.emit, EntityEmitMode::Summary));
-            append_entity_run_witness(
-                run,
-                &artifact,
-                &output,
-                started.elapsed().as_secs(),
-                run.suite.as_deref().map(|_| candidate_pairs),
-            );
-            Ok(0)
-        }
-        Ok(EntityRunExecution::Workbench {
+        Ok(EntityRunExecution {
             artifact,
             candidate_pairs,
         }) => {
@@ -769,83 +795,687 @@ fn run_entity_prepare_command(prepare: &EntityPrepareCli) -> Result<u8, Box<dyn 
     }
 }
 
-fn run_entity_block_command(block: &EntityBlockCli) -> Result<u8, Box<dyn Error>> {
-    match run_entity_block_pipeline(block) {
-        Ok(records) => {
-            let output = match block.emit {
-                EntityStreamEmitMode::Jsonl => entity_runtime::output::emit_block_jsonl(&records)?,
-                EntityStreamEmitMode::Summary => {
-                    entity_runtime::output::render_block_summary(&records)
-                }
-            };
-            emit_entity_output(&output, matches!(block.emit, EntityStreamEmitMode::Summary));
-            Ok(0)
-        }
-        Err(refusal_output) => emit_entity_refusal(
-            refusal_output,
-            true,
-            matches!(block.emit, EntityStreamEmitMode::Summary),
-        ),
+fn run_entity_index_command(index: &EntityIndexCommand) -> Result<u8, Box<dyn Error>> {
+    match &index.command {
+        EntityIndexSubcommand::Build(build) => run_entity_index_build_command(build),
     }
 }
 
-fn run_entity_edge_command(edge: &EntityEdgeCli) -> Result<u8, Box<dyn Error>> {
-    match run_entity_edge_pipeline(edge) {
-        Ok(records) => {
-            let output = match edge.emit {
-                EntityStreamEmitMode::Jsonl => entity_runtime::output::emit_edge_jsonl(&records)?,
-                EntityStreamEmitMode::Summary => {
-                    entity_runtime::output::render_edge_summary(&records)
+fn run_entity_index_build_command(build: &EntityIndexBuildCli) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(build.emit, EntityEmitMode::Summary);
+    let (Some(profile), Some(work_dir)) = (build.profile.as_ref(), build.work_dir.as_ref()) else {
+        return emit_entity_refusal(
+            entity_missing_v1_context_refusal(
+                entity::EntityArtifactStageV1::Index,
+                &build.rows,
+                &build.profile,
+                &build.strategy,
+                &build.registry,
+                &build.work_dir,
+                None,
+            ),
+            true,
+            summary_mode,
+        );
+    };
+
+    match entity::index::run_index_build(entity::index::EntityIndexBuildRequest {
+        rows: &build.rows,
+        profile,
+        strategy: &build.strategy,
+        registry: &build.registry,
+        work_dir,
+        max_artifact_bytes: None,
+    }) {
+        Ok(result) => {
+            let output = match build.emit {
+                EntityEmitMode::Json => {
+                    serde_json::to_string(&entity::index::index_build_report(&result))?
+                }
+                EntityEmitMode::Summary => {
+                    entity::summary::build_index_build_operator_summary(&result).human_summary
                 }
             };
-            emit_entity_output(&output, matches!(edge.emit, EntityStreamEmitMode::Summary));
+            emit_entity_output(&output, summary_mode);
             Ok(0)
         }
-        Err(refusal_output) => emit_entity_refusal(
+        Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
+    }
+}
+
+fn run_entity_block_command(block: &EntityBlockCli) -> Result<u8, Box<dyn Error>> {
+    let request = entity_stage_project_request(
+        entity::EntityArtifactStageV1::Block,
+        &block.rows,
+        &block.profile,
+        &block.strategy,
+        &block.registry,
+        &block.work_dir,
+        None,
+    );
+    emit_entity_v1_scaffold_request(
+        request,
+        entity::EntityArtifactStageV1::Block,
+        matches!(block.emit, EntityStreamEmitMode::Summary),
+    )
+}
+
+fn run_entity_candidate_recall_command(
+    recall: &EntityCandidateRecallCli,
+) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(recall.emit, EntityEmitMode::Summary);
+    match run_entity_candidate_recall_pipeline(recall) {
+        Ok(report) => {
+            let output = match recall.emit {
+                EntityEmitMode::Json => serde_json::to_string(&report)?,
+                EntityEmitMode::Summary => entity_candidate_recall_summary(&report),
+            };
+            emit_entity_output(&output, summary_mode);
+            Ok(0)
+        }
+        Err(refusal_output) => emit_entity_refusal(refusal_output, true, summary_mode),
+    }
+}
+
+fn run_entity_alias_withholding_command(
+    alias_withholding: &EntityAliasWithholdingCli,
+) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(alias_withholding.emit, EntityEmitMode::Summary);
+    match run_entity_alias_withholding_pipeline(alias_withholding) {
+        Ok(report) => {
+            let output = match alias_withholding.emit {
+                EntityEmitMode::Json => {
+                    serde_json::to_string(&alias_withholding_cli_report_json(&report)?)?
+                }
+                EntityEmitMode::Summary => render_alias_withholding_report_summary(&report),
+            };
+            emit_entity_output(&output, summary_mode);
+            Ok(0)
+        }
+        Err(refusal_output) => emit_entity_refusal(refusal_output, true, summary_mode),
+    }
+}
+
+fn run_entity_evidence_command(evidence: &EntityEvidenceCli) -> Result<u8, Box<dyn Error>> {
+    if let Err(refusal_output) = validate_entity_v1_input_artifact(
+        &evidence.candidates,
+        "candidate block artifact",
+        entity::EntityArtifactStageV1::Block,
+    ) {
+        return emit_entity_refusal(
             refusal_output,
             true,
-            matches!(edge.emit, EntityStreamEmitMode::Summary),
-        ),
+            matches!(evidence.emit, EntityStreamEmitMode::Summary),
+        );
     }
+
+    let request = entity_stage_project_request(
+        entity::EntityArtifactStageV1::Evidence,
+        &evidence.rows,
+        &evidence.profile,
+        &evidence.strategy,
+        &evidence.registry,
+        &evidence.work_dir,
+        None,
+    );
+    emit_entity_v1_scaffold_request(
+        request,
+        entity::EntityArtifactStageV1::Evidence,
+        matches!(evidence.emit, EntityStreamEmitMode::Summary),
+    )
 }
 
 fn run_entity_solve_command(solve: &EntitySolveCli) -> Result<u8, Box<dyn Error>> {
-    match run_entity_solve_pipeline(solve) {
-        Ok(artifact) => {
-            let output = match solve.emit {
-                EntityEmitMode::Json => entity_runtime::output::emit_solve_json(&artifact)?,
-                EntityEmitMode::Summary => entity_runtime::output::render_solve_summary(&artifact),
-            };
-            emit_entity_output(&output, matches!(solve.emit, EntityEmitMode::Summary));
-            Ok(0)
-        }
-        Err(refusal_output) => emit_entity_refusal(
+    if let Err(refusal_output) = validate_entity_v1_input_artifact(
+        &solve.evidence,
+        "evidence artifact",
+        entity::EntityArtifactStageV1::Evidence,
+    ) {
+        return emit_entity_refusal(
             refusal_output,
             true,
             matches!(solve.emit, EntityEmitMode::Summary),
-        ),
+        );
+    }
+
+    let request = entity_stage_project_request(
+        entity::EntityArtifactStageV1::Solve,
+        &solve.rows,
+        &solve.profile,
+        &solve.strategy,
+        &solve.registry,
+        &solve.work_dir,
+        None,
+    );
+    emit_entity_v1_scaffold_request(
+        request,
+        entity::EntityArtifactStageV1::Solve,
+        matches!(solve.emit, EntityEmitMode::Summary),
+    )
+}
+
+fn run_entity_link_command(link: &EntityLinkCli) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(link.emit, EntityEmitMode::Summary);
+    let (Some(profile), Some(work_dir)) = (link.profile.as_ref(), link.work_dir.as_ref()) else {
+        return emit_entity_refusal(
+            entity_missing_link_context_refusal(link),
+            true,
+            summary_mode,
+        );
+    };
+
+    let audit_suite = match link.suite.as_ref() {
+        Some(suite_dir) => match load_entity_audit_suite(suite_dir, "link") {
+            Ok(suite) => Some(suite),
+            Err(refusal_output) => {
+                return emit_entity_refusal(refusal_output, true, summary_mode);
+            }
+        },
+        None => None,
+    };
+
+    if let Err(refusal_output) = validate_entity_link_input_rows(link) {
+        return emit_entity_refusal(refusal_output, true, summary_mode);
+    }
+
+    let preflight_decisions =
+        match resolve::produce_entity_link_decisions(entity_link_decision_request(link, false)) {
+            Ok(artifact) => artifact,
+            Err(error) => {
+                return emit_entity_refusal(create_resolve_refusal(error), true, summary_mode);
+            }
+        };
+
+    match entity::run::link::run_entity_link(entity::run::link::EntityLinkRequest {
+        reference_rows: &link.reference,
+        target_rows: &link.target,
+        profile,
+        strategy: &link.strategy,
+        registry: &link.registry,
+        work_dir,
+    }) {
+        Ok(result) => {
+            let audit_receipt = if let Some(suite) = audit_suite.as_ref() {
+                match run_entity_link_suite_audit(&result.run.artifact, suite, work_dir) {
+                    Ok(receipt) => Some(receipt),
+                    Err(refusal_output) => {
+                        return emit_entity_refusal(refusal_output, true, summary_mode);
+                    }
+                }
+            } else {
+                None
+            };
+
+            let decisions = if link.write_back {
+                match resolve::produce_entity_link_decisions(entity_link_decision_request(
+                    link, true,
+                )) {
+                    Ok(artifact) => artifact,
+                    Err(error) => {
+                        return emit_entity_refusal(
+                            create_resolve_refusal(error),
+                            true,
+                            summary_mode,
+                        );
+                    }
+                }
+            } else {
+                preflight_decisions
+            };
+            let link_artifact = match entity::run::link::finalize_entity_link_artifact(
+                entity::run::link::EntityLinkFinalizeRequest {
+                    artifact: result.artifact,
+                    run_artifact: &result.run.artifact,
+                    decisions: &decisions,
+                    work_dir,
+                },
+            ) {
+                Ok(artifact) => artifact,
+                Err(refusal) => {
+                    return emit_entity_refusal(refusal.to_canon_output(), true, summary_mode);
+                }
+            };
+            let output = match link.emit {
+                EntityEmitMode::Json => serde_json::to_string(&entity_link_output_value(
+                    &link_artifact,
+                    audit_receipt.as_ref(),
+                )?)?,
+                EntityEmitMode::Summary => {
+                    entity_link_summary(&link_artifact, audit_receipt.as_ref())
+                }
+            };
+            let exit_code = decisions.exit_code();
+            append_entity_link_witness(
+                link,
+                &decisions,
+                audit_receipt.as_ref(),
+                &output,
+                exit_code,
+            );
+            emit_entity_output(&output, summary_mode);
+            Ok(exit_code)
+        }
+        Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
     }
 }
 
+#[allow(clippy::result_large_err)]
+fn validate_entity_link_input_rows(link: &EntityLinkCli) -> Result<(), CanonOutput> {
+    validate_entity_link_input_path("reference", &link.reference)?;
+    validate_entity_link_input_path("target", &link.target)
+}
+
+#[allow(clippy::result_large_err)]
+fn validate_entity_link_input_path(role: &str, path: &Path) -> Result<(), CanonOutput> {
+    fs::File::open(path).map(|_| ()).map_err(|error| {
+        refusal::create_refusal(
+            RefusalCode::EEntityInputContract,
+            format!(
+                "Cannot read entity link {role} rows '{}': {}",
+                path.display(),
+                error
+            ),
+            serde_json::json!({
+                "stage": "link",
+                "role": role,
+                "path": path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some(format!(
+                "Check the {role} row path and rerun canon entity link"
+            )),
+        )
+    })
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct EntityAuditSuiteManifest {
+    #[serde(alias = "suite_id")]
+    id: String,
+    #[serde(default = "default_entity_audit_suite_version")]
+    version: String,
+    #[serde(default)]
+    gates: Vec<entity::audit::EntityAuditGateCheck>,
+}
+
+fn default_entity_audit_suite_version() -> String {
+    "v1".to_string()
+}
+
+#[allow(clippy::result_large_err)]
+fn load_entity_audit_suite(
+    suite_dir: &Path,
+    stage: &str,
+) -> Result<entity::audit::EntityAuditSuite, CanonOutput> {
+    if !suite_dir.is_dir() {
+        return Err(Refusal::entity_bad_suite(
+            "Audit suite directory does not exist",
+            serde_json::json!({
+                "stage": stage,
+                "field": "suite",
+                "path": suite_dir.display().to_string(),
+                "writes_performed": false
+            }),
+        )
+        .to_canon_output());
+    }
+
+    let manifest_path = suite_dir.join("manifest.json");
+    let bytes = std::fs::read(&manifest_path).map_err(|error| {
+        Refusal::entity_bad_suite(
+            "Failed to read audit suite manifest",
+            serde_json::json!({
+                "stage": stage,
+                "field": "suite",
+                "path": manifest_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+        .to_canon_output()
+    })?;
+    let manifest = serde_json::from_slice::<EntityAuditSuiteManifest>(&bytes).map_err(|error| {
+        Refusal::entity_bad_suite(
+            "Audit suite manifest is malformed",
+            serde_json::json!({
+                "stage": stage,
+                "field": "suite",
+                "path": manifest_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+        .to_canon_output()
+    })?;
+
+    preflight_entity_audit_gates(&manifest, stage)?;
+
+    Ok(entity::audit::EntityAuditSuite {
+        id: manifest.id,
+        version: manifest.version,
+        gates: manifest.gates,
+    })
+}
+
+#[allow(clippy::result_large_err)]
+fn preflight_entity_audit_gates(
+    manifest: &EntityAuditSuiteManifest,
+    stage: &str,
+) -> Result<(), CanonOutput> {
+    if manifest.id.trim().is_empty() || manifest.version.trim().is_empty() {
+        return Err(Refusal::entity_bad_suite(
+            "Audit suite id and version must be non-empty",
+            serde_json::json!({
+                "stage": stage,
+                "field": "suite",
+                "suite_id": manifest.id.as_str(),
+                "suite_version": manifest.version.as_str(),
+                "writes_performed": false
+            }),
+        )
+        .to_canon_output());
+    }
+    if manifest.gates.is_empty() {
+        return Err(Refusal::entity_bad_suite(
+            "Audit suite must contain at least one gate",
+            serde_json::json!({
+                "stage": stage,
+                "field": "gates",
+                "suite_id": manifest.id.as_str(),
+                "writes_performed": false
+            }),
+        )
+        .to_canon_output());
+    }
+
+    let known_gates = entity::ENTITY_GATE_IDS
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let mut seen = BTreeSet::new();
+    for gate in &manifest.gates {
+        if gate.gate_id.trim().is_empty() || gate.label.trim().is_empty() {
+            return Err(Refusal::entity_bad_suite(
+                "Audit gate IDs and labels must be non-empty",
+                serde_json::json!({
+                    "stage": stage,
+                    "field": "gate_id",
+                    "suite_id": manifest.id.as_str(),
+                    "gate_id": gate.gate_id.as_str(),
+                    "writes_performed": false
+                }),
+            )
+            .to_canon_output());
+        }
+        if !known_gates.contains(gate.gate_id.as_str()) {
+            return Err(Refusal::entity_bad_suite(
+                "Audit suite references an unknown gate",
+                serde_json::json!({
+                    "stage": stage,
+                    "field": "gate_id",
+                    "suite_id": manifest.id.as_str(),
+                    "gate_id": gate.gate_id.as_str(),
+                    "writes_performed": false
+                }),
+            )
+            .to_canon_output());
+        }
+        if !seen.insert(gate.gate_id.as_str()) {
+            return Err(Refusal::entity_bad_suite(
+                "Audit suite contains duplicate gates",
+                serde_json::json!({
+                    "stage": stage,
+                    "field": "gate_id",
+                    "suite_id": manifest.id.as_str(),
+                    "gate_id": gate.gate_id.as_str(),
+                    "writes_performed": false
+                }),
+            )
+            .to_canon_output());
+        }
+        if !gate.passed {
+            return Err(Refusal::entity_bad_suite(
+                "Audit suite gate did not pass",
+                serde_json::json!({
+                    "stage": stage,
+                    "field": "gate_id",
+                    "suite_id": manifest.id.as_str(),
+                    "gate_id": gate.gate_id.as_str(),
+                    "expected": gate.expected.as_str(),
+                    "actual": gate.actual.as_str(),
+                    "writes_performed": false
+                }),
+            )
+            .to_canon_output());
+        }
+    }
+
+    Ok(())
+}
+
+#[allow(clippy::result_large_err)]
+fn run_entity_link_suite_audit(
+    run_artifact: &entity::run::EntityRunArtifact,
+    suite: &entity::audit::EntityAuditSuite,
+    work_dir: &Path,
+) -> Result<serde_json::Value, CanonOutput> {
+    let result = entity::EntityArtifactHeader {
+        version: run_artifact.version.clone(),
+        metadata: run_artifact.metadata.clone(),
+        summary: run_artifact.summary.clone(),
+    };
+    let mut certified_artifacts = run_artifact
+        .stage_artifacts
+        .iter()
+        .map(|artifact| entity::EntityArtifactReference {
+            version: artifact.version.clone(),
+            content_hash: artifact.artifact_content_hash.clone(),
+        })
+        .collect::<Vec<_>>();
+    certified_artifacts.push(entity::EntityArtifactReference {
+        version: run_artifact.version.clone(),
+        content_hash: run_artifact.artifact_content_hash.clone(),
+    });
+    let expected = entity::artifact_chain::EntityArtifactChainExpectation::from_link(
+        entity::artifact_chain::EntityChainStage::Audit,
+        &entity::artifact_chain::EntityArtifactChainLink::from_header(&result),
+    );
+    let audit = entity::audit::run_entity_audit(entity::audit::EntityAuditRequest {
+        result,
+        expected,
+        certified_artifacts,
+        suite: suite.clone(),
+    })
+    .map_err(|refusal| refusal.to_canon_output())?;
+
+    let audit_path = work_dir.join("audit.json");
+    let bytes = serde_json::to_vec_pretty(&audit).map_err(|error| {
+        refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
+            "Failed to serialize entity link audit artifact".to_string(),
+            serde_json::json!({
+                "stage": "link",
+                "path": audit_path.display().to_string(),
+                "error": error.to_string(),
+                "registry_write_back_performed": false
+            }),
+            None,
+        )
+    })?;
+    std::fs::write(&audit_path, bytes).map_err(|error| {
+        refusal::create_refusal(
+            RefusalCode::EIo,
+            format!(
+                "Failed to write entity link audit artifact '{}': {}",
+                audit_path.display(),
+                error
+            ),
+            serde_json::json!({
+                "stage": "link",
+                "path": audit_path.display().to_string(),
+                "error": error.to_string(),
+                "registry_write_back_performed": false
+            }),
+            None,
+        )
+    })?;
+
+    Ok(entity_link_audit_receipt(&audit_path, &audit))
+}
+
+fn entity_link_audit_receipt(
+    audit_path: &Path,
+    audit: &entity::audit::EntityAuditArtifact,
+) -> serde_json::Value {
+    serde_json::json!({
+        "path": audit_path.display().to_string(),
+        "version": audit.version.as_str(),
+        "artifact_content_hash": audit.artifact_content_hash.as_str(),
+        "suite": {
+            "id": audit.suite_id.as_str(),
+            "version": audit.suite_version.as_str()
+        },
+        "audited_artifact": &audit.audited_artifact,
+        "gate_count": audit.gates.len(),
+        "status": audit.summary.labels.get("status").cloned().unwrap_or_else(|| "passed".to_string())
+    })
+}
+
+fn entity_link_decision_request(
+    link: &EntityLinkCli,
+    write_back: bool,
+) -> resolve::EntityLinkDecisionRequest {
+    resolve::EntityLinkDecisionRequest {
+        reference_tape: link.reference.clone(),
+        target_tape: link.target.clone(),
+        strategy: link.strategy.clone(),
+        registry: link.registry.clone(),
+        gold: link.gold.clone(),
+        write_back,
+        max_candidates: link.max_candidates,
+        max_rows: link.max_rows,
+        max_bytes: link.max_bytes,
+    }
+}
+
+fn entity_link_output_value(
+    artifact: &entity::run::link::EntityLinkArtifact,
+    audit_receipt: Option<&serde_json::Value>,
+) -> Result<serde_json::Value, serde_json::Error> {
+    let mut output = serde_json::to_value(artifact)?;
+    if let serde_json::Value::Object(object) = &mut output
+        && let Some(receipt) = audit_receipt
+    {
+        object.insert("audit_artifact".to_string(), receipt.clone());
+    }
+    Ok(output)
+}
+
 fn run_entity_audit_command(audit: &EntityAuditCli) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(audit.emit, EntityEmitMode::Summary);
+    let (result_probe, result_bytes) =
+        match read_json_artifact::<serde_json::Value>(&audit.result, "entity result artifact") {
+            Ok((value, bytes)) => (value, bytes),
+            Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
+        };
+    if entity_artifact_value_is_v1(&result_probe) {
+        match entity::audit::run_entity_audit_v1(entity::audit::EntityAuditV1Request {
+            result_artifact: result_probe,
+            suite_dir: &audit.suite,
+        }) {
+            Ok(artifact) => {
+                let output = match audit.emit {
+                    EntityEmitMode::Json => serde_json::to_string(&artifact)?,
+                    EntityEmitMode::Summary => {
+                        entity::audit::render_entity_audit_v1_summary(&artifact)
+                    }
+                };
+                emit_entity_output(&output, summary_mode);
+                return Ok(0);
+            }
+            Err(refusal) => {
+                return emit_entity_refusal(refusal.to_canon_output(), true, summary_mode);
+            }
+        }
+    }
+
+    if entity_artifact_value_looks_like_native_run_v0(&result_probe) {
+        match run_entity_native_run_audit(audit, &result_bytes) {
+            Ok(artifact) => {
+                let output = match audit.emit {
+                    EntityEmitMode::Json => serde_json::to_string(&artifact)?,
+                    EntityEmitMode::Summary => render_entity_native_audit_summary(&artifact),
+                };
+                emit_entity_output(&output, summary_mode);
+                return Ok(0);
+            }
+            Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
+        }
+    }
+
+    if entity_artifact_value_looks_like_native_solve_v0(&result_probe) {
+        match run_entity_native_solve_audit(audit, &result_bytes) {
+            Ok(artifact) => {
+                let output = match audit.emit {
+                    EntityEmitMode::Json => serde_json::to_string(&artifact)?,
+                    EntityEmitMode::Summary => render_entity_native_audit_summary(&artifact),
+                };
+                emit_entity_output(&output, summary_mode);
+                return Ok(0);
+            }
+            Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
+        }
+    }
+
     match run_entity_audit_pipeline(audit) {
         Ok(artifact) => {
             let output = match audit.emit {
                 EntityEmitMode::Json => entity_runtime::output::emit_audit_json(&artifact)?,
                 EntityEmitMode::Summary => entity_runtime::output::render_audit_summary(&artifact),
             };
-            emit_entity_output(&output, matches!(audit.emit, EntityEmitMode::Summary));
+            emit_entity_output(&output, summary_mode);
             Ok(0)
         }
-        Err(refusal_output) => emit_entity_refusal(
-            refusal_output,
-            true,
-            matches!(audit.emit, EntityEmitMode::Summary),
-        ),
+        Err(refusal_output) => emit_entity_refusal(refusal_output, true, summary_mode),
     }
 }
 
 fn run_entity_promote_command(promote: &EntityPromoteCli) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(promote.emit, EntityEmitMode::Summary);
+    let result_probe =
+        match read_json_artifact::<serde_json::Value>(&promote.result, "entity result artifact") {
+            Ok((value, _)) => value,
+            Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
+        };
+    let audit_probe =
+        match read_json_artifact::<serde_json::Value>(&promote.audit, "entity audit artifact") {
+            Ok((value, _)) => value,
+            Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
+        };
+    if entity_artifact_value_is_v1(&result_probe) || entity_artifact_value_is_v1(&audit_probe) {
+        match entity::promote::promote_entity_v1(entity::promote::EntityPromoteV1Request {
+            result_artifact: result_probe,
+            audit_artifact: audit_probe,
+            registry: promote.registry.clone(),
+            next_version: promote.next_version.clone(),
+        }) {
+            Ok(artifact) => {
+                let output = match promote.emit {
+                    EntityEmitMode::Json => serde_json::to_string(&artifact)?,
+                    EntityEmitMode::Summary => {
+                        entity::promote::render_promote_v1_summary(&artifact)
+                    }
+                };
+                emit_entity_output(&output, summary_mode);
+                return Ok(0);
+            }
+            Err(refusal) => {
+                return emit_entity_refusal(refusal.to_canon_output(), true, summary_mode);
+            }
+        }
+    }
+
     match run_entity_promote_pipeline(promote) {
         Ok(artifact) => {
             let output = match promote.emit {
@@ -854,14 +1484,56 @@ fn run_entity_promote_command(promote: &EntityPromoteCli) -> Result<u8, Box<dyn 
                     entity_runtime::output::render_promote_summary(&artifact)
                 }
             };
-            emit_entity_output(&output, matches!(promote.emit, EntityEmitMode::Summary));
+            emit_entity_output(&output, summary_mode);
             Ok(0)
         }
-        Err(refusal_output) => emit_entity_refusal(
-            refusal_output,
+        Err(refusal_output) => emit_entity_refusal(refusal_output, true, summary_mode),
+    }
+}
+
+fn run_entity_apply_command(apply: &EntityApplyCli) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(apply.emit, EntityEmitMode::Summary);
+    let result =
+        match read_json_artifact::<serde_json::Value>(&apply.result, "entity result artifact") {
+            Ok((value, _)) => value,
+            Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
+        };
+    if let Err(refusal_output) = validate_entity_apply_result_artifact(&apply.result, &result) {
+        return emit_entity_refusal(refusal_output, true, summary_mode);
+    }
+
+    let Some(lookup_column) = entity_apply_lookup_column(apply, &result) else {
+        return emit_entity_refusal(
+            entity_apply_missing_lookup_column_refusal(apply, &result),
             true,
-            matches!(promote.emit, EntityEmitMode::Summary),
-        ),
+            summary_mode,
+        );
+    };
+    let output_path = entity_apply_output_path(apply, &result);
+    let require_full_resolution = entity_apply_require_full_resolution(apply);
+    match entity::apply::run_apply_streaming_from_registry(
+        entity::apply::ApplyRegistryStreamRequest {
+            rows: &apply.rows,
+            output: &output_path,
+            lookup_column: &lookup_column,
+            registry_dir: &apply.registry,
+            safety: entity_apply_safety_check(&result),
+            require_full_resolution,
+            target_rows_per_chunk: entity::apply::DEFAULT_APPLY_ROWS_PER_CHUNK,
+        },
+    ) {
+        Ok(artifact) => {
+            let exit_code = entity_apply_exit_code(&artifact);
+            let output = match apply.emit {
+                EntityEmitMode::Json => serde_json::to_string(&artifact)?,
+                EntityEmitMode::Summary => {
+                    entity::summary::build_apply_operator_summary(&artifact).human_summary
+                }
+            };
+            emit_entity_output(&output, summary_mode);
+            Ok(exit_code)
+        }
+        Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
     }
 }
 
@@ -907,6 +1579,135 @@ fn run_entity_review_command(review: &EntityReviewCommand) -> Result<u8, Box<dyn
 }
 
 fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8, Box<dyn Error>> {
+    let (result_probe, result_bytes) =
+        match read_json_artifact::<serde_json::Value>(&export.result, "entity result artifact") {
+            Ok((value, bytes)) => (value, bytes),
+            Err(refusal_output) => {
+                return emit_entity_refusal(
+                    refusal_output,
+                    matches!(export.emit, EntityReviewExportEmitMode::Json),
+                    false,
+                );
+            }
+        };
+    if entity_artifact_value_is_v1(&result_probe) {
+        let artifact =
+            match entity::review::build_review_v1_artifact(entity::review::ReviewV1ExportRequest {
+                result_artifact: result_probe,
+                include: map_entity_review_include_v1(&export.include),
+            }) {
+                Ok(artifact) => artifact,
+                Err(refusal) => {
+                    return emit_entity_refusal(
+                        refusal.to_canon_output(),
+                        matches!(export.emit, EntityReviewExportEmitMode::Json),
+                        false,
+                    );
+                }
+            };
+        let output = match export.emit {
+            EntityReviewExportEmitMode::Json => serde_json::to_string(&artifact)?,
+            EntityReviewExportEmitMode::Csv => {
+                match entity::review::render_review_v1_csv(&artifact) {
+                    Ok(output) => output,
+                    Err(refusal) => {
+                        return emit_entity_refusal(
+                            refusal.to_canon_output(),
+                            matches!(export.emit, EntityReviewExportEmitMode::Json),
+                            false,
+                        );
+                    }
+                }
+            }
+        };
+        emit_entity_output(&output, false);
+        return Ok(0);
+    }
+
+    if entity_artifact_value_looks_like_native_solve_v0(&result_probe) {
+        match run_entity_native_solve_review_export(export, &result_bytes) {
+            Ok(artifact) => {
+                let output = render_entity_native_review_export(export, &artifact);
+                match output {
+                    Ok(output) => {
+                        emit_entity_output(&output, false);
+                        return Ok(0);
+                    }
+                    Err(refusal_output) => {
+                        return emit_entity_refusal(
+                            refusal_output,
+                            matches!(export.emit, EntityReviewExportEmitMode::Json),
+                            false,
+                        );
+                    }
+                }
+            }
+            Err(refusal_output) => {
+                return emit_entity_refusal(
+                    refusal_output,
+                    matches!(export.emit, EntityReviewExportEmitMode::Json),
+                    false,
+                );
+            }
+        }
+    }
+
+    if entity_artifact_value_looks_like_native_run_v0(&result_probe) {
+        match run_entity_native_run_review_export(export, &result_bytes) {
+            Ok(artifact) => {
+                let output = render_entity_native_review_export(export, &artifact);
+                match output {
+                    Ok(output) => {
+                        emit_entity_output(&output, false);
+                        return Ok(0);
+                    }
+                    Err(refusal_output) => {
+                        return emit_entity_refusal(
+                            refusal_output,
+                            matches!(export.emit, EntityReviewExportEmitMode::Json),
+                            false,
+                        );
+                    }
+                }
+            }
+            Err(refusal_output) => {
+                return emit_entity_refusal(
+                    refusal_output,
+                    matches!(export.emit, EntityReviewExportEmitMode::Json),
+                    false,
+                );
+            }
+        }
+    }
+
+    if entity_artifact_value_looks_like_native_link_v0(&result_probe) {
+        match run_entity_native_link_review_export(export, &result_probe, &result_bytes) {
+            Ok(artifact) => {
+                let output = render_entity_native_review_export(export, &artifact);
+                match output {
+                    Ok(output) => {
+                        emit_entity_output(&output, false);
+                        return Ok(0);
+                    }
+                    Err(refusal_output) => {
+                        return emit_entity_refusal(
+                            refusal_output,
+                            matches!(export.emit, EntityReviewExportEmitMode::Json),
+                            false,
+                        );
+                    }
+                }
+            }
+            Err(refusal_output) => {
+                return emit_entity_refusal(
+                    refusal_output,
+                    matches!(export.emit, EntityReviewExportEmitMode::Json),
+                    false,
+                );
+            }
+        }
+    }
+
     match run_entity_review_export_pipeline(export) {
         Ok(artifact) => {
             let output = match export.emit {
@@ -936,24 +1737,96 @@ fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8
 }
 
 fn run_entity_review_import_command(import: &EntityReviewImportCli) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(import.emit, EntityEmitMode::Summary);
+    let review_bytes = match read_artifact_bytes(&import.review, "entity review artifact") {
+        Ok(bytes) => bytes,
+        Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
+    };
+    if entity::review_import::review_import_input_looks_v1(&review_bytes) {
+        let audit_data = if let Some(audit_path) = import.audit.as_ref() {
+            match read_json_artifact::<serde_json::Value>(audit_path, "entity audit artifact") {
+                Ok(data) => Some(data),
+                Err(refusal_output) => {
+                    return emit_entity_refusal(refusal_output, true, summary_mode);
+                }
+            }
+        } else {
+            None
+        };
+        let audit = audit_data
+            .as_ref()
+            .map(|(audit, bytes)| (audit, bytes.as_slice()));
+        match entity::review_import::import_review_v1(
+            entity::review_import::ReviewImportV1Request {
+                review_path: &import.review,
+                review_bytes: &review_bytes,
+                registry: &import.registry,
+                next_version: &import.next_version,
+                audit,
+            },
+        ) {
+            Ok(artifact) => {
+                let output = match import.emit {
+                    EntityEmitMode::Json => serde_json::to_string(&artifact)?,
+                    EntityEmitMode::Summary => {
+                        entity::review_import::render_review_import_v1_summary(&artifact)
+                    }
+                };
+                emit_entity_output(&output, summary_mode);
+                return Ok(0);
+            }
+            Err(refusal) => {
+                return emit_entity_refusal(refusal.to_canon_output(), true, summary_mode);
+            }
+        }
+    }
+
     match run_entity_review_import_pipeline(import) {
         Ok(artifact) => {
             let output = match import.emit {
                 EntityEmitMode::Json => serde_json::to_string(&artifact)?,
                 EntityEmitMode::Summary => artifact.render_summary(),
             };
-            emit_entity_output(&output, matches!(import.emit, EntityEmitMode::Summary));
+            emit_entity_output(&output, summary_mode);
             Ok(0)
         }
-        Err(refusal_output) => emit_entity_refusal(
-            refusal_output,
-            true,
-            matches!(import.emit, EntityEmitMode::Summary),
-        ),
+        Err(refusal_output) => emit_entity_refusal(refusal_output, true, summary_mode),
     }
 }
 
 fn run_entity_explain_command(explain: &EntityExplainCli) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(explain.emit, EntityEmitMode::Summary);
+    let result_probe =
+        match read_json_artifact::<serde_json::Value>(&explain.result, "entity result artifact") {
+            Ok((value, _)) => value,
+            Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
+        };
+    if entity_artifact_value_is_v1(&result_probe) {
+        match entity::explain::explain_entity_v1(
+            entity::explain::EntityExplainV1Query {
+                row_id: explain.row.clone(),
+                surface_id: explain.surface_id.clone(),
+                canonical_id: explain.canon_id.clone(),
+                escrow_id: explain.escrow_id.clone(),
+            },
+            result_probe,
+        ) {
+            Ok(artifact) => {
+                let output = match explain.emit {
+                    EntityEmitMode::Json => serde_json::to_string(&artifact)?,
+                    EntityEmitMode::Summary => {
+                        entity::explain::render_explain_v1_summary(&artifact)
+                    }
+                };
+                emit_entity_output(&output, summary_mode);
+                return Ok(0);
+            }
+            Err(refusal) => {
+                return emit_entity_refusal(refusal.to_canon_output(), true, summary_mode);
+            }
+        }
+    }
+
     match run_entity_explain_pipeline(explain) {
         Ok(artifact) => {
             let output = match explain.emit {
@@ -962,14 +1835,10 @@ fn run_entity_explain_command(explain: &EntityExplainCli) -> Result<u8, Box<dyn 
                     entity_runtime::output::render_explain_summary(&artifact)
                 }
             };
-            emit_entity_output(&output, matches!(explain.emit, EntityEmitMode::Summary));
+            emit_entity_output(&output, summary_mode);
             Ok(0)
         }
-        Err(refusal_output) => emit_entity_refusal(
-            refusal_output,
-            true,
-            matches!(explain.emit, EntityEmitMode::Summary),
-        ),
+        Err(refusal_output) => emit_entity_refusal(refusal_output, true, summary_mode),
     }
 }
 
@@ -1399,84 +2268,21 @@ fn run_entity_run_pipeline(run: &EntityRunCli) -> Result<EntityRunExecution, Can
                 work_dir,
             })
             .map_err(|refusal| refusal.to_canon_output())?;
-            return Ok(EntityRunExecution::Workbench {
+            Ok(EntityRunExecution {
                 artifact: Box::new(result.artifact),
                 candidate_pairs: result.candidate_pairs,
-            });
+            })
         }
-        (None, None) => {}
-        _ => {
-            return Err(refusal::create_refusal(
-                RefusalCode::EEntityInputContract,
-                "Artifact-backed entity run requires both --profile and --work-dir".to_string(),
-                serde_json::json!({
-                    "stage": "run",
-                    "profile_present": run.profile.is_some(),
-                    "work_dir_present": run.work_dir.is_some(),
-                    "writes_performed": false
-                }),
-                Some(format!(
-                    "canon entity run {} --profile <PROFILE> --strategy {} --registry {} --work-dir <DIR>",
-                    run.rows.display(),
-                    run.strategy.display(),
-                    run.registry.display()
-                )),
-            ));
-        }
+        _ => Err(entity_missing_v1_context_refusal(
+            entity::EntityArtifactStageV1::Run,
+            &run.rows,
+            &run.profile,
+            &run.strategy,
+            &run.registry,
+            &run.work_dir,
+            None,
+        )),
     }
-
-    let strategy =
-        entity_runtime::strategy::load_strategy(&run.strategy).map_err(create_entity_refusal)?;
-    let incumbent = entity_runtime::incumbent::load_incumbent_memory(&run.registry)
-        .map_err(create_entity_refusal)?;
-    let observations = entity_runtime::projection::project_input(&run.rows, &strategy, None, None)
-        .map_err(create_entity_refusal)?;
-    let candidate_estimate =
-        entity_runtime::block::estimate_candidate_block_pairs(&strategy, &observations, &incumbent)
-            .map_err(create_entity_refusal)?;
-    if candidate_estimate.total_pair_expansions > LEGACY_ENTITY_MAX_CANDIDATE_PAIR_EXPANSIONS {
-        return Err(refusal::create_refusal(
-            RefusalCode::EEntityCandidateBudget,
-            "Legacy entity run candidate budget exceeded before candidate emission".to_string(),
-            serde_json::json!({
-                "stage": "block",
-                "reason": "legacy_candidate_pair_budget_exceeded",
-                "policy_id": "legacy_entity_run.max_candidate_pair_expansions",
-                "observed": candidate_estimate.total_pair_expansions,
-                "configured": LEGACY_ENTITY_MAX_CANDIDATE_PAIR_EXPANSIONS,
-                "row_count": observations.len(),
-                "strategy_id": strategy.id,
-                "strategy_version": strategy.version,
-                "max_operator_pair_expansions": candidate_estimate.max_operator_pair_expansions,
-                "max_bucket": {
-                    "operator_id": candidate_estimate.max_bucket_operator_id,
-                    "value": candidate_estimate.max_bucket_value,
-                    "row_count": candidate_estimate.max_bucket_row_count,
-                    "pair_expansions": candidate_estimate.max_bucket_pair_expansions
-                },
-                "partial_candidate_artifact_written": false,
-                "partial_run_artifact_written": false
-            }),
-            Some(format!(
-                "Use canon entity run {} --profile <PROFILE> --strategy {} --registry {} --work-dir <DIR>, or reduce duplicate physical rows before legacy run",
-                run.rows.display(),
-                run.strategy.display(),
-                run.registry.display()
-            )),
-        ));
-    }
-    let blocks =
-        entity_runtime::block::build_candidate_blocks(&strategy, &observations, &incumbent)
-            .map_err(create_entity_refusal)?;
-    let edges = entity_runtime::edge::build_edges(&strategy, &observations, &blocks, &incumbent)
-        .map_err(create_entity_refusal)?;
-    let artifact = entity_runtime::solve::run(&strategy, &observations, &edges, &incumbent)
-        .map_err(create_entity_refusal)?;
-
-    Ok(EntityRunExecution::Legacy {
-        artifact: Box::new(artifact),
-        candidate_pairs: edges.len() as u64,
-    })
 }
 
 #[allow(clippy::result_large_err)]
@@ -1493,52 +2299,1201 @@ fn run_entity_prepare_pipeline(
 }
 
 #[allow(clippy::result_large_err)]
-fn run_entity_block_pipeline(
-    block: &EntityBlockCli,
-) -> Result<Vec<entity_runtime::BlockRecord>, CanonOutput> {
-    let strategy =
-        entity_runtime::strategy::load_strategy(&block.strategy).map_err(create_entity_refusal)?;
-    let incumbent = entity_runtime::incumbent::load_incumbent_memory(&block.registry)
-        .map_err(create_entity_refusal)?;
-    let observations =
-        entity_runtime::projection::project_input(&block.rows, &strategy, None, None)
-            .map_err(create_entity_refusal)?;
-
-    entity_runtime::block::build_candidate_blocks(&strategy, &observations, &incumbent)
-        .map_err(create_entity_refusal)
+fn run_entity_alias_withholding_pipeline(
+    alias_withholding: &EntityAliasWithholdingCli,
+) -> Result<evaluation::alias_withholding::AliasWithholdingReport, CanonOutput> {
+    let envelope = read_alias_withholding_execution_envelope(&alias_withholding.manifest)?;
+    let base_dir = alias_withholding_manifest_base_dir(&alias_withholding.manifest);
+    evaluation::alias_withholding::compile_alias_withholding_execution_envelope(envelope, &base_dir)
+        .map_err(|error| alias_withholding_refusal(&alias_withholding.manifest, error))
 }
 
 #[allow(clippy::result_large_err)]
-fn run_entity_edge_pipeline(
-    edge: &EntityEdgeCli,
-) -> Result<Vec<entity_runtime::EdgeRecord>, CanonOutput> {
-    let strategy =
-        entity_runtime::strategy::load_strategy(&edge.strategy).map_err(create_entity_refusal)?;
-    let incumbent = entity_runtime::incumbent::load_incumbent_memory(&edge.registry)
-        .map_err(create_entity_refusal)?;
-    let observations = entity_runtime::projection::project_input(&edge.rows, &strategy, None, None)
-        .map_err(create_entity_refusal)?;
-    let candidates = read_jsonl_artifact(&edge.candidates, "candidate block artifact")?;
+fn read_alias_withholding_execution_envelope(
+    path: &Path,
+) -> Result<evaluation::alias_withholding::AliasWithholdingExecutionEnvelope, CanonOutput> {
+    let bytes = fs::read(path).map_err(|error| {
+        alias_withholding_manifest_refusal(
+            path,
+            "manifest_read_failed",
+            "Failed to read alias-withholding execution envelope".to_string(),
+            serde_json::json!({
+                "io_error_kind": format!("{:?}", error.kind()),
+            }),
+        )
+    })?;
+    serde_json::from_slice(&bytes).map_err(|error| {
+        alias_withholding_manifest_refusal(
+            path,
+            "manifest_parse_failed",
+            "Failed to parse alias-withholding execution envelope".to_string(),
+            serde_json::json!({
+                "line": error.line(),
+                "column": error.column(),
+            }),
+        )
+    })
+}
 
-    entity_runtime::edge::build_edges(&strategy, &observations, &candidates, &incumbent)
-        .map_err(create_entity_refusal)
+fn alias_withholding_manifest_base_dir(manifest: &Path) -> PathBuf {
+    manifest
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf()
+}
+
+fn render_alias_withholding_report_summary(
+    report: &evaluation::alias_withholding::AliasWithholdingReport,
+) -> String {
+    format!(
+        "{} trials={} clean_base_snapshots={} credited={} abstain={} reject={} unsupported_guess={} report_digest={}",
+        alias_withholding_public_fingerprint(report.benchmark_id.as_bytes()),
+        report.aggregate.trial_count,
+        report.aggregate.clean_base_snapshot_count,
+        report.aggregate.credited_attachment_count,
+        report.aggregate.abstain_count,
+        report.aggregate.reject_count,
+        report.aggregate.unsupported_guess_count,
+        report.report_digest
+    )
+}
+
+fn alias_withholding_cli_report_json(
+    report: &evaluation::alias_withholding::AliasWithholdingReport,
+) -> Result<serde_json::Value, Box<dyn Error>> {
+    let mut value = serde_json::to_value(report)?;
+    alias_withholding_redact_identifier_fields(&mut value);
+    if let Some(object) = value.as_object_mut() {
+        object.insert(
+            "identifier_redaction".to_string(),
+            serde_json::Value::String("blake3".to_string()),
+        );
+    }
+    Ok(value)
+}
+
+fn alias_withholding_redact_identifier_fields(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(object) => {
+            for (key, child) in object.iter_mut() {
+                let identifier_scalar = key.ends_with("_id")
+                    || key.ends_with("_path")
+                    || matches!(key.as_str(), "source_ref" | "canonical_hint");
+                if identifier_scalar && let Some(raw) = child.as_str() {
+                    *child = serde_json::Value::String(alias_withholding_public_fingerprint(
+                        raw.as_bytes(),
+                    ));
+                    continue;
+                }
+                let identifier_array = key.ends_with("_ids") || key == "surface_ids";
+                if identifier_array && let Some(items) = child.as_array_mut() {
+                    for item in items {
+                        if let Some(raw) = item.as_str() {
+                            *item = serde_json::Value::String(
+                                alias_withholding_public_fingerprint(raw.as_bytes()),
+                            );
+                        }
+                    }
+                    continue;
+                }
+                alias_withholding_redact_identifier_fields(child);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                alias_withholding_redact_identifier_fields(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn alias_withholding_public_fingerprint(bytes: &[u8]) -> String {
+    witness::hash_bytes(bytes)
+}
+
+fn alias_withholding_path_fingerprint(path: &Path) -> String {
+    alias_withholding_public_fingerprint(path.to_string_lossy().as_bytes())
+}
+
+fn alias_withholding_public_reason(
+    code: evaluation::alias_withholding::AliasWithholdingErrorCode,
+) -> &'static str {
+    match code {
+        evaluation::alias_withholding::AliasWithholdingErrorCode::ArtifactContract => {
+            "artifact_contract"
+        }
+        evaluation::alias_withholding::AliasWithholdingErrorCode::MissingReference => {
+            "missing_reference"
+        }
+        evaluation::alias_withholding::AliasWithholdingErrorCode::DuplicateRecord => {
+            "duplicate_record"
+        }
+        evaluation::alias_withholding::AliasWithholdingErrorCode::IneligibleAlias => {
+            "ineligible_alias"
+        }
+        evaluation::alias_withholding::AliasWithholdingErrorCode::ExactLookupLeak => {
+            "exact_lookup_leak"
+        }
+        evaluation::alias_withholding::AliasWithholdingErrorCode::SideChannelLeak => {
+            "side_channel_leak"
+        }
+        evaluation::alias_withholding::AliasWithholdingErrorCode::ReplayMismatch => {
+            "replay_mismatch"
+        }
+        evaluation::alias_withholding::AliasWithholdingErrorCode::Unimplemented => "unimplemented",
+    }
+}
+
+fn alias_withholding_refusal(
+    manifest: &Path,
+    error: evaluation::alias_withholding::AliasWithholdingError,
+) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Alias-withholding execution envelope failed validation".to_string(),
+        serde_json::json!({
+            "stage": "alias_withholding",
+            "manifest_fingerprint": alias_withholding_path_fingerprint(manifest),
+            "alias_withholding_code": error.code,
+            "public_reason": alias_withholding_public_reason(error.code),
+            "message_fingerprint": alias_withholding_public_fingerprint(error.message.as_bytes()),
+            "writes_performed": false,
+        }),
+        Some(
+            "Fix the execution envelope or referenced artifacts, then rerun canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json>"
+                .to_string(),
+        ),
+    )
+}
+
+fn alias_withholding_manifest_refusal(
+    manifest: &Path,
+    reason: &str,
+    message: String,
+    detail: serde_json::Value,
+) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EEntityArtifactContract,
+        message,
+        serde_json::json!({
+            "stage": "alias_withholding",
+            "reason": reason,
+            "manifest_fingerprint": alias_withholding_path_fingerprint(manifest),
+            "detail": detail,
+            "writes_performed": false,
+        }),
+        Some(
+            "Fix the execution envelope path or JSON, then rerun canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json>"
+                .to_string(),
+        ),
+    )
 }
 
 #[allow(clippy::result_large_err)]
-fn run_entity_solve_pipeline(
-    solve: &EntitySolveCli,
-) -> Result<entity_runtime::SolveRunArtifact, CanonOutput> {
-    let strategy =
-        entity_runtime::strategy::load_strategy(&solve.strategy).map_err(create_entity_refusal)?;
-    let incumbent = entity_runtime::incumbent::load_incumbent_memory(&solve.registry)
-        .map_err(create_entity_refusal)?;
-    let observations =
-        entity_runtime::projection::project_input(&solve.rows, &strategy, None, None)
-            .map_err(create_entity_refusal)?;
-    let edges = read_jsonl_artifact(&solve.edges, "edge artifact")?;
+fn run_entity_candidate_recall_pipeline(
+    recall: &EntityCandidateRecallCli,
+) -> Result<entity::telemetry::EntityCandidateRecallReport, CanonOutput> {
+    let (manifest, _): (CandidateRecallManifest, Vec<u8>) =
+        read_json_artifact(&recall.manifest, "entity candidate recall manifest")?;
+    let candidate_records = read_block_candidate_records_artifact(&recall.candidates)?;
+    let (diagnostics, _): (entity::block::BlockCandidateGenerationDiagnostics, Vec<u8>) =
+        read_json_artifact(&recall.diagnostics, "entity block candidate diagnostics")?;
+    let (surface_ids, gold_pairs) = candidate_recall_manifest_gold(&manifest)?;
+    let report =
+        entity::block::evaluate_candidate_recall(entity::block::CandidateRecallEvaluationRequest {
+            candidate_records: &candidate_records,
+            diagnostics: &diagnostics,
+            gold_pairs: &gold_pairs,
+            surface_ids: &surface_ids,
+            exact_bucket_count: recall.exact_bucket_count,
+        });
+    report
+        .validate()
+        .map_err(candidate_recall_validation_refusal)?;
+    Ok(report)
+}
 
-    entity_runtime::solve::solve(&strategy, &observations, &edges, &incumbent)
-        .map_err(create_entity_refusal)
+#[derive(Debug, Clone, Deserialize)]
+struct CandidateRecallManifest {
+    #[serde(default)]
+    observations: Vec<CandidateRecallManifestObservation>,
+    quality_harness: CandidateRecallManifestHarness,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CandidateRecallManifestObservation {
+    observation_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CandidateRecallManifestHarness {
+    #[serde(default)]
+    cases: Vec<CandidateRecallManifestCase>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CandidateRecallManifestCase {
+    case_id: String,
+    left_observation_id: String,
+    right_observation_id: String,
+    stratum: String,
+    label_disposition: String,
+}
+
+#[allow(clippy::result_large_err)]
+fn candidate_recall_manifest_gold(
+    manifest: &CandidateRecallManifest,
+) -> Result<(Vec<String>, Vec<entity::telemetry::CandidateRecallGoldPair>), CanonOutput> {
+    let mut surface_ids = manifest
+        .observations
+        .iter()
+        .map(|observation| observation.observation_id.trim())
+        .filter(|observation_id| !observation_id.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    surface_ids.sort();
+    surface_ids.dedup();
+
+    let mut gold_pairs = Vec::new();
+    for case in &manifest.quality_harness.cases {
+        if case.label_disposition != "same_entity" {
+            continue;
+        }
+        let stratum = candidate_recall_manifest_stratum(&case.stratum)?;
+        gold_pairs.push(entity::telemetry::CandidateRecallGoldPair::new(
+            &case.case_id,
+            &case.left_observation_id,
+            &case.right_observation_id,
+            stratum,
+        ));
+    }
+    gold_pairs.sort_by(|left, right| left.gold_pair_id.cmp(&right.gold_pair_id));
+    Ok((surface_ids, gold_pairs))
+}
+
+#[allow(clippy::result_large_err)]
+fn candidate_recall_manifest_stratum(
+    stratum: &str,
+) -> Result<entity::telemetry::CandidateRecallStratum, CanonOutput> {
+    match stratum {
+        "exact_known" | "exact_known_replay" => {
+            Ok(entity::telemetry::CandidateRecallStratum::ExactKnown)
+        }
+        "withheld_alias" | "withheld_alias_incumbent" => {
+            Ok(entity::telemetry::CandidateRecallStratum::WithheldAlias)
+        }
+        "novel_cluster" | "novel_multi_observation" => {
+            Ok(entity::telemetry::CandidateRecallStratum::NovelCluster)
+        }
+        "directional_link" | "directional_cross_dataset_link" => {
+            Ok(entity::telemetry::CandidateRecallStratum::DirectionalLink)
+        }
+        _ => Err(refusal::create_refusal(
+            RefusalCode::EParse,
+            format!("Unsupported candidate recall stratum '{stratum}'"),
+            serde_json::json!({
+                "reason": "unsupported_candidate_recall_stratum",
+                "stratum": stratum,
+                "supported_strata": [
+                    "exact_known",
+                    "exact_known_replay",
+                    "withheld_alias",
+                    "withheld_alias_incumbent",
+                    "novel_cluster",
+                    "novel_multi_observation",
+                    "directional_link",
+                    "directional_cross_dataset_link"
+                ],
+                "writes_performed": false
+            }),
+            Some("Use a canon quality manifest with supported candidate recall strata".to_string()),
+        )),
+    }
+}
+
+fn candidate_recall_validation_refusal(
+    error: entity::telemetry::EntityTelemetryValidationError,
+) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Entity candidate recall report failed validation".to_string(),
+        serde_json::json!({
+            "reason": "candidate_recall_report_invalid",
+            "field": error.field,
+            "message": error.message,
+            "writes_performed": false
+        }),
+        Some("Regenerate candidate recall inputs from matching block artifacts".to_string()),
+    )
+}
+
+fn entity_candidate_recall_summary(
+    report: &entity::telemetry::EntityCandidateRecallReport,
+) -> String {
+    let recall_50 = report
+        .union_recall_at_k
+        .iter()
+        .find(|metric| metric.k == 50)
+        .map_or(0.0, |metric| metric.recall);
+    format!(
+        "{} gold_pairs={} recall@50={:.3} misses_at_50={} operators={}",
+        report.version,
+        report.total_gold_pairs,
+        recall_50,
+        report.misses_at_50.len(),
+        report.operators.len()
+    )
+}
+
+#[allow(clippy::result_large_err)]
+fn entity_stage_project_request(
+    stage: entity::EntityArtifactStageV1,
+    rows: &Path,
+    profile: &Option<String>,
+    strategy: &Path,
+    registry: &Path,
+    work_dir: &Option<PathBuf>,
+    suite: Option<&PathBuf>,
+) -> Result<entity_runtime::EntityV1ProjectDispatchRequest, CanonOutput> {
+    let (Some(profile), Some(work_dir)) = (profile.as_ref(), work_dir.as_ref()) else {
+        return Err(entity_missing_v1_context_refusal(
+            stage, rows, profile, strategy, registry, work_dir, suite,
+        ));
+    };
+
+    Ok(entity_runtime::EntityV1ProjectDispatchRequest::cluster(
+        rows.to_path_buf(),
+        profile.clone(),
+        strategy.to_path_buf(),
+        registry.to_path_buf(),
+        work_dir.clone(),
+        suite.cloned(),
+    ))
+}
+
+fn emit_entity_v1_scaffold_request(
+    request: Result<entity_runtime::EntityV1ProjectDispatchRequest, CanonOutput>,
+    stage: entity::EntityArtifactStageV1,
+    summary_mode: bool,
+) -> Result<u8, Box<dyn Error>> {
+    match request {
+        Ok(request) => {
+            let plan = entity_runtime::entity_v1_dispatch_plan(stage, &request);
+            emit_entity_refusal(entity_v1_scaffold_refusal(&plan), true, summary_mode)
+        }
+        Err(refusal_output) => emit_entity_refusal(refusal_output, true, summary_mode),
+    }
+}
+
+fn entity_v1_scaffold_refusal(plan: &entity_runtime::EntityV1DispatchPlan) -> CanonOutput {
+    let artifact = plan.requested_artifact();
+    refusal::create_refusal(
+        RefusalCode::EEntityArtifactContract,
+        format!(
+            "Artifact-backed entity {} dispatch is scaffolded but not wired",
+            plan.requested_stage.as_str()
+        ),
+        serde_json::json!({
+            "reason": "entity_v1_executor_pending",
+            "stage": plan.requested_stage.as_str(),
+            "command": plan.command,
+            "artifact_version": artifact.map(|artifact| artifact.artifact_version),
+            "artifact_path": artifact.map(|artifact| artifact.artifact_path.display().to_string()),
+            "payload_path": artifact.map(|artifact| artifact.payload_path.display().to_string()),
+            "dispatch_plan": serde_json::to_value(plan).unwrap_or_else(|error| {
+                serde_json::json!({ "serialization_error": error.to_string() })
+            }),
+            "writes_performed": false,
+            "legacy_artifacts_allowed": false
+        }),
+        Some(format!("{} --help", plan.command)),
+    )
+}
+
+fn entity_missing_v1_context_refusal(
+    stage: entity::EntityArtifactStageV1,
+    rows: &Path,
+    profile: &Option<String>,
+    strategy: &Path,
+    registry: &Path,
+    work_dir: &Option<PathBuf>,
+    suite: Option<&PathBuf>,
+) -> CanonOutput {
+    let contract = entity_runtime::entity_v1_contract_for_stage(stage);
+    refusal::create_refusal(
+        RefusalCode::EEntityInputContract,
+        format!(
+            "Artifact-backed entity {} requires explicit --profile and --work-dir",
+            stage.as_str()
+        ),
+        serde_json::json!({
+            "reason": "legacy_dispatch_removed",
+            "stage": stage.as_str(),
+            "command": contract.command,
+            "artifact_version": contract.artifact_version,
+            "rows": rows.display().to_string(),
+            "profile_present": profile.is_some(),
+            "strategy": strategy.display().to_string(),
+            "registry": registry.display().to_string(),
+            "work_dir_present": work_dir.is_some(),
+            "suite": suite.map(|path| path.display().to_string()),
+            "writes_performed": false,
+            "legacy_dispatch_allowed": false
+        }),
+        Some(format!(
+            "{} {} --profile <PROFILE> --strategy {} --registry {} --work-dir <DIR>",
+            contract.command,
+            rows.display(),
+            strategy.display(),
+            registry.display()
+        )),
+    )
+}
+
+fn entity_missing_link_context_refusal(link: &EntityLinkCli) -> CanonOutput {
+    let stage = entity::EntityArtifactStageV1::Run;
+    let contract = entity_runtime::entity_v1_contract_for_stage(stage);
+    refusal::create_refusal(
+        RefusalCode::EEntityInputContract,
+        "Artifact-backed entity link requires explicit --profile and --work-dir".to_string(),
+        serde_json::json!({
+            "reason": "legacy_dispatch_removed",
+            "stage": "link",
+            "compiled_stage": stage.as_str(),
+            "command": "canon entity link",
+            "compiled_command": contract.command,
+            "artifact_version": contract.artifact_version,
+            "reference": link.reference.display().to_string(),
+            "target": link.target.display().to_string(),
+            "profile_present": link.profile.is_some(),
+            "strategy": link.strategy.display().to_string(),
+            "registry": link.registry.display().to_string(),
+            "work_dir_present": link.work_dir.is_some(),
+            "suite": link.suite.as_ref().map(|path| path.display().to_string()),
+            "writes_performed": false,
+            "legacy_dispatch_allowed": false
+        }),
+        Some(format!(
+            "canon entity link {} {} --profile <PROFILE> --strategy {} --registry {} --work-dir <DIR>",
+            link.reference.display(),
+            link.target.display(),
+            link.strategy.display(),
+            link.registry.display()
+        )),
+    )
+}
+
+fn entity_link_summary(
+    artifact: &entity::run::link::EntityLinkArtifact,
+    audit_receipt: Option<&serde_json::Value>,
+) -> String {
+    let audit = audit_receipt
+        .and_then(|receipt| receipt.get("path").and_then(serde_json::Value::as_str))
+        .map(|path| format!(" audit_artifact={path}"))
+        .unwrap_or_default();
+    format!(
+        "{} mode={:?} reference_records={} target_records={} matched={} unmatched={} ambiguous={} match_rate={:.3} materialized_rows={} shared_run={}@{}",
+        artifact.version,
+        artifact.mode,
+        artifact.reference.row_count,
+        artifact.target.row_count,
+        artifact.summary.matched,
+        artifact.summary.unmatched,
+        artifact.summary.ambiguous,
+        artifact.summary.match_rate,
+        artifact.materialized_rows_path,
+        artifact.shared_run_artifact.version,
+        artifact.shared_run_artifact.content_hash,
+    ) + &audit
+}
+
+fn append_entity_link_witness(
+    link: &EntityLinkCli,
+    decisions: &resolve::ResolveArtifact,
+    audit_receipt: Option<&serde_json::Value>,
+    output: &str,
+    exit_code: u8,
+) {
+    if link.no_witness {
+        return;
+    }
+
+    let mut inputs = vec![
+        witness::WitnessInput {
+            path: link.reference.display().to_string(),
+            hash: hash_input_path(&link.reference),
+            bytes: input_size(&link.reference),
+        },
+        witness::WitnessInput {
+            path: link.target.display().to_string(),
+            hash: hash_input_path(&link.target),
+            bytes: input_size(&link.target),
+        },
+        witness::WitnessInput {
+            path: link.strategy.display().to_string(),
+            hash: hash_input_path(&link.strategy),
+            bytes: input_size(&link.strategy),
+        },
+        witness::WitnessInput {
+            path: link.registry.display().to_string(),
+            hash: None,
+            bytes: None,
+        },
+    ];
+    if let Some(gold) = &link.gold {
+        inputs.push(witness::WitnessInput {
+            path: gold.display().to_string(),
+            hash: hash_input_path(gold),
+            bytes: input_size(gold),
+        });
+    }
+    if let Some(suite) = &link.suite {
+        inputs.push(witness::WitnessInput {
+            path: suite.display().to_string(),
+            hash: None,
+            bytes: None,
+        });
+    }
+
+    let mut params = serde_json::Map::new();
+    params.insert(
+        "command".to_string(),
+        serde_json::Value::String("entity.link".to_string()),
+    );
+    params.insert(
+        "registry_id".to_string(),
+        serde_json::Value::String(decisions.registry.id.clone()),
+    );
+    params.insert(
+        "registry_version".to_string(),
+        serde_json::Value::String(decisions.registry.version.clone()),
+    );
+    params.insert(
+        "strategy_id".to_string(),
+        serde_json::Value::String(decisions.strategy.id.clone()),
+    );
+    params.insert(
+        "strategy_version".to_string(),
+        serde_json::Value::String(decisions.strategy.version.clone()),
+    );
+    params.insert(
+        "strategy_hash".to_string(),
+        serde_json::Value::String(decisions.strategy.content_hash.clone()),
+    );
+    params.insert(
+        "write_back".to_string(),
+        serde_json::Value::Bool(link.write_back),
+    );
+    params.insert(
+        "summary".to_string(),
+        serde_json::json!({
+            "target_records": decisions.summary.target_records,
+            "matched": decisions.summary.matched,
+            "unmatched": decisions.summary.unmatched,
+            "ambiguous": decisions.summary.ambiguous,
+            "match_rate": decisions.summary.match_rate
+        }),
+    );
+    if let Some(max_candidates) = link.max_candidates {
+        params.insert(
+            "max_candidates".to_string(),
+            serde_json::Value::from(max_candidates as u64),
+        );
+    }
+    if let Some(max_rows) = link.max_rows {
+        params.insert(
+            "max_rows".to_string(),
+            serde_json::Value::from(max_rows as u64),
+        );
+    }
+    if let Some(max_bytes) = link.max_bytes {
+        params.insert("max_bytes".to_string(), serde_json::Value::from(max_bytes));
+    }
+    if let Some(suite) = &link.suite {
+        params.insert(
+            "suite".to_string(),
+            serde_json::Value::String(suite.display().to_string()),
+        );
+    }
+    if let Some(receipt) = audit_receipt {
+        params.insert("audit_artifact".to_string(), receipt.clone());
+    }
+
+    let output_hash = witness::hash_bytes(output.as_bytes());
+    let outcome = if exit_code == 0 {
+        "RESOLVED"
+    } else {
+        "PARTIAL"
+    };
+    let record = witness::WitnessRecord::new(inputs, params, &output_hash, outcome, exit_code);
+    if let Err(error) = witness::append_witness_record(&record, false) {
+        eprintln!("Warning: failed to append entity link witness: {}", error);
+    }
+}
+
+#[allow(clippy::result_large_err)]
+fn validate_entity_v1_input_artifact(
+    path: &Path,
+    label: &str,
+    expected_stage: entity::EntityArtifactStageV1,
+) -> Result<(), CanonOutput> {
+    let (artifact, _bytes): (serde_json::Value, Vec<u8>) = read_json_artifact(path, label)?;
+    let Some(version) = artifact.get("version").and_then(|version| version.as_str()) else {
+        return Err(refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
+            format!(
+                "{} '{}' is missing an entity artifact version",
+                label,
+                path.display()
+            ),
+            serde_json::json!({
+                "reason": "missing_artifact_version",
+                "path": path.display().to_string(),
+                "artifact": label,
+                "expected_stage": expected_stage.as_str(),
+                "writes_performed": false
+            }),
+            Some(format!("{} --help", expected_stage.command())),
+        ));
+    };
+
+    if let Some(replacement) = entity::entity_artifact_v1_contract_for_legacy_version(version) {
+        return Err(refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
+            format!(
+                "Legacy entity artifact '{}' is not accepted by v1 dispatch",
+                version
+            ),
+            serde_json::json!({
+                "reason": "legacy_entity_artifact_refused",
+                "path": path.display().to_string(),
+                "artifact": label,
+                "actual_version": version,
+                "replacement_stage": replacement.stage.as_str(),
+                "replacement_command": replacement.command,
+                "expected_stage": expected_stage.as_str(),
+                "expected_version": entity_runtime::entity_v1_contract_for_stage(expected_stage).artifact_version,
+                "writes_performed": false,
+                "legacy_artifacts_allowed": false
+            }),
+            Some(format!("{} --help", replacement.command)),
+        ));
+    }
+
+    let Some(contract) = entity::entity_artifact_v1_contract_for_version(version) else {
+        return Err(refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
+            format!("Unknown entity artifact version '{}'", version),
+            serde_json::json!({
+                "reason": "unknown_entity_artifact_version",
+                "path": path.display().to_string(),
+                "artifact": label,
+                "actual_version": version,
+                "expected_stage": expected_stage.as_str(),
+                "expected_version": entity_runtime::entity_v1_contract_for_stage(expected_stage).artifact_version,
+                "writes_performed": false
+            }),
+            Some(format!("{} --help", expected_stage.command())),
+        ));
+    };
+
+    if contract.stage != expected_stage {
+        return Err(refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
+            format!(
+                "{} '{}' has stage '{}' but '{}' is required",
+                label,
+                path.display(),
+                contract.stage.as_str(),
+                expected_stage.as_str()
+            ),
+            serde_json::json!({
+                "reason": "wrong_entity_artifact_stage",
+                "path": path.display().to_string(),
+                "artifact": label,
+                "actual_stage": contract.stage.as_str(),
+                "actual_version": version,
+                "expected_stage": expected_stage.as_str(),
+                "expected_version": entity_runtime::entity_v1_contract_for_stage(expected_stage).artifact_version,
+                "writes_performed": false
+            }),
+            Some(format!("{} --help", expected_stage.command())),
+        ));
+    }
+
+    Ok(())
+}
+
+#[allow(clippy::result_large_err)]
+fn run_entity_native_run_audit(
+    audit: &EntityAuditCli,
+    result_bytes: &[u8],
+) -> Result<entity::audit::EntityAuditArtifact, CanonOutput> {
+    let run: entity::run::EntityRunArtifact = deserialize_native_entity_artifact(
+        result_bytes,
+        &audit.result,
+        "entity result artifact",
+        "audit",
+        entity::CANON_ENTITY_RUN_VERSION,
+    )?;
+    validate_native_run_artifact_contract(&run, &audit.result, "audit")?;
+    let mut certified_artifacts = run
+        .stage_artifacts
+        .iter()
+        .map(|artifact| entity::EntityArtifactReference {
+            version: artifact.version.clone(),
+            content_hash: artifact.artifact_content_hash.clone(),
+        })
+        .collect::<Vec<_>>();
+    certified_artifacts.push(entity::EntityArtifactReference {
+        version: run.version.clone(),
+        content_hash: run.artifact_content_hash.clone(),
+    });
+    run_entity_native_audit_for_header(
+        audit,
+        entity::EntityArtifactHeader {
+            version: run.version,
+            metadata: run.metadata,
+            summary: run.summary,
+        },
+        certified_artifacts,
+    )
+}
+
+#[allow(clippy::result_large_err)]
+fn run_entity_native_solve_audit(
+    audit: &EntityAuditCli,
+    result_bytes: &[u8],
+) -> Result<entity::audit::EntityAuditArtifact, CanonOutput> {
+    let solve: entity::solve::SolveArtifact = deserialize_native_entity_artifact(
+        result_bytes,
+        &audit.result,
+        "entity result artifact",
+        "audit",
+        entity::CANON_ENTITY_SOLVE_VERSION,
+    )?;
+    entity::solve::validate_solve_artifact_contract(&solve)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    let mut certified_artifacts = solve.upstream_artifacts.clone();
+    certified_artifacts.push(entity::EntityArtifactReference {
+        version: solve.version.clone(),
+        content_hash: solve.artifact_content_hash.clone(),
+    });
+    run_entity_native_audit_for_header(
+        audit,
+        entity::EntityArtifactHeader {
+            version: solve.version,
+            metadata: solve.metadata,
+            summary: solve.summary,
+        },
+        certified_artifacts,
+    )
+}
+
+#[allow(clippy::result_large_err)]
+fn run_entity_native_audit_for_header(
+    audit: &EntityAuditCli,
+    result: entity::EntityArtifactHeader,
+    certified_artifacts: Vec<entity::EntityArtifactReference>,
+) -> Result<entity::audit::EntityAuditArtifact, CanonOutput> {
+    let suite = load_entity_audit_suite(&audit.suite, "audit")?;
+    let expected = entity::artifact_chain::EntityArtifactChainExpectation::from_link(
+        entity::artifact_chain::EntityChainStage::Audit,
+        &entity::artifact_chain::EntityArtifactChainLink::from_header(&result),
+    );
+    entity::audit::run_entity_audit(entity::audit::EntityAuditRequest {
+        result,
+        expected,
+        certified_artifacts,
+        suite,
+    })
+    .map_err(|refusal| refusal.to_canon_output())
+}
+
+fn render_entity_native_audit_summary(audit: &entity::audit::EntityAuditArtifact) -> String {
+    let status = audit
+        .summary
+        .labels
+        .get("status")
+        .map(String::as_str)
+        .unwrap_or("passed");
+    format!(
+        "{} audit suite={} gates={} status={}",
+        audit.audited_artifact.version,
+        audit.suite_id,
+        audit.gates.len(),
+        status
+    )
+}
+
+#[allow(clippy::result_large_err)]
+fn run_entity_native_solve_review_export(
+    export: &EntityReviewExportCli,
+    result_bytes: &[u8],
+) -> Result<entity::review::ReviewQueueArtifact, CanonOutput> {
+    let solve: entity::solve::SolveArtifact = deserialize_native_entity_artifact(
+        result_bytes,
+        &export.result,
+        "entity result artifact",
+        "review_export",
+        entity::CANON_ENTITY_SOLVE_VERSION,
+    )?;
+    build_entity_native_review_queue(export, solve)
+}
+
+#[allow(clippy::result_large_err)]
+fn run_entity_native_run_review_export(
+    export: &EntityReviewExportCli,
+    result_bytes: &[u8],
+) -> Result<entity::review::ReviewQueueArtifact, CanonOutput> {
+    let run: entity::run::EntityRunArtifact = deserialize_native_entity_artifact(
+        result_bytes,
+        &export.result,
+        "entity result artifact",
+        "review_export",
+        entity::CANON_ENTITY_RUN_VERSION,
+    )?;
+    validate_native_run_artifact_contract(&run, &export.result, "review_export")?;
+    let solve_path = resolve_native_run_solve_artifact_path(&export.result, &run)?;
+    let solve = read_hash_bound_native_solve_artifact(&solve_path, &run)?;
+    build_entity_native_review_queue(export, solve)
+}
+
+#[allow(clippy::result_large_err)]
+fn run_entity_native_link_review_export(
+    export: &EntityReviewExportCli,
+    result_probe: &serde_json::Value,
+    result_bytes: &[u8],
+) -> Result<entity::review::ReviewQueueArtifact, CanonOutput> {
+    entity::run::link::validate_entity_link_artifact_raw_shape(result_probe)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    let link: entity::run::link::EntityLinkArtifact = deserialize_native_entity_artifact(
+        result_bytes,
+        &export.result,
+        "entity link artifact",
+        "review_export",
+        entity::run::link::ENTITY_LINK_VERSION,
+    )?;
+    entity::run::link::validate_entity_link_artifact_at_path(&link, &export.result)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    entity::review::build_link_review_queue_artifact(entity::review::LinkReviewQueueRequest {
+        link_artifact: link,
+        include: map_entity_review_include_v1(&export.include),
+    })
+    .map_err(|refusal| refusal.to_canon_output())
+}
+
+#[allow(clippy::result_large_err)]
+fn build_entity_native_review_queue(
+    export: &EntityReviewExportCli,
+    solve: entity::solve::SolveArtifact,
+) -> Result<entity::review::ReviewQueueArtifact, CanonOutput> {
+    entity::review::build_review_queue_artifact(entity::review::ReviewQueueRequest {
+        solve_artifact: solve,
+        include: map_entity_review_include_v1(&export.include),
+        provenance_samples: Vec::new(),
+        relation_hints: Vec::new(),
+    })
+    .map_err(|refusal| refusal.to_canon_output())
+}
+
+#[allow(clippy::result_large_err)]
+fn render_entity_native_review_export(
+    export: &EntityReviewExportCli,
+    artifact: &entity::review::ReviewQueueArtifact,
+) -> Result<String, CanonOutput> {
+    match export.emit {
+        EntityReviewExportEmitMode::Json => serde_json::to_string(artifact).map_err(|error| {
+            native_entity_artifact_contract_refusal(
+                "Failed to serialize native entity review export",
+                serde_json::json!({
+                    "stage": "review_export",
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+            )
+        }),
+        EntityReviewExportEmitMode::Csv => entity::review::render_review_queue_csv(artifact)
+            .map_err(|refusal| refusal.to_canon_output()),
+    }
+}
+
+#[allow(clippy::result_large_err)]
+fn read_hash_bound_native_solve_artifact(
+    solve_path: &Path,
+    run: &entity::run::EntityRunArtifact,
+) -> Result<entity::solve::SolveArtifact, CanonOutput> {
+    let bytes = read_artifact_bytes(solve_path, "entity solve artifact")?;
+    let solve_probe = serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|error| {
+        native_entity_artifact_contract_refusal(
+            format!(
+                "Failed to parse native entity solve artifact '{}': {}",
+                solve_path.display(),
+                error
+            ),
+            serde_json::json!({
+                "stage": "review_export",
+                "path": solve_path.display().to_string(),
+                "artifact": "entity solve artifact",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    if !entity_artifact_value_looks_like_native_solve_v0(&solve_probe) {
+        return Err(native_entity_artifact_contract_refusal(
+            "Run artifact solve handoff did not resolve to a native solve artifact",
+            serde_json::json!({
+                "stage": "review_export",
+                "path": solve_path.display().to_string(),
+                "artifact": "entity solve artifact",
+                "expected_version": entity::CANON_ENTITY_SOLVE_VERSION,
+                "actual_version": entity_artifact_version(&solve_probe).unwrap_or("<missing>"),
+                "writes_performed": false
+            }),
+        ));
+    }
+    let solve: entity::solve::SolveArtifact = deserialize_native_entity_artifact(
+        &bytes,
+        solve_path,
+        "entity solve artifact",
+        "review_export",
+        entity::CANON_ENTITY_SOLVE_VERSION,
+    )?;
+    entity::solve::validate_solve_artifact_contract(&solve)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    let expected = run
+        .stage_artifacts
+        .iter()
+        .find(|artifact| {
+            artifact.stage == "solve" && artifact.version == entity::CANON_ENTITY_SOLVE_VERSION
+        })
+        .ok_or_else(|| {
+            native_entity_artifact_contract_refusal(
+                "Run artifact is missing its native solve stage reference",
+                serde_json::json!({
+                    "stage": "review_export",
+                    "field": "stage_artifacts.solve",
+                    "path": solve_path.display().to_string(),
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    if expected.artifact_content_hash != solve.artifact_content_hash {
+        return Err(native_entity_artifact_contract_refusal(
+            "Run artifact solve handoff hash does not match the loaded solve artifact",
+            serde_json::json!({
+                "stage": "review_export",
+                "field": "stage_artifacts.solve.artifact_content_hash",
+                "path": solve_path.display().to_string(),
+                "expected": expected.artifact_content_hash.as_str(),
+                "actual": solve.artifact_content_hash.as_str(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(solve)
+}
+
+#[allow(clippy::result_large_err)]
+fn resolve_native_run_solve_artifact_path(
+    run_path: &Path,
+    run: &entity::run::EntityRunArtifact,
+) -> Result<PathBuf, CanonOutput> {
+    let raw_path = run.work_dir.solve_artifact_path.trim();
+    let relative_path = Path::new(raw_path);
+    if raw_path.is_empty()
+        || relative_path.is_absolute()
+        || !relative_path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
+    {
+        return Err(native_entity_artifact_contract_refusal(
+            "Run artifact solve handoff path must be a safe relative path",
+            serde_json::json!({
+                "stage": "review_export",
+                "field": "work_dir.solve_artifact_path",
+                "path": raw_path,
+                "expected": "non_empty_relative_path_with_normal_components",
+                "writes_performed": false
+            }),
+        ));
+    }
+    let base_dir = run_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    Ok(base_dir.join(relative_path))
+}
+
+#[allow(clippy::result_large_err)]
+fn deserialize_native_entity_artifact<T: DeserializeOwned>(
+    bytes: &[u8],
+    path: &Path,
+    label: &str,
+    stage: &str,
+    expected_version: &str,
+) -> Result<T, CanonOutput> {
+    serde_json::from_slice(bytes).map_err(|error| {
+        native_entity_artifact_contract_refusal(
+            format!("Malformed native {} '{}': {}", label, path.display(), error),
+            serde_json::json!({
+                "stage": stage,
+                "path": path.display().to_string(),
+                "artifact": label,
+                "expected_version": expected_version,
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })
+}
+
+#[allow(clippy::result_large_err)]
+fn validate_native_run_artifact_contract(
+    run: &entity::run::EntityRunArtifact,
+    path: &Path,
+    stage: &str,
+) -> Result<(), CanonOutput> {
+    if run.version != entity::CANON_ENTITY_RUN_VERSION {
+        return Err(native_entity_artifact_contract_refusal(
+            "Run artifact has the wrong native contract version",
+            serde_json::json!({
+                "stage": stage,
+                "path": path.display().to_string(),
+                "field": "version",
+                "expected": entity::CANON_ENTITY_RUN_VERSION,
+                "actual": run.version.as_str(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    if run.artifact_content_hash.trim().is_empty() {
+        return Err(native_entity_artifact_contract_refusal(
+            "Run artifact must carry a content hash",
+            serde_json::json!({
+                "stage": stage,
+                "path": path.display().to_string(),
+                "field": "artifact_content_hash",
+                "expected": "non_empty_hash",
+                "actual": run.artifact_content_hash.as_str(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    if run.metadata.artifact_content_hash != run.artifact_content_hash {
+        return Err(native_entity_artifact_contract_refusal(
+            "Run artifact metadata hash does not match artifact hash",
+            serde_json::json!({
+                "stage": stage,
+                "path": path.display().to_string(),
+                "field": "metadata.artifact_content_hash",
+                "expected": run.artifact_content_hash.as_str(),
+                "actual": run.metadata.artifact_content_hash.as_str(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    let expected = hash_native_run_artifact_without_self(run, path, stage)?;
+    if run.artifact_content_hash != expected {
+        return Err(native_entity_artifact_contract_refusal(
+            "Run artifact content hash does not match its payload",
+            serde_json::json!({
+                "stage": stage,
+                "path": path.display().to_string(),
+                "field": "artifact_content_hash",
+                "expected": expected,
+                "actual": run.artifact_content_hash.as_str(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+#[allow(clippy::result_large_err)]
+fn hash_native_run_artifact_without_self(
+    run: &entity::run::EntityRunArtifact,
+    path: &Path,
+    stage: &str,
+) -> Result<String, CanonOutput> {
+    let mut hashable = run.clone();
+    hashable.artifact_content_hash.clear();
+    hashable.metadata.artifact_content_hash.clear();
+    let bytes = serde_json::to_vec(&hashable).map_err(|error| {
+        native_entity_artifact_contract_refusal(
+            "Failed to hash native run artifact",
+            serde_json::json!({
+                "stage": stage,
+                "path": path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    Ok(witness::hash_bytes(&bytes))
+}
+
+fn entity_artifact_value_looks_like_native_run_v0(value: &serde_json::Value) -> bool {
+    entity_artifact_version(value) == Some(entity::CANON_ENTITY_RUN_VERSION)
+        && entity_artifact_has_metadata_object(value)
+        && entity_artifact_has_any_marker(
+            value,
+            &[
+                "stage_artifacts",
+                "work_dir",
+                "next_commands",
+                "orchestration",
+            ],
+        )
+}
+
+fn entity_artifact_value_looks_like_native_solve_v0(value: &serde_json::Value) -> bool {
+    entity_artifact_version(value) == Some(entity::CANON_ENTITY_SOLVE_VERSION)
+        && entity_artifact_has_metadata_object(value)
+        && entity_artifact_has_any_marker(
+            value,
+            &[
+                "upstream_artifacts",
+                "diagnostics",
+                "decision_ledger_path",
+                "review_groups",
+            ],
+        )
+}
+
+fn entity_artifact_value_looks_like_native_link_v0(value: &serde_json::Value) -> bool {
+    entity_artifact_version(value) == Some(entity::run::link::ENTITY_LINK_VERSION)
+}
+
+fn entity_artifact_has_metadata_object(value: &serde_json::Value) -> bool {
+    value
+        .get("metadata")
+        .is_some_and(serde_json::Value::is_object)
+}
+
+fn entity_artifact_has_any_marker(value: &serde_json::Value, markers: &[&str]) -> bool {
+    value
+        .as_object()
+        .is_some_and(|object| markers.iter().any(|marker| object.contains_key(*marker)))
+}
+
+fn entity_artifact_version(value: &serde_json::Value) -> Option<&str> {
+    value.get("version").and_then(serde_json::Value::as_str)
+}
+
+fn native_entity_artifact_contract_refusal(
+    message: impl Into<String>,
+    detail: serde_json::Value,
+) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EEntityArtifactContract,
+        message.into(),
+        detail,
+        Some("Use the matching native entity artifact handoff and rerun the command".to_string()),
+    )
 }
 
 #[allow(clippy::result_large_err)]
@@ -1546,7 +3501,7 @@ fn run_entity_audit_pipeline(
     audit: &EntityAuditCli,
 ) -> Result<entity_runtime::AuditArtifact, CanonOutput> {
     let (result, result_bytes): (entity_runtime::SolveRunArtifact, Vec<u8>) =
-        read_json_artifact(&audit.result, "org result artifact")?;
+        read_json_artifact(&audit.result, "entity result artifact")?;
 
     entity_runtime::audit::audit(
         &result,
@@ -1570,9 +3525,9 @@ fn run_entity_promote_pipeline(
     promote: &EntityPromoteCli,
 ) -> Result<entity_runtime::PromoteArtifact, CanonOutput> {
     let (result, result_bytes): (entity_runtime::SolveRunArtifact, Vec<u8>) =
-        read_json_artifact(&promote.result, "org result artifact")?;
+        read_json_artifact(&promote.result, "entity result artifact")?;
     let (audit, audit_bytes): (entity_runtime::AuditArtifact, Vec<u8>) =
-        read_json_artifact(&promote.audit, "org audit artifact")?;
+        read_json_artifact(&promote.audit, "entity audit artifact")?;
 
     entity_runtime::promote::promote(
         &result,
@@ -1590,7 +3545,7 @@ fn run_entity_review_export_pipeline(
     export: &EntityReviewExportCli,
 ) -> Result<entity_runtime::review::ReviewExportOutput, CanonOutput> {
     let (result, result_bytes): (entity_runtime::SolveRunArtifact, Vec<u8>) =
-        read_json_artifact(&export.result, "org result artifact")?;
+        read_json_artifact(&export.result, "entity result artifact")?;
 
     entity_runtime::review::export(
         &result,
@@ -1604,12 +3559,12 @@ fn run_entity_review_export_pipeline(
 fn run_entity_review_import_pipeline(
     import: &EntityReviewImportCli,
 ) -> Result<entity_runtime::review::ReviewImportOutput, CanonOutput> {
-    let review_bytes = read_artifact_bytes(&import.review, "org review artifact")?;
+    let review_bytes = read_artifact_bytes(&import.review, "entity review artifact")?;
     let audit_data = import
         .audit
         .as_ref()
         .map(|audit_path| {
-            read_json_artifact::<entity_runtime::AuditArtifact>(audit_path, "org audit artifact")
+            read_json_artifact::<entity_runtime::AuditArtifact>(audit_path, "entity audit artifact")
         })
         .transpose()?;
     let audit = audit_data
@@ -1639,12 +3594,280 @@ fn map_entity_review_include(
     }
 }
 
+fn map_entity_review_include_v1(
+    include: &EntityReviewInclude,
+) -> entity::review::ReviewExportInclude {
+    match include {
+        EntityReviewInclude::Resolved => entity::review::ReviewExportInclude::Resolved,
+        EntityReviewInclude::Escrow => entity::review::ReviewExportInclude::Escrow,
+        EntityReviewInclude::Contradictions => entity::review::ReviewExportInclude::Contradictions,
+        EntityReviewInclude::All => entity::review::ReviewExportInclude::All,
+    }
+}
+
+fn entity_artifact_value_is_v1(value: &serde_json::Value) -> bool {
+    value
+        .get("version")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|version| version.starts_with("canon_entity_") && version.ends_with(".v1"))
+}
+
+#[allow(clippy::result_large_err)]
+fn validate_entity_apply_result_artifact(
+    path: &Path,
+    artifact: &serde_json::Value,
+) -> Result<(), CanonOutput> {
+    let Some(version) = artifact.get("version").and_then(serde_json::Value::as_str) else {
+        return Err(refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
+            format!(
+                "Entity apply result artifact '{}' is missing an entity artifact version",
+                path.display()
+            ),
+            serde_json::json!({
+                "reason": "missing_artifact_version",
+                "path": path.display().to_string(),
+                "artifact": "entity result artifact",
+                "expected_stages": ["solve", "run"],
+                "writes_performed": false
+            }),
+            Some("canon entity solve --help".to_string()),
+        ));
+    };
+
+    let contract = entity::entity_artifact_v1_contract_for_version(version)
+        .or_else(|| entity::entity_artifact_v1_contract_for_legacy_version(version))
+        .ok_or_else(|| {
+            refusal::create_refusal(
+                RefusalCode::EEntityArtifactContract,
+                format!("Unknown entity artifact version '{}'", version),
+                serde_json::json!({
+                    "reason": "unknown_entity_artifact_version",
+                    "path": path.display().to_string(),
+                    "artifact": "entity result artifact",
+                    "actual_version": version,
+                    "expected_stages": ["solve", "run"],
+                    "writes_performed": false
+                }),
+                Some("Use a canon_entity_solve or canon_entity_run artifact".to_string()),
+            )
+        })?;
+
+    if matches!(
+        contract.stage,
+        entity::EntityArtifactStageV1::Solve | entity::EntityArtifactStageV1::Run
+    ) {
+        Ok(())
+    } else {
+        Err(refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
+            format!(
+                "Entity apply result artifact '{}' has stage '{}' but solve or run is required",
+                path.display(),
+                contract.stage.as_str()
+            ),
+            serde_json::json!({
+                "reason": "wrong_entity_artifact_stage",
+                "path": path.display().to_string(),
+                "artifact": "entity result artifact",
+                "actual_stage": contract.stage.as_str(),
+                "actual_version": version,
+                "expected_stages": ["solve", "run"],
+                "writes_performed": false
+            }),
+            Some("Use a canon_entity_solve or canon_entity_run artifact".to_string()),
+        ))
+    }
+}
+
+fn entity_apply_safety_check(artifact: &serde_json::Value) -> entity::apply::ApplySafetyCheck {
+    entity::apply::ApplySafetyCheck {
+        expected_profile_id: entity_json_string_at_path(artifact, &["metadata", "profile", "id"]),
+        expected_identity_semantics: entity_json_string_at_path(
+            artifact,
+            &["metadata", "profile", "identity_semantics"],
+        ),
+        expected_registry_snapshot_hash: entity_json_string_at_path(
+            artifact,
+            &["metadata", "registry_snapshot", "lookup_snapshot_hash"],
+        ),
+        expected_sidecar_snapshot_hash: entity_json_string_at_path(
+            artifact,
+            &["metadata", "registry_snapshot", "sidecar_snapshot_hash"],
+        ),
+        ..entity::apply::ApplySafetyCheck::default()
+    }
+}
+
+fn entity_apply_lookup_column(
+    apply: &EntityApplyCli,
+    artifact: &serde_json::Value,
+) -> Option<String> {
+    if let Some(column) = apply
+        .column
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Some(column.to_string());
+    }
+
+    let field_paths: &[&[&str]] = &[
+        &["lookup_column"],
+        &["column"],
+        &["apply", "lookup_column"],
+        &["apply", "column"],
+        &["metadata", "input", "lookup_column"],
+        &["metadata", "input", "column"],
+        &["metadata", "apply", "lookup_column"],
+        &["metadata", "apply", "column"],
+    ];
+    for path in field_paths {
+        if let Some(value) = entity_json_string_at_path(artifact, path) {
+            return Some(value);
+        }
+    }
+
+    entity_apply_command_flag_value(artifact, "--column").or_else(|| {
+        entity_json_string_at_path(artifact, &["metadata", "profile", "id"])
+            .and_then(|profile| entity_apply_builtin_lookup_column(&profile).map(str::to_string))
+    })
+}
+
+fn entity_apply_builtin_lookup_column(profile: &str) -> Option<&'static str> {
+    match profile {
+        "cmbs_tenant_label" => Some("raw_tenant_name"),
+        "regab_firm_identity" => Some("org_name"),
+        _ => None,
+    }
+}
+
+fn entity_apply_output_path(apply: &EntityApplyCli, artifact: &serde_json::Value) -> PathBuf {
+    if let Some(path) = apply.out.as_ref() {
+        return path.clone();
+    }
+
+    if let Some(path) = entity_apply_command_flag_value(artifact, "--out")
+        .or_else(|| entity_apply_command_flag_value(artifact, "--output"))
+    {
+        return PathBuf::from(path);
+    }
+
+    let default_output = entity::apply::default_apply_output_path(&apply.rows);
+    let Some(work_dir) = apply.work_dir.as_ref() else {
+        return default_output;
+    };
+    let file_name = default_output
+        .file_name()
+        .map(OsString::from)
+        .unwrap_or_else(|| OsString::from("apply.canon"));
+    work_dir.join("apply").join(file_name)
+}
+
+fn entity_apply_require_full_resolution(apply: &EntityApplyCli) -> bool {
+    apply.require_full_resolution || !apply.allow_partial_output
+}
+
+fn entity_apply_exit_code(artifact: &entity::apply::ApplyRunArtifact) -> u8 {
+    if artifact.summary.get("unresolved").copied().unwrap_or(0) > 0 {
+        1
+    } else {
+        0
+    }
+}
+
+fn entity_apply_command_flag_value(artifact: &serde_json::Value, flag: &str) -> Option<String> {
+    entity_json_string_at_path(artifact, &["next_commands", "apply"])
+        .and_then(|command| entity_cli_flag_value(&command, flag))
+        .or_else(|| {
+            entity_apply_handoff_command(artifact)
+                .and_then(|command| entity_cli_flag_value(&command, flag))
+        })
+}
+
+fn entity_apply_handoff_command(artifact: &serde_json::Value) -> Option<String> {
+    let steps = artifact
+        .get("orchestration")
+        .and_then(|orchestration| orchestration.get("handoff_steps"))
+        .or_else(|| artifact.get("handoff_steps"))
+        .and_then(serde_json::Value::as_array)?;
+
+    steps.iter().find_map(|step| {
+        (step.get("stage").and_then(serde_json::Value::as_str) == Some("apply"))
+            .then(|| step.get("command").and_then(serde_json::Value::as_str))
+            .flatten()
+            .and_then(entity_concrete_cli_value)
+    })
+}
+
+fn entity_cli_flag_value(command: &str, flag: &str) -> Option<String> {
+    let mut parts = command.split_whitespace();
+    while let Some(part) = parts.next() {
+        if part == flag {
+            return parts.next().and_then(entity_concrete_cli_value);
+        }
+    }
+    None
+}
+
+fn entity_concrete_cli_value(value: &str) -> Option<String> {
+    let trimmed = value
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim()
+        .to_string();
+    if trimmed.is_empty()
+        || (trimmed.starts_with('<') && trimmed.ends_with('>'))
+        || trimmed.contains("<COLUMN>")
+        || trimmed.contains("<OUT>")
+    {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+fn entity_json_string_at_path(value: &serde_json::Value, path: &[&str]) -> Option<String> {
+    let mut current = value;
+    for segment in path {
+        current = current.get(*segment)?;
+    }
+    current
+        .as_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn entity_apply_missing_lookup_column_refusal(
+    apply: &EntityApplyCli,
+    artifact: &serde_json::Value,
+) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Entity apply could not infer the input lookup column from the result artifact".to_string(),
+        serde_json::json!({
+            "reason": "missing_apply_lookup_column",
+            "stage": "apply",
+            "result": apply.result.display().to_string(),
+            "rows": apply.rows.display().to_string(),
+            "registry": apply.registry.display().to_string(),
+            "profile": entity_json_string_at_path(artifact, &["metadata", "profile", "id"]),
+            "supported_builtin_profiles": ["cmbs_tenant_label", "regab_firm_identity"],
+            "writes_performed": false,
+            "recovery_flag": "--column"
+        }),
+        Some("Rerun with canon entity apply <RESULT> --column <COLUMN>".to_string()),
+    )
+}
+
 #[allow(clippy::result_large_err)]
 fn run_entity_explain_pipeline(
     explain: &EntityExplainCli,
 ) -> Result<entity_runtime::ExplainArtifact, CanonOutput> {
     let (result, _result_bytes): (serde_json::Value, Vec<u8>) =
-        read_json_artifact(&explain.result, "org result artifact")?;
+        read_json_artifact(&explain.result, "entity result artifact")?;
     let query = entity_runtime::ExplainQuery {
         row_id: explain.row.clone(),
         surface_id: explain.surface_id.clone(),
@@ -1676,116 +3899,6 @@ fn emit_entity_refusal(
         eprintln!("{refusal_json}");
     }
     Ok(2)
-}
-
-fn append_entity_run_witness(
-    run: &EntityRunCli,
-    artifact: &entity_runtime::SolveRunArtifact,
-    output: &str,
-    runtime_seconds: u64,
-    candidate_pairs: Option<u64>,
-) {
-    if run.no_witness {
-        return;
-    }
-
-    let mut inputs = vec![witness::WitnessInput {
-        path: run.rows.display().to_string(),
-        hash: hash_input_path(&run.rows),
-        bytes: input_size(&run.rows),
-    }];
-    inputs.push(witness::WitnessInput {
-        path: run.strategy.display().to_string(),
-        hash: hash_input_path(&run.strategy),
-        bytes: input_size(&run.strategy),
-    });
-
-    let mut params = serde_json::Map::new();
-    params.insert(
-        "subcommand".to_string(),
-        serde_json::Value::String("entity.run".to_string()),
-    );
-    params.insert(
-        "strategy_id".to_string(),
-        serde_json::Value::String(artifact.strategy.id.clone()),
-    );
-    params.insert(
-        "strategy_version".to_string(),
-        serde_json::Value::String(artifact.strategy.version.clone()),
-    );
-    params.insert(
-        "strategy_path".to_string(),
-        serde_json::Value::String(run.strategy.display().to_string()),
-    );
-    params.insert(
-        "registry_id".to_string(),
-        serde_json::Value::String(artifact.registry.id.clone()),
-    );
-    params.insert(
-        "registry_version".to_string(),
-        serde_json::Value::String(artifact.registry.version.clone()),
-    );
-    params.insert(
-        "registry_path".to_string(),
-        serde_json::Value::String(run.registry.display().to_string()),
-    );
-    params.insert(
-        "registry_lookup_snapshot_hash".to_string(),
-        serde_json::Value::String(artifact.registry.lookup_snapshot_hash.clone()),
-    );
-    params.insert(
-        "registry_escrow_snapshot_hash".to_string(),
-        serde_json::Value::String(artifact.registry.escrow_snapshot_hash.clone()),
-    );
-    params.insert(
-        "emit".to_string(),
-        serde_json::Value::String(
-            match run.emit {
-                EntityEmitMode::Json => "json",
-                EntityEmitMode::Summary => "summary",
-            }
-            .to_string(),
-        ),
-    );
-    params.insert(
-        "summary".to_string(),
-        serde_json::json!({
-            "observations": artifact.summary.observations,
-            "resolved_existing": artifact.summary.resolved_existing,
-            "promotable_new": artifact.summary.promotable_new,
-            "abstain_low_evidence": artifact.summary.abstain_low_evidence,
-            "abstain_conflict": artifact.summary.abstain_conflict,
-            "contradictions": artifact.contradictions.len(),
-        }),
-    );
-    params.insert(
-        "runtime_seconds".to_string(),
-        serde_json::Value::from(runtime_seconds),
-    );
-
-    if let Some(suite_dir) = &run.suite {
-        params.insert(
-            "suite_path".to_string(),
-            serde_json::Value::String(suite_dir.display().to_string()),
-        );
-    }
-    if let Some(candidate_pairs) = candidate_pairs {
-        params.insert(
-            "candidate_pairs".to_string(),
-            serde_json::Value::from(candidate_pairs),
-        );
-    }
-
-    let witness_record = witness::WitnessRecord::new(
-        inputs,
-        params,
-        &witness::hash_bytes(output.as_bytes()),
-        "RESOLVED",
-        0,
-    );
-    if let Err(error) = witness::append_witness_record(&witness_record, false) {
-        eprintln!("Warning: failed to append witness: {}", error);
-    }
 }
 
 fn append_entity_workbench_run_witness(
@@ -1918,23 +4031,53 @@ fn read_json_artifact<T: DeserializeOwned>(
 }
 
 #[allow(clippy::result_large_err)]
-fn read_jsonl_artifact<T: DeserializeOwned>(
+fn read_block_candidate_records_artifact(
     path: &Path,
-    label: &str,
-) -> Result<Vec<T>, CanonOutput> {
+) -> Result<Vec<entity::block::BlockCandidateRecord>, CanonOutput> {
+    let label = "entity block candidate records";
     let bytes = read_artifact_bytes(path, label)?;
-    let text = std::str::from_utf8(&bytes).map_err(|error| {
+    match bytes
+        .iter()
+        .copied()
+        .find(|byte| !byte.is_ascii_whitespace())
+    {
+        Some(b'[') => serde_json::from_slice(&bytes).map_err(|error| {
+            refusal::create_refusal(
+                RefusalCode::EParse,
+                format!(
+                    "Failed to parse {label} '{}' as JSON: {error}",
+                    path.display()
+                ),
+                serde_json::json!({
+                    "path": path.display().to_string(),
+                    "artifact": label,
+                    "format": "json_array",
+                    "error": error.to_string(),
+                }),
+                None,
+            )
+        }),
+        _ => read_block_candidate_records_jsonl(path, &bytes, label),
+    }
+}
+
+#[allow(clippy::result_large_err)]
+fn read_block_candidate_records_jsonl(
+    path: &Path,
+    bytes: &[u8],
+    label: &str,
+) -> Result<Vec<entity::block::BlockCandidateRecord>, CanonOutput> {
+    let text = std::str::from_utf8(bytes).map_err(|error| {
         refusal::create_refusal(
             RefusalCode::EParse,
             format!(
-                "{} '{}' must be valid UTF-8 JSONL: {}",
-                label,
-                path.display(),
-                error
+                "{label} '{}' must be valid UTF-8 JSONL: {error}",
+                path.display()
             ),
             serde_json::json!({
                 "path": path.display().to_string(),
                 "artifact": label,
+                "format": "jsonl",
                 "error": error.to_string(),
             }),
             None,
@@ -1942,21 +4085,21 @@ fn read_jsonl_artifact<T: DeserializeOwned>(
     })?;
 
     text.lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| {
+        .enumerate()
+        .filter(|(_, line)| !line.trim().is_empty())
+        .map(|(line_index, line)| {
             serde_json::from_str(line).map_err(|error| {
                 refusal::create_refusal(
                     RefusalCode::EParse,
                     format!(
-                        "Failed to parse {} '{}' as JSONL: {}",
-                        label,
-                        path.display(),
-                        error
+                        "Failed to parse {label} '{}' as JSONL: {error}",
+                        path.display()
                     ),
                     serde_json::json!({
                         "path": path.display().to_string(),
                         "artifact": label,
-                        "line": line,
+                        "format": "jsonl",
+                        "line_number": line_index + 1,
                         "error": error.to_string(),
                     }),
                     None,
@@ -2099,7 +4242,7 @@ fn parse_provider_config(options: &[String]) -> Result<BTreeMap<String, String>,
     Ok(parsed)
 }
 
-/// Long flags an agent commonly types on the core resolve command. Used to
+/// Long flags an agent commonly types on the core lookup command. Used to
 /// turn clap's generic "unexpected argument" into a did-you-mean suggestion.
 const KNOWN_CORE_FLAGS: [&str; 14] = [
     "registry",
@@ -2120,9 +4263,7 @@ const KNOWN_CORE_FLAGS: [&str; 14] = [
 
 /// Top-level subcommands, for disambiguating a misspelled subcommand that clap
 /// otherwise swallows as the optional positional input.
-const KNOWN_SUBCOMMANDS: [&str; 6] = [
-    "doctor", "package", "resolve", "registry", "entity", "strategy",
-];
+const KNOWN_SUBCOMMANDS: [&str; 5] = ["doctor", "package", "registry", "entity", "strategy"];
 
 /// Classic dynamic-programming Levenshtein edit distance.
 fn levenshtein(a: &str, b: &str) -> usize {
@@ -2838,73 +4979,73 @@ fn create_resolve_refusal(error: resolve::ResolveError) -> CanonOutput {
             RefusalCode::EIo,
             message,
             detail,
-            Some("Check resolve tape, strategy, and registry paths, then rerun canon resolve".to_string()),
+            Some("Check entity link row, strategy, registry, and work-dir paths, then rerun canon entity link".to_string()),
         ),
         resolve::ResolveErrorCode::Parse => refusal::create_refusal(
             RefusalCode::EParse,
             message,
             detail,
-            Some("Use supported resolve tape formats (.csv, .tsv, .jsonl, .ndjson) and valid JSON/YAML, then rerun canon resolve".to_string()),
+            Some("Use supported entity link row formats (.csv, .tsv, .jsonl, .ndjson) and valid JSON/YAML, then rerun canon entity link".to_string()),
         ),
         resolve::ResolveErrorCode::Strategy => refusal::create_refusal(
             RefusalCode::EBadStrategy,
             message,
             detail,
-            Some("Fix the strategy YAML and rerun canon resolve with --strategy".to_string()),
+            Some("Fix the strategy YAML and rerun canon entity link with --strategy".to_string()),
         ),
         resolve::ResolveErrorCode::InputContract => refusal::create_refusal(
             RefusalCode::EColumnNotFound,
             message,
             detail,
-            Some("Fix strategy field mappings or tape headers, then rerun canon resolve".to_string()),
+            Some("Fix strategy field mappings or row headers, then rerun canon entity link".to_string()),
         ),
         resolve::ResolveErrorCode::Registry => refusal::create_refusal(
             RefusalCode::EBadRegistry,
             message,
             detail,
-            Some("Check the resolve registry and rerun canon resolve".to_string()),
+            Some("Check the entity link registry and rerun canon entity link".to_string()),
         ),
         resolve::ResolveErrorCode::TooLarge => refusal::create_refusal(
             RefusalCode::ETooLarge,
             message,
             detail,
-            Some("Increase --max-rows or --max-bytes, or reduce the resolve tapes, then rerun canon resolve".to_string()),
+            Some("Increase --max-rows or --max-bytes, or reduce the linked row sets, then rerun canon entity link".to_string()),
         ),
         resolve::ResolveErrorCode::TooManyCandidates => refusal::create_refusal(
             RefusalCode::ETooManyCandidates,
             message,
             detail,
-            Some("Tighten candidate_filter or raise --max-candidates, then rerun canon resolve".to_string()),
+            Some("Tighten candidate_filter or raise --max-candidates, then rerun canon entity link".to_string()),
         ),
         resolve::ResolveErrorCode::EmptyTape => refusal::create_refusal(
             RefusalCode::EEmptyTape,
             message,
             detail,
-            Some("Provide reference and target tapes with processable records, then rerun canon resolve".to_string()),
+            Some("Provide reference and target rows with processable records, then rerun canon entity link".to_string()),
         ),
         resolve::ResolveErrorCode::IncompatibleTapes => refusal::create_refusal(
             RefusalCode::EIncompatibleTapes,
             message,
             detail,
-            Some("Fix the strategy so reference and target fields can be compared, then rerun canon resolve".to_string()),
+            Some("Fix the strategy so reference and target fields can be compared, then rerun canon entity link".to_string()),
         ),
         resolve::ResolveErrorCode::Gold => refusal::create_refusal(
             RefusalCode::EParse,
             message,
             detail,
-            Some("Repair the gold JSONL cross-reference file and rerun canon resolve".to_string()),
+            Some("Repair the gold JSONL cross-reference file and rerun canon entity link".to_string()),
         ),
         resolve::ResolveErrorCode::WriteBack => refusal::create_refusal(
             RefusalCode::EParse,
             message,
             detail,
-            Some("Resolve registry write-back conflicts before rerunning canon resolve --write-back".to_string()),
+            Some("Resolve registry write-back conflicts before rerunning canon entity link --write-back".to_string()),
         ),
         resolve::ResolveErrorCode::Unimplemented => refusal::create_refusal(
             RefusalCode::EParse,
             message,
             detail,
-            Some("Complete the resolve implementation beads before using canon resolve".to_string()),
+            Some("Complete the entity link implementation beads before using canon entity link".to_string()),
         ),
     }
 }
@@ -3419,13 +5560,13 @@ impl RefusalCode {
             }
             RefusalCode::EBadStrategy => "Fix the strategy YAML, then rerun canon with --strategy",
             RefusalCode::ETooManyCandidates => {
-                "Tighten candidate_filter or raise --max-candidates, then rerun canon resolve"
+                "Tighten candidate_filter or raise --max-candidates, then rerun canon entity link"
             }
             RefusalCode::EEmptyTape => {
-                "Provide reference and target tapes with processable records, then rerun canon resolve"
+                "Provide reference and target rows with processable records, then rerun canon entity link"
             }
             RefusalCode::EIncompatibleTapes => {
-                "Fix strategy field mappings so the tapes share comparable fields, then rerun canon resolve"
+                "Fix strategy field mappings so the linked row sets share comparable fields, then rerun canon entity link"
             }
         }
     }
@@ -3556,7 +5697,6 @@ mod tests {
     fn suggest_subcommand_corrects_one_edit_typos() {
         assert_eq!(super::suggest_subcommand("regstry"), Some("registry"));
         assert_eq!(super::suggest_subcommand("doctr"), Some("doctor"));
-        assert_eq!(super::suggest_subcommand("resolv"), Some("resolve"));
         assert_eq!(super::suggest_subcommand("registry"), None);
         // Transpositions are distance 2 under Levenshtein, so not suggested.
         assert_eq!(super::suggest_subcommand("ogr"), None);

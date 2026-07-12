@@ -38,12 +38,15 @@ pub use id_scheme::{
 pub use mint::{RegistryMintOutput, RegistryMintRequest, mint};
 pub use next_id::{RegistryNextIdOutput, RegistryNextIdRequest, next_id};
 pub use package::{
-    REGISTRY_PACKAGE_SCHEMA_VERSION, RegistryPackage, RegistryPackageAttachmentDescriptor,
+    REGISTRY_MERGE_PLAN_SCHEMA_VERSION, REGISTRY_PACKAGE_SCHEMA_VERSION, RegistryMergeBlastRadius,
+    RegistryMergeChange, RegistryMergeChangeKind, RegistryMergeDecision, RegistryMergePackageRef,
+    RegistryMergePlan, RegistryMergePlanError, RegistryMergePlanErrorKind, RegistryMergeSummary,
+    RegistryMergeWriteAction, RegistryPackage, RegistryPackageAttachmentDescriptor,
     RegistryPackageDependencyReference, RegistryPackageDeploymentProjection,
     RegistryPackageDescriptor, RegistryPackageError, RegistryPackageErrorKind,
     RegistryPackageIdentityRules, RegistryPackageLayouts, RegistryPackageRegistryIdentity,
-    canonical_package_bytes, compile_registry_package, parse_registry_package,
-    validate_registry_package,
+    canonical_package_bytes, compile_registry_package, parse_registry_package, plan_registry_merge,
+    plan_registry_package_merge, validate_registry_package,
 };
 pub use provider::{
     ProviderCatalogEntry, ProviderExample, ProviderOption, ProviderSchema, provider_catalog,
@@ -959,22 +962,41 @@ fn acquire_advisory_lease(lock_path: &Path, purpose: &str) -> io::Result<Advisor
 }
 
 fn lease_is_stale(lock_path: &Path) -> io::Result<bool> {
+    lease_is_stale_at(lock_path, SystemTime::now())
+}
+
+fn lease_is_stale_at(lock_path: &Path, now: SystemTime) -> io::Result<bool> {
     let bytes = match fs::read(lock_path) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
         Err(error) => return Err(error),
     };
-    let created_unix_secs = serde_json::from_slice::<AdvisoryLeaseFile>(&bytes)
-        .map(|lease| lease.created_unix_secs)
-        .unwrap_or(0);
-    Ok(current_unix_secs().saturating_sub(created_unix_secs) >= LEASE_STALE_AFTER.as_secs())
+    let lease = match serde_json::from_slice::<AdvisoryLeaseFile>(&bytes) {
+        Ok(lease) => lease,
+        Err(_) => return malformed_lease_is_stale(lock_path, now),
+    };
+    Ok(
+        current_unix_secs_at(now).saturating_sub(lease.created_unix_secs)
+            >= LEASE_STALE_AFTER.as_secs(),
+    )
+}
+
+fn malformed_lease_is_stale(lock_path: &Path, now: SystemTime) -> io::Result<bool> {
+    let metadata = match fs::metadata(lock_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    let modified_at = metadata.modified()?;
+    Ok(now.duration_since(modified_at).unwrap_or_default() >= LEASE_STALE_AFTER)
 }
 
 fn current_unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
+    current_unix_secs_at(SystemTime::now())
+}
+
+fn current_unix_secs_at(now: SystemTime) -> u64 {
+    now.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
 }
 
 #[cfg(test)]
@@ -1036,6 +1058,58 @@ mod tests {
             },
         ];
         write_mapping_file(temp_dir, "ticker-to-cusip.json", &mappings)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn fresh_empty_advisory_lease_is_not_stale() -> Result<(), Box<dyn Error>> {
+        let temp_dir = TempDir::new()?;
+        let lock_path = temp_dir.path().join("registry.lock");
+        fs::write(&lock_path, b"")?;
+
+        let modified_at = fs::metadata(&lock_path)?.modified()?;
+        let fresh_now =
+            modified_at + Duration::from_secs(LEASE_STALE_AFTER.as_secs().saturating_sub(1));
+
+        assert!(!lease_is_stale_at(&lock_path, fresh_now)?);
+
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_advisory_lease_recovers_after_metadata_age() -> Result<(), Box<dyn Error>> {
+        let temp_dir = TempDir::new()?;
+        let lock_path = temp_dir.path().join("registry.lock");
+        fs::write(&lock_path, b"{")?;
+
+        let modified_at = fs::metadata(&lock_path)?.modified()?;
+        let stale_now = modified_at + Duration::from_secs(LEASE_STALE_AFTER.as_secs() + 1);
+
+        assert!(lease_is_stale_at(&lock_path, stale_now)?);
+
+        Ok(())
+    }
+
+    #[test]
+    fn valid_advisory_lease_uses_payload_timestamp() -> Result<(), Box<dyn Error>> {
+        let temp_dir = TempDir::new()?;
+        let lock_path = temp_dir.path().join("registry.lock");
+        let created_unix_secs = 1_800_000_000;
+        let payload = AdvisoryLeaseFile {
+            pid: 42,
+            created_unix_secs,
+            purpose: "registry-mutation".to_string(),
+        };
+        fs::write(&lock_path, serde_json::to_vec(&payload)?)?;
+
+        let live_now =
+            UNIX_EPOCH + Duration::from_secs(created_unix_secs + LEASE_STALE_AFTER.as_secs() - 1);
+        let stale_now =
+            UNIX_EPOCH + Duration::from_secs(created_unix_secs + LEASE_STALE_AFTER.as_secs());
+
+        assert!(!lease_is_stale_at(&lock_path, live_now)?);
+        assert!(lease_is_stale_at(&lock_path, stale_now)?);
 
         Ok(())
     }

@@ -1,0 +1,327 @@
+{
+  "version": "canon.evaluation.generalization.v1",
+  "benchmark_id": "neutral.generalization.public",
+  "corpus_visibility": "public_fixture",
+  "corpus_ref": "tests/fixtures/extensions/neutral-domain/time_forward/generalization_benchmark.json",
+  "policy_digest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "entity_disjoint_trials": [
+    {
+      "trial_id": "entity_disjoint.neutral.planted",
+      "observations": [
+        {
+          "observation_id": "obs.tune.anchor.001",
+          "canonical_entity_id": "entity.tune.anchor",
+          "dataset_id": "dataset.reference.prep",
+          "dataset_role": "reference",
+          "partition": "tune",
+          "observed_at": "2025-11-01",
+          "surface": "Atlas Works",
+          "evidence_availability": "surface_and_identifier",
+          "source_family": "reference",
+          "name_difficulty": "easy",
+          "entity_frequency": "head",
+          "relation_class": "same_entity",
+          "difficulty_band": "easy"
+        },
+        {
+          "observation_id": "obs.holdout.beta.ref",
+          "canonical_entity_id": "entity.holdout.beta",
+          "dataset_id": "dataset.reference.future",
+          "dataset_role": "reference",
+          "partition": "holdout",
+          "observed_at": "2026-03-05",
+          "surface": "Beta Workshop",
+          "evidence_availability": "rich_evidence",
+          "source_family": "reference",
+          "name_difficulty": "legal_suffix",
+          "entity_frequency": "tail",
+          "relation_class": "same_entity",
+          "difficulty_band": "hard"
+        },
+        {
+          "observation_id": "obs.holdout.beta.target",
+          "canonical_entity_id": "entity.holdout.beta",
+          "dataset_id": "dataset.target.future",
+          "dataset_role": "target",
+          "partition": "holdout",
+          "observed_at": "2026-03-06",
+          "surface": "Beta Workshop LLC",
+          "evidence_availability": "rich_evidence",
+          "source_family": "target",
+          "name_difficulty": "legal_suffix",
+          "entity_frequency": "tail",
+          "relation_class": "same_entity",
+          "difficulty_band": "hard"
+        },
+        {
+          "observation_id": "obs.holdout.hierarchy.left",
+          "canonical_entity_id": "entity.holdout.parent",
+          "dataset_id": "dataset.reference.future",
+          "dataset_role": "reference",
+          "partition": "holdout",
+          "observed_at": "2026-03-07",
+          "surface": "North Branch Group",
+          "evidence_availability": "name_only",
+          "source_family": "reference",
+          "name_difficulty": "lookalike",
+          "entity_frequency": "head",
+          "relation_class": "hierarchy",
+          "difficulty_band": "hard"
+        },
+        {
+          "observation_id": "obs.holdout.hierarchy.right",
+          "canonical_entity_id": "entity.holdout.child",
+          "dataset_id": "dataset.target.future",
+          "dataset_role": "target",
+          "partition": "holdout",
+          "observed_at": "2026-03-08",
+          "surface": "North Branch Local Unit",
+          "evidence_availability": "name_only",
+          "source_family": "target",
+          "name_difficulty": "lookalike",
+          "entity_frequency": "tail",
+          "relation_class": "hierarchy",
+          "difficulty_band": "hard"
+        }
+      ],
+      "discovery_results": [
+        {
+          "result_id": "result.beta.cluster",
+          "observation_ids": [
+            "obs.holdout.beta.ref",
+            "obs.holdout.beta.target"
+          ],
+          "expected_decision": "cluster_new",
+          "actual_decision": "cluster_new",
+          "candidate_rank": 2,
+          "evidence_lanes": [
+            {
+              "lane_id": "surface_tokens",
+              "available": true,
+              "support_basis_points": 8800,
+              "contradiction_basis_points": 0
+            },
+            {
+              "lane_id": "cross_source_context",
+              "available": true,
+              "support_basis_points": 7900,
+              "contradiction_basis_points": 0
+            }
+          ],
+          "review_action": "promote_cluster"
+        },
+        {
+          "result_id": "result.hierarchy.safety",
+          "observation_ids": [
+            "obs.holdout.hierarchy.left",
+            "obs.holdout.hierarchy.right"
+          ],
+          "expected_decision": "abstain",
+          "actual_decision": "abstain",
+          "candidate_rank": 8,
+          "evidence_lanes": [
+            {
+              "lane_id": "related_distinct_policy",
+              "available": true,
+              "support_basis_points": 2000,
+              "contradiction_basis_points": 7600
+            }
+          ],
+          "review_action": "defer_review"
+        }
+      ],
+      "hard_negatives": [
+        {
+          "control_id": "hard.hierarchy.no-critical-merge",
+          "left_observation_id": "obs.holdout.hierarchy.left",
+          "right_observation_id": "obs.holdout.hierarchy.right",
+          "relation_class": "hierarchy",
+          "severity": "critical",
+          "false_merge": false
+        }
+      ],
+      "directional_links": [
+        {
+          "link_id": "link.beta.reference-to-target",
+          "reference_observation_id": "obs.holdout.beta.ref",
+          "target_observation_id": "obs.holdout.beta.target",
+          "reference_dataset_id": "dataset.reference.future",
+          "target_dataset_id": "dataset.target.future",
+          "expected_decision": "cluster_new",
+          "actual_decision": "cluster_new",
+          "candidate_rank": 2
+        }
+      ],
+      "leakage_probes": [
+        {
+          "channel": "dictionary",
+          "protected_set": "holdout_entity",
+          "locator": "strategy/dictionary/public",
+          "value": "Atlas Works"
+        }
+      ]
+    }
+  ],
+  "time_forward_trials": [
+    {
+      "trial_id": "time_forward.neutral.cutoff",
+      "cutoff": "2026-01-01",
+      "observations": [
+        {
+          "observation_id": "obs.build.anchor",
+          "canonical_entity_id": "entity.time.anchor",
+          "dataset_id": "dataset.reference.pre",
+          "dataset_role": "reference",
+          "partition": "build",
+          "observed_at": "2025-12-15",
+          "surface": "Harbor Signal",
+          "evidence_availability": "surface_and_identifier",
+          "source_family": "reference",
+          "name_difficulty": "easy",
+          "entity_frequency": "head",
+          "relation_class": "same_entity",
+          "difficulty_band": "easy"
+        },
+        {
+          "observation_id": "obs.eval.rename",
+          "canonical_entity_id": "entity.time.anchor",
+          "dataset_id": "dataset.target.post",
+          "dataset_role": "target",
+          "partition": "evaluation",
+          "observed_at": "2026-03-01",
+          "surface": "Harbor Signal Renewed",
+          "evidence_availability": "rich_evidence",
+          "source_family": "target",
+          "name_difficulty": "rename",
+          "entity_frequency": "head",
+          "relation_class": "rename_continuity",
+          "difficulty_band": "easy"
+        },
+        {
+          "observation_id": "obs.eval.new",
+          "canonical_entity_id": "entity.time.new",
+          "dataset_id": "dataset.target.post",
+          "dataset_role": "target",
+          "partition": "evaluation",
+          "observed_at": "2026-04-10",
+          "surface": "Future Nova Labs",
+          "evidence_availability": "name_only",
+          "source_family": "target",
+          "name_difficulty": "hard",
+          "entity_frequency": "tail",
+          "relation_class": "new_entity",
+          "difficulty_band": "hard"
+        },
+        {
+          "observation_id": "obs.eval.relationship",
+          "canonical_entity_id": "entity.time.relationship",
+          "dataset_id": "dataset.reference.post",
+          "dataset_role": "reference",
+          "partition": "evaluation",
+          "observed_at": "2026-04-15",
+          "surface": "Harbor Signal Partner",
+          "evidence_availability": "rich_evidence",
+          "source_family": "reference",
+          "name_difficulty": "legal_suffix",
+          "entity_frequency": "tail",
+          "relation_class": "changed_relationship",
+          "difficulty_band": "hard"
+        }
+      ],
+      "build_observation_ids": [
+        "obs.build.anchor"
+      ],
+      "evaluation_observation_ids": [
+        "obs.eval.rename",
+        "obs.eval.new",
+        "obs.eval.relationship"
+      ],
+      "event_results": [
+        {
+          "result_id": "result.rename.attach",
+          "observation_ids": [
+            "obs.eval.rename"
+          ],
+          "expected_decision": "attach_existing",
+          "actual_decision": "attach_existing",
+          "candidate_rank": 1,
+          "evidence_lanes": [
+            {
+              "lane_id": "temporal_name_evidence",
+              "available": true,
+              "support_basis_points": 9100,
+              "contradiction_basis_points": 0
+            }
+          ],
+          "review_action": "promote_link"
+        },
+        {
+          "result_id": "result.new.cluster",
+          "observation_ids": [
+            "obs.eval.new"
+          ],
+          "expected_decision": "cluster_new",
+          "actual_decision": "cluster_new",
+          "candidate_rank": 3,
+          "evidence_lanes": [
+            {
+              "lane_id": "new_entity_surface",
+              "available": true,
+              "support_basis_points": 8200,
+              "contradiction_basis_points": 0
+            }
+          ],
+          "review_action": "promote_cluster"
+        },
+        {
+          "result_id": "result.relationship.abstain",
+          "observation_ids": [
+            "obs.eval.relationship"
+          ],
+          "expected_decision": "abstain",
+          "actual_decision": "abstain",
+          "candidate_rank": 5,
+          "evidence_lanes": [
+            {
+              "lane_id": "changed_relationship_policy",
+              "available": true,
+              "support_basis_points": 4500,
+              "contradiction_basis_points": 6200
+            }
+          ],
+          "review_action": "defer_review"
+        }
+      ],
+      "hard_negatives": [
+        {
+          "control_id": "hard.lookalike.time-forward",
+          "left_observation_id": "obs.eval.new",
+          "right_observation_id": "obs.eval.relationship",
+          "relation_class": "lookalike",
+          "severity": "critical",
+          "false_merge": false
+        }
+      ],
+      "directional_links": [
+        {
+          "link_id": "link.rename.target-to-reference",
+          "reference_observation_id": "obs.build.anchor",
+          "target_observation_id": "obs.eval.rename",
+          "reference_dataset_id": "dataset.reference.pre",
+          "target_dataset_id": "dataset.target.post",
+          "expected_decision": "attach_existing",
+          "actual_decision": "attach_existing",
+          "candidate_rank": 1
+        }
+      ],
+      "leakage_probes": [
+        {
+          "channel": "alias",
+          "protected_set": "future_observation",
+          "locator": "build/aliases/pre_cutoff",
+          "value": "Harbor Signal"
+        }
+      ]
+    }
+  ]
+}

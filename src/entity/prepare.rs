@@ -270,9 +270,9 @@ pub struct PrepareStreamingDiagnostics {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct LoadedPrepareProfile {
-    document: EntityProfileDocument,
-    content_hash: String,
+pub struct LoadedPrepareProfile {
+    pub document: EntityProfileDocument,
+    pub content_hash: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -407,7 +407,7 @@ pub fn load_prepare_profile(profile: &str) -> Result<EntityProfileDocument, Refu
     Ok(load_prepare_profile_with_hash(profile)?.document)
 }
 
-fn load_prepare_profile_with_hash(profile: &str) -> Result<LoadedPrepareProfile, Refusal> {
+pub fn load_prepare_profile_with_hash(profile: &str) -> Result<LoadedPrepareProfile, Refusal> {
     let profile_source = if Path::new(profile).exists() {
         fs::read_to_string(profile).map_err(|error| {
             EntityRefusalKind::Profile.to_refusal(

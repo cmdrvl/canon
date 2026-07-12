@@ -1,0 +1,103 @@
+{
+  "version": "canon.source.mapping.v1",
+  "package_id": "tests.resolve.unchanged_link",
+  "package_version": "0.1.0",
+  "profiles": [
+    {
+      "profile_id": "tests.resolve.reference_loans_to_entity_link",
+      "source_system": "tests.resolve.reference_loans",
+      "source_formats": ["csv"],
+      "object_id_path": "loan_id",
+      "locator_path": "loan_id",
+      "observations": [
+        {
+          "mapping_id": "reference.servicer_surface",
+          "subject_type_id": "tests.resolve:loan",
+          "surface_path": "servicer",
+          "anchor_mappings": [
+            { "namespace": "loan_id", "path": "loan_id" },
+            { "namespace": "deal_id", "path": "deal" },
+            { "namespace": "property_id", "path": "trustee_loan_number" }
+          ],
+          "context_paths": [
+            "property_address",
+            "city",
+            "state",
+            "upb",
+            "rate",
+            "maturity_date",
+            "origination_date",
+            "property_type"
+          ]
+        }
+      ],
+      "policies": {
+        "unknown_field": "preserve",
+        "ambiguous_cell": "quarantine",
+        "missing_required": "reject",
+        "null_value": "quarantine",
+        "unknown_role": "preserve"
+      },
+      "documentation_refs": ["unchanged-link-manifest"]
+    },
+    {
+      "profile_id": "tests.resolve.target_loans_to_entity_link",
+      "source_system": "tests.resolve.target_loans",
+      "source_formats": ["csv"],
+      "object_id_path": "deal|loan_number",
+      "locator_path": "deal|loan_number",
+      "observations": [
+        {
+          "mapping_id": "target.servicer_surface",
+          "subject_type_id": "tests.resolve:loan",
+          "surface_path": "servicer_name",
+          "anchor_mappings": [
+            { "namespace": "deal_id", "path": "deal" },
+            { "namespace": "property_id", "path": "loan_number" },
+            { "namespace": "source_row_id", "path": "deal|loan_number" }
+          ],
+          "context_paths": [
+            "address",
+            "city",
+            "state",
+            "balance",
+            "coupon",
+            "maturity",
+            "orig_date",
+            "collateral_type"
+          ]
+        }
+      ],
+      "policies": {
+        "unknown_field": "preserve",
+        "ambiguous_cell": "quarantine",
+        "missing_required": "reject",
+        "null_value": "quarantine",
+        "unknown_role": "preserve"
+      },
+      "documentation_refs": ["unchanged-link-manifest"]
+    }
+  ],
+  "documentation": [
+    {
+      "label": "unchanged-link-manifest",
+      "uri": "tests/fixtures/resolve/parity/unchanged-link/manifest.json"
+    }
+  ],
+  "x-canon-parity-projection": {
+    "reference": {
+      "source_row_id": "loan_id",
+      "deal_id": "deal",
+      "loan_id": "loan_id",
+      "property_id": "trustee_loan_number",
+      "raw_tenant_name": "servicer"
+    },
+    "target": {
+      "source_row_id": "deal|loan_number",
+      "deal_id": "deal",
+      "loan_id": "loan_number",
+      "property_id": "loan_number",
+      "raw_tenant_name": "servicer_name or UNKNOWN when blank"
+    }
+  }
+}

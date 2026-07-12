@@ -1,0 +1,338 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.usage_context.v1.schema.json",
+  "title": "canon.usage_context.v1",
+  "description": "Content-addressed privacy-safe usage and blast-radius context for unresolved groups. This artifact is derived from declared projects, artifacts, lineage, and dbt/search consumers; it is review decision support only and makes no canonical identity assertion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "artifact_content_hash",
+    "identity_status",
+    "privacy_model",
+    "source_unresolved_groups_artifact_hash",
+    "policy",
+    "policy_content_hash",
+    "summary",
+    "groups"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon.usage_context.v1"
+    },
+    "artifact_content_hash": {
+      "$ref": "#/$defs/blake3"
+    },
+    "identity_status": {
+      "const": "context_only_no_identity_assertion"
+    },
+    "privacy_model": {
+      "const": "declared_inputs_banded_no_raw_values_v1"
+    },
+    "source_unresolved_groups_artifact_hash": {
+      "$ref": "#/$defs/blake3"
+    },
+    "policy": {
+      "$ref": "#/$defs/policy"
+    },
+    "policy_content_hash": {
+      "$ref": "#/$defs/blake3"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/group_context"
+      }
+    }
+  },
+  "$defs": {
+    "blake3": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "count_band": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "known_zero",
+        "one",
+        "two_to_five",
+        "six_to_ten",
+        "eleven_to_fifty",
+        "fifty_one_to_hundred",
+        "hundred_one_to_thousand",
+        "over_thousand"
+      ]
+    },
+    "criticality_band": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "low",
+        "medium",
+        "high",
+        "mission_critical"
+      ]
+    },
+    "exposure_band": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "internal",
+        "partner",
+        "public",
+        "restricted"
+      ]
+    },
+    "consumer_kind": {
+      "type": "string",
+      "enum": [
+        "dbt_seed",
+        "dbt_model",
+        "search_index",
+        "api",
+        "dashboard",
+        "notebook",
+        "export_bundle",
+        "other"
+      ]
+    },
+    "typed_role": {
+      "type": "string",
+      "enum": [
+        "lookup_input",
+        "name_field",
+        "anchor_field",
+        "context_field",
+        "relation_subject",
+        "relation_object",
+        "assignment_subject",
+        "assignment_assignee",
+        "source_only",
+        "unknown"
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_id",
+        "revision",
+        "weights"
+      ],
+      "properties": {
+        "policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "weights": {
+          "$ref": "#/$defs/weights"
+        }
+      }
+    },
+    "weights": {
+      "type": "object",
+      "description": "Explicit deterministic impact weights. They rank review support only and are not identity-decision thresholds.",
+      "additionalProperties": false,
+      "required": [
+        "frequency",
+        "project_spread",
+        "role_criticality",
+        "source_criticality",
+        "exposure",
+        "row_count",
+        "downstream_dependencies",
+        "consumer_count",
+        "lineage_depth"
+      ],
+      "properties": {
+        "frequency": { "type": "integer" },
+        "project_spread": { "type": "integer" },
+        "role_criticality": { "type": "integer" },
+        "source_criticality": { "type": "integer" },
+        "exposure": { "type": "integer" },
+        "row_count": { "type": "integer" },
+        "downstream_dependencies": { "type": "integer" },
+        "consumer_count": { "type": "integer" },
+        "lineage_depth": { "type": "integer" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_groups",
+        "groups_with_unknown_context",
+        "groups_with_sensitive_context",
+        "declared_project_count",
+        "declared_artifact_count",
+        "declared_lineage_edge_count",
+        "declared_consumer_binding_count",
+        "group_occurrence_count",
+        "by_source_criticality",
+        "by_exposure",
+        "by_consumer_kind"
+      ],
+      "properties": {
+        "total_groups": { "type": "integer", "minimum": 0 },
+        "groups_with_unknown_context": { "type": "integer", "minimum": 0 },
+        "groups_with_sensitive_context": { "type": "integer", "minimum": 0 },
+        "declared_project_count": { "type": "integer", "minimum": 0 },
+        "declared_artifact_count": { "type": "integer", "minimum": 0 },
+        "declared_lineage_edge_count": { "type": "integer", "minimum": 0 },
+        "declared_consumer_binding_count": { "type": "integer", "minimum": 0 },
+        "group_occurrence_count": { "type": "integer", "minimum": 0 },
+        "by_source_criticality": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "by_exposure": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "by_consumer_kind": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "group_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "group_id",
+        "unresolved_group_digest",
+        "identity_status",
+        "context_only",
+        "impact_units",
+        "bands",
+        "typed_role_counts",
+        "consumer_kinds",
+        "privacy_safe_refs",
+        "contributions"
+      ],
+      "properties": {
+        "group_id": { "type": "string", "minLength": 1 },
+        "unresolved_group_digest": { "$ref": "#/$defs/blake3" },
+        "identity_status": { "const": "context_only_no_identity_assertion" },
+        "context_only": { "const": true },
+        "impact_units": {
+          "type": "integer",
+          "description": "Deterministic review-support score from explicit weights; not a merge, link, or identity threshold."
+        },
+        "bands": { "$ref": "#/$defs/bands" },
+        "typed_role_counts": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/count_band" },
+          "propertyNames": { "$ref": "#/$defs/typed_role" }
+        },
+        "consumer_kinds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/consumer_kind" },
+          "uniqueItems": true
+        },
+        "privacy_safe_refs": { "$ref": "#/$defs/privacy_safe_refs" },
+        "contributions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/contribution" }
+        },
+        "uncertainty_flags": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "bands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frequency",
+        "declared_project_count",
+        "declared_artifact_count",
+        "source_criticality",
+        "exposure",
+        "row_count",
+        "consumer_count",
+        "downstream_dependency_count",
+        "downstream_artifact_count",
+        "lineage_depth"
+      ],
+      "properties": {
+        "frequency": { "$ref": "#/$defs/count_band" },
+        "declared_project_count": { "$ref": "#/$defs/count_band" },
+        "declared_artifact_count": { "$ref": "#/$defs/count_band" },
+        "source_criticality": { "$ref": "#/$defs/criticality_band" },
+        "exposure": { "$ref": "#/$defs/exposure_band" },
+        "row_count": { "$ref": "#/$defs/count_band" },
+        "consumer_count": { "$ref": "#/$defs/count_band" },
+        "downstream_dependency_count": { "$ref": "#/$defs/count_band" },
+        "downstream_artifact_count": { "$ref": "#/$defs/count_band" },
+        "lineage_depth": { "$ref": "#/$defs/count_band" }
+      }
+    },
+    "privacy_safe_refs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "project_refs",
+        "artifact_refs",
+        "consumer_refs",
+        "redacted_project_count",
+        "redacted_artifact_count",
+        "redacted_consumer_count"
+      ],
+      "properties": {
+        "project_refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "artifact_refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "consumer_refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "redacted_project_count": { "$ref": "#/$defs/count_band" },
+        "redacted_artifact_count": { "$ref": "#/$defs/count_band" },
+        "redacted_consumer_count": { "$ref": "#/$defs/count_band" }
+      }
+    },
+    "contribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component",
+        "signal_band",
+        "weight_units",
+        "contribution_units",
+        "unknown_or_redacted"
+      ],
+      "properties": {
+        "component": { "type": "string", "minLength": 1 },
+        "signal_band": { "type": "string", "minLength": 1 },
+        "weight_units": { "type": "integer" },
+        "contribution_units": { "type": "integer" },
+        "unknown_or_redacted": { "type": "boolean" }
+      }
+    }
+  },
+  "x-canon-contract": {
+    "source_of_impact": "declared_projects_artifacts_lineage_consumers_only",
+    "privacy": "raw values are absent; sensitive references are redacted and quantitative values are unknown or banded",
+    "decision_boundary": "context and ranking support only; no identity-decision thresholds",
+    "determinism": "same declared inputs and policy produce byte-identical JSON and content hash"
+  }
+}

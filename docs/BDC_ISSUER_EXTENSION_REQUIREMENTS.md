@@ -110,8 +110,84 @@ design (cheap), not a fork after release (expensive).
   funds × thousands of issuer strings with quarter/industry/instrument context, with the
   sealed/human-reviewed golds as clean anchors. This is domain-owned (bd-epmu), out-of-tree.
 
+## Shortest public-safe BDC proof path
+
+The shortest useful proof is not the full R1–R6 program. It is one bounded
+counterfactual issuer-attachment run through the shipped
+`canon entity alias-withholding` contract. `bd-3gym` completed the fixture-only
+micro-proof that the available BDC-shaped source can be adapted into this
+harness. `bd-1t2y` is the production-path convergence gate; it must not be
+reported as passing until the fresh runs below complete against the tightened
+artifact contract.
+
+1. **Prepare outside the repository.** In an owner-only work directory, select
+   reviewed issuer cases and derive only deterministic manifests and artifacts.
+   Raw issuer surfaces, source paths, assignment payloads, and private corpus
+   excerpts never enter Git, Beads, logs, or the public report.
+2. **Exercise the minimum decision matrix.** Include at least one supported
+   incumbent attachment, one evidence-insufficient abstention or ambiguity, one
+   unmatched case, and one related-but-distinct/lookalike hard negative. Include
+   a typed holding/tranche assignment source so the issuer-identity versus
+   assignment firewall is exercised rather than merely declared.
+3. **Prove a genuinely clean counterfactual.** For every trial, the real clean
+   registry must exactly equal the retained benchmark mapping set and registry
+   id/version, and exact lookup must prove the withheld alias absent. Mapping,
+   search-index, cache, normalization-patch, generated-corpus, and display-name
+   scans must enumerate nonempty concrete sources bound to the validated native
+   chain. The mapping scan must cover the complete clean registry tree.
+4. **Derive outcomes from shipped artifacts.** Candidate rank and miss
+   forensics come from the candidate-recall report; decision and evidence come
+   from public link/run/solve artifacts; review state comes from a rebuilt
+   review queue; and audit must certify the real solve while the run proves
+   stage continuity. The link-ID-to-surface-ID join must come from the
+   derivation-validated link sidecar. A `prepared_surface_collapse` is reported
+   separately with no candidate-rank or recall-denominator credit. A
+   `relation_policy_control` is excluded from same-entity recall and turns any
+   automatic attachment into a visible false merge. Caller-authored outcome
+   receipts do not count.
+5. **Close the positive loop only after review.** A supported attachment must
+   use a typed native review-import receipt, add exactly one withheld alias to a
+   sandbox registry, pass zero-error registry lint, and resolve that alias by
+   ordinary exact replay. The claim must say whether it was an `evaluated_pair`
+   attachment with a real candidate rank and support path or a
+   `prepared_surface_collapse` attachment; collapse/accretion is not retrieval.
+   Abstentions, unmatched cases, and relation-policy hard negatives must produce
+   no promotion or replay evidence.
+6. **Repeat from clean state.** Run the same sealed manifest twice in separate
+   owner-only directories using the same built Canon binary. Require identical
+   sanitized report bytes and digests, the same per-trial outcomes, ranks, and
+   explicit candidate dispositions,
+   zero unexpected file writes, and zero private-value/path hits in all public
+   stdout, stderr, evidence, and comparison artifacts.
+
+This is the stop/go boundary. If it passes, the next direct beads are
+`bd-wr0g` for sealed no-theatre empirical acceptance and `bd-2w13` for
+entity-disjoint/time-forward generalization. R4 co-occurrence ablation and R6
+DERA-style attribute corroboration can then expand the evidence base; neither
+is allowed to substitute for this first clean issuer-identity proof, and no
+external DERA fetch is a dependency of `bd-1t2y`.
+
+### Current acceptance checkpoint
+
+`bd-1t2y` passed this bounded stop/go gate on 2026-07-12. Two fresh owner-only
+attempts using the same pinned Canon binary produced byte-identical strict
+alias-withholding reports (`sha256:5b8bb711834f6b3e396cb7f5dc589a7b68b6a272a1c854885c078e74bea5db8c`).
+The four-case matrix recorded one rank-1 evaluated-pair attachment with typed
+review, one-entry promotion, and exact replay; ambiguity, unmatched, and
+related-distinct controls all abstained correctly. Aggregate results were one
+credited attachment, three abstentions, zero rejects, and zero unsupported
+guesses. The sanitized public evidence had zero private-value or private-path
+hits, and the two attempt trees were kept owner-only.
+
+The shipped `canon entity alias-withholding` command performed final envelope
+compilation. The typed native-review receipt and registry-backed replay artifact
+were constructed through Canon's public Rust APIs; native review CLI import
+wiring remains the explicit `bd-14m6` follow-up. This checkpoint proves the
+bounded decision matrix, not production readiness or corpus generalization;
+`bd-wr0g` and `bd-2w13` remain the next claim-expansion gates.
+
 ## Recommendation
-Adopt R1–R5 as the concrete checklist that `bd-doe2`'s neutral-twin acceptance must exercise
+Adopt R1–R6 as the concrete checklist that `bd-doe2`'s neutral-twin acceptance must exercise
 (as invented non-BDC analogues) and that the private local acceptance runs against real BDC
-issuers. Co-designing the P06 contracts against these five now guarantees amenability by
+issuers. Co-designing the P06 contracts against these six now guarantees amenability by
 construction and keeps the extension firewall (bd-2axg) intact.

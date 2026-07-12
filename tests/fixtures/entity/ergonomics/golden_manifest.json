@@ -66,6 +66,7 @@
     "required_next_command_keys": ["apply", "audit", "promote", "resume", "review_export"],
     "required_telemetry_link_keys": [
       "block_artifact",
+      "candidate_diagnostics",
       "candidate_records",
       "decision_ledger",
       "edge_artifact",

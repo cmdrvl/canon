@@ -1,18 +1,26 @@
 # canon — Canonical Lookup and Registry Substrate
 
-## One-line promise
-**Resolve messy identifiers to canonical IDs using versioned registries. Know what matched, what didn't, and why.**
+> Current core substrate specification. This document defines exact runtime
+> lookup, registry files, refusal semantics, exports, packages, and shared
+> invariants. Evidence workbenches under `canon entity`, including link mode,
+> compile uncertain observations into reviewed registry updates before normal
+> lookup runs.
 
-If it can't resolve, say so clearly. If the match is probabilistic, mark it as a suggestion — never auto-accept.
+## One-line promise
+**Compile accepted identity knowledge into versioned registries, then replay it exactly. Know what matched, what did not, and why.**
+
+If runtime lookup cannot resolve, say so clearly. If evidence is uncertain, keep
+it in a workbench artifact, review queue/inbox, or explicit refusal; never smuggle it
+into accepted runtime matches.
 
 ---
 
 ## Problem (clearly understood)
-Structured data in finance is full of identifier chaos:
+Structured data is full of identifier chaos:
 - the same entity has 5 names across 3 vendors
-- CUSIPs map to ISINs map to tickers — but which mapping version?
-- counterparty names drift: "Wells Fargo" vs "Wells Fargo Bank, N.A." vs "WFB"
-- property addresses have dozens of variants for the same building
+- external IDs map to internal IDs, but the mapping version matters
+- record, organization, fund, property, person, or asset labels drift across source systems
+- reviewed aliases and refused ambiguities need to replay the same way next month
 
 Today this means:
 - ad-hoc VLOOKUP chains
@@ -20,7 +28,16 @@ Today this means:
 - "just ask Dave, he knows the mappings"
 - zero reproducibility — the same input resolves differently next month
 
-`canon` replaces that with **one deterministic command** backed by versioned, inspectable registries.
+`canon` replaces that with a deterministic registry substrate and a clear
+compiler boundary:
+
+```text
+messy evidence -> deterministic artifacts -> audit/review -> versioned registry -> exact replay
+```
+
+The default `canon <INPUT> --registry ... --column ...` command is the replay
+step. It does not run open-ended evidence collection, provider lookup, ontology
+reasoning, clustering, or probabilistic matching.
 
 Architecture note: this plan defines the core lookup kernel and registry
 substrate. Domain-specific resolution workbenches, such as `canon entity`, may
@@ -37,6 +54,7 @@ The core `canon` lookup path is NOT:
 - an address parser or geocoder
 - a data cleansing tool
 - a replacement for a proper MDM platform at scale
+- an industry ontology, provider-knowledge bundle, or domain dictionary
 
 It does not call remote providers at resolution time.
 Registry materialization is an explicit maintenance workflow; normal `canon` runs still resolve input values against local versioned registries and record everything.
@@ -46,6 +64,10 @@ mixing fuzzy or multi-column matching into the production lookup kernel.
 Workbench commands must emit inspectable artifacts, abstain on ambiguity, pass
 audit gates before promotion, and write durable knowledge back into versioned
 registries.
+
+Industry expertise, provider semantics, domain thresholds, and adapter-specific
+field mappings belong in registries, profiles, strategies, packages, or
+out-of-tree extensions. They are not core defaults.
 
 ---
 
@@ -73,6 +95,15 @@ canon strategy promote --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TAS
 canon strategy list --registry <REGISTRY> [--key-type schema|task] [--grade operator-attested|proof-attested] [--status active|deprecated] [--emit json|summary]
 canon strategy explain --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
 canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
+canon entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--suite <DIR>] [--emit json|summary] [--no-witness]
+canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
+canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
+canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY> --work-dir <DIR>
+canon entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--emit json|summary]
+canon entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--emit jsonl|summary]
+canon entity evidence <ROWS> [--profile <PROFILE>] --strategy <YAML> --candidates <JSONL> --registry <REGISTRY> [--work-dir <DIR>] [--emit jsonl|summary]
+canon entity solve <ROWS> [--profile <PROFILE>] --strategy <YAML> --evidence <JSONL> --registry <REGISTRY> [--work-dir <DIR>] [--emit json|summary]
+canon entity apply <RESULT.json> --rows <ROWS> --registry <REGISTRY> [--work-dir <DIR>] [--emit json|summary]
 canon entity review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]
 canon entity review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]
 ```
@@ -90,7 +121,7 @@ Options:
 - `--max-bytes <N>`: Refuse if input file exceeds N bytes. For regular files, checked via file size before reading. For stdin (`-`), bytes are counted during streaming; refusal triggers as soon as the limit is exceeded (partial output may have been buffered — in JSON mode this is safe since output is emitted at end; stdin is JSONL-only so CSV mode is not affected).
 - `--explicit`: Show `input` and `canonical_id` values verbatim in `--emit json` output. By default these values are masked as `"[REDACTED]"` for zero-retention safety and the envelope reports `"redacted": true`; with `--explicit` they are shown and `"redacted": false`.
 - `--plain-json-values`: Only valid with `--explicit`. Emit valid UTF-8 JSON `input` and `canonical_id` values without the `u8:` prefix and add `input_encoding` / `canonical_id_encoding` metadata. Values with ASCII control bytes or non-text bytes remain `hex:<hex-bytes>` with `"hex"` metadata. The default `--explicit` contract remains lossless `u8:`/`hex:` identifier encoding.
-- Bare `canon` (no arguments): print a short agent-oriented orientation to stderr — the canonical resolve command plus pointers to `canon --help`, `canon doctor --robot-triage`, `canon --describe`, and `canon --schema` — and exit 2. Stdout stays empty so pipelines are unaffected. This replaces the bare clap "required arguments" error.
+- Bare `canon` (no arguments): print a short agent-oriented orientation to stderr — the canonical lookup command plus pointers to `canon --help`, `canon doctor --robot-triage`, `canon --describe`, and `canon --schema` — and exit 2. Stdout stays empty so pipelines are unaffected. This replaces the bare clap "required arguments" error.
 - Intent inference for legible-but-wrong invocations (deterministic, edit distance 1):
   - An unknown long flag within one edit of a known core flag (e.g. `--regisry`, `--colum`, `--explcit`) is rejected with `error: unknown flag '<flag>'` plus `did you mean '--<flag>'?` on stderr, exit 2. Unknown flags with no near match defer to the standard clap error.
   - A misspelled top-level subcommand that would otherwise be swallowed as the positional input (e.g. `canon regstry --registry ... --column ...`) refuses with `E_PARSE`, `detail.suggested_subcommand`, and `next_command: canon <subcommand> --help` — but only when the positional value does not exist as a file, so real input files are never hijacked.
@@ -120,7 +151,7 @@ On first default use, `canon` copy-migrates an existing legacy `~/.epistemic/wit
 - `--provider-config` is repeatable and carries provider-specific options such as OpenFIGI `id_type`, `base_url`, or corpus-wide mapping filters such as `exchCode=US`
 - OpenFIGI is a corpus-scoped securities identifier provider for CUSIP, ISIN, and SEDOL seeds; it is not CMBS-specific and is not an organization identity source
 - OpenFIGI mapping filters are passed through only during provider-backed materialization. Supported static filter keys are `exchCode`, `micCode`, `currency`, `marketSecDes`, `securityType`, `securityType2`, `optionType`, `includeUnlistedEquities`, `strike`, `contractSize`, `coupon`, `expiration`, and `maturity`; all non-secret filter values are recorded in `_build.json`.
-- CMBS-style OpenFIGI workflows should extract identifiers from source tapes, normalize/dedupe them, split CUSIP/ISIN/SEDOL into separate seed files, run one build per id type, publish static registries, and use `--incremental` for refreshes
+- identifier-heavy OpenFIGI workflows should extract identifiers from source tapes, normalize/dedupe them, split CUSIP/ISIN/SEDOL into separate seed files, run one build per id type, publish static registries, and use `--incremental` for refreshes
 - provider implementation and regression tests should use a local `twinning rest` fixture through `--provider-config base_url=...`; live OpenFIGI calls are maintenance operations, never normal lookup behavior
 
 `canon registry export --format dbt-seed|search-index --registry <REGISTRY> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]`
@@ -282,6 +313,96 @@ Strategy registries are local artifacts. No remote provider calls happen during 
 - resolves duplicate keys deterministically by filename-sorted, entry-order precedence; shadowed duplicates do not affect the effective diff
 - exits `0` on successful comparison and `2` on refusal
 
+### Entity workbench subcommands
+
+`canon entity` is the native evidence-to-registry workbench. It is not the core
+lookup path and it does not change `canon.v0` exact-match semantics.
+
+- **Cluster mode**: `canon entity run` groups profiled observations inside one
+  corpus through prepare, index, block, evidence, solve, audit, review, and
+  promotion artifacts.
+- **Link mode**: `canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]`
+  aligns two row sets through the same typed request and artifact path as
+  project mode. It is not a public `edge` alias, does not bypass
+  evidence/audit/review, and emits `canon_entity_link.v0` with deterministic
+  link decisions before any optional registry write-back.
+
+  `--profile` and `--work-dir` stay bracketed where this document mirrors
+  generated Clap help/operator usage because the parser emits a structured
+  `E_ENTITY_INPUT_CONTRACT` refusal when either is omitted. Successful link
+  execution requires both flags, and omission performs no writes.
+
+`canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]`
+- compiles a strict alias-withholding execution envelope into a benchmark report
+- the envelope version is `canon.evaluation.alias_withholding.execution_manifest.v0`
+  and contains the benchmark plus one native execution manifest per trial
+- loads manifest-relative artifacts for clean registry absence, candidate
+  recall, link, run/solve, review, audit, leak scans, assignment firewall, and
+  optional reviewed promotion plus exact replay
+- requires the real clean registry id/version and complete exact mapping set to
+  equal the benchmark retained snapshot; absence against a weaker or unrelated
+  registry is not evidence
+- recomputes nonempty source-bound scans for mapping, search-index, cache,
+  normalization-patch, generated-corpus, and display-name channels; the mapping
+  scan enumerates the complete clean registry tree, and the assignment firewall
+  checks distinct concrete assignment and issuer-identity sources
+- for a credited attachment, rebuilds a cluster-mode review queue from the
+  validated solve artifact, binds a typed native review-import receipt to that
+  queue/run/policy/registry context, requires an exact one-entry clean-to-promoted
+  registry diff, and verifies ordinary exact replay against the promoted registry
+- keeps resolver/link observation IDs separate from prepared surface IDs through
+  a hash-bound sidecar that is re-derived from materialized rows and the supplied
+  run profile/strategy before candidate, solve, review, or promotion joins
+- reports candidate disposition explicitly: `evaluated_pair` requires rank-or-miss
+  evidence; `prepared_surface_collapse` binds distinct link observations to one
+  prepared surface without candidate-rank/recall credit; `relation_policy_control`
+  excludes non-identity controls from recall, forbids promotion/replay, and records
+  an automatic attachment as an `unsupported_guess` false merge
+- supports a derivation-proven collapse receipt through the public native review
+  library constructor: a singleton cluster Alias decision requires an explicit
+  target canonical ID and exact exported-surface equality; operator-facing native
+  artifact/decision CLI wiring remains owned by the native review workbench
+- derives trial decisions, promotion replay, and aggregate counts from those
+  artifacts; caller-declared outcomes or self-reported pass/fail fields are not
+  accepted as evidence
+- emits `json` by default or a compact `summary`; a valid report exits `0`, and
+  malformed envelopes or stale/missing/tampered artifacts refuse with exit `2`
+- hashes report identifiers and manifest paths at the CLI boundary; public
+  refusals expose a stable reason and message fingerprint rather than private
+  artifact text
+- does not mutate registries and does not change normal exact lookup semantics
+
+`canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY> --work-dir <DIR>`
+- validates the profile, registry snapshot, and source rows
+- writes prepared surfaces and profile firewall artifacts under the work
+  directory
+- emits `canon_entity_prepare.v1`-family artifacts and refuses malformed profile
+  or stale registry inputs before downstream stages run
+
+`canon entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--emit json|summary]`
+- builds deterministic local index artifacts for candidate generation
+- records profile, strategy, registry, and source hashes for cache correctness
+
+`canon entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--emit jsonl|summary]`
+- emits bounded candidate neighborhoods from configured blocking operators
+- preserves candidate-budget diagnostics and refuses over-budget runs before
+  writing partial candidate artifacts
+
+`canon entity evidence <ROWS> [--profile <PROFILE>] --strategy <YAML> --candidates <JSONL> --registry <REGISTRY> [--work-dir <DIR>] [--emit jsonl|summary]`
+- scores typed evidence for blocked candidate pairs
+- preserves support, anti-merge, and relation-hint lanes separately
+- relationship evidence is not equivalence evidence unless a separate
+  profile-approved equality signal supports the merge
+
+`canon entity solve <ROWS> [--profile <PROFILE>] --strategy <YAML> --evidence <JSONL> --registry <REGISTRY> [--work-dir <DIR>] [--emit json|summary]`
+- solves deterministic same-entity assignments from evidence artifacts
+- abstains into review or escrow on ambiguous, contradictory, stale, or
+  insufficient evidence
+
+`canon entity apply <RESULT.json> --rows <ROWS> --registry <REGISTRY> [--work-dir <DIR>] [--emit json|summary]`
+- replays accepted assignments from a solve/run artifact onto input rows
+- does not mutate the registry
+
 ### Entity review subcommands
 
 `canon entity review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]`
@@ -341,12 +462,17 @@ Streams
 
 No other outcomes.
 
+Workbench evaluation commands such as `canon entity alias-withholding` are
+report compilers rather than core lookup runs: a valid report exits `0`, and a
+bad execution envelope or referenced artifact exits `2` with a structured
+refusal.
+
 ---
 
 ## Definitions (v0)
 - **Input value**: the raw cell content in the specified column, after ASCII-trim
 - **Canonical ID**: the resolved identifier from the registry
-- **Canonical type**: the type/namespace of the canonical ID (e.g., `ticker`, `isin`, `counterparty_id`, `property_id`)
+- **Canonical type**: the type/namespace of the canonical ID (e.g., `ticker`, `isin`, `entity_id`, `property_id`)
 - **Rule ID**: the specific mapping rule that produced the match (e.g., `CUSIP_TO_TICKER`)
 - **Registry**: a versioned directory of lookup data (see Registry Format below)
 - **Deterministic match**: exact lookup in a versioned registry — same input + same registry version = same output, every time
@@ -434,15 +560,15 @@ Registries vary in complexity. `canon` treats all registries uniformly — input
 | Registry type | Matching | v0? | Example |
 |---------------|----------|-----|---------|
 | **ID mapping** | Exact lookup (input ID -> canonical ID) | Yes | CUSIP->ISIN, ticker normalization |
-| **Alias resolution** | Exact lookup with pre-populated variants | Yes | "Wells Fargo" / "WFB" -> counterparty C-00012 (each variant is a separate registry entry) |
-| **Entity workbench** | Multi-field deterministic evidence outside the lookup path, promoted into flat aliases and sidecars | Yes, via `canon entity` | "Wells Fargo & Company" / "WFB" -> entity O-00012 |
-| **Cross-tape structural workbench** | Two-tape deterministic matching under a domain strategy, promoted into flat registry entries | Yes, via `canon resolve` | Trustee loan `223232` -> servicer loan `WFCM2019-C50\|1` |
+| **Alias resolution** | Exact lookup with pre-populated variants | Yes | "Alpha Entity LLC" / "Alpha Entity" -> entity ENT-00012 (each variant is a separate registry entry) |
+| **Entity workbench** | Multi-field deterministic evidence outside the lookup path, promoted into flat aliases and sidecars | Yes, via `canon entity` | "Alpha Entity Holdings" / "Alpha Entity" -> entity ENT-00012 |
+| **Cross-source linkage** | Two-row-set deterministic matching under an explicit strategy, promoted into flat registry entries | Yes, via `canon entity link` | Reference row `R-223` -> target row `T-771` |
 | **Property/address identity** | Address/geospatial/name evidence under a property-specific strategy | Future | Property address variants -> canonical property P-00456 |
 
 ID mapping and alias resolution both use the same v0 lookup mechanism: exact
 byte match after ASCII-trim. The difference is how the registry is authored
-(one entry per ID vs many entries per entity). `canon entity` and `canon resolve`
-are not new lookup match modes; they are separate workbenches that use
+(one entry per ID vs many entries per entity). `canon entity` cluster and link
+modes are not new lookup match modes; they are workbench modes that use
 deterministic evidence to manufacture audited registry updates. Property-specific
 identity remains future work.
 
@@ -457,8 +583,12 @@ Self-authored registry maintenance is not a resolution workbench. It does not sc
 
 ### Registry governance
 
-- A small set of standard registries (CUSIP->ISIN, ticker normalization, LEI) are distributed alongside the tool as files in a `registries/` directory — the user still references them via `--registry <PATH>` like any other registry. No special "built-in" resolution; they're just pre-authored registries that ship with the release.
-- CMD+RVL publishes and sells official, industry-relevant registries (sector classifications, ABS deal mappings, servicer ID normalization) as a commercial layer on top of the open-source tool
+- Registry content is separate from the engine. Example, demo, private, or
+  commercial registry packages are still ordinary versioned registries that the
+  operator references with `--registry <PATH>`.
+- Canon core does not contain special built-in resolution for sectors, deals,
+  servicers, providers, or ontology terms. Those choices belong in registry
+  packages, profiles, provider materializers, or extensions.
 
 ### Versioning
 
@@ -751,8 +881,8 @@ pack seal evidence/ --note "Nov->Dec recon with canonical CUSIPs"
 canon tape.csv --registry registries/cusip-isin/ --column security_id \
   | jq '.unresolved[]'
 
-# Resolve entity aliases (inspect the mapping)
-canon counterparties.csv --registry registries/counterparty-cmbs/ --column servicer_name \
+# Resolve reviewed entity aliases (inspect the mapping)
+canon aliases.csv --registry registries/entities/ --column entity_label \
   | jq '.summary'
 
 # Canonicalize a JSONL file (stdin via -)
@@ -921,7 +1051,7 @@ If any feature makes the mapping less inspectable or the pipeline less composabl
 - `strsim` crate (Jaro-Winkler, Sorensen-Dice) for fuzzy candidate scoring in suggest mode
 
 ### Future workbench directions
-- Cross-tape structural matching (`canon resolve`) remains a sibling workbench, not a core lookup feature
+- Cross-source structural linkage lives under `canon entity link`; future work should extend that workbench namespace rather than reintroduce a sibling public command
 - Property identity may use multi-column matching (address + name + coordinates -> canonical ID)
 - Geospatial matching via `geo` + `rstar` (Haversine + R-tree) may be useful inside a property workbench
 - Phonetic blocking via `rphonetic` (Metaphone, Soundex) may be useful for candidate generation, not auto-accepted lookup

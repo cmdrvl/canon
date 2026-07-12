@@ -84,12 +84,10 @@ fn REGAB_I002_I003_sec10d_review_queue_keeps_hard_negatives_reviewable() {
             .iter()
             .any(|reason| reason == "regab_platform_label_guard")
     );
-    assert!(
-        platform
-            .provenance_samples
-            .iter()
-            .any(|sample| sample.raw_value == "Wells Fargo Commercial Mortgage Securities Platform")
-    );
+    assert!(platform
+        .provenance_samples
+        .iter()
+        .any(|sample| sample.raw_value == "Wells Fargo Commercial Mortgage Securities Platform"));
 
     let auditor = item_for_group(
         &artifact.review_items,

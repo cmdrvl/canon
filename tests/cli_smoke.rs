@@ -1,35 +1,30 @@
 use assert_cmd::Command;
+use canon::entity::{
+    EntityArtifactMetadata, EntityArtifactReference, EntityInputReference, EntityPatchNamespaces,
+    EntityProfileReference, EntityRegistrySnapshot, EntityStrategyReference,
+    edge::{EdgeEvidenceHit, build_edge_evidence_record},
+    graph::{SignedEvidenceGraphInput, build_signed_evidence_graph},
+    score::{ScoreLane, ScoreUnits},
+    solve::{
+        SolveArtifactRequest, SolveReconciliationConfig, SolveSurfaceProvenance,
+        build_solve_artifact_contract,
+    },
+};
 use predicates::prelude::*;
 use serde_json::Value;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     thread,
 };
 use tempfile::tempdir;
 use tiny_http::{Header, Response, Server, StatusCode};
 
+mod common;
+use common::{fixture_path, write_registry_metadata, write_seed_csv};
+
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-
-fn fixture_path(relative: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join(relative)
-}
-
-fn write_registry_metadata(temp_dir: &Path, id: &str, version: &str, entry_count: usize) {
-    let registry_json = serde_json::json!({
-        "id": id,
-        "version": version,
-        "description": "Test registry",
-        "updated": "2026-01-01",
-        "entry_count": entry_count,
-    });
-    std::fs::write(
-        temp_dir.join("registry.json"),
-        serde_json::to_string_pretty(&registry_json).unwrap(),
-    )
-    .unwrap();
-}
 
 fn write_mapping_file(temp_dir: &Path, name: &str, entries: serde_json::Value) {
     std::fs::write(
@@ -37,10 +32,6 @@ fn write_mapping_file(temp_dir: &Path, name: &str, entries: serde_json::Value) {
         serde_json::to_string_pretty(&entries).unwrap(),
     )
     .unwrap();
-}
-
-fn write_seed_csv(path: &Path, contents: &str) {
-    std::fs::write(path, contents).unwrap();
 }
 
 #[cfg(unix)]
@@ -99,7 +90,7 @@ fn assert_all_side_effects_false(side_effects: &Value) {
     }
 }
 
-struct ResolveSmokeFixture {
+struct EntityLinkSmokeFixture {
     reference: PathBuf,
     target: PathBuf,
     strategy: PathBuf,
@@ -107,31 +98,61 @@ struct ResolveSmokeFixture {
     gold: PathBuf,
 }
 
-fn write_resolve_smoke_fixture(root: &Path, matched: bool) -> ResolveSmokeFixture {
-    let reference = root.join("reference.csv");
-    let target = root.join("target.csv");
+#[derive(Debug, Clone, Copy)]
+enum EntityLinkFixtureFormat {
+    Csv,
+    Tsv,
+    Jsonl,
+    Ndjson,
+}
+
+impl EntityLinkFixtureFormat {
+    fn extension(self) -> &'static str {
+        match self {
+            Self::Csv => "csv",
+            Self::Tsv => "tsv",
+            Self::Jsonl => "jsonl",
+            Self::Ndjson => "ndjson",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Csv => "csv",
+            Self::Tsv => "tsv",
+            Self::Jsonl => "jsonl",
+            Self::Ndjson => "ndjson",
+        }
+    }
+}
+
+fn write_entity_link_smoke_fixture(root: &Path, matched: bool) -> EntityLinkSmokeFixture {
+    write_entity_link_smoke_fixture_with_format(root, matched, EntityLinkFixtureFormat::Csv)
+}
+
+fn write_entity_link_smoke_fixture_with_format(
+    root: &Path,
+    matched: bool,
+    format: EntityLinkFixtureFormat,
+) -> EntityLinkSmokeFixture {
+    let reference = root.join(format!("reference.{}", format.extension()));
+    let target = root.join(format!("target.{}", format.extension()));
     let strategy = root.join("strategy.yaml");
     let registry = root.join("registry");
     let gold = root.join("gold.jsonl");
     std::fs::create_dir_all(&registry).unwrap();
 
-    write_registry_metadata(&registry, "resolve-smoke", "0.1.0", 0);
-    write_seed_csv(
+    write_registry_metadata(&registry, "entity-link-smoke", "0.1.0", 0);
+    write_entity_link_rows(
         &reference,
-        "loan_id,deal,address,upb\nR-1,D1,100 Main St,100\n",
+        format,
+        EntityLinkRoleFixture::Reference,
+        matched,
     );
-    let target_row = if matched {
-        "D1,1,100 Main St,101\n"
-    } else {
-        "D1,1,999 Other St,500\n"
-    };
-    write_seed_csv(
-        &target,
-        &format!("deal,loan_number,address,balance\n{target_row}"),
-    );
+    write_entity_link_rows(&target, format, EntityLinkRoleFixture::Target, matched);
     std::fs::write(
         &strategy,
-        r#"strategy_id: resolve-smoke.v1
+        r#"strategy_id: entity-link-smoke.v1
 strategy_version: "0.1.0"
 entity_type: loan
 identity:
@@ -167,13 +188,476 @@ max_candidates: 10
     )
     .unwrap();
 
-    ResolveSmokeFixture {
+    EntityLinkSmokeFixture {
         reference,
         target,
         strategy,
         registry,
         gold,
     }
+}
+
+fn write_entity_link_neutral_mixed_fixture(root: &Path) -> EntityLinkSmokeFixture {
+    let reference = root.join("neutral-reference.csv");
+    let target = root.join("neutral-target.csv");
+    let strategy = root.join("neutral-strategy.yaml");
+    let registry = root.join("neutral-registry");
+    let gold = root.join("neutral-gold.jsonl");
+    std::fs::create_dir_all(&registry).unwrap();
+
+    write_registry_metadata(&registry, "entity-link-neutral", "0.1.0", 0);
+    write_seed_csv(
+        &reference,
+        "org_id,dataset,field_name,org_name,bucket,source_row_id\nR-MATCH,reference,name,Northstar Analytics,B_MATCH,ref-match\nR-AMB-A,reference,name,Harbor Metrics,B_AMB,ref-amb-a\nR-AMB-B,reference,name,Harbor Metrics,B_AMB,ref-amb-b\n",
+    );
+    write_seed_csv(
+        &target,
+        "record_id,dataset,field_name,org_name,bucket,source_row_id\nT-MATCH,target,name,Northstar Analytics,B_MATCH,tgt-match\nT-AMB,target,name,Harbor Metrics,B_AMB,tgt-amb\nT-NONE,target,name,Quartz Signal,B_NONE,tgt-none\n",
+    );
+    std::fs::write(
+        &strategy,
+        r#"strategy_id: entity-link-neutral-mixed.v1
+strategy_version: "0.1.0"
+entity_type: organization
+identity:
+  reference:
+    id_columns: [org_id]
+  target:
+    id_columns: [record_id]
+candidate_filter:
+  - field_ref: bucket
+    field_tgt: bucket
+    op: exact
+assertions:
+  - field_ref: org_name
+    field_tgt: org_name
+    op: exact
+    weight: 1.0
+    required: true
+match_threshold: 1.0
+ambiguity_gap: 0.10
+max_candidates: 10
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &gold,
+        "{\"target_id\":\"T-MATCH\",\"expected_reference_id\":\"R-MATCH\"}\n",
+    )
+    .unwrap();
+
+    EntityLinkSmokeFixture {
+        reference,
+        target,
+        strategy,
+        registry,
+        gold,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum EntityLinkRoleFixture {
+    Reference,
+    Target,
+}
+
+fn write_entity_link_rows(
+    path: &Path,
+    format: EntityLinkFixtureFormat,
+    role: EntityLinkRoleFixture,
+    matched: bool,
+) {
+    let target_address = if matched {
+        "100 Main St"
+    } else {
+        "999 Other St"
+    };
+    match format {
+        EntityLinkFixtureFormat::Csv => match role {
+            EntityLinkRoleFixture::Reference => write_seed_csv(
+                path,
+                "loan_id,deal,address,upb,source_row_id,deal_id,property_id,raw_tenant_name\nR-1,D1,100 Main St,100,R-1,D1,1,Reference Name\n",
+            ),
+            EntityLinkRoleFixture::Target => write_seed_csv(
+                path,
+                &format!(
+                    "deal,loan_number,address,balance,source_row_id,deal_id,property_id,raw_tenant_name,loan_id\nD1,1,{target_address},101,D1|1,D1,1,Target Name,1\n"
+                ),
+            ),
+        },
+        EntityLinkFixtureFormat::Tsv => {
+            let content = match role {
+                EntityLinkRoleFixture::Reference => {
+                    "loan_id\tdeal\taddress\tupb\tsource_row_id\tdeal_id\tproperty_id\traw_tenant_name\nR-1\tD1\t100 Main St\t100\tR-1\tD1\t1\tReference Name\n".to_string()
+                }
+                EntityLinkRoleFixture::Target => format!(
+                    "deal\tloan_number\taddress\tbalance\tsource_row_id\tdeal_id\tproperty_id\traw_tenant_name\tloan_id\nD1\t1\t{target_address}\t101\tD1|1\tD1\t1\tTarget Name\t1\n"
+                ),
+            };
+            std::fs::write(path, content).unwrap();
+        }
+        EntityLinkFixtureFormat::Jsonl | EntityLinkFixtureFormat::Ndjson => {
+            let value = match role {
+                EntityLinkRoleFixture::Reference => serde_json::json!({
+                    "loan_id": "R-1",
+                    "deal": "D1",
+                    "address": "100 Main St",
+                    "upb": 100,
+                    "source_row_id": "R-1",
+                    "deal_id": "D1",
+                    "property_id": "1",
+                    "raw_tenant_name": "Reference Name"
+                }),
+                EntityLinkRoleFixture::Target => serde_json::json!({
+                    "deal": "D1",
+                    "loan_number": "1",
+                    "address": target_address,
+                    "balance": 101,
+                    "source_row_id": "D1|1",
+                    "deal_id": "D1",
+                    "property_id": "1",
+                    "raw_tenant_name": "Target Name",
+                    "loan_id": "1"
+                }),
+            };
+            std::fs::write(
+                path,
+                format!("{}\n", serde_json::to_string(&value).unwrap()),
+            )
+            .unwrap();
+        }
+    }
+}
+
+fn write_entity_link_audit_suite(root: &Path) -> PathBuf {
+    let suite = root.join("suite");
+    std::fs::create_dir_all(&suite).unwrap();
+    std::fs::write(
+        suite.join("manifest.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "id": "entity_link_smoke_suite",
+            "version": "2026.07.11",
+            "gates": [
+                {
+                    "gate_id": "G01",
+                    "label": "artifact continuity",
+                    "passed": true,
+                    "expected": "link_run_artifact_audited",
+                    "actual": "link_run_artifact_audited",
+                    "evidence": {
+                        "contract": "bd-2k28"
+                    }
+                }
+            ]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    suite
+}
+
+fn registry_snapshot(root: &Path) -> BTreeMap<String, Vec<u8>> {
+    let mut snapshot = BTreeMap::new();
+    for entry in std::fs::read_dir(root).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.is_file() {
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            snapshot.insert(name, std::fs::read(path).unwrap());
+        }
+    }
+    snapshot
+}
+
+fn registry_files(root: &Path) -> BTreeSet<String> {
+    registry_snapshot(root).into_keys().collect()
+}
+
+fn entity_link_smoke_args<'a>(
+    fixture: &'a EntityLinkSmokeFixture,
+    work_dir: &'a Path,
+) -> Vec<&'a str> {
+    entity_link_smoke_args_with_profile(fixture, work_dir, "cmbs_tenant_label")
+}
+
+fn entity_link_smoke_args_with_profile<'a>(
+    fixture: &'a EntityLinkSmokeFixture,
+    work_dir: &'a Path,
+    profile: &'a str,
+) -> Vec<&'a str> {
+    vec![
+        "entity",
+        "link",
+        fixture.reference.to_str().unwrap(),
+        fixture.target.to_str().unwrap(),
+        "--profile",
+        profile,
+        "--strategy",
+        fixture.strategy.to_str().unwrap(),
+        "--registry",
+        fixture.registry.to_str().unwrap(),
+        "--work-dir",
+        work_dir.to_str().unwrap(),
+    ]
+}
+
+fn canon_args_from_emitted_command(command: &str) -> Vec<String> {
+    let mut tokens = command
+        .split_whitespace()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    assert_eq!(tokens.first().map(String::as_str), Some("canon"));
+    tokens.remove(0);
+    tokens
+}
+
+fn canon_args_from_emitted_command_with_suite(command: &str, suite: &Path) -> Vec<String> {
+    canon_args_from_emitted_command(&command.replace("<SUITE_DIR>", suite.to_str().unwrap()))
+}
+
+fn review_csv_rows(csv: &str) -> Vec<BTreeMap<String, String>> {
+    let mut reader = csv::Reader::from_reader(csv.as_bytes());
+    let headers = reader.headers().unwrap().clone();
+    reader
+        .records()
+        .map(|record| {
+            headers
+                .iter()
+                .zip(record.unwrap().iter())
+                .map(|(header, value)| (header.to_string(), value.to_string()))
+                .collect::<BTreeMap<_, _>>()
+        })
+        .collect()
+}
+
+fn review_ids(review: &Value) -> BTreeSet<String> {
+    review["review_items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["review_id"].as_str().unwrap().to_string())
+        .collect()
+}
+
+fn review_priority_reasons(item: &Value) -> Vec<String> {
+    item["priority_reasons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|reason| reason.as_str().unwrap().to_string())
+        .collect()
+}
+
+fn review_json_for_link(link_path: &Path, include: &str) -> Value {
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            link_path.to_str().unwrap(),
+            "--include",
+            include,
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .success();
+    serde_json::from_slice(&output.get_output().stdout).unwrap()
+}
+
+fn review_csv_for_link(link_path: &Path, include: &str) -> String {
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            link_path.to_str().unwrap(),
+            "--include",
+            include,
+            "--emit",
+            "csv",
+        ])
+        .assert()
+        .success();
+    String::from_utf8(output.get_output().stdout.clone()).unwrap()
+}
+
+fn assert_link_review_export_refuses_without_writes(
+    artifact_path: &Path,
+    link_dir: &Path,
+    expected_field: &str,
+) {
+    let files_before = registry_files(link_dir);
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            artifact_path.to_str().unwrap(),
+            "--include",
+            "escrow",
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .code(2);
+    let refusal: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(refusal["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(refusal["refusal"]["detail"]["field"], expected_field);
+    assert_eq!(refusal["refusal"]["detail"]["writes_performed"], false);
+    assert_eq!(registry_files(link_dir), files_before);
+}
+
+fn assert_review_csv_id_parity(
+    link_path: &Path,
+    include: &str,
+    review_json: &Value,
+) -> Vec<BTreeMap<String, String>> {
+    let rows = review_csv_rows(&review_csv_for_link(link_path, include));
+    assert_eq!(
+        rows.len(),
+        review_json["review_items"].as_array().unwrap().len()
+    );
+    let csv_ids = rows
+        .iter()
+        .map(|row| row["review_id"].clone())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(csv_ids, review_ids(review_json));
+    rows
+}
+
+fn run_neutral_mixed_link(root: &Path) -> (PathBuf, Value) {
+    let fixture = write_entity_link_neutral_mixed_fixture(root);
+    let work_dir = root.join("neutral-link-work");
+    let mut args = entity_link_smoke_args_with_profile(&fixture, &work_dir, "regab_firm_identity");
+    args.push("--no-witness");
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(args)
+        .assert()
+        .code(1);
+
+    let link_path = work_dir.join("link/link.json");
+    let link_artifact: Value = serde_json::from_slice(&std::fs::read(&link_path).unwrap()).unwrap();
+    (link_path, link_artifact)
+}
+
+fn resealed_typed_run_artifact(artifact: &Value) -> canon::entity::run::EntityRunArtifact {
+    let mut hashable: canon::entity::run::EntityRunArtifact =
+        serde_json::from_value(artifact.clone()).unwrap();
+    hashable.artifact_content_hash.clear();
+    hashable.metadata.artifact_content_hash.clear();
+    let hash = canon::witness::hash_bytes(&serde_json::to_vec(&hashable).unwrap());
+    hashable.artifact_content_hash = hash.clone();
+    hashable.metadata.artifact_content_hash = hash;
+    hashable
+}
+
+fn resealed_typed_link_artifact(artifact: &Value) -> canon::entity::run::link::EntityLinkArtifact {
+    let mut hashable: canon::entity::run::link::EntityLinkArtifact =
+        serde_json::from_value(artifact.clone()).unwrap();
+    hashable.artifact_content_hash.clear();
+    hashable.metadata.artifact_content_hash.clear();
+    let hash = canon::witness::hash_bytes(&serde_json::to_vec(&hashable).unwrap());
+    hashable.artifact_content_hash = hash.clone();
+    hashable.metadata.artifact_content_hash = hash;
+    hashable
+}
+
+fn write_native_solve_with_escrow(path: &Path) -> Value {
+    let edge = build_edge_evidence_record(
+        "surf:alpha",
+        "surf:alpha_alias",
+        vec![EdgeEvidenceHit::new(
+            ScoreLane::Support,
+            "name",
+            "string_similarity",
+            "weak_positive_identity_evidence",
+            score_units(1_000),
+            false,
+            "weak positive identity evidence below solve threshold",
+        )],
+    )
+    .expect("edge evidence builds");
+    let graph = build_signed_evidence_graph(SignedEvidenceGraphInput {
+        edge_records: vec![edge],
+        exact_bucket_assertions: Vec::new(),
+        incumbent_ids: Vec::new(),
+    })
+    .expect("signed graph builds");
+    let solve = build_solve_artifact_contract(SolveArtifactRequest {
+        metadata: native_solve_metadata(),
+        graph,
+        config: SolveReconciliationConfig::delegate_new_ids(score_units(5_000)),
+        provenance: vec![
+            SolveSurfaceProvenance {
+                surface_id: "surf:alpha".to_string(),
+                row_count: 3,
+                deal_count: 1,
+            },
+            SolveSurfaceProvenance {
+                surface_id: "surf:alpha_alias".to_string(),
+                row_count: 2,
+                deal_count: 1,
+            },
+        ],
+        decision_ledger_path: "solve/decision-ledger.jsonl".to_string(),
+    })
+    .expect("solve artifact builds");
+    let value = serde_json::to_value(&solve).expect("solve artifact serializes");
+    std::fs::write(path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    value
+}
+
+fn native_solve_metadata() -> EntityArtifactMetadata {
+    EntityArtifactMetadata {
+        profile: EntityProfileReference {
+            id: "neutral_org_identity".to_string(),
+            version: "0.1.0".to_string(),
+            entity_type: "organization".to_string(),
+            identity_semantics: "canonical_organization_identity".to_string(),
+            canonical_type: "organization".to_string(),
+            patch_namespaces: EntityPatchNamespaces {
+                aliases: "neutral_org.aliases".to_string(),
+                distinct: "neutral_org.distinct".to_string(),
+                relations: "neutral_org.relations".to_string(),
+            },
+            content_hash: Some("blake3:profile".to_string()),
+        },
+        strategy: EntityStrategyReference {
+            id: "neutral_org_identity.v1".to_string(),
+            version: "0.1.0".to_string(),
+            content_hash: "blake3:strategy".to_string(),
+        },
+        registry_snapshot: EntityRegistrySnapshot {
+            id: "neutral-orgs".to_string(),
+            version: "2026.06.25".to_string(),
+            source: "registries/neutral-orgs".to_string(),
+            lookup_snapshot_hash: "blake3:registry".to_string(),
+            sidecar_snapshot_hash: Some("blake3:sidecars".to_string()),
+        },
+        patch_namespace: "neutral_org.aliases".to_string(),
+        input: Some(EntityInputReference {
+            row_count: 5,
+            content_hash: "blake3:input".to_string(),
+        }),
+        upstream_artifacts: vec![
+            EntityArtifactReference {
+                version: "canon_entity_block.v0".to_string(),
+                content_hash: "blake3:block".to_string(),
+            },
+            EntityArtifactReference {
+                version: "canon_entity_edge.v0".to_string(),
+                content_hash: "blake3:edge".to_string(),
+            },
+        ],
+        patch_set: None,
+        namekit: None,
+        artifact_content_hash: String::new(),
+    }
+}
+
+fn score_units(units: u32) -> ScoreUnits {
+    ScoreUnits::from_scaled(units).expect("test score is inside score scale")
 }
 
 type RecordedOpenFigiRequest = (String, BTreeMap<String, String>);
@@ -246,12 +730,45 @@ fn entity_namespace_cli() {
     assert!(help_stdout.contains("entity"));
     assert!(!help_stdout.contains("\n  org"));
 
-    Command::new(env!("CARGO_BIN_EXE_canon"))
+    let entity_help = Command::new(env!("CARGO_BIN_EXE_canon"))
         .args(["entity", "--help"])
         .assert()
-        .success()
-        .stdout(predicate::str::contains("run"))
-        .stdout(predicate::str::contains("review"));
+        .success();
+    let entity_help_stdout = String::from_utf8(entity_help.get_output().stdout.clone()).unwrap();
+    assert!(entity_help_stdout.contains("run"));
+    assert!(entity_help_stdout.contains("candidate-recall"));
+    assert!(entity_help_stdout.contains("alias-withholding"));
+    assert!(entity_help_stdout.contains("evidence"));
+    assert!(entity_help_stdout.contains("link"));
+    assert!(!entity_help_stdout.contains("edge"));
+    assert!(!entity_help_stdout.contains("org"));
+    let expected_entity_help =
+        std::fs::read_to_string(fixture_path("tests/fixtures/canon_v1/help/entity_help.txt"))
+            .unwrap();
+    assert_eq!(
+        entity_help_stdout.trim_end(),
+        expected_entity_help.trim_end()
+    );
+
+    let link_help = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["entity", "link", "--help"])
+        .assert()
+        .success();
+    let link_help_stdout = String::from_utf8(link_help.get_output().stdout.clone()).unwrap();
+    let expected_link_help = std::fs::read_to_string(fixture_path(
+        "tests/fixtures/canon_v1/help/entity_link_help.txt",
+    ))
+    .unwrap();
+    assert_eq!(link_help_stdout.trim_end(), expected_link_help.trim_end());
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["entity", "edge", "--help"])
+        .assert()
+        .failure()
+        .code(2)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("unrecognized subcommand 'edge'"))
+        .stderr(predicate::str::contains("evidence"));
 
     Command::new(env!("CARGO_BIN_EXE_canon"))
         .args(["org", "run", "--help"])
@@ -281,6 +798,16 @@ fn entity_namespace_cli() {
             .as_str()
             .is_some_and(|usage| usage.starts_with("canon entity run"))
     }));
+    assert!(usage.iter().any(|entry| {
+        entry
+            .as_str()
+            .is_some_and(|usage| usage.starts_with("canon entity evidence"))
+    }));
+    assert!(!usage.iter().any(|entry| {
+        entry
+            .as_str()
+            .is_some_and(|usage| usage.starts_with("canon entity edge"))
+    }));
     assert!(!usage.iter().any(|entry| {
         entry
             .as_str()
@@ -294,6 +821,17 @@ fn entity_namespace_cli() {
         subcommands.iter().any(|entry| entry["name"] == "entity run"
             && entry["output_schema"] == "canon_entity_run.v0")
     );
+    assert!(
+        subcommands
+            .iter()
+            .any(|entry| entry["name"] == "entity evidence"
+                && entry["output_schema"] == "canon_entity_evidence.v1")
+    );
+    assert!(
+        !subcommands
+            .iter()
+            .any(|entry| entry["name"] == "entity edge")
+    );
     assert!(!subcommands.iter().any(|entry| {
         entry["name"]
             .as_str()
@@ -302,6 +840,109 @@ fn entity_namespace_cli() {
                 .as_str()
                 .is_some_and(|schema| schema.starts_with("canon_org_"))
     }));
+}
+
+#[test]
+fn entity_cutover_dispatch_smoke() {
+    let omitted_profile = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "run",
+            "rows.csv",
+            "--strategy",
+            "strategy.yaml",
+            "--registry",
+            "registry",
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .code(2);
+    let stdout = String::from_utf8(omitted_profile.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["refusal"]["code"], "E_ENTITY_INPUT_CONTRACT");
+    assert_eq!(
+        payload["refusal"]["detail"]["reason"],
+        "legacy_dispatch_removed"
+    );
+    assert_eq!(
+        payload["refusal"]["detail"]["legacy_dispatch_allowed"],
+        false
+    );
+
+    let link = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "link",
+            "reference.csv",
+            "target.csv",
+            "--profile",
+            "entity_profile",
+            "--strategy",
+            "strategy.yaml",
+            "--registry",
+            "registry",
+            "--work-dir",
+            "work/entity-link",
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .code(2);
+    let stdout = String::from_utf8(link.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["refusal"]["code"], "E_ENTITY_INPUT_CONTRACT");
+    let detail = &payload["refusal"]["detail"];
+    assert_eq!(detail["stage"], "link");
+    assert_eq!(detail["role"], "reference");
+    assert_eq!(detail["path"], "reference.csv");
+    assert_eq!(detail["writes_performed"], false);
+}
+
+#[test]
+fn entity_link_shorthand_matches_project_dispatch_artifacts() {
+    let link_request: canon::entity::runtime::EntityV1ProjectDispatchRequest =
+        canon::entity::runtime::EntityV1LinkDispatchRequest {
+            reference: PathBuf::from("reference.csv"),
+            target: PathBuf::from("target.csv"),
+            profile: "entity_profile".to_string(),
+            strategy: PathBuf::from("strategy.yaml"),
+            registry: PathBuf::from("registry"),
+            work_dir: PathBuf::from("work/entity-link"),
+            suite: None,
+        }
+        .into();
+
+    let project_request = canon::entity::runtime::EntityV1ProjectDispatchRequest {
+        mode: canon::entity::runtime::EntityV1DispatchMode::TwoSourceLink,
+        rows: None,
+        reference: Some(PathBuf::from("reference.csv")),
+        target: Some(PathBuf::from("target.csv")),
+        profile: "entity_profile".to_string(),
+        strategy: PathBuf::from("strategy.yaml"),
+        registry: PathBuf::from("registry"),
+        work_dir: PathBuf::from("work/entity-link"),
+        suite: None,
+    };
+
+    assert_eq!(link_request, project_request);
+    let link_plan = canon::entity::runtime::entity_v1_dispatch_plan(
+        canon::entity::EntityArtifactStageV1::Run,
+        &link_request,
+    );
+    let project_plan = canon::entity::runtime::entity_v1_dispatch_plan(
+        canon::entity::EntityArtifactStageV1::Run,
+        &project_request,
+    );
+    assert_eq!(link_plan.artifacts, project_plan.artifacts);
+    assert_eq!(
+        link_plan.requested_stage,
+        canon::entity::EntityArtifactStageV1::Run
+    );
+    assert_eq!(
+        link_plan.requested_artifact().unwrap().artifact_path,
+        PathBuf::from("work/entity-link/run/run.json")
+    );
 }
 
 #[test]
@@ -405,9 +1046,16 @@ fn test_describe_command() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|entry| entry["name"] == "resolve"
-                && entry["output_schema"] == "canon_resolve.v0"
+            .any(|entry| entry["name"] == "entity link"
+                && entry["output_schema"] == "canon_entity_link.v0"
                 && entry["status"] == "implemented")
+    );
+    assert!(
+        !json["subcommands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["name"] == "resolve")
     );
     assert!(
         json["subcommands"]
@@ -582,108 +1230,971 @@ fn test_doctor_fix_is_not_available() {
 }
 
 #[test]
-fn test_resolve_cli_success_json() {
+fn test_entity_link_cli_success_json() {
     let temp_dir = tempdir().unwrap();
-    let fixture = write_resolve_smoke_fixture(temp_dir.path(), true);
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
+    let work_dir = temp_dir.path().join("entity-link-work");
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.push("--no-witness");
 
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
-        .args([
-            "resolve",
-            fixture.reference.to_str().unwrap(),
-            fixture.target.to_str().unwrap(),
-            "--strategy",
-            fixture.strategy.to_str().unwrap(),
-            "--registry",
-            fixture.registry.to_str().unwrap(),
-            "--no-witness",
-        ])
+        .args(args)
         .assert()
         .success();
 
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     let payload: Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(payload["version"], "canon_resolve.v0");
+    let decisions = &payload["decision_artifact"];
+    assert_eq!(payload["version"], "canon_entity_link.v0");
     assert_eq!(payload["summary"]["target_records"], 1);
     assert_eq!(payload["summary"]["matched"], 1);
     assert_eq!(payload["summary"]["unmatched"], 0);
     assert_eq!(payload["summary"]["ambiguous"], 0);
-    assert_eq!(payload["matches"][0]["reference_id"], "R-1");
-    assert_eq!(payload["matches"][0]["target_id"], "D1|1");
+    assert_eq!(decisions["version"], "canon_entity_link_decisions.v0");
+    assert_eq!(decisions["matches"][0]["reference_id"], "R-1");
+    assert_eq!(decisions["matches"][0]["target_id"], "D1|1");
 }
 
 #[test]
-fn test_resolve_cli_summary_output() {
+fn test_entity_link_cli_suite_writes_stable_audit_artifact() {
     let temp_dir = tempdir().unwrap();
-    let fixture = write_resolve_smoke_fixture(temp_dir.path(), true);
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
+    let suite = write_entity_link_audit_suite(temp_dir.path());
+    let work_dir = temp_dir.path().join("entity-link-work");
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.extend(["--suite", suite.to_str().unwrap(), "--no-witness"]);
 
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
-        .args([
-            "resolve",
-            fixture.reference.to_str().unwrap(),
-            fixture.target.to_str().unwrap(),
-            "--strategy",
-            fixture.strategy.to_str().unwrap(),
-            "--registry",
-            fixture.registry.to_str().unwrap(),
-            "--emit",
-            "summary",
-            "--no-witness",
-        ])
+        .args(args)
         .assert()
         .success();
 
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
-    assert!(stdout.contains("canon_resolve.v0"));
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    let audit_receipt = &payload["audit_artifact"];
+    assert_eq!(
+        audit_receipt["path"],
+        work_dir.join("audit.json").display().to_string()
+    );
+    assert_eq!(audit_receipt["version"], "canon_entity_audit.v0");
+    assert_eq!(audit_receipt["suite"]["id"], "entity_link_smoke_suite");
+    assert_eq!(audit_receipt["status"], "passed");
+
+    let audit_artifact: Value =
+        serde_json::from_slice(&std::fs::read(work_dir.join("audit.json")).unwrap()).unwrap();
+    assert_eq!(audit_artifact["version"], "canon_entity_audit.v0");
+    assert_eq!(audit_artifact["suite_id"], "entity_link_smoke_suite");
+    assert_eq!(
+        audit_artifact["audited_artifact"]["version"],
+        "canon_entity_run.v0"
+    );
+}
+
+#[test]
+fn test_entity_link_emitted_native_handoffs_execute() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), false);
+    let suite = write_entity_link_audit_suite(temp_dir.path());
+    let work_dir = temp_dir.path().join("entity-link-work");
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.extend(["--suite", suite.to_str().unwrap(), "--no-witness"]);
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(args)
+        .assert()
+        .code(1);
+
+    let run_path = work_dir.join("run.json");
+    let solve_path = work_dir.join("solve/solve.json");
+    let link_path = work_dir.join("link/link.json");
+    let run_artifact: Value = serde_json::from_slice(&std::fs::read(&run_path).unwrap()).unwrap();
+    let solve_artifact: Value =
+        serde_json::from_slice(&std::fs::read(&solve_path).unwrap()).unwrap();
+    let link_artifact: Value = serde_json::from_slice(&std::fs::read(&link_path).unwrap()).unwrap();
+    assert_eq!(run_artifact["version"], "canon_entity_run.v0");
+    assert_eq!(solve_artifact["version"], "canon_entity_solve.v0");
+    assert_eq!(link_artifact["version"], "canon_entity_link.v0");
+    assert_eq!(
+        link_artifact["shared_solve_artifact"]["content_hash"],
+        solve_artifact["artifact_content_hash"]
+    );
+    assert!(
+        link_path
+            .parent()
+            .unwrap()
+            .join(link_artifact["materialized_rows_path"].as_str().unwrap())
+            .exists()
+    );
+
+    let emitted_audit = run_artifact["next_commands"]["audit"]
+        .as_str()
+        .expect("audit handoff command");
+    assert!(emitted_audit.contains(solve_path.to_str().unwrap()));
+    let solve_audit_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(canon_args_from_emitted_command_with_suite(
+            emitted_audit,
+            &suite,
+        ))
+        .assert()
+        .success();
+    let solve_audit: Value =
+        serde_json::from_slice(&solve_audit_output.get_output().stdout).unwrap();
+    assert_eq!(solve_audit["version"], "canon_entity_audit.v0");
+    assert_eq!(
+        solve_audit["audited_artifact"]["version"],
+        "canon_entity_solve.v0"
+    );
+    assert!(
+        solve_audit["certified_artifacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|artifact| artifact["version"] == "canon_entity_solve.v0"
+                && artifact["content_hash"] == solve_artifact["artifact_content_hash"])
+    );
+
+    let run_audit_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "audit",
+            run_path.to_str().unwrap(),
+            "--suite",
+            suite.to_str().unwrap(),
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .success();
+    let run_audit: Value = serde_json::from_slice(&run_audit_output.get_output().stdout).unwrap();
+    assert_eq!(run_audit["version"], "canon_entity_audit.v0");
+    assert_eq!(
+        run_audit["audited_artifact"]["version"],
+        "canon_entity_run.v0"
+    );
+    assert!(
+        run_audit["certified_artifacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|artifact| artifact["version"] == "canon_entity_run.v0"
+                && artifact["content_hash"] == run_artifact["artifact_content_hash"])
+    );
+
+    let emitted_review = run_artifact["next_commands"]["review_export"]
+        .as_str()
+        .expect("review export handoff command");
+    assert!(emitted_review.contains(solve_path.to_str().unwrap()));
+    let review_csv_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(canon_args_from_emitted_command(emitted_review))
+        .assert()
+        .success();
+    let review_csv = String::from_utf8(review_csv_output.get_output().stdout.clone()).unwrap();
+    let mut reader = csv::Reader::from_reader(review_csv.as_bytes());
+    assert!(
+        reader
+            .headers()
+            .unwrap()
+            .iter()
+            .any(|header| header == "review_id")
+    );
+
+    let review_json_command = emitted_review.replace("--emit csv", "--emit json");
+    let review_json_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(canon_args_from_emitted_command(&review_json_command))
+        .assert()
+        .success();
+    let review_json: Value =
+        serde_json::from_slice(&review_json_output.get_output().stdout).unwrap();
+    assert_eq!(review_json["version"], "canon_entity_review_queue.v0");
+    assert!(review_json["review_items"].is_array());
+
+    let emitted_link_review = link_artifact["next_commands"]["review_export"]
+        .as_str()
+        .expect("link review export handoff command");
+    assert!(emitted_link_review.contains(link_path.to_str().unwrap()));
+    let link_review_csv_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(canon_args_from_emitted_command(emitted_link_review))
+        .assert()
+        .success();
+    let link_review_csv =
+        String::from_utf8(link_review_csv_output.get_output().stdout.clone()).unwrap();
+    let mut link_reader = csv::Reader::from_reader(link_review_csv.as_bytes());
+    let link_csv_ids = link_reader
+        .records()
+        .map(|record| record.unwrap()[0].to_string())
+        .collect::<Vec<_>>();
+    assert!(!link_csv_ids.is_empty());
+
+    let link_review_json_command = emitted_link_review.replace("--emit csv", "--emit json");
+    let link_review_json_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(canon_args_from_emitted_command(&link_review_json_command))
+        .assert()
+        .success();
+    let link_review_json: Value =
+        serde_json::from_slice(&link_review_json_output.get_output().stdout).unwrap();
+    assert_eq!(link_review_json["version"], "canon_entity_review_queue.v0");
+    assert_eq!(
+        link_review_json["source_link_hash"],
+        link_artifact["artifact_content_hash"]
+    );
+    assert_eq!(
+        link_review_json["source_solve_hash"],
+        solve_artifact["artifact_content_hash"]
+    );
+    let link_json_ids = link_review_json["review_items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["review_id"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(link_csv_ids, link_json_ids);
+
+    let escrow_solve_path = temp_dir.path().join("native-solve-with-escrow.json");
+    let escrow_solve = write_native_solve_with_escrow(&escrow_solve_path);
+    let escrow_review_json_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            escrow_solve_path.to_str().unwrap(),
+            "--include",
+            "escrow",
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .success();
+    let escrow_review_json: Value =
+        serde_json::from_slice(&escrow_review_json_output.get_output().stdout).unwrap();
+    assert_eq!(
+        escrow_review_json["source_solve_hash"],
+        escrow_solve["artifact_content_hash"]
+    );
+    assert!(escrow_review_json.get("source_link_hash").is_none());
+    let escrow_items = escrow_review_json["review_items"].as_array().unwrap();
+    assert!(!escrow_items.is_empty());
+    assert_eq!(escrow_items[0]["state"], "escrow");
+
+    let escrow_review_csv_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            escrow_solve_path.to_str().unwrap(),
+            "--include",
+            "escrow",
+            "--emit",
+            "csv",
+        ])
+        .assert()
+        .success();
+    let escrow_review_csv =
+        String::from_utf8(escrow_review_csv_output.get_output().stdout.clone()).unwrap();
+    let mut escrow_reader = csv::Reader::from_reader(escrow_review_csv.as_bytes());
+    assert!(escrow_reader.records().count() >= 1);
+
+    let run_review_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            run_path.to_str().unwrap(),
+            "--include",
+            "escrow",
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .success();
+    let run_review: Value = serde_json::from_slice(&run_review_output.get_output().stdout).unwrap();
+    assert_eq!(run_review["version"], "canon_entity_review_queue.v0");
+    assert_eq!(
+        run_review["source_solve_hash"],
+        solve_artifact["artifact_content_hash"]
+    );
+}
+
+#[test]
+fn test_entity_link_neutral_mixed_review_queue_contract() {
+    let first_temp = tempdir().unwrap();
+    let (link_path, link_artifact) = run_neutral_mixed_link(first_temp.path());
+
+    assert_eq!(link_artifact["version"], "canon_entity_link.v0");
+    assert_eq!(link_artifact["summary"]["target_records"], 3);
+    assert_eq!(link_artifact["summary"]["matched"], 1);
+    assert_eq!(link_artifact["summary"]["ambiguous"], 1);
+    assert_eq!(link_artifact["summary"]["unmatched"], 1);
+    assert_eq!(
+        link_artifact["decision_artifact"]["matches"][0]["target_id"],
+        "T-MATCH"
+    );
+    assert_eq!(
+        link_artifact["decision_artifact"]["matches"][0]["reference_id"],
+        "R-MATCH"
+    );
+    assert_eq!(
+        link_artifact["decision_artifact"]["ambiguous"][0]["target_id"],
+        "T-AMB"
+    );
+    let ambiguous_refs = link_artifact["decision_artifact"]["ambiguous"][0]["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|candidate| candidate["reference_id"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ambiguous_refs,
+        vec!["R-AMB-A".to_string(), "R-AMB-B".to_string()]
+    );
+    assert_eq!(
+        link_artifact["decision_artifact"]["unmatched"][0]["target_id"],
+        "T-NONE"
+    );
+    assert_eq!(
+        link_artifact["decision_artifact"]["unmatched"][0]["reason"],
+        "no_candidates"
+    );
+
+    let escrow_json = review_json_for_link(&link_path, "escrow");
+    assert_eq!(escrow_json["version"], "canon_entity_review_queue.v0");
+    assert_eq!(
+        escrow_json["source_link_hash"],
+        link_artifact["artifact_content_hash"]
+    );
+    assert_eq!(
+        escrow_json["source_solve_hash"],
+        link_artifact["shared_solve_artifact"]["content_hash"]
+    );
+    let escrow_items = escrow_json["review_items"].as_array().unwrap();
+    assert_eq!(escrow_items.len(), 2);
+
+    let mut escrow_by_id = BTreeMap::new();
+    let mut escrow_components = BTreeSet::new();
+    for item in escrow_items {
+        let review_id = item["review_id"].as_str().unwrap().to_string();
+        let component_id = item["component_id"].as_str().unwrap().to_string();
+        let state = item["state"].as_str().unwrap().to_string();
+        let reasons = review_priority_reasons(item);
+        assert_eq!(state, "escrow");
+        assert_eq!(
+            item["proposed_action"].as_str().unwrap(),
+            "review_directional_abstention"
+        );
+        match component_id.as_str() {
+            "T-AMB" => assert_eq!(reasons, vec!["ambiguous".to_string()]),
+            "T-NONE" => assert_eq!(reasons, vec!["unmatched".to_string()]),
+            other => panic!("unexpected escrow component {other}"),
+        }
+        escrow_components.insert(component_id.clone());
+        escrow_by_id.insert(review_id, (component_id, state, reasons));
+    }
+    assert_eq!(
+        escrow_components,
+        BTreeSet::from(["T-AMB".to_string(), "T-NONE".to_string()])
+    );
+
+    let escrow_csv_rows = assert_review_csv_id_parity(&link_path, "escrow", &escrow_json);
+    for row in escrow_csv_rows {
+        let (component_id, state, reasons) = escrow_by_id.get(&row["review_id"]).unwrap();
+        let csv_reasons: Vec<String> = serde_json::from_str(&row["priority_reasons_json"]).unwrap();
+        assert_eq!(&row["component_id"], component_id);
+        assert_eq!(&row["state"], state);
+        assert_eq!(&csv_reasons, reasons);
+    }
+
+    let resolved_json = review_json_for_link(&link_path, "resolved");
+    let resolved_items = resolved_json["review_items"].as_array().unwrap();
+    assert_eq!(resolved_items.len(), 1);
+    let resolved_item = &resolved_items[0];
+    assert_eq!(resolved_item["component_id"], "T-MATCH");
+    assert_eq!(resolved_item["state"], "resolved_existing");
+    assert_eq!(resolved_item["proposed_action"], "audit_directional_match");
+    assert_eq!(
+        review_priority_reasons(resolved_item),
+        vec!["directional_match".to_string()]
+    );
+    let resolved_csv_rows = assert_review_csv_id_parity(&link_path, "resolved", &resolved_json);
+    assert_eq!(resolved_csv_rows.len(), 1);
+    assert_eq!(
+        resolved_csv_rows[0]["review_id"],
+        resolved_item["review_id"].as_str().unwrap()
+    );
+    assert_eq!(resolved_csv_rows[0]["component_id"], "T-MATCH");
+    assert_eq!(resolved_csv_rows[0]["state"], "resolved_existing");
+    let resolved_csv_reasons: Vec<String> =
+        serde_json::from_str(&resolved_csv_rows[0]["priority_reasons_json"]).unwrap();
+    assert_eq!(resolved_csv_reasons, vec!["directional_match".to_string()]);
+
+    let all_json = review_json_for_link(&link_path, "all");
+    let mut expected_all_ids = review_ids(&escrow_json);
+    expected_all_ids.extend(review_ids(&resolved_json));
+    assert_eq!(all_json["review_items"].as_array().unwrap().len(), 3);
+    assert_eq!(review_ids(&all_json), expected_all_ids);
+    let all_csv_rows = assert_review_csv_id_parity(&link_path, "all", &all_json);
+    assert_eq!(all_csv_rows.len(), 3);
+
+    let second_temp = tempdir().unwrap();
+    let (second_link_path, second_link_artifact) = run_neutral_mixed_link(second_temp.path());
+    assert_eq!(second_link_artifact["summary"], link_artifact["summary"]);
+    let second_all_json = review_json_for_link(&second_link_path, "all");
+    assert_eq!(review_ids(&second_all_json), review_ids(&all_json));
+}
+
+#[test]
+fn test_entity_review_export_run_handoff_rejects_unsafe_or_mismatched_solve_path() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
+    let suite = write_entity_link_audit_suite(temp_dir.path());
+    let work_dir = temp_dir.path().join("entity-link-work");
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.extend(["--suite", suite.to_str().unwrap(), "--no-witness"]);
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(args)
+        .assert()
+        .success();
+
+    let run_path = work_dir.join("run.json");
+    let run_artifact: Value = serde_json::from_slice(&std::fs::read(&run_path).unwrap()).unwrap();
+
+    let tampered_run_path = work_dir.join("tampered-run.json");
+    let mut tampered_run = run_artifact.clone();
+    tampered_run["summary"]["counts"]["tampered"] = Value::from(1);
+    std::fs::write(
+        &tampered_run_path,
+        serde_json::to_vec_pretty(&tampered_run).unwrap(),
+    )
+    .unwrap();
+
+    let tampered_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            tampered_run_path.to_str().unwrap(),
+            "--include",
+            "escrow",
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .code(2);
+    let tampered_refusal: Value =
+        serde_json::from_slice(&tampered_output.get_output().stdout).unwrap();
+    assert_eq!(
+        tampered_refusal["refusal"]["code"],
+        "E_ENTITY_ARTIFACT_CONTRACT"
+    );
+    assert_eq!(
+        tampered_refusal["refusal"]["detail"]["field"],
+        "artifact_content_hash"
+    );
+    assert_eq!(
+        tampered_refusal["refusal"]["detail"]["writes_performed"],
+        false
+    );
+    assert!(
+        !tampered_refusal["refusal"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("observations")
+    );
+
+    let unsafe_run_path = work_dir.join("unsafe-run.json");
+    let mut unsafe_run = run_artifact.clone();
+    unsafe_run["work_dir"]["solve_artifact_path"] =
+        Value::String("../solve/solve.json".to_string());
+    std::fs::write(
+        &unsafe_run_path,
+        serde_json::to_vec_pretty(&resealed_typed_run_artifact(&unsafe_run)).unwrap(),
+    )
+    .unwrap();
+
+    let unsafe_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            unsafe_run_path.to_str().unwrap(),
+            "--include",
+            "escrow",
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .code(2);
+    let unsafe_refusal: Value = serde_json::from_slice(&unsafe_output.get_output().stdout).unwrap();
+    assert_eq!(
+        unsafe_refusal["refusal"]["code"],
+        "E_ENTITY_ARTIFACT_CONTRACT"
+    );
+    assert_eq!(
+        unsafe_refusal["refusal"]["detail"]["field"],
+        "work_dir.solve_artifact_path"
+    );
+    assert_eq!(
+        unsafe_refusal["refusal"]["detail"]["writes_performed"],
+        false
+    );
+    assert!(
+        !unsafe_refusal["refusal"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("observations")
+    );
+
+    let mismatch_run_path = work_dir.join("mismatch-run.json");
+    let mut mismatch_run = run_artifact;
+    let stages = mismatch_run["stage_artifacts"].as_array_mut().unwrap();
+    let solve_stage = stages
+        .iter_mut()
+        .find(|stage| stage["stage"] == "solve")
+        .expect("solve stage");
+    solve_stage["artifact_content_hash"] = Value::String("blake3:mismatch".to_string());
+    std::fs::write(
+        &mismatch_run_path,
+        serde_json::to_vec_pretty(&resealed_typed_run_artifact(&mismatch_run)).unwrap(),
+    )
+    .unwrap();
+
+    let mismatch_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            mismatch_run_path.to_str().unwrap(),
+            "--include",
+            "escrow",
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .code(2);
+    let mismatch_refusal: Value =
+        serde_json::from_slice(&mismatch_output.get_output().stdout).unwrap();
+    assert_eq!(
+        mismatch_refusal["refusal"]["code"],
+        "E_ENTITY_ARTIFACT_CONTRACT"
+    );
+    assert_eq!(
+        mismatch_refusal["refusal"]["detail"]["field"],
+        "stage_artifacts.solve.artifact_content_hash"
+    );
+    assert_eq!(
+        mismatch_refusal["refusal"]["detail"]["writes_performed"],
+        false
+    );
+    assert!(
+        !mismatch_refusal["refusal"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("observations")
+    );
+}
+
+#[test]
+fn test_entity_review_export_link_handoff_rejects_malformed_or_tampered_artifacts() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
+    let work_dir = temp_dir.path().join("entity-link-work");
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.push("--no-witness");
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(args)
+        .assert()
+        .success();
+
+    let link_path = work_dir.join("link/link.json");
+    let link_artifact: Value = serde_json::from_slice(&std::fs::read(&link_path).unwrap()).unwrap();
+
+    let link_dir = work_dir.join("link");
+    let malformed_link_path = link_dir.join("malformed-link.json");
+    std::fs::write(
+        &malformed_link_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "version": "canon_entity_link.v0"
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let malformed_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            malformed_link_path.to_str().unwrap(),
+            "--include",
+            "escrow",
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .code(2);
+    let malformed_refusal: Value =
+        serde_json::from_slice(&malformed_output.get_output().stdout).unwrap();
+    assert_eq!(
+        malformed_refusal["refusal"]["code"],
+        "E_ENTITY_ARTIFACT_CONTRACT"
+    );
+    assert_eq!(
+        malformed_refusal["refusal"]["detail"]["writes_performed"],
+        false
+    );
+
+    let unknown_top_level_path = link_dir.join("tampered-link-unknown-top-level.json");
+    let mut unknown_top_level = link_artifact.clone();
+    unknown_top_level["unexpected_top_level"] = Value::String("discarded".to_string());
+    std::fs::write(
+        &unknown_top_level_path,
+        serde_json::to_vec_pretty(&unknown_top_level).unwrap(),
+    )
+    .unwrap();
+    assert_link_review_export_refuses_without_writes(
+        &unknown_top_level_path,
+        &link_dir,
+        "unexpected_top_level",
+    );
+
+    let unknown_decision_path = link_dir.join("tampered-link-unknown-decision.json");
+    let mut unknown_decision = link_artifact.clone();
+    unknown_decision["decision_artifact"]["unexpected_decision_field"] =
+        Value::String("discarded".to_string());
+    std::fs::write(
+        &unknown_decision_path,
+        serde_json::to_vec_pretty(&unknown_decision).unwrap(),
+    )
+    .unwrap();
+    assert_link_review_export_refuses_without_writes(
+        &unknown_decision_path,
+        &link_dir,
+        "decision_artifact.unexpected_decision_field",
+    );
+
+    let nested_hash_path = link_dir.join("tampered-link-decision.json");
+    let mut nested_hash = link_artifact.clone();
+    nested_hash["decision_artifact"]["matches"][0]["score"] = serde_json::json!(0.25);
+    std::fs::write(
+        &nested_hash_path,
+        serde_json::to_vec_pretty(&resealed_typed_link_artifact(&nested_hash)).unwrap(),
+    )
+    .unwrap();
+    let nested_hash_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            nested_hash_path.to_str().unwrap(),
+            "--include",
+            "escrow",
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .code(2);
+    let nested_hash_refusal: Value =
+        serde_json::from_slice(&nested_hash_output.get_output().stdout).unwrap();
+    assert_eq!(
+        nested_hash_refusal["refusal"]["detail"]["field"],
+        "decision_artifact.artifact_content_hash"
+    );
+    assert_eq!(
+        nested_hash_refusal["refusal"]["detail"]["writes_performed"],
+        false
+    );
+
+    let partition_path = link_dir.join("tampered-link-partition.json");
+    let mut partition = link_artifact.clone();
+    partition["summary"]["unmatched"] = serde_json::json!(99);
+    std::fs::write(
+        &partition_path,
+        serde_json::to_vec_pretty(&resealed_typed_link_artifact(&partition)).unwrap(),
+    )
+    .unwrap();
+    let partition_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            partition_path.to_str().unwrap(),
+            "--include",
+            "escrow",
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .code(2);
+    let partition_refusal: Value =
+        serde_json::from_slice(&partition_output.get_output().stdout).unwrap();
+    assert_eq!(partition_refusal["refusal"]["detail"]["field"], "summary");
+    assert_eq!(
+        partition_refusal["refusal"]["detail"]["writes_performed"],
+        false
+    );
+
+    let materialized_path = link_dir.join("tampered-link-materialized.json");
+    let mut materialized = link_artifact;
+    materialized["materialized_rows_content_hash"] =
+        Value::String("blake3:wrong-materialized".to_string());
+    std::fs::write(
+        &materialized_path,
+        serde_json::to_vec_pretty(&resealed_typed_link_artifact(&materialized)).unwrap(),
+    )
+    .unwrap();
+    let materialized_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            materialized_path.to_str().unwrap(),
+            "--include",
+            "escrow",
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .code(2);
+    let materialized_refusal: Value =
+        serde_json::from_slice(&materialized_output.get_output().stdout).unwrap();
+    assert_eq!(
+        materialized_refusal["refusal"]["detail"]["field"],
+        "materialized_rows_content_hash"
+    );
+    assert_eq!(
+        materialized_refusal["refusal"]["detail"]["writes_performed"],
+        false
+    );
+}
+
+#[test]
+fn test_entity_link_review_ids_are_path_independent() {
+    let left_temp = tempdir().unwrap();
+    let right_temp = tempdir().unwrap();
+
+    let left_ids = run_link_review_ids(left_temp.path());
+    let right_ids = run_link_review_ids(right_temp.path());
+
+    assert_eq!(left_ids, right_ids);
+    assert!(!left_ids.is_empty());
+}
+
+fn run_link_review_ids(root: &Path) -> Vec<String> {
+    let fixture = write_entity_link_smoke_fixture(root, true);
+    let work_dir = root.join("entity-link-work");
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.push("--no-witness");
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(args)
+        .assert()
+        .success();
+
+    let link_path = work_dir.join("link/link.json");
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            link_path.to_str().unwrap(),
+            "--include",
+            "all",
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .success();
+    let review: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    let mut ids = review["review_items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["review_id"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    ids.sort();
+    ids
+}
+
+#[test]
+fn test_entity_link_cli_invalid_suite_refuses_before_writes() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
+    let suite = temp_dir.path().join("bad-suite");
+    std::fs::create_dir_all(&suite).unwrap();
+    std::fs::write(suite.join("manifest.json"), "{not json").unwrap();
+    let registry_before = registry_snapshot(&fixture.registry);
+    let work_dir = temp_dir.path().join("entity-link-work");
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.extend([
+        "--suite",
+        suite.to_str().unwrap(),
+        "--gold",
+        fixture.gold.to_str().unwrap(),
+        "--write-back",
+        "--no-witness",
+    ]);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(args)
+        .assert()
+        .code(2);
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["refusal"]["code"], "E_ENTITY_AUDIT_GATE");
+    assert_eq!(payload["refusal"]["detail"]["writes_performed"], false);
+    assert!(!work_dir.exists());
+    assert_eq!(registry_snapshot(&fixture.registry), registry_before);
+}
+
+#[test]
+fn test_entity_link_cli_accepts_advertised_row_formats() {
+    let temp_dir = tempdir().unwrap();
+    for format in [
+        EntityLinkFixtureFormat::Csv,
+        EntityLinkFixtureFormat::Tsv,
+        EntityLinkFixtureFormat::Jsonl,
+        EntityLinkFixtureFormat::Ndjson,
+    ] {
+        let root = temp_dir.path().join(format.label());
+        std::fs::create_dir_all(&root).unwrap();
+        let fixture = write_entity_link_smoke_fixture_with_format(&root, true, format);
+        let work_dir = root.join("entity-link-work");
+        let mut args = entity_link_smoke_args(&fixture, &work_dir);
+        args.push("--no-witness");
+
+        let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+            .args(args)
+            .assert()
+            .success();
+
+        let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+        let payload: Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(
+            payload["summary"]["matched"],
+            1,
+            "format {} should match",
+            format.label()
+        );
+        assert_eq!(payload["reference"]["row_count"], 1);
+        assert_eq!(payload["target"]["row_count"], 1);
+        let materialized =
+            std::fs::read_to_string(work_dir.join("link/combined_rows.csv")).unwrap();
+        assert!(materialized.contains("Reference Name"));
+        assert!(materialized.contains("Target Name"));
+    }
+}
+
+#[test]
+fn test_entity_link_cli_budget_refusals_are_public() {
+    for (flag, value, expected_code) in [
+        ("--max-candidates", "0", "E_TOO_MANY_CANDIDATES"),
+        ("--max-rows", "0", "E_TOO_LARGE"),
+        ("--max-bytes", "1", "E_TOO_LARGE"),
+    ] {
+        let temp_dir = tempdir().unwrap();
+        let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
+        let work_dir = temp_dir.path().join("entity-link-work");
+        let mut args = entity_link_smoke_args(&fixture, &work_dir);
+        args.extend([flag, value, "--no-witness"]);
+
+        let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+            .args(args)
+            .assert()
+            .code(2);
+
+        let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+        let payload: Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(
+            payload["refusal"]["code"], expected_code,
+            "{flag} should refuse with {expected_code}"
+        );
+        assert!(
+            !work_dir.exists(),
+            "{flag} should fail before work-dir writes"
+        );
+    }
+}
+
+#[test]
+fn test_entity_link_cli_without_writeback_does_not_mutate_inputs_or_registry() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
+    let work_dir = temp_dir.path().join("entity-link-work");
+    let reference_before = std::fs::read(&fixture.reference).unwrap();
+    let target_before = std::fs::read(&fixture.target).unwrap();
+    let registry_before = registry_snapshot(&fixture.registry);
+    let registry_files_before = registry_files(&fixture.registry);
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.push("--no-witness");
+
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(args)
+        .assert()
+        .success();
+
+    assert_eq!(std::fs::read(&fixture.reference).unwrap(), reference_before);
+    assert_eq!(std::fs::read(&fixture.target).unwrap(), target_before);
+    assert_eq!(registry_snapshot(&fixture.registry), registry_before);
+    assert_eq!(registry_files(&fixture.registry), registry_files_before);
+    assert_eq!(
+        registry_files_before,
+        BTreeSet::from(["registry.json".to_string()])
+    );
+}
+
+#[test]
+fn test_entity_link_cli_summary_output() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
+    let work_dir = temp_dir.path().join("entity-link-work");
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.extend(["--emit", "summary", "--no-witness"]);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(args)
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    assert!(stdout.contains("canon_entity_link.v0"));
     assert!(stdout.contains("matched=1"));
     assert!(stdout.contains("match_rate=1.000"));
 }
 
 #[test]
-fn test_resolve_cli_partial_exit_one() {
+fn test_entity_link_cli_partial_exit_one() {
     let temp_dir = tempdir().unwrap();
-    let fixture = write_resolve_smoke_fixture(temp_dir.path(), false);
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), false);
+    let work_dir = temp_dir.path().join("entity-link-work");
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.push("--no-witness");
 
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
-        .args([
-            "resolve",
-            fixture.reference.to_str().unwrap(),
-            fixture.target.to_str().unwrap(),
-            "--strategy",
-            fixture.strategy.to_str().unwrap(),
-            "--registry",
-            fixture.registry.to_str().unwrap(),
-            "--no-witness",
-        ])
+        .args(args)
         .assert()
         .code(1);
 
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     let payload: Value = serde_json::from_str(&stdout).unwrap();
+    let decisions = &payload["decision_artifact"];
     assert_eq!(payload["summary"]["matched"], 0);
     assert_eq!(payload["summary"]["unmatched"], 1);
+    assert_eq!(decisions["summary"]["matched"], 0);
+    assert_eq!(decisions["summary"]["unmatched"], 1);
     assert_eq!(
-        payload["unmatched"][0]["reason"],
+        decisions["unmatched"][0]["reason"],
         "required_assertion_failed"
     );
 }
 
 #[test]
-fn test_resolve_cli_malformed_strategy_refusal() {
+fn test_entity_link_cli_malformed_strategy_refusal() {
     let temp_dir = tempdir().unwrap();
-    let fixture = write_resolve_smoke_fixture(temp_dir.path(), true);
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
     std::fs::write(&fixture.strategy, "not: [valid").unwrap();
+    let work_dir = temp_dir.path().join("entity-link-work");
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.push("--no-witness");
 
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
-        .args([
-            "resolve",
-            fixture.reference.to_str().unwrap(),
-            fixture.target.to_str().unwrap(),
-            "--strategy",
-            fixture.strategy.to_str().unwrap(),
-            "--registry",
-            fixture.registry.to_str().unwrap(),
-            "--no-witness",
-        ])
+        .args(args)
         .assert()
         .code(2);
 
@@ -694,16 +2205,21 @@ fn test_resolve_cli_malformed_strategy_refusal() {
 }
 
 #[test]
-fn test_resolve_cli_missing_column_refusal() {
+fn test_entity_link_cli_missing_column_refusal() {
+    let temp_dir = tempdir().unwrap();
+    let work_dir = temp_dir.path().join("entity-link-work");
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .args([
-            "resolve",
+            "entity",
+            "link",
             fixture_path("tests/fixtures/resolve/tapes/reference_loans.csv")
                 .to_str()
                 .unwrap(),
             fixture_path("tests/fixtures/resolve/tapes/missing_column_target.csv")
                 .to_str()
                 .unwrap(),
+            "--profile",
+            "cmbs_tenant_label",
             "--strategy",
             fixture_path("tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml")
                 .to_str()
@@ -712,6 +2228,8 @@ fn test_resolve_cli_missing_column_refusal() {
             fixture_path("tests/fixtures/registries/resolve-servicers")
                 .to_str()
                 .unwrap(),
+            "--work-dir",
+            work_dir.to_str().unwrap(),
             "--no-witness",
         ])
         .assert()
@@ -723,16 +2241,21 @@ fn test_resolve_cli_missing_column_refusal() {
 }
 
 #[test]
-fn test_resolve_cli_empty_tape_refusal() {
+fn test_entity_link_cli_empty_tape_refusal() {
+    let temp_dir = tempdir().unwrap();
+    let work_dir = temp_dir.path().join("entity-link-work");
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .args([
-            "resolve",
+            "entity",
+            "link",
             fixture_path("tests/fixtures/resolve/tapes/reference_loans.csv")
                 .to_str()
                 .unwrap(),
             fixture_path("tests/fixtures/resolve/tapes/empty_target.csv")
                 .to_str()
                 .unwrap(),
+            "--profile",
+            "cmbs_tenant_label",
             "--strategy",
             fixture_path("tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml")
                 .to_str()
@@ -741,6 +2264,8 @@ fn test_resolve_cli_empty_tape_refusal() {
             fixture_path("tests/fixtures/registries/resolve-servicers")
                 .to_str()
                 .unwrap(),
+            "--work-dir",
+            work_dir.to_str().unwrap(),
             "--no-witness",
         ])
         .assert()
@@ -752,23 +2277,17 @@ fn test_resolve_cli_empty_tape_refusal() {
 }
 
 #[test]
-fn test_resolve_cli_no_witness_suppresses_ledger() {
+fn test_entity_link_cli_no_witness_suppresses_ledger() {
     let temp_dir = tempdir().unwrap();
-    let fixture = write_resolve_smoke_fixture(temp_dir.path(), true);
-    let ledger_path = temp_dir.path().join("resolve-witness.jsonl");
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
+    let ledger_path = temp_dir.path().join("entity-link-witness.jsonl");
+    let work_dir = temp_dir.path().join("entity-link-work");
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.push("--no-witness");
 
     Command::new(env!("CARGO_BIN_EXE_canon"))
         .env("EPISTEMIC_WITNESS", &ledger_path)
-        .args([
-            "resolve",
-            fixture.reference.to_str().unwrap(),
-            fixture.target.to_str().unwrap(),
-            "--strategy",
-            fixture.strategy.to_str().unwrap(),
-            "--registry",
-            fixture.registry.to_str().unwrap(),
-            "--no-witness",
-        ])
+        .args(args)
         .assert()
         .success();
 
@@ -776,22 +2295,16 @@ fn test_resolve_cli_no_witness_suppresses_ledger() {
 }
 
 #[test]
-fn test_resolve_cli_witness_append_and_failure_nonfatal() {
+fn test_entity_link_cli_witness_append_and_failure_nonfatal() {
     let temp_dir = tempdir().unwrap();
-    let fixture = write_resolve_smoke_fixture(temp_dir.path(), true);
-    let ledger_path = temp_dir.path().join("resolve-witness.jsonl");
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
+    let ledger_path = temp_dir.path().join("entity-link-witness.jsonl");
+    let work_dir = temp_dir.path().join("entity-link-work");
+    let args = entity_link_smoke_args(&fixture, &work_dir);
 
     Command::new(env!("CARGO_BIN_EXE_canon"))
         .env("EPISTEMIC_WITNESS", &ledger_path)
-        .args([
-            "resolve",
-            fixture.reference.to_str().unwrap(),
-            fixture.target.to_str().unwrap(),
-            "--strategy",
-            fixture.strategy.to_str().unwrap(),
-            "--registry",
-            fixture.registry.to_str().unwrap(),
-        ])
+        .args(args)
         .assert()
         .success();
 
@@ -799,58 +2312,49 @@ fn test_resolve_cli_witness_append_and_failure_nonfatal() {
     let record: Value = serde_json::from_str(content.lines().next().unwrap()).unwrap();
     assert_eq!(record["outcome"], "RESOLVED");
     assert_eq!(record["exit_code"], 0);
-    assert_eq!(record["params"]["command"], "resolve");
-    assert_eq!(record["params"]["registry_id"], "resolve-smoke");
+    assert_eq!(record["params"]["command"], "entity.link");
+    assert_eq!(record["params"]["registry_id"], "entity-link-smoke");
     assert_eq!(record["params"]["summary"]["matched"], 1);
 
+    let failure_work_dir = temp_dir.path().join("entity-link-work-failure");
+    let failure_args = entity_link_smoke_args(&fixture, &failure_work_dir);
     Command::new(env!("CARGO_BIN_EXE_canon"))
         .env("EPISTEMIC_WITNESS", temp_dir.path())
-        .args([
-            "resolve",
-            fixture.reference.to_str().unwrap(),
-            fixture.target.to_str().unwrap(),
-            "--strategy",
-            fixture.strategy.to_str().unwrap(),
-            "--registry",
-            fixture.registry.to_str().unwrap(),
-        ])
+        .args(failure_args)
         .assert()
         .success();
 }
 
 #[test]
-fn test_resolve_cli_writeback_invocation_shape() {
+fn test_entity_link_cli_writeback_invocation_shape() {
     let temp_dir = tempdir().unwrap();
-    let fixture = write_resolve_smoke_fixture(temp_dir.path(), true);
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
+    let work_dir = temp_dir.path().join("entity-link-work");
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.extend([
+        "--gold",
+        fixture.gold.to_str().unwrap(),
+        "--write-back",
+        "--no-witness",
+    ]);
 
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
-        .args([
-            "resolve",
-            fixture.reference.to_str().unwrap(),
-            fixture.target.to_str().unwrap(),
-            "--strategy",
-            fixture.strategy.to_str().unwrap(),
-            "--registry",
-            fixture.registry.to_str().unwrap(),
-            "--gold",
-            fixture.gold.to_str().unwrap(),
-            "--write-back",
-            "--no-witness",
-        ])
+        .args(args)
         .assert()
         .success();
 
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     let payload: Value = serde_json::from_str(&stdout).unwrap();
-    assert_eq!(payload["gold_score"]["accuracy"], 1.0);
-    assert_eq!(payload["write_back"]["written"], true);
-    assert_eq!(payload["write_back"]["entry_count"], 2);
+    let decisions = &payload["decision_artifact"];
+    assert_eq!(decisions["gold_score"]["accuracy"], 1.0);
+    assert_eq!(decisions["write_back"]["written"], true);
+    assert_eq!(decisions["write_back"]["entry_count"], 2);
 
-    let mapping_file = payload["write_back"]["mapping_file"].as_str().unwrap();
+    let mapping_file = decisions["write_back"]["mapping_file"].as_str().unwrap();
     let mapping_path = fixture.registry.join(mapping_file);
     assert!(mapping_path.exists());
     let mapping_content = std::fs::read_to_string(mapping_path).unwrap();
-    assert!(mapping_content.contains("STRUCTURAL_MATCH:resolve-smoke.v1"));
+    assert!(mapping_content.contains("STRUCTURAL_MATCH:entity-link-smoke.v1"));
     assert!(!mapping_content.contains("100 Main St"));
 }
 

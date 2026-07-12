@@ -6,6 +6,10 @@
 //! coverage, abstentions, and rejected candidates so later workflow beads can
 //! ingest the evidence without making identity assertions.
 
+pub mod cli;
+pub mod context;
+pub mod group;
+pub mod rank;
 mod types;
 
 pub use types::*;

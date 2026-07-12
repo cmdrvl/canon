@@ -18,6 +18,7 @@
     "next_command_keys": ["apply", "audit", "promote", "resume", "review_export"],
     "telemetry_links": {
       "block_artifact": "block/block.json",
+      "candidate_diagnostics": "block/diagnostics.json",
       "candidate_records": "block/candidates.jsonl",
       "decision_ledger": "solve/decision_ledger.jsonl",
       "edge_artifact": "edge/edge.json",
@@ -70,6 +71,7 @@
       "next_command_keys": ["edge"],
       "telemetry_links": {
         "artifact": "block/block.json",
+        "candidate_diagnostics": "block/diagnostics.json",
         "telemetry": "telemetry/block.json"
       }
     },

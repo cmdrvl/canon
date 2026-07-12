@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.baseline.v1.schema.json",
+  "title": "canon.baseline.v1",
+  "description": "Privacy-safe local performance and quality baseline artifact. Baselines compare only when tool, build, hardware, and corpus digests match; raw identity values are structurally excluded.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "baseline_id",
+    "tool",
+    "build",
+    "hardware",
+    "corpus",
+    "privacy",
+    "stages",
+    "peak_memory",
+    "io",
+    "candidates",
+    "evidence",
+    "review",
+    "quality",
+    "cache",
+    "comparison_bands",
+    "baseline_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "canon.baseline.v1" },
+    "baseline_id": { "type": "string", "minLength": 1 },
+    "tool": { "$ref": "#/$defs/tool" },
+    "build": { "$ref": "#/$defs/build" },
+    "hardware": { "$ref": "#/$defs/hardware" },
+    "corpus": { "$ref": "#/$defs/corpus" },
+    "privacy": { "$ref": "#/$defs/privacy" },
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/stage" }
+    },
+    "peak_memory": { "$ref": "#/$defs/peak_memory" },
+    "io": { "$ref": "#/$defs/io" },
+    "candidates": { "$ref": "#/$defs/candidates" },
+    "evidence": { "$ref": "#/$defs/evidence" },
+    "review": { "$ref": "#/$defs/review" },
+    "quality": { "$ref": "#/$defs/quality" },
+    "cache": { "$ref": "#/$defs/cache" },
+    "comparison_bands": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/comparison_band" }
+    },
+    "baseline_digest": { "$ref": "#/$defs/blake3_digest" }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["raw_rows"] },
+      { "required": ["source_rows"] },
+      { "required": ["raw_identity_values"] },
+      { "required": ["identity_values"] },
+      { "required": ["candidate_values"] },
+      { "required": ["evidence_values"] },
+      { "required": ["operator_notes"] },
+      { "required": ["private_notes"] }
+    ]
+  },
+  "x-canon-contract": {
+    "local_artifact_only": true,
+    "phones_home": false,
+    "raw_identity_values_recorded_by_default": false,
+    "requires_redaction_policy_digest": true,
+    "digest_bound_tool_build_hardware_and_corpus": true,
+    "separates_context_changes_from_regressions": true,
+    "deterministic_comparison_bands": true,
+    "records_stage_timings": true,
+    "records_peak_memory": true,
+    "records_io_bytes": true,
+    "records_candidate_evidence_review_metrics": true,
+    "records_cache_outcomes": true
+  },
+  "$defs": {
+    "blake3_digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-fA-F]{64}$"
+    },
+    "count": { "type": "integer", "minimum": 0 },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canon_version",
+        "command_contract_digest",
+        "operator_contract_digest"
+      ],
+      "properties": {
+        "canon_version": { "type": "string", "minLength": 1 },
+        "command_contract_digest": { "$ref": "#/$defs/blake3_digest" },
+        "operator_contract_digest": { "$ref": "#/$defs/blake3_digest" }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_revision_digest",
+        "cargo_lock_digest",
+        "rustc_version_digest",
+        "target_triple"
+      ],
+      "properties": {
+        "source_revision_digest": { "$ref": "#/$defs/blake3_digest" },
+        "cargo_lock_digest": { "$ref": "#/$defs/blake3_digest" },
+        "rustc_version_digest": { "$ref": "#/$defs/blake3_digest" },
+        "target_triple": { "type": "string", "minLength": 1 }
+      }
+    },
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hardware_fingerprint_digest",
+        "os",
+        "arch",
+        "logical_cores",
+        "memory_bytes"
+      ],
+      "properties": {
+        "hardware_fingerprint_digest": { "$ref": "#/$defs/blake3_digest" },
+        "os": { "type": "string", "minLength": 1 },
+        "arch": { "type": "string", "minLength": 1 },
+        "logical_cores": { "type": "integer", "minimum": 1 },
+        "memory_bytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "corpus_id",
+        "corpus_digest",
+        "split_digest",
+        "label_digest",
+        "row_count",
+        "unique_surface_count",
+        "license_class"
+      ],
+      "properties": {
+        "corpus_id": { "type": "string", "minLength": 1 },
+        "corpus_digest": { "$ref": "#/$defs/blake3_digest" },
+        "split_digest": { "$ref": "#/$defs/blake3_digest" },
+        "label_digest": { "$ref": "#/$defs/blake3_digest" },
+        "row_count": { "$ref": "#/$defs/count" },
+        "unique_surface_count": { "$ref": "#/$defs/count" },
+        "license_class": { "type": "string", "minLength": 1 }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "raw_identity_values_recorded",
+        "raw_values_redacted",
+        "redaction_policy_digest",
+        "redacted_field_count",
+        "allowed_payload_keys"
+      ],
+      "properties": {
+        "classification": {
+          "type": "string",
+          "enum": ["public_aggregate", "redacted_private", "digest_only"]
+        },
+        "raw_identity_values_recorded": { "const": false },
+        "raw_values_redacted": { "const": true },
+        "redaction_policy_digest": { "$ref": "#/$defs/blake3_digest" },
+        "redacted_field_count": { "$ref": "#/$defs/count" },
+        "allowed_payload_keys": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage_id", "duration_ms", "artifact_bytes", "row_count"],
+      "properties": {
+        "stage_id": { "type": "string", "minLength": 1 },
+        "duration_ms": { "$ref": "#/$defs/count" },
+        "artifact_bytes": { "$ref": "#/$defs/count" },
+        "row_count": { "$ref": "#/$defs/count" }
+      }
+    },
+    "peak_memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bytes", "method"],
+      "properties": {
+        "bytes": { "$ref": "#/$defs/count" },
+        "method": { "type": "string", "minLength": 1 }
+      }
+    },
+    "io": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["read_bytes", "write_bytes"],
+      "properties": {
+        "read_bytes": { "$ref": "#/$defs/count" },
+        "write_bytes": { "$ref": "#/$defs/count" }
+      }
+    },
+    "candidates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_surface_count",
+        "candidate_pair_count",
+        "suppressed_candidate_count",
+        "exact_bucket_count"
+      ],
+      "properties": {
+        "input_surface_count": { "$ref": "#/$defs/count" },
+        "candidate_pair_count": { "$ref": "#/$defs/count" },
+        "suppressed_candidate_count": { "$ref": "#/$defs/count" },
+        "exact_bucket_count": { "$ref": "#/$defs/count" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_edge_count",
+        "support_edge_count",
+        "cannot_link_count"
+      ],
+      "properties": {
+        "evidence_edge_count": { "$ref": "#/$defs/count" },
+        "support_edge_count": { "$ref": "#/$defs/count" },
+        "cannot_link_count": { "$ref": "#/$defs/count" }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "review_group_count",
+        "accepted_decision_count",
+        "rejected_decision_count",
+        "pending_decision_count"
+      ],
+      "properties": {
+        "review_group_count": { "$ref": "#/$defs/count" },
+        "accepted_decision_count": { "$ref": "#/$defs/count" },
+        "rejected_decision_count": { "$ref": "#/$defs/count" },
+        "pending_decision_count": { "$ref": "#/$defs/count" }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_recall_at_50_basis_points",
+        "auto_link_precision_basis_points",
+        "abstention_rate_basis_points",
+        "severe_false_merge_count"
+      ],
+      "properties": {
+        "candidate_recall_at_50_basis_points": { "$ref": "#/$defs/count" },
+        "auto_link_precision_basis_points": { "$ref": "#/$defs/count" },
+        "abstention_rate_basis_points": { "$ref": "#/$defs/count" },
+        "severe_false_merge_count": { "$ref": "#/$defs/count" }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cache_hit_count",
+        "cache_miss_count",
+        "cache_reused_bytes",
+        "cache_written_bytes"
+      ],
+      "properties": {
+        "cache_hit_count": { "$ref": "#/$defs/count" },
+        "cache_miss_count": { "$ref": "#/$defs/count" },
+        "cache_reused_bytes": { "$ref": "#/$defs/count" },
+        "cache_written_bytes": { "$ref": "#/$defs/count" }
+      }
+    },
+    "comparison_band": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric_id",
+        "direction",
+        "noise_absolute",
+        "warn_relative_basis_points",
+        "fail_relative_basis_points"
+      ],
+      "properties": {
+        "metric_id": { "type": "string", "minLength": 1 },
+        "direction": {
+          "type": "string",
+          "enum": ["lower_is_better", "higher_is_better", "exact"]
+        },
+        "noise_absolute": { "$ref": "#/$defs/count" },
+        "warn_relative_basis_points": { "$ref": "#/$defs/count" },
+        "fail_relative_basis_points": { "$ref": "#/$defs/count" }
+      }
+    }
+  }
+}

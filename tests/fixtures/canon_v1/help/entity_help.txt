@@ -1,0 +1,24 @@
+Profiled entity workbench commands
+
+Usage: canon entity <COMMAND>
+
+Commands:
+  run                Run the full entity orchestration flow
+  prepare            Validate and project profile-mapped observations for entity preparation
+  index              Build artifact-backed entity indexes
+  block              Generate candidate neighborhoods
+  candidate-recall   Evaluate candidate retrieval recall against sealed public gold labels
+  alias-withholding  Compile a public alias-withholding execution envelope into a report
+  evidence           Score typed evidence for candidate pairs
+  solve              Solve entity identity assignments from evidence artifacts
+  link               Link two row sets through the artifact-backed entity workbench
+  audit              Audit an entity result artifact against a suite
+  promote            Promote an audited entity result into the registry and escrow sidecars
+  apply              Replay accepted entity assignments onto input rows
+  explain            Explain one entity row, canonical entity, or escrow entity
+  profile            List and initialize built-in entity profile templates
+  review             Export and import human adjudication review queues
+  help               Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help

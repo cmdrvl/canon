@@ -20,6 +20,7 @@
     "next_command_keys": ["apply", "audit", "promote", "resume", "review_export"],
     "telemetry_link_keys": [
       "block_artifact",
+      "candidate_diagnostics",
       "candidate_records",
       "decision_ledger",
       "edge_artifact",
@@ -54,7 +55,7 @@
       "summary_version": "canon_entity_operator_summary.v0",
       "artifact_version": "canon_entity_block.v0",
       "next_command_key": "none",
-      "telemetry_link_keys": ["candidate_records"],
+      "telemetry_link_keys": ["candidate_diagnostics", "candidate_records"],
       "counts": {
         "candidate_pairs": 23,
         "exact_bucket_count": 13,

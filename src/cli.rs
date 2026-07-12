@@ -42,37 +42,37 @@ pub enum RegistryVersionBumpMode {
     Major,
 }
 
-/// Emit mode for org artifact subcommands
+/// Emit mode for entity artifact subcommands
 #[derive(Debug, Clone, ValueEnum, Default)]
 pub enum EntityEmitMode {
-    /// Structured org JSON artifact (default)
+    /// Structured entity JSON artifact (default)
     #[default]
     Json,
-    /// Human-readable org summary
+    /// Human-readable entity summary
     Summary,
 }
 
-/// Emit mode for cross-tape resolve artifacts
+/// Emit mode for project ergonomics subcommands
 #[derive(Debug, Clone, ValueEnum, Default)]
-pub enum ResolveEmitMode {
-    /// Structured resolve JSON artifact (default)
+pub enum ProjectEmitMode {
+    /// Structured project JSON artifact (default)
     #[default]
     Json,
-    /// Human-readable resolve summary
+    /// Human-readable project summary
     Summary,
 }
 
-/// Emit mode for org streaming subcommands
+/// Emit mode for entity streaming subcommands
 #[derive(Debug, Clone, ValueEnum, Default)]
 pub enum EntityStreamEmitMode {
-    /// Line-delimited org records (default)
+    /// Line-delimited entity records (default)
     #[default]
     Jsonl,
-    /// Human-readable org summary
+    /// Human-readable entity summary
     Summary,
 }
 
-/// Emit mode for org review export
+/// Emit mode for entity review export
 #[derive(Debug, Clone, ValueEnum, Default)]
 pub enum EntityReviewExportEmitMode {
     /// Structured review JSON artifact (default)
@@ -82,7 +82,7 @@ pub enum EntityReviewExportEmitMode {
     Csv,
 }
 
-/// Include selector for org review export
+/// Include selector for entity review export
 #[derive(Debug, Clone, ValueEnum, Default)]
 pub enum EntityReviewInclude {
     /// Resolved and promotable entities
@@ -129,8 +129,10 @@ pub enum CanonCommand {
     Doctor(DoctorArgs),
     /// Local package archive operations
     Package(PackageCli),
-    /// Cross-tape structural resolution workbench
-    Resolve(ResolveCli),
+    /// Project bootstrap, validation, and description commands
+    Project(ProjectCli),
+    /// Unresolved inbox triage, review export, and bounded entity planning
+    Inbox(InboxCli),
     /// Registry maintenance and inspection commands
     Registry(RegistryCommand),
     /// Profiled entity workbench commands
@@ -146,6 +148,18 @@ pub struct PackageCli {
     pub command: PackageSubcommand,
 }
 
+#[derive(Args, Debug, Clone)]
+pub struct ProjectCli {
+    #[command(subcommand)]
+    pub command: ProjectSubcommand,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct InboxCli {
+    #[command(subcommand)]
+    pub command: InboxSubcommand,
+}
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum PackageSubcommand {
     /// Create a deterministic local package archive from canonical package bytes
@@ -156,6 +170,289 @@ pub enum PackageSubcommand {
     Verify(PackageVerifyCli),
     /// Unpack a verified package archive into an existing empty target directory
     Unpack(PackageUnpackCli),
+    /// Publish a verified local package archive to an OCI registry by immutable digest
+    Push(PackagePushCli),
+    /// Pull and verify a package from an OCI registry into an external content cache
+    Pull(PackagePullCli),
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum ProjectSubcommand {
+    /// Create a minimal neutral project manifest in an explicit empty directory
+    Init(ProjectInitCli),
+    /// Validate a project manifest and report deterministic diagnostics
+    Validate(ProjectValidateCli),
+    /// Describe project capabilities, state flags, side effects, and next commands
+    Describe(ProjectDescribeCli),
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum InboxSubcommand {
+    /// List ranked unresolved inbox items with deterministic pagination
+    List(InboxListCli),
+    /// Show one unresolved inbox item and its next commands
+    Show(InboxShowCli),
+    /// Explain one item's priority score components and provenance
+    Explain(InboxExplainCli),
+    /// Summarize inbox counts and ranking coverage
+    Stats(InboxStatsCli),
+    /// Export a stable review queue for selected inbox items
+    #[command(name = "export-review")]
+    ExportReview(InboxExportReviewCli),
+    /// Apply explicit review decisions into a grouped unresolved artifact
+    #[command(name = "apply-review")]
+    ApplyReview(InboxApplyReviewCli),
+    /// Plan a bounded entity workbench request without deciding identity
+    #[command(name = "plan-entity")]
+    PlanEntity(InboxPlanEntityCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct InboxListCli {
+    /// Unresolved inbox JSON artifact
+    #[arg(long)]
+    pub inbox: PathBuf,
+
+    /// Optional priority policy JSON; defaults to a deterministic baseline policy
+    #[arg(long)]
+    pub policy: Option<PathBuf>,
+
+    /// Maximum items to return
+    #[arg(long, default_value_t = 20)]
+    pub limit: usize,
+
+    /// Cursor from a previous list/export page
+    #[arg(long)]
+    pub cursor: Option<String>,
+
+    /// Filter by event kind; repeatable
+    #[arg(long = "event-kind")]
+    pub event_kind: Vec<String>,
+
+    /// Filter by reason code; repeatable
+    #[arg(long = "reason-code")]
+    pub reason_code: Vec<String>,
+
+    /// Filter by field role; repeatable
+    #[arg(long = "field-role")]
+    pub field_role: Vec<String>,
+
+    /// Filter by ranking partition key; repeatable
+    #[arg(long)]
+    pub partition: Vec<String>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct InboxShowCli {
+    /// Unresolved inbox JSON artifact
+    #[arg(long)]
+    pub inbox: PathBuf,
+
+    /// Event key to inspect
+    #[arg(long = "event-key")]
+    pub event_key: String,
+
+    /// Optional priority policy JSON; defaults to a deterministic baseline policy
+    #[arg(long)]
+    pub policy: Option<PathBuf>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct InboxExplainCli {
+    /// Unresolved inbox JSON artifact
+    #[arg(long)]
+    pub inbox: PathBuf,
+
+    /// Event key to explain
+    #[arg(long = "event-key")]
+    pub event_key: String,
+
+    /// Optional priority policy JSON; defaults to a deterministic baseline policy
+    #[arg(long)]
+    pub policy: Option<PathBuf>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct InboxStatsCli {
+    /// Unresolved inbox JSON artifact
+    #[arg(long)]
+    pub inbox: PathBuf,
+
+    /// Optional priority policy JSON; defaults to a deterministic baseline policy
+    #[arg(long)]
+    pub policy: Option<PathBuf>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct InboxExportReviewCli {
+    /// Unresolved inbox JSON artifact
+    #[arg(long)]
+    pub inbox: PathBuf,
+
+    /// Explicit output file for the review artifact; stdout is used when omitted
+    #[arg(long)]
+    pub out: Option<PathBuf>,
+
+    /// Optional priority policy JSON; defaults to a deterministic baseline policy
+    #[arg(long)]
+    pub policy: Option<PathBuf>,
+
+    /// Maximum items to export
+    #[arg(long, default_value_t = 100)]
+    pub limit: usize,
+
+    /// Cursor from a previous list/export page
+    #[arg(long)]
+    pub cursor: Option<String>,
+
+    /// Filter by event kind; repeatable
+    #[arg(long = "event-kind")]
+    pub event_kind: Vec<String>,
+
+    /// Filter by reason code; repeatable
+    #[arg(long = "reason-code")]
+    pub reason_code: Vec<String>,
+
+    /// Filter by field role; repeatable
+    #[arg(long = "field-role")]
+    pub field_role: Vec<String>,
+
+    /// Filter by ranking partition key; repeatable
+    #[arg(long)]
+    pub partition: Vec<String>,
+
+    /// Output mode for the receipt/stdout artifact
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct InboxApplyReviewCli {
+    /// Unresolved inbox JSON artifact
+    #[arg(long)]
+    pub inbox: PathBuf,
+
+    /// Review decision JSON from canon inbox export-review or an operator-edited equivalent
+    #[arg(long)]
+    pub review: PathBuf,
+
+    /// Expected inbox artifact hash; refuses stale review application
+    #[arg(long = "expected-inbox-hash")]
+    pub expected_inbox_hash: String,
+
+    /// Explicit grouped artifact output path
+    #[arg(long)]
+    pub out: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum, Default)]
+pub enum InboxEntityPlanMode {
+    /// Build a cluster-mode entity request
+    #[default]
+    Cluster,
+    /// Build a link-mode entity request
+    Link,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct InboxPlanEntityCli {
+    /// Unresolved inbox JSON artifact
+    #[arg(long)]
+    pub inbox: PathBuf,
+
+    /// Expected inbox artifact hash; refuses stale planning inputs
+    #[arg(long = "expected-inbox-hash")]
+    pub expected_inbox_hash: String,
+
+    /// Explicit entity request output path
+    #[arg(long)]
+    pub out: PathBuf,
+
+    /// Optional priority policy JSON; defaults to a deterministic baseline policy
+    #[arg(long)]
+    pub policy: Option<PathBuf>,
+
+    /// Event key to include; repeatable. Defaults to top ranked item.
+    #[arg(long = "event-key")]
+    pub event_key: Vec<String>,
+
+    /// Maximum ranked items to include when --event-key is omitted
+    #[arg(long, default_value_t = 1)]
+    pub limit: usize,
+
+    /// Entity workbench mode to request
+    #[arg(long, value_enum, default_value = "cluster")]
+    pub mode: InboxEntityPlanMode,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ProjectInitCli {
+    /// Empty or missing project directory to initialize
+    pub directory: PathBuf,
+
+    /// Neutral project identifier to write into the generated manifest
+    #[arg(long = "project-id", default_value = "project.synthetic.alpha")]
+    pub project_id: String,
+
+    /// External mapping/profile reference for the sample source declaration
+    #[arg(long = "mapping-profile", default_value = "pkg.synthetic:contacts")]
+    pub mapping_profile: String,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: ProjectEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ProjectValidateCli {
+    /// Project directory containing the manifest
+    pub directory: PathBuf,
+
+    /// Manifest path, relative to the project directory unless absolute
+    #[arg(long, default_value = "canon.project.toml")]
+    pub manifest: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: ProjectEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ProjectDescribeCli {
+    /// Project directory containing the manifest
+    pub directory: PathBuf,
+
+    /// Manifest path, relative to the project directory unless absolute
+    #[arg(long, default_value = "canon.project.toml")]
+    pub manifest: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: ProjectEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -201,6 +498,57 @@ pub struct PackageUnpackCli {
     /// Existing empty target directory
     #[arg(long)]
     pub target: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct PackagePushCli {
+    /// Local package archive to verify and publish
+    #[arg(long)]
+    pub archive: PathBuf,
+
+    /// OCI Distribution registry base URL, for example http://127.0.0.1:5000
+    #[arg(long)]
+    pub registry: String,
+
+    /// OCI repository name, for example canon/registry
+    #[arg(long)]
+    pub repository: String,
+
+    /// Optional mutable tag to write after uploading the immutable digest
+    #[arg(long)]
+    pub tag: Option<String>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: RegistryEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+#[command(group(ArgGroup::new("reference").required(true).multiple(false).args(["digest", "tag"])))]
+pub struct PackagePullCli {
+    /// OCI Distribution registry base URL, for example http://127.0.0.1:5000
+    #[arg(long)]
+    pub registry: String,
+
+    /// OCI repository name, for example canon/registry
+    #[arg(long)]
+    pub repository: String,
+
+    /// External content cache directory to materialize verified package bytes into
+    #[arg(long)]
+    pub cache: PathBuf,
+
+    /// Immutable OCI manifest digest to pull, such as sha256:<64 lowercase hex>
+    #[arg(long)]
+    pub digest: Option<String>,
+
+    /// Mutable tag to resolve exactly once before pulling by the resolved digest
+    #[arg(long)]
+    pub tag: Option<String>,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
@@ -261,6 +609,12 @@ pub struct EntityProfileCommand {
 pub struct EntityReviewCommand {
     #[command(subcommand)]
     pub command: EntityReviewSubcommand,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntityIndexCommand {
+    #[command(subcommand)]
+    pub command: EntityIndexSubcommand,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -530,22 +884,40 @@ pub enum EntitySubcommand {
     Run(EntityRunCli),
     /// Validate and project profile-mapped observations for entity preparation
     Prepare(EntityPrepareCli),
+    /// Build artifact-backed entity indexes
+    Index(EntityIndexCommand),
     /// Generate candidate neighborhoods
     Block(EntityBlockCli),
-    /// Generate typed evidence edges for candidate pairs
-    Edge(EntityEdgeCli),
-    /// Solve entity identity assignments from evidence edges
+    /// Evaluate candidate retrieval recall against sealed public gold labels
+    #[command(name = "candidate-recall")]
+    CandidateRecall(EntityCandidateRecallCli),
+    /// Compile a public alias-withholding execution envelope into a report
+    #[command(name = "alias-withholding")]
+    AliasWithholding(EntityAliasWithholdingCli),
+    /// Score typed evidence for candidate pairs
+    Evidence(EntityEvidenceCli),
+    /// Solve entity identity assignments from evidence artifacts
     Solve(EntitySolveCli),
+    /// Link two row sets through the artifact-backed entity workbench
+    Link(EntityLinkCli),
     /// Audit an entity result artifact against a suite
     Audit(EntityAuditCli),
     /// Promote an audited entity result into the registry and escrow sidecars
     Promote(EntityPromoteCli),
+    /// Replay accepted entity assignments onto input rows
+    Apply(EntityApplyCli),
     /// Explain one entity row, canonical entity, or escrow entity
     Explain(EntityExplainCli),
     /// List and initialize built-in entity profile templates
     Profile(EntityProfileCommand),
     /// Export and import human adjudication review queues
     Review(EntityReviewCommand),
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum EntityIndexSubcommand {
+    /// Build deterministic index artifacts for a work directory
+    Build(EntityIndexBuildCli),
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -1055,51 +1427,6 @@ pub struct StrategyDiffCli {
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct ResolveCli {
-    /// Authoritative/reference tape
-    pub reference_tape: PathBuf,
-
-    /// Target tape to match against the reference
-    pub target_tape: PathBuf,
-
-    /// Matching strategy YAML file
-    #[arg(long)]
-    pub strategy: PathBuf,
-
-    /// Registry directory used for canon_match lookups and optional write-back
-    #[arg(long)]
-    pub registry: PathBuf,
-
-    /// Gold cross-reference JSONL file for scoring
-    #[arg(long)]
-    pub gold: Option<PathBuf>,
-
-    /// Write matched ID pairs back into a new registry mapping file
-    #[arg(long)]
-    pub write_back: bool,
-
-    /// Output mode
-    #[arg(long, value_enum, default_value = "json")]
-    pub emit: ResolveEmitMode,
-
-    /// Refuse if a target record has more than N surviving candidates
-    #[arg(long)]
-    pub max_candidates: Option<usize>,
-
-    /// Refuse if either tape exceeds N data rows
-    #[arg(long)]
-    pub max_rows: Option<usize>,
-
-    /// Refuse if either tape exceeds N bytes
-    #[arg(long)]
-    pub max_bytes: Option<u64>,
-
-    /// Suppress witness ledger append
-    #[arg(long)]
-    pub no_witness: bool,
-}
-
-#[derive(Args, Debug, Clone)]
 pub struct EntityRunCli {
     /// Input CSV or JSONL rows
     pub rows: PathBuf,
@@ -1152,9 +1479,13 @@ pub struct EntityPrepareCli {
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct EntityBlockCli {
+pub struct EntityIndexBuildCli {
     /// Input CSV or JSONL rows
     pub rows: PathBuf,
+
+    /// Entity profile id or YAML path
+    #[arg(long)]
+    pub profile: Option<String>,
 
     /// Strategy YAML file
     #[arg(long)]
@@ -1164,15 +1495,83 @@ pub struct EntityBlockCli {
     #[arg(long)]
     pub registry: PathBuf,
 
+    /// Work directory for artifact-backed stages
+    #[arg(long = "work-dir")]
+    pub work_dir: Option<PathBuf>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntityBlockCli {
+    /// Input CSV or JSONL rows
+    pub rows: PathBuf,
+
+    /// Entity profile id or YAML path for artifact-backed dispatch
+    #[arg(long)]
+    pub profile: Option<String>,
+
+    /// Strategy YAML file
+    #[arg(long)]
+    pub strategy: PathBuf,
+
+    /// Entity registry directory
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Work directory for artifact-backed stages
+    #[arg(long = "work-dir")]
+    pub work_dir: Option<PathBuf>,
+
     /// Output mode
     #[arg(long, value_enum, default_value = "jsonl")]
     pub emit: EntityStreamEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]
-pub struct EntityEdgeCli {
+pub struct EntityCandidateRecallCli {
+    /// Public quality manifest containing sealed must-link labels keyed by observation IDs
+    #[arg(long)]
+    pub manifest: PathBuf,
+
+    /// JSON array or native JSONL of block candidate records
+    #[arg(long)]
+    pub candidates: PathBuf,
+
+    /// JSON block candidate generation diagnostics
+    #[arg(long)]
+    pub diagnostics: PathBuf,
+
+    /// Compact exact buckets emitted alongside candidates
+    #[arg(long = "exact-bucket-count")]
+    pub exact_bucket_count: u64,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntityAliasWithholdingCli {
+    /// Alias-withholding execution envelope JSON
+    #[arg(long)]
+    pub manifest: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntityEvidenceCli {
     /// Input CSV or JSONL rows
     pub rows: PathBuf,
+
+    /// Entity profile id or YAML path for artifact-backed dispatch
+    #[arg(long)]
+    pub profile: Option<String>,
 
     /// Strategy YAML file
     #[arg(long)]
@@ -1186,6 +1585,10 @@ pub struct EntityEdgeCli {
     #[arg(long)]
     pub registry: PathBuf,
 
+    /// Work directory for artifact-backed stages
+    #[arg(long = "work-dir")]
+    pub work_dir: Option<PathBuf>,
+
     /// Output mode
     #[arg(long, value_enum, default_value = "jsonl")]
     pub emit: EntityStreamEmitMode,
@@ -1196,21 +1599,86 @@ pub struct EntitySolveCli {
     /// Input CSV or JSONL rows
     pub rows: PathBuf,
 
+    /// Entity profile id or YAML path for artifact-backed dispatch
+    #[arg(long)]
+    pub profile: Option<String>,
+
     /// Strategy YAML file
     #[arg(long)]
     pub strategy: PathBuf,
 
-    /// Edge artifact
+    /// Evidence artifact
     #[arg(long)]
-    pub edges: PathBuf,
+    pub evidence: PathBuf,
 
     /// Entity registry directory
     #[arg(long)]
     pub registry: PathBuf,
 
+    /// Work directory for artifact-backed stages
+    #[arg(long = "work-dir")]
+    pub work_dir: Option<PathBuf>,
+
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntityLinkCli {
+    /// Reference rows
+    pub reference: PathBuf,
+
+    /// Target rows
+    pub target: PathBuf,
+
+    /// Entity profile id or YAML path; required for successful execution
+    #[arg(long)]
+    pub profile: Option<String>,
+
+    /// Strategy YAML file
+    #[arg(long)]
+    pub strategy: PathBuf,
+
+    /// Entity registry directory
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Gold cross-reference JSONL file for link scoring
+    #[arg(long)]
+    pub gold: Option<PathBuf>,
+
+    /// Write matched ID pairs back into a new registry mapping file
+    #[arg(long = "write-back")]
+    pub write_back: bool,
+
+    /// Refuse if a target record has more than N surviving candidates
+    #[arg(long)]
+    pub max_candidates: Option<usize>,
+
+    /// Refuse if either input exceeds N data rows
+    #[arg(long)]
+    pub max_rows: Option<usize>,
+
+    /// Refuse if either input exceeds N bytes
+    #[arg(long)]
+    pub max_bytes: Option<u64>,
+
+    /// Work directory for artifact-backed stages; required for successful execution
+    #[arg(long = "work-dir")]
+    pub work_dir: Option<PathBuf>,
+
+    /// Run a frozen audit suite and write audit.json under --work-dir
+    #[arg(long)]
+    pub suite: Option<PathBuf>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+
+    /// Suppress witness ledger append
+    #[arg(long)]
+    pub no_witness: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -1249,6 +1717,49 @@ pub struct EntityPromoteCli {
     pub emit: EntityEmitMode,
 }
 
+#[derive(Args, Debug, Clone)]
+#[command(group(
+    ArgGroup::new("apply_resolution_policy")
+        .args(["require_full_resolution", "allow_partial_output"])
+        .multiple(false)
+))]
+pub struct EntityApplyCli {
+    /// Entity solve or run artifact
+    pub result: PathBuf,
+
+    /// Input CSV or JSONL rows to replay
+    #[arg(long)]
+    pub rows: PathBuf,
+
+    /// Entity registry directory
+    #[arg(long)]
+    pub registry: PathBuf,
+
+    /// Input column to exact-match against the promoted registry
+    #[arg(long)]
+    pub column: Option<String>,
+
+    /// Output path for canonicalized rows
+    #[arg(long, alias = "output")]
+    pub out: Option<PathBuf>,
+
+    /// Work directory for artifact-backed stages
+    #[arg(long = "work-dir")]
+    pub work_dir: Option<PathBuf>,
+
+    /// Refuse before writing output if any row remains unresolved (default)
+    #[arg(long = "require-full-resolution")]
+    pub require_full_resolution: bool,
+
+    /// Permit partial replay output; exits 1 when unresolved rows remain
+    #[arg(long = "allow-partial-output")]
+    pub allow_partial_output: bool,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum EntityProfileSubcommand {
     /// List built-in entity profile templates
@@ -1266,7 +1777,7 @@ pub struct EntityProfileListCli {
 
 #[derive(Args, Debug, Clone)]
 pub struct EntityProfileInitCli {
-    /// Built-in profile id, such as cmbs_tenant_label or regab_firm_identity
+    /// Built-in profile id
     pub profile: String,
 
     /// Output YAML path to write
@@ -1276,7 +1787,7 @@ pub struct EntityProfileInitCli {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum EntityReviewSubcommand {
-    /// Export reviewable org identity clusters from a solve/run artifact
+    /// Export reviewable entity clusters from a solve/run artifact
     Export(EntityReviewExportCli),
     /// Import adjudicated review decisions into a registry version
     Import(EntityReviewImportCli),
@@ -2015,49 +2526,6 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_resolve_parsing() {
-        let args = [
-            "canon",
-            "resolve",
-            "trustee.csv",
-            "servicer.csv",
-            "--strategy",
-            "strategies/cmbs.yaml",
-            "--registry",
-            "registries/cmbs-loan",
-            "--gold",
-            "gold/loan_matches.jsonl",
-            "--write-back",
-            "--emit",
-            "summary",
-            "--max-candidates",
-            "25",
-            "--max-rows",
-            "1000",
-            "--max-bytes",
-            "1048576",
-            "--no-witness",
-        ];
-        let cli = Cli::try_parse_from(args).unwrap();
-
-        let command = cli.command;
-        assert!(matches!(&command, Some(CanonCommand::Resolve(_))));
-        if let Some(CanonCommand::Resolve(resolve)) = command {
-            assert_eq!(resolve.reference_tape, PathBuf::from("trustee.csv"));
-            assert_eq!(resolve.target_tape, PathBuf::from("servicer.csv"));
-            assert_eq!(resolve.strategy, PathBuf::from("strategies/cmbs.yaml"));
-            assert_eq!(resolve.registry, PathBuf::from("registries/cmbs-loan"));
-            assert_eq!(resolve.gold, Some(PathBuf::from("gold/loan_matches.jsonl")));
-            assert!(resolve.write_back);
-            assert!(matches!(resolve.emit, ResolveEmitMode::Summary));
-            assert_eq!(resolve.max_candidates, Some(25));
-            assert_eq!(resolve.max_rows, Some(1000));
-            assert_eq!(resolve.max_bytes, Some(1_048_576));
-            assert!(resolve.no_witness);
-        }
-    }
-
-    #[test]
     fn test_cli_entity_run_parsing() {
         let args = [
             "canon",
@@ -2067,7 +2535,11 @@ mod tests {
             "--strategy",
             "strategy.yaml",
             "--registry",
-            "registries/org",
+            "registries/entity",
+            "--profile",
+            "entity_profile",
+            "--work-dir",
+            "work/entity",
             "--suite",
             "suite",
             "--emit",
@@ -2083,8 +2555,10 @@ mod tests {
         assert!(matches!(&subcommand, EntitySubcommand::Run(_)));
         if let EntitySubcommand::Run(run) = subcommand {
             assert_eq!(run.rows, PathBuf::from("rows.csv"));
+            assert_eq!(run.profile.as_deref(), Some("entity_profile"));
             assert_eq!(run.strategy, PathBuf::from("strategy.yaml"));
-            assert_eq!(run.registry, PathBuf::from("registries/org"));
+            assert_eq!(run.registry, PathBuf::from("registries/entity"));
+            assert_eq!(run.work_dir, Some(PathBuf::from("work/entity")));
             assert_eq!(run.suite, Some(PathBuf::from("suite")));
             assert!(matches!(run.emit, EntityEmitMode::Summary));
             assert!(run.no_witness);
@@ -2121,16 +2595,57 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_entity_index_build_parsing() {
+        let args = [
+            "canon",
+            "entity",
+            "index",
+            "build",
+            "rows.csv",
+            "--profile",
+            "entity_profile",
+            "--strategy",
+            "strategy.yaml",
+            "--registry",
+            "registries/entity",
+            "--work-dir",
+            "work/entity",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = entity_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, EntitySubcommand::Index(_)));
+        if let EntitySubcommand::Index(index) = subcommand {
+            let EntityIndexSubcommand::Build(build) = index.command;
+            assert_eq!(build.rows, PathBuf::from("rows.csv"));
+            assert_eq!(build.profile.as_deref(), Some("entity_profile"));
+            assert_eq!(build.strategy, PathBuf::from("strategy.yaml"));
+            assert_eq!(build.registry, PathBuf::from("registries/entity"));
+            assert_eq!(build.work_dir, Some(PathBuf::from("work/entity")));
+            assert!(matches!(build.emit, EntityEmitMode::Summary));
+        }
+    }
+
+    #[test]
     fn test_cli_entity_block_parsing() {
         let args = [
             "canon",
             "entity",
             "block",
             "rows.csv",
+            "--profile",
+            "entity_profile",
             "--strategy",
             "strategy.yaml",
             "--registry",
-            "registries/org",
+            "registries/entity",
+            "--work-dir",
+            "work/entity",
             "--emit",
             "summary",
         ];
@@ -2143,25 +2658,31 @@ mod tests {
         assert!(matches!(&subcommand, EntitySubcommand::Block(_)));
         if let EntitySubcommand::Block(block) = subcommand {
             assert_eq!(block.rows, PathBuf::from("rows.csv"));
+            assert_eq!(block.profile.as_deref(), Some("entity_profile"));
             assert_eq!(block.strategy, PathBuf::from("strategy.yaml"));
-            assert_eq!(block.registry, PathBuf::from("registries/org"));
+            assert_eq!(block.registry, PathBuf::from("registries/entity"));
+            assert_eq!(block.work_dir, Some(PathBuf::from("work/entity")));
             assert!(matches!(block.emit, EntityStreamEmitMode::Summary));
         }
     }
 
     #[test]
-    fn test_cli_entity_edge_parsing() {
+    fn test_cli_entity_evidence_parsing() {
         let args = [
             "canon",
             "entity",
-            "edge",
+            "evidence",
             "rows.csv",
+            "--profile",
+            "entity_profile",
             "--strategy",
             "strategy.yaml",
             "--candidates",
             "block.jsonl",
             "--registry",
-            "registries/org",
+            "registries/entity",
+            "--work-dir",
+            "work/entity",
         ];
         let cli = Cli::try_parse_from(args).unwrap();
 
@@ -2169,13 +2690,15 @@ mod tests {
             return;
         };
         let subcommand = command.command;
-        assert!(matches!(&subcommand, EntitySubcommand::Edge(_)));
-        if let EntitySubcommand::Edge(edge) = subcommand {
-            assert_eq!(edge.rows, PathBuf::from("rows.csv"));
-            assert_eq!(edge.strategy, PathBuf::from("strategy.yaml"));
-            assert_eq!(edge.candidates, PathBuf::from("block.jsonl"));
-            assert_eq!(edge.registry, PathBuf::from("registries/org"));
-            assert!(matches!(edge.emit, EntityStreamEmitMode::Jsonl));
+        assert!(matches!(&subcommand, EntitySubcommand::Evidence(_)));
+        if let EntitySubcommand::Evidence(evidence) = subcommand {
+            assert_eq!(evidence.rows, PathBuf::from("rows.csv"));
+            assert_eq!(evidence.profile.as_deref(), Some("entity_profile"));
+            assert_eq!(evidence.strategy, PathBuf::from("strategy.yaml"));
+            assert_eq!(evidence.candidates, PathBuf::from("block.jsonl"));
+            assert_eq!(evidence.registry, PathBuf::from("registries/entity"));
+            assert_eq!(evidence.work_dir, Some(PathBuf::from("work/entity")));
+            assert!(matches!(evidence.emit, EntityStreamEmitMode::Jsonl));
         }
     }
 
@@ -2186,12 +2709,16 @@ mod tests {
             "entity",
             "solve",
             "rows.csv",
+            "--profile",
+            "entity_profile",
             "--strategy",
             "strategy.yaml",
-            "--edges",
-            "edges.jsonl",
+            "--evidence",
+            "evidence.jsonl",
             "--registry",
-            "registries/org",
+            "registries/entity",
+            "--work-dir",
+            "work/entity",
             "--emit",
             "summary",
         ];
@@ -2204,10 +2731,68 @@ mod tests {
         assert!(matches!(&subcommand, EntitySubcommand::Solve(_)));
         if let EntitySubcommand::Solve(solve) = subcommand {
             assert_eq!(solve.rows, PathBuf::from("rows.csv"));
+            assert_eq!(solve.profile.as_deref(), Some("entity_profile"));
             assert_eq!(solve.strategy, PathBuf::from("strategy.yaml"));
-            assert_eq!(solve.edges, PathBuf::from("edges.jsonl"));
-            assert_eq!(solve.registry, PathBuf::from("registries/org"));
+            assert_eq!(solve.evidence, PathBuf::from("evidence.jsonl"));
+            assert_eq!(solve.registry, PathBuf::from("registries/entity"));
+            assert_eq!(solve.work_dir, Some(PathBuf::from("work/entity")));
             assert!(matches!(solve.emit, EntityEmitMode::Summary));
+        }
+    }
+
+    #[test]
+    fn test_cli_entity_link_parsing() {
+        let args = [
+            "canon",
+            "entity",
+            "link",
+            "reference.csv",
+            "target.csv",
+            "--profile",
+            "entity_profile",
+            "--strategy",
+            "strategy.yaml",
+            "--registry",
+            "registries/entity",
+            "--gold",
+            "gold/link_matches.jsonl",
+            "--write-back",
+            "--max-candidates",
+            "25",
+            "--max-rows",
+            "1000",
+            "--max-bytes",
+            "1048576",
+            "--work-dir",
+            "work/entity-link",
+            "--suite",
+            "suite",
+            "--emit",
+            "summary",
+            "--no-witness",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = entity_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, EntitySubcommand::Link(_)));
+        if let EntitySubcommand::Link(link) = subcommand {
+            assert_eq!(link.reference, PathBuf::from("reference.csv"));
+            assert_eq!(link.target, PathBuf::from("target.csv"));
+            assert_eq!(link.profile.as_deref(), Some("entity_profile"));
+            assert_eq!(link.strategy, PathBuf::from("strategy.yaml"));
+            assert_eq!(link.registry, PathBuf::from("registries/entity"));
+            assert_eq!(link.gold, Some(PathBuf::from("gold/link_matches.jsonl")));
+            assert!(link.write_back);
+            assert_eq!(link.max_candidates, Some(25));
+            assert_eq!(link.max_rows, Some(1000));
+            assert_eq!(link.max_bytes, Some(1_048_576));
+            assert_eq!(link.work_dir, Some(PathBuf::from("work/entity-link")));
+            assert_eq!(link.suite, Some(PathBuf::from("suite")));
+            assert!(matches!(link.emit, EntityEmitMode::Summary));
+            assert!(link.no_witness);
         }
     }
 
@@ -2537,5 +3122,79 @@ mod tests {
             assert_eq!(args.target, PathBuf::from("target"));
             assert!(matches!(args.emit, RegistryEmitMode::Summary));
         }
+    }
+
+    #[test]
+    fn test_cli_package_remote_argument_shapes() {
+        let push = Cli::try_parse_from([
+            "canon",
+            "package",
+            "push",
+            "--archive",
+            "pkg.canonpkg",
+            "--registry",
+            "http://127.0.0.1:5000",
+            "--repository",
+            "canon/registry",
+            "--tag",
+            "latest",
+            "--emit",
+            "summary",
+        ])
+        .unwrap();
+        let Some(CanonCommand::Package(package)) = push.command else {
+            panic!("expected package command");
+        };
+        assert!(matches!(package.command, PackageSubcommand::Push(_)));
+        if let PackageSubcommand::Push(args) = package.command {
+            assert_eq!(args.archive, PathBuf::from("pkg.canonpkg"));
+            assert_eq!(args.registry, "http://127.0.0.1:5000");
+            assert_eq!(args.repository, "canon/registry");
+            assert_eq!(args.tag.as_deref(), Some("latest"));
+            assert!(matches!(args.emit, RegistryEmitMode::Summary));
+        }
+
+        let pull = Cli::try_parse_from([
+            "canon",
+            "package",
+            "pull",
+            "--registry",
+            "http://127.0.0.1:5000",
+            "--repository",
+            "canon/registry",
+            "--cache",
+            "cache",
+            "--digest",
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ])
+        .unwrap();
+        let Some(CanonCommand::Package(package)) = pull.command else {
+            panic!("expected package command");
+        };
+        assert!(matches!(package.command, PackageSubcommand::Pull(_)));
+        if let PackageSubcommand::Pull(args) = package.command {
+            assert_eq!(args.registry, "http://127.0.0.1:5000");
+            assert_eq!(args.repository, "canon/registry");
+            assert_eq!(args.cache, PathBuf::from("cache"));
+            assert_eq!(
+                args.digest.as_deref(),
+                Some("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+            );
+            assert_eq!(args.tag, None);
+            assert!(matches!(args.emit, RegistryEmitMode::Json));
+        }
+
+        let missing_reference = Cli::try_parse_from([
+            "canon",
+            "package",
+            "pull",
+            "--registry",
+            "http://127.0.0.1:5000",
+            "--repository",
+            "canon/registry",
+            "--cache",
+            "cache",
+        ]);
+        assert!(missing_reference.is_err());
     }
 }

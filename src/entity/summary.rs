@@ -7,7 +7,7 @@ use crate::entity::{
     apply::ApplyRunArtifact,
     block_artifact::BlockCandidateArtifact,
     edge_artifact::EdgeEvidenceArtifact,
-    index::EntityIndexArtifact,
+    index::{EntityIndexArtifact, EntityIndexBuildResult},
     prepare::PrepareRunArtifact,
     run::{EntityRunArtifact, render_run_summary},
     solve::SolveArtifact,
@@ -147,6 +147,37 @@ pub fn build_index_operator_summary(artifact: &EntityIndexArtifact) -> EntitySta
     summary
 }
 
+pub fn build_index_build_operator_summary(
+    result: &EntityIndexBuildResult,
+) -> EntityStageOperatorSummary {
+    let mut summary = build_deterministic_stage_operator_summary(
+        "index",
+        &result.artifact.version,
+        &result.artifact.summary,
+        BTreeMap::from([(
+            "index".to_string(),
+            result.cache_status.as_str().to_string(),
+        )]),
+        BTreeMap::from([
+            (
+                "artifact".to_string(),
+                result.paths.artifact_path.display().to_string(),
+            ),
+            (
+                "postings".to_string(),
+                result.paths.postings_path.display().to_string(),
+            ),
+            (
+                "diagnostics".to_string(),
+                result.paths.diagnostics_path.display().to_string(),
+            ),
+        ]),
+        result.next_commands.clone(),
+    );
+    add_metadata_labels(&mut summary, &result.artifact.metadata);
+    summary
+}
+
 pub fn build_block_operator_summary(
     artifact: &BlockCandidateArtifact,
 ) -> EntityStageOperatorSummary {
@@ -155,10 +186,16 @@ pub fn build_block_operator_summary(
         &artifact.version,
         &artifact.summary,
         BTreeMap::new(),
-        BTreeMap::from([(
-            "candidate_records".to_string(),
-            artifact.candidate_records_path.clone(),
-        )]),
+        BTreeMap::from([
+            (
+                "candidate_records".to_string(),
+                artifact.candidate_records_path.clone(),
+            ),
+            (
+                "candidate_diagnostics".to_string(),
+                artifact.candidate_diagnostics_path.clone(),
+            ),
+        ]),
         BTreeMap::new(),
     );
     add_metadata_labels(&mut summary, &artifact.metadata);
@@ -481,6 +518,10 @@ fn run_telemetry_links(artifact: &EntityRunArtifact) -> BTreeMap<String, String>
         (
             "candidate_records".to_string(),
             artifact.work_dir.candidate_records_path.clone(),
+        ),
+        (
+            "candidate_diagnostics".to_string(),
+            artifact.work_dir.candidate_diagnostics_path.clone(),
         ),
         (
             "edge_artifact".to_string(),

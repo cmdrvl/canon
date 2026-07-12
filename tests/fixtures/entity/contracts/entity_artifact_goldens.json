@@ -318,7 +318,11 @@
           "content_hash": "blake3:index"
         }
       ],
-      "candidate_records_path": "entity/block/candidates.jsonl"
+      "candidate_records_path": "entity/block/candidates.jsonl",
+      "candidate_records_hash": "blake3:candidates",
+      "candidate_diagnostics_path": "entity/block/diagnostics.json",
+      "candidate_diagnostics_hash": "blake3:candidate-diagnostics",
+      "bucket_assertions_hash": "blake3:bucket-assertions"
     },
     "canon_entity_block_bucket.v0": {
       "version": "canon_entity_block_bucket.v0",
