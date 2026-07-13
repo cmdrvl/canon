@@ -7,6 +7,7 @@
 
 use assert_cmd::Command;
 use serde_json::Value;
+use std::collections::BTreeSet;
 
 /// The compiled operator manifest, the same bytes `canon --describe` emits.
 const OPERATOR_JSON: &str = include_str!("../operator.json");
@@ -41,10 +42,15 @@ fn operator_json_provider_catalog_matches_cli() {
     // Drift guard: the static manifest's `providers` must equal the live catalog
     // the CLI emits, so agents reading either surface get identical answers.
     let (_, cli) = run_json(&["registry", "providers", "--emit", "json"]);
+    let (_, describe) = run_json(&["--describe"]);
     let manifest: Value = serde_json::from_str(OPERATOR_JSON).unwrap();
     assert_eq!(
         manifest["providers"], cli["providers"],
         "operator.json providers catalog drifted from `canon registry providers`"
+    );
+    assert_eq!(
+        describe["providers"], cli["providers"],
+        "canon --describe providers catalog drifted from live provider catalog"
     );
 }
 
@@ -112,6 +118,47 @@ fn provider_schema_openfigi_publishes_the_full_contract() {
 }
 
 #[test]
+fn provider_catalog_and_schemas_are_deterministic_and_catalog_backed() {
+    let (_, first_catalog) = run_json(&["registry", "providers", "--emit", "json"]);
+    let (_, second_catalog) = run_json(&["registry", "providers", "--emit", "json"]);
+    assert_eq!(first_catalog, second_catalog);
+
+    let ids = provider_ids(&first_catalog);
+    assert_eq!(
+        ids,
+        ids.iter()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>(),
+        "provider catalog ids must be unique and sorted"
+    );
+
+    for id in ids {
+        let (_, first_schema) = run_json(&["registry", "provider-schema", id, "--emit", "json"]);
+        let (_, second_schema) = run_json(&["registry", "provider-schema", id, "--emit", "json"]);
+        assert_eq!(
+            first_schema, second_schema,
+            "provider schema {id} drifted across identical invocations"
+        );
+        assert_eq!(first_schema["version"], "canon_registry_provider_schema.v0");
+        assert_eq!(first_schema["id"], id);
+
+        let option_keys = first_schema["options"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{id} options array"))
+            .iter()
+            .filter_map(|option| option["key"].as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            option_keys.iter().copied().collect::<BTreeSet<_>>().len(),
+            option_keys.len(),
+            "{id} provider schema option keys must be unique"
+        );
+    }
+}
+
+#[test]
 fn provider_schema_unknown_provider_refuses_with_recovery_path() {
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .args(["registry", "provider-schema", "bogus", "--emit", "json"])
@@ -152,4 +199,13 @@ fn provider_schema_summary_is_human_readable() {
     assert!(text.contains("provider-config options:"));
     assert!(text.contains("api_key (string, secret, env OPENFIGI_API_KEY)"));
     assert!(text.contains("mutually exclusive: exchCode | micCode"));
+}
+
+fn provider_ids(catalog: &Value) -> Vec<&str> {
+    catalog["providers"]
+        .as_array()
+        .expect("providers array")
+        .iter()
+        .map(|provider| provider["id"].as_str().expect("provider id"))
+        .collect()
 }

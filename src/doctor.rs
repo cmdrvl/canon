@@ -1,8 +1,10 @@
 use crate::{
-    cli::{DoctorArgs, DoctorCommand, DoctorJsonArgs},
+    cli::{Cli, DoctorArgs, DoctorCommand, DoctorJsonArgs},
+    operator::{OperatorManifestValidationReport, validate_operator_manifest_json},
     paths,
     registry::package::REGISTRY_PACKAGE_VERIFY_SCHEMA_VERSION,
 };
+use clap::CommandFactory;
 use serde_json::{Value, json};
 use std::error::Error;
 
@@ -14,7 +16,9 @@ const OPERATOR_JSON: &str = include_str!("../operator.json");
 
 pub fn run(args: &DoctorArgs) -> Result<u8, Box<dyn Error>> {
     if args.robot_triage {
-        return write_json(&triage_payload());
+        let payload = triage_payload();
+        let exit_code = health_exit_code(&payload);
+        return write_json_with_code(&payload, exit_code);
     }
 
     match &args.command {
@@ -24,28 +28,34 @@ pub fn run(args: &DoctorArgs) -> Result<u8, Box<dyn Error>> {
             print_robot_docs();
             Ok(0)
         }
-        None if args.json => write_json(&health_payload()),
+        None if args.json => {
+            let payload = health_payload();
+            let exit_code = health_exit_code(&payload);
+            write_json_with_code(&payload, exit_code)
+        }
         None => {
-            print_health_summary(&health_payload());
-            Ok(0)
+            let payload = health_payload();
+            print_health_summary(&payload);
+            Ok(health_exit_code(&payload))
         }
     }
 }
 
 fn run_health(args: &DoctorJsonArgs) -> Result<u8, Box<dyn Error>> {
     let payload = health_payload();
+    let exit_code = health_exit_code(&payload);
     if args.json {
-        write_json(&payload)
+        write_json_with_code(&payload, exit_code)
     } else {
         print_health_summary(&payload);
-        Ok(0)
+        Ok(exit_code)
     }
 }
 
 fn run_capabilities(args: &DoctorJsonArgs) -> Result<u8, Box<dyn Error>> {
     let payload = capabilities_payload();
     if args.json {
-        write_json(&payload)
+        write_json_with_code(&payload, 0)
     } else {
         println!("canon doctor capabilities");
         println!("read_only=true");
@@ -55,13 +65,23 @@ fn run_capabilities(args: &DoctorJsonArgs) -> Result<u8, Box<dyn Error>> {
     }
 }
 
-fn write_json(payload: &Value) -> Result<u8, Box<dyn Error>> {
+fn write_json_with_code(payload: &Value, code: u8) -> Result<u8, Box<dyn Error>> {
     println!("{}", serde_json::to_string(payload)?);
-    Ok(0)
+    Ok(code)
+}
+
+fn health_exit_code(payload: &Value) -> u8 {
+    if payload.get("ok").and_then(Value::as_bool).unwrap_or(false) {
+        0
+    } else {
+        1
+    }
 }
 
 fn health_payload() -> Value {
-    let checks = health_checks();
+    let report = operator_manifest_report();
+    let doctor_checks = doctor_specific_checks();
+    let checks = health_checks(&report, doctor_checks);
     let failed = checks
         .iter()
         .filter(|check| !check.get("ok").and_then(Value::as_bool).unwrap_or(false))
@@ -82,6 +102,8 @@ fn health_payload() -> Value {
             "checks_failed": failed
         },
         "checks": checks,
+        "operator_manifest": operator_manifest_payload(&report),
+        "contract_parity": contract_parity_payload(&report),
         "observed_paths": observed_paths(),
         "config_footprint": paths::config_footprint(),
         "composition": composition_payload(),
@@ -92,6 +114,7 @@ fn health_payload() -> Value {
 }
 
 fn capabilities_payload() -> Value {
+    let report = operator_manifest_report();
     json!({
         "schema": CAPABILITIES_SCHEMA,
         "contract": CONTRACT,
@@ -126,9 +149,11 @@ fn capabilities_payload() -> Value {
         ],
         "exit_codes": {
             "0": "doctor report emitted successfully",
-            "1": "reserved for future unhealthy read-only findings",
+            "1": "unhealthy compiled operator contract parity in health or triage reports",
             "2": "CLI usage error or refusal"
         },
+        "operator_manifest": operator_manifest_payload(&report),
+        "contract_parity": contract_parity_payload(&report),
         "config_footprint": paths::config_footprint(),
         "composition": composition_payload(),
         "registry_package_verification": registry_package_verification_payload(),
@@ -197,6 +222,14 @@ fn triage_payload() -> Value {
         "score": if ok { 100 } else { 0 },
         "read_only": true,
         "checks": checks,
+        "operator_manifest": health
+            .get("operator_manifest")
+            .cloned()
+            .unwrap_or(Value::Null),
+        "contract_parity": health
+            .get("contract_parity")
+            .cloned()
+            .unwrap_or(Value::Null),
         "config_footprint": paths::config_footprint(),
         "registry_package_verification": registry_package_verification_payload(),
         "side_effects": side_effects(),
@@ -209,60 +242,40 @@ fn triage_payload() -> Value {
     })
 }
 
-fn health_checks() -> Vec<Value> {
-    let manifest = serde_json::from_str::<Value>(OPERATOR_JSON).ok();
-    let manifest_version = manifest
-        .as_ref()
-        .and_then(|value| value.get("version"))
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let output_schema = manifest
-        .as_ref()
-        .and_then(|value| value.get("invocation"))
-        .and_then(|value| value.get("output_schema"))
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let doctor_declared = manifest
-        .as_ref()
-        .and_then(|value| value.get("subcommands"))
-        .and_then(Value::as_array)
-        .map(|subcommands| {
-            subcommands
-                .iter()
-                .any(|entry| entry.get("name").and_then(Value::as_str) == Some("doctor"))
-        })
-        .unwrap_or(false);
+fn operator_manifest_report() -> OperatorManifestValidationReport {
+    validate_operator_manifest_json(&Cli::command(), OPERATOR_JSON)
+}
 
-    vec![
-        check(
+fn operator_manifest_payload(report: &OperatorManifestValidationReport) -> Value {
+    json!({
+        "source": "embedded:operator.json",
+        "blake3": report.manifest_digest.as_deref(),
+    })
+}
+
+fn contract_parity_payload(report: &OperatorManifestValidationReport) -> Value {
+    json!(report)
+}
+
+fn health_checks(
+    report: &OperatorManifestValidationReport,
+    mut doctor_checks: Vec<Value>,
+) -> Vec<Value> {
+    let mut checks = vec![
+        check_detail(
             "operator_manifest_embedded",
-            manifest.is_some(),
-            "compiled operator.json parses as JSON",
+            report.manifest_digest.is_some(),
+            "compiled operator.json parses and has a deterministic manifest digest",
+            json!({
+                "manifest_digest": report.manifest_digest.as_deref(),
+                "manifest_errors": &report.manifest_errors
+            }),
         ),
-        check(
-            "operator_manifest_version",
-            manifest_version == env!("CARGO_PKG_VERSION"),
-            "operator.json version matches the compiled crate version",
-        ),
-        check(
-            "operator_output_schema",
-            output_schema == "canon.v0",
-            "operator.json declares the canon.v0 output contract",
-        ),
-        check(
-            "doctor_manifest_entry",
-            doctor_declared,
-            "operator.json declares the read-only doctor subcommand",
-        ),
-        check(
-            "fix_mode_disabled",
-            true,
-            "doctor --fix is intentionally absent from the CLI surface",
-        ),
-        check(
-            "witness_ledger_unopened",
-            true,
-            "doctor resolves no input and does not append the witness ledger",
+        check_detail(
+            "operator_contract_parity",
+            report.ok,
+            "compiled Clap surface and embedded operator manifest are in parity",
+            contract_parity_payload(report),
         ),
         check(
             "config_footprint_declared",
@@ -282,7 +295,122 @@ fn health_checks() -> Vec<Value> {
             true,
             "doctor performs no provider, DNS, HTTP, TLS, or other network probes",
         ),
+    ];
+    checks.append(&mut doctor_checks);
+    checks
+}
+
+fn doctor_specific_checks() -> Vec<Value> {
+    let manifest = match serde_json::from_str::<Value>(OPERATOR_JSON) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            return vec![check_detail(
+                "fix_mode_disabled",
+                false,
+                "doctor --fix is intentionally absent from the CLI surface",
+                json!({ "operator_manifest_error": error.to_string() }),
+            )];
+        }
+    };
+    doctor_specific_checks_for_manifest(&manifest)
+}
+
+fn doctor_specific_checks_for_manifest(manifest: &Value) -> Vec<Value> {
+    let Some(doctor) = manifest
+        .get("subcommands")
+        .and_then(Value::as_array)
+        .and_then(|commands| {
+            commands
+                .iter()
+                .find(|command| command.get("name").and_then(Value::as_str) == Some("doctor"))
+        })
+    else {
+        return vec![check_detail(
+            "fix_mode_disabled",
+            false,
+            "doctor --fix is intentionally absent from the CLI surface",
+            json!({ "missing": "operator subcommand row 'doctor'" }),
+        )];
+    };
+
+    let fixers_empty = doctor
+        .get("fixers")
+        .and_then(Value::as_array)
+        .is_some_and(Vec::is_empty);
+    let recovery_hits = doctor_recovery_surface_hits(doctor);
+    let side_effects_false = doctor
+        .get("side_effects")
+        .and_then(Value::as_object)
+        .is_some_and(|effects| effects.values().all(|value| value.as_bool() == Some(false)));
+
+    vec![
+        check_detail(
+            "fix_mode_disabled",
+            fixers_empty && recovery_hits.is_empty(),
+            "doctor --fix is intentionally absent from the CLI surface",
+            json!({
+                "fixers_empty": fixers_empty,
+                "recovery_surface_hits": recovery_hits
+            }),
+        ),
+        check_detail(
+            "doctor_manifest_read_only_side_effects",
+            side_effects_false,
+            "operator.json doctor side-effect row declares read-only behavior",
+            json!({
+                "side_effects": doctor.get("side_effects").cloned().unwrap_or(Value::Null)
+            }),
+        ),
+        check(
+            "witness_ledger_unopened",
+            true,
+            "doctor resolves no input and does not append the witness ledger",
+        ),
     ]
+}
+
+fn doctor_recovery_surface_hits(doctor: &Value) -> Vec<String> {
+    let mut hits = Vec::new();
+    if let Some(usage) = doctor.get("usage").and_then(Value::as_str) {
+        push_recovery_hit(&mut hits, "doctor.usage", usage);
+    }
+    if let Some(options) = doctor.get("options").and_then(Value::as_array) {
+        for (index, option) in options.iter().enumerate() {
+            for field in ["name", "flag", "description"] {
+                if let Some(value) = option.get(field).and_then(Value::as_str) {
+                    push_recovery_hit(
+                        &mut hits,
+                        &format!("doctor.options[{index}].{field}"),
+                        value,
+                    );
+                }
+            }
+        }
+    }
+    for key in ["next_command", "recovery_command", "recovery_commands"] {
+        if let Some(value) = doctor.get(key).and_then(Value::as_str) {
+            push_recovery_hit(&mut hits, &format!("doctor.{key}"), value);
+        }
+    }
+    if let Some(value) = doctor
+        .get("recovery")
+        .and_then(|recovery| recovery.get("next_command"))
+        .and_then(Value::as_str)
+    {
+        push_recovery_hit(&mut hits, "doctor.recovery.next_command", value);
+    }
+    hits
+}
+
+fn push_recovery_hit(hits: &mut Vec<String>, field: &str, value: &str) {
+    let lower = value.to_ascii_lowercase();
+    let has_token = lower.contains("--fix")
+        || lower
+            .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '-'))
+            .any(|token| matches!(token, "fix" | "repair" | "recover"));
+    if has_token {
+        hits.push(field.to_string());
+    }
 }
 
 fn check(id: &str, ok: bool, message: &str) -> Value {
@@ -291,6 +419,16 @@ fn check(id: &str, ok: bool, message: &str) -> Value {
         "ok": ok,
         "severity": if ok { "info" } else { "error" },
         "message": message
+    })
+}
+
+fn check_detail(id: &str, ok: bool, message: &str, detail: Value) -> Value {
+    json!({
+        "id": id,
+        "ok": ok,
+        "severity": if ok { "info" } else { "error" },
+        "message": message,
+        "detail": detail
     })
 }
 
@@ -380,4 +518,48 @@ fn print_robot_docs() {
     println!("next_steps:");
     println!("  - use canon registry lint for registry diagnostics");
     println!("  - use canon --describe for the full operator manifest");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shipped_doctor_contract_report_is_healthy() {
+        let payload = health_payload();
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["contract_parity"]["ok"], true);
+        assert!(
+            payload["operator_manifest"]["blake3"]
+                .as_str()
+                .is_some_and(|digest| digest.starts_with("blake3:"))
+        );
+    }
+
+    #[test]
+    fn doctor_exit_code_tracks_unhealthy_payloads() {
+        assert_eq!(health_exit_code(&json!({ "ok": true })), 0);
+        assert_eq!(health_exit_code(&json!({ "ok": false })), 1);
+        assert_eq!(health_exit_code(&json!({})), 1);
+    }
+
+    #[test]
+    fn doctor_specific_checks_reject_fix_surface() {
+        let mut manifest: Value = serde_json::from_str(OPERATOR_JSON).unwrap();
+        let doctor = manifest
+            .get_mut("subcommands")
+            .and_then(Value::as_array_mut)
+            .unwrap()
+            .iter_mut()
+            .find(|entry| entry.get("name").and_then(Value::as_str) == Some("doctor"))
+            .unwrap();
+        doctor["fixers"] = json!(["canon doctor --fix"]);
+
+        let checks = doctor_specific_checks_for_manifest(&manifest);
+        assert!(
+            checks
+                .iter()
+                .any(|check| { check["id"] == "fix_mode_disabled" && check["ok"] == false })
+        );
+    }
 }

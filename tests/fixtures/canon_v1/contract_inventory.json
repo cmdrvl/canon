@@ -62,7 +62,7 @@
       "id": "canon doctor health",
       "family": "doctor",
       "clap_path": "doctor health",
-      "operator_name": null,
+      "operator_name": "doctor health",
       "primary_contracts": ["canon.doctor.health.v1"],
       "action": "preserve"
     },
@@ -70,7 +70,7 @@
       "id": "canon doctor capabilities",
       "family": "doctor",
       "clap_path": "doctor capabilities",
-      "operator_name": null,
+      "operator_name": "doctor capabilities",
       "primary_contracts": ["canon.doctor.capabilities.v1"],
       "action": "preserve"
     },
@@ -78,7 +78,7 @@
       "id": "canon doctor robot-docs",
       "family": "doctor",
       "clap_path": "doctor robot-docs",
-      "operator_name": null,
+      "operator_name": "doctor robot-docs",
       "primary_contracts": [],
       "action": "preserve"
     },
@@ -134,7 +134,7 @@
       "id": "canon project init",
       "family": "project",
       "clap_path": "project init",
-      "operator_name": null,
+      "operator_name": "project init",
       "primary_contracts": ["canon.project.cli.v1"],
       "action": "preserve"
     },
@@ -142,7 +142,7 @@
       "id": "canon project validate",
       "family": "project",
       "clap_path": "project validate",
-      "operator_name": null,
+      "operator_name": "project validate",
       "primary_contracts": ["canon.project.cli.v1"],
       "action": "preserve"
     },
@@ -150,7 +150,7 @@
       "id": "canon project describe",
       "family": "project",
       "clap_path": "project describe",
-      "operator_name": null,
+      "operator_name": "project describe",
       "primary_contracts": ["canon.project.cli.v1"],
       "action": "preserve"
     },
@@ -390,7 +390,7 @@
       "id": "canon entity prepare",
       "family": "entity",
       "clap_path": "entity prepare",
-      "operator_name": null,
+      "operator_name": "entity prepare",
       "primary_contracts": ["canon_entity_prepare.v0"],
       "action": "preserve"
     },
@@ -398,7 +398,7 @@
       "id": "canon entity index build",
       "family": "entity",
       "clap_path": "entity index build",
-      "operator_name": null,
+      "operator_name": "entity index build",
       "primary_contracts": ["canon_entity_index_build.v0"],
       "action": "preserve"
     },
@@ -414,7 +414,7 @@
       "id": "canon entity candidate-recall",
       "family": "entity",
       "clap_path": "entity candidate-recall",
-      "operator_name": null,
+      "operator_name": "entity candidate-recall",
       "primary_contracts": ["canon_entity_candidate_recall.v0"],
       "action": "preserve"
     },
@@ -495,7 +495,7 @@
       "id": "canon entity apply",
       "family": "entity",
       "clap_path": "entity apply",
-      "operator_name": null,
+      "operator_name": "entity apply",
       "primary_contracts": ["canon_entity_apply.v0"],
       "action": "preserve"
     },
@@ -511,7 +511,7 @@
       "id": "canon entity profile list",
       "family": "entity",
       "clap_path": "entity profile list",
-      "operator_name": null,
+      "operator_name": "entity profile list",
       "primary_contracts": ["canon_entity_profile_templates.v0"],
       "action": "preserve"
     },
@@ -519,7 +519,7 @@
       "id": "canon entity profile init",
       "family": "entity",
       "clap_path": "entity profile init",
-      "operator_name": null,
+      "operator_name": "entity profile init",
       "primary_contracts": ["canon_entity_profile_templates.v0"],
       "action": "preserve"
     },
@@ -635,6 +635,13 @@
       "action": "preserve",
       "access_boundary": "internal_source_only",
       "source_path": "src/distribution/oci.rs"
+    },
+    {
+      "id": "canon.package.inspect.v1",
+      "family": "distribution",
+      "action": "preserve",
+      "access_boundary": "public_cli_contract",
+      "source_path": "src/distribution/package.rs"
     },
     {
       "id": "canon.local.package.archive.v1",
@@ -982,24 +989,6 @@
   ],
   "incompatibility_rows": [
     {
-      "id": "entity-clap-leaves-missing-from-operator-json",
-      "subjects": [
-        "canon entity apply",
-        "canon entity candidate-recall",
-        "canon entity index build",
-        "canon entity prepare",
-        "canon entity profile list",
-        "canon entity profile init"
-      ],
-      "action": "preserve_or_add_operator_rows",
-      "owner": "bd-glo7",
-      "cutover": "Before any CANON-V1 surface pruning or operator.json regeneration",
-      "test_owner": "tests/canon_v1_contract_inventory.rs",
-      "evidence": ["src/cli.rs", "operator.json", "README.md", "docs/PLAN_CANON.md"],
-      "status": "open",
-      "notes": "Clap ships these entity workbench commands today, but operator.json does not advertise them as separate subcommand rows."
-    },
-    {
       "id": "entity-run-dual-engine-shares-one-command-and-one-version",
       "subjects": ["canon entity run", "canon_entity_run.v0"],
       "action": "migrate_with_new_artifact_version",
@@ -1048,59 +1037,6 @@
       "evidence": ["src/org/types.rs", "src/entity/contracts.rs", "src/entity/schema.rs", "tests/fixtures/entity/contracts/entity_artifact_goldens.json"],
       "status": "open",
       "notes": "The entity namespace currently mixes legacy org structs and newer workbench/schema contracts under overlapping canon_entity_*.v0 identifiers."
-    },
-    {
-      "id": "docs-and-plan-omit-prepare-profile-and-run-workdir-options",
-      "subjects": [
-        "canon entity run",
-        "canon entity prepare",
-        "canon entity profile list",
-        "canon entity profile init"
-      ],
-      "action": "preserve_or_update_docs",
-      "owner": "bd-glo7",
-      "cutover": "Before claiming the CANON-V1 CLI contract is frozen outside this matrix",
-      "test_owner": "tests/canon_v1_contract_inventory.rs",
-      "evidence": ["README.md", "docs/PLAN_CANON.md", "src/cli.rs", "operator.json"],
-      "status": "open",
-      "notes": "README and PLAN_CANON describe entity run/review but omit the shipped prepare/profile leaves and the --profile/--work-dir switch that flips entity run into artifact-backed mode."
-    },
-    {
-      "id": "operator-json-status-null-on-implemented-rows",
-      "subjects": [
-        "registry build",
-        "registry providers",
-        "registry provider-schema",
-        "registry diff",
-        "registry audit",
-        "registry lint",
-        "strategy profile",
-        "strategy audit",
-        "strategy resolve",
-        "strategy register",
-        "strategy update",
-        "strategy deprecate",
-        "strategy promote",
-        "strategy list",
-        "strategy explain",
-        "strategy diff",
-        "entity run",
-        "entity block",
-        "entity evidence",
-        "entity solve",
-        "entity audit",
-        "entity promote",
-        "entity review export",
-        "entity review import",
-        "entity explain"
-      ],
-      "action": "replace_directly",
-      "owner": "bd-glo7",
-      "cutover": "Before operator.json becomes the sole generated contract inventory for downstream agents",
-      "test_owner": "tests/canon_v1_contract_inventory.rs",
-      "evidence": ["operator.json", "src/lib.rs", "tests/provider_schema.rs"],
-      "status": "open",
-      "notes": "Many operator.json subcommand rows have null status even though the implementations are shipped and exercised by tests."
     }
   ],
   "cutover_decisions": [

@@ -22,10 +22,12 @@ const REQUIRED_SPECIAL_SURFACES: &[&str] = &[
     "canon doctor --robot-triage",
 ];
 const EXPECTED_INCOMPATIBILITIES: &[&str] = &[
-    "entity-clap-leaves-missing-from-operator-json",
     "entity-run-dual-engine-shares-one-command-and-one-version",
     "legacy-org-runtime-still-backs-shipped-entity-surfaces",
     "shared-canon-entity-version-ids-span-legacy-and-workbench-contracts",
+];
+const RETIRED_INCOMPATIBILITIES: &[&str] = &[
+    "entity-clap-leaves-missing-from-operator-json",
     "docs-and-plan-omit-prepare-profile-and-run-workdir-options",
     "operator-json-status-null-on-implemented-rows",
 ];
@@ -60,7 +62,6 @@ struct ContractRow {
 #[derive(Debug, Deserialize)]
 struct IncompatibilityRow {
     id: String,
-    subjects: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -243,28 +244,12 @@ fn canon_v1_contract_inventory_freezes_current_incompatibility_rows() {
         );
     }
 
-    let missing_operator = inventory
-        .incompatibility_rows
-        .iter()
-        .find(|row| row.id == "entity-clap-leaves-missing-from-operator-json")
-        .expect("missing operator coverage row");
-    let expected_subjects = [
-        "canon entity apply",
-        "canon entity candidate-recall",
-        "canon entity index build",
-        "canon entity prepare",
-        "canon entity profile list",
-        "canon entity profile init",
-    ]
-    .into_iter()
-    .map(str::to_string)
-    .collect::<BTreeSet<_>>();
-    let actual_subjects = missing_operator
-        .subjects
-        .iter()
-        .cloned()
-        .collect::<BTreeSet<_>>();
-    assert_eq!(actual_subjects, expected_subjects);
+    for retired in RETIRED_INCOMPATIBILITIES {
+        assert!(
+            !incompatibility_ids.contains(retired),
+            "retired incompatibility row must not remain: {retired}"
+        );
+    }
 
     assert!(
         inventory.unresolved_decisions.iter().all(|row| !matches!(

@@ -201,6 +201,10 @@ Provider-fetched registries snapshot an external or bundled provider into normal
 
 Provider-specific `--provider-config` semantics are discoverable through canon itself, not only through this prose. `canon registry providers --emit json` lists the available providers, and `canon registry provider-schema <PROVIDER> --emit json` emits the full option contract for one provider — keys, value types, enum values, secret flags, environment fallbacks, defaults, mutual exclusions, the interval encoding rule, and worked examples. Both surfaces are deterministic and offline (no provider call), and the same provider catalog is exposed under `providers` in `canon --describe`. Agents and skills should read the schema rather than hard-coding option lists:
 
+The focused README examples in this section are covered by bd-np37's docs
+parity checks where they use committed fixtures or temporary outputs. Exhaustive
+execution of the generated command corpus is owned by bd-ndfh.
+
 ```bash
 canon registry providers --emit json
 canon registry provider-schema openfigi --emit json
@@ -364,10 +368,29 @@ cargo build --release
 ## CLI Reference
 
 ```bash
-canon <INPUT> --registry <REGISTRY> --column <COLUMN> [OPTIONS]
-canon doctor [health [--json]|capabilities [--json]|robot-docs|--robot-triage]
-canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [OPTIONS]
-canon registry export --format dbt-seed|search-index --registry <REGISTRY> --out <PATH> [OPTIONS]
+canon <INPUT> --registry <REGISTRY> --column <COLUMN> [--emit json|csv] [--canon-column <NAME>] [--map-out <PATH>] [--max-rows <N>] [--max-bytes <N>]
+canon doctor health [--json]
+canon doctor capabilities [--json]
+canon doctor robot-docs
+canon doctor --robot-triage
+canon package pack --root <DIR> --package <package.json> --out <ARCHIVE>
+canon package inspect <ARCHIVE> [--emit json|summary]
+canon package verify <ARCHIVE> [--emit json|summary]
+canon package unpack <ARCHIVE> --target <EMPTY_DIR> [--emit json|summary]
+canon package push --archive <ARCHIVE> --registry <OCI_BASE_URL> --repository <REPOSITORY> [--tag <TAG>] [--emit json|summary]
+canon package pull --registry <OCI_BASE_URL> --repository <REPOSITORY> --cache <DIR> (--digest <sha256:...>|--tag <TAG>) [--emit json|summary]
+canon project init <DIR> [--project-id <ID>] [--mapping-profile <REF>] [--emit json|summary]
+canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]
+canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]
+canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]
+canon inbox show --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json|summary]
+canon inbox explain --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json|summary]
+canon inbox stats --inbox <INBOX.json> [--policy <POLICY.json>] [--emit json|summary]
+canon inbox export-review --inbox <INBOX.json> [--out <REVIEW.json>] [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]
+canon inbox apply-review --inbox <INBOX.json> --review <REVIEW.json> --expected-inbox-hash <HASH> --out <GROUPS.json> [--emit json|summary]
+canon inbox plan-entity --inbox <INBOX.json> --expected-inbox-hash <HASH> --out <REQUEST.json> [--policy <POLICY.json>] [--event-key <KEY>...] [--limit <N>] [--mode cluster|link] [--emit json|summary]
+canon registry build --source <SOURCE> --seed <SEED> --seed-column <COLUMN> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]
+canon registry export --format dbt-seed|search-index --registry <REGISTRY> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]
 canon registry providers [--emit json|summary]
 canon registry provider-schema <PROVIDER> [--emit json|summary]
 canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]
@@ -375,21 +398,36 @@ canon registry add-entry --registry <DIR> --alias-file <FILE> --canonical-id <ID
 canon registry mint --registry <DIR> [--canonical-id <ID> | --prefix <PREFIX>] --canonical-type <TYPE> --with-alias <FILE=INPUT:RULE_ID>... [--bump patch|minor|major | --next-version <VER>] [--no-lint] [--emit json|plain]
 canon registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict] [--bump patch|minor|major | --next-version <VER>] [--emit json|plain]
 canon registry diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
-canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary]
+canon registry audit <SEED> --registry <REGISTRY> --column <COLUMN> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 canon registry lint <REGISTRY> [--profile standard|org|strategy|auto] [--emit json|summary]
 canon strategy profile <INPUT> [--emit json|summary] [--max-rows <N>] [--max-bytes <N>]
 canon strategy audit --schema <PROFILE.json> --script <SCRIPT> --suite <DIR> [--emit json|summary]
 canon strategy resolve --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
-canon strategy register --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --grade operator-attested|proof-attested --next-version <VER> [--operator <ID> --reason <TEXT>] [--verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json>] [--emit json|summary] [--no-witness]
-canon strategy update|deprecate|promote|list|explain [OPTIONS]
+canon strategy register --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --grade operator-attested|proof-attested --next-version <VER> [--operator <ID> --reason <TEXT> --attested-at <RFC3339>] [--verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json>] [--rule-id <RULE>] [--emit json|summary] [--no-witness]
+canon strategy update --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --next-version <VER> [--operator <ID> --reason <TEXT> --attested-at <RFC3339>] [--verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json>] [--emit json|summary] [--no-witness]
+canon strategy deprecate --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --operator <ID> --reason <TEXT> --next-version <VER> [--attested-at <RFC3339>] [--emit json|summary] [--no-witness]
+canon strategy promote --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VER> [--emit json|summary] [--no-witness]
+canon strategy list --registry <DIR> [--key-type schema|task] [--grade operator-attested|proof-attested] [--status active|deprecated] [--emit json|summary]
+canon strategy explain --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
 canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]
 canon entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--cache-mode enabled|disabled] [--suite <DIR>] [--emit json|summary] [--no-witness]
 canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
 canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]
-canon entity prepare|index build|block|evidence|solve|audit|promote|apply|explain|review [OPTIONS]
+canon entity prepare <ROWS> --profile <PROFILE> --registry <DIR> --work-dir <DIR>
+canon entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit json|summary]
+canon entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit jsonl|summary]
+canon entity candidate-recall --manifest <MANIFEST.json> --candidates <CANDIDATES.jsonl> --diagnostics <DIAGNOSTICS.json> --exact-bucket-count <N> [--emit json|summary]
+canon entity evidence <ROWS> [--profile <PROFILE>] --strategy <YAML> --candidates <JSONL> --registry <DIR> [--work-dir <DIR>] [--emit jsonl|summary]
+canon entity solve <ROWS> [--profile <PROFILE>] --strategy <YAML> --evidence <JSONL> --registry <DIR> [--work-dir <DIR>] [--emit json|summary]
+canon entity audit <RESULT.json> --suite <DIR> [--emit json|summary]
+canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <DIR> --next-version <VER> [--emit json|summary]
+canon entity apply <RESULT.json> --rows <ROWS> --registry <DIR> [--column <COL>] [--output <PATH>] [--work-dir <DIR>] [--require-full-resolution|--allow-partial-output] [--emit json|summary]
 canon entity review export <RESULT.json> [--artifact queue|native-review] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]
 canon entity review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]
+canon entity explain <RESULT.json> --row <ROW_ID>|--surface-id <SURFACE_ID>|--canon-id <CANON_ID>|--escrow-id <ESCROW_ID> [--emit json|summary]
+canon entity profile list [--emit json|summary]
+canon entity profile init <PROFILE> --output <PATH>
 ```
 
 ### Arguments
@@ -426,7 +464,26 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 
 | Subcommand | Description |
 |------------|-------------|
-| `doctor [health [--json]\|capabilities [--json]\|robot-docs\|--robot-triage]` | Read-only compiled-contract diagnostics for agents. Does not read inputs, registries, SQLite indexes, or witness ledgers, does not contact providers, and has no `--fix` mode. |
+| `doctor health [--json]` | Report compiled manifest and read-only contract health. |
+| `doctor capabilities [--json]` | Describe doctor commands, exit codes, side effects, and fixers. |
+| `doctor robot-docs` | Emit concise machine-oriented usage notes. |
+| `doctor --robot-triage` | Emit compact machine-readable triage JSON. |
+| `package pack --root <DIR> --package <package.json> --out <ARCHIVE>` | Create a deterministic local package archive from canonical package bytes. |
+| `package inspect <ARCHIVE> [--emit json\|summary]` | Inspect package inventory and metadata without writing files. |
+| `package verify <ARCHIVE> [--emit json\|summary]` | Verify package archive digests and semantic package contracts. |
+| `package unpack <ARCHIVE> --target <EMPTY_DIR> [--emit json\|summary]` | Unpack a verified archive into an existing empty target directory. |
+| `package push --archive <ARCHIVE> --registry <OCI_BASE_URL> --repository <REPOSITORY> [--tag <TAG>] [--emit json\|summary]` | Publish a verified local package archive to an OCI registry by immutable digest. |
+| `package pull --registry <OCI_BASE_URL> --repository <REPOSITORY> --cache <DIR> (--digest <sha256:...>\|--tag <TAG>) [--emit json\|summary]` | Pull and verify a package from an OCI registry into an external content cache. |
+| `project init <DIR> [--project-id <ID>] [--mapping-profile <REF>] [--emit json\|summary]` | Create a minimal neutral project manifest in an explicit empty or missing directory. |
+| `project validate <DIR> [--manifest <PATH>] [--emit json\|summary]` | Validate a project manifest and report deterministic diagnostics. |
+| `project describe <DIR> [--manifest <PATH>] [--emit json\|summary]` | Describe project capabilities, state flags, side effects, and next commands. |
+| `inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json\|summary]` | List ranked unresolved inbox items with deterministic pagination and typed filters. |
+| `inbox show --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json\|summary]` | Show one unresolved inbox item and its next commands. |
+| `inbox explain --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json\|summary]` | Explain one inbox item's priority score components and provenance. |
+| `inbox stats --inbox <INBOX.json> [--policy <POLICY.json>] [--emit json\|summary]` | Summarize inbox counts and ranking coverage. |
+| `inbox export-review --inbox <INBOX.json> [--out <REVIEW.json>] [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json\|summary]` | Export a stable review queue for selected unresolved inbox items. |
+| `inbox apply-review --inbox <INBOX.json> --review <REVIEW.json> --expected-inbox-hash <HASH> --out <GROUPS.json> [--emit json\|summary]` | Apply explicit review decisions into a grouped unresolved artifact. |
+| `inbox plan-entity --inbox <INBOX.json> --expected-inbox-hash <HASH> --out <REQUEST.json> [--policy <POLICY.json>] [--event-key <KEY>...] [--limit <N>] [--mode cluster\|link] [--emit json\|summary]` | Plan a bounded entity workbench request without deciding identity. |
 | `registry build --source <NAME> --seed <PATH> --seed-column <COLUMN> --output <DIR> --version <VER>` | Materialize a standard canon registry directory from a provider-backed seed corpus, with optional repeatable `--provider-config key=value` overrides such as OpenFIGI `id_type`, `base_url`, `api_key`, or mapping filters like `exchCode=US`. |
 | `registry export --format dbt-seed\|search-index --registry <DIR> --out <PATH>` | Export a versioned registry as a deterministic dbt seed CSV or a self-describing SQLite search index, with optional source-file, canonical-type, and rule-id-prefix filters. |
 | `registry providers [--emit json\|summary]` | List the registry build providers available for materialization, with their seed-column support and a pointer to each provider's schema command. |
@@ -437,34 +494,42 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `registry default-id-scheme --registry <DIR> --prefix <PREFIX> [--zero-pad <N>] [--strict]` | Persist the registry's default self-authored ID convention in `registry.json` so `next-id` and `mint` can allocate without a prefix argument. |
 | `registry diff --old <PATH> --new <PATH> [--emit json\|summary]` | Compare two versions of the same registry ID and report added, removed, changed, and unchanged effective mappings. |
 | `registry audit <SEED> --registry <PATH> --column <COLUMN> [--emit json\|summary]` | Audit a seed corpus against a registry and emit resolved/unresolved entries plus aggregate canonical-target and rule-hit counts. |
-| `registry lint <DIR> [--profile standard\|org\|strategy\|auto] [--emit json\|summary]` | Preflight standard mapping, org, or strategy registry health with severity-tagged findings. |
+| `registry lint <DIR> [--profile standard\|org\|strategy\|auto] [--emit json\|summary]` | Preflight standard mapping, entity-sidecar, or strategy registry health with severity-tagged findings. |
 | `strategy profile <INPUT> [--emit json\|summary] [--max-rows <N>] [--max-bytes <N>]` | Derive a deterministic schema/profile artifact from CSV, TSV, JSONL, or NDJSON for `strategy resolve` and `strategy register`. |
 | `strategy audit --schema <JSON> --script <PATH> --suite <DIR> [--emit json\|summary]` | Run a frozen script against deterministic fixture expectations and emit a `canon_strategy_audit.v0` proof artifact. |
 | `strategy resolve --registry <DIR> (--schema <JSON>\|--task <TASK>) --skill <PATH>\|--skill-hash <HASH>` | Resolve a schema or exact task key plus skill hash to a frozen champion script. Schema keys can return EXACT/COMPATIBLE/PARTIAL/UNRESOLVED; task keys return EXACT or UNRESOLVED only. |
 | `strategy register --registry <DIR> (--schema <JSON>\|--task <TASK>) --skill <PATH>\|--skill-hash <HASH> --script <PATH> --script-id <ID> --language <LANG> --grade operator-attested\|proof-attested --next-version <VER>` | Register a v1 typed strategy entry. Operator-attested entries need operator/reason and no proof artifacts; proof-attested entries require verify/assess/airlock. |
-| `strategy update|deprecate|promote` | Update an active champion, mark it deprecated without deleting history, or promote an operator-attested champion to proof-attested. Mutations emit before/after registry-hash receipts and append witness records unless `--no-witness` is passed. |
-| `strategy list|explain` | Inspect mixed schema/task strategy registries, provenance, grade, status, source file, entry order, and active-resolution behavior without hand-reading `_strategy/entries.json`. |
+| `strategy update --registry <DIR> (--schema <JSON>\|--task <TASK>) --skill <PATH>\|--skill-hash <HASH> --script <PATH> --script-id <ID> --language <LANG> --next-version <VER>` | Update an active champion in place with a version bump. |
+| `strategy deprecate --registry <DIR> (--schema <JSON>\|--task <TASK>) --skill <PATH>\|--skill-hash <HASH> --operator <ID> --reason <TEXT> --next-version <VER>` | Mark an active champion deprecated without deleting history. |
+| `strategy promote --registry <DIR> (--schema <JSON>\|--task <TASK>) --skill <PATH>\|--skill-hash <HASH> --verify <JSON> --assess <JSON> --airlock <JSON> --next-version <VER>` | Promote an operator-attested champion to proof-attested. |
+| `strategy list --registry <DIR> [--key-type schema\|task] [--grade operator-attested\|proof-attested] [--status active\|deprecated] [--emit json\|summary]` | Inspect mixed schema/task strategy registries, provenance, grade, status, source file, and entry order. |
+| `strategy explain --registry <DIR> (--schema <JSON>\|--task <TASK>) --skill <PATH>\|--skill-hash <HASH> [--emit json\|summary]` | Explain active and ignored entries for one strategy key. |
 | `strategy diff --old <DIR> --new <DIR> [--emit json\|summary]` | Compare frozen-script strategy registry versions by typed key plus skill hash, including grade/status/attestation changes. |
 | `entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--cache-mode enabled\|disabled] [--suite <DIR>] [--emit json\|summary]` | Run the cluster-mode artifact pipeline (prepare -> index -> block -> evidence -> solve, optional audit). Cache mode defaults to enabled, and native cache receipts are recorded in the run artifact. |
 | `entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json\|summary] [--cache-mode enabled\|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` | Run link mode for aligning two row sets through the same typed request and artifact path as project mode, with optional suite/gold scoring and explicit registry write-back. Profile and work-dir are required for successful execution even though generated syntax shows them bracketed; omissions write nothing. Cache mode defaults to enabled, and native cache receipts are inherited from the nested run. |
 | `entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json\|summary]` | Compile a strict execution envelope into an alias-withholding report. The envelope references clean registry, candidate, link, run/solve, review, audit, leak-scan, assignment-firewall, and optional promotion/replay artifacts; Canon derives outcomes from those artifacts and refuses self-declared results. |
 | `entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json\|summary]` | Compile a strict artifact-backed entity-disjoint/time-forward envelope into a redacted report. The same command is used for public fixtures and operator-owned private corpora; identifiers, paths, and cutoffs are hashed at the CLI boundary, and outcomes/leakage checks are derived from referenced artifacts rather than self-attested fields. |
+| `entity prepare <ROWS> --profile <PROFILE> --registry <DIR> --work-dir <DIR>` | Validate and project profile-mapped observations for artifact-backed entity preparation. |
+| `entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit json\|summary]` | Build deterministic index artifacts for a work directory. |
 | `entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit jsonl\|summary]` | Generate candidate neighborhoods via blocking operators. |
+| `entity candidate-recall --manifest <MANIFEST.json> --candidates <CANDIDATES.jsonl> --diagnostics <DIAGNOSTICS.json> --exact-bucket-count <N> [--emit json\|summary]` | Evaluate candidate retrieval recall against sealed public must-link labels. |
 | `entity evidence <ROWS> [--profile <PROFILE>] --strategy <YAML> --candidates <JSONL> --registry <DIR> [--work-dir <DIR>] [--emit jsonl\|summary]` | Score typed evidence for blocked candidate pairs. Relationship evidence remains a relation hint unless a separate equality fact or support lane justifies equivalence. |
 | `entity solve <ROWS> [--profile <PROFILE>] --strategy <YAML> --evidence <JSONL> --registry <DIR> [--work-dir <DIR>] [--emit json\|summary]` | Solve deterministic identity assignments from evidence artifacts. |
 | `entity audit <RESULT> --suite <DIR> [--emit json\|summary]` | Validate a solve/run artifact against a frozen evaluation suite. |
 | `entity promote <RESULT> --audit <JSON> --registry <DIR> --next-version <VER> [--emit json\|summary]` | Write audited results into registry aliases and escrow sidecars. |
-| `entity apply <RESULT> --rows <ROWS> --registry <DIR> [--work-dir <DIR>] [--emit json\|summary]` | Replay accepted assignments from a solve or run artifact onto input rows without changing the registry. |
+| `entity apply <RESULT> --rows <ROWS> --registry <DIR> [--column <COL>] [--output <PATH>] [--work-dir <DIR>] [--require-full-resolution\|--allow-partial-output] [--emit json\|summary]` | Replay accepted assignments from a solve or run artifact onto input rows without changing the registry. |
 | `entity review export <RESULT> [--artifact queue\|native-review] [--emit json\|csv\|html] [--include resolved\|escrow\|contradictions\|all]` | By default, produce the unchanged review queue contract. With `--artifact native-review`, emit `canon_entity_native_review.v0` as JSON, CSV, or offline HTML. |
 | `entity review import <REVIEW> --registry <DIR> --next-version <VER> [--audit <JSON>] [--source-review <NATIVE_REVIEW.json>] [--emit json\|summary]` | Import default queue decisions, or with `--source-review` import native decisions into `canon_entity_native_review_import.v0` while keeping registry/version compatibility arguments. |
-| `entity explain <RESULT> --row <ID>\|--canon-id <ID>\|--escrow-id <ID> [--emit json\|summary]` | Proof trace for one row, canonical entity, or escrow entity. |
+| `entity explain <RESULT> --row <ID>\|--surface-id <ID>\|--canon-id <ID>\|--escrow-id <ID> [--emit json\|summary]` | Proof trace for one row, prepared surface, canonical entity, or escrow entity. |
+| `entity profile list [--emit json\|summary]` | List built-in entity profile templates. |
+| `entity profile init <PROFILE> --output <PATH>` | Write a built-in entity profile template to disk. |
 
 ### Exit Codes
 
 | Code | Meaning |
 |------|---------|
-| `0` | RESOLVED (all inputs mapped) |
-| `1` | PARTIAL or UNRESOLVED (some or all inputs unresolved) |
+| `0` | Success: RESOLVED, healthy report, or successful report/write |
+| `1` | Domain outcome needs inspection: PARTIAL, UNRESOLVED, unhealthy contract health, or another command-specific failed gate |
 | `2` | REFUSAL or CLI error |
 
 `canon registry diff`, `canon registry audit`, `canon registry export`, and `canon registry lint` exit `0` when the report succeeds and `2` on refusal. Lint findings are represented inside `canon_registry_lint.v0` rather than via exit status. `canon registry build`, `registry next-id`, `registry add-entry`, `registry mint`, and `registry default-id-scheme` exit `0` when their report or write succeeds and `2` on refusal. Provider failures from `registry build` are preserved in the JSON report and warned on stderr. `add-entry` and `mint` restore the original files if their post-write lint gate finds errors.
@@ -484,7 +549,13 @@ or summary report, including low-quality or critical-false-merge reports whose
 or referenced artifacts are malformed, missing, stale, tampered, or otherwise
 refuse validation. It does not use exit `1` for benchmark outcomes.
 
-`canon doctor` exits `0` when it emits a read-only report and `2` for CLI usage errors such as unsupported `--fix`. Its JSON schemas are `canon.doctor.health.v1`, `canon.doctor.capabilities.v1`, and `canon.doctor.triage.v1`.
+`canon doctor health`, bare `canon doctor`, and `canon doctor --robot-triage`
+exit `0` when compiled contract parity is healthy and `1` when the report is
+emitted but unhealthy. `canon doctor capabilities` and `canon doctor robot-docs`
+exit `0` when their read-only reports are emitted. All doctor forms exit `2` for
+CLI usage errors such as unsupported `--fix`. The JSON schemas are
+`canon.doctor.health.v1`, `canon.doctor.capabilities.v1`, and
+`canon.doctor.triage.v1`.
 
 ### Output Routing
 
@@ -551,7 +622,7 @@ canon registry audit seeds.csv \
 Preflight a registry before production use:
 
 ```bash
-canon registry lint registries/org/ --profile auto --emit summary
+canon registry lint tests/fixtures/registries/counterparty --profile auto --emit summary
 ```
 
 Export a context-scoped dbt seed snapshot:
@@ -578,7 +649,7 @@ canon registry export \
 
 Both export formats preserve the registry boundary: they snapshot exact registry knowledge with version, content hash, source file, rule, alias kind, normalized key, and `canonical_iri` provenance. They do not add serving coverage facts or call providers.
 
-Materialize a registry from a provider-backed seed corpus. `openfigi` supports `cusip`, `isin`, and `sedol` seed columns by inference, or an explicit `--provider-config id_type=ID_CUSIP|ID_ISIN|ID_SEDOL`; use `--provider-config base_url=...` for local twins and tests. Corpus-wide OpenFIGI mapping filters pass through to every mapping job when supplied as provider config, including `exchCode`, `micCode`, `currency`, `marketSecDes`, `securityType`, `securityType2`, `optionType`, `includeUnlistedEquities`, `strike`, `contractSize`, `coupon`, `expiration`, and `maturity`. These filters narrow provider materialization only; normal canon lookup still reads static registry files and never calls OpenFIGI. For identifier-heavy corpora, extract identifiers from the source tapes, normalize and dedupe them, split CUSIP/ISIN/SEDOL into separate seed files, run one build per id type, publish the resulting static registries, and use `--incremental` for follow-up corpus refreshes:
+Materialize a registry from a provider-backed seed corpus. `openfigi` supports `cusip`, `isin`, and `sedol` seed columns by inference, or an explicit `--provider-config id_type=ID_CUSIP|ID_ISIN|ID_SEDOL`; use `--provider-config base_url=...` for local twins and tests. Corpus-wide OpenFIGI mapping filters pass through to every mapping job when supplied as provider config, including `exchCode`, `micCode`, `currency`, `marketSecDes`, `securityType`, `securityType2`, `optionType`, `includeUnlistedEquities`, `strike`, `contractSize`, `coupon`, `expiration`, and `maturity`. These filters narrow provider materialization only; normal canon lookup still reads static registry files and never calls OpenFIGI. For identifier-heavy corpora, extract identifiers from the source tapes, normalize and dedupe them, split CUSIP/ISIN/SEDOL into separate seed files, run one build per id type, publish the resulting static registries, and use `--incremental` for follow-up corpus refreshes. The direct OpenFIGI command below is a live provider example, not an offline fixture:
 
 ```bash
 OPENFIGI_API_KEY=xxx \
@@ -761,7 +832,8 @@ the parser emits a structured `E_ENTITY_INPUT_CONTRACT` refusal when either is
 omitted. Successful link execution requires both flags, and omission performs
 no writes.
 
-Run the fixture corpus as JSON:
+Run the committed fixture corpus as JSON. The `--work-dir` path should be a
+fresh temporary directory owned by the caller:
 
 ```bash
 canon entity link \
@@ -770,8 +842,7 @@ canon entity link \
   --profile cmbs_tenant_label \
   --strategy tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml \
   --registry tests/fixtures/registries/resolve-servicers \
-  --work-dir work/entity-link \
-  --suite suites/cmbs_link.v1/ \
+  --work-dir /tmp/canon-entity-link-work \
   --gold tests/fixtures/resolve/gold/loan_matches.jsonl \
   --no-witness
 ```
@@ -785,22 +856,22 @@ canon entity link \
   --profile cmbs_tenant_label \
   --strategy tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml \
   --registry tests/fixtures/registries/resolve-servicers \
-  --work-dir work/entity-link \
-  --suite suites/cmbs_link.v1/ \
+  --work-dir /tmp/canon-entity-link-summary \
   --emit summary \
   --no-witness
 ```
 
-Write-back is explicit. It writes only flat ID mappings, never structural attributes:
+Write-back is explicit. This conceptual shape writes only flat ID mappings,
+never structural attributes:
 
 ```bash
-canon entity link reference.csv target.csv \
+canon entity link <REFERENCE.csv> <TARGET.csv> \
   --profile entity_profile \
-  --strategy strategies/cmbs_loans.yaml \
-  --registry registries/cmbs-loans/ \
-  --work-dir work/entity-link \
-  --suite suites/cmbs_link.v1/ \
-  --gold gold/loan_matches.jsonl \
+  --strategy <STRATEGY.yaml> \
+  --registry <REGISTRY_DIR> \
+  --work-dir /tmp/canon-entity-link-write-back \
+  --suite <SUITE_DIR> \
+  --gold <GOLD.jsonl> \
   --write-back
 ```
 
@@ -831,12 +902,21 @@ Every refusal includes the error code, a concrete message, and a recovery path.
 | `E_TOO_LARGE` | Exceeds `--max-rows` or `--max-bytes` | Increase limits or reduce input |
 | `E_EMIT_FORMAT` | `--emit csv` with JSONL input | Use `--emit json` or provide CSV input |
 | `E_COLUMN_EXISTS` | Canonical column name already in header | Choose a different `--canon-column` |
-| `E_ORG_INPUT_CONTRACT` | Org input rows violate the strategy contract | Check required fields and side-field JSON |
-| `E_ORG_BAD_STRATEGY` | Org strategy YAML is malformed or invalid | Fix the strategy file |
-| `E_ORG_BAD_SUITE` | Evaluation suite missing or profile-mismatched | Check suite directory and strategy profile |
-| `E_ORG_FIXTURE_INVALID` | Suite fixture references are inconsistent | Fix fixture row catalog or expected pairs |
-| `E_ORG_VERSION_BUMP_REQUIRED` | Promotion requires an explicit next version | Pass `--next-version` |
-| `E_ORG_STALE_REGISTRY` | Registry changed since the audited snapshot | Re-run org against the current registry |
+| `E_ENTITY_PROFILE` | Entity profile is unknown, missing, or semantically invalid | Fix the profile or pass a valid profile path |
+| `E_ENTITY_STRATEGY` | Entity strategy YAML is malformed or references unsupported operators | Fix the strategy file |
+| `E_ENTITY_INPUT_CONTRACT` | Entity input rows violate the active profile contract | Check required fields and side-field JSON |
+| `E_ENTITY_SURFACE_ID_COLLISION` | Distinct prepared surfaces produced the same surface ID | Inspect the profile projection and source rows |
+| `E_ENTITY_PATCH_CONFLICT` | Entity alias, distinctness, or relation patches contradict each other or the registry | Fix the conflicting patch input |
+| `E_ENTITY_REGISTRY_SNAPSHOT` | Entity registry snapshot does not match the consumed artifact | Re-run against the current registry |
+| `E_ENTITY_CACHE_MISMATCH` | Entity cache artifact hashes do not match the current run | Rebuild or bypass the cache |
+| `E_ENTITY_INDEX_LIMIT` | Entity index posting, bucket, or top-k limits were exceeded | Tighten blocking or raise the relevant limit |
+| `E_ENTITY_CANDIDATE_BUDGET` | Entity candidate budget was exceeded before bounded candidate emission | Tighten filters or raise the candidate budget |
+| `E_ENTITY_ARTIFACT_CONTRACT` | Entity artifact has the wrong version, profile, strategy, registry, or hash | Rebuild the artifact chain |
+| `E_ENTITY_CANNOT_LINK_OVERRIDE` | Entity merge request conflicts with a hard cannot-link fact | Remove or justify the conflicting merge request |
+| `E_ENTITY_REVIEW_IMPORT` | Entity review import is malformed, stale, or references unknown items | Regenerate the review artifact and decisions |
+| `E_ENTITY_AUDIT_GATE` | Entity audit artifact is missing, stale, or failed required gates | Re-run audit and address failed gates |
+| `E_ENTITY_APPLY_UNRESOLVED` | Entity apply requires full resolution but unresolved surfaces remain | Use a complete result or allow partial output |
+| `E_ENTITY_IO_BUDGET` | Entity row, byte, artifact, memory, or work-dir budget was exceeded | Increase limits or reduce inputs |
 | `E_BAD_STRATEGY` | Resolve strategy YAML is malformed or invalid | Fix the strategy file |
 | `E_TOO_MANY_CANDIDATES` | Resolve candidate filters left too many candidates | Tighten filters or raise `--max-candidates` |
 | `E_EMPTY_TAPE` | Resolve reference or target tape has no processable records | Provide non-empty tapes |
