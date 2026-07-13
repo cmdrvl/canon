@@ -37,6 +37,15 @@ Options:
       --work-dir <WORK_DIR>
           Work directory for artifact-backed stages; required for successful execution
 
+      --cache-mode <CACHE_MODE>
+          Entity index cache mode
+
+          Possible values:
+          - enabled:  Read and write verified entity index cache artifacts
+          - disabled: Bypass cache reads and emit a disabled-cache receipt
+
+          [default: enabled]
+
       --suite <SUITE>
           Run a frozen audit suite and write audit.json under --work-dir
 

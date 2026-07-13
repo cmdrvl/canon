@@ -45,10 +45,10 @@
           "dataset_role": "target",
           "partition": "holdout",
           "observed_at": "2026-03-06",
-          "surface": "Beta Workshop LLC",
+          "surface": "Beta Workshop North",
           "evidence_availability": "rich_evidence",
           "source_family": "target",
-          "name_difficulty": "legal_suffix",
+          "name_difficulty": "lookalike",
           "entity_frequency": "tail",
           "relation_class": "same_entity",
           "difficulty_band": "hard"
@@ -189,7 +189,7 @@
           "dataset_role": "target",
           "partition": "evaluation",
           "observed_at": "2026-03-01",
-          "surface": "Harbor Signal Renewed",
+          "surface": "Harbor Signals",
           "evidence_availability": "rich_evidence",
           "source_family": "target",
           "name_difficulty": "rename",
@@ -213,16 +213,31 @@
           "difficulty_band": "hard"
         },
         {
-          "observation_id": "obs.eval.relationship",
-          "canonical_entity_id": "entity.time.relationship",
+          "observation_id": "obs.eval.new.reference",
+          "canonical_entity_id": "entity.time.new",
           "dataset_id": "dataset.reference.post",
           "dataset_role": "reference",
           "partition": "evaluation",
-          "observed_at": "2026-04-15",
-          "surface": "Harbor Signal Partner",
+          "observed_at": "2026-04-11",
+          "surface": "Future Nova Research",
           "evidence_availability": "rich_evidence",
           "source_family": "reference",
-          "name_difficulty": "legal_suffix",
+          "name_difficulty": "hard",
+          "entity_frequency": "tail",
+          "relation_class": "new_entity",
+          "difficulty_band": "hard"
+        },
+        {
+          "observation_id": "obs.eval.relationship",
+          "canonical_entity_id": "entity.time.relationship",
+          "dataset_id": "dataset.target.post",
+          "dataset_role": "target",
+          "partition": "evaluation",
+          "observed_at": "2026-04-15",
+          "surface": "Harbor Partner Holdings",
+          "evidence_availability": "rich_evidence",
+          "source_family": "target",
+          "name_difficulty": "lookalike",
           "entity_frequency": "tail",
           "relation_class": "changed_relationship",
           "difficulty_band": "hard"
@@ -234,6 +249,7 @@
       "evaluation_observation_ids": [
         "obs.eval.rename",
         "obs.eval.new",
+        "obs.eval.new.reference",
         "obs.eval.relationship"
       ],
       "event_results": [
@@ -258,7 +274,8 @@
         {
           "result_id": "result.new.cluster",
           "observation_ids": [
-            "obs.eval.new"
+            "obs.eval.new",
+            "obs.eval.new.reference"
           ],
           "expected_decision": "cluster_new",
           "actual_decision": "cluster_new",

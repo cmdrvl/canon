@@ -1,7 +1,10 @@
 #![forbid(unsafe_code)]
 
-use canon::entity::run::{
-    EntityRunBatchConfig, EntityRunRequest, run_entity_workbench_with_batching,
+use canon::entity::{
+    index::EntityIndexCacheMode,
+    run::{
+        EntityRunBatchConfig, EntityRunRequest, run_entity_workbench_with_batching_and_cache_mode,
+    },
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -406,7 +409,7 @@ fn assert_stress_hook(runbook: &BackfillRunbook) {
 
 fn run_case(temp_root: &Path, name: &str, registry: &Path, rows_per_batch: u64) -> RunCase {
     let work_dir = temp_root.join(name);
-    let result = run_entity_workbench_with_batching(
+    let result = run_entity_workbench_with_batching_and_cache_mode(
         EntityRunRequest {
             rows: &fixture("tests/fixtures/entity/cmbs/small_book/observations.csv"),
             profile: "cmbs_tenant_label",
@@ -415,6 +418,7 @@ fn run_case(temp_root: &Path, name: &str, registry: &Path, rows_per_batch: u64) 
             work_dir: &work_dir,
         },
         EntityRunBatchConfig::new(rows_per_batch),
+        EntityIndexCacheMode::Disabled,
     )
     .expect("CMBS backfill run succeeds");
 
@@ -539,7 +543,7 @@ fn assert_same_workdir_rerun_is_byte_identical(
     work_dir: &Path,
 ) {
     let first = fs::read(work_dir.join("run.json")).expect("first run artifact bytes");
-    let result = run_entity_workbench_with_batching(
+    let result = run_entity_workbench_with_batching_and_cache_mode(
         EntityRunRequest {
             rows: &fixture(&runbook.small_fixture.observations_path),
             profile: &runbook.profile_id,
@@ -548,6 +552,7 @@ fn assert_same_workdir_rerun_is_byte_identical(
             work_dir,
         },
         EntityRunBatchConfig::new(runbook.small_fixture.target_rows_per_physical_batch),
+        EntityIndexCacheMode::Disabled,
     )
     .expect("CMBS backfill rerun succeeds");
     let second = fs::read(work_dir.join("run.json")).expect("second run artifact bytes");

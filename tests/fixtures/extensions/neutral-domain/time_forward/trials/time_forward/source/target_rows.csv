@@ -1,0 +1,4 @@
+source_row_id,field_name,org_name,dataset,role_context,capacity,subject_role,alias_surfaces_json,mention_surfaces_json,filing_cik,accession
+obs.eval.rename,org_name,Harbor Signals,dataset.target.post,evaluation_candidate,target,issuer,[],[],200001,tf-anchor-001
+obs.eval.new,org_name,Future Nova Labs,dataset.target.post,evaluation_candidate,target,issuer,[],[],200101,tf-new-001
+obs.eval.relationship,org_name,Harbor Partner Holdings,dataset.target.post,changed_relationship,target,partner,[],[],200002,tf-relationship-001

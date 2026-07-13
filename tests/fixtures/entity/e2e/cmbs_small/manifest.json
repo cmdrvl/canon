@@ -4,6 +4,7 @@
   "stage_order": [
     "prepare",
     "index",
+    "cache_enabled",
     "block",
     "edge",
     "solve",
@@ -17,6 +18,7 @@
   "expected_stage_versions": {
     "prepare": "canon_entity_prepare.v0",
     "index": "canon_entity_index.v0",
+    "cache_enabled": "canon_entity_index_cache_receipt.v0",
     "block": "canon_entity_block.v0",
     "edge": "canon_entity_edge.v0",
     "solve": "canon_entity_solve.v0",

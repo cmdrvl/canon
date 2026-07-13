@@ -1,0 +1,22 @@
+strategy_id: neutral_generalization_entity_disjoint.v1
+strategy_version: "0.1.1"
+entity_type: organization
+description: "Neutral public entity-disjoint generalization link fixture strategy"
+identity:
+  reference:
+    id_columns: [source_row_id]
+  target:
+    id_columns: [source_row_id]
+candidate_filter:
+  - field_ref: accession
+    field_tgt: accession
+    op: exact
+assertions:
+  - field_ref: filing_cik
+    field_tgt: filing_cik
+    op: exact
+    weight: 1.0
+    required: true
+match_threshold: 1.0
+ambiguity_gap: 0.10
+max_candidates: 25

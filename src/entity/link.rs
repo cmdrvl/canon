@@ -6,9 +6,10 @@
 //! then delegates indexing, blocking, evidence, solve, review, audit, promote,
 //! and apply handoffs to `run_entity_workbench`.
 
-use super::{EntityRunRequest, EntityRunResult, run_entity_workbench};
+use super::{EntityRunRequest, EntityRunResult, run_entity_workbench_with_cache_mode};
 use crate::{
     InputFormat, Refusal,
+    entity::index::EntityIndexCacheMode,
     entity::run::EntityRunArtifact,
     entity::{
         CANON_ENTITY_SOLVE_VERSION, EntityArtifactReference,
@@ -161,19 +162,29 @@ impl EntityLinkRole {
 }
 
 pub fn run_entity_link(request: EntityLinkRequest<'_>) -> Result<EntityLinkResult, Refusal> {
+    run_entity_link_with_cache_mode(request, EntityIndexCacheMode::Enabled)
+}
+
+pub fn run_entity_link_with_cache_mode(
+    request: EntityLinkRequest<'_>,
+    cache_mode: EntityIndexCacheMode,
+) -> Result<EntityLinkResult, Refusal> {
     let materialized_rows = materialized_rows_path(request.work_dir);
     let materialized = materialize_directional_rows(
         request.reference_rows,
         request.target_rows,
         &materialized_rows,
     )?;
-    let run = run_entity_workbench(EntityRunRequest {
-        rows: &materialized_rows,
-        profile: request.profile,
-        strategy: request.strategy,
-        registry: request.registry,
-        work_dir: request.work_dir,
-    })?;
+    let run = run_entity_workbench_with_cache_mode(
+        EntityRunRequest {
+            rows: &materialized_rows,
+            profile: request.profile,
+            strategy: request.strategy,
+            registry: request.registry,
+            work_dir: request.work_dir,
+        },
+        cache_mode,
+    )?;
     let shared_run_artifact = EntityArtifactReference {
         version: run.artifact.version.clone(),
         content_hash: run.artifact.artifact_content_hash.clone(),
@@ -2098,4 +2109,84 @@ fn link_io_refusal(
         }),
         Some("Check entity link work-dir permissions, then rerun canon entity link".to_string()),
     )
+}
+
+#[cfg(test)]
+mod cache_runtime_tests {
+    use super::*;
+    use crate::entity::index_io::{
+        CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION, INDEX_CACHE_RECEIPT_FILE,
+    };
+    use std::path::PathBuf;
+
+    struct LinkCacheFixture {
+        reference_rows: PathBuf,
+        target_rows: PathBuf,
+        profile: PathBuf,
+        strategy: PathBuf,
+        registry: PathBuf,
+    }
+
+    impl LinkCacheFixture {
+        fn load() -> Self {
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+                "tests/fixtures/extensions/neutral-domain/time_forward/trials/entity_disjoint/source",
+            );
+            Self {
+                reference_rows: root.join("reference_rows.csv"),
+                target_rows: root.join("target_rows.csv"),
+                profile: root.join("profile/regab_firm_identity.yaml"),
+                strategy: root.join("link_strategy.yaml"),
+                registry: root.join("registry"),
+            }
+        }
+
+        fn request<'a>(&'a self, work_dir: &'a Path) -> EntityLinkRequest<'a> {
+            EntityLinkRequest {
+                reference_rows: &self.reference_rows,
+                target_rows: &self.target_rows,
+                profile: self
+                    .profile
+                    .to_str()
+                    .expect("fixture profile path is UTF-8"),
+                strategy: &self.strategy,
+                registry: &self.registry,
+                work_dir,
+            }
+        }
+    }
+
+    #[test]
+    fn link_cache_mode_wrapper_passes_disabled_mode_to_nested_run() {
+        let fixture = LinkCacheFixture::load();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let work_dir = temp.path().join("work");
+
+        let result = run_entity_link_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Disabled,
+        )
+        .expect("link runs with disabled cache mode");
+        assert_eq!(result.run.artifact.summary.labels["cache_mode"], "disabled");
+        assert_eq!(
+            result.run.artifact.summary.labels["cache_status"],
+            "bypassed"
+        );
+        let cache_stage = result
+            .run
+            .artifact
+            .stage_artifacts
+            .iter()
+            .find(|stage| stage.stage == "cache_disabled")
+            .expect("cache_disabled stage");
+        assert_eq!(
+            cache_stage.version,
+            CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION
+        );
+        assert_eq!(cache_stage.path, INDEX_CACHE_RECEIPT_FILE);
+        assert_eq!(
+            cache_stage.artifact_content_hash,
+            result.run.artifact.summary.labels["cache_receipt_hash"]
+        );
+    }
 }

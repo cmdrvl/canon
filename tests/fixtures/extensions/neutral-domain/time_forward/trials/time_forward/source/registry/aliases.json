@@ -1,0 +1,8 @@
+[
+  {
+    "input": "Harbor Signal",
+    "canonical_id": "ORG-BUILD-001",
+    "canonical_type": "org",
+    "rule_id": "NEUTRAL_BUILD_ALIAS"
+  }
+]

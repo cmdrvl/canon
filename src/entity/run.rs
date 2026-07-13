@@ -44,13 +44,16 @@ use crate::{
         graph::{SignedEvidenceGraphInput, SurfaceIncumbentId, build_signed_evidence_graph},
         index::ngram_index::{EntityNgramBuildConfig, EntityNgramIndex, EntityNgramSurface},
         index::{
-            EntityIndexArtifact, EntityIndexArtifactRequest, EntityIndexCacheStatus,
-            EntityNativeIndexScaleReport, build_index_artifact_contract,
+            EntityIndexArtifact, EntityIndexArtifactRequest, EntityIndexCacheMode,
+            EntityIndexCacheStatus, EntityNativeIndexScaleReport, build_index_artifact_contract,
             index_cache_key_from_prepare_header, index_summary_counts, native_index_scale_report,
+            read_verified_cache_if_present,
         },
         index_io::{
-            EntityIndexDiagnosticRecord, EntityIndexPersistRequest, EntityIndexPostingsBundle,
-            write_index_disk_bundle,
+            CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION, EntityIndexDiagnosticRecord,
+            EntityIndexPersistRequest, EntityIndexPostingsBundle, INDEX_CACHE_RECEIPT_FILE,
+            preflight_index_cache_entry_paths, read_index_cache_receipt,
+            write_index_disk_bundle_with_cache_receipt,
         },
         postings::{EntityPostingBuildConfig, EntityPostingIndex, EntityPostingSurface},
         prepare::{
@@ -230,10 +233,35 @@ pub fn run_entity_workbench(request: EntityRunRequest<'_>) -> Result<EntityRunRe
     run_entity_workbench_with_batching(request, EntityRunBatchConfig::default())
 }
 
+pub fn run_entity_workbench_with_cache_mode(
+    request: EntityRunRequest<'_>,
+    cache_mode: EntityIndexCacheMode,
+) -> Result<EntityRunResult, Refusal> {
+    run_entity_workbench_with_batching_and_cache_mode(
+        request,
+        EntityRunBatchConfig::default(),
+        cache_mode,
+    )
+}
+
 pub fn run_entity_workbench_with_batching(
     request: EntityRunRequest<'_>,
     batch_config: EntityRunBatchConfig,
 ) -> Result<EntityRunResult, Refusal> {
+    run_entity_workbench_with_batching_and_cache_mode(
+        request,
+        batch_config,
+        EntityIndexCacheMode::Enabled,
+    )
+}
+
+pub fn run_entity_workbench_with_batching_and_cache_mode(
+    request: EntityRunRequest<'_>,
+    batch_config: EntityRunBatchConfig,
+    cache_mode: EntityIndexCacheMode,
+) -> Result<EntityRunResult, Refusal> {
+    preflight_index_cache_entry_paths(request.work_dir)
+        .map_err(|refusal| with_run_context(refusal, "index", request))?;
     let base_strategy = load_base_strategy_reference(request)
         .map_err(|refusal| with_run_context(refusal, "strategy", request))?;
     let prepare = run_prepare_with_target_rows_per_chunk(
@@ -250,8 +278,14 @@ pub fn run_entity_workbench_with_batching(
         .map_err(|refusal| with_run_context(refusal, "prepare", request))?;
     let prepare_header = prepare_header(&prepare);
 
-    let index = build_and_write_index(request, &base_strategy, &prepare_header, &surfaces)
-        .map_err(|refusal| with_run_context(refusal, "index", request))?;
+    let index = build_and_write_index(
+        request,
+        &base_strategy,
+        &prepare_header,
+        &surfaces,
+        cache_mode,
+    )
+    .map_err(|refusal| with_run_context(refusal, "index", request))?;
     let block = build_and_write_block(request, &base_strategy, &index, &surfaces)
         .map_err(|refusal| with_run_context(refusal, "block", request))?;
     let (edge, edge_records) = build_and_write_edge(request, &base_strategy, &block, &surfaces)
@@ -264,7 +298,7 @@ pub fn run_entity_workbench_with_batching(
         &base_strategy,
         &prepare,
         &surfaces,
-        &index.artifact,
+        &index,
         &block.artifact,
         &edge,
         &solve,
@@ -306,8 +340,14 @@ pub fn run_entity_block_stage_with_batching(
     let surfaces = read_surfaces(run_request.work_dir, &prepare)
         .map_err(|refusal| with_run_context(refusal, "prepare", run_request))?;
     let prepare_header = prepare_header(&prepare);
-    let index = build_and_write_index(run_request, &base_strategy, &prepare_header, &surfaces)
-        .map_err(|refusal| with_run_context(refusal, "index", run_request))?;
+    let index = build_and_write_index(
+        run_request,
+        &base_strategy,
+        &prepare_header,
+        &surfaces,
+        EntityIndexCacheMode::Enabled,
+    )
+    .map_err(|refusal| with_run_context(refusal, "index", run_request))?;
     let block = build_and_write_block(run_request, &base_strategy, &index, &surfaces)
         .map_err(|refusal| with_run_context(refusal, "block", run_request))?;
 
@@ -344,8 +384,14 @@ pub fn run_entity_evidence_stage_with_batching(
     let surfaces = read_surfaces(run_request.work_dir, &prepare)
         .map_err(|refusal| with_run_context(refusal, "prepare", run_request))?;
     let prepare_header = prepare_header(&prepare);
-    let index = build_and_write_index(run_request, &base_strategy, &prepare_header, &surfaces)
-        .map_err(|refusal| with_run_context(refusal, "index", run_request))?;
+    let index = build_and_write_index(
+        run_request,
+        &base_strategy,
+        &prepare_header,
+        &surfaces,
+        EntityIndexCacheMode::Enabled,
+    )
+    .map_err(|refusal| with_run_context(refusal, "index", run_request))?;
     let block = read_block_stage_from_artifact(
         run_request,
         &base_strategy,
@@ -1489,8 +1535,34 @@ fn build_and_write_index(
     base_strategy: &BaseStrategyReference,
     prepare: &EntityArtifactHeader,
     surfaces: &[PreparedSurfaceRecord],
+    cache_mode: EntityIndexCacheMode,
 ) -> Result<EntityIndexRun, Refusal> {
     let strategy = stage_strategy(base_strategy, "index");
+    let cache_key = index_cache_key_from_prepare_header(
+        crate::entity::cache::EntityCacheLayer::NgramPostings,
+        prepare,
+        &strategy,
+    )?;
+    if cache_mode == EntityIndexCacheMode::Enabled
+        && let Some(bundle) = read_verified_cache_if_present(request.work_dir, &cache_key, None)?
+    {
+        let ngrams = bundle.postings.ngram_index.ok_or_else(|| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Entity index cache bundle is missing ngram postings",
+                json!({ "stage": "index", "writes_performed": false }),
+                Some(next_run_command(request)),
+            )
+        })?;
+        return Ok(EntityIndexRun {
+            artifact: bundle.artifact,
+            postings: bundle.postings.posting_index,
+            ngrams,
+            cache_mode,
+            cache_status: EntityIndexCacheStatus::Hit,
+            cache_receipt_content_hash: bundle.receipt.content_hash,
+        });
+    }
+
     let posting_surfaces = posting_surfaces(surfaces);
     let ngram_surfaces = ngram_surfaces(surfaces);
     let postings = EntityPostingIndex::build(
@@ -1522,6 +1594,10 @@ fn build_and_write_index(
     })?;
     let posting_diagnostics = postings.diagnostics.clone();
     let ngram_diagnostics = ngrams.diagnostics.clone();
+    let receipt_status = match cache_mode {
+        EntityIndexCacheMode::Enabled => EntityIndexCacheStatus::Rebuilt,
+        EntityIndexCacheMode::Disabled => EntityIndexCacheStatus::Bypassed,
+    };
     let artifact = build_index_artifact_contract(EntityIndexArtifactRequest {
         prepare: prepare.clone(),
         strategy: strategy.clone(),
@@ -1537,13 +1613,8 @@ fn build_and_write_index(
                 + ngram_diagnostics.common_ngram_count) as u64,
         ),
     })?;
-    let cache_key = index_cache_key_from_prepare_header(
-        crate::entity::cache::EntityCacheLayer::NgramPostings,
-        prepare,
-        &strategy,
-    )?;
     let diagnostics = index_diagnostics(&artifact, &posting_diagnostics, &ngram_diagnostics);
-    write_index_disk_bundle(
+    write_index_disk_bundle_with_cache_receipt(
         request.work_dir,
         EntityIndexPersistRequest {
             artifact: artifact.clone(),
@@ -1552,12 +1623,19 @@ fn build_and_write_index(
             diagnostics,
             max_artifact_bytes: None,
         },
+        cache_mode,
+        receipt_status,
+        cache_mode == EntityIndexCacheMode::Enabled,
     )?;
+    let receipt = read_index_cache_receipt(request.work_dir, &artifact, None)?;
 
     Ok(EntityIndexRun {
         artifact,
         postings,
         ngrams,
+        cache_mode,
+        cache_status: receipt_status,
+        cache_receipt_content_hash: receipt.content_hash,
     })
 }
 
@@ -1763,7 +1841,7 @@ fn run_artifact(
     base_strategy: &BaseStrategyReference,
     prepare: &PrepareRunArtifact,
     surfaces: &[PreparedSurfaceRecord],
-    index: &EntityIndexArtifact,
+    index: &EntityIndexRun,
     block: &BlockCandidateArtifact,
     edge: &EdgeEvidenceArtifact,
     solve: &SolveArtifact,
@@ -1864,21 +1942,21 @@ fn run_orchestration(
     let apply_path = request.work_dir.join("apply.csv").display().to_string();
 
     EntityRunOrchestration {
-        stage_order: [
-            "prepare",
-            "index",
-            "block",
-            "edge",
-            "solve",
-            "review_export",
-            "audit",
-            "review_import",
-            "promote",
-            "apply",
-        ]
-        .into_iter()
-        .map(str::to_string)
-        .collect(),
+        stage_order: stage_artifacts
+            .iter()
+            .map(|stage| stage.stage.clone())
+            .chain(
+                [
+                    "review_export",
+                    "audit",
+                    "review_import",
+                    "promote",
+                    "apply",
+                ]
+                .into_iter()
+                .map(str::to_string),
+            )
+            .collect(),
         profile_firewall: EntityRunProfileFirewall {
             profile_id: prepare.profile.id.clone(),
             profile_version: prepare.profile.version.clone(),
@@ -1978,7 +2056,7 @@ fn run_summary(
     request: EntityRunRequest<'_>,
     prepare: &PrepareRunArtifact,
     surfaces: &[PreparedSurfaceRecord],
-    index: &EntityIndexArtifact,
+    index: &EntityIndexRun,
     block: &BlockCandidateArtifact,
     edge: &EdgeEvidenceArtifact,
     solve: &SolveArtifact,
@@ -2008,7 +2086,7 @@ fn run_summary(
             ),
             (
                 "index_surfaces".to_string(),
-                count(&index.summary.counts, "surface_count"),
+                count(&index.artifact.summary.counts, "surface_count"),
             ),
             (
                 "exact_bucket_count".to_string(),
@@ -2056,6 +2134,22 @@ fn run_summary(
             (
                 "strategy_source".to_string(),
                 request.strategy.display().to_string(),
+            ),
+            (
+                "cache_mode".to_string(),
+                index.cache_mode.as_str().to_string(),
+            ),
+            (
+                "cache_status".to_string(),
+                index.cache_status.as_str().to_string(),
+            ),
+            (
+                "cache_receipt_path".to_string(),
+                INDEX_CACHE_RECEIPT_FILE.to_string(),
+            ),
+            (
+                "cache_receipt_hash".to_string(),
+                index.cache_receipt_content_hash.clone(),
             ),
             (
                 "batching_mode".to_string(),
@@ -2579,11 +2673,15 @@ fn relation_hint_edge(
 
 fn stage_artifacts(
     prepare: &PrepareRunArtifact,
-    index: &EntityIndexArtifact,
+    index: &EntityIndexRun,
     block: &BlockCandidateArtifact,
     edge: &EdgeEvidenceArtifact,
     solve: &SolveArtifact,
 ) -> Vec<EntityRunStageArtifact> {
+    let index_ref = EntityArtifactReference {
+        version: CANON_ENTITY_INDEX_VERSION.to_string(),
+        content_hash: index.artifact.artifact_content_hash.clone(),
+    };
     vec![
         EntityRunStageArtifact {
             stage: "prepare".to_string(),
@@ -2596,8 +2694,15 @@ fn stage_artifacts(
             stage: "index".to_string(),
             version: CANON_ENTITY_INDEX_VERSION.to_string(),
             path: "index.json".to_string(),
-            artifact_content_hash: index.artifact_content_hash.clone(),
-            upstream_artifacts: index.metadata.upstream_artifacts.clone(),
+            artifact_content_hash: index.artifact.artifact_content_hash.clone(),
+            upstream_artifacts: index.artifact.metadata.upstream_artifacts.clone(),
+        },
+        EntityRunStageArtifact {
+            stage: cache_receipt_stage_name(index.cache_mode).to_string(),
+            version: CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION.to_string(),
+            path: INDEX_CACHE_RECEIPT_FILE.to_string(),
+            artifact_content_hash: index.cache_receipt_content_hash.clone(),
+            upstream_artifacts: vec![index_ref],
         },
         EntityRunStageArtifact {
             stage: "block".to_string(),
@@ -2621,6 +2726,13 @@ fn stage_artifacts(
             upstream_artifacts: solve.metadata.upstream_artifacts.clone(),
         },
     ]
+}
+
+fn cache_receipt_stage_name(mode: EntityIndexCacheMode) -> &'static str {
+    match mode {
+        EntityIndexCacheMode::Enabled => "cache_enabled",
+        EntityIndexCacheMode::Disabled => "cache_disabled",
+    }
 }
 
 fn load_base_strategy_reference(
@@ -3044,10 +3156,393 @@ struct EntityIndexRun {
     artifact: EntityIndexArtifact,
     postings: EntityPostingIndex,
     ngrams: EntityNgramIndex,
+    cache_mode: EntityIndexCacheMode,
+    cache_status: EntityIndexCacheStatus,
+    cache_receipt_content_hash: String,
 }
 
 struct EntityBlockRun {
     artifact: BlockCandidateArtifact,
     candidates: Vec<crate::entity::block::BlockCandidateRecord>,
     exact_buckets: Vec<ExactBucketAssertion>,
+}
+
+#[cfg(test)]
+mod cache_runtime_tests {
+    use super::*;
+    use crate::entity::index_io::INDEX_ARTIFACT_FILE;
+    use std::path::PathBuf;
+
+    struct RuntimeFixture {
+        rows: PathBuf,
+        profile: PathBuf,
+        strategy: PathBuf,
+        registry: PathBuf,
+    }
+
+    impl RuntimeFixture {
+        fn load() -> Self {
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+                "tests/fixtures/extensions/neutral-domain/time_forward/trials/entity_disjoint/source",
+            );
+            Self {
+                rows: root.join("reference_rows.csv"),
+                profile: root.join("profile/regab_firm_identity.yaml"),
+                strategy: root.join("link_strategy.yaml"),
+                registry: root.join("registry"),
+            }
+        }
+
+        fn request<'a>(&'a self, work_dir: &'a Path) -> EntityRunRequest<'a> {
+            EntityRunRequest {
+                rows: &self.rows,
+                profile: self
+                    .profile
+                    .to_str()
+                    .expect("fixture profile path is UTF-8"),
+                strategy: &self.strategy,
+                registry: &self.registry,
+                work_dir,
+            }
+        }
+    }
+
+    #[test]
+    fn enabled_cache_mode_reports_warm_hit() {
+        let fixture = RuntimeFixture::load();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let work_dir = temp.path().join("work");
+
+        let cold = run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect("cold enabled run rebuilds cache");
+        assert_eq!(cache_label(&cold.artifact, "cache_mode"), "enabled");
+        assert_eq!(cache_label(&cold.artifact, "cache_status"), "rebuilt");
+        assert_eq!(
+            cache_label(&cold.artifact, "cache_receipt_path"),
+            INDEX_CACHE_RECEIPT_FILE
+        );
+        assert_cache_stage(&cold.artifact, "cache_enabled");
+        assert!(work_dir.join(INDEX_CACHE_RECEIPT_FILE).is_file());
+
+        let warm = run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect("warm enabled run reuses cache");
+        assert_eq!(cache_label(&warm.artifact, "cache_mode"), "enabled");
+        assert_eq!(cache_label(&warm.artifact, "cache_status"), "hit");
+        assert_cache_stage(&warm.artifact, "cache_enabled");
+        assert_ne!(
+            cache_label(&cold.artifact, "cache_receipt_hash"),
+            cache_label(&warm.artifact, "cache_receipt_hash"),
+            "hit refreshes the receipt status without changing semantic outputs"
+        );
+        assert_eq!(cold.candidate_pairs, warm.candidate_pairs);
+    }
+
+    #[test]
+    fn disabled_cache_mode_bypasses_and_makes_bundle_non_reusable() {
+        let fixture = RuntimeFixture::load();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let work_dir = temp.path().join("work");
+
+        run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect("enabled seed run builds reusable cache");
+        let disabled = run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Disabled,
+        )
+        .expect("disabled run bypasses cache");
+        assert_eq!(cache_label(&disabled.artifact, "cache_mode"), "disabled");
+        assert_eq!(cache_label(&disabled.artifact, "cache_status"), "bypassed");
+        assert_cache_stage(&disabled.artifact, "cache_disabled");
+
+        let enabled_after_disabled = run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect("enabled run rebuilds after disabled non-reusable receipt");
+        assert_eq!(
+            cache_label(&enabled_after_disabled.artifact, "cache_status"),
+            "rebuilt"
+        );
+    }
+
+    #[test]
+    fn enabled_cache_mode_refuses_tampered_bundle_before_hit() {
+        let fixture = RuntimeFixture::load();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let work_dir = temp.path().join("work");
+
+        run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect("enabled run builds cache");
+        std::fs::write(work_dir.join("index/postings.json"), b"{\"tampered\":true}")
+            .expect("tamper postings");
+
+        let refusal = run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect_err("tampered cache refuses before hit");
+        assert!(
+            refusal.message.contains("cache receipt")
+                || refusal.message.contains("cache bundle")
+                || refusal.detail.to_string().contains("cache_receipt"),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
+
+    #[test]
+    fn cache_receipt_refuses_unknown_fields_before_hit() {
+        let fixture = RuntimeFixture::load();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let work_dir = temp.path().join("work");
+
+        run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect("enabled run builds cache");
+        let receipt_path = work_dir.join(INDEX_CACHE_RECEIPT_FILE);
+        let mut receipt: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&receipt_path).expect("receipt bytes"))
+                .expect("receipt JSON");
+        receipt["unexpected"] = serde_json::json!(true);
+        std::fs::write(
+            &receipt_path,
+            serde_json::to_vec_pretty(&receipt).expect("receipt bytes"),
+        )
+        .expect("tamper receipt");
+
+        let refusal = run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect_err("unknown receipt field refuses");
+        assert!(
+            refusal.message.contains("cache receipt")
+                || refusal.detail.to_string().contains("unknown field"),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
+
+    #[test]
+    fn cache_receipt_refuses_impossible_mode_status_triples() {
+        let fixture = RuntimeFixture::load();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let work_dir = temp.path().join("work");
+
+        run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect("enabled run builds cache");
+        let receipt_path = work_dir.join(INDEX_CACHE_RECEIPT_FILE);
+        let mut receipt: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&receipt_path).expect("receipt bytes"))
+                .expect("receipt JSON");
+        receipt["mode"] = serde_json::json!("disabled");
+        receipt["status"] = serde_json::json!("hit");
+        receipt["reusable"] = serde_json::json!(true);
+        std::fs::write(
+            &receipt_path,
+            serde_json::to_vec_pretty(&receipt).expect("receipt bytes"),
+        )
+        .expect("tamper receipt");
+
+        let refusal = run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect_err("invalid receipt triple refuses");
+        assert!(
+            refusal.message.contains("mode/status/reusable")
+                || refusal.detail.to_string().contains("disabled"),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
+
+    #[test]
+    fn enabled_and_disabled_cache_modes_preserve_semantic_outputs() {
+        let fixture = RuntimeFixture::load();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let enabled_work = temp.path().join("enabled");
+        let disabled_work = temp.path().join("disabled");
+
+        let enabled = run_entity_workbench_with_cache_mode(
+            fixture.request(&enabled_work),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect("enabled run");
+        let disabled = run_entity_workbench_with_cache_mode(
+            fixture.request(&disabled_work),
+            EntityIndexCacheMode::Disabled,
+        )
+        .expect("disabled run");
+
+        assert_eq!(enabled.candidate_pairs, disabled.candidate_pairs);
+        assert_eq!(
+            enabled.artifact.summary.counts,
+            disabled.artifact.summary.counts
+        );
+        assert_eq!(
+            sorted_nonempty_lines(&enabled_work.join(BLOCK_CANDIDATES_PATH)),
+            sorted_nonempty_lines(&disabled_work.join(BLOCK_CANDIDATES_PATH))
+        );
+        assert_eq!(
+            sorted_nonempty_lines(&enabled_work.join(EDGE_RECORDS_PATH)),
+            sorted_nonempty_lines(&disabled_work.join(EDGE_RECORDS_PATH))
+        );
+        assert_eq!(
+            std::fs::read(enabled_work.join(INDEX_ARTIFACT_FILE)).expect("enabled index artifact"),
+            std::fs::read(disabled_work.join(INDEX_ARTIFACT_FILE))
+                .expect("disabled index artifact"),
+            "cache execution mode must not change the semantic index artifact"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn enabled_cache_mode_refuses_symlinked_cache_ancestor() {
+        let fixture = RuntimeFixture::load();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let work_dir = temp.path().join("work");
+        let symlink_target = temp.path().join("outside-index");
+        std::fs::create_dir_all(&work_dir).expect("work dir");
+        std::fs::create_dir_all(&symlink_target).expect("symlink target");
+        std::os::unix::fs::symlink(&symlink_target, work_dir.join("index"))
+            .expect("symlink cache ancestor");
+
+        let refusal = run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect_err("symlinked cache ancestor refuses");
+        assert!(
+            refusal.message.contains("symlink") || refusal.detail.to_string().contains("symlink"),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn enabled_cache_mode_refuses_symlinked_root_index_artifact() {
+        let fixture = RuntimeFixture::load();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let work_dir = temp.path().join("work");
+        let outside_artifact = temp.path().join("outside-index.json");
+        std::fs::create_dir_all(&work_dir).expect("work dir");
+        std::fs::write(&outside_artifact, b"{}").expect("outside artifact");
+        std::os::unix::fs::symlink(&outside_artifact, work_dir.join(INDEX_ARTIFACT_FILE))
+            .expect("index artifact symlink");
+
+        let refusal = run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect_err("symlinked root index artifact refuses before cache read");
+        assert!(
+            refusal.message.contains("symlink") || refusal.detail.to_string().contains("symlink"),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn enabled_cache_mode_refuses_symlinked_work_dir_before_prepare_writes() {
+        let fixture = RuntimeFixture::load();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let real_work = temp.path().join("real-work");
+        let work_dir = temp.path().join("work-link");
+        std::fs::create_dir_all(&real_work).expect("real work dir");
+        std::os::unix::fs::symlink(&real_work, &work_dir).expect("work dir symlink");
+
+        let refusal = run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect_err("symlinked work_dir refuses before prepare writes");
+        assert!(
+            refusal.message.contains("symlink") || refusal.detail.to_string().contains("symlink"),
+            "unexpected refusal: {refusal:?}"
+        );
+        assert!(
+            !real_work.join("prepare").exists(),
+            "prepare must not write through a symlinked work_dir"
+        );
+    }
+
+    fn cache_label<'a>(artifact: &'a EntityRunArtifact, key: &str) -> &'a str {
+        artifact
+            .summary
+            .labels
+            .get(key)
+            .map(String::as_str)
+            .unwrap_or("")
+    }
+
+    fn assert_cache_stage(artifact: &EntityRunArtifact, expected_stage: &str) {
+        let stage = artifact
+            .stage_artifacts
+            .iter()
+            .find(|stage| stage.stage == expected_stage)
+            .unwrap_or_else(|| panic!("missing {expected_stage} stage"));
+        assert_eq!(stage.version, CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION);
+        assert_eq!(stage.path, INDEX_CACHE_RECEIPT_FILE);
+        assert_eq!(
+            stage.artifact_content_hash,
+            cache_label(artifact, "cache_receipt_hash")
+        );
+        let index = artifact
+            .stage_artifacts
+            .iter()
+            .find(|stage| stage.stage == "index")
+            .expect("index stage");
+        assert_eq!(
+            stage.upstream_artifacts,
+            vec![EntityArtifactReference {
+                version: index.version.clone(),
+                content_hash: index.artifact_content_hash.clone(),
+            }]
+        );
+        assert!(
+            artifact
+                .metadata
+                .upstream_artifacts
+                .iter()
+                .any(|reference| {
+                    reference.version == stage.version
+                        && reference.content_hash == stage.artifact_content_hash
+                })
+        );
+        assert!(
+            artifact
+                .orchestration
+                .stage_order
+                .iter()
+                .any(|stage| { stage == expected_stage })
+        );
+    }
+
+    fn sorted_nonempty_lines(path: &Path) -> Vec<String> {
+        let mut lines = std::fs::read_to_string(path)
+            .expect("semantic artifact exists")
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                (!line.is_empty()).then(|| line.to_string())
+            })
+            .collect::<Vec<_>>();
+        lines.sort();
+        lines
+    }
 }

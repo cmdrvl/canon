@@ -734,10 +734,17 @@ fn entity_namespace_cli() {
         .args(["entity", "--help"])
         .assert()
         .success();
+    let normalize_help = |text: &str| {
+        text.lines()
+            .map(|line| line.trim_end_matches([' ', '\t']))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
     let entity_help_stdout = String::from_utf8(entity_help.get_output().stdout.clone()).unwrap();
     assert!(entity_help_stdout.contains("run"));
     assert!(entity_help_stdout.contains("candidate-recall"));
     assert!(entity_help_stdout.contains("alias-withholding"));
+    assert!(entity_help_stdout.contains("generalization"));
     assert!(entity_help_stdout.contains("evidence"));
     assert!(entity_help_stdout.contains("link"));
     assert!(!entity_help_stdout.contains("edge"));
@@ -746,20 +753,35 @@ fn entity_namespace_cli() {
         std::fs::read_to_string(fixture_path("tests/fixtures/canon_v1/help/entity_help.txt"))
             .unwrap();
     assert_eq!(
-        entity_help_stdout.trim_end(),
-        expected_entity_help.trim_end()
+        normalize_help(&entity_help_stdout),
+        normalize_help(&expected_entity_help)
     );
+
+    let run_help = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["entity", "run", "--help"])
+        .assert()
+        .success();
+    let run_help_stdout = String::from_utf8(run_help.get_output().stdout.clone()).unwrap();
+    assert!(run_help_stdout.contains("--cache-mode <CACHE_MODE>"));
+    assert!(run_help_stdout.contains("default: enabled"));
+    assert!(run_help_stdout.contains("disabled"));
 
     let link_help = Command::new(env!("CARGO_BIN_EXE_canon"))
         .args(["entity", "link", "--help"])
         .assert()
         .success();
     let link_help_stdout = String::from_utf8(link_help.get_output().stdout.clone()).unwrap();
+    assert!(link_help_stdout.contains("--cache-mode <CACHE_MODE>"));
+    assert!(link_help_stdout.contains("default: enabled"));
+    assert!(link_help_stdout.contains("disabled"));
     let expected_link_help = std::fs::read_to_string(fixture_path(
         "tests/fixtures/canon_v1/help/entity_link_help.txt",
     ))
     .unwrap();
-    assert_eq!(link_help_stdout.trim_end(), expected_link_help.trim_end());
+    assert_eq!(
+        normalize_help(&link_help_stdout),
+        normalize_help(&expected_link_help)
+    );
 
     Command::new(env!("CARGO_BIN_EXE_canon"))
         .args(["entity", "edge", "--help"])
@@ -803,6 +825,11 @@ fn entity_namespace_cli() {
             .as_str()
             .is_some_and(|usage| usage.starts_with("canon entity evidence"))
     }));
+    assert!(usage.iter().any(|entry| {
+        entry
+            .as_str()
+            .is_some_and(|usage| usage.starts_with("canon entity generalization"))
+    }));
     assert!(!usage.iter().any(|entry| {
         entry
             .as_str()
@@ -826,6 +853,12 @@ fn entity_namespace_cli() {
             .iter()
             .any(|entry| entry["name"] == "entity evidence"
                 && entry["output_schema"] == "canon_entity_evidence.v1")
+    );
+    assert!(
+        subcommands
+            .iter()
+            .any(|entry| entry["name"] == "entity generalization"
+                && entry["output_schema"] == "canon.evaluation.generalization.v1")
     );
     assert!(
         !subcommands
@@ -1253,6 +1286,63 @@ fn test_entity_link_cli_success_json() {
     assert_eq!(decisions["version"], "canon_entity_link_decisions.v0");
     assert_eq!(decisions["matches"][0]["reference_id"], "R-1");
     assert_eq!(decisions["matches"][0]["target_id"], "D1|1");
+}
+
+#[test]
+fn test_entity_cache_mode_disabled_reaches_native_run_and_link() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
+    let run_work_dir = temp_dir.path().join("entity-run-work");
+
+    let run_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "run",
+            fixture.reference.to_str().unwrap(),
+            "--profile",
+            "cmbs_tenant_label",
+            "--strategy",
+            fixture.strategy.to_str().unwrap(),
+            "--registry",
+            fixture.registry.to_str().unwrap(),
+            "--work-dir",
+            run_work_dir.to_str().unwrap(),
+            "--cache-mode",
+            "disabled",
+            "--no-witness",
+        ])
+        .assert()
+        .success();
+    let run_payload: Value = serde_json::from_slice(&run_output.get_output().stdout).unwrap();
+    assert_eq!(run_payload["summary"]["labels"]["cache_mode"], "disabled");
+    assert_eq!(run_payload["summary"]["labels"]["cache_status"], "bypassed");
+    assert!(
+        run_payload["stage_artifacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|stage| stage["stage"] == "cache_disabled")
+    );
+
+    let link_work_dir = temp_dir.path().join("entity-link-work");
+    let mut link_args = entity_link_smoke_args(&fixture, &link_work_dir);
+    link_args.extend(["--cache-mode", "disabled", "--no-witness"]);
+    Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(link_args)
+        .assert()
+        .success();
+
+    let linked_run: Value =
+        serde_json::from_slice(&std::fs::read(link_work_dir.join("run.json")).unwrap()).unwrap();
+    assert_eq!(linked_run["summary"]["labels"]["cache_mode"], "disabled");
+    assert_eq!(linked_run["summary"]["labels"]["cache_status"], "bypassed");
+    assert!(
+        linked_run["stage_artifacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|stage| stage["stage"] == "cache_disabled")
+    );
 }
 
 #[test]

@@ -12,24 +12,28 @@ use crate::{
         error::EntityRefusalKind,
         index::ngram_index::EntityNgramIndex,
         index::{
-            EntityIndexArtifact, EntityIndexCachePolicy, validate_index_artifact_contract,
-            validate_index_cache_policy,
+            EntityIndexArtifact, EntityIndexCacheMode, EntityIndexCachePolicy,
+            EntityIndexCacheStatus, validate_index_artifact_contract, validate_index_cache_policy,
         },
         postings::{EntityPostingIndex, PostingLayoutError},
     },
+    witness,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::json;
 use std::{
     collections::BTreeMap,
     fs,
+    io::ErrorKind,
     path::{Component, Path, PathBuf},
 };
 
 pub const CANON_ENTITY_INDEX_DISK_BUNDLE_VERSION: &str = "canon_entity_index_disk_bundle.v0";
 pub const CANON_ENTITY_INDEX_DIAGNOSTIC_VERSION: &str = "canon_entity_index_diagnostic.v0";
+pub const CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION: &str = "canon_entity_index_cache_receipt.v0";
 pub const INDEX_ARTIFACT_FILE: &str = "index.json";
 pub const INDEX_CACHE_KEY_FILE: &str = "index/cache_key.json";
+pub const INDEX_CACHE_RECEIPT_FILE: &str = "index/cache_receipt.json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntityIndexPostingsBundle {
@@ -134,6 +138,7 @@ pub struct EntityIndexDiskBundle {
     pub cache_key: EntityCacheKey,
     pub postings: EntityIndexPostingsBundle,
     pub diagnostics: Vec<EntityIndexDiagnosticRecord>,
+    pub receipt: EntityIndexCacheReceiptRef,
     pub paths: EntityIndexDiskPaths,
 }
 
@@ -141,23 +146,80 @@ pub struct EntityIndexDiskBundle {
 pub struct EntityIndexDiskPaths {
     pub artifact_path: PathBuf,
     pub cache_key_path: PathBuf,
+    pub receipt_path: PathBuf,
     pub postings_path: PathBuf,
     pub diagnostics_path: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EntityIndexCacheReceipt {
+    pub version: String,
+    pub mode: EntityIndexCacheMode,
+    pub status: EntityIndexCacheStatus,
+    pub reusable: bool,
+    pub bundle_hash: String,
+    pub files: Vec<EntityIndexCacheReceiptFile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EntityIndexCacheReceiptFile {
+    pub role: String,
+    pub path: String,
+    pub content_hash: String,
+    pub byte_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityIndexCacheReceiptRef {
+    pub receipt: EntityIndexCacheReceipt,
+    pub path: PathBuf,
+    pub content_hash: String,
 }
 
 pub fn write_index_disk_bundle(
     work_dir: impl AsRef<Path>,
     request: EntityIndexPersistRequest,
 ) -> Result<EntityIndexDiskPaths, Refusal> {
+    write_index_disk_bundle_with_cache_receipt(
+        work_dir,
+        request,
+        EntityIndexCacheMode::Enabled,
+        EntityIndexCacheStatus::Rebuilt,
+        true,
+    )
+}
+
+pub fn write_index_disk_bundle_with_cache_receipt(
+    work_dir: impl AsRef<Path>,
+    request: EntityIndexPersistRequest,
+    mode: EntityIndexCacheMode,
+    status: EntityIndexCacheStatus,
+    reusable: bool,
+) -> Result<EntityIndexDiskPaths, Refusal> {
     validate_index_artifact_contract(&request.artifact)?;
     request.postings.validate_reload()?;
     validate_diagnostics(&request.diagnostics)?;
 
     let paths = disk_paths(work_dir.as_ref(), &request.artifact)?;
+    reject_symlinked_bundle_components(work_dir.as_ref(), &paths)?;
     let artifact_bytes = to_json_bytes(&request.artifact, "index artifact")?;
     let cache_key_bytes = to_json_bytes(&request.cache_key, "index cache key")?;
     let postings_bytes = to_json_bytes(&request.postings, "index postings")?;
     let diagnostics_bytes = to_jsonl_bytes(&request.diagnostics)?;
+    let receipt = cache_receipt_from_bytes(
+        &request.artifact,
+        &paths,
+        mode,
+        status,
+        reusable,
+        &artifact_bytes,
+        &cache_key_bytes,
+        &postings_bytes,
+        &diagnostics_bytes,
+    )?;
+    let receipt_bytes = to_json_bytes(&receipt, "index cache receipt")?;
 
     enforce_write_budget(
         request.max_artifact_bytes,
@@ -166,6 +228,7 @@ pub fn write_index_disk_bundle(
             cache_key_bytes.len(),
             postings_bytes.len(),
             diagnostics_bytes.len(),
+            receipt_bytes.len(),
         ],
     )?;
 
@@ -173,6 +236,7 @@ pub fn write_index_disk_bundle(
     write_bytes(&paths.cache_key_path, &cache_key_bytes)?;
     write_bytes(&paths.postings_path, &postings_bytes)?;
     write_bytes(&paths.diagnostics_path, &diagnostics_bytes)?;
+    write_bytes(&paths.receipt_path, &receipt_bytes)?;
 
     Ok(paths)
 }
@@ -184,15 +248,29 @@ pub fn read_index_disk_bundle(
     max_artifact_bytes: Option<u64>,
 ) -> Result<EntityIndexDiskBundle, Refusal> {
     let paths = disk_paths(work_dir.as_ref(), expected_artifact)?;
-    enforce_read_budget(
-        max_artifact_bytes,
-        [
-            &paths.artifact_path,
-            &paths.cache_key_path,
-            &paths.postings_path,
-            &paths.diagnostics_path,
-        ],
-    )?;
+    reject_symlinked_bundle_components(work_dir.as_ref(), &paths)?;
+    enforce_read_budget(max_artifact_bytes, cache_bundle_paths(&paths))?;
+
+    let receipt =
+        read_index_cache_receipt(work_dir.as_ref(), expected_artifact, max_artifact_bytes)?;
+    if receipt.receipt.mode != EntityIndexCacheMode::Enabled
+        || !receipt.receipt.reusable
+        || matches!(
+            receipt.receipt.status,
+            EntityIndexCacheStatus::Miss | EntityIndexCacheStatus::Bypassed
+        )
+    {
+        return Err(artifact_contract_refusal(
+            "Entity index cache receipt is not reusable for enabled cache hit",
+            json!({
+                "stage": "index",
+                "mode": receipt.receipt.mode.as_str(),
+                "status": receipt.receipt.status.as_str(),
+                "reusable": receipt.receipt.reusable,
+                "writes_performed": false
+            }),
+        ));
+    }
 
     let artifact: EntityIndexArtifact = read_json_file(&paths.artifact_path, "index artifact")?;
     validate_index_artifact_contract(&artifact)?;
@@ -227,7 +305,121 @@ pub fn read_index_disk_bundle(
         cache_key,
         postings,
         diagnostics,
+        receipt,
         paths,
+    })
+}
+
+pub(crate) fn index_cache_file_exists(
+    work_dir: &Path,
+    path: &Path,
+    label: &str,
+) -> Result<bool, Refusal> {
+    reject_symlinked_path_components(work_dir, path, label)?;
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(read_io_refusal(path, label, error)),
+    }
+}
+
+pub(crate) fn read_index_artifact_for_cache(
+    work_dir: impl AsRef<Path>,
+    max_artifact_bytes: Option<u64>,
+) -> Result<EntityIndexArtifact, Refusal> {
+    let work_dir = work_dir.as_ref();
+    let artifact_path = work_dir.join(INDEX_ARTIFACT_FILE);
+    reject_symlinked_path_components(work_dir, &artifact_path, "index artifact")?;
+    enforce_read_budget(max_artifact_bytes, [&artifact_path])?;
+    let bytes = read_file_bytes_reject_symlink(&artifact_path, "index artifact")?;
+    let artifact: EntityIndexArtifact = serde_json::from_slice(&bytes).map_err(|error| {
+        artifact_contract_refusal(
+            "Failed to parse entity index cache artifact",
+            json!({
+                "stage": "index",
+                "artifact": "index artifact",
+                "path": artifact_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    validate_index_artifact_contract(&artifact)?;
+    Ok(artifact)
+}
+
+pub fn read_index_cache_receipt(
+    work_dir: impl AsRef<Path>,
+    artifact: &EntityIndexArtifact,
+    max_artifact_bytes: Option<u64>,
+) -> Result<EntityIndexCacheReceiptRef, Refusal> {
+    let paths = disk_paths(work_dir.as_ref(), artifact)?;
+    reject_symlinked_bundle_components(work_dir.as_ref(), &paths)?;
+    enforce_read_budget(max_artifact_bytes, cache_bundle_paths(&paths))?;
+    let receipt_bytes = read_file_bytes_reject_symlink(&paths.receipt_path, "index cache receipt")?;
+    let receipt: EntityIndexCacheReceipt =
+        serde_json::from_slice(&receipt_bytes).map_err(|error| {
+            artifact_contract_refusal(
+                "Failed to parse entity index cache receipt",
+                json!({
+                    "stage": "index",
+                    "artifact": "index cache receipt",
+                    "path": paths.receipt_path.display().to_string(),
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    validate_index_cache_receipt(&paths, artifact, &receipt)?;
+    Ok(EntityIndexCacheReceiptRef {
+        receipt,
+        path: paths.receipt_path,
+        content_hash: witness::hash_bytes(&receipt_bytes),
+    })
+}
+
+pub fn write_index_cache_receipt(
+    work_dir: impl AsRef<Path>,
+    artifact: &EntityIndexArtifact,
+    mode: EntityIndexCacheMode,
+    status: EntityIndexCacheStatus,
+    reusable: bool,
+    max_artifact_bytes: Option<u64>,
+) -> Result<EntityIndexCacheReceiptRef, Refusal> {
+    let paths = disk_paths(work_dir.as_ref(), artifact)?;
+    reject_symlinked_bundle_components(work_dir.as_ref(), &paths)?;
+    let artifact_bytes = read_file_bytes_reject_symlink(&paths.artifact_path, "index artifact")?;
+    let cache_key_bytes = read_file_bytes_reject_symlink(&paths.cache_key_path, "index cache key")?;
+    let postings_bytes = read_file_bytes_reject_symlink(&paths.postings_path, "index postings")?;
+    let diagnostics_bytes =
+        read_file_bytes_reject_symlink(&paths.diagnostics_path, "index diagnostics")?;
+    let receipt = cache_receipt_from_bytes(
+        artifact,
+        &paths,
+        mode,
+        status,
+        reusable,
+        &artifact_bytes,
+        &cache_key_bytes,
+        &postings_bytes,
+        &diagnostics_bytes,
+    )?;
+    let receipt_bytes = to_json_bytes(&receipt, "index cache receipt")?;
+    enforce_write_budget(
+        max_artifact_bytes,
+        [
+            artifact_bytes.len(),
+            cache_key_bytes.len(),
+            postings_bytes.len(),
+            diagnostics_bytes.len(),
+            receipt_bytes.len(),
+        ],
+    )?;
+    write_bytes(&paths.receipt_path, &receipt_bytes)?;
+    Ok(EntityIndexCacheReceiptRef {
+        receipt,
+        path: paths.receipt_path,
+        content_hash: witness::hash_bytes(&receipt_bytes),
     })
 }
 
@@ -238,6 +430,11 @@ fn disk_paths(
     Ok(EntityIndexDiskPaths {
         artifact_path: work_dir.join(INDEX_ARTIFACT_FILE),
         cache_key_path: resolve_relative_path(work_dir, INDEX_CACHE_KEY_FILE, "cache_key_path")?,
+        receipt_path: resolve_relative_path(
+            work_dir,
+            INDEX_CACHE_RECEIPT_FILE,
+            "cache_receipt_path",
+        )?,
         postings_path: resolve_relative_path(work_dir, &artifact.postings_path, "postings_path")?,
         diagnostics_path: resolve_relative_path(
             work_dir,
@@ -245,6 +442,281 @@ fn disk_paths(
             "diagnostics_path",
         )?,
     })
+}
+
+fn cache_bundle_paths(paths: &EntityIndexDiskPaths) -> [&PathBuf; 5] {
+    [
+        &paths.artifact_path,
+        &paths.cache_key_path,
+        &paths.postings_path,
+        &paths.diagnostics_path,
+        &paths.receipt_path,
+    ]
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cache_receipt_from_bytes(
+    artifact: &EntityIndexArtifact,
+    paths: &EntityIndexDiskPaths,
+    mode: EntityIndexCacheMode,
+    status: EntityIndexCacheStatus,
+    reusable: bool,
+    artifact_bytes: &[u8],
+    cache_key_bytes: &[u8],
+    postings_bytes: &[u8],
+    diagnostics_bytes: &[u8],
+) -> Result<EntityIndexCacheReceipt, Refusal> {
+    validate_receipt_paths_do_not_collide(paths)?;
+    validate_cache_receipt_mode_status(mode, status, reusable)?;
+    let file_inputs = [
+        (
+            "artifact",
+            INDEX_ARTIFACT_FILE,
+            paths.artifact_path.as_path(),
+            artifact_bytes,
+        ),
+        (
+            "cache_key",
+            INDEX_CACHE_KEY_FILE,
+            paths.cache_key_path.as_path(),
+            cache_key_bytes,
+        ),
+        (
+            "postings",
+            artifact.postings_path.as_str(),
+            paths.postings_path.as_path(),
+            postings_bytes,
+        ),
+        (
+            "diagnostics",
+            artifact.diagnostics_path.as_str(),
+            paths.diagnostics_path.as_path(),
+            diagnostics_bytes,
+        ),
+    ];
+    let files = file_inputs
+        .iter()
+        .map(
+            |(role, relative_path, _absolute_path, bytes)| EntityIndexCacheReceiptFile {
+                role: (*role).to_string(),
+                path: (*relative_path).to_string(),
+                content_hash: witness::hash_bytes(bytes),
+                byte_count: bytes.len() as u64,
+            },
+        )
+        .collect::<Vec<_>>();
+    Ok(EntityIndexCacheReceipt {
+        version: CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION.to_string(),
+        mode,
+        status,
+        reusable,
+        bundle_hash: cache_bundle_hash(&file_inputs),
+        files,
+    })
+}
+
+fn cache_bundle_hash(file_inputs: &[(&str, &str, &Path, &[u8])]) -> String {
+    let mut material = Vec::new();
+    for (role, relative_path, _absolute_path, bytes) in file_inputs {
+        material.extend_from_slice(role.as_bytes());
+        material.push(0);
+        material.extend_from_slice(relative_path.as_bytes());
+        material.push(0);
+        material.extend_from_slice(bytes.len().to_string().as_bytes());
+        material.push(0);
+        material.extend_from_slice(bytes);
+        material.push(0);
+    }
+    witness::hash_bytes(&material)
+}
+
+fn validate_index_cache_receipt(
+    paths: &EntityIndexDiskPaths,
+    artifact: &EntityIndexArtifact,
+    receipt: &EntityIndexCacheReceipt,
+) -> Result<(), Refusal> {
+    if receipt.version != CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION {
+        return Err(artifact_contract_refusal(
+            "Entity index cache receipt version mismatch",
+            json!({
+                "stage": "index",
+                "field": "cache_receipt.version",
+                "expected": CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION,
+                "actual": receipt.version,
+                "writes_performed": false
+            }),
+        ));
+    }
+    validate_cache_receipt_mode_status(receipt.mode, receipt.status, receipt.reusable)?;
+    validate_receipt_paths_do_not_collide(paths)?;
+    let artifact_bytes = read_file_bytes_reject_symlink(&paths.artifact_path, "index artifact")?;
+    let cache_key_bytes = read_file_bytes_reject_symlink(&paths.cache_key_path, "index cache key")?;
+    let postings_bytes = read_file_bytes_reject_symlink(&paths.postings_path, "index postings")?;
+    let diagnostics_bytes =
+        read_file_bytes_reject_symlink(&paths.diagnostics_path, "index diagnostics")?;
+    let expected = cache_receipt_from_bytes(
+        artifact,
+        paths,
+        receipt.mode,
+        receipt.status,
+        receipt.reusable,
+        &artifact_bytes,
+        &cache_key_bytes,
+        &postings_bytes,
+        &diagnostics_bytes,
+    )?;
+    if receipt.files != expected.files || receipt.bundle_hash != expected.bundle_hash {
+        return Err(artifact_contract_refusal(
+            "Entity index cache receipt does not match bundle bytes",
+            json!({
+                "stage": "index",
+                "field": "cache_receipt",
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_cache_receipt_mode_status(
+    mode: EntityIndexCacheMode,
+    status: EntityIndexCacheStatus,
+    reusable: bool,
+) -> Result<(), Refusal> {
+    let allowed = match mode {
+        EntityIndexCacheMode::Enabled => {
+            reusable
+                && matches!(
+                    status,
+                    EntityIndexCacheStatus::Hit | EntityIndexCacheStatus::Rebuilt
+                )
+        }
+        EntityIndexCacheMode::Disabled => !reusable && status == EntityIndexCacheStatus::Bypassed,
+    };
+    if allowed {
+        return Ok(());
+    }
+    Err(artifact_contract_refusal(
+        "Entity index cache receipt mode/status/reusable combination is invalid",
+        json!({
+            "stage": "index",
+            "mode": mode.as_str(),
+            "status": status.as_str(),
+            "reusable": reusable,
+            "writes_performed": false
+        }),
+    ))
+}
+
+fn validate_receipt_paths_do_not_collide(paths: &EntityIndexDiskPaths) -> Result<(), Refusal> {
+    let mut seen = BTreeMap::new();
+    for (role, path) in [
+        ("artifact", &paths.artifact_path),
+        ("cache_key", &paths.cache_key_path),
+        ("postings", &paths.postings_path),
+        ("diagnostics", &paths.diagnostics_path),
+        ("receipt", &paths.receipt_path),
+    ] {
+        if let Some(previous) = seen.insert(path.clone(), role) {
+            return Err(artifact_contract_refusal(
+                "Entity index cache bundle paths must not collide",
+                json!({
+                    "stage": "index",
+                    "path": path.display().to_string(),
+                    "first_role": previous,
+                    "second_role": role,
+                    "writes_performed": false
+                }),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn reject_symlinked_bundle_components(
+    work_dir: &Path,
+    paths: &EntityIndexDiskPaths,
+) -> Result<(), Refusal> {
+    for (label, path) in [
+        ("index artifact", &paths.artifact_path),
+        ("index cache key", &paths.cache_key_path),
+        ("index postings", &paths.postings_path),
+        ("index diagnostics", &paths.diagnostics_path),
+        ("index cache receipt", &paths.receipt_path),
+    ] {
+        reject_symlinked_path_components(work_dir, path, label)?;
+    }
+    Ok(())
+}
+
+fn reject_symlinked_path_components(
+    work_dir: &Path,
+    path: &Path,
+    label: &str,
+) -> Result<(), Refusal> {
+    reject_existing_symlink_component(work_dir, label)?;
+    let relative = path.strip_prefix(work_dir).map_err(|_| {
+        artifact_contract_refusal(
+            "Entity index cache path must remain under work_dir",
+            json!({
+                "stage": "index",
+                "artifact": label,
+                "work_dir": work_dir.display().to_string(),
+                "path": path.display().to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    let mut current = work_dir.to_path_buf();
+    for component in relative.components() {
+        let Component::Normal(name) = component else {
+            return Err(artifact_contract_refusal(
+                "Entity index cache path must be a safe work_dir-relative path",
+                json!({
+                    "stage": "index",
+                    "artifact": label,
+                    "path": path.display().to_string(),
+                    "writes_performed": false
+                }),
+            ));
+        };
+        current.push(name);
+        if !reject_existing_symlink_component(&current, label)? {
+            break;
+        }
+    }
+    Ok(())
+}
+
+fn reject_existing_symlink_component(path: &Path, label: &str) -> Result<bool, Refusal> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err(artifact_contract_refusal(
+                    "Entity index cache path component must not be a symlink",
+                    json!({
+                        "stage": "index",
+                        "artifact": label,
+                        "path": path.display().to_string(),
+                        "writes_performed": false
+                    }),
+                ));
+            }
+            Ok(true)
+        }
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(read_io_refusal(path, label, error)),
+    }
+}
+
+pub(crate) fn preflight_index_cache_entry_paths(work_dir: &Path) -> Result<(), Refusal> {
+    let artifact_path = work_dir.join(INDEX_ARTIFACT_FILE);
+    let cache_key_path = work_dir.join(INDEX_CACHE_KEY_FILE);
+    let receipt_path = work_dir.join(INDEX_CACHE_RECEIPT_FILE);
+    index_cache_file_exists(work_dir, &artifact_path, "entity index artifact")?;
+    index_cache_file_exists(work_dir, &cache_key_path, "index cache key")?;
+    index_cache_file_exists(work_dir, &receipt_path, "index cache receipt")?;
+    Ok(())
 }
 
 fn resolve_relative_path(work_dir: &Path, relative: &str, field: &str) -> Result<PathBuf, Refusal> {
@@ -348,6 +820,37 @@ fn read_json_file<T: DeserializeOwned>(path: &Path, label: &str) -> Result<T, Re
     })
 }
 
+fn read_file_bytes_reject_symlink(path: &Path, label: &str) -> Result<Vec<u8>, Refusal> {
+    let metadata =
+        fs::symlink_metadata(path).map_err(|error| read_io_refusal(path, label, error))?;
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+        return Err(artifact_contract_refusal(
+            "Entity index cache file must be a regular non-symlink file",
+            json!({
+                "stage": "index",
+                "artifact": label,
+                "path": path.display().to_string(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    let bytes = fs::read(path).map_err(|error| read_io_refusal(path, label, error))?;
+    if metadata.len() != bytes.len() as u64 {
+        return Err(artifact_contract_refusal(
+            "Entity index cache file changed while being verified",
+            json!({
+                "stage": "index",
+                "artifact": label,
+                "path": path.display().to_string(),
+                "expected_byte_count": metadata.len(),
+                "actual_byte_count": bytes.len(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(bytes)
+}
+
 fn read_diagnostics_jsonl(path: &Path) -> Result<Vec<EntityIndexDiagnosticRecord>, Refusal> {
     let bytes =
         fs::read(path).map_err(|error| read_io_refusal(path, "index diagnostics", error))?;
@@ -389,6 +892,18 @@ fn read_diagnostics_jsonl(path: &Path) -> Result<Vec<EntityIndexDiagnosticRecord
 fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), Refusal> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| write_io_refusal(path, error))?;
+    }
+    if let Ok(metadata) = fs::symlink_metadata(path)
+        && metadata.file_type().is_symlink()
+    {
+        return Err(artifact_contract_refusal(
+            "Entity index cache file must not overwrite a symlink",
+            json!({
+                "stage": "index",
+                "path": path.display().to_string(),
+                "writes_performed": false
+            }),
+        ));
     }
     let tmp_path = temporary_sibling_path(path);
     fs::write(&tmp_path, bytes).map_err(|error| write_io_refusal(&tmp_path, error))?;

@@ -52,6 +52,16 @@ pub enum EntityEmitMode {
     Summary,
 }
 
+/// Entity index cache mode for artifact-backed entity runs
+#[derive(Debug, Clone, Copy, ValueEnum, Default, PartialEq, Eq)]
+pub enum EntityCacheModeArg {
+    /// Read and write verified entity index cache artifacts
+    #[default]
+    Enabled,
+    /// Bypass cache reads and emit a disabled-cache receipt
+    Disabled,
+}
+
 /// Emit mode for project ergonomics subcommands
 #[derive(Debug, Clone, ValueEnum, Default)]
 pub enum ProjectEmitMode {
@@ -894,6 +904,8 @@ pub enum EntitySubcommand {
     /// Compile a public alias-withholding execution envelope into a report
     #[command(name = "alias-withholding")]
     AliasWithholding(EntityAliasWithholdingCli),
+    /// Compile a strict artifact-backed generalization execution envelope into a report
+    Generalization(EntityGeneralizationCli),
     /// Score typed evidence for candidate pairs
     Evidence(EntityEvidenceCli),
     /// Solve entity identity assignments from evidence artifacts
@@ -1447,6 +1459,10 @@ pub struct EntityRunCli {
     #[arg(long = "work-dir")]
     pub work_dir: Option<PathBuf>,
 
+    /// Entity index cache mode
+    #[arg(long = "cache-mode", value_enum, default_value = "enabled")]
+    pub cache_mode: EntityCacheModeArg,
+
     /// Frozen evaluation suite directory
     #[arg(long)]
     pub suite: Option<PathBuf>,
@@ -1565,6 +1581,17 @@ pub struct EntityAliasWithholdingCli {
 }
 
 #[derive(Args, Debug, Clone)]
+pub struct EntityGeneralizationCli {
+    /// Strict generalization execution envelope JSON
+    #[arg(long)]
+    pub manifest: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
 pub struct EntityEvidenceCli {
     /// Input CSV or JSONL rows
     pub rows: PathBuf,
@@ -1667,6 +1694,10 @@ pub struct EntityLinkCli {
     /// Work directory for artifact-backed stages; required for successful execution
     #[arg(long = "work-dir")]
     pub work_dir: Option<PathBuf>,
+
+    /// Entity index cache mode
+    #[arg(long = "cache-mode", value_enum, default_value = "enabled")]
+    pub cache_mode: EntityCacheModeArg,
 
     /// Run a frozen audit suite and write audit.json under --work-dir
     #[arg(long)]
@@ -2540,6 +2571,8 @@ mod tests {
             "entity_profile",
             "--work-dir",
             "work/entity",
+            "--cache-mode",
+            "disabled",
             "--suite",
             "suite",
             "--emit",
@@ -2559,10 +2592,59 @@ mod tests {
             assert_eq!(run.strategy, PathBuf::from("strategy.yaml"));
             assert_eq!(run.registry, PathBuf::from("registries/entity"));
             assert_eq!(run.work_dir, Some(PathBuf::from("work/entity")));
+            assert!(matches!(run.cache_mode, EntityCacheModeArg::Disabled));
             assert_eq!(run.suite, Some(PathBuf::from("suite")));
             assert!(matches!(run.emit, EntityEmitMode::Summary));
             assert!(run.no_witness);
         }
+    }
+
+    #[test]
+    fn test_cli_entity_run_cache_mode_defaults_to_enabled() {
+        let args = [
+            "canon",
+            "entity",
+            "run",
+            "rows.csv",
+            "--strategy",
+            "strategy.yaml",
+            "--registry",
+            "registries/entity",
+            "--profile",
+            "entity_profile",
+            "--work-dir",
+            "work/entity",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = entity_command(cli) else {
+            return;
+        };
+        let EntitySubcommand::Run(run) = command.command else {
+            panic!("expected entity run command");
+        };
+        assert!(matches!(run.cache_mode, EntityCacheModeArg::Enabled));
+    }
+
+    #[test]
+    fn test_cli_entity_cache_mode_rejects_unknown_value() {
+        let args = [
+            "canon",
+            "entity",
+            "run",
+            "rows.csv",
+            "--strategy",
+            "strategy.yaml",
+            "--registry",
+            "registries/entity",
+            "--profile",
+            "entity_profile",
+            "--work-dir",
+            "work/entity",
+            "--cache-mode",
+            "auto",
+        ];
+        assert!(Cli::try_parse_from(args).is_err());
     }
 
     #[test]
@@ -2667,6 +2749,33 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_entity_generalization_parsing() {
+        let args = [
+            "canon",
+            "entity",
+            "generalization",
+            "--manifest",
+            "strict-envelope.json",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = entity_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, EntitySubcommand::Generalization(_)));
+        if let EntitySubcommand::Generalization(generalization) = subcommand {
+            assert_eq!(
+                generalization.manifest,
+                PathBuf::from("strict-envelope.json")
+            );
+            assert!(matches!(generalization.emit, EntityEmitMode::Summary));
+        }
+    }
+
+    #[test]
     fn test_cli_entity_evidence_parsing() {
         let args = [
             "canon",
@@ -2765,6 +2874,8 @@ mod tests {
             "1048576",
             "--work-dir",
             "work/entity-link",
+            "--cache-mode",
+            "disabled",
             "--suite",
             "suite",
             "--emit",
@@ -2790,10 +2901,39 @@ mod tests {
             assert_eq!(link.max_rows, Some(1000));
             assert_eq!(link.max_bytes, Some(1_048_576));
             assert_eq!(link.work_dir, Some(PathBuf::from("work/entity-link")));
+            assert!(matches!(link.cache_mode, EntityCacheModeArg::Disabled));
             assert_eq!(link.suite, Some(PathBuf::from("suite")));
             assert!(matches!(link.emit, EntityEmitMode::Summary));
             assert!(link.no_witness);
         }
+    }
+
+    #[test]
+    fn test_cli_entity_link_cache_mode_defaults_to_enabled() {
+        let args = [
+            "canon",
+            "entity",
+            "link",
+            "reference.csv",
+            "target.csv",
+            "--profile",
+            "entity_profile",
+            "--strategy",
+            "strategy.yaml",
+            "--registry",
+            "registries/entity",
+            "--work-dir",
+            "work/entity-link",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = entity_command(cli) else {
+            return;
+        };
+        let EntitySubcommand::Link(link) = command.command else {
+            panic!("expected entity link command");
+        };
+        assert!(matches!(link.cache_mode, EntityCacheModeArg::Enabled));
     }
 
     #[test]

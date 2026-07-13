@@ -20,7 +20,8 @@ use crate::{
         index_io::{
             EntityIndexDiagnosticRecord, EntityIndexDiskBundle, EntityIndexDiskPaths,
             EntityIndexPersistRequest, EntityIndexPostingsBundle, INDEX_ARTIFACT_FILE,
-            INDEX_CACHE_KEY_FILE, read_index_disk_bundle, write_index_disk_bundle,
+            INDEX_CACHE_KEY_FILE, index_cache_file_exists, read_index_artifact_for_cache,
+            read_index_disk_bundle, write_index_disk_bundle,
         },
         postings::{EntityPostingBuildConfig, EntityPostingIndex, EntityPostingSurface},
         prepare::{PrepareRegistrySnapshot, PrepareRunArtifact, PreparedSurfaceRecord},
@@ -48,12 +49,30 @@ pub const DEFAULT_INDEX_POSTINGS_PATH: &str = "index/postings.json";
 pub const DEFAULT_INDEX_DIAGNOSTICS_PATH: &str = "index/diagnostics.jsonl";
 pub const PREPARE_ARTIFACT_PATH: &str = "prepare/prepare.json";
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EntityIndexCacheMode {
+    #[default]
+    Enabled,
+    Disabled,
+}
+
+impl EntityIndexCacheMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Enabled => "enabled",
+            Self::Disabled => "disabled",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EntityIndexCacheStatus {
     Hit,
     Miss,
     Rebuilt,
+    Bypassed,
 }
 
 impl EntityIndexCacheStatus {
@@ -62,6 +81,7 @@ impl EntityIndexCacheStatus {
             Self::Hit => "hit",
             Self::Miss => "miss",
             Self::Rebuilt => "rebuilt",
+            Self::Bypassed => "bypassed",
         }
     }
 }
@@ -478,28 +498,33 @@ fn load_prepare_artifact(work_dir: &Path) -> Result<PrepareRunArtifact, Refusal>
     )
 }
 
-fn read_verified_cache_if_present(
+pub(crate) fn read_verified_cache_if_present(
     work_dir: &Path,
     current_cache_key: &EntityCacheKey,
     max_artifact_bytes: Option<u64>,
 ) -> Result<Option<EntityIndexDiskBundle>, Refusal> {
     let artifact_path = work_dir.join(INDEX_ARTIFACT_FILE);
     let cache_key_path = work_dir.join(INDEX_CACHE_KEY_FILE);
-    let artifact_exists = artifact_path.exists();
-    let cache_key_exists = cache_key_path.exists();
+    let receipt_path = work_dir.join(crate::entity::index_io::INDEX_CACHE_RECEIPT_FILE);
+    let artifact_exists =
+        index_cache_file_exists(work_dir, &artifact_path, "entity index artifact")?;
+    let cache_key_exists = index_cache_file_exists(work_dir, &cache_key_path, "index cache key")?;
+    let receipt_exists = index_cache_file_exists(work_dir, &receipt_path, "index cache receipt")?;
 
-    if !artifact_exists && !cache_key_exists {
+    if !artifact_exists && !cache_key_exists && !receipt_exists {
         return Ok(None);
     }
-    if artifact_exists != cache_key_exists {
+    if !(artifact_exists && cache_key_exists && receipt_exists) {
         return Err(EntityRefusalKind::ArtifactContract.to_refusal(
             "Entity index cache is incomplete",
             json!({
                 "stage": "index",
                 "artifact_path": artifact_path.display().to_string(),
                 "cache_key_path": cache_key_path.display().to_string(),
+                "receipt_path": receipt_path.display().to_string(),
                 "artifact_exists": artifact_exists,
                 "cache_key_exists": cache_key_exists,
+                "receipt_exists": receipt_exists,
                 "writes_performed": false
             }),
             Some(
@@ -509,16 +534,30 @@ fn read_verified_cache_if_present(
         ));
     }
 
-    let existing_artifact: EntityIndexArtifact =
-        read_json_file(&artifact_path, "entity index artifact")?;
-    validate_index_artifact_contract(&existing_artifact)?;
-    read_index_disk_bundle(
+    let existing_artifact = read_index_artifact_for_cache(work_dir, max_artifact_bytes)?;
+    let receipt = crate::entity::index_io::read_index_cache_receipt(
+        work_dir,
+        &existing_artifact,
+        max_artifact_bytes,
+    )?;
+    if receipt.receipt.mode != EntityIndexCacheMode::Enabled || !receipt.receipt.reusable {
+        return Ok(None);
+    }
+    let mut bundle = read_index_disk_bundle(
         work_dir,
         &existing_artifact,
         current_cache_key,
         max_artifact_bytes,
-    )
-    .map(Some)
+    )?;
+    bundle.receipt = crate::entity::index_io::write_index_cache_receipt(
+        work_dir,
+        &bundle.artifact,
+        EntityIndexCacheMode::Enabled,
+        EntityIndexCacheStatus::Hit,
+        true,
+        max_artifact_bytes,
+    )?;
+    Ok(Some(bundle))
 }
 
 fn validate_prepare_artifact_hash(artifact: &PrepareRunArtifact) -> Result<(), Refusal> {
@@ -1365,6 +1404,62 @@ pub fn required_index_hash_fields() -> &'static [EntityHashField] {
         EntityHashField::NamekitVersion,
         EntityHashField::NamekitHash,
     ]
+}
+
+#[cfg(test)]
+mod cache_preflight_tests {
+    use super::*;
+
+    fn test_cache_key() -> EntityCacheKey {
+        EntityCacheKey {
+            contract_version: "canon.entity.cache_key.v0".to_string(),
+            layer: EntityCacheLayer::NgramPostings,
+            input_hash: "blake3:input".to_string(),
+            profile_hash: "blake3:profile".to_string(),
+            strategy_hash: "blake3:strategy".to_string(),
+            registry_snapshot_hash: "blake3:registry".to_string(),
+            upstream_artifact_hash: Some("blake3:prepare".to_string()),
+            patch_hash: None,
+            namekit_version: "test".to_string(),
+            namekit_hash: Some("blake3:namekit".to_string()),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn standalone_cache_probe_refuses_symlinked_work_dir_before_read() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let real_work = temp.path().join("real-work");
+        let work_dir = temp.path().join("work-link");
+        std::fs::create_dir_all(&real_work).expect("real work dir");
+        std::os::unix::fs::symlink(&real_work, &work_dir).expect("work dir symlink");
+
+        let refusal = read_verified_cache_if_present(&work_dir, &test_cache_key(), None)
+            .expect_err("symlinked work_dir refuses before cache read");
+        assert!(
+            refusal.message.contains("symlink") || refusal.detail.to_string().contains("symlink"),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn standalone_cache_probe_refuses_symlinked_index_artifact_before_read() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let work_dir = temp.path().join("work");
+        let outside_artifact = temp.path().join("outside-index.json");
+        std::fs::create_dir_all(&work_dir).expect("work dir");
+        std::fs::write(&outside_artifact, b"{}").expect("outside artifact");
+        std::os::unix::fs::symlink(&outside_artifact, work_dir.join(INDEX_ARTIFACT_FILE))
+            .expect("index artifact symlink");
+
+        let refusal = read_verified_cache_if_present(&work_dir, &test_cache_key(), None)
+            .expect_err("symlinked index artifact refuses before cache read");
+        assert!(
+            refusal.message.contains("symlink") || refusal.detail.to_string().contains("symlink"),
+            "unexpected refusal: {refusal:?}"
+        );
+    }
 }
 
 #[path = "ngram_index.rs"]

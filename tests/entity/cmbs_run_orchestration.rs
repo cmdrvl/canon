@@ -3,6 +3,7 @@
 use canon::entity::{
     CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION, CANON_ENTITY_INDEX_VERSION,
     CANON_ENTITY_PREPARE_VERSION, CANON_ENTITY_SOLVE_VERSION, EntityArtifactReference,
+    index_io::CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION,
     run::{EntityRunArtifact, EntityRunHandoffStep, EntityRunRequest, run_entity_workbench},
 };
 use std::{
@@ -26,6 +27,7 @@ fn cmbs_run_orchestration_orders_review_audit_promote_apply_handoffs() {
         [
             "prepare",
             "index",
+            "cache_enabled",
             "block",
             "edge",
             "solve",
@@ -179,6 +181,7 @@ fn artifact_chain_continuity_cmbs_run_profiles_hashes_and_paths() {
         [
             CANON_ENTITY_PREPARE_VERSION,
             CANON_ENTITY_INDEX_VERSION,
+            CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION,
             CANON_ENTITY_BLOCK_VERSION,
             CANON_ENTITY_EDGE_VERSION,
             CANON_ENTITY_SOLVE_VERSION

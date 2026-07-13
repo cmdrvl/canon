@@ -15,6 +15,7 @@ use canon::{
         audit::{EntityAuditGateCheck, EntityAuditRequest, EntityAuditSuite, run_entity_audit},
         edge::{EdgeEvidenceHit, EdgeEvidenceRecord, build_edge_evidence_record},
         graph::{SignedEvidenceGraphInput, build_signed_evidence_graph},
+        index_io::CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION,
         promote::{
             EntityPromoteRegistryRequest, EntityPromotedAlias, EntityPromotionAuditExpectation,
             promote_registry_aliases,
@@ -351,7 +352,7 @@ fn run_stage_logs(artifact: &EntityRunArtifact, work_dir: &Path) -> Vec<Value> {
                 &path,
                 &stage.version,
                 &stage.artifact_content_hash,
-                artifact_summary(&path),
+                artifact_summary(&path, &stage.version),
             )
         })
         .collect()
@@ -377,11 +378,35 @@ fn stage_log(
     })
 }
 
-fn artifact_summary(path: &Path) -> Value {
-    read_json::<Value>(path)
-        .get("summary")
-        .cloned()
-        .unwrap_or(Value::Null)
+fn artifact_summary(path: &Path, artifact_version: &str) -> Value {
+    let artifact = read_json::<Value>(path);
+    if artifact_version == CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION {
+        return cache_receipt_summary(&artifact);
+    }
+    artifact.get("summary").cloned().unwrap_or(Value::Null)
+}
+
+fn cache_receipt_summary(receipt: &Value) -> Value {
+    assert_eq!(
+        str_at(receipt, "version"),
+        CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION
+    );
+    let mode = str_at(receipt, "mode");
+    let status = str_at(receipt, "status");
+    let reusable = receipt["reusable"]
+        .as_bool()
+        .expect("cache receipt reusable bool");
+    assert_eq!(mode, "enabled", "CMBS E2E cache receipt mode");
+    assert!(reusable, "CMBS E2E cache receipt must be reusable");
+    assert!(
+        matches!(status, "hit" | "rebuilt"),
+        "CMBS E2E cache receipt status must be hit or rebuilt: {status}"
+    );
+    json!({
+        "mode": mode,
+        "status": status,
+        "reusable": reusable
+    })
 }
 
 fn mini_e2e_review_solve(base: &SolveArtifact) -> SolveArtifact {

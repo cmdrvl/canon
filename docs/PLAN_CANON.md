@@ -95,9 +95,10 @@ canon strategy promote --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TAS
 canon strategy list --registry <REGISTRY> [--key-type schema|task] [--grade operator-attested|proof-attested] [--status active|deprecated] [--emit json|summary]
 canon strategy explain --registry <REGISTRY> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]
 canon strategy diff --old <OLD_REGISTRY> --new <NEW_REGISTRY> [--emit json|summary]
-canon entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--suite <DIR>] [--emit json|summary] [--no-witness]
-canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
+canon entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--cache-mode enabled|disabled] [--suite <DIR>] [--emit json|summary] [--no-witness]
+canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
+canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]
 canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY> --work-dir <DIR>
 canon entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--emit json|summary]
 canon entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--emit jsonl|summary]
@@ -321,7 +322,7 @@ lookup path and it does not change `canon.v0` exact-match semantics.
 - **Cluster mode**: `canon entity run` groups profiled observations inside one
   corpus through prepare, index, block, evidence, solve, audit, review, and
   promotion artifacts.
-- **Link mode**: `canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]`
+- **Link mode**: `canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]`
   aligns two row sets through the same typed request and artifact path as
   project mode. It is not a public `edge` alias, does not bypass
   evidence/audit/review, and emits `canon_entity_link.v0` with deterministic
@@ -372,6 +373,51 @@ lookup path and it does not change `canon.v0` exact-match semantics.
   artifact text
 - does not mutate registries and does not change normal exact lookup semantics
 
+`canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]`
+- compiles a strict artifact-backed entity-disjoint/time-forward execution
+  envelope into a benchmark report
+- uses the same public command for public fixtures and operator-owned private
+  corpora
+- loads manifest-relative native candidate-recall, link, run, solve,
+  observation/surface sidecar, and leakage-source artifacts by path, version,
+  and content hash
+- requires strict solve derivation refs for `solve_derivation.edge_artifact.path`,
+  `solve_derivation.edge_records.path`, `solve_derivation.prepared_surfaces.path`,
+  and a hash-bound `solve_derivation.solve_policy` artifact with version
+  `canon.evaluation.generalization.solve_policy.v0`; the policy file byte hash
+  must equal `cross_bindings.policy_digest`, and edge/prepared refs are
+  path-bound to the loaded run `work_dir`
+- requires each trial's `registry_dir` to be manifest-relative and resolved
+  inside the envelope root; absolute paths, traversal segments, and symlink
+  registry roots are refused
+- treats `run.metadata.registry_snapshot.source` as inert metadata continuity,
+  not as a filesystem path to open
+- rebuilds the loaded solve and run exactly from those derivation inputs before
+  scoring
+- derives decisions, candidate ranks, false-merge outcomes, and leakage status
+  from those artifacts rather than self-attested fields in the envelope
+- emits main report version `canon.evaluation.generalization.v1` with nested
+  `quality.version` `canon.evaluation.generalization.quality_gate_report.v0`,
+  `quality.contract_version` `canon.entity.quality.v1`, fixed canonical gate
+  results for `candidate_recall_at_50_min`, `auto_link_precision_min`,
+  `auto_link_recall_min`, `critical_false_merges_max`, and
+  `accounted_case_rate_min`, and `quality.release_claim_status`
+  `eligible|blocked`
+- defines the `canon.entity.quality.v1` fixed thresholds as
+  `candidate_recall_at_50 >= 0.995`, `auto_link_precision >= 0.995`,
+  `auto_link_recall >= 0.98`, critical false merges `== 0`, and
+  `accounted_case_rate == 1.0`; zero-denominator rate gates emit
+  `not_applicable`, which keeps `quality.release_claim_status` `blocked`
+  because eligibility requires every gate to pass
+- accepts no caller-adjustable threshold or waiver inputs for this command
+- hashes report identifiers, paths, and cutoffs at the CLI boundary; public
+  refusals expose a stable reason and message fingerprint rather than private
+  artifact text
+- is read-only, exits `0` for a structurally valid `eligible` or `blocked`
+  report, including low-quality or critical-false-merge blocked reports, and
+  exits `2` only for malformed envelopes or stale/missing/tampered artifacts;
+  it does not change normal exact lookup semantics
+
 `canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY> --work-dir <DIR>`
 - validates the profile, registry snapshot, and source rows
 - writes prepared surfaces and profile firewall artifacts under the work
@@ -382,6 +428,18 @@ lookup path and it does not change `canon.v0` exact-match semantics.
 `canon entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--emit json|summary]`
 - builds deterministic local index artifacts for candidate generation
 - records profile, strategy, registry, and source hashes for cache correctness
+- records native cache receipts as `canon_entity_index_cache_receipt.v0`;
+  `canon entity run` and `canon entity link` expose
+  `--cache-mode enabled|disabled` and default to `enabled`
+- a genuine warm hit requires an enabled reusable receipt and reports
+  `cache_enabled` with status `hit`, while disabled cache mode bypasses reuse,
+  writes a non-reusable
+  `cache_disabled` receipt, and reports status `bypassed`
+- hashes the complete cache bundle in the receipt: index artifact, cache key,
+  postings, and diagnostics bytes
+- binds cache receipts to the native index stage, refuses stale/tampered bundles
+  or invalid mode/status/reusable triples before reuse, and preserves semantic
+  output parity between enabled and disabled cache modes
 
 `canon entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--emit jsonl|summary]`
 - emits bounded candidate neighborhoods from configured blocking operators
@@ -462,8 +520,9 @@ Streams
 
 No other outcomes.
 
-Workbench evaluation commands such as `canon entity alias-withholding` are
-report compilers rather than core lookup runs: a valid report exits `0`, and a
+Workbench evaluation commands such as `canon entity alias-withholding` and
+`canon entity generalization` are report compilers rather than core lookup runs:
+a valid report exits `0` even when its internal release claim is blocked, and a
 bad execution envelope or referenced artifact exits `2` with a structured
 refusal.
 

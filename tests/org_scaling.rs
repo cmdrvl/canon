@@ -162,7 +162,14 @@ fn entity_cli_scaling_stays_within_structural_budgets() {
         .collect::<BTreeSet<_>>();
     assert_eq!(
         stages,
-        BTreeSet::from(["block", "edge", "index", "prepare", "solve"])
+        BTreeSet::from([
+            "block",
+            "cache_enabled",
+            "edge",
+            "index",
+            "prepare",
+            "solve"
+        ])
     );
 
     assert!(work_dir.join("run.json").exists());

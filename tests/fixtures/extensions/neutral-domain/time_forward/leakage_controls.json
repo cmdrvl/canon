@@ -7,7 +7,7 @@
       "channel": "dictionary",
       "protected_set": "holdout_entity",
       "locator": "strategy/dictionary/generated",
-      "value": "Beta Workshop LLC",
+      "value": "Beta Workshop North",
       "expected_error": "entity_disjoint_leak"
     },
     {
@@ -17,7 +17,7 @@
       "channel": "alias",
       "protected_set": "future_observation",
       "locator": "registry/aliases/pre_cutoff",
-      "value": "Harbor Signal Renewed",
+      "value": "Harbor Signals",
       "expected_error": "future_leakage"
     },
     {
@@ -48,6 +48,26 @@
       "protected_set": "future_observation",
       "locator": "normalization/patches/post_cutoff",
       "value": "Future Nova Labs",
+      "expected_error": "future_leakage"
+    },
+    {
+      "case_id": "holdout_cache_leak",
+      "family": "entity_disjoint",
+      "trial_id": "entity_disjoint.neutral.planted",
+      "channel": "cache",
+      "protected_set": "holdout_entity",
+      "locator": "cache/warm/entity-disjoint",
+      "value": "obs.holdout.beta.ref",
+      "expected_error": "entity_disjoint_leak"
+    },
+    {
+      "case_id": "future_generated_corpus_leak",
+      "family": "time_forward",
+      "trial_id": "time_forward.neutral.cutoff",
+      "channel": "generated_corpus",
+      "protected_set": "future_observation",
+      "locator": "generated-corpus/post-cutoff",
+      "value": "Harbor Signals",
       "expected_error": "future_leakage"
     }
   ]

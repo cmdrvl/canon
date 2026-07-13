@@ -32,9 +32,10 @@
       "canon strategy resolve --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> [--emit json|summary]",
       "canon strategy register --registry <DIR> --schema <SCHEMA.json> --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json> --next-version <VERSION> [--rule-id <RULE>] [--emit json|summary]",
       "canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]",
-      "canon entity run <ROWS> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--suite <SUITE_DIR>] [--emit json|summary] [--no-witness]",
-      "canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--suite <SUITE_DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
+      "canon entity run <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--cache-mode enabled|disabled] [--suite <SUITE_DIR>] [--emit json|summary] [--no-witness]",
+      "canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
       "canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]",
+      "canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]",
       "canon entity block <ROWS> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
       "canon entity evidence <ROWS> --strategy <STRATEGY.yaml> --candidates <BLOCK.jsonl> --registry <REGISTRY_DIR> [--emit jsonl|summary]",
       "canon entity solve <ROWS> --strategy <STRATEGY.yaml> --evidence <EVIDENCE.jsonl> --registry <REGISTRY_DIR> [--emit json|summary]",
@@ -314,8 +315,8 @@
     },
     {
       "name": "entity link",
-      "usage": "canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--suite <SUITE_DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
-      "description": "Link two row sets through the artifact-backed entity workbench and emit canon_entity_link.v0 with deterministic link decisions before optional registry write-back",
+      "usage": "canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--suite <SUITE_DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
+      "description": "Link two row sets through the artifact-backed entity workbench and emit canon_entity_link.v0 with deterministic link decisions before optional registry write-back; nested runs bind native cache receipt stages using canon_entity_index_cache_receipt.v0 when cache artifacts are present",
       "output_mode": "mixed",
       "output_schema": "canon_entity_link.v0",
       "status": "implemented",
@@ -335,6 +336,7 @@
         { "name": "gold", "flag": "--gold", "type": "file_path", "description": "Gold cross-reference JSONL file for scoring" },
         { "name": "write_back", "flag": "--write-back", "type": "flag", "description": "Write matched ID pairs to a new registry mapping file after gates pass" },
         { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_entity_link.v0) or summary" },
+        { "name": "cache_mode", "flag": "--cache-mode", "type": "enum", "values": ["enabled", "disabled"], "default": "enabled", "description": "Entity index cache mode. Enabled may reuse a validated warm cache receipt; disabled bypasses reuse and records a non-reusable bypass receipt." },
         { "name": "max_candidates", "flag": "--max-candidates", "type": "integer", "description": "Refuse if a target record has more than N surviving candidates" },
         { "name": "max_rows", "flag": "--max-rows", "type": "integer", "description": "Refuse if either input exceeds N data rows" },
         { "name": "max_bytes", "flag": "--max-bytes", "type": "integer", "description": "Refuse if either input exceeds N bytes" },
@@ -356,6 +358,23 @@
       "options": [
         { "name": "manifest", "flag": "--manifest", "type": "file_path", "required": true, "description": "Alias-withholding execution envelope JSON" },
         { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon.evaluation.alias_withholding.v1) or summary" }
+      ]
+    },
+    {
+      "name": "entity generalization",
+      "usage": "canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]",
+      "description": "Compile a strict artifact-backed entity-disjoint/time-forward generalization execution envelope into a deterministic identifier-redacted report; use the same public/private command, require hash-bound referenced artifacts and strict native receipt/stage bindings, derive outcomes and leakage checks rather than accepting self-attested fields, and report quality.release_claim_status as eligible or blocked without treating blocked quality as a refusal",
+      "output_mode": "mixed",
+      "output_schema": "canon.evaluation.generalization.v1",
+      "status": "implemented",
+      "read_only": true,
+      "exit_codes": {
+        "0": { "meaning": "versioned generalization report emitted; inspect quality.release_claim_status for eligible or blocked", "domain": "report" },
+        "2": { "meaning": "REFUSAL / CLI or artifact contract error", "domain": "error" }
+      },
+      "options": [
+        { "name": "manifest", "flag": "--manifest", "type": "file_path", "required": true, "description": "Strict generalization execution envelope JSON" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon.evaluation.generalization.v1) or summary" }
       ]
     },
     {
@@ -1052,8 +1071,8 @@
     },
     {
       "name": "entity run",
-      "usage": "canon entity run <ROWS> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--suite <SUITE_DIR>] [--emit json|summary] [--no-witness]",
-      "description": "Run the full deterministic entity workbench flow and emit canon_entity_run.v0",
+      "usage": "canon entity run <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--cache-mode enabled|disabled] [--suite <SUITE_DIR>] [--emit json|summary] [--no-witness]",
+      "description": "Run the full deterministic entity workbench flow and emit canon_entity_run.v0 with native cache receipt stage bindings when cache artifacts are present",
       "output_mode": "mixed",
       "output_schema": "canon_entity_run.v0",
       "exit_codes": {
@@ -1063,6 +1082,9 @@
       "options": [
         { "name": "strategy", "flag": "--strategy", "type": "file_path", "required": true, "description": "Entity strategy YAML file" },
         { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Entity registry directory" },
+        { "name": "profile", "flag": "--profile", "type": "string", "description": "Entity profile id or YAML path; required for successful execution, and omission refuses without writes" },
+        { "name": "work_dir", "flag": "--work-dir", "type": "directory_path", "description": "Work directory for artifact-backed run stages; required for successful execution, and omission refuses without writes" },
+        { "name": "cache_mode", "flag": "--cache-mode", "type": "enum", "values": ["enabled", "disabled"], "default": "enabled", "description": "Entity index cache mode. Enabled may reuse a validated warm cache receipt; disabled bypasses reuse and records a non-reusable bypass receipt." },
         { "name": "suite", "flag": "--suite", "type": "directory_path", "description": "Optional frozen evaluation suite directory" },
         { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_entity_run.v0) or summary" },
         { "name": "no_witness", "flag": "--no-witness", "type": "flag", "description": "Suppress witness ledger recording for canon entity run" }

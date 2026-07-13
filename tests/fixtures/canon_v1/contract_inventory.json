@@ -383,7 +383,7 @@
       "family": "entity",
       "clap_path": "entity run",
       "operator_name": "entity run",
-      "primary_contracts": ["canon_entity_run.v0"],
+      "primary_contracts": ["canon_entity_run.v0", "canon_entity_index_cache_receipt.v0"],
       "action": "preserve"
     },
     {
@@ -439,7 +439,7 @@
       "family": "entity",
       "clap_path": "entity link",
       "operator_name": "entity link",
-      "primary_contracts": ["canon_entity_link.v0"],
+      "primary_contracts": ["canon_entity_link.v0", "canon_entity_index_cache_receipt.v0"],
       "action": "preserve"
     },
     {
@@ -454,6 +454,24 @@
         "canon.evaluation.alias_withholding.assignment_firewall.v0",
         "canon.evaluation.alias_withholding.leakage_scan.v0",
         "canon_entity_native_review_import.v0"
+      ],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity generalization",
+      "family": "entity",
+      "clap_path": "entity generalization",
+      "operator_name": "entity generalization",
+      "primary_contracts": [
+        "canon.evaluation.generalization.v1",
+        "canon.evaluation.generalization.quality_gate_report.v0",
+        "canon.evaluation.generalization.strict_execution_envelope.v0",
+        "canon.evaluation.generalization.leak_scan_sources.v0",
+        "canon.evaluation.generalization.candidate_recall_quality_manifest.v0",
+        "canon.evaluation.generalization.cache_execution.v0",
+        "canon.evaluation.generalization.solve_policy.v0",
+        "canon_entity_index_cache_receipt.v0",
+        "canon.entity.quality.v1"
       ],
       "action": "preserve"
     },
@@ -760,6 +778,8 @@
     { "id": "canon_entity_explain.v1", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_index.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_index.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_index_cache_receipt.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_index_cache_receipt.v999", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_index_diagnostic.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_index_disk_bundle.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_lint.v0", "family": "entity", "action": "preserve" },
@@ -900,12 +920,21 @@
     { "id": "canon.accretion.metrics.v1", "family": "telemetry", "action": "preserve" },
     { "id": "canon.baseline.compare.v1", "family": "baseline", "action": "preserve" },
     { "id": "canon.baseline.v1", "family": "baseline", "action": "preserve" },
+    { "id": "canon.entity.cache_key.v0", "family": "entity", "action": "preserve" },
     { "id": "canon.evaluation.alias_withholding.v1", "family": "evaluation", "action": "preserve" },
     { "id": "canon.evaluation.alias_withholding.assignment_firewall.v0", "family": "evaluation", "action": "preserve" },
     { "id": "canon.evaluation.alias_withholding.execution_manifest.v0", "family": "evaluation", "action": "preserve" },
     { "id": "canon.evaluation.alias_withholding.leakage_scan.v0", "family": "evaluation", "action": "preserve" },
     { "id": "canon.evaluation.alias_withholding.native_engine_evidence.v0", "family": "evaluation", "action": "preserve" },
+    { "id": "canon.evaluation.generalization.cache_execution.v0", "family": "evaluation", "action": "preserve" },
+    { "id": "canon.evaluation.generalization.cache_execution.v999", "family": "evaluation", "action": "preserve" },
+    { "id": "canon.evaluation.generalization.candidate_recall_quality_manifest.v0", "family": "evaluation", "action": "preserve" },
+    { "id": "canon.evaluation.generalization.leak_scan_sources.v0", "family": "evaluation", "action": "preserve" },
+    { "id": "canon.evaluation.generalization.quality_gate_report.v0", "family": "evaluation", "action": "preserve" },
+    { "id": "canon.evaluation.generalization.solve_policy.v0", "family": "evaluation", "action": "preserve" },
+    { "id": "canon.evaluation.generalization.strict_execution_envelope.v0", "family": "evaluation", "action": "preserve" },
     { "id": "canon.evaluation.generalization.v1", "family": "evaluation", "action": "preserve" },
+    { "id": "canon.entity.quality.v1", "family": "evaluation", "action": "preserve" },
     { "id": "canon.export.projection.v1", "family": "registry", "action": "preserve" },
     { "id": "canon.inbox.entity_plan.v1", "family": "inbox", "action": "preserve" },
     { "id": "canon.inbox.explain.v1", "family": "inbox", "action": "preserve" },
@@ -1151,11 +1180,6 @@
       "id": "sec10d-handoff-binding",
       "subject": "sec10d migration references inside canon-owned fixtures and docs",
       "notes": "Local sec10d fixtures already point at entity prepare/run/review flows, but the final cutover sequence for downstream handoff docs is still open."
-    },
-    {
-      "id": "schema-only-quality-contract-coverage",
-      "subject": "canon.entity.quality.v1",
-      "notes": "schemas/canon.entity.quality.v1.schema.json already declares canon.entity.quality.v1, but the current contract-inventory test only derives shipped contracts from src/ and operator.json. Promote this into contract_rows when the inventory gate expands to schema-declared contracts as well."
     }
   ]
 }

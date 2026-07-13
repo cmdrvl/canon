@@ -104,8 +104,9 @@ yet know enough.
 | `canon registry mint/add-entry/default-id-scheme/next-id` | Maintain self-authored aliases and ID conventions. | Operator-accepted facts become flat mapping entries. |
 | `canon registry build/providers/provider-schema` | Materialize provider-backed seed mappings into local registry files. | Provider calls happen during maintenance, never during runtime lookup. |
 | `canon entity run` | Cluster profiled observations inside one corpus and propose registry knowledge. | Deterministic artifacts, audit, review inbox, promotion. |
-| `canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json\|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` | Link two row sets through the same typed artifact path used by project mode. | Cross-source linkage; relation evidence is not an equivalence shortcut. Profile and work-dir are required for execution; omissions write nothing. |
+| `canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json\|summary] [--cache-mode enabled\|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` | Link two row sets through the same typed artifact path used by project mode. | Cross-source linkage; relation evidence is not an equivalence shortcut. Profile and work-dir are required for execution; omissions write nothing. Cache mode defaults to enabled. |
 | `canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json>` | Compile artifact-backed withheld-alias trials into a JSON or summary report. | Strict execution envelope only; outcomes are derived from referenced artifacts, not self-declared. |
+| `canon entity generalization --manifest <STRICT_ENVELOPE.json>` | Compile artifact-backed entity-disjoint and time-forward trials into a JSON or summary report. | Strict execution envelope only; one public/private command, redacted identifiers and paths, outcomes and leakage checks derived from referenced artifacts rather than self-attested fields. Strict solve derivation binds typed edge artifacts, edge records, prepared surfaces, and `canon.evaluation.generalization.solve_policy.v0`. |
 | `canon registry export --format dbt-seed|search-index` | Project exact registry knowledge into transform or serving artifacts. | Deterministic downstream snapshots; no new matching semantics. |
 | Package, project, and temporal workflows | Move registries and strategies through reproducible deployment, project locks, and snapshot comparison. | They package and check knowledge; they do not change exact lookup. |
 | Extensions and adapters | Add profiles, source mappings, provider materializers, and domain policies out of tree. | Domain expertise stays outside Canon core defaults unless explicitly packaged and audited. |
@@ -382,9 +383,10 @@ canon strategy resolve --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) -
 canon strategy register --registry <DIR> (--schema <SCHEMA.json>|--task <TASK>) --skill <SKILL.md>|--skill-hash <HASH> --script <SCRIPT> --script-id <ID> --language <LANG> --grade operator-attested|proof-attested --next-version <VER> [--operator <ID> --reason <TEXT>] [--verify <VERIFY.json> --assess <ASSESS.json> --airlock <AIRLOCK.json>] [--emit json|summary] [--no-witness]
 canon strategy update|deprecate|promote|list|explain [OPTIONS]
 canon strategy diff --old <OLD_DIR> --new <NEW_DIR> [--emit json|summary]
-canon entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--emit json|summary] [--no-witness]
-canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
+canon entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--cache-mode enabled|disabled] [--suite <DIR>] [--emit json|summary] [--no-witness]
+canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
+canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]
 canon entity prepare|index build|block|evidence|solve|audit|promote|apply|explain|review [OPTIONS]
 canon entity review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]
 canon entity review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]
@@ -443,9 +445,10 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `strategy update|deprecate|promote` | Update an active champion, mark it deprecated without deleting history, or promote an operator-attested champion to proof-attested. Mutations emit before/after registry-hash receipts and append witness records unless `--no-witness` is passed. |
 | `strategy list|explain` | Inspect mixed schema/task strategy registries, provenance, grade, status, source file, entry order, and active-resolution behavior without hand-reading `_strategy/entries.json`. |
 | `strategy diff --old <DIR> --new <DIR> [--emit json\|summary]` | Compare frozen-script strategy registry versions by typed key plus skill hash, including grade/status/attestation changes. |
-| `entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--emit json\|summary]` | Run the cluster-mode artifact pipeline (prepare -> index -> block -> evidence -> solve, optional audit). |
-| `entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json\|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` | Run link mode for aligning two row sets through the same typed request and artifact path as project mode, with optional suite/gold scoring and explicit registry write-back. Profile and work-dir are required for successful execution even though generated syntax shows them bracketed; omissions write nothing. |
+| `entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--cache-mode enabled\|disabled] [--suite <DIR>] [--emit json\|summary]` | Run the cluster-mode artifact pipeline (prepare -> index -> block -> evidence -> solve, optional audit). Cache mode defaults to enabled, and native cache receipts are recorded in the run artifact. |
+| `entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json\|summary] [--cache-mode enabled\|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` | Run link mode for aligning two row sets through the same typed request and artifact path as project mode, with optional suite/gold scoring and explicit registry write-back. Profile and work-dir are required for successful execution even though generated syntax shows them bracketed; omissions write nothing. Cache mode defaults to enabled, and native cache receipts are inherited from the nested run. |
 | `entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json\|summary]` | Compile a strict execution envelope into an alias-withholding report. The envelope references clean registry, candidate, link, run/solve, review, audit, leak-scan, assignment-firewall, and optional promotion/replay artifacts; Canon derives outcomes from those artifacts and refuses self-declared results. |
+| `entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json\|summary]` | Compile a strict artifact-backed entity-disjoint/time-forward envelope into a redacted report. The same command is used for public fixtures and operator-owned private corpora; identifiers, paths, and cutoffs are hashed at the CLI boundary, and outcomes/leakage checks are derived from referenced artifacts rather than self-attested fields. |
 | `entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit jsonl\|summary]` | Generate candidate neighborhoods via blocking operators. |
 | `entity evidence <ROWS> [--profile <PROFILE>] --strategy <YAML> --candidates <JSONL> --registry <DIR> [--work-dir <DIR>] [--emit jsonl\|summary]` | Score typed evidence for blocked candidate pairs. Relationship evidence remains a relation hint unless a separate equality fact or support lane justifies equivalence. |
 | `entity solve <ROWS> [--profile <PROFILE>] --strategy <YAML> --evidence <JSONL> --registry <DIR> [--work-dir <DIR>] [--emit json\|summary]` | Solve deterministic identity assignments from evidence artifacts. |
@@ -474,6 +477,12 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 report from a valid execution envelope and `2` when the envelope or any
 referenced artifact refuses validation. It does not use exit `1` for benchmark
 outcomes.
+
+`canon entity generalization` exits `0` when it emits a structurally valid JSON
+or summary report, including low-quality or critical-false-merge reports whose
+`quality.release_claim_status` is `blocked`. It exits `2` only when the envelope
+or referenced artifacts are malformed, missing, stale, tampered, or otherwise
+refuse validation. It does not use exit `1` for benchmark outcomes.
 
 `canon doctor` exits `0` when it emits a read-only report and `2` for CLI usage errors such as unsupported `--fix`. Its JSON schemas are `canon.doctor.health.v1`, `canon.doctor.capabilities.v1`, and `canon.doctor.triage.v1`.
 
@@ -871,7 +880,7 @@ The pipeline is YAML-driven: a **strategy file** defines which fields to observe
 There are two public entity modes:
 
 - **Cluster mode:** `canon entity run` groups observations inside one profiled corpus and emits solved clusters, escrow, review, and promotion artifacts.
-- **Link mode:** `canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json|summary] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` aligns two row sets through the same typed request and artifact path used by project mode. It is for cross-source linkage, not a hidden alias for edge scoring.
+- **Link mode:** `canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` aligns two row sets through the same typed request and artifact path used by project mode. It is for cross-source linkage, not a hidden alias for edge scoring.
 
 `canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json>` is an
 evaluation compiler for artifact-backed withheld-alias trials. The manifest is
@@ -889,6 +898,54 @@ attachments additionally require a rebuilt solve review queue, typed native
 review-import receipt, exact one-entry sandbox registry diff, and ordinary exact
 replay. CLI output hashes identifiers and paths so the public report can retain
 counts, statuses, and evidence digests without disclosing source surfaces.
+
+`canon entity generalization --manifest <STRICT_ENVELOPE.json>` is the
+artifact-backed evaluation compiler for entity-disjoint and time-forward
+discovery trials. Public fixtures and operator-owned private corpora use the
+same command. The strict envelope binds the benchmark, native candidate-recall,
+link, run, solve, observation/surface sidecar, and leakage-source artifacts by
+path, version, and content hash. Strict solve derivation also requires
+`solve_derivation.edge_artifact.path`, `solve_derivation.edge_records.path`,
+`solve_derivation.prepared_surfaces.path`, and a hash-bound
+`solve_derivation.solve_policy` artifact with version
+`canon.evaluation.generalization.solve_policy.v0`; the policy file byte hash
+must equal `policy_digest`, and the edge/prepared refs are path-bound to the
+loaded run `work_dir`. Each trial's `registry_dir` must be manifest-relative
+and resolve inside the envelope root; absolute paths, traversal segments, and
+symlink registry roots are refused. `run.metadata.registry_snapshot.source` is
+retained only as inert metadata continuity and is not opened for replay. The
+loaded solve and run are rebuilt exactly from those inputs before scoring. The
+report derives decisions, candidate ranks,
+false-merge outcomes, and leakage status from those artifacts instead of
+accepting caller-authored actual outcomes. The main report is
+`canon.evaluation.generalization.v1` and carries a nested `quality` report with
+`quality.version` set to
+`canon.evaluation.generalization.quality_gate_report.v0`,
+`quality.contract_version` set to `canon.entity.quality.v1`, fixed canonical
+gate results for `candidate_recall_at_50_min`, `auto_link_precision_min`,
+`auto_link_recall_min`, `critical_false_merges_max`, and
+`accounted_case_rate_min`, and `quality.release_claim_status` set to `eligible`
+or `blocked`. Under `canon.entity.quality.v1`, the fixed thresholds are
+candidate recall at 50 `>= 0.995`, auto-link precision `>= 0.995`, auto-link
+recall `>= 0.98`, critical false merges `== 0`, and accounted case rate
+`== 1.0`; zero-denominator gates are `not_applicable`, which keeps the report
+blocked because eligibility requires every gate to pass. The command accepts no
+caller-adjustable thresholds or waivers. A structurally valid `blocked` report
+is emitted with exit `0`; only malformed or tampered envelopes and artifacts
+refuse with exit `2`. The command is read-only, emits JSON or summary, hashes
+identifiers, paths, and cutoffs at the CLI boundary, and does not change
+ordinary exact lookup semantics.
+
+The native entity workbench cache contract records `canon_entity_index_cache_receipt.v0`
+stage artifacts. Public `canon entity run` and `canon entity link` expose
+`--cache-mode enabled|disabled`, defaulting to `enabled`. A genuine warm cache
+hit requires an enabled, reusable receipt and is reported as `cache_enabled` with
+status `hit`; disabled cache mode bypasses reuse and records a non-reusable
+`cache_disabled` receipt with status `bypassed`. The receipt bundle hash covers
+the complete index bundle bytes: index artifact, cache key, postings, and
+diagnostics. Run/link artifacts bind the cache receipt stage to the native index
+stage, refuse stale or tampered bundles before reuse, and preserve semantic
+outputs across enabled and disabled cache modes.
 
 Link observation IDs and prepared `surface_id` values are separate namespaces.
 The link artifact therefore carries a hash-bound observation/surface sidecar;

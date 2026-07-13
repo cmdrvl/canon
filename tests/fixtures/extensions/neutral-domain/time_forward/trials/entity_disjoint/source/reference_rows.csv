@@ -1,0 +1,4 @@
+source_row_id,field_name,org_name,dataset,role_context,capacity,subject_role,alias_surfaces_json,mention_surfaces_json,filing_cik,accession
+obs.tune.anchor.001,org_name,Atlas Works,dataset.reference.prep,tune_anchor,reference,issuer,[],[],100001,ed-anchor-001
+obs.holdout.beta.ref,org_name,Beta Workshop,dataset.reference.future,holdout_candidate,reference,issuer,[],[],100101,ed-beta-001
+obs.holdout.hierarchy.left,org_name,North Branch Group,dataset.reference.future,related_distinct,reference,parent,[],[],100201,ed-hierarchy-001

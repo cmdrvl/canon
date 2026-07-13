@@ -94,7 +94,7 @@ fn minimal_entity_link_decisions_match_golden_artifact_projection() {
 #[test]
 fn full_entity_link_json_is_byte_stable_for_same_inputs() {
     let temp_dir = tempfile::tempdir().unwrap();
-    let extra = ["--gold", LOAN_MATCH_GOLD];
+    let extra = ["--gold", LOAN_MATCH_GOLD, "--cache-mode", "disabled"];
 
     let first = entity_link_stdout(
         temp_dir.path(),

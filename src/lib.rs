@@ -37,19 +37,19 @@ pub mod witness;
 
 use crate::cli::{
     CanonCommand, Cli, EntityAliasWithholdingCli, EntityApplyCli, EntityAuditCli, EntityBlockCli,
-    EntityCandidateRecallCli, EntityCommand, EntityEmitMode, EntityEvidenceCli, EntityExplainCli,
-    EntityIndexBuildCli, EntityIndexCommand, EntityIndexSubcommand, EntityLinkCli,
-    EntityPrepareCli, EntityProfileCommand, EntityProfileInitCli, EntityProfileListCli,
-    EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand, EntityReviewExportCli,
-    EntityReviewExportEmitMode, EntityReviewImportCli, EntityReviewInclude, EntityReviewSubcommand,
-    EntityRunCli, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, PackageCli,
-    PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
-    RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryExportCli,
-    RegistryExportFormatCli, RegistryLintCli, RegistryLintProfile, RegistryMintCli,
-    RegistryNextIdCli, RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli,
-    RegistrySubcommand, RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand,
-    StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli, StrategyGradeArg,
-    StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
+    EntityCacheModeArg, EntityCandidateRecallCli, EntityCommand, EntityEmitMode, EntityEvidenceCli,
+    EntityExplainCli, EntityGeneralizationCli, EntityIndexBuildCli, EntityIndexCommand,
+    EntityIndexSubcommand, EntityLinkCli, EntityPrepareCli, EntityProfileCommand,
+    EntityProfileInitCli, EntityProfileListCli, EntityProfileSubcommand, EntityPromoteCli,
+    EntityReviewCommand, EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewImportCli,
+    EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySolveCli,
+    EntityStreamEmitMode, EntitySubcommand, PackageCli, PackageSubcommand, RegistryAddEntryCli,
+    RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli, RegistryDiffCli,
+    RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryLintCli,
+    RegistryLintProfile, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
+    RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode,
+    StrategyAuditCli, StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli,
+    StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
     StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
     StrategyUpdateCli,
 };
@@ -70,6 +70,13 @@ const ORG_V1_PROFILE: &str = "bdc_issuer";
 struct EntityRunExecution {
     artifact: Box<entity::run::EntityRunArtifact>,
     candidate_pairs: u64,
+}
+
+fn entity_index_cache_mode(mode: EntityCacheModeArg) -> entity::index::EntityIndexCacheMode {
+    match mode {
+        EntityCacheModeArg::Enabled => entity::index::EntityIndexCacheMode::Enabled,
+        EntityCacheModeArg::Disabled => entity::index::EntityIndexCacheMode::Disabled,
+    }
 }
 
 // Entry point function
@@ -742,6 +749,9 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
         EntitySubcommand::AliasWithholding(alias_withholding) => {
             run_entity_alias_withholding_command(alias_withholding)
         }
+        EntitySubcommand::Generalization(generalization) => {
+            run_entity_generalization_command(generalization)
+        }
         EntitySubcommand::Evidence(evidence) => run_entity_evidence_command(evidence),
         EntitySubcommand::Solve(solve) => run_entity_solve_command(solve),
         EntitySubcommand::Link(link) => run_entity_link_command(link),
@@ -896,6 +906,25 @@ fn run_entity_alias_withholding_command(
     }
 }
 
+fn run_entity_generalization_command(
+    generalization: &EntityGeneralizationCli,
+) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(generalization.emit, EntityEmitMode::Summary);
+    match run_entity_generalization_pipeline(generalization) {
+        Ok(report) => {
+            let output = match generalization.emit {
+                EntityEmitMode::Json => {
+                    serde_json::to_string(&generalization_cli_report_json(&report)?)?
+                }
+                EntityEmitMode::Summary => render_generalization_report_summary(&report),
+            };
+            emit_entity_output(&output, summary_mode);
+            Ok(0)
+        }
+        Err(refusal_output) => emit_entity_refusal(refusal_output, false, summary_mode),
+    }
+}
+
 fn run_entity_evidence_command(evidence: &EntityEvidenceCli) -> Result<u8, Box<dyn Error>> {
     if let Err(refusal_output) = validate_entity_v1_input_artifact(
         &evidence.candidates,
@@ -986,14 +1015,17 @@ fn run_entity_link_command(link: &EntityLinkCli) -> Result<u8, Box<dyn Error>> {
             }
         };
 
-    match entity::run::link::run_entity_link(entity::run::link::EntityLinkRequest {
-        reference_rows: &link.reference,
-        target_rows: &link.target,
-        profile,
-        strategy: &link.strategy,
-        registry: &link.registry,
-        work_dir,
-    }) {
+    match entity::run::link::run_entity_link_with_cache_mode(
+        entity::run::link::EntityLinkRequest {
+            reference_rows: &link.reference,
+            target_rows: &link.target,
+            profile,
+            strategy: &link.strategy,
+            registry: &link.registry,
+            work_dir,
+        },
+        entity_index_cache_mode(link.cache_mode),
+    ) {
         Ok(result) => {
             let audit_receipt = if let Some(suite) = audit_suite.as_ref() {
                 match run_entity_link_suite_audit(&result.run.artifact, suite, work_dir) {
@@ -2260,13 +2292,16 @@ fn render_provider_schema_summary(schema: &registry::ProviderSchema) -> String {
 fn run_entity_run_pipeline(run: &EntityRunCli) -> Result<EntityRunExecution, CanonOutput> {
     match (run.profile.as_deref(), run.work_dir.as_deref()) {
         (Some(profile), Some(work_dir)) => {
-            let result = entity::run::run_entity_workbench(entity::run::EntityRunRequest {
-                rows: &run.rows,
-                profile,
-                strategy: &run.strategy,
-                registry: &run.registry,
-                work_dir,
-            })
+            let result = entity::run::run_entity_workbench_with_cache_mode(
+                entity::run::EntityRunRequest {
+                    rows: &run.rows,
+                    profile,
+                    strategy: &run.strategy,
+                    registry: &run.registry,
+                    work_dir,
+                },
+                entity_index_cache_mode(run.cache_mode),
+            )
             .map_err(|refusal| refusal.to_canon_output())?;
             Ok(EntityRunExecution {
                 artifact: Box::new(result.artifact),
@@ -2486,6 +2521,202 @@ fn alias_withholding_manifest_refusal(
         }),
         Some(
             "Fix the execution envelope path or JSON, then rerun canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json>"
+                .to_string(),
+        ),
+    )
+}
+
+#[allow(clippy::result_large_err)]
+fn run_entity_generalization_pipeline(
+    generalization: &EntityGeneralizationCli,
+) -> Result<evaluation::generalization::GeneralizationReport, CanonOutput> {
+    evaluation::generalization::compile_strict_generalization_manifest(&generalization.manifest)
+        .map_err(|error| generalization_refusal(&generalization.manifest, error))
+}
+
+fn render_generalization_report_summary(
+    report: &evaluation::generalization::GeneralizationReport,
+) -> String {
+    let (failed_gate_count, not_applicable_gate_count) =
+        generalization_quality_gate_status_counts(report);
+    format!(
+        "{} corpus={} visibility={} release_claim_status={} failed_gate_count={} not_applicable_gate_count={} entity_disjoint_trials={} time_forward_trials={} results={} correct={} abstain={} critical_false_merge={} directional_cross_source={} head={} tail={} easy={} hard={} report_digest={}",
+        alias_withholding_public_fingerprint(report.benchmark_id.as_bytes()),
+        alias_withholding_public_fingerprint(report.corpus_ref.as_bytes()),
+        generalization_corpus_visibility_label(report.corpus_visibility),
+        generalization_release_claim_status_label(&report.quality.release_claim_status),
+        failed_gate_count,
+        not_applicable_gate_count,
+        report.aggregate.entity_disjoint_trial_count,
+        report.aggregate.time_forward_trial_count,
+        report.aggregate.result_count,
+        report.aggregate.correct_count,
+        report.aggregate.abstain_count,
+        report.aggregate.critical_false_merge_count,
+        report.aggregate.directional_cross_source_count,
+        report.aggregate.head_result_count,
+        report.aggregate.tail_result_count,
+        report.aggregate.easy_result_count,
+        report.aggregate.hard_result_count,
+        report.report_digest
+    )
+}
+
+fn generalization_release_claim_status_label(
+    status: &evaluation::generalization::GeneralizationReleaseClaimStatus,
+) -> &'static str {
+    match status {
+        evaluation::generalization::GeneralizationReleaseClaimStatus::Eligible => "eligible",
+        evaluation::generalization::GeneralizationReleaseClaimStatus::Blocked => "blocked",
+    }
+}
+
+fn generalization_quality_gate_status_counts(
+    report: &evaluation::generalization::GeneralizationReport,
+) -> (usize, usize) {
+    let mut failed_gate_count = 0;
+    let mut not_applicable_gate_count = 0;
+    for gate in &report.quality.gates {
+        match &gate.status {
+            evaluation::generalization::GeneralizationQualityGateStatus::Fail => {
+                failed_gate_count += 1;
+            }
+            evaluation::generalization::GeneralizationQualityGateStatus::NotApplicable => {
+                not_applicable_gate_count += 1;
+            }
+            evaluation::generalization::GeneralizationQualityGateStatus::Pass => {}
+        }
+    }
+    (failed_gate_count, not_applicable_gate_count)
+}
+
+fn generalization_cli_report_json(
+    report: &evaluation::generalization::GeneralizationReport,
+) -> Result<serde_json::Value, Box<dyn Error>> {
+    let mut value = serde_json::to_value(report)?;
+    generalization_redact_identifier_fields(&mut value);
+    if let Some(object) = value.as_object_mut() {
+        object.insert(
+            "identifier_redaction".to_string(),
+            serde_json::Value::String("blake3".to_string()),
+        );
+    }
+    Ok(value)
+}
+
+fn generalization_redact_identifier_fields(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(object) => {
+            for (key, child) in object.iter_mut() {
+                if generalization_identifier_scalar_key(key)
+                    && let Some(raw) = child.as_str()
+                {
+                    *child = serde_json::Value::String(alias_withholding_public_fingerprint(
+                        raw.as_bytes(),
+                    ));
+                    continue;
+                }
+                if generalization_identifier_array_key(key)
+                    && let Some(items) = child.as_array_mut()
+                {
+                    for item in items {
+                        if let Some(raw) = item.as_str() {
+                            *item = serde_json::Value::String(
+                                alias_withholding_public_fingerprint(raw.as_bytes()),
+                            );
+                        }
+                    }
+                    continue;
+                }
+                generalization_redact_identifier_fields(child);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                generalization_redact_identifier_fields(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn generalization_identifier_scalar_key(key: &str) -> bool {
+    if matches!(key, "gate_id" | "metric_id") {
+        return false;
+    }
+    key.ends_with("_id")
+        || key.ends_with("_path")
+        || key.ends_with("_ref")
+        || matches!(
+            key,
+            "benchmark_id"
+                | "corpus_ref"
+                | "cutoff"
+                | "path"
+                | "root"
+                | "locator"
+                | "canonical_hint"
+        )
+}
+
+fn generalization_identifier_array_key(key: &str) -> bool {
+    key.ends_with("_ids") || matches!(key, "paths" | "locators" | "source_refs")
+}
+
+fn generalization_corpus_visibility_label(
+    visibility: evaluation::generalization::CorpusVisibility,
+) -> &'static str {
+    match visibility {
+        evaluation::generalization::CorpusVisibility::PublicFixture => "public_fixture",
+        evaluation::generalization::CorpusVisibility::PrivateCorpusRef => "private_corpus_ref",
+    }
+}
+
+fn generalization_public_reason(
+    code: evaluation::generalization::GeneralizationErrorCode,
+) -> &'static str {
+    match code {
+        evaluation::generalization::GeneralizationErrorCode::ArtifactContract => {
+            "artifact_contract"
+        }
+        evaluation::generalization::GeneralizationErrorCode::MissingReference => {
+            "missing_reference"
+        }
+        evaluation::generalization::GeneralizationErrorCode::DuplicateRecord => "duplicate_record",
+        evaluation::generalization::GeneralizationErrorCode::EntityDisjointLeak => {
+            "entity_disjoint_leak"
+        }
+        evaluation::generalization::GeneralizationErrorCode::FutureLeakage => "future_leakage",
+        evaluation::generalization::GeneralizationErrorCode::TemporalReversal => {
+            "temporal_reversal"
+        }
+        evaluation::generalization::GeneralizationErrorCode::CriticalFalseMerge => {
+            "critical_false_merge"
+        }
+        evaluation::generalization::GeneralizationErrorCode::DirectionalLinkContract => {
+            "directional_link_contract"
+        }
+        evaluation::generalization::GeneralizationErrorCode::Unimplemented => "unimplemented",
+    }
+}
+
+fn generalization_refusal(
+    manifest: &Path,
+    error: evaluation::generalization::GeneralizationError,
+) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Generalization strict execution envelope failed validation".to_string(),
+        serde_json::json!({
+            "stage": "generalization",
+            "manifest_fingerprint": alias_withholding_path_fingerprint(manifest),
+            "generalization_code": error.code,
+            "public_reason": generalization_public_reason(error.code),
+            "message_fingerprint": alias_withholding_public_fingerprint(error.message.as_bytes()),
+            "writes_performed": false,
+        }),
+        Some(
+            "Fix the strict execution envelope or referenced artifacts, then rerun canon entity generalization --manifest <STRICT_ENVELOPE.json>"
                 .to_string(),
         ),
     )
@@ -2885,6 +3116,14 @@ fn append_entity_link_witness(
     params.insert(
         "write_back".to_string(),
         serde_json::Value::Bool(link.write_back),
+    );
+    params.insert(
+        "cache_mode".to_string(),
+        serde_json::Value::String(
+            entity_index_cache_mode(link.cache_mode)
+                .as_str()
+                .to_string(),
+        ),
     );
     params.insert(
         "summary".to_string(),
@@ -3969,6 +4208,10 @@ fn append_entity_workbench_run_witness(
                 .lookup_snapshot_hash
                 .clone(),
         ),
+    );
+    params.insert(
+        "cache_mode".to_string(),
+        serde_json::Value::String(entity_index_cache_mode(run.cache_mode).as_str().to_string()),
     );
     if let Some(work_dir) = &run.work_dir {
         params.insert(
@@ -5634,6 +5877,7 @@ pub struct ResolveResult {
 #[cfg(test)]
 mod tests {
     use super::{DisplayMode, detect_display_mode};
+    use std::path::Path;
 
     #[test]
     fn detect_display_mode_ignores_subcommand_version_flag() {
@@ -5702,5 +5946,203 @@ mod tests {
         assert_eq!(super::suggest_subcommand("ogr"), None);
         // A real data filename is far from any subcommand.
         assert_eq!(super::suggest_subcommand("positions.csv"), None);
+    }
+
+    #[test]
+    fn generalization_redaction_hashes_identifiers_but_keeps_hashes_and_counts() {
+        let mut value = serde_json::json!({
+            "benchmark_id": "private.benchmark",
+            "corpus_ref": "private://corpus",
+            "trial_id": "trial.private",
+            "observation_ids": ["obs.private.1", "obs.private.2"],
+            "path": "../private/path.json",
+            "locator": "private-locator",
+            "cutoff": "2026-04-17",
+            "content_hash": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "result_count": 2,
+            "self_attested_outcomes_used": false
+        });
+
+        super::generalization_redact_identifier_fields(&mut value);
+
+        assert_ne!(value["benchmark_id"], "private.benchmark");
+        assert!(
+            value["benchmark_id"]
+                .as_str()
+                .expect("benchmark id")
+                .starts_with("blake3:")
+        );
+        assert_ne!(value["corpus_ref"], "private://corpus");
+        assert_ne!(value["observation_ids"][0], "obs.private.1");
+        assert_ne!(value["path"], "../private/path.json");
+        assert_ne!(value["locator"], "private-locator");
+        assert_ne!(value["cutoff"], "2026-04-17");
+        assert!(
+            value["cutoff"]
+                .as_str()
+                .expect("cutoff")
+                .starts_with("blake3:")
+        );
+        assert_eq!(
+            value["content_hash"],
+            "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        );
+        assert_eq!(value["result_count"], 2);
+        assert_eq!(value["self_attested_outcomes_used"], false);
+    }
+
+    #[test]
+    fn generalization_redaction_preserves_public_quality_ids_and_hashes_private_ids() {
+        let mut value = serde_json::json!({
+            "quality": {
+                "version": "canon.evaluation.generalization.quality_gate_report.v0",
+                "contract_version": "canon.entity.quality.v1",
+                "release_claim_status": "blocked",
+                "gates": [
+                    {
+                        "gate_id": "candidate_recall_at_50_min",
+                        "metric_id": "candidate_recall_at_50",
+                        "status": "fail",
+                        "private_artifact_id": "operator-private-artifact",
+                        "artifact_path": "../private/artifact.json"
+                    }
+                ]
+            },
+            "corpus_ref": "private://corpus",
+            "artifact_ref": "private://artifact"
+        });
+
+        super::generalization_redact_identifier_fields(&mut value);
+
+        let gate = &value["quality"]["gates"][0];
+        assert_eq!(gate["gate_id"], "candidate_recall_at_50_min");
+        assert_eq!(gate["metric_id"], "candidate_recall_at_50");
+        assert_eq!(gate["status"], "fail");
+        for redacted in [
+            &gate["private_artifact_id"],
+            &gate["artifact_path"],
+            &value["corpus_ref"],
+            &value["artifact_ref"],
+        ] {
+            assert!(
+                redacted
+                    .as_str()
+                    .expect("redacted identifier")
+                    .starts_with("blake3:")
+            );
+        }
+    }
+
+    #[test]
+    fn generalization_summary_exposes_blocked_quality_status_and_gate_counts() {
+        use crate::evaluation::generalization::{
+            CANON_ENTITY_QUALITY_VERSION, CANON_GENERALIZATION_QUALITY_GATE_REPORT_VERSION,
+            CANON_GENERALIZATION_VERSION, CorpusVisibility, GeneralizationAggregate,
+            GeneralizationQualityContractReport, GeneralizationQualityGateReport,
+            GeneralizationQualityGateStatus, GeneralizationReleaseClaimStatus,
+            GeneralizationReport,
+        };
+
+        let report = GeneralizationReport {
+            version: CANON_GENERALIZATION_VERSION.to_string(),
+            benchmark_id: "private.benchmark".to_string(),
+            corpus_visibility: CorpusVisibility::PrivateCorpusRef,
+            corpus_ref: "private://corpus".to_string(),
+            benchmark_digest:
+                "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                    .to_string(),
+            report_digest:
+                "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                    .to_string(),
+            entity_disjoint: Vec::new(),
+            time_forward: Vec::new(),
+            aggregate: GeneralizationAggregate {
+                entity_disjoint_trial_count: 0,
+                time_forward_trial_count: 0,
+                result_count: 0,
+                correct_count: 0,
+                abstain_count: 0,
+                critical_false_merge_count: 0,
+                directional_cross_source_count: 0,
+                head_result_count: 0,
+                tail_result_count: 0,
+                easy_result_count: 0,
+                hard_result_count: 0,
+                strata: Vec::new(),
+            },
+            quality: GeneralizationQualityContractReport {
+                version: CANON_GENERALIZATION_QUALITY_GATE_REPORT_VERSION.to_string(),
+                contract_version: CANON_ENTITY_QUALITY_VERSION.to_string(),
+                release_claim_status: GeneralizationReleaseClaimStatus::Blocked,
+                gates: vec![
+                    GeneralizationQualityGateReport {
+                        gate_id: "candidate_recall_at_50_min".to_string(),
+                        metric_id: "candidate_recall_at_50".to_string(),
+                        status: GeneralizationQualityGateStatus::Fail,
+                        observed_value: Some(0.5),
+                        operator: ">=".to_string(),
+                        threshold: 0.995,
+                        waiver_bead_id: None,
+                    },
+                    GeneralizationQualityGateReport {
+                        gate_id: "auto_link_recall_min".to_string(),
+                        metric_id: "auto_link_recall".to_string(),
+                        status: GeneralizationQualityGateStatus::NotApplicable,
+                        observed_value: None,
+                        operator: ">=".to_string(),
+                        threshold: 0.98,
+                        waiver_bead_id: None,
+                    },
+                    GeneralizationQualityGateReport {
+                        gate_id: "critical_false_merges_max".to_string(),
+                        metric_id: "hard_negative_false_merges".to_string(),
+                        status: GeneralizationQualityGateStatus::Pass,
+                        observed_value: Some(0.0),
+                        operator: "==".to_string(),
+                        threshold: 0.0,
+                        waiver_bead_id: None,
+                    },
+                ],
+            },
+            derivation: None,
+        };
+
+        let summary = super::render_generalization_report_summary(&report);
+
+        assert!(summary.contains("release_claim_status=blocked"));
+        assert!(summary.contains("failed_gate_count=1"));
+        assert!(summary.contains("not_applicable_gate_count=1"));
+        assert!(!summary.contains("release_claim_status=eligible"));
+    }
+
+    #[test]
+    fn generalization_refusal_omits_raw_manifest_and_error_text() {
+        let output = super::generalization_refusal(
+            Path::new("../private/envelope.json"),
+            crate::evaluation::generalization::GeneralizationError::new(
+                crate::evaluation::generalization::GeneralizationErrorCode::ArtifactContract,
+                "private raw error text",
+            ),
+        );
+        let rendered = serde_json::to_string(&output).expect("refusal serializes");
+
+        assert!(!rendered.contains("../private/envelope.json"));
+        assert!(!rendered.contains("private raw error text"));
+        let detail = &output.refusal.expect("refusal").detail;
+        assert_eq!(detail["stage"], "generalization");
+        assert_eq!(detail["public_reason"], "artifact_contract");
+        assert_eq!(detail["writes_performed"], false);
+        assert!(
+            detail["manifest_fingerprint"]
+                .as_str()
+                .expect("manifest fingerprint")
+                .starts_with("blake3:")
+        );
+        assert!(
+            detail["message_fingerprint"]
+                .as_str()
+                .expect("message fingerprint")
+                .starts_with("blake3:")
+        );
     }
 }

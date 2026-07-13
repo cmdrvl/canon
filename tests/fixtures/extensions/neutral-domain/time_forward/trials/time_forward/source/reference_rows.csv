@@ -1,0 +1,3 @@
+source_row_id,field_name,org_name,dataset,role_context,capacity,subject_role,alias_surfaces_json,mention_surfaces_json,filing_cik,accession
+obs.build.anchor,org_name,Harbor Signal,dataset.reference.pre,build_anchor,reference,issuer,[],[],200001,tf-anchor-001
+obs.eval.new.reference,org_name,Future Nova Research,dataset.reference.post,evaluation_candidate,reference,issuer,[],[],200101,tf-new-001

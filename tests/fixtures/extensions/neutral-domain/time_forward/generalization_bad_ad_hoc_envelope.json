@@ -1,0 +1,26 @@
+{
+  "version": "canon.evaluation.generalization.strict_execution_envelope.v0",
+  "benchmark": {
+    "path": "generalization_benchmark.json",
+    "content_hash": "blake3:d229fceec27f21b501bb4619c8333e76b7f565f7bda89c079985b65584c62fa1",
+    "role": "gold_only"
+  },
+  "artifacts": [
+    {
+      "artifact_id": "ad_hoc_solve_mimic",
+      "version": "canon_entity_solve.v0",
+      "path": "artifacts/solve_artifact.json",
+      "content_hash": "blake3:390e640438ff722133a924febd400481e82a70e3ed642a5827f8bc398e39e378"
+    }
+  ],
+  "ad_hoc_artifact": {
+    "version": "canon_entity_solve.v0",
+    "derived_results": [
+      {
+        "result_id": "result.rename.attach",
+        "decision": "attach_existing",
+        "false_merge": false
+      }
+    ]
+  }
+}

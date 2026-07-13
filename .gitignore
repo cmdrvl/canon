@@ -35,3 +35,6 @@ target
 
 # SQLite derived indexes (rebuilt from source registry files)
 _index.sqlite
+
+# Beads compliance audit dir (managed by /beads-compliance-and-completion-verification skill)
+/beads_compliance_audit/
