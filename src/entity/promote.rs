@@ -18,11 +18,12 @@ use crate::{
             EntityProfileReference,
         },
         error::EntityRefusalKind,
-        review::{
-            lifecycle_metadata_v1, required_value_string, set_v1_self_hash, source_reference_v1,
-            value_string_or, value_u64_or,
+        review::{required_value_string, value_string_or, value_u64_or},
+        schema::{
+            entity_v1_artifact_reference, entity_v1_lifecycle_metadata_from_source,
+            finalize_entity_v1_self_hash, validate_artifact_v1_core_contract,
+            validate_entity_v1_self_hash,
         },
-        schema::validate_artifact_v1_core_contract,
     },
     registry::{
         PlannedMutationState, acquire_registry_mutation_guard, planned_file_mutation,
@@ -857,6 +858,7 @@ impl From<&EntityPromotedAlias> for RegistryAliasEntry {
 
 fn validate_promote_v1_source(artifact: &Value) -> Result<(), Refusal> {
     let contract = validate_artifact_v1_core_contract(artifact)?;
+    validate_promote_v1_self_hash(artifact, "result")?;
     if !matches!(
         contract.artifact_version,
         CANON_ENTITY_RUN_VERSION_V1 | CANON_ENTITY_SOLVE_VERSION_V1
@@ -884,6 +886,7 @@ fn validate_promote_v1_audit(result: &Value, audit: &Value) -> Result<(), Refusa
             contract.artifact_version,
         ));
     }
+    validate_promote_v1_self_hash(audit, "audit")?;
     let result_hash = required_value_string(result, &["artifact_content_hash"], "result hash")?;
     let audited_hash = required_value_string(
         audit,
@@ -899,6 +902,27 @@ fn validate_promote_v1_audit(result: &Value, audit: &Value) -> Result<(), Refusa
         ));
     }
     Ok(())
+}
+
+fn validate_promote_v1_self_hash(artifact: &Value, artifact_role: &str) -> Result<(), Refusal> {
+    validate_entity_v1_self_hash(artifact)
+        .map(|_| ())
+        .map_err(|refusal| {
+            let source_code = serde_json::to_value(&refusal.code)
+                .unwrap_or_else(|_| Value::String("unknown".to_string()));
+            promote_refusal(
+                "Promotion input artifact self-hash is invalid",
+                json!({
+                    "stage": "promote",
+                    "field": format!("{artifact_role}.artifact_content_hash"),
+                    "artifact_role": artifact_role,
+                    "source_code": source_code,
+                    "source_message": refusal.message,
+                    "source_detail": refusal.detail,
+                    "writes_performed": false
+                }),
+            )
+        })
 }
 
 fn validate_v1_registry_snapshot(registry: &RegistryJson, result: &Value) -> Result<(), Refusal> {
@@ -1037,10 +1061,10 @@ fn build_promote_v1_artifact(
     aliases: Vec<EntityPromotedAlias>,
     wrote_registry: bool,
 ) -> Result<Value, Refusal> {
-    let metadata = lifecycle_metadata_v1(
+    let metadata = entity_v1_lifecycle_metadata_from_source(
         audit,
         EntityArtifactStageV1::Promote,
-        vec![source_reference_v1(audit)?],
+        vec![entity_v1_artifact_reference(audit)?],
     )?;
     let result_hash = required_value_string(result, &["artifact_content_hash"], "result hash")?;
     let audit_hash = required_value_string(audit, &["artifact_content_hash"], "audit hash")?;
@@ -1087,7 +1111,7 @@ fn build_promote_v1_artifact(
         },
         "aliases": alias_values
     });
-    set_v1_self_hash(&mut artifact)?;
+    finalize_entity_v1_self_hash(&mut artifact)?;
     Ok(artifact)
 }
 

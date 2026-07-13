@@ -1,0 +1,191 @@
+{
+  "artifacts": [
+    {
+      "artifact_version": "canon_entity_project.v1",
+      "command": "canon entity project",
+      "legacy_versions": [
+        "canon_entity_projection.v0",
+        "canon_entity_surface_row.v0"
+      ],
+      "payload_kind": "jsonl",
+      "schema_key": "canon_entity_project.v1",
+      "stage": "project",
+      "workdir": {
+        "artifact_relpath": "project/project.json",
+        "payload_relpath": "project/rows.jsonl",
+        "stage_dir": "project"
+      }
+    },
+    {
+      "artifact_version": "canon_entity_prepare.v1",
+      "command": "canon entity prepare",
+      "legacy_versions": [
+        "canon_entity_prepare.v0"
+      ],
+      "payload_kind": "jsonl",
+      "schema_key": "canon_entity_prepare.v1",
+      "stage": "prepare",
+      "workdir": {
+        "artifact_relpath": "prepare/prepare.json",
+        "payload_relpath": "prepare/surfaces.jsonl",
+        "stage_dir": "prepare"
+      }
+    },
+    {
+      "artifact_version": "canon_entity_index.v1",
+      "command": "canon entity index build",
+      "legacy_versions": [
+        "canon_entity_index.v0"
+      ],
+      "payload_kind": "binary",
+      "schema_key": "canon_entity_index.v1",
+      "stage": "index",
+      "workdir": {
+        "artifact_relpath": "index/index.json",
+        "payload_relpath": "index/postings.bin",
+        "stage_dir": "index"
+      }
+    },
+    {
+      "artifact_version": "canon_entity_block.v1",
+      "command": "canon entity block",
+      "legacy_versions": [
+        "canon_entity_block.v0",
+        "canon_entity_block_bucket.v0"
+      ],
+      "payload_kind": "jsonl",
+      "schema_key": "canon_entity_block.v1",
+      "stage": "block",
+      "workdir": {
+        "artifact_relpath": "block/block.json",
+        "payload_relpath": "block/candidates.jsonl",
+        "stage_dir": "block"
+      }
+    },
+    {
+      "artifact_version": "canon_entity_evidence.v1",
+      "command": "canon entity evidence",
+      "legacy_versions": [
+        "canon_entity_edge.v0"
+      ],
+      "payload_kind": "jsonl",
+      "schema_key": "canon_entity_evidence.v1",
+      "stage": "evidence",
+      "workdir": {
+        "artifact_relpath": "evidence/evidence.json",
+        "payload_relpath": "evidence/evidence.jsonl",
+        "stage_dir": "evidence"
+      }
+    },
+    {
+      "artifact_version": "canon_entity_solve.v1",
+      "command": "canon entity solve",
+      "legacy_versions": [
+        "canon_entity_solve.v0"
+      ],
+      "payload_kind": "jsonl",
+      "schema_key": "canon_entity_solve.v1",
+      "stage": "solve",
+      "workdir": {
+        "artifact_relpath": "solve/solve.json",
+        "payload_relpath": "solve/entities.jsonl",
+        "stage_dir": "solve"
+      }
+    },
+    {
+      "artifact_version": "canon_entity_run.v1",
+      "command": "canon entity run",
+      "legacy_versions": [
+        "canon_entity_run.v0"
+      ],
+      "payload_kind": "json",
+      "schema_key": "canon_entity_run.v1",
+      "stage": "run",
+      "workdir": {
+        "artifact_relpath": "run/run.json",
+        "payload_relpath": "run/manifest.json",
+        "stage_dir": "run"
+      }
+    },
+    {
+      "artifact_version": "canon_entity_review.v1",
+      "command": "canon entity review",
+      "legacy_versions": [
+        "canon_entity_review_export.v0",
+        "canon_entity_review_import.v0",
+        "canon_entity_decision_ledger.v0"
+      ],
+      "payload_kind": "jsonl",
+      "schema_key": "canon_entity_review.v1",
+      "stage": "review",
+      "workdir": {
+        "artifact_relpath": "review/review.json",
+        "payload_relpath": "review/queue.jsonl",
+        "stage_dir": "review"
+      }
+    },
+    {
+      "artifact_version": "canon_entity_audit.v1",
+      "command": "canon entity audit",
+      "legacy_versions": [
+        "canon_entity_audit.v0"
+      ],
+      "payload_kind": "json",
+      "schema_key": "canon_entity_audit.v1",
+      "stage": "audit",
+      "workdir": {
+        "artifact_relpath": "audit/audit.json",
+        "payload_relpath": "audit/report.json",
+        "stage_dir": "audit"
+      }
+    },
+    {
+      "artifact_version": "canon_entity_promote.v1",
+      "command": "canon entity promote",
+      "legacy_versions": [
+        "canon_entity_promote.v0",
+        "canon_entity_promotion_sidecar.v0",
+        "canon_entity_promotion_proof.v0"
+      ],
+      "payload_kind": "json",
+      "schema_key": "canon_entity_promote.v1",
+      "stage": "promote",
+      "workdir": {
+        "artifact_relpath": "promote/promote.json",
+        "payload_relpath": "promote/sidecar.json",
+        "stage_dir": "promote"
+      }
+    },
+    {
+      "artifact_version": "canon_entity_apply.v1",
+      "command": "canon entity apply",
+      "legacy_versions": [
+        "canon_entity_apply.v0"
+      ],
+      "payload_kind": "csv",
+      "schema_key": "canon_entity_apply.v1",
+      "stage": "apply",
+      "workdir": {
+        "artifact_relpath": "apply/apply.json",
+        "payload_relpath": "apply/output.csv",
+        "stage_dir": "apply"
+      }
+    },
+    {
+      "artifact_version": "canon_entity_explain.v1",
+      "command": "canon entity explain",
+      "legacy_versions": [
+        "canon_entity_explain.v0"
+      ],
+      "payload_kind": "json",
+      "schema_key": "canon_entity_explain.v1",
+      "stage": "explain",
+      "workdir": {
+        "artifact_relpath": "explain/explain.json",
+        "payload_relpath": "explain/evidence.json",
+        "stage_dir": "explain"
+      }
+    }
+  ],
+  "bundle_version": "canon_entity_artifact_schemas.v1"
+}

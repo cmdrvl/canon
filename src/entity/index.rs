@@ -9,22 +9,32 @@
 use crate::{
     Refusal,
     entity::{
-        CANON_ENTITY_INDEX_VERSION, CANON_ENTITY_PREPARE_VERSION, EntityArtifactMetadata,
-        EntityArtifactReference, EntityCacheKeyMaterial, EntityDeterministicSummary,
-        EntityProfileDocument, EntityStrategyReference,
+        CANON_ENTITY_INDEX_VERSION, CANON_ENTITY_INDEX_VERSION_V1, CANON_ENTITY_PREPARE_VERSION,
+        CANON_ENTITY_PREPARE_VERSION_V1, EntityArtifactMetadata, EntityArtifactMetadataV1,
+        EntityArtifactReference, EntityArtifactReferenceV1, EntityArtifactStageV1,
+        EntityCacheKeyMaterial, EntityDeterministicSummary, EntityProfileDocument,
+        EntityStrategyReference,
         artifact_chain::{EntityCacheDecision, EntityHashField},
         cache::{EntityCacheInvalidation, EntityCacheKey, EntityCacheLayer, compare_cache_keys},
         contracts::EntityArtifactHeader,
         error::EntityRefusalKind,
         index::ngram_index::{EntityNgramBuildConfig, EntityNgramIndex, EntityNgramSurface},
         index_io::{
-            EntityIndexDiagnosticRecord, EntityIndexDiskBundle, EntityIndexDiskPaths,
-            EntityIndexPersistRequest, EntityIndexPostingsBundle, INDEX_ARTIFACT_FILE,
-            INDEX_CACHE_KEY_FILE, index_cache_file_exists, read_index_artifact_for_cache,
-            read_index_disk_bundle, write_index_disk_bundle,
+            CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION, EntityIndexCacheReceipt,
+            EntityIndexCacheReceiptFile, EntityIndexDiagnosticRecord, EntityIndexDiskBundle,
+            EntityIndexDiskPaths, EntityIndexPersistRequest, EntityIndexPostingsBundle,
+            INDEX_ARTIFACT_FILE, INDEX_CACHE_KEY_FILE, INDEX_CACHE_RECEIPT_FILE,
+            index_cache_file_exists, read_index_artifact_for_cache, read_index_disk_bundle,
+            write_index_disk_bundle,
         },
         postings::{EntityPostingBuildConfig, EntityPostingIndex, EntityPostingSurface},
         prepare::{PrepareRegistrySnapshot, PrepareRunArtifact, PreparedSurfaceRecord},
+        schema::{
+            entity_v1_artifact_reference, entity_v1_contract_for_stage, entity_v1_schema_reference,
+            entity_v1_workdir_layout, finalize_entity_v1_self_hash,
+            sort_entity_v1_upstream_references, validate_artifact_v1_core_contract,
+            validate_entity_v1_self_hash,
+        },
     },
     namekit::ngram::NgramConfig,
     witness,
@@ -34,7 +44,7 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    io::BufRead,
+    io::{BufRead, Write},
     path::{Component, Path, PathBuf},
 };
 
@@ -90,6 +100,12 @@ impl EntityIndexCacheStatus {
 pub enum EntityIndexCachePolicy {
     RebuildOnMiss,
     RefuseOnMiss,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EntityIndexV1PublishFailpoint {
+    None,
+    BeforeFinalRename,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -158,6 +174,37 @@ pub struct EntityIndexBuildResult {
     pub cache_invalidation: EntityCacheInvalidation,
     pub diagnostics: Vec<EntityIndexDiagnosticRecord>,
     pub paths: EntityIndexDiskPaths,
+    pub next_commands: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityIndexBuildV1Result {
+    pub artifact: Value,
+    pub cache_key: EntityCacheKey,
+    pub cache_status: EntityIndexCacheStatus,
+    pub cache_invalidation: EntityCacheInvalidation,
+    pub diagnostics: Vec<EntityIndexDiagnosticRecord>,
+    pub paths: EntityIndexV1DiskPaths,
+    pub next_commands: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityIndexV1DiskPaths {
+    pub artifact_path: PathBuf,
+    pub cache_key_path: PathBuf,
+    pub receipt_path: PathBuf,
+    pub postings_path: PathBuf,
+    pub diagnostics_path: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EntityIndexBuildV1Report {
+    pub version: String,
+    pub artifact: Value,
+    pub cache_status: EntityIndexCacheStatus,
+    pub cache: EntityIndexBuildCacheReport,
+    pub paths: EntityIndexBuildPaths,
+    pub next_command: String,
     pub next_commands: BTreeMap<String, String>,
 }
 
@@ -308,6 +355,71 @@ pub fn run_index_build(
     })
 }
 
+pub fn run_index_build_v1(
+    request: EntityIndexBuildRequest<'_>,
+) -> Result<EntityIndexBuildV1Result, Refusal> {
+    run_index_build_v1_inner(request, EntityIndexV1PublishFailpoint::None)
+}
+
+fn run_index_build_v1_inner(
+    request: EntityIndexBuildRequest<'_>,
+    publish_failpoint: EntityIndexV1PublishFailpoint,
+) -> Result<EntityIndexBuildV1Result, Refusal> {
+    reject_legacy_index_cache_marker(request.work_dir)?;
+    let prepare = load_prepare_v1_artifact(request.work_dir)?;
+    validate_prepare_v1_context(&prepare, request)?;
+
+    let strategy = load_index_strategy_reference(request.profile, request.strategy)?;
+    let current_cache_key = index_cache_key_from_prepare_v1(&prepare, &strategy)?;
+    if let Some(cached) = read_verified_v1_cache_if_present(
+        request.work_dir,
+        &prepare,
+        &strategy,
+        &current_cache_key,
+        request.max_artifact_bytes,
+    )? {
+        return Ok(EntityIndexBuildV1Result {
+            next_commands: next_commands(request),
+            ..cached
+        });
+    }
+
+    let surfaces = read_prepare_v1_surfaces(request.work_dir, &prepare)?;
+    validate_prepare_v1_surfaces(&surfaces, &prepare)?;
+    let rebuilt = build_index_v1_artifact_and_payloads(
+        &prepare,
+        strategy,
+        &surfaces,
+        EntityIndexCacheStatus::Rebuilt,
+        request,
+    )?;
+
+    let paths = write_index_v1_disk_bundle(
+        request.work_dir,
+        &rebuilt.artifact,
+        &current_cache_key,
+        &rebuilt.postings,
+        &rebuilt.diagnostics,
+        request.max_artifact_bytes,
+        publish_failpoint,
+    )?;
+
+    Ok(EntityIndexBuildV1Result {
+        artifact: rebuilt.artifact,
+        cache_key: current_cache_key,
+        cache_status: EntityIndexCacheStatus::Rebuilt,
+        cache_invalidation: EntityCacheInvalidation {
+            layer: EntityCacheLayer::NgramPostings,
+            decision: EntityCacheDecision::Miss,
+            changed_fields: Vec::new(),
+            invalidated_layers: Vec::new(),
+        },
+        diagnostics: rebuilt.diagnostics,
+        paths,
+        next_commands: next_commands(request),
+    })
+}
+
 pub fn index_build_report(result: &EntityIndexBuildResult) -> EntityIndexBuildReport {
     let next_command = result
         .next_commands
@@ -338,6 +450,1544 @@ pub fn index_build_report(result: &EntityIndexBuildResult) -> EntityIndexBuildRe
         next_command,
         next_commands: result.next_commands.clone(),
     }
+}
+
+pub fn index_build_v1_report(result: &EntityIndexBuildV1Result) -> EntityIndexBuildV1Report {
+    let next_command = result
+        .next_commands
+        .get("block")
+        .cloned()
+        .unwrap_or_default();
+    EntityIndexBuildV1Report {
+        version: "canon_entity_index_build.v1".to_string(),
+        artifact: result.artifact.clone(),
+        cache_status: result.cache_status,
+        cache: EntityIndexBuildCacheReport {
+            decision: result.cache_invalidation.decision,
+            layer: result.cache_invalidation.layer,
+            changed_fields: result
+                .cache_invalidation
+                .changed_fields
+                .iter()
+                .map(|field| field.as_str().to_string())
+                .collect(),
+            invalidated_layers: result.cache_invalidation.invalidated_layers.clone(),
+        },
+        paths: EntityIndexBuildPaths {
+            artifact: result.paths.artifact_path.display().to_string(),
+            cache_key: result.paths.cache_key_path.display().to_string(),
+            postings: result.paths.postings_path.display().to_string(),
+            diagnostics: result.paths.diagnostics_path.display().to_string(),
+        },
+        next_command,
+        next_commands: result.next_commands.clone(),
+    }
+}
+
+struct BuiltIndexV1Payloads {
+    artifact: Value,
+    postings: EntityIndexPostingsBundle,
+    diagnostics: Vec<EntityIndexDiagnosticRecord>,
+}
+
+struct EntityIndexV1BundleBytes {
+    artifact: Vec<u8>,
+    cache_key: Vec<u8>,
+    postings: Vec<u8>,
+    diagnostics: Vec<u8>,
+    receipt: Vec<u8>,
+}
+
+fn build_index_v1_artifact_and_payloads(
+    prepare: &Value,
+    strategy: EntityStrategyReference,
+    surfaces: &[PreparedSurfaceRecord],
+    cache_status: EntityIndexCacheStatus,
+    request: EntityIndexBuildRequest<'_>,
+) -> Result<BuiltIndexV1Payloads, Refusal> {
+    let postings = EntityPostingIndex::build(
+        &posting_surfaces(surfaces),
+        EntityPostingBuildConfig {
+            common_posting_limit: DEFAULT_INDEX_COMMON_POSTING_LIMIT,
+        },
+    )
+    .map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to build entity postings index",
+            json!({
+                "stage": "index",
+                "error": format!("{error:?}"),
+                "writes_performed": false
+            }),
+            Some(next_index_command(request)),
+        )
+    })?;
+    let ngrams = EntityNgramIndex::build(
+        &ngram_surfaces(surfaces),
+        EntityNgramBuildConfig {
+            ngram: NgramConfig::new(DEFAULT_INDEX_NGRAM_WIDTH)
+                .expect("default ngram width is valid"),
+            common_posting_limit: DEFAULT_INDEX_COMMON_POSTING_LIMIT,
+        },
+    )
+    .map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to build entity ngram index",
+            json!({
+                "stage": "index",
+                "error": format!("{error:?}"),
+                "writes_performed": false
+            }),
+            Some(next_index_command(request)),
+        )
+    })?;
+    let posting_diagnostics = postings.diagnostics.clone();
+    let ngram_diagnostics = ngrams.diagnostics.clone();
+    let counts = index_summary_counts(
+        u64::from(posting_diagnostics.surface_count),
+        posting_diagnostics.token_count as u64,
+        ngram_diagnostics.ngram_count as u64,
+        (posting_diagnostics.large_exact_view_bucket_count
+            + posting_diagnostics.common_token_count
+            + ngram_diagnostics.common_ngram_count) as u64,
+    );
+    let labels = BTreeMap::from([
+        (
+            "cache_status".to_string(),
+            cache_status.as_str().to_string(),
+        ),
+        (
+            "upstream_version".to_string(),
+            CANON_ENTITY_PREPARE_VERSION_V1.to_string(),
+        ),
+    ]);
+    let summary = EntityDeterministicSummary { counts, labels };
+    let prepare_ref = entity_v1_artifact_reference(prepare)?;
+    let metadata = index_v1_metadata_from_prepare(prepare, prepare_ref.clone(), strategy)?;
+    let postings_path = index_v1_payload_relpath()?;
+    let mut artifact = json!({
+        "version": CANON_ENTITY_INDEX_VERSION_V1,
+        "artifact_content_hash": "",
+        "metadata": metadata,
+        "prepare_hash": prepare_ref.content_hash,
+        "summary": summary,
+        "postings_path": postings_path,
+        "diagnostics_path": DEFAULT_INDEX_DIAGNOSTICS_PATH
+    });
+    finalize_entity_v1_self_hash(&mut artifact)?;
+    validate_artifact_v1_core_contract(&artifact)?;
+    let diagnostics = index_v1_diagnostics(&artifact, &posting_diagnostics, &ngram_diagnostics)?;
+    Ok(BuiltIndexV1Payloads {
+        artifact,
+        postings: EntityIndexPostingsBundle::new(postings, Some(ngrams)),
+        diagnostics,
+    })
+}
+
+fn index_v1_metadata_from_prepare(
+    prepare: &Value,
+    prepare_ref: EntityArtifactReferenceV1,
+    strategy: EntityStrategyReference,
+) -> Result<EntityArtifactMetadataV1, Refusal> {
+    let prepare_metadata = metadata_v1(prepare)?;
+    let contract = entity_v1_contract_for_stage(EntityArtifactStageV1::Index)?;
+    Ok(EntityArtifactMetadataV1 {
+        profile: prepare_metadata.profile,
+        strategy,
+        registry_snapshot: prepare_metadata.registry_snapshot,
+        input: prepare_metadata.input,
+        patch_namespace: prepare_metadata.patch_namespace,
+        schema: entity_v1_schema_reference(contract)?,
+        workdir: entity_v1_workdir_layout(contract, prepare_metadata.workdir.root_dir),
+        upstream_artifacts: sort_entity_v1_upstream_references(vec![prepare_ref])?,
+        patch_set: prepare_metadata.patch_set,
+        namekit: prepare_metadata.namekit,
+        artifact_content_hash: String::new(),
+    })
+}
+
+fn load_prepare_v1_artifact(work_dir: &Path) -> Result<Value, Refusal> {
+    let artifact: Value = read_json_file(
+        &work_dir.join("prepare").join("prepare.json"),
+        "entity prepare v1 artifact",
+    )?;
+    let contract =
+        validate_artifact_v1_core_contract(&artifact).map_err(with_index_zero_write_context)?;
+    validate_entity_v1_self_hash(&artifact).map_err(with_index_zero_write_context)?;
+    if contract.artifact_version != CANON_ENTITY_PREPARE_VERSION_V1 {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index requires a canon_entity_prepare.v1 artifact",
+            json!({
+                "stage": "index",
+                "field": "prepare.version",
+                "expected": CANON_ENTITY_PREPARE_VERSION_V1,
+                "actual": contract.artifact_version,
+                "writes_performed": false
+            }),
+            Some(
+                "Rerun canon entity prepare with the v1 writer before building the index"
+                    .to_string(),
+            ),
+        ));
+    }
+    Ok(artifact)
+}
+
+fn with_index_zero_write_context(mut refusal: Refusal) -> Refusal {
+    if let Some(detail) = refusal.detail.as_object_mut() {
+        detail.insert("stage".to_string(), Value::String("index".to_string()));
+        detail.insert("writes_performed".to_string(), Value::Bool(false));
+    } else {
+        let upstream_detail = std::mem::replace(&mut refusal.detail, Value::Null);
+        refusal.detail = json!({
+            "stage": "index",
+            "writes_performed": false,
+            "upstream_refusal_detail": upstream_detail
+        });
+    }
+    refusal
+}
+
+fn validate_prepare_v1_context(
+    prepare: &Value,
+    request: EntityIndexBuildRequest<'_>,
+) -> Result<(), Refusal> {
+    let metadata = metadata_v1(prepare)?;
+    let current_profile = load_profile_reference(request.profile)?;
+    require_equal(
+        EntityRefusalKind::Profile,
+        "Prepared artifact profile does not match current profile",
+        "metadata.profile.id",
+        &metadata.profile.id,
+        &current_profile.id,
+    )?;
+    require_equal(
+        EntityRefusalKind::Profile,
+        "Prepared artifact profile version does not match current profile",
+        "metadata.profile.version",
+        &metadata.profile.version,
+        &current_profile.version,
+    )?;
+    require_equal_optional(
+        EntityRefusalKind::Profile,
+        "Prepared artifact profile hash does not match current profile",
+        "metadata.profile.content_hash",
+        metadata.profile.content_hash.as_deref(),
+        current_profile.content_hash.as_deref(),
+    )?;
+
+    let expected_patch_hash =
+        witness::hash_bytes(current_profile.patch_namespaces.aliases.as_bytes());
+    require_equal_optional(
+        EntityRefusalKind::PatchConflict,
+        "Prepared artifact patch namespace hash does not match current profile",
+        "metadata.patch_set.content_hash",
+        metadata
+            .patch_set
+            .as_ref()
+            .map(|patch| patch.content_hash.as_str()),
+        Some(expected_patch_hash.as_str()),
+    )?;
+
+    let current_input_hash = witness::hash_file(request.rows).map_err(|error| {
+        EntityRefusalKind::IoBudget.to_refusal(
+            "Failed to hash entity index input rows",
+            json!({
+                "stage": "index",
+                "path": request.rows.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some(next_index_command(request)),
+        )
+    })?;
+    require_equal(
+        EntityRefusalKind::InputContract,
+        "Prepared artifact input hash does not match current rows",
+        "metadata.input.content_hash",
+        &metadata.input.content_hash,
+        &current_input_hash,
+    )?;
+
+    let current_registry = load_registry_snapshot(request.registry)?;
+    require_equal(
+        EntityRefusalKind::RegistrySnapshot,
+        "Prepared artifact registry id does not match current registry",
+        "metadata.registry_snapshot.id",
+        &metadata.registry_snapshot.id,
+        &current_registry.id,
+    )?;
+    require_equal(
+        EntityRefusalKind::RegistrySnapshot,
+        "Prepared artifact registry version does not match current registry",
+        "metadata.registry_snapshot.version",
+        &metadata.registry_snapshot.version,
+        &current_registry.version,
+    )?;
+    require_equal(
+        EntityRefusalKind::RegistrySnapshot,
+        "Prepared artifact registry hash does not match current registry",
+        "metadata.registry_snapshot.lookup_snapshot_hash",
+        &metadata.registry_snapshot.lookup_snapshot_hash,
+        &current_registry.lookup_snapshot_hash,
+    )
+}
+
+fn index_cache_key_from_prepare_v1(
+    prepare: &Value,
+    strategy: &EntityStrategyReference,
+) -> Result<EntityCacheKey, Refusal> {
+    let metadata = metadata_v1(prepare)?;
+    let prepare_hash = validate_entity_v1_self_hash(prepare)?;
+    let profile_hash = metadata
+        .profile
+        .content_hash
+        .ok_or_else(|| missing_prepare_metadata("metadata.profile.content_hash"))?;
+    let namekit = metadata
+        .namekit
+        .ok_or_else(|| missing_prepare_metadata("metadata.namekit"))?;
+    Ok(EntityCacheKey::from_i21_material(
+        EntityCacheLayer::NgramPostings,
+        EntityCacheKeyMaterial {
+            input_hash: metadata.input.content_hash,
+            profile_hash,
+            strategy_hash: strategy.content_hash.clone(),
+            registry_snapshot_hash: metadata.registry_snapshot.lookup_snapshot_hash,
+            patch_hash: metadata.patch_set.map(|patch| patch.content_hash),
+            namekit_version: namekit.version,
+            namekit_hash: Some(namekit.content_hash),
+        },
+    )
+    .with_upstream_artifact_hash(prepare_hash))
+}
+
+fn read_prepare_v1_surfaces(
+    work_dir: &Path,
+    prepare: &Value,
+) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
+    let surfaces_path = required_value_string(prepare, &["surfaces_path"], "surfaces_path")?;
+    let path = resolve_safe_relative_path(work_dir, &surfaces_path, "surfaces_path")?;
+    read_jsonl_file(&path, "prepared surfaces")
+}
+
+fn validate_prepare_v1_surfaces(
+    surfaces: &[PreparedSurfaceRecord],
+    prepare: &Value,
+) -> Result<(), Refusal> {
+    let metadata = metadata_v1(prepare)?;
+    let expected_count = required_value_u64(
+        prepare,
+        &["summary", "prepared_surfaces"],
+        "summary.prepared_surfaces",
+    )
+    .ok();
+    if expected_count.is_some_and(|count| count != surfaces.len() as u64) {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Prepared surface stream count does not match prepare artifact summary",
+            json!({
+                "stage": "index",
+                "field": "prepared_surfaces",
+                "expected": expected_count,
+                "actual": surfaces.len(),
+                "writes_performed": false
+            }),
+            Some("Rerun canon entity prepare before building the index".to_string()),
+        ));
+    }
+    for (ordinal, surface) in surfaces.iter().enumerate() {
+        if surface.profile_id != metadata.profile.id {
+            return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+                "Prepared surface profile does not match prepare artifact profile",
+                json!({
+                    "stage": "index",
+                    "field": "surface.profile_id",
+                    "surface_ordinal": ordinal,
+                    "surface_id": &surface.surface_id,
+                    "expected": metadata.profile.id,
+                    "actual": &surface.profile_id,
+                    "writes_performed": false
+                }),
+                Some("Rerun canon entity prepare before building the index".to_string()),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn metadata_v1(artifact: &Value) -> Result<EntityArtifactMetadataV1, Refusal> {
+    serde_json::from_value(
+        artifact
+            .get("metadata")
+            .cloned()
+            .ok_or_else(|| missing_prepare_metadata("metadata"))?,
+    )
+    .map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity v1 artifact metadata failed to deserialize",
+            json!({
+                "stage": "index",
+                "field": "metadata",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Rerun the prerequisite entity stage".to_string()),
+        )
+    })
+}
+
+fn index_v1_contract_disk_paths(work_dir: &Path) -> Result<EntityIndexV1DiskPaths, Refusal> {
+    let contract = entity_v1_contract_for_stage(EntityArtifactStageV1::Index)?;
+    Ok(EntityIndexV1DiskPaths {
+        artifact_path: resolve_safe_relative_path(
+            work_dir,
+            contract.artifact_relpath,
+            "metadata.workdir.artifact_relpath",
+        )?,
+        cache_key_path: work_dir.join(INDEX_CACHE_KEY_FILE),
+        receipt_path: work_dir.join(INDEX_CACHE_RECEIPT_FILE),
+        postings_path: resolve_safe_relative_path(
+            work_dir,
+            contract.payload_relpath,
+            "postings_path",
+        )?,
+        diagnostics_path: resolve_safe_relative_path(
+            work_dir,
+            DEFAULT_INDEX_DIAGNOSTICS_PATH,
+            "diagnostics_path",
+        )?,
+    })
+}
+
+fn validate_cached_index_v1_artifact(
+    artifact: &Value,
+    prepare: &Value,
+    strategy: &EntityStrategyReference,
+    current_cache_key: &EntityCacheKey,
+) -> Result<(), Refusal> {
+    let contract = validate_artifact_v1_core_contract(artifact)?;
+    if contract.artifact_version != CANON_ENTITY_INDEX_VERSION_V1 {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 cache artifact has the wrong version",
+            json!({
+                "stage": "index",
+                "field": "version",
+                "expected": CANON_ENTITY_INDEX_VERSION_V1,
+                "actual": contract.artifact_version,
+                "writes_performed": false
+            }),
+            Some("Use a fresh work directory or rebuild canon entity index".to_string()),
+        ));
+    }
+    validate_entity_v1_self_hash(artifact)?;
+    let metadata = metadata_v1(artifact)?;
+    if metadata.strategy != *strategy {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 cache artifact strategy does not match current strategy",
+            json!({
+                "stage": "index",
+                "field": "metadata.strategy",
+                "writes_performed": false
+            }),
+            Some("Use a fresh work directory or rebuild canon entity index".to_string()),
+        ));
+    }
+    let prepare_ref = entity_v1_artifact_reference(prepare)?;
+    let expected_upstreams = sort_entity_v1_upstream_references(vec![prepare_ref.clone()])?;
+    if metadata.upstream_artifacts != expected_upstreams {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 cache artifact upstream does not match current prepare artifact",
+            json!({
+                "stage": "index",
+                "field": "metadata.upstream_artifacts",
+                "expected": expected_upstreams,
+                "actual": metadata.upstream_artifacts,
+                "writes_performed": false
+            }),
+            Some("Use a fresh work directory or rebuild canon entity index".to_string()),
+        ));
+    }
+    let prepare_hash = required_value_string(artifact, &["prepare_hash"], "prepare_hash")?;
+    if prepare_hash != prepare_ref.content_hash {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 cache artifact prepare hash does not match upstream reference",
+            json!({
+                "stage": "index",
+                "field": "prepare_hash",
+                "expected": prepare_ref.content_hash,
+                "actual": prepare_hash,
+                "writes_performed": false
+            }),
+            Some("Use a fresh work directory or rebuild canon entity index".to_string()),
+        ));
+    }
+    if current_cache_key.upstream_artifact_hash.as_deref() != Some(prepare_hash.as_str()) {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 cache key is not bound to the current prepare artifact",
+            json!({
+                "stage": "index",
+                "field": "cache_key.upstream_artifact_hash",
+                "expected": prepare_hash,
+                "actual": current_cache_key.upstream_artifact_hash,
+                "writes_performed": false
+            }),
+            Some("Use a fresh work directory or rebuild canon entity index".to_string()),
+        ));
+    }
+    Ok(())
+}
+
+fn read_verified_v1_cache_if_present(
+    work_dir: &Path,
+    prepare: &Value,
+    strategy: &EntityStrategyReference,
+    current_cache_key: &EntityCacheKey,
+    max_artifact_bytes: Option<u64>,
+) -> Result<Option<EntityIndexBuildV1Result>, Refusal> {
+    let initial_paths = index_v1_contract_disk_paths(work_dir)?;
+    let initial_exists = [
+        &initial_paths.artifact_path,
+        &initial_paths.cache_key_path,
+        &initial_paths.receipt_path,
+        &initial_paths.postings_path,
+        &initial_paths.diagnostics_path,
+    ]
+    .map(|path| path.exists());
+    if initial_exists.iter().all(|exists| !exists) {
+        return Ok(None);
+    }
+    if !(initial_exists[0] && initial_exists[1] && initial_exists[2]) {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 cache is incomplete",
+            json!({
+                "stage": "index",
+                "artifact_exists": initial_exists[0],
+                "cache_key_exists": initial_exists[1],
+                "receipt_exists": initial_exists[2],
+                "postings_exists": initial_exists[3],
+                "diagnostics_exists": initial_exists[4],
+                "writes_performed": false
+            }),
+            Some(
+                "Remove the incomplete cache outside canon or use a fresh work directory"
+                    .to_string(),
+            ),
+        ));
+    }
+    let artifact_bytes = read_regular_file(&initial_paths.artifact_path, "index artifact")?;
+    let artifact: Value = serde_json::from_slice(&artifact_bytes).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to parse entity index v1 cache artifact",
+            json!({
+                "stage": "index",
+                "path": initial_paths.artifact_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })?;
+    validate_cached_index_v1_artifact(&artifact, prepare, strategy, current_cache_key)?;
+
+    let paths = index_v1_disk_paths(work_dir, &artifact)?;
+    let exists = [
+        &paths.artifact_path,
+        &paths.cache_key_path,
+        &paths.receipt_path,
+        &paths.postings_path,
+        &paths.diagnostics_path,
+    ]
+    .map(|path| path.exists());
+    if exists.iter().all(|exists| !exists) {
+        return Ok(None);
+    }
+    if !exists.iter().all(|exists| *exists) {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 cache is incomplete",
+            json!({
+                "stage": "index",
+                "artifact_exists": exists[0],
+                "cache_key_exists": exists[1],
+                "receipt_exists": exists[2],
+                "postings_exists": exists[3],
+                "diagnostics_exists": exists[4],
+                "writes_performed": false
+            }),
+            Some(
+                "Remove the incomplete cache outside canon or use a fresh work directory"
+                    .to_string(),
+            ),
+        ));
+    }
+    enforce_v1_read_budget(max_artifact_bytes, &paths)?;
+    let cache_key: EntityCacheKey = serde_json::from_slice(&read_regular_file(
+        &paths.cache_key_path,
+        "index cache key",
+    )?)
+    .map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to parse entity index v1 cache key",
+            json!({ "stage": "index", "error": error.to_string(), "writes_performed": false }),
+            None,
+        )
+    })?;
+    let cache_invalidation = validate_index_cache_policy(
+        &cache_key,
+        current_cache_key,
+        EntityIndexCachePolicy::RefuseOnMiss,
+    )?;
+    let postings: EntityIndexPostingsBundle =
+        serde_json::from_slice(&read_regular_file(&paths.postings_path, "index postings")?)
+            .map_err(|error| {
+                EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to parse entity index v1 postings",
+            json!({ "stage": "index", "error": error.to_string(), "writes_performed": false }),
+            None,
+        )
+            })?;
+    postings.validate_reload()?;
+    let diagnostics_bytes = read_regular_file(&paths.diagnostics_path, "index diagnostics")?;
+    let diagnostics = parse_v1_diagnostics(&diagnostics_bytes, &paths.diagnostics_path)?;
+    validate_v1_cache_receipt(
+        &paths,
+        EntityIndexCacheMode::Enabled,
+        &artifact_bytes,
+        &diagnostics_bytes,
+    )?;
+    Ok(Some(EntityIndexBuildV1Result {
+        artifact,
+        cache_key,
+        cache_status: EntityIndexCacheStatus::Hit,
+        cache_invalidation,
+        diagnostics,
+        paths,
+        next_commands: BTreeMap::new(),
+    }))
+}
+
+fn write_index_v1_disk_bundle(
+    work_dir: &Path,
+    artifact: &Value,
+    cache_key: &EntityCacheKey,
+    postings: &EntityIndexPostingsBundle,
+    diagnostics: &[EntityIndexDiagnosticRecord],
+    max_artifact_bytes: Option<u64>,
+    publish_failpoint: EntityIndexV1PublishFailpoint,
+) -> Result<EntityIndexV1DiskPaths, Refusal> {
+    validate_artifact_v1_core_contract(artifact)?;
+    validate_entity_v1_self_hash(artifact)?;
+    postings.validate_reload()?;
+    ensure_final_index_v1_absent(work_dir)?;
+    let final_paths = index_v1_disk_paths(work_dir, artifact)?;
+    let final_dir = final_index_v1_dir(work_dir);
+    let artifact_bytes = json_bytes(artifact, "index artifact")?;
+    let cache_key_bytes = json_bytes(cache_key, "index cache key")?;
+    let postings_bytes = json_bytes(postings, "index postings")?;
+    let diagnostics_bytes = diagnostics_jsonl_bytes(diagnostics)?;
+    let receipt = v1_cache_receipt_from_bytes(
+        EntityIndexCacheMode::Enabled,
+        EntityIndexCacheStatus::Rebuilt,
+        true,
+        &artifact_bytes,
+        &cache_key_bytes,
+        &postings_bytes,
+        &diagnostics_bytes,
+    )?;
+    let bundle_bytes = EntityIndexV1BundleBytes {
+        artifact: artifact_bytes,
+        cache_key: cache_key_bytes,
+        postings: postings_bytes,
+        diagnostics: diagnostics_bytes,
+        receipt: json_bytes(&receipt, "index cache receipt")?,
+    };
+    enforce_v1_write_budget(
+        max_artifact_bytes,
+        [
+            bundle_bytes.artifact.len(),
+            bundle_bytes.cache_key.len(),
+            bundle_bytes.postings.len(),
+            bundle_bytes.diagnostics.len(),
+            bundle_bytes.receipt.len(),
+        ],
+    )?;
+    let staging_dir = create_index_v1_staging_dir(work_dir)?;
+    let result = (|| {
+        let staging_paths = index_v1_staging_paths(&final_paths, &final_dir, &staging_dir)?;
+        write_regular_file_synced(
+            &staging_paths.artifact_path,
+            &bundle_bytes.artifact,
+            "index artifact",
+        )?;
+        write_regular_file_synced(
+            &staging_paths.cache_key_path,
+            &bundle_bytes.cache_key,
+            "index cache key",
+        )?;
+        write_regular_file_synced(
+            &staging_paths.postings_path,
+            &bundle_bytes.postings,
+            "index postings",
+        )?;
+        write_regular_file_synced(
+            &staging_paths.diagnostics_path,
+            &bundle_bytes.diagnostics,
+            "index diagnostics",
+        )?;
+        write_regular_file_synced(
+            &staging_paths.receipt_path,
+            &bundle_bytes.receipt,
+            "index cache receipt",
+        )?;
+        sync_directory(&staging_dir, "index staging directory")?;
+        validate_staged_index_v1_bundle(&staging_paths, &bundle_bytes)?;
+        if publish_failpoint == EntityIndexV1PublishFailpoint::BeforeFinalRename {
+            return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+                "Forced entity index v1 publication failure before final rename",
+                json!({
+                    "stage": "index",
+                    "failpoint": "before_final_rename",
+                    "final_index_exists": final_dir.exists(),
+                    "writes_performed": false
+                }),
+                None,
+            ));
+        }
+        ensure_final_index_v1_absent(work_dir)?;
+        fs::rename(&staging_dir, &final_dir).map_err(|error| {
+            EntityRefusalKind::IoBudget.to_refusal(
+                "Failed to publish entity index v1 staging directory",
+                json!({
+                    "stage": "index",
+                    "source": staging_dir.display().to_string(),
+                    "target": final_dir.display().to_string(),
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+                None,
+            )
+        })?;
+        Ok(final_paths)
+    })();
+    if result.is_err() {
+        cleanup_owned_staging_dir(&staging_dir);
+    }
+    result
+}
+
+fn validate_v1_cache_receipt(
+    paths: &EntityIndexV1DiskPaths,
+    mode: EntityIndexCacheMode,
+    artifact_bytes: &[u8],
+    diagnostics_bytes: &[u8],
+) -> Result<(), Refusal> {
+    let receipt_bytes = read_regular_file(&paths.receipt_path, "index cache receipt")?;
+    let receipt: EntityIndexCacheReceipt =
+        serde_json::from_slice(&receipt_bytes).map_err(|error| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Failed to parse entity index v1 cache receipt",
+                json!({ "stage": "index", "error": error.to_string(), "writes_performed": false }),
+                None,
+            )
+        })?;
+    if receipt.version != CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION
+        || receipt.mode != mode
+        || !receipt.reusable
+        || !matches!(
+            receipt.status,
+            EntityIndexCacheStatus::Hit | EntityIndexCacheStatus::Rebuilt
+        )
+    {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 cache receipt mode/status/reusable combination is invalid",
+            json!({
+                "stage": "index",
+                "mode": receipt.mode.as_str(),
+                "status": receipt.status.as_str(),
+                "reusable": receipt.reusable,
+                "writes_performed": false
+            }),
+            None,
+        ));
+    }
+    let cache_key_bytes = read_regular_file(&paths.cache_key_path, "index cache key")?;
+    let postings_bytes = read_regular_file(&paths.postings_path, "index postings")?;
+    let expected = v1_cache_receipt_from_bytes(
+        receipt.mode,
+        receipt.status,
+        receipt.reusable,
+        artifact_bytes,
+        &cache_key_bytes,
+        &postings_bytes,
+        diagnostics_bytes,
+    )?;
+    if receipt.files != expected.files || receipt.bundle_hash != expected.bundle_hash {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 cache receipt does not match bundle bytes",
+            json!({ "stage": "index", "field": "cache_receipt", "writes_performed": false }),
+            None,
+        ));
+    }
+    Ok(())
+}
+
+fn validate_staged_index_v1_bundle(
+    paths: &EntityIndexV1DiskPaths,
+    bundle_bytes: &EntityIndexV1BundleBytes,
+) -> Result<(), Refusal> {
+    require_staged_file_bytes(
+        &paths.artifact_path,
+        &bundle_bytes.artifact,
+        "index artifact",
+    )?;
+    require_staged_file_bytes(
+        &paths.cache_key_path,
+        &bundle_bytes.cache_key,
+        "index cache key",
+    )?;
+    require_staged_file_bytes(
+        &paths.postings_path,
+        &bundle_bytes.postings,
+        "index postings",
+    )?;
+    require_staged_file_bytes(
+        &paths.diagnostics_path,
+        &bundle_bytes.diagnostics,
+        "index diagnostics",
+    )?;
+    require_staged_file_bytes(
+        &paths.receipt_path,
+        &bundle_bytes.receipt,
+        "index cache receipt",
+    )?;
+    validate_v1_cache_receipt(
+        paths,
+        EntityIndexCacheMode::Enabled,
+        &bundle_bytes.artifact,
+        &bundle_bytes.diagnostics,
+    )
+}
+
+fn require_staged_file_bytes(path: &Path, expected: &[u8], label: &str) -> Result<(), Refusal> {
+    let actual = read_regular_file(path, label)?;
+    if actual != expected {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 staged file bytes drifted before publication",
+            json!({
+                "stage": "index",
+                "artifact": label,
+                "path": path.display().to_string(),
+                "expected_bytes": expected.len(),
+                "actual_bytes": actual.len(),
+                "writes_performed": false
+            }),
+            None,
+        ));
+    }
+    Ok(())
+}
+
+fn final_index_v1_dir(work_dir: &Path) -> PathBuf {
+    work_dir.join("index")
+}
+
+fn ensure_final_index_v1_absent(work_dir: &Path) -> Result<(), Refusal> {
+    let final_dir = final_index_v1_dir(work_dir);
+    match fs::symlink_metadata(&final_dir) {
+        Ok(metadata) => Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 final directory already exists before publication",
+            json!({
+                "stage": "index",
+                "path": final_dir.display().to_string(),
+                "existing_kind": file_type_kind(&metadata),
+                "writes_performed": false
+            }),
+            Some("Reuse the valid cache hit or use a fresh work directory".to_string()),
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(EntityRefusalKind::IoBudget.to_refusal(
+            "Failed to inspect entity index v1 final directory before publication",
+            json!({
+                "stage": "index",
+                "path": final_dir.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )),
+    }
+}
+
+fn create_index_v1_staging_dir(work_dir: &Path) -> Result<PathBuf, Refusal> {
+    let work_metadata = fs::symlink_metadata(work_dir).map_err(|error| {
+        EntityRefusalKind::IoBudget.to_refusal(
+            "Failed to inspect entity index v1 work directory before staging",
+            json!({
+                "stage": "index",
+                "path": work_dir.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })?;
+    if work_metadata.file_type().is_symlink() || !work_metadata.file_type().is_dir() {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 work directory must be a regular non-symlink directory",
+            json!({
+                "stage": "index",
+                "path": work_dir.display().to_string(),
+                "existing_kind": file_type_kind(&work_metadata),
+                "writes_performed": false
+            }),
+            None,
+        ));
+    }
+    let process_id = std::process::id();
+    for attempt in 0..1000u32 {
+        let candidate = work_dir.join(format!(".index.v1.stage.{process_id}.{attempt}"));
+        match fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(EntityRefusalKind::IoBudget.to_refusal(
+                    "Failed to create entity index v1 staging directory",
+                    json!({
+                        "stage": "index",
+                        "path": candidate.display().to_string(),
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                    None,
+                ));
+            }
+        }
+    }
+    Err(EntityRefusalKind::IoBudget.to_refusal(
+        "Failed to allocate a unique entity index v1 staging directory",
+        json!({
+            "stage": "index",
+            "path": work_dir.display().to_string(),
+            "writes_performed": false
+        }),
+        None,
+    ))
+}
+
+fn index_v1_staging_paths(
+    final_paths: &EntityIndexV1DiskPaths,
+    final_dir: &Path,
+    staging_dir: &Path,
+) -> Result<EntityIndexV1DiskPaths, Refusal> {
+    Ok(EntityIndexV1DiskPaths {
+        artifact_path: index_v1_staging_path(
+            &final_paths.artifact_path,
+            final_dir,
+            staging_dir,
+            "artifact_path",
+        )?,
+        cache_key_path: index_v1_staging_path(
+            &final_paths.cache_key_path,
+            final_dir,
+            staging_dir,
+            "cache_key_path",
+        )?,
+        receipt_path: index_v1_staging_path(
+            &final_paths.receipt_path,
+            final_dir,
+            staging_dir,
+            "receipt_path",
+        )?,
+        postings_path: index_v1_staging_path(
+            &final_paths.postings_path,
+            final_dir,
+            staging_dir,
+            "postings_path",
+        )?,
+        diagnostics_path: index_v1_staging_path(
+            &final_paths.diagnostics_path,
+            final_dir,
+            staging_dir,
+            "diagnostics_path",
+        )?,
+    })
+}
+
+fn index_v1_staging_path(
+    final_path: &Path,
+    final_dir: &Path,
+    staging_dir: &Path,
+    field: &str,
+) -> Result<PathBuf, Refusal> {
+    let relative = final_path.strip_prefix(final_dir).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 path is outside the final index directory",
+            json!({
+                "stage": "index",
+                "field": field,
+                "path": final_path.display().to_string(),
+                "final_dir": final_dir.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })?;
+    if relative
+        .components()
+        .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 staged path must stay within the staging directory",
+            json!({
+                "stage": "index",
+                "field": field,
+                "path": final_path.display().to_string(),
+                "writes_performed": false
+            }),
+            None,
+        ));
+    }
+    Ok(staging_dir.join(relative))
+}
+
+fn index_v1_disk_paths(
+    work_dir: &Path,
+    artifact: &Value,
+) -> Result<EntityIndexV1DiskPaths, Refusal> {
+    Ok(EntityIndexV1DiskPaths {
+        artifact_path: work_dir.join("index").join("index.json"),
+        cache_key_path: work_dir.join(INDEX_CACHE_KEY_FILE),
+        receipt_path: work_dir.join(INDEX_CACHE_RECEIPT_FILE),
+        postings_path: resolve_safe_relative_path(
+            work_dir,
+            &required_value_string(artifact, &["postings_path"], "postings_path")?,
+            "postings_path",
+        )?,
+        diagnostics_path: resolve_safe_relative_path(
+            work_dir,
+            &required_value_string(artifact, &["diagnostics_path"], "diagnostics_path")?,
+            "diagnostics_path",
+        )?,
+    })
+}
+
+fn v1_cache_receipt_from_bytes(
+    mode: EntityIndexCacheMode,
+    status: EntityIndexCacheStatus,
+    reusable: bool,
+    artifact_bytes: &[u8],
+    cache_key_bytes: &[u8],
+    postings_bytes: &[u8],
+    diagnostics_bytes: &[u8],
+) -> Result<EntityIndexCacheReceipt, Refusal> {
+    let file_inputs = [
+        ("artifact", "index/index.json", artifact_bytes),
+        ("cache_key", INDEX_CACHE_KEY_FILE, cache_key_bytes),
+        ("postings", index_v1_payload_relpath()?, postings_bytes),
+        (
+            "diagnostics",
+            DEFAULT_INDEX_DIAGNOSTICS_PATH,
+            diagnostics_bytes,
+        ),
+    ];
+    Ok(EntityIndexCacheReceipt {
+        version: CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION.to_string(),
+        mode,
+        status,
+        reusable,
+        bundle_hash: v1_cache_bundle_hash(&file_inputs),
+        files: file_inputs
+            .into_iter()
+            .map(|(role, path, bytes)| EntityIndexCacheReceiptFile {
+                role: role.to_string(),
+                path: path.to_string(),
+                content_hash: witness::hash_bytes(bytes),
+                byte_count: bytes.len() as u64,
+            })
+            .collect(),
+    })
+}
+
+fn index_v1_payload_relpath() -> Result<&'static str, Refusal> {
+    Ok(entity_v1_contract_for_stage(EntityArtifactStageV1::Index)?.payload_relpath)
+}
+
+fn v1_cache_bundle_hash(file_inputs: &[(&str, &str, &[u8])]) -> String {
+    let mut material = Vec::new();
+    for (role, relative_path, bytes) in file_inputs {
+        material.extend_from_slice(role.as_bytes());
+        material.push(0);
+        material.extend_from_slice(relative_path.as_bytes());
+        material.push(0);
+        material.extend_from_slice(bytes.len().to_string().as_bytes());
+        material.push(0);
+        material.extend_from_slice(bytes);
+        material.push(0);
+    }
+    witness::hash_bytes(&material)
+}
+
+fn index_v1_diagnostics(
+    artifact: &Value,
+    postings: &crate::entity::postings::EntityPostingDiagnostics,
+    ngrams: &crate::entity::index::ngram_index::EntityNgramDiagnostics,
+) -> Result<Vec<EntityIndexDiagnosticRecord>, Refusal> {
+    let counts = serde_json::from_value(
+        artifact
+            .get("summary")
+            .and_then(|summary| summary.get("counts"))
+            .cloned()
+            .ok_or_else(|| missing_prepare_metadata("summary.counts"))?,
+    )
+    .map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to read entity index v1 summary counts",
+            json!({ "stage": "index", "error": error.to_string(), "writes_performed": false }),
+            None,
+        )
+    })?;
+    let labels = serde_json::from_value(
+        artifact
+            .get("summary")
+            .and_then(|summary| summary.get("labels"))
+            .cloned()
+            .ok_or_else(|| missing_prepare_metadata("summary.labels"))?,
+    )
+    .map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to read entity index v1 summary labels",
+            json!({ "stage": "index", "error": error.to_string(), "writes_performed": false }),
+            None,
+        )
+    })?;
+    let mut summary = EntityIndexDiagnosticRecord::new("artifact_summary");
+    summary.counts = counts;
+    summary.labels = labels;
+
+    let mut posting = EntityIndexDiagnosticRecord::new("posting_summary");
+    posting.counts = BTreeMap::from([
+        (
+            "surface_count".to_string(),
+            u64::from(postings.surface_count),
+        ),
+        ("token_count".to_string(), postings.token_count as u64),
+        (
+            "common_token_count".to_string(),
+            postings.common_token_count as u64,
+        ),
+        (
+            "large_exact_view_bucket_count".to_string(),
+            postings.large_exact_view_bucket_count as u64,
+        ),
+    ]);
+
+    let mut ngram = EntityIndexDiagnosticRecord::new("ngram_summary");
+    ngram.counts = BTreeMap::from([
+        ("ngram_count".to_string(), ngrams.ngram_count as u64),
+        (
+            "common_ngram_count".to_string(),
+            ngrams.common_ngram_count as u64,
+        ),
+    ]);
+    Ok(vec![summary, posting, ngram])
+}
+
+fn reject_legacy_index_cache_marker(work_dir: &Path) -> Result<(), Refusal> {
+    let legacy_path = work_dir.join(INDEX_ARTIFACT_FILE);
+    if !legacy_path.exists() {
+        return Ok(());
+    }
+    let bytes = read_regular_file(&legacy_path, "legacy index artifact")?;
+    let value = serde_json::from_slice::<Value>(&bytes).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Legacy entity index cache marker is not a v1 artifact",
+            json!({
+                "stage": "index",
+                "path": legacy_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Use a fresh work directory for canon entity index v1".to_string()),
+        )
+    })?;
+    if value.get("version").and_then(Value::as_str) == Some(CANON_ENTITY_INDEX_VERSION) {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Legacy entity index artifact cannot back a v1 index build",
+            json!({
+                "stage": "index",
+                "field": "version",
+                "actual": CANON_ENTITY_INDEX_VERSION,
+                "expected": CANON_ENTITY_INDEX_VERSION_V1,
+                "path": legacy_path.display().to_string(),
+                "writes_performed": false
+            }),
+            Some("Use a fresh work directory for canon entity index v1".to_string()),
+        ));
+    }
+    Ok(())
+}
+
+fn required_value_string(value: &Value, path: &[&str], field: &str) -> Result<String, Refusal> {
+    let mut current = value;
+    for segment in path {
+        current = current.get(*segment).ok_or_else(|| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Entity v1 artifact is missing a required field",
+                json!({ "stage": "index", "field": field, "writes_performed": false }),
+                None,
+            )
+        })?;
+    }
+    let text = current.as_str().ok_or_else(|| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity v1 artifact field must be a string",
+            json!({ "stage": "index", "field": field, "writes_performed": false }),
+            None,
+        )
+    })?;
+    if text.trim().is_empty() {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity v1 artifact field must be non-empty",
+            json!({ "stage": "index", "field": field, "writes_performed": false }),
+            None,
+        ));
+    }
+    Ok(text.to_string())
+}
+
+fn required_value_u64(value: &Value, path: &[&str], field: &str) -> Result<u64, Refusal> {
+    let mut current = value;
+    for segment in path {
+        current = current.get(*segment).ok_or_else(|| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Entity v1 artifact is missing a required field",
+                json!({ "stage": "index", "field": field, "writes_performed": false }),
+                None,
+            )
+        })?;
+    }
+    current.as_u64().ok_or_else(|| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity v1 artifact field must be an unsigned integer",
+            json!({ "stage": "index", "field": field, "writes_performed": false }),
+            None,
+        )
+    })
+}
+
+fn json_bytes<T: Serialize>(value: &T, label: &str) -> Result<Vec<u8>, Refusal> {
+    serde_json::to_vec(value).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to serialize entity index v1 artifact",
+            json!({
+                "stage": "index",
+                "artifact": label,
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })
+}
+
+fn diagnostics_jsonl_bytes(
+    diagnostics: &[EntityIndexDiagnosticRecord],
+) -> Result<Vec<u8>, Refusal> {
+    let mut bytes = Vec::new();
+    for record in diagnostics {
+        let line = serde_json::to_vec(record).map_err(|error| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Failed to serialize entity index v1 diagnostics",
+                json!({
+                    "stage": "index",
+                    "artifact": "index diagnostics",
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+                None,
+            )
+        })?;
+        bytes.extend_from_slice(&line);
+        bytes.push(b'\n');
+    }
+    Ok(bytes)
+}
+
+fn parse_v1_diagnostics(
+    bytes: &[u8],
+    path: &Path,
+) -> Result<Vec<EntityIndexDiagnosticRecord>, Refusal> {
+    let text = std::str::from_utf8(bytes).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 diagnostics are not UTF-8 JSONL",
+            json!({
+                "stage": "index",
+                "path": path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })?;
+    let mut diagnostics = Vec::new();
+    for (line_index, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let record = serde_json::from_str(line).map_err(|error| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Failed to parse entity index v1 diagnostic record",
+                json!({
+                    "stage": "index",
+                    "path": path.display().to_string(),
+                    "line": line_index + 1,
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+                None,
+            )
+        })?;
+        diagnostics.push(record);
+    }
+    Ok(diagnostics)
+}
+
+fn read_regular_file(path: &Path, label: &str) -> Result<Vec<u8>, Refusal> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to read entity index v1 file metadata",
+            json!({
+                "stage": "index",
+                "artifact": label,
+                "path": path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_file() {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity index v1 file must be a regular non-symlink file",
+            json!({
+                "stage": "index",
+                "artifact": label,
+                "path": path.display().to_string(),
+                "writes_performed": false
+            }),
+            None,
+        ));
+    }
+    fs::read(path).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to read entity index v1 file",
+            json!({
+                "stage": "index",
+                "artifact": label,
+                "path": path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })
+}
+
+fn write_regular_file_synced(path: &Path, bytes: &[u8], label: &str) -> Result<(), Refusal> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            EntityRefusalKind::IoBudget.to_refusal(
+                "Failed to create entity index v1 output directory",
+                json!({
+                    "stage": "index",
+                    "path": parent.display().to_string(),
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+                None,
+            )
+        })?;
+    }
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|error| {
+            EntityRefusalKind::IoBudget.to_refusal(
+                "Failed to create entity index v1 staged file",
+                json!({
+                    "stage": "index",
+                    "artifact": label,
+                    "path": path.display().to_string(),
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+                None,
+            )
+        })?;
+    file.write_all(bytes).map_err(|error| {
+        EntityRefusalKind::IoBudget.to_refusal(
+            "Failed to write entity index v1 file",
+            json!({
+                "stage": "index",
+                "artifact": label,
+                "path": path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })?;
+    file.flush().map_err(|error| {
+        EntityRefusalKind::IoBudget.to_refusal(
+            "Failed to flush entity index v1 file",
+            json!({
+                "stage": "index",
+                "artifact": label,
+                "path": path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })?;
+    file.sync_all().map_err(|error| {
+        EntityRefusalKind::IoBudget.to_refusal(
+            "Failed to sync entity index v1 file",
+            json!({
+                "stage": "index",
+                "artifact": label,
+                "path": path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })
+}
+
+fn sync_directory(path: &Path, label: &str) -> Result<(), Refusal> {
+    let directory = fs::File::open(path).map_err(|error| {
+        EntityRefusalKind::IoBudget.to_refusal(
+            "Failed to open entity index v1 directory for sync",
+            json!({
+                "stage": "index",
+                "artifact": label,
+                "path": path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })?;
+    directory.sync_all().map_err(|error| {
+        EntityRefusalKind::IoBudget.to_refusal(
+            "Failed to sync entity index v1 directory",
+            json!({
+                "stage": "index",
+                "artifact": label,
+                "path": path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })
+}
+
+fn cleanup_owned_staging_dir(path: &Path) {
+    if path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with(".index.v1.stage."))
+    {
+        let _ = fs::remove_dir_all(path);
+    }
+}
+
+fn file_type_kind(metadata: &fs::Metadata) -> &'static str {
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() {
+        "symlink"
+    } else if file_type.is_dir() {
+        "directory"
+    } else if file_type.is_file() {
+        "file"
+    } else {
+        "other"
+    }
+}
+
+fn enforce_v1_read_budget(
+    max_artifact_bytes: Option<u64>,
+    paths: &EntityIndexV1DiskPaths,
+) -> Result<(), Refusal> {
+    let Some(max_artifact_bytes) = max_artifact_bytes else {
+        return Ok(());
+    };
+    let total = [
+        &paths.artifact_path,
+        &paths.cache_key_path,
+        &paths.postings_path,
+        &paths.diagnostics_path,
+        &paths.receipt_path,
+    ]
+    .into_iter()
+    .map(|path| {
+        fs::metadata(path)
+            .map(|metadata| metadata.len())
+            .map_err(|error| {
+                EntityRefusalKind::IoBudget.to_refusal(
+                    "Failed to inspect entity index v1 file size",
+                    json!({
+                        "stage": "index",
+                        "path": path.display().to_string(),
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                    None,
+                )
+            })
+    })
+    .sum::<Result<u64, Refusal>>()?;
+    if total > max_artifact_bytes {
+        return Err(EntityRefusalKind::IoBudget.to_refusal(
+            "Entity index v1 artifact budget exceeded before cache reuse",
+            json!({
+                "stage": "index",
+                "max_artifact_bytes": max_artifact_bytes,
+                "actual_bytes": total,
+                "writes_performed": false
+            }),
+            None,
+        ));
+    }
+    Ok(())
+}
+
+fn enforce_v1_write_budget(
+    max_artifact_bytes: Option<u64>,
+    byte_counts: [usize; 5],
+) -> Result<(), Refusal> {
+    let Some(max_artifact_bytes) = max_artifact_bytes else {
+        return Ok(());
+    };
+    let total = byte_counts.iter().copied().sum::<usize>() as u64;
+    if total > max_artifact_bytes {
+        return Err(EntityRefusalKind::IoBudget.to_refusal(
+            "Entity index v1 artifact budget exceeded before artifact emission",
+            json!({
+                "stage": "index",
+                "max_artifact_bytes": max_artifact_bytes,
+                "actual_bytes": total,
+                "writes_performed": false
+            }),
+            Some(
+                "Increase the entity index IO budget or rebuild in smaller physical batches"
+                    .to_string(),
+            ),
+        ));
+    }
+    Ok(())
 }
 
 pub fn validate_index_artifact_hash(artifact: &EntityIndexArtifact) -> Result<(), Refusal> {
@@ -1409,6 +3059,7 @@ pub fn required_index_hash_fields() -> &'static [EntityHashField] {
 #[cfg(test)]
 mod cache_preflight_tests {
     use super::*;
+    use crate::entity::prepare::{PrepareRunRequest, run_prepare_v1};
 
     fn test_cache_key() -> EntityCacheKey {
         EntityCacheKey {
@@ -1440,6 +3091,54 @@ mod cache_preflight_tests {
             refusal.message.contains("symlink") || refusal.detail.to_string().contains("symlink"),
             "unexpected refusal: {refusal:?}"
         );
+    }
+
+    #[test]
+    fn index_v1_forced_publish_failure_leaves_no_final_bundle() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        run_prepare_v1(PrepareRunRequest {
+            rows: Path::new(
+                "tests/fixtures/entity/regab/sec10d_baseline_public/org_mentions_selected.csv",
+            ),
+            profile: "regab_firm_identity",
+            registry: Path::new(
+                "tests/fixtures/entity/regab/sec10d_baseline_public/registry_snapshot/firms",
+            ),
+            work_dir: temp.path(),
+        })
+        .expect("prepare v1");
+
+        let request = EntityIndexBuildRequest {
+            rows: Path::new(
+                "tests/fixtures/entity/regab/sec10d_baseline_public/org_mentions_selected.csv",
+            ),
+            profile: "regab_firm_identity",
+            strategy: Path::new("tests/fixtures/entity/strategies/regab_firm_identity.yaml"),
+            registry: Path::new(
+                "tests/fixtures/entity/regab/sec10d_baseline_public/registry_snapshot/firms",
+            ),
+            work_dir: temp.path(),
+            max_artifact_bytes: None,
+        };
+        let refusal =
+            run_index_build_v1_inner(request, EntityIndexV1PublishFailpoint::BeforeFinalRename)
+                .expect_err("forced failpoint refuses before publishing final index");
+
+        assert_eq!(refusal.code, crate::RefusalCode::EEntityArtifactContract);
+        assert_eq!(refusal.detail["failpoint"], "before_final_rename");
+        assert!(!temp.path().join("index").exists());
+        assert!(!temp.path().join(INDEX_ARTIFACT_FILE).exists());
+        let staging_entries = std::fs::read_dir(temp.path())
+            .expect("work dir entries")
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_str()
+                    .is_some_and(|name| name.starts_with(".index.v1.stage."))
+            })
+            .collect::<Vec<_>>();
+        assert!(staging_entries.is_empty());
     }
 
     #[cfg(unix)]

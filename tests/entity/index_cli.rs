@@ -3,12 +3,13 @@
 use canon::{
     RefusalCode,
     entity::{
+        CANON_ENTITY_INDEX_VERSION_V1,
         index::{
-            EntityIndexBuildRequest, EntityIndexCacheStatus, index_build_report, run_index_build,
+            EntityIndexBuildRequest, EntityIndexCacheStatus, index_build_v1_report,
+            run_index_build_v1,
         },
-        index_io::INDEX_ARTIFACT_FILE,
-        prepare::{PrepareRunRequest, run_prepare},
-        summary::build_index_build_operator_summary,
+        prepare::{PrepareRunRequest, run_prepare_v1},
+        schema::{validate_artifact_v1_core_contract, validate_entity_v1_self_hash},
     },
 };
 use serde_json::Value;
@@ -19,19 +20,33 @@ fn entity_index_build_api_writes_artifacts_and_reuses_verified_cache() {
     let fixture = IndexCliFixture::new();
     fixture.prepare();
 
-    let first = run_index_build(fixture.index_request(None)).expect("index build succeeds");
+    let first = run_index_build_v1(fixture.index_request(None)).expect("index build succeeds");
     assert_eq!(first.cache_status, EntityIndexCacheStatus::Rebuilt);
+    assert_eq!(first.artifact["version"], CANON_ENTITY_INDEX_VERSION_V1);
+    assert_eq!(
+        validate_artifact_v1_core_contract(&first.artifact)
+            .expect("index v1 core contract")
+            .artifact_version,
+        CANON_ENTITY_INDEX_VERSION_V1
+    );
+    assert_eq!(
+        validate_entity_v1_self_hash(&first.artifact).expect("index v1 self hash"),
+        first.artifact["artifact_content_hash"]
+            .as_str()
+            .expect("hash")
+    );
     assert!(first.paths.artifact_path.exists());
     assert!(first.paths.cache_key_path.exists());
     assert!(first.paths.postings_path.exists());
     assert!(first.paths.diagnostics_path.exists());
 
     let first_bytes = fs::read(&first.paths.artifact_path).expect("index artifact bytes");
-    let first_report = index_build_report(&first);
+    let first_report = index_build_v1_report(&first);
+    assert_eq!(first_report.version, "canon_entity_index_build.v1");
     assert_eq!(first_report.cache_status, EntityIndexCacheStatus::Rebuilt);
     assert!(first_report.next_command.contains("canon entity block"));
 
-    let second = run_index_build(fixture.index_request(None)).expect("index cache hit succeeds");
+    let second = run_index_build_v1(fixture.index_request(None)).expect("index cache hit succeeds");
     assert_eq!(second.cache_status, EntityIndexCacheStatus::Hit);
     assert_eq!(second.artifact, first.artifact);
     assert_eq!(
@@ -40,9 +55,14 @@ fn entity_index_build_api_writes_artifacts_and_reuses_verified_cache() {
         "verified cache hit keeps the artifact byte-identical"
     );
 
-    let summary = build_index_build_operator_summary(&second);
-    assert_eq!(summary.cache_status["index"], "hit");
-    assert!(summary.next_command.contains("canon entity block"));
+    let second_report = index_build_v1_report(&second);
+    assert_eq!(second_report.version, "canon_entity_index_build.v1");
+    assert_eq!(
+        second_report.artifact["version"],
+        CANON_ENTITY_INDEX_VERSION_V1
+    );
+    assert_eq!(second_report.cache_status, EntityIndexCacheStatus::Hit);
+    assert!(second_report.next_command.contains("canon entity block"));
 }
 
 #[test]
@@ -52,12 +72,12 @@ fn entity_index_build_api_refuses_wrong_profile_before_writes() {
 
     let mut request = fixture.index_request(None);
     request.profile = "regab_firm_identity";
-    let refusal = run_index_build(request).expect_err("wrong profile refuses");
+    let refusal = run_index_build_v1(request).expect_err("wrong profile refuses");
 
     assert_eq!(refusal.code, RefusalCode::EEntityProfile);
     assert_eq!(refusal.detail["stage"], "index");
     assert_eq!(refusal.detail["writes_performed"], false);
-    assert!(!fixture.work_dir().join(INDEX_ARTIFACT_FILE).exists());
+    assert!(!fixture.index_artifact_path().exists());
 }
 
 #[test]
@@ -77,11 +97,26 @@ fn entity_index_build_api_refuses_tampered_prepare_before_writes() {
     .expect("write tampered prepare");
 
     let refusal =
-        run_index_build(fixture.index_request(None)).expect_err("tampered prepare refuses");
+        run_index_build_v1(fixture.index_request(None)).expect_err("tampered prepare refuses");
     assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+    assert_eq!(refusal.detail["field"], "artifact_content_hash");
+    assert!(
+        refusal
+            .detail
+            .get("expected")
+            .and_then(Value::as_str)
+            .is_some_and(|hash| hash.starts_with("blake3:"))
+    );
+    assert!(
+        refusal
+            .detail
+            .get("actual")
+            .and_then(Value::as_str)
+            .is_some_and(|hash| hash.starts_with("blake3:"))
+    );
     assert_eq!(refusal.detail["stage"], "index");
     assert_eq!(refusal.detail["writes_performed"], false);
-    assert!(!fixture.work_dir().join(INDEX_ARTIFACT_FILE).exists());
+    assert!(!fixture.index_artifact_path().exists());
 }
 
 #[test]
@@ -90,11 +125,11 @@ fn entity_index_build_api_refuses_over_budget_before_writes() {
     fixture.prepare();
 
     let refusal =
-        run_index_build(fixture.index_request(Some(1))).expect_err("small byte budget refuses");
+        run_index_build_v1(fixture.index_request(Some(1))).expect_err("small byte budget refuses");
     assert_eq!(refusal.code, RefusalCode::EEntityIoBudget);
     assert_eq!(refusal.detail["stage"], "index");
     assert_eq!(refusal.detail["writes_performed"], false);
-    assert!(!fixture.work_dir().join(INDEX_ARTIFACT_FILE).exists());
+    assert!(!fixture.index_artifact_path().exists());
 }
 
 #[test]
@@ -102,7 +137,7 @@ fn entity_index_build_cli_executes_after_dispatch_wiring() {
     let fixture = IndexCliFixture::new();
     fixture.prepare();
 
-    let output = assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
+    let first = assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
         .args([
             "entity",
             "index",
@@ -121,9 +156,70 @@ fn entity_index_build_cli_executes_after_dispatch_wiring() {
         .expect("run canon entity index build");
 
     assert!(
-        output.status.success(),
+        first.status.success(),
         "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let first_report: Value =
+        serde_json::from_slice(&first.stdout).expect("first index build report");
+    assert_eq!(first_report["version"], "canon_entity_index_build.v1");
+    assert_eq!(
+        first_report["artifact"]["version"],
+        CANON_ENTITY_INDEX_VERSION_V1
+    );
+    assert_eq!(first_report["cache_status"], "rebuilt");
+    assert_eq!(
+        validate_entity_v1_self_hash(&first_report["artifact"]).expect("first cli self hash"),
+        first_report["artifact"]["artifact_content_hash"]
+            .as_str()
+            .expect("hash")
+    );
+    let index_artifact_path = fixture.index_artifact_path();
+    assert_eq!(
+        first_report["paths"]["artifact"]
+            .as_str()
+            .expect("artifact path"),
+        index_artifact_path.display().to_string()
+    );
+    let first_bytes = fs::read(&index_artifact_path).expect("first index artifact bytes");
+
+    let second = assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "index",
+            "build",
+            fixture.rows().to_str().expect("rows path"),
+            "--profile",
+            "cmbs_tenant_label",
+            "--strategy",
+            fixture.strategy().to_str().expect("strategy path"),
+            "--registry",
+            fixture.registry().to_str().expect("registry path"),
+            "--work-dir",
+            fixture.work_dir().to_str().expect("work dir path"),
+        ])
+        .output()
+        .expect("rerun canon entity index build");
+    assert!(
+        second.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    let second_report: Value =
+        serde_json::from_slice(&second.stdout).expect("second index build report");
+    assert_eq!(second_report["version"], "canon_entity_index_build.v1");
+    assert_eq!(second_report["artifact"], first_report["artifact"]);
+    assert_eq!(second_report["cache_status"], "hit");
+    assert_eq!(
+        second_report["paths"]["artifact"]
+            .as_str()
+            .expect("artifact path"),
+        index_artifact_path.display().to_string()
+    );
+    assert_eq!(
+        fs::read(index_artifact_path).expect("second index artifact bytes"),
+        first_bytes,
+        "public verified warm hit must preserve index artifact bytes"
     );
 }
 
@@ -157,7 +253,7 @@ impl IndexCliFixture {
     }
 
     fn prepare(&self) {
-        run_prepare(PrepareRunRequest {
+        run_prepare_v1(PrepareRunRequest {
             rows: &self.rows,
             profile: "cmbs_tenant_label",
             registry: &self.registry,
@@ -191,5 +287,9 @@ impl IndexCliFixture {
 
     fn work_dir(&self) -> &PathBuf {
         &self.work_dir
+    }
+
+    fn index_artifact_path(&self) -> PathBuf {
+        self.work_dir.join("index").join("index.json")
     }
 }

@@ -4117,9 +4117,9 @@
     {
       "name": "entity prepare",
       "usage": "canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY_DIR> --work-dir <DIR>",
-      "description": "Validate and project profile-mapped observations into a deterministic canon_entity_prepare.v0 artifact under the explicit work directory",
+      "description": "Validate and project profile-mapped observations into a deterministic canon_entity_prepare.v1 artifact under the explicit work directory",
       "output_mode": "json",
-      "output_schema": "canon_entity_prepare.v0",
+      "output_schema": "canon_entity_prepare.v1",
       "status": "implemented",
       "read_only": false,
       "safety": {
@@ -4202,9 +4202,9 @@
       "usage": "canon entity index build <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
       "description": "Build deterministic index artifacts and cache receipts for an explicit entity work directory; omitting --profile or --work-dir refuses before writes",
       "output_mode": "mixed",
-      "output_schema": "canon_entity_index_build.v0",
+      "output_schema": "canon_entity_index_build.v1",
       "alternate_output_schemas": [
-        "canon_entity_index.v0",
+        "canon_entity_index.v1",
         "canon_entity_index_cache_receipt.v0"
       ],
       "status": "implemented",
@@ -4292,7 +4292,7 @@
           "flag": "--emit",
           "type": "string",
           "default": "json",
-          "description": "Output mode: json (canon_entity_index_build.v0) or summary"
+          "description": "Output mode: json (canon_entity_index_build.v1) or summary"
         }
       ]
     },
@@ -5134,7 +5134,7 @@
       "usage": "canon entity apply <RESULT.json> --rows <ROWS> --registry <REGISTRY_DIR> [--column <COL>] [--out <PATH>|--output <PATH>] [--work-dir <DIR>] [--require-full-resolution|--allow-partial-output] [--emit json|summary]",
       "description": "Replay accepted entity assignments through exact registry lookup onto input rows and write deterministic canonicalized output",
       "output_mode": "mixed",
-      "output_schema": "canon_entity_apply.v0",
+      "output_schema": "canon_entity_apply.v1",
       "status": "implemented",
       "read_only": false,
       "safety": {
@@ -5191,7 +5191,7 @@
           "type": "file_path",
           "required": true,
           "position": 0,
-          "description": "Entity solve or run artifact"
+          "description": "Verified canon_entity_solve.v1 or canon_entity_run.v1 artifact"
         },
         {
           "name": "rows",
@@ -5249,7 +5249,7 @@
           "flag": "--emit",
           "type": "string",
           "default": "json",
-          "description": "Output mode: json (canon_entity_apply.v0) or summary"
+          "description": "Output mode: json (canon_entity_apply.v1) or summary"
         }
       ]
     },

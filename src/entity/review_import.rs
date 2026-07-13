@@ -13,8 +13,7 @@ use crate::{
             DecisionLedgerRefs, append_decision_ledger_event, build_decision_ledger_event,
         },
         review::{
-            lifecycle_metadata_v1, required_value_string, set_v1_self_hash, source_reference_v1,
-            validate_review_v1_artifact, value_string_or, value_u64_or,
+            required_value_string, validate_review_v1_artifact, value_string_or, value_u64_or,
         },
         review_export::{
             CANON_ENTITY_NATIVE_REVIEW_VERSION, NativeReviewArtifact as ExportNativeReviewArtifact,
@@ -22,8 +21,11 @@ use crate::{
             NativeReviewMode as ExportNativeReviewMode,
             NativeReviewModeContext as ExportNativeReviewModeContext, native_review_artifact_hash,
         },
-        schema::CANON_ENTITY_REVIEW_QUEUE_VERSION,
-        schema::validate_artifact_v1_core_contract,
+        schema::{
+            CANON_ENTITY_REVIEW_QUEUE_VERSION, entity_v1_artifact_reference,
+            entity_v1_lifecycle_metadata_from_source, finalize_entity_v1_self_hash,
+            validate_artifact_v1_core_contract,
+        },
     },
 };
 use serde::{Deserialize, Serialize};
@@ -1772,8 +1774,14 @@ pub fn review_import_input_looks_v1(bytes: &[u8]) -> bool {
         .is_some_and(|line| line.contains("review_context_json"))
 }
 
+struct ParsedReviewV1Input {
+    source: Value,
+    decisions: Vec<Value>,
+}
+
 pub fn import_review_v1(request: ReviewImportV1Request<'_>) -> Result<Value, Refusal> {
-    let review = parse_review_v1_input(request.review_path, request.review_bytes)?;
+    let parsed = parse_review_v1_input(request.review_path, request.review_bytes)?;
+    let review = parsed.source;
     validate_review_v1_artifact(&review)?;
     validate_review_v1_audit(&review, request.audit.map(|(audit, _)| audit))?;
     let registry_before = registry_json_value(request.registry)?;
@@ -1786,24 +1794,21 @@ pub fn import_review_v1(request: ReviewImportV1Request<'_>) -> Result<Value, Ref
         .and_then(Value::as_str)
         .ok_or_else(|| review_import_registry_refusal(request.registry, "missing id"))?;
     let next_version = validate_review_import_next_version(version_before, request.next_version)?;
-    let source_ref = source_reference_v1(&review)?;
+    let source_ref = entity_v1_artifact_reference(&review)?;
     let mut upstreams = vec![source_ref];
     if let Some((audit, _)) = request.audit {
-        upstreams.push(source_reference_v1(audit)?);
+        upstreams.push(entity_v1_artifact_reference(audit)?);
     }
-    upstreams.sort_by(|left, right| {
-        value_string_or(left, &["version"], "")
-            .cmp(value_string_or(right, &["version"], ""))
-            .then_with(|| {
-                value_string_or(left, &["content_hash"], "").cmp(value_string_or(
-                    right,
-                    &["content_hash"],
-                    "",
-                ))
-            })
-    });
-    let metadata = lifecycle_metadata_v1(&review, EntityArtifactStageV1::Review, upstreams)?;
-    let decisions = reviewed_decisions_from_v1(&review);
+    let metadata = entity_v1_lifecycle_metadata_from_source(
+        &review,
+        EntityArtifactStageV1::Review,
+        upstreams,
+    )?;
+    let decisions = if parsed.decisions.is_empty() {
+        reviewed_decisions_from_v1(&review)
+    } else {
+        parsed.decisions
+    };
     let review_hash = required_value_string(&review, &["artifact_content_hash"], "review hash")?;
     let audit_hash = request
         .audit
@@ -1841,7 +1846,7 @@ pub fn import_review_v1(request: ReviewImportV1Request<'_>) -> Result<Value, Ref
         },
         "decisions": decisions
     });
-    set_v1_self_hash(&mut artifact)?;
+    finalize_entity_v1_self_hash(&mut artifact)?;
     Ok(artifact)
 }
 
@@ -1853,9 +1858,12 @@ pub fn render_review_import_v1_summary(artifact: &Value) -> String {
     format!("{registry} review import v1 {before} -> {after} decisions={decisions}")
 }
 
-fn parse_review_v1_input(path: &Path, bytes: &[u8]) -> Result<Value, Refusal> {
+fn parse_review_v1_input(path: &Path, bytes: &[u8]) -> Result<ParsedReviewV1Input, Refusal> {
     if let Ok(value) = serde_json::from_slice::<Value>(bytes) {
-        return Ok(value);
+        return Ok(ParsedReviewV1Input {
+            decisions: reviewed_decisions_from_v1(&value),
+            source: value,
+        });
     }
     let text = std::str::from_utf8(bytes).map_err(|error| {
         review_import_refusal(
@@ -1873,7 +1881,7 @@ fn parse_review_v1_input(path: &Path, bytes: &[u8]) -> Result<Value, Refusal> {
     parse_review_v1_csv(text)
 }
 
-fn parse_review_v1_csv(input: &str) -> Result<Value, Refusal> {
+fn parse_review_v1_csv(input: &str) -> Result<ParsedReviewV1Input, Refusal> {
     let mut reader = csv::Reader::from_reader(input.as_bytes());
     let headers = reader.headers().map_err(|error| {
         review_import_refusal(
@@ -1903,7 +1911,13 @@ fn parse_review_v1_csv(input: &str) -> Result<Value, Refusal> {
         })?;
     let item_index = headers.iter().position(|header| header == "item_json");
     let decision_index = headers.iter().position(|header| header == "decision");
+    let operator_index = headers.iter().position(|header| header == "operator_id");
+    let reason_index = headers.iter().position(|header| header == "reason_code");
+    let surfaces_index = headers
+        .iter()
+        .position(|header| header == "surface_ids_json");
     let mut context = None;
+    let mut source_items = Vec::new();
     let mut decisions = Vec::new();
     for record in reader.records() {
         let record = record.map_err(|error| {
@@ -1938,17 +1952,43 @@ fn parse_review_v1_csv(input: &str) -> Result<Value, Refusal> {
             continue;
         }
         if let Some(index) = item_index {
-            let mut item =
+            let source_item =
                 serde_json::from_str::<Value>(&record[index]).unwrap_or_else(|_| json!({}));
+            source_items.push(source_item.clone());
+            let mut item = source_item;
+            if let Some(surface_index) = surfaces_index
+                && let Some(surfaces) = record.get(surface_index).filter(|value| !value.is_empty())
+                && let Ok(surface_ids) = serde_json::from_str::<Value>(surfaces)
+            {
+                item["surface_ids"] = surface_ids;
+            }
             if let Some(decision_index) = decision_index
                 && let Some(decision) = record.get(decision_index).filter(|value| !value.is_empty())
             {
                 item["decision"] = Value::String(decision.to_string());
             }
-            decisions.push(item);
+            if let Some(operator_index) = operator_index
+                && let Some(operator_id) =
+                    record.get(operator_index).filter(|value| !value.is_empty())
+            {
+                item["operator_id"] = Value::String(operator_id.to_string());
+            }
+            if let Some(reason_index) = reason_index
+                && let Some(reason_code) =
+                    record.get(reason_index).filter(|value| !value.is_empty())
+            {
+                item["reason_code"] = Value::String(reason_code.to_string());
+            }
+            if item
+                .get("decision")
+                .and_then(Value::as_str)
+                .is_some_and(|decision| !decision.trim().is_empty())
+            {
+                decisions.push(item);
+            }
         }
     }
-    let mut artifact = context.ok_or_else(|| {
+    let mut source = context.ok_or_else(|| {
         review_import_refusal(
             EntityRefusalKind::ReviewImport,
             "Review v1 CSV contains no context row",
@@ -1959,8 +1999,19 @@ fn parse_review_v1_csv(input: &str) -> Result<Value, Refusal> {
             }),
         )
     })?;
-    artifact["review_items"] = Value::Array(decisions);
-    Ok(artifact)
+    if source.get("artifact").is_some() || source.get("review_items").is_some() {
+        return Err(review_import_refusal(
+            EntityRefusalKind::ReviewImport,
+            "Review v1 CSV context must not embed the full artifact or review items",
+            json!({
+                "stage": "review_import",
+                "field": "review_context_json",
+                "writes_performed": false
+            }),
+        ));
+    }
+    source["review_items"] = Value::Array(source_items);
+    Ok(ParsedReviewV1Input { source, decisions })
 }
 
 fn validate_review_v1_audit(review: &Value, audit: Option<&Value>) -> Result<(), Refusal> {
@@ -2087,4 +2138,152 @@ fn review_import_registry_refusal(registry: &Path, problem: &str) -> Refusal {
             "writes_performed": false
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entity::{
+        CANON_ENTITY_REVIEW_VERSION_V1, entity_artifact_v1_contract_for_version,
+        review::render_review_v1_csv,
+        schema::{
+            entity_v1_schema_content_hash, finalize_entity_v1_self_hash,
+            validate_entity_v1_self_hash,
+        },
+    };
+
+    #[test]
+    fn review_v1_csv_context_is_compact_and_round_trips_multi_item_source() {
+        let review = sample_review_v1_artifact();
+        let csv = render_review_v1_csv(&review).expect("review csv renders");
+        let mut reader = csv::Reader::from_reader(csv.as_bytes());
+        let headers = reader.headers().expect("headers").clone();
+        let context_index = headers
+            .iter()
+            .position(|header| header == "review_context_json")
+            .expect("context column");
+        let mut row_count = 0usize;
+        for record in reader.records() {
+            let record = record.expect("record");
+            let context: Value =
+                serde_json::from_str(&record[context_index]).expect("context json");
+            assert!(
+                context.get("artifact").is_none(),
+                "CSV context must not embed the full artifact"
+            );
+            assert!(
+                context.get("review_items").is_none(),
+                "CSV context must not repeat review_items"
+            );
+            assert_eq!(context["include"], "all");
+            assert!(context.get("next_commands").is_some());
+            row_count += 1;
+        }
+        assert_eq!(row_count, 2);
+
+        let parsed = parse_review_v1_csv(&csv).expect("csv parses");
+        assert_eq!(parsed.source, review);
+        validate_entity_v1_self_hash(&parsed.source).expect("source self-hash validates");
+        assert_eq!(parsed.decisions.len(), 1);
+        assert_eq!(parsed.decisions[0]["review_id"], "review:1");
+    }
+
+    fn sample_review_v1_artifact() -> Value {
+        let contract = entity_artifact_v1_contract_for_version(CANON_ENTITY_REVIEW_VERSION_V1)
+            .expect("review v1 contract");
+        let mut artifact = json!({
+            "version": CANON_ENTITY_REVIEW_VERSION_V1,
+            "artifact_content_hash": "",
+            "metadata": {
+                "profile": {
+                    "id": "cmbs_tenant_label",
+                    "version": "0.1.0",
+                    "entity_type": "tenant_label",
+                    "identity_semantics": "canonical_display_label",
+                    "canonical_type": "tenant_label",
+                    "patch_namespaces": {
+                        "aliases": "cmbs_tenant_label.aliases",
+                        "distinct": "cmbs_tenant_label.distinct",
+                        "relations": "cmbs_tenant_label.relations"
+                    },
+                    "content_hash": "blake3:profile"
+                },
+                "strategy": {
+                    "id": "cmbs_tenant_label.v1",
+                    "version": "0.1.0",
+                    "content_hash": "blake3:strategy"
+                },
+                "registry_snapshot": {
+                    "id": "cmbs-tenants",
+                    "version": "2026.06.25",
+                    "source": "registry",
+                    "lookup_snapshot_hash": "blake3:registry"
+                },
+                "input": {
+                    "row_count": 2,
+                    "content_hash": "blake3:input"
+                },
+                "patch_namespace": "cmbs_tenant_label.aliases",
+                "schema": {
+                    "key": contract.schema_key,
+                    "content_hash": entity_v1_schema_content_hash(contract).expect("schema hash")
+                },
+                "workdir": {
+                    "root_dir": "target/entity-work/test",
+                    "stage_dir": contract.stage_dir,
+                    "artifact_relpath": contract.artifact_relpath,
+                    "payload_relpath": contract.payload_relpath
+                },
+                "upstream_artifacts": [],
+                "patch_set": {
+                    "content_hash": "blake3:patch",
+                    "paths": []
+                },
+                "namekit": {
+                    "version": "namekit.v0",
+                    "content_hash": "blake3:namekit"
+                },
+                "artifact_content_hash": ""
+            },
+            "summary": {
+                "counts": {
+                    "review_items": 2,
+                    "review_group_count": 2,
+                    "review_rows_covered": 2
+                },
+                "labels": {
+                    "stage": "review",
+                    "include": "all"
+                }
+            },
+            "review_queue_path": "review/queue.jsonl",
+            "source_result": {
+                "version": "canon_entity_run.v1",
+                "content_hash": "blake3:run"
+            },
+            "include": "all",
+            "review_items": [
+                {
+                    "review_id": "review:1",
+                    "state": "promotable_new",
+                    "surface_ids": ["surface:1"],
+                    "decision": "accept_aliases",
+                    "operator_id": "operator-1",
+                    "reason_code": "confirmed"
+                },
+                {
+                    "review_id": "review:2",
+                    "state": "needs_review",
+                    "surface_ids": ["surface:2"]
+                }
+            ],
+            "next_commands": {
+                "audit": "canon entity audit <RESULT.json> --suite <SUITE_DIR>",
+                "review_import": "canon entity review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER>",
+                "promote": "canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <REGISTRY> --next-version <VER>"
+            }
+        });
+        finalize_entity_v1_self_hash(&mut artifact).expect("self hash finalizes");
+        artifact
+    }
 }

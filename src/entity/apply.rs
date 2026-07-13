@@ -6,8 +6,15 @@
 //! the raw input row bytes.
 
 use crate::entity::{
-    CANON_ENTITY_APPLY_VERSION,
+    CANON_ENTITY_APPLY_VERSION, CANON_ENTITY_APPLY_VERSION_V1, CANON_ENTITY_RUN_VERSION_V1,
+    CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactReferenceV1, EntityArtifactStageV1,
+    EntityDeterministicSummary, entity_artifact_v1_contract_for_legacy_version,
+    entity_artifact_v1_contract_for_version,
     error::EntityRefusalKind,
+    schema::{
+        entity_v1_artifact_reference, entity_v1_lifecycle_metadata_from_source,
+        finalize_entity_v1_self_hash,
+    },
     stream::{
         EntityStreamChunkMetadata, EntityStreamFormat, EntityStreamInput,
         EntityStreamRowProvenance, EntityStreamStage, EntityStreamTelemetry,
@@ -107,6 +114,17 @@ pub struct ApplyRegistryStreamRequest<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub struct ApplyV1ArtifactRequest<'a> {
+    pub source_artifact: &'a Value,
+    pub rows: &'a Path,
+    pub output: &'a Path,
+    pub lookup_column: &'a str,
+    pub registry_dir: &'a Path,
+    pub require_full_resolution: bool,
+    pub target_rows_per_chunk: u64,
+}
+
+#[derive(Debug, Clone)]
 pub struct Sec10dOrgApplyStreamRequest<'a> {
     pub rows: &'a Path,
     pub output: &'a Path,
@@ -149,6 +167,17 @@ pub struct ApplyRunArtifact {
     pub output_path: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ApplyStreamingRunData {
+    registry: ApplyRegistryReference,
+    registry_snapshot_hash: Option<String>,
+    output_content_hash: String,
+    summary: BTreeMap<String, u64>,
+    streaming: ApplyStreamingDiagnostics,
+    output_path: String,
+    lookup_column: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ApplyInputFormat {
     Csv(u8),
@@ -177,6 +206,33 @@ struct LineEnding {
 }
 
 pub fn run_apply_streaming(request: ApplyStreamRequest<'_>) -> Result<ApplyRunArtifact, Refusal> {
+    let data = run_apply_streaming_data(request)?;
+    let mut artifact = ApplyRunArtifact {
+        version: CANON_ENTITY_APPLY_VERSION.to_string(),
+        artifact_content_hash: String::new(),
+        registry: data.registry,
+        registry_snapshot_hash: data.registry_snapshot_hash,
+        output_content_hash: data.output_content_hash,
+        summary: data.summary,
+        streaming: data.streaming,
+        output_path: data.output_path,
+    };
+    artifact.artifact_content_hash = hash_apply_artifact_without_self(&artifact)?;
+    Ok(artifact)
+}
+
+fn run_apply_streaming_data(
+    request: ApplyStreamRequest<'_>,
+) -> Result<ApplyStreamingRunData, Refusal> {
+    let output = request.output.to_path_buf();
+    run_apply_streaming_data_to(request, &output, &output)
+}
+
+fn run_apply_streaming_data_to(
+    request: ApplyStreamRequest<'_>,
+    write_output: &Path,
+    logical_output: &Path,
+) -> Result<ApplyStreamingRunData, Refusal> {
     let format = apply_input_format(request.rows)?;
     validate_apply_safety(&request)?;
     let inspection = inspect_apply_input(
@@ -215,13 +271,11 @@ pub fn run_apply_streaming(request: ApplyStreamRequest<'_>) -> Result<ApplyRunAr
     let chunks = deterministic_chunk_metadata(&input, request.target_rows_per_chunk)?;
     let telemetry = stream_telemetry(&input, &chunks);
 
-    let write_result = write_apply_output(&request, format, &chunks)?;
+    let write_result = write_apply_output(&request, format, &chunks, write_output)?;
     debug_assert_eq!(write_result.row_count, inspection.row_count);
-    let output_content_hash = hash_apply_output(request.output)?;
+    let output_content_hash = hash_apply_output(write_output)?;
 
-    let mut artifact = ApplyRunArtifact {
-        version: CANON_ENTITY_APPLY_VERSION.to_string(),
-        artifact_content_hash: String::new(),
+    Ok(ApplyStreamingRunData {
         registry: request.registry.clone(),
         registry_snapshot_hash: request.safety.actual_registry_snapshot_hash.clone(),
         output_content_hash,
@@ -236,10 +290,9 @@ pub fn run_apply_streaming(request: ApplyStreamRequest<'_>) -> Result<ApplyRunAr
             telemetry,
             provenance_samples: write_result.provenance_samples,
         },
-        output_path: request.output.display().to_string(),
-    };
-    artifact.artifact_content_hash = hash_apply_artifact_without_self(&artifact)?;
-    Ok(artifact)
+        output_path: logical_output.display().to_string(),
+        lookup_column: request.lookup_column.to_string(),
+    })
 }
 
 pub fn run_apply_streaming_from_registry(
@@ -284,6 +337,391 @@ pub fn run_apply_streaming_from_registry(
         require_full_resolution: request.require_full_resolution,
         target_rows_per_chunk: request.target_rows_per_chunk,
     })
+}
+
+pub fn run_apply_v1_from_registry(request: ApplyV1ArtifactRequest<'_>) -> Result<Value, Refusal> {
+    run_apply_v1_from_registry_with_builder(request, build_apply_v1_artifact)
+}
+
+fn run_apply_v1_from_registry_with_builder<F>(
+    request: ApplyV1ArtifactRequest<'_>,
+    build_artifact: F,
+) -> Result<Value, Refusal>
+where
+    F: FnOnce(&Value, EntityArtifactReferenceV1, ApplyStreamingRunData) -> Result<Value, Refusal>,
+{
+    let source_reference = validate_apply_v1_source_artifact(request.source_artifact)?;
+    let registry_snapshot_hash = apply_registry_snapshot_hash(request.registry_dir)?;
+    let (actual_registry_id, actual_registry_version) =
+        apply_registry_identity_metadata(request.registry_dir)?;
+    validate_apply_v1_registry_binding(
+        request.source_artifact,
+        &actual_registry_id,
+        &actual_registry_version,
+        &registry_snapshot_hash,
+    )?;
+
+    let registry = crate::registry::load_registry(request.registry_dir).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Apply could not load the versioned registry",
+            json!({
+                "stage": "apply",
+                "registry": request.registry_dir.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Fix registry.json or mapping files, then rerun canon entity apply".to_string()),
+        )
+    })?;
+    let resolutions = apply_resolutions_from_registry(&registry)?;
+    let (profile_id, identity_semantics) = apply_registry_profile_metadata(request.registry_dir)?;
+
+    let mut safety = apply_v1_safety_check(request.source_artifact);
+    safety.actual_registry_snapshot_hash = Some(registry_snapshot_hash);
+    safety.actual_profile_id = profile_id;
+    safety.actual_identity_semantics = identity_semantics;
+    validate_apply_v1_safety_material(&safety)?;
+    validate_apply_v1_input_binding(
+        request.source_artifact,
+        request.rows,
+        request.lookup_column,
+        &resolutions,
+    )?;
+
+    let staged_output = apply_temp_sibling(request.output);
+    let data = match run_apply_streaming_data_to(
+        ApplyStreamRequest {
+            rows: request.rows,
+            output: request.output,
+            lookup_column: request.lookup_column,
+            registry: ApplyRegistryReference {
+                id: registry.meta.id,
+                version: registry.meta.version,
+            },
+            resolutions: &resolutions,
+            safety,
+            require_full_resolution: request.require_full_resolution,
+            target_rows_per_chunk: request.target_rows_per_chunk,
+        },
+        &staged_output,
+        request.output,
+    ) {
+        Ok(data) => data,
+        Err(refusal) => {
+            cleanup_owned_staged_apply_output(&staged_output);
+            return Err(refusal);
+        }
+    };
+
+    let artifact = match build_artifact(request.source_artifact, source_reference, data) {
+        Ok(artifact) => artifact,
+        Err(refusal) => {
+            cleanup_owned_staged_apply_output(&staged_output);
+            return Err(refusal);
+        }
+    };
+    if let Err(refusal) = publish_staged_apply_output(&staged_output, request.output) {
+        cleanup_owned_staged_apply_output(&staged_output);
+        return Err(refusal);
+    }
+
+    Ok(artifact)
+}
+
+fn validate_apply_v1_source_artifact(
+    source_artifact: &Value,
+) -> Result<EntityArtifactReferenceV1, Refusal> {
+    let version = value_string_at_path(source_artifact, &["version"]).ok_or_else(|| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Apply source artifact is missing a version",
+            json!({
+                "stage": "apply",
+                "field": "version",
+                "expected_versions": [CANON_ENTITY_SOLVE_VERSION_V1, CANON_ENTITY_RUN_VERSION_V1],
+                "writes_performed": false
+            }),
+            Some(
+                "Use a self-hashed canon_entity_solve.v1 or canon_entity_run.v1 artifact"
+                    .to_string(),
+            ),
+        )
+    })?;
+
+    if let Some(contract) = entity_artifact_v1_contract_for_legacy_version(&version) {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Apply refuses legacy entity result artifacts",
+            json!({
+                "stage": "apply",
+                "reason": "legacy_entity_result_version",
+                "actual_version": version,
+                "expected_versions": [CANON_ENTITY_SOLVE_VERSION_V1, CANON_ENTITY_RUN_VERSION_V1],
+                "legacy_stage": contract.stage.as_str(),
+                "legacy_versions": contract.legacy_versions,
+                "writes_performed": false
+            }),
+            Some(
+                "Re-run the entity pipeline to produce solve.v1 or run.v1, then rerun apply"
+                    .to_string(),
+            ),
+        ));
+    }
+
+    let contract = entity_artifact_v1_contract_for_version(&version).ok_or_else(|| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Apply source artifact version is not registered",
+            json!({
+                "stage": "apply",
+                "actual_version": version,
+                "expected_versions": [CANON_ENTITY_SOLVE_VERSION_V1, CANON_ENTITY_RUN_VERSION_V1],
+                "writes_performed": false
+            }),
+            Some(
+                "Use a self-hashed canon_entity_solve.v1 or canon_entity_run.v1 artifact"
+                    .to_string(),
+            ),
+        )
+    })?;
+    if !matches!(
+        contract.stage,
+        EntityArtifactStageV1::Solve | EntityArtifactStageV1::Run
+    ) {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Apply source artifact must be a solve.v1 or run.v1 artifact",
+            json!({
+                "stage": "apply",
+                "reason": "wrong_entity_artifact_stage",
+                "actual_stage": contract.stage.as_str(),
+                "actual_version": version,
+                "expected_stages": ["solve", "run"],
+                "expected_versions": [CANON_ENTITY_SOLVE_VERSION_V1, CANON_ENTITY_RUN_VERSION_V1],
+                "writes_performed": false
+            }),
+            Some("Use a canon_entity_solve.v1 or canon_entity_run.v1 artifact".to_string()),
+        ));
+    }
+
+    entity_v1_artifact_reference(source_artifact)
+}
+
+fn validate_apply_v1_registry_binding(
+    source_artifact: &Value,
+    actual_registry_id: &str,
+    actual_registry_version: &str,
+    actual_registry_snapshot_hash: &str,
+) -> Result<(), Refusal> {
+    for (field, actual) in [
+        ("id", actual_registry_id),
+        ("version", actual_registry_version),
+        ("lookup_snapshot_hash", actual_registry_snapshot_hash),
+    ] {
+        let path = ["metadata", "registry_snapshot", field];
+        let expected = value_string_at_path(source_artifact, &path).ok_or_else(|| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Apply source artifact is missing registry snapshot metadata",
+                json!({
+                    "stage": "apply",
+                    "field": format!("metadata.registry_snapshot.{field}"),
+                    "writes_performed": false
+                }),
+                Some(
+                    "Use a self-hashed solve/run artifact with registry snapshot metadata"
+                        .to_string(),
+                ),
+            )
+        })?;
+        if expected != actual {
+            return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+                "Apply registry snapshot does not match the verified source artifact",
+                json!({
+                    "stage": "apply",
+                    "field": format!("metadata.registry_snapshot.{field}"),
+                    "expected": expected,
+                    "actual": actual,
+                    "writes_performed": false
+                }),
+                Some(
+                    "Re-run apply with the registry snapshot used by the source artifact"
+                        .to_string(),
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_apply_v1_input_binding(
+    source_artifact: &Value,
+    rows: &Path,
+    lookup_column: &str,
+    resolutions: &BTreeMap<String, ApplyCanonicalResolution>,
+) -> Result<(), Refusal> {
+    let expected_hash =
+        value_string_at_path(source_artifact, &["metadata", "input", "content_hash"])
+            .ok_or_else(|| apply_v1_input_binding_missing_refusal("metadata.input.content_hash"))?;
+    let actual_hash = witness::hash_file(rows).map_err(|error| {
+        io_budget_refusal("Failed to hash apply input rows", rows, error.to_string())
+    })?;
+    if expected_hash != actual_hash {
+        return Err(apply_v1_input_binding_refusal(
+            "metadata.input.content_hash",
+            json!(expected_hash),
+            json!(actual_hash),
+        ));
+    }
+
+    let expected_row_count =
+        value_u64_at_path(source_artifact, &["metadata", "input", "row_count"])
+            .ok_or_else(|| apply_v1_input_binding_missing_refusal("metadata.input.row_count"))?;
+    let format = apply_input_format(rows)?;
+    let inspection = inspect_apply_input(rows, lookup_column, resolutions, format)?;
+    if expected_row_count != inspection.row_count {
+        return Err(apply_v1_input_binding_refusal(
+            "metadata.input.row_count",
+            json!(expected_row_count),
+            json!(inspection.row_count),
+        ));
+    }
+
+    Ok(())
+}
+
+fn apply_v1_input_binding_missing_refusal(field: &'static str) -> Refusal {
+    EntityRefusalKind::ArtifactContract.to_refusal(
+        "Apply source artifact is missing input metadata",
+        json!({
+            "stage": "apply",
+            "field": field,
+            "writes_performed": false
+        }),
+        Some("Use a solve.v1 or run.v1 artifact with metadata.input bindings".to_string()),
+    )
+}
+
+fn apply_v1_input_binding_refusal(field: &'static str, expected: Value, actual: Value) -> Refusal {
+    EntityRefusalKind::ArtifactContract.to_refusal(
+        "Apply input rows do not match the verified source artifact",
+        json!({
+            "stage": "apply",
+            "field": field,
+            "expected": expected,
+            "actual": actual,
+            "writes_performed": false
+        }),
+        Some("Rerun apply with the row corpus used by the verified solve/run artifact".to_string()),
+    )
+}
+
+fn apply_v1_safety_check(source_artifact: &Value) -> ApplySafetyCheck {
+    ApplySafetyCheck {
+        expected_profile_id: value_string_at_path(source_artifact, &["metadata", "profile", "id"]),
+        expected_identity_semantics: value_string_at_path(
+            source_artifact,
+            &["metadata", "profile", "identity_semantics"],
+        ),
+        expected_registry_snapshot_hash: value_string_at_path(
+            source_artifact,
+            &["metadata", "registry_snapshot", "lookup_snapshot_hash"],
+        ),
+        expected_sidecar_snapshot_hash: value_string_at_path(
+            source_artifact,
+            &["metadata", "registry_snapshot", "sidecar_snapshot_hash"],
+        ),
+        ..ApplySafetyCheck::default()
+    }
+}
+
+fn validate_apply_v1_safety_material(safety: &ApplySafetyCheck) -> Result<(), Refusal> {
+    for (field, expected, actual) in [
+        (
+            "profile_id",
+            safety.expected_profile_id.as_deref(),
+            safety.actual_profile_id.as_deref(),
+        ),
+        (
+            "identity_semantics",
+            safety.expected_identity_semantics.as_deref(),
+            safety.actual_identity_semantics.as_deref(),
+        ),
+    ] {
+        if let (Some(expected), None) = (expected, actual) {
+            return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+                "Apply registry metadata is incomplete for the verified v1 source artifact",
+                json!({
+                    "stage": "apply",
+                    "field": field,
+                    "expected": expected,
+                    "actual": Value::Null,
+                    "writes_performed": false
+                }),
+                Some("Use a registry with matching entity_profile metadata".to_string()),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn build_apply_v1_artifact(
+    source_artifact: &Value,
+    source_reference: EntityArtifactReferenceV1,
+    data: ApplyStreamingRunData,
+) -> Result<Value, Refusal> {
+    let source_version = source_reference.version.clone();
+    let source_content_hash = source_reference.content_hash.clone();
+    let metadata = entity_v1_lifecycle_metadata_from_source(
+        source_artifact,
+        EntityArtifactStageV1::Apply,
+        vec![source_reference],
+    )?;
+    let summary = EntityDeterministicSummary {
+        counts: data.summary.clone(),
+        labels: BTreeMap::from([
+            ("lookup_column".to_string(), data.lookup_column.clone()),
+            ("registry_id".to_string(), data.registry.id.clone()),
+            (
+                "registry_version".to_string(),
+                data.registry.version.clone(),
+            ),
+            ("source_artifact_hash".to_string(), source_content_hash),
+            ("source_artifact_version".to_string(), source_version),
+            (
+                "stage".to_string(),
+                EntityArtifactStageV1::Apply.as_str().to_string(),
+            ),
+        ]),
+    };
+    let mut artifact = json!({
+        "version": CANON_ENTITY_APPLY_VERSION_V1,
+        "artifact_content_hash": "",
+        "metadata": metadata,
+        "summary": summary,
+        "registry": data.registry,
+        "registry_snapshot_hash": data.registry_snapshot_hash,
+        "output_content_hash": data.output_content_hash,
+        "streaming": data.streaming,
+        "output_path": data.output_path
+    });
+    finalize_entity_v1_self_hash(&mut artifact)?;
+    Ok(artifact)
+}
+
+fn value_string_at_path(value: &Value, path: &[&str]) -> Option<String> {
+    let mut current = value;
+    for segment in path {
+        current = current.get(*segment)?;
+    }
+    current
+        .as_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn value_u64_at_path(value: &Value, path: &[&str]) -> Option<u64> {
+    let mut current = value;
+    for segment in path {
+        current = current.get(*segment)?;
+    }
+    current.as_u64()
 }
 
 pub fn run_sec10d_org_apply_streaming(
@@ -667,8 +1105,9 @@ fn write_apply_output(
     request: &ApplyStreamRequest<'_>,
     format: ApplyInputFormat,
     chunks: &[EntityStreamChunkMetadata],
+    output: &Path,
 ) -> Result<ApplyWriteResult, Refusal> {
-    write_apply_output_atomic(request.output, |writer| match format {
+    write_apply_output_atomic(output, |writer| match format {
         ApplyInputFormat::Csv(delimiter) => write_apply_csv(
             request.rows,
             request.lookup_column,
@@ -687,6 +1126,20 @@ fn write_apply_output(
             writer,
         ),
     })
+}
+
+fn publish_staged_apply_output(staged_output: &Path, output: &Path) -> Result<(), Refusal> {
+    fs::rename(staged_output, output).map_err(|error| {
+        io_budget_refusal(
+            "Failed to install staged apply output atomically",
+            output,
+            error.to_string(),
+        )
+    })
+}
+
+fn cleanup_owned_staged_apply_output(staged_output: &Path) {
+    let _ = fs::remove_file(staged_output);
 }
 
 fn write_apply_csv<W: Write>(
@@ -1734,6 +2187,52 @@ fn apply_registry_profile_metadata(
         .unwrap_or((None, None)))
 }
 
+fn apply_registry_identity_metadata(registry_dir: &Path) -> Result<(String, String), Refusal> {
+    #[derive(Deserialize)]
+    struct RegistryJson {
+        id: String,
+        version: String,
+    }
+
+    let registry_json_path = registry_dir.join("registry.json");
+    let content = fs::read_to_string(&registry_json_path).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Apply could not read registry identity metadata",
+            json!({
+                "stage": "apply",
+                "path": registry_json_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Fix registry.json, then rerun canon entity apply".to_string()),
+        )
+    })?;
+    let registry_json = serde_json::from_str::<RegistryJson>(&content).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Apply could not parse registry identity metadata",
+            json!({
+                "stage": "apply",
+                "path": registry_json_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Fix registry.json, then rerun canon entity apply".to_string()),
+        )
+    })?;
+    if registry_json.id.trim().is_empty() || registry_json.version.trim().is_empty() {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Apply registry identity metadata is incomplete",
+            json!({
+                "stage": "apply",
+                "path": registry_json_path.display().to_string(),
+                "writes_performed": false
+            }),
+            Some("Fix registry.json id/version, then rerun canon entity apply".to_string()),
+        ));
+    }
+    Ok((registry_json.id, registry_json.version))
+}
+
 fn apply_mapping_file_paths(registry_dir: &Path) -> Result<Vec<PathBuf>, Refusal> {
     let entries = fs::read_dir(registry_dir).map_err(|error| {
         EntityRefusalKind::ArtifactContract.to_refusal(
@@ -2028,6 +2527,247 @@ mod tests {
             fs::read_to_string(&output).expect("output after refusal"),
             "sentinel output\n"
         );
+    }
+
+    #[test]
+    fn v1_apply_artifact_failure_preserves_existing_output_after_streaming() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let registry = temp.path().join("registry");
+        let rows = temp.path().join("rows.csv");
+        let output = temp.path().join("rows.canon.csv");
+        write_registry(&registry);
+        fs::write(&rows, "tenant_name\nSears\n").expect("rows");
+        fs::write(&output, "sentinel output\n").expect("sentinel");
+        let registry_hash = apply_registry_snapshot_hash(&registry).expect("registry hash");
+        let input_hash = witness::hash_file(&rows).expect("rows hash");
+        let source = v1_apply_test_source_artifact(
+            &registry_hash,
+            &input_hash,
+            1,
+            temp.path().display().to_string().as_str(),
+        );
+        let final_output_path = output.display().to_string();
+        let final_output_for_builder = output.clone();
+
+        let refusal = run_apply_v1_from_registry_with_builder(
+            ApplyV1ArtifactRequest {
+                source_artifact: &source,
+                rows: &rows,
+                output: &output,
+                lookup_column: "tenant_name",
+                registry_dir: &registry,
+                require_full_resolution: true,
+                target_rows_per_chunk: DEFAULT_APPLY_ROWS_PER_CHUNK,
+            },
+            move |_source, _source_reference, data| {
+                assert_eq!(data.output_path, final_output_path);
+                assert!(
+                    data.output_content_hash.starts_with("blake3:"),
+                    "staged bytes must be hashed before final publication"
+                );
+                assert_eq!(
+                    fs::read_to_string(&final_output_for_builder).expect("final output in builder"),
+                    "sentinel output\n",
+                    "final output must remain untouched before artifact success"
+                );
+                Err(EntityRefusalKind::ArtifactContract.to_refusal(
+                    "forced post-stream apply.v1 artifact failure",
+                    json!({
+                        "stage": "apply",
+                        "reason": "forced_post_stream_artifact_failure",
+                        "writes_performed": false
+                    }),
+                    None,
+                ))
+            },
+        )
+        .expect_err("forced artifact failure refuses");
+
+        assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+        assert_eq!(
+            refusal.detail["reason"],
+            "forced_post_stream_artifact_failure"
+        );
+        assert_eq!(
+            fs::read_to_string(&output).expect("output after refusal"),
+            "sentinel output\n"
+        );
+        let leaked_temp = fs::read_dir(temp.path())
+            .expect("tempdir entries")
+            .map(|entry| entry.expect("entry").file_name())
+            .any(|name| {
+                name.to_str()
+                    .is_some_and(|name| name.contains(".canon-apply."))
+            });
+        assert!(!leaked_temp, "owned staged apply temp should be removed");
+    }
+
+    #[test]
+    fn v1_apply_refuses_input_hash_mismatch_before_staging_output() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let registry = temp.path().join("registry");
+        let rows = temp.path().join("rows.csv");
+        let output = temp.path().join("rows.canon.csv");
+        write_registry(&registry);
+        fs::write(&rows, "tenant_name\nSears\n").expect("rows");
+        fs::write(&output, "sentinel output\n").expect("sentinel");
+        let registry_hash = apply_registry_snapshot_hash(&registry).expect("registry hash");
+        let source = v1_apply_test_source_artifact(
+            &registry_hash,
+            "blake3:not-the-actual-rows",
+            1,
+            temp.path().display().to_string().as_str(),
+        );
+
+        let refusal = run_apply_v1_from_registry(ApplyV1ArtifactRequest {
+            source_artifact: &source,
+            rows: &rows,
+            output: &output,
+            lookup_column: "tenant_name",
+            registry_dir: &registry,
+            require_full_resolution: true,
+            target_rows_per_chunk: DEFAULT_APPLY_ROWS_PER_CHUNK,
+        })
+        .expect_err("input hash mismatch refuses");
+
+        assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+        assert_eq!(refusal.detail["stage"], "apply");
+        assert_eq!(refusal.detail["field"], "metadata.input.content_hash");
+        assert_eq!(refusal.detail["expected"], "blake3:not-the-actual-rows");
+        assert!(
+            refusal.detail["actual"]
+                .as_str()
+                .is_some_and(|hash| hash.starts_with("blake3:"))
+        );
+        assert_eq!(refusal.detail["writes_performed"], false);
+        assert_eq!(
+            fs::read_to_string(&output).expect("output after refusal"),
+            "sentinel output\n"
+        );
+        assert_no_apply_temp_sibling(temp.path());
+    }
+
+    #[test]
+    fn v1_apply_refuses_input_row_count_mismatch_before_staging_output() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let registry = temp.path().join("registry");
+        let rows = temp.path().join("rows.csv");
+        let output = temp.path().join("rows.canon.csv");
+        write_registry(&registry);
+        fs::write(&rows, "tenant_name\nSears\n").expect("rows");
+        fs::write(&output, "sentinel output\n").expect("sentinel");
+        let registry_hash = apply_registry_snapshot_hash(&registry).expect("registry hash");
+        let input_hash = witness::hash_file(&rows).expect("rows hash");
+        let source = v1_apply_test_source_artifact(
+            &registry_hash,
+            &input_hash,
+            2,
+            temp.path().display().to_string().as_str(),
+        );
+
+        let refusal = run_apply_v1_from_registry(ApplyV1ArtifactRequest {
+            source_artifact: &source,
+            rows: &rows,
+            output: &output,
+            lookup_column: "tenant_name",
+            registry_dir: &registry,
+            require_full_resolution: true,
+            target_rows_per_chunk: DEFAULT_APPLY_ROWS_PER_CHUNK,
+        })
+        .expect_err("input row-count mismatch refuses");
+
+        assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+        assert_eq!(refusal.detail["stage"], "apply");
+        assert_eq!(refusal.detail["field"], "metadata.input.row_count");
+        assert_eq!(refusal.detail["expected"], 2);
+        assert_eq!(refusal.detail["actual"], 1);
+        assert_eq!(refusal.detail["writes_performed"], false);
+        assert_eq!(
+            fs::read_to_string(&output).expect("output after refusal"),
+            "sentinel output\n"
+        );
+        assert_no_apply_temp_sibling(temp.path());
+    }
+
+    fn assert_no_apply_temp_sibling(dir: &Path) {
+        let leaked_temp = fs::read_dir(dir)
+            .expect("tempdir entries")
+            .map(|entry| entry.expect("entry").file_name())
+            .any(|name| {
+                name.to_str()
+                    .is_some_and(|name| name.contains(".canon-apply."))
+            });
+        assert!(!leaked_temp, "apply temp output should not exist");
+    }
+
+    fn v1_apply_test_source_artifact(
+        registry_hash: &str,
+        input_hash: &str,
+        row_count: u64,
+        root_dir: &str,
+    ) -> Value {
+        let contract =
+            crate::entity::schema::entity_v1_contract_for_stage(EntityArtifactStageV1::Run)
+                .expect("run v1 contract");
+        let mut artifact = json!({
+            "version": CANON_ENTITY_RUN_VERSION_V1,
+            "artifact_content_hash": "",
+            "metadata": {
+                "profile": {
+                    "id": "cmbs_tenant_label",
+                    "version": "1.0.0",
+                    "entity_type": "organization",
+                    "identity_semantics": "canonical_display_label",
+                    "canonical_type": "tenant_label",
+                    "patch_namespaces": {
+                        "aliases": "cmbs_tenant_label.aliases",
+                        "distinct": "cmbs_tenant_label.distinct",
+                        "relations": "cmbs_tenant_label.relations"
+                    },
+                    "content_hash": "blake3:profile"
+                },
+                "strategy": {
+                    "id": "apply-test-strategy",
+                    "version": "1.0.0",
+                    "content_hash": "blake3:strategy"
+                },
+                "registry_snapshot": {
+                    "id": "cmbs-tenants",
+                    "version": "1.0.0",
+                    "source": "registry",
+                    "lookup_snapshot_hash": registry_hash
+                },
+                "input": {
+                    "row_count": row_count,
+                    "content_hash": input_hash
+                },
+                "patch_namespace": "cmbs_tenant_label.aliases",
+                "schema": {
+                    "key": CANON_ENTITY_RUN_VERSION_V1,
+                    "content_hash": crate::entity::schema::entity_v1_schema_content_hash(contract)
+                        .expect("run schema hash")
+                },
+                "workdir": {
+                    "root_dir": root_dir,
+                    "stage_dir": contract.stage_dir,
+                    "artifact_relpath": contract.artifact_relpath,
+                    "payload_relpath": contract.payload_relpath
+                },
+                "upstream_artifacts": [],
+                "artifact_content_hash": ""
+            },
+            "summary": {
+                "counts": {
+                    "rows": row_count
+                },
+                "labels": {
+                    "stage": "run"
+                }
+            },
+            "run_manifest_path": "run/manifest.json"
+        });
+        finalize_entity_v1_self_hash(&mut artifact).expect("source self hash");
+        artifact
     }
 
     fn write_registry(path: &Path) {

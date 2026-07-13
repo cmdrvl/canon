@@ -1,0 +1,18 @@
+schema_version = "canon_v1_operator_journey_project.v0"
+profile = "regab_firm_identity"
+strategy = "rules/golden_rules.yaml"
+observations = "tests/fixtures/canon_v1/operator_journey/observations.csv"
+expected_review = "tests/fixtures/canon_v1/operator_journey/expected_review.json"
+
+[expectations]
+matched = 1
+ambiguous = 1
+unmatched = 1
+promoted_aliases = 2
+exact_replay_resolved = 3
+
+[guards]
+network_runtime = "forbidden"
+python_model_runtime = "forbidden"
+domain_package = "forbidden"
+legacy_engine_selection = "forbidden"

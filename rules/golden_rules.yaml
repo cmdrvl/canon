@@ -1,0 +1,21 @@
+strategy_id: canon-v1-operator-journey.v1
+strategy_version: "0.1.0"
+entity_type: organization
+identity:
+  reference:
+    id_columns: [source_row_id]
+  target:
+    id_columns: [source_row_id]
+candidate_filter:
+  - field_ref: bucket
+    field_tgt: bucket
+    op: exact
+assertions:
+  - field_ref: org_name
+    field_tgt: org_name
+    op: exact
+    weight: 1.0
+    required: true
+match_threshold: 1.0
+ambiguity_gap: 0.10
+max_candidates: 10

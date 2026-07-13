@@ -9,7 +9,8 @@ use super::contracts::{
     CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_DECISION_LEDGER_VERSION, CANON_ENTITY_EDGE_VERSION,
     CANON_ENTITY_EXPLAIN_VERSION, CANON_ENTITY_INDEX_VERSION, CANON_ENTITY_PREPARE_VERSION,
     CANON_ENTITY_PROJECTION_VERSION, CANON_ENTITY_PROMOTE_VERSION, CANON_ENTITY_RUN_VERSION,
-    CANON_ENTITY_SOLVE_VERSION, EntityArtifactContractDescriptor, EntityArtifactReferenceV1,
+    CANON_ENTITY_SOLVE_VERSION, ENTITY_ARTIFACT_V1_CONTRACTS, EntityArtifactContractDescriptor,
+    EntityArtifactReferenceV1, EntityArtifactSchemaReferenceV1, EntityArtifactStageV1,
     EntityArtifactWorkdirLayoutV1, entity_artifact_v1_contract_for_legacy_version,
     entity_artifact_v1_contract_for_version,
 };
@@ -29,8 +30,11 @@ pub const ENTITY_SCHEMA_BUNDLE_FIXTURE: &str =
 pub const ENTITY_CONTRACT_GOLDENS_FIXTURE: &str =
     "tests/fixtures/entity/contracts/entity_artifact_goldens.json";
 pub const CANON_ENTITY_ARTIFACT_SCHEMA_BUNDLE_VERSION_V1: &str = "canon_entity_artifact_schemas.v1";
-pub const ENTITY_ARTIFACT_V1_SCHEMA_FIXTURE: &str =
-    "tests/fixtures/entity/contracts/entity_artifact_schemas.json";
+pub const ENTITY_ARTIFACT_V1_CONTRACT_BUNDLE: &str = "schemas/canon.entity.artifact-family.v1.json";
+const ENTITY_ARTIFACT_V1_CONTRACT_BUNDLE_JSON: &str =
+    include_str!("../../schemas/canon.entity.artifact-family.v1.json");
+const ENTITY_V1_SELF_HASH_SEED: &str =
+    "blake3:0000000000000000000000000000000000000000000000000000000000000000";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EntitySchemaSnapshot {
@@ -117,6 +121,169 @@ pub fn schema_snapshot_for_version(version: &str) -> Option<&'static EntitySchem
     ENTITY_SCHEMA_SNAPSHOTS
         .iter()
         .find(|snapshot| snapshot.artifact_version == version)
+}
+
+pub fn entity_v1_contract_for_stage(
+    stage: EntityArtifactStageV1,
+) -> Result<&'static EntityArtifactContractDescriptor, Refusal> {
+    ENTITY_ARTIFACT_V1_CONTRACTS
+        .iter()
+        .find(|contract| contract.stage == stage)
+        .ok_or_else(|| {
+            artifact_contract_refusal(
+                "Entity v1 artifact stage is not registered",
+                json!({ "stage": stage.as_str() }),
+            )
+        })
+}
+
+pub fn entity_v1_descriptor_material(
+    contract: &EntityArtifactContractDescriptor,
+) -> Result<Value, Refusal> {
+    let bundle = entity_v1_contract_bundle()?;
+    let object = bundle.as_object().ok_or_else(|| {
+        artifact_contract_refusal(
+            "Entity v1 artifact contract bundle must be a JSON object",
+            json!({ "field": "$", "path": ENTITY_ARTIFACT_V1_CONTRACT_BUNDLE }),
+        )
+    })?;
+    let bundle_version = required_string(object, "bundle_version", "bundle_version")?;
+    if bundle_version != CANON_ENTITY_ARTIFACT_SCHEMA_BUNDLE_VERSION_V1 {
+        return Err(artifact_contract_refusal(
+            "Entity v1 artifact contract bundle version is not registered",
+            json!({
+                "field": "bundle_version",
+                "expected": CANON_ENTITY_ARTIFACT_SCHEMA_BUNDLE_VERSION_V1,
+                "actual": bundle_version,
+                "path": ENTITY_ARTIFACT_V1_CONTRACT_BUNDLE
+            }),
+        ));
+    }
+    let artifacts = required_array(object, "artifacts", "artifacts")?;
+    let artifact = artifacts
+        .iter()
+        .find(|row| {
+            row.get("artifact_version").and_then(Value::as_str) == Some(contract.artifact_version)
+        })
+        .cloned()
+        .ok_or_else(|| {
+            artifact_contract_refusal(
+                "Entity v1 artifact contract bundle is missing a registered artifact",
+                json!({
+                    "field": "artifacts",
+                    "artifact_version": contract.artifact_version,
+                    "path": ENTITY_ARTIFACT_V1_CONTRACT_BUNDLE
+                }),
+            )
+        })?;
+    Ok(json!({
+        "bundle_version": bundle_version,
+        "artifact": artifact
+    }))
+}
+
+pub fn entity_v1_schema_content_hash(
+    contract: &EntityArtifactContractDescriptor,
+) -> Result<String, Refusal> {
+    Ok(format!(
+        "blake3:{}",
+        blake3::hash(canonical_json(&entity_v1_descriptor_material(contract)?).as_bytes()).to_hex()
+    ))
+}
+
+pub fn entity_v1_schema_reference(
+    contract: &EntityArtifactContractDescriptor,
+) -> Result<EntityArtifactSchemaReferenceV1, Refusal> {
+    Ok(EntityArtifactSchemaReferenceV1 {
+        key: contract.schema_key.to_string(),
+        content_hash: entity_v1_schema_content_hash(contract)?,
+    })
+}
+
+pub fn entity_v1_workdir_layout(
+    contract: &EntityArtifactContractDescriptor,
+    root_dir: impl Into<String>,
+) -> EntityArtifactWorkdirLayoutV1 {
+    EntityArtifactWorkdirLayoutV1 {
+        root_dir: root_dir.into(),
+        stage_dir: contract.stage_dir.to_string(),
+        artifact_relpath: contract.artifact_relpath.to_string(),
+        payload_relpath: contract.payload_relpath.to_string(),
+    }
+}
+
+pub fn entity_v1_artifact_reference(
+    artifact: &Value,
+) -> Result<EntityArtifactReferenceV1, Refusal> {
+    let contract = validate_artifact_v1_core_contract(artifact)?;
+    let content_hash = validate_entity_v1_self_hash(artifact)?;
+    Ok(EntityArtifactReferenceV1 {
+        version: contract.artifact_version.to_string(),
+        schema_key: contract.schema_key.to_string(),
+        schema_hash: entity_v1_schema_content_hash(contract)?,
+        content_hash,
+    })
+}
+
+pub fn sort_entity_v1_upstream_references(
+    mut artifacts: Vec<EntityArtifactReferenceV1>,
+) -> Result<Vec<EntityArtifactReferenceV1>, Refusal> {
+    for artifact in &artifacts {
+        validate_entity_v1_reference_contract(artifact, "metadata.upstream_artifacts")?;
+    }
+    artifacts.sort_by(|left, right| artifact_sort_key(left).cmp(&artifact_sort_key(right)));
+    Ok(artifacts)
+}
+
+pub fn entity_v1_lifecycle_metadata_from_source(
+    source: &Value,
+    stage: EntityArtifactStageV1,
+    upstream_artifacts: Vec<EntityArtifactReferenceV1>,
+) -> Result<Value, Refusal> {
+    validate_entity_v1_self_hash(source)?;
+    let contract = entity_v1_contract_for_stage(stage)?;
+    let source_metadata = source
+        .get("metadata")
+        .and_then(Value::as_object)
+        .ok_or_else(|| missing_field("metadata"))?;
+    let mut metadata = source_metadata.clone();
+    let root_dir = source_metadata
+        .get("workdir")
+        .and_then(Value::as_object)
+        .and_then(|workdir| workdir.get("root_dir"))
+        .and_then(Value::as_str)
+        .unwrap_or("target/entity-work");
+    metadata.insert(
+        "schema".to_string(),
+        serde_json::to_value(entity_v1_schema_reference(contract)?).expect("schema ref serializes"),
+    );
+    metadata.insert(
+        "workdir".to_string(),
+        serde_json::to_value(entity_v1_workdir_layout(contract, root_dir))
+            .expect("workdir layout serializes"),
+    );
+    metadata.insert(
+        "upstream_artifacts".to_string(),
+        serde_json::to_value(sort_entity_v1_upstream_references(upstream_artifacts)?)
+            .expect("upstream refs serialize"),
+    );
+    metadata.insert(
+        "artifact_content_hash".to_string(),
+        Value::String(String::new()),
+    );
+    Ok(Value::Object(metadata))
+}
+
+fn entity_v1_contract_bundle() -> Result<Value, Refusal> {
+    serde_json::from_str(ENTITY_ARTIFACT_V1_CONTRACT_BUNDLE_JSON).map_err(|error| {
+        artifact_contract_refusal(
+            "Entity v1 artifact contract bundle is malformed",
+            json!({
+                "path": ENTITY_ARTIFACT_V1_CONTRACT_BUNDLE,
+                "error": error.to_string()
+            }),
+        )
+    })
 }
 
 pub fn validate_artifact_core_contract(
@@ -333,7 +500,7 @@ pub fn validate_artifact_v1_core_contract(
 
     let schema = required_object(metadata, "schema", "metadata.schema")?;
     let schema_key = required_string(schema, "key", "metadata.schema.key")?;
-    required_hash(schema, "content_hash", "metadata.schema.content_hash")?;
+    let schema_hash = required_hash(schema, "content_hash", "metadata.schema.content_hash")?;
     if schema_key != contract.schema_key {
         return Err(artifact_contract_refusal(
             "Entity v1 artifact schema key does not match the registered contract",
@@ -341,6 +508,18 @@ pub fn validate_artifact_v1_core_contract(
                 "field": "metadata.schema.key",
                 "expected": contract.schema_key,
                 "actual": schema_key
+            }),
+        ));
+    }
+    let expected_schema_hash = entity_v1_schema_content_hash(contract)?;
+    if schema_hash != expected_schema_hash {
+        return Err(artifact_contract_refusal(
+            "Entity v1 artifact schema hash does not match the registered contract descriptor",
+            json!({
+                "field": "metadata.schema.content_hash",
+                "expected": expected_schema_hash,
+                "actual": schema_hash,
+                "schema_key": schema_key
             }),
         ));
     }
@@ -404,7 +583,9 @@ pub fn validate_artifact_v1_core_contract(
 }
 
 pub fn compute_entity_v1_self_hash(artifact: &Value) -> Result<String, Refusal> {
-    validate_artifact_v1_core_contract(artifact)?;
+    let mut validator_input = artifact.clone();
+    seed_v1_self_hash_fields(&mut validator_input, ENTITY_V1_SELF_HASH_SEED)?;
+    validate_artifact_v1_core_contract(&validator_input)?;
     let mut hashable = artifact.clone();
     clear_v1_self_hash_fields(&mut hashable)?;
     Ok(format!(
@@ -440,6 +621,12 @@ pub fn validate_entity_v1_self_hash(artifact: &Value) -> Result<String, Refusal>
         ));
     }
     Ok(expected)
+}
+
+pub fn finalize_entity_v1_self_hash(artifact: &mut Value) -> Result<String, Refusal> {
+    let hash = compute_entity_v1_self_hash(artifact)?;
+    set_v1_self_hash_fields(artifact, &hash)?;
+    validate_entity_v1_self_hash(artifact)
 }
 
 fn required_object<'a>(
@@ -536,6 +723,7 @@ fn parse_upstream_artifact_v1(value: &Value) -> Result<EntityArtifactReferenceV1
         .to_string(),
     };
     if artifact.is_complete() {
+        validate_entity_v1_reference_contract(&artifact, "metadata.upstream_artifacts")?;
         Ok(artifact)
     } else {
         Err(artifact_contract_refusal(
@@ -570,6 +758,69 @@ fn render_v1_upstream_refs(artifacts: &[EntityArtifactReferenceV1]) -> Vec<Strin
             )
         })
         .collect()
+}
+
+fn validate_entity_v1_reference_contract(
+    artifact: &EntityArtifactReferenceV1,
+    field: &str,
+) -> Result<&'static EntityArtifactContractDescriptor, Refusal> {
+    if !artifact.is_complete() {
+        return Err(artifact_contract_refusal(
+            "Entity v1 artifact reference is incomplete",
+            json!({
+                "field": field,
+                "version": artifact.version.as_str(),
+                "schema_key": artifact.schema_key.as_str(),
+                "schema_hash": artifact.schema_hash.as_str(),
+                "content_hash": artifact.content_hash.as_str()
+            }),
+        ));
+    }
+    if let Some(contract) = entity_artifact_v1_contract_for_legacy_version(&artifact.version) {
+        return Err(artifact_contract_refusal(
+            "Legacy entity artifact reference cannot cross the v1 compatibility firewall",
+            json!({
+                "field": field,
+                "actual_version": artifact.version.as_str(),
+                "expected_version": contract.artifact_version,
+                "stage": contract.stage.as_str(),
+                "legacy_versions": contract.legacy_versions
+            }),
+        ));
+    }
+    let contract = entity_artifact_v1_contract_for_version(&artifact.version).ok_or_else(|| {
+        artifact_contract_refusal(
+            "Entity v1 artifact reference version is not registered",
+            json!({
+                "field": field,
+                "version": artifact.version.as_str()
+            }),
+        )
+    })?;
+    if artifact.schema_key != contract.schema_key {
+        return Err(artifact_contract_refusal(
+            "Entity v1 artifact reference schema key does not match the registered contract",
+            json!({
+                "field": field,
+                "expected": contract.schema_key,
+                "actual": artifact.schema_key.as_str(),
+                "version": artifact.version.as_str()
+            }),
+        ));
+    }
+    let expected_schema_hash = entity_v1_schema_content_hash(contract)?;
+    if artifact.schema_hash != expected_schema_hash {
+        return Err(artifact_contract_refusal(
+            "Entity v1 artifact reference schema hash does not match the registered contract descriptor",
+            json!({
+                "field": field,
+                "expected": expected_schema_hash,
+                "actual": artifact.schema_hash.as_str(),
+                "version": artifact.version.as_str()
+            }),
+        ));
+    }
+    Ok(contract)
 }
 
 fn reject_forbidden_timestamp_keys(value: &Value) -> Result<(), Refusal> {
@@ -610,6 +861,14 @@ fn find_forbidden_timestamp_key(value: &Value, path: String) -> Option<String> {
 }
 
 fn clear_v1_self_hash_fields(value: &mut Value) -> Result<(), Refusal> {
+    set_v1_self_hash_fields(value, "")
+}
+
+fn seed_v1_self_hash_fields(value: &mut Value, hash: &str) -> Result<(), Refusal> {
+    set_v1_self_hash_fields(value, hash)
+}
+
+fn set_v1_self_hash_fields(value: &mut Value, hash: &str) -> Result<(), Refusal> {
     let object = value.as_object_mut().ok_or_else(|| {
         artifact_contract_refusal(
             "Entity v1 artifact must be a JSON object",
@@ -618,7 +877,7 @@ fn clear_v1_self_hash_fields(value: &mut Value) -> Result<(), Refusal> {
     })?;
     object.insert(
         "artifact_content_hash".to_string(),
-        Value::String(String::new()),
+        Value::String(hash.to_string()),
     );
     let metadata = object
         .get_mut("metadata")
@@ -626,7 +885,7 @@ fn clear_v1_self_hash_fields(value: &mut Value) -> Result<(), Refusal> {
         .ok_or_else(|| missing_field("metadata"))?;
     metadata.insert(
         "artifact_content_hash".to_string(),
-        Value::String(String::new()),
+        Value::String(hash.to_string()),
     );
     Ok(())
 }
@@ -674,6 +933,12 @@ fn missing_field(path: &str) -> Refusal {
 }
 
 fn artifact_contract_refusal(message: impl Into<String>, detail: Value) -> Refusal {
+    let mut detail = detail;
+    if let Value::Object(object) = &mut detail {
+        object
+            .entry("writes_performed".to_string())
+            .or_insert(Value::Bool(false));
+    }
     EntityRefusalKind::ArtifactContract.to_refusal(message, detail, None)
 }
 
@@ -699,8 +964,8 @@ mod tests {
             CANON_ENTITY_ARTIFACT_SCHEMA_BUNDLE_VERSION_V1
         );
         assert_eq!(
-            ENTITY_ARTIFACT_V1_SCHEMA_FIXTURE,
-            "tests/fixtures/entity/contracts/entity_artifact_schemas.json"
+            ENTITY_ARTIFACT_V1_CONTRACT_BUNDLE,
+            "schemas/canon.entity.artifact-family.v1.json"
         );
 
         let artifacts = fixture_artifacts(&bundle);
@@ -734,6 +999,104 @@ mod tests {
             let validated = validate_artifact_v1_core_contract(golden).expect("golden validates");
             assert_eq!(validated.artifact_version, version);
             assert_stage_fields_present(artifact, golden);
+        }
+    }
+
+    #[test]
+    fn entity_v1_descriptor_helpers_bind_real_schema_hashes_for_every_stage() {
+        for contract in ENTITY_ARTIFACT_V1_CONTRACTS {
+            let by_stage = entity_v1_contract_for_stage(contract.stage).expect("stage lookup");
+            assert_eq!(by_stage.artifact_version, contract.artifact_version);
+            let material = entity_v1_descriptor_material(contract).expect("bundle material");
+            assert_eq!(
+                material["bundle_version"],
+                CANON_ENTITY_ARTIFACT_SCHEMA_BUNDLE_VERSION_V1
+            );
+            assert_eq!(
+                material["artifact"]["artifact_version"],
+                contract.artifact_version
+            );
+            assert_eq!(material["artifact"]["stage"], contract.stage.as_str());
+            assert_eq!(material["artifact"]["command"], contract.command);
+            assert_eq!(material["artifact"]["schema_key"], contract.schema_key);
+            assert_eq!(
+                material["artifact"]["payload_kind"],
+                json!(contract.payload_kind)
+            );
+            let reordered_material = reorder_keys(&material);
+            assert_eq!(
+                canonical_json(&material),
+                canonical_json(&reordered_material)
+            );
+
+            let schema = entity_v1_schema_reference(contract).expect("schema ref");
+            assert_eq!(schema.key, contract.schema_key);
+            assert!(schema.content_hash.starts_with("blake3:"));
+            assert_eq!(schema.content_hash.len(), "blake3:".len() + 64);
+            let digest = format!(
+                "blake3:{}",
+                blake3::hash(canonical_json(&material).as_bytes()).to_hex()
+            );
+            let reordered_digest = format!(
+                "blake3:{}",
+                blake3::hash(canonical_json(&reordered_material).as_bytes()).to_hex()
+            );
+            assert_eq!(digest, reordered_digest);
+            assert_eq!(
+                schema.content_hash,
+                entity_v1_schema_content_hash(contract).expect("schema hash")
+            );
+            assert_eq!(schema.content_hash, digest);
+            assert!(
+                !schema.content_hash.contains(contract.stage.as_str()),
+                "schema hash must be a digest, not a stage label"
+            );
+
+            let layout = entity_v1_workdir_layout(contract, "target/entity-work/test");
+            assert_eq!(layout.stage_dir, contract.stage_dir);
+            assert_eq!(layout.artifact_relpath, contract.artifact_relpath);
+            assert_eq!(layout.payload_relpath, contract.payload_relpath);
+            assert!(layout.is_complete());
+        }
+    }
+
+    #[test]
+    fn entity_v1_contract_bundle_matches_registered_catalog() {
+        assert_eq!(
+            ENTITY_ARTIFACT_V1_CONTRACT_BUNDLE,
+            "schemas/canon.entity.artifact-family.v1.json"
+        );
+        let bundle = entity_v1_contract_bundle().expect("bundle parses");
+        assert_eq!(
+            bundle["bundle_version"],
+            CANON_ENTITY_ARTIFACT_SCHEMA_BUNDLE_VERSION_V1
+        );
+        let artifacts = bundle["artifacts"].as_array().expect("bundle artifacts");
+        assert_eq!(artifacts.len(), ENTITY_ARTIFACT_V1_CONTRACTS.len());
+
+        for contract in ENTITY_ARTIFACT_V1_CONTRACTS {
+            let row = artifacts
+                .iter()
+                .find(|row| {
+                    row.get("artifact_version").and_then(Value::as_str)
+                        == Some(contract.artifact_version)
+                })
+                .unwrap_or_else(|| panic!("missing bundle row {}", contract.artifact_version));
+            assert_eq!(row["stage"], contract.stage.as_str());
+            assert_eq!(row["command"], contract.command);
+            assert_eq!(row["schema_key"], contract.schema_key);
+            assert_eq!(row["payload_kind"], json!(contract.payload_kind));
+            assert_eq!(row["workdir"]["stage_dir"], contract.stage_dir);
+            assert_eq!(
+                row["workdir"]["artifact_relpath"],
+                contract.artifact_relpath
+            );
+            assert_eq!(row["workdir"]["payload_relpath"], contract.payload_relpath);
+            let legacy_versions = row["legacy_versions"].as_array().expect("legacy versions");
+            assert_eq!(legacy_versions.len(), contract.legacy_versions.len());
+            for (actual, expected) in legacy_versions.iter().zip(contract.legacy_versions.iter()) {
+                assert_eq!(actual, *expected);
+            }
         }
     }
 
@@ -779,13 +1142,13 @@ mod tests {
             {
                 "version": CANON_ENTITY_RUN_VERSION_V1,
                 "schema_key": CANON_ENTITY_RUN_VERSION_V1,
-                "schema_hash": "blake3:schema-run",
+                "schema_hash": schema_hash_for_version(CANON_ENTITY_RUN_VERSION_V1),
                 "content_hash": "blake3:zz-run"
             },
             {
                 "version": CANON_ENTITY_AUDIT_VERSION_V1,
                 "schema_key": CANON_ENTITY_AUDIT_VERSION_V1,
-                "schema_hash": "blake3:schema-audit",
+                "schema_hash": schema_hash_for_version(CANON_ENTITY_AUDIT_VERSION_V1),
                 "content_hash": "blake3:aa-audit"
             }
         ]);
@@ -803,6 +1166,22 @@ mod tests {
         let refusal =
             validate_artifact_v1_core_contract(&timestamped).expect_err("timestamp refuses");
         assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+    }
+
+    #[test]
+    fn entity_v1_core_contract_refuses_placeholder_schema_hashes() {
+        let mut artifact = sample_artifact(
+            CANON_ENTITY_RUN_VERSION_V1,
+            "run_manifest_path",
+            "run/manifest.json",
+        );
+        artifact["metadata"]["schema"]["content_hash"] =
+            Value::String("blake3:schema-run".to_string());
+
+        let refusal =
+            validate_artifact_v1_core_contract(&artifact).expect_err("placeholder schema refuses");
+        assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+        assert_eq!(refusal.detail["field"], "metadata.schema.content_hash");
     }
 
     #[test]
@@ -826,6 +1205,101 @@ mod tests {
         let refusal = validate_entity_v1_self_hash(&artifact).expect_err("drift refuses");
         assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
         assert_eq!(refusal.detail["field"], "artifact_content_hash");
+    }
+
+    #[test]
+    fn entity_v1_artifact_reference_validates_self_hash_and_legacy_firewall() {
+        let artifact = sample_artifact(
+            CANON_ENTITY_RUN_VERSION_V1,
+            "run_manifest_path",
+            "run/manifest.json",
+        );
+        let reference = entity_v1_artifact_reference(&artifact).expect("reference builds");
+        assert_eq!(reference.version, CANON_ENTITY_RUN_VERSION_V1);
+        assert_eq!(reference.schema_key, CANON_ENTITY_RUN_VERSION_V1);
+        assert_eq!(
+            reference.schema_hash,
+            schema_hash_for_version(CANON_ENTITY_RUN_VERSION_V1)
+        );
+        assert_eq!(
+            reference.content_hash,
+            artifact["artifact_content_hash"].as_str().expect("hash")
+        );
+
+        let mut tampered = artifact.clone();
+        tampered["summary"]["counts"]["entity_count"] = json!(99);
+        let refusal = entity_v1_artifact_reference(&tampered).expect_err("tamper refuses");
+        assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+        assert_eq!(refusal.detail["field"], "artifact_content_hash");
+
+        let mut legacy = artifact;
+        legacy["version"] = Value::String("canon_entity_run.v0".to_string());
+        let refusal = entity_v1_artifact_reference(&legacy).expect_err("legacy refuses");
+        assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+        assert_eq!(refusal.detail["actual_version"], "canon_entity_run.v0");
+    }
+
+    #[test]
+    fn entity_v1_lifecycle_metadata_sorts_and_validates_upstream_refs() {
+        let source = sample_artifact(
+            CANON_ENTITY_RUN_VERSION_V1,
+            "run_manifest_path",
+            "run/manifest.json",
+        );
+        let later = upstream_ref(CANON_ENTITY_RUN_VERSION_V1, "zz-run");
+        let earlier = upstream_ref(CANON_ENTITY_AUDIT_VERSION_V1, "aa-audit");
+        let metadata = entity_v1_lifecycle_metadata_from_source(
+            &source,
+            EntityArtifactStageV1::Promote,
+            vec![later, earlier],
+        )
+        .expect("metadata builds");
+        assert_eq!(metadata["schema"]["key"], CANON_ENTITY_PROMOTE_VERSION_V1);
+        assert_eq!(
+            metadata["schema"]["content_hash"],
+            schema_hash_for_version(CANON_ENTITY_PROMOTE_VERSION_V1)
+        );
+        assert_eq!(metadata["workdir"]["stage_dir"], "promote");
+        assert_eq!(
+            metadata["upstream_artifacts"][0]["version"],
+            CANON_ENTITY_AUDIT_VERSION_V1
+        );
+        assert_eq!(
+            metadata["upstream_artifacts"][1]["version"],
+            CANON_ENTITY_RUN_VERSION_V1
+        );
+
+        let mut tampered_source = source.clone();
+        tampered_source["summary"]["counts"]["entity_count"] = json!(99);
+        let refusal = entity_v1_lifecycle_metadata_from_source(
+            &tampered_source,
+            EntityArtifactStageV1::Promote,
+            Vec::new(),
+        )
+        .expect_err("tampered source refuses");
+        assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+        assert_eq!(refusal.detail["field"], "artifact_content_hash");
+
+        let mut legacy = upstream_ref(CANON_ENTITY_RUN_VERSION_V1, "legacy-run");
+        legacy.version = "canon_entity_run.v0".to_string();
+        let refusal =
+            sort_entity_v1_upstream_references(vec![legacy]).expect_err("legacy upstream refuses");
+        assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+        assert_eq!(refusal.detail["actual_version"], "canon_entity_run.v0");
+
+        let mut empty_hash = upstream_ref(CANON_ENTITY_RUN_VERSION_V1, "missing");
+        empty_hash.content_hash.clear();
+        let refusal = sort_entity_v1_upstream_references(vec![empty_hash])
+            .expect_err("empty content hash refuses");
+        assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+        assert_eq!(refusal.detail["field"], "metadata.upstream_artifacts");
+
+        let mut wrong_prefix = upstream_ref(CANON_ENTITY_RUN_VERSION_V1, "sha-run");
+        wrong_prefix.content_hash = "sha256:run".to_string();
+        let refusal = sort_entity_v1_upstream_references(vec![wrong_prefix])
+            .expect_err("non-blake3 content hash refuses");
+        assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+        assert_eq!(refusal.detail["content_hash"], "sha256:run");
     }
 
     fn assert_stage_fields_present(schema_row: &Value, golden: &Value) {
@@ -920,7 +1394,7 @@ mod tests {
                 "patch_namespace": "cmbs_tenant_label.aliases",
                 "schema": {
                     "key": contract.schema_key,
-                    "content_hash": format!("blake3:schema-{}", contract.stage.as_str())
+                    "content_hash": entity_v1_schema_content_hash(contract).expect("schema hash")
                 },
                 "workdir": {
                     "root_dir": "target/entity-work/cmbs-sample",
@@ -975,71 +1449,67 @@ mod tests {
     fn sorted_upstreams_for_stage(stage: EntityArtifactStageV1) -> Value {
         match stage {
             EntityArtifactStageV1::Project => json!([]),
-            EntityArtifactStageV1::Prepare => json!([upstream(
-                CANON_ENTITY_PROJECT_VERSION_V1,
-                "schema-project",
-                "project"
-            )]),
-            EntityArtifactStageV1::Index => json!([upstream(
-                CANON_ENTITY_PREPARE_VERSION_V1,
-                "schema-prepare",
-                "prepare"
-            )]),
-            EntityArtifactStageV1::Block => json!([upstream(
-                CANON_ENTITY_INDEX_VERSION_V1,
-                "schema-index",
-                "index"
-            )]),
-            EntityArtifactStageV1::Evidence => json!([upstream(
-                CANON_ENTITY_BLOCK_VERSION_V1,
-                "schema-block",
-                "block"
-            )]),
-            EntityArtifactStageV1::Solve => json!([upstream(
-                CANON_ENTITY_EVIDENCE_VERSION_V1,
-                "schema-evidence",
-                "evidence"
-            )]),
-            EntityArtifactStageV1::Run => json!([upstream(
-                CANON_ENTITY_SOLVE_VERSION_V1,
-                "schema-solve",
-                "solve"
-            )]),
+            EntityArtifactStageV1::Prepare => {
+                json!([upstream(CANON_ENTITY_PROJECT_VERSION_V1, "project")])
+            }
+            EntityArtifactStageV1::Index => {
+                json!([upstream(CANON_ENTITY_PREPARE_VERSION_V1, "prepare")])
+            }
+            EntityArtifactStageV1::Block => {
+                json!([upstream(CANON_ENTITY_INDEX_VERSION_V1, "index")])
+            }
+            EntityArtifactStageV1::Evidence => {
+                json!([upstream(CANON_ENTITY_BLOCK_VERSION_V1, "block")])
+            }
+            EntityArtifactStageV1::Solve => {
+                json!([upstream(CANON_ENTITY_EVIDENCE_VERSION_V1, "evidence")])
+            }
+            EntityArtifactStageV1::Run => json!([upstream(CANON_ENTITY_SOLVE_VERSION_V1, "solve")]),
             EntityArtifactStageV1::Review => {
-                json!([upstream(CANON_ENTITY_RUN_VERSION_V1, "schema-run", "run")])
+                json!([upstream(CANON_ENTITY_RUN_VERSION_V1, "run")])
             }
             EntityArtifactStageV1::Audit => {
-                json!([upstream(CANON_ENTITY_RUN_VERSION_V1, "schema-run", "run")])
+                json!([upstream(CANON_ENTITY_RUN_VERSION_V1, "run")])
             }
-            EntityArtifactStageV1::Promote => json!([upstream(
-                CANON_ENTITY_AUDIT_VERSION_V1,
-                "schema-audit",
-                "audit"
-            )]),
-            EntityArtifactStageV1::Apply => json!([upstream(
-                CANON_ENTITY_PROMOTE_VERSION_V1,
-                "schema-promote",
-                "promote"
-            )]),
+            EntityArtifactStageV1::Promote => {
+                json!([upstream(CANON_ENTITY_AUDIT_VERSION_V1, "audit")])
+            }
+            EntityArtifactStageV1::Apply => {
+                json!([upstream(CANON_ENTITY_PROMOTE_VERSION_V1, "promote")])
+            }
             EntityArtifactStageV1::Explain => {
-                json!([upstream(CANON_ENTITY_RUN_VERSION_V1, "schema-run", "run")])
+                json!([upstream(CANON_ENTITY_RUN_VERSION_V1, "run")])
             }
         }
     }
 
-    fn upstream(version: &str, schema_hash_suffix: &str, content_hash_suffix: &str) -> Value {
+    fn upstream(version: &str, content_hash_suffix: &str) -> Value {
         json!({
             "version": version,
             "schema_key": version,
-            "schema_hash": format!("blake3:{schema_hash_suffix}"),
+            "schema_hash": schema_hash_for_version(version),
             "content_hash": format!("blake3:{content_hash_suffix}")
         })
     }
 
+    fn upstream_ref(version: &str, content_hash_suffix: &str) -> EntityArtifactReferenceV1 {
+        EntityArtifactReferenceV1 {
+            version: version.to_string(),
+            schema_key: version.to_string(),
+            schema_hash: schema_hash_for_version(version),
+            content_hash: format!("blake3:{content_hash_suffix}"),
+        }
+    }
+
+    fn schema_hash_for_version(version: &str) -> String {
+        entity_v1_schema_content_hash(
+            entity_artifact_v1_contract_for_version(version).expect("registered v1 version"),
+        )
+        .expect("schema hash")
+    }
+
     fn set_self_hash(artifact: &mut Value) {
-        let hash = compute_entity_v1_self_hash(artifact).expect("self hash computes");
-        artifact["artifact_content_hash"] = Value::String(hash.clone());
-        artifact["metadata"]["artifact_content_hash"] = Value::String(hash);
+        finalize_entity_v1_self_hash(artifact).expect("self hash finalizes");
     }
 
     fn reorder_keys(value: &Value) -> Value {

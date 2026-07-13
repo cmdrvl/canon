@@ -12,8 +12,11 @@ use crate::{
         run::link::{
             ENTITY_LINK_VERSION, EntityLinkArtifact, validate_entity_link_artifact_contract,
         },
-        schema::CANON_ENTITY_REVIEW_QUEUE_VERSION,
-        schema::{compute_entity_v1_self_hash, validate_artifact_v1_core_contract},
+        schema::{
+            CANON_ENTITY_REVIEW_QUEUE_VERSION, entity_v1_artifact_reference,
+            entity_v1_lifecycle_metadata_from_source, finalize_entity_v1_self_hash,
+            validate_artifact_v1_core_contract,
+        },
         solve::{
             SolveArtifact, SolveComponentDiagnostics, SolveEvidenceCut, SolveReconciliationState,
             SolveReviewGroupSeed, validate_solve_artifact_contract,
@@ -304,8 +307,8 @@ pub fn build_review_v1_artifact(request: ReviewV1ExportRequest) -> Result<Value,
         "artifact_content_hash",
     )?;
     let source_version = required_value_string(&request.result_artifact, &["version"], "version")?;
-    let source_ref = source_reference_v1(&request.result_artifact)?;
-    let metadata = lifecycle_metadata_v1(
+    let source_ref = entity_v1_artifact_reference(&request.result_artifact)?;
+    let metadata = entity_v1_lifecycle_metadata_from_source(
         &request.result_artifact,
         EntityArtifactStageV1::Review,
         vec![source_ref],
@@ -352,7 +355,7 @@ pub fn build_review_v1_artifact(request: ReviewV1ExportRequest) -> Result<Value,
             "promote": "canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <REGISTRY> --next-version <VER>"
         }
     });
-    set_v1_self_hash(&mut artifact)?;
+    finalize_entity_v1_self_hash(&mut artifact)?;
     Ok(artifact)
 }
 
@@ -725,119 +728,6 @@ fn validate_review_v1_source(artifact: &Value) -> Result<(), Refusal> {
     Ok(())
 }
 
-pub(crate) fn lifecycle_metadata_v1(
-    source: &Value,
-    stage: EntityArtifactStageV1,
-    upstream_artifacts: Vec<Value>,
-) -> Result<Value, Refusal> {
-    let contract = crate::entity::entity_artifact_v1_contract_for_version(match stage {
-        EntityArtifactStageV1::Review => CANON_ENTITY_REVIEW_VERSION_V1,
-        EntityArtifactStageV1::Audit => crate::entity::CANON_ENTITY_AUDIT_VERSION_V1,
-        EntityArtifactStageV1::Promote => crate::entity::CANON_ENTITY_PROMOTE_VERSION_V1,
-        EntityArtifactStageV1::Explain => crate::entity::CANON_ENTITY_EXPLAIN_VERSION_V1,
-        _ => {
-            return Err(review_refusal(
-                EntityRefusalKind::ArtifactContract,
-                "Unsupported v1 lifecycle metadata stage",
-                json!({
-                    "stage": stage.as_str()
-                }),
-            ));
-        }
-    })
-    .ok_or_else(|| {
-        review_refusal(
-            EntityRefusalKind::ArtifactContract,
-            "Missing registered v1 lifecycle contract",
-            json!({
-                "stage": stage.as_str()
-            }),
-        )
-    })?;
-    let source_metadata = source
-        .get("metadata")
-        .and_then(Value::as_object)
-        .ok_or_else(|| missing_v1_field("metadata"))?;
-    let mut metadata = source_metadata.clone();
-    metadata.insert(
-        "schema".to_string(),
-        json!({
-            "key": contract.schema_key,
-            "content_hash": format!("blake3:schema-{}", stage.as_str())
-        }),
-    );
-    let root_dir = source_metadata
-        .get("workdir")
-        .and_then(Value::as_object)
-        .and_then(|workdir| workdir.get("root_dir"))
-        .and_then(Value::as_str)
-        .unwrap_or("target/entity-work");
-    metadata.insert(
-        "workdir".to_string(),
-        json!({
-            "root_dir": root_dir,
-            "stage_dir": contract.stage_dir,
-            "artifact_relpath": contract.artifact_relpath,
-            "payload_relpath": contract.payload_relpath
-        }),
-    );
-    metadata.insert(
-        "upstream_artifacts".to_string(),
-        Value::Array(upstream_artifacts),
-    );
-    metadata.insert(
-        "artifact_content_hash".to_string(),
-        Value::String(String::new()),
-    );
-    Ok(Value::Object(metadata))
-}
-
-pub(crate) fn source_reference_v1(source: &Value) -> Result<Value, Refusal> {
-    Ok(json!({
-        "version": required_value_string(source, &["version"], "version")?,
-        "schema_key": required_value_string(source, &["metadata", "schema", "key"], "metadata.schema.key")?,
-        "schema_hash": required_value_string(source, &["metadata", "schema", "content_hash"], "metadata.schema.content_hash")?,
-        "content_hash": required_value_string(source, &["artifact_content_hash"], "artifact_content_hash")?
-    }))
-}
-
-pub(crate) fn set_v1_self_hash(artifact: &mut Value) -> Result<(), Refusal> {
-    seed_v1_self_hash_placeholders(artifact)?;
-    let hash = compute_entity_v1_self_hash(artifact)?;
-    let object = artifact
-        .as_object_mut()
-        .ok_or_else(|| missing_v1_field("$"))?;
-    object.insert(
-        "artifact_content_hash".to_string(),
-        Value::String(hash.clone()),
-    );
-    let metadata = object
-        .get_mut("metadata")
-        .and_then(Value::as_object_mut)
-        .ok_or_else(|| missing_v1_field("metadata"))?;
-    metadata.insert("artifact_content_hash".to_string(), Value::String(hash));
-    Ok(())
-}
-
-fn seed_v1_self_hash_placeholders(artifact: &mut Value) -> Result<(), Refusal> {
-    let object = artifact
-        .as_object_mut()
-        .ok_or_else(|| missing_v1_field("$"))?;
-    object.insert(
-        "artifact_content_hash".to_string(),
-        Value::String("blake3:placeholder".to_string()),
-    );
-    let metadata = object
-        .get_mut("metadata")
-        .and_then(Value::as_object_mut)
-        .ok_or_else(|| missing_v1_field("metadata"))?;
-    metadata.insert(
-        "artifact_content_hash".to_string(),
-        Value::String("blake3:placeholder".to_string()),
-    );
-    Ok(())
-}
-
 pub(crate) fn required_value_string<'a>(
     value: &'a Value,
     path: &[&str],
@@ -957,7 +847,9 @@ fn review_context_for_csv(artifact: &Value) -> Result<String, Refusal> {
         "metadata": artifact.get("metadata").cloned().unwrap_or(Value::Null),
         "summary": artifact.get("summary").cloned().unwrap_or(Value::Null),
         "review_queue_path": artifact.get("review_queue_path").cloned().unwrap_or(Value::Null),
-        "source_result": artifact.get("source_result").cloned().unwrap_or(Value::Null)
+        "source_result": artifact.get("source_result").cloned().unwrap_or(Value::Null),
+        "include": artifact.get("include").cloned().unwrap_or(Value::Null),
+        "next_commands": artifact.get("next_commands").cloned().unwrap_or(Value::Null)
     });
     serde_json::to_string(&context).map_err(json_refusal)
 }

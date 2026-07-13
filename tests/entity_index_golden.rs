@@ -3,11 +3,19 @@
 #[path = "entity/index_fixture_support.rs"]
 mod index_fixture_support;
 
-use canon::entity::{
-    CANON_ENTITY_INDEX_VERSION,
-    artifact_chain::EntityHashField,
-    index::{EntityIndexCacheStatus, validate_index_artifact_contract},
-    postings::{CommonPostingDiagnostic, PostingFeatureKind, PostingLayout},
+use canon::{
+    RefusalCode,
+    entity::{
+        CANON_ENTITY_INDEX_VERSION, CANON_ENTITY_INDEX_VERSION_V1, CANON_ENTITY_PREPARE_VERSION_V1,
+        artifact_chain::EntityHashField,
+        index::{
+            EntityIndexBuildRequest, EntityIndexCacheStatus, index_build_v1_report,
+            run_index_build_v1, validate_index_artifact_contract,
+        },
+        postings::{CommonPostingDiagnostic, PostingFeatureKind, PostingLayout},
+        prepare::{PrepareRunRequest, run_prepare, run_prepare_v1},
+        schema::{validate_artifact_v1_core_contract, validate_entity_v1_self_hash},
+    },
 };
 use index_fixture_support::{
     ExpectedCommonPosting, IndexFixture, build_index_fixture, parse_fixture,
@@ -20,6 +28,11 @@ const TENANT_SMALL_FIXTURE: &str =
     include_str!("fixtures/entity/index/en_i001_small_tenant_index.json");
 const TENANT_MEDIUM_FIXTURE: &str =
     include_str!("fixtures/entity/index/en_i002_medium_tenant_index.json");
+const REGAB_ROWS: &str =
+    "tests/fixtures/entity/regab/sec10d_baseline_public/org_mentions_selected.csv";
+const REGAB_REGISTRY: &str =
+    "tests/fixtures/entity/regab/sec10d_baseline_public/registry_snapshot/firms";
+const REGAB_STRATEGY: &str = "tests/fixtures/entity/strategies/regab_firm_identity.yaml";
 
 #[test]
 fn entity_index_golden_small_fixture_pins_postings_and_artifact_inputs() {
@@ -229,6 +242,133 @@ fn entity_index_golden_extra_tenant_fixtures_match_expected_contracts() {
         assert_counts(&fixture, &built);
         assert_artifact_inputs(&fixture, &built);
     }
+}
+
+#[test]
+fn entity_index_v1_build_consumes_prepare_v1_and_warm_hit_is_byte_identical() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let prepare = run_prepare_v1(PrepareRunRequest {
+        rows: REGAB_ROWS.as_ref(),
+        profile: "regab_firm_identity",
+        registry: REGAB_REGISTRY.as_ref(),
+        work_dir: temp.path(),
+    })
+    .expect("prepare v1");
+    assert_eq!(prepare["version"], CANON_ENTITY_PREPARE_VERSION_V1);
+
+    let request = EntityIndexBuildRequest {
+        rows: REGAB_ROWS.as_ref(),
+        profile: "regab_firm_identity",
+        strategy: REGAB_STRATEGY.as_ref(),
+        registry: REGAB_REGISTRY.as_ref(),
+        work_dir: temp.path(),
+        max_artifact_bytes: None,
+    };
+    let first = run_index_build_v1(request).expect("first index v1 build");
+    let first_bytes = std::fs::read(&first.paths.artifact_path).expect("first artifact bytes");
+    std::fs::write(
+        temp.path().join("prepare").join("surfaces.jsonl"),
+        b"{not valid prepared surfaces jsonl}\n",
+    )
+    .expect("poison prepared surfaces after cache publication");
+    let second = run_index_build_v1(request).expect("second index v1 build");
+    let second_bytes = std::fs::read(&second.paths.artifact_path).expect("second artifact bytes");
+    let report = index_build_v1_report(&second);
+
+    assert_eq!(first.cache_status, EntityIndexCacheStatus::Rebuilt);
+    assert_eq!(second.cache_status, EntityIndexCacheStatus::Hit);
+    assert_eq!(first_bytes, second_bytes);
+    assert_eq!(first.artifact, second.artifact);
+    assert_eq!(report.version, "canon_entity_index_build.v1");
+    assert_eq!(second.artifact["version"], CANON_ENTITY_INDEX_VERSION_V1);
+    assert_eq!(
+        validate_artifact_v1_core_contract(&second.artifact)
+            .expect("index v1 core contract")
+            .artifact_version,
+        CANON_ENTITY_INDEX_VERSION_V1
+    );
+    assert_eq!(
+        validate_entity_v1_self_hash(&second.artifact).expect("index self hash"),
+        second.artifact["artifact_content_hash"]
+            .as_str()
+            .expect("hash")
+    );
+    assert_eq!(
+        second.artifact["metadata"]["upstream_artifacts"][0]["version"],
+        CANON_ENTITY_PREPARE_VERSION_V1
+    );
+    assert_eq!(
+        second.artifact["metadata"]["workdir"]["artifact_relpath"],
+        "index/index.json"
+    );
+    assert_eq!(
+        second.artifact["metadata"]["workdir"]["payload_relpath"],
+        "index/postings.bin"
+    );
+    assert_eq!(second.artifact["postings_path"], "index/postings.bin");
+    assert!(!temp.path().join("index.json").exists());
+    assert!(
+        !std::str::from_utf8(&second_bytes)
+            .expect("utf8 artifact")
+            .contains("canon_entity_index.v0"),
+        "index v1 artifact must not serialize a v0 backing version"
+    );
+}
+
+#[test]
+fn entity_index_v1_refuses_legacy_prepare_before_index_writes() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    run_prepare(PrepareRunRequest {
+        rows: REGAB_ROWS.as_ref(),
+        profile: "regab_firm_identity",
+        registry: REGAB_REGISTRY.as_ref(),
+        work_dir: temp.path(),
+    })
+    .expect("legacy prepare fixture");
+    let refusal = run_index_build_v1(EntityIndexBuildRequest {
+        rows: REGAB_ROWS.as_ref(),
+        profile: "regab_firm_identity",
+        strategy: REGAB_STRATEGY.as_ref(),
+        registry: REGAB_REGISTRY.as_ref(),
+        work_dir: temp.path(),
+        max_artifact_bytes: None,
+    })
+    .expect_err("legacy prepare refuses");
+
+    assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+    assert_eq!(refusal.detail["actual_version"], "canon_entity_prepare.v0");
+    assert!(!temp.path().join("index").join("index.json").exists());
+    assert!(!temp.path().join("index").join("cache_key.json").exists());
+}
+
+#[test]
+fn entity_index_v1_refuses_semantically_equivalent_artifact_byte_tamper() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    run_prepare_v1(PrepareRunRequest {
+        rows: REGAB_ROWS.as_ref(),
+        profile: "regab_firm_identity",
+        registry: REGAB_REGISTRY.as_ref(),
+        work_dir: temp.path(),
+    })
+    .expect("prepare v1");
+
+    let request = EntityIndexBuildRequest {
+        rows: REGAB_ROWS.as_ref(),
+        profile: "regab_firm_identity",
+        strategy: REGAB_STRATEGY.as_ref(),
+        registry: REGAB_REGISTRY.as_ref(),
+        work_dir: temp.path(),
+        max_artifact_bytes: None,
+    };
+    let first = run_index_build_v1(request).expect("first index v1 build");
+    let pretty_artifact = serde_json::to_vec_pretty(&first.artifact).expect("pretty artifact json");
+    std::fs::write(&first.paths.artifact_path, pretty_artifact)
+        .expect("rewrite artifact with equivalent json bytes");
+
+    let refusal =
+        run_index_build_v1(request).expect_err("receipt refuses byte-level artifact drift");
+    assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+    assert_eq!(refusal.detail["field"], "cache_receipt");
 }
 
 fn dictionary_ids(layout: &PostingLayout, kind: PostingFeatureKind) -> BTreeMap<String, u32> {

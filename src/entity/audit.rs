@@ -20,11 +20,11 @@ use crate::{
             EntityDeterministicSummary,
         },
         error::EntityRefusalKind,
-        review::{
-            lifecycle_metadata_v1, required_value_string, set_v1_self_hash, source_reference_v1,
-            value_string_or, value_u64_or,
+        review::{required_value_string, value_string_or, value_u64_or},
+        schema::{
+            entity_v1_artifact_reference, entity_v1_lifecycle_metadata_from_source,
+            finalize_entity_v1_self_hash, validate_artifact_v1_core_contract,
         },
-        schema::validate_artifact_v1_core_contract,
     },
     witness,
 };
@@ -160,8 +160,8 @@ pub fn run_entity_audit_v1(request: EntityAuditV1Request<'_>) -> Result<Value, R
     let source_version = required_value_string(&request.result_artifact, &["version"], "version")?;
     let suite = load_audit_v1_suite(request.suite_dir)?;
     let gates = validate_audit_v1_gates(suite.gates)?;
-    let source_ref = source_reference_v1(&request.result_artifact)?;
-    let metadata = lifecycle_metadata_v1(
+    let source_ref = entity_v1_artifact_reference(&request.result_artifact)?;
+    let metadata = entity_v1_lifecycle_metadata_from_source(
         &request.result_artifact,
         EntityArtifactStageV1::Audit,
         vec![source_ref],
@@ -195,7 +195,7 @@ pub fn run_entity_audit_v1(request: EntityAuditV1Request<'_>) -> Result<Value, R
         },
         "gates": gates
     });
-    set_v1_self_hash(&mut artifact)?;
+    finalize_entity_v1_self_hash(&mut artifact)?;
     Ok(artifact)
 }
 

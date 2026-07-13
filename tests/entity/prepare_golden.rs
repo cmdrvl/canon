@@ -1,9 +1,12 @@
 use canon::{
     RefusalCode,
     entity::{
+        CANON_ENTITY_PREPARE_VERSION_V1,
         prepare::{
             PrepareRunRequest, PreparedExactLookupStatus, PreparedSurfaceRecord, run_prepare,
+            run_prepare_v1,
         },
+        schema::{validate_artifact_v1_core_contract, validate_entity_v1_self_hash},
         surface_id::{SurfaceIdMaterial, derive_surface_ids},
     },
 };
@@ -167,6 +170,119 @@ fn EN_P005_fixture_existing_registry_aliases_are_pre_resolved() {
             .expect("registry snapshot")
             .lookup_snapshot_hash,
         artifact.registry_snapshot.lookup_snapshot_hash
+    );
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn EN_P006_prepare_v1_artifact_has_schema_hash_self_hash_and_firewall_metadata() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let artifact = run_prepare_v1(PrepareRunRequest {
+        rows: Path::new(PREPARE_FIXTURES)
+            .join("en_p001_rows.csv")
+            .as_path(),
+        profile: "cmbs_tenant_label",
+        registry: Path::new(CMBS_REGISTRY),
+        work_dir: temp.path(),
+    })
+    .expect("prepare v1 run");
+    let artifact_bytes =
+        fs::read(temp.path().join("prepare").join("prepare.json")).expect("prepare artifact");
+
+    assert_eq!(artifact["version"], CANON_ENTITY_PREPARE_VERSION_V1);
+    assert_eq!(
+        validate_artifact_v1_core_contract(&artifact)
+            .expect("prepare v1 core contract")
+            .artifact_version,
+        CANON_ENTITY_PREPARE_VERSION_V1
+    );
+    assert_eq!(
+        validate_entity_v1_self_hash(&artifact).expect("prepare v1 self hash"),
+        artifact["artifact_content_hash"].as_str().expect("hash")
+    );
+    assert_eq!(
+        artifact["metadata"]["schema"]["key"],
+        CANON_ENTITY_PREPARE_VERSION_V1
+    );
+    assert_eq!(artifact["metadata"]["workdir"]["stage_dir"], "prepare");
+    assert_eq!(
+        artifact["metadata"]["workdir"]["artifact_relpath"],
+        "prepare/prepare.json"
+    );
+    assert_eq!(
+        artifact["metadata"]["workdir"]["payload_relpath"],
+        "prepare/surfaces.jsonl"
+    );
+    assert_eq!(
+        artifact["metadata"]["patch_namespace"],
+        artifact["metadata"]["profile"]["patch_namespaces"]["aliases"]
+    );
+    assert!(
+        artifact["metadata"]["upstream_artifacts"]
+            .as_array()
+            .expect("upstreams")
+            .is_empty()
+    );
+    assert!(
+        !std::str::from_utf8(&artifact_bytes)
+            .expect("utf8 artifact")
+            .contains("canon_entity_prepare.v0"),
+        "prepare v1 artifact must not serialize a v0 backing version"
+    );
+    assert!(temp.path().join("prepare").join("surfaces.jsonl").exists());
+}
+
+#[test]
+fn entity_prepare_cli_emits_true_v1_artifact_with_hash_contract() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let output = assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "prepare",
+            Path::new(PREPARE_FIXTURES)
+                .join("en_p001_rows.csv")
+                .to_str()
+                .expect("rows path"),
+            "--profile",
+            "cmbs_tenant_label",
+            "--registry",
+            CMBS_REGISTRY,
+            "--work-dir",
+            temp.path().to_str().expect("work dir path"),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let artifact: Value = serde_json::from_slice(&output).expect("prepare cli artifact");
+
+    assert_eq!(artifact["version"], CANON_ENTITY_PREPARE_VERSION_V1);
+    assert_eq!(
+        validate_artifact_v1_core_contract(&artifact)
+            .expect("prepare cli core contract")
+            .artifact_version,
+        CANON_ENTITY_PREPARE_VERSION_V1
+    );
+    assert_eq!(
+        validate_entity_v1_self_hash(&artifact).expect("prepare cli self hash"),
+        artifact["artifact_content_hash"].as_str().expect("hash")
+    );
+    assert_eq!(
+        artifact["metadata"]["schema"]["key"],
+        CANON_ENTITY_PREPARE_VERSION_V1
+    );
+    assert!(
+        !std::str::from_utf8(&output)
+            .expect("utf8 artifact")
+            .contains("canon_entity_prepare.v0")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(
+            &fs::read(temp.path().join("prepare").join("prepare.json")).expect("persisted prepare")
+        )
+        .expect("persisted prepare json"),
+        artifact
     );
 }
 

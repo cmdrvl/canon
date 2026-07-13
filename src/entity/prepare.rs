@@ -5,10 +5,15 @@
 //! and keep `source_row_id` as provenance instead of identity evidence.
 
 use crate::entity::{
-    CANON_ENTITY_PREPARE_VERSION, EntityArtifactMetadata, EntityInputReference,
-    EntityNamekitReference, EntityPatchSetReference, EntityProfileDocument, EntityProfileReference,
-    EntityRegistrySnapshot, EntityStrategyReference,
+    CANON_ENTITY_PREPARE_VERSION, CANON_ENTITY_PREPARE_VERSION_V1, EntityArtifactMetadata,
+    EntityArtifactMetadataV1, EntityArtifactStageV1, EntityInputReference, EntityNamekitReference,
+    EntityPatchSetReference, EntityProfileDocument, EntityProfileReference, EntityRegistrySnapshot,
+    EntityStrategyReference,
     error::EntityRefusalKind,
+    schema::{
+        entity_v1_contract_for_stage, entity_v1_schema_reference, entity_v1_workdir_layout,
+        finalize_entity_v1_self_hash, validate_artifact_v1_core_contract,
+    },
     stream::{
         EntityStreamChunkMetadata, EntityStreamFormat, EntityStreamInput,
         EntityStreamRowProvenance, EntityStreamStage, EntityStreamTelemetry,
@@ -505,6 +510,59 @@ pub fn run_prepare(request: PrepareRunRequest<'_>) -> Result<PrepareRunArtifact,
     run_prepare_with_target_rows_per_chunk(request, DEFAULT_PREPARE_ROWS_PER_CHUNK)
 }
 
+pub fn run_prepare_v1(request: PrepareRunRequest<'_>) -> Result<Value, Refusal> {
+    run_prepare_v1_with_target_rows_per_chunk(request, DEFAULT_PREPARE_ROWS_PER_CHUNK)
+}
+
+pub fn run_prepare_v1_with_target_rows_per_chunk(
+    request: PrepareRunRequest<'_>,
+    target_rows_per_chunk: u64,
+) -> Result<Value, Refusal> {
+    let loaded_profile = load_prepare_profile_with_hash(request.profile)?;
+    let mut contract = PrepareInputContract::for_builtin_profile(&loaded_profile.document)?;
+    contract.profile.content_hash = Some(loaded_profile.content_hash);
+    let stream_output = stream_prepare_path(request.rows, &contract, target_rows_per_chunk)?;
+    let observations = stream_output.observations;
+    let registry_snapshot = load_prepare_registry_snapshot(request.registry)?;
+    let mut surfaces = prepare_surface_records(&observations)?;
+    assign_exact_lookups(&mut surfaces, request.registry, &registry_snapshot)?;
+    let input = PrepareInputReference {
+        row_count: u64::try_from(observations.len()).expect("observation count fits u64"),
+        content_hash: stream_output.diagnostics.input.content_hash.clone(),
+    };
+    let summary = prepare_summary(&observations, &surfaces);
+    let surfaces_relative = PathBuf::from("prepare").join("surfaces.jsonl");
+    let surfaces_path = surfaces_relative.to_string_lossy().into_owned();
+    let metadata =
+        prepare_artifact_metadata_v1(&contract, &registry_snapshot, &input, request.work_dir)?;
+
+    let mut artifact = json!({
+        "version": CANON_ENTITY_PREPARE_VERSION_V1,
+        "artifact_content_hash": "",
+        "metadata": metadata,
+        "profile": contract.profile.clone(),
+        "registry_snapshot": registry_snapshot,
+        "input": input,
+        "summary": summary,
+        "streaming": stream_output.diagnostics,
+        "surfaces_path": surfaces_path
+    });
+    finalize_entity_v1_self_hash(&mut artifact)?;
+    validate_artifact_v1_core_contract(&artifact)?;
+
+    let prepare_dir = request.work_dir.join("prepare");
+    fs::create_dir_all(&prepare_dir).map_err(|error| {
+        io_budget_refusal(
+            "Failed to create entity prepare work directory",
+            &prepare_dir,
+            error.to_string(),
+        )
+    })?;
+    write_surfaces_jsonl(&request.work_dir.join(&surfaces_relative), &surfaces)?;
+    write_json_file(&prepare_dir.join("prepare.json"), &artifact)?;
+    Ok(artifact)
+}
+
 pub fn run_prepare_with_target_rows_per_chunk(
     request: PrepareRunRequest<'_>,
     target_rows_per_chunk: u64,
@@ -597,6 +655,59 @@ fn prepare_artifact_metadata(
         }),
         artifact_content_hash: String::new(),
     })
+}
+
+fn prepare_artifact_metadata_v1(
+    contract: &PrepareInputContract,
+    registry_snapshot: &PrepareRegistrySnapshot,
+    input: &PrepareInputReference,
+    work_dir: &Path,
+) -> Result<EntityArtifactMetadataV1, Refusal> {
+    let field_contract_hash = prepare_field_contract_hash(contract)?;
+    let v1_contract = entity_v1_contract_for_stage(EntityArtifactStageV1::Prepare)?;
+    Ok(EntityArtifactMetadataV1 {
+        profile: contract.profile.clone(),
+        strategy: EntityStrategyReference {
+            id: format!("{}.prepare", contract.profile.id),
+            version: contract.profile.version.clone(),
+            content_hash: field_contract_hash,
+        },
+        registry_snapshot: EntityRegistrySnapshot {
+            id: registry_snapshot.id.clone(),
+            version: registry_snapshot.version.clone(),
+            source: registry_snapshot.source.clone(),
+            lookup_snapshot_hash: registry_snapshot.lookup_snapshot_hash.clone(),
+            sidecar_snapshot_hash: None,
+        },
+        input: EntityInputReference {
+            row_count: input.row_count,
+            content_hash: input.content_hash.clone(),
+        },
+        patch_namespace: contract.profile.patch_namespaces.aliases.clone(),
+        schema: entity_v1_schema_reference(v1_contract)?,
+        workdir: entity_v1_workdir_layout(v1_contract, work_dir.display().to_string()),
+        upstream_artifacts: Vec::new(),
+        patch_set: Some(EntityPatchSetReference {
+            content_hash: witness::hash_bytes(contract.profile.patch_namespaces.aliases.as_bytes()),
+            paths: Vec::new(),
+        }),
+        namekit: Some(EntityNamekitReference {
+            version: PREPARE_NAMEKIT_VERSION.to_string(),
+            content_hash: witness::hash_bytes(PREPARE_NAMEKIT_VERSION.as_bytes()),
+        }),
+        artifact_content_hash: String::new(),
+    })
+}
+
+fn prepare_field_contract_hash(contract: &PrepareInputContract) -> Result<String, Refusal> {
+    let contract_bytes = serde_json::to_vec(contract).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to hash prepare field contract",
+            json!({ "error": error.to_string() }),
+            None,
+        )
+    })?;
+    Ok(witness::hash_bytes(&contract_bytes))
 }
 
 pub fn prepare_surface_records(

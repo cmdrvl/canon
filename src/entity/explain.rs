@@ -13,11 +13,11 @@ use crate::{
         CANON_ENTITY_EXPLAIN_VERSION_V1, CANON_ENTITY_RUN_VERSION_V1,
         CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactStageV1,
         error::EntityRefusalKind,
-        review::{
-            lifecycle_metadata_v1, required_value_string, set_v1_self_hash, source_reference_v1,
-            value_string_or, value_u64_or,
+        review::{required_value_string, value_string_or, value_u64_or},
+        schema::{
+            entity_v1_artifact_reference, entity_v1_lifecycle_metadata_from_source,
+            finalize_entity_v1_self_hash, validate_artifact_v1_core_contract,
         },
-        schema::validate_artifact_v1_core_contract,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -41,8 +41,8 @@ pub fn explain_entity_v1(
 ) -> Result<Value, Refusal> {
     validate_explain_v1_source(&result_artifact)?;
     validate_query(&query)?;
-    let source_ref = source_reference_v1(&result_artifact)?;
-    let metadata = lifecycle_metadata_v1(
+    let source_ref = entity_v1_artifact_reference(&result_artifact)?;
+    let metadata = entity_v1_lifecycle_metadata_from_source(
         &result_artifact,
         EntityArtifactStageV1::Explain,
         vec![source_ref],
@@ -90,7 +90,7 @@ pub fn explain_entity_v1(
             "next_command": "canon entity apply <PROMOTE.json> --rows <ROWS> --registry <REGISTRY>"
         }
     });
-    set_v1_self_hash(&mut artifact)?;
+    finalize_entity_v1_self_hash(&mut artifact)?;
     Ok(artifact)
 }
 

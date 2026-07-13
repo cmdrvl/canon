@@ -391,7 +391,7 @@
       "family": "entity",
       "clap_path": "entity prepare",
       "operator_name": "entity prepare",
-      "primary_contracts": ["canon_entity_prepare.v0"],
+      "primary_contracts": ["canon_entity_prepare.v1"],
       "action": "preserve"
     },
     {
@@ -399,7 +399,7 @@
       "family": "entity",
       "clap_path": "entity index build",
       "operator_name": "entity index build",
-      "primary_contracts": ["canon_entity_index_build.v0"],
+      "primary_contracts": ["canon_entity_index_build.v1"],
       "action": "preserve"
     },
     {
@@ -496,7 +496,7 @@
       "family": "entity",
       "clap_path": "entity apply",
       "operator_name": "entity apply",
-      "primary_contracts": ["canon_entity_apply.v0"],
+      "primary_contracts": ["canon_entity_apply.v1"],
       "action": "preserve"
     },
     {
@@ -977,6 +977,7 @@
     { "id": "canon_entity_candidate_recall.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_dispatch_plan.v1", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_index_build.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_index_build.v1", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_link.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_link_decisions.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_link_observation_surface_bindings.v0", "family": "entity", "action": "preserve" },

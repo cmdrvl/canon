@@ -830,7 +830,7 @@ fn run_entity_index_build_command(build: &EntityIndexBuildCli) -> Result<u8, Box
         );
     };
 
-    match entity::index::run_index_build(entity::index::EntityIndexBuildRequest {
+    match entity::index::run_index_build_v1(entity::index::EntityIndexBuildRequest {
         rows: &build.rows,
         profile,
         strategy: &build.strategy,
@@ -841,11 +841,9 @@ fn run_entity_index_build_command(build: &EntityIndexBuildCli) -> Result<u8, Box
         Ok(result) => {
             let output = match build.emit {
                 EntityEmitMode::Json => {
-                    serde_json::to_string(&entity::index::index_build_report(&result))?
+                    serde_json::to_string(&entity::index::index_build_v1_report(&result))?
                 }
-                EntityEmitMode::Summary => {
-                    entity::summary::build_index_build_operator_summary(&result).human_summary
-                }
+                EntityEmitMode::Summary => render_entity_index_build_v1_summary(&result),
             };
             emit_entity_output(&output, summary_mode);
             Ok(0)
@@ -1544,24 +1542,20 @@ fn run_entity_apply_command(apply: &EntityApplyCli) -> Result<u8, Box<dyn Error>
     };
     let output_path = entity_apply_output_path(apply, &result);
     let require_full_resolution = entity_apply_require_full_resolution(apply);
-    match entity::apply::run_apply_streaming_from_registry(
-        entity::apply::ApplyRegistryStreamRequest {
-            rows: &apply.rows,
-            output: &output_path,
-            lookup_column: &lookup_column,
-            registry_dir: &apply.registry,
-            safety: entity_apply_safety_check(&result),
-            require_full_resolution,
-            target_rows_per_chunk: entity::apply::DEFAULT_APPLY_ROWS_PER_CHUNK,
-        },
-    ) {
+    match entity::apply::run_apply_v1_from_registry(entity::apply::ApplyV1ArtifactRequest {
+        source_artifact: &result,
+        rows: &apply.rows,
+        output: &output_path,
+        lookup_column: &lookup_column,
+        registry_dir: &apply.registry,
+        require_full_resolution,
+        target_rows_per_chunk: entity::apply::DEFAULT_APPLY_ROWS_PER_CHUNK,
+    }) {
         Ok(artifact) => {
-            let exit_code = entity_apply_exit_code(&artifact);
+            let exit_code = entity_apply_v1_exit_code(&artifact);
             let output = match apply.emit {
                 EntityEmitMode::Json => serde_json::to_string(&artifact)?,
-                EntityEmitMode::Summary => {
-                    entity::summary::build_apply_operator_summary(&artifact).human_summary
-                }
+                EntityEmitMode::Summary => render_entity_apply_v1_summary(&artifact),
             };
             emit_entity_output(&output, summary_mode);
             Ok(exit_code)
@@ -2432,8 +2426,8 @@ fn run_entity_run_pipeline(run: &EntityRunCli) -> Result<EntityRunExecution, Can
 #[allow(clippy::result_large_err)]
 fn run_entity_prepare_pipeline(
     prepare: &EntityPrepareCli,
-) -> Result<entity::prepare::PrepareRunArtifact, CanonOutput> {
-    entity::prepare::run_prepare(entity::prepare::PrepareRunRequest {
+) -> Result<serde_json::Value, CanonOutput> {
+    entity::prepare::run_prepare_v1(entity::prepare::PrepareRunRequest {
         rows: &prepare.rows,
         profile: &prepare.profile,
         registry: &prepare.registry,
@@ -4155,29 +4149,59 @@ fn validate_entity_apply_result_artifact(
         ));
     };
 
-    let contract = entity::entity_artifact_v1_contract_for_version(version)
-        .or_else(|| entity::entity_artifact_v1_contract_for_legacy_version(version))
-        .ok_or_else(|| {
-            refusal::create_refusal(
-                RefusalCode::EEntityArtifactContract,
-                format!("Unknown entity artifact version '{}'", version),
-                serde_json::json!({
-                    "reason": "unknown_entity_artifact_version",
-                    "path": path.display().to_string(),
-                    "artifact": "entity result artifact",
-                    "actual_version": version,
-                    "expected_stages": ["solve", "run"],
-                    "writes_performed": false
-                }),
-                Some("Use a canon_entity_solve or canon_entity_run artifact".to_string()),
-            )
-        })?;
+    if let Some(contract) = entity::entity_artifact_v1_contract_for_legacy_version(version) {
+        return Err(refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
+            format!(
+                "Entity apply refuses legacy result artifact version '{}'",
+                version
+            ),
+            serde_json::json!({
+                "reason": "legacy_entity_result_version",
+                "path": path.display().to_string(),
+                "artifact": "entity result artifact",
+                "actual_version": version,
+                "legacy_stage": contract.stage.as_str(),
+                "legacy_versions": contract.legacy_versions,
+                "expected_versions": [
+                    entity::CANON_ENTITY_SOLVE_VERSION_V1,
+                    entity::CANON_ENTITY_RUN_VERSION_V1
+                ],
+                "writes_performed": false
+            }),
+            Some("Re-run the entity pipeline to produce solve.v1 or run.v1".to_string()),
+        ));
+    }
+
+    let contract = entity::entity_artifact_v1_contract_for_version(version).ok_or_else(|| {
+        refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
+            format!("Unknown entity artifact version '{}'", version),
+            serde_json::json!({
+                "reason": "unknown_entity_artifact_version",
+                "path": path.display().to_string(),
+                "artifact": "entity result artifact",
+                "actual_version": version,
+                "expected_versions": [
+                    entity::CANON_ENTITY_SOLVE_VERSION_V1,
+                    entity::CANON_ENTITY_RUN_VERSION_V1
+                ],
+                "writes_performed": false
+            }),
+            Some(
+                "Use a self-hashed canon_entity_solve.v1 or canon_entity_run.v1 artifact"
+                    .to_string(),
+            ),
+        )
+    })?;
 
     if matches!(
         contract.stage,
         entity::EntityArtifactStageV1::Solve | entity::EntityArtifactStageV1::Run
     ) {
-        Ok(())
+        entity::schema::validate_entity_v1_self_hash(artifact)
+            .map(|_| ())
+            .map_err(|refusal| refusal.to_canon_output())
     } else {
         Err(refusal::create_refusal(
             RefusalCode::EEntityArtifactContract,
@@ -4192,30 +4216,17 @@ fn validate_entity_apply_result_artifact(
                 "artifact": "entity result artifact",
                 "actual_stage": contract.stage.as_str(),
                 "actual_version": version,
-                "expected_stages": ["solve", "run"],
+                "expected_versions": [
+                    entity::CANON_ENTITY_SOLVE_VERSION_V1,
+                    entity::CANON_ENTITY_RUN_VERSION_V1
+                ],
                 "writes_performed": false
             }),
-            Some("Use a canon_entity_solve or canon_entity_run artifact".to_string()),
+            Some(
+                "Use a self-hashed canon_entity_solve.v1 or canon_entity_run.v1 artifact"
+                    .to_string(),
+            ),
         ))
-    }
-}
-
-fn entity_apply_safety_check(artifact: &serde_json::Value) -> entity::apply::ApplySafetyCheck {
-    entity::apply::ApplySafetyCheck {
-        expected_profile_id: entity_json_string_at_path(artifact, &["metadata", "profile", "id"]),
-        expected_identity_semantics: entity_json_string_at_path(
-            artifact,
-            &["metadata", "profile", "identity_semantics"],
-        ),
-        expected_registry_snapshot_hash: entity_json_string_at_path(
-            artifact,
-            &["metadata", "registry_snapshot", "lookup_snapshot_hash"],
-        ),
-        expected_sidecar_snapshot_hash: entity_json_string_at_path(
-            artifact,
-            &["metadata", "registry_snapshot", "sidecar_snapshot_hash"],
-        ),
-        ..entity::apply::ApplySafetyCheck::default()
     }
 }
 
@@ -4288,12 +4299,52 @@ fn entity_apply_require_full_resolution(apply: &EntityApplyCli) -> bool {
     apply.require_full_resolution || !apply.allow_partial_output
 }
 
-fn entity_apply_exit_code(artifact: &entity::apply::ApplyRunArtifact) -> u8 {
-    if artifact.summary.get("unresolved").copied().unwrap_or(0) > 0 {
+fn entity_apply_v1_exit_code(artifact: &serde_json::Value) -> u8 {
+    if entity_json_u64_at_path(artifact, &["summary", "counts", "unresolved"]).unwrap_or(0) > 0 {
         1
     } else {
         0
     }
+}
+
+fn render_entity_index_build_v1_summary(
+    result: &entity::index::EntityIndexBuildV1Result,
+) -> String {
+    let artifact = &result.artifact;
+    let profile = entity_json_string_at_path(artifact, &["metadata", "profile", "id"])
+        .unwrap_or_else(|| "<profile>".to_string());
+    let registry = entity_json_string_at_path(artifact, &["metadata", "registry_snapshot", "id"])
+        .unwrap_or_else(|| "<registry>".to_string());
+    let registry_version =
+        entity_json_string_at_path(artifact, &["metadata", "registry_snapshot", "version"])
+            .unwrap_or_else(|| "<version>".to_string());
+    let surfaces =
+        entity_json_u64_at_path(artifact, &["summary", "counts", "surface_count"]).unwrap_or(0);
+    let tokens =
+        entity_json_u64_at_path(artifact, &["summary", "counts", "token_count"]).unwrap_or(0);
+    let ngrams =
+        entity_json_u64_at_path(artifact, &["summary", "counts", "ngram_count"]).unwrap_or(0);
+    format!(
+        "{profile} index build v1 registry={registry}@{registry_version} surfaces={surfaces} tokens={tokens} ngrams={ngrams} cache={}",
+        result.cache_status.as_str()
+    )
+}
+
+fn render_entity_apply_v1_summary(artifact: &serde_json::Value) -> String {
+    let registry = entity_json_string_at_path(artifact, &["registry", "id"])
+        .unwrap_or_else(|| "<registry>".to_string());
+    let registry_version = entity_json_string_at_path(artifact, &["registry", "version"])
+        .unwrap_or_else(|| "<version>".to_string());
+    let rows = entity_json_u64_at_path(artifact, &["summary", "counts", "rows"]).unwrap_or(0);
+    let resolved =
+        entity_json_u64_at_path(artifact, &["summary", "counts", "resolved"]).unwrap_or(0);
+    let unresolved =
+        entity_json_u64_at_path(artifact, &["summary", "counts", "unresolved"]).unwrap_or(0);
+    let output_hash = entity_json_string_at_path(artifact, &["output_content_hash"])
+        .unwrap_or_else(|| "<output_hash>".to_string());
+    format!(
+        "apply v1 registry={registry}@{registry_version} rows={rows} resolved={resolved} unresolved={unresolved} output_hash={output_hash}"
+    )
 }
 
 fn entity_apply_command_flag_value(artifact: &serde_json::Value, flag: &str) -> Option<String> {
@@ -4358,6 +4409,14 @@ fn entity_json_string_at_path(value: &serde_json::Value, path: &[&str]) -> Optio
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
+}
+
+fn entity_json_u64_at_path(value: &serde_json::Value, path: &[&str]) -> Option<u64> {
+    let mut current = value;
+    for segment in path {
+        current = current.get(*segment)?;
+    }
+    current.as_u64()
 }
 
 fn entity_apply_missing_lookup_column_refusal(

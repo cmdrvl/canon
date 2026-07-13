@@ -3,7 +3,8 @@
 use canon::entity::{
     CANON_ENTITY_AUDIT_VERSION_V1, CANON_ENTITY_EXPLAIN_VERSION_V1,
     CANON_ENTITY_PROMOTE_VERSION_V1, CANON_ENTITY_REVIEW_VERSION_V1, CANON_ENTITY_RUN_VERSION_V1,
-    schema::compute_entity_v1_self_hash,
+    entity_artifact_v1_contract_for_version,
+    schema::{compute_entity_v1_self_hash, entity_v1_schema_content_hash},
 };
 use serde_json::{Value, json};
 use std::{fs, path::Path};
@@ -171,8 +172,128 @@ fn entity_v1_lifecycle_cli_review_audit_promote_explain_and_exact_lookup() {
     assert_eq!(resolved["mappings"][0]["canonical_id"], "u8:TNT-SEARS");
 }
 
+#[test]
+fn entity_v1_promote_refuses_tampered_result_without_registry_writes() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let registry = temp.path().join("registry");
+    let work = temp.path().join("work");
+    fs::create_dir_all(&registry).expect("registry dir");
+    fs::create_dir_all(&work).expect("work dir");
+    write_registry(&registry, "2026.06.25");
+
+    let result = run_v1_artifact(&work);
+    let result_path = temp.path().join("run.v1.json");
+    write_json(&result_path, &result);
+    let audit = audit_for_result(temp.path(), &result_path);
+    let audit_path = temp.path().join("audit.v1.json");
+    write_json(&audit_path, &audit);
+
+    let mut tampered = result;
+    tampered["summary"]["counts"]["entity_count"] = json!(2);
+    let tampered_path = temp.path().join("run.tampered.v1.json");
+    write_json(&tampered_path, &tampered);
+
+    let refusal = run_promote_expect_refusal(&tampered_path, &audit_path, &registry, "2026.06.26");
+    assert_eq!(refusal["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(refusal["detail"]["artifact_role"], "result");
+    assert_eq!(refusal["detail"]["writes_performed"], false);
+    assert_eq!(
+        refusal["detail"]["source_detail"]["field"],
+        "artifact_content_hash"
+    );
+    assert_registry_unchanged(&registry, "2026.06.25");
+}
+
+#[test]
+fn entity_v1_promote_refuses_tampered_audit_without_registry_writes() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let registry = temp.path().join("registry");
+    let work = temp.path().join("work");
+    fs::create_dir_all(&registry).expect("registry dir");
+    fs::create_dir_all(&work).expect("work dir");
+    write_registry(&registry, "2026.06.25");
+
+    let result = run_v1_artifact(&work);
+    let result_path = temp.path().join("run.v1.json");
+    write_json(&result_path, &result);
+    let mut audit = audit_for_result(temp.path(), &result_path);
+    audit["summary"]["counts"]["gate_count"] = json!(99);
+    let audit_path = temp.path().join("audit.tampered.v1.json");
+    write_json(&audit_path, &audit);
+
+    let refusal = run_promote_expect_refusal(&result_path, &audit_path, &registry, "2026.06.26");
+    assert_eq!(refusal["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(refusal["detail"]["artifact_role"], "audit");
+    assert_eq!(refusal["detail"]["writes_performed"], false);
+    assert_eq!(
+        refusal["detail"]["source_detail"]["field"],
+        "artifact_content_hash"
+    );
+    assert_registry_unchanged(&registry, "2026.06.25");
+}
+
 fn canon_cmd() -> assert_cmd::Command {
     assert_cmd::cargo::cargo_bin_cmd!("canon")
+}
+
+fn audit_for_result(temp: &Path, result_path: &Path) -> Value {
+    let suite = temp.join("suite");
+    fs::create_dir_all(&suite).expect("suite dir");
+    let audit_json = canon_cmd()
+        .args([
+            "entity",
+            "audit",
+            path_str(result_path),
+            "--suite",
+            path_str(&suite),
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    serde_json::from_slice(&audit_json).expect("audit json")
+}
+
+fn run_promote_expect_refusal(
+    result_path: &Path,
+    audit_path: &Path,
+    registry: &Path,
+    next_version: &str,
+) -> Value {
+    let output = canon_cmd()
+        .args([
+            "entity",
+            "promote",
+            path_str(result_path),
+            "--audit",
+            path_str(audit_path),
+            "--registry",
+            path_str(registry),
+            "--next-version",
+            next_version,
+            "--emit",
+            "json",
+        ])
+        .output()
+        .expect("promote command runs");
+    assert_eq!(output.status.code(), Some(2));
+    let envelope: Value = serde_json::from_slice(&output.stdout).expect("refusal json");
+    assert_eq!(envelope["outcome"], "REFUSAL");
+    envelope["refusal"].clone()
+}
+
+fn assert_registry_unchanged(registry: &Path, version: &str) {
+    assert_eq!(
+        read_json(&registry.join("registry.json"))["version"],
+        version
+    );
+    assert_eq!(
+        fs::read_to_string(registry.join("aliases.json")).expect("aliases reads"),
+        "[]\n"
+    );
 }
 
 fn run_v1_artifact(work: &Path) -> Value {
@@ -211,7 +332,11 @@ fn run_v1_artifact(work: &Path) -> Value {
             "patch_namespace": "cmbs_tenant_label.aliases",
             "schema": {
                 "key": CANON_ENTITY_RUN_VERSION_V1,
-                "content_hash": "blake3:schema-run"
+                "content_hash": entity_v1_schema_content_hash(
+                    entity_artifact_v1_contract_for_version(CANON_ENTITY_RUN_VERSION_V1)
+                        .expect("run v1 contract")
+                )
+                .expect("run v1 schema hash")
             },
             "workdir": {
                 "root_dir": work.display().to_string(),
