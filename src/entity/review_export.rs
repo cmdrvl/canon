@@ -16,6 +16,8 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 pub const CANON_ENTITY_NATIVE_REVIEW_VERSION: &str = "canon_entity_native_review.v0";
+pub const CANON_ENTITY_NATIVE_REVIEW_DECISION_ENVELOPE_VERSION: &str =
+    "canon_entity_native_review_decisions.v0";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeReviewExportRequest {
@@ -91,7 +93,7 @@ pub enum NativeReviewModeContext {
     },
     Link {
         left_surface_id: String,
-        right_surface_id: String,
+        right_surface_id: Option<String>,
         relation_hints: Vec<NativeCandidateLink>,
     },
 }
@@ -235,11 +237,12 @@ pub fn build_native_review_artifact(
 
     let mut metadata = request.review_queue.metadata.clone();
     metadata.artifact_content_hash.clear();
+    let force_link_mode = request.review_queue.source_link_hash.is_some();
     let mut review_items = request
         .review_queue
         .review_items
         .iter()
-        .map(|item| native_review_item(item, &binding))
+        .map(|item| native_review_item(item, &binding, force_link_mode))
         .collect::<Result<Vec<_>, _>>()?;
     review_items.sort_by(|left, right| left.review_id.cmp(&right.review_id));
 
@@ -341,7 +344,11 @@ pub fn render_native_review_html(artifact: &NativeReviewArtifact) -> Result<Stri
         .map_err(json_refusal)?
         .replace("</", "<\\/");
     Ok(include_str!("../../assets/entity_review.html")
-        .replace("__CANON_NATIVE_REVIEW_JSON__", &json))
+        .replace("__CANON_NATIVE_REVIEW_JSON__", &json)
+        .replace(
+            "__CANON_NATIVE_REVIEW_DECISION_ENVELOPE_VERSION__",
+            CANON_ENTITY_NATIVE_REVIEW_DECISION_ENVELOPE_VERSION,
+        ))
 }
 
 pub fn native_review_artifact_hash(artifact: &NativeReviewArtifact) -> Result<String, Refusal> {
@@ -351,34 +358,20 @@ pub fn native_review_artifact_hash(artifact: &NativeReviewArtifact) -> Result<St
 fn native_review_item(
     item: &ReviewQueueItem,
     binding: &NativeReviewBinding,
+    force_link_mode: bool,
 ) -> Result<NativeReviewItem, Refusal> {
-    let mode = item_mode(item);
+    let mode = item_mode(item, force_link_mode);
     let candidate_links = native_candidate_links(item);
     let mode_context = match mode {
         NativeReviewMode::Cluster => NativeReviewModeContext::Cluster {
             cluster_id: format!("cluster:{}", stable_suffix(&item.review_id)),
             surface_ids: sorted_unique(item.surface_ids.clone()),
         },
-        NativeReviewMode::Link => {
-            let link = candidate_links.first().ok_or_else(|| {
-                native_review_refusal(
-                    EntityRefusalKind::ArtifactContract,
-                    "Native link review item requires a candidate link",
-                    json!({
-                        "stage": "native_review_export",
-                        "review_id": item.review_id
-                    }),
-                )
-            })?;
-            NativeReviewModeContext::Link {
-                left_surface_id: link.left_surface_id.clone(),
-                right_surface_id: link.right_surface_id.clone(),
-                relation_hints: candidate_links.clone(),
-            }
-        }
+        NativeReviewMode::Link => link_mode_context(item, &candidate_links, force_link_mode)?,
     };
-    let recommended_action = recommended_action(item, mode);
-    let allowed_actions = allowed_actions(mode);
+    let has_candidate = mode != NativeReviewMode::Link || !candidate_links.is_empty();
+    let recommended_action = recommended_action(item, mode, has_candidate);
+    let allowed_actions = allowed_actions(mode, has_candidate);
     let observations = native_observations(&item.provenance_samples);
     let candidate_clusters = native_candidate_clusters(item, mode);
     let evidence_waterfall_refs = native_evidence_waterfall_refs(item);
@@ -421,19 +414,83 @@ fn native_review_item(
     Ok(native)
 }
 
-fn item_mode(item: &ReviewQueueItem) -> NativeReviewMode {
-    if item.relation_hints.is_empty() {
-        NativeReviewMode::Cluster
-    } else {
+fn item_mode(item: &ReviewQueueItem, force_link_mode: bool) -> NativeReviewMode {
+    if force_link_mode || !item.relation_hints.is_empty() {
         NativeReviewMode::Link
+    } else {
+        NativeReviewMode::Cluster
+    }
+}
+
+fn link_mode_context(
+    item: &ReviewQueueItem,
+    candidate_links: &[NativeCandidateLink],
+    force_link_mode: bool,
+) -> Result<NativeReviewModeContext, Refusal> {
+    if force_link_mode {
+        let left_surface_id = source_link_target_surface(item)?;
+        let right_surface_id = candidate_links
+            .first()
+            .map(|link| source_link_candidate_surface(&left_surface_id, link));
+        return Ok(NativeReviewModeContext::Link {
+            left_surface_id,
+            right_surface_id,
+            relation_hints: candidate_links.to_vec(),
+        });
+    }
+
+    let link = candidate_links.first().ok_or_else(|| {
+        native_review_refusal(
+            EntityRefusalKind::ArtifactContract,
+            "Native link review item requires a candidate link",
+            json!({
+                "stage": "native_review_export",
+                "review_id": item.review_id
+            }),
+        )
+    })?;
+    Ok(NativeReviewModeContext::Link {
+        left_surface_id: link.left_surface_id.clone(),
+        right_surface_id: Some(link.right_surface_id.clone()),
+        relation_hints: candidate_links.to_vec(),
+    })
+}
+
+fn source_link_target_surface(item: &ReviewQueueItem) -> Result<String, Refusal> {
+    item.surface_ids
+        .iter()
+        .find(|surface_id| !surface_id.trim().is_empty())
+        .cloned()
+        .ok_or_else(|| {
+            native_review_refusal(
+                EntityRefusalKind::ArtifactContract,
+                "Native source-link review item requires a target surface",
+                json!({
+                    "stage": "native_review_export",
+                    "review_id": item.review_id
+                }),
+            )
+        })
+}
+
+fn source_link_candidate_surface(target_surface_id: &str, link: &NativeCandidateLink) -> String {
+    if link.left_surface_id == target_surface_id {
+        link.right_surface_id.clone()
+    } else if link.right_surface_id == target_surface_id {
+        link.left_surface_id.clone()
+    } else {
+        link.right_surface_id.clone()
     }
 }
 
 fn recommended_action(
     item: &ReviewQueueItem,
     mode: NativeReviewMode,
+    has_candidate: bool,
 ) -> NativeReviewDecisionAction {
-    if item.strongest_negative_cut.is_some() {
+    if mode == NativeReviewMode::Link && !has_candidate {
+        NativeReviewDecisionAction::Defer
+    } else if item.strongest_negative_cut.is_some() {
         NativeReviewDecisionAction::CannotLink
     } else if mode == NativeReviewMode::Link {
         NativeReviewDecisionAction::Relation
@@ -442,7 +499,7 @@ fn recommended_action(
     }
 }
 
-fn allowed_actions(mode: NativeReviewMode) -> Vec<NativeReviewDecisionAction> {
+fn allowed_actions(mode: NativeReviewMode, has_candidate: bool) -> Vec<NativeReviewDecisionAction> {
     match mode {
         NativeReviewMode::Cluster => vec![
             NativeReviewDecisionAction::Alias,
@@ -450,11 +507,12 @@ fn allowed_actions(mode: NativeReviewMode) -> Vec<NativeReviewDecisionAction> {
             NativeReviewDecisionAction::Assignment,
             NativeReviewDecisionAction::Defer,
         ],
-        NativeReviewMode::Link => vec![
+        NativeReviewMode::Link if has_candidate => vec![
             NativeReviewDecisionAction::Relation,
             NativeReviewDecisionAction::CannotLink,
             NativeReviewDecisionAction::Defer,
         ],
+        NativeReviewMode::Link => vec![NativeReviewDecisionAction::Defer],
     }
 }
 
@@ -772,7 +830,13 @@ fn surface_ids(item: &NativeReviewItem) -> Vec<String> {
             left_surface_id,
             right_surface_id,
             ..
-        } => sorted_unique(vec![left_surface_id.clone(), right_surface_id.clone()]),
+        } => {
+            let mut ids = vec![left_surface_id.clone()];
+            if let Some(right_surface_id) = right_surface_id {
+                ids.push(right_surface_id.clone());
+            }
+            sorted_unique(ids)
+        }
     }
 }
 

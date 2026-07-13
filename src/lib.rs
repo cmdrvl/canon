@@ -41,15 +41,16 @@ use crate::cli::{
     EntityExplainCli, EntityGeneralizationCli, EntityIndexBuildCli, EntityIndexCommand,
     EntityIndexSubcommand, EntityLinkCli, EntityPrepareCli, EntityProfileCommand,
     EntityProfileInitCli, EntityProfileListCli, EntityProfileSubcommand, EntityPromoteCli,
-    EntityReviewCommand, EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewImportCli,
-    EntityReviewInclude, EntityReviewSubcommand, EntityRunCli, EntitySolveCli,
-    EntityStreamEmitMode, EntitySubcommand, PackageCli, PackageSubcommand, RegistryAddEntryCli,
-    RegistryAuditCli, RegistryBuildCli, RegistryDefaultIdSchemeCli, RegistryDiffCli,
-    RegistryEmitMode, RegistryExportCli, RegistryExportFormatCli, RegistryLintCli,
-    RegistryLintProfile, RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode,
-    RegistryProviderSchemaCli, RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode,
-    StrategyAuditCli, StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli,
-    StrategyGradeArg, StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
+    EntityReviewCommand, EntityReviewExportArtifact, EntityReviewExportCli,
+    EntityReviewExportEmitMode, EntityReviewImportCli, EntityReviewInclude, EntityReviewSubcommand,
+    EntityRunCli, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, PackageCli,
+    PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
+    RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryExportCli,
+    RegistryExportFormatCli, RegistryLintCli, RegistryLintProfile, RegistryMintCli,
+    RegistryNextIdCli, RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli,
+    RegistrySubcommand, RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand,
+    StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli, StrategyGradeArg,
+    StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
     StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
     StrategyUpdateCli,
 };
@@ -1611,6 +1612,12 @@ fn run_entity_review_command(review: &EntityReviewCommand) -> Result<u8, Box<dyn
 }
 
 fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8, Box<dyn Error>> {
+    if matches!(export.emit, EntityReviewExportEmitMode::Html)
+        && !matches!(export.artifact, EntityReviewExportArtifact::NativeReview)
+    {
+        return emit_entity_refusal(entity_review_export_html_refusal(), false, false);
+    }
+
     let (result_probe, result_bytes) =
         match read_json_artifact::<serde_json::Value>(&export.result, "entity result artifact") {
             Ok((value, bytes)) => (value, bytes),
@@ -1622,6 +1629,15 @@ fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8
                 );
             }
         };
+
+    if matches!(export.artifact, EntityReviewExportArtifact::NativeReview) {
+        return run_entity_native_review_artifact_export_command(
+            export,
+            &result_probe,
+            &result_bytes,
+        );
+    }
+
     if entity_artifact_value_is_v1(&result_probe) {
         let artifact =
             match entity::review::build_review_v1_artifact(entity::review::ReviewV1ExportRequest {
@@ -1650,6 +1666,9 @@ fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8
                         );
                     }
                 }
+            }
+            EntityReviewExportEmitMode::Html => {
+                return emit_entity_refusal(entity_review_export_html_refusal(), false, false);
             }
         };
         emit_entity_output(&output, false);
@@ -1747,6 +1766,7 @@ fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8
                 EntityReviewExportEmitMode::Csv => {
                     entity_runtime::review::export_csv(&artifact).map_err(create_entity_refusal)
                 }
+                EntityReviewExportEmitMode::Html => Err(entity_review_export_html_refusal()),
             };
             match output {
                 Ok(output) => {
@@ -1774,6 +1794,15 @@ fn run_entity_review_import_command(import: &EntityReviewImportCli) -> Result<u8
         Ok(bytes) => bytes,
         Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
     };
+    if let Some(source_review) = import.source_review.as_ref() {
+        return run_entity_native_review_import_command(
+            import,
+            source_review,
+            &review_bytes,
+            summary_mode,
+        );
+    }
+
     if entity::review_import::review_import_input_looks_v1(&review_bytes) {
         let audit_data = if let Some(audit_path) = import.audit.as_ref() {
             match read_json_artifact::<serde_json::Value>(audit_path, "entity audit artifact") {
@@ -1824,6 +1853,86 @@ fn run_entity_review_import_command(import: &EntityReviewImportCli) -> Result<u8
         }
         Err(refusal_output) => emit_entity_refusal(refusal_output, true, summary_mode),
     }
+}
+
+fn run_entity_native_review_import_command(
+    import: &EntityReviewImportCli,
+    source_review: &Path,
+    review_bytes: &[u8],
+    summary_mode: bool,
+) -> Result<u8, Box<dyn Error>> {
+    let (source_review_artifact, _source_review_bytes) = match read_json_artifact::<serde_json::Value>(
+        source_review,
+        "entity native review artifact",
+    ) {
+        Ok(data) => data,
+        Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
+    };
+    let context = match entity::review_import::native_review_import_context_from_artifact(
+        &source_review_artifact,
+    ) {
+        Ok(context) => context,
+        Err(refusal) => return emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
+    };
+    let decisions = match parse_native_review_decisions(&import.review, review_bytes) {
+        Ok(decisions) => decisions,
+        Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
+    };
+
+    match entity::review_import::import_native_review_decisions(context, decisions) {
+        Ok(receipt) => {
+            let output = match import.emit {
+                EntityEmitMode::Json => serde_json::to_string(&receipt)?,
+                EntityEmitMode::Summary => render_native_review_import_summary(&receipt),
+            };
+            emit_entity_output(&output, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
+    }
+}
+
+#[allow(clippy::result_large_err)]
+fn parse_native_review_decisions(
+    path: &Path,
+    bytes: &[u8],
+) -> Result<Vec<entity::review_import::NativeReviewDecision>, CanonOutput> {
+    let text = std::str::from_utf8(bytes).map_err(|error| {
+        native_review_import_refusal(
+            "Native review decisions must be UTF-8 JSON or CSV",
+            serde_json::json!({
+                "stage": "native_review_import",
+                "path": path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    let result = if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("csv"))
+    {
+        entity::review_import::parse_native_review_import_csv(text)
+    } else {
+        entity::review_import::parse_native_review_import_json(text)
+    };
+    result.map_err(|refusal| refusal.to_canon_output())
+}
+
+fn render_native_review_import_summary(
+    receipt: &entity::review_import::NativeReviewImportReceipt,
+) -> String {
+    format!(
+        "{} decisions={} aliases={} cannot_link={} relations={} assignments={} defer={}",
+        receipt.version,
+        receipt.accepted_decisions,
+        receipt.patches.alias_patches.len(),
+        receipt.patches.cannot_link_patches.len(),
+        receipt.patches.relation_patches.len(),
+        receipt.patches.assignment_patches.len(),
+        receipt.patches.defer_patches.len()
+    )
 }
 
 fn run_entity_explain_command(explain: &EntityExplainCli) -> Result<u8, Box<dyn Error>> {
@@ -3368,6 +3477,149 @@ fn render_entity_native_audit_summary(audit: &entity::audit::EntityAuditArtifact
 }
 
 #[allow(clippy::result_large_err)]
+fn run_entity_native_review_artifact_export_command(
+    export: &EntityReviewExportCli,
+    result_probe: &serde_json::Value,
+    result_bytes: &[u8],
+) -> Result<u8, Box<dyn Error>> {
+    let artifact = if entity_artifact_value_looks_like_native_solve_v0(result_probe) {
+        run_entity_native_solve_review_artifact_export(export, result_bytes)
+    } else if entity_artifact_value_looks_like_native_run_v0(result_probe) {
+        run_entity_native_run_review_artifact_export(export, result_bytes)
+    } else if entity_artifact_value_looks_like_native_link_v0(result_probe) {
+        run_entity_native_link_review_artifact_export(export, result_probe, result_bytes)
+    } else {
+        Err(native_entity_artifact_contract_refusal(
+            "Native review export requires a native solve, run, or link artifact",
+            serde_json::json!({
+                "stage": "native_review_export",
+                "field": "version",
+                "expected": [
+                    entity::CANON_ENTITY_SOLVE_VERSION,
+                    entity::CANON_ENTITY_RUN_VERSION,
+                    entity::run::link::ENTITY_LINK_VERSION
+                ],
+                "actual": entity_artifact_version(result_probe).unwrap_or("<missing>"),
+                "writes_performed": false
+            }),
+        ))
+    };
+
+    match artifact
+        .and_then(|artifact| render_entity_native_review_artifact_export(export, &artifact))
+    {
+        Ok(output) => {
+            emit_entity_output(&output, false);
+            Ok(0)
+        }
+        Err(refusal_output) => emit_entity_refusal(
+            refusal_output,
+            matches!(export.emit, EntityReviewExportEmitMode::Json),
+            false,
+        ),
+    }
+}
+
+#[allow(clippy::result_large_err)]
+fn run_entity_native_solve_review_artifact_export(
+    export: &EntityReviewExportCli,
+    result_bytes: &[u8],
+) -> Result<entity::review_export::NativeReviewArtifact, CanonOutput> {
+    let solve: entity::solve::SolveArtifact = deserialize_native_entity_artifact(
+        result_bytes,
+        &export.result,
+        "entity result artifact",
+        "native_review_export",
+        entity::CANON_ENTITY_SOLVE_VERSION,
+    )?;
+    let review_queue = build_entity_native_review_queue(export, solve)?;
+    let source_execution_hash = review_queue.source_solve_hash.clone();
+    build_entity_native_review_artifact(review_queue, source_execution_hash)
+}
+
+#[allow(clippy::result_large_err)]
+fn run_entity_native_run_review_artifact_export(
+    export: &EntityReviewExportCli,
+    result_bytes: &[u8],
+) -> Result<entity::review_export::NativeReviewArtifact, CanonOutput> {
+    let run: entity::run::EntityRunArtifact = deserialize_native_entity_artifact(
+        result_bytes,
+        &export.result,
+        "entity result artifact",
+        "native_review_export",
+        entity::CANON_ENTITY_RUN_VERSION,
+    )?;
+    validate_native_run_artifact_contract(&run, &export.result, "native_review_export")?;
+    let source_execution_hash = run.artifact_content_hash.clone();
+    let solve_path = resolve_native_run_solve_artifact_path(&export.result, &run)?;
+    let solve = read_hash_bound_native_solve_artifact(&solve_path, &run)?;
+    let review_queue = build_entity_native_review_queue(export, solve)?;
+    build_entity_native_review_artifact(review_queue, source_execution_hash)
+}
+
+#[allow(clippy::result_large_err)]
+fn run_entity_native_link_review_artifact_export(
+    export: &EntityReviewExportCli,
+    result_probe: &serde_json::Value,
+    result_bytes: &[u8],
+) -> Result<entity::review_export::NativeReviewArtifact, CanonOutput> {
+    entity::run::link::validate_entity_link_artifact_raw_shape(result_probe)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    let link: entity::run::link::EntityLinkArtifact = deserialize_native_entity_artifact(
+        result_bytes,
+        &export.result,
+        "entity link artifact",
+        "native_review_export",
+        entity::run::link::ENTITY_LINK_VERSION,
+    )?;
+    entity::run::link::validate_entity_link_artifact_at_path(&link, &export.result)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    let source_execution_hash = link.shared_run_artifact.content_hash.clone();
+    let review_queue =
+        entity::review::build_link_review_queue_artifact(entity::review::LinkReviewQueueRequest {
+            link_artifact: link,
+            include: map_entity_review_include_v1(&export.include),
+        })
+        .map_err(|refusal| refusal.to_canon_output())?;
+    build_entity_native_review_artifact(review_queue, source_execution_hash)
+}
+
+#[allow(clippy::result_large_err)]
+fn build_entity_native_review_artifact(
+    review_queue: entity::review::ReviewQueueArtifact,
+    source_execution_hash: String,
+) -> Result<entity::review_export::NativeReviewArtifact, CanonOutput> {
+    let policy_content_hash = review_queue.metadata.strategy.content_hash.clone();
+    entity::review_export::build_native_review_artifact(
+        entity::review_export::NativeReviewExportRequest {
+            review_queue,
+            run_content_hash: source_execution_hash,
+            policy_content_hash,
+        },
+    )
+    .map_err(|refusal| refusal.to_canon_output())
+}
+
+#[allow(clippy::result_large_err)]
+fn render_entity_native_review_artifact_export(
+    export: &EntityReviewExportCli,
+    artifact: &entity::review_export::NativeReviewArtifact,
+) -> Result<String, CanonOutput> {
+    match export.emit {
+        EntityReviewExportEmitMode::Json => {
+            entity::review_export::render_native_review_json(artifact)
+        }
+        EntityReviewExportEmitMode::Csv => {
+            entity::review_export::render_native_review_csv(artifact)
+        }
+        EntityReviewExportEmitMode::Html => {
+            entity::review_export::render_native_review_html(artifact)
+        }
+    }
+    .map_err(|refusal| refusal.to_canon_output())
+}
+
+#[allow(clippy::result_large_err)]
 fn run_entity_native_solve_review_export(
     export: &EntityReviewExportCli,
     result_bytes: &[u8],
@@ -3456,6 +3708,7 @@ fn render_entity_native_review_export(
         }),
         EntityReviewExportEmitMode::Csv => entity::review::render_review_queue_csv(artifact)
             .map_err(|refusal| refusal.to_canon_output()),
+        EntityReviewExportEmitMode::Html => Err(entity_review_export_html_refusal()),
     }
 }
 
@@ -3732,6 +3985,34 @@ fn native_entity_artifact_contract_refusal(
         message.into(),
         detail,
         Some("Use the matching native entity artifact handoff and rerun the command".to_string()),
+    )
+}
+
+fn entity_review_export_html_refusal() -> CanonOutput {
+    native_entity_artifact_contract_refusal(
+        "Entity review HTML export requires --artifact native-review",
+        serde_json::json!({
+            "stage": "review_export",
+            "field": "emit",
+            "actual": "html",
+            "expected": "--artifact native-review",
+            "writes_performed": false
+        }),
+    )
+}
+
+fn native_review_import_refusal(
+    message: impl Into<String>,
+    detail: serde_json::Value,
+) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EEntityReviewImport,
+        message.into(),
+        detail,
+        Some(
+            "Provide native review decisions plus --source-review <canon_entity_native_review.v0 JSON>"
+                .to_string(),
+        ),
     )
 }
 

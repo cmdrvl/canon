@@ -70,8 +70,12 @@
     }
     .filters {
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
       margin-top: 10px;
+    }
+    button, input, textarea {
+      font: inherit;
     }
     button {
       border: 1px solid var(--line);
@@ -79,8 +83,11 @@
       background: #ffffff;
       color: var(--text);
       padding: 6px 9px;
-      font: inherit;
       cursor: pointer;
+    }
+    button:focus-visible, input:focus-visible, textarea:focus-visible {
+      outline: 3px solid #88b9ff;
+      outline-offset: 2px;
     }
     button[aria-pressed="true"] {
       border-color: var(--accent);
@@ -137,13 +144,59 @@
     li {
       overflow-wrap: anywhere;
     }
+    fieldset {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin: 0;
+      padding: 10px;
+    }
+    legend {
+      color: var(--muted);
+      font-weight: 700;
+      padding: 0 4px;
+    }
+    .reviewer {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .form-field {
+      display: grid;
+      gap: 4px;
+    }
+    .form-field span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .form-field input, .form-field textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #ffffff;
+      color: var(--text);
+      padding: 7px 8px;
+    }
+    .form-field textarea {
+      min-height: 68px;
+      resize: vertical;
+    }
     .decision {
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .action-options {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 6px;
-      margin-top: 10px;
     }
-    .decision label {
+    .decision-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .action-option {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -154,16 +207,41 @@
       text-align: center;
       color: var(--muted);
     }
-    .decision input {
+    .action-option input {
       margin-right: 5px;
+    }
+    .actions {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    #status {
+      min-height: 20px;
+      color: var(--muted);
+    }
+    #status.error {
+      color: var(--bad);
+      font-weight: 700;
+    }
+    #decision-output {
+      width: 100%;
+      min-height: 190px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #ffffff;
+      color: var(--text);
+      padding: 8px;
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      resize: vertical;
     }
     .conflict { color: var(--bad); }
     .cue { color: var(--warn); }
+    .missing { color: var(--muted); font-style: italic; }
     .ok { color: var(--good); }
     @media (max-width: 820px) {
       main { grid-template-columns: 1fr; }
       aside { position: static; }
-      .grid, .decision { grid-template-columns: 1fr; }
+      .grid, .action-options, .decision-fields { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -180,12 +258,25 @@
         <button type="button" data-mode="cluster" aria-pressed="false">Clusters</button>
         <button type="button" data-mode="link" aria-pressed="false">Links</button>
       </div>
+      <fieldset class="reviewer">
+        <legend>Reviewer</legend>
+        <label class="form-field">
+          <span>Operator ID</span>
+          <input id="operator-id" data-field="operator_id" autocomplete="off" required>
+        </label>
+      </fieldset>
+      <div class="actions">
+        <button type="button" id="export-decisions">Export JSON</button>
+        <div id="status" role="status" aria-live="polite"></div>
+        <textarea id="decision-output" aria-label="Decision JSON" readonly spellcheck="false"></textarea>
+      </div>
     </aside>
     <div id="items"></div>
   </main>
   <script>
     const data = JSON.parse(document.getElementById("review-data").textContent);
-    const state = { mode: "all" };
+    const decisionEnvelopeVersion = "__CANON_NATIVE_REVIEW_DECISION_ENVELOPE_VERSION__";
+    const state = { mode: "all", decisions: {} };
     const text = (value) => value == null ? "" : String(value);
     const li = (value, className = "") => `<li${className ? ` class="${className}"` : ""}>${escapeHtml(value)}</li>`;
     const escapeHtml = (value) => text(value).replace(/[&<>"']/g, (char) => ({
@@ -195,6 +286,53 @@
       "\"": "&quot;",
       "'": "&#39;"
     }[char]));
+    const trimmedOrNull = (value) => {
+      const trimmed = text(value).trim();
+      return trimmed.length ? trimmed : null;
+    };
+    const itemIndex = (item) => data.review_items.findIndex((candidate) => candidate.review_id === item.review_id);
+    const visibleItems = () => data.review_items.filter((item) => state.mode === "all" || item.mode === state.mode);
+    function surfaceIds(item) {
+      if (item.mode_context.surface_ids) {
+        return item.mode_context.surface_ids;
+      }
+      const ids = [item.mode_context.left_surface_id];
+      if (trimmedOrNull(item.mode_context.right_surface_id)) {
+        ids.push(item.mode_context.right_surface_id);
+      }
+      return ids;
+    }
+    function surfaceRows(item) {
+      if (item.mode_context.surface_ids) {
+        return item.mode_context.surface_ids.map((surface) => li(surface));
+      }
+      const rows = [li(`Target: ${item.mode_context.left_surface_id}`)];
+      if (trimmedOrNull(item.mode_context.right_surface_id)) {
+        rows.push(li(`Candidate: ${item.mode_context.right_surface_id}`));
+      } else {
+        rows.push(li("Candidate: none", "missing"));
+      }
+      return rows;
+    }
+    function defaultRelation(item) {
+      if (item.mode !== "link") {
+        return "";
+      }
+      const hints = item.mode_context.relation_hints || [];
+      return hints.length ? text(hints[0].relation) : "";
+    }
+    function decisionState(item) {
+      if (!state.decisions[item.review_id]) {
+        state.decisions[item.review_id] = {
+          action: "",
+          reason_code: "",
+          note: "",
+          target_canonical_id: "",
+          relation: defaultRelation(item)
+        };
+      }
+      return state.decisions[item.review_id];
+    }
     function renderSummary() {
       const summary = document.getElementById("summary");
       const rows = [
@@ -210,11 +348,17 @@
     }
     function renderItems() {
       const root = document.getElementById("items");
-      const items = data.review_items.filter((item) => state.mode === "all" || item.mode === state.mode);
+      const items = visibleItems();
       root.innerHTML = items.map(renderItem).join("");
+      root.querySelectorAll("[data-review-id]").forEach((fieldset) => {
+        fieldset.addEventListener("input", updateDecision);
+        fieldset.addEventListener("change", updateDecision);
+      });
     }
     function renderItem(item) {
-      const surfaces = item.mode_context.surface_ids || [item.mode_context.left_surface_id, item.mode_context.right_surface_id];
+      const index = itemIndex(item);
+      const titleId = `review-title-${index}`;
+      const current = decisionState(item);
       const conflicts = item.conflicts.length
         ? item.conflicts.map((conflict) => li(`${conflict.reason_code}: ${conflict.surface_ids.join(", ")}`, "conflict")).join("")
         : li("none", "ok");
@@ -222,9 +366,9 @@
         ? item.related_distinct_cues.map((cue) => li(`${cue.reason_code}: ${cue.left_surface_id} / ${cue.right_surface_id}`, "cue")).join("")
         : li("none", "ok");
       return `
-        <section class="review-item" data-mode="${escapeHtml(item.mode)}">
+        <section class="review-item" data-mode="${escapeHtml(item.mode)}" aria-labelledby="${titleId}">
           <div class="item-head">
-            <h2 class="item-title">${escapeHtml(item.review_id)}</h2>
+            <h2 class="item-title" id="${titleId}">${escapeHtml(item.review_id)}</h2>
             <span class="badge">${escapeHtml(item.mode)}</span>
           </div>
           <div class="grid">
@@ -232,16 +376,122 @@
             <div><strong>Rows</strong><br>${escapeHtml(item.impact.affected_rows)}</div>
             <div><strong>Decision hash</strong><br>${escapeHtml(item.decision_binding_hash)}</div>
           </div>
-          <div class="block"><h3>Surfaces</h3><ul>${surfaces.map(li).join("")}</ul></div>
+          <div class="block"><h3>Surfaces</h3><ul>${surfaceRows(item).join("")}</ul></div>
           <div class="block"><h3>Evidence Waterfall</h3><ul>${item.evidence_waterfall_refs.map((ref) => li(`${ref.lane}: ${ref.left_surface_id} / ${ref.right_surface_id} score=${ref.score_units}`)).join("") || li("none")}</ul></div>
           <div class="block"><h3>Conflicts</h3><ul>${conflicts}</ul></div>
           <div class="block"><h3>Related Distinct Cues</h3><ul>${cues}</ul></div>
           <div class="block"><h3>Provenance</h3><ul>${item.provenance.map((row) => li(`${row.surface_id} ${row.row_id} ${row.source}: ${row.raw_value}`)).join("") || li("none")}</ul></div>
-          <form class="decision" aria-label="Decision ${escapeHtml(item.review_id)}">
-            ${item.allowed_actions.map((action) => `<label><input type="radio" name="${escapeHtml(item.review_id)}" value="${escapeHtml(action)}">${escapeHtml(action)}</label>`).join("")}
-          </form>
+          <fieldset class="decision" data-review-id="${escapeHtml(item.review_id)}">
+            <legend>Decision</legend>
+            <div class="action-options">
+              ${item.allowed_actions.map((action) => `<label class="action-option"><input type="radio" name="action-${index}" data-field="action" value="${escapeHtml(action)}"${current.action === action ? " checked" : ""}>${escapeHtml(action)}</label>`).join("")}
+            </div>
+            <div class="decision-fields">
+              <label class="form-field">
+                <span>Reason code</span>
+                <input data-field="reason_code" value="${escapeHtml(current.reason_code)}" autocomplete="off" required>
+              </label>
+              <label class="form-field">
+                <span>Target canonical ID</span>
+                <input data-field="target_canonical_id" value="${escapeHtml(current.target_canonical_id)}" autocomplete="off">
+              </label>
+              <label class="form-field">
+                <span>Relation</span>
+                <input data-field="relation" value="${escapeHtml(current.relation)}" autocomplete="off">
+              </label>
+              <label class="form-field">
+                <span>Note</span>
+                <textarea data-field="note">${escapeHtml(current.note)}</textarea>
+              </label>
+            </div>
+          </fieldset>
         </section>
       `;
+    }
+    function updateDecision(event) {
+      const fieldset = event.currentTarget;
+      const reviewId = fieldset.dataset.reviewId;
+      const field = event.target.dataset.field;
+      if (!reviewId || !field) {
+        return;
+      }
+      const item = data.review_items.find((candidate) => candidate.review_id === reviewId);
+      const current = decisionState(item);
+      if (field === "action") {
+        if (event.target.checked) {
+          current.action = event.target.value;
+        }
+      } else {
+        current[field] = event.target.value;
+      }
+    }
+    function validateVisibleDecisions(items) {
+      const errors = [];
+      const operatorId = document.getElementById("operator-id").value.trim();
+      if (!operatorId) {
+        errors.push("operator_id");
+      }
+      items.forEach((item) => {
+        const current = decisionState(item);
+        if (!current.action) {
+          errors.push(`${item.review_id}: action`);
+        }
+        if (!current.reason_code.trim()) {
+          errors.push(`${item.review_id}: reason_code`);
+        }
+        const singletonAlias = item.mode === "cluster" && current.action === "alias" && surfaceIds(item).length === 1;
+        if ((current.action === "assignment" || singletonAlias) && !current.target_canonical_id.trim()) {
+          errors.push(`${item.review_id}: target_canonical_id`);
+        }
+      });
+      return { operatorId, errors };
+    }
+    function buildDecision(item, operatorId) {
+      const current = decisionState(item);
+      return {
+        review_id: item.review_id,
+        mode: item.mode,
+        action: current.action,
+        operator_id: operatorId,
+        reason_code: current.reason_code.trim(),
+        note: current.note,
+        source_review_artifact_hash: data.artifact_content_hash,
+        decision_binding_hash: item.decision_binding_hash,
+        run_content_hash: data.binding.run_content_hash,
+        policy_content_hash: data.binding.policy_content_hash,
+        registry_snapshot_hash: data.binding.registry_snapshot_hash,
+        mode_context: item.mode_context,
+        surface_ids: [],
+        target_canonical_id: trimmedOrNull(current.target_canonical_id),
+        relation: trimmedOrNull(current.relation)
+      };
+    }
+    function buildDecisionEnvelope(items, operatorId) {
+      return {
+        version: decisionEnvelopeVersion,
+        source_review_artifact_hash: data.artifact_content_hash,
+        source_review_queue_hash: data.binding.source_review_queue_hash,
+        run_content_hash: data.binding.run_content_hash,
+        policy_content_hash: data.binding.policy_content_hash,
+        registry_snapshot_hash: data.binding.registry_snapshot_hash,
+        decisions: items.map((item) => buildDecision(item, operatorId))
+      };
+    }
+    function exportVisibleDecisions() {
+      const items = visibleItems();
+      const status = document.getElementById("status");
+      const output = document.getElementById("decision-output");
+      const validation = validateVisibleDecisions(items);
+      if (validation.errors.length) {
+        status.className = "error";
+        status.textContent = `Missing: ${validation.errors.join(", ")}`;
+        output.value = "";
+        return;
+      }
+      const envelope = buildDecisionEnvelope(items, validation.operatorId);
+      output.value = JSON.stringify(envelope, null, 2);
+      status.className = "";
+      status.textContent = `${items.length} decisions exported`;
     }
     document.querySelectorAll("[data-mode]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -252,6 +502,7 @@
         renderItems();
       });
     });
+    document.getElementById("export-decisions").addEventListener("click", exportVisibleDecisions);
     renderSummary();
     renderItems();
   </script>

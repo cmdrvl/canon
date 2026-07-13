@@ -14,7 +14,8 @@ use canon::{
             ReviewProvenanceSample, ReviewQueueArtifact, ReviewQueueItem, ReviewRelationHint,
         },
         review_import::{
-            NativeReviewDecision, NativeReviewDecisionAction, NativeReviewDecisionMode,
+            NativeReviewDecision, NativeReviewDecisionAction, NativeReviewDecisionContext,
+            NativeReviewDecisionMode, NativeReviewExpectedDecision, NativeReviewImportContext,
             import_native_review_decisions, native_review_import_context_from_artifact,
             parse_native_review_import_csv, parse_native_review_import_json,
         },
@@ -99,8 +100,8 @@ fn native_review_import_derives_all_patch_types_and_refuses_bad_batches() {
         .expect("csv decisions parse");
     assert_eq!(parsed_csv, parsed_json);
 
-    let receipt =
-        import_native_review_decisions(context.clone(), parsed_csv).expect("native import accepts");
+    let receipt = import_native_review_decisions(context.clone(), parsed_csv.clone())
+        .expect("native import accepts");
     assert_eq!(receipt.accepted_decisions, 5);
     assert_eq!(receipt.patches.alias_patches.len(), 1);
     assert_eq!(receipt.patches.cannot_link_patches.len(), 1);
@@ -112,6 +113,12 @@ fn native_review_import_derives_all_patch_types_and_refuses_bad_batches() {
         "TENANT-001"
     );
     assert_eq!(receipt.patches.relation_patches[0].relation, "servicer");
+    let replay_receipt =
+        import_native_review_decisions(context.clone(), parsed_csv).expect("native replay accepts");
+    assert_eq!(
+        serde_json::to_vec(&receipt).expect("receipt bytes"),
+        serde_json::to_vec(&replay_receipt).expect("replay receipt bytes")
+    );
 
     let mut duplicate = parsed_json.clone();
     duplicate.push(parsed_json[0].clone());
@@ -127,10 +134,32 @@ fn native_review_import_derives_all_patch_types_and_refuses_bad_batches() {
     assert_eq!(refusal.detail["field"], "decision_binding_hash");
     assert_eq!(refusal.detail["writes_performed"], false);
 
-    let mut stale = parsed_json;
+    let mut stale_source = parsed_json.clone();
+    stale_source[0].source_review_artifact_hash = "blake3:old-review".to_string();
+    let refusal = import_native_review_decisions(context.clone(), stale_source)
+        .expect_err("stale source refuses");
+    assert_eq!(refusal.detail["field"], "source_review_artifact_hash");
+    assert_eq!(refusal.detail["writes_performed"], false);
+
+    let mut stale = parsed_json.clone();
     stale[0].run_content_hash = "blake3:old-run".to_string();
-    let refusal = import_native_review_decisions(context, stale).expect_err("stale refuses");
+    let refusal =
+        import_native_review_decisions(context.clone(), stale).expect_err("stale refuses");
     assert_eq!(refusal.detail["field"], "run_content_hash");
+    assert_eq!(refusal.detail["writes_performed"], false);
+
+    let mut stale_policy = parsed_json.clone();
+    stale_policy[0].policy_content_hash = "blake3:old-policy".to_string();
+    let refusal = import_native_review_decisions(context.clone(), stale_policy)
+        .expect_err("stale policy refuses");
+    assert_eq!(refusal.detail["field"], "policy_content_hash");
+    assert_eq!(refusal.detail["writes_performed"], false);
+
+    let mut stale_registry = parsed_json;
+    stale_registry[0].registry_snapshot_hash = "blake3:old-registry".to_string();
+    let refusal = import_native_review_decisions(context, stale_registry)
+        .expect_err("stale registry refuses");
+    assert_eq!(refusal.detail["field"], "registry_snapshot_hash");
     assert_eq!(refusal.detail["writes_performed"], false);
 }
 
@@ -214,6 +243,178 @@ fn native_review_import_emits_singleton_alias_receipt_for_prepared_surface_colla
     assert_eq!(refusal.detail["writes_performed"], false);
 }
 
+#[test]
+fn native_review_import_verifies_artifact_hash_and_canonical_shape() {
+    let artifact = native_artifact();
+    let mut tampered_value = serde_json::to_value(&artifact).expect("artifact value");
+    tampered_value["review_items"][0]["recommended_action"] = serde_json::json!("defer");
+    let refusal = native_review_import_context_from_artifact(&tampered_value)
+        .expect_err("content hash tamper refuses");
+    assert_eq!(refusal.detail["field"], "artifact_content_hash");
+    assert_eq!(refusal.detail["writes_performed"], false);
+
+    let mut noncanonical_value = serde_json::to_value(&artifact).expect("artifact value");
+    noncanonical_value["unexpected_top_level"] = serde_json::json!(true);
+    let refusal = native_review_import_context_from_artifact(&noncanonical_value)
+        .expect_err("noncanonical artifact refuses");
+    assert_eq!(refusal.detail["field"], "artifact");
+    assert_eq!(refusal.detail["writes_performed"], false);
+
+    let mut resealed_invalid = native_artifact();
+    let link_item = resealed_invalid
+        .review_items
+        .iter_mut()
+        .find(|item| item.review_id == "review:relation")
+        .expect("link review item");
+    link_item.mode_context = review_export::NativeReviewModeContext::Cluster {
+        cluster_id: "cluster:wrong_mode".to_string(),
+        surface_ids: vec![
+            "surf:charlie".to_string(),
+            "surf:charlie_servicer".to_string(),
+        ],
+    };
+    reseal_native_artifact(&mut resealed_invalid);
+    let resealed_invalid_value =
+        serde_json::to_value(&resealed_invalid).expect("resealed invalid value");
+    let refusal = native_review_import_context_from_artifact(&resealed_invalid_value)
+        .expect_err("resealed invalid mode context refuses");
+    assert_eq!(refusal.detail["field"], "mode_context");
+    assert_eq!(refusal.detail["writes_performed"], false);
+}
+
+#[test]
+fn native_review_import_requires_exact_exported_mode_context() {
+    let artifact = native_artifact();
+    let artifact_value = serde_json::to_value(&artifact).expect("artifact value");
+    let context = native_review_import_context_from_artifact(&artifact_value).expect("context");
+    let decisions = native_decisions_from_artifact(&artifact_value);
+
+    let mut swapped_link = decisions.clone();
+    let link_decision = swapped_link
+        .iter_mut()
+        .find(|decision| decision.review_id == "review:relation")
+        .expect("link decision");
+    let NativeReviewDecisionContext::Link {
+        left_surface_id,
+        right_surface_id,
+        ..
+    } = &mut link_decision.mode_context
+    else {
+        panic!("link context");
+    };
+    let original_left = left_surface_id.clone();
+    let original_right = right_surface_id.clone().expect("candidate-backed right");
+    *left_surface_id = original_right;
+    *right_surface_id = Some(original_left);
+    let refusal = import_native_review_decisions(context.clone(), swapped_link)
+        .expect_err("swapped link direction refuses");
+    assert_eq!(refusal.detail["field"], "mode_context");
+    assert_eq!(refusal.detail["writes_performed"], false);
+
+    let mut tampered_hint = decisions.clone();
+    let link_decision = tampered_hint
+        .iter_mut()
+        .find(|decision| decision.review_id == "review:relation")
+        .expect("link decision");
+    let NativeReviewDecisionContext::Link { relation_hints, .. } = &mut link_decision.mode_context
+    else {
+        panic!("link context");
+    };
+    relation_hints[0].relation = "borrower".to_string();
+    let refusal = import_native_review_decisions(context.clone(), tampered_hint)
+        .expect_err("tampered relation hint refuses");
+    assert_eq!(refusal.detail["field"], "mode_context");
+    assert_eq!(refusal.detail["writes_performed"], false);
+
+    let mut tampered_cluster = decisions;
+    let cluster_decision = tampered_cluster
+        .iter_mut()
+        .find(|decision| decision.review_id == "review:alias")
+        .expect("cluster decision");
+    let NativeReviewDecisionContext::Cluster { cluster_id, .. } =
+        &mut cluster_decision.mode_context
+    else {
+        panic!("cluster context");
+    };
+    *cluster_id = "cluster:tampered".to_string();
+    let refusal = import_native_review_decisions(context, tampered_cluster)
+        .expect_err("tampered cluster context refuses");
+    assert_eq!(refusal.detail["field"], "mode_context");
+    assert_eq!(refusal.detail["writes_performed"], false);
+}
+
+#[test]
+fn native_review_import_accepts_candidate_free_link_defer() {
+    let (context, decision) = candidate_free_link_decision(
+        NativeReviewDecisionAction::Defer,
+        &[NativeReviewDecisionAction::Defer],
+    );
+
+    let receipt = import_native_review_decisions(context, vec![decision])
+        .expect("candidate-free defer imports");
+    assert_eq!(receipt.accepted_decisions, 1);
+    assert!(receipt.patches.alias_patches.is_empty());
+    assert!(receipt.patches.cannot_link_patches.is_empty());
+    assert!(receipt.patches.relation_patches.is_empty());
+    assert!(receipt.patches.assignment_patches.is_empty());
+    assert_eq!(receipt.patches.defer_patches.len(), 1);
+    assert_eq!(
+        receipt.patches.defer_patches[0].surface_ids,
+        vec!["surf:unmatched_target".to_string()]
+    );
+}
+
+#[test]
+fn native_review_import_refuses_candidate_free_link_relation_and_cannot_link() {
+    for action in [
+        NativeReviewDecisionAction::Relation,
+        NativeReviewDecisionAction::CannotLink,
+    ] {
+        let (context, decision) = candidate_free_link_decision(action, &[action]);
+
+        let refusal = import_native_review_decisions(context, vec![decision])
+            .expect_err("candidate-free action requiring a right side refuses");
+        assert_eq!(refusal.detail["field"], "mode_context");
+        assert_eq!(refusal.detail["action"], action.as_str());
+        assert_eq!(refusal.detail["writes_performed"], false);
+    }
+}
+
+#[test]
+fn native_review_import_refuses_contradictory_identity_batch_atomically() {
+    let mut queue = review_queue();
+    queue.review_items = vec![
+        cluster_item(
+            "review:alias",
+            "surf:conflict_left",
+            "surf:conflict_right",
+            true,
+            false,
+        ),
+        cluster_item(
+            "review:cannot",
+            "surf:conflict_left",
+            "surf:conflict_right",
+            true,
+            true,
+        ),
+    ];
+    let artifact = build_native_review_artifact(NativeReviewExportRequest {
+        review_queue: queue,
+        run_content_hash: "blake3:run".to_string(),
+        policy_content_hash: "blake3:policy".to_string(),
+    })
+    .expect("contradictory native review artifact builds");
+    let artifact_value = serde_json::to_value(&artifact).expect("artifact value");
+    let context = native_review_import_context_from_artifact(&artifact_value).expect("context");
+    let decisions = native_decisions_from_artifact(&artifact_value);
+
+    let refusal = import_native_review_decisions(context, decisions)
+        .expect_err("contradictory identity decisions refuse");
+    assert_eq!(refusal.detail["reason"], "identity_cannot_link_conflict");
+    assert_eq!(refusal.detail["writes_performed"], false);
+}
+
 fn native_artifact() -> review_export::NativeReviewArtifact {
     build_native_review_artifact(NativeReviewExportRequest {
         review_queue: review_queue(),
@@ -221,6 +422,58 @@ fn native_artifact() -> review_export::NativeReviewArtifact {
         policy_content_hash: "blake3:policy".to_string(),
     })
     .expect("native review artifact builds")
+}
+
+fn candidate_free_link_decision(
+    action: NativeReviewDecisionAction,
+    allowed_actions: &[NativeReviewDecisionAction],
+) -> (NativeReviewImportContext, NativeReviewDecision) {
+    let artifact = native_artifact();
+    let artifact_value = serde_json::to_value(&artifact).expect("artifact value");
+    let mut context = native_review_import_context_from_artifact(&artifact_value).expect("context");
+    let review_id = format!("review:candidate_free_{}", action.as_str());
+    let decision_binding_hash = format!("blake3:candidate-free-{}", action.as_str());
+    let mode_context = NativeReviewDecisionContext::Link {
+        left_surface_id: "surf:unmatched_target".to_string(),
+        right_surface_id: None,
+        relation_hints: Vec::new(),
+        relation: None,
+    };
+    context.expected_decisions.clear();
+    context.expected_decisions.insert(
+        review_id.clone(),
+        NativeReviewExpectedDecision {
+            mode: NativeReviewDecisionMode::Link,
+            decision_binding_hash: decision_binding_hash.clone(),
+            mode_context: mode_context.clone(),
+            surface_ids: vec!["surf:unmatched_target".to_string()],
+            allowed_actions: allowed_actions.iter().copied().collect(),
+        },
+    );
+    let decision = NativeReviewDecision {
+        review_id,
+        mode: NativeReviewDecisionMode::Link,
+        action,
+        operator_id: "operator:native-review".to_string(),
+        reason_code: action.as_str().to_string(),
+        note: "candidate-free unmatched target".to_string(),
+        source_review_artifact_hash: context.source_review_artifact_hash.clone(),
+        decision_binding_hash,
+        run_content_hash: context.run_content_hash.clone(),
+        policy_content_hash: context.policy_content_hash.clone(),
+        registry_snapshot_hash: context.registry_snapshot_hash.clone(),
+        mode_context,
+        surface_ids: Vec::new(),
+        target_canonical_id: None,
+        relation: (action == NativeReviewDecisionAction::Relation).then(|| "servicer".to_string()),
+    };
+    (context, decision)
+}
+
+fn reseal_native_artifact(artifact: &mut review_export::NativeReviewArtifact) {
+    let hash = review_export::native_review_artifact_hash(artifact).expect("hash recomputes");
+    artifact.artifact_content_hash = hash.clone();
+    artifact.metadata.artifact_content_hash = hash;
 }
 
 fn native_decisions_from_artifact(artifact: &Value) -> Vec<NativeReviewDecision> {

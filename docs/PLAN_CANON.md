@@ -105,8 +105,8 @@ canon entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <RE
 canon entity evidence <ROWS> [--profile <PROFILE>] --strategy <YAML> --candidates <JSONL> --registry <REGISTRY> [--work-dir <DIR>] [--emit jsonl|summary]
 canon entity solve <ROWS> [--profile <PROFILE>] --strategy <YAML> --evidence <JSONL> --registry <REGISTRY> [--work-dir <DIR>] [--emit json|summary]
 canon entity apply <RESULT.json> --rows <ROWS> --registry <REGISTRY> [--work-dir <DIR>] [--emit json|summary]
-canon entity review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]
-canon entity review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]
+canon entity review export <RESULT.json> [--artifact queue|native-review] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]
+canon entity review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]
 ```
 
 Arguments:
@@ -360,9 +360,8 @@ lookup path and it does not change `canon.v0` exact-match semantics.
   excludes non-identity controls from recall, forbids promotion/replay, and records
   an automatic attachment as an `unsupported_guess` false merge
 - supports a derivation-proven collapse receipt through the public native review
-  library constructor: a singleton cluster Alias decision requires an explicit
-  target canonical ID and exact exported-surface equality; operator-facing native
-  artifact/decision CLI wiring remains owned by the native review workbench
+  artifact/import path: a singleton cluster Alias decision requires an explicit
+  target canonical ID and exact exported-surface equality
 - derives trial decisions, promotion replay, and aggregate counts from those
   artifacts; caller-declared outcomes or self-reported pass/fail fields are not
   accepted as evidence
@@ -463,17 +462,42 @@ lookup path and it does not change `canon.v0` exact-match semantics.
 
 ### Entity review subcommands
 
-`canon entity review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]`
-- reads a `canon_entity_run.v0` or `canon_entity_solve.v0` artifact and emits `canon_entity_review_export.v0`
-- includes deterministic review IDs, source row IDs, observed names, anchors, incumbent overlaps, evidence scores, contradiction reasons, and proposed review actions
-- `--include` filters to resolved/promotable entities, escrowed abstentions, contradiction records, or all reviewable items; default is `all`
-- `--emit csv` emits a round-trippable review queue with JSON-encoded complex cells and result/registry snapshot metadata in every row
+`canon entity review export <RESULT.json> [--artifact queue|native-review] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]`
+- defaults to `--artifact queue`, preserving the existing queue/v1 and legacy
+  review export behavior and `canon_entity_review_export.v0`
+- `--artifact native-review` emits `canon_entity_native_review.v0` for native
+  solve, run, or link artifacts; `--emit html` is valid only for this explicit
+  native artifact path
+- includes deterministic review IDs, source row IDs, observed names, anchors,
+  incumbent overlaps, evidence scores, contradiction reasons, and proposed
+  review actions
+- `--include` filters to resolved/promotable entities, escrowed abstentions,
+  contradiction records, or all reviewable items; default is `all`
+- native review artifacts carry an artifact self-hash, run/policy/registry
+  binding, and exact cluster/link mode context; candidate-free unmatched
+  directional links carry `right_surface_id: null` and defer-only allowed actions
+- native JSON and CSV exports are deterministic decision envelopes, and native
+  HTML is a static offline projection of that artifact
 
-`canon entity review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]`
-- imports reviewed decisions into alias, trusted-anchor, pending-escrow, and cannot-link sidecars, then bumps `registry.json` to `--next-version`
-- refuses malformed decisions, duplicate review IDs, stale registry snapshots, alias overwrites, trusted-anchor conflicts, and unchanged or empty next versions
-- alias/anchor promotion decisions require a matching passing `canon_entity_audit.v0` artifact; escrow-only decisions do not require audit
-- emits `canon_entity_review_import.v0` with registry before/after hashes, write counts, and BLAKE3 proof hashes for the review input, optional audit input, alias patch, anchor patch, and escrow patch
+`canon entity review import <REVIEW.json|csv> --registry <REGISTRY> --next-version <VER> [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]`
+- without `--source-review`, imports the existing queue review decisions into
+  alias, trusted-anchor, pending-escrow, and cannot-link sidecars, then bumps
+  `registry.json` to `--next-version`
+- with `--source-review <canon_entity_native_review.v0>`, treats the positional
+  `<REVIEW>` file as native JSON/CSV decisions and emits
+  a typed `canon_entity_native_review_import.v0` patch receipt only; native
+  import does not read or mutate the registry and does not consume `--audit` or
+  `--next-version` beyond Clap-required compatibility
+- default queue import uses the required `--registry` and `--next-version`
+  arguments; `--audit` remains required for default alias/anchor promotion
+  decisions
+- default queue import refuses malformed decisions, duplicate review IDs, stale
+  registry snapshots, alias overwrites, trusted-anchor conflicts, and unchanged
+  or empty next versions; native import refuses malformed/duplicate decisions,
+  source-review self-hash mismatches, and exact mode-context mismatches
+- default import emits `canon_entity_review_import.v0` with registry before/after
+  hashes, write counts, and BLAKE3 proof hashes for review input, optional audit
+  input, alias patch, anchor patch, and escrow patch
 
 ### Output modes
 

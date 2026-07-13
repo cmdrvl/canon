@@ -21,7 +21,8 @@ use canon::entity::{
     solve::{SolveEvidenceCut, SolveReconciliationState},
 };
 use native_review_export::{
-    NativeReviewExportRequest, build_native_review_artifact, render_native_review_html,
+    CANON_ENTITY_NATIVE_REVIEW_DECISION_ENVELOPE_VERSION, NativeReviewExportRequest,
+    build_native_review_artifact, render_native_review_html,
 };
 use review_policy::{
     ReviewActionRule, ReviewApproval, ReviewEvidenceGroup, ReviewEvidenceKind, ReviewEvidenceRef,
@@ -296,6 +297,164 @@ fn safe_actions_compile_to_typed_patches_without_changing_review_format() {
     let receipt = import_native_review_decisions(native_context, vec![native_decision])
         .expect("shared native import accepts relation action");
     assert_eq!(receipt.patches.relation_patches.len(), 1);
+}
+
+#[test]
+fn native_review_html_is_deterministic_and_declares_decision_export_contract() {
+    let review = native_review_from_queue(mixed_review_queue());
+    let first = render_native_review_html(&review).expect("html renders");
+    let second = render_native_review_html(&review).expect("html renders deterministically");
+    assert_eq!(first, second);
+
+    for marker in [
+        "<fieldset class=\"reviewer\">",
+        "<legend>Reviewer</legend>",
+        "<legend>Decision</legend>",
+        "data-field=\"operator_id\"",
+        "data-field=\"action\"",
+        "data-field=\"reason_code\"",
+        "data-field=\"target_canonical_id\"",
+        "data-field=\"relation\"",
+        "data-field=\"note\"",
+        "validateVisibleDecisions",
+        "buildDecisionEnvelope",
+        CANON_ENTITY_NATIVE_REVIEW_DECISION_ENVELOPE_VERSION,
+        "source_review_artifact_hash",
+        "source_review_queue_hash",
+        "decision_binding_hash",
+        "run_content_hash",
+        "policy_content_hash",
+        "registry_snapshot_hash",
+        "mode_context",
+    ] {
+        assert!(
+            first.contains(marker),
+            "missing HTML contract marker {marker}"
+        );
+    }
+    assert!(!first.contains("__CANON_NATIVE_REVIEW"));
+}
+
+#[test]
+fn native_review_html_has_no_url_or_network_primitive_dependencies() {
+    let html = render_native_review_html(&native_review_from_queue(mixed_review_queue()))
+        .expect("html renders");
+    for forbidden in [
+        "http://",
+        "https://",
+        "fetch(",
+        "XMLHttpRequest",
+        "WebSocket",
+        "sendBeacon",
+        "import(",
+    ] {
+        assert!(
+            !html.contains(forbidden),
+            "HTML should not contain network dependency marker {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn native_review_cluster_and_link_actions_remain_mode_complete() {
+    let review = native_review_from_queue(mixed_review_queue());
+    let cluster = review
+        .review_items
+        .iter()
+        .find(|item| item.review_id == "review:cluster_native")
+        .expect("cluster item");
+    assert_eq!(
+        action_names(&cluster.allowed_actions),
+        vec!["alias", "cannot_link", "assignment", "defer"]
+    );
+
+    let link = review
+        .review_items
+        .iter()
+        .find(|item| item.review_id == "review:shared_native")
+        .expect("link item");
+    assert_eq!(
+        action_names(&link.allowed_actions),
+        vec!["relation", "cannot_link", "defer"]
+    );
+}
+
+#[test]
+fn native_review_link_source_covers_ambiguous_and_unmatched_targets() {
+    let review = native_review_from_queue(source_link_review_queue());
+    let ambiguous = review
+        .review_items
+        .iter()
+        .find(|item| item.review_id == "review:shared_native")
+        .expect("ambiguous native item");
+
+    assert_eq!(ambiguous.mode, native_review_export::NativeReviewMode::Link);
+    assert!(!ambiguous.candidate_links.is_empty());
+    assert_eq!(ambiguous.recommended_action.as_str(), "relation");
+    assert_eq!(
+        action_names(&ambiguous.allowed_actions),
+        vec!["relation", "cannot_link", "defer"]
+    );
+    match &ambiguous.mode_context {
+        native_review_export::NativeReviewModeContext::Link {
+            left_surface_id,
+            right_surface_id,
+            relation_hints,
+        } => {
+            assert_eq!(left_surface_id, "surf:alpha");
+            assert_eq!(right_surface_id.as_deref(), Some("surf:beta"));
+            assert!(!relation_hints.is_empty());
+        }
+        other => panic!("expected link context, got {other:?}"),
+    }
+
+    let unmatched = review
+        .review_items
+        .iter()
+        .find(|item| item.review_id == "review:unmatched_native")
+        .expect("unmatched native item");
+    assert_eq!(unmatched.mode, native_review_export::NativeReviewMode::Link);
+    assert!(unmatched.candidate_links.is_empty());
+    assert_eq!(unmatched.recommended_action.as_str(), "defer");
+    assert_eq!(action_names(&unmatched.allowed_actions), vec!["defer"]);
+    match &unmatched.mode_context {
+        native_review_export::NativeReviewModeContext::Link {
+            left_surface_id,
+            right_surface_id,
+            relation_hints,
+        } => {
+            assert_eq!(left_surface_id, "surf:unmatched_target");
+            assert_eq!(right_surface_id.as_deref(), None);
+            assert!(relation_hints.is_empty());
+        }
+        other => panic!("expected link context, got {other:?}"),
+    }
+}
+
+#[test]
+fn native_review_html_renders_missing_candidate_honestly() {
+    let html = render_native_review_html(&native_review_from_queue(source_link_review_queue()))
+        .expect("html renders");
+    assert!(html.contains("Candidate: none"));
+    assert!(html.contains("\"right_surface_id\":null"));
+}
+
+#[test]
+fn native_review_html_preserves_pre_redacted_values_without_originals() {
+    let mut queue = review_queue();
+    queue.review_items[0].provenance_samples[0].raw_value = "[redacted:entity-name]".to_string();
+    let html = render_native_review_html(&native_review_from_queue(queue)).expect("html renders");
+    assert!(html.contains("[redacted:entity-name]"));
+    assert!(!html.contains("Alpha"));
+}
+
+#[test]
+fn native_review_html_escapes_embedded_json_script_boundaries() {
+    let mut queue = review_queue();
+    queue.review_items[0].provenance_samples[0].raw_value = "[redacted:</script>]".to_string();
+    let html = render_native_review_html(&native_review_from_queue(queue)).expect("html renders");
+    assert!(html.contains("[redacted:<\\/script>]"));
+    assert!(!html.contains("[redacted:</script>]"));
 }
 
 #[test]
@@ -681,6 +840,83 @@ fn review_queue() -> ReviewQueueArtifact {
             }],
         }],
     }
+}
+
+fn mixed_review_queue() -> ReviewQueueArtifact {
+    let mut queue = review_queue();
+    queue.review_items.push(ReviewQueueItem {
+        review_id: "review:cluster_native".to_string(),
+        ambiguity_key: "cluster_native".to_string(),
+        component_id: "component:cluster_native".to_string(),
+        state: SolveReconciliationState::Escrow,
+        proposed_action: "confirm_merge_or_distinct".to_string(),
+        review_priority_units: 4000,
+        priority_reasons: vec!["identity_evidence".to_string()],
+        affected_rows: 2,
+        affected_deals: 1,
+        surface_ids: vec![
+            "surf:cluster_alpha".to_string(),
+            "surf:cluster_beta".to_string(),
+        ],
+        strongest_positive_cut: Some(SolveEvidenceCut {
+            left_surface_id: "surf:cluster_alpha".to_string(),
+            right_surface_id: "surf:cluster_beta".to_string(),
+            score_units: ScoreUnits::saturating_from_units(7000),
+            evidence_count: 2,
+            evidence_reason_codes: vec!["identity_match".to_string()],
+        }),
+        strongest_negative_cut: None,
+        relation_hints: Vec::new(),
+        provenance_samples: vec![ReviewProvenanceSample {
+            surface_id: "surf:cluster_alpha".to_string(),
+            row_id: "row:cluster".to_string(),
+            source: "fixture.csv".to_string(),
+            raw_value: "[redacted:cluster]".to_string(),
+        }],
+    });
+    queue
+}
+
+fn source_link_review_queue() -> ReviewQueueArtifact {
+    let mut queue = review_queue();
+    queue.source_link_hash = Some(sample_hash('l'));
+    queue.review_items.push(ReviewQueueItem {
+        review_id: "review:unmatched_native".to_string(),
+        ambiguity_key: "unmatched_native".to_string(),
+        component_id: "component:unmatched_native".to_string(),
+        state: SolveReconciliationState::Escrow,
+        proposed_action: "defer_unmatched_link_target".to_string(),
+        review_priority_units: 3000,
+        priority_reasons: vec!["unmatched_target".to_string()],
+        affected_rows: 1,
+        affected_deals: 1,
+        surface_ids: vec!["surf:unmatched_target".to_string()],
+        strongest_positive_cut: None,
+        strongest_negative_cut: None,
+        relation_hints: Vec::new(),
+        provenance_samples: vec![ReviewProvenanceSample {
+            surface_id: "surf:unmatched_target".to_string(),
+            row_id: "row:unmatched".to_string(),
+            source: "fixture.csv".to_string(),
+            raw_value: "[redacted:unmatched]".to_string(),
+        }],
+    });
+    queue
+}
+
+fn native_review_from_queue(
+    review_queue: ReviewQueueArtifact,
+) -> native_review_export::NativeReviewArtifact {
+    build_native_review_artifact(NativeReviewExportRequest {
+        review_queue,
+        run_content_hash: sample_hash('r'),
+        policy_content_hash: sample_hash('p'),
+    })
+    .expect("native review builds")
+}
+
+fn action_names(actions: &[native_review_export::NativeReviewDecisionAction]) -> Vec<&'static str> {
+    actions.iter().map(|action| action.as_str()).collect()
 }
 
 fn metadata() -> EntityArtifactMetadata {

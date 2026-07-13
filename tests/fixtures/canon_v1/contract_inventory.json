@@ -528,7 +528,7 @@
       "family": "entity",
       "clap_path": "entity review export",
       "operator_name": "entity review export",
-      "primary_contracts": ["canon_entity_review_export.v0"],
+      "primary_contracts": ["canon_entity_review_export.v0", "canon_entity_native_review.v0"],
       "action": "preserve"
     },
     {
@@ -536,7 +536,11 @@
       "family": "entity",
       "clap_path": "entity review import",
       "operator_name": "entity review import",
-      "primary_contracts": ["canon_entity_review_import.v0"],
+      "primary_contracts": [
+        "canon_entity_review_import.v0",
+        "canon_entity_native_review_decisions.v0",
+        "canon_entity_native_review_import.v0"
+      ],
       "action": "preserve"
     }
   ],
@@ -971,6 +975,7 @@
     { "id": "canon_entity_link_observation_surface_bindings.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_multisource_link.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_native_review.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_native_review_decisions.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_native_review_import.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_native_scale_generator.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_native_scale_proof.v0", "family": "entity", "action": "preserve" }

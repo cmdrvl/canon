@@ -41,8 +41,8 @@
       "canon entity solve <ROWS> --strategy <STRATEGY.yaml> --evidence <EVIDENCE.jsonl> --registry <REGISTRY_DIR> [--emit json|summary]",
       "canon entity audit <RESULT.json> --suite <SUITE_DIR> [--emit json|summary]",
       "canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <REGISTRY_DIR> --next-version <VERSION> [--emit json|summary]",
-      "canon entity review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]",
-      "canon entity review import <REVIEW.json|csv> --registry <REGISTRY_DIR> --next-version <VERSION> [--audit <AUDIT.json>] [--emit json|summary]",
+      "canon entity review export <RESULT.json> [--artifact queue|native-review] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]",
+      "canon entity review import <REVIEW.json|csv> --registry <REGISTRY_DIR> --next-version <VERSION> [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]",
       "canon entity explain <RESULT.json> --row <SOURCE_ROW_ID>|--canon-id <CANON_ID>|--escrow-id <ESCROW_ID> [--emit json|summary]",
       "canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]",
       "canon inbox show --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json|summary]",
@@ -1174,34 +1174,38 @@
     },
     {
       "name": "entity review export",
-      "usage": "canon entity review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]",
-      "description": "Export a deterministic human-adjudication queue from an entity solve/run artifact",
+      "usage": "canon entity review export <RESULT.json> [--artifact queue|native-review] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]",
+      "description": "Export the default deterministic review queue, or with --artifact native-review export canon_entity_native_review.v0 as JSON, CSV, or offline HTML with self-hash and exact mode-context validation",
       "output_mode": "mixed",
       "output_schema": "canon_entity_review_export.v0",
+      "alternate_output_schemas": ["canon_entity_native_review.v0"],
       "exit_codes": {
         "0": { "meaning": "entity review export completed successfully", "domain": "positive" },
         "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
       },
       "options": [
-        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_entity_review_export.v0) or csv" },
+        { "name": "artifact", "flag": "--artifact", "type": "enum", "values": ["queue", "native-review"], "default": "queue", "description": "Review artifact contract: queue emits canon_entity_review_export.v0; native-review emits canon_entity_native_review.v0" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json or csv for all review artifacts; html is valid only with --artifact native-review" },
         { "name": "include", "flag": "--include", "type": "string", "default": "all", "description": "Review item filter: resolved, escrow, contradictions, or all" }
       ]
     },
     {
       "name": "entity review import",
-      "usage": "canon entity review import <REVIEW.json|csv> --registry <REGISTRY_DIR> --next-version <VERSION> [--audit <AUDIT.json>] [--emit json|summary]",
-      "description": "Import adjudicated review decisions into registry aliases, anchors, and escrow sidecars",
+      "usage": "canon entity review import <REVIEW.json|csv> --registry <REGISTRY_DIR> --next-version <VERSION> [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]",
+      "description": "Import default review queue decisions into registry sidecars, or with --source-review validate native JSON/CSV decisions against canon_entity_native_review.v0 and emit a typed canon_entity_native_review_import.v0 patch receipt without reading or mutating the registry",
       "output_mode": "mixed",
       "output_schema": "canon_entity_review_import.v0",
+      "alternate_output_schemas": ["canon_entity_native_review_import.v0"],
       "exit_codes": {
         "0": { "meaning": "entity review import completed successfully", "domain": "positive" },
         "2": { "meaning": "REFUSAL / CLI error", "domain": "error" }
       },
       "options": [
-        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Entity registry directory to update" },
-        { "name": "next_version", "flag": "--next-version", "type": "string", "required": true, "description": "Explicit next registry.json version" },
-        { "name": "audit", "flag": "--audit", "type": "file_path", "description": "canon_entity_audit.v0 artifact required for alias/anchor promotion decisions" },
-        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_entity_review_import.v0) or summary" }
+        { "name": "registry", "flag": "--registry", "type": "directory_path", "required": true, "description": "Entity registry directory for default queue import; retained as a Clap-required compatibility argument and not opened by native --source-review import" },
+        { "name": "next_version", "flag": "--next-version", "type": "string", "required": true, "description": "Explicit next registry.json version for default queue import; retained as a Clap-required compatibility argument and not consumed by native --source-review import" },
+        { "name": "audit", "flag": "--audit", "type": "file_path", "description": "canon_entity_audit.v0 artifact required for default queue alias/anchor promotion decisions; not consumed by native --source-review import" },
+        { "name": "source_review", "flag": "--source-review", "type": "file_path", "description": "Source canon_entity_native_review.v0 artifact for native decision validation and canon_entity_native_review_import.v0 patch receipt emission" },
+        { "name": "emit", "flag": "--emit", "type": "string", "default": "json", "description": "Output mode: json (canon_entity_review_import.v0 or canon_entity_native_review_import.v0) or summary" }
       ]
     },
     {

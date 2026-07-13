@@ -16,6 +16,12 @@ use crate::{
             lifecycle_metadata_v1, required_value_string, set_v1_self_hash, source_reference_v1,
             validate_review_v1_artifact, value_string_or, value_u64_or,
         },
+        review_export::{
+            CANON_ENTITY_NATIVE_REVIEW_VERSION, NativeReviewArtifact as ExportNativeReviewArtifact,
+            NativeReviewDecisionAction as ExportNativeReviewDecisionAction,
+            NativeReviewMode as ExportNativeReviewMode,
+            NativeReviewModeContext as ExportNativeReviewModeContext, native_review_artifact_hash,
+        },
         schema::CANON_ENTITY_REVIEW_QUEUE_VERSION,
         schema::validate_artifact_v1_core_contract,
     },
@@ -609,16 +615,28 @@ pub enum NativeReviewDecisionContext {
     },
     Link {
         left_surface_id: String,
-        right_surface_id: String,
+        right_surface_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        relation_hints: Vec<NativeReviewDecisionRelationHint>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         relation: Option<String>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeReviewDecisionRelationHint {
+    pub link_id: String,
+    pub left_surface_id: String,
+    pub right_surface_id: String,
+    pub relation: String,
+    pub reason_code: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeReviewExpectedDecision {
     pub mode: NativeReviewDecisionMode,
     pub decision_binding_hash: String,
+    pub mode_context: NativeReviewDecisionContext,
     pub surface_ids: Vec<String>,
     pub allowed_actions: BTreeSet<NativeReviewDecisionAction>,
 }
@@ -784,88 +802,201 @@ pub fn parse_native_review_import_csv(input: &str) -> Result<Vec<NativeReviewDec
 pub fn native_review_import_context_from_artifact(
     artifact: &Value,
 ) -> Result<NativeReviewImportContext, Refusal> {
-    require_native_artifact_hash(artifact)?;
-    let source_review_artifact_hash = native_required_string(
-        artifact,
-        &["artifact_content_hash"],
-        "artifact_content_hash",
-    )?;
-    let binding = native_required_object(artifact, &["binding"], "binding")?;
+    let artifact = validate_native_review_artifact(artifact)?;
     let mut expected_decisions = BTreeMap::new();
-    let items = artifact
-        .get("review_items")
-        .and_then(Value::as_array)
-        .ok_or_else(|| native_missing_field("review_items"))?;
-    for item in items {
-        let review_id = native_required_string(item, &["review_id"], "review_items.review_id")?;
-        let mode = native_mode_from_value(item.get("mode"), review_id)?;
-        let decision_binding_hash = native_required_string(
-            item,
-            &["decision_binding_hash"],
-            "review_items.decision_binding_hash",
-        )?;
+    for item in &artifact.review_items {
+        let mode = native_mode_from_export(item.mode);
+        let mode_context =
+            native_decision_context_from_export(&item.mode_context, mode, &item.review_id)?;
         let allowed_actions = item
-            .get("allowed_actions")
-            .and_then(Value::as_array)
-            .ok_or_else(|| native_missing_field("review_items.allowed_actions"))?
+            .allowed_actions
             .iter()
-            .map(|value| native_action_from_value(Some(value), review_id))
-            .collect::<Result<BTreeSet<_>, _>>()?;
-        expected_decisions.insert(
-            review_id.to_string(),
-            NativeReviewExpectedDecision {
-                mode,
-                decision_binding_hash: decision_binding_hash.to_string(),
-                surface_ids: native_item_surface_ids(item)?,
-                allowed_actions,
-            },
-        );
+            .copied()
+            .map(native_action_from_export)
+            .collect::<BTreeSet<_>>();
+        let expected = NativeReviewExpectedDecision {
+            mode,
+            decision_binding_hash: item.decision_binding_hash.clone(),
+            surface_ids: native_mode_context_surface_ids(&mode_context, &item.review_id)?,
+            mode_context,
+            allowed_actions,
+        };
+        if expected_decisions
+            .insert(item.review_id.clone(), expected)
+            .is_some()
+        {
+            return Err(native_import_refusal(
+                "Native review artifact contains duplicate review items",
+                json!({
+                    "field": "review_items.review_id",
+                    "review_id": item.review_id
+                }),
+            ));
+        }
     }
     Ok(NativeReviewImportContext {
-        source_review_artifact_hash: source_review_artifact_hash.to_string(),
-        source_review_queue_hash: native_object_string(
-            binding,
-            "source_review_queue_hash",
-            "binding.source_review_queue_hash",
-        )?
-        .to_string(),
-        run_content_hash: native_object_string(
-            binding,
-            "run_content_hash",
-            "binding.run_content_hash",
-        )?
-        .to_string(),
-        policy_content_hash: native_object_string(
-            binding,
-            "policy_content_hash",
-            "binding.policy_content_hash",
-        )?
-        .to_string(),
-        registry_snapshot_hash: native_object_string(
-            binding,
-            "registry_snapshot_hash",
-            "binding.registry_snapshot_hash",
-        )?
-        .to_string(),
-        profile_id: native_object_string(binding, "profile_id", "binding.profile_id")?.to_string(),
-        profile_version: native_object_string(
-            binding,
-            "profile_version",
-            "binding.profile_version",
-        )?
-        .to_string(),
-        entity_type: native_object_string(binding, "entity_type", "binding.entity_type")?
-            .to_string(),
-        identity_semantics: native_object_string(
-            binding,
-            "identity_semantics",
-            "binding.identity_semantics",
-        )?
-        .to_string(),
-        strategy_hash: native_object_string(binding, "strategy_hash", "binding.strategy_hash")?
-            .to_string(),
+        source_review_artifact_hash: artifact.artifact_content_hash,
+        source_review_queue_hash: artifact.binding.source_review_queue_hash,
+        run_content_hash: artifact.binding.run_content_hash,
+        policy_content_hash: artifact.binding.policy_content_hash,
+        registry_snapshot_hash: artifact.binding.registry_snapshot_hash,
+        profile_id: artifact.binding.profile_id,
+        profile_version: artifact.binding.profile_version,
+        entity_type: artifact.binding.entity_type,
+        identity_semantics: artifact.binding.identity_semantics,
+        strategy_hash: artifact.binding.strategy_hash,
         expected_decisions,
     })
+}
+
+fn validate_native_review_artifact(
+    artifact: &Value,
+) -> Result<ExportNativeReviewArtifact, Refusal> {
+    let typed = serde_json::from_value::<ExportNativeReviewArtifact>(artifact.clone()).map_err(
+        |error| {
+            native_import_refusal(
+                "Native review artifact has an invalid canonical shape",
+                json!({
+                    "field": "artifact",
+                    "error": error.to_string()
+                }),
+            )
+        },
+    )?;
+    if typed.version != CANON_ENTITY_NATIVE_REVIEW_VERSION {
+        return Err(native_import_refusal(
+            "Native review import requires a native review artifact",
+            json!({
+                "field": "version",
+                "expected": CANON_ENTITY_NATIVE_REVIEW_VERSION,
+                "actual": typed.version
+            }),
+        ));
+    }
+    let canonical = serde_json::to_value(&typed).map_err(|error| {
+        native_import_refusal(
+            "Native review artifact has an invalid canonical shape",
+            json!({
+                "field": "artifact",
+                "error": error.to_string()
+            }),
+        )
+    })?;
+    if &canonical != artifact {
+        return Err(native_import_refusal(
+            "Native review artifact contains noncanonical fields",
+            json!({
+                "field": "artifact"
+            }),
+        ));
+    }
+    if !typed.artifact_content_hash.starts_with("blake3:")
+        || typed.artifact_content_hash.len() <= "blake3:".len()
+    {
+        return Err(native_import_refusal(
+            "Native review artifact hash must use blake3",
+            json!({
+                "field": "artifact_content_hash",
+                "actual": typed.artifact_content_hash
+            }),
+        ));
+    }
+    if typed.metadata.artifact_content_hash != typed.artifact_content_hash {
+        return Err(native_import_refusal(
+            "Native review artifact metadata hash does not match top-level hash",
+            json!({
+                "field": "metadata.artifact_content_hash",
+                "expected": typed.artifact_content_hash,
+                "actual": typed.metadata.artifact_content_hash
+            }),
+        ));
+    }
+    let expected_hash = native_review_artifact_hash(&typed)?;
+    if typed.artifact_content_hash != expected_hash {
+        return Err(native_import_refusal(
+            "Native review artifact content hash does not match its canonical content",
+            json!({
+                "field": "artifact_content_hash",
+                "expected": expected_hash,
+                "actual": typed.artifact_content_hash
+            }),
+        ));
+    }
+    Ok(typed)
+}
+
+fn native_mode_from_export(mode: ExportNativeReviewMode) -> NativeReviewDecisionMode {
+    match mode {
+        ExportNativeReviewMode::Cluster => NativeReviewDecisionMode::Cluster,
+        ExportNativeReviewMode::Link => NativeReviewDecisionMode::Link,
+    }
+}
+
+fn native_action_from_export(
+    action: ExportNativeReviewDecisionAction,
+) -> NativeReviewDecisionAction {
+    match action {
+        ExportNativeReviewDecisionAction::Alias => NativeReviewDecisionAction::Alias,
+        ExportNativeReviewDecisionAction::CannotLink => NativeReviewDecisionAction::CannotLink,
+        ExportNativeReviewDecisionAction::Relation => NativeReviewDecisionAction::Relation,
+        ExportNativeReviewDecisionAction::Assignment => NativeReviewDecisionAction::Assignment,
+        ExportNativeReviewDecisionAction::Defer => NativeReviewDecisionAction::Defer,
+    }
+}
+
+fn native_decision_context_from_export(
+    context: &ExportNativeReviewModeContext,
+    mode: NativeReviewDecisionMode,
+    review_id: &str,
+) -> Result<NativeReviewDecisionContext, Refusal> {
+    let converted = match context {
+        ExportNativeReviewModeContext::Cluster {
+            cluster_id,
+            surface_ids,
+        } => NativeReviewDecisionContext::Cluster {
+            cluster_id: cluster_id.clone(),
+            surface_ids: surface_ids.clone(),
+        },
+        ExportNativeReviewModeContext::Link {
+            left_surface_id,
+            right_surface_id,
+            relation_hints,
+        } => NativeReviewDecisionContext::Link {
+            left_surface_id: left_surface_id.clone(),
+            right_surface_id: right_surface_id.clone(),
+            relation_hints: relation_hints
+                .iter()
+                .map(|hint| NativeReviewDecisionRelationHint {
+                    link_id: hint.link_id.clone(),
+                    left_surface_id: hint.left_surface_id.clone(),
+                    right_surface_id: hint.right_surface_id.clone(),
+                    relation: hint.relation.clone(),
+                    reason_code: hint.reason_code.clone(),
+                })
+                .collect(),
+            relation: None,
+        },
+    };
+    let context_mode = match &converted {
+        NativeReviewDecisionContext::Cluster { .. } => NativeReviewDecisionMode::Cluster,
+        NativeReviewDecisionContext::Link { .. } => NativeReviewDecisionMode::Link,
+    };
+    if context_mode != mode {
+        return Err(native_import_refusal(
+            "Native review artifact mode_context does not match item mode",
+            json!({
+                "field": "mode_context",
+                "review_id": review_id,
+                "expected": native_mode_str(mode),
+                "actual": native_mode_str(context_mode)
+            }),
+        ));
+    }
+    Ok(converted)
+}
+
+fn native_context_value(context: &NativeReviewDecisionContext) -> Value {
+    serde_json::to_value(context).expect("native review decision context serializes")
 }
 
 pub fn import_native_review_decisions(
@@ -1024,6 +1155,7 @@ fn validate_native_review_decision(
             }),
         ));
     }
+    validate_native_mode_context(decision)?;
     let surface_ids = native_decision_surface_ids(decision)?;
     if surface_ids != expected.surface_ids {
         return Err(native_import_refusal(
@@ -1036,7 +1168,18 @@ fn validate_native_review_decision(
             }),
         ));
     }
-    validate_native_mode_context(decision)
+    if decision.mode_context != expected.mode_context {
+        return Err(native_import_refusal(
+            "Native review decision mode_context does not match exported context",
+            json!({
+                "field": "mode_context",
+                "review_id": decision.review_id,
+                "expected": native_context_value(&expected.mode_context),
+                "actual": native_context_value(&decision.mode_context)
+            }),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_native_mode_context(decision: &NativeReviewDecision) -> Result<(), Refusal> {
@@ -1077,15 +1220,37 @@ fn validate_native_mode_context(decision: &NativeReviewDecision) -> Result<(), R
                 ..
             },
         ) => {
-            if left_surface_id.trim().is_empty()
-                || right_surface_id.trim().is_empty()
-                || left_surface_id == right_surface_id
+            if left_surface_id.trim().is_empty() {
+                return Err(native_import_refusal(
+                    "Native link review decision requires a distinct surface pair",
+                    json!({
+                        "field": "mode_context",
+                        "review_id": decision.review_id
+                    }),
+                ));
+            }
+            if let Some(right_surface_id) = right_surface_id
+                && (right_surface_id.trim().is_empty() || left_surface_id == right_surface_id)
             {
                 return Err(native_import_refusal(
                     "Native link review decision requires a distinct surface pair",
                     json!({
                         "field": "mode_context",
                         "review_id": decision.review_id
+                    }),
+                ));
+            }
+            if matches!(
+                decision.action,
+                NativeReviewDecisionAction::Relation | NativeReviewDecisionAction::CannotLink
+            ) && right_surface_id.is_none()
+            {
+                return Err(native_import_refusal(
+                    "Native link review decision action requires a candidate surface",
+                    json!({
+                        "field": "mode_context",
+                        "review_id": decision.review_id,
+                        "action": decision.action.as_str()
                     }),
                 ));
             }
@@ -1212,12 +1377,26 @@ fn native_relation_patch(
         NativeReviewDecisionContext::Link {
             left_surface_id,
             right_surface_id,
+            relation_hints,
             relation,
-        } => (
-            left_surface_id.clone(),
-            right_surface_id.clone(),
-            relation.clone(),
-        ),
+        } => {
+            let Some(right_surface_id) = right_surface_id.clone() else {
+                return Err(native_import_refusal(
+                    "Native relation decision requires candidate-backed link context",
+                    json!({
+                        "field": "mode_context",
+                        "review_id": decision.review_id
+                    }),
+                ));
+            };
+            (
+                left_surface_id.clone(),
+                right_surface_id,
+                relation
+                    .clone()
+                    .or_else(|| relation_hints.first().map(|hint| hint.relation.clone())),
+            )
+        }
         NativeReviewDecisionContext::Cluster { .. } => {
             return Err(native_import_refusal(
                 "Native relation decision requires link context",
@@ -1294,14 +1473,7 @@ fn native_defer_patch(
 }
 
 fn native_decision_surface_ids(decision: &NativeReviewDecision) -> Result<Vec<String>, Refusal> {
-    let mut ids = match &decision.mode_context {
-        NativeReviewDecisionContext::Cluster { surface_ids, .. } => surface_ids.clone(),
-        NativeReviewDecisionContext::Link {
-            left_surface_id,
-            right_surface_id,
-            ..
-        } => vec![left_surface_id.clone(), right_surface_id.clone()],
-    };
+    let mut ids = native_mode_context_surface_ids(&decision.mode_context, &decision.review_id)?;
     ids.extend(decision.surface_ids.clone());
     ids.sort();
     ids.dedup();
@@ -1311,6 +1483,38 @@ fn native_decision_surface_ids(decision: &NativeReviewDecision) -> Result<Vec<St
             json!({
                 "field": "surface_ids",
                 "review_id": decision.review_id
+            }),
+        ));
+    }
+    Ok(ids)
+}
+
+fn native_mode_context_surface_ids(
+    context: &NativeReviewDecisionContext,
+    review_id: &str,
+) -> Result<Vec<String>, Refusal> {
+    let mut ids = match context {
+        NativeReviewDecisionContext::Cluster { surface_ids, .. } => surface_ids.clone(),
+        NativeReviewDecisionContext::Link {
+            left_surface_id,
+            right_surface_id,
+            ..
+        } => {
+            let mut ids = vec![left_surface_id.clone()];
+            if let Some(right_surface_id) = right_surface_id {
+                ids.push(right_surface_id.clone());
+            }
+            ids
+        }
+    };
+    ids.sort();
+    ids.dedup();
+    if ids.iter().any(|id| id.trim().is_empty()) || ids.is_empty() {
+        return Err(native_import_refusal(
+            "Native review decision requires non-empty surface references",
+            json!({
+                "field": "surface_ids",
+                "review_id": review_id
             }),
         ));
     }
@@ -1336,44 +1540,6 @@ fn native_surface_pairs(surface_ids: &[String]) -> Result<Vec<(String, String)>,
         }
     }
     Ok(pairs)
-}
-
-fn native_item_surface_ids(item: &Value) -> Result<Vec<String>, Refusal> {
-    let mode_context = item
-        .get("mode_context")
-        .ok_or_else(|| native_missing_field("review_items.mode_context"))?;
-    let mut ids = if let Some(surface_ids) =
-        mode_context.get("surface_ids").and_then(Value::as_array)
-    {
-        surface_ids
-            .iter()
-            .map(|value| {
-                value
-                    .as_str()
-                    .filter(|text| !text.trim().is_empty())
-                    .map(str::to_string)
-                    .ok_or_else(|| native_missing_field("review_items.mode_context.surface_ids"))
-            })
-            .collect::<Result<Vec<_>, _>>()?
-    } else {
-        vec![
-            native_required_string(
-                mode_context,
-                &["left_surface_id"],
-                "review_items.mode_context.left_surface_id",
-            )?
-            .to_string(),
-            native_required_string(
-                mode_context,
-                &["right_surface_id"],
-                "review_items.mode_context.right_surface_id",
-            )?
-            .to_string(),
-        ]
-    };
-    ids.sort();
-    ids.dedup();
-    Ok(ids)
 }
 
 fn native_patch_id(prefix: &str, decision: &NativeReviewDecision) -> String {
@@ -1436,126 +1602,11 @@ fn native_compare_context_field(
     }
 }
 
-fn native_mode_from_value(
-    value: Option<&Value>,
-    review_id: &str,
-) -> Result<NativeReviewDecisionMode, Refusal> {
-    match value.and_then(Value::as_str) {
-        Some("cluster") => Ok(NativeReviewDecisionMode::Cluster),
-        Some("link") => Ok(NativeReviewDecisionMode::Link),
-        Some(actual) => Err(native_import_refusal(
-            "Native review item has an unknown mode",
-            json!({
-                "field": "mode",
-                "review_id": review_id,
-                "actual": actual
-            }),
-        )),
-        None => Err(native_missing_field("review_items.mode")),
-    }
-}
-
-fn native_action_from_value(
-    value: Option<&Value>,
-    review_id: &str,
-) -> Result<NativeReviewDecisionAction, Refusal> {
-    match value.and_then(Value::as_str) {
-        Some("alias") => Ok(NativeReviewDecisionAction::Alias),
-        Some("cannot_link") => Ok(NativeReviewDecisionAction::CannotLink),
-        Some("relation") => Ok(NativeReviewDecisionAction::Relation),
-        Some("assignment") => Ok(NativeReviewDecisionAction::Assignment),
-        Some("defer") => Ok(NativeReviewDecisionAction::Defer),
-        Some(actual) => Err(native_import_refusal(
-            "Native review item has an unknown decision action",
-            json!({
-                "field": "action",
-                "review_id": review_id,
-                "actual": actual
-            }),
-        )),
-        None => Err(native_missing_field("review_items.allowed_actions")),
-    }
-}
-
 fn native_mode_str(mode: NativeReviewDecisionMode) -> &'static str {
     match mode {
         NativeReviewDecisionMode::Cluster => "cluster",
         NativeReviewDecisionMode::Link => "link",
     }
-}
-
-fn native_required_object<'a>(
-    value: &'a Value,
-    path: &[&str],
-    rendered_path: &str,
-) -> Result<&'a serde_json::Map<String, Value>, Refusal> {
-    let mut current = value;
-    for segment in path {
-        current = current
-            .get(*segment)
-            .ok_or_else(|| native_missing_field(rendered_path))?;
-    }
-    current
-        .as_object()
-        .ok_or_else(|| native_missing_field(rendered_path))
-}
-
-fn native_required_string<'a>(
-    value: &'a Value,
-    path: &[&str],
-    rendered_path: &str,
-) -> Result<&'a str, Refusal> {
-    let mut current = value;
-    for segment in path {
-        current = current
-            .get(*segment)
-            .ok_or_else(|| native_missing_field(rendered_path))?;
-    }
-    current
-        .as_str()
-        .filter(|text| !text.trim().is_empty())
-        .ok_or_else(|| native_missing_field(rendered_path))
-}
-
-fn native_object_string<'a>(
-    object: &'a serde_json::Map<String, Value>,
-    field: &str,
-    rendered_path: &str,
-) -> Result<&'a str, Refusal> {
-    object
-        .get(field)
-        .and_then(Value::as_str)
-        .filter(|text| !text.trim().is_empty())
-        .ok_or_else(|| native_missing_field(rendered_path))
-}
-
-fn require_native_artifact_hash(artifact: &Value) -> Result<(), Refusal> {
-    let version = native_required_string(artifact, &["version"], "version")?;
-    if version != "canon_entity_native_review.v0" {
-        return Err(native_import_refusal(
-            "Native review import requires a native review artifact",
-            json!({
-                "field": "version",
-                "expected": "canon_entity_native_review.v0",
-                "actual": version
-            }),
-        ));
-    }
-    let hash = native_required_string(
-        artifact,
-        &["artifact_content_hash"],
-        "artifact_content_hash",
-    )?;
-    if !hash.starts_with("blake3:") {
-        return Err(native_import_refusal(
-            "Native review artifact hash must use blake3",
-            json!({
-                "field": "artifact_content_hash",
-                "actual": hash
-            }),
-        ));
-    }
-    Ok(())
 }
 
 fn native_json_shape_refusal(error: serde_json::Error) -> Refusal {
@@ -1567,15 +1618,6 @@ fn native_json_shape_refusal(error: serde_json::Error) -> Refusal {
             "field": "decisions",
             "error": error.to_string(),
             "writes_performed": false
-        }),
-    )
-}
-
-fn native_missing_field(path: &str) -> Refusal {
-    native_import_refusal(
-        "Native review artifact is missing required import context",
-        json!({
-            "field": path
         }),
     )
 }

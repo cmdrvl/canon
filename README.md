@@ -388,8 +388,8 @@ canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> -
 canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
 canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]
 canon entity prepare|index build|block|evidence|solve|audit|promote|apply|explain|review [OPTIONS]
-canon entity review export <RESULT.json> [--emit json|csv] [--include resolved|escrow|contradictions|all]
-canon entity review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> [--audit <AUDIT.json>] [--emit json|summary]
+canon entity review export <RESULT.json> [--artifact queue|native-review] [--emit json|csv|html] [--include resolved|escrow|contradictions|all]
+canon entity review import <REVIEW.json|csv> --registry <DIR> --next-version <VER> [--audit <AUDIT.json>] [--source-review <NATIVE_REVIEW.json>] [--emit json|summary]
 ```
 
 ### Arguments
@@ -455,8 +455,8 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `entity audit <RESULT> --suite <DIR> [--emit json\|summary]` | Validate a solve/run artifact against a frozen evaluation suite. |
 | `entity promote <RESULT> --audit <JSON> --registry <DIR> --next-version <VER> [--emit json\|summary]` | Write audited results into registry aliases and escrow sidecars. |
 | `entity apply <RESULT> --rows <ROWS> --registry <DIR> [--work-dir <DIR>] [--emit json\|summary]` | Replay accepted assignments from a solve or run artifact onto input rows without changing the registry. |
-| `entity review export <RESULT> [--emit json\|csv] [--include resolved\|escrow\|contradictions\|all]` | Produce a deterministic human-adjudication queue with stable review IDs and evidence context. |
-| `entity review import <REVIEW> --registry <DIR> --next-version <VER> [--audit <JSON>] [--emit json\|summary]` | Import reviewed decisions into alias, anchor, and escrow patches with proof hashes. |
+| `entity review export <RESULT> [--artifact queue\|native-review] [--emit json\|csv\|html] [--include resolved\|escrow\|contradictions\|all]` | By default, produce the unchanged review queue contract. With `--artifact native-review`, emit `canon_entity_native_review.v0` as JSON, CSV, or offline HTML. |
+| `entity review import <REVIEW> --registry <DIR> --next-version <VER> [--audit <JSON>] [--source-review <NATIVE_REVIEW.json>] [--emit json\|summary]` | Import default queue decisions, or with `--source-review` import native decisions into `canon_entity_native_review_import.v0` while keeping registry/version compatibility arguments. |
 | `entity explain <RESULT> --row <ID>\|--canon-id <ID>\|--escrow-id <ID> [--emit json\|summary]` | Proof trace for one row, canonical entity, or escrow entity. |
 
 ### Exit Codes
@@ -959,13 +959,28 @@ Non-identity relation-policy controls are also excluded from candidate recall,
 forbid promotion/replay, and surface any automatic attachment as an
 `unsupported_guess` false merge.
 
-Artifact-native review receipts are available through the public Rust library
-surface (`build_native_review_artifact` plus `import_native_review_decisions`).
-For a derivation-proven collapse, a singleton cluster Alias decision is valid
-only with an explicit target canonical ID and exact exported-surface equality.
-The current `canon entity review export/import` commands continue to expose the
-queue/v1 and legacy CLI contracts; native artifact/decision CLI wiring is a
-separate review-workbench deliverable rather than an implied compatibility shim.
+`canon entity review export` defaults to the existing queue review contract:
+`--artifact queue --emit json|csv` keeps the v1/legacy review queue behavior and
+does not change the default review path. Explicit
+`--artifact native-review --emit json|csv|html` emits
+`canon_entity_native_review.v0` for native solve, run, or link artifacts. The
+native artifact carries a self-hash, binds run/policy/registry context, and
+validates exact mode-specific context. Candidate-free unmatched directional link
+items carry `right_surface_id: null` and allow only defer actions. The HTML
+projection is static and offline; the canonical decision data remain a
+deterministic JSON/CSV envelope that other frontends can produce.
+
+`canon entity review import` keeps the positional decisions file plus required
+`--registry` and `--next-version` compatibility arguments. Without
+`--source-review`, it imports the existing queue decisions. With
+`--source-review <canon_entity_native_review.v0>`, it treats the positional file
+as native JSON or CSV decisions, verifies the source review self-hash and exact
+mode-context binding, and emits a typed `canon_entity_native_review_import.v0`
+patch receipt only. The native path does not read or mutate the registry, and
+does not consume `--audit` or `--next-version` beyond Clap-required
+compatibility. For a derivation-proven collapse, a singleton cluster Alias
+decision is valid only with an explicit target canonical ID and exact
+exported-surface equality.
 
 ```bash
 # Full pipeline in one command:
@@ -991,6 +1006,7 @@ $ canon entity evidence rows.csv --profile entity_profile --strategy strategy.ya
 $ canon entity solve rows.csv --profile entity_profile --strategy strategy.yaml --evidence evidence.jsonl --registry registries/entities/ --work-dir work/entity > result.json
 $ canon entity audit result.json --suite eval/holdout/ > audit.json
 $ canon entity review export result.json --include all --emit csv > review.csv
+$ canon entity review export result.json --artifact native-review --include all --emit html > native-review.html
 $ canon entity review import review.csv --audit audit.json --registry registries/entities/ --next-version 2.1.0
 $ canon entity promote result.json --audit audit.json --registry registries/entities/ --next-version 2.1.0
 $ canon entity explain result.json --canon-id IC-00042

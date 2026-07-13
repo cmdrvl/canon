@@ -449,12 +449,20 @@ fn review_priority_reasons(item: &Value) -> Vec<String> {
 }
 
 fn review_json_for_link(link_path: &Path, include: &str) -> Value {
+    review_json_for_artifact(link_path, include)
+}
+
+fn review_json_for_artifact(artifact_path: &Path, include: &str) -> Value {
+    serde_json::from_slice(&review_json_bytes_for_artifact(artifact_path, include)).unwrap()
+}
+
+fn review_json_bytes_for_artifact(artifact_path: &Path, include: &str) -> Vec<u8> {
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .args([
             "entity",
             "review",
             "export",
-            link_path.to_str().unwrap(),
+            artifact_path.to_str().unwrap(),
             "--include",
             include,
             "--emit",
@@ -462,7 +470,7 @@ fn review_json_for_link(link_path: &Path, include: &str) -> Value {
         ])
         .assert()
         .success();
-    serde_json::from_slice(&output.get_output().stdout).unwrap()
+    output.get_output().stdout.clone()
 }
 
 fn review_csv_for_link(link_path: &Path, include: &str) -> String {
@@ -476,6 +484,71 @@ fn review_csv_for_link(link_path: &Path, include: &str) -> String {
             include,
             "--emit",
             "csv",
+        ])
+        .assert()
+        .success();
+    String::from_utf8(output.get_output().stdout.clone()).unwrap()
+}
+
+fn native_review_json_for_artifact(artifact_path: &Path, include: &str) -> Value {
+    serde_json::from_slice(&native_review_json_bytes_for_artifact(
+        artifact_path,
+        include,
+    ))
+    .unwrap()
+}
+
+fn native_review_json_bytes_for_artifact(artifact_path: &Path, include: &str) -> Vec<u8> {
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            artifact_path.to_str().unwrap(),
+            "--artifact",
+            "native-review",
+            "--include",
+            include,
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .success();
+    output.get_output().stdout.clone()
+}
+
+fn native_review_csv_for_artifact(artifact_path: &Path, include: &str) -> String {
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            artifact_path.to_str().unwrap(),
+            "--artifact",
+            "native-review",
+            "--include",
+            include,
+            "--emit",
+            "csv",
+        ])
+        .assert()
+        .success();
+    String::from_utf8(output.get_output().stdout.clone()).unwrap()
+}
+
+fn native_review_html_for_artifact(artifact_path: &Path, include: &str) -> String {
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            artifact_path.to_str().unwrap(),
+            "--artifact",
+            "native-review",
+            "--include",
+            include,
+            "--emit",
+            "html",
         ])
         .assert()
         .success();
@@ -526,7 +599,111 @@ fn assert_review_csv_id_parity(
     rows
 }
 
-fn run_neutral_mixed_link(root: &Path) -> (PathBuf, Value) {
+fn native_review_ids(review: &Value) -> BTreeSet<String> {
+    review["review_items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["review_id"].as_str().unwrap().to_string())
+        .collect()
+}
+
+fn assert_native_review_csv_id_parity(review_json: &Value, review_csv: &str) {
+    let rows = review_csv_rows(review_csv);
+    assert_eq!(
+        rows.len(),
+        review_json["review_items"].as_array().unwrap().len()
+    );
+    let csv_ids = rows
+        .iter()
+        .map(|row| row["review_id"].clone())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(csv_ids, native_review_ids(review_json));
+    for row in rows {
+        assert_eq!(
+            row["source_review_artifact_hash"],
+            review_json["artifact_content_hash"].as_str().unwrap()
+        );
+        assert_eq!(
+            row["run_content_hash"],
+            review_json["binding"]["run_content_hash"].as_str().unwrap()
+        );
+    }
+}
+
+fn assert_native_review_html_offline(html: &str, review_json: &Value) {
+    assert!(html.contains("<!doctype html>"));
+    assert!(html.contains("Canon Entity Review"));
+    assert!(html.contains("id=\"review-data\""));
+    assert!(html.contains("data-mode=\"link\""));
+    assert!(html.contains(review_json["artifact_content_hash"].as_str().unwrap()));
+    assert!(!html.contains("__CANON_NATIVE_REVIEW_JSON__"));
+    assert!(!html.contains("http://"));
+    assert!(!html.contains("https://"));
+    assert!(!html.contains("fetch("));
+    assert!(!html.contains("XMLHttpRequest"));
+}
+
+fn native_defer_decision(review: &Value, item: &Value) -> Value {
+    let mode = item["mode"].as_str().unwrap();
+    assert!(matches!(mode, "cluster" | "link"));
+    serde_json::json!({
+        "review_id": item["review_id"],
+        "mode": mode,
+        "action": "defer",
+        "operator_id": "cli-smoke",
+        "reason_code": "bd_14m6_acceptance",
+        "source_review_artifact_hash": review["artifact_content_hash"],
+        "decision_binding_hash": item["decision_binding_hash"],
+        "run_content_hash": review["binding"]["run_content_hash"],
+        "policy_content_hash": review["binding"]["policy_content_hash"],
+        "registry_snapshot_hash": review["binding"]["registry_snapshot_hash"],
+        "mode_context": item["mode_context"].clone()
+    })
+}
+
+fn write_native_review_decisions(path: &Path, decisions: &[Value]) {
+    std::fs::write(
+        path,
+        serde_json::to_vec_pretty(&serde_json::json!({ "decisions": decisions })).unwrap(),
+    )
+    .unwrap();
+}
+
+fn assert_native_review_import_refuses_without_registry_mutation(
+    decisions_path: &Path,
+    source_review_path: &Path,
+    registry: &Path,
+    expected_field: &str,
+) {
+    let registry_before = registry_snapshot(registry);
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "import",
+            decisions_path.to_str().unwrap(),
+            "--registry",
+            registry.to_str().unwrap(),
+            "--next-version",
+            "0.1.1",
+            "--source-review",
+            source_review_path.to_str().unwrap(),
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .code(2);
+    let refusal: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(refusal["refusal"]["code"], "E_ENTITY_REVIEW_IMPORT");
+    assert_eq!(refusal["refusal"]["detail"]["writes_performed"], false);
+    assert_eq!(refusal["refusal"]["detail"]["field"], expected_field);
+    assert_eq!(registry_snapshot(registry), registry_before);
+}
+
+fn run_neutral_mixed_link_artifacts(
+    root: &Path,
+) -> (EntityLinkSmokeFixture, PathBuf, PathBuf, PathBuf, Value) {
     let fixture = write_entity_link_neutral_mixed_fixture(root);
     let work_dir = root.join("neutral-link-work");
     let mut args = entity_link_smoke_args_with_profile(&fixture, &work_dir, "regab_firm_identity");
@@ -536,8 +713,15 @@ fn run_neutral_mixed_link(root: &Path) -> (PathBuf, Value) {
         .assert()
         .code(1);
 
+    let run_path = work_dir.join("run.json");
+    let solve_path = work_dir.join("solve/solve.json");
     let link_path = work_dir.join("link/link.json");
     let link_artifact: Value = serde_json::from_slice(&std::fs::read(&link_path).unwrap()).unwrap();
+    (fixture, run_path, solve_path, link_path, link_artifact)
+}
+
+fn run_neutral_mixed_link(root: &Path) -> (PathBuf, Value) {
+    let (_, _, _, link_path, link_artifact) = run_neutral_mixed_link_artifacts(root);
     (link_path, link_artifact)
 }
 
@@ -1728,6 +1912,237 @@ fn test_entity_link_neutral_mixed_review_queue_contract() {
     assert_eq!(second_link_artifact["summary"], link_artifact["summary"]);
     let second_all_json = review_json_for_link(&second_link_path, "all");
     assert_eq!(review_ids(&second_all_json), review_ids(&all_json));
+}
+
+#[test]
+fn test_entity_review_default_native_artifacts_stay_review_queue_contract() {
+    let temp_dir = tempdir().unwrap();
+    let (_, run_path, solve_path, link_path, link_artifact) =
+        run_neutral_mixed_link_artifacts(temp_dir.path());
+
+    for artifact_path in [&solve_path, &run_path, &link_path] {
+        let first = review_json_bytes_for_artifact(artifact_path, "all");
+        let second = review_json_bytes_for_artifact(artifact_path, "all");
+        assert_eq!(
+            second,
+            first,
+            "default review export bytes should stay deterministic for {}",
+            artifact_path.display()
+        );
+        let review: Value = serde_json::from_slice(&first).unwrap();
+        assert_eq!(review["version"], "canon_entity_review_queue.v0");
+        assert!(review["review_items"].is_array());
+    }
+
+    let link_review = review_json_for_artifact(&link_path, "all");
+    assert_eq!(
+        link_review["source_link_hash"],
+        link_artifact["artifact_content_hash"]
+    );
+    assert_eq!(
+        link_review["source_solve_hash"],
+        link_artifact["shared_solve_artifact"]["content_hash"]
+    );
+}
+
+#[test]
+fn test_entity_native_review_export_public_formats_cover_run_and_link() {
+    let temp_dir = tempdir().unwrap();
+    let (_, run_path, _, link_path, _) = run_neutral_mixed_link_artifacts(temp_dir.path());
+    let run_artifact: Value = serde_json::from_slice(&std::fs::read(&run_path).unwrap()).unwrap();
+
+    let run_review = native_review_json_for_artifact(&run_path, "all");
+    assert_eq!(run_review["version"], "canon_entity_native_review.v0");
+    assert_eq!(
+        run_review["binding"]["run_content_hash"],
+        run_artifact["artifact_content_hash"]
+    );
+    assert_native_review_csv_id_parity(
+        &run_review,
+        &native_review_csv_for_artifact(&run_path, "all"),
+    );
+    assert_native_review_html_offline(
+        &native_review_html_for_artifact(&run_path, "all"),
+        &run_review,
+    );
+
+    let link_review = native_review_json_for_artifact(&link_path, "escrow");
+    assert_eq!(link_review["version"], "canon_entity_native_review.v0");
+    assert_native_review_csv_id_parity(
+        &link_review,
+        &native_review_csv_for_artifact(&link_path, "escrow"),
+    );
+    assert_native_review_html_offline(
+        &native_review_html_for_artifact(&link_path, "escrow"),
+        &link_review,
+    );
+
+    let link_items = link_review["review_items"].as_array().unwrap();
+    assert_eq!(link_items.len(), 2);
+    let mut reasons = BTreeSet::new();
+    for item in link_items {
+        assert_eq!(item["mode"], "link");
+        assert_eq!(item["mode_context"]["type"], "link");
+        let allowed_actions = item["allowed_actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|action| action.as_str().unwrap().to_string())
+            .collect::<BTreeSet<_>>();
+        let item_reasons = item["impact"]["priority_reasons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|reason| reason.as_str().unwrap().to_string())
+            .collect::<BTreeSet<_>>();
+        reasons.extend(item_reasons.iter().cloned());
+
+        if item_reasons.contains("ambiguous") {
+            assert!(
+                item["mode_context"]["right_surface_id"]
+                    .as_str()
+                    .is_some_and(|right| !right.is_empty()),
+                "ambiguous directional abstention should retain a right/candidate surface"
+            );
+            assert!(
+                item["candidate_links"]
+                    .as_array()
+                    .is_some_and(|links| !links.is_empty()),
+                "ambiguous directional abstention should retain candidate links"
+            );
+            assert_eq!(
+                allowed_actions,
+                BTreeSet::from([
+                    "cannot_link".to_string(),
+                    "defer".to_string(),
+                    "relation".to_string()
+                ])
+            );
+        } else if item_reasons.contains("unmatched") {
+            assert!(
+                match item["mode_context"].get("right_surface_id") {
+                    Some(right) => right.is_null(),
+                    None => true,
+                },
+                "candidate-free unmatched should not invent a right surface"
+            );
+            assert_eq!(
+                item["candidate_links"].as_array().unwrap().len(),
+                0,
+                "candidate-free unmatched should not invent candidate links"
+            );
+            assert_eq!(allowed_actions, BTreeSet::from(["defer".to_string()]));
+        } else {
+            panic!("unexpected link review reasons: {item_reasons:?}");
+        }
+    }
+    assert_eq!(
+        reasons,
+        BTreeSet::from(["ambiguous".to_string(), "unmatched".to_string()])
+    );
+}
+
+#[test]
+fn test_entity_native_review_import_public_receipt_and_refusals() {
+    let temp_dir = tempdir().unwrap();
+    let (fixture, _, _, link_path, _) = run_neutral_mixed_link_artifacts(temp_dir.path());
+    let source_review_bytes = native_review_json_bytes_for_artifact(&link_path, "escrow");
+    let source_review: Value = serde_json::from_slice(&source_review_bytes).unwrap();
+    let source_review_path = temp_dir.path().join("native-link-review.json");
+    std::fs::write(&source_review_path, &source_review_bytes).unwrap();
+
+    let items = source_review["review_items"].as_array().unwrap();
+    assert!(items.len() >= 2);
+    let decisions = items
+        .iter()
+        .map(|item| native_defer_decision(&source_review, item))
+        .collect::<Vec<_>>();
+    let decisions_path = temp_dir.path().join("native-decisions.json");
+    write_native_review_decisions(&decisions_path, &decisions);
+
+    let registry_before = registry_snapshot(&fixture.registry);
+    let import_output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "import",
+            decisions_path.to_str().unwrap(),
+            "--registry",
+            fixture.registry.to_str().unwrap(),
+            "--next-version",
+            "0.1.1",
+            "--source-review",
+            source_review_path.to_str().unwrap(),
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .success();
+    let receipt: Value = serde_json::from_slice(&import_output.get_output().stdout).unwrap();
+    assert_eq!(receipt["version"], "canon_entity_native_review_import.v0");
+    assert_eq!(receipt["accepted_decisions"], decisions.len() as u64);
+    assert_eq!(
+        receipt["source_review_artifact_hash"],
+        source_review["artifact_content_hash"]
+    );
+    assert_eq!(
+        receipt["source_review_queue_hash"],
+        source_review["binding"]["source_review_queue_hash"]
+    );
+    assert_eq!(
+        receipt["patches"]["defer_patches"]
+            .as_array()
+            .unwrap()
+            .len(),
+        decisions.len()
+    );
+    assert_eq!(registry_snapshot(&fixture.registry), registry_before);
+
+    let mut stale = decisions.clone();
+    stale[0]["source_review_artifact_hash"] = Value::String("blake3:stale".to_string());
+    let stale_path = temp_dir.path().join("native-decisions-stale.json");
+    write_native_review_decisions(&stale_path, &stale);
+    assert_native_review_import_refuses_without_registry_mutation(
+        &stale_path,
+        &source_review_path,
+        &fixture.registry,
+        "source_review_artifact_hash",
+    );
+
+    let mut tampered = decisions.clone();
+    tampered[0]["decision_binding_hash"] = Value::String("blake3:tampered".to_string());
+    let tampered_path = temp_dir.path().join("native-decisions-tampered.json");
+    write_native_review_decisions(&tampered_path, &tampered);
+    assert_native_review_import_refuses_without_registry_mutation(
+        &tampered_path,
+        &source_review_path,
+        &fixture.registry,
+        "decision_binding_hash",
+    );
+
+    let mut duplicate = decisions.clone();
+    duplicate.push(decisions[0].clone());
+    let duplicate_path = temp_dir.path().join("native-decisions-duplicate.json");
+    write_native_review_decisions(&duplicate_path, &duplicate);
+    assert_native_review_import_refuses_without_registry_mutation(
+        &duplicate_path,
+        &source_review_path,
+        &fixture.registry,
+        "review_id",
+    );
+
+    let mut context_swapped = decisions.clone();
+    context_swapped[0]["mode_context"] = decisions[1]["mode_context"].clone();
+    let context_swapped_path = temp_dir
+        .path()
+        .join("native-decisions-context-swapped.json");
+    write_native_review_decisions(&context_swapped_path, &context_swapped);
+    assert_native_review_import_refuses_without_registry_mutation(
+        &context_swapped_path,
+        &source_review_path,
+        &fixture.registry,
+        "surface_ids",
+    );
 }
 
 #[test]

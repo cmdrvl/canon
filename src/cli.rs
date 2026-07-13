@@ -83,13 +83,26 @@ pub enum EntityStreamEmitMode {
 }
 
 /// Emit mode for entity review export
-#[derive(Debug, Clone, ValueEnum, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
 pub enum EntityReviewExportEmitMode {
     /// Structured review JSON artifact (default)
     #[default]
     Json,
     /// Human-reviewable CSV artifact
     Csv,
+    /// Offline native review HTML artifact
+    Html,
+}
+
+/// Artifact contract for entity review export
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
+pub enum EntityReviewExportArtifact {
+    /// Existing queue/v1/legacy review contracts (default)
+    #[default]
+    Queue,
+    /// Native offline review artifact contract
+    #[value(name = "native-review")]
+    NativeReview,
 }
 
 /// Include selector for entity review export
@@ -1833,6 +1846,10 @@ pub struct EntityReviewExportCli {
     #[arg(long, value_enum, default_value = "json")]
     pub emit: EntityReviewExportEmitMode,
 
+    /// Review artifact contract to emit
+    #[arg(long, value_enum, default_value = "queue")]
+    pub artifact: EntityReviewExportArtifact,
+
     /// Which reviewable records to include
     #[arg(long, value_enum, default_value = "all")]
     pub include: EntityReviewInclude,
@@ -1854,6 +1871,10 @@ pub struct EntityReviewImportCli {
     /// Audit artifact required for alias/anchor promotion decisions
     #[arg(long)]
     pub audit: Option<PathBuf>,
+
+    /// Source canon_entity_native_review.v0 artifact for native decision import
+    #[arg(long = "source-review")]
+    pub source_review: Option<PathBuf>,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
@@ -3023,8 +3044,40 @@ mod tests {
             if let EntityReviewSubcommand::Export(export) = review_subcommand {
                 assert_eq!(export.result, PathBuf::from("result.json"));
                 assert!(matches!(export.emit, EntityReviewExportEmitMode::Csv));
+                assert!(matches!(export.artifact, EntityReviewExportArtifact::Queue));
                 assert!(matches!(export.include, EntityReviewInclude::Escrow));
             }
+        }
+    }
+
+    #[test]
+    fn test_cli_entity_review_native_export_parsing() {
+        let args = [
+            "canon",
+            "entity",
+            "review",
+            "export",
+            "result.json",
+            "--artifact",
+            "native-review",
+            "--emit",
+            "html",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = entity_command(cli) else {
+            return;
+        };
+        if let EntitySubcommand::Review(review) = command.command
+            && let EntityReviewSubcommand::Export(export) = review.command
+        {
+            assert_eq!(export.result, PathBuf::from("result.json"));
+            assert!(matches!(
+                export.artifact,
+                EntityReviewExportArtifact::NativeReview
+            ));
+            assert!(matches!(export.emit, EntityReviewExportEmitMode::Html));
+            assert!(matches!(export.include, EntityReviewInclude::All));
         }
     }
 
@@ -3042,6 +3095,8 @@ mod tests {
             "2026.05.06",
             "--audit",
             "audit.json",
+            "--source-review",
+            "native-review.json",
             "--emit",
             "summary",
         ];
@@ -3063,6 +3118,10 @@ mod tests {
                 assert_eq!(import.registry, PathBuf::from("registries/org"));
                 assert_eq!(import.next_version, "2026.05.06");
                 assert_eq!(import.audit, Some(PathBuf::from("audit.json")));
+                assert_eq!(
+                    import.source_review,
+                    Some(PathBuf::from("native-review.json"))
+                );
                 assert!(matches!(import.emit, EntityEmitMode::Summary));
             }
         }
