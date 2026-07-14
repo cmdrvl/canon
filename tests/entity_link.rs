@@ -2,7 +2,8 @@
 
 use canon::{
     entity::{
-        CANON_ENTITY_RUN_VERSION,
+        CANON_ENTITY_EVIDENCE_VERSION_V1, CANON_ENTITY_RUN_VERSION_V1,
+        CANON_ENTITY_SOLVE_VERSION_V1,
         run::{
             EntityRunArtifact,
             link::{
@@ -135,19 +136,21 @@ fn entity_link_reuses_native_run_stages_and_preserves_direction() {
     assert_eq!(result.artifact.target.role, EntityLinkRole::Target);
     assert_eq!(result.artifact.reference.row_count, 1);
     assert_eq!(result.artifact.target.row_count, 1);
-    assert_eq!(result.run.artifact.version, CANON_ENTITY_RUN_VERSION);
+    assert_eq!(result.run.artifact.version, CANON_ENTITY_RUN_VERSION_V1);
     assert_eq!(
         result.artifact.shared_run_artifact.content_hash,
         result.run.artifact.artifact_content_hash
     );
-    assert!(
-        result
-            .run
-            .artifact
-            .stage_artifacts
-            .iter()
-            .any(|stage| { stage.stage == "solve" && stage.path == "solve/solve.json" })
-    );
+    assert!(result.run.artifact.stage_artifacts.iter().any(|stage| {
+        stage.stage == "evidence"
+            && stage.version == CANON_ENTITY_EVIDENCE_VERSION_V1
+            && stage.path == "evidence/evidence.json"
+    }));
+    assert!(result.run.artifact.stage_artifacts.iter().any(|stage| {
+        stage.stage == "solve"
+            && stage.version == CANON_ENTITY_SOLVE_VERSION_V1
+            && stage.path == "solve/solve.json"
+    }));
 
     let combined = fs::read_to_string(materialized_rows_path(&fixture.work_dir))
         .expect("materialized rows exist");
@@ -269,6 +272,13 @@ fn entity_link_cli_emits_hash_bound_observation_surface_sidecar() {
     let artifact: EntityLinkArtifact =
         serde_json::from_value(artifact_value.clone()).expect("typed link artifact");
     let run_artifact = read_run_artifact(&fixture);
+    assert_eq!(
+        artifact.shared_run_artifact.content_hash,
+        run_artifact.artifact_content_hash
+    );
+    let derivation_run_artifact = resealed_typed_run_artifact(run_artifact);
+    let derivation_artifact =
+        link_artifact_for_typed_run_derivation(artifact.clone(), &derivation_run_artifact);
     let link_path = fixture.work_dir.join("link/link.json");
     let bindings_path = observation_surface_bindings_path(&fixture.work_dir);
     let binding_bytes = fs::read(&bindings_path).expect("observation/surface sidecar");
@@ -292,9 +302,9 @@ fn entity_link_cli_emits_hash_bound_observation_surface_sidecar() {
             .expect("typed sidecar helper validates and returns bindings");
     let derived_bindings =
         read_derivation_validated_entity_link_observation_surface_bindings_at_path(
-            &artifact,
+            &derivation_artifact,
             &link_path,
-            &run_artifact,
+            &derivation_run_artifact,
         )
         .expect("derivation helper validates and returns bindings");
     assert_eq!(derived_bindings, bindings);
@@ -344,6 +354,8 @@ fn entity_link_derivation_reader_rejects_resealed_forged_sidecar() {
     let mut artifact: EntityLinkArtifact =
         serde_json::from_value(artifact_value).expect("typed link artifact");
     let run_artifact = read_run_artifact(&fixture);
+    let derivation_run_artifact = resealed_typed_run_artifact(run_artifact);
+    artifact = link_artifact_for_typed_run_derivation(artifact, &derivation_run_artifact);
     let link_path = fixture.work_dir.join("link/link.json");
     let bindings_path = observation_surface_bindings_path(&fixture.work_dir);
     let mut bindings =
@@ -377,7 +389,7 @@ fn entity_link_derivation_reader_rejects_resealed_forged_sidecar() {
     let refusal = read_derivation_validated_entity_link_observation_surface_bindings_at_path(
         &artifact,
         &link_path,
-        &run_artifact,
+        &derivation_run_artifact,
     )
     .expect_err("derivation validation rejects forged sidecar");
     assert_eq!(refusal.detail["field"], "observation_surface_bindings");
@@ -451,7 +463,7 @@ fn resolve_native_entity_link_bridge_uses_entity_link_adapter() {
     assert_eq!(result.artifact.version, ENTITY_LINK_VERSION);
     assert_eq!(result.artifact.reference.row_count, 1);
     assert_eq!(result.artifact.target.row_count, 1);
-    assert_eq!(result.run.artifact.version, CANON_ENTITY_RUN_VERSION);
+    assert_eq!(result.run.artifact.version, CANON_ENTITY_RUN_VERSION_V1);
 }
 
 #[test]
@@ -500,8 +512,33 @@ fn run_entity_link_cli_json(fixture: &LinkFixture) -> Value {
 }
 
 fn read_run_artifact(fixture: &LinkFixture) -> EntityRunArtifact {
-    serde_json::from_slice(&fs::read(fixture.work_dir.join("run.json")).expect("run artifact"))
+    serde_json::from_slice(&fs::read(fixture.work_dir.join("run/run.json")).expect("run artifact"))
         .expect("typed run artifact")
+}
+
+fn resealed_typed_run_artifact(mut artifact: EntityRunArtifact) -> EntityRunArtifact {
+    artifact.artifact_content_hash.clear();
+    artifact.metadata.artifact_content_hash.clear();
+    let content_hash = witness::hash_bytes(
+        &serde_json::to_vec(&artifact).expect("hashable run artifact serializes"),
+    );
+    artifact.artifact_content_hash = content_hash.clone();
+    artifact.metadata.artifact_content_hash = content_hash;
+    artifact
+}
+
+fn link_artifact_for_typed_run_derivation(
+    mut artifact: EntityLinkArtifact,
+    run_artifact: &EntityRunArtifact,
+) -> EntityLinkArtifact {
+    artifact.shared_run_artifact.version = run_artifact.version.clone();
+    artifact.shared_run_artifact.content_hash = run_artifact.artifact_content_hash.clone();
+    artifact.metadata.upstream_artifacts = vec![
+        artifact.shared_run_artifact.clone(),
+        artifact.shared_solve_artifact.clone(),
+    ];
+    reseal_link_artifact(&mut artifact);
+    artifact
 }
 
 fn reseal_link_artifact(artifact: &mut EntityLinkArtifact) {

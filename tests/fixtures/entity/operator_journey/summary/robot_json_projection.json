@@ -14,18 +14,18 @@
     "cache_status": {
       "index": "hit"
     },
-    "next_command": "canon entity review export work/solve/solve.json --emit json",
+    "next_command": "canon entity review export <WORK_DIR>/solve/solve.json --include escrow --emit csv",
     "next_command_keys": ["apply", "audit", "promote", "resume", "review_export"],
     "telemetry_links": {
       "block_artifact": "block/block.json",
       "candidate_diagnostics": "block/diagnostics.json",
       "candidate_records": "block/candidates.jsonl",
       "decision_ledger": "solve/decision_ledger.jsonl",
-      "edge_artifact": "edge/edge.json",
-      "edge_records": "edge/edges.jsonl",
-      "index_artifact": "index.json",
+      "evidence_artifact": "evidence/evidence.json",
+      "evidence_records": "evidence/evidence.jsonl",
+      "index_artifact": "index/index.json",
       "prepare_artifact": "prepare/prepare.json",
-      "run_artifact": "run.json",
+      "run_artifact": "run/run.json",
       "solve_artifact": "solve/solve.json",
       "surfaces": "prepare/surfaces.jsonl"
     },
@@ -49,7 +49,7 @@
         "review_groups": 2,
         "row_count": 15
       },
-      "next_command": "canon entity apply apply/apply.json",
+      "next_command": "canon entity apply <WORK_DIR>/solve/solve.json --rows <ROWS> --registry <REGISTRY_DIR> --column <COLUMN> --out <OUT.csv> --work-dir <DIR> --allow-partial-output",
       "next_command_keys": ["apply"],
       "telemetry_links": {
         "artifact": "apply/apply.json",
@@ -58,7 +58,7 @@
     },
     "block": {
       "stage": "block",
-      "artifact_version": "canon_entity_block.v0",
+      "artifact_version": "canon_entity_block.v1",
       "counts": {
         "anti_merge_groups": 1,
         "exact_resolved_surfaces": 7,
@@ -67,17 +67,58 @@
         "review_groups": 2,
         "row_count": 15
       },
-      "next_command": "canon entity edge block/block.json",
-      "next_command_keys": ["edge"],
+      "next_command": "canon entity evidence <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --candidates <WORK_DIR>/block/block.json --registry <REGISTRY_DIR> --work-dir <DIR>",
+      "next_command_keys": ["evidence"],
       "telemetry_links": {
         "artifact": "block/block.json",
         "candidate_diagnostics": "block/diagnostics.json",
         "telemetry": "telemetry/block.json"
       }
     },
+    "evidence": {
+      "stage": "evidence",
+      "artifact_version": "canon_entity_evidence.v1",
+      "counts": {
+        "anti_merge_groups": 1,
+        "evidence_records": 23,
+        "exact_resolved_surfaces": 7,
+        "prepared_surfaces": 12,
+        "promotable_aliases": 4,
+        "review_groups": 2,
+        "row_count": 15
+      },
+      "next_command": "canon entity solve <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --evidence <WORK_DIR>/evidence/evidence.json --registry <REGISTRY_DIR> --work-dir <DIR>",
+      "next_command_keys": ["solve"],
+      "telemetry_links": {
+        "artifact": "evidence/evidence.json",
+        "evidence_records": "evidence/evidence.jsonl",
+        "telemetry": "telemetry/evidence.json"
+      }
+    },
+    "index": {
+      "stage": "index",
+      "artifact_version": "canon_entity_index.v1",
+      "counts": {
+        "anti_merge_groups": 1,
+        "exact_resolved_surfaces": 7,
+        "prepared_surfaces": 12,
+        "promotable_aliases": 4,
+        "review_groups": 2,
+        "row_count": 15,
+        "surface_count": 14
+      },
+      "next_command": "canon entity block <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> --work-dir <DIR>",
+      "next_command_keys": ["block"],
+      "telemetry_links": {
+        "artifact": "index/index.json",
+        "diagnostics": "index/diagnostics.jsonl",
+        "postings": "index/postings.bin",
+        "telemetry": "telemetry/index.json"
+      }
+    },
     "prepare": {
       "stage": "prepare",
-      "artifact_version": "canon_entity_prepare.v0",
+      "artifact_version": "canon_entity_prepare.v1",
       "counts": {
         "anti_merge_groups": 1,
         "exact_resolved_surfaces": 7,
@@ -86,8 +127,8 @@
         "review_groups": 2,
         "row_count": 15
       },
-      "next_command": "canon entity block prepare/prepare.json",
-      "next_command_keys": ["block"],
+      "next_command": "canon entity index build <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> --work-dir <DIR>",
+      "next_command_keys": ["index"],
       "telemetry_links": {
         "artifact": "prepare/prepare.json",
         "telemetry": "telemetry/prepare.json"
@@ -95,7 +136,7 @@
     },
     "solve": {
       "stage": "solve",
-      "artifact_version": "canon_entity_solve.v0",
+      "artifact_version": "canon_entity_solve.v1",
       "counts": {
         "anti_merge_groups": 1,
         "exact_resolved_surfaces": 7,
@@ -104,7 +145,7 @@
         "review_groups": 2,
         "row_count": 15
       },
-      "next_command": "canon entity review_export solve/solve.json",
+      "next_command": "canon entity review export <WORK_DIR>/solve/solve.json --include escrow --emit csv",
       "next_command_keys": ["review_export"],
       "telemetry_links": {
         "artifact": "solve/solve.json",

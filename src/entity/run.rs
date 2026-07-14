@@ -9,10 +9,11 @@
 use crate::{
     Refusal,
     entity::{
-        CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION, CANON_ENTITY_INDEX_VERSION,
-        CANON_ENTITY_PREPARE_VERSION, CANON_ENTITY_RUN_VERSION, CANON_ENTITY_SOLVE_VERSION,
-        EntityArtifactHeader, EntityArtifactMetadata, EntityArtifactReference,
-        EntityDeterministicSummary, EntityStrategyReference,
+        CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_EVIDENCE_VERSION_V1,
+        CANON_ENTITY_INDEX_VERSION_V1, CANON_ENTITY_PREPARE_VERSION_V1,
+        CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactHeader,
+        EntityArtifactMetadata, EntityArtifactReference, EntityArtifactReferenceV1,
+        EntityArtifactStageV1, EntityDeterministicSummary, EntityStrategyReference,
         block::{
             BlockCandidateBudgetConfig, BlockCandidateBudgetObservation,
             BlockCandidateGenerationRequest, BlockCandidateOperator, EntityBlockStageOutput,
@@ -25,7 +26,9 @@ use crate::{
         block_artifact::{
             BlockCandidateArtifact, BlockCandidateArtifactRequest, ExactBucketAssertion,
             ExactBucketProfile, ExactBucketUpstream, build_block_candidate_artifact_contract,
-            validate_block_candidate_artifact_contract, validate_block_candidate_payload_hashes,
+            validate_block_candidate_artifact_contract,
+            validate_block_candidate_artifact_envelope_contract,
+            validate_block_candidate_payload_hashes,
         },
         edge::{
             EdgeEvidenceHit, EdgeEvidenceRecord, EntityEvidenceStageOutput,
@@ -33,7 +36,9 @@ use crate::{
         },
         edge_artifact::{
             EdgeEvidenceArtifact, EdgeEvidenceArtifactRequest,
-            build_edge_evidence_artifact_contract, validate_edge_evidence_artifact_contract,
+            build_edge_evidence_artifact_from_validated_block_contract,
+            validate_edge_evidence_artifact_contract,
+            validate_edge_evidence_artifact_envelope_contract,
             validate_edge_evidence_payload_hashes,
         },
         error::EntityRefusalKind,
@@ -44,24 +49,27 @@ use crate::{
         graph::{SignedEvidenceGraphInput, SurfaceIncumbentId, build_signed_evidence_graph},
         index::ngram_index::{EntityNgramBuildConfig, EntityNgramIndex, EntityNgramSurface},
         index::{
-            EntityIndexArtifact, EntityIndexArtifactRequest, EntityIndexCacheMode,
-            EntityIndexCacheStatus, EntityNativeIndexScaleReport, build_index_artifact_contract,
-            index_cache_key_from_prepare_header, index_summary_counts, native_index_scale_report,
-            read_verified_cache_if_present,
+            EntityIndexArtifact, EntityIndexBuildRequest, EntityIndexCacheMode,
+            EntityIndexCacheStatus, EntityNativeIndexScaleReport, native_index_scale_report,
+            run_index_build_v1_with_cache_mode,
         },
         index_io::{
-            CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION, EntityIndexDiagnosticRecord,
-            EntityIndexPersistRequest, EntityIndexPostingsBundle, INDEX_CACHE_RECEIPT_FILE,
-            preflight_index_cache_entry_paths, read_index_cache_receipt,
-            write_index_disk_bundle_with_cache_receipt,
+            CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION, EntityIndexCacheReceipt,
+            INDEX_CACHE_RECEIPT_FILE, preflight_index_cache_entry_paths,
         },
         postings::{EntityPostingBuildConfig, EntityPostingIndex, EntityPostingSurface},
         prepare::{
             DEFAULT_PREPARE_ROWS_PER_CHUNK, LoadedPrepareProfile, PrepareRunArtifact,
             PrepareRunRequest, PreparedExactLookupStatus, PreparedSurfaceRecord,
-            load_prepare_profile_with_hash, run_prepare_with_target_rows_per_chunk,
+            load_prepare_profile_with_hash, run_prepare_v1_with_target_rows_per_chunk,
         },
         profile::{EntityOperatorSpec, EntityProfileDocument},
+        schema::{
+            entity_v1_artifact_reference, entity_v1_contract_for_stage,
+            entity_v1_lifecycle_metadata_from_source, finalize_entity_v1_self_hash,
+            sort_entity_v1_upstream_references, validate_artifact_v1_core_contract,
+            validate_entity_v1_self_hash,
+        },
         score::{ScoreLane, ScoreUnits},
         solve::{
             EntitySolveStageOutput, EntitySolveStageRequest, SolveArtifact, SolveArtifactRequest,
@@ -79,7 +87,7 @@ use crate::{
     witness,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -94,11 +102,13 @@ const BLOCK_ARTIFACT_PATH: &str = "block/block.json";
 const BLOCK_CANDIDATES_PATH: &str = "block/candidates.jsonl";
 const BLOCK_DIAGNOSTICS_PATH: &str = "block/diagnostics.json";
 const BLOCK_EXACT_BUCKETS_PATH: &str = "block/exact_buckets.jsonl";
-const EDGE_ARTIFACT_PATH: &str = "edge/edge.json";
-const EDGE_RECORDS_PATH: &str = "edge/edges.jsonl";
+const EDGE_ARTIFACT_PATH: &str = "evidence/evidence.json";
+const EDGE_RECORDS_PATH: &str = "evidence/evidence.jsonl";
 const SOLVE_ARTIFACT_PATH: &str = "solve/solve.json";
 const DECISION_LEDGER_PATH: &str = "solve/decision_ledger.jsonl";
-const RUN_ARTIFACT_PATH: &str = "run.json";
+const RUN_MANIFEST_PATH: &str = "run/manifest.json";
+const RUN_ARTIFACT_PATH: &str = "run/run.json";
+pub const RUN_CACHE_EXECUTION_RECEIPT_PATH: &str = "run/cache_execution_receipt.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EntityRunRequest<'a> {
@@ -133,6 +143,7 @@ impl Default for EntityRunBatchConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityRunResult {
     pub artifact: EntityRunArtifact,
+    pub artifact_value: Value,
     pub candidate_pairs: u64,
 }
 
@@ -168,7 +179,9 @@ pub struct EntityRunWorkDirLayout {
     pub candidate_records_path: String,
     pub candidate_diagnostics_path: String,
     pub exact_bucket_assertions_path: String,
+    #[serde(rename = "evidence_artifact_path")]
     pub edge_artifact_path: String,
+    #[serde(rename = "evidence_records_path")]
     pub edge_records_path: String,
     pub solve_artifact_path: String,
     pub decision_ledger_path: String,
@@ -264,7 +277,7 @@ pub fn run_entity_workbench_with_batching_and_cache_mode(
         .map_err(|refusal| with_run_context(refusal, "index", request))?;
     let base_strategy = load_base_strategy_reference(request)
         .map_err(|refusal| with_run_context(refusal, "strategy", request))?;
-    let prepare = run_prepare_with_target_rows_per_chunk(
+    let prepare_value = run_prepare_v1_with_target_rows_per_chunk(
         PrepareRunRequest {
             rows: request.rows,
             profile: request.profile,
@@ -274,6 +287,11 @@ pub fn run_entity_workbench_with_batching_and_cache_mode(
         batch_config.target_rows_per_batch,
     )
     .map_err(|refusal| with_run_context(refusal, "prepare", request))?;
+    let prepare = deserialize_artifact_value::<PrepareRunArtifact>(
+        &prepare_value,
+        "prepare",
+        "entity prepare v1 artifact",
+    )?;
     let surfaces = read_surfaces(request.work_dir, &prepare)
         .map_err(|refusal| with_run_context(refusal, "prepare", request))?;
     let prepare_header = prepare_header(&prepare);
@@ -288,29 +306,45 @@ pub fn run_entity_workbench_with_batching_and_cache_mode(
     .map_err(|refusal| with_run_context(refusal, "index", request))?;
     let block = build_and_write_block(request, &base_strategy, &index, &surfaces)
         .map_err(|refusal| with_run_context(refusal, "block", request))?;
-    let (edge, edge_records) = build_and_write_edge(request, &base_strategy, &block, &surfaces)
-        .map_err(|refusal| with_run_context(refusal, "edge", request))?;
-    let solve = build_and_write_solve(request, &base_strategy, &edge, &edge_records, &surfaces)
-        .map_err(|refusal| with_run_context(refusal, "solve", request))?;
+    let (edge, edge_value, edge_records) =
+        build_and_write_edge(request, &base_strategy, &block, &surfaces)
+            .map_err(|refusal| with_run_context(refusal, "evidence", request))?;
+    let (solve, solve_value) = build_and_write_solve(
+        request,
+        &base_strategy,
+        &edge,
+        &edge_value,
+        &edge_records,
+        &surfaces,
+    )
+    .map_err(|refusal| with_run_context(refusal, "solve", request))?;
 
-    let mut artifact = run_artifact(
+    let (artifact, artifact_value) = run_artifact(
         request,
         &base_strategy,
         &prepare,
+        &prepare_value,
         &surfaces,
         &index,
         &block.artifact,
+        &block.artifact_value,
         &edge,
+        &edge_value,
         &solve,
+        &solve_value,
     )?;
-    artifact.artifact_content_hash = hash_run_artifact_without_self(&artifact)?;
-    artifact.metadata.artifact_content_hash = artifact.artifact_content_hash.clone();
-    write_json_file(&request.work_dir.join(RUN_ARTIFACT_PATH), &artifact)
+    write_json_file(
+        &request.work_dir.join(RUN_MANIFEST_PATH),
+        &run_manifest(&artifact),
+    )
+    .map_err(|refusal| with_run_context(refusal, "run", request))?;
+    write_json_file(&request.work_dir.join(RUN_ARTIFACT_PATH), &artifact_value)
         .map_err(|refusal| with_run_context(refusal, "run", request))?;
 
     Ok(EntityRunResult {
         candidate_pairs: block.artifact.summary.counts["candidate_pairs"],
         artifact,
+        artifact_value,
     })
 }
 
@@ -327,7 +361,7 @@ pub fn run_entity_block_stage_with_batching(
     let run_request = block_stage_request_to_run_request(request);
     let base_strategy = load_base_strategy_reference(run_request)
         .map_err(|refusal| with_run_context(refusal, "strategy", run_request))?;
-    let prepare = run_prepare_with_target_rows_per_chunk(
+    let prepare_value = run_prepare_v1_with_target_rows_per_chunk(
         PrepareRunRequest {
             rows: run_request.rows,
             profile: run_request.profile,
@@ -337,6 +371,11 @@ pub fn run_entity_block_stage_with_batching(
         batch_config.target_rows_per_batch,
     )
     .map_err(|refusal| with_run_context(refusal, "prepare", run_request))?;
+    let prepare = deserialize_artifact_value::<PrepareRunArtifact>(
+        &prepare_value,
+        "prepare",
+        "entity prepare v1 artifact",
+    )?;
     let surfaces = read_surfaces(run_request.work_dir, &prepare)
         .map_err(|refusal| with_run_context(refusal, "prepare", run_request))?;
     let prepare_header = prepare_header(&prepare);
@@ -371,7 +410,7 @@ pub fn run_entity_evidence_stage_with_batching(
     let run_request = evidence_stage_request_to_run_request(request);
     let base_strategy = load_base_strategy_reference(run_request)
         .map_err(|refusal| with_run_context(refusal, "strategy", run_request))?;
-    let prepare = run_prepare_with_target_rows_per_chunk(
+    let prepare_value = run_prepare_v1_with_target_rows_per_chunk(
         PrepareRunRequest {
             rows: run_request.rows,
             profile: run_request.profile,
@@ -381,6 +420,11 @@ pub fn run_entity_evidence_stage_with_batching(
         batch_config.target_rows_per_batch,
     )
     .map_err(|refusal| with_run_context(refusal, "prepare", run_request))?;
+    let prepare = deserialize_artifact_value::<PrepareRunArtifact>(
+        &prepare_value,
+        "prepare",
+        "entity prepare v1 artifact",
+    )?;
     let surfaces = read_surfaces(run_request.work_dir, &prepare)
         .map_err(|refusal| with_run_context(refusal, "prepare", run_request))?;
     let prepare_header = prepare_header(&prepare);
@@ -400,8 +444,9 @@ pub fn run_entity_evidence_stage_with_batching(
         request.candidates,
     )
     .map_err(|refusal| with_run_context(refusal, "block", run_request))?;
-    let (artifact, records) = build_and_write_edge(run_request, &base_strategy, &block, &surfaces)
-        .map_err(|refusal| with_run_context(refusal, "edge", run_request))?;
+    let (artifact, _artifact_value, records) =
+        build_and_write_edge(run_request, &base_strategy, &block, &surfaces)
+            .map_err(|refusal| with_run_context(refusal, "evidence", run_request))?;
 
     Ok(EntityEvidenceStageOutput {
         artifact,
@@ -424,7 +469,7 @@ pub fn run_entity_solve_stage_with_batching(
     let run_request = solve_stage_request_to_run_request(request);
     let base_strategy = load_base_strategy_reference(run_request)
         .map_err(|refusal| with_run_context(refusal, "strategy", run_request))?;
-    let prepare = run_prepare_with_target_rows_per_chunk(
+    let prepare_value = run_prepare_v1_with_target_rows_per_chunk(
         PrepareRunRequest {
             rows: run_request.rows,
             profile: run_request.profile,
@@ -434,13 +479,25 @@ pub fn run_entity_solve_stage_with_batching(
         batch_config.target_rows_per_batch,
     )
     .map_err(|refusal| with_run_context(refusal, "prepare", run_request))?;
+    let prepare = deserialize_artifact_value::<PrepareRunArtifact>(
+        &prepare_value,
+        "prepare",
+        "entity prepare v1 artifact",
+    )?;
     let surfaces = read_surfaces(run_request.work_dir, &prepare)
         .map_err(|refusal| with_run_context(refusal, "prepare", run_request))?;
-    let (edge, edge_records) =
+    let (edge, edge_value, edge_records) =
         read_edge_stage_from_artifact(run_request, &base_strategy, &prepare, request.evidence)
-            .map_err(|refusal| with_run_context(refusal, "edge", run_request))?;
-    let solve = build_and_write_solve(run_request, &base_strategy, &edge, &edge_records, &surfaces)
-        .map_err(|refusal| with_run_context(refusal, "solve", run_request))?;
+            .map_err(|refusal| with_run_context(refusal, "evidence", run_request))?;
+    let (solve, _solve_value) = build_and_write_solve(
+        run_request,
+        &base_strategy,
+        &edge,
+        &edge_value,
+        &edge_records,
+        &surfaces,
+    )
+    .map_err(|refusal| with_run_context(refusal, "solve", run_request))?;
 
     Ok(EntitySolveStageOutput { artifact: solve })
 }
@@ -449,7 +506,7 @@ pub fn render_run_summary(artifact: &EntityRunArtifact) -> String {
     let counts = &artifact.summary.counts;
     let labels = &artifact.summary.labels;
     format!(
-        "{} profile={} registry={}@{} rows={} surfaces={} exact_resolved={} candidate_pairs={} edge_records={} entities={} review_groups={} run_artifact={}",
+        "{} profile={} registry={}@{} rows={} surfaces={} exact_resolved={} candidate_pairs={} evidence_records={} entities={} review_groups={} run_artifact={}",
         artifact.version,
         labels.get("profile_id").map_or("", String::as_str),
         labels.get("registry_id").map_or("", String::as_str),
@@ -458,7 +515,7 @@ pub fn render_run_summary(artifact: &EntityRunArtifact) -> String {
         count(counts, "prepared_surfaces"),
         count(counts, "exact_resolved_surfaces"),
         count(counts, "candidate_pairs"),
-        count(counts, "edge_records"),
+        count(counts, "evidence_records"),
         count(counts, "solved_entities"),
         count(counts, "review_group_count"),
         artifact.work_dir.run_artifact_path
@@ -1065,7 +1122,7 @@ fn native_scale_stage_metrics(proof: &NativeScaleProof) -> Vec<NativeScaleStageM
             peak_rss_bytes: None,
         },
         NativeScaleStageMetric {
-            stage: "edge".to_string(),
+            stage: "evidence".to_string(),
             input_records: proof.block.candidate_record_count,
             output_records: proof.edge_record_count,
             artifact_bytes: serialized_len_lossy(&proof.solve.diagnostics.summary),
@@ -1255,8 +1312,23 @@ fn read_block_stage_from_artifact(
     surfaces: &[PreparedSurfaceRecord],
     block_artifact_path: &Path,
 ) -> Result<EntityBlockRun, Refusal> {
-    let artifact: BlockCandidateArtifact = read_json_file(block_artifact_path, "block artifact")?;
-    validate_block_candidate_artifact_contract(&artifact)?;
+    let artifact_value: Value = read_json_file(block_artifact_path, "block artifact")?;
+    let contract = validate_artifact_v1_core_contract(&artifact_value)?;
+    if contract.stage != EntityArtifactStageV1::Block {
+        return Err(stage_context_refusal(
+            "block",
+            "version",
+            json!(CANON_ENTITY_BLOCK_VERSION_V1),
+            artifact_value
+                .get("version")
+                .cloned()
+                .unwrap_or(Value::Null),
+        ));
+    }
+    validate_entity_v1_self_hash(&artifact_value)?;
+    let artifact: BlockCandidateArtifact =
+        deserialize_artifact_value(&artifact_value, "block", "block artifact")?;
+    validate_block_candidate_artifact_envelope_contract(&artifact)?;
     validate_stage_metadata_context(
         "block",
         &artifact.metadata,
@@ -1298,6 +1370,7 @@ fn read_block_stage_from_artifact(
 
     Ok(EntityBlockRun {
         artifact,
+        artifact_value,
         candidates,
         exact_buckets,
     })
@@ -1308,35 +1381,50 @@ fn read_edge_stage_from_artifact(
     base_strategy: &BaseStrategyReference,
     prepare: &PrepareRunArtifact,
     edge_artifact_path: &Path,
-) -> Result<(EdgeEvidenceArtifact, Vec<EdgeEvidenceRecord>), Refusal> {
-    let artifact: EdgeEvidenceArtifact = read_json_file(edge_artifact_path, "evidence artifact")?;
-    validate_edge_evidence_artifact_contract(&artifact)?;
+) -> Result<(EdgeEvidenceArtifact, Value, Vec<EdgeEvidenceRecord>), Refusal> {
+    let artifact_value: Value = read_json_file(edge_artifact_path, "evidence artifact")?;
+    let contract = validate_artifact_v1_core_contract(&artifact_value)?;
+    if contract.stage != EntityArtifactStageV1::Evidence {
+        return Err(stage_context_refusal(
+            "evidence",
+            "version",
+            json!(CANON_ENTITY_EVIDENCE_VERSION_V1),
+            artifact_value
+                .get("version")
+                .cloned()
+                .unwrap_or(Value::Null),
+        ));
+    }
+    validate_entity_v1_self_hash(&artifact_value)?;
+    let artifact: EdgeEvidenceArtifact =
+        deserialize_artifact_value(&artifact_value, "evidence", "evidence artifact")?;
+    validate_edge_evidence_artifact_envelope_contract(&artifact)?;
     validate_stage_metadata_context(
-        "edge",
+        "evidence",
         &artifact.metadata,
         &prepare.metadata,
-        &stage_strategy(base_strategy, "edge"),
+        &stage_strategy(base_strategy, "evidence"),
     )?;
 
     let edge_records_path = resolve_work_dir_artifact_path(
         request.work_dir,
         &artifact.edge_records_path,
-        "edge_records_path",
-        "edge",
+        "evidence_records_path",
+        "evidence",
     )?;
     let exact_buckets_path = resolve_work_dir_artifact_path(
         request.work_dir,
         BLOCK_EXACT_BUCKETS_PATH,
         "exact_bucket_assertions_path",
-        "edge",
+        "evidence",
     )?;
     let edge_records: Vec<EdgeEvidenceRecord> =
-        read_jsonl_file(&edge_records_path, "edge evidence records")?;
+        read_jsonl_file(&edge_records_path, "evidence records")?;
     let exact_buckets: Vec<ExactBucketAssertion> =
         read_jsonl_file(&exact_buckets_path, "exact bucket assertions")?;
     validate_edge_evidence_payload_hashes(&artifact, &edge_records, &exact_buckets)?;
 
-    Ok((artifact, edge_records))
+    Ok((artifact, artifact_value, edge_records))
 }
 
 fn validate_stage_metadata_context(
@@ -1514,7 +1602,6 @@ fn stage_context_refusal(
     expected: serde_json::Value,
     actual: serde_json::Value,
 ) -> Refusal {
-    let command_stage = if stage == "edge" { "evidence" } else { stage };
     EntityRefusalKind::ArtifactContract.to_refusal(
         "Entity stage artifact does not match current stage inputs",
         json!({
@@ -1525,44 +1612,148 @@ fn stage_context_refusal(
             "writes_performed": false
         }),
         Some(format!(
-            "Rerun canon entity {command_stage} with matching upstream artifacts"
+            "Rerun canon entity {stage} with matching upstream artifacts"
         )),
     )
 }
 
+fn deserialize_artifact_value<T: DeserializeOwned>(
+    value: &Value,
+    stage: &'static str,
+    label: &'static str,
+) -> Result<T, Refusal> {
+    serde_json::from_value(value.clone()).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            format!("Failed to deserialize {label}"),
+            json!({
+                "stage": stage,
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some(next_stage_command(stage)),
+        )
+    })
+}
+
+fn artifact_reference_chain(source: &Value) -> Result<Vec<EntityArtifactReferenceV1>, Refusal> {
+    let metadata = source
+        .get("metadata")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Entity v1 source artifact is missing metadata",
+                json!({
+                    "stage": "artifact_chain",
+                    "field": "metadata",
+                    "writes_performed": false
+                }),
+                Some("Rerun the previous canon entity stage".to_string()),
+            )
+        })?;
+    let mut upstreams = metadata
+        .get("upstream_artifacts")
+        .map(|value| serde_json::from_value::<Vec<EntityArtifactReferenceV1>>(value.clone()))
+        .transpose()
+        .map_err(|error| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Entity v1 source upstream references failed to deserialize",
+                json!({
+                    "stage": "artifact_chain",
+                    "field": "metadata.upstream_artifacts",
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+                Some("Rerun the previous canon entity stage".to_string()),
+            )
+        })?
+        .unwrap_or_default();
+    upstreams.push(entity_v1_artifact_reference(source)?);
+    sort_entity_v1_upstream_references(upstreams)
+}
+
+fn publish_v1_stage_artifact<T>(
+    artifact: T,
+    stage: EntityArtifactStageV1,
+    source: &Value,
+    strategy: EntityStrategyReference,
+    upstreams: Vec<EntityArtifactReferenceV1>,
+) -> Result<(T, Value), Refusal>
+where
+    T: Serialize + DeserializeOwned,
+{
+    let contract = entity_v1_contract_for_stage(stage)?;
+    let mut value = serde_json::to_value(&artifact).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to serialize entity v1 stage artifact",
+            json!({
+                "stage": stage.as_str(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some(next_stage_command(stage.as_str())),
+        )
+    })?;
+    let mut metadata = entity_v1_lifecycle_metadata_from_source(source, stage, upstreams)?;
+    if let Some(metadata_object) = metadata.as_object_mut() {
+        metadata_object.insert(
+            "strategy".to_string(),
+            serde_json::to_value(strategy).expect("strategy serializes"),
+        );
+    }
+    if let Some(object) = value.as_object_mut() {
+        object.insert(
+            "version".to_string(),
+            Value::String(contract.artifact_version.to_string()),
+        );
+        object.insert(
+            "artifact_content_hash".to_string(),
+            Value::String(String::new()),
+        );
+        object.insert("metadata".to_string(), metadata.clone());
+        if object.contains_key("upstream_artifacts") {
+            object.insert(
+                "upstream_artifacts".to_string(),
+                metadata
+                    .get("upstream_artifacts")
+                    .cloned()
+                    .unwrap_or_else(|| Value::Array(Vec::new())),
+            );
+        }
+    }
+    finalize_entity_v1_self_hash(&mut value)?;
+    validate_artifact_v1_core_contract(&value)?;
+    validate_entity_v1_self_hash(&value)?;
+    let typed = deserialize_artifact_value(&value, stage.as_str(), "entity v1 stage artifact")?;
+    Ok((typed, value))
+}
+
+fn next_stage_command(stage: &str) -> String {
+    format!("Rerun canon entity {stage} with matching v1 artifacts")
+}
+
 fn build_and_write_index(
     request: EntityRunRequest<'_>,
-    base_strategy: &BaseStrategyReference,
-    prepare: &EntityArtifactHeader,
+    _base_strategy: &BaseStrategyReference,
+    _prepare: &EntityArtifactHeader,
     surfaces: &[PreparedSurfaceRecord],
     cache_mode: EntityIndexCacheMode,
 ) -> Result<EntityIndexRun, Refusal> {
-    let strategy = stage_strategy(base_strategy, "index");
-    let cache_key = index_cache_key_from_prepare_header(
-        crate::entity::cache::EntityCacheLayer::NgramPostings,
-        prepare,
-        &strategy,
+    let result = run_index_build_v1_with_cache_mode(
+        EntityIndexBuildRequest {
+            rows: request.rows,
+            profile: request.profile,
+            strategy: request.strategy,
+            registry: request.registry,
+            work_dir: request.work_dir,
+            max_artifact_bytes: None,
+        },
+        cache_mode,
     )?;
-    if cache_mode == EntityIndexCacheMode::Enabled
-        && let Some(bundle) = read_verified_cache_if_present(request.work_dir, &cache_key, None)?
-    {
-        let ngrams = bundle.postings.ngram_index.ok_or_else(|| {
-            EntityRefusalKind::ArtifactContract.to_refusal(
-                "Entity index cache bundle is missing ngram postings",
-                json!({ "stage": "index", "writes_performed": false }),
-                Some(next_run_command(request)),
-            )
-        })?;
-        return Ok(EntityIndexRun {
-            artifact: bundle.artifact,
-            postings: bundle.postings.posting_index,
-            ngrams,
-            cache_mode,
-            cache_status: EntityIndexCacheStatus::Hit,
-            cache_receipt_content_hash: bundle.receipt.content_hash,
-        });
-    }
-
+    let artifact = deserialize_artifact_value::<EntityIndexArtifact>(
+        &result.artifact,
+        "index",
+        "entity index v1 artifact",
+    )?;
     let posting_surfaces = posting_surfaces(surfaces);
     let ngram_surfaces = ngram_surfaces(surfaces);
     let postings = EntityPostingIndex::build(
@@ -1592,50 +1783,68 @@ fn build_and_write_index(
             Some(next_run_command(request)),
         )
     })?;
-    let posting_diagnostics = postings.diagnostics.clone();
-    let ngram_diagnostics = ngrams.diagnostics.clone();
-    let receipt_status = match cache_mode {
-        EntityIndexCacheMode::Enabled => EntityIndexCacheStatus::Rebuilt,
+    let cache_bundle_receipt_content_hash = witness::hash_file(&result.paths.receipt_path)
+        .map_err(|error| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Failed to hash entity index v1 immutable cache bundle receipt",
+                json!({
+                    "stage": "index",
+                    "path": result.paths.receipt_path.display().to_string(),
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+                Some(next_run_command(request)),
+            )
+        })?;
+    let cache_status = match cache_mode {
+        EntityIndexCacheMode::Enabled => result.cache_status,
         EntityIndexCacheMode::Disabled => EntityIndexCacheStatus::Bypassed,
     };
-    let artifact = build_index_artifact_contract(EntityIndexArtifactRequest {
-        prepare: prepare.clone(),
-        strategy: strategy.clone(),
-        cache_status: EntityIndexCacheStatus::Rebuilt,
-        postings_path: "index/postings.json".to_string(),
-        diagnostics_path: "index/diagnostics.jsonl".to_string(),
-        counts: index_summary_counts(
-            u64::from(posting_diagnostics.surface_count),
-            posting_diagnostics.token_count as u64,
-            ngram_diagnostics.ngram_count as u64,
-            (posting_diagnostics.large_exact_view_bucket_count
-                + posting_diagnostics.common_token_count
-                + ngram_diagnostics.common_ngram_count) as u64,
-        ),
-    })?;
-    let diagnostics = index_diagnostics(&artifact, &posting_diagnostics, &ngram_diagnostics);
-    write_index_disk_bundle_with_cache_receipt(
-        request.work_dir,
-        EntityIndexPersistRequest {
-            artifact: artifact.clone(),
-            cache_key,
-            postings: EntityIndexPostingsBundle::new(postings.clone(), Some(ngrams.clone())),
-            diagnostics,
-            max_artifact_bytes: None,
-        },
+    let cache_execution_receipt_content_hash = write_cache_execution_receipt(
+        request,
+        &result.paths.receipt_path,
         cache_mode,
-        receipt_status,
-        cache_mode == EntityIndexCacheMode::Enabled,
+        cache_status,
     )?;
-    let receipt = read_index_cache_receipt(request.work_dir, &artifact, None)?;
 
     Ok(EntityIndexRun {
         artifact,
+        artifact_value: result.artifact,
         postings,
         ngrams,
         cache_mode,
-        cache_status: receipt_status,
-        cache_receipt_content_hash: receipt.content_hash,
+        cache_status,
+        cache_execution_receipt_path: RUN_CACHE_EXECUTION_RECEIPT_PATH.to_string(),
+        cache_execution_receipt_content_hash,
+        cache_bundle_receipt_path: INDEX_CACHE_RECEIPT_FILE.to_string(),
+        cache_bundle_receipt_content_hash,
+    })
+}
+
+fn write_cache_execution_receipt(
+    request: EntityRunRequest<'_>,
+    bundle_receipt_path: &Path,
+    cache_mode: EntityIndexCacheMode,
+    cache_status: EntityIndexCacheStatus,
+) -> Result<String, Refusal> {
+    let mut receipt: EntityIndexCacheReceipt =
+        read_json_file(bundle_receipt_path, "entity index v1 cache bundle receipt")?;
+    receipt.mode = cache_mode;
+    receipt.status = cache_status;
+    receipt.reusable = cache_mode == EntityIndexCacheMode::Enabled;
+    let execution_path = request.work_dir.join(RUN_CACHE_EXECUTION_RECEIPT_PATH);
+    write_json_file(&execution_path, &receipt)?;
+    witness::hash_file(&execution_path).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to hash entity run cache execution receipt",
+            json!({
+                "stage": "index",
+                "path": execution_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some(next_run_command(request)),
+        )
     })
 }
 
@@ -1646,7 +1855,7 @@ fn build_and_write_block(
     surfaces: &[PreparedSurfaceRecord],
 ) -> Result<EntityBlockRun, Refusal> {
     let strategy = stage_strategy(base_strategy, "block");
-    let result = generate_block_candidates(BlockCandidateGenerationRequest {
+    let mut result = generate_block_candidates(BlockCandidateGenerationRequest {
         profile_id: index.artifact.metadata.profile.id.clone(),
         posting_index: &index.postings,
         ngram_index: Some(&index.ngrams),
@@ -1667,6 +1876,9 @@ fn build_and_write_block(
             ),
         ],
     })?;
+    for candidate in &mut result.candidates {
+        candidate.version = CANON_ENTITY_BLOCK_VERSION_V1.to_string();
+    }
     let exact_bucket_result = emit_exact_bucket_hyperedges(ExactBucketBlockRequest {
         profile: exact_bucket_profile(&index.artifact.metadata),
         upstream: ExactBucketUpstream {
@@ -1675,7 +1887,7 @@ fn build_and_write_block(
                 .metadata
                 .upstream_artifacts
                 .iter()
-                .find(|reference| reference.version == CANON_ENTITY_PREPARE_VERSION)
+                .find(|reference| reference.version == CANON_ENTITY_PREPARE_VERSION_V1)
                 .map(|reference| reference.content_hash.clone())
                 .unwrap_or_default(),
             index_hash: index.artifact.artifact_content_hash.clone(),
@@ -1720,6 +1932,13 @@ fn build_and_write_block(
         diagnostics: result.diagnostics.clone(),
     })?;
     validate_block_candidate_artifact_contract(&artifact)?;
+    let (artifact, artifact_value) = publish_v1_stage_artifact(
+        artifact,
+        EntityArtifactStageV1::Block,
+        &index.artifact_value,
+        stage_strategy(base_strategy, "block"),
+        artifact_reference_chain(&index.artifact_value)?,
+    )?;
     write_jsonl_file(
         &request.work_dir.join(BLOCK_CANDIDATES_PATH),
         &result.candidates,
@@ -1732,10 +1951,11 @@ fn build_and_write_block(
         &request.work_dir.join(BLOCK_EXACT_BUCKETS_PATH),
         &exact_bucket_result.assertions,
     )?;
-    write_json_file(&request.work_dir.join(BLOCK_ARTIFACT_PATH), &artifact)?;
+    write_json_file(&request.work_dir.join(BLOCK_ARTIFACT_PATH), &artifact_value)?;
 
     Ok(EntityBlockRun {
         artifact,
+        artifact_value,
         candidates: result.candidates,
         exact_buckets: exact_bucket_result.assertions,
     })
@@ -1746,8 +1966,8 @@ fn build_and_write_edge(
     base_strategy: &BaseStrategyReference,
     block: &EntityBlockRun,
     surfaces: &[PreparedSurfaceRecord],
-) -> Result<(EdgeEvidenceArtifact, Vec<EdgeEvidenceRecord>), Refusal> {
-    let strategy = stage_strategy(base_strategy, "edge");
+) -> Result<(EdgeEvidenceArtifact, Value, Vec<EdgeEvidenceRecord>), Refusal> {
+    let strategy = stage_strategy(base_strategy, "evidence");
     let loaded_profile = load_prepare_profile_with_hash(request.profile)?;
     validate_edge_profile_binding(&loaded_profile, &block.artifact.metadata.profile)?;
     let relation_namespace = block
@@ -1775,38 +1995,51 @@ fn build_and_write_edge(
         .iter()
         .map(|candidate| edge_record_for_candidate(candidate, &scoring_context))
         .collect::<Result<Vec<_>, _>>()?;
+    for record in &mut edge_records {
+        record.version = CANON_ENTITY_EVIDENCE_VERSION_V1.to_string();
+    }
     edge_records.sort_by(|left, right| {
         left.left_surface_id
             .cmp(&right.left_surface_id)
             .then_with(|| left.right_surface_id.cmp(&right.right_surface_id))
     });
-    let artifact = build_edge_evidence_artifact_contract(EdgeEvidenceArtifactRequest {
-        block: block.artifact.clone(),
-        strategy,
-        edge_records_path: EDGE_RECORDS_PATH.to_string(),
-        edge_records: edge_records.clone(),
-        candidate_records: block.candidates.clone(),
-        bucket_assertions: block.exact_buckets.clone(),
-    })?;
+    let artifact =
+        build_edge_evidence_artifact_from_validated_block_contract(EdgeEvidenceArtifactRequest {
+            block: block.artifact.clone(),
+            strategy,
+            edge_records_path: EDGE_RECORDS_PATH.to_string(),
+            edge_records: edge_records.clone(),
+            candidate_records: block.candidates.clone(),
+            bucket_assertions: block.exact_buckets.clone(),
+        })?;
     validate_edge_evidence_artifact_contract(&artifact)?;
+    let (artifact, artifact_value) = publish_v1_stage_artifact(
+        artifact,
+        EntityArtifactStageV1::Evidence,
+        &block.artifact_value,
+        stage_strategy(base_strategy, "evidence"),
+        artifact_reference_chain(&block.artifact_value)?,
+    )?;
     write_jsonl_file(&request.work_dir.join(EDGE_RECORDS_PATH), &edge_records)?;
-    write_json_file(&request.work_dir.join(EDGE_ARTIFACT_PATH), &artifact)?;
-    Ok((artifact, edge_records))
+    write_json_file(&request.work_dir.join(EDGE_ARTIFACT_PATH), &artifact_value)?;
+    Ok((artifact, artifact_value, edge_records))
 }
 
 fn build_and_write_solve(
     request: EntityRunRequest<'_>,
     base_strategy: &BaseStrategyReference,
     edge: &EdgeEvidenceArtifact,
+    edge_value: &Value,
     edge_records: &[EdgeEvidenceRecord],
     surfaces: &[PreparedSurfaceRecord],
-) -> Result<SolveArtifact, Refusal> {
+) -> Result<(SolveArtifact, Value), Refusal> {
     let exact_buckets: Vec<ExactBucketAssertion> = read_jsonl_file(
         &request.work_dir.join(BLOCK_EXACT_BUCKETS_PATH),
         "exact bucket assertions",
     )?;
+    let graph_edge_records = graph_edge_records(edge_records)?;
     let graph = build_signed_evidence_graph(SignedEvidenceGraphInput {
-        edge_records: edge_records.to_vec(),
+        edge_records: graph_edge_records,
         exact_bucket_assertions: exact_buckets,
         incumbent_ids: incumbent_ids(surfaces),
     })?;
@@ -1830,9 +2063,31 @@ fn build_and_write_solve(
         decision_ledger_path: DECISION_LEDGER_PATH.to_string(),
     })?;
     validate_solve_artifact_contract(&artifact)?;
+    let (artifact, artifact_value) = publish_v1_stage_artifact(
+        artifact,
+        EntityArtifactStageV1::Solve,
+        edge_value,
+        stage_strategy(base_strategy, "solve"),
+        artifact_reference_chain(edge_value)?,
+    )?;
     write_bytes(&request.work_dir.join(DECISION_LEDGER_PATH), b"")?;
-    write_json_file(&request.work_dir.join(SOLVE_ARTIFACT_PATH), &artifact)?;
-    Ok(artifact)
+    write_json_file(&request.work_dir.join(SOLVE_ARTIFACT_PATH), &artifact_value)?;
+    Ok((artifact, artifact_value))
+}
+
+fn graph_edge_records(
+    edge_records: &[EdgeEvidenceRecord],
+) -> Result<Vec<EdgeEvidenceRecord>, Refusal> {
+    edge_records
+        .iter()
+        .map(|record| {
+            build_edge_evidence_record(
+                record.left_surface_id.clone(),
+                record.right_surface_id.clone(),
+                record.hits.clone(),
+            )
+        })
+        .collect()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1840,12 +2095,16 @@ fn run_artifact(
     request: EntityRunRequest<'_>,
     base_strategy: &BaseStrategyReference,
     prepare: &PrepareRunArtifact,
+    prepare_value: &Value,
     surfaces: &[PreparedSurfaceRecord],
     index: &EntityIndexRun,
     block: &BlockCandidateArtifact,
+    block_value: &Value,
     edge: &EdgeEvidenceArtifact,
+    edge_value: &Value,
     solve: &SolveArtifact,
-) -> Result<EntityRunArtifact, Refusal> {
+    solve_value: &Value,
+) -> Result<(EntityRunArtifact, Value), Refusal> {
     let stage_artifacts = stage_artifacts(prepare, index, block, edge, solve);
     let mut metadata = solve.metadata.clone();
     metadata.strategy = EntityStrategyReference {
@@ -1863,8 +2122,8 @@ fn run_artifact(
     metadata.artifact_content_hash.clear();
     let orchestration = run_orchestration(request, &stage_artifacts, prepare, solve);
 
-    Ok(EntityRunArtifact {
-        version: CANON_ENTITY_RUN_VERSION.to_string(),
+    let artifact = EntityRunArtifact {
+        version: CANON_ENTITY_RUN_VERSION_V1.to_string(),
         artifact_content_hash: String::new(),
         metadata,
         summary: run_summary(request, prepare, surfaces, index, block, edge, solve),
@@ -1873,7 +2132,7 @@ fn run_artifact(
         work_dir: EntityRunWorkDirLayout {
             prepare_artifact_path: PREPARE_ARTIFACT_PATH.to_string(),
             surfaces_path: prepare.surfaces_path.clone(),
-            index_artifact_path: "index.json".to_string(),
+            index_artifact_path: "index/index.json".to_string(),
             block_artifact_path: BLOCK_ARTIFACT_PATH.to_string(),
             candidate_records_path: BLOCK_CANDIDATES_PATH.to_string(),
             candidate_diagnostics_path: BLOCK_DIAGNOSTICS_PATH.to_string(),
@@ -1906,6 +2165,34 @@ fn run_artifact(
                 request.registry.display()
             ),
         },
+    };
+    let upstreams = sort_entity_v1_upstream_references(vec![
+        entity_v1_artifact_reference(prepare_value)?,
+        entity_v1_artifact_reference(&index.artifact_value)?,
+        entity_v1_artifact_reference(block_value)?,
+        entity_v1_artifact_reference(edge_value)?,
+        entity_v1_artifact_reference(solve_value)?,
+    ])?;
+    publish_v1_stage_artifact(
+        artifact,
+        EntityArtifactStageV1::Run,
+        solve_value,
+        EntityStrategyReference {
+            id: base_strategy.id.clone(),
+            version: base_strategy.version.clone(),
+            content_hash: base_strategy.content_hash.clone(),
+        },
+        upstreams,
+    )
+}
+
+fn run_manifest(artifact: &EntityRunArtifact) -> Value {
+    json!({
+        "version": "canon_entity_run_manifest.v0",
+        "summary": artifact.summary,
+        "stage_artifacts": artifact.stage_artifacts,
+        "orchestration": artifact.orchestration,
+        "next_commands": artifact.next_commands
     })
 }
 
@@ -2097,11 +2384,11 @@ fn run_summary(
                 count(&block.summary.counts, "candidate_pairs"),
             ),
             (
-                "edge_records".to_string(),
-                count(&edge.summary.counts, "edge_records"),
+                "evidence_records".to_string(),
+                count(&edge.summary.counts, "evidence_records"),
             ),
             (
-                "relation_hint_edges".to_string(),
+                "relation_hint_evidence".to_string(),
                 count(&edge.summary.counts, "relation_hint_count"),
             ),
             (
@@ -2145,11 +2432,19 @@ fn run_summary(
             ),
             (
                 "cache_receipt_path".to_string(),
-                INDEX_CACHE_RECEIPT_FILE.to_string(),
+                index.cache_execution_receipt_path.clone(),
             ),
             (
                 "cache_receipt_hash".to_string(),
-                index.cache_receipt_content_hash.clone(),
+                index.cache_execution_receipt_content_hash.clone(),
+            ),
+            (
+                "cache_bundle_receipt_path".to_string(),
+                index.cache_bundle_receipt_path.clone(),
+            ),
+            (
+                "cache_bundle_receipt_hash".to_string(),
+                index.cache_bundle_receipt_content_hash.clone(),
             ),
             (
                 "batching_mode".to_string(),
@@ -2633,7 +2928,7 @@ fn edge_support_config_refusal(
     EntityRefusalKind::ArtifactContract.to_refusal(
         message,
         json!({
-            "stage": "edge",
+            "stage": "evidence",
             "operator": operator,
             "field": field,
             "detail": detail,
@@ -2679,48 +2974,52 @@ fn stage_artifacts(
     solve: &SolveArtifact,
 ) -> Vec<EntityRunStageArtifact> {
     let index_ref = EntityArtifactReference {
-        version: CANON_ENTITY_INDEX_VERSION.to_string(),
+        version: CANON_ENTITY_INDEX_VERSION_V1.to_string(),
         content_hash: index.artifact.artifact_content_hash.clone(),
+    };
+    let bundle_receipt_ref = EntityArtifactReference {
+        version: CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION.to_string(),
+        content_hash: index.cache_bundle_receipt_content_hash.clone(),
     };
     vec![
         EntityRunStageArtifact {
             stage: "prepare".to_string(),
-            version: CANON_ENTITY_PREPARE_VERSION.to_string(),
+            version: CANON_ENTITY_PREPARE_VERSION_V1.to_string(),
             path: PREPARE_ARTIFACT_PATH.to_string(),
             artifact_content_hash: prepare.artifact_content_hash.clone(),
             upstream_artifacts: prepare.metadata.upstream_artifacts.clone(),
         },
         EntityRunStageArtifact {
             stage: "index".to_string(),
-            version: CANON_ENTITY_INDEX_VERSION.to_string(),
-            path: "index.json".to_string(),
+            version: CANON_ENTITY_INDEX_VERSION_V1.to_string(),
+            path: "index/index.json".to_string(),
             artifact_content_hash: index.artifact.artifact_content_hash.clone(),
             upstream_artifacts: index.artifact.metadata.upstream_artifacts.clone(),
         },
         EntityRunStageArtifact {
             stage: cache_receipt_stage_name(index.cache_mode).to_string(),
             version: CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION.to_string(),
-            path: INDEX_CACHE_RECEIPT_FILE.to_string(),
-            artifact_content_hash: index.cache_receipt_content_hash.clone(),
-            upstream_artifacts: vec![index_ref],
+            path: index.cache_execution_receipt_path.clone(),
+            artifact_content_hash: index.cache_execution_receipt_content_hash.clone(),
+            upstream_artifacts: vec![index_ref, bundle_receipt_ref],
         },
         EntityRunStageArtifact {
             stage: "block".to_string(),
-            version: CANON_ENTITY_BLOCK_VERSION.to_string(),
+            version: CANON_ENTITY_BLOCK_VERSION_V1.to_string(),
             path: BLOCK_ARTIFACT_PATH.to_string(),
             artifact_content_hash: block.artifact_content_hash.clone(),
             upstream_artifacts: block.metadata.upstream_artifacts.clone(),
         },
         EntityRunStageArtifact {
-            stage: "edge".to_string(),
-            version: CANON_ENTITY_EDGE_VERSION.to_string(),
+            stage: "evidence".to_string(),
+            version: CANON_ENTITY_EVIDENCE_VERSION_V1.to_string(),
             path: EDGE_ARTIFACT_PATH.to_string(),
             artifact_content_hash: edge.artifact_content_hash.clone(),
             upstream_artifacts: edge.metadata.upstream_artifacts.clone(),
         },
         EntityRunStageArtifact {
             stage: "solve".to_string(),
-            version: CANON_ENTITY_SOLVE_VERSION.to_string(),
+            version: CANON_ENTITY_SOLVE_VERSION_V1.to_string(),
             path: SOLVE_ARTIFACT_PATH.to_string(),
             artifact_content_hash: solve.artifact_content_hash.clone(),
             upstream_artifacts: solve.metadata.upstream_artifacts.clone(),
@@ -2940,54 +3239,6 @@ fn solve_provenance(surfaces: &[PreparedSurfaceRecord]) -> Vec<SolveSurfaceProve
         .collect()
 }
 
-fn index_diagnostics(
-    artifact: &EntityIndexArtifact,
-    postings: &crate::entity::postings::EntityPostingDiagnostics,
-    ngrams: &crate::entity::index::ngram_index::EntityNgramDiagnostics,
-) -> Vec<EntityIndexDiagnosticRecord> {
-    let mut summary = EntityIndexDiagnosticRecord::new("artifact_summary");
-    summary.counts = artifact.summary.counts.clone();
-    summary.labels = artifact.summary.labels.clone();
-
-    let mut posting = EntityIndexDiagnosticRecord::new("posting_summary");
-    posting.counts = BTreeMap::from([
-        (
-            "surface_count".to_string(),
-            u64::from(postings.surface_count),
-        ),
-        ("token_count".to_string(), postings.token_count as u64),
-        (
-            "common_token_count".to_string(),
-            postings.common_token_count as u64,
-        ),
-    ]);
-
-    let mut ngram = EntityIndexDiagnosticRecord::new("ngram_summary");
-    ngram.counts = BTreeMap::from([
-        ("ngram_count".to_string(), ngrams.ngram_count as u64),
-        (
-            "common_ngram_count".to_string(),
-            ngrams.common_ngram_count as u64,
-        ),
-    ]);
-
-    vec![summary, posting, ngram]
-}
-
-fn hash_run_artifact_without_self(artifact: &EntityRunArtifact) -> Result<String, Refusal> {
-    let mut hashable = artifact.clone();
-    hashable.artifact_content_hash.clear();
-    hashable.metadata.artifact_content_hash.clear();
-    let bytes = serde_json::to_vec(&hashable).map_err(|error| {
-        EntityRefusalKind::ArtifactContract.to_refusal(
-            "Failed to hash entity run artifact",
-            json!({ "stage": "run", "error": error.to_string(), "writes_performed": false }),
-            None,
-        )
-    })?;
-    Ok(witness::hash_bytes(&bytes))
-}
-
 fn read_json_file<T: DeserializeOwned>(path: &Path, label: &str) -> Result<T, Refusal> {
     let text = fs::read_to_string(path).map_err(|error| {
         EntityRefusalKind::IoBudget.to_refusal(
@@ -3154,15 +3405,20 @@ fn count(counts: &BTreeMap<String, u64>, key: &str) -> u64 {
 
 struct EntityIndexRun {
     artifact: EntityIndexArtifact,
+    artifact_value: Value,
     postings: EntityPostingIndex,
     ngrams: EntityNgramIndex,
     cache_mode: EntityIndexCacheMode,
     cache_status: EntityIndexCacheStatus,
-    cache_receipt_content_hash: String,
+    cache_execution_receipt_path: String,
+    cache_execution_receipt_content_hash: String,
+    cache_bundle_receipt_path: String,
+    cache_bundle_receipt_content_hash: String,
 }
 
 struct EntityBlockRun {
     artifact: BlockCandidateArtifact,
+    artifact_value: Value,
     candidates: Vec<crate::entity::block::BlockCandidateRecord>,
     exact_buckets: Vec<ExactBucketAssertion>,
 }
@@ -3222,10 +3478,20 @@ mod cache_runtime_tests {
         assert_eq!(cache_label(&cold.artifact, "cache_status"), "rebuilt");
         assert_eq!(
             cache_label(&cold.artifact, "cache_receipt_path"),
-            INDEX_CACHE_RECEIPT_FILE
+            RUN_CACHE_EXECUTION_RECEIPT_PATH
         );
         assert_cache_stage(&cold.artifact, "cache_enabled");
+        assert_cache_receipts(
+            &cold.artifact,
+            &work_dir,
+            EntityIndexCacheMode::Enabled,
+            EntityIndexCacheStatus::Rebuilt,
+            true,
+        );
         assert!(work_dir.join(INDEX_CACHE_RECEIPT_FILE).is_file());
+        let cold_bundle_bytes =
+            std::fs::read(work_dir.join(INDEX_CACHE_RECEIPT_FILE)).expect("bundle receipt bytes");
+        let cold_bundle_hash = file_hash(&work_dir.join(INDEX_CACHE_RECEIPT_FILE));
 
         let warm = run_entity_workbench_with_cache_mode(
             fixture.request(&work_dir),
@@ -3235,16 +3501,49 @@ mod cache_runtime_tests {
         assert_eq!(cache_label(&warm.artifact, "cache_mode"), "enabled");
         assert_eq!(cache_label(&warm.artifact, "cache_status"), "hit");
         assert_cache_stage(&warm.artifact, "cache_enabled");
-        assert_ne!(
-            cache_label(&cold.artifact, "cache_receipt_hash"),
-            cache_label(&warm.artifact, "cache_receipt_hash"),
-            "hit refreshes the receipt status without changing semantic outputs"
+        assert_cache_receipts(
+            &warm.artifact,
+            &work_dir,
+            EntityIndexCacheMode::Enabled,
+            EntityIndexCacheStatus::Hit,
+            true,
+        );
+        assert_eq!(
+            std::fs::read(work_dir.join(INDEX_CACHE_RECEIPT_FILE)).expect("bundle receipt bytes"),
+            cold_bundle_bytes,
+            "warm cache hit must not rewrite the immutable bundle receipt"
+        );
+        assert_eq!(
+            file_hash(&work_dir.join(INDEX_CACHE_RECEIPT_FILE)),
+            cold_bundle_hash
         );
         assert_eq!(cold.candidate_pairs, warm.candidate_pairs);
+
+        let warm_execution_bytes = std::fs::read(work_dir.join(RUN_CACHE_EXECUTION_RECEIPT_PATH))
+            .expect("warm execution receipt bytes");
+        let replay = run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect("same-work-dir enabled replay remains a warm hit");
+        assert_eq!(cache_label(&replay.artifact, "cache_status"), "hit");
+        assert_cache_receipts(
+            &replay.artifact,
+            &work_dir,
+            EntityIndexCacheMode::Enabled,
+            EntityIndexCacheStatus::Hit,
+            true,
+        );
+        assert_eq!(
+            std::fs::read(work_dir.join(RUN_CACHE_EXECUTION_RECEIPT_PATH))
+                .expect("replay execution receipt bytes"),
+            warm_execution_bytes,
+            "same-work-dir warm replay must keep stable execution receipt bytes"
+        );
     }
 
     #[test]
-    fn disabled_cache_mode_bypasses_and_makes_bundle_non_reusable() {
+    fn disabled_cache_mode_bypasses_without_poisoning_enabled_bundle() {
         let fixture = RuntimeFixture::load();
         let temp = tempfile::tempdir().expect("tempdir");
         let work_dir = temp.path().join("work");
@@ -3254,6 +3553,9 @@ mod cache_runtime_tests {
             EntityIndexCacheMode::Enabled,
         )
         .expect("enabled seed run builds reusable cache");
+        let seed_bundle_bytes =
+            std::fs::read(work_dir.join(INDEX_CACHE_RECEIPT_FILE)).expect("seed bundle receipt");
+        let seed_bundle_hash = file_hash(&work_dir.join(INDEX_CACHE_RECEIPT_FILE));
         let disabled = run_entity_workbench_with_cache_mode(
             fixture.request(&work_dir),
             EntityIndexCacheMode::Disabled,
@@ -3262,6 +3564,22 @@ mod cache_runtime_tests {
         assert_eq!(cache_label(&disabled.artifact, "cache_mode"), "disabled");
         assert_eq!(cache_label(&disabled.artifact, "cache_status"), "bypassed");
         assert_cache_stage(&disabled.artifact, "cache_disabled");
+        assert_cache_receipts(
+            &disabled.artifact,
+            &work_dir,
+            EntityIndexCacheMode::Disabled,
+            EntityIndexCacheStatus::Bypassed,
+            false,
+        );
+        assert_eq!(
+            std::fs::read(work_dir.join(INDEX_CACHE_RECEIPT_FILE)).expect("bundle receipt bytes"),
+            seed_bundle_bytes,
+            "disabled bypass must not rewrite the immutable bundle receipt"
+        );
+        assert_eq!(
+            file_hash(&work_dir.join(INDEX_CACHE_RECEIPT_FILE)),
+            seed_bundle_hash
+        );
 
         let enabled_after_disabled = run_entity_workbench_with_cache_mode(
             fixture.request(&work_dir),
@@ -3270,7 +3588,77 @@ mod cache_runtime_tests {
         .expect("enabled run rebuilds after disabled non-reusable receipt");
         assert_eq!(
             cache_label(&enabled_after_disabled.artifact, "cache_status"),
-            "rebuilt"
+            "hit"
+        );
+        assert_cache_receipts(
+            &enabled_after_disabled.artifact,
+            &work_dir,
+            EntityIndexCacheMode::Enabled,
+            EntityIndexCacheStatus::Hit,
+            true,
+        );
+        assert_eq!(
+            std::fs::read(work_dir.join(INDEX_CACHE_RECEIPT_FILE)).expect("bundle receipt bytes"),
+            seed_bundle_bytes,
+            "enabled replay after disabled bypass must still leave bundle receipt immutable"
+        );
+    }
+
+    #[test]
+    fn disabled_index_build_bypasses_warm_hit_reader() {
+        let fixture = RuntimeFixture::load();
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let work_dir = temp.path().join("work");
+
+        run_entity_workbench_with_cache_mode(
+            fixture.request(&work_dir),
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect("enabled seed run builds reusable cache");
+        crate::entity::index::reset_v1_cache_read_probe();
+        let warm = crate::entity::index::run_index_build_v1_with_cache_mode(
+            crate::entity::index::EntityIndexBuildRequest {
+                rows: &fixture.rows,
+                profile: fixture.profile.to_str().expect("fixture profile path"),
+                strategy: &fixture.strategy,
+                registry: &fixture.registry,
+                work_dir: &work_dir,
+                max_artifact_bytes: None,
+            },
+            EntityIndexCacheMode::Enabled,
+        )
+        .expect("enabled index build consumes warm cache hit");
+        assert_eq!(warm.cache_status, EntityIndexCacheStatus::Hit);
+        assert_eq!(
+            crate::entity::index::v1_cache_read_probe_count(),
+            1,
+            "enabled warm run must enter the cache-read branch"
+        );
+
+        crate::entity::index::reset_v1_cache_read_probe();
+        let result = crate::entity::index::run_index_build_v1_with_cache_mode(
+            crate::entity::index::EntityIndexBuildRequest {
+                rows: &fixture.rows,
+                profile: fixture.profile.to_str().expect("fixture profile path"),
+                strategy: &fixture.strategy,
+                registry: &fixture.registry,
+                work_dir: &work_dir,
+                max_artifact_bytes: None,
+            },
+            EntityIndexCacheMode::Disabled,
+        )
+        .expect("disabled index build bypasses warm cache hit");
+
+        assert_eq!(result.cache_status, EntityIndexCacheStatus::Bypassed);
+        assert_eq!(
+            result.cache_invalidation.decision,
+            crate::entity::artifact_chain::EntityCacheDecision::Miss,
+            "disabled mode must rebuild instead of returning the warm-hit invalidation"
+        );
+        assert_eq!(
+            crate::entity::index::v1_cache_read_probe_count(),
+            0,
+            "disabled mode must not enter the cache-read branch"
         );
     }
 
@@ -3285,8 +3673,8 @@ mod cache_runtime_tests {
             EntityIndexCacheMode::Enabled,
         )
         .expect("enabled run builds cache");
-        std::fs::write(work_dir.join("index/postings.json"), b"{\"tampered\":true}")
-            .expect("tamper postings");
+        std::fs::write(index_payload_path(&work_dir), b"{\"tampered\":true}")
+            .expect("tamper v1 postings");
 
         let refusal = run_entity_workbench_with_cache_mode(
             fixture.request(&work_dir),
@@ -3296,6 +3684,7 @@ mod cache_runtime_tests {
         assert!(
             refusal.message.contains("cache receipt")
                 || refusal.message.contains("cache bundle")
+                || refusal.message.contains("index v1 postings")
                 || refusal.detail.to_string().contains("cache_receipt"),
             "unexpected refusal: {refusal:?}"
         );
@@ -3403,10 +3792,9 @@ mod cache_runtime_tests {
             sorted_nonempty_lines(&disabled_work.join(EDGE_RECORDS_PATH))
         );
         assert_eq!(
-            std::fs::read(enabled_work.join(INDEX_ARTIFACT_FILE)).expect("enabled index artifact"),
-            std::fs::read(disabled_work.join(INDEX_ARTIFACT_FILE))
-                .expect("disabled index artifact"),
-            "cache execution mode must not change the semantic index artifact"
+            index_domain_projection(&enabled_work, &enabled.artifact),
+            index_domain_projection(&disabled_work, &disabled.artifact),
+            "cache execution mode must not change the semantic index artifact fields"
         );
     }
 
@@ -3497,7 +3885,7 @@ mod cache_runtime_tests {
             .find(|stage| stage.stage == expected_stage)
             .unwrap_or_else(|| panic!("missing {expected_stage} stage"));
         assert_eq!(stage.version, CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION);
-        assert_eq!(stage.path, INDEX_CACHE_RECEIPT_FILE);
+        assert_eq!(stage.path, cache_label(artifact, "cache_receipt_path"));
         assert_eq!(
             stage.artifact_content_hash,
             cache_label(artifact, "cache_receipt_hash")
@@ -3509,10 +3897,16 @@ mod cache_runtime_tests {
             .expect("index stage");
         assert_eq!(
             stage.upstream_artifacts,
-            vec![EntityArtifactReference {
-                version: index.version.clone(),
-                content_hash: index.artifact_content_hash.clone(),
-            }]
+            vec![
+                EntityArtifactReference {
+                    version: index.version.clone(),
+                    content_hash: index.artifact_content_hash.clone(),
+                },
+                EntityArtifactReference {
+                    version: CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION.to_string(),
+                    content_hash: cache_label(artifact, "cache_bundle_receipt_hash").to_string(),
+                },
+            ]
         );
         assert!(
             artifact
@@ -3520,8 +3914,8 @@ mod cache_runtime_tests {
                 .upstream_artifacts
                 .iter()
                 .any(|reference| {
-                    reference.version == stage.version
-                        && reference.content_hash == stage.artifact_content_hash
+                    reference.version == index.version
+                        && reference.content_hash == index.artifact_content_hash
                 })
         );
         assert!(
@@ -3531,6 +3925,89 @@ mod cache_runtime_tests {
                 .iter()
                 .any(|stage| { stage == expected_stage })
         );
+    }
+
+    fn assert_cache_receipts(
+        artifact: &EntityRunArtifact,
+        work_dir: &Path,
+        mode: EntityIndexCacheMode,
+        status: EntityIndexCacheStatus,
+        reusable: bool,
+    ) {
+        let execution_path = work_dir.join(cache_label(artifact, "cache_receipt_path"));
+        let execution = read_cache_receipt(&execution_path);
+        assert_eq!(execution.mode, mode);
+        assert_eq!(execution.status, status);
+        assert_eq!(execution.reusable, reusable);
+        assert_eq!(
+            file_hash(&execution_path),
+            cache_label(artifact, "cache_receipt_hash")
+        );
+
+        let bundle_path = work_dir.join(cache_label(artifact, "cache_bundle_receipt_path"));
+        let bundle = read_cache_receipt(&bundle_path);
+        assert_eq!(bundle.mode, EntityIndexCacheMode::Enabled);
+        assert_eq!(bundle.status, EntityIndexCacheStatus::Rebuilt);
+        assert!(bundle.reusable);
+        assert_eq!(
+            file_hash(&bundle_path),
+            cache_label(artifact, "cache_bundle_receipt_hash")
+        );
+        assert_eq!(
+            execution.bundle_hash, bundle.bundle_hash,
+            "execution receipt must bind the immutable bundle hash"
+        );
+        assert_eq!(
+            execution.files, bundle.files,
+            "execution receipt must preserve immutable bundle file hashes"
+        );
+    }
+
+    fn read_cache_receipt(path: &Path) -> EntityIndexCacheReceipt {
+        serde_json::from_slice(&std::fs::read(path).expect("cache receipt bytes"))
+            .expect("cache receipt JSON")
+    }
+
+    fn file_hash(path: &Path) -> String {
+        witness::hash_file(path).expect("cache receipt hash")
+    }
+
+    fn index_artifact_path(artifact: &EntityRunArtifact, work_dir: &Path) -> PathBuf {
+        work_dir.join(&artifact.work_dir.index_artifact_path)
+    }
+
+    fn index_payload_path(work_dir: &Path) -> PathBuf {
+        let artifact: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(work_dir.join("index/index.json")).unwrap())
+                .expect("index artifact JSON");
+        work_dir.join(
+            artifact["postings_path"]
+                .as_str()
+                .expect("index postings path"),
+        )
+    }
+
+    fn index_domain_projection(work_dir: &Path, artifact: &EntityRunArtifact) -> serde_json::Value {
+        let value: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(index_artifact_path(artifact, work_dir)).unwrap(),
+        )
+        .expect("index artifact JSON");
+        serde_json::json!({
+            "version": value["version"],
+            "summary": value["summary"],
+            "postings_path": value["postings_path"],
+            "diagnostics_path": value["diagnostics_path"],
+            "metadata": {
+                "profile": value["metadata"]["profile"],
+                "strategy": value["metadata"]["strategy"],
+                "registry_snapshot": value["metadata"]["registry_snapshot"],
+                "input": value["metadata"]["input"],
+                "patch_namespace": value["metadata"]["patch_namespace"],
+                "patch_set": value["metadata"]["patch_set"],
+                "namekit": value["metadata"]["namekit"],
+                "schema": value["metadata"]["schema"],
+            }
+        })
     }
 
     fn sorted_nonempty_lines(path: &Path) -> Vec<String> {

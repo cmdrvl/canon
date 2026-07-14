@@ -1,20 +1,31 @@
 #![forbid(unsafe_code)]
 
-use canon::entity::{
-    apply::{
-        ApplyCanonicalResolution, ApplyRegistryReference, ApplySafetyCheck, ApplyStreamRequest,
-        run_apply_streaming,
+use canon::{
+    cli::{
+        CanonCommand, Cli, EntityIndexSubcommand, EntityReviewExportEmitMode, EntityReviewInclude,
+        EntityReviewSubcommand, EntitySubcommand,
     },
-    block_artifact::BlockCandidateArtifact,
-    prepare::PrepareRunArtifact,
-    run::{EntityRunRequest, run_entity_workbench},
-    solve::SolveArtifact,
-    summary::{
-        EntityRunOperatorSummary, EntityRunOperatorSummaryRequest, EntityStageOperatorSummary,
-        EntitySummaryRankedItem, build_apply_operator_summary, build_block_operator_summary,
-        build_prepare_operator_summary, build_run_operator_summary, build_solve_operator_summary,
+    entity::{
+        apply::{
+            ApplyCanonicalResolution, ApplyRegistryReference, ApplySafetyCheck, ApplyStreamRequest,
+            run_apply_streaming,
+        },
+        block_artifact::BlockCandidateArtifact,
+        edge_artifact::EdgeEvidenceArtifact,
+        index::EntityIndexArtifact,
+        prepare::PrepareRunArtifact,
+        run::{EntityRunRequest, run_entity_workbench},
+        solve::SolveArtifact,
+        summary::{
+            EntityRunOperatorSummary, EntityRunOperatorSummaryRequest, EntityStageOperatorSummary,
+            EntitySummaryRankedItem, build_apply_operator_summary, build_block_operator_summary,
+            build_edge_operator_summary, build_index_operator_summary,
+            build_prepare_operator_summary, build_run_operator_summary,
+            build_solve_operator_summary,
+        },
     },
 };
+use clap::Parser;
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -26,6 +37,8 @@ const OBSERVATIONS_PATH: &str = "tests/fixtures/entity/cmbs/small_book/observati
 const STRATEGY_PATH: &str = "tests/fixtures/entity/profiles/cmbs_tenant_label.yaml";
 const EXPECTED_ROBOT_JSON: &str =
     include_str!("../fixtures/entity/operator_journey/summary/robot_summary_projection.json");
+const EXPECTED_SYNTHETIC_ROBOT_JSON: &str =
+    include_str!("../fixtures/entity/operator_journey/summary/robot_json_projection.json");
 
 #[test]
 fn entity_robot_json_summaries_are_stable_and_actionable() {
@@ -52,24 +65,37 @@ fn entity_robot_json_summaries_are_stable_and_actionable() {
     let prepare = build_prepare_operator_summary(&read_json::<PrepareRunArtifact>(
         &fixture.work_dir.join("prepare/prepare.json"),
     ));
+    let index = build_index_operator_summary(&read_json::<EntityIndexArtifact>(
+        &fixture.work_dir.join("index/index.json"),
+    ));
     let block = build_block_operator_summary(&read_json::<BlockCandidateArtifact>(
         &fixture.work_dir.join("block/block.json"),
+    ));
+    let evidence = build_edge_operator_summary(&read_json::<EdgeEvidenceArtifact>(
+        &fixture.work_dir.join("evidence/evidence.json"),
     ));
     let solve = build_solve_operator_summary(&read_json::<SolveArtifact>(
         &fixture.work_dir.join("solve/solve.json"),
     ));
     let apply = build_apply_operator_summary(&apply_artifact(&fixture));
-
-    assert_eq!(
-        robot_projection(&run_summary, [&prepare, &block, &solve, &apply]),
-        expected_robot_json()
+    let projection = robot_projection(
+        &run_summary,
+        [&prepare, &index, &block, &evidence, &solve, &apply],
     );
+    let expected = expected_robot_json();
+
+    let synthetic = expected_synthetic_robot_json();
+    assert_no_stale_public_robot_telemetry(&projection);
+    assert_no_stale_public_robot_telemetry(&expected);
+    assert_no_stale_public_robot_telemetry(&synthetic);
+    assert_synthetic_robot_commands_are_public_and_runnable(&synthetic);
+    assert_eq!(projection, expected);
     assert!(
         run_summary
             .next_command
             .contains("canon entity review export")
     );
-    for stage in [&prepare, &block, &solve, &apply] {
+    for stage in [&prepare, &index, &block, &evidence, &solve, &apply] {
         assert_eq!(stage.version, "canon_entity_operator_summary.v0");
         assert!(
             !stage.human_summary.contains("cmbs-small:001"),
@@ -139,6 +165,12 @@ fn stage_count_projection(stage: &EntityStageOperatorSummary) -> BTreeMap<String
             "candidate_pairs",
             "exact_bucket_count",
             "exact_bucket_pair_expansion_count",
+        ],
+        "index" => ["surface_count", "token_count", "ngram_count"],
+        "evidence" => [
+            "evidence_records",
+            "evidence_hit_count",
+            "relation_hint_count",
         ],
         "solve" => ["entity_count", "review_group_count", "promotable_new_count"],
         "apply" => ["rows", "resolved", "unresolved"],
@@ -304,6 +336,170 @@ fn write_cmbs_registry(registry: &Path) {
 
 fn expected_robot_json() -> Value {
     serde_json::from_str(EXPECTED_ROBOT_JSON).expect("expected robot json parses")
+}
+
+fn expected_synthetic_robot_json() -> Value {
+    serde_json::from_str(EXPECTED_SYNTHETIC_ROBOT_JSON)
+        .expect("expected synthetic robot json parses")
+}
+
+fn assert_no_stale_public_robot_telemetry(value: &Value) {
+    let mut strings = Vec::new();
+    collect_json_strings(value, &mut strings);
+    let forbidden_exact = [
+        "canon_entity_prepare.v0",
+        "canon_entity_index.v0",
+        "canon_entity_block.v0",
+        "canon_entity_edge.v0",
+        "canon_entity_solve.v0",
+        "canon_entity_run.v0",
+        "edge",
+        "edge_artifact",
+        "edge_records",
+        "edge/edge.json",
+        "edge/edges.jsonl",
+        "index.json",
+        "run.json",
+    ];
+    for text in strings {
+        assert!(
+            !forbidden_exact.contains(&text.as_str()),
+            "stale public robot telemetry value survived: {text}"
+        );
+        assert!(
+            !text.contains("canon entity edge"),
+            "stale public robot command survived: {text}"
+        );
+    }
+}
+
+fn assert_synthetic_robot_commands_are_public_and_runnable(value: &Value) {
+    assert_review_export_next_command(next_command_at(value, "/run/next_command"));
+    assert_apply_next_command(next_command_at(value, "/stages/apply/next_command"));
+    assert_evidence_next_command(next_command_at(value, "/stages/block/next_command"));
+    assert_solve_next_command(next_command_at(value, "/stages/evidence/next_command"));
+    assert_block_next_command(next_command_at(value, "/stages/index/next_command"));
+    assert_index_build_next_command(next_command_at(value, "/stages/prepare/next_command"));
+    assert_review_export_next_command(next_command_at(value, "/stages/solve/next_command"));
+}
+
+fn next_command_at<'a>(value: &'a Value, pointer: &str) -> &'a str {
+    value
+        .pointer(pointer)
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| panic!("{pointer} must be a string next_command"))
+}
+
+fn assert_index_build_next_command(command: &str) {
+    let EntitySubcommand::Index(index) = entity_subcommand_for(command) else {
+        panic!("expected entity index build command, got {command}");
+    };
+    let EntityIndexSubcommand::Build(build) = index.command;
+    assert_eq!(build.rows, PathBuf::from("<ROWS>"));
+    assert_eq!(build.profile.as_deref(), Some("<PROFILE>"));
+    assert_eq!(build.strategy, PathBuf::from("<STRATEGY.yaml>"));
+    assert_eq!(build.registry, PathBuf::from("<REGISTRY_DIR>"));
+    assert_eq!(build.work_dir.as_deref(), Some(Path::new("<DIR>")));
+}
+
+fn assert_block_next_command(command: &str) {
+    let EntitySubcommand::Block(block) = entity_subcommand_for(command) else {
+        panic!("expected entity block command, got {command}");
+    };
+    assert_eq!(block.rows, PathBuf::from("<ROWS>"));
+    assert_eq!(block.profile.as_deref(), Some("<PROFILE>"));
+    assert_eq!(block.strategy, PathBuf::from("<STRATEGY.yaml>"));
+    assert_eq!(block.registry, PathBuf::from("<REGISTRY_DIR>"));
+    assert_eq!(block.work_dir.as_deref(), Some(Path::new("<DIR>")));
+}
+
+fn assert_evidence_next_command(command: &str) {
+    let EntitySubcommand::Evidence(evidence) = entity_subcommand_for(command) else {
+        panic!("expected entity evidence command, got {command}");
+    };
+    assert_eq!(evidence.rows, PathBuf::from("<ROWS>"));
+    assert_eq!(evidence.profile.as_deref(), Some("<PROFILE>"));
+    assert_eq!(evidence.strategy, PathBuf::from("<STRATEGY.yaml>"));
+    assert_eq!(
+        evidence.candidates,
+        PathBuf::from("<WORK_DIR>/block/block.json")
+    );
+    assert_eq!(evidence.registry, PathBuf::from("<REGISTRY_DIR>"));
+    assert_eq!(evidence.work_dir.as_deref(), Some(Path::new("<DIR>")));
+}
+
+fn assert_solve_next_command(command: &str) {
+    let EntitySubcommand::Solve(solve) = entity_subcommand_for(command) else {
+        panic!("expected entity solve command, got {command}");
+    };
+    assert_eq!(solve.rows, PathBuf::from("<ROWS>"));
+    assert_eq!(solve.profile.as_deref(), Some("<PROFILE>"));
+    assert_eq!(solve.strategy, PathBuf::from("<STRATEGY.yaml>"));
+    assert_eq!(
+        solve.evidence,
+        PathBuf::from("<WORK_DIR>/evidence/evidence.json")
+    );
+    assert_eq!(solve.registry, PathBuf::from("<REGISTRY_DIR>"));
+    assert_eq!(solve.work_dir.as_deref(), Some(Path::new("<DIR>")));
+}
+
+fn assert_review_export_next_command(command: &str) {
+    let EntitySubcommand::Review(review) = entity_subcommand_for(command) else {
+        panic!("expected entity review export command, got {command}");
+    };
+    let EntityReviewSubcommand::Export(export) = review.command else {
+        panic!("expected review export subcommand, got {command}");
+    };
+    assert_eq!(export.result, PathBuf::from("<WORK_DIR>/solve/solve.json"));
+    assert!(matches!(export.include, EntityReviewInclude::Escrow));
+    assert_eq!(export.emit, EntityReviewExportEmitMode::Csv);
+}
+
+fn assert_apply_next_command(command: &str) {
+    let EntitySubcommand::Apply(apply) = entity_subcommand_for(command) else {
+        panic!("expected entity apply command, got {command}");
+    };
+    assert_eq!(apply.result, PathBuf::from("<WORK_DIR>/solve/solve.json"));
+    assert_eq!(apply.rows, PathBuf::from("<ROWS>"));
+    assert_eq!(apply.registry, PathBuf::from("<REGISTRY_DIR>"));
+    assert_eq!(apply.column.as_deref(), Some("<COLUMN>"));
+    assert_eq!(apply.out.as_deref(), Some(Path::new("<OUT.csv>")));
+    assert_eq!(apply.work_dir.as_deref(), Some(Path::new("<DIR>")));
+    assert!(apply.allow_partial_output);
+    assert!(!apply.require_full_resolution);
+}
+
+fn entity_subcommand_for(command: &str) -> EntitySubcommand {
+    let args = command.split_whitespace().collect::<Vec<_>>();
+    assert_eq!(
+        args.first().copied(),
+        Some("canon"),
+        "robot command must start with canon: {command}"
+    );
+    let cli = Cli::try_parse_from(args)
+        .unwrap_or_else(|error| panic!("robot command must parse via Clap: {command}\n{error}"));
+    let Some(CanonCommand::Entity(entity)) = cli.command else {
+        panic!("robot command must be a public canon entity command: {command}");
+    };
+    entity.command
+}
+
+fn collect_json_strings(value: &Value, strings: &mut Vec<String>) {
+    match value {
+        Value::String(text) => strings.push(text.clone()),
+        Value::Array(items) => {
+            for item in items {
+                collect_json_strings(item, strings);
+            }
+        }
+        Value::Object(object) => {
+            for (key, value) in object {
+                strings.push(key.clone());
+                collect_json_strings(value, strings);
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) => {}
+    }
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> T {

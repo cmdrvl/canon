@@ -3,12 +3,13 @@
 use canon::{
     RefusalCode,
     entity::{
-        CANON_ENTITY_INDEX_VERSION, CANON_ENTITY_PREPARE_VERSION,
+        CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_INDEX_VERSION_V1,
+        CANON_ENTITY_PREPARE_VERSION_V1,
         block::{
             AliasPatchMatchBlockOperator, AliasPatchPair, BlockCandidateBudgetConfig,
-            BlockCandidateGenerationRequest, BlockCandidateOperator, ExactBucketBlockRequest,
-            ExactBucketSurface, RareTokenOverlapBlockOperator, emit_exact_bucket_hyperedges,
-            generate_block_candidates,
+            BlockCandidateGenerationRequest, BlockCandidateOperator, BlockCandidateRecord,
+            ExactBucketBlockRequest, ExactBucketSurface, RareTokenOverlapBlockOperator,
+            emit_exact_bucket_hyperedges, generate_block_candidates,
         },
         block_artifact::{
             BlockCandidateArtifactRequest, EXACT_BUCKET_PAIR_EXPANSION_FORBIDDEN,
@@ -52,6 +53,7 @@ fn EN_B001_block_artifact_records_hashes_payloads_and_stable_order() {
         )],
     })
     .expect("candidate JSONL payload emits");
+    let candidate_records = v1_candidate_records(&candidates.candidates);
     let bucket = en_b001_bucket_assertions();
 
     let request = BlockCandidateArtifactRequest {
@@ -59,7 +61,7 @@ fn EN_B001_block_artifact_records_hashes_payloads_and_stable_order() {
         strategy: sample_block_strategy(),
         candidate_records_path: "block/candidates.jsonl".to_string(),
         candidate_diagnostics_path: BLOCK_DIAGNOSTICS_PATH.to_string(),
-        candidate_records: candidates.candidates.clone(),
+        candidate_records: candidate_records.clone(),
         bucket_assertions: bucket.assertions.clone(),
         known_surface_ids: posting_index.surface_ids.clone(),
         diagnostics: candidates.diagnostics.clone(),
@@ -69,7 +71,7 @@ fn EN_B001_block_artifact_records_hashes_payloads_and_stable_order() {
     let repeated = build_block_candidate_artifact_contract(request).expect("repeat artifact");
 
     assert_eq!(artifact, repeated);
-    assert_eq!(artifact.version, "canon_entity_block.v0");
+    assert_eq!(artifact.version, CANON_ENTITY_BLOCK_VERSION_V1);
     assert!(artifact.artifact_content_hash.starts_with("blake3:"));
     assert!(artifact.candidate_records_hash.starts_with("blake3:"));
     assert_eq!(artifact.candidate_diagnostics_path, BLOCK_DIAGNOSTICS_PATH);
@@ -89,11 +91,12 @@ fn EN_B001_block_artifact_records_hashes_payloads_and_stable_order() {
         "blake3:registry"
     );
     assert!(artifact.upstream_artifacts.iter().any(|reference| {
-        reference.version == CANON_ENTITY_PREPARE_VERSION
+        reference.version == CANON_ENTITY_PREPARE_VERSION_V1
             && reference.content_hash == "blake3:prepare"
     }));
     assert!(artifact.upstream_artifacts.iter().any(|reference| {
-        reference.version == CANON_ENTITY_INDEX_VERSION && reference.content_hash == "blake3:index"
+        reference.version == CANON_ENTITY_INDEX_VERSION_V1
+            && reference.content_hash == "blake3:index"
     }));
     assert_eq!(artifact.summary.counts["candidate_pairs"], 1);
     assert_eq!(artifact.summary.counts["block_hits"], 1);
@@ -121,7 +124,7 @@ fn EN_B001_block_artifact_records_hashes_payloads_and_stable_order() {
     );
     validate_block_candidate_artifact_contract(&artifact).expect("artifact contract validates");
 
-    let candidate = &candidates.candidates[0];
+    let candidate = &candidate_records[0];
     assert_eq!(candidate.left_surface_id, "surf:cmbs:001");
     assert_eq!(candidate.right_surface_id, "surf:cmbs:002");
     assert_eq!(candidate.block_hits[0].operator_id, "alias_patch_match");
@@ -157,7 +160,7 @@ fn entity_block_artifact_refuses_unknown_candidate_surface_refs() {
         )],
     })
     .expect("candidate payload emits");
-    let mut candidate_records = candidates.candidates.clone();
+    let mut candidate_records = v1_candidate_records(&candidates.candidates);
     candidate_records[0].right_surface_id = "surf:cmbs:missing".to_string();
 
     let refusal = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
@@ -179,6 +182,48 @@ fn entity_block_artifact_refuses_unknown_candidate_surface_refs() {
 }
 
 #[test]
+fn entity_block_artifact_refuses_legacy_index_contract() {
+    let posting_index = candidate_posting_index();
+    let candidates = generate_block_candidates(BlockCandidateGenerationRequest {
+        profile_id: "cmbs_tenant_label".to_string(),
+        posting_index: &posting_index,
+        ngram_index: None,
+        budget_config: BlockCandidateBudgetConfig::new(8, 64, 128),
+        operators: vec![BlockCandidateOperator::AliasPatchMatch(
+            AliasPatchMatchBlockOperator::new(
+                "alias_patch_match",
+                vec![AliasPatchPair::new(
+                    "surf:cmbs:001",
+                    "surf:cmbs:002",
+                    "patch:sears-alias",
+                )],
+            ),
+        )],
+    })
+    .expect("candidate payload emits");
+    let mut index = sample_index_header();
+    index.version = "canon_entity_index.v0".to_string();
+
+    let refusal = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
+        index,
+        strategy: sample_block_strategy(),
+        candidate_records_path: "block/candidates.jsonl".to_string(),
+        candidate_diagnostics_path: BLOCK_DIAGNOSTICS_PATH.to_string(),
+        candidate_records: v1_candidate_records(&candidates.candidates),
+        bucket_assertions: Vec::new(),
+        known_surface_ids: posting_index.surface_ids,
+        diagnostics: candidates.diagnostics,
+    })
+    .expect_err("legacy index contract refuses");
+
+    assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+    assert_eq!(refusal.detail["stage"], "block");
+    assert_eq!(refusal.detail["expected"], CANON_ENTITY_INDEX_VERSION_V1);
+    assert_eq!(refusal.detail["actual"], "canon_entity_index.v0");
+    assert_eq!(refusal.detail["writes_performed"], json!(false));
+}
+
+#[test]
 fn entity_block_artifact_refuses_stale_bucket_upstream_hashes() {
     let posting_index = candidate_posting_index();
     let candidates = generate_block_candidates(BlockCandidateGenerationRequest {
@@ -189,6 +234,7 @@ fn entity_block_artifact_refuses_stale_bucket_upstream_hashes() {
         operators: Vec::new(),
     })
     .expect("empty candidate payload is valid");
+    let candidate_records = v1_candidate_records(&candidates.candidates);
     let mut bucket_assertions = en_b001_bucket_assertions().assertions;
     bucket_assertions[0].upstream.index_hash = "blake3:old-index".to_string();
 
@@ -197,7 +243,7 @@ fn entity_block_artifact_refuses_stale_bucket_upstream_hashes() {
         strategy: sample_block_strategy(),
         candidate_records_path: "block/candidates.jsonl".to_string(),
         candidate_diagnostics_path: BLOCK_DIAGNOSTICS_PATH.to_string(),
-        candidate_records: candidates.candidates,
+        candidate_records,
         bucket_assertions,
         known_surface_ids: posting_index.surface_ids.clone(),
         diagnostics: candidates.diagnostics,
@@ -231,12 +277,13 @@ fn entity_block_artifact_validator_refuses_self_hash_drift() {
         )],
     })
     .expect("candidate payload emits");
+    let candidate_records = v1_candidate_records(&candidates.candidates);
     let mut artifact = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
         index: sample_index_header(),
         strategy: sample_block_strategy(),
         candidate_records_path: "block/candidates.jsonl".to_string(),
         candidate_diagnostics_path: BLOCK_DIAGNOSTICS_PATH.to_string(),
-        candidate_records: candidates.candidates,
+        candidate_records,
         bucket_assertions: Vec::new(),
         known_surface_ids: posting_index.surface_ids,
         diagnostics: candidates.diagnostics,
@@ -257,6 +304,48 @@ fn entity_block_artifact_validator_refuses_self_hash_drift() {
 }
 
 #[test]
+fn entity_block_artifact_validator_refuses_upstream_reference_mismatch() {
+    let posting_index = candidate_posting_index();
+    let candidates = generate_block_candidates(BlockCandidateGenerationRequest {
+        profile_id: "cmbs_tenant_label".to_string(),
+        posting_index: &posting_index,
+        ngram_index: None,
+        budget_config: BlockCandidateBudgetConfig::new(8, 64, 128),
+        operators: vec![BlockCandidateOperator::AliasPatchMatch(
+            AliasPatchMatchBlockOperator::new(
+                "alias_patch_match",
+                vec![AliasPatchPair::new(
+                    "surf:cmbs:001",
+                    "surf:cmbs:002",
+                    "patch:sears-alias",
+                )],
+            ),
+        )],
+    })
+    .expect("candidate payload emits");
+    let mut artifact = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
+        index: sample_index_header(),
+        strategy: sample_block_strategy(),
+        candidate_records_path: "block/candidates.jsonl".to_string(),
+        candidate_diagnostics_path: BLOCK_DIAGNOSTICS_PATH.to_string(),
+        candidate_records: v1_candidate_records(&candidates.candidates),
+        bucket_assertions: Vec::new(),
+        known_surface_ids: posting_index.surface_ids,
+        diagnostics: candidates.diagnostics,
+    })
+    .expect("artifact builds");
+    artifact.upstream_artifacts[0].content_hash = "blake3:other-upstream".to_string();
+
+    let refusal = validate_block_candidate_artifact_contract(&artifact)
+        .expect_err("upstream mismatch refuses");
+
+    assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+    assert_eq!(refusal.detail["stage"], "block");
+    assert_eq!(refusal.detail["field"], "upstream_artifacts");
+    assert_eq!(refusal.detail["writes_performed"], json!(false));
+}
+
+#[test]
 fn entity_block_artifact_validator_refuses_missing_candidate_diagnostics_path() {
     let posting_index = candidate_posting_index();
     let candidates = generate_block_candidates(BlockCandidateGenerationRequest {
@@ -267,12 +356,13 @@ fn entity_block_artifact_validator_refuses_missing_candidate_diagnostics_path() 
         operators: Vec::new(),
     })
     .expect("empty candidate payload is valid");
+    let candidate_records = v1_candidate_records(&candidates.candidates);
     let mut artifact = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
         index: sample_index_header(),
         strategy: sample_block_strategy(),
         candidate_records_path: "block/candidates.jsonl".to_string(),
         candidate_diagnostics_path: BLOCK_DIAGNOSTICS_PATH.to_string(),
-        candidate_records: candidates.candidates,
+        candidate_records,
         bucket_assertions: Vec::new(),
         known_surface_ids: posting_index.surface_ids,
         diagnostics: candidates.diagnostics,
@@ -309,12 +399,13 @@ fn entity_block_artifact_payload_validator_refuses_stale_candidate_diagnostics()
         )],
     })
     .expect("candidate payload emits");
+    let candidate_records = v1_candidate_records(&candidates.candidates);
     let artifact = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
         index: sample_index_header(),
         strategy: sample_block_strategy(),
         candidate_records_path: "block/candidates.jsonl".to_string(),
         candidate_diagnostics_path: BLOCK_DIAGNOSTICS_PATH.to_string(),
-        candidate_records: candidates.candidates.clone(),
+        candidate_records: candidate_records.clone(),
         bucket_assertions: Vec::new(),
         known_surface_ids: posting_index.surface_ids,
         diagnostics: candidates.diagnostics.clone(),
@@ -325,7 +416,7 @@ fn entity_block_artifact_payload_validator_refuses_stale_candidate_diagnostics()
 
     let refusal = validate_block_candidate_payload_hashes(
         &artifact,
-        &candidates.candidates,
+        &candidate_records,
         &stale_diagnostics,
         &[],
     )
@@ -340,7 +431,7 @@ fn entity_block_artifact_payload_validator_refuses_stale_candidate_diagnostics()
 #[test]
 fn entity_block_artifact_refuses_unstable_candidate_order() {
     let posting_index = candidate_posting_index();
-    let mut candidates = generate_block_candidates(BlockCandidateGenerationRequest {
+    let candidates = generate_block_candidates(BlockCandidateGenerationRequest {
         profile_id: "cmbs_tenant_label".to_string(),
         posting_index: &posting_index,
         ngram_index: None,
@@ -356,14 +447,15 @@ fn entity_block_artifact_refuses_unstable_candidate_order() {
         )],
     })
     .expect("candidate payload emits");
-    candidates.candidates.reverse();
+    let mut candidate_records = v1_candidate_records(&candidates.candidates);
+    candidate_records.reverse();
 
     let refusal = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
         index: sample_index_header(),
         strategy: sample_block_strategy(),
         candidate_records_path: "block/candidates.jsonl".to_string(),
         candidate_diagnostics_path: BLOCK_DIAGNOSTICS_PATH.to_string(),
-        candidate_records: candidates.candidates,
+        candidate_records,
         bucket_assertions: Vec::new(),
         known_surface_ids: posting_index.surface_ids,
         diagnostics: candidates.diagnostics,
@@ -395,13 +487,14 @@ fn EN_B002_common_token_bucket_stays_bounded_in_artifact_summary() {
         )],
     })
     .expect("common-token payload stays bounded");
+    let candidate_records = v1_candidate_records(&candidates.candidates);
 
     let artifact = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
         index: sample_index_header(),
         strategy: sample_block_strategy(),
         candidate_records_path: "block/candidates.jsonl".to_string(),
         candidate_diagnostics_path: BLOCK_DIAGNOSTICS_PATH.to_string(),
-        candidate_records: candidates.candidates,
+        candidate_records,
         bucket_assertions: Vec::new(),
         known_surface_ids: posting_index.surface_ids,
         diagnostics: candidates.diagnostics,
@@ -448,9 +541,10 @@ fn EN_B003_sears_llc_support_candidate_is_emitted() {
         )],
     })
     .expect("Sears alias support candidates emit");
+    let candidate_records = v1_candidate_records(&candidates.candidates);
 
     let support = candidate_pair(
-        &candidates.candidates,
+        &candidate_records,
         expected["left_surface_id"]
             .as_str()
             .expect("fixture left surface"),
@@ -458,7 +552,7 @@ fn EN_B003_sears_llc_support_candidate_is_emitted() {
             .as_str()
             .expect("fixture right surface"),
     );
-    assert_eq!(support.version, "canon_entity_block.v0");
+    assert_eq!(support.version, CANON_ENTITY_BLOCK_VERSION_V1);
     assert!(support.block_hits.iter().any(|hit| {
         hit.operator_id
             == expected["expected_operator"]
@@ -472,7 +566,7 @@ fn EN_B003_sears_llc_support_candidate_is_emitted() {
         strategy: sample_block_strategy(),
         candidate_records_path: "block/candidates.jsonl".to_string(),
         candidate_diagnostics_path: BLOCK_DIAGNOSTICS_PATH.to_string(),
-        candidate_records: candidates.candidates,
+        candidate_records,
         bucket_assertions: Vec::new(),
         known_surface_ids: posting_index.surface_ids,
         diagnostics: candidates.diagnostics,
@@ -516,9 +610,10 @@ fn EN_B004_sears_auto_candidate_retains_relation_context() {
         ],
     })
     .expect("Sears Auto relation context candidates emit");
+    let candidate_records = v1_candidate_records(&candidates.candidates);
 
     let related = candidate_pair(
-        &candidates.candidates,
+        &candidate_records,
         expected["left_surface_id"]
             .as_str()
             .expect("fixture left surface"),
@@ -551,7 +646,7 @@ fn EN_B004_sears_auto_candidate_retains_relation_context() {
         strategy: sample_block_strategy(),
         candidate_records_path: "block/candidates.jsonl".to_string(),
         candidate_diagnostics_path: BLOCK_DIAGNOSTICS_PATH.to_string(),
-        candidate_records: candidates.candidates,
+        candidate_records,
         bucket_assertions: Vec::new(),
         known_surface_ids: posting_index.surface_ids,
         diagnostics: candidates.diagnostics,
@@ -655,7 +750,7 @@ fn sample_bucket_profile() -> ExactBucketProfile {
 
 fn sample_index_header() -> EntityArtifactHeader {
     EntityArtifactHeader {
-        version: CANON_ENTITY_INDEX_VERSION.to_string(),
+        version: CANON_ENTITY_INDEX_VERSION_V1.to_string(),
         metadata: sample_index_metadata(),
         summary: Default::default(),
     }
@@ -694,7 +789,7 @@ fn sample_index_metadata() -> EntityArtifactMetadata {
             content_hash: "blake3:input".to_string(),
         }),
         upstream_artifacts: vec![EntityArtifactReference {
-            version: CANON_ENTITY_PREPARE_VERSION.to_string(),
+            version: CANON_ENTITY_PREPARE_VERSION_V1.to_string(),
             content_hash: "blake3:prepare".to_string(),
         }],
         patch_set: Some(EntityPatchSetReference {
@@ -767,10 +862,10 @@ fn sears_auto_posting_index() -> EntityPostingIndex {
 }
 
 fn candidate_pair<'a>(
-    candidates: &'a [canon::entity::block::BlockCandidateRecord],
+    candidates: &'a [BlockCandidateRecord],
     left_surface_id: &str,
     right_surface_id: &str,
-) -> &'a canon::entity::block::BlockCandidateRecord {
+) -> &'a BlockCandidateRecord {
     candidates
         .iter()
         .find(|candidate| {
@@ -778,6 +873,14 @@ fn candidate_pair<'a>(
                 && candidate.right_surface_id == right_surface_id
         })
         .expect("candidate pair exists")
+}
+
+fn v1_candidate_records(candidates: &[BlockCandidateRecord]) -> Vec<BlockCandidateRecord> {
+    let mut records = candidates.to_vec();
+    for candidate in &mut records {
+        candidate.version = CANON_ENTITY_BLOCK_VERSION_V1.to_string();
+    }
+    records
 }
 
 fn posting_surface<const N: usize>(

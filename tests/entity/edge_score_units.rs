@@ -99,7 +99,7 @@ fn edge_score_units_refuse_non_canonical_surface_pairs() {
         .expect_err("reversed pair refuses");
 
     assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
-    assert_eq!(refusal.detail["stage"], "edge");
+    assert_eq!(refusal.detail["stage"], "evidence");
     assert_eq!(refusal.detail["reason"], "invalid_surface_pair");
 }
 

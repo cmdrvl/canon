@@ -70,6 +70,7 @@ const ORG_V1_PROFILE: &str = "bdc_issuer";
 
 struct EntityRunExecution {
     artifact: Box<entity::run::EntityRunArtifact>,
+    artifact_value: serde_json::Value,
     candidate_pairs: u64,
 }
 
@@ -771,10 +772,11 @@ fn run_entity_run_command(run: &EntityRunCli) -> Result<u8, Box<dyn Error>> {
     match run_entity_run_pipeline(run) {
         Ok(EntityRunExecution {
             artifact,
+            artifact_value,
             candidate_pairs,
         }) => {
             let output = match run.emit {
-                EntityEmitMode::Json => serde_json::to_string(&artifact)?,
+                EntityEmitMode::Json => serde_json::to_string(&artifact_value)?,
                 EntityEmitMode::Summary => entity::run::render_run_summary(&artifact),
             };
             emit_entity_output(&output, matches!(run.emit, EntityEmitMode::Summary));
@@ -853,20 +855,40 @@ fn run_entity_index_build_command(build: &EntityIndexBuildCli) -> Result<u8, Box
 }
 
 fn run_entity_block_command(block: &EntityBlockCli) -> Result<u8, Box<dyn Error>> {
-    let request = entity_stage_project_request(
-        entity::EntityArtifactStageV1::Block,
-        &block.rows,
-        &block.profile,
-        &block.strategy,
-        &block.registry,
-        &block.work_dir,
-        None,
-    );
-    emit_entity_v1_scaffold_request(
-        request,
-        entity::EntityArtifactStageV1::Block,
-        matches!(block.emit, EntityStreamEmitMode::Summary),
-    )
+    let summary_mode = matches!(block.emit, EntityStreamEmitMode::Summary);
+    let (Some(profile), Some(work_dir)) = (block.profile.as_ref(), block.work_dir.as_ref()) else {
+        return emit_entity_refusal(
+            entity_missing_v1_context_refusal(
+                entity::EntityArtifactStageV1::Block,
+                &block.rows,
+                &block.profile,
+                &block.strategy,
+                &block.registry,
+                &block.work_dir,
+                None,
+            ),
+            true,
+            summary_mode,
+        );
+    };
+
+    match entity::run::run_entity_block_stage(entity::block::EntityBlockStageRequest {
+        rows: &block.rows,
+        profile,
+        strategy: &block.strategy,
+        registry: &block.registry,
+        work_dir,
+    }) {
+        Ok(output) => {
+            let rendered = match block.emit {
+                EntityStreamEmitMode::Jsonl => render_jsonl_records(&output.candidates)?,
+                EntityStreamEmitMode::Summary => render_entity_block_stage_summary(&output),
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
+    }
 }
 
 fn run_entity_candidate_recall_command(
@@ -925,61 +947,100 @@ fn run_entity_generalization_command(
 }
 
 fn run_entity_evidence_command(evidence: &EntityEvidenceCli) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(evidence.emit, EntityStreamEmitMode::Summary);
     if let Err(refusal_output) = validate_entity_v1_input_artifact(
         &evidence.candidates,
         "candidate block artifact",
         entity::EntityArtifactStageV1::Block,
     ) {
-        return emit_entity_refusal(
-            refusal_output,
-            true,
-            matches!(evidence.emit, EntityStreamEmitMode::Summary),
-        );
+        return emit_entity_refusal(refusal_output, true, summary_mode);
     }
 
-    let request = entity_stage_project_request(
-        entity::EntityArtifactStageV1::Evidence,
-        &evidence.rows,
-        &evidence.profile,
-        &evidence.strategy,
-        &evidence.registry,
-        &evidence.work_dir,
-        None,
-    );
-    emit_entity_v1_scaffold_request(
-        request,
-        entity::EntityArtifactStageV1::Evidence,
-        matches!(evidence.emit, EntityStreamEmitMode::Summary),
-    )
+    let (Some(profile), Some(work_dir)) = (evidence.profile.as_ref(), evidence.work_dir.as_ref())
+    else {
+        return emit_entity_refusal(
+            entity_missing_v1_context_refusal(
+                entity::EntityArtifactStageV1::Evidence,
+                &evidence.rows,
+                &evidence.profile,
+                &evidence.strategy,
+                &evidence.registry,
+                &evidence.work_dir,
+                None,
+            ),
+            true,
+            summary_mode,
+        );
+    };
+
+    match entity::run::run_entity_evidence_stage(entity::edge::EntityEvidenceStageRequest {
+        rows: &evidence.rows,
+        profile,
+        strategy: &evidence.strategy,
+        candidates: &evidence.candidates,
+        registry: &evidence.registry,
+        work_dir,
+    }) {
+        Ok(output) => {
+            let rendered = match evidence.emit {
+                EntityStreamEmitMode::Jsonl => render_jsonl_records(&output.records)?,
+                EntityStreamEmitMode::Summary => render_entity_evidence_stage_summary(&output),
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
+    }
 }
 
 fn run_entity_solve_command(solve: &EntitySolveCli) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(solve.emit, EntityEmitMode::Summary);
     if let Err(refusal_output) = validate_entity_v1_input_artifact(
         &solve.evidence,
         "evidence artifact",
         entity::EntityArtifactStageV1::Evidence,
     ) {
-        return emit_entity_refusal(
-            refusal_output,
-            true,
-            matches!(solve.emit, EntityEmitMode::Summary),
-        );
+        return emit_entity_refusal(refusal_output, true, summary_mode);
     }
 
-    let request = entity_stage_project_request(
-        entity::EntityArtifactStageV1::Solve,
-        &solve.rows,
-        &solve.profile,
-        &solve.strategy,
-        &solve.registry,
-        &solve.work_dir,
-        None,
-    );
-    emit_entity_v1_scaffold_request(
-        request,
-        entity::EntityArtifactStageV1::Solve,
-        matches!(solve.emit, EntityEmitMode::Summary),
-    )
+    let (Some(profile), Some(work_dir)) = (solve.profile.as_ref(), solve.work_dir.as_ref()) else {
+        return emit_entity_refusal(
+            entity_missing_v1_context_refusal(
+                entity::EntityArtifactStageV1::Solve,
+                &solve.rows,
+                &solve.profile,
+                &solve.strategy,
+                &solve.registry,
+                &solve.work_dir,
+                None,
+            ),
+            true,
+            summary_mode,
+        );
+    };
+
+    match entity::run::run_entity_solve_stage(entity::solve::EntitySolveStageRequest {
+        rows: &solve.rows,
+        profile,
+        strategy: &solve.strategy,
+        evidence: &solve.evidence,
+        registry: &solve.registry,
+        work_dir,
+    }) {
+        Ok(output) => {
+            let rendered = match solve.emit {
+                EntityEmitMode::Json => {
+                    let artifact =
+                        read_entity_stage_artifact_json(&work_dir.join("solve/solve.json"))?;
+                    serde_json::to_string(&artifact)?
+                }
+                EntityEmitMode::Summary => render_entity_solve_stage_summary(&output),
+            };
+            emit_entity_output(&rendered, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
+    }
 }
 
 fn run_entity_link_command(link: &EntityLinkCli) -> Result<u8, Box<dyn Error>> {
@@ -2408,6 +2469,7 @@ fn run_entity_run_pipeline(run: &EntityRunCli) -> Result<EntityRunExecution, Can
             .map_err(|refusal| refusal.to_canon_output())?;
             Ok(EntityRunExecution {
                 artifact: Box::new(result.artifact),
+                artifact_value: result.artifact_value,
                 candidate_pairs: result.candidate_pairs,
             })
         }
@@ -2981,71 +3043,6 @@ fn entity_candidate_recall_summary(
     )
 }
 
-#[allow(clippy::result_large_err)]
-fn entity_stage_project_request(
-    stage: entity::EntityArtifactStageV1,
-    rows: &Path,
-    profile: &Option<String>,
-    strategy: &Path,
-    registry: &Path,
-    work_dir: &Option<PathBuf>,
-    suite: Option<&PathBuf>,
-) -> Result<entity_runtime::EntityV1ProjectDispatchRequest, CanonOutput> {
-    let (Some(profile), Some(work_dir)) = (profile.as_ref(), work_dir.as_ref()) else {
-        return Err(entity_missing_v1_context_refusal(
-            stage, rows, profile, strategy, registry, work_dir, suite,
-        ));
-    };
-
-    Ok(entity_runtime::EntityV1ProjectDispatchRequest::cluster(
-        rows.to_path_buf(),
-        profile.clone(),
-        strategy.to_path_buf(),
-        registry.to_path_buf(),
-        work_dir.clone(),
-        suite.cloned(),
-    ))
-}
-
-fn emit_entity_v1_scaffold_request(
-    request: Result<entity_runtime::EntityV1ProjectDispatchRequest, CanonOutput>,
-    stage: entity::EntityArtifactStageV1,
-    summary_mode: bool,
-) -> Result<u8, Box<dyn Error>> {
-    match request {
-        Ok(request) => {
-            let plan = entity_runtime::entity_v1_dispatch_plan(stage, &request);
-            emit_entity_refusal(entity_v1_scaffold_refusal(&plan), true, summary_mode)
-        }
-        Err(refusal_output) => emit_entity_refusal(refusal_output, true, summary_mode),
-    }
-}
-
-fn entity_v1_scaffold_refusal(plan: &entity_runtime::EntityV1DispatchPlan) -> CanonOutput {
-    let artifact = plan.requested_artifact();
-    refusal::create_refusal(
-        RefusalCode::EEntityArtifactContract,
-        format!(
-            "Artifact-backed entity {} dispatch is scaffolded but not wired",
-            plan.requested_stage.as_str()
-        ),
-        serde_json::json!({
-            "reason": "entity_v1_executor_pending",
-            "stage": plan.requested_stage.as_str(),
-            "command": plan.command,
-            "artifact_version": artifact.map(|artifact| artifact.artifact_version),
-            "artifact_path": artifact.map(|artifact| artifact.artifact_path.display().to_string()),
-            "payload_path": artifact.map(|artifact| artifact.payload_path.display().to_string()),
-            "dispatch_plan": serde_json::to_value(plan).unwrap_or_else(|error| {
-                serde_json::json!({ "serialization_error": error.to_string() })
-            }),
-            "writes_performed": false,
-            "legacy_artifacts_allowed": false
-        }),
-        Some(format!("{} --help", plan.command)),
-    )
-}
-
 fn entity_missing_v1_context_refusal(
     stage: entity::EntityArtifactStageV1,
     rows: &Path,
@@ -3365,7 +3362,79 @@ fn validate_entity_v1_input_artifact(
         ));
     }
 
+    entity::schema::validate_artifact_v1_core_contract(&artifact).map_err(|refusal| {
+        entity_v1_input_preflight_refusal(
+            path,
+            label,
+            expected_stage,
+            "invalid_v1_core_contract",
+            refusal,
+        )
+    })?;
+    entity::schema::validate_entity_v1_self_hash(&artifact).map_err(|refusal| {
+        entity_v1_input_preflight_refusal(
+            path,
+            label,
+            expected_stage,
+            "invalid_v1_self_hash",
+            refusal,
+        )
+    })?;
+
     Ok(())
+}
+
+fn entity_v1_input_preflight_refusal(
+    path: &Path,
+    label: &str,
+    expected_stage: entity::EntityArtifactStageV1,
+    reason: &str,
+    refusal: Refusal,
+) -> CanonOutput {
+    let Refusal {
+        code,
+        message,
+        detail: source_detail,
+        next_command: _,
+    } = refusal;
+    let mut detail = match source_detail {
+        serde_json::Value::Object(map) => map,
+        other => serde_json::Map::from_iter([("source_detail".to_string(), other)]),
+    };
+    detail.insert(
+        "reason".to_string(),
+        serde_json::Value::String(reason.to_string()),
+    );
+    detail.insert(
+        "path".to_string(),
+        serde_json::Value::String(path.display().to_string()),
+    );
+    detail.insert(
+        "artifact".to_string(),
+        serde_json::Value::String(label.to_string()),
+    );
+    detail.insert(
+        "expected_stage".to_string(),
+        serde_json::Value::String(expected_stage.as_str().to_string()),
+    );
+    detail.insert(
+        "expected_version".to_string(),
+        serde_json::Value::String(
+            entity_runtime::entity_v1_contract_for_stage(expected_stage)
+                .artifact_version
+                .to_string(),
+        ),
+    );
+    detail.insert(
+        "writes_performed".to_string(),
+        serde_json::Value::Bool(false),
+    );
+    refusal::create_refusal(
+        code,
+        message,
+        serde_json::Value::Object(detail),
+        Some(format!("{} --help", expected_stage.command())),
+    )
 }
 
 #[allow(clippy::result_large_err)]
@@ -4328,6 +4397,56 @@ fn render_entity_index_build_v1_summary(
         "{profile} index build v1 registry={registry}@{registry_version} surfaces={surfaces} tokens={tokens} ngrams={ngrams} cache={}",
         result.cache_status.as_str()
     )
+}
+
+fn render_jsonl_records<T: serde::Serialize>(records: &[T]) -> Result<String, Box<dyn Error>> {
+    let mut rendered = String::new();
+    for record in records {
+        rendered.push_str(&serde_json::to_string(record)?);
+        rendered.push('\n');
+    }
+    Ok(rendered)
+}
+
+fn read_entity_stage_artifact_json(path: &Path) -> Result<serde_json::Value, Box<dyn Error>> {
+    Ok(serde_json::from_slice(&fs::read(path)?)?)
+}
+
+fn render_entity_block_stage_summary(output: &entity::block::EntityBlockStageOutput) -> String {
+    format!(
+        "{} candidate_pairs={} exact_buckets={} artifact={}",
+        output.artifact.version,
+        summary_count(&output.artifact.summary, "candidate_pairs"),
+        summary_count(&output.artifact.summary, "exact_bucket_count"),
+        output.artifact.artifact_content_hash
+    )
+}
+
+fn render_entity_evidence_stage_summary(
+    output: &entity::edge::EntityEvidenceStageOutput,
+) -> String {
+    format!(
+        "{} evidence_records={} support_hits={} hard_cannot_link={} artifact={}",
+        output.artifact.version,
+        summary_count(&output.artifact.summary, "evidence_records"),
+        summary_count(&output.artifact.summary, "support_hit_count"),
+        summary_count(&output.artifact.summary, "hard_cannot_link_count"),
+        output.artifact.artifact_content_hash
+    )
+}
+
+fn render_entity_solve_stage_summary(output: &entity::solve::EntitySolveStageOutput) -> String {
+    format!(
+        "{} entities={} review_groups={} artifact={}",
+        output.artifact.version,
+        summary_count(&output.artifact.summary, "entity_count"),
+        summary_count(&output.artifact.summary, "review_group_count"),
+        output.artifact.artifact_content_hash
+    )
+}
+
+fn summary_count(summary: &entity::EntityDeterministicSummary, key: &str) -> u64 {
+    summary.counts.get(key).copied().unwrap_or_default()
 }
 
 fn render_entity_apply_v1_summary(artifact: &serde_json::Value) -> String {

@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 
 use canon::entity::{
-    CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION, CANON_ENTITY_INDEX_VERSION,
-    CANON_ENTITY_PREPARE_VERSION, CANON_ENTITY_SOLVE_VERSION, EntityArtifactReference,
+    CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_EVIDENCE_VERSION_V1, CANON_ENTITY_INDEX_VERSION_V1,
+    CANON_ENTITY_PREPARE_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactReference,
     index_io::CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION,
     run::{EntityRunArtifact, EntityRunHandoffStep, EntityRunRequest, run_entity_workbench},
 };
@@ -29,7 +29,7 @@ fn cmbs_run_orchestration_orders_review_audit_promote_apply_handoffs() {
             "index",
             "cache_enabled",
             "block",
-            "edge",
+            "evidence",
             "solve",
             "review_export",
             "audit",
@@ -168,7 +168,7 @@ fn artifact_chain_continuity_cmbs_run_profiles_hashes_and_paths() {
     assert!(firewall.strategy_hash.starts_with("blake3:"));
 
     let solve = solve_ref(&artifact);
-    assert_eq!(solve.version, CANON_ENTITY_SOLVE_VERSION);
+    assert_eq!(solve.version, CANON_ENTITY_SOLVE_VERSION_V1);
     assert!(solve.content_hash.starts_with("blake3:"));
 
     let stage_versions = artifact
@@ -179,12 +179,12 @@ fn artifact_chain_continuity_cmbs_run_profiles_hashes_and_paths() {
     assert_eq!(
         stage_versions,
         [
-            CANON_ENTITY_PREPARE_VERSION,
-            CANON_ENTITY_INDEX_VERSION,
+            CANON_ENTITY_PREPARE_VERSION_V1,
+            CANON_ENTITY_INDEX_VERSION_V1,
             CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION,
-            CANON_ENTITY_BLOCK_VERSION,
-            CANON_ENTITY_EDGE_VERSION,
-            CANON_ENTITY_SOLVE_VERSION
+            CANON_ENTITY_BLOCK_VERSION_V1,
+            CANON_ENTITY_EVIDENCE_VERSION_V1,
+            CANON_ENTITY_SOLVE_VERSION_V1
         ]
     );
 
@@ -202,7 +202,7 @@ fn artifact_chain_continuity_cmbs_run_profiles_hashes_and_paths() {
         assert!(stage.artifact_content_hash.starts_with("blake3:"));
     }
 
-    let persisted: EntityRunArtifact = read_json(&work_dir.join("run.json"));
+    let persisted: EntityRunArtifact = read_json(&work_dir.join("run/run.json"));
     assert_eq!(persisted.orchestration, artifact.orchestration);
 }
 
@@ -251,7 +251,7 @@ fn solve_ref(artifact: &EntityRunArtifact) -> EntityArtifactReference {
     artifact
         .stage_artifacts
         .iter()
-        .find(|stage| stage.version == CANON_ENTITY_SOLVE_VERSION)
+        .find(|stage| stage.version == CANON_ENTITY_SOLVE_VERSION_V1)
         .map(|stage| EntityArtifactReference {
             version: stage.version.clone(),
             content_hash: stage.artifact_content_hash.clone(),

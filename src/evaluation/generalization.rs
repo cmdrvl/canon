@@ -17,9 +17,11 @@
 use crate::{
     InputFormat, InputValues, Mapping,
     entity::{
-        CANON_ENTITY_BLOCK_BUCKET_VERSION, CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION,
-        CANON_ENTITY_INDEX_VERSION, CANON_ENTITY_RUN_VERSION, CANON_ENTITY_SOLVE_VERSION,
-        EntityArtifactMetadata, EntityArtifactReference, EntityStrategyReference,
+        CANON_ENTITY_BLOCK_BUCKET_VERSION, CANON_ENTITY_BLOCK_VERSION_V1,
+        CANON_ENTITY_EDGE_VERSION, CANON_ENTITY_EVIDENCE_VERSION_V1, CANON_ENTITY_INDEX_VERSION_V1,
+        CANON_ENTITY_PREPARE_VERSION_V1, CANON_ENTITY_RUN_VERSION_V1,
+        CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactMetadata, EntityArtifactReference,
+        EntityArtifactStageV1, EntityStrategyReference,
         block::{
             BlockCandidateGenerationDiagnostics, BlockCandidateRecord,
             CandidateRecallEvaluationRequest, evaluate_candidate_recall,
@@ -34,17 +36,14 @@ use crate::{
             build_edge_evidence_artifact_contract, validate_edge_evidence_artifact_contract,
         },
         graph::{SignedEvidenceGraphInput, SurfaceIncumbentId, build_signed_evidence_graph},
-        index::{
-            DEFAULT_INDEX_DIAGNOSTICS_PATH, DEFAULT_INDEX_POSTINGS_PATH, EntityIndexArtifact,
-            EntityIndexCacheMode, EntityIndexCacheStatus, validate_index_artifact_contract,
-        },
+        index::{DEFAULT_INDEX_DIAGNOSTICS_PATH, EntityIndexCacheMode, EntityIndexCacheStatus},
         index_io::{
-            CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION, EntityIndexCacheReceipt, INDEX_ARTIFACT_FILE,
+            CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION, EntityIndexCacheReceipt,
             INDEX_CACHE_KEY_FILE, INDEX_CACHE_RECEIPT_FILE,
         },
         prepare::{PreparedExactLookupStatus, PreparedSurfaceRecord},
         run::{
-            EntityRunArtifact,
+            EntityRunArtifact, RUN_CACHE_EXECUTION_RECEIPT_PATH,
             link::{
                 ENTITY_LINK_OBSERVATION_SURFACE_BINDINGS_VERSION,
                 ENTITY_LINK_VERSION as CANON_ENTITY_LINK_VERSION, EntityLinkArtifact,
@@ -53,6 +52,7 @@ use crate::{
                 validate_entity_link_artifact_contract,
             },
         },
+        schema::{validate_artifact_v1_core_contract, validate_entity_v1_self_hash},
         solve::{
             SolveArtifact, SolveArtifactRequest, SolveEntityRecord, SolveReconciliationConfig,
             SolveReconciliationState, SolveSurfaceProvenance, build_solve_artifact_contract,
@@ -662,6 +662,7 @@ pub struct GeneralizationCacheExecutionRef {
     pub version: String,
     pub mode: GeneralizationCacheExecutionMode,
     pub receipt: GeneralizationTypedArtifactRef,
+    pub bundle_receipt: GeneralizationTypedArtifactRef,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1001,6 +1002,10 @@ pub struct LoadedGeneralizationCacheExecution {
     pub receipt_hash: String,
     pub receipt_byte_count: u64,
     pub receipt: EntityIndexCacheReceipt,
+    pub bundle_receipt_path: String,
+    pub bundle_receipt_hash: String,
+    pub bundle_receipt_byte_count: u64,
+    pub bundle_receipt: EntityIndexCacheReceipt,
     pub bundle_files: Vec<LoadedGeneralizationCacheReceiptFile>,
 }
 
@@ -1517,33 +1522,51 @@ fn load_generalization_cache_execution(
     let receipt: EntityIndexCacheReceipt =
         serde_json::from_slice(&receipt_bytes).map_err(artifact_error)?;
     validate_cache_execution_receipt_payload(&trial.cache_execution, &receipt, &field)?;
+    let (bundle_receipt_path, bundle_receipt_bytes) = read_typed_artifact_ref(
+        base_dir,
+        &format!("{field}.bundle_receipt"),
+        &trial.cache_execution.bundle_receipt,
+        max_artifact_bytes,
+    )?;
+    let bundle_receipt: EntityIndexCacheReceipt =
+        serde_json::from_slice(&bundle_receipt_bytes).map_err(artifact_error)?;
+    validate_cache_bundle_receipt_payload(&bundle_receipt, &field)?;
+    validate_cache_execution_receipt_matches_bundle(&receipt, &bundle_receipt, &field)?;
 
     let run_ref = loaded_run_artifact_ref(artifacts)?;
     let run = loaded_run_artifact(artifacts)?;
     let bundle_files = load_and_validate_cache_receipt_bundle_files(
         base_dir,
         &run_ref.reference.path,
-        &receipt,
+        &bundle_receipt,
         max_artifact_bytes,
         &field,
     )?;
-    validate_cache_execution_run_binding(
-        &run_ref.reference.path,
+    validate_cache_execution_run_binding(CacheExecutionRunBindingContext {
+        run_ref_path: &run_ref.reference.path,
         run,
-        &trial.cache_execution,
-        &receipt,
-        &bundle_files,
-        &field,
-    )?;
+        reference: &trial.cache_execution,
+        leak_source_bundle: &trial.leak_scan_sources,
+        receipt: &receipt,
+        bundle_receipt: &bundle_receipt,
+        bundle_files: &bundle_files,
+        field: &field,
+    })?;
 
     let receipt_path = receipt_path_to_manifest_relative(base_dir, &receipt_path)
         .unwrap_or_else(|| trial.cache_execution.receipt.path.clone());
+    let bundle_receipt_path = receipt_path_to_manifest_relative(base_dir, &bundle_receipt_path)
+        .unwrap_or_else(|| trial.cache_execution.bundle_receipt.path.clone());
     Ok(LoadedGeneralizationCacheExecution {
         references: trial.cache_execution.clone(),
         receipt_path,
         receipt_hash: trial.cache_execution.receipt.content_hash.clone(),
         receipt_byte_count: receipt_bytes.len() as u64,
         receipt,
+        bundle_receipt_path,
+        bundle_receipt_hash: trial.cache_execution.bundle_receipt.content_hash.clone(),
+        bundle_receipt_byte_count: bundle_receipt_bytes.len() as u64,
+        bundle_receipt,
         bundle_files,
     })
 }
@@ -1571,6 +1594,43 @@ fn validate_cache_execution_ref(
         CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION,
         &format!("{field}.receipt"),
     )?;
+    validate_typed_artifact_ref(
+        &reference.bundle_receipt,
+        &format!("{field}.bundle_receipt"),
+    )?;
+    require_ref_version(
+        &reference.bundle_receipt,
+        CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION,
+        &format!("{field}.bundle_receipt"),
+    )?;
+    if !reference
+        .receipt
+        .path
+        .ends_with(RUN_CACHE_EXECUTION_RECEIPT_PATH)
+    {
+        return Err(error(
+            GeneralizationErrorCode::ArtifactContract,
+            format!("{field}.receipt.path must end with {RUN_CACHE_EXECUTION_RECEIPT_PATH}"),
+        ));
+    }
+    if !reference
+        .bundle_receipt
+        .path
+        .ends_with(INDEX_CACHE_RECEIPT_FILE)
+    {
+        return Err(error(
+            GeneralizationErrorCode::ArtifactContract,
+            format!("{field}.bundle_receipt.path must end with {INDEX_CACHE_RECEIPT_FILE}"),
+        ));
+    }
+    if reference.receipt.path == reference.bundle_receipt.path
+        || reference.receipt.content_hash == reference.bundle_receipt.content_hash
+    {
+        return Err(error(
+            GeneralizationErrorCode::DuplicateRecord,
+            format!("{field}.receipt and bundle_receipt must be distinct artifacts"),
+        ));
+    }
     Ok(())
 }
 
@@ -1615,11 +1675,55 @@ fn validate_cache_execution_receipt_payload(
     Ok(())
 }
 
+fn validate_cache_bundle_receipt_payload(
+    receipt: &EntityIndexCacheReceipt,
+    field: &str,
+) -> GeneralizationResult<()> {
+    if receipt.version != CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION {
+        return Err(error(
+            GeneralizationErrorCode::ArtifactContract,
+            format!(
+                "{field}.bundle_receipt payload version must be {CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION}"
+            ),
+        ));
+    }
+    verify_declared_digest(
+        &format!("{field}.bundle_receipt.bundle_hash"),
+        &receipt.bundle_hash,
+    )?;
+    if receipt.mode != EntityIndexCacheMode::Enabled
+        || receipt.status != EntityIndexCacheStatus::Rebuilt
+        || !receipt.reusable
+    {
+        return Err(error(
+            GeneralizationErrorCode::ArtifactContract,
+            format!(
+                "{field}.bundle_receipt must be the immutable enabled rebuilt reusable index bundle receipt"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_cache_execution_receipt_matches_bundle(
+    execution: &EntityIndexCacheReceipt,
+    bundle: &EntityIndexCacheReceipt,
+    field: &str,
+) -> GeneralizationResult<()> {
+    if execution.bundle_hash != bundle.bundle_hash || execution.files != bundle.files {
+        return Err(error(
+            GeneralizationErrorCode::ArtifactContract,
+            format!("{field}.receipt must bind the same immutable index bundle as bundle_receipt"),
+        ));
+    }
+    Ok(())
+}
+
 fn required_cache_receipt_files() -> [(&'static str, &'static str); 4] {
     [
-        ("artifact", INDEX_ARTIFACT_FILE),
+        ("artifact", "index/index.json"),
         ("cache_key", INDEX_CACHE_KEY_FILE),
-        ("postings", DEFAULT_INDEX_POSTINGS_PATH),
+        ("postings", "index/postings.bin"),
         ("diagnostics", DEFAULT_INDEX_DIAGNOSTICS_PATH),
     ]
 }
@@ -1721,32 +1825,64 @@ fn index_artifact_content_hash_from_bytes(
     bytes: &[u8],
     field: &str,
 ) -> GeneralizationResult<String> {
-    let artifact: EntityIndexArtifact = serde_json::from_slice(bytes).map_err(|error| {
+    let artifact: Value = serde_json::from_slice(bytes).map_err(|error| {
         GeneralizationError::new(
             GeneralizationErrorCode::ArtifactContract,
             format!("{field} is not a valid entity index artifact: {error}"),
         )
     })?;
-    validate_index_artifact_contract(&artifact).map_err(|refusal| {
+    let contract = validate_artifact_v1_core_contract(&artifact).map_err(|refusal| {
         error(
             GeneralizationErrorCode::ArtifactContract,
             format!(
-                "{field} failed native index artifact contract: {}",
+                "{field} failed native index v1 artifact contract: {}",
                 refusal.message
             ),
         )
     })?;
-    Ok(artifact.artifact_content_hash)
+    if contract.stage != EntityArtifactStageV1::Index
+        || contract.artifact_version != CANON_ENTITY_INDEX_VERSION_V1
+    {
+        return Err(error(
+            GeneralizationErrorCode::ArtifactContract,
+            format!("{field} must be a canon_entity_index.v1 artifact"),
+        ));
+    }
+    validate_entity_v1_self_hash(&artifact).map_err(|refusal| {
+        error(
+            GeneralizationErrorCode::ArtifactContract,
+            format!(
+                "{field} failed native index v1 self-hash validation: {}",
+                refusal.message
+            ),
+        )
+    })
+}
+
+struct CacheExecutionRunBindingContext<'a> {
+    run_ref_path: &'a str,
+    run: &'a EntityRunArtifact,
+    reference: &'a GeneralizationCacheExecutionRef,
+    leak_source_bundle: &'a GeneralizationLeakSourceBundleRef,
+    receipt: &'a EntityIndexCacheReceipt,
+    bundle_receipt: &'a EntityIndexCacheReceipt,
+    bundle_files: &'a [LoadedGeneralizationCacheReceiptFile],
+    field: &'a str,
 }
 
 fn validate_cache_execution_run_binding(
-    run_ref_path: &str,
-    run: &EntityRunArtifact,
-    reference: &GeneralizationCacheExecutionRef,
-    receipt: &EntityIndexCacheReceipt,
-    bundle_files: &[LoadedGeneralizationCacheReceiptFile],
-    field: &str,
+    ctx: CacheExecutionRunBindingContext<'_>,
 ) -> GeneralizationResult<()> {
+    let CacheExecutionRunBindingContext {
+        run_ref_path,
+        run,
+        reference,
+        leak_source_bundle,
+        receipt,
+        bundle_receipt,
+        bundle_files,
+        field,
+    } = ctx;
     let expected_stage = match reference.mode {
         GeneralizationCacheExecutionMode::DisabledBypass => "cache_disabled",
         GeneralizationCacheExecutionMode::EnabledWarmHit => "cache_enabled",
@@ -1780,10 +1916,22 @@ fn validate_cache_execution_run_binding(
         &cache_stage.path,
         &format!("{field}.stage.path"),
     )?;
-    if stage_path != reference.receipt.path || cache_stage.path != INDEX_CACHE_RECEIPT_FILE {
+    if stage_path != reference.receipt.path || cache_stage.path != RUN_CACHE_EXECUTION_RECEIPT_PATH
+    {
         return Err(error(
             GeneralizationErrorCode::ArtifactContract,
             format!("{field}.receipt path does not match native cache stage path"),
+        ));
+    }
+    let bundle_stage_path = safe_run_stage_checked_path(
+        run_ref_path,
+        INDEX_CACHE_RECEIPT_FILE,
+        &format!("{field}.bundle_receipt.path"),
+    )?;
+    if bundle_stage_path != reference.bundle_receipt.path {
+        return Err(error(
+            GeneralizationErrorCode::ArtifactContract,
+            format!("{field}.bundle_receipt path does not match native index bundle path"),
         ));
     }
     require_run_label(
@@ -1801,7 +1949,7 @@ fn validate_cache_execution_run_binding(
     require_run_label(
         run,
         "cache_receipt_path",
-        INDEX_CACHE_RECEIPT_FILE,
+        RUN_CACHE_EXECUTION_RECEIPT_PATH,
         &format!("{field}.run_labels"),
     )?;
     require_run_label(
@@ -1810,11 +1958,23 @@ fn validate_cache_execution_run_binding(
         &reference.receipt.content_hash,
         &format!("{field}.run_labels"),
     )?;
+    require_run_label(
+        run,
+        "cache_bundle_receipt_path",
+        INDEX_CACHE_RECEIPT_FILE,
+        &format!("{field}.run_labels"),
+    )?;
+    require_run_label(
+        run,
+        "cache_bundle_receipt_hash",
+        &reference.bundle_receipt.content_hash,
+        &format!("{field}.run_labels"),
+    )?;
 
     let index_stage = run
         .stage_artifacts
         .iter()
-        .find(|stage| stage.stage == "index" && stage.version == CANON_ENTITY_INDEX_VERSION)
+        .find(|stage| stage.stage == "index" && stage.version == CANON_ENTITY_INDEX_VERSION_V1)
         .ok_or_else(|| {
             error(
                 GeneralizationErrorCode::MissingReference,
@@ -1830,6 +1990,44 @@ fn validate_cache_execution_run_binding(
             format!("{field}.receipt run stage must upstream the native index artifact"),
         ));
     }
+    let bundle_ref = EntityArtifactReference {
+        version: reference.bundle_receipt.version.clone(),
+        content_hash: reference.bundle_receipt.content_hash.clone(),
+    };
+    let leak_bundle_ref = EntityArtifactReference {
+        version: leak_source_bundle.version.clone(),
+        content_hash: leak_source_bundle.content_hash.clone(),
+    };
+    if !cache_stage.upstream_artifacts.contains(&bundle_ref) {
+        return Err(error(
+            GeneralizationErrorCode::ArtifactContract,
+            format!("{field}.receipt run stage must upstream the immutable bundle receipt"),
+        ));
+    }
+    if !cache_stage.upstream_artifacts.contains(&leak_bundle_ref) {
+        return Err(error(
+            GeneralizationErrorCode::ArtifactContract,
+            format!("{field}.receipt run stage must upstream the trial leak source bundle"),
+        ));
+    }
+    let mut expected_upstreams = vec![
+        stage_artifact_ref(index_stage),
+        bundle_ref.clone(),
+        leak_bundle_ref.clone(),
+    ];
+    expected_upstreams.sort_by(entity_artifact_ref_cmp);
+    if cache_stage.upstream_artifacts != expected_upstreams {
+        return Err(error(
+            GeneralizationErrorCode::ArtifactContract,
+            format!(
+                "{field}.receipt run stage must bind exactly index, bundle, and trial leak source upstreams"
+            ),
+        ));
+    }
+    verify_declared_digest(
+        &format!("{field}.bundle_receipt.bundle_hash"),
+        &bundle_receipt.bundle_hash,
+    )?;
     let artifact_file = bundle_files
         .iter()
         .find(|file| file.role == "artifact")
@@ -2364,8 +2562,12 @@ pub fn rebind_generalization_native_stages(
         &block.metadata.strategy,
         &expected_block_strategy,
     )?;
-    let expected_edge_strategy = derived_stage_strategy(&run.metadata.strategy, "edge");
-    validate_replacement_stage_strategy("edge", &edge.metadata.strategy, &expected_edge_strategy)?;
+    let expected_edge_strategy = derived_stage_strategy(&run.metadata.strategy, "evidence");
+    validate_replacement_stage_strategy(
+        "evidence",
+        &edge.metadata.strategy,
+        &expected_edge_strategy,
+    )?;
     let expected_solve_strategy = derived_stage_strategy(&run.metadata.strategy, "solve");
     if run.orchestration.profile_firewall.strategy_hash != expected_solve_strategy.content_hash {
         return Err(error(
@@ -2415,7 +2617,7 @@ pub fn rebind_generalization_native_stages(
     let (incumbent_ids, solve_provenance) =
         derive_solve_inputs_from_prepared_surfaces(run, registry_dir, request.prepared_surfaces)?;
     let graph = build_signed_evidence_graph(SignedEvidenceGraphInput {
-        edge_records: request.edge_records.to_vec(),
+        edge_records: internal_edge_records_for_signed_graph(request.edge_records),
         exact_bucket_assertions: request.exact_buckets.to_vec(),
         incumbent_ids,
     })
@@ -2437,14 +2639,14 @@ pub fn rebind_generalization_native_stages(
 
     let old_refs = BTreeMap::from([
         ("block".to_string(), single_stage_ref(run, "block")?),
-        ("edge".to_string(), single_stage_ref(run, "edge")?),
+        ("evidence".to_string(), single_stage_ref(run, "evidence")?),
         ("solve".to_string(), single_stage_ref(run, "solve")?),
     ]);
     let mut rebound = run.clone();
     replace_native_stage_descriptor(
         &mut rebound.stage_artifacts,
         "block",
-        CANON_ENTITY_BLOCK_VERSION,
+        CANON_ENTITY_BLOCK_VERSION_V1,
         block.version.clone(),
         block_path,
         block.artifact_content_hash.clone(),
@@ -2452,8 +2654,8 @@ pub fn rebind_generalization_native_stages(
     )?;
     replace_native_stage_descriptor(
         &mut rebound.stage_artifacts,
-        "edge",
-        CANON_ENTITY_EDGE_VERSION,
+        "evidence",
+        CANON_ENTITY_EVIDENCE_VERSION_V1,
         edge.version.clone(),
         edge_path,
         edge.artifact_content_hash.clone(),
@@ -2462,7 +2664,7 @@ pub fn rebind_generalization_native_stages(
     replace_native_stage_descriptor(
         &mut rebound.stage_artifacts,
         "solve",
-        CANON_ENTITY_SOLVE_VERSION,
+        CANON_ENTITY_SOLVE_VERSION_V1,
         solve.version.clone(),
         solve_path,
         solve.artifact_content_hash.clone(),
@@ -2480,7 +2682,7 @@ pub fn rebind_generalization_native_stages(
         .sort_by(entity_artifact_ref_cmp);
     let new_refs = BTreeMap::from([
         ("block".to_string(), block_ref),
-        ("edge".to_string(), edge_ref),
+        ("evidence".to_string(), edge_ref),
         (
             "solve".to_string(),
             artifact_ref(&solve.version, &solve.artifact_content_hash),
@@ -2493,6 +2695,16 @@ pub fn rebind_generalization_native_stages(
         run: rebound,
         solve,
     })
+}
+
+fn internal_edge_records_for_signed_graph(
+    records: &[EdgeEvidenceRecord],
+) -> Vec<EdgeEvidenceRecord> {
+    let mut records = records.to_vec();
+    for record in &mut records {
+        record.version = CANON_ENTITY_EDGE_VERSION.to_string();
+    }
+    records
 }
 
 /// Decorate a native entity run with strict generalization provenance receipts.
@@ -3222,12 +3434,12 @@ fn refresh_rebound_run_summary(
         required_summary_count(&block.summary.counts, "block", "candidate_pairs")?,
     );
     run.summary.counts.insert(
-        "edge_records".to_string(),
-        required_summary_count(&edge.summary.counts, "edge", "edge_records")?,
+        "evidence_records".to_string(),
+        required_summary_count(&edge.summary.counts, "evidence", "evidence_records")?,
     );
     run.summary.counts.insert(
-        "relation_hint_edges".to_string(),
-        required_summary_count(&edge.summary.counts, "edge", "relation_hint_count")?,
+        "relation_hint_evidence".to_string(),
+        required_summary_count(&edge.summary.counts, "evidence", "relation_hint_count")?,
     );
     run.summary.counts.insert(
         "solved_entities".to_string(),
@@ -3353,7 +3565,7 @@ fn validated_native_cache_execution_stage_index(
     let index_stage = run
         .stage_artifacts
         .iter()
-        .find(|stage| stage.stage == "index" && stage.version == CANON_ENTITY_INDEX_VERSION)
+        .find(|stage| stage.stage == "index" && stage.version == CANON_ENTITY_INDEX_VERSION_V1)
         .ok_or_else(|| {
             error(
                 GeneralizationErrorCode::ArtifactContract,
@@ -3361,10 +3573,31 @@ fn validated_native_cache_execution_stage_index(
             )
         })?;
     let index_stage_ref = stage_artifact_ref(index_stage);
-    if stage.upstream_artifacts != vec![index_stage_ref] {
+    if !run.metadata.upstream_artifacts.contains(&index_stage_ref) {
         return Err(error(
             GeneralizationErrorCode::ArtifactContract,
-            "native cache execution stage must upstream exactly the native index artifact",
+            "native run metadata must bind the native index artifact",
+        ));
+    }
+    let bundle_hash = run
+        .summary
+        .labels
+        .get("cache_bundle_receipt_hash")
+        .ok_or_else(|| {
+            error(
+                GeneralizationErrorCode::ArtifactContract,
+                "native cache execution stage requires cache_bundle_receipt_hash run label",
+            )
+        })?;
+    verify_declared_digest("cache_bundle_receipt_hash", bundle_hash)?;
+    let bundle_ref = EntityArtifactReference {
+        version: CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION.to_string(),
+        content_hash: bundle_hash.clone(),
+    };
+    if stage.upstream_artifacts != vec![index_stage_ref, bundle_ref] {
+        return Err(error(
+            GeneralizationErrorCode::ArtifactContract,
+            "native cache execution stage must upstream exactly the native index artifact and immutable bundle receipt",
         ));
     }
     if !run
@@ -3378,16 +3611,6 @@ fn validated_native_cache_execution_stage_index(
             "native cache execution stage must appear in run stage_order",
         ));
     }
-    if !run
-        .metadata
-        .upstream_artifacts
-        .contains(&stage_artifact_ref(stage))
-    {
-        return Err(error(
-            GeneralizationErrorCode::ArtifactContract,
-            "native cache execution stage must appear in run metadata upstream artifacts",
-        ));
-    }
     validate_native_cache_execution_labels(run, stage, cache_mode, cache_status)?;
     Ok(cache_stage_index)
 }
@@ -3396,7 +3619,7 @@ fn native_cache_execution_mode_for_stage(
     stage: &crate::entity::run::EntityRunStageArtifact,
 ) -> Option<EntityIndexCacheMode> {
     if stage.version != CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION
-        || stage.path != INDEX_CACHE_RECEIPT_FILE
+        || stage.path != RUN_CACHE_EXECUTION_RECEIPT_PATH
     {
         return None;
     }
@@ -3479,6 +3702,28 @@ fn validate_native_cache_execution_labels(
         run,
         "cache_receipt_hash",
         &stage.artifact_content_hash,
+        "native cache execution stage",
+    )?;
+    require_run_label(
+        run,
+        "cache_bundle_receipt_path",
+        INDEX_CACHE_RECEIPT_FILE,
+        "native cache execution stage",
+    )?;
+    let bundle_ref = stage
+        .upstream_artifacts
+        .iter()
+        .find(|reference| reference.version == CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION)
+        .ok_or_else(|| {
+            error(
+                GeneralizationErrorCode::ArtifactContract,
+                "native cache execution stage must upstream the immutable bundle receipt",
+            )
+        })?;
+    require_run_label(
+        run,
+        "cache_bundle_receipt_hash",
+        &bundle_ref.content_hash,
         "native cache execution stage",
     )?;
     Ok(())
@@ -5352,6 +5597,11 @@ fn maybe_loaded_candidate_recall_artifact(
 fn sibling_manifest_path(parent_ref_path: &str, child_rel: &str) -> GeneralizationResult<String> {
     let parent = Path::new(parent_ref_path);
     let mut path = parent.parent().map(Path::to_path_buf).unwrap_or_default();
+    if parent.file_name() == Some(std::ffi::OsStr::new("run.json"))
+        && path.file_name() == Some(std::ffi::OsStr::new("run"))
+    {
+        path.pop();
+    }
     path.push(child_rel);
     let path = path.to_str().ok_or_else(|| {
         error(
@@ -6978,6 +7228,15 @@ fn push_cache_execution_receipt_hash(
         version: cache_execution.references.receipt.version.clone(),
         content_hash: cache_execution.references.receipt.content_hash.clone(),
     });
+    artifact_hashes.push(GeneralizationDerivationArtifactHash {
+        artifact_id: format!("{prefix}:cache_execution.bundle_receipt"),
+        version: cache_execution.references.bundle_receipt.version.clone(),
+        content_hash: cache_execution
+            .references
+            .bundle_receipt
+            .content_hash
+            .clone(),
+    });
 }
 
 fn read_strict_manifest_file(
@@ -7149,17 +7408,17 @@ fn validate_candidate_recall_execution_refs(
     )?;
     require_ref_version(
         &refs.block_artifact,
-        CANON_ENTITY_BLOCK_VERSION,
+        CANON_ENTITY_BLOCK_VERSION_V1,
         "candidate_recall.block_artifact",
     )?;
     require_ref_version(
         &refs.candidates,
-        CANON_ENTITY_BLOCK_VERSION,
+        CANON_ENTITY_BLOCK_VERSION_V1,
         "candidate_recall.candidates",
     )?;
     require_ref_version(
         &refs.diagnostics,
-        CANON_ENTITY_BLOCK_VERSION,
+        CANON_ENTITY_BLOCK_VERSION_V1,
         "candidate_recall.diagnostics",
     )?;
     require_ref_version(
@@ -7187,17 +7446,17 @@ fn validate_solve_derivation_refs(
     validate_typed_artifact_ref(&refs.solve_policy, "solve_derivation.solve_policy")?;
     require_ref_version(
         &refs.edge_artifact,
-        CANON_ENTITY_EDGE_VERSION,
+        CANON_ENTITY_EVIDENCE_VERSION_V1,
         "solve_derivation.edge_artifact",
     )?;
     require_ref_version(
         &refs.edge_records,
-        CANON_ENTITY_EDGE_VERSION,
+        CANON_ENTITY_EVIDENCE_VERSION_V1,
         "solve_derivation.edge_records",
     )?;
     require_ref_version(
         &refs.prepared_surfaces,
-        crate::entity::CANON_ENTITY_PREPARE_VERSION,
+        CANON_ENTITY_PREPARE_VERSION_V1,
         "solve_derivation.prepared_surfaces",
     )?;
     require_ref_version(
@@ -7445,9 +7704,9 @@ fn infer_artifact_kind(
         Ok(GeneralizationArtifactKind::Link)
     } else if version == ENTITY_LINK_OBSERVATION_SURFACE_BINDINGS_VERSION {
         Ok(GeneralizationArtifactKind::LinkObservationSurfaceBindings)
-    } else if version == CANON_ENTITY_RUN_VERSION {
+    } else if version == CANON_ENTITY_RUN_VERSION_V1 {
         Ok(GeneralizationArtifactKind::Run)
-    } else if version == CANON_ENTITY_SOLVE_VERSION {
+    } else if version == CANON_ENTITY_SOLVE_VERSION_V1 {
         Ok(GeneralizationArtifactKind::Solve)
     } else if version == CANON_GENERALIZATION_LEAK_SCAN_SOURCES_VERSION {
         Ok(GeneralizationArtifactKind::LeakScanSources)
@@ -7767,7 +8026,7 @@ fn validate_json_version(field: &str, value: &Value, expected: &str) -> Generali
 }
 
 fn validate_run_artifact_contract(artifact: &EntityRunArtifact) -> GeneralizationResult<()> {
-    if artifact.version != CANON_ENTITY_RUN_VERSION {
+    if artifact.version != CANON_ENTITY_RUN_VERSION_V1 {
         return Err(error(
             GeneralizationErrorCode::ArtifactContract,
             "run artifact has the wrong contract version",
@@ -7807,7 +8066,7 @@ fn validate_run_artifact_contract(artifact: &EntityRunArtifact) -> Generalizatio
             "run.stage_artifacts.artifact_content_hash",
             &stage.artifact_content_hash,
         )?;
-        if stage.stage == "solve" && stage.version == CANON_ENTITY_SOLVE_VERSION {
+        if stage.stage == "solve" && stage.version == CANON_ENTITY_SOLVE_VERSION_V1 {
             has_solve = true;
         }
     }
@@ -9263,6 +9522,8 @@ mod leakage_provenance_tests {
         mode: GeneralizationCacheExecutionMode,
         path: &str,
         content_hash: &str,
+        bundle_path: &str,
+        bundle_hash: &str,
     ) -> GeneralizationCacheExecutionRef {
         GeneralizationCacheExecutionRef {
             version: CANON_GENERALIZATION_CACHE_EXECUTION_VERSION.to_string(),
@@ -9270,6 +9531,11 @@ mod leakage_provenance_tests {
             receipt: GeneralizationTypedArtifactRef {
                 path: path.to_string(),
                 content_hash: content_hash.to_string(),
+                version: CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION.to_string(),
+            },
+            bundle_receipt: GeneralizationTypedArtifactRef {
+                path: bundle_path.to_string(),
+                content_hash: bundle_hash.to_string(),
                 version: CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION.to_string(),
             },
         }
@@ -9453,21 +9719,37 @@ mod leakage_provenance_tests {
         }
     }
 
-    fn sealed_index_artifact() -> EntityIndexArtifact {
+    fn sealed_index_v1_artifact() -> Value {
         let registry_dir = write_test_registry();
-        let metadata = test_metadata(test_registry_snapshot(&registry_dir));
-        let mut artifact = EntityIndexArtifact {
-            version: CANON_ENTITY_INDEX_VERSION.to_string(),
-            artifact_content_hash: String::new(),
-            metadata,
-            prepare_hash: hash_bytes(b"prepare"),
-            summary: deterministic_summary(&[("index_surfaces", 1)]),
-            postings_path: DEFAULT_INDEX_POSTINGS_PATH.to_string(),
-            diagnostics_path: DEFAULT_INDEX_DIAGNOSTICS_PATH.to_string(),
-        };
-        let content_hash = hash_serialized(&artifact).expect("index artifact hashes");
-        artifact.artifact_content_hash = content_hash.clone();
-        artifact.metadata.artifact_content_hash = content_hash;
+        let mut metadata =
+            serde_json::to_value(test_metadata(test_registry_snapshot(&registry_dir)))
+                .expect("metadata serializes");
+        let contract =
+            crate::entity::schema::entity_v1_contract_for_stage(EntityArtifactStageV1::Index)
+                .expect("index v1 contract exists");
+        metadata["schema"] = serde_json::to_value(
+            crate::entity::schema::entity_v1_schema_reference(contract)
+                .expect("index v1 schema reference builds"),
+        )
+        .expect("schema reference serializes");
+        metadata["workdir"] = serde_json::to_value(
+            crate::entity::schema::entity_v1_workdir_layout(contract, "."),
+        )
+        .expect("workdir layout serializes");
+        metadata["artifact_content_hash"] = Value::String(String::new());
+        let mut artifact = serde_json::json!({
+            "version": CANON_ENTITY_INDEX_VERSION_V1,
+            "artifact_content_hash": "",
+            "metadata": metadata,
+            "prepare_hash": hash_bytes(b"prepare"),
+            "summary": deterministic_summary(&[("index_surfaces", 1)]),
+            "postings_path": "index/postings.bin",
+            "diagnostics_path": DEFAULT_INDEX_DIAGNOSTICS_PATH,
+        });
+        crate::entity::schema::finalize_entity_v1_self_hash(&mut artifact)
+            .expect("index v1 artifact hashes");
+        validate_artifact_v1_core_contract(&artifact).expect("index v1 artifact validates");
+        validate_entity_v1_self_hash(&artifact).expect("index v1 self hash validates");
         artifact
     }
 
@@ -9531,51 +9813,48 @@ mod leakage_provenance_tests {
         let prepare_hash = hash_bytes(b"prepare");
         let index_hash = hash_bytes(b"index");
         let block_hash = hash_bytes(b"old-block");
-        let edge_hash = hash_bytes(b"old-edge");
+        let evidence_hash = hash_bytes(b"old-evidence");
         let solve_hash = hash_bytes(b"old-solve");
         let stages = vec![
             native_stage(
                 "prepare",
-                crate::entity::CANON_ENTITY_PREPARE_VERSION,
+                CANON_ENTITY_PREPARE_VERSION_V1,
                 "prepare/prepare.json",
                 &prepare_hash,
                 Vec::new(),
             ),
             native_stage(
                 "index",
-                crate::entity::CANON_ENTITY_INDEX_VERSION,
-                "index.json",
+                CANON_ENTITY_INDEX_VERSION_V1,
+                "index/index.json",
                 &index_hash,
-                vec![artifact_ref(
-                    crate::entity::CANON_ENTITY_PREPARE_VERSION,
-                    &prepare_hash,
-                )],
+                vec![artifact_ref(CANON_ENTITY_PREPARE_VERSION_V1, &prepare_hash)],
             ),
             native_stage(
                 "block",
-                CANON_ENTITY_BLOCK_VERSION,
+                CANON_ENTITY_BLOCK_VERSION_V1,
                 "block/block.json",
                 &block_hash,
                 vec![
-                    artifact_ref(crate::entity::CANON_ENTITY_PREPARE_VERSION, &prepare_hash),
-                    artifact_ref(crate::entity::CANON_ENTITY_INDEX_VERSION, &index_hash),
+                    artifact_ref(CANON_ENTITY_PREPARE_VERSION_V1, &prepare_hash),
+                    artifact_ref(CANON_ENTITY_INDEX_VERSION_V1, &index_hash),
                 ],
             ),
             native_stage(
-                "edge",
-                CANON_ENTITY_EDGE_VERSION,
-                "edge/edge.json",
-                &edge_hash,
-                vec![artifact_ref(CANON_ENTITY_BLOCK_VERSION, &block_hash)],
+                "evidence",
+                CANON_ENTITY_EVIDENCE_VERSION_V1,
+                "evidence/evidence.json",
+                &evidence_hash,
+                vec![artifact_ref(CANON_ENTITY_BLOCK_VERSION_V1, &block_hash)],
             ),
             native_stage(
                 "solve",
-                CANON_ENTITY_SOLVE_VERSION,
+                CANON_ENTITY_SOLVE_VERSION_V1,
                 "solve/solve.json",
                 &solve_hash,
                 vec![
-                    artifact_ref(CANON_ENTITY_BLOCK_VERSION, &block_hash),
-                    artifact_ref(CANON_ENTITY_EDGE_VERSION, &edge_hash),
+                    artifact_ref(CANON_ENTITY_BLOCK_VERSION_V1, &block_hash),
+                    artifact_ref(CANON_ENTITY_EVIDENCE_VERSION_V1, &evidence_hash),
                 ],
             ),
         ];
@@ -9585,7 +9864,7 @@ mod leakage_provenance_tests {
             .upstream_artifacts
             .sort_by(entity_artifact_ref_cmp);
         seal_run(EntityRunArtifact {
-            version: CANON_ENTITY_RUN_VERSION.to_string(),
+            version: CANON_ENTITY_RUN_VERSION_V1.to_string(),
             artifact_content_hash: String::new(),
             metadata: run_metadata,
             summary: crate::entity::EntityDeterministicSummary {
@@ -9598,8 +9877,8 @@ mod leakage_provenance_tests {
                     ("index_surfaces".to_string(), 1),
                     ("exact_bucket_count".to_string(), 1),
                     ("candidate_pairs".to_string(), 2),
-                    ("edge_records".to_string(), 3),
-                    ("relation_hint_edges".to_string(), 4),
+                    ("evidence_records".to_string(), 3),
+                    ("relation_hint_evidence".to_string(), 4),
                     ("solved_entities".to_string(), 5),
                     ("review_group_count".to_string(), 6),
                 ]),
@@ -9613,16 +9892,16 @@ mod leakage_provenance_tests {
             work_dir: crate::entity::run::EntityRunWorkDirLayout {
                 prepare_artifact_path: "prepare/prepare.json".to_string(),
                 surfaces_path: "prepare/surfaces.jsonl".to_string(),
-                index_artifact_path: "index.json".to_string(),
+                index_artifact_path: "index/index.json".to_string(),
                 block_artifact_path: "block/block.json".to_string(),
                 candidate_records_path: "block/candidates.jsonl".to_string(),
                 candidate_diagnostics_path: "block/diagnostics.json".to_string(),
                 exact_bucket_assertions_path: "block/exact_buckets.jsonl".to_string(),
-                edge_artifact_path: "edge/edge.json".to_string(),
-                edge_records_path: "edge/edges.jsonl".to_string(),
+                edge_artifact_path: "evidence/evidence.json".to_string(),
+                edge_records_path: "evidence/evidence.jsonl".to_string(),
                 solve_artifact_path: "solve/solve.json".to_string(),
                 decision_ledger_path: "solve/decision_ledger.jsonl".to_string(),
-                run_artifact_path: "run.json".to_string(),
+                run_artifact_path: "run/run.json".to_string(),
             },
             next_commands: crate::entity::run::EntityRunNextCommands {
                 resume: "resume".to_string(),
@@ -9636,7 +9915,7 @@ mod leakage_provenance_tests {
                     "prepare".to_string(),
                     "index".to_string(),
                     "block".to_string(),
-                    "edge".to_string(),
+                    "evidence".to_string(),
                     "solve".to_string(),
                     "audit".to_string(),
                 ],
@@ -9660,7 +9939,7 @@ mod leakage_provenance_tests {
                     crate::entity::run::EntityRunHandoffStep {
                         stage: "review_export".to_string(),
                         input_artifacts: vec![artifact_ref(
-                            CANON_ENTITY_SOLVE_VERSION,
+                            CANON_ENTITY_SOLVE_VERSION_V1,
                             &solve_hash,
                         )],
                         ..crate::entity::run::EntityRunHandoffStep::default()
@@ -9678,12 +9957,18 @@ mod leakage_provenance_tests {
             .map(stage_artifact_ref)
             .expect("index stage exists");
         let cache_hash = hash_bytes(b"cache-receipt");
+        let bundle_hash = hash_bytes(b"cache-bundle-receipt");
+        let mut cache_upstreams = vec![
+            index_ref,
+            artifact_ref(CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION, &bundle_hash),
+        ];
+        cache_upstreams.sort_by(entity_artifact_ref_cmp);
         let cache_stage = native_stage(
             "cache_enabled",
             CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION,
-            INDEX_CACHE_RECEIPT_FILE,
+            RUN_CACHE_EXECUTION_RECEIPT_PATH,
             &cache_hash,
-            vec![index_ref],
+            cache_upstreams,
         );
         run.stage_artifacts.insert(2, cache_stage);
         if !run
@@ -9704,16 +9989,18 @@ mod leakage_provenance_tests {
             .insert("cache_status".to_string(), "hit".to_string());
         run.summary.labels.insert(
             "cache_receipt_path".to_string(),
-            INDEX_CACHE_RECEIPT_FILE.to_string(),
+            RUN_CACHE_EXECUTION_RECEIPT_PATH.to_string(),
         );
         run.summary
             .labels
             .insert("cache_receipt_hash".to_string(), cache_hash);
-        run.metadata.upstream_artifacts =
-            run.stage_artifacts.iter().map(stage_artifact_ref).collect();
-        run.metadata
-            .upstream_artifacts
-            .sort_by(entity_artifact_ref_cmp);
+        run.summary.labels.insert(
+            "cache_bundle_receipt_path".to_string(),
+            INDEX_CACHE_RECEIPT_FILE.to_string(),
+        );
+        run.summary
+            .labels
+            .insert("cache_bundle_receipt_hash".to_string(), bundle_hash);
         refresh_audit_handoff_refs_to_final_stage_refs(&mut run);
         seal_run(run)
     }
@@ -9869,13 +10156,13 @@ mod leakage_provenance_tests {
         let exact_buckets = Vec::new();
         let edge_records = Vec::new();
         let block_strategy = derived_stage_strategy(&run.metadata.strategy, "block");
-        let edge_strategy = derived_stage_strategy(&run.metadata.strategy, "edge");
+        let edge_strategy = derived_stage_strategy(&run.metadata.strategy, "evidence");
         let mut block_metadata = run.metadata.clone();
         block_metadata.strategy = block_strategy;
         block_metadata.upstream_artifacts = vec![prepare_ref, index_ref];
         block_metadata.artifact_content_hash.clear();
         let block = seal_block(BlockCandidateArtifact {
-            version: CANON_ENTITY_BLOCK_VERSION.to_string(),
+            version: CANON_ENTITY_BLOCK_VERSION_V1.to_string(),
             artifact_content_hash: String::new(),
             metadata: block_metadata.clone(),
             summary: deterministic_summary(&[("candidate_pairs", 0), ("exact_bucket_count", 0)]),
@@ -9920,7 +10207,7 @@ mod leakage_provenance_tests {
     fn rebuild_fixture_edge(fixture: &mut ReplacementArtifacts, run: &EntityRunArtifact) {
         fixture.edge = build_edge_evidence_artifact_contract(EdgeEvidenceArtifactRequest {
             block: fixture.block.clone(),
-            strategy: derived_stage_strategy(&run.metadata.strategy, "edge"),
+            strategy: derived_stage_strategy(&run.metadata.strategy, "evidence"),
             edge_records_path: run.work_dir.edge_records_path.clone(),
             edge_records: fixture.edge_records.clone(),
             candidate_records: fixture.block_candidate_records.clone(),
@@ -9958,18 +10245,18 @@ mod leakage_provenance_tests {
     fn solve_derivation_refs() -> GeneralizationSolveDerivationRefs {
         GeneralizationSolveDerivationRefs {
             edge_artifact: typed_ref(
-                "edge/edge.json",
-                CANON_ENTITY_EDGE_VERSION,
+                "evidence/evidence.json",
+                CANON_ENTITY_EVIDENCE_VERSION_V1,
                 &hash_bytes(b"edge"),
             ),
             edge_records: typed_ref(
-                "edge/edges.jsonl",
-                CANON_ENTITY_EDGE_VERSION,
+                "evidence/evidence.jsonl",
+                CANON_ENTITY_EVIDENCE_VERSION_V1,
                 &hash_bytes(b"edges"),
             ),
             prepared_surfaces: typed_ref(
                 "prepare/surfaces.jsonl",
-                crate::entity::CANON_ENTITY_PREPARE_VERSION,
+                CANON_ENTITY_PREPARE_VERSION_V1,
                 &hash_bytes(b"surfaces"),
             ),
             solve_policy: typed_ref(
@@ -9988,19 +10275,19 @@ mod leakage_provenance_tests {
             edge_artifact: typed_ref(
                 &sibling_manifest_path(run_ref_path, &run.work_dir.edge_artifact_path)
                     .expect("edge path derives"),
-                CANON_ENTITY_EDGE_VERSION,
+                CANON_ENTITY_EVIDENCE_VERSION_V1,
                 &hash_bytes(b"edge"),
             ),
             edge_records: typed_ref(
                 &sibling_manifest_path(run_ref_path, &run.work_dir.edge_records_path)
                     .expect("edge records path derives"),
-                CANON_ENTITY_EDGE_VERSION,
+                CANON_ENTITY_EVIDENCE_VERSION_V1,
                 &hash_bytes(b"edges"),
             ),
             prepared_surfaces: typed_ref(
                 &sibling_manifest_path(run_ref_path, &run.work_dir.surfaces_path)
                     .expect("prepared surfaces path derives"),
-                crate::entity::CANON_ENTITY_PREPARE_VERSION,
+                CANON_ENTITY_PREPARE_VERSION_V1,
                 &hash_bytes(b"surfaces"),
             ),
             solve_policy: typed_ref(
@@ -10030,17 +10317,17 @@ mod leakage_provenance_tests {
                 ),
                 block_artifact: typed_ref(
                     "block/block.json",
-                    CANON_ENTITY_BLOCK_VERSION,
+                    CANON_ENTITY_BLOCK_VERSION_V1,
                     &hash_bytes(b"block"),
                 ),
                 candidates: typed_ref(
                     "block/candidates.jsonl",
-                    CANON_ENTITY_BLOCK_VERSION,
+                    CANON_ENTITY_BLOCK_VERSION_V1,
                     &hash_bytes(b"candidates"),
                 ),
                 diagnostics: typed_ref(
                     "block/diagnostics.json",
-                    CANON_ENTITY_BLOCK_VERSION,
+                    CANON_ENTITY_BLOCK_VERSION_V1,
                     &hash_bytes(b"diagnostics"),
                 ),
                 exact_bucket_assertions: typed_ref(
@@ -10311,8 +10598,11 @@ mod leakage_provenance_tests {
         assert_eq!(rebound.stage_artifacts[1], original_index);
         assert_eq!(rebound.summary.counts.get("candidate_pairs"), Some(&0));
         assert_eq!(rebound.summary.counts.get("exact_bucket_count"), Some(&0));
-        assert_eq!(rebound.summary.counts.get("edge_records"), Some(&0));
-        assert_eq!(rebound.summary.counts.get("relation_hint_edges"), Some(&0));
+        assert_eq!(rebound.summary.counts.get("evidence_records"), Some(&0));
+        assert_eq!(
+            rebound.summary.counts.get("relation_hint_evidence"),
+            Some(&0)
+        );
         assert_eq!(rebound.summary.counts.get("solved_entities"), Some(&0));
         assert_eq!(rebound.summary.counts.get("review_group_count"), Some(&0));
         let mut expected_upstreams = rebound
@@ -10394,7 +10684,7 @@ mod leakage_provenance_tests {
         assert_eq!(refusal.code, GeneralizationErrorCode::ArtifactContract);
 
         let mut refs = solve_derivation_refs();
-        refs.edge_records.version = CANON_ENTITY_BLOCK_VERSION.to_string();
+        refs.edge_records.version = crate::entity::CANON_ENTITY_BLOCK_VERSION.to_string();
         let refusal =
             validate_solve_derivation_refs(&refs).expect_err("wrong edge record version refuses");
         assert_eq!(refusal.code, GeneralizationErrorCode::ArtifactContract);
@@ -10415,23 +10705,24 @@ mod leakage_provenance_tests {
             "registry_dir": "registry",
             "candidate_recall": {
                 "quality_manifest": ref_json("candidate/quality.json", CANON_GENERALIZATION_CANDIDATE_RECALL_QUALITY_MANIFEST_VERSION),
-                "block_artifact": ref_json("candidate/block.json", CANON_ENTITY_BLOCK_VERSION),
-                "candidates": ref_json("candidate/candidates.jsonl", CANON_ENTITY_BLOCK_VERSION),
-                "diagnostics": ref_json("candidate/diagnostics.json", CANON_ENTITY_BLOCK_VERSION),
+                "block_artifact": ref_json("candidate/block.json", CANON_ENTITY_BLOCK_VERSION_V1),
+                "candidates": ref_json("candidate/candidates.jsonl", CANON_ENTITY_BLOCK_VERSION_V1),
+                "diagnostics": ref_json("candidate/diagnostics.json", CANON_ENTITY_BLOCK_VERSION_V1),
                 "exact_bucket_assertions": ref_json("candidate/exact_buckets.jsonl", CANON_ENTITY_BLOCK_BUCKET_VERSION),
                 "report": ref_json("candidate/report.json", CANON_ENTITY_CANDIDATE_RECALL_VERSION),
                 "exact_bucket_count": 0
             },
             "solve_derivation": {
-                "edge_artifact": ref_json("run/edge/edge.json", CANON_ENTITY_EDGE_VERSION),
-                "edge_records": ref_json("run/edge/edges.jsonl", CANON_ENTITY_EDGE_VERSION),
-                "prepared_surfaces": ref_json("run/prepare/surfaces.jsonl", crate::entity::CANON_ENTITY_PREPARE_VERSION),
+                "edge_artifact": ref_json("run/evidence/evidence.json", CANON_ENTITY_EVIDENCE_VERSION_V1),
+                "edge_records": ref_json("run/evidence/evidence.jsonl", CANON_ENTITY_EVIDENCE_VERSION_V1),
+                "prepared_surfaces": ref_json("run/prepare/surfaces.jsonl", CANON_ENTITY_PREPARE_VERSION_V1),
                 "solve_policy": ref_json("run/solve/policy.json", CANON_GENERALIZATION_SOLVE_POLICY_VERSION)
             },
             "cache_execution": {
                 "version": CANON_GENERALIZATION_CACHE_EXECUTION_VERSION,
                 "mode": "disabled_bypass",
-                "receipt": ref_json("run/index/cache_receipt.json", CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION)
+                "receipt": ref_json("run/cache_execution_receipt.json", CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION),
+                "bundle_receipt": ref_json("index/cache_receipt.json", CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION)
             },
             "artifacts": [],
             "cross_bindings": {
@@ -10473,8 +10764,10 @@ mod leakage_provenance_tests {
         let hash = hash_bytes(b"cache-receipt");
         let reference = cache_execution_ref(
             GeneralizationCacheExecutionMode::DisabledBypass,
-            "trials/t1/index/cache_receipt.json",
+            "trials/t1/run/cache_execution_receipt.json",
             &hash,
+            "trials/t1/index/cache_receipt.json",
+            &hash_bytes(b"bundle"),
         );
         validate_cache_execution_ref(&reference, "cache_execution")
             .expect("cache execution ref validates");
@@ -10496,8 +10789,10 @@ mod leakage_provenance_tests {
     fn cache_execution_accepts_only_strict_mode_status_reusable_triples() {
         let disabled = cache_execution_ref(
             GeneralizationCacheExecutionMode::DisabledBypass,
-            "trials/t1/index/cache_receipt.json",
+            "trials/t1/run/cache_execution_receipt.json",
             &hash_bytes(b"disabled"),
+            "trials/t1/index/cache_receipt.json",
+            &hash_bytes(b"bundle"),
         );
         validate_cache_execution_receipt_payload(
             &disabled,
@@ -10512,8 +10807,10 @@ mod leakage_provenance_tests {
 
         let enabled = cache_execution_ref(
             GeneralizationCacheExecutionMode::EnabledWarmHit,
-            "trials/t1/index/cache_receipt.json",
+            "trials/t1/run/cache_execution_receipt.json",
             &hash_bytes(b"enabled"),
+            "trials/t1/index/cache_receipt.json",
+            &hash_bytes(b"bundle"),
         );
         validate_cache_execution_receipt_payload(
             &enabled,
@@ -10556,17 +10853,19 @@ mod leakage_provenance_tests {
         let temp = tempfile::tempdir().expect("cache receipt tempdir");
         let trial_root = temp.path().join("trials/t1");
         fs::create_dir_all(trial_root.join("index")).expect("create index dir");
-        let index_artifact = sealed_index_artifact();
+        let index_artifact = sealed_index_v1_artifact();
+        let index_artifact_hash =
+            validate_entity_v1_self_hash(&index_artifact).expect("index v1 self hash validates");
         let index_artifact_bytes =
             serde_json::to_vec_pretty(&index_artifact).expect("index artifact serializes");
         let files: [(&str, &str, &[u8]); 4] = [
             (
                 "artifact",
-                INDEX_ARTIFACT_FILE,
+                "index/index.json",
                 index_artifact_bytes.as_slice(),
             ),
             ("cache_key", INDEX_CACHE_KEY_FILE, b"cache-key"),
-            ("postings", DEFAULT_INDEX_POSTINGS_PATH, b"postings"),
+            ("postings", "index/postings.bin", b"postings"),
             (
                 "diagnostics",
                 DEFAULT_INDEX_DIAGNOSTICS_PATH,
@@ -10598,9 +10897,9 @@ mod leakage_provenance_tests {
         assert_eq!(loaded.len(), 4);
         assert_eq!(
             loaded[0].index_artifact_content_hash.as_deref(),
-            Some(index_artifact.artifact_content_hash.as_str())
+            Some(index_artifact_hash.as_str())
         );
-        assert_ne!(loaded[0].content_hash, index_artifact.artifact_content_hash);
+        assert_ne!(loaded[0].content_hash, index_artifact_hash);
 
         let mut wrong_hash = receipt.clone();
         wrong_hash.files[1].content_hash = hash_bytes(b"wrong-cache-key");
@@ -10631,14 +10930,23 @@ mod leakage_provenance_tests {
     fn cache_execution_run_binding_requires_mode_specific_stage_and_index_upstream() {
         let mut run = baseline_run();
         let receipt_hash = hash_bytes(b"receipt");
+        let bundle_hash = hash_bytes(b"bundle-receipt");
+        let leak_bundle = leak_bundle_ref();
         let reference = cache_execution_ref(
             GeneralizationCacheExecutionMode::EnabledWarmHit,
-            "trials/t1/index/cache_receipt.json",
+            "trials/t1/run/cache_execution_receipt.json",
             &receipt_hash,
+            "trials/t1/index/cache_receipt.json",
+            &bundle_hash,
         );
         let receipt = cache_receipt(
             EntityIndexCacheMode::Enabled,
             EntityIndexCacheStatus::Hit,
+            true,
+        );
+        let bundle_receipt = cache_receipt(
+            EntityIndexCacheMode::Enabled,
+            EntityIndexCacheStatus::Rebuilt,
             true,
         );
         run.summary
@@ -10649,53 +10957,70 @@ mod leakage_provenance_tests {
             .insert("cache_status".to_string(), "hit".to_string());
         run.summary.labels.insert(
             "cache_receipt_path".to_string(),
-            INDEX_CACHE_RECEIPT_FILE.to_string(),
+            RUN_CACHE_EXECUTION_RECEIPT_PATH.to_string(),
         );
         run.summary
             .labels
             .insert("cache_receipt_hash".to_string(), receipt_hash.clone());
+        run.summary.labels.insert(
+            "cache_bundle_receipt_path".to_string(),
+            INDEX_CACHE_RECEIPT_FILE.to_string(),
+        );
+        run.summary
+            .labels
+            .insert("cache_bundle_receipt_hash".to_string(), bundle_hash.clone());
         let index_stage = run
             .stage_artifacts
             .iter()
             .find(|stage| stage.stage == "index")
             .cloned()
             .expect("index stage exists");
+        let mut cache_upstreams = vec![
+            stage_artifact_ref(&index_stage),
+            artifact_ref(CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION, &bundle_hash),
+            artifact_ref(&leak_bundle.version, &leak_bundle.content_hash),
+        ];
+        cache_upstreams.sort_by(entity_artifact_ref_cmp);
         run.stage_artifacts.push(native_stage(
             "cache_enabled",
             CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION,
-            INDEX_CACHE_RECEIPT_FILE,
+            RUN_CACHE_EXECUTION_RECEIPT_PATH,
             &receipt_hash,
-            vec![stage_artifact_ref(&index_stage)],
+            cache_upstreams,
         ));
         let bundle_files = vec![LoadedGeneralizationCacheReceiptFile {
             role: "artifact".to_string(),
-            path: INDEX_ARTIFACT_FILE.to_string(),
+            path: "index/index.json".to_string(),
             content_hash: hash_bytes(b"raw-index-json-bytes"),
             byte_count: 1,
             index_artifact_content_hash: Some(index_stage.artifact_content_hash.clone()),
         }];
 
-        validate_cache_execution_run_binding(
-            "trials/t1/run.json",
-            &run,
-            &reference,
-            &receipt,
-            &bundle_files,
-            "cache_execution",
-        )
+        validate_cache_execution_run_binding(CacheExecutionRunBindingContext {
+            run_ref_path: "trials/t1/run.json",
+            run: &run,
+            reference: &reference,
+            leak_source_bundle: &leak_bundle,
+            receipt: &receipt,
+            bundle_receipt: &bundle_receipt,
+            bundle_files: &bundle_files,
+            field: "cache_execution",
+        })
         .expect("mode-specific cache stage validates");
 
         let mut wrong_index_artifact_hash = bundle_files.clone();
         wrong_index_artifact_hash[0].index_artifact_content_hash =
             Some(hash_bytes(b"wrong-index-artifact"));
-        let refusal = validate_cache_execution_run_binding(
-            "trials/t1/run.json",
-            &run,
-            &reference,
-            &receipt,
-            &wrong_index_artifact_hash,
-            "cache_execution",
-        )
+        let refusal = validate_cache_execution_run_binding(CacheExecutionRunBindingContext {
+            run_ref_path: "trials/t1/run.json",
+            run: &run,
+            reference: &reference,
+            leak_source_bundle: &leak_bundle,
+            receipt: &receipt,
+            bundle_receipt: &bundle_receipt,
+            bundle_files: &wrong_index_artifact_hash,
+            field: "cache_execution",
+        })
         .expect_err("parsed index artifact hash mismatch refuses");
         assert_eq!(refusal.code, GeneralizationErrorCode::ArtifactContract);
 
@@ -10705,14 +11030,16 @@ mod leakage_provenance_tests {
             .last_mut()
             .expect("cache stage")
             .stage = "cache_receipt".to_string();
-        let refusal = validate_cache_execution_run_binding(
-            "trials/t1/run.json",
-            &generic_stage,
-            &reference,
-            &receipt,
-            &bundle_files,
-            "cache_execution",
-        )
+        let refusal = validate_cache_execution_run_binding(CacheExecutionRunBindingContext {
+            run_ref_path: "trials/t1/run.json",
+            run: &generic_stage,
+            reference: &reference,
+            leak_source_bundle: &leak_bundle,
+            receipt: &receipt,
+            bundle_receipt: &bundle_receipt,
+            bundle_files: &bundle_files,
+            field: "cache_execution",
+        })
         .expect_err("generic fake cache receipt stage refuses");
         assert_eq!(refusal.code, GeneralizationErrorCode::ArtifactContract);
 
@@ -10723,14 +11050,16 @@ mod leakage_provenance_tests {
             .expect("cache stage")
             .upstream_artifacts
             .clear();
-        let refusal = validate_cache_execution_run_binding(
-            "trials/t1/run.json",
-            &missing_upstream,
-            &reference,
-            &receipt,
-            &bundle_files,
-            "cache_execution",
-        )
+        let refusal = validate_cache_execution_run_binding(CacheExecutionRunBindingContext {
+            run_ref_path: "trials/t1/run.json",
+            run: &missing_upstream,
+            reference: &reference,
+            leak_source_bundle: &leak_bundle,
+            receipt: &receipt,
+            bundle_receipt: &bundle_receipt,
+            bundle_files: &bundle_files,
+            field: "cache_execution",
+        })
         .expect_err("missing index upstream refuses");
         assert_eq!(refusal.code, GeneralizationErrorCode::ArtifactContract);
     }
@@ -10741,16 +11070,26 @@ mod leakage_provenance_tests {
         let cache_execution = LoadedGeneralizationCacheExecution {
             references: cache_execution_ref(
                 GeneralizationCacheExecutionMode::DisabledBypass,
-                "trials/t1/index/cache_receipt.json",
+                "trials/t1/run/cache_execution_receipt.json",
                 &receipt_hash,
+                "trials/t1/index/cache_receipt.json",
+                &hash_bytes(b"bundle-receipt"),
             ),
-            receipt_path: "trials/t1/index/cache_receipt.json".to_string(),
+            receipt_path: "trials/t1/run/cache_execution_receipt.json".to_string(),
             receipt_hash: receipt_hash.clone(),
             receipt_byte_count: 42,
             receipt: cache_receipt(
                 EntityIndexCacheMode::Disabled,
                 EntityIndexCacheStatus::Bypassed,
                 false,
+            ),
+            bundle_receipt_path: "trials/t1/index/cache_receipt.json".to_string(),
+            bundle_receipt_hash: hash_bytes(b"bundle-receipt"),
+            bundle_receipt_byte_count: 99,
+            bundle_receipt: cache_receipt(
+                EntityIndexCacheMode::Enabled,
+                EntityIndexCacheStatus::Rebuilt,
+                true,
             ),
             bundle_files: Vec::new(),
         };
@@ -10765,7 +11104,7 @@ mod leakage_provenance_tests {
             content_hash: hash_bytes(b"records"),
             bundle_content_hash: hash_bytes(b"bundle"),
             checked_sources: vec![LoadedGeneralizationCheckedLeakSourceRef {
-                path: "trials/t1/index/cache_receipt.json".to_string(),
+                path: "trials/t1/run/cache_execution_receipt.json".to_string(),
                 format: GeneralizationLeakSourceFormat::Json,
                 content_hash: receipt_hash.clone(),
                 byte_count: 42,
@@ -11112,7 +11451,7 @@ mod leakage_provenance_tests {
         solve_metadata.upstream_artifacts = vec![block_ref, edge_ref];
         solve_metadata.artifact_content_hash.clear();
         let malicious = seal_solve(SolveArtifact {
-            version: CANON_ENTITY_SOLVE_VERSION.to_string(),
+            version: CANON_ENTITY_SOLVE_VERSION_V1.to_string(),
             artifact_content_hash: String::new(),
             metadata: solve_metadata.clone(),
             summary: deterministic_summary(&[("entity_count", 999), ("review_group_count", 999)]),
@@ -11417,11 +11756,11 @@ mod leakage_provenance_tests {
         .expect_err("receipt path colliding with block stage refuses");
         assert_eq!(refusal.code, GeneralizationErrorCode::ArtifactContract);
 
-        let edge_stage = run
+        let evidence_stage = run
             .stage_artifacts
             .iter()
-            .find(|stage| stage.stage == "edge")
-            .expect("edge stage exists");
+            .find(|stage| stage.stage == "evidence")
+            .expect("evidence stage exists");
         let refusal = bind_generalization_run_provenance(
             &run,
             "benchmark",
@@ -11431,10 +11770,10 @@ mod leakage_provenance_tests {
             &bundle,
             generated_stage(
                 "generated/corpus_receipt.json",
-                &edge_stage.artifact_content_hash,
+                &evidence_stage.artifact_content_hash,
             ),
         )
-        .expect_err("receipt hash colliding with edge stage refuses");
+        .expect_err("receipt hash colliding with evidence stage refuses");
         assert_eq!(refusal.code, GeneralizationErrorCode::ArtifactContract);
     }
 
@@ -11518,7 +11857,7 @@ mod leakage_provenance_tests {
     }
 
     #[test]
-    fn nested_run_ref_resolves_cache_stage_path_relative_to_run_artifact() {
+    fn nested_run_ref_resolves_cache_stage_path_relative_to_work_dir() {
         let resolved = safe_run_stage_checked_path(
             "trials/t1/run/run.json",
             "index/cache_key.json",
@@ -11526,7 +11865,7 @@ mod leakage_provenance_tests {
         )
         .expect("run-relative cache path resolves");
 
-        assert_eq!(resolved, "trials/t1/run/index/cache_key.json");
+        assert_eq!(resolved, "trials/t1/index/cache_key.json");
     }
 
     #[test]
@@ -11555,8 +11894,8 @@ mod leakage_provenance_tests {
         )
         .expect("right trial path resolves");
 
-        assert_eq!(left, "trials/t1/run/cache/cache_key.json");
-        assert_eq!(right, "trials/t2/run/cache/cache_key.json");
+        assert_eq!(left, "trials/t1/cache/cache_key.json");
+        assert_eq!(right, "trials/t2/cache/cache_key.json");
         assert_ne!(left, right);
     }
 
@@ -11627,7 +11966,7 @@ mod leakage_provenance_tests {
             &binding_hash,
         );
         let checked = loaded_checked_source_with_hash(
-            "trials/t1/run/generated/corpus_receipt.json",
+            "trials/t1/generated/corpus_receipt.json",
             &binding_hash,
         );
 

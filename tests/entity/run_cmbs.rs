@@ -2,9 +2,9 @@ use assert_cmd::Command;
 use canon::{
     RefusalCode,
     entity::{
-        CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION, CANON_ENTITY_INDEX_VERSION,
-        CANON_ENTITY_PREPARE_VERSION, CANON_ENTITY_RUN_VERSION, CANON_ENTITY_SOLVE_VERSION,
-        EntityArtifactReference,
+        CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_EVIDENCE_VERSION_V1,
+        CANON_ENTITY_INDEX_VERSION_V1, CANON_ENTITY_PREPARE_VERSION_V1,
+        CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactReference,
         run::{EntityRunArtifact, EntityRunRequest, EntityRunStageArtifact, run_entity_workbench},
     },
 };
@@ -32,7 +32,7 @@ fn entity_run_cmbs_emits_chained_stage_artifacts() {
     .expect("entity run succeeds");
 
     let artifact = result.artifact;
-    assert_eq!(artifact.version, CANON_ENTITY_RUN_VERSION);
+    assert_eq!(artifact.version, CANON_ENTITY_RUN_VERSION_V1);
     assert!(artifact.artifact_content_hash.starts_with("blake3:"));
     assert_eq!(
         artifact.metadata.artifact_content_hash,
@@ -44,34 +44,34 @@ fn entity_run_cmbs_emits_chained_stage_artifacts() {
     assert_eq!(artifact.summary.labels["profile_id"], "cmbs_tenant_label");
     assert_eq!(artifact.summary.labels["registry_id"], "cmbs-tenants");
 
-    assert_stage(&artifact, "prepare", CANON_ENTITY_PREPARE_VERSION, &[]);
+    assert_stage(&artifact, "prepare", CANON_ENTITY_PREPARE_VERSION_V1, &[]);
     let prepare = stage(&artifact, "prepare");
     assert_stage(
         &artifact,
         "index",
-        CANON_ENTITY_INDEX_VERSION,
+        CANON_ENTITY_INDEX_VERSION_V1,
         &[stage_ref(prepare)],
     );
     let index = stage(&artifact, "index");
     assert_stage(
         &artifact,
         "block",
-        CANON_ENTITY_BLOCK_VERSION,
+        CANON_ENTITY_BLOCK_VERSION_V1,
         &[stage_ref(prepare), stage_ref(index)],
     );
     let block = stage(&artifact, "block");
     assert_stage(
         &artifact,
-        "edge",
-        CANON_ENTITY_EDGE_VERSION,
+        "evidence",
+        CANON_ENTITY_EVIDENCE_VERSION_V1,
         &[stage_ref(prepare), stage_ref(index), stage_ref(block)],
     );
-    let edge = stage(&artifact, "edge");
+    let evidence = stage(&artifact, "evidence");
     assert_stage(
         &artifact,
         "solve",
-        CANON_ENTITY_SOLVE_VERSION,
-        &[stage_ref(block), stage_ref(edge)],
+        CANON_ENTITY_SOLVE_VERSION_V1,
+        &[stage_ref(block), stage_ref(evidence)],
     );
 
     for stage in &artifact.stage_artifacts {
@@ -93,14 +93,14 @@ fn entity_run_cmbs_emits_chained_stage_artifacts() {
     assert!(work_dir.join("block/candidates.jsonl").exists());
     assert!(work_dir.join("block/diagnostics.json").exists());
     assert!(work_dir.join("block/exact_buckets.jsonl").exists());
-    assert!(work_dir.join("edge/edges.jsonl").exists());
+    assert!(work_dir.join("evidence/evidence.jsonl").exists());
     assert!(work_dir.join("solve/decision_ledger.jsonl").exists());
     assert_eq!(
         artifact.work_dir.candidate_diagnostics_path,
         "block/diagnostics.json"
     );
 
-    let persisted: EntityRunArtifact = read_json(&work_dir.join("run.json"));
+    let persisted: EntityRunArtifact = read_json(&work_dir.join("run/run.json"));
     assert_eq!(persisted, artifact);
 }
 
@@ -134,12 +134,12 @@ fn entity_run_cmbs_cli_summary_uses_artifact_backed_path() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("canon_entity_run.v0"))
+        .stdout(predicate::str::contains("canon_entity_run.v1"))
         .stdout(predicate::str::contains("profile=cmbs_tenant_label"))
         .stdout(predicate::str::contains("candidate_pairs="));
 
-    let run_json: Value = read_json(&work_dir.join("run.json"));
-    assert_eq!(run_json["version"], CANON_ENTITY_RUN_VERSION);
+    let run_json: Value = read_json(&work_dir.join("run/run.json"));
+    assert_eq!(run_json["version"], CANON_ENTITY_RUN_VERSION_V1);
     assert_eq!(
         run_json["summary"]["labels"]["profile_id"],
         "cmbs_tenant_label"

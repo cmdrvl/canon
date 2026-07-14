@@ -1,9 +1,17 @@
 #![forbid(unsafe_code)]
 
 use canon::entity::{
-    EntityArtifactMetadata, EntityArtifactReference, EntityInputReference, EntityPatchNamespaces,
-    EntityProfileReference, EntityRegistrySnapshot, EntityStrategyReference,
+    CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_EVIDENCE_VERSION_V1, CANON_ENTITY_INDEX_VERSION_V1,
+    CANON_ENTITY_PREPARE_VERSION_V1, EntityArtifactHeader, EntityArtifactMetadata,
+    EntityArtifactReference, EntityInputReference, EntityPatchNamespaces, EntityProfileReference,
+    EntityRegistrySnapshot, EntityStrategyReference,
+    block::{
+        BlockCandidateBudgetConfig, BlockCandidateGenerationDiagnostics, BlockCandidateHit,
+        BlockCandidateRecord, BlockOperatorCandidateDiagnostics, BlockOperatorYield,
+    },
+    block_artifact::{BlockCandidateArtifactRequest, build_block_candidate_artifact_contract},
     edge::{EdgeEvidenceHit, EdgeEvidenceRecord, build_edge_evidence_record},
+    edge_artifact::{EdgeEvidenceArtifactRequest, build_edge_evidence_artifact_contract},
     graph::{SignedEvidenceGraphInput, build_signed_evidence_graph},
     profiles::regab::{RegabFirmGuardKind, RegabFirmGuardRequest, regab_firm_guard_hit},
     relation::{RelationHintRequest, relation_hint_hit},
@@ -220,21 +228,139 @@ fn expected_group<'a>(expected: &'a ExpectedReviewQueue, id: &str) -> &'a Expect
 }
 
 fn solve_artifact() -> SolveArtifact {
+    let edge_records = edge_records();
+    let evidence = evidence_artifact_for_review_edges(&edge_records);
     let graph = build_signed_evidence_graph(SignedEvidenceGraphInput {
-        edge_records: edge_records(),
+        edge_records,
         exact_bucket_assertions: Vec::new(),
         incumbent_ids: Vec::new(),
     })
     .expect("Reg AB review graph builds");
+    let mut metadata = evidence.metadata.clone();
+    metadata.strategy = solve_strategy();
+    metadata.upstream_artifacts.push(EntityArtifactReference {
+        version: evidence.version,
+        content_hash: evidence.artifact_content_hash,
+    });
+    metadata.artifact_content_hash.clear();
 
     build_solve_artifact_contract(SolveArtifactRequest {
-        metadata: metadata(),
+        metadata,
         graph,
         config: SolveReconciliationConfig::delegate_new_ids(score(5_000)),
         provenance: surface_provenance(),
-        decision_ledger_path: "review/sec10d-regab-decision-ledger.jsonl".to_string(),
+        decision_ledger_path: "solve/sec10d-regab-decision-ledger.jsonl".to_string(),
     })
     .expect("Reg AB solve artifact builds")
+}
+
+fn evidence_artifact_for_review_edges(
+    edge_records: &[EdgeEvidenceRecord],
+) -> canon::entity::edge_artifact::EdgeEvidenceArtifact {
+    let mut evidence_records = edge_records.to_vec();
+    for record in &mut evidence_records {
+        record.version = CANON_ENTITY_EVIDENCE_VERSION_V1.to_string();
+    }
+    evidence_records.sort_by(|left, right| {
+        left.left_surface_id
+            .cmp(&right.left_surface_id)
+            .then_with(|| left.right_surface_id.cmp(&right.right_surface_id))
+    });
+    let candidate_records = candidate_records_for_edges(&evidence_records);
+    let block = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
+        index: index_header(),
+        strategy: block_strategy(),
+        candidate_records_path: "block/candidates.jsonl".to_string(),
+        candidate_diagnostics_path: "block/diagnostics.json".to_string(),
+        candidate_records: candidate_records.clone(),
+        bucket_assertions: vec![],
+        known_surface_ids: known_surface_ids(&candidate_records),
+        diagnostics: diagnostics(candidate_records.len() as u64),
+    })
+    .expect("Reg AB block artifact builds");
+    build_edge_evidence_artifact_contract(EdgeEvidenceArtifactRequest {
+        block,
+        strategy: evidence_strategy(),
+        edge_records_path: "evidence/evidence.jsonl".to_string(),
+        edge_records: evidence_records,
+        candidate_records,
+        bucket_assertions: vec![],
+    })
+    .expect("Reg AB evidence artifact builds")
+}
+
+fn candidate_records_for_edges(edge_records: &[EdgeEvidenceRecord]) -> Vec<BlockCandidateRecord> {
+    let mut candidates = edge_records
+        .iter()
+        .map(|record| BlockCandidateRecord {
+            version: CANON_ENTITY_BLOCK_VERSION_V1.to_string(),
+            left_surface_id: record.left_surface_id.clone(),
+            right_surface_id: record.right_surface_id.clone(),
+            block_hits: vec![BlockCandidateHit {
+                operator_id: "sec10d_review_queue:block_candidate".to_string(),
+                rank: Some(1),
+                score_units: 10_000,
+            }],
+            candidate_score_hint: 10_000,
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| {
+        left.left_surface_id
+            .cmp(&right.left_surface_id)
+            .then_with(|| left.right_surface_id.cmp(&right.right_surface_id))
+    });
+    candidates
+}
+
+fn known_surface_ids(candidate_records: &[BlockCandidateRecord]) -> Vec<String> {
+    let mut surface_ids = candidate_records
+        .iter()
+        .flat_map(|candidate| {
+            [
+                candidate.left_surface_id.clone(),
+                candidate.right_surface_id.clone(),
+            ]
+        })
+        .collect::<Vec<_>>();
+    surface_ids.sort();
+    surface_ids.dedup();
+    surface_ids
+}
+
+fn diagnostics(candidate_count: u64) -> BlockCandidateGenerationDiagnostics {
+    BlockCandidateGenerationDiagnostics {
+        candidate_record_count: candidate_count,
+        candidate_pairs_emitted: candidate_count,
+        candidate_pairs_suppressed_by_cap: 0,
+        suppressed_candidate_count: 0,
+        large_buckets_suppressed: 0,
+        candidate_pairs_per_surface_p50: candidate_count,
+        candidate_pairs_per_surface_p95: candidate_count,
+        candidate_pairs_per_surface_p99: candidate_count,
+        max_candidates_for_surface: candidate_count,
+        max_candidates_for_operator: candidate_count,
+        configured_budget: BlockCandidateBudgetConfig::new(8, 64, 128),
+        candidate_budget: canon::entity::edge::EdgeCandidateBudgetProof::within_run_budget(
+            candidate_count,
+            64,
+        ),
+        candidate_artifact_bytes: 512,
+        partial_candidate_artifact_written: false,
+        operator_yield: vec![BlockOperatorYield {
+            operator_id: "sec10d_review_queue:block_candidate".to_string(),
+            emitted_candidate_count: candidate_count,
+            suppressed_candidate_count: 0,
+            large_posting_suppressed_count: 0,
+        }],
+        operator_diagnostics: vec![BlockOperatorCandidateDiagnostics {
+            operator_id: "sec10d_review_queue:block_candidate".to_string(),
+            input_candidate_count: candidate_count,
+            eligible_candidate_count: candidate_count,
+            emitted_candidate_count: candidate_count,
+            suppressed_candidate_count: 0,
+            large_posting_suppressed_count: 0,
+        }],
+    }
 }
 
 fn edge_records() -> Vec<EdgeEvidenceRecord> {
@@ -523,19 +649,53 @@ fn metadata() -> EntityArtifactMetadata {
             row_count: 231,
             content_hash: "blake3:sec10d-review-input".to_string(),
         }),
-        upstream_artifacts: vec![
-            EntityArtifactReference {
-                version: "canon_entity_block.v0".to_string(),
-                content_hash: "blake3:sec10d-block".to_string(),
-            },
-            EntityArtifactReference {
-                version: "canon_entity_edge.v0".to_string(),
-                content_hash: "blake3:sec10d-edge".to_string(),
-            },
-        ],
+        upstream_artifacts: vec![],
         patch_set: None,
         namekit: None,
         artifact_content_hash: String::new(),
+    }
+}
+
+fn index_header() -> EntityArtifactHeader {
+    let mut metadata = metadata();
+    metadata.strategy = EntityStrategyReference {
+        id: "regab_firm_identity.index".to_string(),
+        version: "0.1.0".to_string(),
+        content_hash: "blake3:regab-index-strategy".to_string(),
+    };
+    metadata.upstream_artifacts = vec![EntityArtifactReference {
+        version: CANON_ENTITY_PREPARE_VERSION_V1.to_string(),
+        content_hash: "blake3:sec10d-prepare".to_string(),
+    }];
+    metadata.artifact_content_hash = "blake3:sec10d-index".to_string();
+    EntityArtifactHeader {
+        version: CANON_ENTITY_INDEX_VERSION_V1.to_string(),
+        metadata,
+        summary: Default::default(),
+    }
+}
+
+fn block_strategy() -> EntityStrategyReference {
+    EntityStrategyReference {
+        id: "regab_firm_identity.block".to_string(),
+        version: "0.1.0".to_string(),
+        content_hash: "blake3:sec10d-block-strategy".to_string(),
+    }
+}
+
+fn evidence_strategy() -> EntityStrategyReference {
+    EntityStrategyReference {
+        id: "regab_firm_identity.evidence".to_string(),
+        version: "0.1.0".to_string(),
+        content_hash: "blake3:sec10d-evidence-strategy".to_string(),
+    }
+}
+
+fn solve_strategy() -> EntityStrategyReference {
+    EntityStrategyReference {
+        id: "regab_firm_identity.solve".to_string(),
+        version: "0.1.0".to_string(),
+        content_hash: "blake3:sec10d-solve-strategy".to_string(),
     }
 }
 

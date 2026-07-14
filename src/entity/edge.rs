@@ -1,16 +1,16 @@
 #![forbid(unsafe_code)]
 
-//! Edge-stage preflight checks.
+//! Evidence-stage preflight checks.
 //!
 //! The scorer must never start from stale or over-budget candidate artifacts.
 //! This module keeps that boundary explicit: callers get either a small permit
-//! to score or a normal canon refusal envelope before any edge artifact exists.
+//! to score or a normal canon refusal envelope before any evidence artifact exists.
 
 use crate::{
     Refusal,
     entity::{
         budget::{BudgetLimit, BudgetStage, find_budget_policy},
-        contracts::{CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION},
+        contracts::{CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_EDGE_VERSION},
         error::EntityRefusalKind,
         score::{ScoreBreakdown, ScoreContribution, ScoreLane, ScoreUnits, accumulate_score_units},
     },
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::Path;
 
-pub const EDGE_STAGE: &str = "edge";
+pub const EDGE_STAGE: &str = "evidence";
 pub const EDGE_CANDIDATE_ARTIFACT: &str = "candidate_artifact";
 pub const EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL: bool = false;
 
@@ -68,6 +68,7 @@ pub struct EdgeCandidateArtifactExpectation {
 pub struct EdgeScoringPermit {
     pub candidate_record_count: u64,
     pub max_edge_records: u64,
+    #[serde(rename = "partial_evidence_artifact_written")]
     pub partial_edge_artifact_written: bool,
 }
 
@@ -176,29 +177,29 @@ pub fn validate_edge_candidate_artifact_before_scoring(
     artifact: &EdgeCandidateArtifactRef,
     expected: &EdgeCandidateArtifactExpectation,
 ) -> Result<EdgeScoringPermit, Refusal> {
-    if artifact.version != CANON_ENTITY_BLOCK_VERSION {
+    if artifact.version != CANON_ENTITY_BLOCK_VERSION_V1 {
         return Err(artifact_contract_refusal(
             "Candidate artifact has the wrong entity contract version",
             json!({
                 "stage": EDGE_STAGE,
                 "artifact": EDGE_CANDIDATE_ARTIFACT,
                 "reason": "wrong_version",
-                "expected_version": CANON_ENTITY_BLOCK_VERSION,
+                "expected_version": CANON_ENTITY_BLOCK_VERSION_V1,
                 "actual_version": artifact.version,
-                "partial_edge_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
+                "partial_evidence_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
             }),
         ));
     }
 
     if let Some(field) = first_missing_artifact_field(artifact) {
         return Err(artifact_contract_refusal(
-            "Candidate artifact is missing required edge input metadata",
+            "Candidate artifact is missing required evidence input metadata",
             json!({
                 "stage": EDGE_STAGE,
                 "artifact": EDGE_CANDIDATE_ARTIFACT,
                 "reason": "missing_field",
                 "field": field,
-                "partial_edge_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
+                "partial_evidence_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
             }),
         ));
     }
@@ -225,16 +226,16 @@ pub fn validate_edge_candidate_artifact_before_scoring(
 
     if artifact.candidate_record_count > expected.max_edge_records {
         let policy = find_budget_policy(BudgetStage::Edge, BudgetLimit::MaxEdgeRecords)
-            .expect("edge max_edge_records policy is defined");
+            .expect("evidence max_evidence_records policy is defined");
         let breach = policy.breach(artifact.candidate_record_count, expected.max_edge_records);
         return Err(EntityRefusalKind::ArtifactContract.to_refusal(
-            "Edge record budget exceeded before scoring",
+            "Evidence record budget exceeded before scoring",
             json!({
                 "stage": EDGE_STAGE,
                 "artifact": EDGE_CANDIDATE_ARTIFACT,
-                "reason": "edge_record_budget_exceeded",
+                "reason": "evidence_record_budget_exceeded",
                 "budget": breach,
-                "partial_edge_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
+                "partial_evidence_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
             }),
             Some(policy.next_command.to_string()),
         ));
@@ -295,7 +296,7 @@ fn stale_artifact_refusal(
     ] {
         if expected_value != actual_value {
             return Some(artifact_contract_refusal(
-                "Candidate artifact does not match the current edge run inputs",
+                "Candidate artifact does not match the current evidence run inputs",
                 json!({
                     "stage": EDGE_STAGE,
                     "artifact": EDGE_CANDIDATE_ARTIFACT,
@@ -303,7 +304,7 @@ fn stale_artifact_refusal(
                     "field": field,
                     "expected": expected_value,
                     "actual": actual_value,
-                    "partial_edge_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
+                    "partial_evidence_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
                 }),
             ));
         }
@@ -316,7 +317,7 @@ fn artifact_contract_refusal(message: &'static str, detail: serde_json::Value) -
         message,
         detail,
         Some(
-            "Use the matching canon_entity_block.v0 candidate artifact or rerun canon entity block"
+            "Use the matching canon_entity_block.v1 candidate artifact or rerun canon entity block"
                 .to_string(),
         ),
     )
@@ -328,13 +329,13 @@ fn validate_surface_pair(left_surface_id: &str, right_surface_id: &str) -> Resul
         || left_surface_id >= right_surface_id
     {
         return Err(artifact_contract_refusal(
-            "Edge evidence surface IDs must be a deterministic non-empty pair",
+            "Evidence surface IDs must be a deterministic non-empty pair",
             json!({
                 "stage": EDGE_STAGE,
                 "reason": "invalid_surface_pair",
                 "left_surface_id": left_surface_id,
                 "right_surface_id": right_surface_id,
-                "partial_edge_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
+                "partial_evidence_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
             }),
         ));
     }
@@ -349,12 +350,12 @@ fn validate_edge_hit(hit: &EdgeEvidenceHit) -> Result<(), Refusal> {
     ] {
         if value.trim().is_empty() {
             return Err(artifact_contract_refusal(
-                "Edge evidence hit is missing required metadata",
+                "Evidence hit is missing required metadata",
                 json!({
                     "stage": EDGE_STAGE,
                     "reason": "missing_evidence_hit_field",
                     "field": field,
-                    "partial_edge_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
+                    "partial_evidence_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
                 }),
             ));
         }
@@ -397,7 +398,7 @@ fn candidate_budget_refusal(
             "observed": proof.observed,
             "configured": proof.configured,
             "enforcement": "refuse_before_scoring",
-            "partial_edge_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
+            "partial_evidence_artifact_written": EDGE_PARTIAL_ARTIFACT_WRITTEN_ON_REFUSAL
         }),
         None,
     )

@@ -3,6 +3,7 @@
 use canon::{
     RefusalCode,
     entity::{
+        CANON_ENTITY_RUN_VERSION_V1,
         apply::{
             APPLY_CANONICAL_FIELDS, ApplyCanonicalResolution, ApplyRegistryReference,
             ApplySafetyCheck, ApplyStreamRequest, SEC10D_ORG_FIELD_SUFFIXES,
@@ -96,7 +97,7 @@ fn sec10d_entity_contract_runs_workbench_and_advertises_handoff_commands() {
     .expect("sec10d-shaped Reg AB run succeeds");
 
     let artifact = result.artifact;
-    assert_eq!(artifact.version, "canon_entity_run.v0");
+    assert_eq!(artifact.version, CANON_ENTITY_RUN_VERSION_V1);
     assert_eq!(artifact.summary.labels["profile_id"], "regab_firm_identity");
     assert_eq!(artifact.summary.labels["registry_id"], "firms");
     assert_eq!(artifact.summary.labels["registry_version"], "1.0.12");
@@ -113,7 +114,7 @@ fn sec10d_entity_contract_runs_workbench_and_advertises_handoff_commands() {
         expected.source["exact_resolved_surfaces"]
     );
 
-    for stage_name in ["prepare", "index", "block", "edge", "solve"] {
+    for stage_name in ["prepare", "index", "block", "evidence", "solve"] {
         let stage = stage(&artifact, stage_name);
         assert!(
             Path::new(&stage.path).is_relative(),
@@ -126,11 +127,19 @@ fn sec10d_entity_contract_runs_workbench_and_advertises_handoff_commands() {
         );
         assert!(stage.artifact_content_hash.starts_with("blake3:"));
     }
-    assert!(work_dir.join("prepare/surfaces.jsonl").exists());
-    assert!(work_dir.join("block/candidates.jsonl").exists());
-    assert!(work_dir.join("edge/edges.jsonl").exists());
-    assert!(work_dir.join("solve/solve.json").exists());
-    assert!(work_dir.join("run.json").exists());
+    assert!(work_dir.join(&artifact.work_dir.surfaces_path).exists());
+    assert!(
+        work_dir
+            .join(&artifact.work_dir.candidate_records_path)
+            .exists()
+    );
+    assert!(work_dir.join(&artifact.work_dir.edge_records_path).exists());
+    assert!(
+        work_dir
+            .join(&artifact.work_dir.solve_artifact_path)
+            .exists()
+    );
+    assert!(work_dir.join(&artifact.work_dir.run_artifact_path).exists());
 
     assert!(artifact.next_commands.resume.contains("canon entity run"));
     assert!(
@@ -167,7 +176,8 @@ fn sec10d_entity_contract_runs_workbench_and_advertises_handoff_commands() {
     assert!(artifact.next_commands.apply.contains("canon entity apply"));
     assert!(artifact.next_commands.apply.contains("--column <COLUMN>"));
 
-    let persisted: EntityRunArtifact = read_json(&work_dir.join("run.json"));
+    let persisted: EntityRunArtifact =
+        read_json(&work_dir.join(&artifact.work_dir.run_artifact_path));
     assert_eq!(persisted, artifact);
 }
 

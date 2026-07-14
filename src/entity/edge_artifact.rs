@@ -1,11 +1,11 @@
 #![forbid(unsafe_code)]
 
-//! `canon_entity_edge.v0` artifact contract.
+//! `canon_entity_evidence.v1` artifact contract.
 
 use crate::{
     Refusal,
     entity::{
-        CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION, EntityArtifactMetadata,
+        CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_EVIDENCE_VERSION_V1, EntityArtifactMetadata,
         EntityArtifactReference, EntityDeterministicSummary, EntityStrategyReference,
         block::BlockCandidateRecord,
         block_artifact::{
@@ -29,7 +29,9 @@ pub struct EdgeEvidenceArtifact {
     pub metadata: EntityArtifactMetadata,
     pub summary: EntityDeterministicSummary,
     pub upstream_artifacts: Vec<EntityArtifactReference>,
+    #[serde(rename = "evidence_records_path")]
     pub edge_records_path: String,
+    #[serde(rename = "evidence_records_hash")]
     pub edge_records_hash: String,
     pub candidate_records_hash: String,
     pub bucket_assertions_hash: String,
@@ -48,13 +50,30 @@ pub struct EdgeEvidenceArtifactRequest {
 pub fn build_edge_evidence_artifact_contract(
     request: EdgeEvidenceArtifactRequest,
 ) -> Result<EdgeEvidenceArtifact, Refusal> {
-    validate_block_candidate_artifact_contract(&request.block)?;
+    build_edge_evidence_artifact_contract_inner(request, true)
+}
+
+pub(crate) fn build_edge_evidence_artifact_from_validated_block_contract(
+    request: EdgeEvidenceArtifactRequest,
+) -> Result<EdgeEvidenceArtifact, Refusal> {
+    build_edge_evidence_artifact_contract_inner(request, false)
+}
+
+fn build_edge_evidence_artifact_contract_inner(
+    request: EdgeEvidenceArtifactRequest,
+    validate_block_typed_self_hash: bool,
+) -> Result<EdgeEvidenceArtifact, Refusal> {
+    if validate_block_typed_self_hash {
+        validate_block_candidate_artifact_contract(&request.block)?;
+    } else {
+        super::block_artifact::validate_block_candidate_artifact_envelope_contract(&request.block)?;
+    }
     if request.edge_records_path.trim().is_empty() {
         return Err(edge_artifact_refusal(
-            "Edge artifact records path is required",
+            "Evidence artifact records path is required",
             json!({
-                "stage": "edge",
-                "field": "edge_records_path",
+                "stage": "evidence",
+                "field": "evidence_records_path",
                 "writes_performed": false
             }),
         ));
@@ -63,9 +82,9 @@ pub fn build_edge_evidence_artifact_contract(
     let candidate_records_hash = hash_jsonl_records(&request.candidate_records)?;
     if candidate_records_hash != request.block.candidate_records_hash {
         return Err(edge_artifact_refusal(
-            "Edge artifact candidate records do not match upstream block artifact",
+            "Evidence artifact candidate records do not match upstream block artifact",
             json!({
-                "stage": "edge",
+                "stage": "evidence",
                 "reason": "stale_candidate_records",
                 "expected": request.block.candidate_records_hash,
                 "actual": candidate_records_hash,
@@ -77,9 +96,9 @@ pub fn build_edge_evidence_artifact_contract(
     let bucket_assertions_hash = hash_jsonl_records(&request.bucket_assertions)?;
     if bucket_assertions_hash != request.block.bucket_assertions_hash {
         return Err(edge_artifact_refusal(
-            "Edge artifact bucket assertions do not match upstream block artifact",
+            "Evidence artifact bucket assertions do not match upstream block artifact",
             json!({
-                "stage": "edge",
+                "stage": "evidence",
                 "reason": "stale_bucket_assertions",
                 "expected": request.block.bucket_assertions_hash,
                 "actual": bucket_assertions_hash,
@@ -105,7 +124,7 @@ pub fn build_edge_evidence_artifact_contract(
     );
 
     let mut artifact = EdgeEvidenceArtifact {
-        version: CANON_ENTITY_EDGE_VERSION.to_string(),
+        version: CANON_ENTITY_EVIDENCE_VERSION_V1.to_string(),
         artifact_content_hash: String::new(),
         metadata,
         summary,
@@ -123,20 +142,33 @@ pub fn build_edge_evidence_artifact_contract(
 pub fn validate_edge_evidence_artifact_contract(
     artifact: &EdgeEvidenceArtifact,
 ) -> Result<(), Refusal> {
-    if artifact.version != CANON_ENTITY_EDGE_VERSION {
+    validate_edge_evidence_artifact_contract_inner(artifact, true)
+}
+
+pub fn validate_edge_evidence_artifact_envelope_contract(
+    artifact: &EdgeEvidenceArtifact,
+) -> Result<(), Refusal> {
+    validate_edge_evidence_artifact_contract_inner(artifact, false)
+}
+
+fn validate_edge_evidence_artifact_contract_inner(
+    artifact: &EdgeEvidenceArtifact,
+    validate_typed_self_hash: bool,
+) -> Result<(), Refusal> {
+    if artifact.version != CANON_ENTITY_EVIDENCE_VERSION_V1 {
         return Err(edge_artifact_refusal(
-            "Edge artifact version mismatch",
+            "Evidence artifact version mismatch",
             json!({
-                "stage": "edge",
-                "expected": CANON_ENTITY_EDGE_VERSION,
+                "stage": "evidence",
+                "expected": CANON_ENTITY_EVIDENCE_VERSION_V1,
                 "actual": artifact.version,
                 "writes_performed": false
             }),
         ));
     }
     for (field, value) in [
-        ("edge_records_path", artifact.edge_records_path.as_str()),
-        ("edge_records_hash", artifact.edge_records_hash.as_str()),
+        ("evidence_records_path", artifact.edge_records_path.as_str()),
+        ("evidence_records_hash", artifact.edge_records_hash.as_str()),
         (
             "candidate_records_hash",
             artifact.candidate_records_hash.as_str(),
@@ -148,9 +180,9 @@ pub fn validate_edge_evidence_artifact_contract(
     ] {
         if value.trim().is_empty() {
             return Err(edge_artifact_refusal(
-                "Edge artifact is missing a required field",
+                "Evidence artifact is missing a required field",
                 json!({
-                    "stage": "edge",
+                    "stage": "evidence",
                     "field": field,
                     "writes_performed": false
                 }),
@@ -160,23 +192,33 @@ pub fn validate_edge_evidence_artifact_contract(
     if !artifact
         .upstream_artifacts
         .iter()
-        .any(|reference| reference.version == CANON_ENTITY_BLOCK_VERSION)
+        .any(|reference| reference.version == CANON_ENTITY_BLOCK_VERSION_V1)
     {
         return Err(edge_artifact_refusal(
-            "Edge artifact must record upstream block artifact",
+            "Evidence artifact must record upstream block artifact",
             json!({
-                "stage": "edge",
+                "stage": "evidence",
                 "field": "upstream_artifacts",
-                "expected": CANON_ENTITY_BLOCK_VERSION,
+                "expected": CANON_ENTITY_BLOCK_VERSION_V1,
+                "writes_performed": false
+            }),
+        ));
+    }
+    if artifact.upstream_artifacts != artifact.metadata.upstream_artifacts {
+        return Err(edge_artifact_refusal(
+            "Evidence artifact upstream references must match metadata",
+            json!({
+                "stage": "evidence",
+                "field": "upstream_artifacts",
                 "writes_performed": false
             }),
         ));
     }
     if artifact.metadata.artifact_content_hash != artifact.artifact_content_hash {
         return Err(edge_artifact_refusal(
-            "Edge artifact metadata hash does not match artifact hash",
+            "Evidence artifact metadata hash does not match artifact hash",
             json!({
-                "stage": "edge",
+                "stage": "evidence",
                 "field": "metadata.artifact_content_hash",
                 "expected": artifact.artifact_content_hash,
                 "actual": artifact.metadata.artifact_content_hash,
@@ -184,18 +226,20 @@ pub fn validate_edge_evidence_artifact_contract(
             }),
         ));
     }
-    let expected = hash_edge_artifact_without_self(artifact)?;
-    if artifact.artifact_content_hash != expected {
-        return Err(edge_artifact_refusal(
-            "Edge artifact content hash mismatch",
-            json!({
-                "stage": "edge",
-                "field": "artifact_content_hash",
-                "expected": expected,
-                "actual": artifact.artifact_content_hash,
-                "writes_performed": false
-            }),
-        ));
+    if validate_typed_self_hash {
+        let expected_artifact_hash = hash_edge_artifact_without_self(artifact)?;
+        if artifact.artifact_content_hash != expected_artifact_hash {
+            return Err(edge_artifact_refusal(
+                "Evidence artifact content hash does not match canonical bytes",
+                json!({
+                    "stage": "evidence",
+                    "field": "artifact_content_hash",
+                    "expected": expected_artifact_hash,
+                    "actual": artifact.artifact_content_hash,
+                    "writes_performed": false
+                }),
+            ));
+        }
     }
     Ok(())
 }
@@ -208,10 +252,10 @@ pub fn validate_edge_evidence_payload_hashes(
     let edge_records_hash = hash_jsonl_records(edge_records)?;
     if edge_records_hash != artifact.edge_records_hash {
         return Err(edge_artifact_refusal(
-            "Edge evidence JSONL does not match edge artifact hash",
+            "Evidence JSONL does not match evidence artifact hash",
             json!({
-                "stage": "edge",
-                "reason": "stale_edge_records",
+                "stage": "evidence",
+                "reason": "stale_evidence_records",
                 "expected": artifact.edge_records_hash,
                 "actual": edge_records_hash,
                 "writes_performed": false
@@ -222,9 +266,9 @@ pub fn validate_edge_evidence_payload_hashes(
     let bucket_assertions_hash = hash_jsonl_records(bucket_assertions)?;
     if bucket_assertions_hash != artifact.bucket_assertions_hash {
         return Err(edge_artifact_refusal(
-            "Exact bucket JSONL does not match edge artifact hash",
+            "Exact bucket JSONL does not match evidence artifact hash",
             json!({
-                "stage": "edge",
+                "stage": "evidence",
                 "reason": "stale_exact_bucket_assertions",
                 "expected": artifact.bucket_assertions_hash,
                 "actual": bucket_assertions_hash,
@@ -251,12 +295,12 @@ fn validate_edge_records(
         .collect::<BTreeSet<_>>();
     let mut seen_pairs = BTreeSet::new();
     for record in edge_records {
-        if record.version != CANON_ENTITY_EDGE_VERSION {
+        if record.version != CANON_ENTITY_EVIDENCE_VERSION_V1 {
             return Err(edge_artifact_refusal(
-                "Edge evidence record version mismatch",
+                "Evidence record version mismatch",
                 json!({
-                    "stage": "edge",
-                    "expected": CANON_ENTITY_EDGE_VERSION,
+                    "stage": "evidence",
+                    "expected": CANON_ENTITY_EVIDENCE_VERSION_V1,
                     "actual": record.version,
                     "writes_performed": false
                 }),
@@ -268,9 +312,9 @@ fn validate_edge_records(
         );
         if !candidate_pairs.contains(&pair_key) {
             return Err(edge_artifact_refusal(
-                "Edge evidence record references a pair absent from the block candidates",
+                "Evidence record references a pair absent from the block candidates",
                 json!({
-                    "stage": "edge",
+                    "stage": "evidence",
                     "reason": "unknown_candidate_pair",
                     "left_surface_id": record.left_surface_id,
                     "right_surface_id": record.right_surface_id,
@@ -280,27 +324,28 @@ fn validate_edge_records(
         }
         if !seen_pairs.insert(pair_key) {
             return Err(edge_artifact_refusal(
-                "Edge artifact contains duplicate evidence for a candidate pair",
+                "Evidence artifact contains duplicate evidence for a candidate pair",
                 json!({
-                    "stage": "edge",
-                    "reason": "duplicate_edge_pair",
+                    "stage": "evidence",
+                    "reason": "duplicate_evidence_pair",
                     "left_surface_id": record.left_surface_id,
                     "right_surface_id": record.right_surface_id,
                     "writes_performed": false
                 }),
             ));
         }
-        let expected = build_edge_evidence_record(
+        let mut expected = build_edge_evidence_record(
             record.left_surface_id.clone(),
             record.right_surface_id.clone(),
             record.hits.clone(),
         )?;
+        expected.version = CANON_ENTITY_EVIDENCE_VERSION_V1.to_string();
         if &expected != record {
             return Err(edge_artifact_refusal(
-                "Edge evidence record does not match canonical score or hit ordering",
+                "Evidence record does not match canonical score or hit ordering",
                 json!({
-                    "stage": "edge",
-                    "reason": "noncanonical_edge_record",
+                    "stage": "evidence",
+                    "reason": "noncanonical_evidence_record",
                     "left_surface_id": record.left_surface_id,
                     "right_surface_id": record.right_surface_id,
                     "writes_performed": false
@@ -311,10 +356,10 @@ fn validate_edge_records(
     for pair in edge_records.windows(2) {
         if edge_record_cmp(&pair[0], &pair[1]).is_gt() {
             return Err(edge_artifact_refusal(
-                "Edge evidence records are not in deterministic order",
+                "Evidence records are not in deterministic order",
                 json!({
-                    "stage": "edge",
-                    "reason": "unstable_edge_order",
+                    "stage": "evidence",
+                    "reason": "unstable_evidence_order",
                     "left_surface_id": pair[1].left_surface_id,
                     "right_surface_id": pair[1].right_surface_id,
                     "writes_performed": false
@@ -329,9 +374,9 @@ fn validate_bucket_assertions(bucket_assertions: &[ExactBucketAssertion]) -> Res
     for assertion in bucket_assertions {
         assertion.validate().map_err(|error| {
             edge_artifact_refusal(
-                "Exact bucket assertion failed edge artifact validation",
+                "Exact bucket assertion failed evidence artifact validation",
                 json!({
-                    "stage": "edge",
+                    "stage": "evidence",
                     "reason": "invalid_exact_bucket_assertion",
                     "bucket_id": assertion.bucket_id,
                     "error": format!("{error:?}"),
@@ -341,9 +386,9 @@ fn validate_bucket_assertions(bucket_assertions: &[ExactBucketAssertion]) -> Res
         })?;
         if assertion.expanded_pair_count() != 0 {
             return Err(edge_artifact_refusal(
-                "Exact bucket assertions must remain compact through edge scoring",
+                "Exact bucket assertions must remain compact through evidence scoring",
                 json!({
-                    "stage": "edge",
+                    "stage": "evidence",
                     "reason": "exact_bucket_pair_expansion",
                     "bucket_id": assertion.bucket_id,
                     "expanded_pair_count": assertion.expanded_pair_count(),
@@ -383,8 +428,11 @@ fn edge_summary(
     let relation_hint_count = lane_hit_count(edge_records, ScoreLane::RelationHint);
     EntityDeterministicSummary {
         counts: BTreeMap::from([
-            ("edge_records".to_string(), edge_records.len() as u64),
-            ("edge_record_count".to_string(), edge_records.len() as u64),
+            ("evidence_records".to_string(), edge_records.len() as u64),
+            (
+                "evidence_record_count".to_string(),
+                edge_records.len() as u64,
+            ),
             (
                 "candidate_record_count".to_string(),
                 candidate_records.len() as u64,
@@ -394,7 +442,7 @@ fn edge_summary(
                 bucket_assertions.len() as u64,
             ),
             (
-                "edge_hit_count".to_string(),
+                "evidence_hit_count".to_string(),
                 support_hit_count + cannot_link_hit_count + relation_hint_count,
             ),
             ("support_hit_count".to_string(), support_hit_count),
@@ -409,10 +457,10 @@ fn edge_summary(
             ),
         ]),
         labels: BTreeMap::from([
-            ("edge_scoring".to_string(), "bounded".to_string()),
+            ("evidence_scoring".to_string(), "bounded".to_string()),
             (
                 "upstream_version".to_string(),
-                CANON_ENTITY_BLOCK_VERSION.to_string(),
+                CANON_ENTITY_BLOCK_VERSION_V1.to_string(),
             ),
         ]),
     }
@@ -431,9 +479,9 @@ fn hash_jsonl_records<T: Serialize>(records: &[T]) -> Result<String, Refusal> {
     for record in records {
         serde_json::to_writer(&mut bytes, record).map_err(|error| {
             edge_artifact_refusal(
-                "Failed to hash edge JSONL artifact",
+                "Failed to hash evidence JSONL artifact",
                 json!({
-                    "stage": "edge",
+                    "stage": "evidence",
                     "error": error.to_string(),
                     "writes_performed": false
                 }),
@@ -450,9 +498,9 @@ fn hash_edge_artifact_without_self(artifact: &EdgeEvidenceArtifact) -> Result<St
     hashable.metadata.artifact_content_hash.clear();
     let bytes = serde_json::to_vec(&hashable).map_err(|error| {
         edge_artifact_refusal(
-            "Failed to hash edge artifact",
+            "Failed to hash evidence artifact",
             json!({
-                "stage": "edge",
+                "stage": "evidence",
                 "error": error.to_string(),
                 "writes_performed": false
             }),
@@ -471,6 +519,6 @@ fn edge_artifact_refusal(message: impl Into<String>, detail: serde_json::Value) 
     EntityRefusalKind::ArtifactContract.to_refusal(
         message,
         detail,
-        Some("Use matching block candidates or rerun canon entity edge".to_string()),
+        Some("Use matching block candidates or rerun canon entity evidence".to_string()),
     )
 }

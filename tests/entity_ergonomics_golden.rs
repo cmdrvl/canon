@@ -191,7 +191,7 @@ fn entity_doctor_lint_golden_reports_actionable_robot_diagnostics() {
         }),
         unsupported_operators: vec![
             EntityUnsupportedOperatorCheck {
-                stage: "edge".to_string(),
+                stage: "evidence".to_string(),
                 operator_id: "embedding_similarity".to_string(),
             },
             EntityUnsupportedOperatorCheck {

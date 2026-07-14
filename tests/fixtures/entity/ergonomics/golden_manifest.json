@@ -62,15 +62,15 @@
       "operator_review_groups": 2,
       "anti_merge_groups": 2
     },
-    "required_stage_names": ["prepare", "block", "solve", "apply"],
+    "required_stage_names": ["prepare", "index", "block", "evidence", "solve", "apply"],
     "required_next_command_keys": ["apply", "audit", "promote", "resume", "review_export"],
     "required_telemetry_link_keys": [
       "block_artifact",
       "candidate_diagnostics",
       "candidate_records",
       "decision_ledger",
-      "edge_artifact",
-      "edge_records",
+      "evidence_artifact",
+      "evidence_records",
       "index_artifact",
       "prepare_artifact",
       "run_artifact",

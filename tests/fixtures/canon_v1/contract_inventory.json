@@ -383,7 +383,7 @@
       "family": "entity",
       "clap_path": "entity run",
       "operator_name": "entity run",
-      "primary_contracts": ["canon_entity_run.v0", "canon_entity_index_cache_receipt.v0"],
+      "primary_contracts": ["canon_entity_run.v1", "canon_entity_index_cache_receipt.v0"],
       "action": "preserve"
     },
     {
@@ -407,7 +407,7 @@
       "family": "entity",
       "clap_path": "entity block",
       "operator_name": "entity block",
-      "primary_contracts": ["canon_entity_block.v0"],
+      "primary_contracts": ["canon_entity_block.v1"],
       "action": "preserve"
     },
     {
@@ -431,7 +431,7 @@
       "family": "entity",
       "clap_path": "entity solve",
       "operator_name": "entity solve",
-      "primary_contracts": ["canon_entity_solve.v0"],
+      "primary_contracts": ["canon_entity_solve.v1"],
       "action": "preserve"
     },
     {
@@ -595,6 +595,13 @@
     },
     {
       "id": "canon.source.mapping.v1",
+      "family": "extension",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/extensions/source_mapping.rs"
+    },
+    {
+      "id": "canon.entity.record_link_input.v1",
       "family": "extension",
       "action": "preserve",
       "access_boundary": "internal_source_only",
@@ -812,6 +819,7 @@
     { "id": "canon_entity_review_queue.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_run.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_run.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_run_manifest.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_schema_bundle.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_score.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_solve.v0", "family": "entity", "action": "preserve" },

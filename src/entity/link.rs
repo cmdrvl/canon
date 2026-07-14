@@ -12,7 +12,7 @@ use crate::{
     entity::index::EntityIndexCacheMode,
     entity::run::EntityRunArtifact,
     entity::{
-        CANON_ENTITY_SOLVE_VERSION, EntityArtifactReference,
+        CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactReference,
         error::EntityRefusalKind,
         prepare::{
             PrepareInputContract, PreparedInputObservation, PreparedSurfaceRecord,
@@ -1608,7 +1608,7 @@ fn validate_link_upstreams(artifact: &EntityLinkArtifact) -> Result<(), Refusal>
 fn solve_stage_reference(run: &EntityRunArtifact) -> Result<EntityArtifactReference, Refusal> {
     run.stage_artifacts
         .iter()
-        .find(|stage| stage.stage == "solve" && stage.version == CANON_ENTITY_SOLVE_VERSION)
+        .find(|stage| stage.stage == "solve" && stage.version == CANON_ENTITY_SOLVE_VERSION_V1)
         .map(|stage| EntityArtifactReference {
             version: stage.version.clone(),
             content_hash: stage.artifact_content_hash.clone(),
@@ -2114,9 +2114,11 @@ fn link_io_refusal(
 #[cfg(test)]
 mod cache_runtime_tests {
     use super::*;
+    use crate::entity::index::EntityIndexCacheStatus;
     use crate::entity::index_io::{
-        CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION, INDEX_CACHE_RECEIPT_FILE,
+        CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION, EntityIndexCacheReceipt, INDEX_CACHE_RECEIPT_FILE,
     };
+    use crate::entity::run::RUN_CACHE_EXECUTION_RECEIPT_PATH;
     use std::path::PathBuf;
 
     struct LinkCacheFixture {
@@ -2183,10 +2185,56 @@ mod cache_runtime_tests {
             cache_stage.version,
             CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION
         );
-        assert_eq!(cache_stage.path, INDEX_CACHE_RECEIPT_FILE);
+        assert_eq!(cache_stage.path, RUN_CACHE_EXECUTION_RECEIPT_PATH);
+        assert_eq!(
+            result.run.artifact.summary.labels["cache_receipt_path"],
+            RUN_CACHE_EXECUTION_RECEIPT_PATH
+        );
         assert_eq!(
             cache_stage.artifact_content_hash,
             result.run.artifact.summary.labels["cache_receipt_hash"]
+        );
+        let execution_receipt: EntityIndexCacheReceipt = serde_json::from_slice(
+            &fs::read(work_dir.join(RUN_CACHE_EXECUTION_RECEIPT_PATH))
+                .expect("cache execution receipt bytes"),
+        )
+        .expect("cache execution receipt parses");
+        assert_eq!(execution_receipt.mode, EntityIndexCacheMode::Disabled);
+        assert_eq!(execution_receipt.status, EntityIndexCacheStatus::Bypassed);
+        assert!(!execution_receipt.reusable);
+        assert_eq!(
+            witness::hash_file(&work_dir.join(RUN_CACHE_EXECUTION_RECEIPT_PATH))
+                .expect("cache execution receipt hashes"),
+            cache_stage.artifact_content_hash
+        );
+
+        let bundle_receipt_path = &result.run.artifact.summary.labels["cache_bundle_receipt_path"];
+        let bundle_receipt_hash = &result.run.artifact.summary.labels["cache_bundle_receipt_hash"];
+        assert_eq!(bundle_receipt_path, INDEX_CACHE_RECEIPT_FILE);
+        assert_eq!(
+            witness::hash_file(&work_dir.join(INDEX_CACHE_RECEIPT_FILE))
+                .expect("cache bundle receipt hashes"),
+            *bundle_receipt_hash
+        );
+        let index_stage = result
+            .run
+            .artifact
+            .stage_artifacts
+            .iter()
+            .find(|stage| stage.stage == "index")
+            .expect("index stage");
+        assert_eq!(
+            cache_stage.upstream_artifacts,
+            vec![
+                EntityArtifactReference {
+                    version: index_stage.version.clone(),
+                    content_hash: index_stage.artifact_content_hash.clone(),
+                },
+                EntityArtifactReference {
+                    version: CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION.to_string(),
+                    content_hash: bundle_receipt_hash.clone(),
+                },
+            ]
         );
     }
 }

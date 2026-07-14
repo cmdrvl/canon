@@ -240,7 +240,7 @@ fn assert_stage_commands(runbook: &BackfillRunbook) {
             "prepare",
             "index",
             "block",
-            "edge",
+            "evidence",
             "solve",
             "review_export",
             "audit",
@@ -254,6 +254,12 @@ fn assert_stage_commands(runbook: &BackfillRunbook) {
         assert!(
             command.command.starts_with("canon entity "),
             "{} command is not operator-runnable: {}",
+            command.stage,
+            command.command
+        );
+        assert!(
+            !command.command.starts_with("canon entity edge "),
+            "{} command must use public evidence stage, not legacy edge: {}",
             command.stage,
             command.command
         );
@@ -508,6 +514,22 @@ fn assert_candidate_caps(runbook: &BackfillRunbook, case: &RunCase) {
 }
 
 fn assert_stage_hashes_and_next_commands(case: &RunCase) {
+    let stage_order = case
+        .artifact
+        .orchestration
+        .stage_order
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    assert!(
+        stage_order.contains(&"evidence"),
+        "runtime stage order must use evidence stage: {stage_order:?}"
+    );
+    assert!(
+        !stage_order.contains(&"edge"),
+        "runtime stage order must not expose legacy edge stage: {stage_order:?}"
+    );
+
     for stage in &case.artifact.stage_artifacts {
         assert!(
             stage.artifact_content_hash.starts_with("blake3:"),
@@ -515,6 +537,15 @@ fn assert_stage_hashes_and_next_commands(case: &RunCase) {
             stage.stage
         );
     }
+    let evidence = case
+        .artifact
+        .stage_artifacts
+        .iter()
+        .find(|stage| stage.stage == "evidence")
+        .expect("evidence stage artifact");
+    assert_eq!(evidence.path, "evidence/evidence.json");
+    assert!(case.work_dir.join(&evidence.path).exists());
+
     for (key, command) in [
         ("resume", case.artifact.next_commands.resume.as_str()),
         (
@@ -530,7 +561,7 @@ fn assert_stage_hashes_and_next_commands(case: &RunCase) {
 }
 
 fn assert_cache_status(runbook: &BackfillRunbook, work_dir: &Path) {
-    let index = json_file(&work_dir.join("index.json"));
+    let index = json_file(&work_dir.join("index/index.json"));
     assert_eq!(
         index["summary"]["labels"]["cache_status"],
         runbook.cache_contract.small_fixture_observed_index_status
@@ -542,7 +573,7 @@ fn assert_same_workdir_rerun_is_byte_identical(
     registry: &Path,
     work_dir: &Path,
 ) {
-    let first = fs::read(work_dir.join("run.json")).expect("first run artifact bytes");
+    let first = fs::read(work_dir.join("run/run.json")).expect("first run artifact bytes");
     let result = run_entity_workbench_with_batching_and_cache_mode(
         EntityRunRequest {
             rows: &fixture(&runbook.small_fixture.observations_path),
@@ -555,7 +586,7 @@ fn assert_same_workdir_rerun_is_byte_identical(
         EntityIndexCacheMode::Disabled,
     )
     .expect("CMBS backfill rerun succeeds");
-    let second = fs::read(work_dir.join("run.json")).expect("second run artifact bytes");
+    let second = fs::read(work_dir.join("run/run.json")).expect("second run artifact bytes");
     assert_eq!(
         first, second,
         "same work-dir rerun must replay deterministically"

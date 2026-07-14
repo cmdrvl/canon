@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+#[allow(dead_code)]
 #[path = "../src/extensions/source_mapping.rs"]
 mod source_mapping;
 

@@ -215,7 +215,7 @@ fn assert_cmbs_backfill_contract(manifest: &Value) {
             "prepare",
             "index",
             "block",
-            "edge",
+            "evidence",
             "solve",
             "review_export",
             "audit",
@@ -319,7 +319,10 @@ fn assert_summary_robot_json_contract(manifest: &Value) {
         .iter()
         .map(|stage| stage["stage"].as_str().expect("stage").to_string())
         .collect::<Vec<_>>();
-    assert_eq!(stage_names, ["prepare", "block", "solve", "apply"]);
+    assert_eq!(
+        stage_names,
+        ["prepare", "index", "block", "evidence", "solve", "apply"]
+    );
 }
 
 fn assert_explain_contract(manifest: &Value) {

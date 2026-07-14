@@ -131,7 +131,7 @@ impl EntityFixture {
 
         let witness_path = temp_dir.path().join("witness.jsonl");
         let work_dir = temp_dir.path().join("work");
-        let run_path = work_dir.join("run.json");
+        let run_path = work_dir.join("run").join("run.json");
         let solve_path = work_dir.join("solve").join("solve.json");
         let audit_path = temp_dir.path().join("audit.json");
 
@@ -252,14 +252,14 @@ fn entity_describe_includes_command_family() {
 fn entity_run_public_contract_succeeds_with_profile_and_work_dir() {
     let fixture = EntityFixture::new();
 
-    assert_eq!(fixture.run_json["version"], "canon_entity_run.v0");
+    assert_eq!(fixture.run_json["version"], "canon_entity_run.v1");
     assert_eq!(
         fixture.run_json["metadata"]["profile"]["id"],
         "regab_firm_identity"
     );
     assert_eq!(fixture.run_json["summary"]["counts"]["row_count"], 2);
     assert_eq!(fixture.run_json["summary"]["labels"]["status"], "completed");
-    assert_eq!(fixture.solve_json["version"], "canon_entity_solve.v0");
+    assert_eq!(fixture.solve_json["version"], "canon_entity_solve.v1");
     assert_eq!(
         fixture.solve_json["metadata"]["profile"]["id"],
         "regab_firm_identity"
@@ -292,16 +292,17 @@ fn entity_promote_refuses_current_artifact_until_lifecycle_cutover() {
     let refusal: Value = serde_json::from_str(&stdout).expect("promote refusal");
 
     assert_eq!(refusal["outcome"], "REFUSAL");
-    assert_eq!(refusal["refusal"]["code"], "E_PARSE");
+    assert_eq!(refusal["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
     assert_eq!(
-        refusal["refusal"]["detail"]["artifact"],
-        "entity result artifact"
+        refusal["refusal"]["detail"]["actual_version"],
+        "canon_entity_audit.v0"
     );
+    assert_eq!(refusal["refusal"]["detail"]["writes_performed"], false);
     assert!(
         refusal["refusal"]["message"]
             .as_str()
             .unwrap()
-            .contains("missing field `observations`")
+            .contains("Legacy entity artifact version cannot cross the v1 compatibility firewall")
     );
 }
 
@@ -336,9 +337,9 @@ fn entity_review_export_accepts_current_native_solve_artifact() {
     let review: Value =
         serde_json::from_slice(&export_json.get_output().stdout).expect("review export");
 
-    assert_eq!(review["version"], "canon_entity_review_queue.v0");
+    assert_eq!(review["version"], "canon_entity_review.v1");
     assert_eq!(
-        review["source_solve_hash"],
+        review["source_result"]["content_hash"],
         fixture.solve_json["artifact_content_hash"]
     );
     assert!(review["review_items"].is_array());
@@ -403,12 +404,17 @@ fn entity_promote_refuses_current_run_artifact_before_registry_checks() {
     let refusal: Value = serde_json::from_str(&stdout).expect("refusal json");
 
     assert_eq!(refusal["outcome"], "REFUSAL");
-    assert_eq!(refusal["refusal"]["code"], "E_PARSE");
+    assert_eq!(refusal["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        refusal["refusal"]["detail"]["actual_version"],
+        "canon_entity_audit.v0"
+    );
+    assert_eq!(refusal["refusal"]["detail"]["writes_performed"], false);
     assert!(
         refusal["refusal"]["message"]
             .as_str()
             .unwrap()
-            .contains("missing field `observations`")
+            .contains("Legacy entity artifact version cannot cross the v1 compatibility firewall")
     );
 }
 

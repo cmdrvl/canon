@@ -3,9 +3,9 @@
 use crate::{
     Refusal,
     entity::{
-        CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_INDEX_VERSION, CANON_ENTITY_PREPARE_VERSION,
-        EntityArtifactHeader, EntityArtifactMetadata, EntityArtifactReference,
-        EntityDeterministicSummary, EntityStrategyReference,
+        CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_INDEX_VERSION_V1,
+        CANON_ENTITY_PREPARE_VERSION_V1, EntityArtifactHeader, EntityArtifactMetadata,
+        EntityArtifactReference, EntityDeterministicSummary, EntityStrategyReference,
         block::{BlockCandidateGenerationDiagnostics, BlockCandidateRecord},
         error::EntityRefusalKind,
     },
@@ -100,7 +100,7 @@ pub fn build_block_candidate_artifact_contract(
     let bucket_assertions_hash = hash_jsonl_records(&request.bucket_assertions)?;
 
     let mut artifact = BlockCandidateArtifact {
-        version: CANON_ENTITY_BLOCK_VERSION.to_string(),
+        version: CANON_ENTITY_BLOCK_VERSION_V1.to_string(),
         artifact_content_hash: String::new(),
         metadata,
         summary,
@@ -119,12 +119,25 @@ pub fn build_block_candidate_artifact_contract(
 pub fn validate_block_candidate_artifact_contract(
     artifact: &BlockCandidateArtifact,
 ) -> Result<(), Refusal> {
-    if artifact.version != CANON_ENTITY_BLOCK_VERSION {
+    validate_block_candidate_artifact_contract_inner(artifact, true)
+}
+
+pub fn validate_block_candidate_artifact_envelope_contract(
+    artifact: &BlockCandidateArtifact,
+) -> Result<(), Refusal> {
+    validate_block_candidate_artifact_contract_inner(artifact, false)
+}
+
+fn validate_block_candidate_artifact_contract_inner(
+    artifact: &BlockCandidateArtifact,
+    validate_typed_self_hash: bool,
+) -> Result<(), Refusal> {
+    if artifact.version != CANON_ENTITY_BLOCK_VERSION_V1 {
         return Err(block_artifact_refusal(
             "Block artifact version mismatch",
             json!({
                 "stage": "block",
-                "expected": CANON_ENTITY_BLOCK_VERSION,
+                "expected": CANON_ENTITY_BLOCK_VERSION_V1,
                 "actual": artifact.version,
                 "writes_performed": false
             }),
@@ -190,17 +203,12 @@ pub fn validate_block_candidate_artifact_contract(
             }),
         ));
     }
-    if !artifact
-        .upstream_artifacts
-        .iter()
-        .any(|reference| reference.version == CANON_ENTITY_PREPARE_VERSION)
-    {
+    if artifact.upstream_artifacts != artifact.metadata.upstream_artifacts {
         return Err(block_artifact_refusal(
-            "Block artifact must record upstream prepare artifact",
+            "Block artifact upstream references must match metadata",
             json!({
                 "stage": "block",
                 "field": "upstream_artifacts",
-                "expected": CANON_ENTITY_PREPARE_VERSION,
                 "writes_performed": false
             }),
         ));
@@ -208,14 +216,29 @@ pub fn validate_block_candidate_artifact_contract(
     if !artifact
         .upstream_artifacts
         .iter()
-        .any(|reference| reference.version == CANON_ENTITY_INDEX_VERSION)
+        .any(|reference| reference.version == CANON_ENTITY_PREPARE_VERSION_V1)
+    {
+        return Err(block_artifact_refusal(
+            "Block artifact must record upstream prepare artifact",
+            json!({
+                "stage": "block",
+                "field": "upstream_artifacts",
+                "expected": CANON_ENTITY_PREPARE_VERSION_V1,
+                "writes_performed": false
+            }),
+        ));
+    }
+    if !artifact
+        .upstream_artifacts
+        .iter()
+        .any(|reference| reference.version == CANON_ENTITY_INDEX_VERSION_V1)
     {
         return Err(block_artifact_refusal(
             "Block artifact must record upstream index artifact",
             json!({
                 "stage": "block",
                 "field": "upstream_artifacts",
-                "expected": CANON_ENTITY_INDEX_VERSION,
+                "expected": CANON_ENTITY_INDEX_VERSION_V1,
                 "writes_performed": false
             }),
         ));
@@ -232,18 +255,20 @@ pub fn validate_block_candidate_artifact_contract(
             }),
         ));
     }
-    let expected = hash_block_artifact_without_self(artifact)?;
-    if artifact.artifact_content_hash != expected {
-        return Err(block_artifact_refusal(
-            "Block artifact content hash mismatch",
-            json!({
-                "stage": "block",
-                "field": "artifact_content_hash",
-                "expected": expected,
-                "actual": artifact.artifact_content_hash,
-                "writes_performed": false
-            }),
-        ));
+    if validate_typed_self_hash {
+        let expected_artifact_hash = hash_block_artifact_without_self(artifact)?;
+        if artifact.artifact_content_hash != expected_artifact_hash {
+            return Err(block_artifact_refusal(
+                "Block artifact content hash does not match canonical bytes",
+                json!({
+                    "stage": "block",
+                    "field": "artifact_content_hash",
+                    "expected": expected_artifact_hash,
+                    "actual": artifact.artifact_content_hash,
+                    "writes_performed": false
+                }),
+            ));
+        }
     }
     Ok(())
 }
@@ -300,12 +325,12 @@ pub fn validate_block_candidate_payload_hashes(
 }
 
 fn validate_index_header(index: &EntityArtifactHeader) -> Result<(), Refusal> {
-    if index.version != CANON_ENTITY_INDEX_VERSION {
+    if index.version != CANON_ENTITY_INDEX_VERSION_V1 {
         return Err(block_artifact_refusal(
-            "Block artifact requires a canon_entity_index.v0 upstream artifact",
+            "Block artifact requires a canon_entity_index.v1 upstream artifact",
             json!({
                 "stage": "block",
-                "expected": CANON_ENTITY_INDEX_VERSION,
+                "expected": CANON_ENTITY_INDEX_VERSION_V1,
                 "actual": index.version,
                 "writes_performed": false
             }),
@@ -352,12 +377,12 @@ fn validate_candidate_records(
         .collect::<BTreeSet<_>>();
     let mut seen_pairs = BTreeSet::new();
     for candidate in candidates {
-        if candidate.version != CANON_ENTITY_BLOCK_VERSION {
+        if candidate.version != CANON_ENTITY_BLOCK_VERSION_V1 {
             return Err(block_artifact_refusal(
                 "Candidate record version mismatch",
                 json!({
                     "stage": "block",
-                    "expected": CANON_ENTITY_BLOCK_VERSION,
+                    "expected": CANON_ENTITY_BLOCK_VERSION_V1,
                     "actual": candidate.version,
                     "writes_performed": false
                 }),
@@ -749,7 +774,7 @@ fn block_summary(
             ("blocking".to_string(), "bounded".to_string()),
             (
                 "upstream_version".to_string(),
-                CANON_ENTITY_INDEX_VERSION.to_string(),
+                CANON_ENTITY_INDEX_VERSION_V1.to_string(),
             ),
         ]),
     })
@@ -809,14 +834,14 @@ fn prepare_hash_from_index(index: &EntityArtifactHeader) -> Result<&str, Refusal
         .metadata
         .upstream_artifacts
         .iter()
-        .find(|reference| reference.version == CANON_ENTITY_PREPARE_VERSION)
+        .find(|reference| reference.version == CANON_ENTITY_PREPARE_VERSION_V1)
     else {
         return Err(block_artifact_refusal(
             "Block artifact requires a prepare artifact hash from the upstream index",
             json!({
                 "stage": "block",
                 "field": "index.metadata.upstream_artifacts",
-                "expected": CANON_ENTITY_PREPARE_VERSION,
+                "expected": CANON_ENTITY_PREPARE_VERSION_V1,
                 "writes_performed": false
             }),
         ));

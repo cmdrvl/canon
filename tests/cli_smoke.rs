@@ -713,7 +713,7 @@ fn run_neutral_mixed_link_artifacts(
         .assert()
         .code(1);
 
-    let run_path = work_dir.join("run.json");
+    let run_path = work_dir.join("run/run.json");
     let solve_path = work_dir.join("solve/solve.json");
     let link_path = work_dir.join("link/link.json");
     let link_artifact: Value = serde_json::from_slice(&std::fs::read(&link_path).unwrap()).unwrap();
@@ -723,17 +723,6 @@ fn run_neutral_mixed_link_artifacts(
 fn run_neutral_mixed_link(root: &Path) -> (PathBuf, Value) {
     let (_, _, _, link_path, link_artifact) = run_neutral_mixed_link_artifacts(root);
     (link_path, link_artifact)
-}
-
-fn resealed_typed_run_artifact(artifact: &Value) -> canon::entity::run::EntityRunArtifact {
-    let mut hashable: canon::entity::run::EntityRunArtifact =
-        serde_json::from_value(artifact.clone()).unwrap();
-    hashable.artifact_content_hash.clear();
-    hashable.metadata.artifact_content_hash.clear();
-    let hash = canon::witness::hash_bytes(&serde_json::to_vec(&hashable).unwrap());
-    hashable.artifact_content_hash = hash.clone();
-    hashable.metadata.artifact_content_hash = hash;
-    hashable
 }
 
 fn resealed_typed_link_artifact(artifact: &Value) -> canon::entity::run::link::EntityLinkArtifact {
@@ -787,7 +776,42 @@ fn write_native_solve_with_escrow(path: &Path) -> Value {
         decision_ledger_path: "solve/decision-ledger.jsonl".to_string(),
     })
     .expect("solve artifact builds");
-    let value = serde_json::to_value(&solve).expect("solve artifact serializes");
+    let mut value = serde_json::to_value(&solve).expect("solve artifact serializes");
+    let solve_contract = canon::entity::schema::entity_v1_contract_for_stage(
+        canon::entity::EntityArtifactStageV1::Solve,
+    )
+    .expect("solve contract");
+    let block_contract =
+        canon::entity::entity_artifact_v1_contract_for_version("canon_entity_block.v1")
+            .expect("block contract");
+    let evidence_contract =
+        canon::entity::entity_artifact_v1_contract_for_version("canon_entity_evidence.v1")
+            .expect("evidence contract");
+    value["metadata"]["schema"] = serde_json::to_value(
+        canon::entity::schema::entity_v1_schema_reference(solve_contract).expect("solve schema"),
+    )
+    .unwrap();
+    value["metadata"]["workdir"] = serde_json::to_value(
+        canon::entity::schema::entity_v1_workdir_layout(solve_contract, "native-solve-work"),
+    )
+    .unwrap();
+    value["metadata"]["upstream_artifacts"] = serde_json::json!([
+        {
+            "version": "canon_entity_block.v1",
+            "schema_key": "canon_entity_block.v1",
+            "schema_hash": canon::entity::schema::entity_v1_schema_content_hash(block_contract)
+                .expect("block schema hash"),
+            "content_hash": "blake3:block"
+        },
+        {
+            "version": "canon_entity_evidence.v1",
+            "schema_key": "canon_entity_evidence.v1",
+            "schema_hash": canon::entity::schema::entity_v1_schema_content_hash(evidence_contract)
+                .expect("evidence schema hash"),
+            "content_hash": "blake3:edge"
+        }
+    ]);
+    canon::entity::schema::finalize_entity_v1_self_hash(&mut value).expect("solve self hash");
     std::fs::write(path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
     value
 }
@@ -801,9 +825,9 @@ fn native_solve_metadata() -> EntityArtifactMetadata {
             identity_semantics: "canonical_organization_identity".to_string(),
             canonical_type: "organization".to_string(),
             patch_namespaces: EntityPatchNamespaces {
-                aliases: "neutral_org.aliases".to_string(),
-                distinct: "neutral_org.distinct".to_string(),
-                relations: "neutral_org.relations".to_string(),
+                aliases: "neutral_org_identity.aliases".to_string(),
+                distinct: "neutral_org_identity.distinct".to_string(),
+                relations: "neutral_org_identity.relations".to_string(),
             },
             content_hash: Some("blake3:profile".to_string()),
         },
@@ -819,18 +843,18 @@ fn native_solve_metadata() -> EntityArtifactMetadata {
             lookup_snapshot_hash: "blake3:registry".to_string(),
             sidecar_snapshot_hash: Some("blake3:sidecars".to_string()),
         },
-        patch_namespace: "neutral_org.aliases".to_string(),
+        patch_namespace: "neutral_org_identity.aliases".to_string(),
         input: Some(EntityInputReference {
             row_count: 5,
             content_hash: "blake3:input".to_string(),
         }),
         upstream_artifacts: vec![
             EntityArtifactReference {
-                version: "canon_entity_block.v0".to_string(),
+                version: "canon_entity_block.v1".to_string(),
                 content_hash: "blake3:block".to_string(),
             },
             EntityArtifactReference {
-                version: "canon_entity_edge.v0".to_string(),
+                version: "canon_entity_evidence.v1".to_string(),
                 content_hash: "blake3:edge".to_string(),
             },
         ],
@@ -1517,7 +1541,14 @@ fn test_entity_cache_mode_disabled_reaches_native_run_and_link() {
         .success();
 
     let linked_run: Value =
-        serde_json::from_slice(&std::fs::read(link_work_dir.join("run.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(link_work_dir.join("run/run.json")).unwrap())
+            .unwrap();
+    let linked_solve: Value =
+        serde_json::from_slice(&std::fs::read(link_work_dir.join("solve/solve.json")).unwrap())
+            .unwrap();
+    let link_artifact: Value =
+        serde_json::from_slice(&std::fs::read(link_work_dir.join("link/link.json")).unwrap())
+            .unwrap();
     assert_eq!(linked_run["summary"]["labels"]["cache_mode"], "disabled");
     assert_eq!(linked_run["summary"]["labels"]["cache_status"], "bypassed");
     assert!(
@@ -1526,6 +1557,15 @@ fn test_entity_cache_mode_disabled_reaches_native_run_and_link() {
             .unwrap()
             .iter()
             .any(|stage| stage["stage"] == "cache_disabled")
+    );
+    assert_eq!(link_artifact["version"], "canon_entity_link.v0");
+    assert_eq!(
+        link_artifact["shared_solve_artifact"]["version"],
+        linked_solve["version"]
+    );
+    assert_eq!(
+        link_artifact["shared_solve_artifact"]["content_hash"],
+        linked_solve["artifact_content_hash"]
     );
 }
 
@@ -1560,7 +1600,7 @@ fn test_entity_link_cli_suite_writes_stable_audit_artifact() {
     assert_eq!(audit_artifact["suite_id"], "entity_link_smoke_suite");
     assert_eq!(
         audit_artifact["audited_artifact"]["version"],
-        "canon_entity_run.v0"
+        "canon_entity_run.v1"
     );
 }
 
@@ -1578,15 +1618,15 @@ fn test_entity_link_emitted_native_handoffs_execute() {
         .assert()
         .code(1);
 
-    let run_path = work_dir.join("run.json");
+    let run_path = work_dir.join("run/run.json");
     let solve_path = work_dir.join("solve/solve.json");
     let link_path = work_dir.join("link/link.json");
     let run_artifact: Value = serde_json::from_slice(&std::fs::read(&run_path).unwrap()).unwrap();
     let solve_artifact: Value =
         serde_json::from_slice(&std::fs::read(&solve_path).unwrap()).unwrap();
     let link_artifact: Value = serde_json::from_slice(&std::fs::read(&link_path).unwrap()).unwrap();
-    assert_eq!(run_artifact["version"], "canon_entity_run.v0");
-    assert_eq!(solve_artifact["version"], "canon_entity_solve.v0");
+    assert_eq!(run_artifact["version"], "canon_entity_run.v1");
+    assert_eq!(solve_artifact["version"], "canon_entity_solve.v1");
     assert_eq!(link_artifact["version"], "canon_entity_link.v0");
     assert_eq!(
         link_artifact["shared_solve_artifact"]["content_hash"],
@@ -1613,17 +1653,17 @@ fn test_entity_link_emitted_native_handoffs_execute() {
         .success();
     let solve_audit: Value =
         serde_json::from_slice(&solve_audit_output.get_output().stdout).unwrap();
-    assert_eq!(solve_audit["version"], "canon_entity_audit.v0");
+    assert_eq!(solve_audit["version"], "canon_entity_audit.v1");
     assert_eq!(
         solve_audit["audited_artifact"]["version"],
-        "canon_entity_solve.v0"
+        "canon_entity_solve.v1"
     );
     assert!(
-        solve_audit["certified_artifacts"]
+        solve_audit["metadata"]["upstream_artifacts"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|artifact| artifact["version"] == "canon_entity_solve.v0"
+            .any(|artifact| artifact["version"] == "canon_entity_solve.v1"
                 && artifact["content_hash"] == solve_artifact["artifact_content_hash"])
     );
 
@@ -1640,17 +1680,17 @@ fn test_entity_link_emitted_native_handoffs_execute() {
         .assert()
         .success();
     let run_audit: Value = serde_json::from_slice(&run_audit_output.get_output().stdout).unwrap();
-    assert_eq!(run_audit["version"], "canon_entity_audit.v0");
+    assert_eq!(run_audit["version"], "canon_entity_audit.v1");
     assert_eq!(
         run_audit["audited_artifact"]["version"],
-        "canon_entity_run.v0"
+        "canon_entity_run.v1"
     );
     assert!(
-        run_audit["certified_artifacts"]
+        run_audit["metadata"]["upstream_artifacts"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|artifact| artifact["version"] == "canon_entity_run.v0"
+            .any(|artifact| artifact["version"] == "canon_entity_run.v1"
                 && artifact["content_hash"] == run_artifact["artifact_content_hash"])
     );
 
@@ -1679,7 +1719,7 @@ fn test_entity_link_emitted_native_handoffs_execute() {
         .success();
     let review_json: Value =
         serde_json::from_slice(&review_json_output.get_output().stdout).unwrap();
-    assert_eq!(review_json["version"], "canon_entity_review_queue.v0");
+    assert_eq!(review_json["version"], "canon_entity_review.v1");
     assert!(review_json["review_items"].is_array());
 
     let emitted_link_review = link_artifact["next_commands"]["review_export"]
@@ -1740,8 +1780,9 @@ fn test_entity_link_emitted_native_handoffs_execute() {
         .success();
     let escrow_review_json: Value =
         serde_json::from_slice(&escrow_review_json_output.get_output().stdout).unwrap();
+    assert_eq!(escrow_review_json["version"], "canon_entity_review.v1");
     assert_eq!(
-        escrow_review_json["source_solve_hash"],
+        escrow_review_json["source_result"]["content_hash"],
         escrow_solve["artifact_content_hash"]
     );
     assert!(escrow_review_json.get("source_link_hash").is_none());
@@ -1781,10 +1822,10 @@ fn test_entity_link_emitted_native_handoffs_execute() {
         .assert()
         .success();
     let run_review: Value = serde_json::from_slice(&run_review_output.get_output().stdout).unwrap();
-    assert_eq!(run_review["version"], "canon_entity_review_queue.v0");
+    assert_eq!(run_review["version"], "canon_entity_review.v1");
     assert_eq!(
-        run_review["source_solve_hash"],
-        solve_artifact["artifact_content_hash"]
+        run_review["source_result"]["content_hash"],
+        run_artifact["artifact_content_hash"]
     );
 }
 
@@ -1920,7 +1961,11 @@ fn test_entity_review_default_native_artifacts_stay_review_queue_contract() {
     let (_, run_path, solve_path, link_path, link_artifact) =
         run_neutral_mixed_link_artifacts(temp_dir.path());
 
-    for artifact_path in [&solve_path, &run_path, &link_path] {
+    for (artifact_path, expected_version) in [
+        (&solve_path, "canon_entity_review.v1"),
+        (&run_path, "canon_entity_review.v1"),
+        (&link_path, "canon_entity_review_queue.v0"),
+    ] {
         let first = review_json_bytes_for_artifact(artifact_path, "all");
         let second = review_json_bytes_for_artifact(artifact_path, "all");
         assert_eq!(
@@ -1930,7 +1975,7 @@ fn test_entity_review_default_native_artifacts_stay_review_queue_contract() {
             artifact_path.display()
         );
         let review: Value = serde_json::from_slice(&first).unwrap();
-        assert_eq!(review["version"], "canon_entity_review_queue.v0");
+        assert_eq!(review["version"], expected_version);
         assert!(review["review_items"].is_array());
     }
 
@@ -1946,24 +1991,16 @@ fn test_entity_review_default_native_artifacts_stay_review_queue_contract() {
 }
 
 #[test]
-fn test_entity_native_review_export_public_formats_cover_run_and_link() {
+fn test_entity_review_export_public_formats_cover_v1_run_and_native_link() {
     let temp_dir = tempdir().unwrap();
     let (_, run_path, _, link_path, _) = run_neutral_mixed_link_artifacts(temp_dir.path());
     let run_artifact: Value = serde_json::from_slice(&std::fs::read(&run_path).unwrap()).unwrap();
 
-    let run_review = native_review_json_for_artifact(&run_path, "all");
-    assert_eq!(run_review["version"], "canon_entity_native_review.v0");
+    let run_review = review_json_for_artifact(&run_path, "all");
+    assert_eq!(run_review["version"], "canon_entity_review.v1");
     assert_eq!(
-        run_review["binding"]["run_content_hash"],
+        run_review["source_result"]["content_hash"],
         run_artifact["artifact_content_hash"]
-    );
-    assert_native_review_csv_id_parity(
-        &run_review,
-        &native_review_csv_for_artifact(&run_path, "all"),
-    );
-    assert_native_review_html_offline(
-        &native_review_html_for_artifact(&run_path, "all"),
-        &run_review,
     );
 
     let link_review = native_review_json_for_artifact(&link_path, "escrow");
@@ -2158,7 +2195,7 @@ fn test_entity_review_export_run_handoff_rejects_unsafe_or_mismatched_solve_path
         .assert()
         .success();
 
-    let run_path = work_dir.join("run.json");
+    let run_path = work_dir.join("run/run.json");
     let run_artifact: Value = serde_json::from_slice(&std::fs::read(&run_path).unwrap()).unwrap();
 
     let tampered_run_path = work_dir.join("tampered-run.json");
@@ -2206,11 +2243,11 @@ fn test_entity_review_export_run_handoff_rejects_unsafe_or_mismatched_solve_path
 
     let unsafe_run_path = work_dir.join("unsafe-run.json");
     let mut unsafe_run = run_artifact.clone();
-    unsafe_run["work_dir"]["solve_artifact_path"] =
-        Value::String("../solve/solve.json".to_string());
+    unsafe_run["metadata"]["workdir"]["artifact_relpath"] =
+        Value::String("../run/run.json".to_string());
     std::fs::write(
         &unsafe_run_path,
-        serde_json::to_vec_pretty(&resealed_typed_run_artifact(&unsafe_run)).unwrap(),
+        serde_json::to_vec_pretty(&unsafe_run).unwrap(),
     )
     .unwrap();
 
@@ -2234,7 +2271,7 @@ fn test_entity_review_export_run_handoff_rejects_unsafe_or_mismatched_solve_path
     );
     assert_eq!(
         unsafe_refusal["refusal"]["detail"]["field"],
-        "work_dir.solve_artifact_path"
+        "metadata.workdir"
     );
     assert_eq!(
         unsafe_refusal["refusal"]["detail"]["writes_performed"],
@@ -2249,15 +2286,17 @@ fn test_entity_review_export_run_handoff_rejects_unsafe_or_mismatched_solve_path
 
     let mismatch_run_path = work_dir.join("mismatch-run.json");
     let mut mismatch_run = run_artifact;
-    let stages = mismatch_run["stage_artifacts"].as_array_mut().unwrap();
-    let solve_stage = stages
+    let upstreams = mismatch_run["metadata"]["upstream_artifacts"]
+        .as_array_mut()
+        .unwrap();
+    let solve_upstream = upstreams
         .iter_mut()
-        .find(|stage| stage["stage"] == "solve")
-        .expect("solve stage");
-    solve_stage["artifact_content_hash"] = Value::String("blake3:mismatch".to_string());
+        .find(|artifact| artifact["version"] == "canon_entity_solve.v1")
+        .expect("solve upstream");
+    solve_upstream["content_hash"] = Value::String("mismatch".to_string());
     std::fs::write(
         &mismatch_run_path,
-        serde_json::to_vec_pretty(&resealed_typed_run_artifact(&mismatch_run)).unwrap(),
+        serde_json::to_vec_pretty(&mismatch_run).unwrap(),
     )
     .unwrap();
 
@@ -2282,7 +2321,7 @@ fn test_entity_review_export_run_handoff_rejects_unsafe_or_mismatched_solve_path
     );
     assert_eq!(
         mismatch_refusal["refusal"]["detail"]["field"],
-        "stage_artifacts.solve.artifact_content_hash"
+        "metadata.upstream_artifacts.content_hash"
     );
     assert_eq!(
         mismatch_refusal["refusal"]["detail"]["writes_performed"],

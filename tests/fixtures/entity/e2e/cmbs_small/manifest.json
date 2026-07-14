@@ -6,7 +6,7 @@
     "index",
     "cache_enabled",
     "block",
-    "edge",
+    "evidence",
     "solve",
     "review_export",
     "audit",
@@ -16,18 +16,18 @@
     "run_wrapper"
   ],
   "expected_stage_versions": {
-    "prepare": "canon_entity_prepare.v0",
-    "index": "canon_entity_index.v0",
+    "prepare": "canon_entity_prepare.v1",
+    "index": "canon_entity_index.v1",
     "cache_enabled": "canon_entity_index_cache_receipt.v0",
-    "block": "canon_entity_block.v0",
-    "edge": "canon_entity_edge.v0",
-    "solve": "canon_entity_solve.v0",
+    "block": "canon_entity_block.v1",
+    "evidence": "canon_entity_evidence.v1",
+    "solve": "canon_entity_solve.v1",
     "review_export": "canon_entity_review_queue.v0",
     "audit": "canon_entity_audit.v0",
     "review_import": "canon_entity_decision_ledger.v0",
     "promote": "canon_entity_promote.v0",
     "apply": "canon_entity_apply.v0",
-    "run_wrapper": "canon_entity_run.v0"
+    "run_wrapper": "canon_entity_run.v1"
   },
   "review": {
     "expected_review_group_count": 1,

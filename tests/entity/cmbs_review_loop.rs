@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
 
 use canon::entity::{
-    EntityArtifactMetadata, EntityArtifactReference, EntityInputReference, EntityPatchNamespaces,
-    EntityProfileReference, EntityRegistrySnapshot, EntityStrategyReference,
+    CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_EVIDENCE_VERSION_V1, EntityArtifactMetadata,
+    EntityArtifactReference, EntityInputReference, EntityPatchNamespaces, EntityProfileReference,
+    EntityRegistrySnapshot, EntityStrategyReference,
     edge::{EdgeEvidenceHit, EdgeEvidenceRecord, build_edge_evidence_record},
     graph::{SignedEvidenceGraphInput, build_signed_evidence_graph},
     ledger_replay::parse_decision_ledger_jsonl,
@@ -348,11 +349,11 @@ fn metadata_with_upstreams() -> EntityArtifactMetadata {
         }),
         upstream_artifacts: vec![
             EntityArtifactReference {
-                version: "canon_entity_edge.v0".to_string(),
-                content_hash: "blake3:edge".to_string(),
+                version: CANON_ENTITY_EVIDENCE_VERSION_V1.to_string(),
+                content_hash: "blake3:evidence".to_string(),
             },
             EntityArtifactReference {
-                version: "canon_entity_block.v0".to_string(),
+                version: CANON_ENTITY_BLOCK_VERSION_V1.to_string(),
                 content_hash: "blake3:block".to_string(),
             },
         ],

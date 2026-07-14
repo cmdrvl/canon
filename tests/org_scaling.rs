@@ -120,7 +120,7 @@ fn entity_cli_scaling_stays_within_structural_budgets() {
         .success();
     let run_payload: Value = serde_json::from_slice(&run_assert.get_output().stdout).unwrap();
 
-    assert_eq!(run_payload["version"], "canon_entity_run.v0");
+    assert_eq!(run_payload["version"], "canon_entity_run.v1");
     assert!(
         run_payload["artifact_content_hash"]
             .as_str()
@@ -134,7 +134,7 @@ fn entity_cli_scaling_stays_within_structural_budgets() {
     assert_eq!(count(&run_payload, "exact_resolved_surfaces"), 0);
 
     let candidate_pairs = count(&run_payload, "candidate_pairs");
-    let edge_records = count(&run_payload, "edge_records");
+    let evidence_records = count(&run_payload, "evidence_records");
     let solved_entities = count(&run_payload, "solved_entities");
     let review_groups = count(&run_payload, "review_group_count");
     assert!(
@@ -142,8 +142,8 @@ fn entity_cli_scaling_stays_within_structural_budgets() {
         "candidate pair budget changed: {candidate_pairs}"
     );
     assert!(
-        edge_records > 0 && edge_records <= candidate_pairs,
-        "edge budget changed: edge_records={edge_records} candidate_pairs={candidate_pairs}"
+        evidence_records > 0 && evidence_records <= candidate_pairs,
+        "evidence budget changed: evidence_records={evidence_records} candidate_pairs={candidate_pairs}"
     );
     assert!(
         solved_entities <= 16,
@@ -165,29 +165,32 @@ fn entity_cli_scaling_stays_within_structural_budgets() {
         BTreeSet::from([
             "block",
             "cache_enabled",
-            "edge",
+            "evidence",
             "index",
             "prepare",
             "solve"
         ])
     );
 
-    assert!(work_dir.join("run.json").exists());
+    assert!(work_dir.join("run").join("run.json").exists());
     assert!(work_dir.join("prepare").join("prepare.json").exists());
-    assert!(work_dir.join("index.json").exists());
-    assert!(work_dir.join("index").join("postings.json").exists());
+    assert!(work_dir.join("index").join("index.json").exists());
+    assert!(work_dir.join("index").join("postings.bin").exists());
     assert!(work_dir.join("block").join("block.json").exists());
     assert!(work_dir.join("block").join("candidates.jsonl").exists());
-    assert!(work_dir.join("edge").join("edge.json").exists());
-    assert!(work_dir.join("edge").join("edges.jsonl").exists());
+    assert!(work_dir.join("evidence").join("evidence.json").exists());
+    assert!(work_dir.join("evidence").join("evidence.jsonl").exists());
     assert!(work_dir.join("solve").join("solve.json").exists());
 
     let block_artifact = read_json(&work_dir.join("block").join("block.json"));
-    let edge_artifact = read_json(&work_dir.join("edge").join("edge.json"));
-    assert_eq!(block_artifact["version"], "canon_entity_block.v0");
-    assert_eq!(edge_artifact["version"], "canon_entity_edge.v0");
+    let evidence_artifact = read_json(&work_dir.join("evidence").join("evidence.json"));
+    assert_eq!(block_artifact["version"], "canon_entity_block.v1");
+    assert_eq!(evidence_artifact["version"], "canon_entity_evidence.v1");
     assert_eq!(count(&block_artifact, "candidate_pairs"), candidate_pairs);
-    assert_eq!(count(&edge_artifact, "edge_records"), edge_records);
+    assert_eq!(
+        count(&evidence_artifact, "evidence_records"),
+        evidence_records
+    );
 }
 
 #[test]

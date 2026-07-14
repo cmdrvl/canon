@@ -23,8 +23,8 @@
       "candidate_diagnostics",
       "candidate_records",
       "decision_ledger",
-      "edge_artifact",
-      "edge_records",
+      "evidence_artifact",
+      "evidence_records",
       "index_artifact",
       "prepare_artifact",
       "run_artifact",
@@ -41,7 +41,7 @@
     {
       "stage": "prepare",
       "summary_version": "canon_entity_operator_summary.v0",
-      "artifact_version": "canon_entity_prepare.v0",
+      "artifact_version": "canon_entity_prepare.v1",
       "next_command_key": "none",
       "telemetry_link_keys": ["input", "surfaces"],
       "counts": {
@@ -51,9 +51,21 @@
       }
     },
     {
+      "stage": "index",
+      "summary_version": "canon_entity_operator_summary.v0",
+      "artifact_version": "canon_entity_index.v1",
+      "next_command_key": "none",
+      "telemetry_link_keys": ["diagnostics", "postings"],
+      "counts": {
+        "ngram_count": 110,
+        "surface_count": 14,
+        "token_count": 62
+      }
+    },
+    {
       "stage": "block",
       "summary_version": "canon_entity_operator_summary.v0",
-      "artifact_version": "canon_entity_block.v0",
+      "artifact_version": "canon_entity_block.v1",
       "next_command_key": "none",
       "telemetry_link_keys": ["candidate_diagnostics", "candidate_records"],
       "counts": {
@@ -63,9 +75,21 @@
       }
     },
     {
+      "stage": "evidence",
+      "summary_version": "canon_entity_operator_summary.v0",
+      "artifact_version": "canon_entity_evidence.v1",
+      "next_command_key": "none",
+      "telemetry_link_keys": ["evidence_records"],
+      "counts": {
+        "evidence_hit_count": 23,
+        "evidence_records": 23,
+        "relation_hint_count": 23
+      }
+    },
+    {
       "stage": "solve",
       "summary_version": "canon_entity_operator_summary.v0",
-      "artifact_version": "canon_entity_solve.v0",
+      "artifact_version": "canon_entity_solve.v1",
       "next_command_key": "none",
       "telemetry_link_keys": ["decision_ledger"],
       "counts": {

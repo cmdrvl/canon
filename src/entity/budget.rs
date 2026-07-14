@@ -163,12 +163,12 @@ pub const DEFAULT_BUDGET_POLICIES: &[BudgetPolicy] = &[
         "Emit a compact exact-bucket assertion or mark the bucket for review; never expand it into pairwise candidates",
     ),
     BudgetPolicy::new(
-        "edge.max_edge_records",
+        "evidence.max_evidence_records",
         BudgetStage::Edge,
         BudgetLimit::MaxEdgeRecords,
         BudgetEnforcement::RefuseBeforeScoring,
         EntityBudgetRefusalCode::ArtifactContract,
-        "Validate candidate caps and stale block artifacts before rerunning canon entity edge",
+        "Validate candidate caps and stale block artifacts before rerunning canon entity evidence",
     ),
     BudgetPolicy::new(
         "solve.max_component_size",

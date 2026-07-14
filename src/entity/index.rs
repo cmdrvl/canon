@@ -41,6 +41,8 @@ use crate::{
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
+#[cfg(test)]
+use std::cell::Cell;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -58,6 +60,21 @@ pub const DEFAULT_INDEX_NGRAM_WIDTH: usize = 3;
 pub const DEFAULT_INDEX_POSTINGS_PATH: &str = "index/postings.json";
 pub const DEFAULT_INDEX_DIAGNOSTICS_PATH: &str = "index/diagnostics.jsonl";
 pub const PREPARE_ARTIFACT_PATH: &str = "prepare/prepare.json";
+
+#[cfg(test)]
+thread_local! {
+    static READ_VERIFIED_V1_CACHE_IF_PRESENT_CALLS: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_v1_cache_read_probe() {
+    READ_VERIFIED_V1_CACHE_IF_PRESENT_CALLS.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn v1_cache_read_probe_count() -> usize {
+    READ_VERIFIED_V1_CACHE_IF_PRESENT_CALLS.with(Cell::get)
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -358,11 +375,39 @@ pub fn run_index_build(
 pub fn run_index_build_v1(
     request: EntityIndexBuildRequest<'_>,
 ) -> Result<EntityIndexBuildV1Result, Refusal> {
-    run_index_build_v1_inner(request, EntityIndexV1PublishFailpoint::None)
+    run_index_build_v1_with_cache_mode_inner(
+        request,
+        EntityIndexCacheMode::Enabled,
+        EntityIndexV1PublishFailpoint::None,
+    )
 }
 
+pub fn run_index_build_v1_with_cache_mode(
+    request: EntityIndexBuildRequest<'_>,
+    cache_mode: EntityIndexCacheMode,
+) -> Result<EntityIndexBuildV1Result, Refusal> {
+    run_index_build_v1_with_cache_mode_inner(
+        request,
+        cache_mode,
+        EntityIndexV1PublishFailpoint::None,
+    )
+}
+
+#[cfg(test)]
 fn run_index_build_v1_inner(
     request: EntityIndexBuildRequest<'_>,
+    publish_failpoint: EntityIndexV1PublishFailpoint,
+) -> Result<EntityIndexBuildV1Result, Refusal> {
+    run_index_build_v1_with_cache_mode_inner(
+        request,
+        EntityIndexCacheMode::Enabled,
+        publish_failpoint,
+    )
+}
+
+fn run_index_build_v1_with_cache_mode_inner(
+    request: EntityIndexBuildRequest<'_>,
+    cache_mode: EntityIndexCacheMode,
     publish_failpoint: EntityIndexV1PublishFailpoint,
 ) -> Result<EntityIndexBuildV1Result, Refusal> {
     reject_legacy_index_cache_marker(request.work_dir)?;
@@ -371,13 +416,15 @@ fn run_index_build_v1_inner(
 
     let strategy = load_index_strategy_reference(request.profile, request.strategy)?;
     let current_cache_key = index_cache_key_from_prepare_v1(&prepare, &strategy)?;
-    if let Some(cached) = read_verified_v1_cache_if_present(
-        request.work_dir,
-        &prepare,
-        &strategy,
-        &current_cache_key,
-        request.max_artifact_bytes,
-    )? {
+    if cache_mode == EntityIndexCacheMode::Enabled
+        && let Some(cached) = read_verified_v1_cache_if_present(
+            request.work_dir,
+            &prepare,
+            &strategy,
+            &current_cache_key,
+            request.max_artifact_bytes,
+        )?
+    {
         return Ok(EntityIndexBuildV1Result {
             next_commands: next_commands(request),
             ..cached
@@ -394,20 +441,34 @@ fn run_index_build_v1_inner(
         request,
     )?;
 
-    let paths = write_index_v1_disk_bundle(
-        request.work_dir,
-        &rebuilt.artifact,
-        &current_cache_key,
-        &rebuilt.postings,
-        &rebuilt.diagnostics,
-        request.max_artifact_bytes,
-        publish_failpoint,
-    )?;
+    let paths = match cache_mode {
+        EntityIndexCacheMode::Enabled => write_index_v1_disk_bundle(
+            request.work_dir,
+            &rebuilt.artifact,
+            &current_cache_key,
+            &rebuilt.postings,
+            &rebuilt.diagnostics,
+            request.max_artifact_bytes,
+            publish_failpoint,
+        )?,
+        EntityIndexCacheMode::Disabled => write_or_validate_disabled_index_v1_bundle(
+            request.work_dir,
+            &rebuilt.artifact,
+            &current_cache_key,
+            &rebuilt.postings,
+            &rebuilt.diagnostics,
+            request.max_artifact_bytes,
+            publish_failpoint,
+        )?,
+    };
 
     Ok(EntityIndexBuildV1Result {
         artifact: rebuilt.artifact,
         cache_key: current_cache_key,
-        cache_status: EntityIndexCacheStatus::Rebuilt,
+        cache_status: match cache_mode {
+            EntityIndexCacheMode::Enabled => EntityIndexCacheStatus::Rebuilt,
+            EntityIndexCacheMode::Disabled => EntityIndexCacheStatus::Bypassed,
+        },
         cache_invalidation: EntityCacheInvalidation {
             layer: EntityCacheLayer::NgramPostings,
             decision: EntityCacheDecision::Miss,
@@ -943,6 +1004,9 @@ fn read_verified_v1_cache_if_present(
     current_cache_key: &EntityCacheKey,
     max_artifact_bytes: Option<u64>,
 ) -> Result<Option<EntityIndexBuildV1Result>, Refusal> {
+    #[cfg(test)]
+    READ_VERIFIED_V1_CACHE_IF_PRESENT_CALLS.with(|count| count.set(count.get() + 1));
+
     let initial_paths = index_v1_contract_disk_paths(work_dir)?;
     let initial_exists = [
         &initial_paths.artifact_path,
@@ -1079,26 +1143,7 @@ fn write_index_v1_disk_bundle(
     ensure_final_index_v1_absent(work_dir)?;
     let final_paths = index_v1_disk_paths(work_dir, artifact)?;
     let final_dir = final_index_v1_dir(work_dir);
-    let artifact_bytes = json_bytes(artifact, "index artifact")?;
-    let cache_key_bytes = json_bytes(cache_key, "index cache key")?;
-    let postings_bytes = json_bytes(postings, "index postings")?;
-    let diagnostics_bytes = diagnostics_jsonl_bytes(diagnostics)?;
-    let receipt = v1_cache_receipt_from_bytes(
-        EntityIndexCacheMode::Enabled,
-        EntityIndexCacheStatus::Rebuilt,
-        true,
-        &artifact_bytes,
-        &cache_key_bytes,
-        &postings_bytes,
-        &diagnostics_bytes,
-    )?;
-    let bundle_bytes = EntityIndexV1BundleBytes {
-        artifact: artifact_bytes,
-        cache_key: cache_key_bytes,
-        postings: postings_bytes,
-        diagnostics: diagnostics_bytes,
-        receipt: json_bytes(&receipt, "index cache receipt")?,
-    };
+    let bundle_bytes = index_v1_bundle_bytes(artifact, cache_key, postings, diagnostics)?;
     enforce_v1_write_budget(
         max_artifact_bytes,
         [
@@ -1171,6 +1216,124 @@ fn write_index_v1_disk_bundle(
         cleanup_owned_staging_dir(&staging_dir);
     }
     result
+}
+
+fn write_or_validate_disabled_index_v1_bundle(
+    work_dir: &Path,
+    artifact: &Value,
+    cache_key: &EntityCacheKey,
+    postings: &EntityIndexPostingsBundle,
+    diagnostics: &[EntityIndexDiagnosticRecord],
+    max_artifact_bytes: Option<u64>,
+    publish_failpoint: EntityIndexV1PublishFailpoint,
+) -> Result<EntityIndexV1DiskPaths, Refusal> {
+    validate_artifact_v1_core_contract(artifact)?;
+    validate_entity_v1_self_hash(artifact)?;
+    postings.validate_reload()?;
+    let final_paths = index_v1_disk_paths(work_dir, artifact)?;
+    let exists = index_v1_bundle_exists(&final_paths);
+    let bundle_bytes = index_v1_bundle_bytes(artifact, cache_key, postings, diagnostics)?;
+    if exists.iter().all(|exists| !exists) {
+        return write_index_v1_disk_bundle(
+            work_dir,
+            artifact,
+            cache_key,
+            postings,
+            diagnostics,
+            max_artifact_bytes,
+            publish_failpoint,
+        );
+    }
+    if !exists.iter().all(|exists| *exists) {
+        return Err(incomplete_v1_cache_refusal(exists));
+    }
+    enforce_v1_read_budget(max_artifact_bytes, &final_paths)?;
+    validate_existing_disabled_index_v1_bundle(&final_paths, &bundle_bytes)?;
+    Ok(final_paths)
+}
+
+fn index_v1_bundle_exists(paths: &EntityIndexV1DiskPaths) -> [bool; 5] {
+    [
+        &paths.artifact_path,
+        &paths.cache_key_path,
+        &paths.receipt_path,
+        &paths.postings_path,
+        &paths.diagnostics_path,
+    ]
+    .map(|path| path.exists())
+}
+
+fn incomplete_v1_cache_refusal(exists: [bool; 5]) -> Refusal {
+    EntityRefusalKind::ArtifactContract.to_refusal(
+        "Entity index v1 cache is incomplete",
+        json!({
+            "stage": "index",
+            "artifact_exists": exists[0],
+            "cache_key_exists": exists[1],
+            "receipt_exists": exists[2],
+            "postings_exists": exists[3],
+            "diagnostics_exists": exists[4],
+            "writes_performed": false
+        }),
+        Some("Remove the incomplete cache outside canon or use a fresh work directory".to_string()),
+    )
+}
+
+fn validate_existing_disabled_index_v1_bundle(
+    paths: &EntityIndexV1DiskPaths,
+    expected: &EntityIndexV1BundleBytes,
+) -> Result<(), Refusal> {
+    require_staged_file_bytes(&paths.artifact_path, &expected.artifact, "index artifact")?;
+    require_staged_file_bytes(
+        &paths.cache_key_path,
+        &expected.cache_key,
+        "index cache key",
+    )?;
+    require_staged_file_bytes(&paths.postings_path, &expected.postings, "index postings")?;
+    require_staged_file_bytes(
+        &paths.diagnostics_path,
+        &expected.diagnostics,
+        "index diagnostics",
+    )?;
+    require_staged_file_bytes(
+        &paths.receipt_path,
+        &expected.receipt,
+        "index cache receipt",
+    )?;
+    validate_v1_cache_receipt(
+        paths,
+        EntityIndexCacheMode::Enabled,
+        &expected.artifact,
+        &expected.diagnostics,
+    )
+}
+
+fn index_v1_bundle_bytes(
+    artifact: &Value,
+    cache_key: &EntityCacheKey,
+    postings: &EntityIndexPostingsBundle,
+    diagnostics: &[EntityIndexDiagnosticRecord],
+) -> Result<EntityIndexV1BundleBytes, Refusal> {
+    let artifact_bytes = json_bytes(artifact, "index artifact")?;
+    let cache_key_bytes = json_bytes(cache_key, "index cache key")?;
+    let postings_bytes = json_bytes(postings, "index postings")?;
+    let diagnostics_bytes = diagnostics_jsonl_bytes(diagnostics)?;
+    let receipt = v1_cache_receipt_from_bytes(
+        EntityIndexCacheMode::Enabled,
+        EntityIndexCacheStatus::Rebuilt,
+        true,
+        &artifact_bytes,
+        &cache_key_bytes,
+        &postings_bytes,
+        &diagnostics_bytes,
+    )?;
+    Ok(EntityIndexV1BundleBytes {
+        artifact: artifact_bytes,
+        cache_key: cache_key_bytes,
+        postings: postings_bytes,
+        diagnostics: diagnostics_bytes,
+        receipt: json_bytes(&receipt, "index cache receipt")?,
+    })
 }
 
 fn validate_v1_cache_receipt(

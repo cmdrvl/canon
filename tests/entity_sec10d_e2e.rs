@@ -1,7 +1,8 @@
 #![forbid(unsafe_code)]
 
 use canon::entity::{
-    EntityArtifactHeader, EntityArtifactReference,
+    CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_EVIDENCE_VERSION_V1, CANON_ENTITY_RUN_VERSION_V1,
+    CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactHeader, EntityArtifactReference,
     apply::{
         APPLY_CANONICAL_FIELDS, ApplyRegistryReference, ApplySafetyCheck,
         SEC10D_ORG_FIELD_SUFFIXES, Sec10dOrgApplyResolution, Sec10dOrgApplyStreamRequest,
@@ -15,8 +16,9 @@ use canon::entity::{
     },
     run::{EntityRunRequest, run_entity_workbench},
     solve::SolveArtifact,
+    solve::validate_solve_artifact_envelope_contract,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -162,11 +164,37 @@ fn entity_sec10d_e2e_small_runs_workbench_audit_review_and_apply() {
     assert_count(&run.summary.counts, &manifest, "prepared_surfaces");
     assert_count(&run.summary.counts, &manifest, "exact_resolved_surfaces");
     assert_count(&run.summary.counts, &manifest, "candidate_pairs");
-    assert_count(&run.summary.counts, &manifest, "edge_records");
+    assert_eq!(
+        run.summary.counts.get("evidence_records").copied(),
+        Some(manifest.expected_counts["edge_records"]),
+        "evidence_records"
+    );
     assert_count(&run.summary.counts, &manifest, "solved_entities");
     assert_eq!(run.summary.labels["profile_id"], manifest.profile_id);
     assert_eq!(run.summary.labels["registry_id"], "firms");
     assert_eq!(run.summary.labels["registry_version"], "1.0.12");
+    assert_eq!(run.version, CANON_ENTITY_RUN_VERSION_V1);
+    assert_stage_artifact(
+        &run,
+        "block",
+        CANON_ENTITY_BLOCK_VERSION_V1,
+        "block/block.json",
+    );
+    assert_stage_artifact(
+        &run,
+        "evidence",
+        CANON_ENTITY_EVIDENCE_VERSION_V1,
+        "evidence/evidence.json",
+    );
+    assert_stage_artifact(
+        &run,
+        "solve",
+        CANON_ENTITY_SOLVE_VERSION_V1,
+        "solve/solve.json",
+    );
+    assert_eq!(run.work_dir.index_artifact_path, "index/index.json");
+    assert_eq!(run.work_dir.edge_artifact_path, "evidence/evidence.json");
+    assert_eq!(run.work_dir.run_artifact_path, "run/run.json");
 
     for artifact in &run.stage_artifacts {
         assert!(
@@ -196,8 +224,9 @@ fn entity_sec10d_e2e_small_runs_workbench_audit_review_and_apply() {
     assert_distinct_pairs(&manifest, &surfaces);
 
     let solve: SolveArtifact = read_json(&work_dir.join("solve/solve.json"));
+    let review_solve = review_queue_solve_artifact(&solve);
     let review = build_review_queue_artifact(ReviewQueueRequest {
-        solve_artifact: solve.clone(),
+        solve_artifact: review_solve,
         include: ReviewExportInclude::Escrow,
         provenance_samples: vec![],
         relation_hints: vec![],
@@ -301,6 +330,21 @@ fn assert_count(counts: &BTreeMap<String, u64>, manifest: &E2eManifest, key: &st
         manifest.expected_counts[key],
         "{key}"
     );
+}
+
+fn assert_stage_artifact(
+    run: &canon::entity::run::EntityRunArtifact,
+    stage: &str,
+    version: &str,
+    path: &str,
+) {
+    let artifact = run
+        .stage_artifacts
+        .iter()
+        .find(|artifact| artifact.stage == stage)
+        .unwrap_or_else(|| panic!("missing {stage} stage artifact"));
+    assert_eq!(artifact.version, version, "{stage} version");
+    assert_eq!(artifact.path, path, "{stage} path");
 }
 
 fn assert_boundary_expectations(
@@ -431,11 +475,11 @@ fn org_fields_for_row(row: &Map<String, Value>) -> Vec<String> {
 fn assert_no_forbidden_runtime_terms(manifest: &E2eManifest, work_dir: &Path) {
     let mut artifact_text = String::new();
     for relative in [
-        "run.json",
+        "run/run.json",
         "prepare/prepare.json",
-        "index.json",
+        "index/index.json",
         "block/block.json",
-        "edge/edge.json",
+        "evidence/evidence.json",
         "solve/solve.json",
     ] {
         artifact_text.push_str(
@@ -547,6 +591,22 @@ fn solve_header(solve: &SolveArtifact) -> EntityArtifactHeader {
         metadata: solve.metadata.clone(),
         summary: solve.summary.clone(),
     }
+}
+
+fn review_queue_solve_artifact(solve: &SolveArtifact) -> SolveArtifact {
+    validate_solve_artifact_envelope_contract(solve).expect("v1 solve envelope validates");
+    let mut review_solve = solve.clone();
+    review_solve.artifact_content_hash.clear();
+    review_solve.metadata.artifact_content_hash.clear();
+    let content_hash = hash_serialized(&review_solve);
+    review_solve.artifact_content_hash = content_hash.clone();
+    review_solve.metadata.artifact_content_hash = content_hash;
+    review_solve
+}
+
+fn hash_serialized<T: Serialize>(value: &T) -> String {
+    let bytes = serde_json::to_vec(value).expect("artifact serializes");
+    format!("blake3:{}", blake3::hash(&bytes).to_hex())
 }
 
 fn registry_ref() -> ApplyRegistryReference {

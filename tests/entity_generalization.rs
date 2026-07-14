@@ -16,19 +16,23 @@ use canon::evaluation::generalization::{
 };
 use canon::{
     entity::{
-        CANON_ENTITY_BLOCK_BUCKET_VERSION, CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION,
-        CANON_ENTITY_PREPARE_VERSION, CANON_ENTITY_RUN_VERSION, CANON_ENTITY_SOLVE_VERSION,
+        CANON_ENTITY_BLOCK_BUCKET_VERSION, CANON_ENTITY_BLOCK_VERSION_V1,
+        CANON_ENTITY_EVIDENCE_VERSION_V1, CANON_ENTITY_PREPARE_VERSION_V1,
+        CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1,
         block::{
             BlockCandidateGenerationDiagnostics, BlockCandidateRecord,
             CandidateRecallEvaluationRequest, evaluate_candidate_recall,
         },
         block_artifact::{BlockCandidateArtifact, ExactBucketAssertion},
         edge::EdgeEvidenceRecord,
-        edge_artifact::EdgeEvidenceArtifact,
+        edge_artifact::{
+            EdgeEvidenceArtifact, EdgeEvidenceArtifactRequest,
+            build_edge_evidence_artifact_contract,
+        },
         index_io::{CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION, INDEX_CACHE_RECEIPT_FILE},
         prepare::PreparedSurfaceRecord,
         run::{
-            EntityRunArtifact, EntityRunStageArtifact,
+            EntityRunArtifact, EntityRunStageArtifact, RUN_CACHE_EXECUTION_RECEIPT_PATH,
             link::{
                 ENTITY_LINK_OBSERVATION_SURFACE_BINDINGS_VERSION, ENTITY_LINK_VERSION,
                 EntityLinkArtifact, EntityLinkFinalizeRequest, EntityLinkObservationSurfaceBinding,
@@ -36,6 +40,7 @@ use canon::{
                 read_validated_entity_link_observation_surface_bindings_at_path,
             },
         },
+        schema::{validate_artifact_v1_core_contract, validate_entity_v1_self_hash},
         score::ScoreUnits,
         solve::{SolveArtifact, SolveReconciliationConfig, SolveReconciliationState},
         telemetry::{
@@ -62,6 +67,10 @@ const BENCHMARK_PATH: &str =
 const AD_HOC_ENVELOPE_PATH: &str =
     "tests/fixtures/extensions/neutral-domain/time_forward/generalization_bad_ad_hoc_envelope.json";
 const TRIAL_SOURCE_ROOT: &str = "tests/fixtures/extensions/neutral-domain/time_forward/trials";
+const RUN_ARTIFACT_RELATIVE_PATH: &str = "run/run.json";
+const EVIDENCE_ARTIFACT_RELATIVE_PATH: &str = "evidence/evidence.json";
+const EVIDENCE_RECORDS_RELATIVE_PATH: &str = "evidence/evidence.jsonl";
+const EVIDENCE_STAGE_NAME: &str = "evidence";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StrictCacheExecutionMode {
@@ -496,21 +505,19 @@ fn strict_generated_manifest_refuses_fabricated_solve_even_when_run_and_link_res
 }
 
 #[test]
-fn strict_generated_manifest_refuses_stale_edge_records() {
+fn strict_generated_manifest_refuses_stale_evidence_records() {
     let scaffold = TempGeneralizationScaffold::new();
     scaffold.build_strict_manifest();
-    let edge_records_path = scaffold
-        .trial_work_dir("entity_disjoint")
-        .join("edge/edges.jsonl");
-    let mut records: Vec<Value> = read_jsonl(&edge_records_path);
+    let evidence_records_path = evidence_records_path(&scaffold.trial_work_dir("entity_disjoint"));
+    let mut records: Vec<Value> = read_jsonl(&evidence_records_path);
     let first_hit = records[0]["hits"]
         .as_array_mut()
-        .expect("edge hits")
+        .expect("evidence hits")
         .first_mut()
-        .expect("edge hit");
-    first_hit["reason_code"] = Value::String("bd_2w13_stale_edge_record".to_string());
-    write_jsonl(&edge_records_path, &records);
-    scaffold.refresh_manifest_refs(&[edge_records_path]);
+        .expect("evidence hit");
+    first_hit["reason_code"] = Value::String("bd_2w13_stale_evidence_record".to_string());
+    write_jsonl(&evidence_records_path, &records);
+    scaffold.refresh_manifest_refs(&[evidence_records_path]);
 
     let output = run_generalization_cli_path(&scaffold.manifest_path, "json");
     assert_strict_generalization_refusal(&output, "artifact_contract");
@@ -1323,9 +1330,11 @@ fn assert_native_trial_artifacts(trial_slug: &str, work_dir: &Path) {
         "link/combined_rows.csv",
         "link/link.json",
         "link/observation_surface_bindings.jsonl",
-        "run.json",
+        RUN_ARTIFACT_RELATIVE_PATH,
+        RUN_CACHE_EXECUTION_RECEIPT_PATH,
         "block/block.json",
-        "edge/edge.json",
+        EVIDENCE_ARTIFACT_RELATIVE_PATH,
+        EVIDENCE_RECORDS_RELATIVE_PATH,
         "solve/solve.json",
         "index/cache_key.json",
         "index/cache_receipt.json",
@@ -1339,6 +1348,52 @@ fn assert_native_trial_artifacts(trial_slug: &str, work_dir: &Path) {
 
 fn trial_source_dir(trial_slug: &str) -> PathBuf {
     Path::new(TRIAL_SOURCE_ROOT).join(trial_slug).join("source")
+}
+
+fn run_artifact_path(work_dir: &Path) -> PathBuf {
+    work_dir.join(RUN_ARTIFACT_RELATIVE_PATH)
+}
+
+fn evidence_artifact_path(work_dir: &Path) -> PathBuf {
+    work_dir.join(EVIDENCE_ARTIFACT_RELATIVE_PATH)
+}
+
+fn evidence_records_path(work_dir: &Path) -> PathBuf {
+    work_dir.join(EVIDENCE_RECORDS_RELATIVE_PATH)
+}
+
+fn validate_public_v1_artifact(path: &Path, expected_version: &str) -> Value {
+    let value: Value = read_json(path);
+    let contract = validate_artifact_v1_core_contract(&value).unwrap_or_else(|error| {
+        panic!("public v1 core validates for {}: {error:?}", path.display())
+    });
+    assert_eq!(contract.artifact_version, expected_version);
+    validate_entity_v1_self_hash(&value).unwrap_or_else(|error| {
+        panic!(
+            "public v1 self hash validates for {}: {error:?}",
+            path.display()
+        )
+    });
+    value
+}
+
+fn read_native_run_for_generalization_rebind(work_dir: &Path) -> EntityRunArtifact {
+    let value =
+        validate_public_v1_artifact(&run_artifact_path(work_dir), CANON_ENTITY_RUN_VERSION_V1);
+    let mut run: EntityRunArtifact =
+        serde_json::from_value(value).expect("public run deserializes");
+    reseal_run_artifact(&mut run);
+    run
+}
+
+fn read_native_block_for_generalization_rebind(work_dir: &Path) -> BlockCandidateArtifact {
+    let path = work_dir.join("block/block.json");
+    let value = validate_public_v1_artifact(&path, CANON_ENTITY_BLOCK_VERSION_V1);
+    let mut block: BlockCandidateArtifact =
+        serde_json::from_value(value).expect("public block deserializes");
+    reseal_block_artifact(&mut block);
+    write_json(&path, &block);
+    block
 }
 
 struct TempGeneralizationScaffold {
@@ -1598,16 +1653,31 @@ impl TempGeneralizationScaffold {
             "trial solve policy must share the exact benchmark policy digest"
         );
 
-        let run: EntityRunArtifact = read_json(&work_dir.join("run.json"));
-        let block: BlockCandidateArtifact = read_json(&work_dir.join("block/block.json"));
+        let run = read_native_run_for_generalization_rebind(&work_dir);
+        let block = read_native_block_for_generalization_rebind(&work_dir);
         let candidates: Vec<BlockCandidateRecord> =
             read_jsonl(&work_dir.join("block/candidates.jsonl"));
         let diagnostics: BlockCandidateGenerationDiagnostics =
             read_json(&work_dir.join("block/diagnostics.json"));
         let exact_buckets: Vec<ExactBucketAssertion> =
             read_jsonl(&work_dir.join("block/exact_buckets.jsonl"));
-        let edge: EdgeEvidenceArtifact = read_json(&work_dir.join("edge/edge.json"));
-        let edge_records: Vec<EdgeEvidenceRecord> = read_jsonl(&work_dir.join("edge/edges.jsonl"));
+        let raw_edge_value = validate_public_v1_artifact(
+            &evidence_artifact_path(&work_dir),
+            CANON_ENTITY_EVIDENCE_VERSION_V1,
+        );
+        let raw_edge: EdgeEvidenceArtifact =
+            serde_json::from_value(raw_edge_value).expect("public evidence deserializes");
+        let edge_records: Vec<EdgeEvidenceRecord> = read_jsonl(&evidence_records_path(&work_dir));
+        let edge = build_edge_evidence_artifact_contract(EdgeEvidenceArtifactRequest {
+            block: block.clone(),
+            strategy: raw_edge.metadata.strategy.clone(),
+            edge_records_path: raw_edge.edge_records_path.clone(),
+            edge_records: edge_records.clone(),
+            candidate_records: candidates.clone(),
+            bucket_assertions: exact_buckets.clone(),
+        })
+        .expect("strict evidence artifact rebuilds from public payloads");
+        write_json(&evidence_artifact_path(&work_dir), &edge);
         let surfaces: Vec<PreparedSurfaceRecord> =
             read_jsonl(&work_dir.join("prepare/surfaces.jsonl"));
         let rebound = rebind_generalization_native_stages(GeneralizationNativeStageRebindRequest {
@@ -1657,7 +1727,7 @@ impl TempGeneralizationScaffold {
             "final run normalization must not change the rebuilt solve"
         );
         let final_run = final_rebound.run;
-        write_json(&work_dir.join("run.json"), &final_run);
+        write_json(&run_artifact_path(&work_dir), &final_run);
         assert!(
             self.trial_source(trial_slug)
                 .join("link_strategy.yaml")
@@ -1709,14 +1779,14 @@ impl TempGeneralizationScaffold {
                 "entity_link.observation_surface_bindings",
             ),
             self.artifact_ref(
-                &work_dir.join("run.json"),
-                CANON_ENTITY_RUN_VERSION,
+                &run_artifact_path(&work_dir),
+                CANON_ENTITY_RUN_VERSION_V1,
                 "run",
                 "entity_run",
             ),
             self.artifact_ref(
                 &work_dir.join("solve/solve.json"),
-                CANON_ENTITY_SOLVE_VERSION,
+                CANON_ENTITY_SOLVE_VERSION_V1,
                 "solve",
                 "entity_solve",
             ),
@@ -1729,16 +1799,16 @@ impl TempGeneralizationScaffold {
             "candidate_recall": candidate_recall,
             "solve_derivation": {
                 "edge_artifact": self.typed_ref(
-                    &work_dir.join("edge/edge.json"),
-                    CANON_ENTITY_EDGE_VERSION
+                    &evidence_artifact_path(&work_dir),
+                    CANON_ENTITY_EVIDENCE_VERSION_V1
                 ),
                 "edge_records": self.typed_ref(
-                    &work_dir.join("edge/edges.jsonl"),
-                    CANON_ENTITY_EDGE_VERSION
+                    &evidence_records_path(&work_dir),
+                    CANON_ENTITY_EVIDENCE_VERSION_V1
                 ),
                 "prepared_surfaces": self.typed_ref(
                     &work_dir.join("prepare/surfaces.jsonl"),
-                    CANON_ENTITY_PREPARE_VERSION
+                    CANON_ENTITY_PREPARE_VERSION_V1
                 ),
                 "solve_policy": self.typed_ref(
                     &solve_policy_path,
@@ -1790,7 +1860,7 @@ impl TempGeneralizationScaffold {
                 String::from_utf8_lossy(&output.stderr)
             );
             let primed_run: EntityRunArtifact =
-                read_json(&self.trial_work_dir(trial_slug).join("run.json"));
+                read_json(&run_artifact_path(&self.trial_work_dir(trial_slug)));
             assert_eq!(
                 primed_run.summary.labels["cache_status"], "rebuilt",
                 "first enabled run should materialize a cold cache receipt"
@@ -1806,7 +1876,8 @@ impl TempGeneralizationScaffold {
         );
         let artifact: EntityLinkArtifact =
             serde_json::from_slice(&output.stdout).expect("native link stdout artifact");
-        let run: EntityRunArtifact = read_json(&self.trial_work_dir(trial_slug).join("run.json"));
+        let run: EntityRunArtifact =
+            read_json(&run_artifact_path(&self.trial_work_dir(trial_slug)));
         assert_eq!(
             run.summary.labels["cache_mode"],
             cache_mode.native_mode(),
@@ -1920,15 +1991,15 @@ impl TempGeneralizationScaffold {
             ),
             "block_artifact": self.typed_ref(
                 &work_dir.join("block/block.json"),
-                CANON_ENTITY_BLOCK_VERSION
+                CANON_ENTITY_BLOCK_VERSION_V1
             ),
             "candidates": self.typed_ref(
                 &work_dir.join("block/candidates.jsonl"),
-                CANON_ENTITY_BLOCK_VERSION
+                CANON_ENTITY_BLOCK_VERSION_V1
             ),
             "diagnostics": self.typed_ref(
                 &work_dir.join("block/diagnostics.json"),
-                CANON_ENTITY_BLOCK_VERSION
+                CANON_ENTITY_BLOCK_VERSION_V1
             ),
             "exact_bucket_assertions": self.typed_ref(
                 &work_dir.join("block/exact_buckets.jsonl"),
@@ -1965,7 +2036,7 @@ impl TempGeneralizationScaffold {
             cache_stage.version,
             CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION
         );
-        assert_eq!(cache_stage.path, INDEX_CACHE_RECEIPT_FILE);
+        assert_eq!(cache_stage.path, RUN_CACHE_EXECUTION_RECEIPT_PATH);
         let cache_path = work_dir.join(&cache_stage.path);
         let cache_hash = blake3_file(&cache_path);
         assert_eq!(
@@ -2137,7 +2208,7 @@ impl TempGeneralizationScaffold {
             cache_stage.version,
             CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION
         );
-        assert_eq!(cache_stage.path, INDEX_CACHE_RECEIPT_FILE);
+        assert_eq!(cache_stage.path, RUN_CACHE_EXECUTION_RECEIPT_PATH);
         assert_eq!(
             run.summary.labels["cache_mode"],
             cache_mode.native_mode(),
@@ -2150,7 +2221,7 @@ impl TempGeneralizationScaffold {
         );
         assert_eq!(
             run.summary.labels["cache_receipt_path"],
-            INDEX_CACHE_RECEIPT_FILE
+            RUN_CACHE_EXECUTION_RECEIPT_PATH
         );
         assert_eq!(
             run.summary.labels["cache_receipt_hash"],
@@ -2162,10 +2233,21 @@ impl TempGeneralizationScaffold {
             cache_stage.artifact_content_hash,
             "cache execution receipt ref must bind exact native receipt bytes"
         );
+        assert_eq!(
+            run.summary.labels["cache_bundle_receipt_path"],
+            INDEX_CACHE_RECEIPT_FILE
+        );
+        let bundle_receipt_path = work_dir.join(INDEX_CACHE_RECEIPT_FILE);
+        assert_eq!(
+            run.summary.labels["cache_bundle_receipt_hash"],
+            blake3_file(&bundle_receipt_path),
+            "cache bundle receipt ref must bind exact immutable bundle receipt bytes"
+        );
         json!({
             "version": CANON_GENERALIZATION_CACHE_EXECUTION_VERSION,
             "mode": cache_mode.manifest_mode(),
-            "receipt": self.typed_ref(&receipt_path, CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION)
+            "receipt": self.typed_ref(&receipt_path, CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION),
+            "bundle_receipt": self.typed_ref(&bundle_receipt_path, CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION)
         })
     }
 
@@ -2179,7 +2261,7 @@ impl TempGeneralizationScaffold {
             .iter()
             .find(|stage| stage.stage == cache_mode.native_stage())
             .unwrap_or_else(|| panic!("missing native {} stage", cache_mode.native_stage()));
-        assert_eq!(stage.path, INDEX_CACHE_RECEIPT_FILE);
+        assert_eq!(stage.path, RUN_CACHE_EXECUTION_RECEIPT_PATH);
         stage
     }
 
@@ -2438,7 +2520,7 @@ impl TempGeneralizationScaffold {
         trial_slug: &str,
         mutate: impl FnOnce(&mut EntityRunArtifact),
     ) -> String {
-        let path = self.trial_work_dir(trial_slug).join("run.json");
+        let path = run_artifact_path(&self.trial_work_dir(trial_slug));
         let mut artifact: EntityRunArtifact = read_json(&path);
         mutate(&mut artifact);
         reseal_run_artifact(&mut artifact);
@@ -2547,7 +2629,7 @@ impl TempGeneralizationScaffold {
     ) {
         let work_dir = self.trial_work_dir(trial_slug);
         let solve_path = work_dir.join("solve/solve.json");
-        let run_path = work_dir.join("run.json");
+        let run_path = run_artifact_path(&work_dir);
         let link_path = work_dir.join("link/link.json");
         let mut solve: SolveArtifact = read_json(&solve_path);
         mutate(&mut solve);
@@ -2670,7 +2752,7 @@ impl TempGeneralizationScaffold {
         let (stage_name, receipt_path) = match channel {
             LeakChannel::Cache => {
                 let run: EntityRunArtifact =
-                    read_json(&self.trial_work_dir(trial_slug).join("run.json"));
+                    read_json(&run_artifact_path(&self.trial_work_dir(trial_slug)));
                 let stage = run
                     .stage_artifacts
                     .iter()
@@ -2741,7 +2823,7 @@ impl TempGeneralizationScaffold {
         trial["leak_scan_sources"]["content_hash"] = Value::String(leak_bundle_hash.clone());
         write_json(&self.manifest_path, &manifest);
 
-        let run_path = work_dir.join("run.json");
+        let run_path = run_artifact_path(&work_dir);
         let link_path = work_dir.join("link/link.json");
         let mut run: EntityRunArtifact = read_json(&run_path);
         update_run_leak_bundle_refs(&mut run, &leak_bundle_hash);
@@ -2769,10 +2851,10 @@ impl TempGeneralizationScaffold {
         write_json(&self.manifest_path, &manifest);
 
         let solve_path = work_dir.join("solve/solve.json");
-        let run_path = work_dir.join("run.json");
+        let run_path = run_artifact_path(&work_dir);
         let link_path = work_dir.join("link/link.json");
         let block: BlockCandidateArtifact = read_json(&work_dir.join("block/block.json"));
-        let edge: EdgeEvidenceArtifact = read_json(&work_dir.join("edge/edge.json"));
+        let edge: EdgeEvidenceArtifact = read_json(&evidence_artifact_path(&work_dir));
         let mut run: EntityRunArtifact = read_json(&run_path);
         let link: EntityLinkArtifact = read_json(&link_path);
         let candidates: Vec<BlockCandidateRecord> =
@@ -2781,7 +2863,7 @@ impl TempGeneralizationScaffold {
             read_json(&work_dir.join("block/diagnostics.json"));
         let exact_buckets: Vec<ExactBucketAssertion> =
             read_jsonl(&work_dir.join("block/exact_buckets.jsonl"));
-        let edge_records: Vec<EdgeEvidenceRecord> = read_jsonl(&work_dir.join("edge/edges.jsonl"));
+        let edge_records: Vec<EdgeEvidenceRecord> = read_jsonl(&evidence_records_path(&work_dir));
         let surfaces: Vec<PreparedSurfaceRecord> =
             read_jsonl(&work_dir.join("prepare/surfaces.jsonl"));
 
@@ -3065,6 +3147,14 @@ fn refresh_run_metadata_stage_refs(run: &mut EntityRunArtifact) {
 }
 
 fn reseal_solve_artifact(artifact: &mut SolveArtifact) {
+    artifact.artifact_content_hash.clear();
+    artifact.metadata.artifact_content_hash.clear();
+    let hash = blake3_serialized(artifact);
+    artifact.artifact_content_hash = hash.clone();
+    artifact.metadata.artifact_content_hash = hash;
+}
+
+fn reseal_block_artifact(artifact: &mut BlockCandidateArtifact) {
     artifact.artifact_content_hash.clear();
     artifact.metadata.artifact_content_hash.clear();
     let hash = blake3_serialized(artifact);
@@ -3597,8 +3687,13 @@ fn assert_trial_cache_execution(
         cache_execution["receipt"]["version"],
         CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION
     );
+    assert_eq!(
+        cache_execution["bundle_receipt"]["version"],
+        CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION
+    );
 
-    let run: EntityRunArtifact = read_json(&scaffold.trial_work_dir(trial_slug).join("run.json"));
+    let run: EntityRunArtifact =
+        read_json(&run_artifact_path(&scaffold.trial_work_dir(trial_slug)));
     assert_eq!(run.summary.labels["cache_mode"], cache_mode.native_mode());
     assert_eq!(
         run.summary.labels["cache_status"],
@@ -3606,6 +3701,10 @@ fn assert_trial_cache_execution(
     );
     assert_eq!(
         run.summary.labels["cache_receipt_path"],
+        RUN_CACHE_EXECUTION_RECEIPT_PATH
+    );
+    assert_eq!(
+        run.summary.labels["cache_bundle_receipt_path"],
         INDEX_CACHE_RECEIPT_FILE
     );
     let cache_stage = run
@@ -3617,7 +3716,7 @@ fn assert_trial_cache_execution(
         cache_stage.version,
         CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION
     );
-    assert_eq!(cache_stage.path, INDEX_CACHE_RECEIPT_FILE);
+    assert_eq!(cache_stage.path, RUN_CACHE_EXECUTION_RECEIPT_PATH);
     assert_eq!(
         run.summary.labels["cache_receipt_hash"],
         cache_stage.artifact_content_hash
@@ -3644,6 +3743,27 @@ fn assert_trial_cache_execution(
         blake3_file(&receipt_path),
         cache_stage.artifact_content_hash
     );
+    let bundle_receipt_path = scaffold.root.join(
+        cache_execution["bundle_receipt"]["path"]
+            .as_str()
+            .expect("bundle receipt path"),
+    );
+    let bundle_receipt: Value = read_json(&bundle_receipt_path);
+    assert_eq!(
+        bundle_receipt["version"],
+        CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION
+    );
+    assert_eq!(bundle_receipt["mode"], "enabled");
+    assert_eq!(bundle_receipt["status"], "rebuilt");
+    assert_eq!(bundle_receipt["reusable"], true);
+    assert_eq!(
+        run.summary.labels["cache_bundle_receipt_hash"],
+        blake3_file(&bundle_receipt_path)
+    );
+    assert_eq!(
+        cache_execution["bundle_receipt"]["content_hash"],
+        run.summary.labels["cache_bundle_receipt_hash"]
+    );
 }
 
 fn assert_cache_mode_semantic_artifacts_equal(
@@ -3652,11 +3772,11 @@ fn assert_cache_mode_semantic_artifacts_equal(
     trial_slug: &str,
 ) {
     let disabled_run: EntityRunArtifact =
-        read_json(&disabled.trial_work_dir(trial_slug).join("run.json"));
+        read_json(&run_artifact_path(&disabled.trial_work_dir(trial_slug)));
     let enabled_run: EntityRunArtifact =
-        read_json(&enabled.trial_work_dir(trial_slug).join("run.json"));
+        read_json(&run_artifact_path(&enabled.trial_work_dir(trial_slug)));
 
-    for stage_name in ["prepare", "index", "block", "edge", "solve"] {
+    for stage_name in ["prepare", "index", "block", EVIDENCE_STAGE_NAME, "solve"] {
         let disabled_stage = semantic_stage(&disabled_run, stage_name);
         let enabled_stage = semantic_stage(&enabled_run, stage_name);
         assert_eq!(

@@ -209,12 +209,12 @@ fn assert_operator_surface(
     let subcommands = manifest["subcommands"]
         .as_array()
         .unwrap_or_else(|| panic!("{label} subcommands"));
-    for required in &fixture.public_surface.required_subcommands {
+    for required in public_required_subcommands(&fixture.public_surface.required_subcommands) {
         assert!(
-            subcommands
-                .iter()
-                .any(|entry| entry["name"] == required.name
-                    && entry["output_schema"] == required.output_schema),
+            subcommands.iter().any(
+                |entry| entry["name"].as_str() == Some(required.name.as_str())
+                    && entry["output_schema"].as_str() == Some(required.output_schema.as_str())
+            ),
             "{label} missing {} / {}",
             required.name,
             required.output_schema
@@ -232,6 +232,21 @@ fn assert_operator_surface(
         }),
         "{label} exposes an org workbench subcommand or schema"
     );
+}
+
+fn public_required_subcommands(required: &[RequiredSubcommand]) -> Vec<RequiredSubcommand> {
+    required
+        .iter()
+        .map(|required| RequiredSubcommand {
+            name: required.name.clone(),
+            output_schema: match required.name.as_str() {
+                "entity block" => "canon_entity_block.v1".to_string(),
+                "entity evidence" => "canon_entity_evidence.v1".to_string(),
+                "entity solve" => "canon_entity_solve.v1".to_string(),
+                _ => required.output_schema.clone(),
+            },
+        })
+        .collect()
 }
 
 fn assert_forbidden_tokens_absent(label: &str, text: &str, forbidden_tokens: &[String]) {

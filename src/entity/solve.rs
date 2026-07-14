@@ -8,8 +8,9 @@ use crate::Refusal;
 use crate::entity::{
     budget::{BudgetEnforcement, BudgetLimit, BudgetStage, find_budget_policy},
     contracts::{
-        CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION, CANON_ENTITY_SOLVE_VERSION,
-        EntityArtifactMetadata, EntityArtifactReference, EntityDeterministicSummary,
+        CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_EVIDENCE_VERSION_V1,
+        CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactMetadata, EntityArtifactReference,
+        EntityDeterministicSummary,
     },
     error::EntityRefusalKind,
     graph::{CannotLinkEvidenceEdge, EntityEvidenceGraph, SignedEvidenceEdge},
@@ -336,7 +337,7 @@ pub fn build_solve_artifact_contract(
     metadata.upstream_artifacts = upstream_artifacts.clone();
 
     let mut artifact = SolveArtifact {
-        version: CANON_ENTITY_SOLVE_VERSION.to_string(),
+        version: CANON_ENTITY_SOLVE_VERSION_V1.to_string(),
         artifact_content_hash: String::new(),
         metadata,
         summary,
@@ -352,13 +353,24 @@ pub fn build_solve_artifact_contract(
 }
 
 pub fn validate_solve_artifact_contract(artifact: &SolveArtifact) -> Result<(), Refusal> {
-    if artifact.version != CANON_ENTITY_SOLVE_VERSION {
+    validate_solve_artifact_contract_inner(artifact, true)
+}
+
+pub fn validate_solve_artifact_envelope_contract(artifact: &SolveArtifact) -> Result<(), Refusal> {
+    validate_solve_artifact_contract_inner(artifact, false)
+}
+
+fn validate_solve_artifact_contract_inner(
+    artifact: &SolveArtifact,
+    validate_typed_self_hash: bool,
+) -> Result<(), Refusal> {
+    if artifact.version != CANON_ENTITY_SOLVE_VERSION_V1 {
         return Err(solve_artifact_refusal(
             "Solve artifact has the wrong contract version",
             json!({
                 "stage": "solve",
                 "reason": "wrong_version",
-                "expected": CANON_ENTITY_SOLVE_VERSION,
+                "expected": CANON_ENTITY_SOLVE_VERSION_V1,
                 "actual": artifact.version
             }),
         ));
@@ -370,7 +382,8 @@ pub fn validate_solve_artifact_contract(artifact: &SolveArtifact) -> Result<(), 
             "Solve artifact upstream references must match metadata",
             json!({
                 "stage": "solve",
-                "field": "upstream_artifacts"
+                "field": "upstream_artifacts",
+                "writes_performed": false
             }),
         ));
     }
@@ -381,21 +394,25 @@ pub fn validate_solve_artifact_contract(artifact: &SolveArtifact) -> Result<(), 
                 "stage": "solve",
                 "field": "metadata.artifact_content_hash",
                 "expected": artifact.artifact_content_hash,
-                "actual": artifact.metadata.artifact_content_hash
+                "actual": artifact.metadata.artifact_content_hash,
+                "writes_performed": false
             }),
         ));
     }
-    let expected = hash_solve_artifact_without_self(artifact)?;
-    if artifact.artifact_content_hash != expected {
-        return Err(solve_artifact_refusal(
-            "Solve artifact content hash is stale",
-            json!({
-                "stage": "solve",
-                "field": "artifact_content_hash",
-                "expected": expected,
-                "actual": artifact.artifact_content_hash
-            }),
-        ));
+    if validate_typed_self_hash {
+        let expected_artifact_hash = hash_solve_artifact_without_self(artifact)?;
+        if artifact.artifact_content_hash != expected_artifact_hash {
+            return Err(solve_artifact_refusal(
+                "Solve artifact content hash does not match canonical bytes",
+                json!({
+                    "stage": "solve",
+                    "field": "artifact_content_hash",
+                    "expected": expected_artifact_hash,
+                    "actual": artifact.artifact_content_hash,
+                    "writes_performed": false
+                }),
+            ));
+        }
     }
     validate_review_groups_reference_entities(artifact)?;
     Ok(())
@@ -605,8 +622,8 @@ fn validate_solve_metadata(metadata: &EntityArtifactMetadata) -> Result<(), Refu
 fn required_solve_upstream_artifacts(
     metadata: &EntityArtifactMetadata,
 ) -> Result<Vec<EntityArtifactReference>, Refusal> {
-    require_upstream_artifact(metadata, CANON_ENTITY_BLOCK_VERSION)?;
-    require_upstream_artifact(metadata, CANON_ENTITY_EDGE_VERSION)?;
+    require_upstream_artifact(metadata, CANON_ENTITY_BLOCK_VERSION_V1)?;
+    require_upstream_artifact(metadata, CANON_ENTITY_EVIDENCE_VERSION_V1)?;
     let mut upstream_artifacts = metadata.upstream_artifacts.clone();
     upstream_artifacts.sort_by(upstream_artifact_cmp);
     Ok(upstream_artifacts)
@@ -622,7 +639,7 @@ fn require_upstream_artifact(
         .find(|reference| reference.version == version)
     else {
         return Err(solve_artifact_refusal(
-            "Solve artifact requires upstream block and edge artifact hashes",
+            "Solve artifact requires upstream block and evidence artifact hashes",
             json!({
                 "stage": "solve",
                 "field": "metadata.upstream_artifacts",
@@ -781,7 +798,7 @@ fn solve_artifact_refusal(message: &'static str, detail: serde_json::Value) -> R
         message,
         detail,
         Some(
-            "canon entity solve <ROWS> --edges <EDGE_ARTIFACT.json> --registry <REGISTRY_DIR>"
+            "canon entity solve <ROWS> --evidence <EVIDENCE_ARTIFACT.json> --registry <REGISTRY_DIR>"
                 .to_string(),
         ),
     )
@@ -1553,6 +1570,6 @@ fn missing_solve_budget_policy_refusal() -> Refusal {
             "policy_id": "solve.max_component_size",
             "recovery": "Restore the shared entity budget policy table before running solve"
         }),
-        Some("canon entity solve <ROWS> --strategy <STRATEGY.yaml> --edges <EDGES.jsonl> --registry <REGISTRY_DIR>".to_string()),
+        Some("canon entity solve <ROWS> --strategy <STRATEGY.yaml> --evidence <EVIDENCE_ARTIFACT.json> --registry <REGISTRY_DIR>".to_string()),
     )
 }

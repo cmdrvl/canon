@@ -3,7 +3,7 @@
 use canon::{
     RefusalCode,
     entity::{
-        CANON_ENTITY_BLOCK_VERSION,
+        CANON_ENTITY_BLOCK_VERSION_V1,
         block::{
             BlockCandidateBudgetConfig, BlockCandidateBudgetObservation, ExactBucketBlockRequest,
             ExactBucketSurface, emit_exact_bucket_hyperedges,
@@ -42,7 +42,7 @@ fn budget_exact_bucket_readiness_contracts_compose_without_pair_expansion() {
 
     let edge_permit = validate_edge_candidate_artifact_before_scoring(
         &EdgeCandidateArtifactRef {
-            version: CANON_ENTITY_BLOCK_VERSION.to_string(),
+            version: CANON_ENTITY_BLOCK_VERSION_V1.to_string(),
             profile_id: "cmbs_tenant_label".to_string(),
             profile_version: "0.1.0".to_string(),
             strategy_hash: "blake3:block-strategy".to_string(),

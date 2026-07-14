@@ -1,9 +1,17 @@
 #![forbid(unsafe_code)]
 
 use canon::entity::{
-    EntityArtifactMetadata, EntityArtifactReference, EntityInputReference, EntityPatchNamespaces,
-    EntityProfileReference, EntityRegistrySnapshot, EntityStrategyReference,
+    CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_EVIDENCE_VERSION_V1, CANON_ENTITY_INDEX_VERSION_V1,
+    CANON_ENTITY_PREPARE_VERSION_V1, EntityArtifactHeader, EntityArtifactMetadata,
+    EntityArtifactReference, EntityInputReference, EntityPatchNamespaces, EntityProfileReference,
+    EntityRegistrySnapshot, EntityStrategyReference,
+    block::{
+        BlockCandidateBudgetConfig, BlockCandidateGenerationDiagnostics, BlockCandidateHit,
+        BlockCandidateRecord, BlockOperatorCandidateDiagnostics, BlockOperatorYield,
+    },
+    block_artifact::{BlockCandidateArtifactRequest, build_block_candidate_artifact_contract},
     edge::{EdgeEvidenceHit, EdgeEvidenceRecord, build_edge_evidence_record},
+    edge_artifact::{EdgeEvidenceArtifactRequest, build_edge_evidence_artifact_contract},
     graph::{SignedEvidenceGraphInput, build_signed_evidence_graph},
     profiles::regab::{RegabFirmGuardKind, RegabFirmGuardRequest, regab_firm_guard_hit},
     relation::{RelationHintRequest, relation_hint_hit},
@@ -110,75 +118,193 @@ fn regab_review_queue_artifact() -> ReviewQueueArtifact {
 }
 
 fn regab_solve_artifact() -> SolveArtifact {
+    let edge_records = vec![
+        guarded_edge_record(GuardedEdgeCase {
+            left_surface_id: "surf:regab:pnc_bank_na",
+            right_surface_id: "surf:regab:midland_loan_services_division_pnc_bank_na",
+            left_name: "PNC Bank, National Association",
+            right_name: "Midland Loan Services, a division of PNC Bank, National Association",
+            left_role: "servicer",
+            right_role: "master_servicer",
+            guard: RegabFirmGuardKind::BankLoanServicesDivision,
+            relation: "division_of",
+            support_reason: "regab_same_family_high_recall_candidate",
+            support_units: 7_000,
+            guard_units: 10_000,
+        }),
+        guarded_edge_record(GuardedEdgeCase {
+            left_surface_id: "surf:regab:wells_fargo_commercial_mortgage_securities_platform",
+            right_surface_id: "surf:regab:wells_fargo_bank_na",
+            left_name: "Wells Fargo Commercial Mortgage Securities Platform",
+            right_name: "Wells Fargo Bank, National Association",
+            left_role: "platform",
+            right_role: "regulated_firm",
+            guard: RegabFirmGuardKind::PlatformCategoryLabel,
+            relation: "platform_to_firm_context",
+            support_reason: "regab_shared_platform_family_candidate",
+            support_units: 6_500,
+            guard_units: 10_000,
+        }),
+        guarded_edge_record(GuardedEdgeCase {
+            left_surface_id: "surf:regab:kpmg_llp",
+            right_surface_id: "surf:regab:kpmg_securitization_trust_2024_c1",
+            left_name: "KPMG LLP",
+            right_name: "KPMG Securitization Trust 2024-C1",
+            left_role: "auditor",
+            right_role: "subject_party",
+            guard: RegabFirmGuardKind::AuditorSubjectPartyRoleConflict,
+            relation: "role_context_conflict",
+            support_reason: "regab_shared_auditor_token_candidate",
+            support_units: 6_200,
+            guard_units: 10_000,
+        }),
+        soft_review_edge_record(
+            "surf:regab:acme_depositor_llc",
+            "surf:regab:acme_mortgage_trust_2024_c1",
+            "regab_parent_subsidiary_name_overlap",
+            "regab_parent_subsidiary_boundary",
+            8_000,
+            1_500,
+        ),
+        support_only_edge_record(
+            "surf:regab:acme_review_analytics",
+            "surf:regab:acme_review_analytics_llc",
+            "regab_unresolved_exact_lookup_miss",
+            3_000,
+        ),
+    ];
+    let evidence = evidence_artifact_for_review_edges(&edge_records);
     let graph = build_signed_evidence_graph(SignedEvidenceGraphInput {
-        edge_records: vec![
-            guarded_edge_record(GuardedEdgeCase {
-                left_surface_id: "surf:regab:pnc_bank_na",
-                right_surface_id: "surf:regab:midland_loan_services_division_pnc_bank_na",
-                left_name: "PNC Bank, National Association",
-                right_name: "Midland Loan Services, a division of PNC Bank, National Association",
-                left_role: "servicer",
-                right_role: "master_servicer",
-                guard: RegabFirmGuardKind::BankLoanServicesDivision,
-                relation: "division_of",
-                support_reason: "regab_same_family_high_recall_candidate",
-                support_units: 7_000,
-                guard_units: 10_000,
-            }),
-            guarded_edge_record(GuardedEdgeCase {
-                left_surface_id: "surf:regab:wells_fargo_commercial_mortgage_securities_platform",
-                right_surface_id: "surf:regab:wells_fargo_bank_na",
-                left_name: "Wells Fargo Commercial Mortgage Securities Platform",
-                right_name: "Wells Fargo Bank, National Association",
-                left_role: "platform",
-                right_role: "regulated_firm",
-                guard: RegabFirmGuardKind::PlatformCategoryLabel,
-                relation: "platform_to_firm_context",
-                support_reason: "regab_shared_platform_family_candidate",
-                support_units: 6_500,
-                guard_units: 10_000,
-            }),
-            guarded_edge_record(GuardedEdgeCase {
-                left_surface_id: "surf:regab:kpmg_llp",
-                right_surface_id: "surf:regab:kpmg_securitization_trust_2024_c1",
-                left_name: "KPMG LLP",
-                right_name: "KPMG Securitization Trust 2024-C1",
-                left_role: "auditor",
-                right_role: "subject_party",
-                guard: RegabFirmGuardKind::AuditorSubjectPartyRoleConflict,
-                relation: "role_context_conflict",
-                support_reason: "regab_shared_auditor_token_candidate",
-                support_units: 6_200,
-                guard_units: 10_000,
-            }),
-            soft_review_edge_record(
-                "surf:regab:acme_depositor_llc",
-                "surf:regab:acme_mortgage_trust_2024_c1",
-                "regab_parent_subsidiary_name_overlap",
-                "regab_parent_subsidiary_boundary",
-                8_000,
-                1_500,
-            ),
-            support_only_edge_record(
-                "surf:regab:acme_review_analytics",
-                "surf:regab:acme_review_analytics_llc",
-                "regab_unresolved_exact_lookup_miss",
-                3_000,
-            ),
-        ],
+        edge_records,
         exact_bucket_assertions: vec![],
         incumbent_ids: vec![],
     })
     .expect("Reg AB signed graph builds");
+    let mut metadata = evidence.metadata.clone();
+    metadata.strategy = solve_strategy();
+    metadata.upstream_artifacts.push(EntityArtifactReference {
+        version: evidence.version,
+        content_hash: evidence.artifact_content_hash,
+    });
+    metadata.artifact_content_hash.clear();
 
     build_solve_artifact_contract(SolveArtifactRequest {
-        metadata: regab_metadata(),
+        metadata,
         graph,
         config: SolveReconciliationConfig::delegate_new_ids(score(5_000)),
         provenance: solve_provenance(),
-        decision_ledger_path: "regab/review/decision-ledger.jsonl".to_string(),
+        decision_ledger_path: "solve/sec10d-regab-decision-ledger.jsonl".to_string(),
     })
     .expect("Reg AB solve artifact builds")
+}
+
+fn evidence_artifact_for_review_edges(
+    edge_records: &[EdgeEvidenceRecord],
+) -> canon::entity::edge_artifact::EdgeEvidenceArtifact {
+    let mut evidence_records = edge_records.to_vec();
+    for record in &mut evidence_records {
+        record.version = CANON_ENTITY_EVIDENCE_VERSION_V1.to_string();
+    }
+    evidence_records.sort_by(|left, right| {
+        left.left_surface_id
+            .cmp(&right.left_surface_id)
+            .then_with(|| left.right_surface_id.cmp(&right.right_surface_id))
+    });
+    let candidate_records = candidate_records_for_edges(&evidence_records);
+    let block = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
+        index: index_header(),
+        strategy: block_strategy(),
+        candidate_records_path: "block/candidates.jsonl".to_string(),
+        candidate_diagnostics_path: "block/diagnostics.json".to_string(),
+        candidate_records: candidate_records.clone(),
+        bucket_assertions: vec![],
+        known_surface_ids: known_surface_ids(&candidate_records),
+        diagnostics: diagnostics(candidate_records.len() as u64),
+    })
+    .expect("Reg AB block artifact builds");
+    build_edge_evidence_artifact_contract(EdgeEvidenceArtifactRequest {
+        block,
+        strategy: evidence_strategy(),
+        edge_records_path: "evidence/evidence.jsonl".to_string(),
+        edge_records: evidence_records,
+        candidate_records,
+        bucket_assertions: vec![],
+    })
+    .expect("Reg AB evidence artifact builds")
+}
+
+fn candidate_records_for_edges(edge_records: &[EdgeEvidenceRecord]) -> Vec<BlockCandidateRecord> {
+    let mut candidates = edge_records
+        .iter()
+        .map(|record| BlockCandidateRecord {
+            version: CANON_ENTITY_BLOCK_VERSION_V1.to_string(),
+            left_surface_id: record.left_surface_id.clone(),
+            right_surface_id: record.right_surface_id.clone(),
+            block_hits: vec![BlockCandidateHit {
+                operator_id: "sec10d_review_queue:block_candidate".to_string(),
+                rank: Some(1),
+                score_units: 10_000,
+            }],
+            candidate_score_hint: 10_000,
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| {
+        left.left_surface_id
+            .cmp(&right.left_surface_id)
+            .then_with(|| left.right_surface_id.cmp(&right.right_surface_id))
+    });
+    candidates
+}
+
+fn known_surface_ids(candidate_records: &[BlockCandidateRecord]) -> Vec<String> {
+    let mut surface_ids = candidate_records
+        .iter()
+        .flat_map(|candidate| {
+            [
+                candidate.left_surface_id.clone(),
+                candidate.right_surface_id.clone(),
+            ]
+        })
+        .collect::<Vec<_>>();
+    surface_ids.sort();
+    surface_ids.dedup();
+    surface_ids
+}
+
+fn diagnostics(candidate_count: u64) -> BlockCandidateGenerationDiagnostics {
+    BlockCandidateGenerationDiagnostics {
+        candidate_record_count: candidate_count,
+        candidate_pairs_emitted: candidate_count,
+        candidate_pairs_suppressed_by_cap: 0,
+        suppressed_candidate_count: 0,
+        large_buckets_suppressed: 0,
+        candidate_pairs_per_surface_p50: candidate_count,
+        candidate_pairs_per_surface_p95: candidate_count,
+        candidate_pairs_per_surface_p99: candidate_count,
+        max_candidates_for_surface: candidate_count,
+        max_candidates_for_operator: candidate_count,
+        configured_budget: BlockCandidateBudgetConfig::new(8, 64, 128),
+        candidate_budget: canon::entity::edge::EdgeCandidateBudgetProof::within_run_budget(
+            candidate_count,
+            64,
+        ),
+        candidate_artifact_bytes: 512,
+        partial_candidate_artifact_written: false,
+        operator_yield: vec![BlockOperatorYield {
+            operator_id: "sec10d_review_queue:block_candidate".to_string(),
+            emitted_candidate_count: candidate_count,
+            suppressed_candidate_count: 0,
+            large_posting_suppressed_count: 0,
+        }],
+        operator_diagnostics: vec![BlockOperatorCandidateDiagnostics {
+            operator_id: "sec10d_review_queue:block_candidate".to_string(),
+            input_candidate_count: candidate_count,
+            eligible_candidate_count: candidate_count,
+            emitted_candidate_count: candidate_count,
+            suppressed_candidate_count: 0,
+            large_posting_suppressed_count: 0,
+        }],
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -320,19 +446,53 @@ fn regab_metadata() -> EntityArtifactMetadata {
             row_count: 231,
             content_hash: "blake3:regab-review-input".to_string(),
         }),
-        upstream_artifacts: vec![
-            EntityArtifactReference {
-                version: "canon_entity_edge.v0".to_string(),
-                content_hash: "blake3:regab-edge".to_string(),
-            },
-            EntityArtifactReference {
-                version: "canon_entity_block.v0".to_string(),
-                content_hash: "blake3:regab-block".to_string(),
-            },
-        ],
+        upstream_artifacts: vec![],
         patch_set: None,
         namekit: None,
         artifact_content_hash: String::new(),
+    }
+}
+
+fn index_header() -> EntityArtifactHeader {
+    let mut metadata = regab_metadata();
+    metadata.strategy = EntityStrategyReference {
+        id: "regab_firm_identity.index".to_string(),
+        version: "0.1.0".to_string(),
+        content_hash: "blake3:regab-index-strategy".to_string(),
+    };
+    metadata.upstream_artifacts = vec![EntityArtifactReference {
+        version: CANON_ENTITY_PREPARE_VERSION_V1.to_string(),
+        content_hash: "blake3:regab-prepare".to_string(),
+    }];
+    metadata.artifact_content_hash = "blake3:regab-index".to_string();
+    EntityArtifactHeader {
+        version: CANON_ENTITY_INDEX_VERSION_V1.to_string(),
+        metadata,
+        summary: Default::default(),
+    }
+}
+
+fn block_strategy() -> EntityStrategyReference {
+    EntityStrategyReference {
+        id: "regab_firm_identity.block".to_string(),
+        version: "0.1.0".to_string(),
+        content_hash: "blake3:regab-block-strategy".to_string(),
+    }
+}
+
+fn evidence_strategy() -> EntityStrategyReference {
+    EntityStrategyReference {
+        id: "regab_firm_identity.evidence".to_string(),
+        version: "0.1.0".to_string(),
+        content_hash: "blake3:regab-evidence-strategy".to_string(),
+    }
+}
+
+fn solve_strategy() -> EntityStrategyReference {
+    EntityStrategyReference {
+        id: "regab_firm_identity.solve".to_string(),
+        version: "0.1.0".to_string(),
+        content_hash: "blake3:regab-solve-strategy".to_string(),
     }
 }
 

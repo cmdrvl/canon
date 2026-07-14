@@ -86,11 +86,11 @@ fn cmbs_e2e_small_book_operator_summary_is_semantic_and_replayable() {
     })
     .expect("CMBS e2e run succeeds");
     assert_run_summary(&run.artifact.summary_as_json(), &expected);
-    assert_stage_artifacts(&work_dir, &expected);
+    assert_stage_artifacts(&work_dir, &run.artifact, &expected);
 
     let summary_line = render_run_summary(&run.artifact);
     for required in [
-        "canon_entity_run.v0",
+        run.artifact.version.as_str(),
         "profile=cmbs_tenant_label",
         "registry=cmbs-tenants@2026.06.26",
         "review_groups=",
@@ -122,7 +122,8 @@ fn entity_cmbs_e2e_small_review_promote_apply_logging_contract() {
         work_dir: &work_dir,
     })
     .expect("CMBS mini e2e run succeeds");
-    let solve: SolveArtifact = read_json(&work_dir.join("solve/solve.json"));
+    let solve: SolveArtifact =
+        read_json(&work_dir.join(&run.artifact.work_dir.solve_artifact_path));
     let mut logs = run_stage_logs(&run.artifact, &work_dir);
 
     let review = build_review_queue_artifact(ReviewQueueRequest {
@@ -310,7 +311,7 @@ fn entity_cmbs_e2e_small_review_promote_apply_logging_contract() {
         "run_wrapper",
         run.artifact.next_commands.resume.clone(),
         0,
-        &work_dir.join("run.json"),
+        &work_dir.join(&run.artifact.work_dir.run_artifact_path),
         &run.artifact.version,
         &run.artifact.artifact_content_hash,
         run.artifact.summary_as_json(),
@@ -787,11 +788,12 @@ fn assert_e2e_stage_log_contract(log: &Value, manifest: &Value) {
         );
         assert_eq!(stage["exit_code"], 0, "{stage_name} exit code");
         assert!(!str_at(stage, "artifact_path").trim().is_empty());
+        let expected_version = expected_versions
+            .get(stage_name)
+            .unwrap_or_else(|| panic!("missing expected version for {stage_name}"));
         assert_eq!(
-            &stage["artifact_version"],
-            expected_versions
-                .get(stage_name)
-                .unwrap_or_else(|| panic!("missing expected version for {stage_name}"))
+            &stage["artifact_version"], expected_version,
+            "{stage_name} fixture version must match the emitted artifact"
         );
         assert!(
             str_at(stage, "artifact_hash").starts_with("blake3:"),
@@ -932,8 +934,8 @@ fn assert_run_summary(summary: &Value, expected: &Value) {
     assert_eq!(summary["labels"]["registry_version"], "2026.06.26");
 }
 
-fn assert_stage_artifacts(work_dir: &Path, expected: &Value) {
-    let surfaces = jsonl_values(&work_dir.join("prepare/surfaces.jsonl"));
+fn assert_stage_artifacts(work_dir: &Path, run: &EntityRunArtifact, expected: &Value) {
+    let surfaces = jsonl_values(&work_dir.join(&run.work_dir.surfaces_path));
     assert_eq!(
         surfaces.len() as u64,
         u64_at(&expected["run_artifact"], "prepared_surfaces")
@@ -961,7 +963,7 @@ fn assert_stage_artifacts(work_dir: &Path, expected: &Value) {
         );
     }
 
-    let index = json_file(&work_dir.join("index.json"));
+    let index = json_file(&work_dir.join(&run.work_dir.index_artifact_path));
     assert_eq!(
         index["summary"]["labels"]["cache_status"],
         expected["cache"]["index_status"]

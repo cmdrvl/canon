@@ -3,8 +3,9 @@
 use canon::{
     RefusalCode,
     entity::{
-        CANON_ENTITY_BLOCK_BUCKET_VERSION, CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_EDGE_VERSION,
-        CANON_ENTITY_INDEX_VERSION, CANON_ENTITY_PREPARE_VERSION,
+        CANON_ENTITY_BLOCK_BUCKET_VERSION, CANON_ENTITY_BLOCK_VERSION_V1,
+        CANON_ENTITY_EVIDENCE_VERSION_V1, CANON_ENTITY_INDEX_VERSION_V1,
+        CANON_ENTITY_PREPARE_VERSION_V1,
         anti_merge::{ProtectedTokenConflictRequest, protected_token_conflict_hit},
         block::{
             BlockCandidateBudgetConfig, BlockCandidateGenerationDiagnostics, BlockCandidateHit,
@@ -52,7 +53,7 @@ fn entity_edge_artifact_records_hashes_lanes_and_stable_order() {
     let repeated = build_edge_evidence_artifact_contract(request).expect("repeat edge artifact");
 
     assert_eq!(artifact, repeated);
-    assert_eq!(artifact.version, CANON_ENTITY_EDGE_VERSION);
+    assert_eq!(artifact.version, CANON_ENTITY_EVIDENCE_VERSION_V1);
     assert!(artifact.artifact_content_hash.starts_with("blake3:"));
     assert!(artifact.edge_records_hash.starts_with("blake3:"));
     assert!(artifact.candidate_records_hash.starts_with("blake3:"));
@@ -62,10 +63,10 @@ fn entity_edge_artifact_records_hashes_lanes_and_stable_order() {
         artifact.artifact_content_hash
     );
     assert!(artifact.upstream_artifacts.iter().any(|reference| {
-        reference.version == CANON_ENTITY_BLOCK_VERSION
+        reference.version == CANON_ENTITY_BLOCK_VERSION_V1
             && reference.content_hash.starts_with("blake3:")
     }));
-    assert_eq!(artifact.summary.counts["edge_record_count"], 1);
+    assert_eq!(artifact.summary.counts["evidence_record_count"], 1);
     assert_eq!(artifact.summary.counts["support_hit_count"], 1);
     assert_eq!(artifact.summary.counts["cannot_link_hit_count"], 0);
     assert_eq!(artifact.summary.counts["relation_hint_count"], 0);
@@ -89,12 +90,12 @@ fn EN_B003_edge_artifact_keeps_support_candidate_self_contained() {
         build_edge_evidence_artifact_contract(edge_request(block, candidates, Vec::new(), records))
             .expect("EN-B003 edge artifact builds");
 
-    assert_eq!(artifact.summary.counts["edge_records"], 1);
-    assert_eq!(artifact.summary.counts["edge_hit_count"], 1);
+    assert_eq!(artifact.summary.counts["evidence_records"], 1);
+    assert_eq!(artifact.summary.counts["evidence_hit_count"], 1);
     assert_eq!(artifact.summary.counts["support_hit_count"], 1);
     assert_eq!(
         artifact.summary.labels["upstream_version"],
-        CANON_ENTITY_BLOCK_VERSION
+        CANON_ENTITY_BLOCK_VERSION_V1
     );
     validate_edge_evidence_artifact_contract(&artifact).expect("artifact contract validates");
 }
@@ -114,7 +115,7 @@ fn EN_B004_edge_artifact_keeps_relation_and_cannot_link_lanes() {
         build_edge_evidence_artifact_contract(edge_request(block, candidates, Vec::new(), records))
             .expect("EN-B004 edge artifact builds");
 
-    assert_eq!(artifact.summary.counts["edge_record_count"], 1);
+    assert_eq!(artifact.summary.counts["evidence_record_count"], 1);
     assert_eq!(artifact.summary.counts["support_hit_count"], 1);
     assert_eq!(artifact.summary.counts["cannot_link_hit_count"], 1);
     assert_eq!(artifact.summary.counts["relation_hint_count"], 1);
@@ -137,7 +138,7 @@ fn entity_edge_artifact_refuses_unknown_candidate_pair() {
             .expect_err("unknown edge pair refuses");
 
     assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
-    assert_eq!(refusal.detail["stage"], "edge");
+    assert_eq!(refusal.detail["stage"], "evidence");
     assert_eq!(refusal.detail["reason"], "unknown_candidate_pair");
     assert_eq!(refusal.detail["writes_performed"], json!(false));
 }
@@ -184,14 +185,41 @@ fn entity_edge_artifact_validator_refuses_self_hash_drift() {
     artifact
         .summary
         .counts
-        .insert("edge_record_count".to_string(), 99);
+        .insert("evidence_record_count".to_string(), 99);
 
     let refusal =
         validate_edge_evidence_artifact_contract(&artifact).expect_err("hash drift refuses");
 
     assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
-    assert_eq!(refusal.detail["stage"], "edge");
+    assert_eq!(refusal.detail["stage"], "evidence");
     assert_eq!(refusal.detail["field"], "artifact_content_hash");
+}
+
+#[test]
+fn entity_edge_artifact_validator_refuses_upstream_reference_mismatch() {
+    let candidates = vec![candidate_record(
+        "surf:cmbs:001",
+        "surf:cmbs:002",
+        "rare_token_overlap:tenant_tokens",
+        9_000,
+    )];
+    let block = sample_block_artifact(candidates.clone(), Vec::new());
+    let mut artifact = build_edge_evidence_artifact_contract(edge_request(
+        block,
+        candidates,
+        Vec::new(),
+        vec![support_record("surf:cmbs:001", "surf:cmbs:002")],
+    ))
+    .expect("evidence artifact builds");
+    artifact.upstream_artifacts[0].content_hash = "blake3:other-upstream".to_string();
+
+    let refusal =
+        validate_edge_evidence_artifact_contract(&artifact).expect_err("upstream mismatch refuses");
+
+    assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+    assert_eq!(refusal.detail["stage"], "evidence");
+    assert_eq!(refusal.detail["field"], "upstream_artifacts");
+    assert_eq!(refusal.detail["writes_performed"], json!(false));
 }
 
 fn edge_request(
@@ -203,7 +231,7 @@ fn edge_request(
     EdgeEvidenceArtifactRequest {
         block,
         strategy: sample_edge_strategy(),
-        edge_records_path: "edge/edges.jsonl".to_string(),
+        edge_records_path: "evidence/evidence.jsonl".to_string(),
         edge_records,
         candidate_records,
         bucket_assertions,
@@ -232,16 +260,18 @@ fn sample_block_artifact(
 }
 
 fn support_record(left_surface_id: &str, right_surface_id: &str) -> EdgeEvidenceRecord {
-    build_edge_evidence_record(
+    let mut record = build_edge_evidence_record(
         left_surface_id,
         right_surface_id,
         vec![support_hit("exact_tenant_core")],
     )
-    .expect("support edge record builds")
+    .expect("support evidence record builds");
+    record.version = CANON_ENTITY_EVIDENCE_VERSION_V1.to_string();
+    record
 }
 
 fn sears_auto_record() -> EdgeEvidenceRecord {
-    build_edge_evidence_record(
+    let mut record = build_edge_evidence_record(
         "surf:cmbs:001",
         "surf:cmbs:004",
         vec![
@@ -267,7 +297,9 @@ fn sears_auto_record() -> EdgeEvidenceRecord {
             .expect("relation hit"),
         ],
     )
-    .expect("Sears Auto edge record builds")
+    .expect("Sears Auto evidence record builds");
+    record.version = CANON_ENTITY_EVIDENCE_VERSION_V1.to_string();
+    record
 }
 
 fn support_hit(reason_code: &str) -> EdgeEvidenceHit {
@@ -290,7 +322,7 @@ fn candidate_record(
     score_units: u32,
 ) -> BlockCandidateRecord {
     BlockCandidateRecord {
-        version: CANON_ENTITY_BLOCK_VERSION.to_string(),
+        version: CANON_ENTITY_BLOCK_VERSION_V1.to_string(),
         left_surface_id: left_surface_id.to_string(),
         right_surface_id: right_surface_id.to_string(),
         block_hits: vec![BlockCandidateHit {
@@ -378,7 +410,7 @@ fn exact_bucket_assertion() -> ExactBucketAssertion {
 
 fn sample_index_header() -> EntityArtifactHeader {
     EntityArtifactHeader {
-        version: CANON_ENTITY_INDEX_VERSION.to_string(),
+        version: CANON_ENTITY_INDEX_VERSION_V1.to_string(),
         metadata: EntityArtifactMetadata {
             profile: EntityProfileReference {
                 id: "cmbs_tenant_label".to_string(),
@@ -411,7 +443,7 @@ fn sample_index_header() -> EntityArtifactHeader {
                 content_hash: "blake3:input".to_string(),
             }),
             upstream_artifacts: vec![EntityArtifactReference {
-                version: CANON_ENTITY_PREPARE_VERSION.to_string(),
+                version: CANON_ENTITY_PREPARE_VERSION_V1.to_string(),
                 content_hash: "blake3:prepare".to_string(),
             }],
             patch_set: Some(EntityPatchSetReference {

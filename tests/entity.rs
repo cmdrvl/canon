@@ -88,5 +88,7 @@ mod regab_normalization;
 mod regab_profile_integration;
 #[path = "entity/sec10d_review_queue.rs"]
 mod sec10d_review_queue;
+#[path = "entity/solve_artifact.rs"]
+mod solve_artifact;
 #[path = "entity/solve_budget.rs"]
 mod solve_budget;

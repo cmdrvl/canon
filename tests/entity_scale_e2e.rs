@@ -135,7 +135,7 @@ fn entity_run_cli_completes_500k_generated_tier_offline() {
         .clone();
 
     let artifact: Value = serde_json::from_slice(&output).expect("entity run artifact json");
-    assert_eq!(artifact["version"], "canon_entity_run.v0");
+    assert_eq!(artifact["version"], "canon_entity_run.v1");
     assert_eq!(artifact["summary"]["counts"]["row_count"], 500_000);
     assert_eq!(artifact["summary"]["counts"]["prepared_surfaces"], 256);
     assert_eq!(artifact["summary"]["counts"]["index_surfaces"], 256);
@@ -151,14 +151,9 @@ fn entity_run_cli_completes_500k_generated_tier_offline() {
             .expect("run content hash")
             .starts_with("blake3:")
     );
-    assert!(fixture.work_dir.join("run.json").exists());
-    assert!(
-        fixture
-            .work_dir
-            .join("index")
-            .join("postings.json")
-            .exists()
-    );
+    assert!(fixture.work_dir.join("run").join("run.json").exists());
+    assert!(fixture.work_dir.join("index").join("index.json").exists());
+    assert!(fixture.work_dir.join("index").join("postings.bin").exists());
     assert!(
         fixture
             .work_dir
@@ -166,7 +161,20 @@ fn entity_run_cli_completes_500k_generated_tier_offline() {
             .join("candidates.jsonl")
             .exists()
     );
-    assert!(fixture.work_dir.join("edge").join("edges.jsonl").exists());
+    assert!(
+        fixture
+            .work_dir
+            .join("evidence")
+            .join("evidence.json")
+            .exists()
+    );
+    assert!(
+        fixture
+            .work_dir
+            .join("evidence")
+            .join("evidence.jsonl")
+            .exists()
+    );
     assert!(fixture.work_dir.join("solve").join("solve.json").exists());
 }
 
@@ -180,7 +188,7 @@ fn assert_stage_metrics(metrics: &[NativeScaleStageMetric]) {
         BTreeSet::from([
             "artifact_publication",
             "block",
-            "edge",
+            "evidence",
             "index",
             "intake",
             "review",

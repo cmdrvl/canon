@@ -41,12 +41,12 @@
       "command": "canon entity block work/cmbs-tenants/prepare --index work/cmbs-tenants/index --strategy strategies/cmbs_tenant_label.yaml --out work/cmbs-tenants/blocks.jsonl"
     },
     {
-      "stage": "edge",
-      "command": "canon entity edge work/cmbs-tenants/prepare --candidates work/cmbs-tenants/blocks.jsonl --strategy strategies/cmbs_tenant_label.yaml --registry registries/cmbs-tenants --out work/cmbs-tenants/edges.jsonl"
+      "stage": "evidence",
+      "command": "canon entity evidence work/cmbs-tenants/prepare --candidates work/cmbs-tenants/blocks.jsonl --strategy strategies/cmbs_tenant_label.yaml --registry registries/cmbs-tenants --work-dir work/cmbs-tenants --emit jsonl"
     },
     {
       "stage": "solve",
-      "command": "canon entity solve work/cmbs-tenants/prepare --edges work/cmbs-tenants/edges.jsonl --strategy strategies/cmbs_tenant_label.yaml --registry registries/cmbs-tenants --out work/cmbs-tenants/solve.json"
+      "command": "canon entity solve work/cmbs-tenants/prepare --evidence work/cmbs-tenants/evidence/evidence.json --strategy strategies/cmbs_tenant_label.yaml --registry registries/cmbs-tenants --work-dir work/cmbs-tenants --emit json"
     },
     {
       "stage": "review_export",

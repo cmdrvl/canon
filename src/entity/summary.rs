@@ -204,12 +204,12 @@ pub fn build_block_operator_summary(
 
 pub fn build_edge_operator_summary(artifact: &EdgeEvidenceArtifact) -> EntityStageOperatorSummary {
     let mut summary = build_deterministic_stage_operator_summary(
-        "edge",
+        "evidence",
         &artifact.version,
         &artifact.summary,
         BTreeMap::new(),
         BTreeMap::from([(
-            "edge_records".to_string(),
+            "evidence_records".to_string(),
             artifact.edge_records_path.clone(),
         )]),
         BTreeMap::new(),
@@ -365,10 +365,9 @@ pub fn render_operator_summary(
         .collect::<Vec<_>>()
         .join(",");
     let cache = render_pairs(&summary.cache_status);
-    let telemetry = render_telemetry_label(&summary.telemetry_links);
     let next_action = primary_next_command_key(&summary.next_commands);
     format!(
-        "{} deals={} raw_unique={} promotable={} review_groups={} anti_merge_groups={} cache={} telemetry={} top_unresolved={} top_anti_merge={} next_action={} next=[{}]",
+        "{} deals={} raw_unique={} promotable={} review_groups={} anti_merge_groups={} cache={} top_unresolved={} top_anti_merge={} next_action={} next=[{}]",
         render_run_summary(artifact),
         count_any(&summary.counts, &["deals", "deal_count"]),
         count_any(
@@ -386,7 +385,6 @@ pub fn render_operator_summary(
         ),
         count_any(&summary.counts, &["anti_merge_groups"]),
         cache,
-        telemetry,
         render_ranked(&summary.top_unresolved_tokens),
         render_ranked(&summary.top_anti_merge_reasons),
         next_action,
@@ -524,11 +522,11 @@ fn run_telemetry_links(artifact: &EntityRunArtifact) -> BTreeMap<String, String>
             artifact.work_dir.candidate_diagnostics_path.clone(),
         ),
         (
-            "edge_artifact".to_string(),
+            "evidence_artifact".to_string(),
             artifact.work_dir.edge_artifact_path.clone(),
         ),
         (
-            "edge_records".to_string(),
+            "evidence_records".to_string(),
             artifact.work_dir.edge_records_path.clone(),
         ),
         (

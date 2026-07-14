@@ -618,7 +618,7 @@ fn graph_artifact_contract_refusal(message: &'static str, detail: serde_json::Va
         message,
         detail,
         Some(
-            "canon entity solve <ROWS> --edges <EDGE_ARTIFACT.json> --registry <REGISTRY_DIR>"
+            "canon entity solve <ROWS> --evidence <EVIDENCE_ARTIFACT.json> --registry <REGISTRY_DIR>"
                 .to_string(),
         ),
     )

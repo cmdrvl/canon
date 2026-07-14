@@ -2,7 +2,7 @@
 
 use canon::{
     entity::{
-        CANON_ENTITY_BLOCK_VERSION, CANON_ENTITY_SOLVE_VERSION, EntityArtifactHeader,
+        CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactHeader,
         EntityArtifactReference,
         artifact_chain::{
             EntityArtifactChainExpectation, EntityArtifactChainLink, EntityChainStage,
@@ -409,7 +409,7 @@ fn native_nonattach_target_may_be_absent_from_solve_when_link_and_review_agree()
     let mut run: EntityRunArtifact = read_json(&fixture.run_path);
     replace_stage_hash(
         &mut run,
-        CANON_ENTITY_SOLVE_VERSION,
+        CANON_ENTITY_SOLVE_VERSION_V1,
         &solve.artifact_content_hash,
     );
     reseal_run(&mut run);
@@ -940,7 +940,7 @@ max_candidates: 10
         let diagnostics_path = work_dir.join("block/diagnostics.json");
         let exact_buckets_path = work_dir.join("block/exact_buckets.jsonl");
         let solve_path = work_dir.join("solve/solve.json");
-        let run_path = work_dir.join("run.json");
+        let run_path = work_dir.join("run/run.json");
         let link_path = work_dir.join("link/link.json");
         let review_queue_path = work_dir.join("review/all.json");
         let audit_path = work_dir.join("audit/audit.json");
@@ -958,7 +958,7 @@ max_candidates: 10
         let mut candidate_records = Vec::new();
         if surface_ids.attach_reference != surface_ids.attach_target {
             candidate_records.push(BlockCandidateRecord {
-                version: CANON_ENTITY_BLOCK_VERSION.to_string(),
+                version: CANON_ENTITY_BLOCK_VERSION_V1.to_string(),
                 left_surface_id: surface_ids.attach_reference.clone(),
                 right_surface_id: surface_ids.attach_target.clone(),
                 block_hits: vec![BlockCandidateHit {
@@ -971,7 +971,7 @@ max_candidates: 10
         }
         if surface_ids.abstain_reference != surface_ids.abstain_target {
             candidate_records.push(BlockCandidateRecord {
-                version: CANON_ENTITY_BLOCK_VERSION.to_string(),
+                version: CANON_ENTITY_BLOCK_VERSION_V1.to_string(),
                 left_surface_id: surface_ids.abstain_reference.clone(),
                 right_surface_id: surface_ids.abstain_target.clone(),
                 block_hits: vec![BlockCandidateHit {
@@ -1020,12 +1020,12 @@ max_candidates: 10
         let mut run: EntityRunArtifact = read_json(&run_path);
         replace_stage_hash(
             &mut run,
-            CANON_ENTITY_BLOCK_VERSION,
+            CANON_ENTITY_BLOCK_VERSION_V1,
             &block.artifact_content_hash,
         );
         replace_stage_hash(
             &mut run,
-            CANON_ENTITY_SOLVE_VERSION,
+            CANON_ENTITY_SOLVE_VERSION_V1,
             &solve.artifact_content_hash,
         );
         reseal_run(&mut run);
@@ -1579,7 +1579,7 @@ fn build_native_solve_variant(
     let mut original: SolveArtifact = read_json(solve_path);
     replace_ref_hash(
         &mut original.metadata.upstream_artifacts,
-        CANON_ENTITY_BLOCK_VERSION,
+        CANON_ENTITY_BLOCK_VERSION_V1,
         &block.artifact_content_hash,
     );
     original.metadata.artifact_content_hash.clear();
@@ -1698,7 +1698,7 @@ fn build_native_solve_without_abstain_target(
     let mut original: SolveArtifact = read_json(solve_path);
     replace_ref_hash(
         &mut original.metadata.upstream_artifacts,
-        CANON_ENTITY_BLOCK_VERSION,
+        CANON_ENTITY_BLOCK_VERSION_V1,
         &block.artifact_content_hash,
     );
     original.metadata.artifact_content_hash.clear();
@@ -2254,7 +2254,7 @@ fn registry_tree_hash(registry: &Path) -> String {
 fn tamper_candidate_payload(fixture: &mut NativeAliasFixture) {
     fs::write(
         &fixture.candidates_path,
-        "{\"version\":\"canon_entity_block.v0\",\"left_surface_id\":\"ORG-001\",\"right_surface_id\":\"obs-attach\",\"block_hits\":[],\"candidate_score_hint\":0}\n",
+        "{\"version\":\"canon_entity_block.v1\",\"left_surface_id\":\"ORG-001\",\"right_surface_id\":\"obs-attach\",\"block_hits\":[],\"candidate_score_hint\":0}\n",
     )
     .expect("tamper candidates");
 }
@@ -2298,7 +2298,7 @@ fn tamper_solve_target_membership(fixture: &mut NativeAliasFixture) {
     let mut run: EntityRunArtifact = read_json(&fixture.run_path);
     replace_stage_hash(
         &mut run,
-        CANON_ENTITY_SOLVE_VERSION,
+        CANON_ENTITY_SOLVE_VERSION_V1,
         &solve.artifact_content_hash,
     );
     reseal_run(&mut run);

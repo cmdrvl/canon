@@ -2,6 +2,7 @@
 
 use canon::RefusalCode;
 use canon::entity::{
+    CANON_ENTITY_BLOCK_VERSION_V1, CANON_ENTITY_EVIDENCE_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1,
     EntityArtifactMetadata, EntityArtifactReference, EntityInputReference, EntityPatchNamespaces,
     EntityProfileReference, EntityRegistrySnapshot, EntityStrategyReference,
     edge::{EdgeEvidenceHit, EdgeEvidenceRecord, build_edge_evidence_record},
@@ -19,7 +20,7 @@ fn entity_solve_artifact_records_hashes_summary_and_upstream_contracts() {
     let artifact = build_solve_artifact_contract(request.clone()).expect("solve artifact builds");
     validate_solve_artifact_contract(&artifact).expect("solve artifact validates");
 
-    assert_eq!(artifact.version, "canon_entity_solve.v0");
+    assert_eq!(artifact.version, CANON_ENTITY_SOLVE_VERSION_V1);
     assert!(artifact.artifact_content_hash.starts_with("blake3:"));
     assert_eq!(
         artifact.metadata.artifact_content_hash,
@@ -33,8 +34,8 @@ fn entity_solve_artifact_records_hashes_summary_and_upstream_contracts() {
             .map(|reference| (reference.version.as_str(), reference.content_hash.as_str()))
             .collect::<Vec<_>>(),
         [
-            ("canon_entity_block.v0", "blake3:block"),
-            ("canon_entity_edge.v0", "blake3:edge"),
+            (CANON_ENTITY_BLOCK_VERSION_V1, "blake3:block"),
+            (CANON_ENTITY_EVIDENCE_VERSION_V1, "blake3:evidence"),
         ]
     );
     assert_eq!(artifact.summary.counts["resolved_existing"], 1);
@@ -67,13 +68,58 @@ fn entity_solve_artifact_refuses_missing_upstream_edge_hash() {
     let mut metadata = metadata_with_upstreams();
     metadata
         .upstream_artifacts
-        .retain(|reference| reference.version != "canon_entity_edge.v0");
+        .retain(|reference| reference.version != CANON_ENTITY_EVIDENCE_VERSION_V1);
     let refusal = build_solve_artifact_contract(solve_artifact_request(metadata))
-        .expect_err("missing edge upstream refuses");
+        .expect_err("missing evidence upstream refuses");
 
     assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
     assert_eq!(refusal.detail["stage"], "solve");
-    assert_eq!(refusal.detail["missing_version"], "canon_entity_edge.v0");
+    assert_eq!(
+        refusal.detail["missing_version"],
+        CANON_ENTITY_EVIDENCE_VERSION_V1
+    );
+}
+
+#[test]
+fn entity_solve_artifact_refuses_legacy_upstream_versions() {
+    let mut metadata = metadata_with_upstreams();
+    metadata.upstream_artifacts = vec![
+        EntityArtifactReference {
+            version: "canon_entity_block.v0".to_string(),
+            content_hash: "blake3:block".to_string(),
+        },
+        EntityArtifactReference {
+            version: "canon_entity_edge.v0".to_string(),
+            content_hash: "blake3:edge".to_string(),
+        },
+    ];
+    let refusal = build_solve_artifact_contract(solve_artifact_request(metadata))
+        .expect_err("legacy upstream versions refuse");
+
+    assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+    assert_eq!(refusal.detail["stage"], "solve");
+    assert_eq!(
+        refusal.detail["missing_version"],
+        CANON_ENTITY_BLOCK_VERSION_V1
+    );
+}
+
+#[test]
+fn entity_solve_artifact_validator_refuses_self_hash_drift() {
+    let mut artifact =
+        build_solve_artifact_contract(solve_artifact_request(metadata_with_upstreams()))
+            .expect("solve artifact builds");
+    artifact
+        .summary
+        .counts
+        .insert("resolved_existing".to_string(), 99);
+
+    let refusal =
+        validate_solve_artifact_contract(&artifact).expect_err("solve hash drift refuses");
+
+    assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+    assert_eq!(refusal.detail["stage"], "solve");
+    assert_eq!(refusal.detail["field"], "artifact_content_hash");
 }
 
 fn solve_artifact_request(metadata: EntityArtifactMetadata) -> SolveArtifactRequest {
@@ -145,11 +191,11 @@ fn metadata_with_upstreams() -> EntityArtifactMetadata {
         }),
         upstream_artifacts: vec![
             EntityArtifactReference {
-                version: "canon_entity_edge.v0".to_string(),
-                content_hash: "blake3:edge".to_string(),
+                version: CANON_ENTITY_EVIDENCE_VERSION_V1.to_string(),
+                content_hash: "blake3:evidence".to_string(),
             },
             EntityArtifactReference {
-                version: "canon_entity_block.v0".to_string(),
+                version: CANON_ENTITY_BLOCK_VERSION_V1.to_string(),
                 content_hash: "blake3:block".to_string(),
             },
         ],

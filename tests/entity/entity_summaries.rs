@@ -133,9 +133,9 @@ fn run_fixture() -> RunFixture {
 
 fn assert_stage_summaries(run: &RunFixture) {
     let prepare: PrepareRunArtifact = read_json(&run.work_dir.join("prepare/prepare.json"));
-    let index: EntityIndexArtifact = read_json(&run.work_dir.join("index.json"));
+    let index: EntityIndexArtifact = read_json(&run.work_dir.join("index/index.json"));
     let block: BlockCandidateArtifact = read_json(&run.work_dir.join("block/block.json"));
-    let edge: EdgeEvidenceArtifact = read_json(&run.work_dir.join("edge/edge.json"));
+    let edge: EdgeEvidenceArtifact = read_json(&run.work_dir.join("evidence/evidence.json"));
     let solve: SolveArtifact = read_json(&run.work_dir.join("solve/solve.json"));
 
     let prepare_summary = build_prepare_operator_summary(&prepare);
@@ -160,9 +160,9 @@ fn assert_stage_summaries(run: &RunFixture) {
     assert!(block_summary.counts.contains_key("candidate_pairs"));
 
     let edge_summary = build_edge_operator_summary(&edge);
-    assert_eq!(edge_summary.stage, "edge");
+    assert_eq!(edge_summary.stage, "evidence");
     assert_eq!(edge_summary.counts, edge.summary.counts);
-    assert!(edge_summary.counts.contains_key("edge_records"));
+    assert!(edge_summary.counts.contains_key("evidence_records"));
 
     let solve_summary = build_solve_operator_summary(&solve);
     assert_eq!(solve_summary.stage, "solve");

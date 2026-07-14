@@ -29,7 +29,7 @@ fn entity_budget_policy_covers_required_limits() {
         "block.max_candidates_per_operator",
         "block.max_candidates_per_run",
         "block.max_exact_bucket_size",
-        "edge.max_edge_records",
+        "evidence.max_evidence_records",
         "solve.max_component_size",
         "review.max_review_groups",
         "all_large_stages.max_artifact_bytes",

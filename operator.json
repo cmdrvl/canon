@@ -43,8 +43,8 @@
       "canon entity index build <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
       "canon entity block <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit jsonl|summary]",
       "canon entity candidate-recall --manifest <QUALITY_MANIFEST.json> --candidates <BLOCK.jsonl|json> --diagnostics <DIAGNOSTICS.json> --exact-bucket-count <N> [--emit json|summary]",
-      "canon entity evidence <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --candidates <BLOCK.jsonl> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit jsonl|summary]",
-      "canon entity solve <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --evidence <EVIDENCE.jsonl> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
+      "canon entity evidence <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --candidates <BLOCK.json> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit jsonl|summary]",
+      "canon entity solve <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --evidence <EVIDENCE.json> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
       "canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
       "canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]",
       "canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]",
@@ -4299,12 +4299,16 @@
     {
       "name": "entity block",
       "usage": "canon entity block <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit jsonl|summary]",
-      "description": "Compiled public leaf for artifact-backed block dispatch; currently emits a fail-closed scaffold refusal instead of candidate records",
+      "description": "Generate artifact-backed block candidate records and write canon_entity_block.v1 artifacts under the explicit work directory",
       "output_mode": "mixed",
-      "output_schema": "canon_entity_block.v0",
+      "output_schema": "canon_entity_block.v1",
       "exit_codes": {
+        "0": {
+          "meaning": "entity block candidate records emitted successfully",
+          "domain": "positive"
+        },
         "2": {
-          "meaning": "fail-closed block scaffold refusal; native executor is not wired for this leaf",
+          "meaning": "REFUSAL / CLI or artifact contract error",
           "domain": "error"
         }
       },
@@ -4320,7 +4324,7 @@
           "name": "profile",
           "flag": "--profile",
           "type": "string",
-          "description": "Entity profile id or YAML path; required to build the dispatch plan"
+          "description": "Entity profile id or YAML path; required for successful execution, and omission refuses without writes"
         },
         {
           "name": "strategy",
@@ -4340,34 +4344,35 @@
           "name": "work_dir",
           "flag": "--work-dir",
           "type": "directory_path",
-          "description": "Work directory for artifact-backed stages; required to build the dispatch plan"
+          "description": "Work directory for artifact-backed stages; required for successful execution, and omission refuses without writes"
         },
         {
           "name": "emit",
           "flag": "--emit",
           "type": "string",
           "default": "jsonl",
-          "description": "Output mode: jsonl request/refusal context or summary"
+          "description": "Output mode: jsonl (canon_entity_block.v1 candidate records) or summary"
         }
       ],
-      "status": "scaffolded_refusal",
-      "read_only": true,
+      "status": "implemented",
+      "read_only": false,
       "safety": {
         "owned_temp_fixtures_only": true,
-        "notes": "compiled leaf currently emits a fail-closed scaffold refusal without reading or writing artifacts",
-        "mutation_class": "ReadOnly",
+        "notes": "owned entity work-dir/cache/artifact writes only",
+        "mutation_class": "OwnedOutput",
         "network_class": "Offline",
-        "concurrency_class": "StatelessRead",
+        "concurrency_class": "CacheRaceSafe",
         "platform_classes": [
-          "PortablePathUtf8"
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
         ],
-        "declaration_command": "entity scaffold refusal"
+        "declaration_command": "entity workbench"
       },
       "side_effects": {
         "reads_stdin": false,
-        "reads_input_files": false,
-        "reads_registry_files": false,
-        "reads_strategy_files": false,
+        "reads_input_files": true,
+        "reads_registry_files": true,
+        "reads_strategy_files": true,
         "loads_sqlite": false,
         "appends_witness_ledger": false,
         "creates_witness_directory": false,
@@ -4375,14 +4380,14 @@
         "writes_deprecation_notices": false,
         "writes_registry_files": false,
         "writes_mapping_sidecars": false,
-        "writes_work_dir": false,
+        "writes_work_dir": true,
         "writes_project_files": false,
         "writes_output_files": false,
         "uses_network": false
       },
-      "next_command": "canon entity run <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> --work-dir <DIR>",
+      "next_command": "canon entity evidence <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --candidates <WORK_DIR>/block/block.json --registry <REGISTRY_DIR> --work-dir <DIR>",
       "recovery": {
-        "next_command": "canon entity run <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> --work-dir <DIR>",
+        "next_command": "canon entity evidence <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --candidates <WORK_DIR>/block/block.json --registry <REGISTRY_DIR> --work-dir <DIR>",
         "refusal_exit_code": 2
       }
     },
@@ -4477,13 +4482,17 @@
     },
     {
       "name": "entity evidence",
-      "usage": "canon entity evidence <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --candidates <BLOCK.jsonl> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit jsonl|summary]",
-      "description": "Compiled public leaf for artifact-backed evidence dispatch; currently emits a fail-closed scaffold refusal instead of evidence records",
+      "usage": "canon entity evidence <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --candidates <BLOCK.json> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit jsonl|summary]",
+      "description": "Score typed evidence from a verified canon_entity_block.v1 artifact and write canon_entity_evidence.v1 artifacts under the explicit work directory",
       "output_mode": "mixed",
       "output_schema": "canon_entity_evidence.v1",
       "exit_codes": {
+        "0": {
+          "meaning": "entity evidence records emitted successfully",
+          "domain": "positive"
+        },
         "2": {
-          "meaning": "fail-closed evidence scaffold refusal; native executor is not wired for this leaf",
+          "meaning": "REFUSAL / CLI or artifact contract error",
           "domain": "error"
         }
       },
@@ -4499,7 +4508,7 @@
           "name": "profile",
           "flag": "--profile",
           "type": "string",
-          "description": "Entity profile id or YAML path; required to build the dispatch plan"
+          "description": "Entity profile id or YAML path; required for successful execution, and omission refuses without writes"
         },
         {
           "name": "strategy",
@@ -4513,7 +4522,7 @@
           "flag": "--candidates",
           "type": "file_path",
           "required": true,
-          "description": "canon_entity_block.v0 JSONL candidate artifact"
+          "description": "canon_entity_block.v1 artifact path"
         },
         {
           "name": "registry",
@@ -4526,34 +4535,35 @@
           "name": "work_dir",
           "flag": "--work-dir",
           "type": "directory_path",
-          "description": "Work directory for artifact-backed stages; required to build the dispatch plan"
+          "description": "Work directory for artifact-backed stages; required for successful execution, and omission refuses without writes"
         },
         {
           "name": "emit",
           "flag": "--emit",
           "type": "string",
           "default": "jsonl",
-          "description": "Output mode: jsonl request/refusal context or summary"
+          "description": "Output mode: jsonl (canon_entity_evidence.v1 evidence records) or summary"
         }
       ],
-      "status": "scaffolded_refusal",
-      "read_only": true,
+      "status": "implemented",
+      "read_only": false,
       "safety": {
         "owned_temp_fixtures_only": true,
-        "notes": "compiled leaf currently emits a fail-closed scaffold refusal without reading or writing artifacts",
-        "mutation_class": "ReadOnly",
+        "notes": "owned entity work-dir/cache/artifact writes only",
+        "mutation_class": "OwnedOutput",
         "network_class": "Offline",
-        "concurrency_class": "StatelessRead",
+        "concurrency_class": "CacheRaceSafe",
         "platform_classes": [
-          "PortablePathUtf8"
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
         ],
-        "declaration_command": "entity scaffold refusal"
+        "declaration_command": "entity workbench"
       },
       "side_effects": {
         "reads_stdin": false,
-        "reads_input_files": false,
-        "reads_registry_files": false,
-        "reads_strategy_files": false,
+        "reads_input_files": true,
+        "reads_registry_files": true,
+        "reads_strategy_files": true,
         "loads_sqlite": false,
         "appends_witness_ledger": false,
         "creates_witness_directory": false,
@@ -4561,26 +4571,30 @@
         "writes_deprecation_notices": false,
         "writes_registry_files": false,
         "writes_mapping_sidecars": false,
-        "writes_work_dir": false,
+        "writes_work_dir": true,
         "writes_project_files": false,
         "writes_output_files": false,
         "uses_network": false
       },
-      "next_command": "canon entity run <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> --work-dir <DIR>",
+      "next_command": "canon entity solve <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --evidence <WORK_DIR>/evidence/evidence.json --registry <REGISTRY_DIR> --work-dir <DIR>",
       "recovery": {
-        "next_command": "canon entity run <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> --work-dir <DIR>",
+        "next_command": "canon entity solve <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --evidence <WORK_DIR>/evidence/evidence.json --registry <REGISTRY_DIR> --work-dir <DIR>",
         "refusal_exit_code": 2
       }
     },
     {
       "name": "entity solve",
-      "usage": "canon entity solve <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --evidence <EVIDENCE.jsonl> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
-      "description": "Compiled public leaf for artifact-backed solve dispatch; currently emits a fail-closed scaffold refusal instead of solve records",
+      "usage": "canon entity solve <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --evidence <EVIDENCE.json> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
+      "description": "Solve deterministic identity assignments from a verified canon_entity_evidence.v1 artifact and write canon_entity_solve.v1 artifacts under the explicit work directory",
       "output_mode": "mixed",
-      "output_schema": "canon_entity_solve.v0",
+      "output_schema": "canon_entity_solve.v1",
       "exit_codes": {
+        "0": {
+          "meaning": "entity solve artifact emitted successfully",
+          "domain": "positive"
+        },
         "2": {
-          "meaning": "fail-closed solve scaffold refusal; native executor is not wired for this leaf",
+          "meaning": "REFUSAL / CLI or artifact contract error",
           "domain": "error"
         }
       },
@@ -4596,7 +4610,7 @@
           "name": "profile",
           "flag": "--profile",
           "type": "string",
-          "description": "Entity profile id or YAML path; required to build the dispatch plan"
+          "description": "Entity profile id or YAML path; required for successful execution, and omission refuses without writes"
         },
         {
           "name": "strategy",
@@ -4610,7 +4624,7 @@
           "flag": "--evidence",
           "type": "file_path",
           "required": true,
-          "description": "canon_entity_evidence.v1 JSONL evidence artifact"
+          "description": "canon_entity_evidence.v1 artifact path"
         },
         {
           "name": "registry",
@@ -4623,34 +4637,35 @@
           "name": "work_dir",
           "flag": "--work-dir",
           "type": "directory_path",
-          "description": "Work directory for artifact-backed stages; required to build the dispatch plan"
+          "description": "Work directory for artifact-backed stages; required for successful execution, and omission refuses without writes"
         },
         {
           "name": "emit",
           "flag": "--emit",
           "type": "string",
           "default": "json",
-          "description": "Output mode: json request/refusal context or summary"
+          "description": "Output mode: json (canon_entity_solve.v1 artifact) or summary"
         }
       ],
-      "status": "scaffolded_refusal",
-      "read_only": true,
+      "status": "implemented",
+      "read_only": false,
       "safety": {
         "owned_temp_fixtures_only": true,
-        "notes": "compiled leaf currently emits a fail-closed scaffold refusal without reading or writing artifacts",
-        "mutation_class": "ReadOnly",
+        "notes": "owned entity work-dir/cache/artifact writes only",
+        "mutation_class": "OwnedOutput",
         "network_class": "Offline",
-        "concurrency_class": "StatelessRead",
+        "concurrency_class": "CacheRaceSafe",
         "platform_classes": [
-          "PortablePathUtf8"
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
         ],
-        "declaration_command": "entity scaffold refusal"
+        "declaration_command": "entity workbench"
       },
       "side_effects": {
         "reads_stdin": false,
-        "reads_input_files": false,
-        "reads_registry_files": false,
-        "reads_strategy_files": false,
+        "reads_input_files": true,
+        "reads_registry_files": true,
+        "reads_strategy_files": true,
         "loads_sqlite": false,
         "appends_witness_ledger": false,
         "creates_witness_directory": false,
@@ -4658,14 +4673,14 @@
         "writes_deprecation_notices": false,
         "writes_registry_files": false,
         "writes_mapping_sidecars": false,
-        "writes_work_dir": false,
+        "writes_work_dir": true,
         "writes_project_files": false,
         "writes_output_files": false,
         "uses_network": false
       },
-      "next_command": "canon entity run <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> --work-dir <DIR>",
+      "next_command": "canon entity audit <WORK_DIR>/solve/solve.json --suite <SUITE_DIR> --emit json",
       "recovery": {
-        "next_command": "canon entity run <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> --work-dir <DIR>",
+        "next_command": "canon entity audit <WORK_DIR>/solve/solve.json --suite <SUITE_DIR> --emit json",
         "refusal_exit_code": 2
       }
     },
