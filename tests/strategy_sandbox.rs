@@ -1,4 +1,8 @@
-use canon::strategy_audit::{StrategyAuditOutput, StrategyAuditTerminationCategory, audit};
+#[cfg(all(unix, not(target_os = "macos")))]
+use canon::RefusalCode;
+#[cfg(target_os = "macos")]
+use canon::strategy_audit::StrategyAuditTerminationCategory;
+use canon::strategy_audit::{StrategyAuditOutput, audit};
 use serde_json::json;
 use std::{
     fs,
@@ -214,6 +218,6 @@ fn strategy_audit_refuses_unsupported_platform() {
 
     let refusal = audit(&schema, &script, &suite).unwrap_err();
 
-    assert_eq!(refusal.code.to_string(), "E_STRATEGY_INPUT_CONTRACT");
+    assert_eq!(refusal.code, RefusalCode::EStrategyInputContract);
     assert!(refusal.message.contains("isolated runner"));
 }

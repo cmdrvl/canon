@@ -47,7 +47,7 @@ for the boundary.
 - **Deduplication built in** — input values are deduplicated before lookup. 500 unique CUSIPs produce 500 mapping entries whether your file has 500 rows or 500,000.
 - **Self-authored registries** — use `canon registry default-id-scheme`, `next-id`, `add-entry`, and `mint` to maintain local alias registries without hand-editing mapping JSON.
 - **Evidence workbenches** — `canon entity` compiles profiled observations into registry proposals. Cluster mode finds same-entity groups within one corpus; link mode aligns a reference corpus to a target corpus through the same artifact path. Both keep relationship evidence separate from equivalence merge evidence.
-- **Cross-source structural linkage** — `canon entity link` aligns two local row sets under an explicit YAML strategy, emits `canon_entity_link.v0` with deterministic link decisions, and can write matched ID pairs back into a flat registry when explicitly requested.
+- **Cross-source structural linkage** — `canon entity link` aligns two local row sets under an explicit YAML strategy and emits hash-bound `canon_entity_link.v1` decisions plus observation/surface bindings. Accepted knowledge enters registries through review, audit, promotion, and exact apply; direct `--write-back` currently refuses before mutation.
 - **Distribution surfaces** — `canon registry export` preserves dbt seed and SQLite search-index consumers; package, project, and temporal workflows move the same registry knowledge through reproducible deployment and snapshot checks.
 
 ---
@@ -350,12 +350,6 @@ canon tape.csv --registry registries/cusip-isin/ --column cusip \
 brew install cmdrvl/tap/canon
 ```
 
-### Shell Script
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/cmdrvl/canon/main/scripts/install.sh | bash
-```
-
 ### From Source
 
 ```bash
@@ -506,7 +500,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `strategy explain --registry <DIR> (--schema <JSON>\|--task <TASK>) --skill <PATH>\|--skill-hash <HASH> [--emit json\|summary]` | Explain active and ignored entries for one strategy key. |
 | `strategy diff --old <DIR> --new <DIR> [--emit json\|summary]` | Compare frozen-script strategy registry versions by typed key plus skill hash, including grade/status/attestation changes. |
 | `entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--cache-mode enabled\|disabled] [--suite <DIR>] [--emit json\|summary]` | Run the cluster-mode artifact pipeline (prepare -> index -> block -> evidence -> solve, optional audit). Cache mode defaults to enabled, and native cache receipts are recorded in the run artifact. |
-| `entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json\|summary] [--cache-mode enabled\|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` | Run link mode for aligning two row sets through the same typed request and artifact path as project mode, with optional suite/gold scoring and explicit registry write-back. Profile and work-dir are required for successful execution even though generated syntax shows them bracketed; omissions write nothing. Cache mode defaults to enabled, and native cache receipts are inherited from the nested run. |
+| `entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json\|summary] [--cache-mode enabled\|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` | Run link mode for aligning two row sets through the same typed request and artifact path as project mode, with optional suite/gold scoring. Profile and work-dir are required for successful execution even though generated syntax shows them bracketed; omissions write nothing. `--write-back` currently refuses before work-dir or registry mutation, so accepted knowledge flows through review, audit, promote, and apply. Cache mode defaults to enabled, and native cache receipts are inherited from the nested run. |
 | `entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json\|summary]` | Compile a strict execution envelope into an alias-withholding report. The envelope references clean registry, candidate, link, run/solve, review, audit, leak-scan, assignment-firewall, and optional promotion/replay artifacts; Canon derives outcomes from those artifacts and refuses self-declared results. |
 | `entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json\|summary]` | Compile a strict artifact-backed entity-disjoint/time-forward envelope into a redacted report. The same command is used for public fixtures and operator-owned private corpora; identifiers, paths, and cutoffs are hashed at the CLI boundary, and outcomes/leakage checks are derived from referenced artifacts rather than self-attested fields. |
 | `entity prepare <ROWS> --profile <PROFILE> --registry <DIR> --work-dir <DIR>` | Validate and project profile-mapped observations for artifact-backed entity preparation. |
@@ -818,8 +812,9 @@ canon tape.csv --registry registries/cusip-isin/ --column cusip \
 Give it reference rows, target rows, and a YAML strategy that says how fields
 correspond. It runs under the entity workbench namespace, preserves
 reference/target directionality, filters candidate pairs, scores deterministic
-assertions, and emits `canon_entity_link.v0` with a
-`canon_entity_link_decisions.v0` decision projection.
+assertions, and emits `canon_entity_link.v1` with
+`canon_entity_link_decisions.v1` and a hash-bound
+`canon_entity_link_observation_surface_bindings.v1` sidecar.
 
 This is still not the core lookup path. The normal
 `canon <INPUT> --registry ...` command does exact lookup only. Link mode is a
@@ -861,8 +856,8 @@ canon entity link \
   --no-witness
 ```
 
-Write-back is explicit. This conceptual shape writes only flat ID mappings,
-never structural attributes:
+`--write-back` is accepted by the parser as an explicit handoff request, but
+the current public v1 path refuses before work-dir or registry mutation:
 
 ```bash
 canon entity link <REFERENCE.csv> <TARGET.csv> \
@@ -875,14 +870,14 @@ canon entity link <REFERENCE.csv> <TARGET.csv> \
   --write-back
 ```
 
-If `--gold` is provided, any gold regression suppresses write-back. Without
-`--gold`, write-back is still allowed, but the safety gate is the explicit
-`--write-back` flag plus the emitted link artifact. Review the artifact and
-version the registry before using it as production lookup knowledge.
+Use the emitted artifact with `canon entity review export`, review/import,
+audit, promote, and apply to add accepted knowledge through the transactional,
+versioned registry path. Link artifacts never authorize direct mutation by
+themselves.
 
-Implemented v0 limits: exactly two row sets, deterministic local operators
-only, no address parser, no geocoder, no fuzzy matching, no persistent
-attribute store, and no automatic registry version bump.
+Current link-mode limits: exactly two row sets, deterministic local operators,
+no network or model runtime, and no direct registry write-back. Registry
+knowledge changes go through review, audit, promotion, and exact replay.
 
 ---
 

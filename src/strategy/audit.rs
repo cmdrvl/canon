@@ -610,8 +610,11 @@ fn default_repeatability_runs() -> usize {
 mod tests {
     use super::*;
     use crate::RefusalCode;
-    use std::{error::Error, fs, path::PathBuf};
+    use std::{fs, path::PathBuf};
     use tempfile::TempDir;
+
+    #[cfg(target_os = "macos")]
+    use std::error::Error;
 
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
