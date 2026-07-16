@@ -1,8 +1,8 @@
 #[cfg(all(unix, not(target_os = "macos")))]
 use canon::RefusalCode;
+use canon::strategy_audit::audit;
 #[cfg(target_os = "macos")]
-use canon::strategy_audit::StrategyAuditTerminationCategory;
-use canon::strategy_audit::{StrategyAuditOutput, audit};
+use canon::strategy_audit::{StrategyAuditOutput, StrategyAuditTerminationCategory};
 use serde_json::json;
 use std::{
     fs,
@@ -66,6 +66,7 @@ fn write_script(dir: &Path, name: &str, body: &str) -> PathBuf {
     path
 }
 
+#[cfg(target_os = "macos")]
 fn log_output(label: &str, output: &StrategyAuditOutput) {
     println!(
         "runner {label}: {}",
