@@ -1,0 +1,217 @@
+{
+  "kind": "entity-profile",
+  "profile": "example.regab.firm_identity",
+  "version": "1.0.0",
+  "entity_type": "example.regab:firm",
+  "identity_semantics": "example_canonical_surface",
+  "canonical_type": "example_firm_id",
+  "required_fields": [
+    "record_id",
+    "org_name"
+  ],
+  "normalized_views": {
+    "firm_identity_example_core": {
+      "operators": [
+        {
+          "op": "lowercase"
+        },
+        {
+          "op": "normalize_whitespace"
+        }
+      ]
+    },
+    "dataset_example_key": {
+      "operators": [
+        {
+          "op": "ascii_trim_upper"
+        }
+      ]
+    }
+  },
+  "evidence": {
+    "support": [
+      {
+        "op": "exact_view",
+        "view": "firm_identity_example_core"
+      }
+    ],
+    "cannot_link": [
+      {
+        "op": "context_conflict",
+        "view": "dataset_example_key"
+      }
+    ],
+    "relation_hints": [
+      {
+        "op": "context_alignment",
+        "view": "dataset_example_key"
+      }
+    ]
+  },
+  "patch_namespaces": {
+    "aliases": "example.regab.firm_identity.aliases",
+    "distinct": "example.regab.firm_identity.distinct",
+    "relations": "example.regab.firm_identity.relations"
+  },
+  "evidence_policy": {
+    "kind": "evidence-policy",
+    "id": "example.regab.firm_identity.evidence_policy",
+    "version": "2026.07.14",
+    "content_hash": "blake3:1010101010101010101010101010101010101010101010101010101010101010"
+  },
+  "review_policy": {
+    "kind": "review-policy",
+    "id": "example.regab.firm_identity.review_policy",
+    "version": "2026.07.14",
+    "content_hash": "blake3:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "promotion_policy": {
+    "kind": "promotion-policy",
+    "id": "example.regab.firm_identity.promotion_policy",
+    "version": "2026.07.14",
+    "content_hash": "blake3:1212121212121212121212121212121212121212121212121212121212121212"
+  },
+  "frozen_executable_strategy": {
+    "kind": "frozen-executable-strategy",
+    "id": "example.regab.firm_identity.strategy",
+    "version": "2026.07.14",
+    "content_hash": "blake3:1313131313131313131313131313131313131313131313131313131313131313"
+  },
+  "ontology_package": {
+    "kind": "ontology-package",
+    "id": "example.regab.firm_identity.ontology",
+    "version": "2026.07.14",
+    "content_hash": "blake3:1414141414141414141414141414141414141414141414141414141414141414"
+  },
+  "identifier_package": {
+    "kind": "identifier-package",
+    "id": "example.regab.firm_identity.identifier",
+    "version": "2026.07.14",
+    "content_hash": "blake3:1515151515151515151515151515151515151515151515151515151515151515"
+  },
+  "vocabulary_package": {
+    "kind": "vocabulary-package",
+    "id": "example.regab.firm_identity.vocabulary",
+    "version": "2026.07.14",
+    "content_hash": "blake3:1616161616161616161616161616161616161616161616161616161616161616"
+  },
+  "evidence_package": {
+    "kind": "evidence-package",
+    "id": "example.regab.firm_identity.evidence",
+    "version": "2026.07.14",
+    "content_hash": "blake3:1717171717171717171717171717171717171717171717171717171717171717"
+  },
+  "normalization_packages": [
+    {
+      "kind": "normalization-package",
+      "id": "example.regab.firm_identity.normalization",
+      "version": "2026.07.14",
+      "content_hash": "blake3:1818181818181818181818181818181818181818181818181818181818181818"
+    }
+  ],
+  "available_capabilities": [
+    "prepare",
+    "index",
+    "block",
+    "evidence",
+    "solve_cluster",
+    "solve_link",
+    "review",
+    "promote",
+    "apply"
+  ],
+  "field_mappings": [
+    {
+      "field_path": "record_id",
+      "object_type": "example.regab:firm",
+      "field_role": "record_key",
+      "required": true
+    },
+    {
+      "field_path": "org_name",
+      "object_type": "example.regab:firm",
+      "field_role": "canonical_surface",
+      "normalized_view": "firm_identity_example_core",
+      "required": true
+    },
+    {
+      "field_path": "dataset",
+      "object_type": "example.regab:firm",
+      "field_role": "context_value",
+      "normalized_view": "dataset_example_key",
+      "required": false
+    }
+  ],
+  "execution_modes": [
+    {
+      "mode": "cluster",
+      "source_object_type": "example.regab:firm",
+      "required_capabilities": [
+        "prepare",
+        "index",
+        "block",
+        "evidence",
+        "solve_cluster",
+        "review",
+        "promote",
+        "apply"
+      ],
+      "field_paths": [
+        "record_id",
+        "org_name",
+        "dataset"
+      ],
+      "outputs": [
+        "prepare_bundle",
+        "cluster_assignments",
+        "review_queue"
+      ]
+    },
+    {
+      "mode": "link",
+      "source_object_type": "example.regab:firm",
+      "target_object_type": "example.regab:firm",
+      "link_direction": "source_to_target",
+      "required_capabilities": [
+        "prepare",
+        "index",
+        "block",
+        "evidence",
+        "solve_link",
+        "review",
+        "promote",
+        "apply"
+      ],
+      "field_paths": [
+        "record_id",
+        "org_name",
+        "dataset"
+      ],
+      "outputs": [
+        "prepare_bundle",
+        "link_candidates",
+        "link_decisions"
+      ]
+    }
+  ],
+  "limits": {
+    "max_observation_fields": 32,
+    "max_candidate_pairs": 3000,
+    "max_outputs": 500
+  },
+  "expected_outputs": [
+    "prepare_bundle",
+    "cluster_assignments",
+    "review_queue",
+    "link_candidates",
+    "link_decisions"
+  ],
+  "project_overrides": [
+    {
+      "key": "candidate_limit",
+      "default_value": "3000",
+      "artifact_header_key": "candidate_limit",
+      "project_lock_key": "limits.candidate_limit"
+    }
+  ]
+}

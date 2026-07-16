@@ -13,9 +13,9 @@ candidate_filter:
 assertions:
   - field_ref: org_name
     field_tgt: org_name
-    op: exact
+    op: prefix
     weight: 1.0
-    required: true
-match_threshold: 1.0
+    required: false
+match_threshold: 0.75
 ambiguity_gap: 0.10
 max_candidates: 10

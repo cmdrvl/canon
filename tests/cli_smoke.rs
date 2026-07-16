@@ -23,6 +23,8 @@ use tiny_http::{Header, Response, Server, StatusCode};
 mod common;
 use common::{fixture_path, write_registry_metadata, write_seed_csv};
 
+const REGAB_FIRM_IDENTITY_PROFILE_FIXTURE: &str = "tests/fixtures/extensions/neutral-domain/time_forward/trials/entity_disjoint/source/profile/regab_firm_identity.yaml";
+
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
@@ -154,29 +156,23 @@ fn write_entity_link_smoke_fixture_with_format(
         &strategy,
         r#"strategy_id: entity-link-smoke.v1
 strategy_version: "0.1.0"
-entity_type: loan
+entity_type: organization
 identity:
   reference:
-    id_columns: [loan_id]
+    id_columns: [org_id]
   target:
-    id_columns: [deal, loan_number]
+    id_columns: [record_id]
 candidate_filter:
-  - field_ref: deal
-    field_tgt: deal
+  - field_ref: dataset
+    field_tgt: dataset
     op: exact
 assertions:
-  - field_ref: address
-    field_tgt: address
+  - field_ref: org_name
+    field_tgt: org_name
     op: exact
-    weight: 0.60
+    weight: 1.0
     required: true
-  - field_ref: upb
-    field_tgt: balance
-    op: tolerance_pct
-    tolerance: 0.05
-    weight: 0.40
-    required: false
-match_threshold: 0.75
+match_threshold: 0.90
 ambiguity_gap: 0.10
 max_candidates: 10
 "#,
@@ -184,7 +180,7 @@ max_candidates: 10
     .unwrap();
     std::fs::write(
         &gold,
-        "{\"target_id\":\"D1|1\",\"expected_reference_id\":\"R-1\"}\n",
+        "{\"target_id\":\"T-1\",\"expected_reference_id\":\"R-1\"}\n",
     )
     .unwrap();
 
@@ -208,11 +204,11 @@ fn write_entity_link_neutral_mixed_fixture(root: &Path) -> EntityLinkSmokeFixtur
     write_registry_metadata(&registry, "entity-link-neutral", "0.1.0", 0);
     write_seed_csv(
         &reference,
-        "org_id,dataset,field_name,org_name,bucket,source_row_id\nR-MATCH,reference,name,Northstar Analytics,B_MATCH,ref-match\nR-AMB-A,reference,name,Harbor Metrics,B_AMB,ref-amb-a\nR-AMB-B,reference,name,Harbor Metrics,B_AMB,ref-amb-b\n",
+        "org_id,dataset,field_name,org_name,bucket,source_row_id\nR-MATCH,link,name,Beta Workshop,B_MATCH,ref-match\nR-AMB-A,link,name,Harbor Signal,B_AMB,ref-amb-a\nR-AMB-B,link,name,Harbor Signal,B_AMB,ref-amb-b\n",
     );
     write_seed_csv(
         &target,
-        "record_id,dataset,field_name,org_name,bucket,source_row_id\nT-MATCH,target,name,Northstar Analytics,B_MATCH,tgt-match\nT-AMB,target,name,Harbor Metrics,B_AMB,tgt-amb\nT-NONE,target,name,Quartz Signal,B_NONE,tgt-none\n",
+        "record_id,dataset,field_name,org_name,bucket,source_row_id\nT-MATCH,link,name,Beta Workshop North,B_MATCH,tgt-match\nT-AMB,link,name,Harbor Signal North,B_AMB,tgt-amb\nT-NONE,link,name,Quartz Signal,B_NONE,tgt-none\n",
     );
     std::fs::write(
         &strategy,
@@ -234,7 +230,7 @@ assertions:
     op: exact
     weight: 1.0
     required: true
-match_threshold: 1.0
+match_threshold: 0.90
 ambiguity_gap: 0.10
 max_candidates: 10
 "#,
@@ -243,6 +239,84 @@ max_candidates: 10
     std::fs::write(
         &gold,
         "{\"target_id\":\"T-MATCH\",\"expected_reference_id\":\"R-MATCH\"}\n",
+    )
+    .unwrap();
+
+    EntityLinkSmokeFixture {
+        reference,
+        target,
+        strategy,
+        registry,
+        gold,
+    }
+}
+
+fn write_entity_link_shared_surface_fixture(
+    root: &Path,
+    reference_ids: &[&str],
+) -> EntityLinkSmokeFixture {
+    let reference = root.join("shared-surface-reference.csv");
+    let target = root.join("shared-surface-target.csv");
+    let strategy = root.join("shared-surface-strategy.yaml");
+    let registry = root.join("shared-surface-registry");
+    let gold = root.join("shared-surface-gold.jsonl");
+    std::fs::create_dir_all(&registry).unwrap();
+
+    let incumbent_id = reference_ids.first().copied().unwrap_or("R-SHARED");
+    write_registry_metadata(&registry, "entity-link-shared-surface", "0.1.0", 1);
+    std::fs::write(
+        registry.join("aliases.json"),
+        serde_json::to_string_pretty(&serde_json::json!([
+            {
+                "input": "Atlas Mutual",
+                "canonical_id": incumbent_id,
+                "canonical_type": "organization",
+                "rule_id": "EXACT_SHARED_SURFACE"
+            }
+        ]))
+        .unwrap(),
+    )
+    .unwrap();
+    let mut reference_rows = "org_id,dataset,field_name,org_name,source_row_id\n".to_string();
+    for reference_id in reference_ids {
+        reference_rows.push_str(&format!(
+            "{reference_id},link,name,Atlas Mutual,source-{reference_id}\n"
+        ));
+    }
+    write_seed_csv(&reference, &reference_rows);
+    write_seed_csv(
+        &target,
+        "record_id,dataset,field_name,org_name,source_row_id\nT-SHARED,link,name,Atlas Mutual,target-shared\n",
+    );
+    std::fs::write(
+        &strategy,
+        r#"strategy_id: entity-link-shared-surface.v1
+strategy_version: "0.1.0"
+entity_type: organization
+identity:
+  reference:
+    id_columns: [org_id]
+  target:
+    id_columns: [record_id]
+candidate_filter:
+  - field_ref: dataset
+    field_tgt: dataset
+    op: exact
+assertions:
+  - field_ref: org_name
+    field_tgt: org_name
+    op: exact
+    weight: 1.0
+    required: true
+match_threshold: 0.90
+ambiguity_gap: 0.10
+max_candidates: 10
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &gold,
+        "{\"target_id\":\"T-SHARED\",\"expected_reference_id\":\"R-SHARED\"}\n",
     )
     .unwrap();
 
@@ -267,31 +341,31 @@ fn write_entity_link_rows(
     role: EntityLinkRoleFixture,
     matched: bool,
 ) {
-    let target_address = if matched {
-        "100 Main St"
+    let target_org_name = if matched {
+        "Beta Workshop North"
     } else {
-        "999 Other St"
+        "Omega Servicing"
     };
     match format {
         EntityLinkFixtureFormat::Csv => match role {
             EntityLinkRoleFixture::Reference => write_seed_csv(
                 path,
-                "loan_id,deal,address,upb,source_row_id,deal_id,property_id,raw_tenant_name\nR-1,D1,100 Main St,100,R-1,D1,1,Reference Name\n",
+                "org_id,dataset,field_name,org_name,source_row_id\nR-1,link,name,Beta Workshop,R-1\n",
             ),
             EntityLinkRoleFixture::Target => write_seed_csv(
                 path,
                 &format!(
-                    "deal,loan_number,address,balance,source_row_id,deal_id,property_id,raw_tenant_name,loan_id\nD1,1,{target_address},101,D1|1,D1,1,Target Name,1\n"
+                    "record_id,dataset,field_name,org_name,source_row_id\nT-1,link,name,{target_org_name},T-1\n"
                 ),
             ),
         },
         EntityLinkFixtureFormat::Tsv => {
             let content = match role {
                 EntityLinkRoleFixture::Reference => {
-                    "loan_id\tdeal\taddress\tupb\tsource_row_id\tdeal_id\tproperty_id\traw_tenant_name\nR-1\tD1\t100 Main St\t100\tR-1\tD1\t1\tReference Name\n".to_string()
+                    "org_id\tdataset\tfield_name\torg_name\tsource_row_id\nR-1\tlink\tname\tBeta Workshop\tR-1\n".to_string()
                 }
                 EntityLinkRoleFixture::Target => format!(
-                    "deal\tloan_number\taddress\tbalance\tsource_row_id\tdeal_id\tproperty_id\traw_tenant_name\tloan_id\nD1\t1\t{target_address}\t101\tD1|1\tD1\t1\tTarget Name\t1\n"
+                    "record_id\tdataset\tfield_name\torg_name\tsource_row_id\nT-1\tlink\tname\t{target_org_name}\tT-1\n"
                 ),
             };
             std::fs::write(path, content).unwrap();
@@ -299,25 +373,18 @@ fn write_entity_link_rows(
         EntityLinkFixtureFormat::Jsonl | EntityLinkFixtureFormat::Ndjson => {
             let value = match role {
                 EntityLinkRoleFixture::Reference => serde_json::json!({
-                    "loan_id": "R-1",
-                    "deal": "D1",
-                    "address": "100 Main St",
-                    "upb": 100,
+                    "org_id": "R-1",
+                    "dataset": "link",
+                    "field_name": "name",
+                    "org_name": "Beta Workshop",
                     "source_row_id": "R-1",
-                    "deal_id": "D1",
-                    "property_id": "1",
-                    "raw_tenant_name": "Reference Name"
                 }),
                 EntityLinkRoleFixture::Target => serde_json::json!({
-                    "deal": "D1",
-                    "loan_number": "1",
-                    "address": target_address,
-                    "balance": 101,
-                    "source_row_id": "D1|1",
-                    "deal_id": "D1",
-                    "property_id": "1",
-                    "raw_tenant_name": "Target Name",
-                    "loan_id": "1"
+                    "record_id": "T-1",
+                    "dataset": "link",
+                    "field_name": "name",
+                    "org_name": target_org_name,
+                    "source_row_id": "T-1",
                 }),
             };
             std::fs::write(
@@ -377,7 +444,7 @@ fn entity_link_smoke_args<'a>(
     fixture: &'a EntityLinkSmokeFixture,
     work_dir: &'a Path,
 ) -> Vec<&'a str> {
-    entity_link_smoke_args_with_profile(fixture, work_dir, "cmbs_tenant_label")
+    entity_link_smoke_args_with_profile(fixture, work_dir, REGAB_FIRM_IDENTITY_PROFILE_FIXTURE)
 }
 
 fn entity_link_smoke_args_with_profile<'a>(
@@ -398,6 +465,27 @@ fn entity_link_smoke_args_with_profile<'a>(
         fixture.registry.to_str().unwrap(),
         "--work-dir",
         work_dir.to_str().unwrap(),
+    ]
+}
+
+fn entity_link_smoke_args_owned_with_profile(
+    fixture: &EntityLinkSmokeFixture,
+    work_dir: &Path,
+    profile: &Path,
+) -> Vec<String> {
+    vec![
+        "entity".to_string(),
+        "link".to_string(),
+        fixture.reference.display().to_string(),
+        fixture.target.display().to_string(),
+        "--profile".to_string(),
+        profile.display().to_string(),
+        "--strategy".to_string(),
+        fixture.strategy.display().to_string(),
+        "--registry".to_string(),
+        fixture.registry.display().to_string(),
+        "--work-dir".to_string(),
+        work_dir.display().to_string(),
     ]
 }
 
@@ -581,6 +669,36 @@ fn assert_link_review_export_refuses_without_writes(
     assert_eq!(registry_files(link_dir), files_before);
 }
 
+fn assert_link_review_export_surfaces_refuse_without_writes(
+    artifact_path: &Path,
+    link_dir: &Path,
+    expected_field: &str,
+) {
+    assert_link_review_export_refuses_without_writes(artifact_path, link_dir, expected_field);
+
+    let files_before = registry_files(link_dir);
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args([
+            "entity",
+            "review",
+            "export",
+            artifact_path.to_str().unwrap(),
+            "--artifact",
+            "native-review",
+            "--include",
+            "escrow",
+            "--emit",
+            "json",
+        ])
+        .assert()
+        .code(2);
+    let refusal: Value = serde_json::from_slice(&output.get_output().stdout).unwrap();
+    assert_eq!(refusal["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(refusal["refusal"]["detail"]["field"], expected_field);
+    assert_eq!(refusal["refusal"]["detail"]["writes_performed"], false);
+    assert_eq!(registry_files(link_dir), files_before);
+}
+
 fn assert_review_csv_id_parity(
     link_path: &Path,
     include: &str,
@@ -706,8 +824,9 @@ fn run_neutral_mixed_link_artifacts(
 ) -> (EntityLinkSmokeFixture, PathBuf, PathBuf, PathBuf, Value) {
     let fixture = write_entity_link_neutral_mixed_fixture(root);
     let work_dir = root.join("neutral-link-work");
-    let mut args = entity_link_smoke_args_with_profile(&fixture, &work_dir, "regab_firm_identity");
-    args.push("--no-witness");
+    let profile = fixture_path(REGAB_FIRM_IDENTITY_PROFILE_FIXTURE);
+    let mut args = entity_link_smoke_args_owned_with_profile(&fixture, &work_dir, &profile);
+    args.push("--no-witness".to_string());
     Command::new(env!("CARGO_BIN_EXE_canon"))
         .args(args)
         .assert()
@@ -725,9 +844,47 @@ fn run_neutral_mixed_link(root: &Path) -> (PathBuf, Value) {
     (link_path, link_artifact)
 }
 
+fn link_observation_surface_by_id(
+    work_dir: &Path,
+    link_artifact: &Value,
+) -> BTreeMap<String, String> {
+    let binding_path = work_dir.join("link").join(
+        link_artifact["observation_surface_bindings_path"]
+            .as_str()
+            .unwrap(),
+    );
+    std::fs::read_to_string(binding_path)
+        .unwrap()
+        .lines()
+        .map(|line| {
+            let binding: Value = serde_json::from_str(line).unwrap();
+            (
+                binding["link_id"].as_str().unwrap().to_string(),
+                binding["surface_id"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect()
+}
+
 fn resealed_typed_link_artifact(artifact: &Value) -> canon::entity::run::link::EntityLinkArtifact {
     let mut hashable: canon::entity::run::link::EntityLinkArtifact =
         serde_json::from_value(artifact.clone()).unwrap();
+    hashable.artifact_content_hash.clear();
+    hashable.metadata.artifact_content_hash.clear();
+    let hash = canon::witness::hash_bytes(&serde_json::to_vec(&hashable).unwrap());
+    hashable.artifact_content_hash = hash.clone();
+    hashable.metadata.artifact_content_hash = hash;
+    hashable
+}
+
+fn resealed_typed_link_artifact_with_rehashed_decisions(
+    artifact: &Value,
+) -> canon::entity::run::link::EntityLinkArtifact {
+    let mut hashable: canon::entity::run::link::EntityLinkArtifact =
+        serde_json::from_value(artifact.clone()).unwrap();
+    hashable.decision_artifact.artifact_content_hash.clear();
+    hashable.decision_artifact.artifact_content_hash =
+        canon::witness::hash_bytes(&serde_json::to_vec(&hashable.decision_artifact).unwrap());
     hashable.artifact_content_hash.clear();
     hashable.metadata.artifact_content_hash.clear();
     let hash = canon::witness::hash_bytes(&serde_json::to_vec(&hashable).unwrap());
@@ -1288,7 +1445,7 @@ fn test_describe_command() {
             .unwrap()
             .iter()
             .any(|entry| entry["name"] == "entity link"
-                && entry["output_schema"] == "canon_entity_link.v0"
+                && entry["output_schema"] == "canon_entity_link.v1"
                 && entry["status"] == "implemented")
     );
     assert!(
@@ -1486,14 +1643,169 @@ fn test_entity_link_cli_success_json() {
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     let payload: Value = serde_json::from_str(&stdout).unwrap();
     let decisions = &payload["decision_artifact"];
-    assert_eq!(payload["version"], "canon_entity_link.v0");
+    assert_eq!(payload["version"], "canon_entity_link.v1");
     assert_eq!(payload["summary"]["target_records"], 1);
     assert_eq!(payload["summary"]["matched"], 1);
     assert_eq!(payload["summary"]["unmatched"], 0);
     assert_eq!(payload["summary"]["ambiguous"], 0);
-    assert_eq!(decisions["version"], "canon_entity_link_decisions.v0");
+    assert_eq!(decisions["version"], "canon_entity_link_decisions.v1");
     assert_eq!(decisions["matches"][0]["reference_id"], "R-1");
-    assert_eq!(decisions["matches"][0]["target_id"], "D1|1");
+    assert_eq!(decisions["matches"][0]["target_id"], "T-1");
+    assert_eq!(decisions["matches"][0]["canonical_id"], "R-1");
+    let score = decisions["matches"][0]["score"].as_f64().unwrap();
+    assert!(
+        (0.90..1.0).contains(&score),
+        "directional match should use native high-similarity score, got {score}"
+    );
+    let solve_artifact: Value =
+        serde_json::from_slice(&std::fs::read(work_dir.join("solve/solve.json")).unwrap()).unwrap();
+    assert!(
+        solve_artifact["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entity| entity["state"] == "escrow"
+                && entity["reason"] == "below_support_threshold"
+                && entity["hard_cannot_link_count"] == 0
+                && entity["soft_anti_merge_warning_count"] == 0
+                && (9_000..10_000)
+                    .contains(&entity["adjusted_support_score_units"].as_u64().unwrap()))
+    );
+    assert!(payload["profile_source"]["source"].is_string());
+    assert!(payload["profile_source"]["content_hash"].is_string());
+    assert_eq!(
+        payload["observation_surface_bindings_path"],
+        "observation_surface_bindings.jsonl"
+    );
+    assert!(
+        payload["observation_surface_bindings_content_hash"]
+            .as_str()
+            .unwrap()
+            .starts_with("blake3:")
+    );
+    let binding_path = work_dir.join("link").join(
+        payload["observation_surface_bindings_path"]
+            .as_str()
+            .unwrap(),
+    );
+    let binding_line = std::fs::read_to_string(binding_path)
+        .unwrap()
+        .lines()
+        .next()
+        .unwrap()
+        .to_string();
+    let binding: Value = serde_json::from_str(&binding_line).unwrap();
+    assert_eq!(
+        binding["version"],
+        "canon_entity_link_observation_surface_bindings.v1"
+    );
+    if let Some(artifacts) = payload
+        .get("assignment_alignment_artifacts")
+        .and_then(Value::as_array)
+    {
+        assert!(
+            artifacts
+                .iter()
+                .all(|artifact| artifact["evidence_semantics"] == "nonidentity_relation_hint")
+        );
+    }
+}
+
+#[test]
+fn test_entity_link_prepared_surface_collapse_matches_without_candidate_credit() {
+    let temp_dir = tempdir().unwrap();
+    let fixture = write_entity_link_shared_surface_fixture(temp_dir.path(), &["R-SHARED"]);
+    let work_dir = temp_dir.path().join("entity-link-shared-surface-work");
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.push("--no-witness");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(args)
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    let decisions = &payload["decision_artifact"];
+    assert_eq!(payload["version"], "canon_entity_link.v1");
+    assert_eq!(payload["summary"]["target_records"], 1);
+    assert_eq!(payload["summary"]["matched"], 1);
+    assert_eq!(payload["summary"]["unmatched"], 0);
+    assert_eq!(payload["summary"]["ambiguous"], 0);
+
+    let surfaces = link_observation_surface_by_id(&work_dir, &payload);
+    assert_eq!(surfaces["R-SHARED"], surfaces["T-SHARED"]);
+
+    let match_record = &decisions["matches"][0];
+    assert_eq!(match_record["reference_id"], "R-SHARED");
+    assert_eq!(match_record["target_id"], "T-SHARED");
+    assert_eq!(match_record["canonical_id"], "R-SHARED");
+    assert_eq!(match_record["score"], 0.0);
+    assert!(match_record["runner_up"].is_null());
+
+    let assertions = match_record["assertions"].as_array().unwrap();
+    assert_eq!(assertions.len(), 1);
+    let assertion = &assertions[0];
+    assert_eq!(assertion["field_ref"], "prepared_surface_id");
+    assert_eq!(assertion["field_tgt"], "prepared_surface_id");
+    assert_eq!(assertion["op"], "prepared_surface_collapse");
+    assert!(assertion["passed"].as_bool().unwrap());
+    assert_eq!(assertion["score"].as_f64().unwrap(), 0.0);
+    assert_eq!(assertion["weight"].as_f64().unwrap(), 0.0);
+    assert!(assertion["required"].as_bool().unwrap());
+    assert!(!assertion["detail"]["candidate_credit"].as_bool().unwrap());
+    assert_eq!(
+        assertion["detail"]["surface_equality"],
+        "exact_prepared_surface"
+    );
+}
+
+#[test]
+fn test_entity_link_prepared_surface_collapse_preserves_multi_reference_guard() {
+    let temp_dir = tempdir().unwrap();
+    let fixture =
+        write_entity_link_shared_surface_fixture(temp_dir.path(), &["R-SHARED-A", "R-SHARED-B"]);
+    let work_dir = temp_dir
+        .path()
+        .join("entity-link-shared-surface-ambiguous-work");
+    let mut args = entity_link_smoke_args(&fixture, &work_dir);
+    args.push("--no-witness");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(args)
+        .assert()
+        .code(1);
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    let decisions = &payload["decision_artifact"];
+    assert_eq!(payload["summary"]["target_records"], 1);
+    assert_eq!(payload["summary"]["matched"], 0);
+    assert_eq!(payload["summary"]["unmatched"], 0);
+    assert_eq!(payload["summary"]["ambiguous"], 1);
+    assert!(decisions["matches"].as_array().unwrap().is_empty());
+    assert!(decisions["unmatched"].as_array().unwrap().is_empty());
+
+    let surfaces = link_observation_surface_by_id(&work_dir, &payload);
+    assert_eq!(surfaces["R-SHARED-A"], surfaces["T-SHARED"]);
+    assert_eq!(surfaces["R-SHARED-B"], surfaces["T-SHARED"]);
+
+    let ambiguous = &decisions["ambiguous"][0];
+    assert_eq!(ambiguous["target_id"], "T-SHARED");
+    assert_eq!(
+        ambiguous["reason"],
+        "multiple_reference_surfaces_in_solve_component"
+    );
+    let ambiguous_refs = ambiguous["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|candidate| candidate["reference_id"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ambiguous_refs,
+        vec!["R-SHARED-A".to_string(), "R-SHARED-B".to_string()]
+    );
 }
 
 #[test]
@@ -1501,6 +1813,7 @@ fn test_entity_cache_mode_disabled_reaches_native_run_and_link() {
     let temp_dir = tempdir().unwrap();
     let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
     let run_work_dir = temp_dir.path().join("entity-run-work");
+    let profile = fixture_path(REGAB_FIRM_IDENTITY_PROFILE_FIXTURE);
 
     let run_output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .args([
@@ -1508,7 +1821,7 @@ fn test_entity_cache_mode_disabled_reaches_native_run_and_link() {
             "run",
             fixture.reference.to_str().unwrap(),
             "--profile",
-            "cmbs_tenant_label",
+            profile.to_str().unwrap(),
             "--strategy",
             fixture.strategy.to_str().unwrap(),
             "--registry",
@@ -1558,7 +1871,7 @@ fn test_entity_cache_mode_disabled_reaches_native_run_and_link() {
             .iter()
             .any(|stage| stage["stage"] == "cache_disabled")
     );
-    assert_eq!(link_artifact["version"], "canon_entity_link.v0");
+    assert_eq!(link_artifact["version"], "canon_entity_link.v1");
     assert_eq!(
         link_artifact["shared_solve_artifact"]["version"],
         linked_solve["version"]
@@ -1627,7 +1940,25 @@ fn test_entity_link_emitted_native_handoffs_execute() {
     let link_artifact: Value = serde_json::from_slice(&std::fs::read(&link_path).unwrap()).unwrap();
     assert_eq!(run_artifact["version"], "canon_entity_run.v1");
     assert_eq!(solve_artifact["version"], "canon_entity_solve.v1");
-    assert_eq!(link_artifact["version"], "canon_entity_link.v0");
+    assert_eq!(link_artifact["version"], "canon_entity_link.v1");
+    assert_eq!(
+        link_artifact["decision_artifact"]["version"],
+        "canon_entity_link_decisions.v1"
+    );
+    assert_eq!(
+        link_artifact["observation_surface_bindings_path"],
+        "observation_surface_bindings.jsonl"
+    );
+    if let Some(artifacts) = link_artifact
+        .get("assignment_alignment_artifacts")
+        .and_then(Value::as_array)
+    {
+        assert!(
+            artifacts
+                .iter()
+                .all(|artifact| artifact["evidence_semantics"] == "nonidentity_relation_hint")
+        );
+    }
     assert_eq!(
         link_artifact["shared_solve_artifact"]["content_hash"],
         solve_artifact["artifact_content_hash"]
@@ -1834,7 +2165,7 @@ fn test_entity_link_neutral_mixed_review_queue_contract() {
     let first_temp = tempdir().unwrap();
     let (link_path, link_artifact) = run_neutral_mixed_link(first_temp.path());
 
-    assert_eq!(link_artifact["version"], "canon_entity_link.v0");
+    assert_eq!(link_artifact["version"], "canon_entity_link.v1");
     assert_eq!(link_artifact["summary"]["target_records"], 3);
     assert_eq!(link_artifact["summary"]["matched"], 1);
     assert_eq!(link_artifact["summary"]["ambiguous"], 1);
@@ -1867,7 +2198,7 @@ fn test_entity_link_neutral_mixed_review_queue_contract() {
     );
     assert_eq!(
         link_artifact["decision_artifact"]["unmatched"][0]["reason"],
-        "no_candidates"
+        "missing_solve_component"
     );
 
     let escrow_json = review_json_for_link(&link_path, "escrow");
@@ -2338,24 +2669,24 @@ fn test_entity_review_export_run_handoff_rejects_unsafe_or_mismatched_solve_path
 #[test]
 fn test_entity_review_export_link_handoff_rejects_malformed_or_tampered_artifacts() {
     let temp_dir = tempdir().unwrap();
-    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
+    let fixture = write_entity_link_smoke_fixture(temp_dir.path(), false);
     let work_dir = temp_dir.path().join("entity-link-work");
     let mut args = entity_link_smoke_args(&fixture, &work_dir);
     args.push("--no-witness");
     Command::new(env!("CARGO_BIN_EXE_canon"))
         .args(args)
         .assert()
-        .success();
+        .code(1);
 
     let link_path = work_dir.join("link/link.json");
     let link_artifact: Value = serde_json::from_slice(&std::fs::read(&link_path).unwrap()).unwrap();
 
-    let link_dir = work_dir.join("link");
+    let link_dir = link_path.parent().unwrap().to_path_buf();
     let malformed_link_path = link_dir.join("malformed-link.json");
     std::fs::write(
         &malformed_link_path,
         serde_json::to_vec_pretty(&serde_json::json!({
-            "version": "canon_entity_link.v0"
+            "version": "canon_entity_link.v1"
         }))
         .unwrap(),
     )
@@ -2415,7 +2746,8 @@ fn test_entity_review_export_link_handoff_rejects_malformed_or_tampered_artifact
 
     let nested_hash_path = link_dir.join("tampered-link-decision.json");
     let mut nested_hash = link_artifact.clone();
-    nested_hash["decision_artifact"]["matches"][0]["score"] = serde_json::json!(0.25);
+    nested_hash["decision_artifact"]["unmatched"][0]["reason"] =
+        serde_json::json!("tampered_unmatched_reason");
     std::fs::write(
         &nested_hash_path,
         serde_json::to_vec_pretty(&resealed_typed_link_artifact(&nested_hash)).unwrap(),
@@ -2443,6 +2775,63 @@ fn test_entity_review_export_link_handoff_rejects_malformed_or_tampered_artifact
     assert_eq!(
         nested_hash_refusal["refusal"]["detail"]["writes_performed"],
         false
+    );
+
+    let replay_mismatch_path = link_dir.join("tampered-link-decision-replay.json");
+    let mut replay_mismatch = link_artifact.clone();
+    let mut unmatched = replay_mismatch["decision_artifact"]["unmatched"]
+        .as_array()
+        .unwrap()
+        .clone();
+    let reclassified_unmatched = unmatched.remove(0);
+    let reclassified_target_id = reclassified_unmatched["target_id"].clone();
+    let mut matches = replay_mismatch["decision_artifact"]["matches"]
+        .as_array()
+        .unwrap()
+        .clone();
+    matches.push(serde_json::json!({
+        "reference_id": "R-1",
+        "target_id": reclassified_target_id,
+        "canonical_id": "R-1",
+        "score": 0.0,
+        "assertions": []
+    }));
+    let target_records = replay_mismatch["decision_artifact"]["summary"]["target_records"]
+        .as_u64()
+        .unwrap();
+    let match_rate = if target_records == 0 {
+        0.0
+    } else {
+        matches.len() as f64 / target_records as f64
+    };
+    replay_mismatch["decision_artifact"]["matches"] = serde_json::json!(matches);
+    replay_mismatch["decision_artifact"]["unmatched"] = serde_json::json!(unmatched);
+    replay_mismatch["decision_artifact"]["summary"]["matched"] = serde_json::json!(
+        replay_mismatch["decision_artifact"]["matches"]
+            .as_array()
+            .unwrap()
+            .len()
+    );
+    replay_mismatch["decision_artifact"]["summary"]["unmatched"] = serde_json::json!(
+        replay_mismatch["decision_artifact"]["unmatched"]
+            .as_array()
+            .unwrap()
+            .len()
+    );
+    replay_mismatch["decision_artifact"]["summary"]["match_rate"] = serde_json::json!(match_rate);
+    replay_mismatch["summary"] = replay_mismatch["decision_artifact"]["summary"].clone();
+    std::fs::write(
+        &replay_mismatch_path,
+        serde_json::to_vec_pretty(&resealed_typed_link_artifact_with_rehashed_decisions(
+            &replay_mismatch,
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    assert_link_review_export_surfaces_refuse_without_writes(
+        &replay_mismatch_path,
+        &link_dir,
+        "decision_artifact.matches",
     );
 
     let partition_path = link_dir.join("tampered-link-partition.json");
@@ -2570,7 +2959,6 @@ fn test_entity_link_cli_invalid_suite_refuses_before_writes() {
         suite.to_str().unwrap(),
         "--gold",
         fixture.gold.to_str().unwrap(),
-        "--write-back",
         "--no-witness",
     ]);
 
@@ -2620,8 +3008,8 @@ fn test_entity_link_cli_accepts_advertised_row_formats() {
         assert_eq!(payload["target"]["row_count"], 1);
         let materialized =
             std::fs::read_to_string(work_dir.join("link/combined_rows.csv")).unwrap();
-        assert!(materialized.contains("Reference Name"));
-        assert!(materialized.contains("Target Name"));
+        assert!(materialized.contains("Beta Workshop"));
+        assert!(materialized.contains("Beta Workshop North"));
     }
 }
 
@@ -2697,7 +3085,7 @@ fn test_entity_link_cli_summary_output() {
         .success();
 
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
-    assert!(stdout.contains("canon_entity_link.v0"));
+    assert!(stdout.contains("canon_entity_link.v1"));
     assert!(stdout.contains("matched=1"));
     assert!(stdout.contains("match_rate=1.000"));
 }
@@ -2722,10 +3110,14 @@ fn test_entity_link_cli_partial_exit_one() {
     assert_eq!(payload["summary"]["unmatched"], 1);
     assert_eq!(decisions["summary"]["matched"], 0);
     assert_eq!(decisions["summary"]["unmatched"], 1);
+    assert!(decisions["matches"].as_array().unwrap().is_empty());
+    assert!(decisions["ambiguous"].as_array().unwrap().is_empty());
     assert_eq!(
         decisions["unmatched"][0]["reason"],
-        "required_assertion_failed"
+        "missing_solve_component"
     );
+    assert_eq!(decisions["unmatched"][0]["target_id"], "T-1");
+    assert!(decisions["unmatched"][0]["best_candidate"].is_null());
 }
 
 #[test]
@@ -2870,10 +3262,12 @@ fn test_entity_link_cli_witness_append_and_failure_nonfatal() {
 }
 
 #[test]
-fn test_entity_link_cli_writeback_invocation_shape() {
+fn test_entity_link_cli_writeback_refuses_without_mutation() {
     let temp_dir = tempdir().unwrap();
     let fixture = write_entity_link_smoke_fixture(temp_dir.path(), true);
     let work_dir = temp_dir.path().join("entity-link-work");
+    let registry_before = registry_snapshot(&fixture.registry);
+    let registry_files_before = registry_files(&fixture.registry);
     let mut args = entity_link_smoke_args(&fixture, &work_dir);
     args.extend([
         "--gold",
@@ -2885,21 +3279,25 @@ fn test_entity_link_cli_writeback_invocation_shape() {
     let output = Command::new(env!("CARGO_BIN_EXE_canon"))
         .args(args)
         .assert()
-        .success();
+        .code(2);
 
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
     let payload: Value = serde_json::from_str(&stdout).unwrap();
-    let decisions = &payload["decision_artifact"];
-    assert_eq!(decisions["gold_score"]["accuracy"], 1.0);
-    assert_eq!(decisions["write_back"]["written"], true);
-    assert_eq!(decisions["write_back"]["entry_count"], 2);
-
-    let mapping_file = decisions["write_back"]["mapping_file"].as_str().unwrap();
-    let mapping_path = fixture.registry.join(mapping_file);
-    assert!(mapping_path.exists());
-    let mapping_content = std::fs::read_to_string(mapping_path).unwrap();
-    assert!(mapping_content.contains("STRUCTURAL_MATCH:entity-link-smoke.v1"));
-    assert!(!mapping_content.contains("100 Main St"));
+    assert_eq!(payload["outcome"], "REFUSAL");
+    assert_eq!(payload["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        payload["refusal"]["detail"]["reason"],
+        "transactional_publication_required"
+    );
+    assert_eq!(payload["refusal"]["detail"]["flag"], "--write-back");
+    assert_eq!(payload["refusal"]["detail"]["writes_performed"], false);
+    assert_eq!(
+        payload["refusal"]["detail"]["registry_write_back_performed"],
+        false
+    );
+    assert!(!work_dir.exists());
+    assert_eq!(registry_snapshot(&fixture.registry), registry_before);
+    assert_eq!(registry_files(&fixture.registry), registry_files_before);
 }
 
 #[test]

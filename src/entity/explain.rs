@@ -17,6 +17,7 @@ use crate::{
         schema::{
             entity_v1_artifact_reference, entity_v1_lifecycle_metadata_from_source,
             finalize_entity_v1_self_hash, validate_artifact_v1_core_contract,
+            validate_entity_v1_self_hash,
         },
     },
 };
@@ -35,26 +36,62 @@ pub struct EntityExplainV1Query {
     pub escrow_id: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum EntityExplainV1Source {
+    Solve(Value),
+    Run {
+        run_artifact: Value,
+        solve_artifact: Value,
+    },
+}
+
 pub fn explain_entity_v1(
     query: EntityExplainV1Query,
-    result_artifact: Value,
+    source: EntityExplainV1Source,
 ) -> Result<Value, Refusal> {
-    validate_explain_v1_source(&result_artifact)?;
+    validate_explain_v1_source(&source)?;
     validate_query(&query)?;
-    let source_ref = entity_v1_artifact_reference(&result_artifact)?;
+    let result_artifact = source.requested_artifact();
+    let selection_artifact = source.selection_artifact();
+    let mut upstream_artifacts = vec![entity_v1_artifact_reference(result_artifact)?];
+    if let Some(solve_artifact) = source.bound_solve_artifact() {
+        upstream_artifacts.push(entity_v1_artifact_reference(solve_artifact)?);
+    }
     let metadata = entity_v1_lifecycle_metadata_from_source(
-        &result_artifact,
+        result_artifact,
         EntityArtifactStageV1::Explain,
-        vec![source_ref],
+        upstream_artifacts,
     )?;
     let selector = selector_json(&query);
-    let selected = selected_records(&query, &result_artifact);
+    let selected = selected_records(&query, selection_artifact);
     let source_hash = required_value_string(
-        &result_artifact,
+        result_artifact,
         &["artifact_content_hash"],
         "artifact_content_hash",
     )?;
-    let source_version = required_value_string(&result_artifact, &["version"], "version")?;
+    let source_version = required_value_string(result_artifact, &["version"], "version")?;
+    let bound_solve = source
+        .bound_solve_artifact()
+        .map(|solve| {
+            Ok::<Value, Refusal>(json!({
+                "version": required_value_string(solve, &["version"], "version")?,
+                "content_hash": required_value_string(
+                    solve,
+                    &["artifact_content_hash"],
+                    "artifact_content_hash",
+                )?
+            }))
+        })
+        .transpose()?;
+    let mut source_result = json!({
+        "version": source_version,
+        "content_hash": source_hash
+    });
+    if let Some(bound_solve) = bound_solve
+        && let Some(object) = source_result.as_object_mut()
+    {
+        object.insert("bound_solve".to_string(), bound_solve);
+    }
     let mut artifact = json!({
         "version": CANON_ENTITY_EXPLAIN_VERSION_V1,
         "artifact_content_hash": "",
@@ -62,7 +99,7 @@ pub fn explain_entity_v1(
         "summary": {
             "counts": {
                 "selected_records": selected.len() as u64,
-                "source_rows": value_u64_or(&result_artifact, &["metadata", "input", "row_count"], 0)
+                "source_rows": value_u64_or(result_artifact, &["metadata", "input", "row_count"], 0)
             },
             "labels": {
                 "stage": "explain",
@@ -72,21 +109,18 @@ pub fn explain_entity_v1(
         },
         "explanation_path": "explain/evidence.json",
         "query": query,
-        "source_result": {
-            "version": source_version,
-            "content_hash": source_hash
-        },
+        "source_result": source_result,
         "result": {
             "selector": selector,
-            "registry_snapshot": result_artifact
+            "registry_snapshot": selection_artifact
                 .get("metadata")
                 .and_then(|metadata| metadata.get("registry_snapshot"))
                 .cloned()
                 .unwrap_or(Value::Null),
             "records": selected,
-            "evidence": matching_array(&result_artifact, "evidence"),
-            "review": matching_array(&result_artifact, "review_items"),
-            "promotion": matching_array(&result_artifact, "promotions"),
+            "evidence": matching_array(selection_artifact, "evidence"),
+            "review": matching_array(selection_artifact, "review_items"),
+            "promotion": matching_array(selection_artifact, "promotions"),
             "next_command": "canon entity apply <PROMOTE.json> --rows <ROWS> --registry <REGISTRY>"
         }
     });
@@ -113,23 +147,170 @@ pub fn render_explain_v1_summary(artifact: &Value) -> String {
     )
 }
 
-fn validate_explain_v1_source(artifact: &Value) -> Result<(), Refusal> {
+impl EntityExplainV1Source {
+    fn requested_artifact(&self) -> &Value {
+        match self {
+            Self::Solve(artifact) => artifact,
+            Self::Run { run_artifact, .. } => run_artifact,
+        }
+    }
+
+    fn selection_artifact(&self) -> &Value {
+        match self {
+            Self::Solve(artifact) => artifact,
+            Self::Run { solve_artifact, .. } => solve_artifact,
+        }
+    }
+
+    fn bound_solve_artifact(&self) -> Option<&Value> {
+        match self {
+            Self::Solve(_) => None,
+            Self::Run { solve_artifact, .. } => Some(solve_artifact),
+        }
+    }
+}
+
+fn validate_explain_v1_source(source: &EntityExplainV1Source) -> Result<(), Refusal> {
+    match source {
+        EntityExplainV1Source::Solve(artifact) => {
+            validate_explain_v1_source_artifact(artifact, CANON_ENTITY_SOLVE_VERSION_V1)?;
+        }
+        EntityExplainV1Source::Run {
+            run_artifact,
+            solve_artifact,
+        } => {
+            validate_explain_v1_source_artifact(run_artifact, CANON_ENTITY_RUN_VERSION_V1)?;
+            validate_explain_v1_source_artifact(solve_artifact, CANON_ENTITY_SOLVE_VERSION_V1)?;
+            validate_run_bound_solve(run_artifact, solve_artifact)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_explain_v1_source_artifact(
+    artifact: &Value,
+    expected_version: &str,
+) -> Result<(), Refusal> {
     let contract = validate_artifact_v1_core_contract(artifact)?;
-    if !matches!(
-        contract.artifact_version,
-        CANON_ENTITY_RUN_VERSION_V1 | CANON_ENTITY_SOLVE_VERSION_V1
-    ) {
+    if contract.artifact_version != expected_version {
         return Err(explain_refusal(
-            "Explain requires a canon_entity_run.v1 or canon_entity_solve.v1 artifact",
+            "Explain source artifact has the wrong contract version",
             json!({
                 "stage": "explain",
                 "field": "version",
-                "expected": [CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1],
+                "expected": expected_version,
                 "actual": contract.artifact_version
             }),
         ));
     }
+    validate_entity_v1_self_hash(artifact)?;
     Ok(())
+}
+
+fn validate_run_bound_solve(run_artifact: &Value, solve_artifact: &Value) -> Result<(), Refusal> {
+    let solve_hash = required_value_string(
+        solve_artifact,
+        &["artifact_content_hash"],
+        "solve.artifact_content_hash",
+    )?;
+    let solve_path = required_value_string(
+        run_artifact,
+        &["work_dir", "solve_artifact_path"],
+        "work_dir.solve_artifact_path",
+    )?;
+    if solve_path != "solve/solve.json" {
+        return Err(explain_refusal(
+            "Run explain requires the canonical bound solve path",
+            json!({
+                "stage": "explain",
+                "field": "work_dir.solve_artifact_path",
+                "expected": "solve/solve.json",
+                "actual": solve_path
+            }),
+        ));
+    }
+    let solve_stage_refs = run_artifact
+        .get("stage_artifacts")
+        .and_then(Value::as_array)
+        .map(|artifacts| {
+            artifacts
+                .iter()
+                .filter(|artifact| {
+                    artifact.get("stage").and_then(Value::as_str) == Some("solve")
+                        && artifact.get("version").and_then(Value::as_str)
+                            == Some(CANON_ENTITY_SOLVE_VERSION_V1)
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if solve_stage_refs.len() != 1 {
+        return Err(explain_refusal(
+            "Run explain requires exactly one solve stage reference",
+            json!({
+                "stage": "explain",
+                "field": "stage_artifacts.solve",
+                "expected_version": CANON_ENTITY_SOLVE_VERSION_V1,
+                "expected_count": 1,
+                "actual_count": solve_stage_refs.len() as u64
+            }),
+        ));
+    }
+    let stage_ref = solve_stage_refs[0];
+    let stage_hash = required_value_string(
+        stage_ref,
+        &["artifact_content_hash"],
+        "stage_artifacts.solve.artifact_content_hash",
+    )?;
+    let stage_path = required_value_string(stage_ref, &["path"], "stage_artifacts.solve.path")?;
+    if stage_hash != solve_hash || stage_path != solve_path {
+        return Err(explain_refusal(
+            "Run explain solve stage reference does not match the bound solve artifact",
+            json!({
+                "stage": "explain",
+                "field": "stage_artifacts.solve",
+                "expected": {
+                    "path": solve_path,
+                    "artifact_content_hash": solve_hash
+                },
+                "actual": {
+                    "path": stage_path,
+                    "artifact_content_hash": stage_hash
+                }
+            }),
+        ));
+    }
+    validate_same_json_field(run_artifact, solve_artifact, &["metadata", "profile"])?;
+    validate_same_json_field(
+        run_artifact,
+        solve_artifact,
+        &["metadata", "registry_snapshot"],
+    )?;
+    Ok(())
+}
+
+fn validate_same_json_field(left: &Value, right: &Value, path: &[&str]) -> Result<(), Refusal> {
+    let left_value = value_at_path(left, path);
+    let right_value = value_at_path(right, path);
+    if left_value == right_value {
+        return Ok(());
+    }
+    Err(explain_refusal(
+        "Run explain source continuity check failed",
+        json!({
+            "stage": "explain",
+            "field": path.join("."),
+            "expected": left_value.cloned().unwrap_or(Value::Null),
+            "actual": right_value.cloned().unwrap_or(Value::Null)
+        }),
+    ))
+}
+
+fn value_at_path<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
+    let mut current = value;
+    for segment in path {
+        current = current.get(*segment)?;
+    }
+    Some(current)
 }
 
 fn validate_query(query: &EntityExplainV1Query) -> Result<(), Refusal> {

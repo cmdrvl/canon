@@ -1,0 +1,21 @@
+{
+  "schema_version": "canon.entity.profile.execution.v0",
+  "profile": "pkg.alpha.surface_profile",
+  "mode": "cluster",
+  "records_format": "csv",
+  "record_count": 2,
+  "canonical_view": "alpha_label_core",
+  "canonical_surfaces": [
+    "north ridge",
+    "south ridge"
+  ],
+  "record_keys": [
+    "A-001",
+    "A-002"
+  ],
+  "required_outputs": [
+    "cluster_assignments",
+    "prepare_bundle",
+    "review_queue"
+  ]
+}

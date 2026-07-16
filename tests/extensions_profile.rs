@@ -3,23 +3,18 @@
 const MODULE_SOURCE: &str = include_str!("../src/extensions/profile.rs");
 const SCHEMA_JSON: &str = include_str!("../schemas/canon.entity.profile.v1.schema.json");
 
-mod profile_impl {
-    #![allow(dead_code)]
-
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/src/extensions/profile.rs"
-    ));
-}
-
-use profile_impl::{
-    AppliedProjectOverride, CANON_ENTITY_PROFILE_PACKAGE_VERSION, EntityEvidenceLanes,
+use canon::entity::profile_package::{
+    AppliedProjectOverride, CANON_ENTITY_PROFILE_EXECUTION_VERSION,
+    CANON_ENTITY_PROFILE_PACKAGE_VERSION, ENTITY_PROFILE_CANONICAL_SURFACE_ROLE,
+    EntityEvidenceLanes, EntityNormalizationOperatorKind, EntityNormalizationOperatorSpec,
     EntityNormalizedView, EntityOperatorSpec, EntityPatchNamespaces, EntityProfileExecutionRequest,
     EntityProfileFieldMapping, EntityProfileLimits, EntityProfileMode, EntityProfilePackage,
-    EntityProfilePackageCompatibility, EntityProfileProjectOverride, LinkDirection,
-    ProfileCapability, ProfileErrorCode, ProfileModeKind, ProfilePackageRef, ProfilePackageRefKind,
+    EntityProfilePackageCompatibility, EntityProfilePackageRunRequest,
+    EntityProfileProjectOverride, EntityProfileRecordInputFormat, LinkDirection, ProfileCapability,
+    ProfileErrorCode, ProfileModeKind, ProfilePackageRef, ProfilePackageRefKind,
     build_project_lock_view, canonical_package_bytes, entity_profile_package_digest,
-    finalize_package, package_compatibility, validate_package_for_execution,
+    execute_profile_package_records, finalize_package, package_compatibility,
+    validate_package_for_execution,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -41,6 +36,14 @@ fn schema_declares_portable_profile_package_and_mode_support() {
         schema["x-canon-contract"]["cluster_and_link_modes_supported"],
         true
     );
+    assert_eq!(
+        schema["x-canon-contract"]["external_execution"]["execution_summary_version"],
+        CANON_ENTITY_PROFILE_EXECUTION_VERSION
+    );
+    assert_eq!(
+        schema["x-canon-contract"]["external_execution"]["canonical_surface_role"],
+        ENTITY_PROFILE_CANONICAL_SURFACE_ROLE
+    );
     assert!(
         schema["x-canon-contract"]["portable_package_fields"]
             .as_array()
@@ -48,6 +51,17 @@ fn schema_declares_portable_profile_package_and_mode_support() {
             .iter()
             .any(|value| value == "project_overrides")
     );
+    assert_eq!(
+        schema["$defs"]["normalized_view"]["properties"]["operators"]["items"]["$ref"],
+        "#/$defs/normalized_view_operator"
+    );
+    let supported =
+        schema["x-canon-contract"]["external_execution"]["supported_normalized_view_operators"]
+            .as_array()
+            .expect("supported normalized operators");
+    assert!(supported.iter().any(|value| value == "replace_tokens"));
+    assert!(supported.iter().any(|value| value == "strip_suffixes"));
+    assert!(supported.iter().all(|value| value != "identity"));
 }
 
 #[test]
@@ -216,6 +230,110 @@ fn source_scan_keeps_domain_terms_out_of_profile_package_contract() {
     }
 }
 
+#[test]
+fn parameterized_normalization_specs_change_output_without_rust_branches() {
+    let records = b"observation_id,raw_name\nrow-1,North Ridge LLC\n";
+    let suffix_and_vocab_a = package_with_core_operators(vec![
+        normalization_op(EntityNormalizationOperatorKind::Lowercase),
+        normalization_op(EntityNormalizationOperatorKind::NormalizeWhitespace),
+        normalization_op_params(
+            EntityNormalizationOperatorKind::StripSuffixes,
+            vec![("suffixes", vec!["llc"])],
+        ),
+        normalization_op_params(
+            EntityNormalizationOperatorKind::RemoveTokens,
+            vec![("tokens", vec!["ridge"])],
+        ),
+        normalization_op_params(
+            EntityNormalizationOperatorKind::Fingerprint,
+            vec![("joiner", vec!["~"])],
+        ),
+    ]);
+    let suffix_and_vocab_b = package_with_core_operators(vec![
+        normalization_op(EntityNormalizationOperatorKind::Lowercase),
+        normalization_op(EntityNormalizationOperatorKind::NormalizeWhitespace),
+        normalization_op_params(
+            EntityNormalizationOperatorKind::StripSuffixes,
+            vec![("suffixes", vec!["inc"])],
+        ),
+        normalization_op_params(
+            EntityNormalizationOperatorKind::RemoveTokens,
+            vec![("tokens", vec!["north"])],
+        ),
+        normalization_op_params(
+            EntityNormalizationOperatorKind::Fingerprint,
+            vec![("joiner", vec!["~"])],
+        ),
+    ]);
+
+    let output_a = execute_profile_package_records(
+        &suffix_and_vocab_a,
+        records,
+        EntityProfileRecordInputFormat::Csv,
+        &cluster_run_request(),
+    )
+    .expect("parameterized package A executes");
+    let output_b = execute_profile_package_records(
+        &suffix_and_vocab_b,
+        records,
+        EntityProfileRecordInputFormat::Csv,
+        &cluster_run_request(),
+    )
+    .expect("parameterized package B executes");
+
+    assert_eq!(output_a.records[0].canonical_surface, "north");
+    assert_eq!(output_b.records[0].canonical_surface, "llc~ridge");
+    assert_ne!(
+        output_a.package_digest, output_b.package_digest,
+        "operator parameters must be hash-bound in the canonical package digest"
+    );
+}
+
+#[test]
+fn typed_operator_params_reject_unknown_duplicate_and_oversized_values() {
+    let mut canonicalized = package_with_core_operators(vec![
+        normalization_op(EntityNormalizationOperatorKind::Lowercase),
+        normalization_op_params(
+            EntityNormalizationOperatorKind::RemoveTokens,
+            vec![("tokens", vec!["zeta", "alpha"])],
+        ),
+    ]);
+    canonicalized =
+        finalize_package(canonicalized).expect("parameter order canonicalizes deterministically");
+    assert_eq!(
+        canonicalized.normalized_views["organization_core"].operators[1].params["tokens"],
+        vec!["alpha".to_string(), "zeta".to_string()]
+    );
+
+    let oversized = "x".repeat(129);
+    for (name, operator) in [
+        (
+            "unknown",
+            normalization_op_params(
+                EntityNormalizationOperatorKind::RemoveTokens,
+                vec![("unexpected", vec!["alpha"])],
+            ),
+        ),
+        (
+            "duplicate",
+            normalization_op_params(
+                EntityNormalizationOperatorKind::RemoveTokens,
+                vec![("tokens", vec!["alpha", "alpha"])],
+            ),
+        ),
+        (
+            "oversized",
+            normalization_op_params(
+                EntityNormalizationOperatorKind::RemoveTokens,
+                vec![("tokens", vec![oversized.as_str()])],
+            ),
+        ),
+    ] {
+        let error = finalize_package(package_with_core_operators(vec![operator])).expect_err(name);
+        assert_eq!(error.code, ProfileErrorCode::ArtifactContract, "{name}");
+    }
+}
+
 fn sample_package() -> EntityProfilePackage {
     EntityProfilePackage {
         kind: "entity-profile".to_string(),
@@ -229,16 +347,17 @@ fn sample_package() -> EntityProfilePackage {
             (
                 "anchor_key".to_string(),
                 EntityNormalizedView {
-                    operators: vec!["ascii_trim_upper".to_string()],
+                    operators: vec![normalization_op(
+                        EntityNormalizationOperatorKind::AsciiTrimUpper,
+                    )],
                 },
             ),
             (
                 "organization_core".to_string(),
                 EntityNormalizedView {
                     operators: vec![
-                        "unicode_fold".to_string(),
-                        "lowercase".to_string(),
-                        "normalize_whitespace".to_string(),
+                        normalization_op(EntityNormalizationOperatorKind::Lowercase),
+                        normalization_op(EntityNormalizationOperatorKind::NormalizeWhitespace),
                     ],
                 },
             ),
@@ -432,12 +551,61 @@ fn shuffled_sample_package() -> EntityProfilePackage {
     package.expected_outputs.reverse();
     package.project_overrides.reverse();
     package
+}
+
+fn normalization_op(op: EntityNormalizationOperatorKind) -> EntityNormalizationOperatorSpec {
+    EntityNormalizationOperatorSpec {
+        op,
+        params: BTreeMap::new(),
+    }
+}
+
+fn normalization_op_params(
+    op: EntityNormalizationOperatorKind,
+    params: Vec<(&str, Vec<&str>)>,
+) -> EntityNormalizationOperatorSpec {
+    EntityNormalizationOperatorSpec {
+        op,
+        params: params
+            .into_iter()
+            .map(|(key, values)| {
+                (
+                    key.to_string(),
+                    values.into_iter().map(str::to_string).collect(),
+                )
+            })
+            .collect(),
+    }
+}
+
+fn package_with_core_operators(
+    operators: Vec<EntityNormalizationOperatorSpec>,
+) -> EntityProfilePackage {
+    let mut package = sample_package();
+    package
         .normalized_views
         .get_mut("organization_core")
         .expect("organization_core view")
-        .operators
-        .reverse();
+        .operators = operators;
+    for mapping in &mut package.field_mappings {
+        if mapping.field_path == "raw_name" {
+            mapping.field_role = ENTITY_PROFILE_CANONICAL_SURFACE_ROLE.to_string();
+        }
+    }
     package
+}
+
+fn cluster_run_request() -> EntityProfilePackageRunRequest {
+    EntityProfilePackageRunRequest {
+        execution: EntityProfileExecutionRequest {
+            mode: ProfileModeKind::Cluster,
+            source_object_type: "pkg.synthetic:organization".to_string(),
+            target_object_type: None,
+            required_capabilities: vec![ProfileCapability::Prepare],
+            required_outputs: vec!["prepare_bundle".to_string()],
+        },
+        expected_package_digest: None,
+    }
 }
 
 fn sample_ref(kind: ProfilePackageRefKind, id: &str, hash_char: char) -> ProfilePackageRef {

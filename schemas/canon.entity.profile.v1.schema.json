@@ -175,11 +175,58 @@
         "operators": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 16,
           "items": {
-            "type": "string",
-            "minLength": 1
+            "$ref": "#/$defs/normalized_view_operator"
           },
           "uniqueItems": true
+        }
+      }
+    },
+    "normalized_view_operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op"
+      ],
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": [
+            "lowercase",
+            "uppercase",
+            "ascii_trim_upper",
+            "normalize_whitespace",
+            "tokenize",
+            "replace_tokens",
+            "remove_tokens",
+            "strip_suffixes",
+            "fingerprint"
+          ]
+        },
+        "params": {
+          "type": "object",
+          "maxProperties": 8,
+          "propertyNames": {
+            "enum": [
+              "joiner",
+              "replacements",
+              "tokens",
+              "suffixes",
+              "drop_tokens"
+            ]
+          },
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "uniqueItems": true
+          }
         }
       }
     },
@@ -606,6 +653,25 @@
       "project_overrides"
     ],
     "cluster_and_link_modes_supported": true,
+    "external_execution": {
+      "execution_summary_version": "canon.entity.profile.execution.v0",
+      "canonical_surface_role": "canonical_surface",
+      "supported_record_formats": [
+        "csv",
+        "jsonl"
+      ],
+      "supported_normalized_view_operators": [
+        "lowercase",
+        "uppercase",
+        "ascii_trim_upper",
+        "normalize_whitespace",
+        "tokenize",
+        "replace_tokens",
+        "remove_tokens",
+        "strip_suffixes",
+        "fingerprint"
+      ]
+    },
     "override_visibility": "Profile defaults and project overrides must be visible in artifact headers and project locks.",
     "unknown_field_refusal": "Field mappings and execution mode field_paths must resolve only declared views and fields.",
     "wrong_kind_refusal": "canon entity and canon resolve must refuse the wrong typed contract kind instead of treating arbitrary YAML as executable strategy input.",

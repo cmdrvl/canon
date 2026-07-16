@@ -1052,6 +1052,46 @@ fn run_entity_link_command(link: &EntityLinkCli) -> Result<u8, Box<dyn Error>> {
             summary_mode,
         );
     };
+    if let Err(refusal_output) = validate_entity_link_input_rows(link) {
+        return emit_entity_refusal(refusal_output, true, summary_mode);
+    }
+
+    let strategy = match resolve::load_strategy(&link.strategy) {
+        Ok(strategy) => strategy,
+        Err(error) => {
+            return emit_entity_refusal(create_resolve_refusal(error), true, summary_mode);
+        }
+    };
+    let tapes = match resolve::load_tapes(
+        &link.reference,
+        &link.target,
+        &strategy,
+        resolve::TapeLoadOptions {
+            max_rows: link.max_rows,
+            max_bytes: link.max_bytes,
+        },
+    ) {
+        Ok(tapes) => tapes,
+        Err(error) => {
+            return emit_entity_refusal(create_resolve_refusal(error), true, summary_mode);
+        }
+    };
+    if let Err(refusal_output) =
+        validate_entity_link_candidate_budget_preflight(link, &strategy, &tapes)
+    {
+        return emit_entity_refusal(refusal_output, true, summary_mode);
+    }
+    if link.write_back {
+        return emit_entity_refusal(
+            entity_link_v1_write_back_refusal(link, work_dir),
+            true,
+            summary_mode,
+        );
+    }
+    if let Err(refusal_output) = validate_entity_link_profile_strategy_contract(profile, &strategy)
+    {
+        return emit_entity_refusal(refusal_output, true, summary_mode);
+    }
 
     let audit_suite = match link.suite.as_ref() {
         Some(suite_dir) => match load_entity_audit_suite(suite_dir, "link") {
@@ -1062,18 +1102,6 @@ fn run_entity_link_command(link: &EntityLinkCli) -> Result<u8, Box<dyn Error>> {
         },
         None => None,
     };
-
-    if let Err(refusal_output) = validate_entity_link_input_rows(link) {
-        return emit_entity_refusal(refusal_output, true, summary_mode);
-    }
-
-    let preflight_decisions =
-        match resolve::produce_entity_link_decisions(entity_link_decision_request(link, false)) {
-            Ok(artifact) => artifact,
-            Err(error) => {
-                return emit_entity_refusal(create_resolve_refusal(error), true, summary_mode);
-            }
-        };
 
     match entity::run::link::run_entity_link_with_cache_mode(
         entity::run::link::EntityLinkRequest {
@@ -1098,21 +1126,13 @@ fn run_entity_link_command(link: &EntityLinkCli) -> Result<u8, Box<dyn Error>> {
                 None
             };
 
-            let decisions = if link.write_back {
-                match resolve::produce_entity_link_decisions(entity_link_decision_request(
-                    link, true,
-                )) {
-                    Ok(artifact) => artifact,
-                    Err(error) => {
-                        return emit_entity_refusal(
-                            create_resolve_refusal(error),
-                            true,
-                            summary_mode,
-                        );
-                    }
+            let decisions = match entity_link_v1_decision_artifact(
+                link, work_dir, &result, &strategy, &tapes,
+            ) {
+                Ok(artifact) => artifact,
+                Err(refusal_output) => {
+                    return emit_entity_refusal(refusal_output, true, summary_mode);
                 }
-            } else {
-                preflight_decisions
             };
             let link_artifact = match entity::run::link::finalize_entity_link_artifact(
                 entity::run::link::EntityLinkFinalizeRequest {
@@ -1179,6 +1199,88 @@ fn validate_entity_link_input_path(role: &str, path: &Path) -> Result<(), CanonO
             )),
         )
     })
+}
+
+#[allow(clippy::result_large_err)]
+fn validate_entity_link_candidate_budget_preflight(
+    link: &EntityLinkCli,
+    strategy: &resolve::ResolveStrategy,
+    tapes: &resolve::LoadedTapes,
+) -> Result<(), CanonOutput> {
+    let Some(limit) = link.max_candidates.or(strategy.max_candidates) else {
+        return Ok(());
+    };
+    if limit != 0 {
+        return Ok(());
+    }
+
+    let mut counting_strategy = strategy.clone();
+    counting_strategy.max_candidates = None;
+    let target = resolve::select_candidates(tapes, &counting_strategy, None, None)
+        .map_err(create_resolve_refusal)?
+        .targets
+        .into_iter()
+        .next();
+    let Some(target) = target else {
+        return Ok(());
+    };
+    let target_id = target.target_id;
+    let candidate_count = target.candidates.len();
+
+    Err(create_resolve_refusal(resolve::ResolveError::with_detail(
+        resolve::ResolveErrorCode::TooManyCandidates,
+        format!(
+            "Entity link max_candidates=0 is invalid for target '{}' with {} candidates after filtering",
+            target_id, candidate_count
+        ),
+        serde_json::json!({
+            "target_id": target_id,
+            "candidate_count": candidate_count,
+            "max_candidates": limit,
+            "filter_count": strategy.candidate_filter.len(),
+            "writes_performed": false
+        }),
+    )))
+}
+
+#[allow(clippy::result_large_err)]
+fn validate_entity_link_profile_strategy_contract(
+    profile_source: &str,
+    strategy: &resolve::ResolveStrategy,
+) -> Result<(), CanonOutput> {
+    let loaded_profile = entity::prepare::load_prepare_profile_with_hash(profile_source)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    if loaded_profile.document.entity_type == strategy.entity_type {
+        return Ok(());
+    }
+
+    Err(refusal::create_refusal(
+        RefusalCode::EEntityInputContract,
+        "Entity link profile entity_type does not match strategy entity_type".to_string(),
+        serde_json::json!({
+            "stage": "link",
+            "field": "profile.entity_type",
+            "profile_source": profile_source,
+            "expected": {
+                "strategy_entity_type": strategy.entity_type.as_str(),
+                "strategy_id": strategy.id.as_str(),
+                "strategy_version": strategy.version.as_str(),
+                "strategy_content_hash": strategy.content_hash.as_str()
+            },
+            "actual": {
+                "profile_entity_type": loaded_profile.document.entity_type.as_str(),
+                "profile_id": loaded_profile.document.profile.as_str(),
+                "profile_version": loaded_profile.document.version.as_str(),
+                "profile_content_hash": loaded_profile.content_hash.as_str()
+            },
+            "writes_performed": false
+        }),
+        Some(format!(
+            "Use an entity profile with entity_type '{}' or a strategy matching profile '{}', then rerun canon entity link",
+            strategy.entity_type.as_str(),
+            profile_source
+        )),
+    ))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1434,21 +1536,1018 @@ fn entity_link_audit_receipt(
     })
 }
 
-fn entity_link_decision_request(
+fn entity_link_v1_decision_artifact(
     link: &EntityLinkCli,
-    write_back: bool,
-) -> resolve::EntityLinkDecisionRequest {
-    resolve::EntityLinkDecisionRequest {
-        reference_tape: link.reference.clone(),
-        target_tape: link.target.clone(),
-        strategy: link.strategy.clone(),
-        registry: link.registry.clone(),
-        gold: link.gold.clone(),
-        write_back,
-        max_candidates: link.max_candidates,
-        max_rows: link.max_rows,
-        max_bytes: link.max_bytes,
+    work_dir: &Path,
+    result: &entity::run::link::EntityLinkResult,
+    strategy: &resolve::ResolveStrategy,
+    tapes: &resolve::LoadedTapes,
+) -> Result<resolve::ResolveArtifact, CanonOutput> {
+    validate_entity_link_v1_run_artifact(result)?;
+    let solve = load_entity_link_v1_solve_artifact(work_dir, &result.run.artifact)?;
+    let bindings =
+        derive_entity_link_decision_bindings(link, work_dir, &result.run.artifact, strategy)?;
+    validate_entity_link_run_strategy_continuity(&result.run.artifact, strategy, "link")?;
+    let decision_records = entity_link_decision_records_from_solve(&solve, &bindings, strategy)?;
+    enforce_entity_link_candidate_limit(link, strategy, &decision_records)?;
+    let gold_score = link
+        .gold
+        .as_deref()
+        .map(|gold| resolve::score_gold_file(gold, &decision_records))
+        .transpose()
+        .map_err(create_resolve_refusal)?;
+    entity_link_resolve_artifact_from_v1(
+        link,
+        &result.run.artifact,
+        strategy,
+        tapes,
+        decision_records,
+        gold_score,
+    )
+}
+
+fn validate_entity_link_v1_run_artifact(
+    result: &entity::run::link::EntityLinkResult,
+) -> Result<(), CanonOutput> {
+    entity::schema::validate_artifact_v1_core_contract(&result.run.artifact_value)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    entity::schema::validate_entity_v1_self_hash(&result.run.artifact_value)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    let actual_hash = entity_link_value_string(
+        &result.run.artifact_value,
+        &["artifact_content_hash"],
+        "run.artifact_content_hash",
+    )?;
+    if actual_hash.as_str() != result.run.artifact.artifact_content_hash.as_str() {
+        return Err(entity_link_v1_artifact_refusal(
+            "Entity link run artifact hash changed before decision derivation",
+            serde_json::json!({
+                "stage": "link",
+                "field": "run.artifact_content_hash",
+                "expected": result.run.artifact.artifact_content_hash.as_str(),
+                "actual": actual_hash.as_str(),
+                "writes_performed": false
+            }),
+        ));
     }
+    Ok(())
+}
+
+fn validate_entity_link_run_strategy_continuity(
+    run: &entity::run::EntityRunArtifact,
+    strategy: &resolve::ResolveStrategy,
+    stage: &str,
+) -> Result<(), CanonOutput> {
+    if run.metadata.strategy.id.as_str() != strategy.id.as_str()
+        || run.metadata.strategy.version.as_str() != strategy.version.as_str()
+        || run.metadata.strategy.content_hash.as_str() != strategy.content_hash.as_str()
+    {
+        return Err(entity_link_v1_artifact_refusal(
+            "Entity link strategy source does not match the v1 run metadata",
+            serde_json::json!({
+                "stage": stage,
+                "field": "metadata.strategy",
+                "expected": {
+                    "id": run.metadata.strategy.id.as_str(),
+                    "version": run.metadata.strategy.version.as_str(),
+                    "content_hash": run.metadata.strategy.content_hash.as_str()
+                },
+                "actual": {
+                    "id": strategy.id.as_str(),
+                    "version": strategy.version.as_str(),
+                    "content_hash": strategy.content_hash.as_str()
+                },
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn load_entity_link_v1_solve_artifact(
+    work_dir: &Path,
+    run: &entity::run::EntityRunArtifact,
+) -> Result<entity::solve::SolveArtifact, CanonOutput> {
+    let solve_path = work_dir.join(&run.work_dir.solve_artifact_path);
+    let (solve_value, _bytes) =
+        read_entity_lifecycle_json_artifact(&solve_path, "entity solve artifact")?;
+    entity::schema::validate_artifact_v1_core_contract(&solve_value)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    entity::schema::validate_entity_v1_self_hash(&solve_value)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    let solve_hash = entity_link_value_string(
+        &solve_value,
+        &["artifact_content_hash"],
+        "solve.artifact_hash",
+    )?;
+    let solve_stage = run
+        .stage_artifacts
+        .iter()
+        .find(|stage| {
+            stage.stage == entity::EntityArtifactStageV1::Solve.as_str()
+                && stage.version == entity::CANON_ENTITY_SOLVE_VERSION_V1
+        })
+        .ok_or_else(|| {
+            entity_link_v1_artifact_refusal(
+                "Entity link run artifact does not bind a solve.v1 stage",
+                serde_json::json!({
+                    "stage": "link",
+                    "field": "run.stage_artifacts",
+                    "expected_version": entity::CANON_ENTITY_SOLVE_VERSION_V1,
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    if solve_stage.artifact_content_hash.as_str() != solve_hash.as_str() {
+        return Err(entity_link_v1_artifact_refusal(
+            "Entity link solve artifact hash does not match the run stage reference",
+            serde_json::json!({
+                "stage": "link",
+                "field": "run.stage_artifacts.solve.artifact_content_hash",
+                "expected": solve_stage.artifact_content_hash.as_str(),
+                "actual": solve_hash.as_str(),
+                "path": solve_path.display().to_string(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    serde_json::from_value::<entity::solve::SolveArtifact>(solve_value).map_err(|error| {
+        entity_link_v1_artifact_refusal(
+            "Entity link solve artifact failed typed v1 deserialization",
+            serde_json::json!({
+                "stage": "link",
+                "path": solve_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EntityLinkDecisionBinding {
+    side: entity::run::link::EntityLinkRole,
+    link_id: String,
+    surface_id: String,
+}
+
+fn derive_entity_link_decision_bindings(
+    link: &EntityLinkCli,
+    work_dir: &Path,
+    run: &entity::run::EntityRunArtifact,
+    strategy: &resolve::ResolveStrategy,
+) -> Result<Vec<EntityLinkDecisionBinding>, CanonOutput> {
+    let materialized_path = entity::run::link::materialized_rows_path(work_dir);
+    let materialized_rows =
+        read_entity_link_materialized_decision_rows(&materialized_path, strategy)?;
+    let profile = link.profile.as_deref().ok_or_else(|| {
+        entity_link_v1_artifact_refusal(
+            "Entity link decision derivation requires the CLI profile source",
+            serde_json::json!({
+                "stage": "link",
+                "field": "profile",
+                "writes_performed": false
+            }),
+        )
+    })?;
+    let contract = entity_link_prepare_contract_for_cli_profile(profile, run)?;
+    let observations = entity::prepare::project_prepare_path(&materialized_path, &contract)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    let surfaces = read_entity_link_prepared_surfaces(work_dir, run)?;
+    if materialized_rows.len() != observations.len() {
+        return Err(entity_link_v1_artifact_refusal(
+            "Entity link materialized rows do not match prepared observations",
+            serde_json::json!({
+                "stage": "link",
+                "field": "materialized_rows",
+                "materialized_rows": materialized_rows.len(),
+                "prepared_observations": observations.len(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    let mut bindings = Vec::with_capacity(materialized_rows.len());
+    for (row, observation) in materialized_rows.iter().zip(observations.iter()) {
+        let surface = prepared_surface_for_observation(observation, &surfaces)?;
+        bindings.push(EntityLinkDecisionBinding {
+            side: row.side,
+            link_id: row.link_id.clone(),
+            surface_id: surface.surface_id.clone(),
+        });
+    }
+    bindings.sort_by(|left, right| {
+        left.surface_id
+            .cmp(&right.surface_id)
+            .then_with(|| {
+                entity_link_role_order(left.side).cmp(&entity_link_role_order(right.side))
+            })
+            .then_with(|| left.link_id.cmp(&right.link_id))
+    });
+    Ok(bindings)
+}
+
+fn entity_link_prepare_contract_for_cli_profile(
+    profile: &str,
+    run: &entity::run::EntityRunArtifact,
+) -> Result<entity::prepare::PrepareInputContract, CanonOutput> {
+    let loaded_profile = entity::prepare::load_prepare_profile_with_hash(profile)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    let mut contract = if let Some(mapping) = loaded_profile.prepare_mapping.clone() {
+        entity::prepare::PrepareInputContract::new(&loaded_profile.document, mapping)
+            .map_err(|refusal| refusal.to_canon_output())?
+    } else {
+        entity::prepare::PrepareInputContract::for_builtin_profile(&loaded_profile.document)
+            .map_err(|refusal| refusal.to_canon_output())?
+    };
+    contract.profile.content_hash = Some(loaded_profile.content_hash.clone());
+    validate_entity_link_profile_continuity(&contract.profile, run)?;
+    Ok(contract)
+}
+
+fn validate_entity_link_profile_continuity(
+    profile: &entity::EntityProfileReference,
+    run: &entity::run::EntityRunArtifact,
+) -> Result<(), CanonOutput> {
+    let run_profile = &run.metadata.profile;
+    let run_profile_hash = run_profile.content_hash.as_deref().unwrap_or_default();
+    let profile_hash = profile.content_hash.as_deref().unwrap_or_default();
+    if profile.id.as_str() != run_profile.id.as_str()
+        || profile.version.as_str() != run_profile.version.as_str()
+        || profile_hash != run_profile_hash
+    {
+        return Err(entity_link_v1_artifact_refusal(
+            "Entity link CLI profile source does not match the v1 run profile",
+            serde_json::json!({
+                "stage": "link",
+                "field": "profile",
+                "expected": {
+                    "id": run_profile.id.as_str(),
+                    "version": run_profile.version.as_str(),
+                    "content_hash": run_profile.content_hash.as_deref()
+                },
+                "actual": {
+                    "id": profile.id.as_str(),
+                    "version": profile.version.as_str(),
+                    "content_hash": profile.content_hash.as_deref()
+                },
+                "writes_performed": false
+            }),
+        ));
+    }
+    let firewall = &run.orchestration.profile_firewall;
+    if firewall.profile_id.as_str() != run_profile.id.as_str()
+        || firewall.profile_version.as_str() != run_profile.version.as_str()
+    {
+        return Err(entity_link_v1_artifact_refusal(
+            "Entity link run profile firewall does not match metadata profile",
+            serde_json::json!({
+                "stage": "link",
+                "field": "run.orchestration.profile_firewall",
+                "metadata_profile": {
+                    "id": run_profile.id.as_str(),
+                    "version": run_profile.version.as_str()
+                },
+                "firewall": {
+                    "id": firewall.profile_id.as_str(),
+                    "version": firewall.profile_version.as_str()
+                },
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn read_entity_link_prepared_surfaces(
+    work_dir: &Path,
+    run: &entity::run::EntityRunArtifact,
+) -> Result<Vec<entity::prepare::PreparedSurfaceRecord>, CanonOutput> {
+    let surfaces_path = work_dir.join(&run.work_dir.surfaces_path);
+    let bytes = fs::read_to_string(&surfaces_path).map_err(|error| {
+        refusal::create_refusal(
+            RefusalCode::EIo,
+            format!(
+                "Failed to read entity link prepared surfaces '{}': {}",
+                surfaces_path.display(),
+                error
+            ),
+            serde_json::json!({
+                "stage": "link",
+                "path": surfaces_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Rerun canon entity link to regenerate the v1 prepare surfaces".to_string()),
+        )
+    })?;
+    let mut surfaces = Vec::new();
+    for (line_index, line) in bytes.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let surface = serde_json::from_str::<entity::prepare::PreparedSurfaceRecord>(line)
+            .map_err(|error| {
+                entity_link_v1_artifact_refusal(
+                    "Failed to parse entity link prepared surface row",
+                    serde_json::json!({
+                        "stage": "link",
+                        "path": surfaces_path.display().to_string(),
+                        "line": line_index + 1,
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                )
+            })?;
+        surfaces.push(surface);
+    }
+    if surfaces.is_empty() {
+        return Err(entity_link_v1_artifact_refusal(
+            "Entity link prepared surfaces must not be empty",
+            serde_json::json!({
+                "stage": "link",
+                "path": surfaces_path.display().to_string(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    let profile_id = run.metadata.profile.id.as_str();
+    if surfaces
+        .iter()
+        .any(|surface| surface.profile_id.as_str() != profile_id)
+    {
+        return Err(entity_link_v1_artifact_refusal(
+            "Entity link prepared surfaces contain a profile outside the v1 run profile",
+            serde_json::json!({
+                "stage": "link",
+                "path": surfaces_path.display().to_string(),
+                "profile_id": profile_id,
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(surfaces)
+}
+
+fn entity_link_role_order(role: entity::run::link::EntityLinkRole) -> u8 {
+    match role {
+        entity::run::link::EntityLinkRole::Reference => 0,
+        entity::run::link::EntityLinkRole::Target => 1,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EntityLinkMaterializedDecisionRow {
+    side: entity::run::link::EntityLinkRole,
+    link_id: String,
+}
+
+fn read_entity_link_materialized_decision_rows(
+    path: &Path,
+    strategy: &resolve::ResolveStrategy,
+) -> Result<Vec<EntityLinkMaterializedDecisionRow>, CanonOutput> {
+    let file = fs::File::open(path).map_err(|error| {
+        refusal::create_refusal(
+            RefusalCode::EIo,
+            format!(
+                "Failed to open entity link materialized rows '{}': {}",
+                path.display(),
+                error
+            ),
+            serde_json::json!({
+                "stage": "link",
+                "path": path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Rerun canon entity link with matching --work-dir inputs".to_string()),
+        )
+    })?;
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(file);
+    let headers = reader
+        .headers()
+        .map_err(|error| {
+            entity_link_v1_artifact_refusal(
+                "Failed to read entity link materialized row headers",
+                serde_json::json!({
+                    "stage": "link",
+                    "path": path.display().to_string(),
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+            )
+        })?
+        .iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let mut rows = Vec::new();
+    for (index, record) in reader.records().enumerate() {
+        let record = record.map_err(|error| {
+            entity_link_v1_artifact_refusal(
+                "Failed to parse entity link materialized row",
+                serde_json::json!({
+                    "stage": "link",
+                    "path": path.display().to_string(),
+                    "row_number": index + 1,
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+            )
+        })?;
+        let values = headers
+            .iter()
+            .enumerate()
+            .map(|(field_index, header)| {
+                (
+                    header.clone(),
+                    record.get(field_index).unwrap_or_default().to_string(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let row_number = index + 1;
+        let side = entity_link_materialized_side(&values, row_number)?;
+        let id_columns = match side {
+            entity::run::link::EntityLinkRole::Reference => &strategy.identity.reference.id_columns,
+            entity::run::link::EntityLinkRole::Target => &strategy.identity.target.id_columns,
+        };
+        rows.push(EntityLinkMaterializedDecisionRow {
+            side,
+            link_id: entity_link_materialized_id(&values, id_columns, row_number)?,
+        });
+    }
+    Ok(rows)
+}
+
+fn entity_link_materialized_side(
+    values: &BTreeMap<String, String>,
+    row_number: usize,
+) -> Result<entity::run::link::EntityLinkRole, CanonOutput> {
+    match entity_link_required_materialized_value(
+        values,
+        entity::run::link::LINK_SOURCE_NAME_COLUMN,
+        row_number,
+    )?
+    .as_str()
+    {
+        "reference" => Ok(entity::run::link::EntityLinkRole::Reference),
+        "target" => Ok(entity::run::link::EntityLinkRole::Target),
+        actual => Err(entity_link_v1_artifact_refusal(
+            "Entity link materialized row has an invalid source side",
+            serde_json::json!({
+                "stage": "link",
+                "row_number": row_number,
+                "field": entity::run::link::LINK_SOURCE_NAME_COLUMN,
+                "actual": actual,
+                "writes_performed": false
+            }),
+        )),
+    }
+}
+
+fn entity_link_materialized_id(
+    values: &BTreeMap<String, String>,
+    id_columns: &[String],
+    row_number: usize,
+) -> Result<String, CanonOutput> {
+    const LINK_COMPOSITE_ID_SEPARATOR: &str = "|";
+    let mut parts = Vec::with_capacity(id_columns.len());
+    for column in id_columns {
+        let value = entity_link_required_materialized_value(values, column, row_number)?;
+        if value.contains(LINK_COMPOSITE_ID_SEPARATOR) {
+            return Err(entity_link_v1_artifact_refusal(
+                "Entity link identity value contains the reserved composite separator",
+                serde_json::json!({
+                    "stage": "link",
+                    "row_number": row_number,
+                    "field": column,
+                    "separator": LINK_COMPOSITE_ID_SEPARATOR,
+                    "writes_performed": false
+                }),
+            ));
+        }
+        parts.push(value);
+    }
+    Ok(parts.join(LINK_COMPOSITE_ID_SEPARATOR))
+}
+
+fn entity_link_required_materialized_value(
+    values: &BTreeMap<String, String>,
+    field: &str,
+    row_number: usize,
+) -> Result<String, CanonOutput> {
+    let value = values.get(field).ok_or_else(|| {
+        entity_link_v1_artifact_refusal(
+            "Entity link materialized row is missing a required field",
+            serde_json::json!({
+                "stage": "link",
+                "row_number": row_number,
+                "field": field,
+                "writes_performed": false
+            }),
+        )
+    })?;
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(entity_link_v1_artifact_refusal(
+            "Entity link materialized row has an empty required field",
+            serde_json::json!({
+                "stage": "link",
+                "row_number": row_number,
+                "field": field,
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(value.to_string())
+}
+
+fn prepared_surface_for_observation<'a>(
+    observation: &entity::prepare::PreparedInputObservation,
+    surfaces: &'a [entity::prepare::PreparedSurfaceRecord],
+) -> Result<&'a entity::prepare::PreparedSurfaceRecord, CanonOutput> {
+    let matches = surfaces
+        .iter()
+        .filter(|surface| {
+            surface.profile_id.as_str() == observation.profile_id.as_str()
+                && surface
+                    .raw_variants
+                    .iter()
+                    .any(|variant| variant == &observation.primary_surface.value)
+        })
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [surface] => Ok(*surface),
+        [] => Err(entity_link_v1_artifact_refusal(
+            "Entity link decision derivation could not find a prepared surface for a row",
+            serde_json::json!({
+                "stage": "link",
+                "field": "surface_id",
+                "row_number": observation.row_number,
+                "writes_performed": false
+            }),
+        )),
+        _ => Err(entity_link_v1_artifact_refusal(
+            "Entity link decision derivation found multiple prepared surfaces for a row",
+            serde_json::json!({
+                "stage": "link",
+                "field": "surface_id",
+                "row_number": observation.row_number,
+                "writes_performed": false
+            }),
+        )),
+    }
+}
+
+fn entity_link_decision_records_from_solve(
+    solve: &entity::solve::SolveArtifact,
+    bindings: &[EntityLinkDecisionBinding],
+    strategy: &resolve::ResolveStrategy,
+) -> Result<resolve::MatchDecisions, CanonOutput> {
+    let threshold_units = entity::score::ScoreUnits::from_f64_ratio(strategy.match_threshold);
+    let mut by_surface = BTreeMap::<String, Vec<&EntityLinkDecisionBinding>>::new();
+    let mut all_targets = BTreeSet::<String>::new();
+    for binding in bindings {
+        by_surface
+            .entry(binding.surface_id.clone())
+            .or_default()
+            .push(binding);
+        if binding.side == entity::run::link::EntityLinkRole::Target
+            && !all_targets.insert(binding.link_id.clone())
+        {
+            return Err(entity_link_v1_artifact_refusal(
+                "Entity link decision derivation found a duplicate target link id",
+                serde_json::json!({
+                    "stage": "link",
+                    "field": "target_id",
+                    "target_id": binding.link_id.as_str(),
+                    "writes_performed": false
+                }),
+            ));
+        }
+    }
+
+    let mut matches = Vec::new();
+    let mut unmatched = Vec::new();
+    let mut ambiguous = Vec::new();
+    let mut classified_targets = BTreeSet::<String>::new();
+
+    for entity in &solve.entities {
+        let mut reference_ids = BTreeSet::<String>::new();
+        let mut target_ids = BTreeSet::<String>::new();
+        let mut reference_surfaces = BTreeMap::<String, BTreeSet<String>>::new();
+        let mut target_surfaces = BTreeMap::<String, BTreeSet<String>>::new();
+        for surface_id in &entity.surface_ids {
+            if let Some(surface_bindings) = by_surface.get(surface_id) {
+                for binding in surface_bindings {
+                    match binding.side {
+                        entity::run::link::EntityLinkRole::Reference => {
+                            reference_ids.insert(binding.link_id.clone());
+                            reference_surfaces
+                                .entry(binding.link_id.clone())
+                                .or_default()
+                                .insert(surface_id.clone());
+                        }
+                        entity::run::link::EntityLinkRole::Target => {
+                            target_ids.insert(binding.link_id.clone());
+                            target_surfaces
+                                .entry(binding.link_id.clone())
+                                .or_default()
+                                .insert(surface_id.clone());
+                        }
+                    }
+                }
+            }
+        }
+        if target_ids.is_empty() {
+            continue;
+        }
+        let score = entity_link_score(entity.adjusted_support_score_units);
+        let hard_blocked = entity.hard_cannot_link_count > 0
+            || matches!(
+                entity.state,
+                entity::solve::SolveReconciliationState::Contradiction
+                    | entity::solve::SolveReconciliationState::Conflict
+            );
+        for target_id in target_ids {
+            if !classified_targets.insert(target_id.clone()) {
+                return Err(entity_link_v1_artifact_refusal(
+                    "Entity link decision derivation classified a target more than once",
+                    serde_json::json!({
+                        "stage": "link",
+                        "field": "target_id",
+                        "target_id": target_id.as_str(),
+                        "component_id": entity.component_id.as_str(),
+                        "writes_performed": false
+                    }),
+                ));
+            }
+            if hard_blocked {
+                unmatched.push(resolve::UnmatchedRecord {
+                    target_id,
+                    reason: "solve_hard_cannot_link_or_conflict".to_string(),
+                    best_candidate: entity_link_best_candidate(&reference_ids, score),
+                });
+            } else if entity_link_directional_match_allowed(entity, &reference_ids, threshold_units)
+            {
+                let reference_id = reference_ids
+                    .iter()
+                    .next()
+                    .expect("one reference id")
+                    .clone();
+                matches.push(resolve::MatchRecord {
+                    reference_id: reference_id.clone(),
+                    target_id,
+                    canonical_id: reference_id,
+                    score,
+                    assertions: Vec::new(),
+                    runner_up: None,
+                });
+            } else if let Some(reference_id) = entity_link_prepared_surface_collapse_reference(
+                entity,
+                &reference_ids,
+                &reference_surfaces,
+                target_surfaces.get(&target_id),
+            ) {
+                matches.push(resolve::MatchRecord {
+                    reference_id: reference_id.clone(),
+                    target_id,
+                    canonical_id: reference_id,
+                    score: 0.0,
+                    assertions: vec![entity_link_prepared_surface_collapse_assertion()],
+                    runner_up: None,
+                });
+            } else if reference_ids.len() > 1 {
+                ambiguous.push(resolve::AmbiguousRecord {
+                    target_id,
+                    candidates: entity_link_candidate_scores(&reference_ids, score),
+                    gap: 0.0,
+                    reason: "multiple_reference_surfaces_in_solve_component".to_string(),
+                });
+            } else {
+                unmatched.push(resolve::UnmatchedRecord {
+                    target_id,
+                    reason: "no_resolved_reference_surface_in_solve_component".to_string(),
+                    best_candidate: entity_link_best_candidate(&reference_ids, score),
+                });
+            }
+        }
+    }
+
+    for target_id in all_targets.difference(&classified_targets) {
+        unmatched.push(resolve::UnmatchedRecord {
+            target_id: target_id.clone(),
+            reason: "missing_solve_component".to_string(),
+            best_candidate: None,
+        });
+    }
+
+    matches.sort_by(|left, right| {
+        left.target_id
+            .cmp(&right.target_id)
+            .then_with(|| left.reference_id.cmp(&right.reference_id))
+    });
+    unmatched.sort_by(|left, right| left.target_id.cmp(&right.target_id));
+    ambiguous.sort_by(|left, right| left.target_id.cmp(&right.target_id));
+    let conflict_warnings = entity_link_conflict_warnings(&matches);
+    Ok(resolve::MatchDecisions {
+        matches,
+        unmatched,
+        ambiguous,
+        conflict_warnings,
+    })
+}
+
+fn entity_link_directional_match_allowed(
+    entity: &entity::solve::SolveEntityRecord,
+    reference_ids: &BTreeSet<String>,
+    threshold_units: entity::score::ScoreUnits,
+) -> bool {
+    reference_ids.len() == 1
+        && entity.hard_cannot_link_count == 0
+        && !matches!(
+            entity.state,
+            entity::solve::SolveReconciliationState::Contradiction
+                | entity::solve::SolveReconciliationState::Conflict
+        )
+        && entity.soft_anti_merge_warning_count == 0
+        && entity.adjusted_support_score_units > entity::score::ScoreUnits::ZERO
+        && entity.adjusted_support_score_units >= threshold_units
+}
+
+fn entity_link_prepared_surface_collapse_reference(
+    entity: &entity::solve::SolveEntityRecord,
+    reference_ids: &BTreeSet<String>,
+    reference_surfaces: &BTreeMap<String, BTreeSet<String>>,
+    target_surfaces: Option<&BTreeSet<String>>,
+) -> Option<String> {
+    if reference_ids.len() != 1
+        || entity.state != entity::solve::SolveReconciliationState::ResolvedExisting
+        || entity.hard_cannot_link_count != 0
+        || entity.soft_anti_merge_warning_count != 0
+        || entity.adjusted_support_score_units != entity::score::ScoreUnits::ZERO
+    {
+        return None;
+    }
+    let reference_id = reference_ids.iter().next()?;
+    let reference_surface_ids = reference_surfaces.get(reference_id)?;
+    let target_surface_ids = target_surfaces?;
+    if target_surface_ids
+        .iter()
+        .any(|surface_id| reference_surface_ids.contains(surface_id))
+    {
+        Some(reference_id.clone())
+    } else {
+        None
+    }
+}
+
+fn entity_link_prepared_surface_collapse_assertion() -> resolve::AssertionResult {
+    let mut detail = BTreeMap::new();
+    detail.insert(
+        "candidate_credit".to_string(),
+        serde_json::Value::Bool(false),
+    );
+    detail.insert(
+        "surface_equality".to_string(),
+        serde_json::Value::String("exact_prepared_surface".to_string()),
+    );
+    resolve::AssertionResult {
+        field_ref: "prepared_surface_id".to_string(),
+        field_tgt: "prepared_surface_id".to_string(),
+        op: "prepared_surface_collapse".to_string(),
+        passed: true,
+        score: 0.0,
+        weight: 0.0,
+        required: true,
+        detail,
+    }
+}
+
+fn entity_link_score(score_units: entity::score::ScoreUnits) -> f64 {
+    f64::from(score_units.as_u32()) / f64::from(entity::score::ENTITY_SCORE_SCALE)
+}
+
+fn entity_link_best_candidate(
+    reference_ids: &BTreeSet<String>,
+    score: f64,
+) -> Option<resolve::CandidateScore> {
+    reference_ids
+        .iter()
+        .next()
+        .map(|reference_id| resolve::CandidateScore {
+            reference_id: reference_id.clone(),
+            score,
+            gap: None,
+            assertions: Vec::new(),
+        })
+}
+
+fn entity_link_candidate_scores(
+    reference_ids: &BTreeSet<String>,
+    score: f64,
+) -> Vec<resolve::CandidateScore> {
+    reference_ids
+        .iter()
+        .map(|reference_id| resolve::CandidateScore {
+            reference_id: reference_id.clone(),
+            score,
+            gap: Some(0.0),
+            assertions: Vec::new(),
+        })
+        .collect()
+}
+
+fn entity_link_conflict_warnings(matches: &[resolve::MatchRecord]) -> Vec<String> {
+    let mut by_reference = BTreeMap::<String, Vec<String>>::new();
+    for record in matches {
+        by_reference
+            .entry(record.reference_id.clone())
+            .or_default()
+            .push(record.target_id.clone());
+    }
+    by_reference
+        .into_iter()
+        .filter_map(|(reference_id, target_ids)| {
+            (target_ids.len() > 1).then(|| {
+                format!(
+                    "one_to_many_conflict: reference_id '{}' matched target_ids [{}]",
+                    reference_id,
+                    target_ids.join(", ")
+                )
+            })
+        })
+        .collect()
+}
+
+fn enforce_entity_link_candidate_limit(
+    link: &EntityLinkCli,
+    strategy: &resolve::ResolveStrategy,
+    decisions: &resolve::MatchDecisions,
+) -> Result<(), CanonOutput> {
+    let Some(limit) = link.max_candidates.or(strategy.max_candidates) else {
+        return Ok(());
+    };
+    for record in &decisions.ambiguous {
+        if record.candidates.len() > limit {
+            return Err(create_resolve_refusal(resolve::ResolveError::with_detail(
+                resolve::ResolveErrorCode::TooManyCandidates,
+                format!(
+                    "Target '{}' has {} derived link candidates, above limit {}",
+                    record.target_id,
+                    record.candidates.len(),
+                    limit
+                ),
+                serde_json::json!({
+                    "target_id": record.target_id.as_str(),
+                    "candidate_count": record.candidates.len(),
+                    "max_candidates": limit,
+                    "writes_performed": false
+                }),
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn entity_link_resolve_artifact_from_v1(
+    link: &EntityLinkCli,
+    run: &entity::run::EntityRunArtifact,
+    strategy: &resolve::ResolveStrategy,
+    tapes: &resolve::LoadedTapes,
+    decisions: resolve::MatchDecisions,
+    gold_score: Option<resolve::GoldScore>,
+) -> Result<resolve::ResolveArtifact, CanonOutput> {
+    let registry = entity_link_registry_snapshot_from_v1_run(link, run)?;
+    let summary = resolve::build_summary(
+        tapes.target.records.len(),
+        &decisions.matches,
+        &decisions.unmatched,
+        &decisions.ambiguous,
+    );
+    Ok(resolve::ResolveArtifact {
+        version: resolve::CANON_RESOLVE_VERSION.to_string(),
+        strategy: strategy.reference(),
+        registry,
+        reference_tape: tapes.reference.summary(),
+        target_tape: tapes.target.summary(),
+        summary,
+        matches: decisions.matches,
+        unmatched: decisions.unmatched,
+        ambiguous: decisions.ambiguous,
+        conflict_warnings: decisions.conflict_warnings,
+        gold_score,
+        write_back: None,
+    })
+}
+
+fn entity_link_registry_snapshot_from_v1_run(
+    link: &EntityLinkCli,
+    run: &entity::run::EntityRunArtifact,
+) -> Result<resolve::ResolveRegistrySnapshot, CanonOutput> {
+    let snapshot = &run.metadata.registry_snapshot;
+    if snapshot.id.trim().is_empty()
+        || snapshot.version.trim().is_empty()
+        || snapshot.source.trim().is_empty()
+        || snapshot.lookup_snapshot_hash.trim().is_empty()
+    {
+        return Err(entity_link_v1_artifact_refusal(
+            "Entity link v1 run registry snapshot is incomplete",
+            serde_json::json!({
+                "stage": "link",
+                "field": "run.metadata.registry_snapshot",
+                "registry_id": snapshot.id.as_str(),
+                "registry_version": snapshot.version.as_str(),
+                "registry_source": snapshot.source.as_str(),
+                "lookup_snapshot_hash": snapshot.lookup_snapshot_hash.as_str(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    let cli_source = link.registry.display().to_string();
+    if snapshot.source.as_str() != cli_source.as_str() {
+        return Err(entity_link_v1_artifact_refusal(
+            "Entity link v1 run registry source does not match the CLI registry",
+            serde_json::json!({
+                "stage": "link",
+                "field": "run.metadata.registry_snapshot.source",
+                "expected": cli_source.as_str(),
+                "actual": snapshot.source.as_str(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    let firewall = &run.orchestration.profile_firewall;
+    if firewall.registry_id.as_str() != snapshot.id.as_str()
+        || firewall.registry_version.as_str() != snapshot.version.as_str()
+        || firewall.registry_snapshot_hash.as_str() != snapshot.lookup_snapshot_hash.as_str()
+    {
+        return Err(entity_link_v1_artifact_refusal(
+            "Entity link v1 run registry firewall does not match metadata snapshot",
+            serde_json::json!({
+                "stage": "link",
+                "field": "run.orchestration.profile_firewall.registry",
+                "metadata": {
+                    "id": snapshot.id.as_str(),
+                    "version": snapshot.version.as_str(),
+                    "lookup_snapshot_hash": snapshot.lookup_snapshot_hash.as_str()
+                },
+                "firewall": {
+                    "id": firewall.registry_id.as_str(),
+                    "version": firewall.registry_version.as_str(),
+                    "lookup_snapshot_hash": firewall.registry_snapshot_hash.as_str()
+                },
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(resolve::ResolveRegistrySnapshot {
+        id: snapshot.id.clone(),
+        version: snapshot.version.clone(),
+        source: snapshot.source.clone(),
+    })
+}
+
+fn entity_link_value_string(
+    value: &serde_json::Value,
+    path: &[&str],
+    field: &str,
+) -> Result<String, CanonOutput> {
+    let mut current = value;
+    for segment in path {
+        current = current.get(*segment).ok_or_else(|| {
+            entity_link_v1_artifact_refusal(
+                "Entity link v1 artifact is missing a required field",
+                serde_json::json!({
+                    "stage": "link",
+                    "field": field,
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    }
+    current.as_str().map(str::to_string).ok_or_else(|| {
+        entity_link_v1_artifact_refusal(
+            "Entity link v1 artifact field must be a string",
+            serde_json::json!({
+                "stage": "link",
+                "field": field,
+                "writes_performed": false
+            }),
+        )
+    })
+}
+
+fn entity_link_v1_artifact_refusal(
+    message: impl Into<String>,
+    detail: serde_json::Value,
+) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EEntityArtifactContract,
+        message.into(),
+        detail,
+        Some("Regenerate canon entity link artifacts from the current v1 run chain".to_string()),
+    )
 }
 
 fn entity_link_output_value(
@@ -1467,7 +2566,7 @@ fn entity_link_output_value(
 fn run_entity_audit_command(audit: &EntityAuditCli) -> Result<u8, Box<dyn Error>> {
     let summary_mode = matches!(audit.emit, EntityEmitMode::Summary);
     let (result_probe, result_bytes) =
-        match read_json_artifact::<serde_json::Value>(&audit.result, "entity result artifact") {
+        match read_entity_lifecycle_json_artifact(&audit.result, "entity result artifact") {
             Ok((value, bytes)) => (value, bytes),
             Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
         };
@@ -1536,7 +2635,7 @@ fn run_entity_audit_command(audit: &EntityAuditCli) -> Result<u8, Box<dyn Error>
 fn run_entity_promote_command(promote: &EntityPromoteCli) -> Result<u8, Box<dyn Error>> {
     let summary_mode = matches!(promote.emit, EntityEmitMode::Summary);
     let result_probe =
-        match read_json_artifact::<serde_json::Value>(&promote.result, "entity result artifact") {
+        match read_entity_lifecycle_json_artifact(&promote.result, "entity result artifact") {
             Ok((value, _)) => value,
             Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
         };
@@ -1547,6 +2646,7 @@ fn run_entity_promote_command(promote: &EntityPromoteCli) -> Result<u8, Box<dyn 
         };
     if entity_artifact_value_is_v1(&result_probe) || entity_artifact_value_is_v1(&audit_probe) {
         match entity::promote::promote_entity_v1(entity::promote::EntityPromoteV1Request {
+            result_path: promote.result.clone(),
             result_artifact: result_probe,
             audit_artifact: audit_probe,
             registry: promote.registry.clone(),
@@ -1585,11 +2685,11 @@ fn run_entity_promote_command(promote: &EntityPromoteCli) -> Result<u8, Box<dyn 
 
 fn run_entity_apply_command(apply: &EntityApplyCli) -> Result<u8, Box<dyn Error>> {
     let summary_mode = matches!(apply.emit, EntityEmitMode::Summary);
-    let result =
-        match read_json_artifact::<serde_json::Value>(&apply.result, "entity result artifact") {
-            Ok((value, _)) => value,
-            Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
-        };
+    let result = match read_entity_lifecycle_json_artifact(&apply.result, "entity result artifact")
+    {
+        Ok((value, _)) => value,
+        Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
+    };
     if let Err(refusal_output) = validate_entity_apply_result_artifact(&apply.result, &result) {
         return emit_entity_refusal(refusal_output, true, summary_mode);
     }
@@ -1674,7 +2774,7 @@ fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8
     }
 
     let (result_probe, result_bytes) =
-        match read_json_artifact::<serde_json::Value>(&export.result, "entity result artifact") {
+        match read_entity_lifecycle_json_artifact(&export.result, "entity result artifact") {
             Ok((value, bytes)) => (value, bytes),
             Err(refusal_output) => {
                 return emit_entity_refusal(
@@ -1691,6 +2791,34 @@ fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8
             &result_probe,
             &result_bytes,
         );
+    }
+
+    if entity_artifact_value_looks_like_native_link_v1(&result_probe) {
+        match run_entity_native_link_review_export(export, &result_probe, &result_bytes) {
+            Ok(artifact) => {
+                let output = render_entity_native_review_export(export, &artifact);
+                match output {
+                    Ok(output) => {
+                        emit_entity_output(&output, false);
+                        return Ok(0);
+                    }
+                    Err(refusal_output) => {
+                        return emit_entity_refusal(
+                            refusal_output,
+                            matches!(export.emit, EntityReviewExportEmitMode::Json),
+                            false,
+                        );
+                    }
+                }
+            }
+            Err(refusal_output) => {
+                return emit_entity_refusal(
+                    refusal_output,
+                    matches!(export.emit, EntityReviewExportEmitMode::Json),
+                    false,
+                );
+            }
+        }
     }
 
     if entity_artifact_value_is_v1(&result_probe) {
@@ -1760,34 +2888,6 @@ fn run_entity_review_export_command(export: &EntityReviewExportCli) -> Result<u8
 
     if entity_artifact_value_looks_like_native_run_v0(&result_probe) {
         match run_entity_native_run_review_export(export, &result_bytes) {
-            Ok(artifact) => {
-                let output = render_entity_native_review_export(export, &artifact);
-                match output {
-                    Ok(output) => {
-                        emit_entity_output(&output, false);
-                        return Ok(0);
-                    }
-                    Err(refusal_output) => {
-                        return emit_entity_refusal(
-                            refusal_output,
-                            matches!(export.emit, EntityReviewExportEmitMode::Json),
-                            false,
-                        );
-                    }
-                }
-            }
-            Err(refusal_output) => {
-                return emit_entity_refusal(
-                    refusal_output,
-                    matches!(export.emit, EntityReviewExportEmitMode::Json),
-                    false,
-                );
-            }
-        }
-    }
-
-    if entity_artifact_value_looks_like_native_link_v0(&result_probe) {
-        match run_entity_native_link_review_export(export, &result_probe, &result_bytes) {
             Ok(artifact) => {
                 let output = render_entity_native_review_export(export, &artifact);
                 match output {
@@ -1993,11 +3093,18 @@ fn render_native_review_import_summary(
 fn run_entity_explain_command(explain: &EntityExplainCli) -> Result<u8, Box<dyn Error>> {
     let summary_mode = matches!(explain.emit, EntityEmitMode::Summary);
     let result_probe =
-        match read_json_artifact::<serde_json::Value>(&explain.result, "entity result artifact") {
+        match read_entity_lifecycle_json_artifact(&explain.result, "entity result artifact") {
             Ok((value, _)) => value,
             Err(refusal_output) => return emit_entity_refusal(refusal_output, true, summary_mode),
         };
     if entity_artifact_value_is_v1(&result_probe) {
+        let explain_source =
+            match entity_explain_v1_source_from_result(&explain.result, result_probe) {
+                Ok(source) => source,
+                Err(refusal_output) => {
+                    return emit_entity_refusal(refusal_output, true, summary_mode);
+                }
+            };
         match entity::explain::explain_entity_v1(
             entity::explain::EntityExplainV1Query {
                 row_id: explain.row.clone(),
@@ -2005,7 +3112,7 @@ fn run_entity_explain_command(explain: &EntityExplainCli) -> Result<u8, Box<dyn 
                 canonical_id: explain.canon_id.clone(),
                 escrow_id: explain.escrow_id.clone(),
             },
-            result_probe,
+            explain_source,
         ) {
             Ok(artifact) => {
                 let output = match explain.emit {
@@ -3116,6 +4223,28 @@ fn entity_missing_link_context_refusal(link: &EntityLinkCli) -> CanonOutput {
     )
 }
 
+fn entity_link_v1_write_back_refusal(link: &EntityLinkCli, work_dir: &Path) -> CanonOutput {
+    let link_artifact = work_dir.join(entity::run::link::LINK_ARTIFACT_PATH);
+    refusal::create_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "canon entity link --write-back is disabled on the v1 public path until transactional registry publication is available".to_string(),
+        serde_json::json!({
+            "reason": "transactional_publication_required",
+            "stage": "link",
+            "flag": "--write-back",
+            "registry": link.registry.display().to_string(),
+            "link_artifact": link_artifact.display().to_string(),
+            "writes_performed": false,
+            "registry_write_back_performed": false,
+            "legacy_dispatch_allowed": false
+        }),
+        Some(format!(
+            "Run canon entity link without --write-back, then review/promote/apply the v1 artifact: canon entity review export {} --include escrow --emit csv",
+            link_artifact.display()
+        )),
+    )
+}
+
 fn entity_link_summary(
     artifact: &entity::run::link::EntityLinkArtifact,
     audit_receipt: Option<&serde_json::Value>,
@@ -3549,7 +4678,7 @@ fn run_entity_native_review_artifact_export_command(
         run_entity_native_solve_review_artifact_export(export, result_bytes)
     } else if entity_artifact_value_looks_like_native_run_v0(result_probe) {
         run_entity_native_run_review_artifact_export(export, result_bytes)
-    } else if entity_artifact_value_looks_like_native_link_v0(result_probe) {
+    } else if entity_artifact_value_looks_like_native_link_v1(result_probe) {
         run_entity_native_link_review_artifact_export(export, result_probe, result_bytes)
     } else {
         Err(native_entity_artifact_contract_refusal(
@@ -3637,6 +4766,11 @@ fn run_entity_native_link_review_artifact_export(
     )?;
     entity::run::link::validate_entity_link_artifact_at_path(&link, &export.result)
         .map_err(|refusal| refusal.to_canon_output())?;
+    validate_entity_link_review_export_decision_derivation(
+        &export.result,
+        &link,
+        "native_review_export",
+    )?;
     let source_execution_hash = link.shared_run_artifact.content_hash.clone();
     let review_queue =
         entity::review::build_link_review_queue_artifact(entity::review::LinkReviewQueueRequest {
@@ -3732,11 +4866,352 @@ fn run_entity_native_link_review_export(
     )?;
     entity::run::link::validate_entity_link_artifact_at_path(&link, &export.result)
         .map_err(|refusal| refusal.to_canon_output())?;
+    validate_entity_link_review_export_decision_derivation(&export.result, &link, "review_export")?;
     entity::review::build_link_review_queue_artifact(entity::review::LinkReviewQueueRequest {
         link_artifact: link,
         include: map_entity_review_include_v1(&export.include),
     })
     .map_err(|refusal| refusal.to_canon_output())
+}
+
+fn validate_entity_link_review_export_decision_derivation(
+    link_path: &Path,
+    link: &entity::run::link::EntityLinkArtifact,
+    stage: &str,
+) -> Result<(), CanonOutput> {
+    let work_dir = entity_link_review_export_work_dir(link_path, stage)?;
+    let run = read_hash_bound_entity_link_review_run_artifact(&work_dir, link, stage)?;
+    let strategy = load_entity_link_review_export_strategy(&run, link, stage)?;
+    let solve = load_entity_link_v1_solve_artifact(&work_dir, &run)?;
+    validate_entity_link_review_export_solve_binding(link, &solve, stage)?;
+    let bindings =
+        entity::run::link::read_derivation_validated_entity_link_observation_surface_bindings_at_path(
+            link, link_path, &run,
+        )
+        .map_err(|refusal| refusal.to_canon_output())?;
+    let decision_bindings = bindings
+        .into_iter()
+        .map(|binding| EntityLinkDecisionBinding {
+            side: binding.side,
+            link_id: binding.link_id,
+            surface_id: binding.surface_id,
+        })
+        .collect::<Vec<_>>();
+    let derived = entity_link_decision_records_from_solve(&solve, &decision_bindings, &strategy)?;
+    validate_entity_link_review_export_decision_parity(link, &derived, stage)?;
+    Ok(())
+}
+
+fn entity_link_review_export_work_dir(
+    link_path: &Path,
+    stage: &str,
+) -> Result<PathBuf, CanonOutput> {
+    let link_dir = link_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .ok_or_else(|| {
+            native_entity_artifact_contract_refusal(
+                "Entity link review export requires a link artifact inside a link work directory",
+                serde_json::json!({
+                    "stage": stage,
+                    "field": "path",
+                    "path": link_path.display().to_string(),
+                    "expected": "<WORK_DIR>/link/<LINK_ARTIFACT.json>",
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    let work_dir = link_dir
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .ok_or_else(|| {
+            native_entity_artifact_contract_refusal(
+                "Entity link review export could not locate the bound run work directory",
+                serde_json::json!({
+                    "stage": stage,
+                    "field": "path",
+                    "path": link_path.display().to_string(),
+                    "expected": "<WORK_DIR>/link/<LINK_ARTIFACT.json>",
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    Ok(work_dir.to_path_buf())
+}
+
+fn read_hash_bound_entity_link_review_run_artifact(
+    work_dir: &Path,
+    link: &entity::run::link::EntityLinkArtifact,
+    stage: &str,
+) -> Result<entity::run::EntityRunArtifact, CanonOutput> {
+    let run_path = work_dir.join("run/run.json");
+    let (run_value, _bytes) =
+        read_entity_lifecycle_json_artifact(&run_path, "entity run artifact")?;
+    entity::schema::validate_artifact_v1_core_contract(&run_value)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    entity::schema::validate_entity_v1_self_hash(&run_value)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    let run_hash = entity_link_value_string(
+        &run_value,
+        &["artifact_content_hash"],
+        "run.artifact_content_hash",
+    )?;
+    let run =
+        serde_json::from_value::<entity::run::EntityRunArtifact>(run_value).map_err(|error| {
+            native_entity_artifact_contract_refusal(
+                "Entity link review export failed to deserialize the bound run artifact",
+                serde_json::json!({
+                    "stage": stage,
+                    "path": run_path.display().to_string(),
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    if run.version.as_str() != entity::CANON_ENTITY_RUN_VERSION_V1 {
+        return Err(native_entity_artifact_contract_refusal(
+            "Entity link review export loaded the wrong run artifact version",
+            serde_json::json!({
+                "stage": stage,
+                "field": "shared_run_artifact.version",
+                "path": run_path.display().to_string(),
+                "expected": entity::CANON_ENTITY_RUN_VERSION_V1,
+                "actual": run.version.as_str(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    if link.shared_run_artifact.version.as_str() != run.version.as_str()
+        || link.shared_run_artifact.content_hash.as_str() != run_hash.as_str()
+        || run.artifact_content_hash.as_str() != run_hash.as_str()
+    {
+        return Err(native_entity_artifact_contract_refusal(
+            "Entity link review export run artifact does not match the link binding",
+            serde_json::json!({
+                "stage": stage,
+                "field": "shared_run_artifact",
+                "path": run_path.display().to_string(),
+                "expected": {
+                    "version": link.shared_run_artifact.version.as_str(),
+                    "content_hash": link.shared_run_artifact.content_hash.as_str()
+                },
+                "actual": {
+                    "version": run.version.as_str(),
+                    "content_hash": run_hash.as_str()
+                },
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(run)
+}
+
+fn validate_entity_link_review_export_solve_binding(
+    link: &entity::run::link::EntityLinkArtifact,
+    solve: &entity::solve::SolveArtifact,
+    stage: &str,
+) -> Result<(), CanonOutput> {
+    if link.shared_solve_artifact.version.as_str() != solve.version.as_str()
+        || link.shared_solve_artifact.content_hash.as_str() != solve.artifact_content_hash.as_str()
+    {
+        return Err(native_entity_artifact_contract_refusal(
+            "Entity link review export solve artifact does not match the link binding",
+            serde_json::json!({
+                "stage": stage,
+                "field": "shared_solve_artifact",
+                "expected": {
+                    "version": link.shared_solve_artifact.version.as_str(),
+                    "content_hash": link.shared_solve_artifact.content_hash.as_str()
+                },
+                "actual": {
+                    "version": solve.version.as_str(),
+                    "content_hash": solve.artifact_content_hash.as_str()
+                },
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn load_entity_link_review_export_strategy(
+    run: &entity::run::EntityRunArtifact,
+    link: &entity::run::link::EntityLinkArtifact,
+    stage: &str,
+) -> Result<resolve::ResolveStrategy, CanonOutput> {
+    let strategy_source = run
+        .summary
+        .labels
+        .get("strategy_source")
+        .filter(|source| !source.trim().is_empty())
+        .ok_or_else(|| {
+            native_entity_artifact_contract_refusal(
+                "Entity link review export run artifact does not record a strategy source",
+                serde_json::json!({
+                    "stage": stage,
+                    "field": "run.summary.labels.strategy_source",
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    let strategy_path = Path::new(strategy_source);
+    let strategy = resolve::load_strategy(strategy_path).map_err(create_resolve_refusal)?;
+    if strategy.id.as_str() != run.metadata.strategy.id.as_str()
+        || strategy.version.as_str() != run.metadata.strategy.version.as_str()
+        || strategy.content_hash.as_str() != run.metadata.strategy.content_hash.as_str()
+    {
+        return Err(native_entity_artifact_contract_refusal(
+            "Entity link review export strategy source does not match run metadata",
+            serde_json::json!({
+                "stage": stage,
+                "field": "run.metadata.strategy",
+                "source": strategy_source,
+                "expected": {
+                    "id": run.metadata.strategy.id.as_str(),
+                    "version": run.metadata.strategy.version.as_str(),
+                    "content_hash": run.metadata.strategy.content_hash.as_str()
+                },
+                "actual": {
+                    "id": strategy.id.as_str(),
+                    "version": strategy.version.as_str(),
+                    "content_hash": strategy.content_hash.as_str()
+                },
+                "writes_performed": false
+            }),
+        ));
+    }
+    if strategy.id.as_str() != link.decision_artifact.strategy.id.as_str()
+        || strategy.version.as_str() != link.decision_artifact.strategy.version.as_str()
+        || strategy.content_hash.as_str() != link.decision_artifact.strategy.content_hash.as_str()
+    {
+        return Err(native_entity_artifact_contract_refusal(
+            "Entity link review export strategy source does not match link decisions",
+            serde_json::json!({
+                "stage": stage,
+                "field": "decision_artifact.strategy",
+                "source": strategy_source,
+                "expected": {
+                    "id": link.decision_artifact.strategy.id.as_str(),
+                    "version": link.decision_artifact.strategy.version.as_str(),
+                    "content_hash": link.decision_artifact.strategy.content_hash.as_str()
+                },
+                "actual": {
+                    "id": strategy.id.as_str(),
+                    "version": strategy.version.as_str(),
+                    "content_hash": strategy.content_hash.as_str()
+                },
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(strategy)
+}
+
+fn validate_entity_link_review_export_decision_parity(
+    link: &entity::run::link::EntityLinkArtifact,
+    derived: &resolve::MatchDecisions,
+    stage: &str,
+) -> Result<(), CanonOutput> {
+    let actual = &link.decision_artifact;
+    if actual.matches != derived.matches {
+        return Err(entity_link_review_export_decision_mismatch_refusal(
+            stage,
+            "decision_artifact.matches",
+            actual.matches.len(),
+            derived.matches.len(),
+        ));
+    }
+    if actual.unmatched != derived.unmatched {
+        return Err(entity_link_review_export_decision_mismatch_refusal(
+            stage,
+            "decision_artifact.unmatched",
+            actual.unmatched.len(),
+            derived.unmatched.len(),
+        ));
+    }
+    if actual.ambiguous != derived.ambiguous {
+        return Err(entity_link_review_export_decision_mismatch_refusal(
+            stage,
+            "decision_artifact.ambiguous",
+            actual.ambiguous.len(),
+            derived.ambiguous.len(),
+        ));
+    }
+    if actual.conflict_warnings != derived.conflict_warnings {
+        return Err(entity_link_review_export_decision_mismatch_refusal(
+            stage,
+            "decision_artifact.conflict_warnings",
+            actual.conflict_warnings.len(),
+            derived.conflict_warnings.len(),
+        ));
+    }
+    let expected_summary = resolve::build_summary(
+        link.target.row_count as usize,
+        &derived.matches,
+        &derived.unmatched,
+        &derived.ambiguous,
+    );
+    let expected_summary =
+        canonicalize_entity_link_review_export_expected_summary(&expected_summary, stage)?;
+    if actual.summary != expected_summary || link.summary != expected_summary {
+        return Err(native_entity_artifact_contract_refusal(
+            "Entity link review export decision summary does not match deterministic derivation",
+            serde_json::json!({
+                "stage": stage,
+                "field": "decision_artifact.summary",
+                "actual": actual.summary,
+                "expected": expected_summary,
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn canonicalize_entity_link_review_export_expected_summary(
+    summary: &resolve::ResolveSummary,
+    stage: &str,
+) -> Result<resolve::ResolveSummary, CanonOutput> {
+    let bytes = serde_json::to_vec(summary).map_err(|error| {
+        native_entity_artifact_contract_refusal(
+            "Entity link review export failed to canonicalize derived decision summary",
+            serde_json::json!({
+                "stage": stage,
+                "field": "decision_artifact.summary",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    serde_json::from_slice(&bytes).map_err(|error| {
+        native_entity_artifact_contract_refusal(
+            "Entity link review export failed to canonicalize derived decision summary",
+            serde_json::json!({
+                "stage": stage,
+                "field": "decision_artifact.summary",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })
+}
+
+fn entity_link_review_export_decision_mismatch_refusal(
+    stage: &str,
+    field: &str,
+    actual_count: usize,
+    expected_count: usize,
+) -> CanonOutput {
+    native_entity_artifact_contract_refusal(
+        "Entity link review export decisions do not match deterministic derivation",
+        serde_json::json!({
+            "stage": stage,
+            "field": field,
+            "actual_count": actual_count,
+            "expected_count": expected_count,
+            "writes_performed": false
+        }),
+    )
 }
 
 #[allow(clippy::result_large_err)]
@@ -3780,23 +5255,8 @@ fn read_hash_bound_native_solve_artifact(
     solve_path: &Path,
     run: &entity::run::EntityRunArtifact,
 ) -> Result<entity::solve::SolveArtifact, CanonOutput> {
-    let bytes = read_artifact_bytes(solve_path, "entity solve artifact")?;
-    let solve_probe = serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|error| {
-        native_entity_artifact_contract_refusal(
-            format!(
-                "Failed to parse native entity solve artifact '{}': {}",
-                solve_path.display(),
-                error
-            ),
-            serde_json::json!({
-                "stage": "review_export",
-                "path": solve_path.display().to_string(),
-                "artifact": "entity solve artifact",
-                "error": error.to_string(),
-                "writes_performed": false
-            }),
-        )
-    })?;
+    let (solve_probe, bytes) =
+        read_entity_lifecycle_json_artifact(solve_path, "entity solve artifact")?;
     if !entity_artifact_value_looks_like_native_solve_v0(&solve_probe) {
         return Err(native_entity_artifact_contract_refusal(
             "Run artifact solve handoff did not resolve to a native solve artifact",
@@ -4019,7 +5479,7 @@ fn entity_artifact_value_looks_like_native_solve_v0(value: &serde_json::Value) -
         )
 }
 
-fn entity_artifact_value_looks_like_native_link_v0(value: &serde_json::Value) -> bool {
+fn entity_artifact_value_looks_like_native_link_v1(value: &serde_json::Value) -> bool {
     entity_artifact_version(value) == Some(entity::run::link::ENTITY_LINK_VERSION)
 }
 
@@ -4368,6 +5828,26 @@ fn entity_apply_require_full_resolution(apply: &EntityApplyCli) -> bool {
     apply.require_full_resolution || !apply.allow_partial_output
 }
 
+#[allow(clippy::result_large_err)]
+fn entity_explain_v1_source_from_result(
+    result_path: &Path,
+    result_artifact: serde_json::Value,
+) -> Result<entity::explain::EntityExplainV1Source, CanonOutput> {
+    match entity_artifact_version(&result_artifact) {
+        Some(entity::CANON_ENTITY_RUN_VERSION_V1) => {
+            let solve_artifact =
+                read_entity_lifecycle_bound_solve_artifact(result_path, &result_artifact)?;
+            Ok(entity::explain::EntityExplainV1Source::Run {
+                run_artifact: result_artifact,
+                solve_artifact,
+            })
+        }
+        _ => Ok(entity::explain::EntityExplainV1Source::Solve(
+            result_artifact,
+        )),
+    }
+}
+
 fn entity_apply_v1_exit_code(artifact: &serde_json::Value) -> u8 {
     if entity_json_u64_at_path(artifact, &["summary", "counts", "unresolved"]).unwrap_or(0) > 0 {
         1
@@ -4709,6 +6189,329 @@ fn hash_input_path(path: &Path) -> Option<String> {
     } else {
         witness::hash_file(path).ok()
     }
+}
+
+struct EntityLifecyclePublicationSelector {
+    work_dir: PathBuf,
+    logical_path: String,
+    from_stable_path: bool,
+}
+
+#[allow(clippy::result_large_err)]
+fn read_entity_lifecycle_json_artifact(
+    path: &Path,
+    label: &str,
+) -> Result<(serde_json::Value, Vec<u8>), CanonOutput> {
+    if let Some(selector) = entity_lifecycle_stable_path_selector(path)
+        && let Some(committed_bytes) = read_entity_lifecycle_committed_bytes(&selector)?
+    {
+        let committed_value = parse_entity_lifecycle_json_bytes(
+            &committed_bytes,
+            path,
+            label,
+            &selector.logical_path,
+        )?;
+        validate_entity_lifecycle_committed_value(&committed_value, &selector.logical_path)?;
+        return Ok((committed_value, committed_bytes));
+    }
+    let (probe, direct_bytes) = read_json_artifact::<serde_json::Value>(path, label)?;
+    let Some(selector) = entity_lifecycle_publication_selector(path, &probe)? else {
+        return Ok((probe, direct_bytes));
+    };
+    let Some(committed_bytes) = read_entity_lifecycle_committed_bytes(&selector)? else {
+        return Ok((probe, direct_bytes));
+    };
+    let committed_value =
+        parse_entity_lifecycle_json_bytes(&committed_bytes, path, label, &selector.logical_path)?;
+    validate_entity_lifecycle_committed_value(&committed_value, &selector.logical_path)?;
+    if !selector.from_stable_path {
+        validate_entity_lifecycle_copy_matches_committed(
+            path,
+            label,
+            &probe,
+            &committed_value,
+            &selector,
+        )?;
+    }
+    Ok((committed_value, committed_bytes))
+}
+
+#[allow(clippy::result_large_err)]
+fn read_entity_lifecycle_committed_bytes(
+    selector: &EntityLifecyclePublicationSelector,
+) -> Result<Option<Vec<u8>>, CanonOutput> {
+    entity::run::read_entity_run_committed_publication_logical_bytes(
+        &selector.work_dir,
+        &selector.logical_path,
+    )
+    .map_err(|refusal| refusal.to_canon_output())
+}
+
+#[allow(clippy::result_large_err)]
+fn read_entity_lifecycle_bound_solve_artifact(
+    run_path: &Path,
+    run_artifact: &serde_json::Value,
+) -> Result<serde_json::Value, CanonOutput> {
+    let solve_path = entity_json_string_at_path(run_artifact, &["work_dir", "solve_artifact_path"])
+        .ok_or_else(|| {
+            refusal::create_refusal(
+                RefusalCode::EEntityArtifactContract,
+                "Run artifact is missing its bound solve path".to_string(),
+                serde_json::json!({
+                    "stage": "explain",
+                    "field": "work_dir.solve_artifact_path",
+                    "writes_performed": false
+                }),
+                Some("canon entity run --help".to_string()),
+            )
+        })?;
+    let relative = Path::new(&solve_path);
+    if relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
+            "Run artifact solve path must be safe and workdir-relative".to_string(),
+            serde_json::json!({
+                "stage": "explain",
+                "field": "work_dir.solve_artifact_path",
+                "path": solve_path,
+                "writes_performed": false
+            }),
+            Some("canon entity run --help".to_string()),
+        ));
+    }
+    let work_dir = entity_lifecycle_run_work_dir(run_path, run_artifact)?;
+    let (solve_artifact, _) =
+        read_entity_lifecycle_json_artifact(&work_dir.join(relative), "entity solve artifact")?;
+    Ok(solve_artifact)
+}
+
+#[allow(clippy::result_large_err)]
+fn entity_lifecycle_run_work_dir(
+    run_path: &Path,
+    run_artifact: &serde_json::Value,
+) -> Result<PathBuf, CanonOutput> {
+    if let Some(selector) = entity_lifecycle_stable_path_selector(run_path)
+        && selector.logical_path == "run/run.json"
+    {
+        return Ok(selector.work_dir);
+    }
+    entity::schema::validate_entity_v1_self_hash(run_artifact)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    let root_dir = entity_json_string_at_path(run_artifact, &["metadata", "workdir", "root_dir"])
+        .ok_or_else(|| {
+        refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
+            "Run artifact is missing workdir root metadata".to_string(),
+            serde_json::json!({
+                "stage": "explain",
+                "field": "metadata.workdir.root_dir",
+                "writes_performed": false
+            }),
+            Some("canon entity run --help".to_string()),
+        )
+    })?;
+    Ok(PathBuf::from(root_dir))
+}
+
+#[allow(clippy::result_large_err)]
+fn entity_lifecycle_publication_selector(
+    path: &Path,
+    artifact: &serde_json::Value,
+) -> Result<Option<EntityLifecyclePublicationSelector>, CanonOutput> {
+    if let Some(selector) = entity_lifecycle_stable_path_selector(path) {
+        return Ok(Some(selector));
+    }
+    let Some(version) = entity_artifact_version(artifact) else {
+        return Ok(None);
+    };
+    let Some(contract) = entity::entity_artifact_v1_contract_for_version(version) else {
+        return Ok(None);
+    };
+    if !matches!(
+        contract.stage,
+        entity::EntityArtifactStageV1::Solve | entity::EntityArtifactStageV1::Run
+    ) {
+        return Ok(None);
+    }
+    entity::schema::validate_entity_v1_self_hash(artifact)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    let root_dir = entity_json_string_at_path(artifact, &["metadata", "workdir", "root_dir"])
+        .ok_or_else(|| {
+            refusal::create_refusal(
+                RefusalCode::EEntityArtifactContract,
+                "Entity lifecycle artifact is missing workdir root metadata".to_string(),
+                serde_json::json!({
+                    "stage": "entity_lifecycle_source",
+                    "field": "metadata.workdir.root_dir",
+                    "version": version,
+                    "writes_performed": false
+                }),
+                Some(format!("{} --help", contract.command)),
+            )
+        })?;
+    Ok(Some(EntityLifecyclePublicationSelector {
+        work_dir: PathBuf::from(root_dir),
+        logical_path: contract.artifact_relpath.to_string(),
+        from_stable_path: false,
+    }))
+}
+
+fn entity_lifecycle_stable_path_selector(
+    path: &Path,
+) -> Option<EntityLifecyclePublicationSelector> {
+    let file_name = path.file_name()?.to_str()?;
+    let stage_dir = path.parent()?.file_name()?.to_str()?;
+    let logical_path = match (stage_dir, file_name) {
+        ("solve", "solve.json") => "solve/solve.json",
+        ("run", "run.json") => "run/run.json",
+        ("link", "link.json") => "link/link.json",
+        _ => return None,
+    };
+    let work_dir = path
+        .parent()
+        .and_then(|parent| parent.parent())
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    Some(EntityLifecyclePublicationSelector {
+        work_dir,
+        logical_path: logical_path.to_string(),
+        from_stable_path: true,
+    })
+}
+
+#[allow(clippy::result_large_err)]
+fn parse_entity_lifecycle_json_bytes(
+    bytes: &[u8],
+    path: &Path,
+    label: &str,
+    logical_path: &str,
+) -> Result<serde_json::Value, CanonOutput> {
+    serde_json::from_slice(bytes).map_err(|error| {
+        refusal::create_refusal(
+            RefusalCode::EParse,
+            format!(
+                "Failed to parse committed {} '{}' for logical path '{}': {}",
+                label,
+                path.display(),
+                logical_path,
+                error
+            ),
+            serde_json::json!({
+                "path": path.display().to_string(),
+                "artifact": label,
+                "logical_path": logical_path,
+                "error": error.to_string(),
+                "committed": true,
+                "writes_performed": false
+            }),
+            None,
+        )
+    })
+}
+
+#[allow(clippy::result_large_err)]
+fn validate_entity_lifecycle_committed_value(
+    value: &serde_json::Value,
+    logical_path: &str,
+) -> Result<(), CanonOutput> {
+    let expected_version = match logical_path {
+        "solve/solve.json" => entity::CANON_ENTITY_SOLVE_VERSION_V1,
+        "run/run.json" => entity::CANON_ENTITY_RUN_VERSION_V1,
+        "link/link.json" => entity::run::link::ENTITY_LINK_VERSION,
+        _ => {
+            return Err(refusal::create_refusal(
+                RefusalCode::EEntityArtifactContract,
+                "Committed entity lifecycle source used an unsupported logical path".to_string(),
+                serde_json::json!({
+                    "stage": "entity_lifecycle_source",
+                    "logical_path": logical_path,
+                    "writes_performed": false
+                }),
+                Some("canon entity run --help".to_string()),
+            ));
+        }
+    };
+    let actual_version = entity_artifact_version(value).unwrap_or("<missing>");
+    if actual_version != expected_version {
+        return Err(refusal::create_refusal(
+            RefusalCode::EEntityArtifactContract,
+            "Committed entity lifecycle source has the wrong artifact version".to_string(),
+            serde_json::json!({
+                "stage": "entity_lifecycle_source",
+                "logical_path": logical_path,
+                "expected_version": expected_version,
+                "actual_version": actual_version,
+                "committed": true,
+                "writes_performed": false
+            }),
+            Some("canon entity run --help".to_string()),
+        ));
+    }
+    if logical_path == "link/link.json" {
+        entity::run::link::validate_entity_link_artifact_raw_shape(value)
+            .map_err(|refusal| refusal.to_canon_output())?;
+        let link = serde_json::from_value::<entity::run::link::EntityLinkArtifact>(value.clone())
+            .map_err(|error| {
+            refusal::create_refusal(
+                RefusalCode::EEntityArtifactContract,
+                "Committed entity link artifact failed typed validation".to_string(),
+                serde_json::json!({
+                    "stage": "entity_lifecycle_source",
+                    "logical_path": logical_path,
+                    "error": error.to_string(),
+                    "committed": true,
+                    "writes_performed": false
+                }),
+                Some("canon entity link --help".to_string()),
+            )
+        })?;
+        entity::run::link::validate_entity_link_artifact_contract(&link)
+            .map_err(|refusal| refusal.to_canon_output())?;
+        return Ok(());
+    }
+    entity::schema::validate_artifact_v1_core_contract(value)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    entity::schema::validate_entity_v1_self_hash(value)
+        .map_err(|refusal| refusal.to_canon_output())?;
+    Ok(())
+}
+
+#[allow(clippy::result_large_err)]
+fn validate_entity_lifecycle_copy_matches_committed(
+    path: &Path,
+    label: &str,
+    requested: &serde_json::Value,
+    committed: &serde_json::Value,
+    selector: &EntityLifecyclePublicationSelector,
+) -> Result<(), CanonOutput> {
+    let requested_hash = entity_json_string_at_path(requested, &["artifact_content_hash"])
+        .unwrap_or_else(|| "<missing>".to_string());
+    let committed_hash = entity_json_string_at_path(committed, &["artifact_content_hash"])
+        .unwrap_or_else(|| "<missing>".to_string());
+    if requested_hash == committed_hash {
+        return Ok(());
+    }
+    Err(refusal::create_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Entity lifecycle artifact copy does not match the committed logical artifact".to_string(),
+        serde_json::json!({
+            "stage": "entity_lifecycle_source",
+            "path": path.display().to_string(),
+            "artifact": label,
+            "work_dir": selector.work_dir.display().to_string(),
+            "logical_path": selector.logical_path.as_str(),
+            "expected": committed_hash,
+            "actual": requested_hash,
+            "committed": true,
+            "writes_performed": false
+        }),
+        Some("Use the canonical artifact path under the entity work directory".to_string()),
+    ))
 }
 
 #[allow(clippy::result_large_err)]
@@ -6081,11 +7884,11 @@ pub struct Summary {
 pub struct CanonOutput {
     pub version: String,
     pub outcome: Outcome,
-    pub registry: Option<RegistryMeta>,
-    pub summary: Option<Summary>,
+    pub registry: Option<Box<RegistryMeta>>,
+    pub summary: Option<Box<Summary>>,
     pub mappings: Vec<Mapping>,
     pub unresolved: Vec<UnresolvedEntry>,
-    pub refusal: Option<Refusal>,
+    pub refusal: Option<Box<Refusal>>,
 }
 
 // Refusal types
@@ -6405,6 +8208,31 @@ mod tests {
         assert_eq!(super::suggest_subcommand("ogr"), None);
         // A real data filename is far from any subcommand.
         assert_eq!(super::suggest_subcommand("positions.csv"), None);
+    }
+
+    #[test]
+    fn link_review_export_expected_summary_uses_json_boundary() {
+        let expected = crate::resolve::ResolveSummary {
+            target_records: 11,
+            matched: 1,
+            unmatched: 10,
+            ambiguous: 0,
+            match_rate: 1.0 / 11.0,
+        };
+        let boundary_bytes = serde_json::to_vec(&expected).expect("summary serializes");
+        let boundary: crate::resolve::ResolveSummary =
+            serde_json::from_slice(&boundary_bytes).expect("summary round trips");
+
+        let canonical =
+            super::canonicalize_entity_link_review_export_expected_summary(&expected, "test")
+                .expect("summary canonicalizes");
+
+        assert!(canonical.partition_holds());
+        assert_eq!(canonical, boundary);
+        assert_eq!(
+            canonical.match_rate.to_bits(),
+            boundary.match_rate.to_bits()
+        );
     }
 
     #[test]

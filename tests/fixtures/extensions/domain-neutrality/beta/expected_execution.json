@@ -1,0 +1,21 @@
+{
+  "schema_version": "canon.entity.profile.execution.v0",
+  "profile": "pkg.beta.link_profile",
+  "mode": "link",
+  "records_format": "jsonl",
+  "record_count": 2,
+  "canonical_view": "caption_tokens",
+  "canonical_surfaces": [
+    "second|signal",
+    "third|signal"
+  ],
+  "record_keys": [
+    "B-100",
+    "B-200"
+  ],
+  "required_outputs": [
+    "link_candidates",
+    "link_decisions",
+    "prepare_bundle"
+  ]
+}

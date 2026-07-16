@@ -352,8 +352,14 @@ lookup path and it does not change `canon.v0` exact-match semantics.
 - **Link mode**: `canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]`
   aligns two row sets through the same typed request and artifact path as
   project mode. It is not a public `edge` alias, does not bypass
-  evidence/audit/review, and emits `canon_entity_link.v0` with deterministic
-  link decisions before any optional registry write-back.
+  evidence/audit/review, and emits `canon_entity_link.v1` with deterministic
+  `canon_entity_link_decisions.v1`, `canon_entity_link_observation_surface_bindings.v1`,
+  a hash-bound `profile_source`, and any published assignment-alignment
+  artifacts marked as nonidentity relation hints rather than issuer/entity
+  identity.
+  `--write-back` is accepted by the parser only as a structured handoff: the
+  active v1 public path refuses it before work-dir or registry mutation until
+  transactional registry publication is available through review/promote/apply.
 
   `--profile` and `--work-dir` stay bracketed where this document mirrors
   generated Clap help/operator usage because the parser emits a structured

@@ -19,6 +19,8 @@ pub mod edge;
 pub mod edge_artifact;
 pub mod error;
 pub mod evidence;
+#[path = "../evidence/mod.rs"]
+pub mod evidence_ir;
 pub mod explain;
 pub mod graph;
 pub mod index;
@@ -31,8 +33,12 @@ pub mod postings;
 pub mod prepare;
 pub mod profile;
 pub mod profile_cli;
+#[path = "../extensions/profile.rs"]
+pub mod profile_package;
 pub mod profiles;
 pub mod promote;
+pub mod publication;
+pub mod record_link;
 pub mod relation;
 pub mod review;
 pub mod review_export;
@@ -43,6 +49,8 @@ pub mod schema;
 pub mod score;
 pub mod sidecar;
 pub mod solve;
+#[path = "../extensions/source_mapping.rs"]
+pub mod source_mapping;
 pub mod stream;
 pub mod summary;
 pub mod surface_id;

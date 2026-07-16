@@ -2101,9 +2101,43 @@ fn apply_resolutions_from_registry(
     Ok(resolutions)
 }
 
-fn apply_registry_snapshot_hash(registry_dir: &Path) -> Result<String, Refusal> {
-    let mut files = vec![registry_dir.join("registry.json")];
-    files.extend(apply_mapping_file_paths(registry_dir)?);
+pub(crate) fn apply_registry_snapshot_hash(registry_dir: &Path) -> Result<String, Refusal> {
+    let mut files = Vec::new();
+    for entry in fs::read_dir(registry_dir).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Apply could not read the registry snapshot directory",
+            json!({
+                "stage": "apply",
+                "registry": registry_dir.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Fix registry directory permissions, then rerun canon entity apply".to_string()),
+        )
+    })? {
+        let path = entry
+            .map_err(|error| {
+                EntityRefusalKind::ArtifactContract.to_refusal(
+                    "Apply could not inspect the registry snapshot directory",
+                    json!({
+                        "stage": "apply",
+                        "registry": registry_dir.display().to_string(),
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                    Some(
+                        "Fix registry directory permissions, then rerun canon entity apply"
+                            .to_string(),
+                    ),
+                )
+            })?
+            .path();
+        if path.is_file()
+            && path.extension().and_then(|extension| extension.to_str()) == Some("json")
+        {
+            files.push(path);
+        }
+    }
     files.sort();
     let mut hasher = blake3::Hasher::new();
     for path in files {
@@ -2136,7 +2170,7 @@ fn apply_registry_snapshot_hash(registry_dir: &Path) -> Result<String, Refusal> 
         hasher.update(file_name.as_bytes());
         hasher.update(&[0]);
         hasher.update(&bytes);
-        hasher.update(&[0xff]);
+        hasher.update(&[0]);
     }
     Ok(format!("blake3:{}", hasher.finalize().to_hex()))
 }
@@ -2231,47 +2265,6 @@ fn apply_registry_identity_metadata(registry_dir: &Path) -> Result<(String, Stri
         ));
     }
     Ok((registry_json.id, registry_json.version))
-}
-
-fn apply_mapping_file_paths(registry_dir: &Path) -> Result<Vec<PathBuf>, Refusal> {
-    let entries = fs::read_dir(registry_dir).map_err(|error| {
-        EntityRefusalKind::ArtifactContract.to_refusal(
-            "Apply could not read the registry directory",
-            json!({
-                "stage": "apply",
-                "registry": registry_dir.display().to_string(),
-                "error": error.to_string(),
-                "writes_performed": false
-            }),
-            Some("Fix the registry directory, then rerun canon entity apply".to_string()),
-        )
-    })?;
-    let mut files = Vec::new();
-    for entry in entries {
-        let path = entry
-            .map_err(|error| {
-                EntityRefusalKind::ArtifactContract.to_refusal(
-                    "Apply could not inspect a registry directory entry",
-                    json!({
-                        "stage": "apply",
-                        "registry": registry_dir.display().to_string(),
-                        "error": error.to_string(),
-                        "writes_performed": false
-                    }),
-                    Some("Fix the registry directory, then rerun canon entity apply".to_string()),
-                )
-            })?
-            .path();
-        if path.is_file()
-            && path.extension().and_then(|extension| extension.to_str()) == Some("json")
-            && path.file_name().and_then(|name| name.to_str()) != Some("registry.json")
-            && path.file_name().and_then(|name| name.to_str()) != Some("_build.json")
-        {
-            files.push(path);
-        }
-    }
-    files.sort();
-    Ok(files)
 }
 
 fn apply_temp_sibling(path: &Path) -> PathBuf {
@@ -2484,6 +2477,34 @@ mod tests {
                 "ENTITY_REVIEW_PROMOTE\n",
                 "Sears\u{00a0},20,,,unresolved,cmbs-tenants,1.0.0,\n",
             )
+        );
+    }
+
+    #[test]
+    fn apply_registry_snapshot_hash_binds_all_json_files_with_nul_framing() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let registry = temp.path().join("registry");
+        write_registry(&registry);
+        fs::write(registry.join("_build.json"), r#"{"built":true}"#).expect("_build");
+        fs::write(registry.join("z-extra.json"), r#"{"extra":true}"#).expect("extra");
+        fs::write(registry.join("notes.txt"), "not part of snapshot").expect("notes");
+
+        let mut expected = blake3::Hasher::new();
+        for name in [
+            "_build.json",
+            "aliases.json",
+            "registry.json",
+            "z-extra.json",
+        ] {
+            expected.update(name.as_bytes());
+            expected.update(&[0]);
+            expected.update(&fs::read(registry.join(name)).expect("snapshot file"));
+            expected.update(&[0]);
+        }
+
+        assert_eq!(
+            apply_registry_snapshot_hash(&registry).expect("registry snapshot"),
+            format!("blake3:{}", expected.finalize().to_hex())
         );
     }
 

@@ -380,6 +380,55 @@ fn entity_block_artifact_validator_refuses_missing_candidate_diagnostics_path() 
 }
 
 #[test]
+fn entity_block_artifact_payload_validator_refuses_stale_candidate_records() {
+    let posting_index = candidate_posting_index();
+    let candidates = generate_block_candidates(BlockCandidateGenerationRequest {
+        profile_id: "cmbs_tenant_label".to_string(),
+        posting_index: &posting_index,
+        ngram_index: None,
+        budget_config: BlockCandidateBudgetConfig::new(8, 64, 128),
+        operators: vec![BlockCandidateOperator::AliasPatchMatch(
+            AliasPatchMatchBlockOperator::new(
+                "alias_patch_match",
+                vec![AliasPatchPair::new(
+                    "surf:cmbs:001",
+                    "surf:cmbs:002",
+                    "patch:sears-alias",
+                )],
+            ),
+        )],
+    })
+    .expect("candidate payload emits");
+    let candidate_records = v1_candidate_records(&candidates.candidates);
+    let artifact = build_block_candidate_artifact_contract(BlockCandidateArtifactRequest {
+        index: sample_index_header(),
+        strategy: sample_block_strategy(),
+        candidate_records_path: "block/candidates.jsonl".to_string(),
+        candidate_diagnostics_path: BLOCK_DIAGNOSTICS_PATH.to_string(),
+        candidate_records: candidate_records.clone(),
+        bucket_assertions: Vec::new(),
+        known_surface_ids: posting_index.surface_ids,
+        diagnostics: candidates.diagnostics.clone(),
+    })
+    .expect("artifact builds");
+    let mut stale_candidate_records = candidate_records.clone();
+    stale_candidate_records.clear();
+
+    let refusal = validate_block_candidate_payload_hashes(
+        &artifact,
+        &stale_candidate_records,
+        &candidates.diagnostics,
+        &[],
+    )
+    .expect_err("stale candidate records refuse");
+
+    assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+    assert_eq!(refusal.detail["stage"], "block");
+    assert_eq!(refusal.detail["reason"], "stale_candidate_records");
+    assert_eq!(refusal.detail["writes_performed"], json!(false));
+}
+
+#[test]
 fn entity_block_artifact_payload_validator_refuses_stale_candidate_diagnostics() {
     let posting_index = candidate_posting_index();
     let candidates = generate_block_candidates(BlockCandidateGenerationRequest {

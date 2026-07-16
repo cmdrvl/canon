@@ -14,16 +14,25 @@ use crate::{
         contracts::{
             CANON_ENTITY_AUDIT_VERSION, CANON_ENTITY_AUDIT_VERSION_V1,
             CANON_ENTITY_PROMOTE_VERSION, CANON_ENTITY_PROMOTE_VERSION_V1,
-            CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactStageV1,
-            EntityProfileReference,
+            CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactReference,
+            EntityArtifactStageV1, EntityProfileReference,
         },
         error::EntityRefusalKind,
         review::{required_value_string, value_string_or, value_u64_or},
+        run::{
+            EntityRunArtifact,
+            link::{
+                EntityLinkArtifact, LINK_ARTIFACT_PATH, validate_entity_link_artifact_contract,
+                validate_entity_link_artifact_raw_shape,
+            },
+            read_entity_run_committed_publication_logical_bytes,
+        },
         schema::{
             entity_v1_artifact_reference, entity_v1_lifecycle_metadata_from_source,
             finalize_entity_v1_self_hash, validate_artifact_v1_core_contract,
             validate_entity_v1_self_hash,
         },
+        solve::{SolveAliasProposal, SolveArtifact, validate_solve_artifact_envelope_contract},
     },
     registry::{
         PlannedMutationState, acquire_registry_mutation_guard, planned_file_mutation,
@@ -38,11 +47,12 @@ use std::{
     ffi::OsStr,
     fs::{self, OpenOptions},
     io::Write,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 const TEMP_FILE_STALE_AFTER: Duration = Duration::from_secs(30);
+const RUN_ARTIFACT_PATH: &str = "run/run.json";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityPromoteRegistryRequest {
@@ -290,6 +300,7 @@ pub fn promote_registry_aliases(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityPromoteV1Request {
+    pub result_path: PathBuf,
     pub result_artifact: Value,
     pub audit_artifact: Value,
     pub registry: PathBuf,
@@ -299,7 +310,9 @@ pub struct EntityPromoteV1Request {
 pub fn promote_entity_v1(request: EntityPromoteV1Request) -> Result<Value, Refusal> {
     validate_promote_v1_source(&request.result_artifact)?;
     validate_promote_v1_audit(&request.result_artifact, &request.audit_artifact)?;
+    refuse_link_bound_promotion(&request)?;
     let aliases = promoted_aliases_from_v1_result(&request.result_artifact)?;
+    refuse_unreviewed_alias_proposals(&request, &aliases)?;
     let registry_path = request.registry.join("registry.json");
     let registry_original =
         fs::read(&registry_path).map_err(|error| io_refusal(&registry_path, error))?;
@@ -401,6 +414,38 @@ pub fn promote_entity_v1(request: EntityPromoteV1Request) -> Result<Value, Refus
         aliases,
         true,
     )
+}
+
+fn refuse_unreviewed_alias_proposals(
+    request: &EntityPromoteV1Request,
+    aliases: &[EntityPromotedAlias],
+) -> Result<(), Refusal> {
+    if aliases.is_empty() {
+        return Ok(());
+    }
+    let review_export = format!(
+        "canon entity review export {} --include resolved --emit csv > review.csv",
+        request.result_path.display()
+    );
+    let review_import = format!(
+        "canon entity review import review.csv --registry {} --next-version {} --audit <AUDIT.json>",
+        request.registry.display(),
+        request.next_version
+    );
+    Err(EntityRefusalKind::ArtifactContract.to_refusal(
+        "Promotion source contains alias proposals without reviewed acceptance authority",
+        json!({
+            "stage": "promote",
+            "field": "promotable_aliases",
+            "reason": "reviewed_acceptance_required",
+            "result_path": request.result_path.display().to_string(),
+            "proposal_count": aliases.len(),
+            "review_export_command": &review_export,
+            "review_import_command": &review_import,
+            "writes_performed": false
+        }),
+        Some(format!("{review_export} && {review_import}")),
+    ))
 }
 
 pub fn render_promote_v1_summary(artifact: &Value) -> String {
@@ -904,6 +949,474 @@ fn validate_promote_v1_audit(result: &Value, audit: &Value) -> Result<(), Refusa
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LinkBoundPromotionStage {
+    Run,
+    Solve,
+}
+
+fn refuse_link_bound_promotion(request: &EntityPromoteV1Request) -> Result<(), Refusal> {
+    let Some((work_dir, result_stage)) =
+        link_work_dir_from_result_metadata(&request.result_artifact)?
+    else {
+        return Ok(());
+    };
+    let link_path = work_dir.join(LINK_ARTIFACT_PATH);
+    let stable_signal = inspect_stable_sibling_link_signal(&work_dir, &link_path);
+    let link_bytes =
+        match read_entity_run_committed_publication_logical_bytes(&work_dir, LINK_ARTIFACT_PATH) {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => {
+                return match stable_signal {
+                    StableSiblingLinkSignal::Absent => Ok(()),
+                    signal => Err(stable_sibling_link_signal_refusal(
+                        &link_path,
+                        signal,
+                        "committed_link_artifact_required",
+                    )),
+                };
+            }
+            Err(refusal)
+                if committed_publication_missing_logical_file(&refusal, LINK_ARTIFACT_PATH) =>
+            {
+                return match stable_signal {
+                    StableSiblingLinkSignal::Absent => Ok(()),
+                    signal => Err(stable_sibling_link_signal_refusal(
+                        &link_path,
+                        signal,
+                        "committed_link_artifact_missing",
+                    )),
+                };
+            }
+            Err(refusal) => {
+                return Err(link_bound_source_refusal(
+                    &link_path,
+                    "link_artifact.committed_publication",
+                    refusal,
+                ));
+            }
+        };
+
+    let link = validated_sibling_link_artifact_from_bytes(&link_path, &link_bytes)?;
+    validate_sibling_link_binds_promotion_source(request, &work_dir, result_stage, &link)?;
+    Err(link_bound_promotion_refusal(request, &link_path, &link))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StableSiblingLinkSignal {
+    Absent,
+    RegularFile,
+    NonRegularArtifact,
+    IncompleteWorkdir { link_dir: PathBuf },
+    ArtifactInspectError { error: String },
+    WorkdirInspectError { link_dir: PathBuf, error: String },
+}
+
+fn inspect_stable_sibling_link_signal(
+    work_dir: &Path,
+    link_path: &Path,
+) -> StableSiblingLinkSignal {
+    match fs::symlink_metadata(link_path) {
+        Ok(metadata) if metadata.file_type().is_file() => StableSiblingLinkSignal::RegularFile,
+        Ok(_) => StableSiblingLinkSignal::NonRegularArtifact,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let link_dir = work_dir.join("link");
+            match fs::symlink_metadata(&link_dir) {
+                Ok(_) => StableSiblingLinkSignal::IncompleteWorkdir { link_dir },
+                Err(dir_error) if dir_error.kind() == std::io::ErrorKind::NotFound => {
+                    StableSiblingLinkSignal::Absent
+                }
+                Err(dir_error) => StableSiblingLinkSignal::WorkdirInspectError {
+                    link_dir,
+                    error: dir_error.to_string(),
+                },
+            }
+        }
+        Err(error) => StableSiblingLinkSignal::ArtifactInspectError {
+            error: error.to_string(),
+        },
+    }
+}
+
+fn stable_sibling_link_signal_refusal(
+    link_path: &Path,
+    signal: StableSiblingLinkSignal,
+    reason: &'static str,
+) -> Refusal {
+    match signal {
+        StableSiblingLinkSignal::Absent => link_bound_validation_refusal(
+            link_path,
+            "link_artifact",
+            "Promotion did not find a sibling link signal",
+            json!({
+                "reason": reason,
+                "writes_performed": false
+            }),
+        ),
+        StableSiblingLinkSignal::RegularFile => link_bound_validation_refusal(
+            link_path,
+            "link_artifact",
+            "Promotion requires a committed sibling link artifact",
+            json!({
+                "reason": reason,
+                "stable_link_signal": true,
+                "writes_performed": false
+            }),
+        ),
+        StableSiblingLinkSignal::NonRegularArtifact => link_bound_validation_refusal(
+            link_path,
+            "link_artifact",
+            "Sibling link artifact path is not a regular file",
+            json!({
+                "reason": "malformed_sibling_link_artifact",
+                "committed_reason": reason,
+                "writes_performed": false
+            }),
+        ),
+        StableSiblingLinkSignal::IncompleteWorkdir { link_dir } => link_bound_validation_refusal(
+            link_path,
+            "link_artifact",
+            "Sibling link workdir is incomplete",
+            json!({
+                "reason": "incomplete_sibling_link_workdir",
+                "committed_reason": reason,
+                "link_dir": link_dir.display().to_string(),
+                "writes_performed": false
+            }),
+        ),
+        StableSiblingLinkSignal::ArtifactInspectError { error } => link_bound_validation_refusal(
+            link_path,
+            "link_artifact",
+            "Failed to inspect sibling link artifact",
+            json!({
+                "reason": reason,
+                "error": error,
+                "writes_performed": false
+            }),
+        ),
+        StableSiblingLinkSignal::WorkdirInspectError { link_dir, error } => {
+            link_bound_validation_refusal(
+                &link_dir,
+                "link_artifact",
+                "Failed to inspect sibling link workdir",
+                json!({
+                    "reason": reason,
+                    "error": error,
+                    "writes_performed": false
+                }),
+            )
+        }
+    }
+}
+
+fn link_work_dir_from_result_metadata(
+    artifact: &Value,
+) -> Result<Option<(PathBuf, LinkBoundPromotionStage)>, Refusal> {
+    let result_stage = match artifact.get("version").and_then(Value::as_str) {
+        Some(CANON_ENTITY_RUN_VERSION_V1) => LinkBoundPromotionStage::Run,
+        Some(CANON_ENTITY_SOLVE_VERSION_V1) => LinkBoundPromotionStage::Solve,
+        _ => return Ok(None),
+    };
+    let root_dir = artifact
+        .get("metadata")
+        .and_then(|metadata| metadata.get("workdir"))
+        .and_then(|workdir| workdir.get("root_dir"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            promote_refusal(
+                "Promotion result artifact is missing workdir root metadata",
+                json!({
+                    "stage": "promote",
+                    "field": "metadata.workdir.root_dir",
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    let work_dir = validate_promote_workdir_root_dir(root_dir)?;
+    Ok(Some((work_dir, result_stage)))
+}
+
+fn validate_promote_workdir_root_dir(root_dir: &str) -> Result<PathBuf, Refusal> {
+    let path = Path::new(root_dir);
+    let mut has_normal_component = false;
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => has_normal_component = true,
+            Component::RootDir | Component::Prefix(_) => {}
+            Component::CurDir | Component::ParentDir => {
+                return Err(promote_refusal(
+                    "Promotion result workdir root must be a safe path",
+                    json!({
+                        "stage": "promote",
+                        "field": "metadata.workdir.root_dir",
+                        "root_dir": root_dir,
+                        "writes_performed": false
+                    }),
+                ));
+            }
+        }
+    }
+    if root_dir.trim().is_empty() || !has_normal_component {
+        return Err(promote_refusal(
+            "Promotion result workdir root must be nonempty",
+            json!({
+                "stage": "promote",
+                "field": "metadata.workdir.root_dir",
+                "root_dir": root_dir,
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(path.to_path_buf())
+}
+
+fn validated_sibling_link_artifact_from_bytes(
+    link_path: &Path,
+    link_bytes: &[u8],
+) -> Result<EntityLinkArtifact, Refusal> {
+    let link_value = serde_json::from_slice::<Value>(link_bytes).map_err(|error| {
+        link_bound_validation_refusal(
+            link_path,
+            "link_artifact.json",
+            "Sibling link artifact is not valid JSON",
+            json!({
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    validate_entity_link_artifact_raw_shape(&link_value).map_err(|refusal| {
+        link_bound_source_refusal(link_path, "link_artifact.raw_shape", refusal)
+    })?;
+    let link = serde_json::from_value::<EntityLinkArtifact>(link_value).map_err(|error| {
+        link_bound_validation_refusal(
+            link_path,
+            "link_artifact",
+            "Sibling link artifact is malformed",
+            json!({
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    validate_entity_link_artifact_contract(&link).map_err(|refusal| {
+        link_bound_source_refusal(link_path, "link_artifact.contract", refusal)
+    })?;
+    Ok(link)
+}
+
+fn validate_sibling_link_binds_promotion_source(
+    request: &EntityPromoteV1Request,
+    work_dir: &Path,
+    result_stage: LinkBoundPromotionStage,
+    link: &EntityLinkArtifact,
+) -> Result<(), Refusal> {
+    let result_hash = required_value_string(
+        &request.result_artifact,
+        &["artifact_content_hash"],
+        "artifact_content_hash",
+    )?;
+    match result_stage {
+        LinkBoundPromotionStage::Run => {
+            validate_link_shared_reference(
+                "shared_run_artifact",
+                &link.shared_run_artifact,
+                CANON_ENTITY_RUN_VERSION_V1,
+                result_hash,
+            )?;
+            let solve_hash = solve_hash_from_run_value(&request.result_artifact, "result")?;
+            validate_link_shared_reference(
+                "shared_solve_artifact",
+                &link.shared_solve_artifact,
+                CANON_ENTITY_SOLVE_VERSION_V1,
+                &solve_hash,
+            )?;
+        }
+        LinkBoundPromotionStage::Solve => {
+            validate_link_shared_reference(
+                "shared_solve_artifact",
+                &link.shared_solve_artifact,
+                CANON_ENTITY_SOLVE_VERSION_V1,
+                result_hash,
+            )?;
+            if let Some(run_bytes) =
+                read_optional_sibling_artifact_bytes(work_dir, RUN_ARTIFACT_PATH)?
+            {
+                let run_path = work_dir.join(RUN_ARTIFACT_PATH);
+                let (run_hash, run_solve_hash) =
+                    validated_sibling_run_hashes(&run_path, &run_bytes)?;
+                validate_link_shared_reference(
+                    "shared_run_artifact",
+                    &link.shared_run_artifact,
+                    CANON_ENTITY_RUN_VERSION_V1,
+                    &run_hash,
+                )?;
+                validate_link_shared_reference(
+                    "shared_solve_artifact",
+                    &link.shared_solve_artifact,
+                    CANON_ENTITY_SOLVE_VERSION_V1,
+                    &run_solve_hash,
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validated_sibling_run_hashes(
+    run_path: &Path,
+    run_bytes: &[u8],
+) -> Result<(String, String), Refusal> {
+    let run_value = serde_json::from_slice::<Value>(run_bytes).map_err(|error| {
+        link_bound_validation_refusal(
+            run_path,
+            "run_artifact",
+            "Sibling run artifact is not valid JSON",
+            json!({
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    validate_promote_v1_source(&run_value)?;
+    let run_hash =
+        required_value_string(&run_value, &["artifact_content_hash"], "run hash")?.to_string();
+    let solve_hash = solve_hash_from_run_value(&run_value, "sibling_run")?;
+    Ok((run_hash, solve_hash))
+}
+
+fn solve_hash_from_run_value(
+    value: &Value,
+    artifact_role: &'static str,
+) -> Result<String, Refusal> {
+    let run = serde_json::from_value::<EntityRunArtifact>(value.clone()).map_err(|error| {
+        promote_refusal(
+            "Promotion source run artifact is malformed",
+            json!({
+                "stage": "promote",
+                "field": artifact_role,
+                "artifact_role": artifact_role,
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    let solve_stages = run
+        .stage_artifacts
+        .iter()
+        .filter(|stage| stage.stage == "solve" && stage.version == CANON_ENTITY_SOLVE_VERSION_V1)
+        .collect::<Vec<_>>();
+    if solve_stages.len() != 1 {
+        return Err(promote_refusal(
+            "Promotion run artifact must contain exactly one solve stage reference",
+            json!({
+                "stage": "promote",
+                "field": format!("{artifact_role}.stage_artifacts.solve"),
+                "actual_count": solve_stages.len(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(solve_stages[0].artifact_content_hash.clone())
+}
+
+fn validate_link_shared_reference(
+    field: &'static str,
+    reference: &EntityArtifactReference,
+    expected_version: &str,
+    expected_hash: &str,
+) -> Result<(), Refusal> {
+    if reference.version != expected_version || reference.content_hash != expected_hash {
+        return Err(promote_refusal(
+            "Sibling link artifact does not bind the submitted promotion source",
+            json!({
+                "stage": "promote",
+                "field": field,
+                "expected": {
+                    "version": expected_version,
+                    "content_hash": expected_hash
+                },
+                "actual": reference,
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn link_bound_promotion_refusal(
+    request: &EntityPromoteV1Request,
+    link_path: &Path,
+    link: &EntityLinkArtifact,
+) -> Refusal {
+    let review_export = format!(
+        "canon entity review export {} --include escrow --emit csv > review.csv",
+        link_path.display()
+    );
+    let review_import = format!(
+        "canon entity review import review.csv --registry {} --next-version {}",
+        request.registry.display(),
+        request.next_version
+    );
+    EntityRefusalKind::ArtifactContract.to_refusal(
+        "Promotion source is bound to an entity link artifact; review/import the link artifact instead of promoting run or solve directly",
+        json!({
+            "stage": "promote",
+            "field": "link_artifact",
+            "result_path": request.result_path.display().to_string(),
+            "link_artifact_path": link_path.display().to_string(),
+            "link_artifact_hash": &link.artifact_content_hash,
+            "shared_run_artifact": &link.shared_run_artifact,
+            "shared_solve_artifact": &link.shared_solve_artifact,
+            "review_export_command": &review_export,
+            "review_import_command": &review_import,
+            "writes_performed": false
+        }),
+        Some(format!("{review_export} && {review_import}")),
+    )
+}
+
+fn link_bound_source_refusal(link_path: &Path, field: &'static str, refusal: Refusal) -> Refusal {
+    let source_code = serde_json::to_value(&refusal.code)
+        .unwrap_or_else(|_| Value::String("unknown".to_string()));
+    link_bound_validation_refusal(
+        link_path,
+        field,
+        "Promotion found a sibling link artifact but could not validate it",
+        json!({
+            "source_code": source_code,
+            "source_message": refusal.message,
+            "source_detail": refusal.detail,
+            "writes_performed": false
+        }),
+    )
+}
+
+fn link_bound_validation_refusal(
+    path: &Path,
+    field: &'static str,
+    message: &'static str,
+    mut detail: Value,
+) -> Refusal {
+    if let Some(object) = detail.as_object_mut() {
+        object.insert("stage".to_string(), Value::String("promote".to_string()));
+        object.insert("field".to_string(), Value::String(field.to_string()));
+        object.insert(
+            "path".to_string(),
+            Value::String(path.display().to_string()),
+        );
+        object.insert("writes_performed".to_string(), Value::Bool(false));
+    }
+    EntityRefusalKind::ArtifactContract.to_refusal(
+        message,
+        detail,
+        Some(
+            "Rerun canon entity link to rebuild link/link.json, then review/export/import the link artifact"
+                .to_string(),
+        ),
+    )
+}
+
 fn validate_promote_v1_self_hash(artifact: &Value, artifact_role: &str) -> Result<(), Refusal> {
     validate_entity_v1_self_hash(artifact)
         .map(|_| ())
@@ -966,62 +1479,420 @@ fn validate_v1_registry_snapshot(registry: &RegistryJson, result: &Value) -> Res
 }
 
 fn promoted_aliases_from_v1_result(result: &Value) -> Result<Vec<EntityPromotedAlias>, Refusal> {
-    let mut aliases = ["promotable_aliases", "promotion_aliases", "aliases"]
-        .into_iter()
-        .filter_map(|field| result.get(field).and_then(Value::as_array))
-        .flat_map(|items| items.iter())
-        .filter_map(alias_from_value)
+    let version = result
+        .get("version")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            promote_refusal(
+                "Promotion result is missing an entity artifact version",
+                json!({
+                    "stage": "promote",
+                    "field": "version",
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    reject_caller_authored_alias_authority(result, version)?;
+    let solve = match version {
+        CANON_ENTITY_SOLVE_VERSION_V1 => validated_solve_artifact_from_value(result, "result")?,
+        CANON_ENTITY_RUN_VERSION_V1 => validated_solve_artifact_from_run(result)?,
+        _ => {
+            return Err(promote_refusal(
+                "Promotion requires a canon_entity_run.v1 or canon_entity_solve.v1 artifact",
+                json!({
+                    "stage": "promote",
+                    "field": "version",
+                    "expected": [CANON_ENTITY_RUN_VERSION_V1, CANON_ENTITY_SOLVE_VERSION_V1],
+                    "actual": version,
+                    "writes_performed": false
+                }),
+            ));
+        }
+    };
+    let aliases = solve
+        .promotable_aliases
+        .iter()
+        .map(promoted_alias_from_solve_proposal)
         .collect::<Vec<_>>();
-    if aliases.is_empty() {
-        aliases = result
-            .get("entities")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flat_map(|items| items.iter())
-            .flat_map(entity_aliases_from_value)
-            .collect();
-    }
     validate_aliases(Path::new("."), Path::new("aliases.json"), &aliases)
 }
 
-fn alias_from_value(value: &Value) -> Option<EntityPromotedAlias> {
-    Some(EntityPromotedAlias {
-        input: value.get("input")?.as_str()?.to_string(),
-        canonical_id: value.get("canonical_id")?.as_str()?.to_string(),
-        canonical_type: value
-            .get("canonical_type")
-            .and_then(Value::as_str)
-            .unwrap_or("entity")
-            .to_string(),
-        rule_id: value
-            .get("rule_id")
-            .and_then(Value::as_str)
-            .unwrap_or("ENTITY_V1_PROMOTE")
-            .to_string(),
-    })
+fn validated_solve_artifact_from_run(result: &Value) -> Result<SolveArtifact, Refusal> {
+    let run = serde_json::from_value::<EntityRunArtifact>(result.clone()).map_err(|error| {
+        promote_refusal(
+            "Promotion source run artifact is malformed",
+            json!({
+                "stage": "promote",
+                "field": "result",
+                "artifact_role": "result",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    let solve_path = run_solve_artifact_path(result, &run)?;
+    let solve_bytes = read_required_sibling_artifact_bytes(
+        &solve_path,
+        Path::new(run.work_dir.solve_artifact_path.as_str()),
+        "work_dir.solve_artifact_path",
+        "Promotion could not read the run-bound solve artifact",
+    )?;
+    let solve_value = serde_json::from_slice::<Value>(&solve_bytes).map_err(|error| {
+        promote_refusal(
+            "Promotion run-bound solve artifact is not JSON",
+            json!({
+                "stage": "promote",
+                "field": "work_dir.solve_artifact_path",
+                "path": solve_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    let solve = validated_solve_artifact_from_value(&solve_value, "solve_artifact")?;
+    validate_run_profile_matches_solve(result, &solve)?;
+    validate_run_solve_hash_binding(&run, &solve)?;
+    Ok(solve)
 }
 
-fn entity_aliases_from_value(value: &Value) -> Vec<EntityPromotedAlias> {
-    let Some(canonical_id) = value.get("canonical_id").and_then(Value::as_str) else {
-        return Vec::new();
-    };
-    let canonical_type = value
-        .get("canonical_type")
+fn read_optional_sibling_artifact_bytes(
+    work_dir: &Path,
+    logical_path: &'static str,
+) -> Result<Option<Vec<u8>>, Refusal> {
+    match read_entity_run_committed_publication_logical_bytes(work_dir, logical_path) {
+        Ok(Some(bytes)) => Ok(Some(bytes)),
+        Ok(None) => {
+            let stable_path = work_dir.join(logical_path);
+            if stable_path.is_file() {
+                fs::read(&stable_path)
+                    .map(Some)
+                    .map_err(|error| io_refusal(&stable_path, error))
+            } else {
+                Ok(None)
+            }
+        }
+        Err(refusal) if committed_publication_missing_logical_file(&refusal, logical_path) => {
+            let stable_path = work_dir.join(logical_path);
+            if stable_path.is_file() {
+                Err(link_bound_source_refusal(
+                    &stable_path,
+                    "sibling_artifact.committed_publication",
+                    refusal,
+                ))
+            } else {
+                Ok(None)
+            }
+        }
+        Err(refusal) => Err(refusal),
+    }
+}
+
+fn read_required_sibling_artifact_bytes(
+    stable_path: &Path,
+    logical_path: &Path,
+    field: &'static str,
+    missing_message: &'static str,
+) -> Result<Vec<u8>, Refusal> {
+    let work_dir = stable_path.parent().and_then(Path::parent).ok_or_else(|| {
+        promote_refusal(
+            "Promotion run solve artifact path must be workdir-relative",
+            json!({
+                "stage": "promote",
+                "field": field,
+                "path": stable_path.display().to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    let logical = logical_path.to_str().ok_or_else(|| {
+        promote_refusal(
+            "Promotion run solve artifact path must be UTF-8",
+            json!({
+                "stage": "promote",
+                "field": field,
+                "path": logical_path.display().to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    match read_entity_run_committed_publication_logical_bytes(work_dir, logical) {
+        Ok(Some(bytes)) => Ok(bytes),
+        Ok(None) => fs::read(stable_path).map_err(|error| {
+            promote_refusal(
+                missing_message,
+                json!({
+                    "stage": "promote",
+                    "field": field,
+                    "path": stable_path.display().to_string(),
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+            )
+        }),
+        Err(refusal) => Err(refusal),
+    }
+}
+
+fn committed_publication_missing_logical_file(refusal: &Refusal, logical_path: &str) -> bool {
+    refusal
+        .detail
+        .get("publication_stage")
         .and_then(Value::as_str)
-        .unwrap_or("entity");
-    value
-        .get("alias_inputs")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flat_map(|aliases| aliases.iter())
-        .filter_map(Value::as_str)
-        .map(|input| EntityPromotedAlias {
-            input: input.to_string(),
-            canonical_id: canonical_id.to_string(),
-            canonical_type: canonical_type.to_string(),
-            rule_id: "ENTITY_V1_PROMOTE".to_string(),
+        == Some("entity_run_stage_set")
+        && refusal.detail.get("logical_path").and_then(Value::as_str) == Some(logical_path)
+        && refusal.detail.get("committed").and_then(Value::as_bool) == Some(true)
+}
+
+fn validated_solve_artifact_from_value(
+    value: &Value,
+    artifact_role: &'static str,
+) -> Result<SolveArtifact, Refusal> {
+    validate_promote_v1_self_hash(value, artifact_role)?;
+    let solve = serde_json::from_value::<SolveArtifact>(value.clone()).map_err(|error| {
+        promote_refusal(
+            "Promotion source solve artifact is malformed",
+            json!({
+                "stage": "promote",
+                "field": artifact_role,
+                "artifact_role": artifact_role,
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    validate_solve_artifact_envelope_contract(&solve)
+        .map(|_| solve)
+        .map_err(|refusal| {
+            promote_source_contract_refusal(artifact_role, "solve_artifact", refusal)
         })
-        .collect()
+}
+
+fn validate_run_profile_matches_solve(
+    result: &Value,
+    solve: &SolveArtifact,
+) -> Result<(), Refusal> {
+    let run_profile = result
+        .get("metadata")
+        .and_then(|metadata| metadata.get("profile"))
+        .ok_or_else(|| {
+            promote_refusal(
+                "Promotion run artifact is missing profile metadata",
+                json!({
+                    "stage": "promote",
+                    "field": "metadata.profile",
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    let solve_profile = serde_json::to_value(&solve.metadata.profile).map_err(|error| {
+        promote_refusal(
+            "Promotion could not serialize solve profile metadata",
+            json!({
+                "stage": "promote",
+                "field": "solve_artifact.metadata.profile",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    if run_profile != &solve_profile {
+        return Err(promote_refusal(
+            "Promotion run profile metadata does not match the bound solve artifact",
+            json!({
+                "stage": "promote",
+                "field": "metadata.profile",
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn run_solve_artifact_path(result: &Value, run: &EntityRunArtifact) -> Result<PathBuf, Refusal> {
+    let root_dir = result
+        .get("metadata")
+        .and_then(|metadata| metadata.get("workdir"))
+        .and_then(|workdir| workdir.get("root_dir"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            promote_refusal(
+                "Promotion run artifact is missing workdir root metadata",
+                json!({
+                    "stage": "promote",
+                    "field": "metadata.workdir.root_dir",
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    let relative = run.work_dir.solve_artifact_path.as_str();
+    if root_dir.trim().is_empty()
+        || relative.trim().is_empty()
+        || Path::new(relative).is_absolute()
+        || Path::new(relative)
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(promote_refusal(
+            "Promotion run solve artifact path must be safe and workdir-relative",
+            json!({
+                "stage": "promote",
+                "field": "work_dir.solve_artifact_path",
+                "root_dir": root_dir,
+                "path": relative,
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(Path::new(root_dir).join(relative))
+}
+
+fn validate_run_solve_hash_binding(
+    run: &EntityRunArtifact,
+    solve: &SolveArtifact,
+) -> Result<(), Refusal> {
+    let solve_hash = solve.artifact_content_hash.as_str();
+    let solve_stages = run
+        .stage_artifacts
+        .iter()
+        .filter(|stage| stage.stage == "solve")
+        .collect::<Vec<_>>();
+    if solve_stages.len() != 1 {
+        return Err(promote_refusal(
+            "Promotion run artifact must contain exactly one solve stage reference",
+            json!({
+                "stage": "promote",
+                "field": "stage_artifacts.solve",
+                "actual_count": solve_stages.len(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    let solve_stage = solve_stages[0];
+    if solve_stage.version != CANON_ENTITY_SOLVE_VERSION_V1 {
+        return Err(promote_refusal(
+            "Promotion run solve stage reference has the wrong version",
+            json!({
+                "stage": "promote",
+                "field": "stage_artifacts.solve.version",
+                "expected": CANON_ENTITY_SOLVE_VERSION_V1,
+                "actual": solve_stage.version,
+                "writes_performed": false
+            }),
+        ));
+    }
+    if solve_stage.path != run.work_dir.solve_artifact_path {
+        return Err(promote_refusal(
+            "Promotion run solve stage path does not match work_dir.solve_artifact_path",
+            json!({
+                "stage": "promote",
+                "field": "stage_artifacts.solve.path",
+                "expected": run.work_dir.solve_artifact_path,
+                "actual": solve_stage.path,
+                "writes_performed": false
+            }),
+        ));
+    }
+    if solve_stage.artifact_content_hash != solve_hash {
+        return Err(promote_refusal(
+            "Promotion run solve stage reference does not match the bound solve artifact",
+            json!({
+                "stage": "promote",
+                "field": "stage_artifacts.solve.artifact_content_hash",
+                "expected": solve_hash,
+                "actual": solve_stage.artifact_content_hash,
+                "writes_performed": false
+            }),
+        ));
+    }
+    let metadata_refs = run
+        .metadata
+        .upstream_artifacts
+        .iter()
+        .filter(|reference| reference.version == CANON_ENTITY_SOLVE_VERSION_V1)
+        .collect::<Vec<_>>();
+    if metadata_refs.len() != 1 || metadata_refs[0].content_hash != solve_hash {
+        return Err(promote_refusal(
+            "Promotion run metadata does not bind the run-bound solve artifact",
+            json!({
+                "stage": "promote",
+                "field": "metadata.upstream_artifacts",
+                "expected_version": CANON_ENTITY_SOLVE_VERSION_V1,
+                "expected_content_hash": solve_hash,
+                "actual_count": metadata_refs.len(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn reject_caller_authored_alias_authority(result: &Value, version: &str) -> Result<(), Refusal> {
+    let forbidden_fields: &[&str] = if version == CANON_ENTITY_SOLVE_VERSION_V1 {
+        &["promotion_aliases", "aliases"]
+    } else {
+        &["promotable_aliases", "promotion_aliases", "aliases"]
+    };
+    for field in forbidden_fields {
+        if result.get(*field).is_some() {
+            return Err(promote_refusal(
+                "Promotion aliases must derive from canonical solve alias proposals",
+                json!({
+                    "stage": "promote",
+                    "field": field,
+                    "writes_performed": false
+                }),
+            ));
+        }
+    }
+    if result
+        .get("entities")
+        .and_then(Value::as_array)
+        .is_some_and(|entities| {
+            entities
+                .iter()
+                .any(|entity| entity.get("alias_inputs").is_some())
+        })
+    {
+        return Err(promote_refusal(
+            "Promotion refuses fallback entity alias inputs",
+            json!({
+                "stage": "promote",
+                "field": "entities.alias_inputs",
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn promoted_alias_from_solve_proposal(proposal: &SolveAliasProposal) -> EntityPromotedAlias {
+    EntityPromotedAlias {
+        input: proposal.input.clone(),
+        canonical_id: proposal.canonical_id.clone(),
+        canonical_type: proposal.canonical_type.clone(),
+        rule_id: proposal.rule_id.clone(),
+    }
+}
+
+fn promote_source_contract_refusal(
+    artifact_role: &'static str,
+    field: &'static str,
+    refusal: Refusal,
+) -> Refusal {
+    let source_code = serde_json::to_value(&refusal.code)
+        .unwrap_or_else(|_| Value::String("unknown".to_string()));
+    promote_refusal(
+        "Promotion source solve artifact contract is invalid",
+        json!({
+            "stage": "promote",
+            "field": field,
+            "artifact_role": artifact_role,
+            "source_code": source_code,
+            "source_message": refusal.message,
+            "source_detail": refusal.detail,
+            "writes_performed": false
+        }),
+    )
 }
 
 fn v1_profile_reference(result: &Value) -> Result<EntityProfileReference, Refusal> {

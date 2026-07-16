@@ -1725,7 +1725,7 @@ pub(crate) fn load_schema_shape(schema_path: &Path) -> StrategyResult<StrategySc
         Refusal::io_error(&schema_path.display().to_string(), &error.to_string())
     })?;
     let value: Value = serde_json::from_str(&content).map_err(|error| {
-        crate::refusal::create_refusal(
+        *crate::refusal::create_refusal(
             RefusalCode::EParse,
             format!(
                 "Failed to parse schema profile '{}': {}",

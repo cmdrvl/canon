@@ -20,6 +20,7 @@ use crate::{
         solve::{
             SolveArtifact, SolveComponentDiagnostics, SolveEvidenceCut, SolveReconciliationState,
             SolveReviewGroupSeed, validate_solve_artifact_contract,
+            validate_solve_artifact_envelope_contract,
         },
     },
     resolve::{AmbiguousRecord, CandidateScore, MatchRecord, UnmatchedRecord},
@@ -313,7 +314,7 @@ pub fn build_review_v1_artifact(request: ReviewV1ExportRequest) -> Result<Value,
         EntityArtifactStageV1::Review,
         vec![source_ref],
     )?;
-    let review_items = review_items_from_v1_result(&request.result_artifact, request.include);
+    let review_items = review_items_from_v1_result(&request.result_artifact, request.include)?;
     let review_item_count = review_items.len() as u64;
     let source_review_groups = summary_count_any(
         &request.result_artifact,
@@ -725,6 +726,21 @@ fn validate_review_v1_source(artifact: &Value) -> Result<(), Refusal> {
             }),
         ));
     }
+    if contract.artifact_version == CANON_ENTITY_SOLVE_VERSION_V1 {
+        let solve = serde_json::from_value::<SolveArtifact>(artifact.clone()).map_err(|error| {
+            review_refusal(
+                EntityRefusalKind::ArtifactContract,
+                "Review export solve artifact is malformed",
+                json!({
+                    "stage": "review",
+                    "field": "solve_artifact",
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+            )
+        })?;
+        validate_solve_artifact_envelope_contract(&solve)?;
+    }
     Ok(())
 }
 
@@ -783,24 +799,162 @@ fn summary_count_any(value: &Value, keys: &[&str]) -> u64 {
         .unwrap_or(0)
 }
 
-fn review_items_from_v1_result(result: &Value, include: ReviewExportInclude) -> Vec<Value> {
-    let mut items = [
-        "review_items",
-        "review_groups",
-        "entities",
-        "abstentions",
-        "contradictions",
-    ]
-    .into_iter()
-    .filter_map(|field| result.get(field).and_then(Value::as_array))
-    .flat_map(|items| items.iter().cloned())
-    .filter(|item| v1_item_included(item, include))
-    .map(normalize_v1_review_item)
-    .collect::<Vec<_>>();
+fn review_items_from_v1_result(
+    result: &Value,
+    include: ReviewExportInclude,
+) -> Result<Vec<Value>, Refusal> {
+    let mut items = review_items_from_v1_alias_proposals(result, include)?;
+    items.extend(
+        [
+            "review_items",
+            "review_groups",
+            "entities",
+            "abstentions",
+            "contradictions",
+        ]
+        .into_iter()
+        .filter_map(|field| result.get(field).and_then(Value::as_array))
+        .flat_map(|items| items.iter().cloned())
+        .filter(|item| v1_item_included(item, include))
+        .map(normalize_v1_review_item)
+        .collect::<Vec<_>>(),
+    );
     items.sort_by(|left, right| {
         value_string_or(left, &["review_id"], "").cmp(value_string_or(right, &["review_id"], ""))
     });
-    items
+    Ok(items)
+}
+
+fn review_items_from_v1_alias_proposals(
+    result: &Value,
+    include: ReviewExportInclude,
+) -> Result<Vec<Value>, Refusal> {
+    if !matches!(
+        include,
+        ReviewExportInclude::Resolved | ReviewExportInclude::All
+    ) {
+        return Ok(Vec::new());
+    }
+    let Some(proposals) = result.get("promotable_aliases").and_then(Value::as_array) else {
+        return Ok(Vec::new());
+    };
+    proposals
+        .iter()
+        .map(alias_proposal_review_item)
+        .collect::<Result<Vec<_>, _>>()
+}
+
+fn alias_proposal_review_item(proposal: &Value) -> Result<Value, Refusal> {
+    let proposal_id = alias_proposal_string(proposal, "proposal_id")?;
+    alias_proposal_string(proposal, "version")?;
+    alias_proposal_string(proposal, "content_hash")?;
+    alias_proposal_string(proposal, "input")?;
+    alias_proposal_string(proposal, "canonical_id")?;
+    alias_proposal_string(proposal, "canonical_type")?;
+    alias_proposal_string(proposal, "rule_id")?;
+    let component_id = alias_proposal_string(proposal, "component_id")?;
+    let source_surface_ids = alias_proposal_string_array(proposal, "source_surface_ids")?;
+    let allowed_actions = alias_proposal_string_array(proposal, "allowed_actions")?;
+    if !allowed_actions
+        .iter()
+        .any(|action| action == "accept_alias")
+    {
+        return Err(review_refusal(
+            EntityRefusalKind::ArtifactContract,
+            "Solve alias proposal is missing accept_alias action",
+            json!({
+                "stage": "review",
+                "field": "promotable_aliases.allowed_actions",
+                "proposal_id": proposal_id,
+                "writes_performed": false
+            }),
+        ));
+    }
+
+    Ok(json!({
+        "review_id": proposal_id.clone(),
+        "decision": "",
+        "proposed_action": "accept_or_reject_alias_proposal",
+        "reason_code": "solve_alias_proposal",
+        "state": "resolved_existing",
+        "component_id": component_id.clone(),
+        "surface_ids": source_surface_ids.clone(),
+        "alias_proposal": proposal.clone()
+    }))
+}
+
+fn alias_proposal_string(proposal: &Value, field: &'static str) -> Result<String, Refusal> {
+    proposal
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !ascii_trim(value).is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            review_refusal(
+                EntityRefusalKind::ArtifactContract,
+                "Solve alias proposal is missing required review binding",
+                json!({
+                    "stage": "review",
+                    "field": format!("promotable_aliases.{field}"),
+                    "writes_performed": false
+                }),
+            )
+        })
+}
+
+fn alias_proposal_string_array(
+    proposal: &Value,
+    field: &'static str,
+) -> Result<Vec<String>, Refusal> {
+    let values = proposal
+        .get(field)
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            review_refusal(
+                EntityRefusalKind::ArtifactContract,
+                "Solve alias proposal is missing required review binding",
+                json!({
+                    "stage": "review",
+                    "field": format!("promotable_aliases.{field}"),
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    let parsed = values
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .filter(|text| !ascii_trim(text).is_empty())
+                .ok_or_else(|| {
+                    review_refusal(
+                        EntityRefusalKind::ArtifactContract,
+                        "Solve alias proposal review binding must contain non-empty strings",
+                        json!({
+                            "stage": "review",
+                            "field": format!("promotable_aliases.{field}"),
+                            "writes_performed": false
+                        }),
+                    )
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if parsed.is_empty() {
+        return Err(review_refusal(
+            EntityRefusalKind::ArtifactContract,
+            "Solve alias proposal review binding must not be empty",
+            json!({
+                "stage": "review",
+                "field": format!("promotable_aliases.{field}"),
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(parsed.into_iter().map(str::to_string).collect())
+}
+
+fn ascii_trim(value: &str) -> &str {
+    value.trim_matches(|character: char| character.is_ascii_whitespace())
 }
 
 fn v1_item_included(item: &Value, include: ReviewExportInclude) -> bool {

@@ -688,19 +688,14 @@ fn minimal_v1_source_artifact(
 }
 
 fn registry_snapshot_hash(registry: &Path) -> String {
-    let mut files = vec![registry.join("registry.json")];
-    let mut mappings = fs::read_dir(registry)
+    let mut files = fs::read_dir(registry)
         .expect("registry dir")
         .map(|entry| entry.expect("registry entry").path())
         .filter(|path| {
             path.is_file()
                 && path.extension().and_then(|extension| extension.to_str()) == Some("json")
-                && path.file_name().and_then(|name| name.to_str()) != Some("registry.json")
-                && path.file_name().and_then(|name| name.to_str()) != Some("_build.json")
         })
         .collect::<Vec<_>>();
-    mappings.sort();
-    files.extend(mappings);
     files.sort();
     let mut hasher = blake3::Hasher::new();
     for path in files {
@@ -712,7 +707,7 @@ fn registry_snapshot_hash(registry: &Path) -> String {
         hasher.update(file_name.as_bytes());
         hasher.update(&[0]);
         hasher.update(&bytes);
-        hasher.update(&[0xff]);
+        hasher.update(&[0]);
     }
     format!("blake3:{}", hasher.finalize().to_hex())
 }

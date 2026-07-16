@@ -8,6 +8,7 @@ use crate::{
             CannotLinkAction, CannotLinkValidationHook, CannotLinkValidationStatus,
             EXACT_BUCKET_PAIR_EXPANSION_FORBIDDEN, ExactBucketAssertion, ExactBucketContractError,
             ExactBucketDiagnostics, ExactBucketMembership, ExactBucketProfile, ExactBucketUpstream,
+            block_candidate_record_cmp,
         },
         budget::{BudgetBreach, BudgetLimit, BudgetStage, find_budget_policy},
         edge::EdgeCandidateBudgetProof,
@@ -1402,18 +1403,6 @@ fn ordered_surface_pair(left: &str, right: &str) -> Option<(String, String)> {
     }
 }
 
-fn block_candidate_record_cmp(
-    left: &BlockCandidateRecord,
-    right: &BlockCandidateRecord,
-) -> std::cmp::Ordering {
-    right
-        .candidate_score_hint
-        .cmp(&left.candidate_score_hint)
-        .then_with(|| primary_operator_id(left).cmp(primary_operator_id(right)))
-        .then_with(|| left.left_surface_id.cmp(&right.left_surface_id))
-        .then_with(|| left.right_surface_id.cmp(&right.right_surface_id))
-}
-
 fn block_operator_diagnostic_cmp(
     left: &BlockOperatorCandidateDiagnostics,
     right: &BlockOperatorCandidateDiagnostics,
@@ -1432,13 +1421,6 @@ fn block_operator_diagnostic_cmp(
                 .cmp(&left.large_posting_suppressed_count)
         })
         .then_with(|| left.operator_id.cmp(&right.operator_id))
-}
-
-fn primary_operator_id(record: &BlockCandidateRecord) -> &str {
-    record
-        .block_hits
-        .first()
-        .map_or("", |hit| hit.operator_id.as_str())
 }
 
 fn usize_to_u64(value: usize) -> u64 {

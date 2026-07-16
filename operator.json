@@ -4687,9 +4687,9 @@
     {
       "name": "entity link",
       "usage": "canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--suite <SUITE_DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
-      "description": "Link two row sets through the artifact-backed entity workbench and emit canon_entity_link.v0 with deterministic link decisions before optional registry write-back; nested runs bind native cache receipt stages using canon_entity_index_cache_receipt.v0 when cache artifacts are present",
+      "description": "Link two row sets through the artifact-backed entity workbench and emit canon_entity_link.v1 with canon_entity_link_decisions.v1, canon_entity_link_observation_surface_bindings.v1, profile_source binding, and any assignment-alignment artifacts marked as nonidentity relation hints; --write-back currently refuses before mutation pending transactional publication; nested runs bind native cache receipt stages using canon_entity_index_cache_receipt.v0 when cache artifacts are present",
       "output_mode": "mixed",
-      "output_schema": "canon_entity_link.v0",
+      "output_schema": "canon_entity_link.v1",
       "status": "implemented",
       "exit_codes": {
         "0": {
@@ -4738,7 +4738,7 @@
           "flag": "--registry",
           "type": "directory_path",
           "required": true,
-          "description": "Registry used for exact lookups and optional link write-back"
+          "description": "Registry used for exact lookup continuity; public --write-back currently refuses before registry mutation"
         },
         {
           "name": "work_dir",
@@ -4750,7 +4750,7 @@
           "name": "suite",
           "flag": "--suite",
           "type": "directory_path",
-          "description": "Frozen evaluation suite directory; when present, writes audit.json under --work-dir before optional write-back"
+          "description": "Frozen evaluation suite directory; when present, writes audit.json under --work-dir after link execution"
         },
         {
           "name": "gold",
@@ -4762,14 +4762,14 @@
           "name": "write_back",
           "flag": "--write-back",
           "type": "flag",
-          "description": "Write matched ID pairs to a new registry mapping file after gates pass"
+          "description": "Refuse before work-dir or registry mutation until transactional registry publication is available"
         },
         {
           "name": "emit",
           "flag": "--emit",
           "type": "string",
           "default": "json",
-          "description": "Output mode: json (canon_entity_link.v0) or summary"
+          "description": "Output mode: json (canon_entity_link.v1) or summary"
         },
         {
           "name": "cache_mode",
@@ -4810,15 +4810,15 @@
       "read_only": false,
       "safety": {
         "owned_temp_fixtures_only": true,
-        "notes": "entity link may write back registry/sidecar state only through explicit write-back paths",
-        "mutation_class": "RegistryMutation",
+        "notes": "entity link writes owned work-dir/cache/artifacts; --write-back refuses before mutation until transactional publication is available",
+        "mutation_class": "OwnedOutput",
         "network_class": "Offline",
-        "concurrency_class": "ExclusiveRegistryMutation",
+        "concurrency_class": "CacheRaceSafe",
         "platform_classes": [
           "PortablePathUtf8",
           "SameFilesystemAtomicReplace"
         ],
-        "declaration_command": "entity link write-back"
+        "declaration_command": "entity workbench"
       },
       "side_effects": {
         "reads_stdin": false,
@@ -4830,7 +4830,7 @@
         "creates_witness_directory": true,
         "writes_migration_logs": false,
         "writes_deprecation_notices": false,
-        "writes_registry_files": true,
+        "writes_registry_files": false,
         "writes_mapping_sidecars": false,
         "writes_work_dir": true,
         "writes_project_files": false,

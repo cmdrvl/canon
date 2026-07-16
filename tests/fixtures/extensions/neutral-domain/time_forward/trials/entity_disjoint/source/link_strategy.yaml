@@ -17,6 +17,6 @@ assertions:
     op: exact
     weight: 1.0
     required: true
-match_threshold: 1.0
+match_threshold: 0.90
 ambiguity_gap: 0.10
 max_candidates: 25

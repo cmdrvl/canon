@@ -193,7 +193,7 @@ fn manual_artifact_backed_stages_match_run_stage_artifacts() {
 }
 
 #[test]
-fn evidence_stage_refuses_stale_block_payload_before_edge_write() {
+fn evidence_stage_uses_committed_block_payload_when_candidate_mirror_is_stale() {
     let temp = tempfile::tempdir().expect("tempdir");
     let registry = temp.path().join("registry");
     let work_dir = temp.path().join("manual");
@@ -201,7 +201,7 @@ fn evidence_stage_refuses_stale_block_payload_before_edge_write() {
 
     let rows = fixture("tests/fixtures/entity/cmbs/small_book/observations.csv");
     let strategy = fixture("tests/fixtures/entity/profiles/cmbs_tenant_label.yaml");
-    run_entity_block_stage(EntityBlockStageRequest {
+    let block = run_entity_block_stage(EntityBlockStageRequest {
         rows: &rows,
         profile: "cmbs_tenant_label",
         strategy: &strategy,
@@ -211,7 +211,7 @@ fn evidence_stage_refuses_stale_block_payload_before_edge_write() {
     .expect("manual block stage");
 
     fs::write(work_dir.join("block/candidates.jsonl"), b"").expect("stale payload write");
-    let refusal = run_entity_evidence_stage(EntityEvidenceStageRequest {
+    let evidence = run_entity_evidence_stage(EntityEvidenceStageRequest {
         rows: &rows,
         profile: "cmbs_tenant_label",
         strategy: &strategy,
@@ -219,17 +219,22 @@ fn evidence_stage_refuses_stale_block_payload_before_edge_write() {
         registry: &registry,
         work_dir: &work_dir,
     })
-    .expect_err("stale block payload refuses");
+    .expect("committed block payload remains authoritative");
 
-    assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
-    assert_eq!(refusal.detail["stage"], "block");
-    assert_eq!(refusal.detail["reason"], "stale_candidate_records");
-    assert_eq!(refusal.detail["writes_performed"], false);
-    assert!(!work_dir.join("evidence/evidence.json").exists());
+    assert_eq!(
+        fs::read(work_dir.join("block/candidates.jsonl")).unwrap(),
+        b""
+    );
+    assert_eq!(evidence.candidate_records, block.candidates);
+    assert_eq!(
+        evidence.artifact.candidate_records_hash,
+        block.artifact.candidate_records_hash
+    );
+    assert!(work_dir.join("evidence/evidence.json").exists());
 }
 
 #[test]
-fn evidence_stage_refuses_stale_block_diagnostics_before_edge_write() {
+fn evidence_stage_uses_committed_block_diagnostics_when_diagnostics_mirror_is_stale() {
     let temp = tempfile::tempdir().expect("tempdir");
     let registry = temp.path().join("registry");
     let work_dir = temp.path().join("manual");
@@ -237,7 +242,7 @@ fn evidence_stage_refuses_stale_block_diagnostics_before_edge_write() {
 
     let rows = fixture("tests/fixtures/entity/cmbs/small_book/observations.csv");
     let strategy = fixture("tests/fixtures/entity/profiles/cmbs_tenant_label.yaml");
-    run_entity_block_stage(EntityBlockStageRequest {
+    let block = run_entity_block_stage(EntityBlockStageRequest {
         rows: &rows,
         profile: "cmbs_tenant_label",
         strategy: &strategy,
@@ -259,7 +264,7 @@ fn evidence_stage_refuses_stale_block_diagnostics_before_edge_write() {
     )
     .expect("stale diagnostics write");
 
-    let refusal = run_entity_evidence_stage(EntityEvidenceStageRequest {
+    let evidence = run_entity_evidence_stage(EntityEvidenceStageRequest {
         rows: &rows,
         profile: "cmbs_tenant_label",
         strategy: &strategy,
@@ -267,13 +272,16 @@ fn evidence_stage_refuses_stale_block_diagnostics_before_edge_write() {
         registry: &registry,
         work_dir: &work_dir,
     })
-    .expect_err("stale diagnostics refuse");
+    .expect("committed block diagnostics remain authoritative");
 
-    assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
-    assert_eq!(refusal.detail["stage"], "block");
-    assert_eq!(refusal.detail["reason"], "stale_candidate_diagnostics");
-    assert_eq!(refusal.detail["writes_performed"], false);
-    assert!(!work_dir.join("evidence/evidence.json").exists());
+    let retained_diagnostics: Value = read_json(&diagnostics_path);
+    assert_eq!(retained_diagnostics["candidate_record_count"], stale_count);
+    assert_eq!(evidence.candidate_records, block.candidates);
+    assert_eq!(
+        evidence.artifact.candidate_records_hash,
+        block.artifact.candidate_records_hash
+    );
+    assert!(work_dir.join("evidence/evidence.json").exists());
 }
 
 #[test]

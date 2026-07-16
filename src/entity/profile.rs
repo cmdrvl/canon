@@ -7,12 +7,16 @@
 use crate::Refusal;
 use crate::entity::{
     EntityContractKind, EntityGovernanceContractSlice, EntityPatchNamespaces,
-    EntityProfileReference, EntityTypedReference, error::EntityRefusalKind,
+    EntityProfileReference, EntityTypedReference,
+    error::EntityRefusalKind,
+    prepare::PrepareFieldMapping,
+    profile_package::{self, EntityProfilePackage as ExternalEntityProfilePackage},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_yaml::Value as YamlValue;
 use std::collections::{BTreeMap, BTreeSet};
+use std::{fs, path::Path};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct EntityProfileDocument {
@@ -34,6 +38,14 @@ pub struct EntityProfileDocument {
     pub evidence: EntityEvidenceLanes,
     #[serde(default)]
     pub patch_namespaces: EntityPatchNamespaces,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityProfilePackageProjection {
+    pub document: EntityProfileDocument,
+    pub prepare_mapping: PrepareFieldMapping,
+    pub package_digest: String,
+    pub package: ExternalEntityProfilePackage,
 }
 
 impl EntityProfileDocument {
@@ -270,6 +282,241 @@ impl EntityProfileDocument {
         }
         Ok(())
     }
+}
+
+pub fn entity_profile_package_projection_from_file(
+    path: &Path,
+) -> Result<EntityProfilePackageProjection, EntityProfileError> {
+    let bytes = fs::read(path).map_err(|error| {
+        EntityProfileError::new(
+            EntityRefusalKind::Profile,
+            "Entity profile package could not be read",
+            json!({
+                "path": path.display().to_string(),
+                "error": error.to_string()
+            }),
+        )
+    })?;
+    entity_profile_package_projection_from_bytes(&bytes)
+}
+
+pub fn entity_profile_package_projection_from_bytes(
+    bytes: &[u8],
+) -> Result<EntityProfilePackageProjection, EntityProfileError> {
+    let package = profile_package::load_profile_package_bytes(bytes).map_err(|error| {
+        EntityProfileError::new(
+            EntityRefusalKind::Profile,
+            "Entity profile package is invalid",
+            json!({
+                "code": format!("{:?}", error.code),
+                "message": error.message
+            }),
+        )
+    })?;
+    let package_digest =
+        profile_package::entity_profile_package_digest(&package).map_err(|error| {
+            EntityProfileError::new(
+                EntityRefusalKind::ArtifactContract,
+                "Entity profile package digest could not be computed",
+                json!({
+                    "code": format!("{:?}", error.code),
+                    "message": error.message
+                }),
+            )
+        })?;
+    let document = profile_document_from_package(&package)?;
+    let prepare_mapping = prepare_mapping_from_package(&package)?;
+    Ok(EntityProfilePackageProjection {
+        document,
+        prepare_mapping,
+        package_digest,
+        package,
+    })
+}
+
+fn profile_document_from_package(
+    package: &ExternalEntityProfilePackage,
+) -> Result<EntityProfileDocument, EntityProfileError> {
+    let document = EntityProfileDocument {
+        profile: package.profile.clone(),
+        version: package.version.clone(),
+        entity_type: package.entity_type.clone(),
+        identity_semantics: package.identity_semantics.clone(),
+        canonical_type: package.canonical_type.clone(),
+        required_fields: package.required_fields.clone(),
+        normalized_views: package
+            .normalized_views
+            .iter()
+            .map(|(name, view)| {
+                (
+                    name.clone(),
+                    EntityNormalizedView {
+                        operators: view
+                            .operators
+                            .iter()
+                            .map(|operator| operator.op.as_str().to_string())
+                            .collect(),
+                    },
+                )
+            })
+            .collect(),
+        evidence: EntityEvidenceLanes {
+            support: package
+                .evidence
+                .support
+                .iter()
+                .map(profile_operator_from_package)
+                .collect(),
+            cannot_link: package
+                .evidence
+                .cannot_link
+                .iter()
+                .map(profile_operator_from_package)
+                .collect(),
+            relation_hints: package
+                .evidence
+                .relation_hints
+                .iter()
+                .map(profile_operator_from_package)
+                .collect(),
+        },
+        patch_namespaces: EntityPatchNamespaces {
+            aliases: package.patch_namespaces.aliases.clone(),
+            distinct: package.patch_namespaces.distinct.clone(),
+            relations: package.patch_namespaces.relations.clone(),
+        },
+    };
+    document.validate()?;
+    Ok(document)
+}
+
+fn profile_operator_from_package(
+    operator: &profile_package::EntityOperatorSpec,
+) -> EntityOperatorSpec {
+    EntityOperatorSpec {
+        op: operator.op.clone(),
+        view: operator.view.clone(),
+        params: operator.params.clone(),
+    }
+}
+
+fn prepare_mapping_from_package(
+    package: &ExternalEntityProfilePackage,
+) -> Result<PrepareFieldMapping, EntityProfileError> {
+    let mut mapping = PrepareFieldMapping::default();
+    let mut seen_primary = BTreeSet::new();
+    let mut seen_context = BTreeSet::new();
+    let mut seen_provenance = BTreeSet::new();
+
+    for field in &package.field_mappings {
+        if field.object_type != package.entity_type {
+            continue;
+        }
+        let field_path = field.field_path.clone();
+        match field.field_role.as_str() {
+            "canonical_surface" => {
+                let Some(normalized_view) = field.normalized_view.as_ref() else {
+                    return Err(profile_package_mapping_refusal(
+                        "Entity profile package canonical surface must declare a normalized view",
+                        json!({
+                            "field_role": field.field_role,
+                            "field_path": field.field_path
+                        }),
+                    ));
+                };
+                if mapping
+                    .canonical_surface_normalized_view
+                    .replace(normalized_view.clone())
+                    .is_some()
+                {
+                    return Err(profile_package_mapping_refusal(
+                        "Entity profile package declares duplicate canonical surface fields",
+                        json!({ "field_role": field.field_role }),
+                    ));
+                }
+                if seen_primary.insert(field_path.clone()) {
+                    mapping.primary_surface_fields.push(field_path);
+                }
+            }
+            "context_value" => {
+                if seen_context.insert(field_path.clone()) {
+                    mapping.context_fields.push(field_path);
+                }
+            }
+            "record_key" | "provenance_value" => {
+                if seen_provenance.insert(field_path.clone()) {
+                    mapping.provenance_fields.push(field_path);
+                }
+            }
+            "alias_surfaces" => {
+                if mapping.alias_surfaces_field.replace(field_path).is_some() {
+                    return Err(profile_package_mapping_refusal(
+                        "Entity profile package declares duplicate alias surface fields",
+                        json!({ "field_role": field.field_role }),
+                    ));
+                }
+            }
+            "mention_surfaces" => {
+                if mapping.mention_surfaces_field.replace(field_path).is_some() {
+                    return Err(profile_package_mapping_refusal(
+                        "Entity profile package declares duplicate mention surface fields",
+                        json!({ "field_role": field.field_role }),
+                    ));
+                }
+            }
+            role if role.starts_with("anchor:") || role.starts_with("anchor.") => {
+                let namespace = role
+                    .split_once(':')
+                    .or_else(|| role.split_once('.'))
+                    .map(|(_, namespace)| namespace)
+                    .unwrap_or_default()
+                    .trim();
+                if namespace.is_empty() {
+                    return Err(profile_package_mapping_refusal(
+                        "Entity profile package declares an empty anchor namespace",
+                        json!({ "field_role": field.field_role }),
+                    ));
+                }
+                if mapping
+                    .anchor_fields
+                    .insert(namespace.to_string(), field_path)
+                    .is_some()
+                {
+                    return Err(profile_package_mapping_refusal(
+                        "Entity profile package declares duplicate anchor namespace",
+                        json!({ "field_role": field.field_role }),
+                    ));
+                }
+            }
+            role => {
+                return Err(profile_package_mapping_refusal(
+                    "Entity profile package declares an unsupported field role",
+                    json!({
+                        "field_role": role,
+                        "field_path": field.field_path
+                    }),
+                ));
+            }
+        }
+    }
+
+    if mapping.primary_surface_fields.is_empty() {
+        return Err(profile_package_mapping_refusal(
+            "Entity profile package must declare at least one canonical surface field",
+            json!({
+                "profile": package.profile,
+                "entity_type": package.entity_type
+            }),
+        ));
+    }
+    Ok(mapping)
+}
+
+fn profile_package_mapping_refusal(
+    message: impl Into<String>,
+    detail: serde_json::Value,
+) -> EntityProfileError {
+    EntityProfileError::new(EntityRefusalKind::Profile, message, detail)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -584,13 +831,20 @@ impl EntityProfileError {
 }
 
 const SUPPORTED_NORMALIZE_OPS: &[&str] = &[
+    "identity",
+    "ascii_trim_upper",
     "unicode_fold",
     "lowercase",
+    "uppercase",
     "strip_tenant_noise",
     "strip_legal_suffixes",
     "normalize_whitespace",
     "tenant_brand_fingerprint",
     "tokenize",
+    "replace_tokens",
+    "remove_tokens",
+    "strip_suffixes",
+    "fingerprint",
     "drop_tenant_stopwords",
     "strip_regab_noise",
     "preserve_legal_form",
@@ -600,6 +854,7 @@ const SUPPORTED_NORMALIZE_OPS: &[&str] = &[
 
 const SUPPORTED_SUPPORT_OPS: &[&str] = &[
     "exact_view",
+    "token_overlap",
     "string_similarity",
     "tfidf_cosine",
     "alias_patch_match",
@@ -613,6 +868,8 @@ const SUPPORTED_CANNOT_LINK_OPS: &[&str] = &[
     "conflicting_anchor",
     "same_property_distinct_rank",
     "role_conflict",
+    "protected_anchor_conflict",
+    "segment_conflict",
     "platform_label_guard",
     "division_boundary",
 ];
@@ -624,6 +881,8 @@ const SUPPORTED_RELATION_HINT_OPS: &[&str] = &[
     "division_of",
     "parent_subsidiary_context",
     "cross_profile_alignment",
+    "context_alignment",
+    "segment_alignment",
 ];
 
 const CROSS_PROFILE_RELATION_OPS: &[&str] = &["cross_profile_alignment"];

@@ -1,0 +1,219 @@
+{
+  "kind": "entity-profile",
+  "profile": "pkg.beta.link_profile",
+  "version": "2.1.0",
+  "entity_type": "pkg.beta:item",
+  "identity_semantics": "canonical_surface",
+  "canonical_type": "beta_item_id",
+  "required_fields": [
+    "beta_code",
+    "caption"
+  ],
+  "normalized_views": {
+    "caption_tokens": {
+      "operators": [
+        {
+          "op": "lowercase"
+        },
+        {
+          "op": "normalize_whitespace"
+        },
+        {
+          "op": "tokenize"
+        }
+      ]
+    },
+    "segment_key": {
+      "operators": [
+        {
+          "op": "ascii_trim_upper"
+        }
+      ]
+    }
+  },
+  "evidence": {
+    "support": [
+      {
+        "op": "token_overlap",
+        "view": "caption_tokens"
+      }
+    ],
+    "cannot_link": [
+      {
+        "op": "segment_conflict",
+        "view": "segment_key"
+      }
+    ],
+    "relation_hints": [
+      {
+        "op": "segment_alignment",
+        "view": "segment_key"
+      }
+    ]
+  },
+  "patch_namespaces": {
+    "aliases": "pkg.beta.link_profile.aliases",
+    "distinct": "pkg.beta.link_profile.distinct",
+    "relations": "pkg.beta.link_profile.relations"
+  },
+  "evidence_policy": {
+    "kind": "evidence-policy",
+    "id": "pkg.beta.evidence_policy",
+    "version": "2026.07.10",
+    "content_hash": "blake3:4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "review_policy": {
+    "kind": "review-policy",
+    "id": "pkg.beta.review_policy",
+    "version": "2026.07.10",
+    "content_hash": "blake3:5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "promotion_policy": {
+    "kind": "promotion-policy",
+    "id": "pkg.beta.promotion_policy",
+    "version": "2026.07.10",
+    "content_hash": "blake3:6666666666666666666666666666666666666666666666666666666666666666"
+  },
+  "frozen_executable_strategy": {
+    "kind": "frozen-executable-strategy",
+    "id": "pkg.beta.strategy",
+    "version": "2026.07.10",
+    "content_hash": "blake3:7777777777777777777777777777777777777777777777777777777777777777"
+  },
+  "ontology_package": {
+    "kind": "ontology-package",
+    "id": "pkg.beta.ontology",
+    "version": "2026.07.10",
+    "content_hash": "blake3:8888888888888888888888888888888888888888888888888888888888888888"
+  },
+  "identifier_package": {
+    "kind": "identifier-package",
+    "id": "pkg.beta.identifier",
+    "version": "2026.07.10",
+    "content_hash": "blake3:9999999999999999999999999999999999999999999999999999999999999999"
+  },
+  "vocabulary_package": {
+    "kind": "vocabulary-package",
+    "id": "pkg.beta.vocabulary",
+    "version": "2026.07.10",
+    "content_hash": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "evidence_package": {
+    "kind": "evidence-package",
+    "id": "pkg.beta.evidence",
+    "version": "2026.07.10",
+    "content_hash": "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "normalization_packages": [
+    {
+      "kind": "normalization-package",
+      "id": "pkg.beta.normalization",
+      "version": "2026.07.10",
+      "content_hash": "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ],
+  "available_capabilities": [
+    "prepare",
+    "index",
+    "block",
+    "evidence",
+    "solve_cluster",
+    "solve_link",
+    "review",
+    "promote",
+    "apply"
+  ],
+  "field_mappings": [
+    {
+      "field_path": "beta_code",
+      "object_type": "pkg.beta:item",
+      "field_role": "record_key",
+      "required": true
+    },
+    {
+      "field_path": "caption",
+      "object_type": "pkg.beta:item",
+      "field_role": "canonical_surface",
+      "normalized_view": "caption_tokens",
+      "required": true
+    },
+    {
+      "field_path": "segment",
+      "object_type": "pkg.beta:item",
+      "field_role": "context_value",
+      "normalized_view": "segment_key",
+      "required": false
+    }
+  ],
+  "execution_modes": [
+    {
+      "mode": "cluster",
+      "source_object_type": "pkg.beta:item",
+      "required_capabilities": [
+        "prepare",
+        "index",
+        "block",
+        "evidence",
+        "solve_cluster",
+        "review",
+        "promote",
+        "apply"
+      ],
+      "field_paths": [
+        "beta_code",
+        "caption"
+      ],
+      "outputs": [
+        "prepare_bundle",
+        "cluster_assignments",
+        "review_queue"
+      ]
+    },
+    {
+      "mode": "link",
+      "source_object_type": "pkg.beta:item",
+      "target_object_type": "pkg.beta:item",
+      "link_direction": "source_to_target",
+      "required_capabilities": [
+        "prepare",
+        "index",
+        "block",
+        "evidence",
+        "solve_link",
+        "review",
+        "promote",
+        "apply"
+      ],
+      "field_paths": [
+        "beta_code",
+        "caption",
+        "segment"
+      ],
+      "outputs": [
+        "prepare_bundle",
+        "link_candidates",
+        "link_decisions"
+      ]
+    }
+  ],
+  "limits": {
+    "max_observation_fields": 8,
+    "max_candidate_pairs": 3000,
+    "max_outputs": 500
+  },
+  "expected_outputs": [
+    "prepare_bundle",
+    "cluster_assignments",
+    "review_queue",
+    "link_candidates",
+    "link_decisions"
+  ],
+  "project_overrides": [
+    {
+      "key": "candidate_limit",
+      "default_value": "3000",
+      "artifact_header_key": "candidate_limit",
+      "project_lock_key": "limits.candidate_limit"
+    }
+  ]
+}

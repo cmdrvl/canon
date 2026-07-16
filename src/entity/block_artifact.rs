@@ -888,7 +888,7 @@ fn profile_from_index(index: &EntityArtifactHeader) -> Result<ExactBucketProfile
     })
 }
 
-fn block_candidate_record_cmp(
+pub(crate) fn block_candidate_record_cmp(
     left: &BlockCandidateRecord,
     right: &BlockCandidateRecord,
 ) -> std::cmp::Ordering {

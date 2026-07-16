@@ -6,17 +6,29 @@
 //! then delegates indexing, blocking, evidence, solve, review, audit, promote,
 //! and apply handoffs to `run_entity_workbench`.
 
-use super::{EntityRunRequest, EntityRunResult, run_entity_workbench_with_cache_mode};
+use super::{
+    EntityRunArtifact, EntityRunRequest, EntityRunResult,
+    publish_entity_run_link_publication_patch,
+    read_entity_run_committed_publication_stable_path_bytes, run_entity_workbench_with_cache_mode,
+};
 use crate::{
     InputFormat, Refusal,
+    entity::evidence_ir::{
+        EvidenceBundle, canonical_bundle_bytes as canonical_evidence_bundle_bytes,
+    },
     entity::index::EntityIndexCacheMode,
-    entity::run::EntityRunArtifact,
+    entity::publication::{CANON_ENTITY_STAGE_PUBLICATION_VERSION, EntityPublicationFileInput},
+    entity::record_link::{
+        ASSIGNMENT_ALIGNMENT_PATH, ASSIGNMENT_ALIGNMENT_VERSION, AssignmentAlignmentSidecar,
+        RECORD_LINK_EVIDENCE_PATH, canonical_assignment_alignment_bytes,
+        validate_assignment_alignment_sidecar,
+    },
     entity::{
         CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactReference,
         error::EntityRefusalKind,
         prepare::{
-            PrepareInputContract, PreparedInputObservation, PreparedSurfaceRecord,
-            load_prepare_profile, prepare_surface_records, project_prepare_path,
+            LoadedPrepareProfile, PrepareInputContract, PreparedInputObservation,
+            PreparedSurfaceRecord, load_prepare_profile_with_hash, project_prepare_csv_reader,
         },
     },
     input,
@@ -32,16 +44,17 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, File},
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Cursor},
     path::{Component, Path, PathBuf},
 };
 
 pub mod multisource;
 
-pub const ENTITY_LINK_VERSION: &str = "canon_entity_link.v0";
-pub const ENTITY_LINK_DECISIONS_VERSION: &str = "canon_entity_link_decisions.v0";
+pub const ENTITY_LINK_VERSION: &str = "canon_entity_link.v1";
+pub const ENTITY_LINK_DECISIONS_VERSION: &str = "canon_entity_link_decisions.v1";
+pub const ENTITY_LINK_MATERIALIZED_ROWS_VERSION: &str = "canon_entity_link_materialized_rows.v1";
 pub const ENTITY_LINK_OBSERVATION_SURFACE_BINDINGS_VERSION: &str =
-    "canon_entity_link_observation_surface_bindings.v0";
+    "canon_entity_link_observation_surface_bindings.v1";
 pub const LINK_SIDE_COLUMN: &str = "canon_link_side";
 pub const LINK_SOURCE_NAME_COLUMN: &str = "canon_link_source_name";
 pub const LINK_SOURCE_ROW_COLUMN: &str = "canon_link_source_row_id";
@@ -49,6 +62,7 @@ pub const LINK_SOURCE_ORDINAL_COLUMN: &str = "canon_link_source_ordinal";
 pub const LINK_ARTIFACT_PATH: &str = "link/link.json";
 pub const LINK_MATERIALIZED_ROWS_PATH: &str = "combined_rows.csv";
 pub const LINK_OBSERVATION_SURFACE_BINDINGS_PATH: &str = "observation_surface_bindings.jsonl";
+pub const LINK_ASSIGNMENT_ALIGNMENT_PATH: &str = "assignment_alignment.json";
 const LINK_COMPOSITE_ID_SEPARATOR: &str = "|";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,12 +100,29 @@ pub struct EntityLinkArtifact {
     pub target: EntityLinkInput,
     pub materialized_rows_path: String,
     pub materialized_rows_content_hash: String,
+    pub profile_source: EntityLinkProfileSource,
     pub observation_surface_bindings_path: String,
     pub observation_surface_bindings_content_hash: String,
     pub shared_run_artifact: EntityArtifactReference,
     pub shared_solve_artifact: EntityArtifactReference,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assignment_alignment_artifacts: Vec<EntityLinkAssignmentAlignmentArtifact>,
     pub decision_artifact: EntityLinkDecisionArtifact,
     pub next_commands: EntityLinkNextCommands,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityLinkProfileSource {
+    pub source: String,
+    pub content_hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityLinkAssignmentAlignmentArtifact {
+    pub version: String,
+    pub path: String,
+    pub content_hash: String,
+    pub evidence_semantics: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -190,10 +221,19 @@ pub fn run_entity_link_with_cache_mode(
         content_hash: run.artifact.artifact_content_hash.clone(),
     };
     let shared_solve_artifact = solve_stage_reference(&run.artifact)?;
+    let shared_publication_artifact = EntityArtifactReference {
+        version: CANON_ENTITY_STAGE_PUBLICATION_VERSION.to_string(),
+        content_hash: run.publication.generation_id.clone(),
+    };
     let mut metadata = run.artifact.metadata.clone();
-    metadata.upstream_artifacts = vec![shared_run_artifact.clone(), shared_solve_artifact.clone()];
+    metadata.upstream_artifacts = vec![
+        shared_run_artifact.clone(),
+        shared_solve_artifact.clone(),
+        shared_publication_artifact,
+    ];
     metadata.upstream_artifacts.sort_by(artifact_ref_cmp);
     metadata.artifact_content_hash.clear();
+    let profile_source = link_profile_source_from_request(request.profile, &run.artifact)?;
     let artifact = EntityLinkArtifact {
         version: ENTITY_LINK_VERSION.to_string(),
         artifact_content_hash: String::new(),
@@ -218,10 +258,12 @@ pub fn run_entity_link_with_cache_mode(
         },
         materialized_rows_path: LINK_MATERIALIZED_ROWS_PATH.to_string(),
         materialized_rows_content_hash: String::new(),
+        profile_source,
         observation_surface_bindings_path: LINK_OBSERVATION_SURFACE_BINDINGS_PATH.to_string(),
         observation_surface_bindings_content_hash: String::new(),
         shared_run_artifact,
         shared_solve_artifact,
+        assignment_alignment_artifacts: Vec::new(),
         decision_artifact: empty_link_decision_artifact(),
         next_commands: EntityLinkNextCommands {
             review_export: format!(
@@ -247,40 +289,74 @@ pub fn link_artifact_path(work_dir: &Path) -> PathBuf {
     work_dir.join(LINK_ARTIFACT_PATH)
 }
 
+fn link_materialized_rows_publication_path() -> String {
+    format!("link/{LINK_MATERIALIZED_ROWS_PATH}")
+}
+
+fn link_observation_surface_bindings_publication_path() -> String {
+    format!("link/{LINK_OBSERVATION_SURFACE_BINDINGS_PATH}")
+}
+
+fn link_assignment_alignment_publication_path() -> String {
+    format!("link/{LINK_ASSIGNMENT_ALIGNMENT_PATH}")
+}
+
 pub fn finalize_entity_link_artifact(
     request: EntityLinkFinalizeRequest<'_>,
 ) -> Result<EntityLinkArtifact, Refusal> {
     let mut artifact = request.artifact;
+    let expected_parent_generation_id = link_publication_parent_generation_id(&artifact)?;
     let shared_run_artifact = EntityArtifactReference {
         version: request.run_artifact.version.clone(),
         content_hash: request.run_artifact.artifact_content_hash.clone(),
     };
     let shared_solve_artifact = solve_stage_reference(request.run_artifact)?;
+    let shared_publication_artifact = EntityArtifactReference {
+        version: CANON_ENTITY_STAGE_PUBLICATION_VERSION.to_string(),
+        content_hash: expected_parent_generation_id.clone(),
+    };
     artifact.shared_run_artifact = shared_run_artifact.clone();
     artifact.shared_solve_artifact = shared_solve_artifact.clone();
-    artifact.summary = request.decisions.summary.clone();
+    let (decision_artifact, canonical_summary) =
+        link_decision_artifact_and_summary(request.decisions)?;
+    artifact.summary = canonical_summary;
     artifact.materialized_rows_path = LINK_MATERIALIZED_ROWS_PATH.to_string();
-    artifact.materialized_rows_content_hash = hash_file(
+    let materialized_rows_bytes = read_link_stable_bytes(
         &materialized_rows_path(request.work_dir),
         "materialized rows",
     )?;
+    artifact.materialized_rows_content_hash = witness::hash_bytes(&materialized_rows_bytes);
     artifact.observation_surface_bindings_path = LINK_OBSERVATION_SURFACE_BINDINGS_PATH.to_string();
     let mut metadata = request.run_artifact.metadata.clone();
-    metadata.upstream_artifacts = vec![shared_run_artifact, shared_solve_artifact];
+    metadata.upstream_artifacts = vec![
+        shared_run_artifact.clone(),
+        shared_solve_artifact.clone(),
+        shared_publication_artifact,
+    ];
     metadata.upstream_artifacts.sort_by(artifact_ref_cmp);
     metadata.artifact_content_hash.clear();
     artifact.metadata = metadata;
-    artifact.decision_artifact = link_decision_artifact(request.decisions)?;
+    let (assignment_alignment_artifacts, assignment_alignment_bytes) =
+        load_link_assignment_alignment_artifacts(request.work_dir)?;
+    artifact.assignment_alignment_artifacts = assignment_alignment_artifacts;
+    artifact.decision_artifact = decision_artifact;
+    let profile_context_dirs =
+        link_profile_source_context_dirs(&link_artifact_path(request.work_dir));
+    validate_link_profile_source_against_run(
+        &artifact.profile_source,
+        &profile_context_dirs,
+        request.run_artifact,
+    )?;
     let bindings = build_link_observation_surface_bindings(
         request.work_dir,
+        &artifact,
+        &profile_context_dirs,
         request.run_artifact,
         request.decisions,
     )?;
     validate_entity_link_observation_surface_bindings(&artifact, &bindings)?;
-    let bindings_path = observation_surface_bindings_path(request.work_dir);
-    write_jsonl_file(&bindings_path, &bindings)?;
-    artifact.observation_surface_bindings_content_hash =
-        hash_file(&bindings_path, "observation/surface bindings")?;
+    let bindings_bytes = jsonl_bytes(&bindings, "observation/surface bindings")?;
+    artifact.observation_surface_bindings_content_hash = witness::hash_bytes(&bindings_bytes);
     artifact.next_commands = EntityLinkNextCommands {
         review_export: format!(
             "canon entity review export {} --include escrow --emit csv",
@@ -290,8 +366,84 @@ pub fn finalize_entity_link_artifact(
     artifact.artifact_content_hash = hash_link_artifact_without_self(&artifact)?;
     artifact.metadata.artifact_content_hash = artifact.artifact_content_hash.clone();
     validate_entity_link_artifact_contract(&artifact)?;
-    write_json_file(&link_artifact_path(request.work_dir), &artifact)?;
+    let artifact_bytes = json_bytes(&artifact, "link artifact")?;
+    let mut publication_files = vec![
+        EntityPublicationFileInput::new(
+            link_materialized_rows_publication_path(),
+            "link",
+            ENTITY_LINK_MATERIALIZED_ROWS_VERSION,
+            materialized_rows_bytes,
+        ),
+        EntityPublicationFileInput::new(
+            link_observation_surface_bindings_publication_path(),
+            "link",
+            ENTITY_LINK_OBSERVATION_SURFACE_BINDINGS_VERSION,
+            bindings_bytes,
+        ),
+        EntityPublicationFileInput::new(
+            LINK_ARTIFACT_PATH,
+            "link",
+            ENTITY_LINK_VERSION,
+            artifact_bytes,
+        ),
+    ];
+    if let Some(bytes) = assignment_alignment_bytes {
+        publication_files.push(EntityPublicationFileInput::new(
+            link_assignment_alignment_publication_path(),
+            "link",
+            ASSIGNMENT_ALIGNMENT_VERSION,
+            bytes,
+        ));
+    }
+    publish_entity_run_link_publication_patch(
+        request.work_dir,
+        &expected_parent_generation_id,
+        vec![shared_run_artifact, shared_solve_artifact],
+        publication_files,
+    )?;
     Ok(artifact)
+}
+
+fn link_publication_parent_generation_id(artifact: &EntityLinkArtifact) -> Result<String, Refusal> {
+    let mut matches = artifact
+        .metadata
+        .upstream_artifacts
+        .iter()
+        .filter(|reference| reference.version == CANON_ENTITY_STAGE_PUBLICATION_VERSION);
+    let Some(reference) = matches.next() else {
+        return Err(link_artifact_refusal(
+            "Entity link artifact is missing its committed run publication parent",
+            json!({
+                "stage": "link",
+                "field": "metadata.upstream_artifacts",
+                "expected_version": CANON_ENTITY_STAGE_PUBLICATION_VERSION,
+                "writes_performed": false
+            }),
+        ));
+    };
+    if matches.next().is_some() {
+        return Err(link_artifact_refusal(
+            "Entity link artifact must name exactly one committed run publication parent",
+            json!({
+                "stage": "link",
+                "field": "metadata.upstream_artifacts",
+                "expected_version": CANON_ENTITY_STAGE_PUBLICATION_VERSION,
+                "writes_performed": false
+            }),
+        ));
+    }
+    if reference.content_hash.trim().is_empty() {
+        return Err(link_artifact_refusal(
+            "Entity link committed run publication parent must carry a generation id",
+            json!({
+                "stage": "link",
+                "field": "metadata.upstream_artifacts.content_hash",
+                "version": CANON_ENTITY_STAGE_PUBLICATION_VERSION,
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(reference.content_hash.clone())
 }
 
 pub fn validate_entity_link_artifact_contract(
@@ -332,6 +484,8 @@ pub fn validate_entity_link_artifact_contract(
         ));
     }
     validate_link_upstreams(artifact)?;
+    validate_link_assignment_alignment_artifacts(artifact)?;
+    validate_link_profile_source_reference(artifact)?;
     validate_safe_relative_path(&artifact.materialized_rows_path, "materialized_rows_path")?;
     validate_safe_relative_path(
         &artifact.observation_surface_bindings_path,
@@ -392,10 +546,12 @@ pub fn validate_entity_link_artifact_raw_shape(value: &Value) -> Result<(), Refu
             "target",
             "materialized_rows_path",
             "materialized_rows_content_hash",
+            "profile_source",
             "observation_surface_bindings_path",
             "observation_surface_bindings_content_hash",
             "shared_run_artifact",
             "shared_solve_artifact",
+            "assignment_alignment_artifacts",
             "decision_artifact",
             "next_commands",
         ],
@@ -422,6 +578,13 @@ pub fn validate_entity_link_artifact_raw_shape(value: &Value) -> Result<(), Refu
             "decision_artifact.",
         )?;
     }
+    if let Some(profile_source) = value.get("profile_source") {
+        validate_known_object_keys(
+            profile_source,
+            &["source", "content_hash"],
+            "profile_source.",
+        )?;
+    }
     Ok(())
 }
 
@@ -432,7 +595,10 @@ pub fn validate_entity_link_artifact_at_path(
     validate_entity_link_artifact_contract(artifact)?;
     let base_dir = entity_link_artifact_base_dir(artifact_path);
     let materialized_path = base_dir.join(&artifact.materialized_rows_path);
-    let actual_hash = hash_file(&materialized_path, "materialized rows")?;
+    let work_dir = entity_link_work_dir_from_artifact_path(artifact_path);
+    let materialized_bytes =
+        read_link_committed_or_stable_bytes(&work_dir, &materialized_path, "materialized rows")?;
+    let actual_hash = witness::hash_bytes(&materialized_bytes);
     if actual_hash != artifact.materialized_rows_content_hash {
         return Err(link_artifact_refusal(
             "Entity link materialized rows hash does not match the linked payload",
@@ -446,7 +612,9 @@ pub fn validate_entity_link_artifact_at_path(
             }),
         ));
     }
+    validate_link_profile_source_at_path(artifact, artifact_path)?;
     read_validated_entity_link_observation_surface_bindings_at_path(artifact, artifact_path)?;
+    validate_link_assignment_alignment_artifacts_at_path(artifact, artifact_path)?;
     Ok(())
 }
 
@@ -457,7 +625,13 @@ pub fn read_validated_entity_link_observation_surface_bindings_at_path(
     validate_entity_link_artifact_contract(artifact)?;
     let base_dir = entity_link_artifact_base_dir(artifact_path);
     let bindings_path = base_dir.join(&artifact.observation_surface_bindings_path);
-    let actual_hash = hash_file(&bindings_path, "observation/surface bindings")?;
+    let work_dir = entity_link_work_dir_from_artifact_path(artifact_path);
+    let bindings_bytes = read_link_committed_or_stable_bytes(
+        &work_dir,
+        &bindings_path,
+        "observation/surface bindings",
+    )?;
+    let actual_hash = witness::hash_bytes(&bindings_bytes);
     if actual_hash != artifact.observation_surface_bindings_content_hash {
         return Err(link_artifact_refusal(
             "Entity link observation/surface bindings hash does not match the linked payload",
@@ -471,7 +645,7 @@ pub fn read_validated_entity_link_observation_surface_bindings_at_path(
             }),
         ));
     }
-    let bindings = read_observation_surface_bindings(&bindings_path)?;
+    let bindings = read_observation_surface_bindings_bytes(&bindings_bytes, &bindings_path)?;
     validate_entity_link_observation_surface_bindings(artifact, &bindings)?;
     Ok(bindings)
 }
@@ -484,7 +658,10 @@ pub fn read_derivation_validated_entity_link_observation_surface_bindings_at_pat
     validate_entity_link_artifact_contract(artifact)?;
     let base_dir = entity_link_artifact_base_dir(artifact_path);
     let materialized_path = base_dir.join(&artifact.materialized_rows_path);
-    let materialized_hash = hash_file(&materialized_path, "materialized rows")?;
+    let work_dir = entity_link_work_dir_from_artifact_path(artifact_path);
+    let materialized_bytes =
+        read_link_committed_or_stable_bytes(&work_dir, &materialized_path, "materialized rows")?;
+    let materialized_hash = witness::hash_bytes(&materialized_bytes);
     if materialized_hash != artifact.materialized_rows_content_hash {
         return Err(link_artifact_refusal(
             "Entity link materialized rows hash does not match the linked payload",
@@ -501,11 +678,18 @@ pub fn read_derivation_validated_entity_link_observation_surface_bindings_at_pat
     validate_entity_link_run_continuity(artifact, run_artifact, &materialized_hash)?;
     let actual =
         read_validated_entity_link_observation_surface_bindings_at_path(artifact, artifact_path)?;
-    let expected = build_link_observation_surface_bindings_from_materialized(
-        &materialized_path,
-        run_artifact,
-        entity_link_run_strategy_hash(run_artifact),
-        "run_artifact.metadata.strategy.content_hash",
+    let profile_context_dirs = link_profile_source_context_dirs(artifact_path);
+    let expected = build_link_observation_surface_bindings_from_materialized_bytes(
+        &materialized_bytes,
+        LinkObservationSurfaceBindingBuildContext {
+            work_dir: &work_dir,
+            materialized_path: &materialized_path,
+            artifact,
+            profile_context_dirs: &profile_context_dirs,
+            run_artifact,
+            expected_strategy_hash: entity_link_run_strategy_hash(run_artifact),
+            expected_strategy_hash_field: "run_artifact.metadata.strategy.content_hash",
+        },
     )?;
     validate_entity_link_observation_surface_bindings(artifact, &expected)?;
     if actual != expected {
@@ -662,19 +846,10 @@ fn validate_entity_link_run_continuity(
             }),
         ));
     }
-    let expected_run_hash = hash_entity_run_artifact_without_self(run_artifact)?;
-    if run_artifact.artifact_content_hash != expected_run_hash {
-        return Err(link_artifact_refusal(
-            "Entity run artifact content hash does not match its payload",
-            json!({
-                "stage": "link",
-                "field": "run_artifact.artifact_content_hash",
-                "expected": expected_run_hash,
-                "actual": run_artifact.artifact_content_hash,
-                "writes_performed": false
-            }),
-        ));
-    }
+    // Persisted v1 run artifacts must be raw-validated by callers before typed
+    // derivation replay. `EntityRunArtifact` intentionally omits raw v1 schema
+    // metadata, so this typed continuity check preserves only fields available
+    // after deserialization.
     let expected_run = EntityArtifactReference {
         version: run_artifact.version.clone(),
         content_hash: run_artifact.artifact_content_hash.clone(),
@@ -764,21 +939,323 @@ fn entity_link_run_strategy_hash(run_artifact: &EntityRunArtifact) -> Option<&st
     }
 }
 
-fn hash_entity_run_artifact_without_self(artifact: &EntityRunArtifact) -> Result<String, Refusal> {
-    let mut hashable = artifact.clone();
-    hashable.artifact_content_hash.clear();
-    hashable.metadata.artifact_content_hash.clear();
-    let bytes = serde_json::to_vec(&hashable).map_err(|error| {
-        link_artifact_refusal(
-            "Failed to hash entity run artifact for link derivation validation",
+fn link_profile_source_from_request(
+    profile: &str,
+    run_artifact: &EntityRunArtifact,
+) -> Result<EntityLinkProfileSource, Refusal> {
+    let loaded_profile = load_link_profile_source(profile)?;
+    let source = EntityLinkProfileSource {
+        source: profile.to_string(),
+        content_hash: loaded_profile.content_hash.clone(),
+    };
+    validate_loaded_link_profile_against_run(&source, &loaded_profile, run_artifact)?;
+    Ok(source)
+}
+
+fn validate_link_profile_source_reference(artifact: &EntityLinkArtifact) -> Result<(), Refusal> {
+    if artifact.profile_source.source.trim().is_empty() {
+        return Err(link_artifact_refusal(
+            "Entity link artifact must bind the prepare profile source",
             json!({
                 "stage": "link",
-                "error": error.to_string(),
+                "field": "profile_source.source",
+                "writes_performed": false
+            }),
+        ));
+    }
+    if artifact.profile_source.content_hash.trim().is_empty() {
+        return Err(link_artifact_refusal(
+            "Entity link artifact must bind the prepare profile source hash",
+            json!({
+                "stage": "link",
+                "field": "profile_source.content_hash",
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_link_profile_source_at_path(
+    artifact: &EntityLinkArtifact,
+    artifact_path: &Path,
+) -> Result<LoadedPrepareProfile, Refusal> {
+    validate_link_profile_source_reference(artifact)?;
+    let context_dirs = link_profile_source_context_dirs(artifact_path);
+    load_and_validate_link_profile_source(&artifact.profile_source, &context_dirs)
+}
+
+fn load_and_validate_link_profile_source(
+    profile_source: &EntityLinkProfileSource,
+    context_dirs: &[PathBuf],
+) -> Result<LoadedPrepareProfile, Refusal> {
+    let candidates = link_profile_source_candidates(&profile_source.source, context_dirs);
+    let mut mismatches = Vec::new();
+    let mut load_failures = Vec::new();
+    for candidate in &candidates {
+        match load_prepare_profile_with_hash(candidate) {
+            Ok(loaded_profile) if loaded_profile.content_hash == profile_source.content_hash => {
+                return Ok(loaded_profile);
+            }
+            Ok(loaded_profile) => {
+                mismatches.push(json!({
+                    "resolved_source": candidate,
+                    "actual": loaded_profile.content_hash
+                }));
+            }
+            Err(refusal) => {
+                load_failures.push(json!({
+                    "resolved_source": candidate,
+                    "refusal": refusal
+                }));
+            }
+        }
+    }
+    if !mismatches.is_empty() {
+        return Err(link_artifact_refusal(
+            "Entity link profile source hash does not match the linked payload",
+            json!({
+                "stage": "link",
+                "field": "profile_source.content_hash",
+                "source": profile_source.source,
+                "expected": profile_source.content_hash,
+                "attempted_sources": candidates,
+                "mismatches": mismatches,
+                "writes_performed": false
+            }),
+        ));
+    }
+    Err(link_artifact_refusal(
+        "Failed to load entity link prepare profile source",
+        json!({
+            "stage": "link",
+            "field": "profile_source.source",
+            "source": profile_source.source,
+            "attempted_sources": candidates,
+            "load_failures": load_failures,
+            "writes_performed": false
+        }),
+    ))
+}
+
+fn validate_link_profile_source_against_run(
+    profile_source: &EntityLinkProfileSource,
+    context_dirs: &[PathBuf],
+    run_artifact: &EntityRunArtifact,
+) -> Result<LoadedPrepareProfile, Refusal> {
+    let loaded_profile = load_and_validate_link_profile_source(profile_source, context_dirs)?;
+    validate_loaded_link_profile_against_run(profile_source, &loaded_profile, run_artifact)?;
+    Ok(loaded_profile)
+}
+
+fn load_link_profile_source(profile: &str) -> Result<LoadedPrepareProfile, Refusal> {
+    load_prepare_profile_with_hash(profile).map_err(|refusal| {
+        link_artifact_refusal(
+            "Failed to load entity link prepare profile source",
+            json!({
+                "stage": "link",
+                "field": "profile_source.source",
+                "source": profile,
+                "refusal": refusal,
+                "writes_performed": false
+            }),
+        )
+    })
+}
+
+fn link_profile_source_context_dirs(artifact_path: &Path) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let mut current = Some(entity_link_artifact_base_dir(artifact_path));
+    while let Some(dir) = current {
+        let candidate = dir.to_path_buf();
+        if !dirs.contains(&candidate) {
+            dirs.push(candidate);
+        }
+        current = dir.parent().filter(|parent| !parent.as_os_str().is_empty());
+    }
+    dirs
+}
+
+fn link_profile_source_candidates(profile: &str, context_dirs: &[PathBuf]) -> Vec<String> {
+    link_context_source_candidates(profile, context_dirs)
+}
+
+fn link_context_source_candidates(source_label: &str, context_dirs: &[PathBuf]) -> Vec<String> {
+    let source = Path::new(source_label);
+    let mut candidates = vec![source_label.to_string()];
+    if source.is_absolute() || !link_source_is_path_like(source_label) {
+        return candidates;
+    }
+    for dir in context_dirs {
+        let candidate = dir.join(source).to_string_lossy().into_owned();
+        if !candidates.contains(&candidate) {
+            candidates.push(candidate);
+        }
+    }
+    candidates
+}
+
+fn link_source_is_path_like(source_label: &str) -> bool {
+    let source = Path::new(source_label);
+    source.components().count() > 1 || source.extension().is_some()
+}
+
+fn validate_loaded_link_profile_against_run(
+    profile_source: &EntityLinkProfileSource,
+    loaded_profile: &LoadedPrepareProfile,
+    run_artifact: &EntityRunArtifact,
+) -> Result<(), Refusal> {
+    if loaded_profile.content_hash != profile_source.content_hash {
+        return Err(link_artifact_refusal(
+            "Entity link profile source hash does not match the loaded profile",
+            json!({
+                "stage": "link",
+                "field": "profile_source.content_hash",
+                "source": profile_source.source,
+                "expected": profile_source.content_hash,
+                "actual": loaded_profile.content_hash,
+                "writes_performed": false
+            }),
+        ));
+    }
+    let mut actual_profile = loaded_profile.document.to_reference();
+    actual_profile.content_hash = Some(loaded_profile.content_hash.clone());
+    if actual_profile != run_artifact.metadata.profile {
+        return Err(link_artifact_refusal(
+            "Entity link profile source does not match the run artifact profile",
+            json!({
+                "stage": "link",
+                "field": "run_artifact.metadata.profile",
+                "expected": run_artifact.metadata.profile,
+                "actual": actual_profile,
+                "writes_performed": false
+            }),
+        ));
+    }
+    let firewall = &run_artifact.orchestration.profile_firewall;
+    if firewall.profile_id != loaded_profile.document.profile
+        || firewall.profile_version != loaded_profile.document.version
+        || firewall.identity_semantics != loaded_profile.document.identity_semantics
+        || firewall.canonical_type != loaded_profile.document.canonical_type
+    {
+        return Err(link_artifact_refusal(
+            "Entity link profile source does not match the run profile firewall",
+            json!({
+                "stage": "link",
+                "field": "run_artifact.orchestration.profile_firewall",
+                "expected": {
+                    "profile_id": firewall.profile_id,
+                    "profile_version": firewall.profile_version,
+                    "identity_semantics": firewall.identity_semantics,
+                    "canonical_type": firewall.canonical_type
+                },
+                "actual": {
+                    "profile_id": loaded_profile.document.profile,
+                    "profile_version": loaded_profile.document.version,
+                    "identity_semantics": loaded_profile.document.identity_semantics,
+                    "canonical_type": loaded_profile.document.canonical_type
+                },
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn prepare_contract_for_link_profile(
+    loaded_profile: &LoadedPrepareProfile,
+) -> Result<PrepareInputContract, Refusal> {
+    let mut contract = if let Some(mapping) = loaded_profile.prepare_mapping.clone() {
+        PrepareInputContract::new(&loaded_profile.document, mapping)
+    } else {
+        PrepareInputContract::for_builtin_profile(&loaded_profile.document)
+    }
+    .map_err(|refusal| {
+        link_artifact_refusal(
+            "Failed to build entity link prepare contract for observation/surface bindings",
+            json!({
+                "stage": "link",
+                "profile_id": loaded_profile.document.profile,
+                "refusal": refusal,
                 "writes_performed": false
             }),
         )
     })?;
-    Ok(witness::hash_bytes(&bytes))
+    contract.profile.content_hash = Some(loaded_profile.content_hash.clone());
+    Ok(contract)
+}
+
+fn read_link_run_surfaces(
+    work_dir: &Path,
+    run_artifact: &EntityRunArtifact,
+    loaded_profile: &LoadedPrepareProfile,
+) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
+    validate_safe_relative_path(
+        &run_artifact.work_dir.surfaces_path,
+        "run_artifact.work_dir.surfaces_path",
+    )?;
+    let surfaces_path = work_dir.join(&run_artifact.work_dir.surfaces_path);
+    let file = File::open(&surfaces_path).map_err(|error| {
+        link_io_refusal(
+            "Failed to read entity link run-produced surfaces",
+            &surfaces_path,
+            error,
+        )
+    })?;
+    let reader = BufReader::new(file);
+    let mut surfaces = Vec::new();
+    for (index, line) in reader.lines().enumerate() {
+        let line = line.map_err(|error| {
+            link_io_refusal(
+                "Failed to read entity link run-produced surface row",
+                &surfaces_path,
+                error,
+            )
+        })?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let surface: PreparedSurfaceRecord = serde_json::from_str(&line).map_err(|error| {
+            link_artifact_refusal(
+                "Failed to parse entity link run-produced surface row",
+                json!({
+                    "stage": "link",
+                    "field": "run_artifact.work_dir.surfaces_path",
+                    "path": surfaces_path.display().to_string(),
+                    "line_number": index + 1,
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+            )
+        })?;
+        if surface.profile_id != loaded_profile.document.profile {
+            return Err(link_artifact_refusal(
+                "Entity link run-produced surface profile does not match profile source",
+                json!({
+                    "stage": "link",
+                    "field": "run_artifact.work_dir.surfaces_path",
+                    "path": surfaces_path.display().to_string(),
+                    "surface_id": surface.surface_id,
+                    "expected": loaded_profile.document.profile,
+                    "actual": surface.profile_id,
+                    "writes_performed": false
+                }),
+            ));
+        }
+        surfaces.push(surface);
+    }
+    if surfaces.is_empty() {
+        return Err(link_artifact_refusal(
+            "Entity link run artifact must provide prepared surfaces",
+            json!({
+                "stage": "link",
+                "field": "run_artifact.work_dir.surfaces_path",
+                "path": surfaces_path.display().to_string(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(surfaces)
 }
 
 fn validate_observation_surface_binding_record(
@@ -996,6 +1473,14 @@ fn link_decision_artifact(
     Ok(round_tripped)
 }
 
+fn link_decision_artifact_and_summary(
+    decisions: &crate::resolve::ResolveArtifact,
+) -> Result<(EntityLinkDecisionArtifact, ResolveSummary), Refusal> {
+    let decision_artifact = link_decision_artifact(decisions)?;
+    let summary = decision_artifact.summary.clone();
+    Ok((decision_artifact, summary))
+}
+
 fn validate_link_summary(artifact: &EntityLinkArtifact) -> Result<(), Refusal> {
     if !artifact.summary.partition_holds()
         || artifact.summary.target_records != artifact.target.row_count as usize
@@ -1065,12 +1550,17 @@ fn validate_link_decision_artifact(artifact: &EntityLinkDecisionArtifact) -> Res
 
 fn build_link_observation_surface_bindings(
     work_dir: &Path,
+    artifact: &EntityLinkArtifact,
+    profile_context_dirs: &[PathBuf],
     run_artifact: &EntityRunArtifact,
     decisions: &crate::resolve::ResolveArtifact,
 ) -> Result<Vec<EntityLinkObservationSurfaceBinding>, Refusal> {
     let materialized_path = materialized_rows_path(work_dir);
     build_link_observation_surface_bindings_from_materialized(
+        work_dir,
         &materialized_path,
+        artifact,
+        profile_context_dirs,
         run_artifact,
         Some(decisions.strategy.content_hash.as_str()),
         "decision_artifact.strategy.content_hash",
@@ -1078,65 +1568,79 @@ fn build_link_observation_surface_bindings(
 }
 
 fn build_link_observation_surface_bindings_from_materialized(
+    work_dir: &Path,
     materialized_path: &Path,
+    artifact: &EntityLinkArtifact,
+    profile_context_dirs: &[PathBuf],
     run_artifact: &EntityRunArtifact,
     expected_strategy_hash: Option<&str>,
     expected_strategy_hash_field: &'static str,
 ) -> Result<Vec<EntityLinkObservationSurfaceBinding>, Refusal> {
-    let identity = load_link_strategy_identity(
+    let materialized_bytes = read_link_stable_bytes(materialized_path, "materialized rows")?;
+    build_link_observation_surface_bindings_from_materialized_bytes(
+        &materialized_bytes,
+        LinkObservationSurfaceBindingBuildContext {
+            work_dir,
+            materialized_path,
+            artifact,
+            profile_context_dirs,
+            run_artifact,
+            expected_strategy_hash,
+            expected_strategy_hash_field,
+        },
+    )
+}
+
+struct LinkObservationSurfaceBindingBuildContext<'a> {
+    work_dir: &'a Path,
+    materialized_path: &'a Path,
+    artifact: &'a EntityLinkArtifact,
+    profile_context_dirs: &'a [PathBuf],
+    run_artifact: &'a EntityRunArtifact,
+    expected_strategy_hash: Option<&'a str>,
+    expected_strategy_hash_field: &'static str,
+}
+
+fn build_link_observation_surface_bindings_from_materialized_bytes(
+    materialized_bytes: &[u8],
+    context: LinkObservationSurfaceBindingBuildContext<'_>,
+) -> Result<Vec<EntityLinkObservationSurfaceBinding>, Refusal> {
+    let LinkObservationSurfaceBindingBuildContext {
+        work_dir,
+        materialized_path,
+        artifact,
+        profile_context_dirs,
         run_artifact,
         expected_strategy_hash,
         expected_strategy_hash_field,
+    } = context;
+    let identity = load_link_strategy_identity(
+        run_artifact,
+        profile_context_dirs,
+        expected_strategy_hash,
+        expected_strategy_hash_field,
     )?;
-    let profile_id = run_artifact
-        .orchestration
-        .profile_firewall
-        .profile_id
-        .as_str();
-    let profile = load_prepare_profile(profile_id).map_err(|refusal| {
-        link_artifact_refusal(
-            "Failed to load entity link prepare profile for observation/surface bindings",
-            json!({
-                "stage": "link",
-                "profile_id": profile_id,
-                "refusal": refusal,
-                "writes_performed": false
-            }),
-        )
-    })?;
-    let contract = PrepareInputContract::for_builtin_profile(&profile).map_err(|refusal| {
-        link_artifact_refusal(
-            "Failed to build entity link prepare contract for observation/surface bindings",
-            json!({
-                "stage": "link",
-                "profile_id": profile_id,
-                "refusal": refusal,
-                "writes_performed": false
-            }),
-        )
-    })?;
-    let observations = project_prepare_path(materialized_path, &contract).map_err(|refusal| {
-        link_artifact_refusal(
-            "Failed to replay prepared observations for entity link bindings",
-            json!({
-                "stage": "link",
-                "path": materialized_path.display().to_string(),
-                "refusal": refusal,
-                "writes_performed": false
-            }),
-        )
-    })?;
-    let surfaces = prepare_surface_records(&observations).map_err(|refusal| {
-        link_artifact_refusal(
-            "Failed to replay prepared surfaces for entity link bindings",
-            json!({
-                "stage": "link",
-                "refusal": refusal,
-                "writes_performed": false
-            }),
-        )
-    })?;
-    let rows = read_materialized_binding_rows(materialized_path, &identity)?;
+    let loaded_profile = validate_link_profile_source_against_run(
+        &artifact.profile_source,
+        profile_context_dirs,
+        run_artifact,
+    )?;
+    let contract = prepare_contract_for_link_profile(&loaded_profile)?;
+    let observations = project_prepare_csv_reader(Cursor::new(materialized_bytes), b',', &contract)
+        .map_err(|refusal| {
+            link_artifact_refusal(
+                "Failed to replay prepared observations for entity link bindings",
+                json!({
+                    "stage": "link",
+                    "path": materialized_path.display().to_string(),
+                    "refusal": refusal,
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    let surfaces = read_link_run_surfaces(work_dir, run_artifact, &loaded_profile)?;
+    let rows =
+        read_materialized_binding_rows_bytes(materialized_bytes, materialized_path, &identity)?;
     if rows.len() != observations.len() {
         return Err(link_artifact_refusal(
             "Entity link binding replay row count does not match prepared observation count",
@@ -1187,6 +1691,7 @@ struct LinkStrategyIdentitySide {
 
 fn load_link_strategy_identity(
     run_artifact: &EntityRunArtifact,
+    context_dirs: &[PathBuf],
     expected_strategy_hash: Option<&str>,
     expected_strategy_hash_field: &'static str,
 ) -> Result<LinkStrategyIdentity, Refusal> {
@@ -1204,44 +1709,82 @@ fn load_link_strategy_identity(
                 }),
             )
         })?;
-    let bytes = fs::read(strategy_source).map_err(|error| {
-        link_io_refusal(
-            "Failed to read entity link strategy for observation/surface bindings",
-            Path::new(strategy_source),
-            error,
-        )
-    })?;
-    let actual_hash = witness::hash_bytes(&bytes);
-    if let Some(expected_strategy_hash) =
+    let Some(expected_strategy_hash) =
         expected_strategy_hash.filter(|strategy_hash| !strategy_hash.trim().is_empty())
-        && expected_strategy_hash != actual_hash
-    {
+    else {
+        return Err(link_artifact_refusal(
+            "Entity link run artifact does not bind a strategy hash for bindings",
+            json!({
+                "stage": "link",
+                "field": expected_strategy_hash_field,
+                "writes_performed": false
+            }),
+        ));
+    };
+    let candidates = link_context_source_candidates(strategy_source, context_dirs);
+    let mut mismatches = Vec::new();
+    let mut load_failures = Vec::new();
+    for candidate in &candidates {
+        let bytes = match fs::read(candidate) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                load_failures.push(json!({
+                    "resolved_source": candidate,
+                    "error": error.to_string()
+                }));
+                continue;
+            }
+        };
+        let actual_hash = witness::hash_bytes(&bytes);
+        if actual_hash.as_str() != expected_strategy_hash {
+            mismatches.push(json!({
+                "resolved_source": candidate,
+                "actual": actual_hash
+            }));
+            continue;
+        }
+        let document: LinkStrategyIdentityDocument =
+            serde_yaml::from_slice(&bytes).map_err(|error| {
+                link_artifact_refusal(
+                    "Failed to parse entity link strategy identity for bindings",
+                    json!({
+                        "stage": "link",
+                        "path": candidate,
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                )
+            })?;
+        validate_strategy_identity_side(&document.identity.reference, EntityLinkRole::Reference)?;
+        validate_strategy_identity_side(&document.identity.target, EntityLinkRole::Target)?;
+        return Ok(document.identity);
+    }
+    if !mismatches.is_empty() {
         return Err(link_artifact_refusal(
             "Entity link strategy hash does not match binding derivation source",
             json!({
                 "stage": "link",
                 "field": expected_strategy_hash_field,
+                "source": strategy_source,
                 "expected": expected_strategy_hash,
-                "actual": actual_hash,
+                "attempted_sources": candidates,
+                "mismatches": mismatches,
+                "load_failures": load_failures,
                 "writes_performed": false
             }),
         ));
     }
-    let document: LinkStrategyIdentityDocument =
-        serde_yaml::from_slice(&bytes).map_err(|error| {
-            link_artifact_refusal(
-                "Failed to parse entity link strategy identity for bindings",
-                json!({
-                    "stage": "link",
-                    "path": strategy_source,
-                    "error": error.to_string(),
-                    "writes_performed": false
-                }),
-            )
-        })?;
-    validate_strategy_identity_side(&document.identity.reference, EntityLinkRole::Reference)?;
-    validate_strategy_identity_side(&document.identity.target, EntityLinkRole::Target)?;
-    Ok(document.identity)
+    Err(link_artifact_refusal(
+        "Failed to read entity link strategy for observation/surface bindings",
+        json!({
+            "stage": "link",
+            "field": "run.summary.labels.strategy_source",
+            "source": strategy_source,
+            "attempted_sources": candidates,
+            "load_failures": load_failures,
+            "writes_performed": false
+        }),
+    ))
 }
 
 fn validate_strategy_identity_side(
@@ -1275,14 +1818,14 @@ struct MaterializedBindingRow {
     source_ordinal: u64,
 }
 
-fn read_materialized_binding_rows(
+fn read_materialized_binding_rows_bytes(
+    bytes: &[u8],
     path: &Path,
     identity: &LinkStrategyIdentity,
 ) -> Result<Vec<MaterializedBindingRow>, Refusal> {
-    let file = File::open(path).map_err(|error| {
-        link_io_refusal("Failed to open entity link materialized rows", path, error)
-    })?;
-    let mut reader = ReaderBuilder::new().has_headers(true).from_reader(file);
+    let mut reader = ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(Cursor::new(bytes));
     let headers = reader
         .headers()
         .map_err(|error| {
@@ -1583,9 +2126,14 @@ fn validate_link_upstreams(artifact: &EntityLinkArtifact) -> Result<(), Refusal>
             }),
         ));
     }
+    let publication_parent = EntityArtifactReference {
+        version: CANON_ENTITY_STAGE_PUBLICATION_VERSION.to_string(),
+        content_hash: link_publication_parent_generation_id(artifact)?,
+    };
     let mut expected = vec![
         artifact.shared_run_artifact.clone(),
         artifact.shared_solve_artifact.clone(),
+        publication_parent,
     ];
     expected.sort_by(artifact_ref_cmp);
     let mut actual = artifact.metadata.upstream_artifacts.clone();
@@ -1603,6 +2151,245 @@ fn validate_link_upstreams(artifact: &EntityLinkArtifact) -> Result<(), Refusal>
         ));
     }
     Ok(())
+}
+
+fn load_link_assignment_alignment_artifacts(
+    work_dir: &Path,
+) -> Result<(Vec<EntityLinkAssignmentAlignmentArtifact>, Option<Vec<u8>>), Refusal> {
+    let source_path = work_dir.join(ASSIGNMENT_ALIGNMENT_PATH);
+    if !source_path.exists() {
+        return Ok((Vec::new(), None));
+    }
+    let bytes = fs::read(&source_path).map_err(|error| {
+        link_io_refusal(
+            "Failed to read entity link assignment alignment artifact",
+            &source_path,
+            error,
+        )
+    })?;
+    let sidecar = validate_assignment_alignment_artifact_bytes(&bytes)?;
+    validate_assignment_alignment_evidence_binding(&sidecar, work_dir)?;
+    Ok((
+        vec![EntityLinkAssignmentAlignmentArtifact {
+            version: ASSIGNMENT_ALIGNMENT_VERSION.to_string(),
+            path: LINK_ASSIGNMENT_ALIGNMENT_PATH.to_string(),
+            content_hash: witness::hash_bytes(&bytes),
+            evidence_semantics: "nonidentity_relation_hint".to_string(),
+        }],
+        Some(bytes),
+    ))
+}
+
+fn validate_link_assignment_alignment_artifacts(
+    artifact: &EntityLinkArtifact,
+) -> Result<(), Refusal> {
+    let mut paths = BTreeSet::new();
+    for reference in &artifact.assignment_alignment_artifacts {
+        if reference.version != ASSIGNMENT_ALIGNMENT_VERSION {
+            return Err(link_artifact_refusal(
+                "Entity link assignment alignment artifact has the wrong contract version",
+                json!({
+                    "stage": "link",
+                    "field": "assignment_alignment_artifacts.version",
+                    "expected": ASSIGNMENT_ALIGNMENT_VERSION,
+                    "actual": reference.version,
+                    "writes_performed": false
+                }),
+            ));
+        }
+        validate_safe_relative_path(&reference.path, "assignment_alignment_artifacts.path")?;
+        if reference.content_hash.trim().is_empty() {
+            return Err(link_artifact_refusal(
+                "Entity link assignment alignment artifact must carry a content hash",
+                json!({
+                    "stage": "link",
+                    "field": "assignment_alignment_artifacts.content_hash",
+                    "writes_performed": false
+                }),
+            ));
+        }
+        if reference.evidence_semantics != "nonidentity_relation_hint" {
+            return Err(link_artifact_refusal(
+                "Entity link assignment alignment artifact must remain nonidentity evidence",
+                json!({
+                    "stage": "link",
+                    "field": "assignment_alignment_artifacts.evidence_semantics",
+                    "expected": "nonidentity_relation_hint",
+                    "actual": reference.evidence_semantics,
+                    "writes_performed": false
+                }),
+            ));
+        }
+        if !paths.insert(reference.path.as_str()) {
+            return Err(link_artifact_refusal(
+                "Entity link assignment alignment artifacts must have unique paths",
+                json!({
+                    "stage": "link",
+                    "field": "assignment_alignment_artifacts.path",
+                    "path": reference.path,
+                    "writes_performed": false
+                }),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_link_assignment_alignment_artifacts_at_path(
+    artifact: &EntityLinkArtifact,
+    artifact_path: &Path,
+) -> Result<(), Refusal> {
+    let base_dir = entity_link_artifact_base_dir(artifact_path);
+    let work_dir = entity_link_work_dir_from_artifact_path(artifact_path);
+    for reference in &artifact.assignment_alignment_artifacts {
+        let path = base_dir.join(&reference.path);
+        let bytes =
+            read_link_committed_or_stable_bytes(&work_dir, &path, "assignment alignment artifact")?;
+        let sidecar = validate_assignment_alignment_artifact_bytes(&bytes)?;
+        let actual_hash = witness::hash_bytes(&bytes);
+        if actual_hash != reference.content_hash {
+            return Err(link_artifact_refusal(
+                "Entity link assignment alignment hash does not match the linked payload",
+                json!({
+                    "stage": "link",
+                    "field": "assignment_alignment_artifacts.content_hash",
+                    "path": path.display().to_string(),
+                    "expected": reference.content_hash,
+                    "actual": actual_hash,
+                    "writes_performed": false
+                }),
+            ));
+        }
+        validate_assignment_alignment_evidence_binding(&sidecar, &work_dir)?;
+    }
+    Ok(())
+}
+
+fn validate_assignment_alignment_artifact_bytes(
+    bytes: &[u8],
+) -> Result<AssignmentAlignmentSidecar, Refusal> {
+    let sidecar: AssignmentAlignmentSidecar = serde_json::from_slice(bytes).map_err(|error| {
+        link_artifact_refusal(
+            "Failed to parse entity link assignment alignment artifact",
+            json!({
+                "stage": "link",
+                "field": "assignment_alignment_artifacts",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    validate_assignment_alignment_sidecar(&sidecar).map_err(|error| {
+        link_artifact_refusal(
+            "Entity link assignment alignment artifact violates the record-link contract",
+            json!({
+                "stage": "link",
+                "field": "assignment_alignment_artifacts",
+                "record_link_stage": error.stage,
+                "reason": error.reason,
+                "error": error.message,
+                "writes_performed": false
+            }),
+        )
+    })?;
+    let canonical = canonical_assignment_alignment_bytes(&sidecar).map_err(|error| {
+        link_artifact_refusal(
+            "Entity link assignment alignment artifact cannot be canonically serialized",
+            json!({
+                "stage": "link",
+                "field": "assignment_alignment_artifacts",
+                "record_link_stage": error.stage,
+                "reason": error.reason,
+                "error": error.message,
+                "writes_performed": false
+            }),
+        )
+    })?;
+    if canonical != bytes {
+        return Err(link_artifact_refusal(
+            "Entity link assignment alignment artifact bytes are not canonical",
+            json!({
+                "stage": "link",
+                "field": "assignment_alignment_artifacts",
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(sidecar)
+}
+
+fn validate_assignment_alignment_evidence_binding(
+    sidecar: &AssignmentAlignmentSidecar,
+    work_dir: &Path,
+) -> Result<(), Refusal> {
+    if sidecar.record_link_evidence_path != RECORD_LINK_EVIDENCE_PATH {
+        return Err(link_artifact_refusal(
+            "Entity link assignment alignment artifact must bind canonical record-link evidence",
+            json!({
+                "stage": "link",
+                "field": "assignment_alignment_artifacts.record_link_evidence_path",
+                "expected": RECORD_LINK_EVIDENCE_PATH,
+                "actual": &sidecar.record_link_evidence_path,
+                "writes_performed": false
+            }),
+        ));
+    }
+    let evidence_path = work_dir.join(&sidecar.record_link_evidence_path);
+    let bytes = read_link_committed_or_stable_bytes(
+        work_dir,
+        &evidence_path,
+        "record-link evidence artifact",
+    )?;
+    let bundle: EvidenceBundle = serde_json::from_slice(&bytes).map_err(|error| {
+        link_artifact_refusal(
+            "Failed to parse entity link record-link evidence artifact",
+            json!({
+                "stage": "link",
+                "field": "assignment_alignment_artifacts.record_link_evidence_hash",
+                "path": evidence_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    canonical_evidence_bundle_bytes(&bundle).map_err(|error| {
+        link_artifact_refusal(
+            "Entity link record-link evidence artifact violates the evidence contract",
+            json!({
+                "stage": "link",
+                "field": "assignment_alignment_artifacts.record_link_evidence_hash",
+                "path": evidence_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    if bundle.content_hash.as_str() != sidecar.record_link_evidence_hash.as_str() {
+        return Err(link_artifact_refusal(
+            "Entity link assignment alignment evidence hash does not match record-link evidence",
+            json!({
+                "stage": "link",
+                "field": "assignment_alignment_artifacts.record_link_evidence_hash",
+                "path": evidence_path.display().to_string(),
+                "expected": &sidecar.record_link_evidence_hash,
+                "actual": &bundle.content_hash,
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn entity_link_work_dir_from_artifact_path(artifact_path: &Path) -> PathBuf {
+    let base_dir = entity_link_artifact_base_dir(artifact_path);
+    if base_dir.file_name().and_then(|name| name.to_str()) == Some("link") {
+        base_dir
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| base_dir.to_path_buf())
+    } else {
+        base_dir.to_path_buf()
+    }
 }
 
 fn solve_stage_reference(run: &EntityRunArtifact) -> Result<EntityArtifactReference, Refusal> {
@@ -1660,24 +2447,28 @@ fn hash_link_decision_artifact_without_self(
     Ok(witness::hash_bytes(&bytes))
 }
 
-fn hash_file(path: &Path, label: &'static str) -> Result<String, Refusal> {
-    let bytes = fs::read(path).map_err(|error| {
+fn read_link_stable_bytes(path: &Path, label: &'static str) -> Result<Vec<u8>, Refusal> {
+    fs::read(path).map_err(|error| {
         link_io_refusal(format!("Failed to read entity link {label}"), path, error)
-    })?;
-    Ok(witness::hash_bytes(&bytes))
+    })
 }
 
-fn read_observation_surface_bindings(
+fn read_link_committed_or_stable_bytes(
+    work_dir: &Path,
+    stable_path: &Path,
+    label: &'static str,
+) -> Result<Vec<u8>, Refusal> {
+    match read_entity_run_committed_publication_stable_path_bytes(work_dir, stable_path)? {
+        Some(bytes) => Ok(bytes),
+        None => read_link_stable_bytes(stable_path, label),
+    }
+}
+
+fn read_observation_surface_bindings_bytes(
+    bytes: &[u8],
     path: &Path,
 ) -> Result<Vec<EntityLinkObservationSurfaceBinding>, Refusal> {
-    let file = File::open(path).map_err(|error| {
-        link_io_refusal(
-            "Failed to open entity link observation/surface bindings",
-            path,
-            error,
-        )
-    })?;
-    let reader = BufReader::new(file);
+    let reader = BufReader::new(Cursor::new(bytes));
     let mut bindings = Vec::new();
     for (index, line) in reader.lines().enumerate() {
         let line = line.map_err(|error| {
@@ -1730,69 +2521,37 @@ fn validate_safe_relative_path(value: &str, field: &'static str) -> Result<(), R
     Ok(())
 }
 
-fn write_json_file<T: Serialize>(path: &Path, value: &T) -> Result<(), Refusal> {
-    let bytes = serde_json::to_vec(value).map_err(|error| {
+fn json_bytes<T: Serialize>(value: &T, label: &'static str) -> Result<Vec<u8>, Refusal> {
+    serde_json::to_vec(value).map_err(|error| {
         link_artifact_refusal(
             "Failed to serialize entity link artifact",
             json!({
                 "stage": "link",
-                "path": path.display().to_string(),
+                "artifact": label,
                 "error": error.to_string(),
                 "writes_performed": false
             }),
         )
-    })?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            link_io_refusal(
-                "Failed to create entity link artifact directory",
-                parent,
-                error,
-            )
-        })?;
-    }
-    fs::write(path, bytes)
-        .map_err(|error| link_io_refusal("Failed to write entity link artifact", path, error))
+    })
 }
 
-fn write_jsonl_file<T: Serialize>(path: &Path, values: &[T]) -> Result<(), Refusal> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            link_io_refusal(
-                "Failed to create entity link artifact directory",
-                parent,
-                error,
-            )
-        })?;
-    }
-    let mut file = File::create(path).map_err(|error| {
-        link_io_refusal(
-            "Failed to create entity link observation/surface bindings",
-            path,
-            error,
-        )
-    })?;
+fn jsonl_bytes<T: Serialize>(values: &[T], label: &'static str) -> Result<Vec<u8>, Refusal> {
+    let mut bytes = Vec::new();
     for value in values {
-        serde_json::to_writer(&mut file, value).map_err(|error| {
+        serde_json::to_writer(&mut bytes, value).map_err(|error| {
             link_artifact_refusal(
                 "Failed to serialize entity link observation/surface binding",
                 json!({
                     "stage": "link",
-                    "path": path.display().to_string(),
+                    "artifact": label,
                     "error": error.to_string(),
                     "writes_performed": false
                 }),
             )
         })?;
-        file.write_all(b"\n").map_err(|error| {
-            link_io_refusal(
-                "Failed to write entity link observation/surface binding",
-                path,
-                error,
-            )
-        })?;
+        bytes.push(b'\n');
     }
-    Ok(())
+    Ok(bytes)
 }
 
 fn artifact_ref_cmp(
@@ -2118,8 +2877,27 @@ mod cache_runtime_tests {
     use crate::entity::index_io::{
         CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION, EntityIndexCacheReceipt, INDEX_CACHE_RECEIPT_FILE,
     };
-    use crate::entity::run::RUN_CACHE_EXECUTION_RECEIPT_PATH;
+    use crate::entity::run::{
+        EntityRunNextCommands, EntityRunOrchestration, EntityRunWorkDirLayout,
+        RUN_CACHE_EXECUTION_RECEIPT_PATH,
+    };
+    use crate::entity::{
+        EntityArtifactMetadata, EntityDeterministicSummary, EntityStrategyReference,
+    };
+    use crate::resolve::ResolveArtifact;
     use std::path::PathBuf;
+
+    const STRATEGY_IDENTITY_YAML: &str = "\
+strategy_id: context-strategy
+strategy_version: 1.0.0
+identity:
+  reference:
+    id_columns:
+      - reference_id
+  target:
+    id_columns:
+      - target_id
+";
 
     struct LinkCacheFixture {
         reference_rows: PathBuf,
@@ -2156,6 +2934,155 @@ mod cache_runtime_tests {
                 work_dir,
             }
         }
+    }
+
+    fn minimal_run_artifact_with_strategy_source(
+        strategy_source: &str,
+        strategy_hash: &str,
+    ) -> EntityRunArtifact {
+        let metadata = EntityArtifactMetadata {
+            strategy: EntityStrategyReference {
+                id: "context-strategy".to_string(),
+                version: "1.0.0".to_string(),
+                content_hash: strategy_hash.to_string(),
+            },
+            ..Default::default()
+        };
+        let mut summary = EntityDeterministicSummary::default();
+        summary
+            .labels
+            .insert("strategy_source".to_string(), strategy_source.to_string());
+        EntityRunArtifact {
+            version: "canon_entity_run.v1".to_string(),
+            artifact_content_hash: "blake3:test-run".to_string(),
+            metadata,
+            summary,
+            stage_artifacts: Vec::new(),
+            work_dir: EntityRunWorkDirLayout {
+                prepare_artifact_path: "prepare/prepare.json".to_string(),
+                surfaces_path: "prepare/surfaces.jsonl".to_string(),
+                index_artifact_path: "index/index.json".to_string(),
+                block_artifact_path: "block/block.json".to_string(),
+                candidate_records_path: "block/candidates.jsonl".to_string(),
+                candidate_diagnostics_path: "block/diagnostics.json".to_string(),
+                exact_bucket_assertions_path: "block/exact_buckets.jsonl".to_string(),
+                edge_artifact_path: "evidence/evidence.json".to_string(),
+                edge_records_path: "evidence/evidence.jsonl".to_string(),
+                solve_artifact_path: "solve/solve.json".to_string(),
+                decision_ledger_path: "solve/decision_ledger.jsonl".to_string(),
+                run_artifact_path: "run/run.json".to_string(),
+            },
+            next_commands: EntityRunNextCommands {
+                resume: String::new(),
+                review_export: String::new(),
+                audit: String::new(),
+                promote: String::new(),
+                apply: String::new(),
+            },
+            orchestration: EntityRunOrchestration::default(),
+        }
+    }
+
+    #[test]
+    fn top_level_summary_uses_stabilized_decision_summary() {
+        let decisions = ResolveArtifact {
+            summary: ResolveSummary {
+                target_records: 11,
+                matched: 1,
+                unmatched: 10,
+                ambiguous: 0,
+                match_rate: 1.0 / 11.0,
+            },
+            ..ResolveArtifact::default()
+        };
+
+        let (decision_artifact, top_level_summary) =
+            link_decision_artifact_and_summary(&decisions).expect("decision artifact stabilizes");
+
+        assert!(top_level_summary.partition_holds());
+        assert_eq!(top_level_summary, decision_artifact.summary);
+        assert_eq!(
+            top_level_summary.match_rate.to_bits(),
+            decision_artifact.summary.match_rate.to_bits()
+        );
+    }
+
+    #[test]
+    fn strategy_identity_resolves_relative_source_from_artifact_context() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let trial_dir = temp.path().join("trial");
+        let source_label = "context-only-source/link_strategy.yaml";
+        let strategy_path = trial_dir.join(source_label);
+        fs::create_dir_all(strategy_path.parent().expect("strategy parent"))
+            .expect("create strategy parent");
+        fs::write(&strategy_path, STRATEGY_IDENTITY_YAML).expect("write strategy");
+        assert!(
+            !Path::new(source_label).exists(),
+            "raw persisted strategy label must not be readable from cwd"
+        );
+
+        let strategy_hash = witness::hash_bytes(STRATEGY_IDENTITY_YAML.as_bytes());
+        let run_artifact = minimal_run_artifact_with_strategy_source(source_label, &strategy_hash);
+        let artifact_path = trial_dir.join("work/link/link.json");
+        let context_dirs = link_profile_source_context_dirs(&artifact_path);
+
+        let identity = load_link_strategy_identity(
+            &run_artifact,
+            &context_dirs,
+            Some(&strategy_hash),
+            "run_artifact.metadata.strategy.content_hash",
+        )
+        .expect("strategy identity resolves through artifact context");
+
+        assert_eq!(
+            identity.reference.id_columns,
+            vec!["reference_id".to_string()]
+        );
+        assert_eq!(identity.target.id_columns, vec!["target_id".to_string()]);
+    }
+
+    #[test]
+    fn strategy_identity_context_source_still_refuses_wrong_hash() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let trial_dir = temp.path().join("trial");
+        let source_label = "context-only-source/link_strategy.yaml";
+        let strategy_path = trial_dir.join(source_label);
+        fs::create_dir_all(strategy_path.parent().expect("strategy parent"))
+            .expect("create strategy parent");
+        fs::write(&strategy_path, STRATEGY_IDENTITY_YAML).expect("write strategy");
+
+        let actual_hash = witness::hash_bytes(STRATEGY_IDENTITY_YAML.as_bytes());
+        let wrong_hash = witness::hash_bytes(b"wrong strategy bytes");
+        let run_artifact = minimal_run_artifact_with_strategy_source(source_label, &wrong_hash);
+        let artifact_path = trial_dir.join("work/link/link.json");
+        let context_dirs = link_profile_source_context_dirs(&artifact_path);
+
+        let refusal = load_link_strategy_identity(
+            &run_artifact,
+            &context_dirs,
+            Some(&wrong_hash),
+            "run_artifact.metadata.strategy.content_hash",
+        )
+        .expect_err("wrong strategy hash refuses");
+
+        assert!(
+            refusal
+                .message
+                .contains("strategy hash does not match binding derivation source")
+        );
+        assert_eq!(
+            refusal.detail["expected"].as_str(),
+            Some(wrong_hash.as_str())
+        );
+        assert!(
+            refusal
+                .detail
+                .get("mismatches")
+                .and_then(Value::as_array)
+                .expect("mismatches")
+                .iter()
+                .any(|mismatch| mismatch["actual"].as_str() == Some(actual_hash.as_str()))
+        );
     }
 
     #[test]

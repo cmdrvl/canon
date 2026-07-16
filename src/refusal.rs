@@ -274,7 +274,7 @@ impl Refusal {
             summary: None,
             mappings: vec![],
             unresolved: vec![],
-            refusal: Some(self),
+            refusal: Some(Box::new(self)),
         }
     }
 }

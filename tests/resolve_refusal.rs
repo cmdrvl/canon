@@ -89,7 +89,7 @@ fn empty_target_tape_refuses_with_empty_tape() {
 }
 
 #[test]
-fn too_many_candidates_refusal_reports_target_and_limit() {
+fn loan_strategy_under_tenant_profile_refuses_before_candidate_limiting() {
     let payload = entity_link_refusal(
         "tests/fixtures/resolve/tapes/too_many_candidates_reference.csv",
         "tests/fixtures/resolve/tapes/too_many_candidates_target.csv",
@@ -97,13 +97,39 @@ fn too_many_candidates_refusal_reports_target_and_limit() {
         &[],
     );
 
-    assert_eq!(payload["refusal"]["code"], "E_TOO_MANY_CANDIDATES");
-    assert_eq!(
-        payload["refusal"]["detail"]["target_id"],
-        "WFCM2019-C50|900"
+    assert_eq!(payload["outcome"], "REFUSAL");
+    assert_eq!(payload["refusal"]["code"], "E_ENTITY_INPUT_CONTRACT");
+    let next_command = payload["refusal"]["next_command"]
+        .as_str()
+        .expect("actionable next command");
+    assert!(
+        next_command.contains("entity_type 'loan'"),
+        "{next_command}"
     );
-    assert_eq!(payload["refusal"]["detail"]["candidate_count"], 4);
-    assert_eq!(payload["refusal"]["detail"]["max_candidates"], 1);
+    assert!(next_command.contains("cmbs_tenant_label"), "{next_command}");
+
+    let detail = &payload["refusal"]["detail"];
+    assert_eq!(detail["stage"], "link");
+    assert_eq!(detail["field"], "profile.entity_type");
+    assert_eq!(detail["profile_source"], "cmbs_tenant_label");
+    assert_eq!(detail["expected"]["strategy_entity_type"], "loan");
+    assert_eq!(detail["expected"]["strategy_id"], "too-many-candidates.v1");
+    assert_eq!(detail["expected"]["strategy_version"], "0.1.0");
+    assert_nonempty_string(&detail["expected"]["strategy_content_hash"]);
+    assert_eq!(detail["actual"]["profile_entity_type"], "tenant_label");
+    assert_eq!(detail["actual"]["profile_id"], "cmbs_tenant_label");
+    assert_eq!(detail["actual"]["profile_version"], "0.1.0");
+    assert_nonempty_string(&detail["actual"]["profile_content_hash"]);
+    assert_eq!(detail["writes_performed"], false);
+    assert!(detail.get("candidate_count").is_none());
+    assert!(detail.get("max_candidates").is_none());
+}
+
+fn assert_nonempty_string(value: &Value) {
+    assert!(
+        value.as_str().is_some_and(|text| !text.trim().is_empty()),
+        "expected nonempty string, got {value}"
+    );
 }
 
 #[test]

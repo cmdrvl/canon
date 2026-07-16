@@ -3,7 +3,6 @@
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    ffi::OsStr,
     fs,
     path::{Path, PathBuf},
     process::Command,
@@ -18,7 +17,6 @@ const EXPECTED_REVIEW_JSON: &str =
 const STRATEGY_YAML: &str = include_str!("../../rules/golden_rules.yaml");
 
 #[test]
-#[ignore = "bd-1hum: requires real public evidence/solve v1 stage dependencies; current journey still uses a synthetic v1 bridge"]
 fn canon_v1_operator_journey_uses_one_public_binary_and_exact_replay() {
     assert_fixture_contracts_are_neutral_and_bounded();
 
@@ -29,15 +27,20 @@ fn canon_v1_operator_journey_uses_one_public_binary_and_exact_replay() {
         "journey projections must be deterministic across fresh work dirs"
     );
 
-    assert_eq!(first.projection.link_summary["matched"], 1);
-    assert_eq!(first.projection.link_summary["ambiguous"], 1);
+    assert_eq!(first.projection.link_summary["matched"], 2);
+    assert_eq!(first.projection.link_summary["ambiguous"], 0);
     assert_eq!(first.projection.link_summary["unmatched"], 1);
     assert_eq!(first.projection.promoted_aliases, 2);
     assert_eq!(first.projection.exact_lookup_outcome, "RESOLVED");
     assert_eq!(first.projection.apply_resolved, 3);
-    assert_eq!(first.projection.dbt_alias_rows, 3);
-    assert_eq!(first.projection.search_alias_rows, 3);
+    assert_eq!(first.projection.dbt_alias_rows, 5);
+    assert_eq!(first.projection.search_alias_rows, 5);
     assert!(first.projection.legacy_engine_refused);
+    assert_eq!(
+        executed_entity_leaves(&first.command_log),
+        operator_entity_leaf_names(),
+        "journey must exercise every advertised entity leaf"
+    );
 
     assert!(
         first.command_log.len() >= 20,
@@ -96,6 +99,7 @@ struct CommandRecord {
     stdout_json: bool,
     stdout_csv: bool,
     stdout_text: bool,
+    entity_leaf: Option<String>,
 }
 
 struct JourneyFixture {
@@ -142,6 +146,8 @@ fn run_operator_journey(label: &str) -> JourneyRun {
             .unwrap()
             .contains("same_firm_or_reviewed_alias")
     );
+    enable_neutral_similarity_support(&fixture.profile);
+    exercise_artifact_backed_benchmark_leaves(&fixture, &mut command_log);
 
     let stage_work = fixture.root.join("stage-work");
     let prepare = canon_json(
@@ -159,7 +165,8 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         0,
     );
     command_log.push(prepare.record);
-    assert_eq!(prepare.value["version"], "canon_entity_prepare.v0");
+    assert_eq!(prepare.value["version"], "canon_entity_prepare.v1");
+    assert_distinct_prepared_surfaces(&stage_work.join("prepare/surfaces.jsonl"));
 
     let index = canon_json(
         &[
@@ -181,7 +188,7 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         0,
     );
     command_log.push(index.record);
-    assert_eq!(index.value["version"], "canon_entity_index_build.v0");
+    assert_eq!(index.value["version"], "canon_entity_index_build.v1");
 
     let block = canon_raw(
         &[
@@ -207,6 +214,61 @@ fn run_operator_journey(label: &str) -> JourneyRun {
     );
     command_log.push(block);
 
+    let evidence = canon_raw(
+        &[
+            "entity",
+            "evidence",
+            path_str(&fixture.observations),
+            "--profile",
+            path_str(&fixture.profile),
+            "--strategy",
+            path_str(&fixture.strategy),
+            "--candidates",
+            path_str(&stage_work.join("block/block.json")),
+            "--registry",
+            path_str(&fixture.registry),
+            "--work-dir",
+            path_str(&stage_work),
+            "--emit",
+            "jsonl",
+        ],
+        0,
+    );
+    assert!(
+        !evidence.stdout.is_empty(),
+        "manual evidence emits evidence JSONL"
+    );
+    assert_positive_support_edges(&stage_work);
+    command_log.push(evidence);
+
+    let solve = canon_json(
+        &[
+            "entity",
+            "solve",
+            path_str(&fixture.observations),
+            "--profile",
+            path_str(&fixture.profile),
+            "--strategy",
+            path_str(&fixture.strategy),
+            "--evidence",
+            path_str(&stage_work.join("evidence/evidence.json")),
+            "--registry",
+            path_str(&fixture.registry),
+            "--work-dir",
+            path_str(&stage_work),
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(solve.record);
+    assert_eq!(solve.value["version"], "canon_entity_solve.v1");
+    assert_eq!(
+        solve.value["summary"]["counts"]["promotable_alias_count"],
+        2
+    );
+    assert_eq!(read_json(&stage_work.join("solve/solve.json")), solve.value);
+
     let run = canon_json(
         &[
             "entity",
@@ -229,12 +291,16 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         0,
     );
     command_log.push(run.record);
-    assert_eq!(run.value["version"], "canon_entity_run.v0");
-    assert_eq!(read_json(&stage_work.join("run.json")), run.value);
+    assert_eq!(run.value["version"], "canon_entity_run.v1");
+    assert_eq!(read_json(&stage_work.join("run/run.json")), run.value);
     assert_bound_stage_artifact(&run.value, &stage_work.join("block/block.json"), "block");
     assert_nonempty_file(&stage_work.join("block/candidates.jsonl"));
-    assert_bound_stage_artifact(&run.value, &stage_work.join("edge/edge.json"), "edge");
-    assert_nonempty_file(&stage_work.join("edge/edges.jsonl"));
+    assert_bound_stage_artifact(
+        &run.value,
+        &stage_work.join("evidence/evidence.json"),
+        "evidence",
+    );
+    assert_nonempty_file(&stage_work.join("evidence/evidence.jsonl"));
     assert_bound_stage_artifact(&run.value, &stage_work.join("solve/solve.json"), "solve");
     assert_next_commands_are_public_and_local(&run.value["next_commands"]);
 
@@ -262,18 +328,44 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         1,
     );
     command_log.push(link.record);
-    assert_eq!(link.value["version"], "canon_entity_link.v0");
+    assert_eq!(link.value["version"], "canon_entity_link.v1");
+    assert_eq!(read_json(&link_work.join("link/link.json")), link.value);
+    assert_eq!(
+        link.value["shared_run_artifact"]["content_hash"],
+        read_json(&link_work.join("run/run.json"))["artifact_content_hash"]
+    );
     assert_eq!(
         link.value["shared_solve_artifact"]["content_hash"],
         read_json(&link_work.join("solve/solve.json"))["artifact_content_hash"]
     );
+    assert_eq!(
+        link.value["decision_artifact"]["version"],
+        "canon_entity_link_decisions.v1"
+    );
+    assert_eq!(
+        link.value["observation_surface_bindings_path"],
+        "observation_surface_bindings.jsonl"
+    );
+    assert_nonempty_file(&link_work.join("link/observation_surface_bindings.jsonl"));
+    assert!(
+        read_jsonl_values(&link_work.join("link/observation_surface_bindings.jsonl"))
+            .iter()
+            .all(
+                |binding| binding["version"] == "canon_entity_link_observation_surface_bindings.v1"
+            ),
+        "link success path must emit v1 observation/surface bindings"
+    );
     assert_next_commands_are_public_and_local(&link.value["next_commands"]);
+
+    let link_artifact_path = link_work.join("link/link.json");
+    let link_stable_mirror_bytes = fs::read(&link_artifact_path).unwrap();
+    fs::write(&link_artifact_path, b"{malformed link stable mirror").unwrap();
 
     let audit = canon_json(
         &[
             "entity",
             "audit",
-            path_str(&link_work.join("run.json")),
+            path_str(&link_work.join("run/run.json")),
             "--suite",
             path_str(&fixture.suite),
             "--emit",
@@ -282,8 +374,10 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         0,
     );
     command_log.push(audit.record);
-    assert_eq!(audit.value["version"], "canon_entity_audit.v0");
+    assert_eq!(audit.value["version"], "canon_entity_audit.v1");
     assert_eq!(audit.value["summary"]["labels"]["status"], "passed");
+    let link_audit_path = fixture.root.join("link-audit.json");
+    write_json(&link_audit_path, &audit.value);
 
     let queue_review = canon_json(
         &[
@@ -325,6 +419,7 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         native_review.value["version"],
         "canon_entity_native_review.v0"
     );
+    fs::write(&link_artifact_path, link_stable_mirror_bytes).unwrap();
 
     let native_review_path = fixture.root.join("native-review.json");
     write_json(&native_review_path, &native_review.value);
@@ -410,9 +505,9 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         &[
             "entity",
             "promote",
-            path_str(&link_work.join("run.json")),
+            path_str(&link_work.join("run/run.json")),
             "--audit",
-            path_str(&fixture.root.join("audit.json")),
+            path_str(&link_audit_path),
             "--registry",
             path_str(&fixture.registry),
             "--next-version",
@@ -423,28 +518,52 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         2,
     );
     command_log.push(native_promote_refusal.record);
+    assert_link_bound_promote_refusal(
+        &native_promote_refusal.value,
+        &link_work.join("link/link.json"),
+        &fixture.registry,
+        "0.1.1",
+    );
     assert_eq!(
         registry_snapshot(&fixture.registry),
         registry_before_import_refusal
     );
 
-    let v1_result_path = fixture.root.join("promotable-run.v1.json");
-    let v1_result = build_v1_run_artifact(
-        &run.value,
-        &fixture,
-        "0.1.0",
-        registry_snapshot_hash_for_apply(&fixture.registry),
-        vec![
-            ("Harbor Metrics", "ORG-0002"),
-            ("Quartz Signal", "ORG-0003"),
+    let copied_link_run_path = fixture.root.join("copied-link-run.json");
+    fs::copy(link_work.join("run/run.json"), &copied_link_run_path).unwrap();
+    let copied_link_run_promote_refusal = canon_json(
+        &[
+            "entity",
+            "promote",
+            path_str(&copied_link_run_path),
+            "--audit",
+            path_str(&link_audit_path),
+            "--registry",
+            path_str(&fixture.registry),
+            "--next-version",
+            "0.1.1",
+            "--emit",
+            "json",
         ],
+        2,
     );
-    write_json(&v1_result_path, &v1_result);
-    let v1_audit = canon_json(
+    command_log.push(copied_link_run_promote_refusal.record);
+    assert_link_bound_promote_refusal(
+        &copied_link_run_promote_refusal.value,
+        &link_work.join("link/link.json"),
+        &fixture.registry,
+        "0.1.1",
+    );
+    assert_eq!(
+        registry_snapshot(&fixture.registry),
+        registry_before_import_refusal
+    );
+
+    let link_solve_audit = canon_json(
         &[
             "entity",
             "audit",
-            path_str(&v1_result_path),
+            path_str(&link_work.join("solve/solve.json")),
             "--suite",
             path_str(&fixture.suite),
             "--emit",
@@ -452,26 +571,238 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         ],
         0,
     );
-    command_log.push(v1_audit.record);
-    let v1_audit_path = fixture.root.join("promotable-audit.v1.json");
-    write_json(&v1_audit_path, &v1_audit.value);
+    command_log.push(link_solve_audit.record);
+    let link_solve_audit_path = fixture.root.join("link-solve-audit.json");
+    write_json(&link_solve_audit_path, &link_solve_audit.value);
+    let link_solve_promote_refusal = canon_json(
+        &[
+            "entity",
+            "promote",
+            path_str(&link_work.join("solve/solve.json")),
+            "--audit",
+            path_str(&link_solve_audit_path),
+            "--registry",
+            path_str(&fixture.registry),
+            "--next-version",
+            "0.1.1",
+            "--emit",
+            "json",
+        ],
+        2,
+    );
+    command_log.push(link_solve_promote_refusal.record);
+    assert_link_bound_promote_refusal(
+        &link_solve_promote_refusal.value,
+        &link_work.join("link/link.json"),
+        &fixture.registry,
+        "0.1.1",
+    );
+    assert_eq!(
+        registry_snapshot(&fixture.registry),
+        registry_before_import_refusal
+    );
 
-    let tampered_audit_path = fixture.root.join("promotable-audit-tampered.v1.json");
-    let mut tampered_audit = v1_audit.value.clone();
+    let copied_link_solve_path = fixture.root.join("copied-link-solve.json");
+    fs::copy(link_work.join("solve/solve.json"), &copied_link_solve_path).unwrap();
+    let copied_link_solve_promote_refusal = canon_json(
+        &[
+            "entity",
+            "promote",
+            path_str(&copied_link_solve_path),
+            "--audit",
+            path_str(&link_solve_audit_path),
+            "--registry",
+            path_str(&fixture.registry),
+            "--next-version",
+            "0.1.1",
+            "--emit",
+            "json",
+        ],
+        2,
+    );
+    command_log.push(copied_link_solve_promote_refusal.record);
+    assert_link_bound_promote_refusal(
+        &copied_link_solve_promote_refusal.value,
+        &link_work.join("link/link.json"),
+        &fixture.registry,
+        "0.1.1",
+    );
+    assert_eq!(
+        registry_snapshot(&fixture.registry),
+        registry_before_import_refusal
+    );
+
+    let solve_result_path = stage_work.join("solve/solve.json");
+    let solve_audit = canon_json(
+        &[
+            "entity",
+            "audit",
+            path_str(&solve_result_path),
+            "--suite",
+            path_str(&fixture.suite),
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(solve_audit.record);
+    assert_eq!(solve_audit.value["version"], "canon_entity_audit.v1");
+    let solve_audit_path = fixture.root.join("solve-audit.json");
+    write_json(&solve_audit_path, &solve_audit.value);
+
+    let solve_review = canon_json(
+        &[
+            "entity",
+            "review",
+            "export",
+            path_str(&solve_result_path),
+            "--include",
+            "resolved",
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(solve_review.record);
+    assert_eq!(
+        solve_review.value["version"], "canon_entity_review.v1",
+        "solve review export must use the native v1 review queue"
+    );
+    let solve_review_items = solve_review.value["review_items"]
+        .as_array()
+        .expect("solve review items");
+    let alias_proposal_items = solve_review_items
+        .iter()
+        .filter(|item| item.get("alias_proposal").is_some())
+        .count();
+    let resolved_entity_items = solve.value["entities"]
+        .as_array()
+        .expect("solve entities")
+        .iter()
+        .filter(|item| {
+            matches!(
+                item["state"].as_str(),
+                Some("resolved" | "resolved_existing" | "promotable_new")
+            )
+        })
+        .count();
+    assert_eq!(alias_proposal_items, 2);
+    assert_eq!(
+        solve_review.value["summary"]["counts"]["review_items"],
+        alias_proposal_items + resolved_entity_items
+    );
+    let solve_review_path = fixture.root.join("solve-review-decided.json");
+    let mut solve_review_decisions = solve_review.value.clone();
+    decide_alias_proposals(
+        &mut solve_review_decisions,
+        [
+            ("Northstar Analytics", "accept_alias"),
+            ("Harbor Metrics", "accept_alias"),
+        ],
+    );
+    write_json(&solve_review_path, &solve_review_decisions);
+
+    let review_import = canon_json(
+        &[
+            "entity",
+            "review",
+            "import",
+            path_str(&solve_review_path),
+            "--registry",
+            path_str(&fixture.registry),
+            "--next-version",
+            "0.1.1",
+            "--audit",
+            path_str(&solve_audit_path),
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(review_import.record);
+    assert_eq!(
+        review_import.value["version"],
+        "canon_entity_review_import.v0"
+    );
+    assert_eq!(
+        review_import.value["summary"]["counts"]["accepted_aliases"],
+        2
+    );
+    assert_eq!(
+        read_json(&fixture.registry.join("registry.json"))["version"],
+        "0.1.1"
+    );
+
+    let replay_work = fixture.root.join("replay-work");
+    let replay_run = canon_json(
+        &[
+            "entity",
+            "run",
+            path_str(&fixture.observations),
+            "--profile",
+            path_str(&fixture.profile),
+            "--strategy",
+            path_str(&fixture.strategy),
+            "--registry",
+            path_str(&fixture.registry),
+            "--work-dir",
+            path_str(&replay_work),
+            "--cache-mode",
+            "disabled",
+            "--no-witness",
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(replay_run.record);
+    assert_eq!(replay_run.value["version"], "canon_entity_run.v1");
+    assert_eq!(
+        read_json(&replay_work.join("solve/solve.json"))["summary"]["counts"]["promotable_alias_count"],
+        0
+    );
+
+    let replay_result_path = replay_work.join("run/run.json");
+    assert_eq!(read_json(&replay_result_path), replay_run.value);
+    assert_bound_stage_artifact(
+        &replay_run.value,
+        &replay_work.join("solve/solve.json"),
+        "solve",
+    );
+    let replay_audit = canon_json(
+        &[
+            "entity",
+            "audit",
+            path_str(&replay_result_path),
+            "--suite",
+            path_str(&fixture.suite),
+            "--emit",
+            "json",
+        ],
+        0,
+    );
+    command_log.push(replay_audit.record);
+    let replay_audit_path = fixture.root.join("replay-audit.json");
+    write_json(&replay_audit_path, &replay_audit.value);
+
+    let tampered_audit_path = fixture.root.join("replay-audit-tampered.json");
+    let mut tampered_audit = replay_audit.value.clone();
     tampered_audit["summary"]["labels"]["status"] = Value::String("failed".to_string());
+    canon::entity::schema::finalize_entity_v1_self_hash(&mut tampered_audit)
+        .expect("failed audit fixture rehashes");
     write_json(&tampered_audit_path, &tampered_audit);
     let before_tampered_promote = registry_snapshot(&fixture.registry);
     let tampered_promote = canon_json(
         &[
             "entity",
             "promote",
-            path_str(&v1_result_path),
+            path_str(&replay_result_path),
             "--audit",
             path_str(&tampered_audit_path),
             "--registry",
             path_str(&fixture.registry),
             "--next-version",
-            "0.1.1",
+            "0.1.2",
             "--emit",
             "json",
         ],
@@ -483,32 +814,59 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         "E_ENTITY_AUDIT_GATE"
     );
     assert_eq!(
+        tampered_promote.value["refusal"]["detail"]["writes_performed"],
+        false
+    );
+    assert_eq!(
         registry_snapshot(&fixture.registry),
         before_tampered_promote,
         "tampered audit refusal must not mutate registry"
     );
 
-    let promote = canon_json(
+    let unreviewed_result_path = stage_work.join("run/run.json");
+    let unreviewed_run_audit = canon_json(
         &[
             "entity",
-            "promote",
-            path_str(&v1_result_path),
-            "--audit",
-            path_str(&v1_audit_path),
-            "--registry",
-            path_str(&fixture.registry),
-            "--next-version",
-            "0.1.1",
+            "audit",
+            path_str(&unreviewed_result_path),
+            "--suite",
+            path_str(&fixture.suite),
             "--emit",
             "json",
         ],
         0,
     );
+    command_log.push(unreviewed_run_audit.record);
+    let unreviewed_run_audit_path = fixture.root.join("unreviewed-run-audit.json");
+    write_json(&unreviewed_run_audit_path, &unreviewed_run_audit.value);
+    let before_unreviewed_promote_refusal = registry_snapshot(&fixture.registry);
+    let promote = canon_json(
+        &[
+            "entity",
+            "promote",
+            path_str(&unreviewed_result_path),
+            "--audit",
+            path_str(&unreviewed_run_audit_path),
+            "--registry",
+            path_str(&fixture.registry),
+            "--next-version",
+            "0.1.2",
+            "--emit",
+            "json",
+        ],
+        2,
+    );
     command_log.push(promote.record);
-    assert_eq!(promote.value["version"], "canon_entity_promote.v1");
+    assert_unreviewed_result_promote_refusal(
+        &promote.value,
+        &unreviewed_result_path,
+        &fixture.registry,
+        "0.1.2",
+    );
     assert_eq!(
-        read_json(&fixture.registry.join("registry.json"))["version"],
-        "0.1.1"
+        registry_snapshot(&fixture.registry),
+        before_unreviewed_promote_refusal,
+        "unreviewed run promotion refusal must not mutate registry"
     );
 
     let lookup_input = fixture.root.join("lookup.csv");
@@ -535,23 +893,47 @@ fn run_operator_journey(label: &str) -> JourneyRun {
     assert_eq!(exact_lookup.value["version"], "canon.v0");
     assert_eq!(exact_lookup.value["outcome"], "RESOLVED");
 
-    let replay_result_path = fixture.root.join("replay-run.v1.json");
-    let replay_result = build_v1_run_artifact(
-        &run.value,
-        &fixture,
-        "0.1.1",
-        registry_snapshot_hash_for_apply(&fixture.registry),
-        Vec::new(),
+    let final_work = fixture.root.join("final-work");
+    let final_run = canon_json(
+        &[
+            "entity",
+            "run",
+            path_str(&fixture.target),
+            "--profile",
+            path_str(&fixture.profile),
+            "--strategy",
+            path_str(&fixture.strategy),
+            "--registry",
+            path_str(&fixture.registry),
+            "--work-dir",
+            path_str(&final_work),
+            "--cache-mode",
+            "disabled",
+            "--no-witness",
+            "--emit",
+            "json",
+        ],
+        0,
     );
-    write_json(&replay_result_path, &replay_result);
+    command_log.push(final_run.record);
+    assert_eq!(
+        read_json(&final_work.join("solve/solve.json"))["summary"]["counts"]["promotable_alias_count"],
+        0
+    );
+    let final_result_path = final_work.join("run/run.json");
+    let final_solve_result_path = final_work.join("solve/solve.json");
+    let final_run_stable_mirror_bytes = fs::read(&final_result_path).unwrap();
+    let final_solve_stable_backup = fixture.root.join("final-solve-stable-mirror.json");
+    fs::write(&final_result_path, b"{malformed run stable mirror").unwrap();
+    fs::rename(&final_solve_result_path, &final_solve_stable_backup).unwrap();
     let apply_out = fixture.root.join("applied.csv");
     let apply = canon_json(
         &[
             "entity",
             "apply",
-            path_str(&replay_result_path),
+            path_str(&final_result_path),
             "--rows",
-            path_str(&fixture.observations),
+            path_str(&fixture.target),
             "--registry",
             path_str(&fixture.registry),
             "--column",
@@ -564,7 +946,7 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         0,
     );
     command_log.push(apply.record);
-    assert_eq!(apply.value["version"], "canon_entity_apply.v0");
+    assert_eq!(apply.value["version"], "canon_entity_apply.v1");
     assert!(fs::read_to_string(&apply_out).unwrap().contains(
         "org_name,bucket,canonical_id,canonical_type,canonical_status,canonical_registry_id"
     ));
@@ -573,7 +955,7 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         &[
             "entity",
             "explain",
-            path_str(&replay_result_path),
+            path_str(&final_result_path),
             "--canon-id",
             "ORG-0002",
             "--emit",
@@ -584,6 +966,25 @@ fn run_operator_journey(label: &str) -> JourneyRun {
     command_log.push(explain.record);
     assert_eq!(explain.value["version"], "canon_entity_explain.v1");
     assert_eq!(explain.value["summary"]["counts"]["selected_records"], 1);
+    assert_eq!(
+        explain.value["source_result"]["version"],
+        "canon_entity_run.v1"
+    );
+    assert_eq!(
+        explain.value["source_result"]["bound_solve"]["version"],
+        "canon_entity_solve.v1"
+    );
+    assert_eq!(
+        explain.value["source_result"]["bound_solve"]["content_hash"],
+        final_run.value["stage_artifacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|stage| stage["stage"] == "solve")
+            .unwrap()["artifact_content_hash"]
+    );
+    fs::write(&final_result_path, final_run_stable_mirror_bytes).unwrap();
+    fs::rename(&final_solve_stable_backup, &final_solve_result_path).unwrap();
 
     let dbt_seed = fixture.root.join("registry_seed.csv");
     let dbt_schema = fixture.root.join("schema.yml");
@@ -641,8 +1042,6 @@ fn run_operator_journey(label: &str) -> JourneyRun {
         .unwrap()
         .iter()
         .any(|entry| entry["name"] == "resolve" || entry["name"] == "org");
-    let legacy_cli = canon_raw(&["resolve", "--help"], 2);
-    command_log.push(legacy_cli);
 
     JourneyRun {
         projection: JourneyProjection {
@@ -651,11 +1050,13 @@ fn run_operator_journey(label: &str) -> JourneyRun {
             review_states: review_states(&queue_review.value),
             review_priority_reasons: review_priority_reasons(&queue_review.value),
             native_review_modes: native_review_modes(&native_review.value),
-            promoted_aliases: promote.value["summary"]["counts"]["promoted_aliases"]
+            promoted_aliases: review_import.value["summary"]["counts"]["accepted_aliases"]
                 .as_u64()
                 .unwrap(),
             exact_lookup_outcome: exact_lookup.value["outcome"].as_str().unwrap().to_string(),
-            apply_resolved: apply.value["summary"]["resolved"].as_u64().unwrap(),
+            apply_resolved: apply.value["summary"]["counts"]["resolved"]
+                .as_u64()
+                .unwrap(),
             dbt_alias_rows: csv_data_row_count(&fs::read_to_string(&dbt_seed).unwrap()),
             search_alias_rows: sqlite_alias_count(&search_db),
             legacy_engine_refused,
@@ -682,13 +1083,25 @@ impl JourneyFixture {
         fs::write(&observations, OBSERVATIONS_CSV).unwrap();
         fs::write(&strategy, STRATEGY_YAML).unwrap();
         split_observations(&observations, &reference, &target);
-        write_registry(&registry, "0.1.0", 1);
+        write_registry(&registry, "0.1.0", 3);
         fs::write(
             registry.join("aliases.json"),
             serde_json::to_vec_pretty(&json!([
                 {
-                    "input": "Northstar Analytics",
+                    "input": "Northstar Analytics Lab",
                     "canonical_id": "ORG-0001",
+                    "canonical_type": "org",
+                    "rule_id": "SEED_ALIAS"
+                },
+                {
+                    "input": "Harbor Metrics Lab",
+                    "canonical_id": "ORG-0002",
+                    "canonical_type": "org",
+                    "rule_id": "SEED_ALIAS"
+                },
+                {
+                    "input": "Quartz Signal",
+                    "canonical_id": "ORG-0003",
                     "canonical_type": "org",
                     "rule_id": "SEED_ALIAS"
                 }
@@ -783,6 +1196,7 @@ fn canon_raw(args: &[&str], expected_code: i32) -> CommandRecord {
         stdout_json,
         stdout_csv,
         stdout_text,
+        entity_leaf: classify_entity_leaf(args),
     };
     assert_eq!(
         record.exit_code,
@@ -833,6 +1247,125 @@ fn write_registry(registry: &Path, version: &str, entry_count: u64) {
     .unwrap();
 }
 
+fn enable_neutral_similarity_support(profile: &Path) {
+    let yaml = fs::read_to_string(profile).unwrap();
+    let needle = "    - op: reviewed_alias\n      view: firm_core";
+    assert!(
+        yaml.contains(needle),
+        "profile template must expose reviewed_alias support hook"
+    );
+    let patched = yaml.replace(
+        needle,
+        "    - op: string_similarity\n      view: firm_core\n      params:\n        metric: jaro_winkler\n        min_score: \"0.9000\"\n    - op: reviewed_alias\n      view: firm_core",
+    );
+    fs::write(profile, patched).unwrap();
+}
+
+fn exercise_artifact_backed_benchmark_leaves(
+    fixture: &JourneyFixture,
+    command_log: &mut Vec<CommandRecord>,
+) {
+    let missing_manifest = fixture.root.join("missing-execution-envelope.json");
+    let missing_candidates = fixture.root.join("missing-candidates.json");
+    let missing_diagnostics = fixture.root.join("missing-diagnostics.json");
+    command_log.push(canon_raw(
+        &[
+            "entity",
+            "candidate-recall",
+            "--manifest",
+            path_str(&missing_manifest),
+            "--candidates",
+            path_str(&missing_candidates),
+            "--diagnostics",
+            path_str(&missing_diagnostics),
+            "--exact-bucket-count",
+            "0",
+            "--emit",
+            "json",
+        ],
+        2,
+    ));
+    command_log.push(canon_raw(
+        &[
+            "entity",
+            "alias-withholding",
+            "--manifest",
+            path_str(&missing_manifest),
+            "--emit",
+            "json",
+        ],
+        2,
+    ));
+    command_log.push(canon_raw(
+        &[
+            "entity",
+            "generalization",
+            "--manifest",
+            path_str(&missing_manifest),
+            "--emit",
+            "json",
+        ],
+        2,
+    ));
+}
+
+fn operator_entity_leaf_names() -> BTreeSet<String> {
+    let operator: Value = serde_json::from_str(include_str!("../../operator.json")).unwrap();
+    let mut leaves = BTreeSet::new();
+    collect_operator_entity_leaves(&operator, &mut leaves);
+    leaves
+}
+
+fn collect_operator_entity_leaves(value: &Value, leaves: &mut BTreeSet<String>) {
+    match value {
+        Value::Object(object) => {
+            if object
+                .get("aggregate")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                for child in object.values() {
+                    collect_operator_entity_leaves(child, leaves);
+                }
+                return;
+            }
+            if let Some(name) = object.get("name").and_then(Value::as_str)
+                && name.starts_with("entity ")
+            {
+                leaves.insert(name.to_string());
+            }
+            for child in object.values() {
+                collect_operator_entity_leaves(child, leaves);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                collect_operator_entity_leaves(item, leaves);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn executed_entity_leaves(records: &[CommandRecord]) -> BTreeSet<String> {
+    records
+        .iter()
+        .filter_map(|record| record.entity_leaf.clone())
+        .collect()
+}
+
+fn classify_entity_leaf(args: &[&str]) -> Option<String> {
+    match args {
+        ["entity", "index", "build", ..] => Some("entity index build".to_string()),
+        ["entity", "profile", "list", ..] => Some("entity profile list".to_string()),
+        ["entity", "profile", "init", ..] => Some("entity profile init".to_string()),
+        ["entity", "review", "export", ..] => Some("entity review export".to_string()),
+        ["entity", "review", "import", ..] => Some("entity review import".to_string()),
+        ["entity", leaf, ..] => Some(format!("entity {leaf}")),
+        _ => None,
+    }
+}
+
 fn native_defer_decision(review: &Value, item: &Value) -> Value {
     json!({
         "review_id": item["review_id"],
@@ -849,122 +1382,177 @@ fn native_defer_decision(review: &Value, item: &Value) -> Value {
     })
 }
 
-fn build_v1_run_artifact(
-    source_run: &Value,
-    fixture: &JourneyFixture,
-    registry_version: &str,
-    registry_snapshot_hash: String,
-    promotion_aliases: Vec<(&str, &str)>,
-) -> Value {
-    let mut metadata = source_run["metadata"].clone();
-    metadata["schema"] = json!({
-        "key": "canon_entity_run.v1",
-        "content_hash": "blake3:schema-run"
-    });
-    metadata["registry_snapshot"]["version"] = Value::String(registry_version.to_string());
-    metadata["registry_snapshot"]["source"] = Value::String(fixture.registry.display().to_string());
-    metadata["registry_snapshot"]["lookup_snapshot_hash"] = Value::String(registry_snapshot_hash);
-    metadata["workdir"] = json!({
-        "root_dir": fixture.root.display().to_string(),
-        "stage_dir": "run",
-        "artifact_relpath": "run/run.json",
-        "payload_relpath": "run/manifest.json"
-    });
-    metadata["upstream_artifacts"] = Value::Array(Vec::new());
-    metadata["artifact_content_hash"] = Value::String(String::new());
+fn assert_distinct_prepared_surfaces(surfaces_path: &Path) {
+    let surfaces = read_jsonl_values(surfaces_path);
+    for (incumbent, unresolved) in [
+        ("Northstar Analytics Lab", "Northstar Analytics"),
+        ("Harbor Metrics Lab", "Harbor Metrics"),
+    ] {
+        let incumbent_id = surface_id_for_raw_variant(&surfaces, incumbent);
+        let unresolved_id = surface_id_for_raw_variant(&surfaces, unresolved);
+        assert_ne!(
+            incumbent_id, unresolved_id,
+            "incumbent {incumbent} and unresolved {unresolved} must remain distinct prepared surfaces"
+        );
+    }
+}
 
-    let aliases = promotion_aliases
+fn assert_positive_support_edges(work_dir: &Path) {
+    let surfaces = read_jsonl_values(&work_dir.join("prepare/surfaces.jsonl"));
+    let evidence = read_jsonl_values(&work_dir.join("evidence/evidence.jsonl"));
+    for (incumbent, unresolved) in [
+        ("Northstar Analytics Lab", "Northstar Analytics"),
+        ("Harbor Metrics Lab", "Harbor Metrics"),
+    ] {
+        let incumbent_id = surface_id_for_raw_variant(&surfaces, incumbent);
+        let unresolved_id = surface_id_for_raw_variant(&surfaces, unresolved);
+        assert!(
+            evidence.iter().any(|record| {
+                surface_pair_matches(record, &incumbent_id, &unresolved_id)
+                    && record
+                        .get("hits")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                        .any(|hit| {
+                            hit.get("lane").and_then(Value::as_str) == Some("support")
+                                && hit.get("operator_id").and_then(Value::as_str)
+                                    == Some("string_similarity:firm_core")
+                                && hit
+                                    .get("score_units")
+                                    .and_then(Value::as_u64)
+                                    .is_some_and(|score| score > 0)
+                        })
+            }),
+            "manual evidence must contain positive string-similarity support for {incumbent} -> {unresolved}"
+        );
+    }
+}
+
+fn assert_link_bound_promote_refusal(
+    envelope: &Value,
+    link_path: &Path,
+    registry: &Path,
+    next_version: &str,
+) {
+    assert_eq!(envelope["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(envelope["refusal"]["detail"]["field"], "link_artifact");
+    assert_eq!(
+        envelope["refusal"]["detail"]["link_artifact_path"],
+        link_path.display().to_string()
+    );
+    assert_eq!(envelope["refusal"]["detail"]["writes_performed"], false);
+    let next_command = envelope["refusal"]["next_command"]
+        .as_str()
+        .expect("link-bound promotion refusal next command");
+    assert!(next_command.contains("canon entity review export"));
+    assert!(next_command.contains("canon entity review import"));
+    assert!(next_command.contains(&link_path.display().to_string()));
+    assert!(next_command.contains(&registry.display().to_string()));
+    assert!(next_command.contains(next_version));
+}
+
+fn assert_unreviewed_result_promote_refusal(
+    envelope: &Value,
+    result_path: &Path,
+    registry: &Path,
+    next_version: &str,
+) {
+    assert_eq!(envelope["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(envelope["refusal"]["detail"]["writes_performed"], false);
+    let next_command = envelope["refusal"]["next_command"]
+        .as_str()
+        .expect("unreviewed promotion refusal next command");
+    assert!(next_command.contains("canon entity review export"));
+    assert!(next_command.contains("canon entity review import"));
+    assert!(next_command.contains(&result_path.display().to_string()));
+    assert!(next_command.contains(&registry.display().to_string()));
+    assert!(next_command.contains(next_version));
+}
+
+fn surface_id_for_raw_variant(surfaces: &[Value], raw_variant: &str) -> String {
+    let matches = surfaces
         .iter()
-        .map(|(input, canonical_id)| {
-            json!({
-                "input": input,
-                "canonical_id": canonical_id,
-                "canonical_type": "org",
-                "rule_id": "ENTITY_V1_PROMOTE"
-            })
+        .filter(|surface| {
+            surface
+                .get("raw_variants")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .any(|value| value.as_str() == Some(raw_variant))
+        })
+        .map(|surface| {
+            surface
+                .get("surface_id")
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| panic!("surface for {raw_variant} must have surface_id"))
+                .to_string()
         })
         .collect::<Vec<_>>();
-    let entities = vec![
-        json!({
-            "canonical_id": "ORG-0002",
-            "canonical_type": "org",
-            "alias_inputs": ["Harbor Metrics"],
-            "surface_id": "surface:harbor",
-            "row_id": "tgt-amb"
-        }),
-        json!({
-            "canonical_id": "ORG-0003",
-            "canonical_type": "org",
-            "alias_inputs": ["Quartz Signal"],
-            "surface_id": "surface:quartz",
-            "row_id": "tgt-none"
-        }),
-    ];
-    let mut artifact = json!({
-        "version": "canon_entity_run.v1",
-        "artifact_content_hash": "",
-        "metadata": metadata,
-        "summary": {
-            "counts": {
-                "entities": entities.len() as u64,
-                "promotable_aliases": aliases.len() as u64
-            },
-            "labels": {
-                "stage": "run",
-                "status": "completed"
-            }
-        },
-        "run_manifest_path": "run/manifest.json",
-        "promotable_aliases": aliases,
-        "entities": entities,
-        "rows": [
-            {
-                "row_id": "tgt-amb",
-                "surface_id": "surface:harbor",
-                "canonical_id": "ORG-0002"
-            },
-            {
-                "row_id": "tgt-none",
-                "surface_id": "surface:quartz",
-                "canonical_id": "ORG-0003"
-            }
-        ],
-        "evidence": [],
-        "review_items": []
-    });
-    set_v1_hash(&mut artifact);
-    artifact
+    assert_eq!(
+        matches.len(),
+        1,
+        "expected exactly one prepared surface for raw variant {raw_variant}"
+    );
+    matches[0].clone()
 }
 
-fn set_v1_hash(artifact: &mut Value) {
-    artifact["artifact_content_hash"] = Value::String("blake3:placeholder".to_string());
-    artifact["metadata"]["artifact_content_hash"] = Value::String("blake3:placeholder".to_string());
-    let hash = canon::entity::schema::compute_entity_v1_self_hash(artifact).unwrap();
-    artifact["artifact_content_hash"] = Value::String(hash.clone());
-    artifact["metadata"]["artifact_content_hash"] = Value::String(hash);
+fn surface_pair_matches(record: &Value, left: &str, right: &str) -> bool {
+    let actual_left = record.get("left_surface_id").and_then(Value::as_str);
+    let actual_right = record.get("right_surface_id").and_then(Value::as_str);
+    (actual_left == Some(left) && actual_right == Some(right))
+        || (actual_left == Some(right) && actual_right == Some(left))
 }
 
-fn registry_snapshot_hash_for_apply(registry: &Path) -> String {
-    let mut files = vec![registry.join("registry.json")];
-    for entry in fs::read_dir(registry).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_file()
-            && path.extension().and_then(OsStr::to_str) == Some("json")
-            && path.file_name().and_then(OsStr::to_str) != Some("registry.json")
-            && path.file_name().and_then(OsStr::to_str) != Some("_build.json")
-        {
-            files.push(path);
-        }
+fn decide_alias_proposals<'a>(
+    review: &mut Value,
+    decisions: impl IntoIterator<Item = (&'a str, &'a str)>,
+) {
+    let decisions = decisions
+        .into_iter()
+        .collect::<BTreeMap<&'a str, &'a str>>();
+    let mut seen = BTreeSet::new();
+    for item in review["review_items"].as_array_mut().unwrap() {
+        let Some(input) = item
+            .get("alias_proposal")
+            .and_then(|proposal| proposal.get("input"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+        else {
+            continue;
+        };
+        let Some(decision) = decisions.get(input.as_str()) else {
+            continue;
+        };
+        assert!(
+            item["alias_proposal"]["allowed_actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action.as_str() == Some(*decision)),
+            "decision {decision} must be exported as allowed action for {input}"
+        );
+        item["decision"] = Value::String((*decision).to_string());
+        item["operator_id"] = Value::String("bd-1hum-acceptance".to_string());
+        item["reason_code"] = Value::String(
+            match *decision {
+                "accept_alias" => "confirmed_alias",
+                "reject_alias" => "defer_to_promote",
+                other => panic!("unsupported alias decision {other}"),
+            }
+            .to_string(),
+        );
+        seen.insert(input);
     }
-    files.sort();
-    let mut hasher = blake3::Hasher::new();
-    for path in files {
-        hasher.update(path.file_name().unwrap().to_string_lossy().as_bytes());
-        hasher.update(&[0]);
-        hasher.update(&fs::read(path).unwrap());
-        hasher.update(&[0xff]);
-    }
-    format!("blake3:{}", hasher.finalize().to_hex())
+    assert_eq!(
+        seen,
+        decisions
+            .keys()
+            .map(|input| (*input).to_string())
+            .collect::<BTreeSet<_>>(),
+        "every requested alias decision must bind to an exported proposal"
+    );
+    canon::entity::schema::finalize_entity_v1_self_hash(review).unwrap();
 }
 
 fn registry_snapshot(registry: &Path) -> BTreeMap<String, Vec<u8>> {
@@ -1139,6 +1727,15 @@ fn sqlite_alias_count(path: &Path) -> usize {
 
 fn read_json(path: &Path) -> Value {
     serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
+}
+
+fn read_jsonl_values(path: &Path) -> Vec<Value> {
+    fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("{} must be readable JSONL: {error}", path.display()))
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| serde_json::from_str(line).expect("JSONL line parses"))
+        .collect()
 }
 
 fn write_json(path: &Path, value: &Value) {

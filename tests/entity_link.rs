@@ -3,9 +3,13 @@
 use canon::{
     entity::{
         CANON_ENTITY_EVIDENCE_VERSION_V1, CANON_ENTITY_RUN_VERSION_V1,
-        CANON_ENTITY_SOLVE_VERSION_V1,
+        CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactReference,
+        publication::{
+            CANON_ENTITY_STAGE_PUBLICATION_VERSION, EntityPublicationErrorKind,
+            open_current_stream_generation, publication_object_path,
+        },
         run::{
-            EntityRunArtifact,
+            ENTITY_RUN_PUBLICATION_STREAM_ID, EntityRunArtifact,
             link::{
                 ENTITY_LINK_OBSERVATION_SURFACE_BINDINGS_VERSION, ENTITY_LINK_VERSION,
                 EntityLinkArtifact, EntityLinkRequest, EntityLinkRole,
@@ -356,8 +360,20 @@ fn entity_link_derivation_reader_rejects_resealed_forged_sidecar() {
     let run_artifact = read_run_artifact(&fixture);
     let derivation_run_artifact = resealed_typed_run_artifact(run_artifact);
     artifact = link_artifact_for_typed_run_derivation(artifact, &derivation_run_artifact);
-    let link_path = fixture.work_dir.join("link/link.json");
-    let bindings_path = observation_surface_bindings_path(&fixture.work_dir);
+    let detached = tempfile::tempdir().expect("detached tempdir");
+    let detached_work_dir = detached.path().join("work");
+    copy_detached_link_validation_bundle(
+        &fixture.work_dir,
+        &detached_work_dir,
+        &derivation_run_artifact,
+    );
+    let link_path = detached_work_dir.join("link/link.json");
+    let bindings_path = observation_surface_bindings_path(&detached_work_dir);
+    fs::write(
+        &link_path,
+        serde_json::to_vec(&artifact).expect("artifact serializes"),
+    )
+    .expect("write detached link artifact");
     let mut bindings =
         read_validated_entity_link_observation_surface_bindings_at_path(&artifact, &link_path)
             .expect("baseline sidecar validates");
@@ -400,22 +416,42 @@ fn entity_link_derivation_reader_rejects_resealed_forged_sidecar() {
 fn entity_link_sidecar_tamper_refuses_at_artifact_validation() {
     let fixture = LinkFixture::new();
     let artifact_value = run_entity_link_cli_json(&fixture);
-    let artifact: EntityLinkArtifact =
+    let mut false_claim_artifact: EntityLinkArtifact =
         serde_json::from_value(artifact_value).expect("typed link artifact");
-    let bindings_path = observation_surface_bindings_path(&fixture.work_dir);
-    let mut binding_text = fs::read_to_string(&bindings_path).expect("sidecar text");
-    binding_text.push('\n');
-    fs::write(&bindings_path, binding_text).expect("tamper sidecar");
+    false_claim_artifact.observation_surface_bindings_content_hash =
+        witness::hash_bytes(b"false observation/surface binding claim");
+    reseal_link_artifact(&mut false_claim_artifact);
 
-    let refusal = read_validated_entity_link_observation_surface_bindings_at_path(
-        &artifact,
+    let refusal = validate_entity_link_artifact_at_path(
+        &false_claim_artifact,
         &fixture.work_dir.join("link/link.json"),
     )
-    .expect_err("tampered sidecar hash refuses");
+    .expect_err("resealed false sidecar hash claim refuses");
     assert_eq!(
         refusal.detail["field"],
         "observation_surface_bindings_content_hash"
     );
+
+    let committed_bindings_path = format!("link/{LINK_OBSERVATION_SURFACE_BINDINGS_PATH}");
+    let current =
+        open_current_stream_generation(&fixture.work_dir, ENTITY_RUN_PUBLICATION_STREAM_ID)
+            .expect("current entity-run publication opens");
+    let bindings_record = current
+        .manifest
+        .files
+        .iter()
+        .find(|record| record.logical_path == committed_bindings_path)
+        .expect("committed observation/surface bindings record");
+    let object_path = publication_object_path(&fixture.work_dir, &bindings_record.content_hash)
+        .expect("publication object path");
+    let mut object_bytes = fs::read(&object_path).expect("committed sidecar object");
+    object_bytes.push(b'\n');
+    fs::write(&object_path, object_bytes).expect("corrupt committed sidecar object");
+
+    let error = open_current_stream_generation(&fixture.work_dir, ENTITY_RUN_PUBLICATION_STREAM_ID)
+        .expect_err("committed publication object hash mismatch refuses");
+    assert_eq!(error.kind, EntityPublicationErrorKind::HashMismatch);
+    assert!(!error.writes_performed);
 }
 
 #[test]
@@ -531,14 +567,92 @@ fn link_artifact_for_typed_run_derivation(
     mut artifact: EntityLinkArtifact,
     run_artifact: &EntityRunArtifact,
 ) -> EntityLinkArtifact {
-    artifact.shared_run_artifact.version = run_artifact.version.clone();
-    artifact.shared_run_artifact.content_hash = run_artifact.artifact_content_hash.clone();
+    let publication_parent = existing_publication_parent(&artifact);
+    artifact.shared_run_artifact = EntityArtifactReference {
+        version: run_artifact.version.clone(),
+        content_hash: run_artifact.artifact_content_hash.clone(),
+    };
+    artifact.shared_solve_artifact = solve_stage_reference(run_artifact);
     artifact.metadata.upstream_artifacts = vec![
         artifact.shared_run_artifact.clone(),
         artifact.shared_solve_artifact.clone(),
+        publication_parent,
     ];
+    artifact
+        .metadata
+        .upstream_artifacts
+        .sort_by(artifact_ref_cmp);
     reseal_link_artifact(&mut artifact);
     artifact
+}
+
+fn copy_detached_link_validation_bundle(
+    source_work_dir: &Path,
+    detached_work_dir: &Path,
+    run_artifact: &EntityRunArtifact,
+) {
+    copy_file_to_path(
+        &materialized_rows_path(source_work_dir),
+        &materialized_rows_path(detached_work_dir),
+    );
+    copy_file_to_path(
+        &observation_surface_bindings_path(source_work_dir),
+        &observation_surface_bindings_path(detached_work_dir),
+    );
+    copy_file_to_path(
+        &source_work_dir.join(&run_artifact.work_dir.surfaces_path),
+        &detached_work_dir.join(&run_artifact.work_dir.surfaces_path),
+    );
+}
+
+fn copy_file_to_path(source: &Path, target: &Path) {
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).expect("create detached validation directory");
+    }
+    fs::copy(source, target).unwrap_or_else(|error| {
+        panic!(
+            "copy {} to {} for detached validation bundle: {error}",
+            source.display(),
+            target.display()
+        )
+    });
+}
+
+fn existing_publication_parent(artifact: &EntityLinkArtifact) -> EntityArtifactReference {
+    let parents = artifact
+        .metadata
+        .upstream_artifacts
+        .iter()
+        .filter(|reference| reference.version == CANON_ENTITY_STAGE_PUBLICATION_VERSION)
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        parents.len(),
+        1,
+        "link artifact should carry exactly one committed publication parent"
+    );
+    parents.into_iter().next().unwrap()
+}
+
+fn solve_stage_reference(run_artifact: &EntityRunArtifact) -> EntityArtifactReference {
+    let stage = run_artifact
+        .stage_artifacts
+        .iter()
+        .find(|stage| stage.stage == "solve")
+        .expect("run artifact carries solve stage");
+    EntityArtifactReference {
+        version: stage.version.clone(),
+        content_hash: stage.artifact_content_hash.clone(),
+    }
+}
+
+fn artifact_ref_cmp(
+    left: &EntityArtifactReference,
+    right: &EntityArtifactReference,
+) -> std::cmp::Ordering {
+    left.version
+        .cmp(&right.version)
+        .then_with(|| left.content_hash.cmp(&right.content_hash))
 }
 
 fn reseal_link_artifact(artifact: &mut EntityLinkArtifact) {
@@ -592,7 +706,7 @@ impl LinkFixture {
             &strategy,
             r#"strategy_id: entity-link-fixture.v1
 strategy_version: "1.0.0"
-entity_type: row
+entity_type: tenant_label
 description: "Domain-neutral entity link integration fixture"
 identity:
   reference:
@@ -643,8 +757,15 @@ fn write_registry(registry: &Path) {
     fs::create_dir_all(registry).expect("registry dir");
     fs::write(
         registry.join("registry.json"),
-        r#"{"id":"entity-link-registry","version":"2026.07.11","description":"entity link test registry","updated":"2026-07-11","entry_count":0}"#,
+        r#"{"id":"entity-link-registry","version":"2026.07.11","description":"entity link test registry","updated":"2026-07-11","entry_count":1}"#,
     )
     .expect("registry metadata");
-    fs::write(registry.join("aliases.json"), "[]\n").expect("aliases");
+    fs::write(
+        registry.join("aliases.json"),
+        r#"[
+  {"input":"North Harbor Labs","canonical_id":"TNT-NORTH-HARBOR-LABS","canonical_type":"tenant_label","rule_id":"ENTITY_LINK_FIXTURE_INCUMBENT"}
+]
+"#,
+    )
+    .expect("aliases");
 }

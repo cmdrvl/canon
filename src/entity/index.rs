@@ -29,6 +29,7 @@ use crate::{
         },
         postings::{EntityPostingBuildConfig, EntityPostingIndex, EntityPostingSurface},
         prepare::{PrepareRegistrySnapshot, PrepareRunArtifact, PreparedSurfaceRecord},
+        profile::entity_profile_package_projection_from_bytes,
         schema::{
             entity_v1_artifact_reference, entity_v1_contract_for_stage, entity_v1_schema_reference,
             entity_v1_workdir_layout, finalize_entity_v1_self_hash,
@@ -2512,8 +2513,8 @@ fn validate_prepare_context(
 }
 
 fn load_profile_reference(profile: &str) -> Result<crate::entity::EntityProfileReference, Refusal> {
-    let profile_source = if Path::new(profile).exists() {
-        fs::read_to_string(profile).map_err(|error| {
+    if Path::new(profile).exists() {
+        let bytes = fs::read(profile).map_err(|error| {
             EntityRefusalKind::Profile.to_refusal(
                 "Failed to read entity index profile",
                 json!({
@@ -2524,9 +2525,34 @@ fn load_profile_reference(profile: &str) -> Result<crate::entity::EntityProfileR
                 }),
                 None,
             )
-        })?
+        })?;
+        if is_json_profile_path(profile) {
+            let projection = entity_profile_package_projection_from_bytes(&bytes)
+                .map_err(|error| error.to_refusal())?;
+            let mut reference = projection.document.to_reference();
+            reference.content_hash = Some(projection.package_digest);
+            Ok(reference)
+        } else {
+            let profile_source = String::from_utf8(bytes).map_err(|error| {
+                EntityRefusalKind::Profile.to_refusal(
+                    "Entity index profile YAML is not UTF-8",
+                    json!({
+                        "stage": "index",
+                        "profile": profile,
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                    None,
+                )
+            })?;
+            let document = EntityProfileDocument::from_yaml_str(&profile_source)
+                .map_err(|error| error.to_refusal())?;
+            let mut reference = document.to_reference();
+            reference.content_hash = Some(witness::hash_bytes(profile_source.as_bytes()));
+            Ok(reference)
+        }
     } else {
-        match profile {
+        let profile_source = match profile {
             "cmbs_tenant_label" => BUILTIN_CMBS_TENANT_LABEL_PROFILE.to_string(),
             "regab_firm_identity" => BUILTIN_REGAB_FIRM_IDENTITY_PROFILE.to_string(),
             _ => {
@@ -2541,13 +2567,20 @@ fn load_profile_reference(profile: &str) -> Result<crate::entity::EntityProfileR
                     None,
                 ));
             }
-        }
-    };
-    let document = EntityProfileDocument::from_yaml_str(&profile_source)
-        .map_err(|error| error.to_refusal())?;
-    let mut reference = document.to_reference();
-    reference.content_hash = Some(witness::hash_bytes(profile_source.as_bytes()));
-    Ok(reference)
+        };
+        let document = EntityProfileDocument::from_yaml_str(&profile_source)
+            .map_err(|error| error.to_refusal())?;
+        let mut reference = document.to_reference();
+        reference.content_hash = Some(witness::hash_bytes(profile_source.as_bytes()));
+        Ok(reference)
+    }
+}
+
+fn is_json_profile_path(profile: &str) -> bool {
+    Path::new(profile)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
 }
 
 fn load_registry_snapshot(registry_dir: &Path) -> Result<PrepareRegistrySnapshot, Refusal> {

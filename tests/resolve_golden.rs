@@ -1,8 +1,6 @@
 use assert_cmd::prelude::*;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::{
-    collections::BTreeMap,
-    fs,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -12,8 +10,6 @@ const UNCHANGED_REFERENCE_TAPE: &str =
 const UNCHANGED_TARGET_TAPE: &str =
     "tests/fixtures/resolve/parity/unchanged-link/target_loans.link.csv";
 const LOAN_MATCH_GOLD: &str = "tests/fixtures/resolve/gold/loan_matches.jsonl";
-const UNCHANGED_DECISION_GOLDEN: &str =
-    "tests/fixtures/resolve/golden/unchanged_input_decision_projection.json";
 
 fn manifest_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf()
@@ -50,49 +46,35 @@ fn entity_link_stdout(
         "--no-witness",
     ];
     args.extend_from_slice(extra_args);
-    canon_command()
+    let output = canon_command()
         .args(args)
         .assert()
         .code(exit_code)
         .get_output()
-        .stdout
-        .clone()
+        .clone();
+    if output.stdout.is_empty() {
+        output.stderr
+    } else {
+        output.stdout
+    }
 }
 
 #[test]
-fn minimal_entity_link_decisions_match_golden_artifact_projection() {
+fn minimal_legacy_loan_strategy_refuses_native_profile_cutover() {
     let temp_dir = tempfile::tempdir().unwrap();
     let stdout = entity_link_stdout(
         temp_dir.path(),
         Path::new("tests/fixtures/resolve/strategies/minimal.valid.yaml"),
         &[],
-        1,
+        2,
     );
-    let actual: Value = serde_json::from_slice(&stdout).unwrap();
-    let actual_decisions = &actual["decision_artifact"];
-    let expected: Value = serde_json::from_str(
-        &fs::read_to_string(
-            manifest_dir().join("tests/fixtures/resolve/golden/minimal_artifact.json"),
-        )
-        .unwrap(),
-    )
-    .unwrap();
+    let refusal: Value = serde_json::from_slice(&stdout).unwrap();
 
-    assert_eq!(actual["version"], "canon_entity_link.v0");
-    assert_eq!(
-        actual_decisions["version"],
-        "canon_entity_link_decisions.v0"
-    );
-    assert_eq!(actual_decisions["strategy"], expected["strategy"]);
-    assert_eq!(actual_decisions["registry"], expected["registry"]);
-    assert_eq!(actual_decisions["summary"], expected["summary"]);
-    assert_eq!(actual_decisions["matches"], expected["matches"]);
-    assert_eq!(actual_decisions["unmatched"], expected["unmatched"]);
-    assert_eq!(actual_decisions["ambiguous"], expected["ambiguous"]);
+    assert_legacy_strategy_input_contract_refusal(&refusal, "minimal-loan-match.v1");
 }
 
 #[test]
-fn full_entity_link_json_is_byte_stable_for_same_inputs() {
+fn legacy_cmbs_cutover_refusal_is_byte_stable_for_same_inputs() {
     let temp_dir = tempfile::tempdir().unwrap();
     let extra = ["--gold", LOAN_MATCH_GOLD, "--cache-mode", "disabled"];
 
@@ -100,176 +82,88 @@ fn full_entity_link_json_is_byte_stable_for_same_inputs() {
         temp_dir.path(),
         Path::new("tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml"),
         &extra,
-        1,
+        2,
     );
     let second = entity_link_stdout(
         temp_dir.path(),
         Path::new("tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml"),
         &extra,
-        1,
+        2,
     );
 
     assert_eq!(first, second);
+    let refusal: Value = serde_json::from_slice(&first).unwrap();
+    assert_legacy_strategy_input_contract_refusal(&refusal, "cmbs-loan-match.v1");
 }
 
 #[test]
-fn full_entity_link_decisions_match_unchanged_input_projection_golden() {
+fn unchanged_input_legacy_golden_is_refused_not_reinterpreted_as_v1_decisions() {
     let temp_dir = tempfile::tempdir().unwrap();
     let stdout = entity_link_stdout(
         temp_dir.path(),
         Path::new("tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml"),
         &["--gold", LOAN_MATCH_GOLD],
-        1,
+        2,
     );
-    let actual: Value = serde_json::from_slice(&stdout).unwrap();
-    let expected: Value = serde_json::from_str(
-        &fs::read_to_string(manifest_dir().join(UNCHANGED_DECISION_GOLDEN)).unwrap(),
-    )
-    .unwrap();
+    let refusal: Value = serde_json::from_slice(&stdout).unwrap();
 
-    let decisions = &actual["decision_artifact"];
-    assert_eq!(
-        golden_decision_projection(decisions),
-        expected["projection"]
-    );
-    assert!(
-        !decisions
-            .as_object()
-            .expect("decision object")
-            .contains_key("write_back")
-    );
+    assert_legacy_strategy_input_contract_refusal(&refusal, "cmbs-loan-match.v1");
 }
 
 #[test]
-fn json_and_summary_modes_agree_on_core_counts() {
+fn json_and_summary_modes_agree_on_legacy_cutover_refusal_code() {
     let temp_dir = tempfile::tempdir().unwrap();
     let json_stdout = entity_link_stdout(
         temp_dir.path(),
         Path::new("tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml"),
         &[],
-        1,
+        2,
     );
-    let payload: Value = serde_json::from_slice(&json_stdout).unwrap();
     let summary_stdout = entity_link_stdout(
         temp_dir.path(),
         Path::new("tests/fixtures/resolve/strategies/cmbs_loans.valid.yaml"),
         &["--emit", "summary"],
-        1,
+        2,
     );
-    let summary = String::from_utf8(summary_stdout).unwrap();
-    let values = parse_summary(&summary);
+    let json_refusal: Value = serde_json::from_slice(&json_stdout).unwrap();
+    let summary_refusal: Value = serde_json::from_slice(&summary_stdout).unwrap();
 
+    assert_eq!(json_refusal["refusal"]["code"], "E_ENTITY_INPUT_CONTRACT");
     assert_eq!(
-        values.get("target_records"),
-        Some(&payload["decision_artifact"]["summary"]["target_records"].to_string())
+        summary_refusal["refusal"]["code"],
+        "E_ENTITY_INPUT_CONTRACT"
     );
-    assert_eq!(
-        values.get("matched"),
-        Some(&payload["decision_artifact"]["summary"]["matched"].to_string())
+    assert_eq!(json_refusal["refusal"], summary_refusal["refusal"]);
+}
+
+fn assert_legacy_strategy_input_contract_refusal(public: &Value, strategy_id: &str) {
+    assert_eq!(public["outcome"], "REFUSAL");
+    assert_eq!(public["refusal"]["code"], "E_ENTITY_INPUT_CONTRACT");
+    let next_command = public["refusal"]["next_command"]
+        .as_str()
+        .expect("actionable next command");
+    assert!(
+        next_command.contains("entity_type 'loan'"),
+        "{next_command}"
     );
-    assert_eq!(
-        values.get("unmatched"),
-        Some(&payload["decision_artifact"]["summary"]["unmatched"].to_string())
+    assert!(next_command.contains("cmbs_tenant_label"), "{next_command}");
+    let detail = &public["refusal"]["detail"];
+    assert_eq!(detail["stage"], "link");
+    assert_eq!(detail["field"], "profile.entity_type");
+    assert_eq!(detail["profile_source"], "cmbs_tenant_label");
+    assert_eq!(detail["expected"]["strategy_entity_type"], "loan");
+    assert_eq!(detail["expected"]["strategy_id"], strategy_id);
+    assert_eq!(detail["expected"]["strategy_version"], "0.1.0");
+    assert!(
+        detail["expected"]["strategy_content_hash"].is_string(),
+        "strategy hash must be present"
     );
-    assert_eq!(
-        values.get("ambiguous"),
-        Some(&payload["decision_artifact"]["summary"]["ambiguous"].to_string())
+    assert_eq!(detail["actual"]["profile_entity_type"], "tenant_label");
+    assert_eq!(detail["actual"]["profile_id"], "cmbs_tenant_label");
+    assert_eq!(detail["actual"]["profile_version"], "0.1.0");
+    assert!(
+        detail["actual"]["profile_content_hash"].is_string(),
+        "profile hash must be present"
     );
-    assert_eq!(values.get("match_rate"), Some(&"0.750".to_string()));
-}
-
-fn parse_summary(summary: &str) -> BTreeMap<String, String> {
-    summary
-        .split_whitespace()
-        .filter_map(|part| {
-            let (key, value) = part.split_once('=')?;
-            Some((key.to_string(), value.to_string()))
-        })
-        .collect()
-}
-
-fn golden_decision_projection(decisions: &Value) -> Value {
-    json!({
-        "strategy": decisions["strategy"],
-        "registry": {
-            "id": decisions["registry"]["id"],
-            "version": decisions["registry"]["version"]
-        },
-        "reference": {
-            "rows_path": decisions["reference_tape"]["path"],
-            "row_count": decisions["reference_tape"]["record_count"]
-        },
-        "target": {
-            "rows_path": decisions["target_tape"]["path"],
-            "row_count": decisions["target_tape"]["record_count"]
-        },
-        "summary": decisions["summary"],
-        "matches": compact_matches(decisions),
-        "unmatched": compact_unmatched(decisions),
-        "ambiguous": compact_ambiguous(decisions),
-        "gold_score": decisions["gold_score"],
-        "read_only": {
-            "write_back_present": decisions
-                .as_object()
-                .expect("decision object")
-                .contains_key("write_back")
-        }
-    })
-}
-
-fn compact_matches(decisions: &Value) -> Value {
-    Value::Array(
-        decisions["matches"]
-            .as_array()
-            .expect("matches")
-            .iter()
-            .map(|record| {
-                json!({
-                    "target_id": record["target_id"],
-                    "reference_id": record["reference_id"],
-                    "canonical_id": record["canonical_id"],
-                    "score": record["score"]
-                })
-            })
-            .collect(),
-    )
-}
-
-fn compact_unmatched(decisions: &Value) -> Value {
-    Value::Array(
-        decisions["unmatched"]
-            .as_array()
-            .expect("unmatched")
-            .iter()
-            .map(|record| {
-                json!({
-                    "target_id": record["target_id"],
-                    "reason": record["reason"]
-                })
-            })
-            .collect(),
-    )
-}
-
-fn compact_ambiguous(decisions: &Value) -> Value {
-    Value::Array(
-        decisions["ambiguous"]
-            .as_array()
-            .expect("ambiguous")
-            .iter()
-            .map(|record| {
-                let candidate_reference_ids = record["candidates"]
-                    .as_array()
-                    .expect("candidate array")
-                    .iter()
-                    .map(|candidate| candidate["reference_id"].clone())
-                    .collect::<Vec<_>>();
-                json!({
-                    "target_id": record["target_id"],
-                    "reason": record["reason"],
-                    "candidate_reference_ids": candidate_reference_ids
-                })
-            })
-            .collect(),
-    )
+    assert_eq!(detail["writes_performed"], false);
 }

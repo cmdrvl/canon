@@ -10,11 +10,19 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
-    fmt,
+    fmt, fs,
+    io::Cursor,
+    path::Path,
 };
 
 pub const CANON_ENTITY_PROFILE_PACKAGE_VERSION: &str = "canon.entity.profile.v1";
+pub const CANON_ENTITY_PROFILE_EXECUTION_VERSION: &str = "canon.entity.profile.execution.v0";
+pub const ENTITY_PROFILE_CANONICAL_SURFACE_ROLE: &str = "canonical_surface";
 const ENTITY_PROFILE_KIND: &str = "entity-profile";
+const MAX_NORMALIZED_VIEW_OPERATORS: usize = 16;
+const MAX_NORMALIZATION_OPERATOR_PARAMS: usize = 8;
+const MAX_NORMALIZATION_OPERATOR_PARAM_VALUES: usize = 64;
+const MAX_NORMALIZATION_OPERATOR_PARAM_VALUE_BYTES: usize = 128;
 
 pub type ProfileResult<T> = Result<T, ProfileError>;
 
@@ -76,6 +84,7 @@ pub enum ProfilePackageRefKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProfilePackageRef {
     pub kind: ProfilePackageRefKind,
     pub id: String,
@@ -113,6 +122,7 @@ pub enum ProfileCapability {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EntityProfilePackage {
     pub kind: String,
     pub profile: String,
@@ -150,12 +160,52 @@ pub struct EntityProfilePackage {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct EntityNormalizedView {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub operators: Vec<String>,
+    pub operators: Vec<EntityNormalizationOperatorSpec>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EntityNormalizationOperatorKind {
+    Lowercase,
+    Uppercase,
+    AsciiTrimUpper,
+    NormalizeWhitespace,
+    Tokenize,
+    ReplaceTokens,
+    RemoveTokens,
+    StripSuffixes,
+    Fingerprint,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EntityNormalizationOperatorSpec {
+    pub op: EntityNormalizationOperatorKind,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, Vec<String>>,
+}
+
+impl EntityNormalizationOperatorKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            EntityNormalizationOperatorKind::Lowercase => "lowercase",
+            EntityNormalizationOperatorKind::Uppercase => "uppercase",
+            EntityNormalizationOperatorKind::AsciiTrimUpper => "ascii_trim_upper",
+            EntityNormalizationOperatorKind::NormalizeWhitespace => "normalize_whitespace",
+            EntityNormalizationOperatorKind::Tokenize => "tokenize",
+            EntityNormalizationOperatorKind::ReplaceTokens => "replace_tokens",
+            EntityNormalizationOperatorKind::RemoveTokens => "remove_tokens",
+            EntityNormalizationOperatorKind::StripSuffixes => "strip_suffixes",
+            EntityNormalizationOperatorKind::Fingerprint => "fingerprint",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct EntityEvidenceLanes {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub support: Vec<EntityOperatorSpec>,
@@ -166,6 +216,7 @@ pub struct EntityEvidenceLanes {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct EntityOperatorSpec {
     pub op: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -175,6 +226,7 @@ pub struct EntityOperatorSpec {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct EntityPatchNamespaces {
     pub aliases: String,
     pub distinct: String,
@@ -182,6 +234,7 @@ pub struct EntityPatchNamespaces {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EntityProfileFieldMapping {
     pub field_path: String,
     pub object_type: String,
@@ -193,6 +246,7 @@ pub struct EntityProfileFieldMapping {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EntityProfileMode {
     pub mode: ProfileModeKind,
     pub source_object_type: String,
@@ -209,6 +263,7 @@ pub struct EntityProfileMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EntityProfileLimits {
     pub max_observation_fields: u64,
     pub max_candidate_pairs: u64,
@@ -216,6 +271,7 @@ pub struct EntityProfileLimits {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EntityProfileProjectOverride {
     pub key: String,
     pub default_value: String,
@@ -224,6 +280,7 @@ pub struct EntityProfileProjectOverride {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AppliedProjectOverride {
     pub key: String,
     pub value: String,
@@ -231,6 +288,7 @@ pub struct AppliedProjectOverride {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EntityProfileExecutionRequest {
     pub mode: ProfileModeKind,
     pub source_object_type: String,
@@ -243,6 +301,7 @@ pub struct EntityProfileExecutionRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EntityProfileExecutionPlan {
     pub profile: String,
     pub version: String,
@@ -253,6 +312,7 @@ pub struct EntityProfileExecutionPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EntityProfileLockView {
     pub profile: String,
     pub version: String,
@@ -270,6 +330,7 @@ pub struct EntityProfileLockView {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ResolvedProjectOverride {
     pub key: String,
     pub value: String,
@@ -277,6 +338,54 @@ pub struct ResolvedProjectOverride {
     pub project_lock_key: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EntityProfileRecordInputFormat {
+    Csv,
+    Jsonl,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EntityProfilePackageRunRequest {
+    pub execution: EntityProfileExecutionRequest,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_package_digest: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EntityProfilePackageExecution {
+    pub schema_version: String,
+    pub profile: String,
+    pub package_version: String,
+    pub package_digest: String,
+    pub records_content_hash: String,
+    pub records_format: EntityProfileRecordInputFormat,
+    pub record_count: u64,
+    pub canonical_field_path: String,
+    pub canonical_view: String,
+    pub plan: EntityProfileExecutionPlan,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub output_status: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub records: Vec<EntityProfileExecutionRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EntityProfileExecutionRecord {
+    pub ordinal: u64,
+    pub object_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record_key: Option<String>,
+    pub canonical_surface: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fields: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub normalized_views: BTreeMap<String, String>,
 }
 
 pub fn finalize_package(mut package: EntityProfilePackage) -> ProfileResult<EntityProfilePackage> {
@@ -467,6 +576,126 @@ pub fn canonical_package_bytes(package: &EntityProfilePackage) -> ProfileResult<
 pub fn entity_profile_package_digest(package: &EntityProfilePackage) -> ProfileResult<String> {
     let bytes = canonical_package_bytes(package)?;
     Ok(hash_bytes(&bytes))
+}
+
+pub fn load_profile_package_bytes(bytes: &[u8]) -> ProfileResult<EntityProfilePackage> {
+    let package = serde_json::from_slice(bytes).map_err(|error| {
+        artifact_contract_error(format!("failed to parse entity profile package: {error}"))
+    })?;
+    finalize_package(package)
+}
+
+pub fn load_profile_package_file(path: &Path) -> ProfileResult<EntityProfilePackage> {
+    let bytes = fs::read(path).map_err(|error| {
+        artifact_contract_error(format!(
+            "failed to read entity profile package file: {error}"
+        ))
+    })?;
+    load_profile_package_bytes(&bytes)
+}
+
+pub fn execute_profile_package_from_paths(
+    package_path: &Path,
+    records_path: &Path,
+    request: &EntityProfilePackageRunRequest,
+) -> ProfileResult<EntityProfilePackageExecution> {
+    let package = load_profile_package_file(package_path)?;
+    let records_bytes = fs::read(records_path)
+        .map_err(|error| artifact_contract_error(format!("failed to read record file: {error}")))?;
+    let records_format = EntityProfileRecordInputFormat::from_path(records_path)?;
+    execute_profile_package_records(&package, &records_bytes, records_format, request)
+}
+
+pub fn execute_profile_package_records(
+    package: &EntityProfilePackage,
+    records_bytes: &[u8],
+    records_format: EntityProfileRecordInputFormat,
+    request: &EntityProfilePackageRunRequest,
+) -> ProfileResult<EntityProfilePackageExecution> {
+    let package = finalize_package(package.clone())?;
+    let plan = validate_package_for_execution(&package, &request.execution)?;
+    if let Some(expected_digest) = request.expected_package_digest.as_deref() {
+        let expected_digest = normalized_hash(expected_digest, "expected_package_digest")?;
+        if expected_digest != plan.package_digest {
+            return Err(compatibility_policy_error(format!(
+                "expected package digest {expected_digest} does not match {}",
+                plan.package_digest
+            )));
+        }
+    }
+    if request.execution.required_outputs.len() as u64 > package.limits.max_outputs {
+        return Err(artifact_contract_error(format!(
+            "requested outputs exceed limits.max_outputs {}",
+            package.limits.max_outputs
+        )));
+    }
+
+    let canonical_mapping = canonical_surface_mapping(&package, &plan.mode)?.clone();
+    let canonical_view = canonical_mapping
+        .normalized_view
+        .as_deref()
+        .ok_or_else(|| {
+            unknown_field_error(format!(
+                "field role {ENTITY_PROFILE_CANONICAL_SURFACE_ROLE} must declare a normalized view"
+            ))
+        })?
+        .to_string();
+    let parsed_records = parse_profile_records(records_bytes, records_format)?;
+    let mode_fields = plan
+        .mode
+        .field_paths
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let source_mappings = package
+        .field_mappings
+        .iter()
+        .filter(|mapping| {
+            mapping.object_type == plan.mode.source_object_type
+                && mode_fields.contains(mapping.field_path.as_str())
+        })
+        .collect::<Vec<_>>();
+
+    let mut records = Vec::with_capacity(parsed_records.len());
+    for (record_index, raw_record) in parsed_records.iter().enumerate() {
+        if raw_record.len() as u64 > package.limits.max_observation_fields {
+            return Err(artifact_contract_error(format!(
+                "record {} exceeds limits.max_observation_fields {}",
+                record_index + 1,
+                package.limits.max_observation_fields
+            )));
+        }
+        records.push(execute_profile_record(
+            record_index,
+            raw_record,
+            &package.normalized_views,
+            &source_mappings,
+            &canonical_mapping,
+            &canonical_view,
+            &plan.mode.source_object_type,
+        )?);
+    }
+
+    Ok(EntityProfilePackageExecution {
+        schema_version: CANON_ENTITY_PROFILE_EXECUTION_VERSION.to_string(),
+        profile: package.profile.clone(),
+        package_version: package.version.clone(),
+        package_digest: plan.package_digest.clone(),
+        records_content_hash: hash_bytes(records_bytes),
+        records_format,
+        record_count: records.len() as u64,
+        canonical_field_path: canonical_mapping.field_path,
+        canonical_view,
+        plan,
+        output_status: request
+            .execution
+            .required_outputs
+            .iter()
+            .cloned()
+            .map(|output| (output, "declared".to_string()))
+            .collect(),
+        records,
+    })
 }
 
 pub fn validate_package_for_execution(
@@ -812,12 +1041,533 @@ pub fn package_compatibility(
     }
 }
 
+impl EntityProfileRecordInputFormat {
+    fn from_path(path: &Path) -> ProfileResult<Self> {
+        match path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| extension.to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("csv") => Ok(Self::Csv),
+            Some("jsonl" | "ndjson") => Ok(Self::Jsonl),
+            Some(extension) => Err(artifact_contract_error(format!(
+                "unsupported record file extension {extension}"
+            ))),
+            None => Err(artifact_contract_error(
+                "record file must declare a supported extension",
+            )),
+        }
+    }
+}
+
+fn canonical_surface_mapping<'a>(
+    package: &'a EntityProfilePackage,
+    mode: &EntityProfileMode,
+) -> ProfileResult<&'a EntityProfileFieldMapping> {
+    let canonical_mappings = package
+        .field_mappings
+        .iter()
+        .filter(|mapping| {
+            mapping.object_type == mode.source_object_type
+                && mapping.field_role == ENTITY_PROFILE_CANONICAL_SURFACE_ROLE
+                && mode.field_paths.contains(&mapping.field_path)
+        })
+        .collect::<Vec<_>>();
+    match canonical_mappings.as_slice() {
+        [mapping] => {
+            if mapping.normalized_view.is_none() {
+                return Err(unknown_field_error(format!(
+                    "field role {ENTITY_PROFILE_CANONICAL_SURFACE_ROLE} must declare a normalized view"
+                )));
+            }
+            Ok(mapping)
+        }
+        [] => Err(unknown_field_error(format!(
+            "execution mode {:?} must declare exactly one {ENTITY_PROFILE_CANONICAL_SURFACE_ROLE} field role",
+            mode.mode
+        ))),
+        _ => Err(unknown_field_error(format!(
+            "execution mode {:?} declares more than one {ENTITY_PROFILE_CANONICAL_SURFACE_ROLE} field role",
+            mode.mode
+        ))),
+    }
+}
+
+fn parse_profile_records(
+    bytes: &[u8],
+    format: EntityProfileRecordInputFormat,
+) -> ProfileResult<Vec<BTreeMap<String, String>>> {
+    match format {
+        EntityProfileRecordInputFormat::Csv => parse_csv_profile_records(bytes),
+        EntityProfileRecordInputFormat::Jsonl => parse_jsonl_profile_records(bytes),
+    }
+}
+
+fn parse_csv_profile_records(bytes: &[u8]) -> ProfileResult<Vec<BTreeMap<String, String>>> {
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(Cursor::new(bytes));
+    let headers = reader
+        .headers()
+        .map_err(|error| artifact_contract_error(format!("failed to read CSV headers: {error}")))?
+        .iter()
+        .map(|header| normalized_non_empty(header, "csv.header"))
+        .collect::<ProfileResult<Vec<_>>>()?;
+    if headers.is_empty() {
+        return Err(unknown_field_error(
+            "CSV input must declare at least one header",
+        ));
+    }
+
+    let mut records = Vec::new();
+    for (record_index, record) in reader.records().enumerate() {
+        let record = record.map_err(|error| {
+            artifact_contract_error(format!(
+                "failed to read CSV record {}: {error}",
+                record_index + 1
+            ))
+        })?;
+        if record.len() != headers.len() {
+            return Err(artifact_contract_error(format!(
+                "CSV record {} has {} fields but header declares {}",
+                record_index + 1,
+                record.len(),
+                headers.len()
+            )));
+        }
+        records.push(
+            headers
+                .iter()
+                .zip(record.iter())
+                .map(|(header, value)| (header.clone(), value.to_string()))
+                .collect(),
+        );
+    }
+    Ok(records)
+}
+
+fn parse_jsonl_profile_records(bytes: &[u8]) -> ProfileResult<Vec<BTreeMap<String, String>>> {
+    let text = std::str::from_utf8(bytes)
+        .map_err(|error| artifact_contract_error(format!("record file is not UTF-8: {error}")))?;
+    let mut records = Vec::new();
+    for (line_index, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let value: serde_json::Value = serde_json::from_str(line).map_err(|error| {
+            artifact_contract_error(format!(
+                "failed to parse JSONL record {}: {error}",
+                line_index + 1
+            ))
+        })?;
+        let object = value.as_object().ok_or_else(|| {
+            artifact_contract_error(format!("JSONL record {} must be an object", line_index + 1))
+        })?;
+        let mut record = BTreeMap::new();
+        for (field, value) in object {
+            if let Some(value) = scalar_profile_value(field, value)? {
+                record.insert(field.clone(), value);
+            }
+        }
+        records.push(record);
+    }
+    Ok(records)
+}
+
+fn scalar_profile_value(field: &str, value: &serde_json::Value) -> ProfileResult<Option<String>> {
+    match value {
+        serde_json::Value::Null => Ok(None),
+        serde_json::Value::String(value) => Ok(Some(value.clone())),
+        serde_json::Value::Bool(value) => Ok(Some(value.to_string())),
+        serde_json::Value::Number(value) => Ok(Some(value.to_string())),
+        serde_json::Value::Array(_) | serde_json::Value::Object(_) => Err(artifact_contract_error(
+            format!("record field {field} must be scalar"),
+        )),
+    }
+}
+
+fn execute_profile_record(
+    record_index: usize,
+    raw_record: &BTreeMap<String, String>,
+    normalized_views: &BTreeMap<String, EntityNormalizedView>,
+    source_mappings: &[&EntityProfileFieldMapping],
+    canonical_mapping: &EntityProfileFieldMapping,
+    canonical_view: &str,
+    object_type: &str,
+) -> ProfileResult<EntityProfileExecutionRecord> {
+    let mut fields = BTreeMap::new();
+    let mut normalized = BTreeMap::new();
+    let mut record_key = None;
+
+    for mapping in source_mappings {
+        let value = raw_record.get(&mapping.field_path);
+        if mapping.required && value.is_none_or(|value| value.trim().is_empty()) {
+            return Err(unknown_field_error(format!(
+                "record {} is missing required field {}",
+                record_index + 1,
+                mapping.field_path
+            )));
+        }
+        let Some(value) = value else {
+            continue;
+        };
+        fields.insert(mapping.field_path.clone(), value.clone());
+        if mapping.field_role == "record_key" {
+            record_key = Some(value.clone());
+        }
+        if let Some(view_name) = mapping.normalized_view.as_deref() {
+            let view = normalized_views.get(view_name).ok_or_else(|| {
+                unknown_field_error(format!(
+                    "field {} references unknown normalized view {}",
+                    mapping.field_path, view_name
+                ))
+            })?;
+            normalized.insert(view_name.to_string(), apply_profile_view(value, view)?);
+        }
+    }
+
+    let canonical_surface = normalized.get(canonical_view).cloned().ok_or_else(|| {
+        unknown_field_error(format!(
+            "record {} cannot produce canonical view {} from field {}",
+            record_index + 1,
+            canonical_view,
+            canonical_mapping.field_path
+        ))
+    })?;
+    if canonical_surface.trim().is_empty() {
+        return Err(unknown_field_error(format!(
+            "record {} produced an empty canonical surface",
+            record_index + 1
+        )));
+    }
+
+    Ok(EntityProfileExecutionRecord {
+        ordinal: record_index as u64,
+        object_type: object_type.to_string(),
+        record_key,
+        canonical_surface,
+        fields,
+        normalized_views: normalized,
+    })
+}
+
+fn apply_profile_view(value: &str, view: &EntityNormalizedView) -> ProfileResult<String> {
+    let mut current = value.to_string();
+    for operator in &view.operators {
+        current = apply_normalization_operator(current, operator)?;
+    }
+    Ok(current)
+}
+
+fn apply_normalization_operator(
+    current: String,
+    operator: &EntityNormalizationOperatorSpec,
+) -> ProfileResult<String> {
+    match operator.op {
+        EntityNormalizationOperatorKind::Lowercase => Ok(current.to_lowercase()),
+        EntityNormalizationOperatorKind::Uppercase => Ok(current.to_uppercase()),
+        EntityNormalizationOperatorKind::AsciiTrimUpper => Ok(current.trim().to_ascii_uppercase()),
+        EntityNormalizationOperatorKind::NormalizeWhitespace => {
+            Ok(join_tokens(tokens(&current), " "))
+        }
+        EntityNormalizationOperatorKind::Tokenize => Ok(join_tokens(
+            tokens(&current),
+            operator_joiner(operator, "tokenize", "|")?.as_str(),
+        )),
+        EntityNormalizationOperatorKind::ReplaceTokens => {
+            let replacements = replacement_map(operator)?;
+            Ok(join_tokens(
+                tokens(&current)
+                    .into_iter()
+                    .map(|token| {
+                        replacements
+                            .get(token)
+                            .cloned()
+                            .unwrap_or_else(|| token.to_string())
+                    })
+                    .collect::<Vec<String>>(),
+                " ",
+            ))
+        }
+        EntityNormalizationOperatorKind::RemoveTokens => {
+            let remove = operator_value_set(operator, "tokens");
+            Ok(join_tokens(
+                tokens(&current)
+                    .into_iter()
+                    .filter(|token| !remove.contains(*token))
+                    .map(str::to_string)
+                    .collect::<Vec<String>>(),
+                " ",
+            ))
+        }
+        EntityNormalizationOperatorKind::StripSuffixes => {
+            let suffixes = operator_value_set(operator, "suffixes");
+            let mut kept = tokens(&current);
+            while kept.last().is_some_and(|token| suffixes.contains(*token)) {
+                kept.pop();
+            }
+            Ok(join_tokens(
+                kept.into_iter()
+                    .map(str::to_string)
+                    .collect::<Vec<String>>(),
+                " ",
+            ))
+        }
+        EntityNormalizationOperatorKind::Fingerprint => {
+            let drop_tokens = operator_value_set(operator, "drop_tokens");
+            let mut kept: Vec<String> = tokens(&current)
+                .into_iter()
+                .filter(|token| !drop_tokens.contains(*token))
+                .map(str::to_string)
+                .collect();
+            kept.sort();
+            kept.dedup();
+            Ok(join_tokens(
+                kept,
+                operator_joiner(operator, "fingerprint", "|")?.as_str(),
+            ))
+        }
+    }
+}
+
+fn tokens(value: &str) -> Vec<&str> {
+    value
+        .split_whitespace()
+        .filter(|token| !token.is_empty())
+        .collect()
+}
+
+fn join_tokens<I, S>(tokens: I, joiner: &str) -> String
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    tokens
+        .into_iter()
+        .map(|token| token.as_ref().to_string())
+        .collect::<Vec<_>>()
+        .join(joiner)
+}
+
+fn operator_joiner(
+    operator: &EntityNormalizationOperatorSpec,
+    field: &str,
+    default: &str,
+) -> ProfileResult<String> {
+    match operator.params.get("joiner") {
+        Some(values) if values.len() == 1 => Ok(values[0].clone()),
+        Some(values) => Err(artifact_contract_error(format!(
+            "normalized view operator {field}.params.joiner must contain exactly one value, found {}",
+            values.len()
+        ))),
+        None => Ok(default.to_string()),
+    }
+}
+
+fn operator_value_set<'a>(
+    operator: &'a EntityNormalizationOperatorSpec,
+    param: &str,
+) -> BTreeSet<&'a str> {
+    operator
+        .params
+        .get(param)
+        .into_iter()
+        .flatten()
+        .map(String::as_str)
+        .collect()
+}
+
+fn replacement_map(
+    operator: &EntityNormalizationOperatorSpec,
+) -> ProfileResult<BTreeMap<String, String>> {
+    let mut replacements = BTreeMap::new();
+    for value in operator.params.get("replacements").into_iter().flatten() {
+        let (from, to) = value.split_once("=>").ok_or_else(|| {
+            artifact_contract_error(
+                "replace_tokens.params.replacements values must use from=>to syntax",
+            )
+        })?;
+        if from.is_empty() || to.is_empty() {
+            return Err(artifact_contract_error(
+                "replace_tokens.params.replacements values must have nonempty from and to tokens",
+            ));
+        }
+        if replacements
+            .insert(from.to_string(), to.to_string())
+            .is_some()
+        {
+            return Err(artifact_contract_error(format!(
+                "replace_tokens.params.replacements declares duplicate source token {from}"
+            )));
+        }
+    }
+    Ok(replacements)
+}
+
 fn normalize_view(view_name: &str, view: &mut EntityNormalizedView) -> ProfileResult<()> {
     let field = format!("normalized_views.{view_name}.operators");
-    view.operators = normalize_unique_strings(std::mem::take(&mut view.operators), &field)?;
     if view.operators.is_empty() {
         return Err(artifact_contract_error(format!(
             "{field} must declare at least one operator"
+        )));
+    }
+    if view.operators.len() > MAX_NORMALIZED_VIEW_OPERATORS {
+        return Err(artifact_contract_error(format!(
+            "{field} must declare at most {MAX_NORMALIZED_VIEW_OPERATORS} operators"
+        )));
+    }
+    let mut seen = BTreeSet::new();
+    for (index, operator) in view.operators.iter_mut().enumerate() {
+        normalize_operator(operator, &format!("{field}.{index}"))?;
+        if !seen.insert(operator.clone()) {
+            return Err(artifact_contract_error(format!(
+                "{field}.{index} duplicates an earlier operator spec"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn normalize_operator(
+    operator: &mut EntityNormalizationOperatorSpec,
+    field: &str,
+) -> ProfileResult<()> {
+    if operator.params.len() > MAX_NORMALIZATION_OPERATOR_PARAMS {
+        return Err(artifact_contract_error(format!(
+            "{field}.params must declare at most {MAX_NORMALIZATION_OPERATOR_PARAMS} keys"
+        )));
+    }
+    let allowed = allowed_operator_params(&operator.op);
+    for key in operator.params.keys() {
+        if !allowed.contains(&key.as_str()) {
+            return Err(artifact_contract_error(format!(
+                "{field}.params declares unsupported key {key}"
+            )));
+        }
+    }
+    for (key, values) in &mut operator.params {
+        if values.is_empty() {
+            return Err(artifact_contract_error(format!(
+                "{field}.params.{key} must declare at least one value"
+            )));
+        }
+        if values.len() > MAX_NORMALIZATION_OPERATOR_PARAM_VALUES {
+            return Err(artifact_contract_error(format!(
+                "{field}.params.{key} must declare at most {MAX_NORMALIZATION_OPERATOR_PARAM_VALUES} values"
+            )));
+        }
+        let mut normalized = Vec::with_capacity(values.len());
+        let mut seen = BTreeSet::new();
+        for value in std::mem::take(values) {
+            let value = normalized_non_empty(&value, &format!("{field}.params.{key}"))?;
+            if value.len() > MAX_NORMALIZATION_OPERATOR_PARAM_VALUE_BYTES {
+                return Err(artifact_contract_error(format!(
+                    "{field}.params.{key} values must be at most {MAX_NORMALIZATION_OPERATOR_PARAM_VALUE_BYTES} bytes"
+                )));
+            }
+            if !seen.insert(value.clone()) {
+                return Err(artifact_contract_error(format!(
+                    "{field}.params.{key} declares duplicate value {value}"
+                )));
+            }
+            normalized.push(value);
+        }
+        normalized.sort();
+        *values = normalized;
+    }
+    validate_operator_params(operator, field)
+}
+
+fn allowed_operator_params(op: &EntityNormalizationOperatorKind) -> &'static [&'static str] {
+    match op {
+        EntityNormalizationOperatorKind::Lowercase
+        | EntityNormalizationOperatorKind::Uppercase
+        | EntityNormalizationOperatorKind::AsciiTrimUpper
+        | EntityNormalizationOperatorKind::NormalizeWhitespace => &[],
+        EntityNormalizationOperatorKind::Tokenize => &["joiner"],
+        EntityNormalizationOperatorKind::ReplaceTokens => &["replacements"],
+        EntityNormalizationOperatorKind::RemoveTokens => &["tokens"],
+        EntityNormalizationOperatorKind::StripSuffixes => &["suffixes"],
+        EntityNormalizationOperatorKind::Fingerprint => &["drop_tokens", "joiner"],
+    }
+}
+
+fn validate_operator_params(
+    operator: &EntityNormalizationOperatorSpec,
+    field: &str,
+) -> ProfileResult<()> {
+    match operator.op {
+        EntityNormalizationOperatorKind::Lowercase
+        | EntityNormalizationOperatorKind::Uppercase
+        | EntityNormalizationOperatorKind::AsciiTrimUpper
+        | EntityNormalizationOperatorKind::NormalizeWhitespace => {
+            if !operator.params.is_empty() {
+                return Err(artifact_contract_error(format!(
+                    "{field}.params must be empty for scalar normalization operators"
+                )));
+            }
+        }
+        EntityNormalizationOperatorKind::Tokenize => {
+            validate_optional_singleton_param(operator, "joiner", field)?;
+        }
+        EntityNormalizationOperatorKind::ReplaceTokens => {
+            validate_required_param(operator, "replacements", field)?;
+            let mut sources = BTreeSet::new();
+            for replacement in operator.params.get("replacements").into_iter().flatten() {
+                let (from, to) = replacement.split_once("=>").ok_or_else(|| {
+                    artifact_contract_error(format!(
+                        "{field}.params.replacements values must use from=>to syntax"
+                    ))
+                })?;
+                if from.is_empty() || to.is_empty() {
+                    return Err(artifact_contract_error(format!(
+                        "{field}.params.replacements values must have nonempty from and to tokens"
+                    )));
+                }
+                if !sources.insert(from.to_string()) {
+                    return Err(artifact_contract_error(format!(
+                        "{field}.params.replacements declares duplicate source token {from}"
+                    )));
+                }
+            }
+        }
+        EntityNormalizationOperatorKind::RemoveTokens => {
+            validate_required_param(operator, "tokens", field)?;
+        }
+        EntityNormalizationOperatorKind::StripSuffixes => {
+            validate_required_param(operator, "suffixes", field)?;
+        }
+        EntityNormalizationOperatorKind::Fingerprint => {
+            validate_optional_singleton_param(operator, "joiner", field)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_required_param(
+    operator: &EntityNormalizationOperatorSpec,
+    param: &str,
+    field: &str,
+) -> ProfileResult<()> {
+    if !operator.params.contains_key(param) {
+        return Err(artifact_contract_error(format!(
+            "{field}.params.{param} must be declared"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_optional_singleton_param(
+    operator: &EntityNormalizationOperatorSpec,
+    param: &str,
+    field: &str,
+) -> ProfileResult<()> {
+    if let Some(values) = operator.params.get(param)
+        && values.len() != 1
+    {
+        return Err(artifact_contract_error(format!(
+            "{field}.params.{param} must contain exactly one value"
         )));
     }
     Ok(())

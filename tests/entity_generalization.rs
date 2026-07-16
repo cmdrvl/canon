@@ -31,14 +31,23 @@ use canon::{
         },
         index_io::{CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION, INDEX_CACHE_RECEIPT_FILE},
         prepare::PreparedSurfaceRecord,
+        publication::{
+            CANON_ENTITY_STAGE_PUBLICATION_VERSION, EntityPublicationFileInput,
+            EntityPublicationRequest, EntityPublicationUpstreamRef, open_current_stream_generation,
+            publish_stream_patch,
+        },
         run::{
-            EntityRunArtifact, EntityRunStageArtifact, RUN_CACHE_EXECUTION_RECEIPT_PATH,
+            ENTITY_RUN_PUBLICATION_STREAM_ID, EntityRunArtifact, EntityRunStageArtifact,
+            RUN_CACHE_EXECUTION_RECEIPT_PATH,
             link::{
+                ENTITY_LINK_DECISIONS_VERSION, ENTITY_LINK_MATERIALIZED_ROWS_VERSION,
                 ENTITY_LINK_OBSERVATION_SURFACE_BINDINGS_VERSION, ENTITY_LINK_VERSION,
                 EntityLinkArtifact, EntityLinkFinalizeRequest, EntityLinkObservationSurfaceBinding,
-                finalize_entity_link_artifact,
+                LINK_ARTIFACT_PATH, LINK_ASSIGNMENT_ALIGNMENT_PATH, LINK_MATERIALIZED_ROWS_PATH,
+                LINK_OBSERVATION_SURFACE_BINDINGS_PATH, finalize_entity_link_artifact,
                 read_validated_entity_link_observation_surface_bindings_at_path,
             },
+            publish_entity_run_link_publication_patch,
         },
         schema::{validate_artifact_v1_core_contract, validate_entity_v1_self_hash},
         score::ScoreUnits,
@@ -207,7 +216,7 @@ fn shipped_public_binary_compiles_generalization_manifest() {
     assert_eq!(
         sanitize_root_specific_stdout(&first_stdout, &first.root),
         sanitize_root_specific_stdout(&second_stdout, &second.root),
-        "independent temp strict chains should produce byte-identical stdout after normalizing only root-specific absolute paths"
+        "independent temp strict chains should produce byte-identical stdout after normalizing root strings plus classified path-derived link receipt cascades"
     );
 }
 
@@ -449,6 +458,19 @@ fn strict_generated_manifest_refuses_stale_final_artifact_bindings() {
         link.shared_run_artifact.content_hash = run_hash;
     });
     let output = run_generalization_cli_path(&stale_solve.manifest_path, "json");
+    assert_strict_generalization_refusal(&output, "artifact_contract");
+}
+
+#[test]
+fn strict_generated_manifest_refuses_legacy_link_v0_artifacts() {
+    let scaffold = TempGeneralizationScaffold::new();
+    scaffold.build_strict_manifest();
+    scaffold.mutate_link_artifact("entity_disjoint", |link| {
+        link.version = "canon_entity_link.v0".to_string();
+        link.decision_artifact.version = "canon_entity_link_decisions.v0".to_string();
+    });
+
+    let output = run_generalization_cli_path(&scaffold.manifest_path, "json");
     assert_strict_generalization_refusal(&output, "artifact_contract");
 }
 
@@ -1313,7 +1335,11 @@ fn assert_native_link_output(expectation: NativeLinkExpectation, output: &Output
     );
     let artifact: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("entity link emits JSON artifact");
-    assert_eq!(artifact["version"], "canon_entity_link.v0");
+    assert_eq!(artifact["version"], ENTITY_LINK_VERSION);
+    assert_eq!(
+        artifact["decision_artifact"]["version"],
+        ENTITY_LINK_DECISIONS_VERSION
+    );
     assert_eq!(artifact["summary"]["matched"], expectation.matched);
     assert_eq!(artifact["summary"]["unmatched"], expectation.unmatched);
     assert_eq!(
@@ -2975,6 +3001,7 @@ impl TempGeneralizationScaffold {
         decisions: &ResolveArtifact,
     ) -> EntityLinkArtifact {
         let work_dir = self.trial_work_dir(trial_slug);
+        let artifact = self.publish_final_run_stage_for_link(&work_dir, artifact, run);
         let finalization_run = self.run_with_absolute_strategy_source(trial_slug, run);
         let mut link = finalize_entity_link_artifact(EntityLinkFinalizeRequest {
             artifact,
@@ -2989,8 +3016,355 @@ impl TempGeneralizationScaffold {
         );
         reseal_link_artifact(&mut link);
         write_json(&work_dir.join("link/link.json"), &link);
+        self.republish_final_link_stage(&work_dir, &mut link);
         link
     }
+
+    fn publish_final_run_stage_for_link(
+        &self,
+        work_dir: &Path,
+        mut artifact: EntityLinkArtifact,
+        run: &EntityRunArtifact,
+    ) -> EntityLinkArtifact {
+        write_run_manifest_from_artifact(work_dir, run);
+        let current = open_current_stream_generation(work_dir, ENTITY_RUN_PUBLICATION_STREAM_ID)
+            .expect("current generalization entity-run publication opens");
+        let mut link_records = current
+            .manifest
+            .files
+            .iter()
+            .filter(|record| record.stage == "link")
+            .map(|record| {
+                (
+                    record.logical_path.clone(),
+                    record.stage.clone(),
+                    record.version.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        link_records.sort();
+        assert_link_publication_records(&link_records);
+
+        let mut run_files = current
+            .manifest
+            .files
+            .iter()
+            .filter(|record| record.stage != "link")
+            .map(|record| {
+                publication_file_from_stable(
+                    work_dir,
+                    &record.logical_path,
+                    &record.stage,
+                    &record.version,
+                )
+            })
+            .collect::<Vec<_>>();
+        run_files.sort_by(|left, right| left.logical_path.cmp(&right.logical_path));
+
+        let mut omitted_link_paths = link_records
+            .iter()
+            .map(|(logical_path, _, _)| logical_path.clone())
+            .collect::<Vec<_>>();
+        omitted_link_paths.sort();
+
+        let run_upstreams = run_publication_upstreams(run);
+        let cache_mode = current.manifest.cache_mode.clone();
+        let cache_status = current.manifest.cache_status.clone();
+        let cache_receipt_hash = current.manifest.cache_receipt_hash.clone();
+        let request_fingerprint = test_publication_request_fingerprint(
+            &cache_mode,
+            &cache_status,
+            &cache_receipt_hash,
+            &run_upstreams,
+            &omitted_link_paths,
+            &run_files,
+        );
+        let receipt = publish_stream_patch(
+            work_dir,
+            EntityPublicationRequest {
+                stream_id: ENTITY_RUN_PUBLICATION_STREAM_ID.to_string(),
+                supersedes_generation_id: Some(current.generation_id.clone()),
+                request_fingerprint,
+                cache_mode,
+                cache_status,
+                cache_receipt_hash,
+                stage_order: entity_run_publication_stage_order(),
+                upstream_artifacts: run_upstreams,
+                files: run_files,
+                omit_logical_paths: omitted_link_paths,
+            },
+        )
+        .expect("generalization final run-stage publication patch commits");
+        assert_eq!(receipt.committed, Some(true));
+        let committed_run_generation =
+            open_current_stream_generation(work_dir, ENTITY_RUN_PUBLICATION_STREAM_ID)
+                .expect("final run-stage publication stream opens");
+        assert_eq!(
+            committed_run_generation.generation_id, receipt.generation_id,
+            "final run-stage patch must become the current publication head"
+        );
+        assert_committed_logical_matches_stable(work_dir, RUN_ARTIFACT_RELATIVE_PATH);
+        assert_committed_logical_matches_stable(work_dir, "solve/solve.json");
+
+        bind_link_publication_parent(&mut artifact, run, &receipt.generation_id);
+        artifact
+    }
+
+    fn republish_final_link_stage(&self, work_dir: &Path, link: &mut EntityLinkArtifact) {
+        let current = open_current_stream_generation(work_dir, ENTITY_RUN_PUBLICATION_STREAM_ID)
+            .expect("current finalized link publication opens");
+        let mut link_records = current
+            .manifest
+            .files
+            .iter()
+            .filter(|record| record.stage == "link")
+            .map(|record| {
+                (
+                    record.logical_path.clone(),
+                    record.stage.clone(),
+                    record.version.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        link_records.sort();
+        assert_link_publication_records(&link_records);
+
+        bind_link_publication_parent_to_refs(
+            link,
+            link.shared_run_artifact.clone(),
+            link.shared_solve_artifact.clone(),
+            &current.generation_id,
+        );
+        reseal_link_artifact(link);
+        write_json(&work_dir.join("link/link.json"), link);
+
+        let link_files = link_records
+            .iter()
+            .map(|(logical_path, stage, version)| {
+                publication_file_from_stable(work_dir, logical_path, stage, version)
+            })
+            .collect::<Vec<_>>();
+        publish_entity_run_link_publication_patch(
+            work_dir,
+            &current.generation_id,
+            vec![
+                link.shared_run_artifact.clone(),
+                link.shared_solve_artifact.clone(),
+            ],
+            link_files,
+        )
+        .expect("generalization final relative link publication patch commits");
+
+        for logical_path in link_records.iter().map(|(logical_path, _, _)| logical_path) {
+            assert_committed_logical_matches_stable(work_dir, logical_path);
+        }
+    }
+}
+
+fn write_run_manifest_from_artifact(work_dir: &Path, run: &EntityRunArtifact) {
+    write_json(
+        &work_dir.join("run/manifest.json"),
+        &json!({
+            "version": "canon_entity_run_manifest.v0",
+            "summary": &run.summary,
+            "stage_artifacts": &run.stage_artifacts,
+            "orchestration": &run.orchestration,
+            "next_commands": &run.next_commands
+        }),
+    );
+}
+
+fn run_publication_upstreams(run: &EntityRunArtifact) -> Vec<EntityPublicationUpstreamRef> {
+    run.stage_artifacts
+        .iter()
+        .map(|stage| EntityPublicationUpstreamRef {
+            version: stage.version.clone(),
+            content_hash: stage.artifact_content_hash.clone(),
+        })
+        .collect()
+}
+
+fn publication_file_from_stable(
+    work_dir: &Path,
+    logical_path: &str,
+    stage: &str,
+    version: &str,
+) -> EntityPublicationFileInput {
+    let stable_path = work_dir.join(logical_path);
+    let bytes = fs::read(&stable_path).unwrap_or_else(|error| {
+        panic!(
+            "read stable publication file {}: {error}",
+            stable_path.display()
+        )
+    });
+    EntityPublicationFileInput::new(logical_path, stage, version, bytes)
+}
+
+fn assert_link_publication_records(records: &[(String, String, String)]) {
+    assert!(
+        !records.is_empty(),
+        "generalization publication stream must carry link-stage files before republish"
+    );
+    let versions = records
+        .iter()
+        .map(|(logical_path, _, version)| (logical_path.as_str(), version.as_str()))
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        versions.get(LINK_ARTIFACT_PATH).copied(),
+        Some(ENTITY_LINK_VERSION)
+    );
+    let materialized_rows = format!("link/{LINK_MATERIALIZED_ROWS_PATH}");
+    assert_eq!(
+        versions.get(materialized_rows.as_str()).copied(),
+        Some(ENTITY_LINK_MATERIALIZED_ROWS_VERSION)
+    );
+    let bindings = format!("link/{LINK_OBSERVATION_SURFACE_BINDINGS_PATH}");
+    assert_eq!(
+        versions.get(bindings.as_str()).copied(),
+        Some(ENTITY_LINK_OBSERVATION_SURFACE_BINDINGS_VERSION)
+    );
+    let assignment_alignment = format!("link/{LINK_ASSIGNMENT_ALIGNMENT_PATH}");
+    if let Some(version) = versions.get(assignment_alignment.as_str()) {
+        assert!(
+            !version.trim().is_empty(),
+            "assignment alignment publication record must carry a version"
+        );
+    }
+}
+
+fn entity_run_publication_stage_order() -> Vec<String> {
+    ["block", "evidence", "solve", "run", "link"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn test_publication_request_fingerprint(
+    cache_mode: &str,
+    cache_status: &str,
+    cache_receipt_hash: &str,
+    upstream_artifacts: &[EntityPublicationUpstreamRef],
+    omitted_logical_paths: &[String],
+    files: &[EntityPublicationFileInput],
+) -> String {
+    let mut file_refs = files
+        .iter()
+        .map(|file| {
+            json!({
+                "logical_path": file.logical_path.as_str(),
+                "stage": file.stage.as_str(),
+                "version": file.version.as_str(),
+                "byte_len": file.bytes.len(),
+                "content_hash": blake3_bytes(&file.bytes)
+            })
+        })
+        .collect::<Vec<_>>();
+    file_refs.sort_by(|left, right| {
+        left["logical_path"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(right["logical_path"].as_str().unwrap_or_default())
+            .then_with(|| {
+                left["stage"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .cmp(right["stage"].as_str().unwrap_or_default())
+            })
+    });
+
+    let mut upstream_refs = upstream_artifacts
+        .iter()
+        .map(|reference| {
+            json!({
+                "version": reference.version.as_str(),
+                "artifact_content_hash": reference.content_hash.as_str()
+            })
+        })
+        .collect::<Vec<_>>();
+    upstream_refs.sort_by(|left, right| {
+        left["version"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(right["version"].as_str().unwrap_or_default())
+            .then_with(|| {
+                left["artifact_content_hash"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .cmp(right["artifact_content_hash"].as_str().unwrap_or_default())
+            })
+    });
+
+    blake3_bytes(
+        &serde_json::to_vec(&json!({
+            "version": "canon_entity_run_publication_request.v1",
+            "stream_id": ENTITY_RUN_PUBLICATION_STREAM_ID,
+            "cache_mode": cache_mode,
+            "cache_status": cache_status,
+            "cache_receipt_hash": cache_receipt_hash,
+            "upstream_artifacts": upstream_refs,
+            "omit_logical_paths": omitted_logical_paths,
+            "files": file_refs
+        }))
+        .expect("publication request fingerprint serializes"),
+    )
+}
+
+fn bind_link_publication_parent(
+    link: &mut EntityLinkArtifact,
+    run: &EntityRunArtifact,
+    generation_id: &str,
+) {
+    let run_ref = canon::entity::EntityArtifactReference {
+        version: run.version.clone(),
+        content_hash: run.artifact_content_hash.clone(),
+    };
+    let solve_ref = run
+        .stage_artifacts
+        .iter()
+        .find(|stage| stage.stage == "solve")
+        .map(entity_stage_artifact_ref)
+        .expect("run carries solve stage reference");
+    bind_link_publication_parent_to_refs(link, run_ref, solve_ref, generation_id);
+}
+
+fn bind_link_publication_parent_to_refs(
+    link: &mut EntityLinkArtifact,
+    run_ref: canon::entity::EntityArtifactReference,
+    solve_ref: canon::entity::EntityArtifactReference,
+    generation_id: &str,
+) {
+    let publication_ref = canon::entity::EntityArtifactReference {
+        version: CANON_ENTITY_STAGE_PUBLICATION_VERSION.to_string(),
+        content_hash: generation_id.to_string(),
+    };
+    link.shared_run_artifact = run_ref.clone();
+    link.shared_solve_artifact = solve_ref.clone();
+    link.metadata.upstream_artifacts = vec![run_ref, solve_ref, publication_ref];
+    link.metadata.upstream_artifacts.sort_by(|left, right| {
+        left.version
+            .cmp(&right.version)
+            .then_with(|| left.content_hash.cmp(&right.content_hash))
+    });
+}
+
+fn assert_committed_logical_matches_stable(work_dir: &Path, logical_path: &str) {
+    let current = open_current_stream_generation(work_dir, ENTITY_RUN_PUBLICATION_STREAM_ID)
+        .expect("current entity run publication stream opens");
+    let committed = current
+        .read_logical_file(logical_path)
+        .unwrap_or_else(|| panic!("committed stream missing {logical_path}"));
+    let stable_path = work_dir.join(logical_path);
+    let stable = fs::read(&stable_path).unwrap_or_else(|error| {
+        panic!(
+            "read stable publication file {}: {error}",
+            stable_path.display()
+        )
+    });
+    assert_eq!(
+        committed,
+        stable.as_slice(),
+        "committed {logical_path} bytes must match stable fixture bytes"
+    );
 }
 
 fn fake_blake3(label: &str) -> String {
@@ -3913,14 +4287,60 @@ fn sanitized_strict_stdout_bytes(output: &Output) -> Vec<u8> {
 
 fn sanitize_root_specific_stdout(bytes: &[u8], root: &Path) -> Vec<u8> {
     let text = std::str::from_utf8(bytes).expect("strict stdout is UTF-8 JSON");
-    text.replace(&root.to_string_lossy().into_owned(), "<temp-root>")
-        .into_bytes()
+    let normalized = text.replace(&root.to_string_lossy().into_owned(), "<temp-root>");
+    let mut report: serde_json::Value =
+        serde_json::from_str(&normalized).expect("root-sanitized stdout remains JSON");
+    let normalized_link_receipts = normalize_cross_root_link_receipts(&mut report);
+    assert_eq!(
+        normalized_link_receipts, 2,
+        "two-trial strict scaffold should normalize exactly two link receipt cascades"
+    );
+    serde_json::to_vec(&report).expect("cross-root normalized stdout serializes")
 }
 
 fn sanitize_root_specific_report(report: &serde_json::Value, root: &Path) -> serde_json::Value {
     let bytes = serde_json::to_vec(report).expect("serialize strict report");
     serde_json::from_slice(&sanitize_root_specific_stdout(&bytes, root))
         .expect("root-sanitized report remains JSON")
+}
+
+fn normalize_cross_root_link_receipts(report: &mut serde_json::Value) -> usize {
+    let mut normalized_link_receipts = 0;
+    if let Some(object) = report.as_object_mut() {
+        object.insert(
+            "report_digest".to_string(),
+            json!("<cross-root-report-receipt>"),
+        );
+    }
+    if let Some(derivation) = report
+        .get_mut("derivation")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        derivation.insert(
+            "manifest_hash".to_string(),
+            json!("<cross-root-manifest-receipt>"),
+        );
+        if let Some(artifact_hashes) = derivation
+            .get_mut("artifact_hashes")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            for artifact in artifact_hashes {
+                let Some(artifact) = artifact.as_object_mut() else {
+                    continue;
+                };
+                if artifact.get("version").and_then(serde_json::Value::as_str)
+                    == Some(ENTITY_LINK_VERSION)
+                {
+                    normalized_link_receipts += 1;
+                    artifact.insert(
+                        "content_hash".to_string(),
+                        json!("<cross-root-link-receipt>"),
+                    );
+                }
+            }
+        }
+    }
+    normalized_link_receipts
 }
 
 fn assert_json_eq_with_path(left: &serde_json::Value, right: &serde_json::Value, path: &str) {

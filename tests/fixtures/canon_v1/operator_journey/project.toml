@@ -5,8 +5,8 @@ observations = "tests/fixtures/canon_v1/operator_journey/observations.csv"
 expected_review = "tests/fixtures/canon_v1/operator_journey/expected_review.json"
 
 [expectations]
-matched = 1
-ambiguous = 1
+matched = 2
+ambiguous = 0
 unmatched = 1
 promoted_aliases = 2
 exact_replay_resolved = 3

@@ -1,10 +1,6 @@
 use assert_cmd::prelude::*;
 use serde_json::{Value, json};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fs,
-    path::Path,
-};
+use std::{collections::BTreeMap, fs, path::Path};
 use tempfile::tempdir;
 
 mod common;
@@ -19,85 +15,44 @@ const LOAN_MATCH_GOLD: &str = "tests/fixtures/resolve/gold/loan_matches.jsonl";
 const UNCHANGED_MANIFEST: &str = "tests/fixtures/resolve/parity/unchanged-link/manifest.json";
 const UNCHANGED_SOURCE_MAPPING: &str =
     "tests/fixtures/resolve/parity/unchanged-link/source_mapping.canon.source.mapping.v1.json";
-const UNCHANGED_DECISION_GOLDEN: &str =
-    "tests/fixtures/resolve/golden/unchanged_input_decision_projection.json";
 
 #[test]
-fn full_fixture_corpus_resolves_expected_records() {
+fn legacy_cmbs_loan_strategy_refuses_native_tenant_profile_without_writes() {
     let temp_dir = tempdir().unwrap();
-    let payload = run_full_entity_link_json(temp_dir.path(), 1, &[]);
-    let decisions = &payload["decision_artifact"];
+    let registry = temp_dir.path().join("registry");
+    copy_json_registry_fixture("tests/fixtures/registries/resolve-servicers", &registry);
+    let (reference, target) = unchanged_entity_link_parity_tapes();
+    let input_before = file_digests(&[reference, target]);
+    let registry_before = registry_json_digests(&registry);
+    let work_dir = temp_dir.path().join("link-work");
+    let public = run_entity_link_refusal(
+        reference,
+        target,
+        Path::new(CMBS_STRATEGY),
+        &registry,
+        &work_dir,
+        &["--gold", LOAN_MATCH_GOLD],
+    );
 
-    assert_eq!(payload["version"], "canon_entity_link.v0");
-    assert_eq!(payload["summary"]["target_records"], 12);
-    assert_eq!(payload["summary"]["matched"], 9);
-    assert_eq!(payload["summary"]["unmatched"], 2);
-    assert_eq!(payload["summary"]["ambiguous"], 1);
-    assert_eq!(payload["summary"]["match_rate"], 0.75);
-    assert_eq!(decisions["version"], "canon_entity_link_decisions.v0");
-    assert_eq!(decisions["gold_score"]["accuracy"], 1.0);
+    assert_legacy_strategy_input_contract_refusal(&public, "cmbs-loan-match.v1");
     assert!(
-        decisions["gold_score"]["regressions"]
-            .as_array()
-            .expect("gold regressions array")
-            .is_empty()
+        !work_dir.exists(),
+        "cutover refusal must happen before writes"
     );
-
-    let actual_pairs = decisions["matches"]
-        .as_array()
-        .expect("matches array")
-        .iter()
-        .map(|record| {
-            (
-                record["target_id"].as_str().unwrap().to_string(),
-                record["reference_id"].as_str().unwrap().to_string(),
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
-    let expected_pairs = BTreeMap::from([
-        ("WFCM2019-C50|1".to_string(), "223232".to_string()),
-        ("WFCM2019-C50|2".to_string(), "223233".to_string()),
-        ("WFCM2019-C50|3".to_string(), "223234".to_string()),
-        ("WFCM2019-C50|4".to_string(), "223235".to_string()),
-        ("WFCM2019-C50|5".to_string(), "223236".to_string()),
-        ("WFCM2019-C50|6".to_string(), "223237".to_string()),
-        ("WFCM2019-C50|7".to_string(), "223238".to_string()),
-        ("WFCM2019-C50|8".to_string(), "223239".to_string()),
-        ("WFCM2019-C50|9".to_string(), "223240".to_string()),
-    ]);
     assert_eq!(
-        actual_pairs, expected_pairs,
-        "matched target/reference pairs"
+        file_digests(&[reference, target]),
+        input_before,
+        "cutover refusal must not mutate checked-in inputs"
     );
-
-    let unmatched = decisions["unmatched"]
-        .as_array()
-        .expect("unmatched array")
-        .iter()
-        .map(|record| record["target_id"].as_str().unwrap().to_string())
-        .collect::<BTreeSet<_>>();
     assert_eq!(
-        unmatched,
-        BTreeSet::from([
-            "WFCM2019-C50|404".to_string(),
-            "WFCM2019-C50|NULLSERV".to_string(),
-        ])
+        registry_json_digests(&registry),
+        registry_before,
+        "cutover refusal must not mutate registry JSON"
     );
-
-    let ambiguous = decisions["ambiguous"].as_array().expect("ambiguous array");
-    assert_eq!(ambiguous.len(), 1);
-    assert_eq!(ambiguous[0]["target_id"], "WFCM2019-C50|AMB");
-    let ambiguous_candidates = ambiguous[0]["candidates"]
-        .as_array()
-        .expect("ambiguous candidates")
-        .iter()
-        .map(|candidate| candidate["reference_id"].as_str().unwrap().to_string())
-        .collect::<Vec<_>>();
-    assert_eq!(ambiguous_candidates, vec!["223240", "223241"]);
 }
 
 #[test]
-fn unchanged_input_decisions_match_golden_without_mutation() {
+fn legacy_decision_projection_is_not_blessed_as_v1_matching_acceptance() {
     let temp_dir = tempdir().unwrap();
     let registry = temp_dir.path().join("registry");
     copy_json_registry_fixture("tests/fixtures/registries/resolve-servicers", &registry);
@@ -105,24 +60,25 @@ fn unchanged_input_decisions_match_golden_without_mutation() {
     let input_before = file_digests(&[reference, target]);
     let registry_before = registry_json_digests(&registry);
 
-    let public_a = run_entity_link_json(
+    let public_a = run_entity_link_refusal(
         reference,
         target,
         Path::new(CMBS_STRATEGY),
         &registry,
         &temp_dir.path().join("public-a"),
-        1,
         &["--gold", LOAN_MATCH_GOLD],
     );
-    let public_b = run_entity_link_json(
+    let public_b = run_entity_link_refusal(
         reference,
         target,
         Path::new(CMBS_STRATEGY),
         &registry,
         &temp_dir.path().join("public-b"),
-        1,
         &["--gold", LOAN_MATCH_GOLD],
     );
+
+    assert_legacy_strategy_input_contract_refusal(&public_a, "cmbs-loan-match.v1");
+    assert_legacy_strategy_input_contract_refusal(&public_b, "cmbs-loan-match.v1");
 
     assert_eq!(
         file_digests(&[reference, target]),
@@ -134,32 +90,6 @@ fn unchanged_input_decisions_match_golden_without_mutation() {
         registry_before,
         "read-only parity runs must not mutate registry JSON"
     );
-    assert_eq!(
-        public_a["decision_artifact"], public_b["decision_artifact"],
-        "public decision artifact is deterministic even though wrapper work dirs differ"
-    );
-
-    let public_decisions = &public_a["decision_artifact"];
-    let expected: Value = read_json(UNCHANGED_DECISION_GOLDEN);
-    assert_eq!(
-        golden_decision_projection(public_decisions),
-        expected["projection"],
-        "unchanged-input decision projection"
-    );
-
-    assert!(
-        !public_decisions
-            .as_object()
-            .expect("decision object")
-            .contains_key("write_back"),
-        "read-only decision artifact must not include write_back"
-    );
-    assert_eq!(
-        public_a["version"], "canon_entity_link.v0",
-        "public wrapper remains the native entity-link artifact"
-    );
-    assert!(public_a.get("materialized_rows_path").is_some());
-    assert!(public_a.get("shared_run_artifact").is_some());
 }
 
 #[test]
@@ -272,7 +202,7 @@ fn unchanged_input_refusal_code_matches_manifest_public_side_without_mutation() 
 }
 
 #[test]
-fn conflict_warnings_are_reported_for_one_to_many_matches() {
+fn legacy_one_to_many_strategy_refuses_instead_of_synthesizing_v1_conflict_warning() {
     let temp_dir = tempdir().unwrap();
     let reference = temp_dir.path().join("reference.csv");
     let target = temp_dir.path().join("target.csv");
@@ -326,130 +256,59 @@ ambiguity_gap: 0.10
 
     let work_dir = temp_dir.path().join("work");
     let payload =
-        run_entity_link_json(&reference, &target, &strategy, &registry, &work_dir, 0, &[]);
-    let decisions = &payload["decision_artifact"];
+        run_entity_link_refusal(&reference, &target, &strategy, &registry, &work_dir, &[]);
 
-    assert_eq!(decisions["summary"]["matched"], 2);
-    let warnings = decisions["conflict_warnings"]
-        .as_array()
-        .expect("conflict warnings");
-    assert_eq!(warnings.len(), 1);
-    let warning = warnings[0].as_str().unwrap();
-    assert!(warning.contains("one_to_many_conflict"), "{warning}");
-    assert!(warning.contains("R-1"), "{warning}");
-    assert!(warning.contains("D|1"), "{warning}");
-    assert!(warning.contains("D|2"), "{warning}");
+    assert_legacy_strategy_input_contract_refusal(&payload, "conflict-test.v1");
+    assert!(
+        !work_dir.exists(),
+        "mismatch refusal must happen before writes"
+    );
 }
 
 #[test]
-fn writeback_feedback_loop_makes_structural_matches_exactly_lookupable() {
+fn writeback_refuses_before_mutating_registry_or_inputs() {
     let temp_dir = tempdir().unwrap();
     let registry = temp_dir.path().join("registry");
     copy_json_registry_fixture("tests/fixtures/registries/resolve-servicers", &registry);
     let (reference, target) = unchanged_entity_link_parity_tapes();
     let input_before = file_digests(&[reference, target]);
-    let payload = run_entity_link_json(
+    let registry_before = registry_json_digests(&registry);
+    let work_dir = temp_dir.path().join("writeback-work");
+    let payload = run_entity_link_refusal(
         reference,
         target,
         Path::new(CMBS_STRATEGY),
         &registry,
-        &temp_dir.path().join("writeback-work"),
-        1,
+        &work_dir,
         &["--gold", LOAN_MATCH_GOLD, "--write-back"],
     );
-    let decisions = &payload["decision_artifact"];
 
     assert_eq!(
         file_digests(&[reference, target]),
         input_before,
-        "write-back must not mutate input bytes"
+        "refused write-back must not mutate input bytes"
     );
-    assert_eq!(decisions["write_back"]["written"], true);
-    assert_eq!(decisions["write_back"]["entry_count"], 18);
-    let mapping_file = decisions["write_back"]["mapping_file"]
-        .as_str()
-        .expect("mapping file");
-    assert!(registry.join(mapping_file).exists());
-
-    let lookup_input = temp_dir.path().join("lookup.jsonl");
-    fs::write(
-        &lookup_input,
-        "{\"id\":\"WFCM2019-C50|1\"}\n{\"id\":\"223232\"}\n",
-    )
-    .unwrap();
-    let assert = canon_std_command_in_manifest()
-        .args([
-            lookup_input.to_str().unwrap(),
-            "--registry",
-            registry.to_str().unwrap(),
-            "--column",
-            "id",
-            "--explicit",
-            "--no-witness",
-        ])
-        .assert()
-        .success();
-    let lookup: Value = serde_json::from_slice(&assert.get_output().stdout).unwrap();
-    let mappings = lookup["mappings"].as_array().expect("lookup mappings");
-    assert_eq!(lookup["summary"]["resolved"], 2);
-    assert!(mappings.iter().any(|mapping| {
-        mapping["input"] == "u8:WFCM2019-C50|1" && mapping["canonical_id"] == "u8:223232"
-    }));
     assert!(
-        mappings.iter().any(
-            |mapping| mapping["input"] == "u8:223232" && mapping["canonical_id"] == "u8:223232"
-        )
+        !work_dir.exists(),
+        "write-back refusal should happen before work-dir writes"
     );
-}
-
-fn run_full_entity_link_json(work_dir: &Path, exit_code: i32, extra_args: &[&str]) -> Value {
-    let (reference, target) = unchanged_entity_link_parity_tapes();
-    run_entity_link_json(
-        reference,
-        target,
-        Path::new(CMBS_STRATEGY),
-        Path::new("tests/fixtures/registries/resolve-servicers"),
-        &work_dir.join("link-work"),
-        exit_code,
-        &["--gold", LOAN_MATCH_GOLD]
-            .into_iter()
-            .chain(extra_args.iter().copied())
-            .collect::<Vec<_>>(),
-    )
-}
-
-fn run_entity_link_json(
-    reference: &Path,
-    target: &Path,
-    strategy: &Path,
-    registry: &Path,
-    work_dir: &Path,
-    exit_code: i32,
-    extra_args: &[&str],
-) -> Value {
-    let mut args = vec![
-        "entity",
-        "link",
-        reference.to_str().unwrap(),
-        target.to_str().unwrap(),
-        "--profile",
-        "cmbs_tenant_label",
-        "--strategy",
-        strategy.to_str().unwrap(),
-        "--registry",
-        registry.to_str().unwrap(),
-        "--work-dir",
-        work_dir.to_str().unwrap(),
-        "--emit",
-        "json",
-        "--no-witness",
-    ];
-    args.extend_from_slice(extra_args);
-    let assert = canon_std_command_in_manifest()
-        .args(args)
-        .assert()
-        .code(exit_code);
-    serde_json::from_slice(&assert.get_output().stdout).unwrap()
+    assert_eq!(
+        registry_json_digests(&registry),
+        registry_before,
+        "refused write-back must not mutate registry JSON"
+    );
+    assert_eq!(payload["outcome"], "REFUSAL");
+    assert_eq!(payload["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(payload["refusal"]["detail"]["flag"], "--write-back");
+    assert_eq!(
+        payload["refusal"]["detail"]["reason"],
+        "transactional_publication_required"
+    );
+    assert_eq!(payload["refusal"]["detail"]["writes_performed"], false);
+    assert_eq!(
+        payload["refusal"]["detail"]["registry_write_back_performed"],
+        false
+    );
 }
 
 fn run_entity_link_refusal(
@@ -495,90 +354,36 @@ fn unchanged_entity_link_parity_tapes() -> (&'static Path, &'static Path) {
     )
 }
 
-fn golden_decision_projection(decisions: &Value) -> Value {
-    json!({
-        "strategy": decisions["strategy"],
-        "registry": {
-            "id": decisions["registry"]["id"],
-            "version": decisions["registry"]["version"]
-        },
-        "reference": {
-            "rows_path": decisions["reference_tape"]["path"],
-            "row_count": decisions["reference_tape"]["record_count"]
-        },
-        "target": {
-            "rows_path": decisions["target_tape"]["path"],
-            "row_count": decisions["target_tape"]["record_count"]
-        },
-        "summary": decisions["summary"],
-        "matches": compact_matches(decisions),
-        "unmatched": compact_unmatched(decisions),
-        "ambiguous": compact_ambiguous(decisions),
-        "gold_score": decisions["gold_score"],
-        "read_only": {
-            "write_back_present": decisions
-                .as_object()
-                .expect("decision object")
-                .contains_key("write_back")
-        }
-    })
-}
-
-fn compact_matches(decisions: &Value) -> Value {
-    Value::Array(
-        decisions["matches"]
-            .as_array()
-            .expect("matches")
-            .iter()
-            .map(|record| {
-                json!({
-                    "target_id": record["target_id"],
-                    "reference_id": record["reference_id"],
-                    "canonical_id": record["canonical_id"],
-                    "score": record["score"]
-                })
-            })
-            .collect(),
-    )
-}
-
-fn compact_unmatched(decisions: &Value) -> Value {
-    Value::Array(
-        decisions["unmatched"]
-            .as_array()
-            .expect("unmatched")
-            .iter()
-            .map(|record| {
-                json!({
-                    "target_id": record["target_id"],
-                    "reason": record["reason"]
-                })
-            })
-            .collect(),
-    )
-}
-
-fn compact_ambiguous(decisions: &Value) -> Value {
-    Value::Array(
-        decisions["ambiguous"]
-            .as_array()
-            .expect("ambiguous")
-            .iter()
-            .map(|record| {
-                let candidate_reference_ids = record["candidates"]
-                    .as_array()
-                    .expect("candidate array")
-                    .iter()
-                    .map(|candidate| candidate["reference_id"].clone())
-                    .collect::<Vec<_>>();
-                json!({
-                    "target_id": record["target_id"],
-                    "reason": record["reason"],
-                    "candidate_reference_ids": candidate_reference_ids
-                })
-            })
-            .collect(),
-    )
+fn assert_legacy_strategy_input_contract_refusal(public: &Value, strategy_id: &str) {
+    assert_eq!(public["outcome"], "REFUSAL");
+    assert_eq!(public["refusal"]["code"], "E_ENTITY_INPUT_CONTRACT");
+    let next_command = public["refusal"]["next_command"]
+        .as_str()
+        .expect("actionable next command");
+    assert!(
+        next_command.contains("entity_type 'loan'"),
+        "{next_command}"
+    );
+    assert!(next_command.contains("cmbs_tenant_label"), "{next_command}");
+    let detail = &public["refusal"]["detail"];
+    assert_eq!(detail["stage"], "link");
+    assert_eq!(detail["field"], "profile.entity_type");
+    assert_eq!(detail["profile_source"], "cmbs_tenant_label");
+    assert_eq!(detail["expected"]["strategy_entity_type"], "loan");
+    assert_eq!(detail["expected"]["strategy_id"], strategy_id);
+    assert_eq!(detail["expected"]["strategy_version"], "0.1.0");
+    assert!(
+        detail["expected"]["strategy_content_hash"].is_string(),
+        "strategy hash must be present"
+    );
+    assert_eq!(detail["actual"]["profile_entity_type"], "tenant_label");
+    assert_eq!(detail["actual"]["profile_id"], "cmbs_tenant_label");
+    assert_eq!(detail["actual"]["profile_version"], "0.1.0");
+    assert!(
+        detail["actual"]["profile_content_hash"].is_string(),
+        "profile hash must be present"
+    );
+    assert_eq!(detail["writes_performed"], false);
 }
 
 fn file_digests(paths: &[&Path]) -> BTreeMap<String, String> {

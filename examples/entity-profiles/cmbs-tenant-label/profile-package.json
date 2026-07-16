@@ -1,0 +1,217 @@
+{
+  "kind": "entity-profile",
+  "profile": "example.cmbs.tenant_label",
+  "version": "1.0.0",
+  "entity_type": "example.cmbs:tenant_label",
+  "identity_semantics": "example_canonical_surface",
+  "canonical_type": "example_tenant_label_id",
+  "required_fields": [
+    "source_row_id",
+    "raw_tenant_name"
+  ],
+  "normalized_views": {
+    "tenant_label_example_core": {
+      "operators": [
+        {
+          "op": "lowercase"
+        },
+        {
+          "op": "normalize_whitespace"
+        }
+      ]
+    },
+    "property_context_key": {
+      "operators": [
+        {
+          "op": "ascii_trim_upper"
+        }
+      ]
+    }
+  },
+  "evidence": {
+    "support": [
+      {
+        "op": "exact_view",
+        "view": "tenant_label_example_core"
+      }
+    ],
+    "cannot_link": [
+      {
+        "op": "context_conflict",
+        "view": "property_context_key"
+      }
+    ],
+    "relation_hints": [
+      {
+        "op": "context_alignment",
+        "view": "property_context_key"
+      }
+    ]
+  },
+  "patch_namespaces": {
+    "aliases": "example.cmbs.tenant_label.aliases",
+    "distinct": "example.cmbs.tenant_label.distinct",
+    "relations": "example.cmbs.tenant_label.relations"
+  },
+  "evidence_policy": {
+    "kind": "evidence-policy",
+    "id": "example.cmbs.tenant_label.evidence_policy",
+    "version": "2026.07.14",
+    "content_hash": "blake3:0101010101010101010101010101010101010101010101010101010101010101"
+  },
+  "review_policy": {
+    "kind": "review-policy",
+    "id": "example.cmbs.tenant_label.review_policy",
+    "version": "2026.07.14",
+    "content_hash": "blake3:0202020202020202020202020202020202020202020202020202020202020202"
+  },
+  "promotion_policy": {
+    "kind": "promotion-policy",
+    "id": "example.cmbs.tenant_label.promotion_policy",
+    "version": "2026.07.14",
+    "content_hash": "blake3:0303030303030303030303030303030303030303030303030303030303030303"
+  },
+  "frozen_executable_strategy": {
+    "kind": "frozen-executable-strategy",
+    "id": "example.cmbs.tenant_label.strategy",
+    "version": "2026.07.14",
+    "content_hash": "blake3:0404040404040404040404040404040404040404040404040404040404040404"
+  },
+  "ontology_package": {
+    "kind": "ontology-package",
+    "id": "example.cmbs.tenant_label.ontology",
+    "version": "2026.07.14",
+    "content_hash": "blake3:0505050505050505050505050505050505050505050505050505050505050505"
+  },
+  "identifier_package": {
+    "kind": "identifier-package",
+    "id": "example.cmbs.tenant_label.identifier",
+    "version": "2026.07.14",
+    "content_hash": "blake3:0606060606060606060606060606060606060606060606060606060606060606"
+  },
+  "vocabulary_package": {
+    "kind": "vocabulary-package",
+    "id": "example.cmbs.tenant_label.vocabulary",
+    "version": "2026.07.14",
+    "content_hash": "blake3:0707070707070707070707070707070707070707070707070707070707070707"
+  },
+  "evidence_package": {
+    "kind": "evidence-package",
+    "id": "example.cmbs.tenant_label.evidence",
+    "version": "2026.07.14",
+    "content_hash": "blake3:0808080808080808080808080808080808080808080808080808080808080808"
+  },
+  "normalization_packages": [
+    {
+      "kind": "normalization-package",
+      "id": "example.cmbs.tenant_label.normalization",
+      "version": "2026.07.14",
+      "content_hash": "blake3:0909090909090909090909090909090909090909090909090909090909090909"
+    }
+  ],
+  "available_capabilities": [
+    "prepare",
+    "index",
+    "block",
+    "evidence",
+    "solve_cluster",
+    "solve_link",
+    "review",
+    "promote",
+    "apply"
+  ],
+  "field_mappings": [
+    {
+      "field_path": "source_row_id",
+      "object_type": "example.cmbs:tenant_label",
+      "field_role": "record_key",
+      "required": true
+    },
+    {
+      "field_path": "raw_tenant_name",
+      "object_type": "example.cmbs:tenant_label",
+      "field_role": "canonical_surface",
+      "normalized_view": "tenant_label_example_core",
+      "required": true
+    },
+    {
+      "field_path": "property_id",
+      "object_type": "example.cmbs:tenant_label",
+      "field_role": "context_value",
+      "normalized_view": "property_context_key",
+      "required": false
+    }
+  ],
+  "execution_modes": [
+    {
+      "mode": "cluster",
+      "source_object_type": "example.cmbs:tenant_label",
+      "required_capabilities": [
+        "prepare",
+        "index",
+        "block",
+        "evidence",
+        "solve_cluster",
+        "review",
+        "promote",
+        "apply"
+      ],
+      "field_paths": [
+        "source_row_id",
+        "raw_tenant_name",
+        "property_id"
+      ],
+      "outputs": [
+        "prepare_bundle",
+        "cluster_assignments",
+        "review_queue"
+      ]
+    },
+    {
+      "mode": "link",
+      "source_object_type": "example.cmbs:tenant_label",
+      "target_object_type": "example.cmbs:tenant_label",
+      "link_direction": "bidirectional",
+      "required_capabilities": [
+        "prepare",
+        "index",
+        "block",
+        "evidence",
+        "solve_link",
+        "review",
+        "promote",
+        "apply"
+      ],
+      "field_paths": [
+        "source_row_id",
+        "raw_tenant_name",
+        "property_id"
+      ],
+      "outputs": [
+        "prepare_bundle",
+        "link_candidates",
+        "link_decisions"
+      ]
+    }
+  ],
+  "limits": {
+    "max_observation_fields": 8,
+    "max_candidate_pairs": 2000,
+    "max_outputs": 500
+  },
+  "expected_outputs": [
+    "prepare_bundle",
+    "cluster_assignments",
+    "review_queue",
+    "link_candidates",
+    "link_decisions"
+  ],
+  "project_overrides": [
+    {
+      "key": "candidate_limit",
+      "default_value": "2000",
+      "artifact_header_key": "candidate_limit",
+      "project_lock_key": "limits.candidate_limit"
+    }
+  ]
+}

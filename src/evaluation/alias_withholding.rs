@@ -10,7 +10,7 @@
 
 use crate::{
     entity::{
-        apply::ApplyRunArtifact,
+        apply::{ApplyRunArtifact, apply_registry_snapshot_hash},
         audit::{EntityAuditArtifact, EntityAuditGateStatus},
         block::{
             BlockCandidateGenerationDiagnostics, BlockCandidateRecord,
@@ -32,7 +32,8 @@ use crate::{
         run::{
             EntityRunArtifact,
             link::{
-                EntityLinkArtifact, EntityLinkObservationSurfaceBinding, EntityLinkRole,
+                ENTITY_LINK_DECISIONS_VERSION, ENTITY_LINK_VERSION, EntityLinkArtifact,
+                EntityLinkObservationSurfaceBinding, EntityLinkRole,
                 read_derivation_validated_entity_link_observation_surface_bindings_at_path,
                 validate_entity_link_artifact_at_path, validate_entity_link_artifact_raw_shape,
             },
@@ -62,8 +63,8 @@ pub const CANON_ALIAS_WITHHOLDING_ASSIGNMENT_FIREWALL_VERSION: &str =
 pub const CANON_ALIAS_WITHHOLDING_LEAKAGE_SCAN_VERSION: &str =
     "canon.evaluation.alias_withholding.leakage_scan.v0";
 pub const CANON_ENTITY_CANDIDATE_RECALL_VERSION: &str = "canon_entity_candidate_recall.v0";
-pub const CANON_ENTITY_LINK_VERSION: &str = "canon_entity_link.v0";
-pub const CANON_ENTITY_LINK_DECISIONS_VERSION: &str = "canon_entity_link_decisions.v0";
+pub const CANON_ENTITY_LINK_VERSION: &str = ENTITY_LINK_VERSION;
+pub const CANON_ENTITY_LINK_DECISIONS_VERSION: &str = ENTITY_LINK_DECISIONS_VERSION;
 pub const CANON_ENTITY_RUN_VERSION: &str = "canon_entity_run.v1";
 pub const CANON_ENTITY_SOLVE_VERSION: &str = "canon_entity_solve.v1";
 pub const CANON_ENTITY_REVIEW_QUEUE_VERSION: &str = "canon_entity_review_queue.v0";
@@ -2093,6 +2094,10 @@ fn load_promotion_and_replay_evidence(
             )?;
             let promoted_scan =
                 scan_registry_tree(&promoted_registry_dir, &trial.withheld_alias.surface)?;
+            let promoted_apply_snapshot_hash = apply_registry_snapshot_hash(&promoted_registry_dir)
+                .map_err(|refusal| {
+                    refusal_contract_error("exact_replay.apply.registry_snapshot_hash", refusal)
+                })?;
             let promoted_mapping = promoted_scan.mapping.as_ref().ok_or_else(|| {
                 native_contract_error("promoted registry does not map the withheld alias")
             })?;
@@ -2137,8 +2142,13 @@ fn load_promotion_and_replay_evidence(
                     "add-entry receipt count does not corroborate the registry diff",
                 ));
             }
-            let replay =
-                load_exact_replay_evidence(base_dir, replay_manifest, trial, &promoted_scan)?;
+            let replay = load_exact_replay_evidence(
+                base_dir,
+                replay_manifest,
+                trial,
+                &promoted_scan,
+                &promoted_apply_snapshot_hash,
+            )?;
             let promotion = NativePromotionEvidence {
                 artifact_version,
                 artifact_content_hash: promotion_hash,
@@ -2511,6 +2521,7 @@ fn load_exact_replay_evidence(
     replay: &ExactReplayExecutionPaths,
     trial: &AliasWithholdingTrialSpec,
     promoted_scan: &RegistryTreeScan,
+    promoted_apply_snapshot_hash: &str,
 ) -> AliasWithholdingResult<NativeExactReplayEvidence> {
     let (_, input_bytes) =
         read_manifest_file(base_dir, "exact_replay.input_path", &replay.input_path)?;
@@ -2522,7 +2533,7 @@ fn load_exact_replay_evidence(
     validate_apply_artifact_self_hash(&apply)?;
     if apply.registry.id != promoted_scan.registry.registry_id
         || apply.registry.version != promoted_scan.registry.registry_version
-        || apply.registry_snapshot_hash.as_deref() != Some(promoted_scan.tree_hash.as_str())
+        || apply.registry_snapshot_hash.as_deref() != Some(promoted_apply_snapshot_hash)
     {
         return Err(native_contract_error(
             "exact replay apply artifact does not bind the promoted registry snapshot",

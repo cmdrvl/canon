@@ -17,6 +17,12 @@ use canon::{
         },
         edge::{EdgeCandidateBudgetProof, EdgeEvidenceHit, build_edge_evidence_record},
         graph::{SignedEvidenceGraphInput, SurfaceIncumbentId, build_signed_evidence_graph},
+        publication::{
+            CANON_ENTITY_STAGE_PUBLICATION_VERSION, EntityPublicationFileInput,
+            EntityPublicationRequest, EntityPublicationUpstreamRef, open_current_stream_generation,
+            publish_stream_patch,
+        },
+        record_link::ASSIGNMENT_ALIGNMENT_VERSION,
         review::{
             LinkReviewQueueRequest, ReviewExportInclude, ReviewQueueArtifact, ReviewQueueRequest,
             build_link_review_queue_artifact, build_review_queue_artifact,
@@ -27,16 +33,22 @@ use canon::{
             import_native_review_decisions, native_review_import_context_from_artifact,
         },
         run::{
-            EntityRunArtifact,
+            ENTITY_RUN_PUBLICATION_STREAM_ID, EntityRunArtifact,
             link::{
-                EntityLinkArtifact, EntityLinkObservationSurfaceBinding, EntityLinkRole,
+                ENTITY_LINK_DECISIONS_VERSION, ENTITY_LINK_MATERIALIZED_ROWS_VERSION,
+                ENTITY_LINK_OBSERVATION_SURFACE_BINDINGS_VERSION, ENTITY_LINK_VERSION,
+                EntityLinkArtifact, EntityLinkDecisionArtifact,
+                EntityLinkObservationSurfaceBinding, EntityLinkRole, LINK_ARTIFACT_PATH,
+                LINK_ASSIGNMENT_ALIGNMENT_PATH, LINK_MATERIALIZED_ROWS_PATH,
+                LINK_OBSERVATION_SURFACE_BINDINGS_PATH,
                 read_validated_entity_link_observation_surface_bindings_at_path,
             },
+            publish_entity_run_link_publication_patch,
         },
         score::{ScoreLane, ScoreUnits},
         solve::{
-            SolveArtifact, SolveArtifactRequest, SolveReconciliationConfig, SolveSurfaceProvenance,
-            build_solve_artifact_contract,
+            SolveArtifact, SolveArtifactRequest, SolveReconciliationConfig,
+            SolveReconciliationState, SolveSurfaceProvenance, build_solve_artifact_contract,
         },
     },
     evaluation::alias_withholding::{
@@ -55,6 +67,7 @@ use canon::{
         canonical_benchmark_bytes, canonical_report_bytes, compile_alias_withholding_benchmark,
         compile_alias_withholding_benchmark_from_execution_manifest, exact_lookup,
     },
+    resolve::{AssertionResult, MatchRecord, ResolveSummary, UnmatchedRecord},
     witness,
 };
 use serde::{Deserialize, Serialize};
@@ -412,27 +425,16 @@ fn native_nonattach_target_may_be_absent_from_solve_when_link_and_review_agree()
         CANON_ENTITY_SOLVE_VERSION_V1,
         &solve.artifact_content_hash,
     );
+    sync_run_metadata_upstreams(&mut run);
     reseal_run(&mut run);
     write_json(&fixture.run_path, &run);
 
-    let mut link: EntityLinkArtifact = read_json(&fixture.link_path);
-    link.shared_run_artifact.content_hash = run.artifact_content_hash.clone();
-    link.shared_solve_artifact.content_hash = solve.artifact_content_hash.clone();
-    link.metadata.upstream_artifacts = vec![
-        EntityArtifactReference {
-            version: run.version.clone(),
-            content_hash: run.artifact_content_hash.clone(),
-        },
-        EntityArtifactReference {
-            version: solve.version.clone(),
-            content_hash: solve.artifact_content_hash.clone(),
-        },
-    ];
-    link.metadata
-        .upstream_artifacts
-        .sort_by(|left, right| left.version.cmp(&right.version));
-    reseal_link(&mut link);
-    write_json(&fixture.link_path, &link);
+    let link = republish_mutated_native_link_fixture(
+        &fixture.link_path,
+        &run,
+        &solve,
+        NativeLinkDecisionRefreshMode::DeriveFromSolve,
+    );
 
     let review = build_link_review_queue_artifact(LinkReviewQueueRequest {
         link_artifact: link,
@@ -1028,27 +1030,16 @@ max_candidates: 10
             CANON_ENTITY_SOLVE_VERSION_V1,
             &solve.artifact_content_hash,
         );
+        sync_run_metadata_upstreams(&mut run);
         reseal_run(&mut run);
         write_json(&run_path, &run);
 
-        let mut link: EntityLinkArtifact = read_json(&link_path);
-        link.shared_run_artifact.content_hash = run.artifact_content_hash.clone();
-        link.shared_solve_artifact.content_hash = solve.artifact_content_hash.clone();
-        link.metadata.upstream_artifacts = vec![
-            EntityArtifactReference {
-                version: run.version.clone(),
-                content_hash: run.artifact_content_hash.clone(),
-            },
-            EntityArtifactReference {
-                version: solve.version.clone(),
-                content_hash: solve.artifact_content_hash.clone(),
-            },
-        ];
-        link.metadata
-            .upstream_artifacts
-            .sort_by(|left, right| left.version.cmp(&right.version));
-        reseal_link(&mut link);
-        write_json(&link_path, &link);
+        let link = republish_mutated_native_link_fixture(
+            &link_path,
+            &run,
+            &solve,
+            NativeLinkDecisionRefreshMode::DeriveFromSolve,
+        );
         let link_artifact_hash = link.artifact_content_hash.clone();
 
         let review = build_link_review_queue_artifact(LinkReviewQueueRequest {
@@ -2301,27 +2292,16 @@ fn tamper_solve_target_membership(fixture: &mut NativeAliasFixture) {
         CANON_ENTITY_SOLVE_VERSION_V1,
         &solve.artifact_content_hash,
     );
+    sync_run_metadata_upstreams(&mut run);
     reseal_run(&mut run);
     write_json(&fixture.run_path, &run);
 
-    let mut link: EntityLinkArtifact = read_json(&fixture.link_path);
-    link.shared_run_artifact.content_hash = run.artifact_content_hash.clone();
-    link.shared_solve_artifact.content_hash = solve.artifact_content_hash.clone();
-    link.metadata.upstream_artifacts = vec![
-        EntityArtifactReference {
-            version: run.version.clone(),
-            content_hash: run.artifact_content_hash.clone(),
-        },
-        EntityArtifactReference {
-            version: solve.version.clone(),
-            content_hash: solve.artifact_content_hash.clone(),
-        },
-    ];
-    link.metadata
-        .upstream_artifacts
-        .sort_by(|left, right| left.version.cmp(&right.version));
-    reseal_link(&mut link);
-    write_json(&fixture.link_path, &link);
+    let link = republish_mutated_native_link_fixture(
+        &fixture.link_path,
+        &run,
+        &solve,
+        NativeLinkDecisionRefreshMode::PreserveExistingDecisions,
+    );
     let review = build_link_review_queue_artifact(LinkReviewQueueRequest {
         link_artifact: link,
         include: ReviewExportInclude::All,
@@ -2503,6 +2483,555 @@ fn replace_ref_hash(refs: &mut [EntityArtifactReference], version: &str, hash: &
         .find(|reference| reference.version == version)
         .unwrap_or_else(|| panic!("missing artifact reference {version}"));
     reference.content_hash = hash.to_string();
+}
+
+fn sync_run_metadata_upstreams(run: &mut EntityRunArtifact) {
+    run.metadata.upstream_artifacts = run
+        .stage_artifacts
+        .iter()
+        .map(|stage| EntityArtifactReference {
+            version: stage.version.clone(),
+            content_hash: stage.artifact_content_hash.clone(),
+        })
+        .collect();
+}
+
+#[derive(Clone, Copy)]
+enum NativeLinkDecisionRefreshMode {
+    DeriveFromSolve,
+    PreserveExistingDecisions,
+}
+
+fn republish_mutated_native_link_fixture(
+    link_path: &Path,
+    run: &EntityRunArtifact,
+    solve: &SolveArtifact,
+    decision_refresh: NativeLinkDecisionRefreshMode,
+) -> EntityLinkArtifact {
+    let work_dir = link_path
+        .parent()
+        .and_then(|path| path.parent())
+        .unwrap_or_else(|| panic!("link path must live under <work-dir>/link"));
+    write_run_manifest_from_artifact(work_dir, run);
+    let mut link: EntityLinkArtifact = read_json(link_path);
+    let bindings =
+        read_validated_entity_link_observation_surface_bindings_at_path(&link, link_path)
+            .expect("link observation/surface bindings validate before republish");
+
+    let current = open_current_stream_generation(work_dir, ENTITY_RUN_PUBLICATION_STREAM_ID)
+        .expect("current entity run publication stream opens");
+    let mut link_records = current
+        .manifest
+        .files
+        .iter()
+        .filter(|record| record.stage == "link")
+        .map(|record| {
+            (
+                record.logical_path.clone(),
+                record.stage.clone(),
+                record.version.clone(),
+            )
+        })
+        .collect::<Vec<_>>();
+    link_records.sort();
+    assert_link_publication_records(&link_records);
+
+    let mut run_files = current
+        .manifest
+        .files
+        .iter()
+        .filter(|record| record.stage != "link")
+        .map(|record| {
+            publication_file_from_stable(
+                work_dir,
+                &record.logical_path,
+                &record.stage,
+                &record.version,
+            )
+        })
+        .collect::<Vec<_>>();
+    run_files.sort_by(|left, right| left.logical_path.cmp(&right.logical_path));
+
+    let mut omitted_link_paths = link_records
+        .iter()
+        .map(|(logical_path, _, _)| logical_path.clone())
+        .collect::<Vec<_>>();
+    omitted_link_paths.sort();
+
+    let run_upstreams = run
+        .stage_artifacts
+        .iter()
+        .map(|stage| EntityPublicationUpstreamRef {
+            version: stage.version.clone(),
+            content_hash: stage.artifact_content_hash.clone(),
+        })
+        .collect::<Vec<_>>();
+    let cache_mode = current.manifest.cache_mode.clone();
+    let cache_status = current.manifest.cache_status.clone();
+    let cache_receipt_hash = current.manifest.cache_receipt_hash.clone();
+    let request_fingerprint = test_publication_request_fingerprint(
+        &current.generation_id,
+        &cache_mode,
+        &cache_status,
+        &cache_receipt_hash,
+        &run_upstreams,
+        &omitted_link_paths,
+        &run_files,
+    );
+    let run_receipt = publish_stream_patch(
+        work_dir,
+        EntityPublicationRequest {
+            stream_id: ENTITY_RUN_PUBLICATION_STREAM_ID.to_string(),
+            supersedes_generation_id: Some(current.generation_id.clone()),
+            request_fingerprint,
+            cache_mode,
+            cache_status,
+            cache_receipt_hash,
+            stage_order: entity_run_publication_stage_order(),
+            upstream_artifacts: run_upstreams,
+            files: run_files,
+            omit_logical_paths: omitted_link_paths,
+        },
+    )
+    .expect("mutated run-stage publication patch commits");
+    let committed_run_generation =
+        open_current_stream_generation(work_dir, ENTITY_RUN_PUBLICATION_STREAM_ID)
+            .expect("mutated run-stage publication stream opens");
+    assert_eq!(
+        committed_run_generation.generation_id,
+        run_receipt.generation_id
+    );
+    let committed_solve: SolveArtifact = serde_json::from_slice(
+        committed_run_generation
+            .read_logical_file("solve/solve.json")
+            .expect("committed mutated solve is present"),
+    )
+    .expect("committed mutated solve parses");
+    assert_eq!(
+        committed_solve.artifact_content_hash, solve.artifact_content_hash,
+        "committed solve bytes must match the mutated solve before link decision refresh"
+    );
+
+    let (run_ref, solve_ref) =
+        refresh_link_shared_artifacts(&mut link, run, solve, &run_receipt.generation_id);
+    match decision_refresh {
+        NativeLinkDecisionRefreshMode::DeriveFromSolve => {
+            refresh_native_link_decisions_from_solve(&mut link, &committed_solve, &bindings);
+        }
+        NativeLinkDecisionRefreshMode::PreserveExistingDecisions => {}
+    }
+    reseal_link(&mut link);
+    write_json(link_path, &link);
+
+    let link_files = link_records
+        .iter()
+        .map(|(logical_path, stage, version)| {
+            publication_file_from_stable(work_dir, logical_path, stage, version)
+        })
+        .collect::<Vec<_>>();
+    publish_entity_run_link_publication_patch(
+        work_dir,
+        &run_receipt.generation_id,
+        vec![run_ref, solve_ref],
+        link_files,
+    )
+    .expect("mutated link-stage publication patch commits");
+
+    assert_committed_logical_matches_stable(work_dir, "run/run.json");
+    assert_committed_logical_matches_stable(work_dir, "solve/solve.json");
+    assert_committed_logical_matches_stable(work_dir, LINK_ARTIFACT_PATH);
+    link
+}
+
+fn refresh_native_link_decisions_from_solve(
+    link: &mut EntityLinkArtifact,
+    solve: &SolveArtifact,
+    bindings: &[EntityLinkObservationSurfaceBinding],
+) {
+    let target_ids = bindings
+        .iter()
+        .filter(|binding| binding.side == EntityLinkRole::Target)
+        .map(|binding| binding.link_id.as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        target_ids,
+        BTreeSet::from([ATTACH_OBSERVATION, ABSTAIN_OBSERVATION]),
+        "native fixture must classify exactly the attach and abstain targets"
+    );
+
+    let attach_reference = native_link_binding(bindings, EntityLinkRole::Reference, "ORG-001");
+    let attach_target = native_link_binding(bindings, EntityLinkRole::Target, ATTACH_OBSERVATION);
+    assert_eq!(
+        attach_reference.surface_id, attach_target.surface_id,
+        "attach fixture must prove prepared-surface collapse from bindings"
+    );
+    let attach_entity = solve_entity_for_surface(solve, &attach_target.surface_id);
+    assert_eq!(
+        attach_entity.state,
+        SolveReconciliationState::ResolvedExisting
+    );
+    assert_eq!(attach_entity.canonical_id.as_deref(), Some("ORG-001"));
+    assert_eq!(
+        attach_entity.adjusted_support_score_units,
+        ScoreUnits::ZERO,
+        "prepared-surface collapse carries no candidate support credit"
+    );
+    assert!(
+        attach_entity
+            .surface_ids
+            .iter()
+            .any(|surface_id| surface_id == &attach_reference.surface_id),
+        "prepared-surface collapse match must share the asserted reference surface"
+    );
+
+    let abstain_reference = native_link_binding(bindings, EntityLinkRole::Reference, "ORG-002");
+    let abstain_target = native_link_binding(bindings, EntityLinkRole::Target, ABSTAIN_OBSERVATION);
+    assert_ne!(
+        abstain_reference.surface_id, abstain_target.surface_id,
+        "abstain target must remain a distinct prepared surface"
+    );
+    let abstain_reference_entity = solve_entity_for_surface(solve, &abstain_reference.surface_id);
+    assert_eq!(
+        abstain_reference_entity.state,
+        SolveReconciliationState::ResolvedExisting
+    );
+    assert_eq!(
+        abstain_reference_entity.canonical_id.as_deref(),
+        Some("ORG-002")
+    );
+    let unmatched_reason = if let Some(abstain_entity) =
+        maybe_solve_entity_for_surface(solve, &abstain_target.surface_id)
+    {
+        assert_eq!(
+            abstain_entity.state,
+            SolveReconciliationState::PromotableNew
+        );
+        assert!(abstain_entity.canonical_id.is_none());
+        assert!(
+            !abstain_entity
+                .surface_ids
+                .iter()
+                .any(|surface_id| surface_id == &abstain_reference.surface_id),
+            "honest unmatched target must not contain the asserted incumbent reference"
+        );
+        assert_ne!(
+            abstain_entity.component_id, abstain_reference_entity.component_id,
+            "unmatched target must live outside the incumbent component"
+        );
+        let abstain_component_references =
+            reference_link_ids_in_component(bindings, abstain_entity);
+        assert!(
+            abstain_component_references.is_empty(),
+            "promotable-new unmatched component must not carry reference bindings"
+        );
+        "no_resolved_reference_surface_in_solve_component"
+    } else {
+        "missing_solve_component"
+    };
+
+    let matches = vec![MatchRecord {
+        reference_id: "ORG-001".to_string(),
+        target_id: ATTACH_OBSERVATION.to_string(),
+        canonical_id: "ORG-001".to_string(),
+        score: 0.0,
+        assertions: vec![prepared_surface_collapse_assertion()],
+        runner_up: None,
+    }];
+    let unmatched = vec![UnmatchedRecord {
+        target_id: ABSTAIN_OBSERVATION.to_string(),
+        reason: unmatched_reason.to_string(),
+        best_candidate: None,
+    }];
+    let summary = ResolveSummary {
+        target_records: link.target.row_count as usize,
+        matched: matches.len(),
+        unmatched: unmatched.len(),
+        ambiguous: 0,
+        match_rate: matches.len() as f64 / link.target.row_count as f64,
+    };
+    assert_eq!(summary.target_records, 2);
+    assert!(summary.partition_holds());
+    assert!(link.decision_artifact.gold_score.is_none());
+    assert!(link.decision_artifact.write_back.is_none());
+
+    let mut decision_artifact = EntityLinkDecisionArtifact {
+        version: ENTITY_LINK_DECISIONS_VERSION.to_string(),
+        artifact_content_hash: String::new(),
+        strategy: link.decision_artifact.strategy.clone(),
+        registry: link.decision_artifact.registry.clone(),
+        reference_tape: link.decision_artifact.reference_tape.clone(),
+        target_tape: link.decision_artifact.target_tape.clone(),
+        summary,
+        matches,
+        unmatched,
+        ambiguous: Vec::new(),
+        conflict_warnings: Vec::new(),
+        gold_score: None,
+        write_back: None,
+    };
+    reseal_link_decision_artifact(&mut decision_artifact);
+    link.summary = decision_artifact.summary.clone();
+    link.decision_artifact = decision_artifact;
+}
+
+fn native_link_binding<'a>(
+    bindings: &'a [EntityLinkObservationSurfaceBinding],
+    side: EntityLinkRole,
+    link_id: &str,
+) -> &'a EntityLinkObservationSurfaceBinding {
+    bindings
+        .iter()
+        .find(|binding| binding.side == side && binding.link_id == link_id)
+        .unwrap_or_else(|| panic!("missing {side:?} link binding for {link_id}"))
+}
+
+fn solve_entity_for_surface<'a>(
+    solve: &'a SolveArtifact,
+    surface_id: &str,
+) -> &'a canon::entity::solve::SolveEntityRecord {
+    maybe_solve_entity_for_surface(solve, surface_id)
+        .unwrap_or_else(|| panic!("missing solve entity for surface {surface_id}"))
+}
+
+fn maybe_solve_entity_for_surface<'a>(
+    solve: &'a SolveArtifact,
+    surface_id: &str,
+) -> Option<&'a canon::entity::solve::SolveEntityRecord> {
+    solve.entities.iter().find(|entity| {
+        entity
+            .surface_ids
+            .iter()
+            .any(|surface| surface == surface_id)
+    })
+}
+
+fn reference_link_ids_in_component(
+    bindings: &[EntityLinkObservationSurfaceBinding],
+    entity: &canon::entity::solve::SolveEntityRecord,
+) -> Vec<String> {
+    let surface_ids = entity.surface_ids.iter().collect::<BTreeSet<_>>();
+    let mut reference_ids = bindings
+        .iter()
+        .filter(|binding| binding.side == EntityLinkRole::Reference)
+        .filter(|binding| surface_ids.contains(&binding.surface_id))
+        .map(|binding| binding.link_id.clone())
+        .collect::<Vec<_>>();
+    reference_ids.sort();
+    reference_ids
+}
+
+fn prepared_surface_collapse_assertion() -> AssertionResult {
+    let mut detail = BTreeMap::new();
+    detail.insert("candidate_credit".to_string(), Value::Bool(false));
+    detail.insert(
+        "surface_equality".to_string(),
+        Value::String("exact_prepared_surface".to_string()),
+    );
+    AssertionResult {
+        field_ref: "prepared_surface_id".to_string(),
+        field_tgt: "prepared_surface_id".to_string(),
+        op: "prepared_surface_collapse".to_string(),
+        passed: true,
+        score: 0.0,
+        weight: 0.0,
+        required: true,
+        detail,
+    }
+}
+
+fn reseal_link_decision_artifact(artifact: &mut EntityLinkDecisionArtifact) {
+    artifact.artifact_content_hash.clear();
+    artifact.artifact_content_hash = hash_compact_json(artifact);
+    let mut round_tripped: EntityLinkDecisionArtifact = serde_json::from_slice(
+        &serde_json::to_vec(artifact).expect("decision artifact serializes"),
+    )
+    .expect("decision artifact roundtrip parses");
+    round_tripped.artifact_content_hash.clear();
+    round_tripped.artifact_content_hash = hash_compact_json(&round_tripped);
+    *artifact = round_tripped;
+}
+
+fn write_run_manifest_from_artifact(work_dir: &Path, run: &EntityRunArtifact) {
+    write_json_value(
+        &work_dir.join("run/manifest.json"),
+        json!({
+            "version": "canon_entity_run_manifest.v0",
+            "summary": &run.summary,
+            "stage_artifacts": &run.stage_artifacts,
+            "orchestration": &run.orchestration,
+            "next_commands": &run.next_commands
+        }),
+    );
+}
+
+fn publication_file_from_stable(
+    work_dir: &Path,
+    logical_path: &str,
+    stage: &str,
+    version: &str,
+) -> EntityPublicationFileInput {
+    let stable_path = work_dir.join(logical_path);
+    let bytes = fs::read(&stable_path).unwrap_or_else(|error| {
+        panic!(
+            "read stable publication file {}: {error}",
+            stable_path.display()
+        )
+    });
+    EntityPublicationFileInput::new(logical_path, stage, version, bytes)
+}
+
+fn assert_link_publication_records(records: &[(String, String, String)]) {
+    assert!(
+        !records.is_empty(),
+        "fixture publication stream must carry link-stage files before republish"
+    );
+    let versions = records
+        .iter()
+        .map(|(logical_path, _, version)| (logical_path.as_str(), version.as_str()))
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        versions.get(LINK_ARTIFACT_PATH).copied(),
+        Some(ENTITY_LINK_VERSION)
+    );
+    let materialized_rows = format!("link/{LINK_MATERIALIZED_ROWS_PATH}");
+    assert_eq!(
+        versions.get(materialized_rows.as_str()).copied(),
+        Some(ENTITY_LINK_MATERIALIZED_ROWS_VERSION)
+    );
+    let bindings = format!("link/{LINK_OBSERVATION_SURFACE_BINDINGS_PATH}");
+    assert_eq!(
+        versions.get(bindings.as_str()).copied(),
+        Some(ENTITY_LINK_OBSERVATION_SURFACE_BINDINGS_VERSION)
+    );
+    let assignment_alignment = format!("link/{LINK_ASSIGNMENT_ALIGNMENT_PATH}");
+    if let Some(version) = versions.get(assignment_alignment.as_str()) {
+        assert_eq!(*version, ASSIGNMENT_ALIGNMENT_VERSION);
+    }
+}
+
+fn entity_run_publication_stage_order() -> Vec<String> {
+    ["block", "evidence", "solve", "run", "link"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn refresh_link_shared_artifacts(
+    link: &mut EntityLinkArtifact,
+    run: &EntityRunArtifact,
+    solve: &SolveArtifact,
+    publication_generation_id: &str,
+) -> (EntityArtifactReference, EntityArtifactReference) {
+    let run_ref = EntityArtifactReference {
+        version: run.version.clone(),
+        content_hash: run.artifact_content_hash.clone(),
+    };
+    let solve_ref = EntityArtifactReference {
+        version: solve.version.clone(),
+        content_hash: solve.artifact_content_hash.clone(),
+    };
+    let publication_ref = EntityArtifactReference {
+        version: CANON_ENTITY_STAGE_PUBLICATION_VERSION.to_string(),
+        content_hash: publication_generation_id.to_string(),
+    };
+    link.shared_run_artifact = run_ref.clone();
+    link.shared_solve_artifact = solve_ref.clone();
+    link.metadata.upstream_artifacts = vec![run_ref.clone(), solve_ref.clone(), publication_ref];
+    link.metadata.upstream_artifacts.sort_by(|left, right| {
+        left.version
+            .cmp(&right.version)
+            .then_with(|| left.content_hash.cmp(&right.content_hash))
+    });
+    (run_ref, solve_ref)
+}
+
+fn test_publication_request_fingerprint(
+    parent_generation_id: &str,
+    cache_mode: &str,
+    cache_status: &str,
+    cache_receipt_hash: &str,
+    upstream_artifacts: &[EntityPublicationUpstreamRef],
+    omitted_logical_paths: &[String],
+    files: &[EntityPublicationFileInput],
+) -> String {
+    let mut file_refs = files
+        .iter()
+        .map(|file| {
+            json!({
+                "logical_path": file.logical_path.as_str(),
+                "stage": file.stage.as_str(),
+                "version": file.version.as_str(),
+                "byte_len": file.bytes.len(),
+                "content_hash": witness::hash_bytes(&file.bytes)
+            })
+        })
+        .collect::<Vec<_>>();
+    file_refs.sort_by(|left, right| {
+        left["logical_path"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(right["logical_path"].as_str().unwrap_or_default())
+            .then_with(|| {
+                left["stage"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .cmp(right["stage"].as_str().unwrap_or_default())
+            })
+    });
+
+    let mut upstream_refs = upstream_artifacts
+        .iter()
+        .map(|reference| {
+            json!({
+                "version": reference.version.as_str(),
+                "artifact_content_hash": reference.content_hash.as_str()
+            })
+        })
+        .collect::<Vec<_>>();
+    upstream_refs.sort_by(|left, right| {
+        left["version"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(right["version"].as_str().unwrap_or_default())
+            .then_with(|| {
+                left["artifact_content_hash"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .cmp(right["artifact_content_hash"].as_str().unwrap_or_default())
+            })
+    });
+
+    hash_compact_json(&json!({
+        "version": "canon_entity_run_publication_request.v1",
+        "stream_id": ENTITY_RUN_PUBLICATION_STREAM_ID,
+        "supersedes_generation_id": parent_generation_id,
+        "cache_mode": cache_mode,
+        "cache_status": cache_status,
+        "cache_receipt_hash": cache_receipt_hash,
+        "upstream_artifacts": upstream_refs,
+        "omit_logical_paths": omitted_logical_paths,
+        "files": file_refs
+    }))
+}
+
+fn assert_committed_logical_matches_stable(work_dir: &Path, logical_path: &str) {
+    let current = open_current_stream_generation(work_dir, ENTITY_RUN_PUBLICATION_STREAM_ID)
+        .expect("current entity run publication stream opens");
+    let committed = current
+        .read_logical_file(logical_path)
+        .unwrap_or_else(|| panic!("committed stream missing {logical_path}"));
+    let stable_path = work_dir.join(logical_path);
+    let stable = fs::read(&stable_path).unwrap_or_else(|error| {
+        panic!(
+            "read stable publication file {}: {error}",
+            stable_path.display()
+        )
+    });
+    assert_eq!(
+        committed,
+        stable.as_slice(),
+        "committed {logical_path} bytes must match mutated stable artifact"
+    );
 }
 
 fn reseal_block(block: &mut canon::entity::block_artifact::BlockCandidateArtifact) {

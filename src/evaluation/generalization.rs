@@ -64,7 +64,7 @@ use crate::{
             CandidateRecallRankRecord, CandidateRecallStratum, EntityCandidateRecallReport,
         },
     },
-    fs_safety::{PlannedAccess, resolve_workspace_path},
+    fs_safety::{PathResolution, PlannedAccess, resolve_workspace_path},
     lookup, registry,
 };
 use chrono::{DateTime, NaiveDate, SecondsFormat};
@@ -5429,7 +5429,7 @@ fn validate_loaded_execution_continuity(
             "link observation/surface bindings ref must match EntityLinkArtifact sidecar path and hash",
         ));
     }
-    let (link_artifact_path, _) = read_strict_manifest_file(
+    let (link_artifact_path, _) = read_strict_manifest_file_canonical_path(
         base_dir,
         "artifacts.entity_link.path",
         &loaded_link_artifact_ref(artifacts)?.reference.path,
@@ -7244,6 +7244,24 @@ fn read_strict_manifest_file(
     field: &str,
     rel: &str,
 ) -> GeneralizationResult<(PathBuf, Vec<u8>)> {
+    let (resolution, bytes) = read_strict_manifest_file_resolved(base_dir, field, rel)?;
+    Ok((resolution.absolute_path, bytes))
+}
+
+fn read_strict_manifest_file_canonical_path(
+    base_dir: &Path,
+    field: &str,
+    rel: &str,
+) -> GeneralizationResult<(PathBuf, Vec<u8>)> {
+    let (resolution, bytes) = read_strict_manifest_file_resolved(base_dir, field, rel)?;
+    Ok((resolution.canonical_path, bytes))
+}
+
+fn read_strict_manifest_file_resolved(
+    base_dir: &Path,
+    field: &str,
+    rel: &str,
+) -> GeneralizationResult<(PathResolution, Vec<u8>)> {
     let resolution = resolve_workspace_path(base_dir, field, Path::new(rel), PlannedAccess::Read)
         .map_err(|error| {
         GeneralizationError::new(GeneralizationErrorCode::ArtifactContract, error.to_string())
@@ -7270,7 +7288,7 @@ fn read_strict_manifest_file(
     }
     let bytes = fs::read(&resolution.absolute_path)
         .map_err(|io_error| manifest_io_error(field, io_error))?;
-    Ok((resolution.absolute_path, bytes))
+    Ok((resolution, bytes))
 }
 
 fn resolve_strict_manifest_dir(
@@ -11456,6 +11474,7 @@ mod leakage_provenance_tests {
             metadata: solve_metadata.clone(),
             summary: deterministic_summary(&[("entity_count", 999), ("review_group_count", 999)]),
             upstream_artifacts: solve_metadata.upstream_artifacts.clone(),
+            promotable_aliases: Vec::new(),
             entities: Vec::new(),
             review_groups: Vec::new(),
             diagnostics: crate::entity::solve::SolveDiagnosticsReport {

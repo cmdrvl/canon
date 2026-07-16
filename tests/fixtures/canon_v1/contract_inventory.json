@@ -439,7 +439,12 @@
       "family": "entity",
       "clap_path": "entity link",
       "operator_name": "entity link",
-      "primary_contracts": ["canon_entity_link.v0", "canon_entity_index_cache_receipt.v0"],
+      "primary_contracts": [
+        "canon_entity_link.v1",
+        "canon_entity_link_decisions.v1",
+        "canon_entity_link_observation_surface_bindings.v1",
+        "canon_entity_index_cache_receipt.v0"
+      ],
       "action": "preserve"
     },
     {
@@ -580,6 +585,13 @@
       "source_path": "src/extensions/profile.rs"
     },
     {
+      "id": "canon.entity.profile.execution.v0",
+      "family": "extension",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/extensions/profile.rs"
+    },
+    {
       "id": "canon.relation.policy.v1",
       "family": "extension",
       "action": "preserve",
@@ -599,6 +611,55 @@
       "action": "preserve",
       "access_boundary": "internal_source_only",
       "source_path": "src/extensions/source_mapping.rs"
+    },
+    {
+      "id": "canon.entity.record_link_input_set.v1",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/entity/record_link.rs"
+    },
+    {
+      "id": "canon.entity.record_link.operator.v1",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/entity/record_link.rs"
+    },
+    {
+      "id": "canon.entity.record_link_candidates.v1",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/entity/record_link.rs"
+    },
+    {
+      "id": "canon.entity.record_link_feature_policy_set.v1",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/entity/record_link.rs"
+    },
+    {
+      "id": "canon.entity.record_link_evidence_policy_ref.v1",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/entity/record_link.rs"
+    },
+    {
+      "id": "canon.entity.record_link_evidence_extension.v1",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/entity/record_link.rs"
+    },
+    {
+      "id": "canon.entity.assignment_alignment.v1",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/entity/record_link.rs"
     },
     {
       "id": "canon.entity.record_link_input.v1",
@@ -783,6 +844,13 @@
     { "id": "canon_entity_artifact_schemas.v1", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_audit.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_audit.v1", "family": "entity", "action": "preserve" },
+    {
+      "id": "canon_entity_alias_proposal.v0",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/entity/solve.rs"
+    },
     { "id": "canon_entity_benchmark_telemetry.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_block.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_block.v1", "family": "entity", "action": "preserve" },
@@ -820,6 +888,13 @@
     { "id": "canon_entity_run.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_run.v1", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_run_manifest.v0", "family": "entity", "action": "preserve" },
+    {
+      "id": "canon_entity_run_publication_request.v1",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/entity/run.rs"
+    },
     { "id": "canon_entity_schema_bundle.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_score.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_solve.v0", "family": "entity", "action": "preserve" },
@@ -827,6 +902,13 @@
     { "id": "canon_entity_stream.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_surface_id.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_surface_row.v0", "family": "entity", "action": "preserve" },
+    {
+      "id": "canon_entity_stage_publication.v1",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/entity/publication.rs"
+    },
     { "id": "canon_entity_topk.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_namekit.v0", "family": "namekit", "action": "preserve" },
     { "id": "canon_namekit_cmbs_tenant.v0", "family": "namekit", "action": "preserve" },
@@ -986,9 +1068,16 @@
     { "id": "canon_entity_dispatch_plan.v1", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_index_build.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_index_build.v1", "family": "entity", "action": "preserve" },
-    { "id": "canon_entity_link.v0", "family": "entity", "action": "preserve" },
-    { "id": "canon_entity_link_decisions.v0", "family": "entity", "action": "preserve" },
-    { "id": "canon_entity_link_observation_surface_bindings.v0", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_link.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_link_decisions.v1", "family": "entity", "action": "preserve" },
+    { "id": "canon_entity_link_observation_surface_bindings.v1", "family": "entity", "action": "preserve" },
+    {
+      "id": "canon_entity_link_materialized_rows.v1",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/entity/link.rs"
+    },
     { "id": "canon_entity_multisource_link.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_native_review.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_native_review_decisions.v0", "family": "entity", "action": "preserve" },

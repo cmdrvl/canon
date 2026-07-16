@@ -10,6 +10,11 @@ use crate::entity::{
     EntityPatchSetReference, EntityProfileDocument, EntityProfileReference, EntityRegistrySnapshot,
     EntityStrategyReference,
     error::EntityRefusalKind,
+    profile::entity_profile_package_projection_from_bytes,
+    profile_package::{
+        self, EntityProfileExecutionRequest, EntityProfilePackage, EntityProfilePackageExecution,
+        EntityProfilePackageRunRequest, EntityProfileRecordInputFormat, ProfileCapability,
+    },
     schema::{
         entity_v1_contract_for_stage, entity_v1_schema_reference, entity_v1_workdir_layout,
         finalize_entity_v1_self_hash, validate_artifact_v1_core_contract,
@@ -49,6 +54,8 @@ pub struct PrepareFieldMapping {
     #[serde(default)]
     pub primary_surface_fields: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_surface_normalized_view: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub alias_surfaces_field: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mention_surfaces_field: Option<String>,
@@ -64,6 +71,7 @@ impl PrepareFieldMapping {
     pub fn cmbs_tenant_label() -> Self {
         Self {
             primary_surface_fields: vec!["raw_tenant_name".to_string()],
+            canonical_surface_normalized_view: None,
             alias_surfaces_field: Some("alias_surfaces_json".to_string()),
             mention_surfaces_field: Some("mention_surfaces_json".to_string()),
             anchor_fields: BTreeMap::new(),
@@ -84,6 +92,7 @@ impl PrepareFieldMapping {
     pub fn regab_firm_identity() -> Self {
         Self {
             primary_surface_fields: vec!["org_name".to_string()],
+            canonical_surface_normalized_view: None,
             alias_surfaces_field: Some("alias_surfaces_json".to_string()),
             mention_surfaces_field: Some("mention_surfaces_json".to_string()),
             anchor_fields: BTreeMap::from([
@@ -278,6 +287,8 @@ pub struct PrepareStreamingDiagnostics {
 pub struct LoadedPrepareProfile {
     pub document: EntityProfileDocument,
     pub content_hash: String,
+    pub prepare_mapping: Option<PrepareFieldMapping>,
+    pub package: Option<EntityProfilePackage>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -413,16 +424,42 @@ pub fn load_prepare_profile(profile: &str) -> Result<EntityProfileDocument, Refu
 }
 
 pub fn load_prepare_profile_with_hash(profile: &str) -> Result<LoadedPrepareProfile, Refusal> {
-    let profile_source = if Path::new(profile).exists() {
-        fs::read_to_string(profile).map_err(|error| {
+    if Path::new(profile).exists() {
+        let bytes = fs::read(profile).map_err(|error| {
             EntityRefusalKind::Profile.to_refusal(
                 "Failed to read entity profile",
                 json!({ "profile": profile, "error": error.to_string() }),
                 None,
             )
-        })?
+        })?;
+        if is_json_profile_path(profile) {
+            let projection = entity_profile_package_projection_from_bytes(&bytes)
+                .map_err(|error| error.to_refusal())?;
+            Ok(LoadedPrepareProfile {
+                document: projection.document,
+                content_hash: projection.package_digest,
+                prepare_mapping: Some(projection.prepare_mapping),
+                package: Some(projection.package),
+            })
+        } else {
+            let profile_source = String::from_utf8(bytes).map_err(|error| {
+                EntityRefusalKind::Profile.to_refusal(
+                    "Entity profile YAML is not UTF-8",
+                    json!({ "profile": profile, "error": error.to_string() }),
+                    None,
+                )
+            })?;
+            let document = EntityProfileDocument::from_yaml_str(&profile_source)
+                .map_err(|error| error.to_refusal())?;
+            Ok(LoadedPrepareProfile {
+                document,
+                content_hash: witness::hash_bytes(profile_source.as_bytes()),
+                prepare_mapping: None,
+                package: None,
+            })
+        }
     } else {
-        match profile {
+        let profile_source = match profile {
             "cmbs_tenant_label" => BUILTIN_CMBS_TENANT_LABEL_PROFILE.to_string(),
             "regab_firm_identity" => BUILTIN_REGAB_FIRM_IDENTITY_PROFILE.to_string(),
             _ => {
@@ -435,15 +472,36 @@ pub fn load_prepare_profile_with_hash(profile: &str) -> Result<LoadedPrepareProf
                     None,
                 ));
             }
-        }
-    };
+        };
 
-    let document = EntityProfileDocument::from_yaml_str(&profile_source)
-        .map_err(|error| error.to_refusal())?;
-    Ok(LoadedPrepareProfile {
-        document,
-        content_hash: witness::hash_bytes(profile_source.as_bytes()),
-    })
+        let document = EntityProfileDocument::from_yaml_str(&profile_source)
+            .map_err(|error| error.to_refusal())?;
+        Ok(LoadedPrepareProfile {
+            document,
+            content_hash: witness::hash_bytes(profile_source.as_bytes()),
+            prepare_mapping: None,
+            package: None,
+        })
+    }
+}
+
+fn is_json_profile_path(profile: &str) -> bool {
+    Path::new(profile)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
+}
+
+pub(crate) fn prepare_contract_for_loaded_profile(
+    loaded_profile: &LoadedPrepareProfile,
+) -> Result<PrepareInputContract, Refusal> {
+    let mut contract = if let Some(mapping) = loaded_profile.prepare_mapping.clone() {
+        PrepareInputContract::new(&loaded_profile.document, mapping)?
+    } else {
+        PrepareInputContract::for_builtin_profile(&loaded_profile.document)?
+    };
+    contract.profile.content_hash = Some(loaded_profile.content_hash.clone());
+    Ok(contract)
 }
 
 pub fn project_prepare_path(
@@ -519,12 +577,12 @@ pub fn run_prepare_v1_with_target_rows_per_chunk(
     target_rows_per_chunk: u64,
 ) -> Result<Value, Refusal> {
     let loaded_profile = load_prepare_profile_with_hash(request.profile)?;
-    let mut contract = PrepareInputContract::for_builtin_profile(&loaded_profile.document)?;
-    contract.profile.content_hash = Some(loaded_profile.content_hash);
+    let contract = prepare_contract_for_loaded_profile(&loaded_profile)?;
     let stream_output = stream_prepare_path(request.rows, &contract, target_rows_per_chunk)?;
     let observations = stream_output.observations;
     let registry_snapshot = load_prepare_registry_snapshot(request.registry)?;
-    let mut surfaces = prepare_surface_records(&observations)?;
+    let mut surfaces =
+        prepare_surface_records_for_loaded_profile(request.rows, &loaded_profile, &observations)?;
     assign_exact_lookups(&mut surfaces, request.registry, &registry_snapshot)?;
     let input = PrepareInputReference {
         row_count: u64::try_from(observations.len()).expect("observation count fits u64"),
@@ -568,12 +626,12 @@ pub fn run_prepare_with_target_rows_per_chunk(
     target_rows_per_chunk: u64,
 ) -> Result<PrepareRunArtifact, Refusal> {
     let loaded_profile = load_prepare_profile_with_hash(request.profile)?;
-    let mut contract = PrepareInputContract::for_builtin_profile(&loaded_profile.document)?;
-    contract.profile.content_hash = Some(loaded_profile.content_hash);
+    let contract = prepare_contract_for_loaded_profile(&loaded_profile)?;
     let stream_output = stream_prepare_path(request.rows, &contract, target_rows_per_chunk)?;
     let observations = stream_output.observations;
     let registry_snapshot = load_prepare_registry_snapshot(request.registry)?;
-    let mut surfaces = prepare_surface_records(&observations)?;
+    let mut surfaces =
+        prepare_surface_records_for_loaded_profile(request.rows, &loaded_profile, &observations)?;
     assign_exact_lookups(&mut surfaces, request.registry, &registry_snapshot)?;
     let input = PrepareInputReference {
         row_count: u64::try_from(observations.len()).expect("observation count fits u64"),
@@ -745,6 +803,198 @@ pub fn prepare_surface_records(
             .then_with(|| left.surface_key.cmp(&right.surface_key))
     });
     Ok(surfaces)
+}
+
+fn prepare_surface_records_for_loaded_profile(
+    rows: &Path,
+    loaded_profile: &LoadedPrepareProfile,
+    observations: &[PreparedInputObservation],
+) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
+    let Some(package) = loaded_profile.package.as_ref() else {
+        return prepare_surface_records(observations);
+    };
+    let execution =
+        execute_prepare_profile_package(rows, package, loaded_profile.content_hash.as_str())?;
+    prepare_surface_records_from_profile_execution(observations, &execution)
+}
+
+fn execute_prepare_profile_package(
+    rows: &Path,
+    package: &EntityProfilePackage,
+    expected_package_digest: &str,
+) -> Result<EntityProfilePackageExecution, Refusal> {
+    let rows_bytes = fs::read(rows).map_err(|error| {
+        EntityRefusalKind::InputContract.to_refusal(
+            "Failed to read entity profile package input rows",
+            json!({
+                "path": rows.display().to_string(),
+                "error": error.to_string()
+            }),
+            None,
+        )
+    })?;
+    let records_format = profile_record_format_for_path(rows)?;
+    let mode = package
+        .execution_modes
+        .iter()
+        .filter(|mode| {
+            mode.required_capabilities
+                .contains(&ProfileCapability::Prepare)
+        })
+        .max_by(|left, right| {
+            left.field_paths
+                .len()
+                .cmp(&right.field_paths.len())
+                .then_with(|| right.mode.cmp(&left.mode))
+        })
+        .ok_or_else(|| {
+            EntityRefusalKind::Profile.to_refusal(
+                "Entity profile package does not declare a prepare-capable mode",
+                json!({
+                    "profile": package.profile,
+                    "available_modes": package.execution_modes
+                        .iter()
+                        .map(|mode| format!("{:?}", mode.mode))
+                        .collect::<Vec<_>>()
+                }),
+                None,
+            )
+        })?;
+    let request = EntityProfilePackageRunRequest {
+        execution: EntityProfileExecutionRequest {
+            mode: mode.mode,
+            source_object_type: mode.source_object_type.clone(),
+            target_object_type: mode.target_object_type.clone(),
+            required_capabilities: vec![ProfileCapability::Prepare],
+            required_outputs: Vec::new(),
+        },
+        expected_package_digest: Some(expected_package_digest.to_string()),
+    };
+    profile_package::execute_profile_package_records(package, &rows_bytes, records_format, &request)
+        .map_err(profile_package_refusal)
+}
+
+fn profile_record_format_for_path(path: &Path) -> Result<EntityProfileRecordInputFormat, Refusal> {
+    match path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| extension.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("csv") => Ok(EntityProfileRecordInputFormat::Csv),
+        Some("jsonl" | "ndjson") => Ok(EntityProfileRecordInputFormat::Jsonl),
+        Some(extension) => Err(EntityRefusalKind::InputContract.to_refusal(
+            "Unsupported entity profile package input extension",
+            json!({
+                "path": path.display().to_string(),
+                "extension": extension
+            }),
+            None,
+        )),
+        None => Err(EntityRefusalKind::InputContract.to_refusal(
+            "Entity profile package input must declare a supported extension",
+            json!({ "path": path.display().to_string() }),
+            None,
+        )),
+    }
+}
+
+fn prepare_surface_records_from_profile_execution(
+    observations: &[PreparedInputObservation],
+    execution: &EntityProfilePackageExecution,
+) -> Result<Vec<PreparedSurfaceRecord>, Refusal> {
+    if observations.len() != execution.records.len() {
+        return Err(EntityRefusalKind::InputContract.to_refusal(
+            "Entity profile package execution row count does not match prepared observations",
+            json!({
+                "observations": observations.len(),
+                "execution_records": execution.records.len(),
+                "profile": execution.profile
+            }),
+            None,
+        ));
+    }
+
+    let mut groups: BTreeMap<String, PreparedSurfaceAccumulator> = BTreeMap::new();
+    for (observation, record) in observations.iter().zip(&execution.records) {
+        if record.object_type != execution.plan.mode.source_object_type {
+            return Err(EntityRefusalKind::Profile.to_refusal(
+                "Entity profile package execution record object type changed",
+                json!({
+                    "profile": execution.profile,
+                    "expected": execution.plan.mode.source_object_type,
+                    "actual": record.object_type,
+                    "ordinal": record.ordinal
+                }),
+                None,
+            ));
+        }
+        let canonical_value = record
+            .normalized_views
+            .get(&execution.canonical_view)
+            .ok_or_else(|| {
+                EntityRefusalKind::Profile.to_refusal(
+                    "Entity profile package execution did not emit its canonical view",
+                    json!({
+                        "profile": execution.profile,
+                        "canonical_view": execution.canonical_view,
+                        "ordinal": record.ordinal,
+                        "available_views": record.normalized_views.keys().collect::<Vec<_>>()
+                    }),
+                    None,
+                )
+            })?;
+        let normalized_views = record
+            .normalized_views
+            .iter()
+            .map(|(view_name, value)| {
+                let mut reason_codes = vec!["profile_package".to_string()];
+                if view_name == &execution.canonical_view {
+                    reason_codes.push("surface_id_view".to_string());
+                }
+                (
+                    view_name.clone(),
+                    PreparedNormalizedView {
+                        value: value.clone(),
+                        reason_codes,
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let surface_key = format!("{}:{canonical_value}", observation.profile_id);
+        let accumulator = groups.entry(surface_key.clone()).or_insert_with(|| {
+            PreparedSurfaceAccumulator::new(
+                observation.profile_id.clone(),
+                surface_key,
+                BTreeMap::new(),
+            )
+        });
+        accumulator.merge_normalized_views(normalized_views);
+        accumulator.push(observation);
+    }
+
+    let mut surfaces = groups
+        .into_values()
+        .map(PreparedSurfaceAccumulator::finish)
+        .collect::<Vec<_>>();
+    assign_surface_ids(&mut surfaces)?;
+    surfaces.sort_by(|left, right| {
+        left.surface_id
+            .cmp(&right.surface_id)
+            .then_with(|| left.surface_key.cmp(&right.surface_key))
+    });
+    Ok(surfaces)
+}
+
+fn profile_package_refusal(error: profile_package::ProfileError) -> Refusal {
+    EntityRefusalKind::Profile.to_refusal(
+        "Entity profile package execution failed",
+        json!({
+            "code": format!("{:?}", error.code),
+            "message": error.message
+        }),
+        None,
+    )
 }
 
 #[derive(Debug)]
@@ -1038,8 +1288,20 @@ fn exact_lookup_inputs(surface: &PreparedSurfaceRecord) -> Vec<String> {
 }
 
 fn surface_id_material(surface: &PreparedSurfaceRecord) -> Result<SurfaceIdMaterial, Refusal> {
-    let view_name = surface_id_view_name(&surface.profile_id);
-    let view = surface.normalized_views.get(view_name).ok_or_else(|| {
+    let view_name = marked_surface_id_view_name(surface)
+        .or_else(|| surface_id_view_name(&surface.profile_id).map(ToOwned::to_owned))
+        .ok_or_else(|| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Prepared surface for external profile must mark exactly one canonical normalized view",
+                json!({
+                    "profile_id": surface.profile_id,
+                    "surface_key": surface.surface_key,
+                    "available_views": surface.normalized_views.keys().collect::<Vec<_>>()
+                }),
+                None,
+            )
+        })?;
+    let view = surface.normalized_views.get(&view_name).ok_or_else(|| {
         EntityRefusalKind::ArtifactContract.to_refusal(
             "Prepared surface is missing the profile surface_id normalized view",
             json!({
@@ -1053,18 +1315,32 @@ fn surface_id_material(surface: &PreparedSurfaceRecord) -> Result<SurfaceIdMater
     })?;
     Ok(SurfaceIdMaterial::new(
         surface.profile_id.clone(),
-        view_name.to_string(),
+        view_name,
         view.value.clone(),
         surface.raw_variants.clone(),
     ))
 }
 
-fn surface_id_view_name(profile_id: &str) -> &'static str {
+fn surface_id_view_name(profile_id: &str) -> Option<&'static str> {
     match profile_id {
-        "cmbs_tenant_label" => "tenant_core",
-        "regab_firm_identity" => "firm_core",
-        _ => "core",
+        "cmbs_tenant_label" => Some("tenant_core"),
+        "regab_firm_identity" => Some("firm_core"),
+        _ => None,
     }
+}
+
+fn marked_surface_id_view_name(surface: &PreparedSurfaceRecord) -> Option<String> {
+    let mut candidates = surface
+        .normalized_views
+        .iter()
+        .filter(|(_, view)| {
+            view.reason_codes
+                .iter()
+                .any(|reason| reason == "surface_id_view")
+        })
+        .map(|(view_name, _)| view_name.clone());
+    let first = candidates.next()?;
+    candidates.next().is_none().then_some(first)
 }
 
 fn project_prepare_row(
@@ -1176,11 +1452,7 @@ fn core_view_value(
     profile_id: &str,
     views: &BTreeMap<String, PreparedNormalizedView>,
 ) -> Option<String> {
-    let view_name = match profile_id {
-        "cmbs_tenant_label" => "tenant_core",
-        "regab_firm_identity" => "firm_core",
-        _ => "core",
-    };
+    let view_name = surface_id_view_name(profile_id)?;
     views.get(view_name).map(|view| view.value.clone())
 }
 
@@ -1244,6 +1516,17 @@ fn validate_mapping(mapping: &PrepareFieldMapping) -> Result<(), Refusal> {
     ensure_unique_non_empty("primary_surface_fields", &mapping.primary_surface_fields)?;
     ensure_unique_non_empty("context_fields", &mapping.context_fields)?;
     ensure_unique_non_empty("provenance_fields", &mapping.provenance_fields)?;
+    if mapping
+        .canonical_surface_normalized_view
+        .as_ref()
+        .is_some_and(|view| view.trim().is_empty())
+    {
+        return Err(EntityRefusalKind::Profile.to_refusal(
+            "Prepare field mapping canonical normalized view must be non-empty",
+            json!({ "field": "canonical_surface_normalized_view" }),
+            None,
+        ));
+    }
 
     let mut anchor_namespaces = BTreeSet::new();
     let mut anchor_fields = BTreeSet::new();

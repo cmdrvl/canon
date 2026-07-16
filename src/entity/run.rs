@@ -16,17 +16,17 @@ use crate::{
         EntityArtifactStageV1, EntityDeterministicSummary, EntityStrategyReference,
         block::{
             BlockCandidateBudgetConfig, BlockCandidateBudgetObservation,
-            BlockCandidateGenerationRequest, BlockCandidateOperator, EntityBlockStageOutput,
-            EntityBlockStageRequest, EntityNativeBlockBudgetRefusalProof,
-            EntityNativeBlockScaleReport, ExactBucketBlockRequest, ExactBucketSurface,
-            NgramTopKBlockOperator, RareTokenOverlapBlockOperator, emit_exact_bucket_hyperedges,
-            generate_block_candidates, native_block_budget_refusal_proof,
-            native_block_scale_report,
+            BlockCandidateGenerationRequest, BlockCandidateHit, BlockCandidateOperator,
+            BlockCandidateRecord, EntityBlockStageOutput, EntityBlockStageRequest,
+            EntityNativeBlockBudgetRefusalProof, EntityNativeBlockScaleReport,
+            ExactBucketBlockRequest, ExactBucketSurface, NgramTopKBlockOperator,
+            RareTokenOverlapBlockOperator, emit_exact_bucket_hyperedges, generate_block_candidates,
+            native_block_budget_refusal_proof, native_block_scale_report,
         },
         block_artifact::{
             BlockCandidateArtifact, BlockCandidateArtifactRequest, ExactBucketAssertion,
-            ExactBucketProfile, ExactBucketUpstream, build_block_candidate_artifact_contract,
-            validate_block_candidate_artifact_contract,
+            ExactBucketProfile, ExactBucketUpstream, block_candidate_record_cmp,
+            build_block_candidate_artifact_contract, validate_block_candidate_artifact_contract,
             validate_block_candidate_artifact_envelope_contract,
             validate_block_candidate_payload_hashes,
         },
@@ -46,6 +46,7 @@ use crate::{
             ExactViewSupportRequest, StringSimilaritySupportRequest, exact_view_support_hit,
             string_similarity_support_hit,
         },
+        evidence_ir::{CANON_EVIDENCE_VERSION, canonical_bundle_bytes},
         graph::{SignedEvidenceGraphInput, SurfaceIncumbentId, build_signed_evidence_graph},
         index::ngram_index::{EntityNgramBuildConfig, EntityNgramIndex, EntityNgramSurface},
         index::{
@@ -60,10 +61,30 @@ use crate::{
         postings::{EntityPostingBuildConfig, EntityPostingIndex, EntityPostingSurface},
         prepare::{
             DEFAULT_PREPARE_ROWS_PER_CHUNK, LoadedPrepareProfile, PrepareRunArtifact,
-            PrepareRunRequest, PreparedExactLookupStatus, PreparedSurfaceRecord,
-            load_prepare_profile_with_hash, run_prepare_v1_with_target_rows_per_chunk,
+            PrepareRunRequest, PreparedExactLookupStatus, PreparedInputObservation,
+            PreparedSurfaceRecord, load_prepare_profile_with_hash,
+            prepare_contract_for_loaded_profile, project_prepare_path,
+            run_prepare_v1_with_target_rows_per_chunk,
         },
         profile::{EntityOperatorSpec, EntityProfileDocument},
+        publication::{
+            CANON_ENTITY_STAGE_PUBLICATION_VERSION, EntityPublicationError,
+            EntityPublicationErrorKind, EntityPublicationFileInput, EntityPublicationOutcome,
+            EntityPublicationReceipt, EntityPublicationRequest, EntityPublicationUpstreamRef,
+            open_current_stream_generation, publish_stream_patch,
+        },
+        record_link::{
+            ASSIGNMENT_ALIGNMENT_PATH, ASSIGNMENT_ALIGNMENT_VERSION,
+            AssignmentAlignmentDecisionKind, AssignmentAlignmentPolicy,
+            RECORD_LINK_CANDIDATE_SET_VERSION, RecordLinkCandidateConfig,
+            RecordLinkCandidateRequest, RecordLinkCandidateSet, RecordLinkCoreError,
+            RecordLinkEdgeHit, RecordLinkEvidenceRequest, RecordLinkFeaturePolicy,
+            RecordLinkInputSet, RecordLinkLoadRequest, RecordLinkSurfaceBindingInput,
+            bind_record_link_surfaces, build_record_link_evidence,
+            canonical_assignment_alignment_bytes, canonical_record_link_candidate_set_bytes,
+            generate_record_link_candidates, load_record_link_inputs,
+            validate_record_link_candidate_set,
+        },
         schema::{
             entity_v1_artifact_reference, entity_v1_contract_for_stage,
             entity_v1_lifecycle_metadata_from_source, finalize_entity_v1_self_hash,
@@ -72,9 +93,10 @@ use crate::{
         },
         score::{ScoreLane, ScoreUnits},
         solve::{
-            EntitySolveStageOutput, EntitySolveStageRequest, SolveArtifact, SolveArtifactRequest,
+            EntitySolveStageOutput, EntitySolveStageRequest, SolveAliasProposalSurface,
+            SolveAliasProposalSurfaceStatus, SolveArtifact, SolveArtifactRequest,
             SolveDiagnosticsReport, SolveReconciliationConfig, SolveSurfaceProvenance,
-            build_solve_artifact_contract, build_solve_diagnostics,
+            build_solve_artifact_contract_with_alias_proposals, build_solve_diagnostics,
             validate_solve_artifact_contract,
         },
         tfidf_evidence::{TfidfCosineSupportRequest, tfidf_cosine_support_hit},
@@ -91,7 +113,7 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::{Component, Path},
+    path::{Component, Path, PathBuf},
 };
 
 #[path = "link.rs"]
@@ -102,13 +124,112 @@ const BLOCK_ARTIFACT_PATH: &str = "block/block.json";
 const BLOCK_CANDIDATES_PATH: &str = "block/candidates.jsonl";
 const BLOCK_DIAGNOSTICS_PATH: &str = "block/diagnostics.json";
 const BLOCK_EXACT_BUCKETS_PATH: &str = "block/exact_buckets.jsonl";
+const RECORD_LINK_CANDIDATES_PATH: &str = "block/record_link_candidates.json";
+const RECORD_LINK_EVIDENCE_PATH: &str = "evidence/record_link_evidence.json";
 const EDGE_ARTIFACT_PATH: &str = "evidence/evidence.json";
 const EDGE_RECORDS_PATH: &str = "evidence/evidence.jsonl";
 const SOLVE_ARTIFACT_PATH: &str = "solve/solve.json";
 const DECISION_LEDGER_PATH: &str = "solve/decision_ledger.jsonl";
 const RUN_MANIFEST_PATH: &str = "run/manifest.json";
 const RUN_ARTIFACT_PATH: &str = "run/run.json";
+const LINK_MATERIALIZED_ROWS_PUBLICATION_PATH: &str = "link/combined_rows.csv";
+const LINK_ASSIGNMENT_ALIGNMENT_PUBLICATION_PATH: &str = "link/assignment_alignment.json";
+const LINK_OBSERVATION_SURFACE_BINDINGS_PUBLICATION_PATH: &str =
+    "link/observation_surface_bindings.jsonl";
+const LINK_ARTIFACT_PUBLICATION_PATH: &str = "link/link.json";
 pub const RUN_CACHE_EXECUTION_RECEIPT_PATH: &str = "run/cache_execution_receipt.json";
+pub const ENTITY_RUN_PUBLICATION_STREAM_ID: &str = "entity-run-stage-set";
+const RUN_PUBLICATION_STREAM_ID: &str = ENTITY_RUN_PUBLICATION_STREAM_ID;
+const RUN_PUBLICATION_REQUEST_VERSION: &str = "canon_entity_run_publication_request.v1";
+
+pub fn read_entity_run_committed_publication_logical_bytes(
+    work_dir: &Path,
+    logical_path: &str,
+) -> Result<Option<Vec<u8>>, Refusal> {
+    read_entity_run_committed_publication_logical_bytes_inner(work_dir, logical_path, None, None)
+}
+
+pub fn read_entity_run_committed_publication_stable_path_bytes(
+    work_dir: &Path,
+    path: &Path,
+) -> Result<Option<Vec<u8>>, Refusal> {
+    let logical_path = entity_run_publication_logical_path_for_stable_path(work_dir, path)?;
+    read_entity_run_committed_publication_logical_bytes(work_dir, logical_path)
+}
+
+pub fn publish_entity_run_link_publication_patch(
+    work_dir: &Path,
+    expected_parent_generation_id: &str,
+    upstream_artifacts: Vec<EntityArtifactReference>,
+    files: Vec<EntityPublicationFileInput>,
+) -> Result<EntityRunPublicationResult, Refusal> {
+    let current = open_current_stream_generation(work_dir, ENTITY_RUN_PUBLICATION_STREAM_ID)
+        .map_err(|error| {
+            publication_refusal_with_next_command(
+                error,
+                Some("Use canon entity link to regenerate link/link.json".to_string()),
+            )
+        })?;
+    if current.generation_id != expected_parent_generation_id {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity link publication parent no longer matches the validated run generation",
+            json!({
+                "stage": "link",
+                "publication_stage": "entity_run_stage_set",
+                "stream_id": ENTITY_RUN_PUBLICATION_STREAM_ID,
+                "expected_generation_id": expected_parent_generation_id,
+                "actual_generation_id": current.generation_id,
+                "committed": true,
+                "writes_performed": false
+            }),
+            Some("Use canon entity link to regenerate link/link.json".to_string()),
+        ));
+    }
+    for logical_path in [RUN_ARTIFACT_PATH, SOLVE_ARTIFACT_PATH] {
+        if current.read_logical_file(logical_path).is_none() {
+            return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+                "Entity link publication parent is missing a required run-stage artifact",
+                json!({
+                    "stage": "link",
+                    "publication_stage": "entity_run_stage_set",
+                    "stream_id": ENTITY_RUN_PUBLICATION_STREAM_ID,
+                    "generation_id": current.generation_id,
+                    "logical_path": logical_path,
+                    "writes_performed": false
+                }),
+                Some("Use canon entity link to regenerate link/link.json".to_string()),
+            ));
+        }
+    }
+    let mut publication_upstreams = upstream_artifacts
+        .into_iter()
+        .map(|reference| publication_upstream_ref(reference.version, reference.content_hash))
+        .collect::<Vec<_>>();
+    let parent_generation_id = current.generation_id.clone();
+    publication_upstreams.push(publication_upstream_ref(
+        CANON_ENTITY_STAGE_PUBLICATION_VERSION,
+        parent_generation_id.clone(),
+    ));
+    let publication = publish_stage_generation_at_work_dir(
+        work_dir,
+        Some("Use canon entity link to regenerate link/link.json".to_string()),
+        Some(parent_generation_id),
+        EntityRunPublicationCacheInput {
+            mode: &current.manifest.cache_mode,
+            status: &current.manifest.cache_status,
+            receipt_hash: &current.manifest.cache_receipt_hash,
+        },
+        publication_upstreams,
+        &files,
+    )?;
+    mirror_publication_files_at_work_dir(
+        work_dir,
+        Some("Use canon entity link to regenerate link/link.json".to_string()),
+        &publication,
+        &files,
+    )?;
+    Ok(publication)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EntityRunRequest<'a> {
@@ -145,6 +266,19 @@ pub struct EntityRunResult {
     pub artifact: EntityRunArtifact,
     pub artifact_value: Value,
     pub candidate_pairs: u64,
+    pub publication: EntityRunPublicationResult,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityRunPublicationResult {
+    pub stream_id: String,
+    pub generation_id: String,
+    pub outcome: String,
+    pub writes_performed: bool,
+    pub committed: Option<bool>,
+    pub manifest_path: String,
+    pub commit_marker_path: String,
+    pub object_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -240,6 +374,47 @@ struct BaseStrategyReference {
     id: String,
     version: String,
     content_hash: String,
+    record_link: Option<RecordLinkRuntimeConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RecordLinkRuntimeConfig {
+    input_paths: Vec<PathBuf>,
+    candidate_config: RecordLinkCandidateConfig,
+    assignment_alignment: AssignmentAlignmentPolicy,
+    assignment_hint_score_units: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RecordLinkBlockRun {
+    input_set: RecordLinkInputSet,
+    candidate_set: RecordLinkCandidateSet,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RecordLinkEvidenceRun {
+    evidence_bytes: Vec<u8>,
+    alignment_bytes: Vec<u8>,
+    edge_hits: BTreeMap<(String, String), Vec<RecordLinkEdgeHit>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RecordLinkStrategySection {
+    inputs: Vec<RecordLinkStrategyInput>,
+    operator_id: Option<String>,
+    max_candidates_per_record: usize,
+    max_candidate_pairs: usize,
+    max_pair_comparisons: usize,
+    #[serde(default)]
+    require_unique_best_per_record: Option<bool>,
+    feature_policies: Vec<RecordLinkFeaturePolicy>,
+    assignment_alignment: AssignmentAlignmentPolicy,
+    assignment_hint_score_units: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct RecordLinkStrategyInput {
+    path: PathBuf,
 }
 
 pub fn run_entity_workbench(request: EntityRunRequest<'_>) -> Result<EntityRunResult, Refusal> {
@@ -304,20 +479,21 @@ pub fn run_entity_workbench_with_batching_and_cache_mode(
         cache_mode,
     )
     .map_err(|refusal| with_run_context(refusal, "index", request))?;
-    let block = build_and_write_block(request, &base_strategy, &index, &surfaces)
+    let block = build_and_write_block(request, &base_strategy, &index, &surfaces, false)
         .map_err(|refusal| with_run_context(refusal, "block", request))?;
-    let (edge, edge_value, edge_records) =
-        build_and_write_edge(request, &base_strategy, &block, &surfaces)
+    let (edge, edge_value, edge_records, edge_files) =
+        build_and_write_edge(request, &base_strategy, &block, &surfaces, false)
             .map_err(|refusal| with_run_context(refusal, "evidence", request))?;
-    let (solve, solve_value) = build_and_write_solve(
-        request,
-        &base_strategy,
-        &edge,
-        &edge_value,
-        &edge_records,
-        &surfaces,
-    )
-    .map_err(|refusal| with_run_context(refusal, "solve", request))?;
+    let solve_input = SolveStageInput {
+        edge: &edge,
+        edge_value: &edge_value,
+        edge_records: &edge_records,
+        exact_buckets: &block.exact_buckets,
+        surfaces: &surfaces,
+    };
+    let (solve, solve_value, solve_files) =
+        build_and_write_solve(request, &base_strategy, solve_input, false)
+            .map_err(|refusal| with_run_context(refusal, "solve", request))?;
 
     let (artifact, artifact_value) = run_artifact(
         request,
@@ -333,18 +509,26 @@ pub fn run_entity_workbench_with_batching_and_cache_mode(
         &solve,
         &solve_value,
     )?;
-    write_json_file(
-        &request.work_dir.join(RUN_MANIFEST_PATH),
-        &run_manifest(&artifact),
+    let mut publication_files = Vec::new();
+    publication_files.extend(block.publication_files.clone());
+    publication_files.extend(edge_files);
+    publication_files.extend(solve_files);
+    publication_files.extend(run_publication_files(&artifact, &artifact_value)?);
+    let publication = publish_run_stage_generation(
+        request,
+        &index,
+        &artifact.stage_artifacts,
+        &publication_files,
     )
     .map_err(|refusal| with_run_context(refusal, "run", request))?;
-    write_json_file(&request.work_dir.join(RUN_ARTIFACT_PATH), &artifact_value)
+    mirror_publication_files(request, &publication, &publication_files)
         .map_err(|refusal| with_run_context(refusal, "run", request))?;
 
     Ok(EntityRunResult {
         candidate_pairs: block.artifact.summary.counts["candidate_pairs"],
         artifact,
         artifact_value,
+        publication,
     })
 }
 
@@ -387,7 +571,7 @@ pub fn run_entity_block_stage_with_batching(
         EntityIndexCacheMode::Enabled,
     )
     .map_err(|refusal| with_run_context(refusal, "index", run_request))?;
-    let block = build_and_write_block(run_request, &base_strategy, &index, &surfaces)
+    let block = build_and_write_block(run_request, &base_strategy, &index, &surfaces, true)
         .map_err(|refusal| with_run_context(refusal, "block", run_request))?;
 
     Ok(EntityBlockStageOutput {
@@ -444,8 +628,8 @@ pub fn run_entity_evidence_stage_with_batching(
         request.candidates,
     )
     .map_err(|refusal| with_run_context(refusal, "block", run_request))?;
-    let (artifact, _artifact_value, records) =
-        build_and_write_edge(run_request, &base_strategy, &block, &surfaces)
+    let (artifact, _artifact_value, records, _edge_files) =
+        build_and_write_edge(run_request, &base_strategy, &block, &surfaces, true)
             .map_err(|refusal| with_run_context(refusal, "evidence", run_request))?;
 
     Ok(EntityEvidenceStageOutput {
@@ -486,18 +670,19 @@ pub fn run_entity_solve_stage_with_batching(
     )?;
     let surfaces = read_surfaces(run_request.work_dir, &prepare)
         .map_err(|refusal| with_run_context(refusal, "prepare", run_request))?;
-    let (edge, edge_value, edge_records) =
+    let (edge, edge_value, edge_records, exact_buckets) =
         read_edge_stage_from_artifact(run_request, &base_strategy, &prepare, request.evidence)
             .map_err(|refusal| with_run_context(refusal, "evidence", run_request))?;
-    let (solve, _solve_value) = build_and_write_solve(
-        run_request,
-        &base_strategy,
-        &edge,
-        &edge_value,
-        &edge_records,
-        &surfaces,
-    )
-    .map_err(|refusal| with_run_context(refusal, "solve", run_request))?;
+    let solve_input = SolveStageInput {
+        edge: &edge,
+        edge_value: &edge_value,
+        edge_records: &edge_records,
+        exact_buckets: &exact_buckets,
+        surfaces: &surfaces,
+    };
+    let (solve, _solve_value, _solve_files) =
+        build_and_write_solve(run_request, &base_strategy, solve_input, true)
+            .map_err(|refusal| with_run_context(refusal, "solve", run_request))?;
 
     Ok(EntitySolveStageOutput { artifact: solve })
 }
@@ -1359,12 +1544,25 @@ fn read_block_stage_from_artifact(
         "exact_bucket_assertions_path",
         "block",
     )?;
-    let candidates: Vec<crate::entity::block::BlockCandidateRecord> =
-        read_jsonl_file(&candidate_records_path, "block candidate records")?;
+    let candidates: Vec<crate::entity::block::BlockCandidateRecord> = read_logical_jsonl_file(
+        request,
+        &artifact.candidate_records_path,
+        &candidate_records_path,
+        "block candidate records",
+    )?;
     let diagnostics: crate::entity::block::BlockCandidateGenerationDiagnostics =
-        read_json_file(&candidate_diagnostics_path, "block candidate diagnostics")?;
-    let exact_buckets: Vec<ExactBucketAssertion> =
-        read_jsonl_file(&exact_buckets_path, "exact bucket assertions")?;
+        read_logical_json_file(
+            request,
+            &artifact.candidate_diagnostics_path,
+            &candidate_diagnostics_path,
+            "block candidate diagnostics",
+        )?;
+    let exact_buckets: Vec<ExactBucketAssertion> = read_logical_jsonl_file(
+        request,
+        BLOCK_EXACT_BUCKETS_PATH,
+        &exact_buckets_path,
+        "exact bucket assertions",
+    )?;
     validate_block_candidate_payload_hashes(&artifact, &candidates, &diagnostics, &exact_buckets)?;
     validate_block_payload_surfaces(&candidates, &exact_buckets, surfaces)?;
 
@@ -1373,6 +1571,9 @@ fn read_block_stage_from_artifact(
         artifact_value,
         candidates,
         exact_buckets,
+        record_link_candidate_set: read_record_link_candidate_set(request, base_strategy)?,
+        publication_context: read_cache_execution_receipt_context(request)?,
+        publication_files: Vec::new(),
     })
 }
 
@@ -1381,7 +1582,15 @@ fn read_edge_stage_from_artifact(
     base_strategy: &BaseStrategyReference,
     prepare: &PrepareRunArtifact,
     edge_artifact_path: &Path,
-) -> Result<(EdgeEvidenceArtifact, Value, Vec<EdgeEvidenceRecord>), Refusal> {
+) -> Result<
+    (
+        EdgeEvidenceArtifact,
+        Value,
+        Vec<EdgeEvidenceRecord>,
+        Vec<ExactBucketAssertion>,
+    ),
+    Refusal,
+> {
     let artifact_value: Value = read_json_file(edge_artifact_path, "evidence artifact")?;
     let contract = validate_artifact_v1_core_contract(&artifact_value)?;
     if contract.stage != EntityArtifactStageV1::Evidence {
@@ -1418,13 +1627,21 @@ fn read_edge_stage_from_artifact(
         "exact_bucket_assertions_path",
         "evidence",
     )?;
-    let edge_records: Vec<EdgeEvidenceRecord> =
-        read_jsonl_file(&edge_records_path, "evidence records")?;
-    let exact_buckets: Vec<ExactBucketAssertion> =
-        read_jsonl_file(&exact_buckets_path, "exact bucket assertions")?;
+    let edge_records: Vec<EdgeEvidenceRecord> = read_logical_jsonl_file(
+        request,
+        &artifact.edge_records_path,
+        &edge_records_path,
+        "evidence records",
+    )?;
+    let exact_buckets: Vec<ExactBucketAssertion> = read_logical_jsonl_file(
+        request,
+        BLOCK_EXACT_BUCKETS_PATH,
+        &exact_buckets_path,
+        "exact bucket assertions",
+    )?;
     validate_edge_evidence_payload_hashes(&artifact, &edge_records, &exact_buckets)?;
 
-    Ok((artifact, artifact_value, edge_records))
+    Ok((artifact, artifact_value, edge_records, exact_buckets))
 }
 
 fn validate_stage_metadata_context(
@@ -1848,11 +2065,55 @@ fn write_cache_execution_receipt(
     })
 }
 
+fn index_publication_context(index: &EntityIndexRun) -> EntityRunPublicationContext {
+    EntityRunPublicationContext {
+        cache_mode: index.cache_mode,
+        cache_status: index.cache_status,
+        cache_receipt_hash: index.cache_execution_receipt_content_hash.clone(),
+    }
+}
+
+fn read_cache_execution_receipt_context(
+    request: EntityRunRequest<'_>,
+) -> Result<EntityRunPublicationContext, Refusal> {
+    let execution_path = request.work_dir.join(RUN_CACHE_EXECUTION_RECEIPT_PATH);
+    let receipt: EntityIndexCacheReceipt =
+        read_json_file(&execution_path, "entity run cache execution receipt")?;
+    let cache_receipt_hash = witness::hash_file(&execution_path).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to hash entity run cache execution receipt",
+            json!({
+                "stage": "index",
+                "path": execution_path.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some(next_run_command(request)),
+        )
+    })?;
+    Ok(EntityRunPublicationContext {
+        cache_mode: receipt.mode,
+        cache_status: receipt.status,
+        cache_receipt_hash,
+    })
+}
+
+fn publication_upstream_ref(
+    version: impl Into<String>,
+    content_hash: impl Into<String>,
+) -> EntityPublicationUpstreamRef {
+    EntityPublicationUpstreamRef {
+        version: version.into(),
+        content_hash: content_hash.into(),
+    }
+}
+
 fn build_and_write_block(
     request: EntityRunRequest<'_>,
     base_strategy: &BaseStrategyReference,
     index: &EntityIndexRun,
     surfaces: &[PreparedSurfaceRecord],
+    mirror_stable_paths: bool,
 ) -> Result<EntityBlockRun, Refusal> {
     let strategy = stage_strategy(base_strategy, "block");
     let mut result = generate_block_candidates(BlockCandidateGenerationRequest {
@@ -1878,6 +2139,28 @@ fn build_and_write_block(
     })?;
     for candidate in &mut result.candidates {
         candidate.version = CANON_ENTITY_BLOCK_VERSION_V1.to_string();
+    }
+    let record_link = build_record_link_block_run(request, base_strategy, index, surfaces)?;
+    if let Some(record_link) = &record_link {
+        merge_block_candidates(
+            &mut result.candidates,
+            record_link_block_candidates(record_link)?,
+        );
+        result.diagnostics.candidate_record_count = result.candidates.len() as u64;
+        result.diagnostics.candidate_pairs_emitted = result.candidates.len() as u64;
+        result.diagnostics.max_candidates_for_operator = result
+            .diagnostics
+            .max_candidates_for_operator
+            .max(record_link.candidate_set.candidates.len() as u64);
+        result
+            .diagnostics
+            .operator_yield
+            .push(crate::entity::block::BlockOperatorYield {
+                operator_id: record_link_block_operator_id(record_link),
+                emitted_candidate_count: record_link.candidate_set.candidates.len() as u64,
+                suppressed_candidate_count: record_link.candidate_set.abstentions.len() as u64,
+                large_posting_suppressed_count: 0,
+            });
     }
     let exact_bucket_result = emit_exact_bucket_hyperedges(ExactBucketBlockRequest {
         profile: exact_bucket_profile(&index.artifact.metadata),
@@ -1939,26 +2222,286 @@ fn build_and_write_block(
         stage_strategy(base_strategy, "block"),
         artifact_reference_chain(&index.artifact_value)?,
     )?;
-    write_jsonl_file(
-        &request.work_dir.join(BLOCK_CANDIDATES_PATH),
+    let mut publication_files = vec![jsonl_publication_file(
+        BLOCK_CANDIDATES_PATH,
+        "block",
+        CANON_ENTITY_BLOCK_VERSION_V1,
         &result.candidates,
-    )?;
-    write_json_file(
-        &request.work_dir.join(BLOCK_DIAGNOSTICS_PATH),
+    )?];
+    if let Some(record_link) = &record_link {
+        let bytes = canonical_record_link_candidate_set_bytes(&record_link.candidate_set)
+            .map_err(|error| record_link_refusal(error, "block", request))?;
+        publication_files.push(EntityPublicationFileInput::new(
+            RECORD_LINK_CANDIDATES_PATH,
+            "block",
+            RECORD_LINK_CANDIDATE_SET_VERSION,
+            bytes,
+        ));
+    }
+    publication_files.push(json_publication_file(
+        BLOCK_DIAGNOSTICS_PATH,
+        "block",
+        CANON_ENTITY_BLOCK_VERSION_V1,
         &result.diagnostics,
-    )?;
-    write_jsonl_file(
-        &request.work_dir.join(BLOCK_EXACT_BUCKETS_PATH),
+    )?);
+    publication_files.push(jsonl_publication_file(
+        BLOCK_EXACT_BUCKETS_PATH,
+        "block",
+        CANON_ENTITY_BLOCK_VERSION_V1,
         &exact_bucket_result.assertions,
-    )?;
-    write_json_file(&request.work_dir.join(BLOCK_ARTIFACT_PATH), &artifact_value)?;
+    )?);
+    publication_files.push(json_publication_file(
+        BLOCK_ARTIFACT_PATH,
+        "block",
+        CANON_ENTITY_BLOCK_VERSION_V1,
+        &artifact_value,
+    )?);
+    let publication_context = index_publication_context(index);
+    if mirror_stable_paths {
+        let publication = publish_manual_stage_generation(
+            request,
+            &publication_context,
+            vec![
+                publication_upstream_ref(
+                    CANON_ENTITY_INDEX_VERSION_V1,
+                    index.artifact.artifact_content_hash.clone(),
+                ),
+                publication_upstream_ref(
+                    CANON_ENTITY_INDEX_CACHE_RECEIPT_VERSION,
+                    index.cache_execution_receipt_content_hash.clone(),
+                ),
+            ],
+            &publication_files,
+        )?;
+        mirror_publication_files(request, &publication, &publication_files)?;
+    }
 
     Ok(EntityBlockRun {
         artifact,
         artifact_value,
         candidates: result.candidates,
         exact_buckets: exact_bucket_result.assertions,
+        record_link_candidate_set: record_link.map(|record_link| record_link.candidate_set),
+        publication_context,
+        publication_files,
     })
+}
+
+fn build_record_link_block_run(
+    request: EntityRunRequest<'_>,
+    base_strategy: &BaseStrategyReference,
+    index: &EntityIndexRun,
+    surfaces: &[PreparedSurfaceRecord],
+) -> Result<Option<RecordLinkBlockRun>, Refusal> {
+    let Some(config) = &base_strategy.record_link else {
+        return Ok(None);
+    };
+    let input_set = load_record_link_inputs(RecordLinkLoadRequest {
+        workspace_root: strategy_workspace_root(request.strategy),
+        sidecar_paths: config.input_paths.clone(),
+        expected_profile_id: Some(index.artifact.metadata.profile.id.clone()),
+        expected_profile_digest: index.artifact.metadata.profile.content_hash.clone(),
+        expected_scope_id: None,
+    })
+    .map_err(|error| record_link_refusal(error, "block", request))?;
+    let loaded_profile = load_prepare_profile_with_hash(request.profile)?;
+    if index.artifact.metadata.profile.content_hash != Some(loaded_profile.content_hash.clone()) {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Record-link binding replay profile no longer matches the indexed prepare profile",
+            json!({
+                "stage": "block",
+                "field": "profile.content_hash",
+                "expected": index.artifact.metadata.profile.content_hash.clone(),
+                "actual": loaded_profile.content_hash.clone(),
+                "writes_performed": false
+            }),
+            Some(next_run_command(request)),
+        ));
+    }
+    let prepare_contract = prepare_contract_for_loaded_profile(&loaded_profile)?;
+    let observations = project_prepare_path(request.rows, &prepare_contract)?;
+    let surface_index = bind_record_link_surfaces(
+        &input_set,
+        &record_link_surface_bindings(&observations, surfaces),
+        "block",
+    )
+    .map_err(|error| record_link_refusal(error, "block", request))?;
+    let candidate_set = generate_record_link_candidates(RecordLinkCandidateRequest {
+        input_set: &input_set,
+        surface_index: &surface_index,
+        config: config.candidate_config.clone(),
+    })
+    .map_err(|error| record_link_refusal(error, "block", request))?;
+    Ok(Some(RecordLinkBlockRun {
+        input_set,
+        candidate_set,
+    }))
+}
+
+fn record_link_block_candidates(
+    record_link: &RecordLinkBlockRun,
+) -> Result<Vec<BlockCandidateRecord>, Refusal> {
+    record_link
+        .candidate_set
+        .candidates
+        .iter()
+        .filter(|candidate| candidate.left.surface_id != candidate.right.surface_id)
+        .map(|candidate| {
+            let (left_surface_id, right_surface_id) =
+                ordered_surface_pair(&candidate.left.surface_id, &candidate.right.surface_id);
+            let score_units = u32::try_from(candidate.score_hint_units).unwrap_or(u32::MAX);
+            Ok(BlockCandidateRecord {
+                version: CANON_ENTITY_BLOCK_VERSION_V1.to_string(),
+                left_surface_id,
+                right_surface_id,
+                block_hits: vec![BlockCandidateHit {
+                    operator_id: format!(
+                        "record_link:{}:{}",
+                        record_link.candidate_set.content_hash, candidate.candidate_id
+                    ),
+                    rank: Some(1),
+                    score_units,
+                }],
+                candidate_score_hint: score_units,
+            })
+        })
+        .collect()
+}
+
+fn merge_block_candidates(
+    candidates: &mut Vec<BlockCandidateRecord>,
+    record_link_candidates: Vec<BlockCandidateRecord>,
+) {
+    let mut by_pair = BTreeMap::<(String, String), BlockCandidateRecord>::new();
+    for candidate in candidates.drain(..).chain(record_link_candidates) {
+        let key = (
+            candidate.left_surface_id.clone(),
+            candidate.right_surface_id.clone(),
+        );
+        by_pair
+            .entry(key)
+            .and_modify(|existing| {
+                existing.block_hits.extend(candidate.block_hits.clone());
+                existing.block_hits.sort_by(|left, right| {
+                    left.operator_id
+                        .cmp(&right.operator_id)
+                        .then_with(|| left.rank.cmp(&right.rank))
+                });
+                existing
+                    .block_hits
+                    .dedup_by(|left, right| left.operator_id == right.operator_id);
+                existing.candidate_score_hint = existing
+                    .block_hits
+                    .iter()
+                    .map(|hit| hit.score_units)
+                    .max()
+                    .unwrap_or_default();
+            })
+            .or_insert(candidate);
+    }
+    candidates.extend(by_pair.into_values());
+    candidates.sort_by(block_candidate_record_cmp);
+}
+
+fn record_link_block_operator_id(record_link: &RecordLinkBlockRun) -> String {
+    format!("record_link:{}", record_link.candidate_set.content_hash)
+}
+
+fn record_link_surface_bindings(
+    observations: &[PreparedInputObservation],
+    surfaces: &[PreparedSurfaceRecord],
+) -> Vec<RecordLinkSurfaceBindingInput> {
+    let mut surface_ids_by_primary_surface = BTreeMap::<(String, String), BTreeSet<String>>::new();
+    for surface in surfaces {
+        for raw_variant in &surface.raw_variants {
+            if !raw_variant.trim().is_empty() {
+                surface_ids_by_primary_surface
+                    .entry((surface.profile_id.clone(), raw_variant.clone()))
+                    .or_default()
+                    .insert(surface.surface_id.clone());
+            }
+        }
+    }
+
+    let mut record_keys_by_surface_source = BTreeMap::<(String, String), BTreeSet<String>>::new();
+    for observation in observations {
+        let Some(source_row_id) = observation
+            .provenance
+            .get("source_row_id")
+            .filter(|source_row_id| !source_row_id.trim().is_empty())
+        else {
+            continue;
+        };
+        let source_id = observation
+            .provenance
+            .get("source_system")
+            .filter(|source_id| !source_id.trim().is_empty())
+            .cloned()
+            .unwrap_or_else(|| "source".to_string());
+        let key = (
+            observation.profile_id.clone(),
+            observation.primary_surface.value.clone(),
+        );
+        let Some(surface_ids) = surface_ids_by_primary_surface.get(&key) else {
+            continue;
+        };
+        for surface_id in surface_ids {
+            record_keys_by_surface_source
+                .entry((surface_id.clone(), source_id.clone()))
+                .or_default()
+                .insert(source_row_id.clone());
+        }
+    }
+
+    record_keys_by_surface_source
+        .into_iter()
+        .map(
+            |((surface_id, source_id), source_row_ids)| RecordLinkSurfaceBindingInput {
+                source_id,
+                surface_id,
+                source_row_ids: source_row_ids.into_iter().collect(),
+            },
+        )
+        .collect()
+}
+
+fn strategy_workspace_root(strategy: &Path) -> &Path {
+    strategy.parent().unwrap_or_else(|| Path::new("."))
+}
+
+fn ordered_surface_pair(left: &str, right: &str) -> (String, String) {
+    if left <= right {
+        (left.to_string(), right.to_string())
+    } else {
+        (right.to_string(), left.to_string())
+    }
+}
+
+fn record_link_refusal(
+    error: RecordLinkCoreError,
+    stage: &'static str,
+    request: EntityRunRequest<'_>,
+) -> Refusal {
+    let kind = match error.code {
+        crate::entity::record_link::RecordLinkCoreErrorCode::Io => EntityRefusalKind::IoBudget,
+        crate::entity::record_link::RecordLinkCoreErrorCode::Budget => {
+            EntityRefusalKind::CandidateBudget
+        }
+        crate::entity::record_link::RecordLinkCoreErrorCode::ArtifactContract
+        | crate::entity::record_link::RecordLinkCoreErrorCode::Path => {
+            EntityRefusalKind::ArtifactContract
+        }
+    };
+    kind.to_refusal(
+        error.message,
+        json!({
+            "stage": stage,
+            "record_link_stage": error.stage,
+            "reason": error.reason,
+            "writes_performed": false
+        }),
+        Some(next_run_command(request)),
+    )
 }
 
 fn build_and_write_edge(
@@ -1966,7 +2509,16 @@ fn build_and_write_edge(
     base_strategy: &BaseStrategyReference,
     block: &EntityBlockRun,
     surfaces: &[PreparedSurfaceRecord],
-) -> Result<(EdgeEvidenceArtifact, Value, Vec<EdgeEvidenceRecord>), Refusal> {
+    mirror_stable_paths: bool,
+) -> Result<
+    (
+        EdgeEvidenceArtifact,
+        Value,
+        Vec<EdgeEvidenceRecord>,
+        Vec<EntityPublicationFileInput>,
+    ),
+    Refusal,
+> {
     let strategy = stage_strategy(base_strategy, "evidence");
     let loaded_profile = load_prepare_profile_with_hash(request.profile)?;
     validate_edge_profile_binding(&loaded_profile, &block.artifact.metadata.profile)?;
@@ -1995,6 +2547,18 @@ fn build_and_write_edge(
         .iter()
         .map(|candidate| edge_record_for_candidate(candidate, &scoring_context))
         .collect::<Result<Vec<_>, _>>()?;
+    let record_link_evidence = build_record_link_evidence_run(request, base_strategy, block)?;
+    if let Some(record_link_evidence) = &record_link_evidence {
+        merge_record_link_edge_hits(
+            &mut edge_records,
+            &record_link_evidence.edge_hits,
+            base_strategy
+                .record_link
+                .as_ref()
+                .map(|config| config.assignment_hint_score_units)
+                .unwrap_or_default(),
+        )?;
+    }
     for record in &mut edge_records {
         record.version = CANON_ENTITY_EVIDENCE_VERSION_V1.to_string();
     }
@@ -2020,59 +2584,298 @@ fn build_and_write_edge(
         stage_strategy(base_strategy, "evidence"),
         artifact_reference_chain(&block.artifact_value)?,
     )?;
-    write_jsonl_file(&request.work_dir.join(EDGE_RECORDS_PATH), &edge_records)?;
-    write_json_file(&request.work_dir.join(EDGE_ARTIFACT_PATH), &artifact_value)?;
-    Ok((artifact, artifact_value, edge_records))
+    let mut publication_files = vec![jsonl_publication_file(
+        EDGE_RECORDS_PATH,
+        "evidence",
+        CANON_ENTITY_EVIDENCE_VERSION_V1,
+        &edge_records,
+    )?];
+    if let Some(record_link_evidence) = &record_link_evidence {
+        publication_files.push(EntityPublicationFileInput::new(
+            RECORD_LINK_EVIDENCE_PATH,
+            "evidence",
+            CANON_EVIDENCE_VERSION,
+            record_link_evidence.evidence_bytes.clone(),
+        ));
+        publication_files.push(EntityPublicationFileInput::new(
+            ASSIGNMENT_ALIGNMENT_PATH,
+            "evidence",
+            ASSIGNMENT_ALIGNMENT_VERSION,
+            record_link_evidence.alignment_bytes.clone(),
+        ));
+    }
+    publication_files.push(json_publication_file(
+        EDGE_ARTIFACT_PATH,
+        "evidence",
+        CANON_ENTITY_EVIDENCE_VERSION_V1,
+        &artifact_value,
+    )?);
+    if mirror_stable_paths {
+        let publication = publish_manual_stage_generation(
+            request,
+            &block.publication_context,
+            vec![publication_upstream_ref(
+                CANON_ENTITY_BLOCK_VERSION_V1,
+                block.artifact.artifact_content_hash.clone(),
+            )],
+            &publication_files,
+        )?;
+        mirror_publication_files(request, &publication, &publication_files)?;
+    }
+    Ok((artifact, artifact_value, edge_records, publication_files))
+}
+
+fn build_record_link_evidence_run(
+    request: EntityRunRequest<'_>,
+    base_strategy: &BaseStrategyReference,
+    block: &EntityBlockRun,
+) -> Result<Option<RecordLinkEvidenceRun>, Refusal> {
+    let Some(config) = &base_strategy.record_link else {
+        return Ok(None);
+    };
+    let input_set = load_record_link_inputs(RecordLinkLoadRequest {
+        workspace_root: strategy_workspace_root(request.strategy),
+        sidecar_paths: config.input_paths.clone(),
+        expected_profile_id: Some(block.artifact.metadata.profile.id.clone()),
+        expected_profile_digest: block.artifact.metadata.profile.content_hash.clone(),
+        expected_scope_id: None,
+    })
+    .map_err(|error| record_link_refusal(error, "evidence", request))?;
+    let candidate_set = block.record_link_candidate_set.as_ref().ok_or_else(|| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Record-link evidence requires the block-stage candidate set",
+            json!({
+                "stage": "evidence",
+                "record_link_stage": "record_link_evidence",
+                "field": "record_link_candidate_set",
+                "writes_performed": false
+            }),
+            Some(next_run_command(request)),
+        )
+    })?;
+    let output = build_record_link_evidence(RecordLinkEvidenceRequest {
+        input_set: &input_set,
+        candidate_set,
+        feature_policies: &config.candidate_config.feature_policies,
+        policy: config.assignment_alignment.clone(),
+    })
+    .map_err(|error| record_link_refusal(error, "evidence", request))?;
+    let evidence_bytes = canonical_bundle_bytes(&output.bundle).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to serialize record-link evidence bundle",
+            json!({
+                "stage": "evidence",
+                "record_link_stage": "record_link_evidence",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some(next_run_command(request)),
+        )
+    })?;
+    let alignment_bytes = canonical_assignment_alignment_bytes(&output.alignment)
+        .map_err(|error| record_link_refusal(error, "evidence", request))?;
+    let mut edge_hits = output.edge_hits_by_surface_pair;
+    for alignment in &output.alignment.alignments {
+        if alignment.decision == AssignmentAlignmentDecisionKind::Aligned {
+            edge_hits
+                .entry(ordered_surface_pair(
+                    &alignment.left.surface_id,
+                    &alignment.right.surface_id,
+                ))
+                .or_default()
+                .push(RecordLinkEdgeHit {
+                    left_surface_id: alignment.left.surface_id.clone(),
+                    right_surface_id: alignment.right.surface_id.clone(),
+                    evidence_id: alignment.alignment_id.clone(),
+                    lane: "relation_hint".to_string(),
+                    hard_cannot_link: false,
+                    score_units: config.assignment_hint_score_units,
+                });
+        }
+    }
+    for hits in edge_hits.values_mut() {
+        hits.sort_by(|left, right| {
+            left.evidence_id
+                .cmp(&right.evidence_id)
+                .then_with(|| left.lane.cmp(&right.lane))
+        });
+    }
+    Ok(Some(RecordLinkEvidenceRun {
+        evidence_bytes,
+        alignment_bytes,
+        edge_hits,
+    }))
+}
+
+fn merge_record_link_edge_hits(
+    edge_records: &mut Vec<EdgeEvidenceRecord>,
+    edge_hits: &BTreeMap<(String, String), Vec<RecordLinkEdgeHit>>,
+    assignment_hint_score_units: u64,
+) -> Result<(), Refusal> {
+    let mut by_pair = edge_records
+        .drain(..)
+        .map(|record| {
+            (
+                (
+                    record.left_surface_id.clone(),
+                    record.right_surface_id.clone(),
+                ),
+                record,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    for ((left_surface_id, right_surface_id), hits) in edge_hits {
+        if left_surface_id == right_surface_id {
+            continue;
+        }
+        let mut merged_hits = by_pair
+            .remove(&(left_surface_id.clone(), right_surface_id.clone()))
+            .map(|record| record.hits)
+            .unwrap_or_default();
+        for hit in hits {
+            merged_hits.push(record_link_edge_hit(hit, assignment_hint_score_units)?);
+        }
+        let mut rebuilt = build_edge_evidence_record(
+            left_surface_id.clone(),
+            right_surface_id.clone(),
+            merged_hits,
+        )?;
+        rebuilt.version = CANON_ENTITY_EVIDENCE_VERSION_V1.to_string();
+        by_pair.insert((left_surface_id.clone(), right_surface_id.clone()), rebuilt);
+    }
+    edge_records.extend(by_pair.into_values());
+    Ok(())
+}
+
+fn record_link_edge_hit(
+    hit: &RecordLinkEdgeHit,
+    assignment_hint_score_units: u64,
+) -> Result<EdgeEvidenceHit, Refusal> {
+    let (lane, reason_code, score_units) = match hit.lane.as_str() {
+        "support" => (
+            ScoreLane::Support,
+            "record_link_feature_support",
+            hit.score_units,
+        ),
+        "anti_merge" => (
+            ScoreLane::AntiMerge,
+            "record_link_feature_conflict",
+            hit.score_units,
+        ),
+        "relation_hint" => (
+            ScoreLane::RelationHint,
+            "record_link_assignment_alignment",
+            if hit.score_units == 0 {
+                assignment_hint_score_units
+            } else {
+                hit.score_units
+            },
+        ),
+        _ => {
+            return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+                "Record-link evidence emitted an unsupported edge lane",
+                json!({
+                    "stage": "evidence",
+                    "record_link_stage": "record_link_evidence",
+                    "lane": hit.lane,
+                    "writes_performed": false
+                }),
+                None,
+            ));
+        }
+    };
+    Ok(EdgeEvidenceHit::new(
+        lane,
+        "record_link",
+        format!("record_link:{}", hit.evidence_id),
+        reason_code,
+        ScoreUnits::saturating_from_units(score_units),
+        hit.hard_cannot_link,
+        format!(
+            "record-link derived evidence_id={} left_surface_id={} right_surface_id={}",
+            hit.evidence_id, hit.left_surface_id, hit.right_surface_id
+        ),
+    ))
+}
+
+struct SolveStageInput<'a> {
+    edge: &'a EdgeEvidenceArtifact,
+    edge_value: &'a Value,
+    edge_records: &'a [EdgeEvidenceRecord],
+    exact_buckets: &'a [ExactBucketAssertion],
+    surfaces: &'a [PreparedSurfaceRecord],
 }
 
 fn build_and_write_solve(
     request: EntityRunRequest<'_>,
     base_strategy: &BaseStrategyReference,
-    edge: &EdgeEvidenceArtifact,
-    edge_value: &Value,
-    edge_records: &[EdgeEvidenceRecord],
-    surfaces: &[PreparedSurfaceRecord],
-) -> Result<(SolveArtifact, Value), Refusal> {
-    let exact_buckets: Vec<ExactBucketAssertion> = read_jsonl_file(
-        &request.work_dir.join(BLOCK_EXACT_BUCKETS_PATH),
-        "exact bucket assertions",
-    )?;
-    let graph_edge_records = graph_edge_records(edge_records)?;
+    input: SolveStageInput<'_>,
+    mirror_stable_paths: bool,
+) -> Result<(SolveArtifact, Value, Vec<EntityPublicationFileInput>), Refusal> {
+    let graph_edge_records = graph_edge_records(input.edge_records)?;
     let graph = build_signed_evidence_graph(SignedEvidenceGraphInput {
         edge_records: graph_edge_records,
-        exact_bucket_assertions: exact_buckets,
-        incumbent_ids: incumbent_ids(surfaces),
+        exact_bucket_assertions: input.exact_buckets.to_vec(),
+        incumbent_ids: incumbent_ids(input.surfaces),
     })?;
-    let mut metadata = edge.metadata.clone();
+    let mut metadata = input.edge.metadata.clone();
     metadata.strategy = stage_strategy(base_strategy, "solve");
     let mut upstream_artifacts = metadata.upstream_artifacts.clone();
     upstream_artifacts.push(EntityArtifactReference {
-        version: edge.version.clone(),
-        content_hash: edge.artifact_content_hash.clone(),
+        version: input.edge.version.clone(),
+        content_hash: input.edge.artifact_content_hash.clone(),
     });
     upstream_artifacts.sort_by(artifact_ref_cmp);
     upstream_artifacts.dedup();
     metadata.upstream_artifacts = upstream_artifacts;
     metadata.artifact_content_hash.clear();
 
-    let artifact = build_solve_artifact_contract(SolveArtifactRequest {
-        metadata,
-        graph,
-        config: SolveReconciliationConfig::escrow_only(ScoreUnits::MAX),
-        provenance: solve_provenance(surfaces),
-        decision_ledger_path: DECISION_LEDGER_PATH.to_string(),
-    })?;
+    let artifact = build_solve_artifact_contract_with_alias_proposals(
+        SolveArtifactRequest {
+            metadata,
+            graph,
+            config: SolveReconciliationConfig::escrow_only(ScoreUnits::MAX),
+            provenance: solve_provenance(input.surfaces),
+            decision_ledger_path: DECISION_LEDGER_PATH.to_string(),
+        },
+        solve_alias_proposal_surfaces(input.surfaces),
+    )?;
     validate_solve_artifact_contract(&artifact)?;
     let (artifact, artifact_value) = publish_v1_stage_artifact(
         artifact,
         EntityArtifactStageV1::Solve,
-        edge_value,
+        input.edge_value,
         stage_strategy(base_strategy, "solve"),
-        artifact_reference_chain(edge_value)?,
+        artifact_reference_chain(input.edge_value)?,
     )?;
-    write_bytes(&request.work_dir.join(DECISION_LEDGER_PATH), b"")?;
-    write_json_file(&request.work_dir.join(SOLVE_ARTIFACT_PATH), &artifact_value)?;
-    Ok((artifact, artifact_value))
+    let publication_files = vec![
+        EntityPublicationFileInput::new(
+            DECISION_LEDGER_PATH,
+            "solve",
+            CANON_ENTITY_SOLVE_VERSION_V1,
+            Vec::new(),
+        ),
+        json_publication_file(
+            SOLVE_ARTIFACT_PATH,
+            "solve",
+            CANON_ENTITY_SOLVE_VERSION_V1,
+            &artifact_value,
+        )?,
+    ];
+    if mirror_stable_paths {
+        let publication_context = read_cache_execution_receipt_context(request)?;
+        let publication = publish_manual_stage_generation(
+            request,
+            &publication_context,
+            vec![publication_upstream_ref(
+                CANON_ENTITY_EVIDENCE_VERSION_V1,
+                input.edge.artifact_content_hash.clone(),
+            )],
+            &publication_files,
+        )?;
+        mirror_publication_files(request, &publication, &publication_files)?;
+    }
+    Ok((artifact, artifact_value, publication_files))
 }
 
 fn graph_edge_records(
@@ -2194,6 +2997,318 @@ fn run_manifest(artifact: &EntityRunArtifact) -> Value {
         "orchestration": artifact.orchestration,
         "next_commands": artifact.next_commands
     })
+}
+
+fn run_publication_files(
+    artifact: &EntityRunArtifact,
+    artifact_value: &Value,
+) -> Result<Vec<EntityPublicationFileInput>, Refusal> {
+    Ok(vec![
+        json_publication_file(
+            RUN_MANIFEST_PATH,
+            "run",
+            "canon_entity_run_manifest.v0",
+            &run_manifest(artifact),
+        )?,
+        json_publication_file(
+            RUN_ARTIFACT_PATH,
+            "run",
+            CANON_ENTITY_RUN_VERSION_V1,
+            artifact_value,
+        )?,
+    ])
+}
+
+fn publish_run_stage_generation(
+    request: EntityRunRequest<'_>,
+    index: &EntityIndexRun,
+    stage_artifacts: &[EntityRunStageArtifact],
+    files: &[EntityPublicationFileInput],
+) -> Result<EntityRunPublicationResult, Refusal> {
+    let upstream_artifacts = stage_artifacts
+        .iter()
+        .map(|stage| EntityPublicationUpstreamRef {
+            version: stage.version.clone(),
+            content_hash: stage.artifact_content_hash.clone(),
+        })
+        .collect::<Vec<_>>();
+    publish_stage_generation(
+        request,
+        index.cache_mode,
+        index.cache_status,
+        &index.cache_execution_receipt_content_hash,
+        upstream_artifacts,
+        files,
+    )
+}
+
+fn publish_manual_stage_generation(
+    request: EntityRunRequest<'_>,
+    context: &EntityRunPublicationContext,
+    upstream_artifacts: Vec<EntityPublicationUpstreamRef>,
+    files: &[EntityPublicationFileInput],
+) -> Result<EntityRunPublicationResult, Refusal> {
+    publish_stage_generation(
+        request,
+        context.cache_mode,
+        context.cache_status,
+        &context.cache_receipt_hash,
+        upstream_artifacts,
+        files,
+    )
+}
+
+fn publish_stage_generation(
+    request: EntityRunRequest<'_>,
+    cache_mode: EntityIndexCacheMode,
+    cache_status: EntityIndexCacheStatus,
+    cache_receipt_hash: &str,
+    upstream_artifacts: Vec<EntityPublicationUpstreamRef>,
+    files: &[EntityPublicationFileInput],
+) -> Result<EntityRunPublicationResult, Refusal> {
+    publish_stage_generation_at_work_dir(
+        request.work_dir,
+        Some(next_run_command(request)),
+        None,
+        EntityRunPublicationCacheInput {
+            mode: cache_mode.as_str(),
+            status: cache_status.as_str(),
+            receipt_hash: cache_receipt_hash,
+        },
+        upstream_artifacts,
+        files,
+    )
+}
+
+struct EntityRunPublicationCacheInput<'a> {
+    mode: &'a str,
+    status: &'a str,
+    receipt_hash: &'a str,
+}
+
+fn publish_stage_generation_at_work_dir(
+    work_dir: &Path,
+    next_command: Option<String>,
+    supersedes_generation_id: Option<String>,
+    cache: EntityRunPublicationCacheInput<'_>,
+    upstream_artifacts: Vec<EntityPublicationUpstreamRef>,
+    files: &[EntityPublicationFileInput],
+) -> Result<EntityRunPublicationResult, Refusal> {
+    let omit_logical_paths =
+        publication_omitted_logical_paths_for_patch(work_dir, files, next_command.clone())?;
+    let publication_request = EntityPublicationRequest {
+        stream_id: RUN_PUBLICATION_STREAM_ID.to_string(),
+        supersedes_generation_id,
+        request_fingerprint: run_publication_request_fingerprint(
+            cache.mode,
+            cache.status,
+            cache.receipt_hash,
+            &upstream_artifacts,
+            &omit_logical_paths,
+            files,
+        )?,
+        cache_mode: cache.mode.to_string(),
+        cache_status: cache.status.to_string(),
+        cache_receipt_hash: cache.receipt_hash.to_string(),
+        stage_order: run_publication_stage_order(),
+        upstream_artifacts,
+        files: files.to_vec(),
+        omit_logical_paths,
+    };
+    let receipt = publish_stream_patch(work_dir, publication_request)
+        .map_err(|error| publication_refusal_with_next_command(error, next_command.clone()))?;
+    Ok(publication_result(receipt))
+}
+
+fn publication_omitted_logical_paths_for_patch(
+    work_dir: &Path,
+    files: &[EntityPublicationFileInput],
+    next_command: Option<String>,
+) -> Result<Vec<String>, Refusal> {
+    let Some(max_patch_stage_rank) = files
+        .iter()
+        .map(|file| publication_stage_rank(&file.stage))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .max()
+    else {
+        return Ok(Vec::new());
+    };
+    let current = match open_current_stream_generation(work_dir, RUN_PUBLICATION_STREAM_ID) {
+        Ok(snapshot) => snapshot,
+        Err(error) if is_absent_publication_stream(&error) => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(publication_refusal_with_next_command(
+                error,
+                next_command.clone(),
+            ));
+        }
+    };
+    let patch_paths = files
+        .iter()
+        .map(|file| file.logical_path.clone())
+        .collect::<BTreeSet<_>>();
+    let mut omitted = Vec::new();
+    for file in &current.manifest.files {
+        if patch_paths.contains(&file.logical_path) {
+            continue;
+        }
+        let rank = publication_stage_rank(&file.stage)?;
+        if rank >= max_patch_stage_rank {
+            omitted.push(file.logical_path.clone());
+        }
+    }
+    omitted.sort();
+    Ok(omitted)
+}
+
+fn publication_stage_rank(stage: &str) -> Result<u8, Refusal> {
+    match stage {
+        "block" => Ok(0),
+        "evidence" => Ok(1),
+        "solve" => Ok(2),
+        "run" => Ok(3),
+        "link" => Ok(4),
+        _ => Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Unsupported entity run publication stage",
+            json!({
+                "stage": "run",
+                "publication_stage": "entity_run_stage_set",
+                "file_stage": stage,
+                "writes_performed": false
+            }),
+            None,
+        )),
+    }
+}
+
+fn run_publication_stage_order() -> Vec<String> {
+    vec![
+        "block".to_string(),
+        "evidence".to_string(),
+        "solve".to_string(),
+        "run".to_string(),
+        "link".to_string(),
+    ]
+}
+
+fn run_publication_request_fingerprint(
+    cache_mode: &str,
+    cache_status: &str,
+    cache_receipt_hash: &str,
+    upstream_artifacts: &[EntityPublicationUpstreamRef],
+    omit_logical_paths: &[String],
+    files: &[EntityPublicationFileInput],
+) -> Result<String, Refusal> {
+    let mut file_refs = files
+        .iter()
+        .map(|file| {
+            json!({
+                "logical_path": file.logical_path.as_str(),
+                "stage": file.stage.as_str(),
+                "version": file.version.as_str(),
+                "byte_len": file.bytes.len(),
+                "content_hash": witness::hash_bytes(&file.bytes)
+            })
+        })
+        .collect::<Vec<_>>();
+    file_refs.sort_by(|left, right| {
+        left["logical_path"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(right["logical_path"].as_str().unwrap_or_default())
+            .then_with(|| {
+                left["stage"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .cmp(right["stage"].as_str().unwrap_or_default())
+            })
+    });
+    let mut stage_refs = upstream_artifacts
+        .iter()
+        .map(|reference| {
+            json!({
+                "version": reference.version.as_str(),
+                "artifact_content_hash": reference.content_hash.as_str()
+            })
+        })
+        .collect::<Vec<_>>();
+    stage_refs.sort_by(|left, right| {
+        left["version"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(right["version"].as_str().unwrap_or_default())
+            .then_with(|| {
+                left["artifact_content_hash"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .cmp(right["artifact_content_hash"].as_str().unwrap_or_default())
+            })
+    });
+    let bytes = serde_json::to_vec(&json!({
+        "version": RUN_PUBLICATION_REQUEST_VERSION,
+        "stream_id": RUN_PUBLICATION_STREAM_ID,
+        "cache_mode": cache_mode,
+        "cache_status": cache_status,
+        "cache_receipt_hash": cache_receipt_hash,
+        "upstream_artifacts": stage_refs,
+        "omit_logical_paths": omit_logical_paths,
+        "files": file_refs
+    }))
+    .map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to serialize entity run publication request fingerprint",
+            json!({
+                "stage": "run",
+                "stream_id": RUN_PUBLICATION_STREAM_ID,
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })?;
+    Ok(witness::hash_bytes(&bytes))
+}
+
+fn publication_result(receipt: EntityPublicationReceipt) -> EntityRunPublicationResult {
+    EntityRunPublicationResult {
+        stream_id: RUN_PUBLICATION_STREAM_ID.to_string(),
+        generation_id: receipt.generation_id,
+        outcome: publication_outcome(receipt.outcome).to_string(),
+        writes_performed: receipt.writes_performed,
+        committed: receipt.committed,
+        manifest_path: receipt.manifest_path,
+        commit_marker_path: receipt.commit_marker_path,
+        object_count: receipt.object_count,
+    }
+}
+
+fn publication_outcome(outcome: EntityPublicationOutcome) -> &'static str {
+    match outcome {
+        EntityPublicationOutcome::Committed => "committed",
+        EntityPublicationOutcome::AlreadyCommitted => "already_committed",
+        EntityPublicationOutcome::CommitUnknown => "commit_unknown",
+    }
+}
+
+fn publication_refusal_with_next_command(
+    error: EntityPublicationError,
+    next_command: Option<String>,
+) -> Refusal {
+    EntityRefusalKind::ArtifactContract.to_refusal(
+        "Failed to publish entity run stage generation",
+        json!({
+            "stage": "run",
+            "publication_stage": "entity_run_stage_set",
+            "stream_id": RUN_PUBLICATION_STREAM_ID,
+            "error_kind": format!("{:?}", error.kind),
+            "error": error.message,
+            "writes_performed": error.writes_performed,
+            "committed": error.committed,
+            "generation_id": error.generation_id
+        }),
+        next_command,
+    )
 }
 
 fn run_orchestration(
@@ -3068,11 +4183,144 @@ fn load_base_strategy_reference(
     let version = yaml_string(&value, "strategy_version")
         .or_else(|| yaml_string(&value, "version"))
         .unwrap_or_else(|| "0.0.0".to_string());
+    let record_link = load_record_link_runtime_config(&value, request)?;
     Ok(BaseStrategyReference {
         id,
         version,
         content_hash,
+        record_link,
     })
+}
+
+fn load_record_link_runtime_config(
+    value: &serde_yaml::Value,
+    request: EntityRunRequest<'_>,
+) -> Result<Option<RecordLinkRuntimeConfig>, Refusal> {
+    let Some(section_value) = value
+        .as_mapping()
+        .and_then(|mapping| mapping.get(serde_yaml::Value::String("record_link".to_string())))
+        .cloned()
+    else {
+        return Ok(None);
+    };
+    let section =
+        serde_yaml::from_value::<RecordLinkStrategySection>(section_value).map_err(|error| {
+            EntityRefusalKind::Strategy.to_refusal(
+                "Invalid record-link strategy section",
+                json!({
+                    "stage": "strategy",
+                    "field": "record_link",
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+                Some(next_run_command(request)),
+            )
+        })?;
+    if section.inputs.len() < 2 {
+        return Err(record_link_strategy_refusal(
+            request,
+            "inputs",
+            "record-link strategy requires at least two input sidecars",
+        ));
+    }
+    if section.feature_policies.is_empty() {
+        return Err(record_link_strategy_refusal(
+            request,
+            "feature_policies",
+            "record-link strategy requires explicit feature policies",
+        ));
+    }
+    if section.max_candidates_per_record == 0
+        || section.max_candidate_pairs == 0
+        || section.max_pair_comparisons == 0
+        || section.assignment_hint_score_units == 0
+    {
+        return Err(record_link_strategy_refusal(
+            request,
+            "budgets",
+            "record-link budgets and assignment hint score must be non-zero",
+        ));
+    }
+    let mut input_paths = Vec::with_capacity(section.inputs.len());
+    for input in section.inputs {
+        input_paths.push(validate_strategy_relative_path(
+            request,
+            input.path,
+            "record_link.inputs.path",
+        )?);
+    }
+    let mut feature_policies = BTreeMap::new();
+    for policy in section.feature_policies {
+        if feature_policies
+            .insert(policy.feature_id.clone(), policy)
+            .is_some()
+        {
+            return Err(record_link_strategy_refusal(
+                request,
+                "record_link.feature_policies",
+                "record-link feature policies must be unique by feature_id",
+            ));
+        }
+    }
+    Ok(Some(RecordLinkRuntimeConfig {
+        input_paths,
+        candidate_config: RecordLinkCandidateConfig {
+            operator_id: section
+                .operator_id
+                .unwrap_or_else(|| "record_link:exact_comparison:v1".to_string()),
+            max_candidates_per_record: section.max_candidates_per_record,
+            max_candidate_pairs: section.max_candidate_pairs,
+            max_pair_comparisons: section.max_pair_comparisons,
+            require_unique_best_per_record: section.require_unique_best_per_record.unwrap_or(true),
+            feature_policies,
+        },
+        assignment_alignment: section.assignment_alignment,
+        assignment_hint_score_units: section.assignment_hint_score_units,
+    }))
+}
+
+fn record_link_strategy_refusal(
+    request: EntityRunRequest<'_>,
+    field: &str,
+    message: &str,
+) -> Refusal {
+    EntityRefusalKind::Strategy.to_refusal(
+        message,
+        json!({
+            "stage": "strategy",
+            "field": field,
+            "writes_performed": false
+        }),
+        Some(next_run_command(request)),
+    )
+}
+
+fn validate_strategy_relative_path(
+    request: EntityRunRequest<'_>,
+    path: PathBuf,
+    field: &str,
+) -> Result<PathBuf, Refusal> {
+    if path.as_os_str().is_empty()
+        || path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(EntityRefusalKind::Strategy.to_refusal(
+            "Record-link sidecar paths must be strategy-relative safe paths",
+            json!({
+                "stage": "strategy",
+                "field": field,
+                "path": path.display().to_string(),
+                "writes_performed": false
+            }),
+            Some(next_run_command(request)),
+        ));
+    }
+    Ok(path)
 }
 
 fn yaml_string(value: &serde_yaml::Value, key: &str) -> Option<String> {
@@ -3239,6 +4487,365 @@ fn solve_provenance(surfaces: &[PreparedSurfaceRecord]) -> Vec<SolveSurfaceProve
         .collect()
 }
 
+fn solve_alias_proposal_surfaces(
+    surfaces: &[PreparedSurfaceRecord],
+) -> Vec<SolveAliasProposalSurface> {
+    surfaces
+        .iter()
+        .map(|surface| SolveAliasProposalSurface {
+            surface_id: surface.surface_id.clone(),
+            exact_lookup_status: match surface.exact_lookup.status {
+                PreparedExactLookupStatus::Resolved => SolveAliasProposalSurfaceStatus::Resolved,
+                PreparedExactLookupStatus::Unresolved => {
+                    SolveAliasProposalSurfaceStatus::Unresolved
+                }
+            },
+            raw_variants: surface.raw_variants.clone(),
+        })
+        .collect()
+}
+
+fn read_record_link_candidate_set(
+    request: EntityRunRequest<'_>,
+    base_strategy: &BaseStrategyReference,
+) -> Result<Option<RecordLinkCandidateSet>, Refusal> {
+    if base_strategy.record_link.is_none() {
+        return Ok(None);
+    }
+    let bytes = match read_publication_logical_file(
+        request,
+        RECORD_LINK_CANDIDATES_PATH,
+        "record-link candidate set",
+    )? {
+        Some(bytes) => bytes,
+        None => {
+            let path = request.work_dir.join(RECORD_LINK_CANDIDATES_PATH);
+            fs::read(&path).map_err(|error| {
+                EntityRefusalKind::IoBudget.to_refusal(
+                    "Failed to read record-link candidate set",
+                    json!({
+                        "stage": "block",
+                        "path": path.display().to_string(),
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                    Some(next_run_command(request)),
+                )
+            })?
+        }
+    };
+    let candidate_set: RecordLinkCandidateSet = parse_json_bytes(
+        &bytes,
+        RECORD_LINK_CANDIDATES_PATH,
+        "record-link candidate set",
+    )?;
+    validate_record_link_candidate_set(&candidate_set)
+        .map_err(|error| record_link_refusal(error, "block", request))?;
+    Ok(Some(candidate_set))
+}
+
+fn read_logical_json_file<T: DeserializeOwned>(
+    request: EntityRunRequest<'_>,
+    logical_path: &str,
+    stable_path: &Path,
+    label: &str,
+) -> Result<T, Refusal> {
+    match read_publication_logical_file(request, logical_path, label)? {
+        Some(bytes) => parse_json_bytes(&bytes, logical_path, label),
+        None => read_json_file(stable_path, label),
+    }
+}
+
+fn read_logical_jsonl_file<T: DeserializeOwned>(
+    request: EntityRunRequest<'_>,
+    logical_path: &str,
+    stable_path: &Path,
+    label: &str,
+) -> Result<Vec<T>, Refusal> {
+    match read_publication_logical_file(request, logical_path, label)? {
+        Some(bytes) => parse_jsonl_bytes(&bytes, logical_path, label),
+        None => read_jsonl_file(stable_path, label),
+    }
+}
+
+fn read_publication_logical_file(
+    request: EntityRunRequest<'_>,
+    logical_path: &str,
+    label: &str,
+) -> Result<Option<Vec<u8>>, Refusal> {
+    read_entity_run_committed_publication_logical_bytes_inner(
+        request.work_dir,
+        logical_path,
+        Some(label),
+        Some(next_run_command(request)),
+    )
+}
+
+fn read_entity_run_committed_publication_logical_bytes_inner(
+    work_dir: &Path,
+    logical_path: &str,
+    label: Option<&str>,
+    next_command: Option<String>,
+) -> Result<Option<Vec<u8>>, Refusal> {
+    validate_entity_run_publication_logical_path(logical_path, next_command.clone())?;
+    match open_current_stream_generation(work_dir, ENTITY_RUN_PUBLICATION_STREAM_ID) {
+        Ok(snapshot) => snapshot
+            .read_logical_file(logical_path)
+            .map(|bytes| Some(bytes.to_vec()))
+            .ok_or_else(|| {
+                EntityRefusalKind::ArtifactContract.to_refusal(
+                    format!(
+                        "Committed entity run publication is missing {}",
+                        label.unwrap_or("logical file")
+                    ),
+                    json!({
+                        "stage": "run",
+                        "publication_stage": "entity_run_stage_set",
+                        "stream_id": ENTITY_RUN_PUBLICATION_STREAM_ID,
+                        "generation_id": snapshot.generation_id,
+                        "logical_path": logical_path,
+                        "committed": true,
+                        "writes_performed": false
+                    }),
+                    next_command.clone(),
+                )
+            }),
+        Err(error) if is_absent_publication_stream(&error) => Ok(None),
+        Err(error) => Err(publication_read_refusal(
+            error,
+            logical_path,
+            next_command.clone(),
+        )),
+    }
+}
+
+fn is_absent_publication_stream(error: &EntityPublicationError) -> bool {
+    error.kind == EntityPublicationErrorKind::UncommittedGeneration && error.generation_id.is_none()
+}
+
+fn validate_entity_run_publication_logical_path(
+    logical_path: &str,
+    next_command: Option<String>,
+) -> Result<(), Refusal> {
+    let path = Path::new(logical_path);
+    if logical_path.is_empty()
+        || path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                Component::CurDir
+                    | Component::ParentDir
+                    | Component::RootDir
+                    | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity run publication logical path is not a safe relative path",
+            json!({
+                "stage": "run",
+                "publication_stage": "entity_run_stage_set",
+                "stream_id": ENTITY_RUN_PUBLICATION_STREAM_ID,
+                "logical_path": logical_path,
+                "writes_performed": false
+            }),
+            next_command,
+        ));
+    }
+    Ok(())
+}
+
+fn entity_run_publication_logical_path_for_stable_path(
+    work_dir: &Path,
+    path: &Path,
+) -> Result<&'static str, Refusal> {
+    let relative_path = if path.is_absolute() {
+        path.strip_prefix(work_dir).map_err(|_| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Entity run publication stable path must resolve under the work directory",
+                json!({
+                    "stage": "run",
+                    "publication_stage": "entity_run_stage_set",
+                    "stream_id": ENTITY_RUN_PUBLICATION_STREAM_ID,
+                    "work_dir": work_dir.display().to_string(),
+                    "path": path.display().to_string(),
+                    "writes_performed": false
+                }),
+                None,
+            )
+        })?
+    } else {
+        path
+    };
+    let logical_path = clean_relative_logical_path(relative_path)?;
+    match logical_path.as_str() {
+        BLOCK_ARTIFACT_PATH => Ok(BLOCK_ARTIFACT_PATH),
+        BLOCK_CANDIDATES_PATH => Ok(BLOCK_CANDIDATES_PATH),
+        BLOCK_DIAGNOSTICS_PATH => Ok(BLOCK_DIAGNOSTICS_PATH),
+        BLOCK_EXACT_BUCKETS_PATH => Ok(BLOCK_EXACT_BUCKETS_PATH),
+        RECORD_LINK_CANDIDATES_PATH => Ok(RECORD_LINK_CANDIDATES_PATH),
+        EDGE_ARTIFACT_PATH => Ok(EDGE_ARTIFACT_PATH),
+        EDGE_RECORDS_PATH => Ok(EDGE_RECORDS_PATH),
+        RECORD_LINK_EVIDENCE_PATH => Ok(RECORD_LINK_EVIDENCE_PATH),
+        ASSIGNMENT_ALIGNMENT_PATH => Ok(ASSIGNMENT_ALIGNMENT_PATH),
+        SOLVE_ARTIFACT_PATH => Ok(SOLVE_ARTIFACT_PATH),
+        DECISION_LEDGER_PATH => Ok(DECISION_LEDGER_PATH),
+        RUN_MANIFEST_PATH => Ok(RUN_MANIFEST_PATH),
+        RUN_ARTIFACT_PATH => Ok(RUN_ARTIFACT_PATH),
+        LINK_MATERIALIZED_ROWS_PUBLICATION_PATH => Ok(LINK_MATERIALIZED_ROWS_PUBLICATION_PATH),
+        LINK_ASSIGNMENT_ALIGNMENT_PUBLICATION_PATH => {
+            Ok(LINK_ASSIGNMENT_ALIGNMENT_PUBLICATION_PATH)
+        }
+        LINK_OBSERVATION_SURFACE_BINDINGS_PUBLICATION_PATH => {
+            Ok(LINK_OBSERVATION_SURFACE_BINDINGS_PUBLICATION_PATH)
+        }
+        LINK_ARTIFACT_PUBLICATION_PATH => Ok(LINK_ARTIFACT_PUBLICATION_PATH),
+        _ => Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Path is not a canonical entity run publication stable path",
+            json!({
+                "stage": "run",
+                "publication_stage": "entity_run_stage_set",
+                "stream_id": ENTITY_RUN_PUBLICATION_STREAM_ID,
+                "path": path.display().to_string(),
+                "logical_path": logical_path,
+                "writes_performed": false
+            }),
+            None,
+        )),
+    }
+}
+
+fn clean_relative_logical_path(path: &Path) -> Result<String, Refusal> {
+    let mut parts = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(part) => {
+                let Some(text) = part.to_str() else {
+                    return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+                        "Entity run publication stable path must be UTF-8",
+                        json!({
+                            "stage": "run",
+                            "publication_stage": "entity_run_stage_set",
+                            "stream_id": ENTITY_RUN_PUBLICATION_STREAM_ID,
+                            "path": path.display().to_string(),
+                            "writes_performed": false
+                        }),
+                        None,
+                    ));
+                };
+                parts.push(text.to_string());
+            }
+            Component::CurDir
+            | Component::ParentDir
+            | Component::RootDir
+            | Component::Prefix(_) => {
+                return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+                    "Entity run publication stable path must be a clean relative path",
+                    json!({
+                        "stage": "run",
+                        "publication_stage": "entity_run_stage_set",
+                        "stream_id": ENTITY_RUN_PUBLICATION_STREAM_ID,
+                        "path": path.display().to_string(),
+                        "writes_performed": false
+                    }),
+                    None,
+                ));
+            }
+        }
+    }
+    if parts.is_empty() {
+        return Err(EntityRefusalKind::ArtifactContract.to_refusal(
+            "Entity run publication stable path cannot be empty",
+            json!({
+                "stage": "run",
+                "publication_stage": "entity_run_stage_set",
+                "stream_id": ENTITY_RUN_PUBLICATION_STREAM_ID,
+                "path": path.display().to_string(),
+                "writes_performed": false
+            }),
+            None,
+        ));
+    }
+    Ok(parts.join("/"))
+}
+
+fn publication_read_refusal(
+    error: EntityPublicationError,
+    logical_path: &str,
+    next_command: Option<String>,
+) -> Refusal {
+    EntityRefusalKind::ArtifactContract.to_refusal(
+        "Failed to read committed entity run publication",
+        json!({
+            "stage": "run",
+            "publication_stage": "entity_run_stage_set",
+            "stream_id": ENTITY_RUN_PUBLICATION_STREAM_ID,
+            "logical_path": logical_path,
+            "error_kind": format!("{:?}", error.kind),
+            "error": error.message,
+            "writes_performed": false,
+            "committed": error.committed,
+            "generation_id": error.generation_id
+        }),
+        next_command,
+    )
+}
+
+fn parse_json_bytes<T: DeserializeOwned>(
+    bytes: &[u8],
+    logical_path: &str,
+    label: &str,
+) -> Result<T, Refusal> {
+    serde_json::from_slice(bytes).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            format!("Failed to parse {label} JSON"),
+            json!({
+                "stage": "run",
+                "path": logical_path,
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })
+}
+
+fn parse_jsonl_bytes<T: DeserializeOwned>(
+    bytes: &[u8],
+    logical_path: &str,
+    label: &str,
+) -> Result<Vec<T>, Refusal> {
+    let text = std::str::from_utf8(bytes).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            format!("Failed to decode {label} JSONL"),
+            json!({
+                "stage": "run",
+                "path": logical_path,
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })?;
+    text.lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            serde_json::from_str(line).map_err(|error| {
+                EntityRefusalKind::ArtifactContract.to_refusal(
+                    format!("Failed to parse {label} JSONL"),
+                    json!({
+                        "stage": "run",
+                        "path": logical_path,
+                        "error": error.to_string(),
+                        "writes_performed": false
+                    }),
+                    None,
+                )
+            })
+        })
+        .collect()
+}
+
 fn read_json_file<T: DeserializeOwned>(path: &Path, label: &str) -> Result<T, Refusal> {
     let text = fs::read_to_string(path).map_err(|error| {
         EntityRefusalKind::IoBudget.to_refusal(
@@ -3298,6 +4905,145 @@ fn read_jsonl_file<T: DeserializeOwned>(path: &Path, label: &str) -> Result<Vec<
         .collect()
 }
 
+fn json_publication_file<T: Serialize>(
+    logical_path: &'static str,
+    stage: &'static str,
+    version: &'static str,
+    value: &T,
+) -> Result<EntityPublicationFileInput, Refusal> {
+    Ok(EntityPublicationFileInput::new(
+        logical_path,
+        stage,
+        version,
+        json_bytes(logical_path, value)?,
+    ))
+}
+
+fn jsonl_publication_file<T: Serialize>(
+    logical_path: &'static str,
+    stage: &'static str,
+    version: &'static str,
+    values: &[T],
+) -> Result<EntityPublicationFileInput, Refusal> {
+    Ok(EntityPublicationFileInput::new(
+        logical_path,
+        stage,
+        version,
+        jsonl_bytes(logical_path, values)?,
+    ))
+}
+
+fn json_bytes<T: Serialize>(logical_path: &str, value: &T) -> Result<Vec<u8>, Refusal> {
+    serde_json::to_vec(value).map_err(|error| {
+        EntityRefusalKind::ArtifactContract.to_refusal(
+            "Failed to serialize entity artifact",
+            json!({
+                "stage": "run",
+                "path": logical_path,
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            None,
+        )
+    })
+}
+
+fn jsonl_bytes<T: Serialize>(logical_path: &str, values: &[T]) -> Result<Vec<u8>, Refusal> {
+    let mut bytes = Vec::new();
+    for value in values {
+        serde_json::to_writer(&mut bytes, value).map_err(|error| {
+            EntityRefusalKind::ArtifactContract.to_refusal(
+                "Failed to serialize entity JSONL artifact",
+                json!({
+                    "stage": "run",
+                    "path": logical_path,
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+                None,
+            )
+        })?;
+        bytes.push(b'\n');
+    }
+    Ok(bytes)
+}
+
+fn mirror_publication_files(
+    request: EntityRunRequest<'_>,
+    publication: &EntityRunPublicationResult,
+    files: &[EntityPublicationFileInput],
+) -> Result<(), Refusal> {
+    mirror_publication_files_at_work_dir(
+        request.work_dir,
+        Some(next_run_command(request)),
+        publication,
+        files,
+    )
+}
+
+fn mirror_publication_files_at_work_dir(
+    work_dir: &Path,
+    next_command: Option<String>,
+    publication: &EntityRunPublicationResult,
+    files: &[EntityPublicationFileInput],
+) -> Result<(), Refusal> {
+    for file in files {
+        let path = work_dir.join(&file.logical_path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|error| {
+                publication_mirror_refusal(
+                    next_command.clone(),
+                    publication,
+                    file,
+                    &path,
+                    error.to_string(),
+                    false,
+                )
+            })?;
+        }
+        fs::write(&path, &file.bytes).map_err(|error| {
+            publication_mirror_refusal(
+                next_command.clone(),
+                publication,
+                file,
+                &path,
+                error.to_string(),
+                true,
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn publication_mirror_refusal(
+    next_command: Option<String>,
+    publication: &EntityRunPublicationResult,
+    file: &EntityPublicationFileInput,
+    path: &Path,
+    error: String,
+    mirror_writes_performed: bool,
+) -> Refusal {
+    EntityRefusalKind::IoBudget.to_refusal(
+        "Failed to mirror committed entity run publication file",
+        json!({
+            "stage": file.stage.as_str(),
+            "publication_stage": "entity_run_stage_set",
+            "stream_id": publication.stream_id.as_str(),
+            "generation_id": publication.generation_id.as_str(),
+            "committed": publication.committed,
+            "publication_outcome": publication.outcome.as_str(),
+            "publication_writes_performed": publication.writes_performed,
+            "mirror_writes_performed": mirror_writes_performed,
+            "writes_performed": publication.writes_performed || mirror_writes_performed,
+            "logical_path": file.logical_path.as_str(),
+            "path": path.display().to_string(),
+            "error": error,
+            "post_commit_mirror": true
+        }),
+        next_command,
+    )
+}
+
 fn write_json_file<T: Serialize>(path: &Path, value: &T) -> Result<(), Refusal> {
     let bytes = serde_json::to_vec(value).map_err(|error| {
         EntityRefusalKind::ArtifactContract.to_refusal(
@@ -3306,21 +5052,6 @@ fn write_json_file<T: Serialize>(path: &Path, value: &T) -> Result<(), Refusal> 
             None,
         )
     })?;
-    write_bytes(path, &bytes)
-}
-
-fn write_jsonl_file<T: Serialize>(path: &Path, values: &[T]) -> Result<(), Refusal> {
-    let mut bytes = Vec::new();
-    for value in values {
-        serde_json::to_writer(&mut bytes, value).map_err(|error| {
-            EntityRefusalKind::ArtifactContract.to_refusal(
-                "Failed to serialize entity JSONL artifact",
-                json!({ "stage": "run", "path": path.display().to_string(), "error": error.to_string(), "writes_performed": false }),
-                None,
-            )
-        })?;
-        bytes.push(b'\n');
-    }
     write_bytes(path, &bytes)
 }
 
@@ -3416,11 +5147,21 @@ struct EntityIndexRun {
     cache_bundle_receipt_content_hash: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EntityRunPublicationContext {
+    cache_mode: EntityIndexCacheMode,
+    cache_status: EntityIndexCacheStatus,
+    cache_receipt_hash: String,
+}
+
 struct EntityBlockRun {
     artifact: BlockCandidateArtifact,
     artifact_value: Value,
     candidates: Vec<crate::entity::block::BlockCandidateRecord>,
     exact_buckets: Vec<ExactBucketAssertion>,
+    record_link_candidate_set: Option<RecordLinkCandidateSet>,
+    publication_context: EntityRunPublicationContext,
+    publication_files: Vec<EntityPublicationFileInput>,
 }
 
 #[cfg(test)]
@@ -3461,6 +5202,82 @@ mod cache_runtime_tests {
                 work_dir,
             }
         }
+    }
+
+    #[test]
+    fn committed_publication_none_is_only_absent_stream_case() {
+        let no_root = EntityPublicationError {
+            kind: EntityPublicationErrorKind::UncommittedGeneration,
+            message: "no root claim".to_string(),
+            writes_performed: false,
+            committed: Some(false),
+            generation_id: None,
+        };
+        assert!(is_absent_publication_stream(&no_root));
+
+        let uncommitted_root = EntityPublicationError {
+            kind: EntityPublicationErrorKind::UncommittedGeneration,
+            message: "root claim is not committed".to_string(),
+            writes_performed: false,
+            committed: Some(false),
+            generation_id: Some(
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+            ),
+        };
+        assert!(!is_absent_publication_stream(&uncommitted_root));
+    }
+
+    #[test]
+    fn committed_publication_stable_path_requires_canonical_stage_relative_path() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let work_dir = temp.path();
+
+        assert_eq!(
+            entity_run_publication_logical_path_for_stable_path(
+                work_dir,
+                Path::new(BLOCK_ARTIFACT_PATH)
+            )
+            .expect("stage-relative block artifact path"),
+            BLOCK_ARTIFACT_PATH
+        );
+        assert_eq!(
+            entity_run_publication_logical_path_for_stable_path(
+                work_dir,
+                &work_dir.join(SOLVE_ARTIFACT_PATH)
+            )
+            .expect("absolute work-dir solve artifact path"),
+            SOLVE_ARTIFACT_PATH
+        );
+        assert_eq!(
+            read_entity_run_committed_publication_stable_path_bytes(
+                work_dir,
+                Path::new(RUN_ARTIFACT_PATH)
+            )
+            .expect("no stream returns None for canonical stage-relative path"),
+            None
+        );
+
+        let prefixed_relative =
+            PathBuf::from(work_dir.file_name().expect("tempdir name")).join(BLOCK_ARTIFACT_PATH);
+        assert!(
+            entity_run_publication_logical_path_for_stable_path(work_dir, &prefixed_relative)
+                .is_err(),
+            "relative paths prefixed with the work-dir name are not stage-relative"
+        );
+        assert!(
+            entity_run_publication_logical_path_for_stable_path(
+                work_dir,
+                Path::new("./block/block.json")
+            )
+            .is_err()
+        );
+        assert!(
+            entity_run_publication_logical_path_for_stable_path(
+                work_dir,
+                Path::new("block/../block/block.json")
+            )
+            .is_err()
+        );
     }
 
     #[test]

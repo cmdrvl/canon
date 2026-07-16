@@ -2,19 +2,18 @@
   "schema_version": "canon_v1_operator_journey_expected_review.v0",
   "link_summary": {
     "target_records": 3,
-    "matched": 1,
-    "ambiguous": 1,
+    "matched": 2,
+    "ambiguous": 0,
     "unmatched": 1
   },
   "queue_review": {
     "version": "canon_entity_review_queue.v0",
     "states": [
       "escrow",
-      "escrow",
+      "resolved_existing",
       "resolved_existing"
     ],
     "priority_reasons": [
-      "ambiguous",
       "directional_match",
       "unmatched"
     ]

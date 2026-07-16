@@ -24,6 +24,8 @@ use std::{
     path::Path,
 };
 
+pub const CANON_ENTITY_ALIAS_PROPOSAL_VERSION: &str = "canon_entity_alias_proposal.v0";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SolveOversizedComponentPolicy {
@@ -221,6 +223,34 @@ pub struct SolveSurfaceProvenance {
     pub deal_count: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SolveAliasProposalSurfaceStatus {
+    Resolved,
+    Unresolved,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolveAliasProposalSurface {
+    pub surface_id: String,
+    pub exact_lookup_status: SolveAliasProposalSurfaceStatus,
+    pub raw_variants: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolveAliasProposal {
+    pub version: String,
+    pub proposal_id: String,
+    pub content_hash: String,
+    pub input: String,
+    pub canonical_id: String,
+    pub canonical_type: String,
+    pub rule_id: String,
+    pub component_id: String,
+    pub source_surface_ids: Vec<String>,
+    pub allowed_actions: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SolveComponentDiagnostics {
     pub component_id: String,
@@ -306,6 +336,8 @@ pub struct SolveArtifact {
     pub metadata: EntityArtifactMetadata,
     pub summary: EntityDeterministicSummary,
     pub upstream_artifacts: Vec<EntityArtifactReference>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub promotable_aliases: Vec<SolveAliasProposal>,
     pub entities: Vec<SolveEntityRecord>,
     pub review_groups: Vec<SolveReviewGroupSeed>,
     pub diagnostics: SolveDiagnosticsReport,
@@ -314,6 +346,13 @@ pub struct SolveArtifact {
 
 pub fn build_solve_artifact_contract(
     request: SolveArtifactRequest,
+) -> Result<SolveArtifact, Refusal> {
+    build_solve_artifact_contract_with_alias_proposals(request, Vec::new())
+}
+
+pub fn build_solve_artifact_contract_with_alias_proposals(
+    request: SolveArtifactRequest,
+    alias_proposal_surfaces: Vec<SolveAliasProposalSurface>,
 ) -> Result<SolveArtifact, Refusal> {
     validate_solve_metadata(&request.metadata)?;
     if request.decision_ledger_path.trim().is_empty() {
@@ -331,7 +370,12 @@ pub fn build_solve_artifact_contract(
     let diagnostics = build_solve_diagnostics(&request.graph, request.config, &request.provenance);
     let reconciliation = reconcile_signed_graph_components(&request.graph, request.config);
     let entities = solve_entity_records(reconciliation.decisions);
-    let summary = solve_artifact_summary(&entities, &diagnostics);
+    let promotable_aliases = solve_alias_proposals(
+        &entities,
+        &alias_proposal_surfaces,
+        &request.metadata.profile.canonical_type,
+    )?;
+    let summary = solve_artifact_summary(&entities, &diagnostics, &promotable_aliases);
     let mut metadata = request.metadata;
     metadata.artifact_content_hash.clear();
     metadata.upstream_artifacts = upstream_artifacts.clone();
@@ -342,6 +386,7 @@ pub fn build_solve_artifact_contract(
         metadata,
         summary,
         upstream_artifacts,
+        promotable_aliases,
         entities,
         review_groups: diagnostics.review_group_seeds.clone(),
         diagnostics,
@@ -415,6 +460,7 @@ fn validate_solve_artifact_contract_inner(
         }
     }
     validate_review_groups_reference_entities(artifact)?;
+    validate_solve_alias_proposals(artifact)?;
     Ok(())
 }
 
@@ -685,9 +731,14 @@ fn solve_entity_records(decisions: Vec<SolveReconciliationDecision>) -> Vec<Solv
 fn solve_artifact_summary(
     entities: &[SolveEntityRecord],
     diagnostics: &SolveDiagnosticsReport,
+    promotable_aliases: &[SolveAliasProposal],
 ) -> EntityDeterministicSummary {
     let mut counts = BTreeMap::from([
         ("entity_count".to_string(), entities.len() as u64),
+        (
+            "promotable_alias_count".to_string(),
+            promotable_aliases.len() as u64,
+        ),
         (
             "resolved_existing".to_string(),
             entity_state_count(entities, SolveReconciliationState::ResolvedExisting),
@@ -752,6 +803,344 @@ fn validate_review_groups_reference_entities(artifact: &SolveArtifact) -> Result
         }
     }
     Ok(())
+}
+
+fn solve_alias_proposals(
+    entities: &[SolveEntityRecord],
+    surfaces: &[SolveAliasProposalSurface],
+    canonical_type: &str,
+) -> Result<Vec<SolveAliasProposal>, Refusal> {
+    if canonical_type.trim().is_empty() {
+        return Err(solve_artifact_refusal(
+            "Solve alias proposals require profile canonical_type",
+            json!({
+                "stage": "solve",
+                "field": "metadata.profile.canonical_type",
+                "writes_performed": false
+            }),
+        ));
+    }
+
+    let mut surfaces_by_id = BTreeMap::new();
+    for surface in surfaces {
+        if surfaces_by_id
+            .insert(surface.surface_id.as_str(), surface)
+            .is_some()
+        {
+            return Err(solve_artifact_refusal(
+                "Solve alias proposal inputs contain duplicate surface IDs",
+                json!({
+                    "stage": "solve",
+                    "field": "alias_proposal_surfaces.surface_id",
+                    "surface_id": surface.surface_id,
+                    "writes_performed": false
+                }),
+            ));
+        }
+    }
+
+    let mut aliases = BTreeMap::<(String, String, String), BTreeSet<String>>::new();
+    for entity in entities
+        .iter()
+        .filter(|entity| entity.state == SolveReconciliationState::ResolvedExisting)
+    {
+        let Some(canonical_id) = entity.canonical_id.as_deref() else {
+            return Err(invalid_resolved_existing_alias_entity(
+                entity,
+                "canonical_id",
+            ));
+        };
+        if entity.incumbent_canonical_ids.len() != 1
+            || entity.incumbent_canonical_ids.first().map(String::as_str) != Some(canonical_id)
+        {
+            return Err(invalid_resolved_existing_alias_entity(
+                entity,
+                "incumbent_canonical_ids",
+            ));
+        }
+
+        for surface_id in &entity.surface_ids {
+            let Some(surface) = surfaces_by_id.get(surface_id.as_str()) else {
+                continue;
+            };
+            if surface.exact_lookup_status != SolveAliasProposalSurfaceStatus::Unresolved {
+                continue;
+            }
+            for raw_variant in &surface.raw_variants {
+                let input = ascii_trim(raw_variant);
+                if input.is_empty() {
+                    continue;
+                }
+                aliases
+                    .entry((
+                        input.to_string(),
+                        canonical_id.to_string(),
+                        entity.component_id.clone(),
+                    ))
+                    .or_default()
+                    .insert(surface.surface_id.clone());
+            }
+        }
+    }
+
+    aliases
+        .into_iter()
+        .map(
+            |((input, canonical_id, component_id), source_surface_ids)| {
+                solve_alias_proposal(
+                    input,
+                    canonical_id,
+                    component_id,
+                    canonical_type,
+                    source_surface_ids.into_iter().collect(),
+                )
+            },
+        )
+        .collect()
+}
+
+fn solve_alias_proposal(
+    input: String,
+    canonical_id: String,
+    component_id: String,
+    canonical_type: &str,
+    source_surface_ids: Vec<String>,
+) -> Result<SolveAliasProposal, Refusal> {
+    let allowed_actions = solve_alias_proposal_allowed_actions();
+    let mut proposal = SolveAliasProposal {
+        version: CANON_ENTITY_ALIAS_PROPOSAL_VERSION.to_string(),
+        proposal_id: String::new(),
+        content_hash: String::new(),
+        input,
+        canonical_id,
+        canonical_type: canonical_type.to_string(),
+        rule_id: "entity_solve_alias_proposal".to_string(),
+        component_id,
+        source_surface_ids,
+        allowed_actions,
+    };
+    proposal.content_hash = solve_alias_proposal_content_hash(&proposal)?;
+    proposal.proposal_id = format!("alias_proposal:{}", proposal.content_hash);
+    Ok(proposal)
+}
+
+fn solve_alias_proposal_allowed_actions() -> Vec<String> {
+    ["accept_alias", "reject_alias"]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn solve_alias_proposal_content_hash(proposal: &SolveAliasProposal) -> Result<String, Refusal> {
+    let material = json!({
+        "version": proposal.version,
+        "input": proposal.input,
+        "canonical_id": proposal.canonical_id,
+        "canonical_type": proposal.canonical_type,
+        "rule_id": proposal.rule_id,
+        "component_id": proposal.component_id,
+        "source_surface_ids": proposal.source_surface_ids,
+        "allowed_actions": proposal.allowed_actions
+    });
+    let bytes = serde_json::to_vec(&material).map_err(|error| {
+        solve_artifact_refusal(
+            "Failed to hash solve alias proposal",
+            json!({
+                "stage": "solve",
+                "field": "promotable_aliases.content_hash",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    Ok(witness::hash_bytes(&bytes))
+}
+
+fn ascii_trim(value: &str) -> &str {
+    value.trim_matches(|character: char| character.is_ascii_whitespace())
+}
+
+fn invalid_resolved_existing_alias_entity(
+    entity: &SolveEntityRecord,
+    field: &'static str,
+) -> Refusal {
+    solve_artifact_refusal(
+        "ResolvedExisting alias proposals require exactly one incumbent canonical ID",
+        json!({
+            "stage": "solve",
+            "field": field,
+            "component_id": entity.component_id,
+            "writes_performed": false
+        }),
+    )
+}
+
+fn validate_solve_alias_proposals(artifact: &SolveArtifact) -> Result<(), Refusal> {
+    let entities_by_component = artifact
+        .entities
+        .iter()
+        .map(|entity| (entity.component_id.as_str(), entity))
+        .collect::<BTreeMap<_, _>>();
+    let mut expected_order = artifact.promotable_aliases.clone();
+    expected_order.sort_by(solve_alias_proposal_cmp);
+    if expected_order != artifact.promotable_aliases {
+        return Err(solve_artifact_refusal(
+            "Solve alias proposals must be sorted deterministically",
+            json!({
+                "stage": "solve",
+                "field": "promotable_aliases",
+                "writes_performed": false
+            }),
+        ));
+    }
+
+    let mut seen_inputs = BTreeSet::new();
+    let mut seen_proposal_ids = BTreeSet::new();
+    for proposal in &artifact.promotable_aliases {
+        if proposal.version != CANON_ENTITY_ALIAS_PROPOSAL_VERSION {
+            return Err(invalid_solve_alias_proposal(
+                "Solve alias proposal has the wrong contract version",
+                proposal,
+                "version",
+            ));
+        }
+        if ascii_trim(&proposal.input).is_empty() || proposal.input != ascii_trim(&proposal.input) {
+            return Err(invalid_solve_alias_proposal(
+                "Solve alias proposal input must be non-empty and trimmed",
+                proposal,
+                "input",
+            ));
+        }
+        if !seen_inputs.insert(proposal.input.as_str()) {
+            return Err(invalid_solve_alias_proposal(
+                "Solve alias proposals contain duplicate inputs",
+                proposal,
+                "input",
+            ));
+        }
+        if !seen_proposal_ids.insert(proposal.proposal_id.as_str()) {
+            return Err(invalid_solve_alias_proposal(
+                "Solve alias proposals contain duplicate proposal IDs",
+                proposal,
+                "proposal_id",
+            ));
+        }
+        if proposal.canonical_id.trim().is_empty()
+            || proposal.canonical_type.trim().is_empty()
+            || proposal.rule_id.trim().is_empty()
+            || proposal.component_id.trim().is_empty()
+            || proposal.proposal_id.trim().is_empty()
+            || proposal.content_hash.trim().is_empty()
+            || proposal.source_surface_ids.is_empty()
+        {
+            return Err(invalid_solve_alias_proposal(
+                "Solve alias proposal is missing required binding fields",
+                proposal,
+                "promotable_aliases",
+            ));
+        }
+        if proposal.rule_id != "entity_solve_alias_proposal" {
+            return Err(invalid_solve_alias_proposal(
+                "Solve alias proposal rule ID is not canonical",
+                proposal,
+                "rule_id",
+            ));
+        }
+        let mut expected_surfaces = proposal.source_surface_ids.clone();
+        expected_surfaces.sort();
+        expected_surfaces.dedup();
+        if expected_surfaces != proposal.source_surface_ids {
+            return Err(invalid_solve_alias_proposal(
+                "Solve alias proposal source surfaces must be sorted and deduplicated",
+                proposal,
+                "source_surface_ids",
+            ));
+        }
+        let expected_hash = solve_alias_proposal_content_hash(proposal)?;
+        let expected_id = format!("alias_proposal:{expected_hash}");
+        if proposal.content_hash != expected_hash {
+            return Err(invalid_solve_alias_proposal(
+                "Solve alias proposal content hash does not match canonical bytes",
+                proposal,
+                "content_hash",
+            ));
+        }
+        if proposal.proposal_id != expected_id {
+            return Err(invalid_solve_alias_proposal(
+                "Solve alias proposal ID does not match canonical content hash",
+                proposal,
+                "proposal_id",
+            ));
+        }
+        if proposal.allowed_actions != solve_alias_proposal_allowed_actions() {
+            return Err(invalid_solve_alias_proposal(
+                "Solve alias proposal allowed actions are not canonical",
+                proposal,
+                "allowed_actions",
+            ));
+        }
+        if proposal.canonical_type != artifact.metadata.profile.canonical_type {
+            return Err(invalid_solve_alias_proposal(
+                "Solve alias proposal canonical_type must match the profile",
+                proposal,
+                "canonical_type",
+            ));
+        }
+        let Some(entity) = entities_by_component.get(proposal.component_id.as_str()) else {
+            return Err(invalid_solve_alias_proposal(
+                "Solve alias proposal references an unknown component",
+                proposal,
+                "component_id",
+            ));
+        };
+        if entity.state != SolveReconciliationState::ResolvedExisting
+            || entity.canonical_id.as_deref() != Some(proposal.canonical_id.as_str())
+        {
+            return Err(invalid_solve_alias_proposal(
+                "Solve alias proposal must reference a ResolvedExisting entity",
+                proposal,
+                "component_id",
+            ));
+        }
+        for surface_id in &proposal.source_surface_ids {
+            if !entity.surface_ids.contains(surface_id) {
+                return Err(invalid_solve_alias_proposal(
+                    "Solve alias proposal source surface is outside the resolved component",
+                    proposal,
+                    "source_surface_ids",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn invalid_solve_alias_proposal(
+    message: &'static str,
+    proposal: &SolveAliasProposal,
+    field: &'static str,
+) -> Refusal {
+    solve_artifact_refusal(
+        message,
+        json!({
+            "stage": "solve",
+            "field": field,
+            "component_id": proposal.component_id,
+            "input": proposal.input,
+            "writes_performed": false
+        }),
+    )
+}
+
+fn solve_alias_proposal_cmp(
+    left: &SolveAliasProposal,
+    right: &SolveAliasProposal,
+) -> std::cmp::Ordering {
+    left.input
+        .cmp(&right.input)
+        .then_with(|| left.canonical_id.cmp(&right.canonical_id))
+        .then_with(|| left.component_id.cmp(&right.component_id))
+        .then_with(|| left.source_surface_ids.cmp(&right.source_surface_ids))
 }
 
 fn hash_solve_artifact_without_self(artifact: &SolveArtifact) -> Result<String, Refusal> {
