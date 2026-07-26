@@ -38,3 +38,16 @@ _index.sqlite
 
 # Beads compliance audit dir (managed by /beads-compliance-and-completion-verification skill)
 /beads_compliance_audit/
+
+# Stray mcp_agent_mail runtime database dropped at repo root by a multi-agent
+# session (2026-07-14); runtime state, never repo content
+/storage.sqlite3
+/storage.sqlite3-shm
+/storage.sqlite3-wal
+
+# Stray outputs from a manual generalization pipeline run (2026-07-12) that was
+# pointed at the fixture tree. Tests build these in tempdirs
+# (TempGeneralizationScaffold in tests/entity_generalization.rs) and never read
+# the in-tree copies. Files retained on disk pending operator deletion.
+/tests/fixtures/extensions/neutral-domain/time_forward/artifacts/
+/tests/fixtures/extensions/neutral-domain/time_forward/generalization_execution_envelope.json
