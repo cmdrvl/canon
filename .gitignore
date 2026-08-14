@@ -51,3 +51,7 @@ _index.sqlite
 # the in-tree copies. Files retained on disk pending operator deletion.
 /tests/fixtures/extensions/neutral-domain/time_forward/artifacts/
 /tests/fixtures/extensions/neutral-domain/time_forward/generalization_execution_envelope.json
+
+# br writes a timestamped backup here on every --force flush (see the beads
+# hooks in cmdrvl-cli/scripts/beads-hooks). Local safety net, not shared state.
+.beads/.br_history/
