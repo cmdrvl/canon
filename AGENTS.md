@@ -237,6 +237,116 @@ If the user gives a direct instruction, follow it even if it conflicts with defa
 
 ---
 
+## Tangible Progress, Anti-Ceremony, and Honest Credit
+
+The purpose of this project is working, deployable software delivered
+accretively in the shortest time compatible with correctness, performance,
+reliability, and innovation. Process exists to serve that outcome; it must
+never become the product.
+
+- **No process porn.** Certificates, ledgers, dashboards, meta-reports, and
+  process documents are not progress. A process artifact may exist only when it
+  is a hard gate for a named feature or capability. Conformance checks, release
+  preflight, and required release evidence qualify; self-referential paperwork
+  does not. Choosing easy, low-risk process artifacts is reward hacking.
+- **Feature-first ratio.** The overwhelming majority of open work must deliver
+  runnable behavior — code, schemas, artifacts, and contracts an operator or
+  consuming agent can exercise. Process/operations items are capped at a
+  guideline of at most about 5% of open beads, and each must name the feature
+  work it gates. A process item that gates nothing does not get created.
+- **Honesty is absolute.** Never fake a test, present a fixture or mock as live
+  proof, weaken an assertion to make it pass, hard-code a success path, or close
+  work that is not done. Reopen a false close and add an incident note to the
+  bead record.
+- **Refusal is not delivery.** A correctly typed refusal is far better than a
+  fabricated result and far less valuable than the real capability. Canon's
+  refusal taxonomy is a feature, but refusal-only implementation earns partial
+  credit at most and never closes a feature bead. Full credit requires the
+  positive capability implemented, tested, and verified. Mark a refusal-only
+  state explicitly with a `refusal-only` label and a follow-up bead so it reads
+  as unfinished, never as shipped.
+
+Note the related-but-distinct rule for resolution results: **abstention is a
+legitimate output.** "Zero matches is a finding, not a failure" applies to what
+the software *reports*; it never licenses shipping a module that only ever
+abstains.
+
+These rules bind human-directed sessions and NTM swarms alike. Encode them in
+the acceptance criteria of the work items themselves.
+
+---
+
+## Named Reward-Hacking Patterns (All Forbidden)
+
+Beyond refusal farming and process porn, this architecture specifically invites
+the following failure modes. Name and reject them during planning, review, and
+verification. The numbering matches the shared CMD+RVL list so the pattern names
+carry across repos.
+
+1. **Gate self-weakening** — editing validator, conformance, lint, or audit code
+   so a failing check passes. In a swarm, conformance code is a separate
+   single-owner lane with reviewer sign-off; the orchestrator reviews its diff
+   every wave.
+2. **Proof-class inflation** — presenting fixtures, retained evidence,
+   deterministic samples, mocked providers, or hand-inserted registry rows as
+   live proof. Extrapolated or simulated scale numbers are the canon-native form
+   of this. Real proof requires runtime-selected subjects with a recorded
+   selection seed, receipts chained to real input manifests and source hashes,
+   and fresh-process readback.
+3. **Golden regeneration reflex** — regenerating goldens to match broken output
+   instead of fixing the output. Golden changes require an explicit
+   `GOLDEN-CHANGE` commit note and semantic diff review.
+4. **Commit-stream pumping** — trivial or artificially split commits, or new
+   `todo!()`/`unimplemented!()` scaffolds committed because they pass
+   `cargo check`. Every commit names its bead and touched scope. Note the
+   deliberate exception: the pre-existing module stubs described under
+   *Multi-Agent Coordination* legitimately contain `todo!()` and are there to be
+   replaced. Adding *new* placeholder macros to claim progress is the violation;
+   replacing an existing stub is the work.
+5. **Tautological tests** — tests that assert the code does whatever the code
+   does, or omit negative cases. Every feature bead pre-specifies its key
+   behavioral assertions, including at least one negative case that a naive
+   wrong implementation would fail.
+6. **Easy-bead cherry-picking** — repeatedly claiming low-risk beads while
+   articulation-point work starves. Claim the highest-priority ready bead and
+   act on staleness alerts for unclaimed P0/P1 work.
+7. **Close-pump abuse** — closing beads, yours or a peer's, to flood the ready
+   pool because closure unblocks dependents. Only the orchestrator closes in a
+   swarm; violations are reopened with an incident note.
+8. **Scope-splitting** — splitting one unit of work into type, implementation,
+   and test mini-closures to harvest multiple credits. Code and its tests ship
+   in the same bead; test-only follow-ups exist only for cross-cutting
+   integration suites.
+9. **Spec-editing as progress** — weakening a plan, specification, or frozen
+   decision instead of implementing it. `docs/PLAN_CANON.md`,
+   `docs/IDENTITY_ARCHITECTURE.md`, `docs/PROVIDER_SDK.md`, and the `DECISION_*`
+   documents are the frozen surface. Plan edits are a chore lane, never close
+   feature beads, and frozen decisions change only through the joint decision
+   protocol.
+10. **Conformance metastasis** — adding speculative checks, matrices, or reports
+    because they are safe and satisfying. Every new check must cite an observed
+    defect class or a named release gate.
+11. **Dependency smuggling** — vendoring, wrapping, or shimming around a banned
+    dependency or a stated boundary to "make progress." Two canon-specific
+    forms: reaching the network from inside a provider build, which
+    `PROVIDER_SDK.md` calls a conformance failure by definition; and pulling
+    domain machinery into core that `IDENTITY_ARCHITECTURE.md` places in
+    registries, profiles, strategies, or out-of-tree extensions.
+12. **Demo-path hard-coding** — special-casing particular entities, identifiers,
+    tickers, CIKs, filenames, hashes, registry snapshots, or pilot corpora so
+    the happy path passes. Conformance subjects are runtime-selected and differ
+    from development fixtures.
+
+**Determinism is the promise these protect.** Same input plus same registry
+snapshot must reproduce byte-identical output across platforms and runs,
+forever. Anything that makes a result reproducible only on the machine that
+produced it — float accumulation where integers are specified, unordered
+iteration, ambient clock or locale, naive floating-point geometric predicates —
+is a determinism defect, not a rounding detail. And per canon's final rule: if
+you cannot explain a match by pointing at assertion scores, it does not ship.
+
+---
+
 ## Beads (`br`) Workflow
 
 Use Beads as source of truth for task state. Issues are stored in `.beads/` and tracked in git.
