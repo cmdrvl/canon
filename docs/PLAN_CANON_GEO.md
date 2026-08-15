@@ -682,3 +682,117 @@ needs exactly three things and nothing else:
 Everything downstream — propagation, the residual, MUS, model counting, the certificate —
 is unchanged. Adding a sensor is a data-onboarding task, not an architectural one. **That
 is the property worth protecting.**
+
+---
+
+# Appendix B — MEASURED: the component-size claim is not supported
+
+Added 2026-08-15. **This is the first hard measurement against real data and it falsifies a
+load-bearing claim in §6.** Recorded here rather than quietly amended, because the claim was
+used to justify the exact-compilation strategy and the 0.5 s/tile budget.
+
+## B.1 What §6 claimed
+
+> "Typical component after slot-level geometric filtering: **6–20 variables**, d ≤ 8. Tail to
+> ~40 on a dense assemblage." — and therefore exact compilation is affordable and subsumes
+> all k-consistency.
+
+**This was an estimate presented without measurement.**
+
+## B.2 The measurement
+
+Real tile: 100 MapPLUTO parcels + 93 NYC building footprints within 150 m of the 305 E 72nd
+rooftop geocode (`docs/geo_design_session/TILE_305_E_72ND.txt`). Bipartite graph, parcel
+centroid ↔ footprint centroid, edge where haversine distance ≤ r. Connected components:
+
+```
+  r(m)  comps    mean   max   p50   p90  in 6-20  isolated
+    10     64    3.02    17     2     7        8        16
+    15     51    3.78    25     2     8        7         7
+    20     33    5.85    34     2    15        7         4
+    25     24    8.04    37     4    16        9         1
+    30     12   16.08    49    10    37        5         1
+    35      7   27.57    59    31    59        1         1
+    40      6   32.17    59    37    59        1         1
+    50      3   64.33    77    59    77        0         0
+    60      1  193.00   193   193   193        0         0
+   150      1  193.00   193   193   193        0         0
+```
+
+## B.3 The verdict: there is no usable plateau
+
+The adversarial review predicted the exact test: *"either there is a stable plateau where
+components land in 6–20, or the distribution jumps from singletons to tens with no usable r,
+and the claim is dead."*
+
+**It is the second one.** The distribution goes from mostly-singletons straight to a giant
+component:
+
+- At the most favourable radius (r = 25 m) only **9 of 24** components fall in the 6–20 band,
+  and the **maximum is already 37** — above §6's stated ceiling.
+- At r = 30 m the mean is 16 but the max is **49**.
+- **The tile percolates at r ≈ 60 m** into a single 193-variable component, well inside the
+  150 m tile radius.
+
+**Centroid proximity does not decompose this tile at any radius.** The exact-compilation
+argument in §6 rests on a decomposition that this filter does not produce.
+
+## B.4 What actually decomposed the tile, and why it does not count
+
+The ground-truth pass measured components via the footprint table's `MAPPLUTO_BBL → BBL`
+bridge and got mean 2.92, max 5 — comfortably inside budget. **That number is vacuous, and
+must not be cited as support.**
+
+> Measuring components through `MAPPLUTO_BBL` measures the component structure of an
+> equivalence relation whose classes are defined by the key being resolved. It is a fact
+> about Manhattan building stock — footprints per tax lot — not about a resolution
+> architecture. And if `MAPPLUTO_BBL` exists, that edge needs no propagation at all; it is a
+> deterministic join. **An architecture that passes here passes by not being exercised.**
+
+The honest entry for the component-size row is **not applicable**, not a number with an
+asterisk.
+
+## B.5 The 25 m filter, corrected
+
+§B.2's companion measurement — equal-area disc radius `√(A/π)` per parcel, a hard floor on
+centroid-to-boundary distance:
+
+```
+  median parcel   8.7 m
+  p90            18.6 m
+  max            33.4 m   ← BBL 1014477501, LOTAREA 37,800 — the answer parcel
+  parcels exceeding 25 m:  4 / 100  =  4%
+```
+
+So the earlier refutation ("a 25 m filter deletes the true parcel, which sits 31.58 m from
+its centroid") had the right conclusion for the wrong reason. **The correct statement is
+worse for the filter:**
+
+> A fixed 25 m centroid radius is adequate for 96% of parcels and fails **specifically and
+> silently on the ~4% that are large assemblages** — which are precisely the hard cases this
+> product exists to solve. The answer parcel here is the single largest in the tile.
+
+**A fixed radius is the wrong shape of filter.** Any replacement must normalise by parcel
+extent — half-diagonal from `LOTFRONT`/`LOTDEPTH`, or the equal-area radius above — rather
+than applying a constant.
+
+## B.6 Consequences
+
+1. **§6's consistency ladder and 0.5 s/tile budget are unvalidated.** Do not quote them.
+2. **The decomposition mechanism is an open question**, and probably needs real polygon
+   containment rather than centroid proximity. That requires a re-pull with
+   `ST_AsWKT(GEOM_GEOG)` on both tables.
+3. **If no filter decomposes dense tiles**, exact compilation may be affordable only in
+   sparser geographies, and dense urban tiles may need a different strategy — a real
+   possibility that must be priced before committing.
+4. **Scope of this finding: n = 1, and it is the dense extreme.** Midtown-adjacent Manhattan
+   is the worst case for percolation. A suburban or agency-multifamily tile will decompose
+   far more readily. **The claim is falsified for dense urban, not universally** — measure
+   across a stratified tile sample before concluding anything general.
+
+## B.7 The process lesson
+
+The estimate survived a full red team, an adversarial cross-scoring round, and two model
+families independently endorsing the architecture. **It was killed by twenty minutes of
+arithmetic on data we already had.** No amount of adversarial reasoning substitutes for one
+measurement.
