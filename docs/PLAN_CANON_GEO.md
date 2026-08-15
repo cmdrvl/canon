@@ -1,0 +1,572 @@
+# PLAN_CANON_GEO — The Tile as a Compiled Constraint Object
+
+> Status: **proposed architecture**, not yet implemented. Supersedes the resolution
+> approach sketched across bd-2kjx and its children. Does not change canon core: runtime
+> lookup remains exact registry lookup.
+>
+> Date: 2026-08-15. Derived from an adversarial multi-model design session (see
+> [Provenance](#15-provenance-and-what-is-not-yet-verified) — **the ~50 academic citations
+> below have NOT been independently verified**).
+
+---
+
+## 1. The thesis
+
+A tile is a **Waltz scene**.
+
+Roughly 200 noisy local observations of one physical block, from 4–6 sources with no shared
+identifier, governed by physical laws that admit only a few globally consistent
+interpretations. That is precisely the problem classical constraint reasoning was invented
+for:
+
+- Waltz (1972/75) — resolving ambiguous scene labellings from local constraints
+- Montanari (1974) — *"Networks of constraints: fundamental properties and applications to
+  picture processing"*
+- Rosenfeld, Hummel & Zucker (1976) — *"Scene labeling by relaxation operations"*
+
+**The industry attacks this problem with a spatial join and a trigram index.**
+
+We do not ship a point estimate with a score. We ship a compiled object `T` whose
+properties are *provable* rather than asserted.
+
+| Property | Mechanism | Authority |
+|---|---|---|
+| Fixpoint unique regardless of application order | monotone, contracting, correct propagators on a finite lattice | Tarski 1955; Cousot & Cousot 1977; Apt 1999 |
+| Compiled form is canonical — same tile, same bytes, any machine | reduced ordered decision diagram, variable order derived from the H3 index | Bryant 1986; Darwiche 2011 (SDD) |
+| Adding a source can only refine, never contradict — **and this is checkable** | `Models(T ∧ c) ⊆ Models(T)`, entailment test between last year's diagram and this year's | Darwiche & Marquis 2002 |
+| Abstention is the residual, not a threshold | the answer is the model set; a singleton is a decision, a doubleton is an honest doubleton | — |
+| Empty model set is a **proof of source defect** with a minimal ordered blame set | MUS via preference-ordered QuickXplain; repairs via hitting-set duality | Reiter 1987; Junker 2004; Liffiton & Sakallah 2008 |
+| Every conclusion explainable by naming evidence | minimal environment supporting the conclusion, computed on demand | de Kleer 1986 (ATMS) |
+| The whole run is independently machine-checkable | pseudo-Boolean proof log covering global-constraint propagation and symmetry breaking | Gocht, McCreesh & Nordström 2022 (VeriPB) |
+
+---
+
+## 2. Why the previous two architectures failed
+
+Both prior designs picked a channel to **propose** candidates and demoted the other to
+**confirm**. Both were red-teamed and destroyed.
+
+**Address-proposes fails.** The parcel layer stores one representative `ADDRESS` per lot,
+while large and corner lots legitimately carry many. Measured: geocode `1633 BROADWAY` vs
+lot `1657 BROADWAY`; `9 WEST FORDHAM ROAD` vs lot `2167 GRAND CONCOURSE`. The true answer
+is frequently **unreachable from the string**, so grounding fails silently and the system
+biases toward whichever reading happens to match the stored representative — producing
+wrong answers rather than abstentions.
+
+**Geometry-proposes fails.** Interpolated geocodes sit in the roadbed contained by nothing;
+one measured case parsed to the wrong street 1.8 km away at ROOFTOP confidence.
+
+**The dilemma was an artifact.** It arose from using noisy evidence in its *unsound
+direction* and then needing a second channel to clean up. Fix the direction and the
+dilemma dissolves. There is no proposer.
+
+### 2.1 The checksum idea, and why it was demoted
+
+An earlier proposal treated asserted attributes (size, year, count) as **parity bits** on a
+parse — pick the reading whose implied physical footprint reconciles. The red team killed
+it as a *decider* with an information-theoretic argument:
+
+```
+acceptance half-width w ≈ 0.12   (minimum honest; covers the measured NRA/gross gap)
+plausible size range 5,000–2,000,000 sf = 400×
+distinguishable bins = ln(400)/ln(1.27) ≈ 25
+usable information   = log2(25) ≈ 4.6 bits      (3.5 bits at realistic w = 0.25)
+```
+
+Other attributes are near-zero **conditional on the tile** — competing readings are lots on
+the same block, homogeneous in age and class. Total: **6–9 bits, generously.** Isolating
+one reading from 10⁴ needs 13.3.
+
+Worse, the discriminating power is **anti-correlated with case difficulty**: where readings
+differ wildly, grounding already killed the bad ones; where they differ subtly, the sums
+differ by less than measurement noise. And an error-correcting code asked to correct beyond
+its distance does not degrade gracefully — **it confidently miscorrects to the wrong
+codeword.**
+
+**Verdict: size is retained as one constraint among many, contributing its ~4 bits. It is
+not a decider.** This was an over-promotion, not a wrong idea.
+
+---
+
+## 3. ρ — the soundness discipline
+
+**This is the single most important design rule and it is what makes a hard-constraint
+frame survive noisy sources.**
+
+> Every source attribute is admitted to the solver only through a declared, versioned
+> relaxation operator **ρ** that maps the raw value to the *weakest constraint the source
+> can actually support*.
+
+| Raw evidence | Naive (unsound) reading | ρ-image (sound) |
+|---|---|---|
+| Geocode `g`, `interpolated` | "the property is at `g`" | "footprint intersects the disc of radius `r=150 m` about `g`" — nearly vacuous, which is **correct** |
+| Geocode `g`, `rooftop` | same | `r = 8 m` — sharp, and legitimately so |
+| Parcel `ADDRESS = "355 E 12 ST"` | "this lot's address is 355 E 12 St" | "355 E 12 St is *one of* this lot's addresses" — membership, never functional equality |
+| Query address `199 First Ave` | "match a lot whose ADDRESS = 199 First Ave" | "*some* member of the collateral set fronts First Avenue at 199" — existential over the set variable |
+| `BLDGAREA = 214,300` | "GLA is 214,300" | gross above-grade exact; net rentable `∈ [⌊0.78x⌋, ⌈0.95x⌉]` for `BLDGCLASS ∈ O*`, a separate declared relation |
+| `OWNERNAME` equal after normalization | "same owner" | "these lots *may* form an assemblage" — permits, never forbids |
+| `OWNERNAME` different | "different owner ⟹ not assembled" | **no constraint at all** |
+| FEMA county coverage 92% | unused | `gcc` lower bound: ≥ `⌈0.80·K⌉` slots carry a FEMA observation |
+
+### 3.1 Two consequences
+
+**Every noisy channel is admitted only in its sound direction.** Address evidence never
+excludes, it only requires existence. Ownership never separates, it only permits. Geocodes
+never locate, they only bound.
+
+**Theorem (trivial, and the whole business).** If every ρ is sound — the true world
+satisfies `ρ(v)` whenever the source reports `v` — then the true assignment is in the model
+set. Therefore:
+
+> **An empty model set is a proof that at least one source violated its own published error
+> model.**
+
+Not "the sources disagree." Not "the join failed." A *proof*, attributable to a minimal set
+of source records, that a specific vendor's declared tolerance was breached on a specific
+parcel. **That is a falsifiable claim you can put in an email to Overture, FEMA, or a
+servicer.**
+
+### 3.2 The band-versus-threshold rule
+
+> **A threshold selects. A band restricts.** A wrong threshold silently produces a wrong
+> answer. A wrong band produces an empty model set — a detected, attributable, reportable
+> failure. **The system audits its own error models.**
+
+Named price: **wider bands mean larger residuals.** We resolve fewer tiles to a singleton
+than a competitor willing to guess. Paid in abstention, which is a first-class output.
+
+---
+
+## 4. Integer geometry
+
+Every coordinate is projected into a **per-tile fixed local integer frame** and snapped to
+millimetres in `i64`. Projection constants per H3 cell are precomputed once and shipped as
+versioned data, so at decision time projection is a table lookup plus an exact integer
+affine map.
+
+**No transcendental function, no floating-point value, and no `f64` comparison appears
+anywhere in the decision path.**
+
+Arithmetic: a 1 km tile spans ~10⁶ mm, coordinates ~2×10⁶. Shoelace terms ~4×10¹²; summed
+over a 10³-vertex polygon ~4×10¹⁵ — inside `i64`, with `i128` carried for headroom.
+Orientation predicates are exact `i128` determinants. **No adaptive-precision filter
+(Shewchuk 1997) is needed because we never leave the integers.**
+
+- *Cheap wrong way:* `ST_Contains` in double precision.
+- *Silent error:* a footprint straddling a lot line by 3 cm goes to lot A on x86, lot B on
+  ARM, and a third answer after a GEOS point release. In 40,000 loans that is a handful of
+  silently different answers per rerun with no detection mechanism.
+- *What exact buys:* byte-identity across platforms and decades by construction.
+
+---
+
+## 5. The variable model
+
+Canonical total order `≺` on all features: `(source_rank, source_native_id_bytes)`, with
+`source_rank` from a versioned table. Variable order, diagram order, report order and
+tie-breaks all derive from `≺`. **No hash-map iteration in any order-sensitive path.**
+
+**Latent layer.** Parcels `P` are given (~25/tile); geometry is survey ground truth,
+attributes go through ρ. Latent buildings `B = {b₁…b_K}`, `K = Σ_p NUMBLDGS(p)` where
+present, else per-component max footprint count across sources, plus `⌈0.2K⌉` slack slots
+under an `atmost`. `K ≈ 60–80`.
+
+```
+X_f  ∈ B ∪ {⊥}       observed footprint → slot   (Overture, FEMA, MS)   ~180
+Y_q  ∈ B ∪ {⊥}       POI → slot                                          ~40
+Pb_b ∈ P ∪ {∅}       slot → parcel                                       ~80
+A_b  ∈ [a_lo,a_hi]   integer footprint area, whole sq ft                 ~80
+Fl_b ∈ [1,120]       floor count                                         ~80
+Lo_ℓ,Hi_ℓ ∈ ℤ        address-range endpoints per lot per block face      ~50
+Coll ⊆ P             collateral parcel set        (ROBDD set variable)
+QB   ⊆ B             collateral building set      (ROBDD set variable)
+```
+
+`n_fd ≈ 260` finite-domain, `n_int ≈ 210` integer. `d_max = K ≈ 80` before geometric
+filtering; `d_typ ≈ 8` after.
+
+### 5.1 Symmetry must be broken completely and soundly
+
+Slots `b₁…b_K` are interchangeable. `K!` symmetry **destroys model counting outright** —
+every solution appears `K!` times. Two mechanisms channelled together (Cheng, Choi, Lee &
+Wu 1999):
+
+- **Representative encoding** for canonicity — a latent building is identified with the
+  `≺`-least observation in its cluster. No anonymous slots, weak propagation.
+- **Slot encoding** for the strong global propagators, with **value precedence**
+  (`precede`; Law & Lee 2004; Walsh 2006) breaking value interchangeability completely at
+  GAC in O(nd).
+
+- *Cheap wrong way:* cluster, then sort clusters and call them 1..k.
+- *Silent error:* the count is wrong by `K!/orbit size`, so "3 candidates" and "3 million
+  relabellings of 1 candidate" are indistinguishable and every ambiguity measure is noise.
+
+---
+
+## 6. The consistency ladder, with arithmetic
+
+**The ceiling is not a consistency level.** Régin's `alldifferent` GAC computes strongly
+connected components of the value graph (Tarjan 1972) as an intrinsic step — **those SCCs
+*are* the tile's decomposition, handed to us free.** No separate tree-decomposition
+heuristic. Typical component after geometric filtering: **6–20 variables, d ≤ 8**, tail to
+~40 on a dense assemblage.
+
+At that size, **exact compilation of the entire solution set is cheaper than path
+consistency on the tile, and subsumes k-consistency for every k simultaneously.** The
+crossover is at **k = 3**.
+
+```
+NC  →  AC-2001 + GAC on globals   ≈ 10 ms   tile-wide
+    →  SAC                        ≈ 0.3 s   tile-wide   ← the level that earns its keep
+    →  decompose                  free      from Régin/Tarjan
+    →  exact MDD/SDD per component ≈ 0.2 s  ← subsumes all k-consistency at once
+    →  PC on components           ≈ 50 ms   ← explanation artifact, NOT pruning
+```
+
+**Tile budget ≈ 0.5 s.** A spatial join is ≈ 1 ms.
+
+> **We spend 500×, and that is the entire commercial thesis.**
+
+At 10⁶ tiles: ~140 CPU-hours, embarrassingly parallel — **a few hundred dollars of compute
+for a national pass.**
+
+### 6.1 What each level buys that the level below cannot
+
+**AC over pairwise `≠` cannot see Hall sets.** Six MS GlobalML footprints, five
+geometrically admissible slots. Pairwise disequality with AC finds nothing — every value
+still has support. Régin's GAC finds the wipeout immediately, because Hall's theorem (1935)
+violations are exactly what the SCC decomposition detects. **This is a proof that MS
+over-segmented a roof ridge, emitted for free.**
+
+**SAC buys eliminations requiring an assignment plus a numeric constraint.** Assume the
+collateral is lot A. Propagate. The knapsack propagator on `Σ A_b · Fl_b` cannot reach the
+asserted 214,300 sf even using every compatible footprint at maximum plausible floor count
+→ wipeout → **lot A eliminated with no threshold and no search.** Plain AC never sees this
+because the sum is violated only *in combination with* the assignment.
+
+**PC and SAC are incomparable as domain filters** (Debruyne & Bessière, JAIR 14, 2001; the
+lattice is `AC ≺ RPC ≺ maxRPC ≺ SAC` with PC orthogonal as a *relation*-filtering
+consistency). PC's distinctive product is the pairwise relation itself — *"if the
+collateral is lot A then the FEMA structure must be `f3`"* — which SAC can never represent.
+
+**Therefore PC is demoted from pruning to explanation.** Post-decomposition, post-SAC,
+PC-2001 on components approximates Montanari's (1974) **minimal network**: the network
+whose binary relations are exactly the projections of the solution set. The human-readable
+pairwise summary of the residual. Run for the report, not the answer.
+
+**Strong k-consistency for k ≥ 4 is affordable on components and worthless there** — for
+the same ~5 s you can compile the component exactly and get every k at once plus the count
+plus the backbone. **Ranked to zero.**
+
+**Freuder's 1982 theorem gives a per-tile certificate.** If a component's constraint graph
+has width `w` under the canonical ordering and the network is strongly `(w+1)`-consistent,
+search is backtrack-free — the propagation fixpoint *is* the solution set. Compute `w` per
+component and report it. A tile carries the line *"solved backtrack-free at width 2"*,
+which is a mathematical statement about that tile, not a QA note.
+
+---
+
+## 7. The global constraint catalogue
+
+Domain rules that look like generic pairwise checks are instances of **named global
+constraints with polynomial domain-consistent propagators.** Hand-coding them as pairwise
+checks discards decades of work and prunes far worse.
+
+| Domain rule | Global constraint | Algorithm / authority |
+|---|---|---|
+| Within-source exclusivity (two Overture buildings are never the same building) | `alldifferent` / `alldifferent_except_0` | Régin 1994, via Hall's theorem + Tarjan SCC |
+| Cardinality priors (`NUMBLDGS`, source coverage rates) | `gcc` (global cardinality) | flow-based |
+| Distinct building count | `nvalue` / `atmost_nvalue` | — |
+| Additive area — **not** "sum with tolerance" | `knapsack` / `bin_packing` | subset-sum DP with dedicated propagator |
+| Parcels do not overlap | `diffn` / `geost` | Beldiceanu et al. |
+| Address along a block face | `disjunctive` scheduling on the house-number axis | — |
+| **Address string parsing** | `regular` | Pesant, CP 2004 — GAC by DFA unfolding, O(n·\|Q\|·\|Σ\|) |
+| Temporal feasibility | Allen interval algebra / STP | Allen 1983; ORD-Horn tractable subclass (Nebel & Bürckert 1995); STP by Floyd–Warshall (Dechter, Meiri & Pearl 1991) |
+| Ownership equivalence | `nvalue`, `among`, equivalence constraints | — |
+| **Identifier namespaces** | functional dependencies + **congruence closure** | Nelson–Oppen 1979; union-find with proof forests |
+| Containment (building on parcel, POI in building) | `inverse`, channelling, b-matching | — |
+| Set variables (assemblages, `Coll`, `QB`) | ROBDD set domains | — |
+| Slot symmetry / ordering | `precede`, `lex_chain` | Law & Lee 2004; Walsh 2006 |
+
+### 7.1 Three that deserve calling out
+
+**`regular` puts the address grammar inside the solver.** The naive way is libpostal — a
+CRF, therefore statistical, therefore nondeterministic across versions and uninterpretable
+— which **picks one parse**. Silent error: `"199 First Avenue, Unit 3B, a/k/a 355 East 12th
+Street"` gets one parse, the `a/k/a` is discarded, and the true answer is destroyed before
+the solver runs. With `regular` over a declared versioned token grammar, **all parses stay
+alive as a domain** and the other constraints kill the wrong ones. Alternation handles
+`a/k/a` natively. **This removes the last statistical component from the decision path.**
+
+**Allen's interval algebra finds demolitions.** MS footprint from 2021 imagery, FEMA
+structure from 2019, parcel `YEARBUILT` 2020. A spatial join merges all three into one
+building. The temporal network **proves** the 2019 FEMA record cannot denote the same
+physical structure — so the tile contains a demolition-and-rebuild event, meaning **the
+collateral described in the 2019 offering document no longer exists.** A five-alarm CMBS
+finding, falling out of a 1983 paper. *Cheap wrong way:* `WHERE year_built <= 2019` — it
+filters rows instead of detecting events, so the rebuild is invisible.
+
+**Congruence closure makes identity conflicts proofs.** Maintain equivalence classes of
+entity variables and identifier literals; every union records the named evidence
+responsible; **every attempted union with an incompatible namespace id produces a conflict
+proof.** Inverse-Ackermann per operation. *Cheap wrong way:* coalesce ids after choosing a
+parcel — the conflict is discovered too late or silently overwritten. **A conflict is a
+proof, not an exception log.**
+
+---
+
+## 8. Explanations as a byproduct
+
+Three candidate paradigms with different cost profiles:
+
+**(a) ATMS** (de Kleer 1986; + GDE, de Kleer & Williams 1987). Every derived datum carries
+a label: the minimal environments under which it holds. Explanation *is* the data
+structure. **Honest cost:** labels are antichains and can blow up exponentially — with ~200
+source records as assumptions per tile this is a real risk. **Do not run a full ATMS
+eagerly.**
+
+**(b) QuickXplain** (Junker, AAAI 2004). Preferred minimal explanation on demand in
+**O(k log(n/k))** consistency checks. At n ≈ 60 tile constraints, k ≈ 3: `3·log₂(20) ≈ 13`
+solver calls × ~10 ms = **~130 ms per explanation, paid only when an operator clicks.**
+Fully deterministic given a fixed constraint order, which the source-reliability ordering
+supplies. **This is the right engineering answer.**
+
+**(c) Lazy Clause Generation** (Ohrimenko, Stuckey & Codish 2009) — propagators explain
+themselves in clauses; the resolution derivation is the proof. Certified with **VeriPB**
+(Gocht, McCreesh & Nordström, CP 2022), which can certify global-constraint propagation
+*and* symmetry breaking, which a naive DRAT log cannot.
+
+### 8.1 The committed architecture
+
+- **Answer layer:** compile. No search → no learned clauses → no order-dependence at all.
+- **Explanation layer:** QuickXplain on demand, ordered by declared source reliability.
+  Artifact is a minimal set of named source records: *"lots 1012920026 and 1012920001 are
+  separated by exactly {FEMA `f3` SQMETERS = 3,240; MapPLUTO `NUMBLDGS` = 2; the First
+  Avenue block-face anchor at 195}."* Templates to prose because every constraint carries
+  provenance by construction.
+- **Certificate layer:** VeriPB proof log for the full run, **independently checkable by a
+  third party who does not trust our code.**
+
+### 8.2 The determinism precondition people skip
+
+**Confluence requires every propagator to be a monotone function of the domain store.** Any
+propagator using randomised rounding, sampling, or an early-exit budget is non-monotone and
+**voids the theorem.** That is a hard rule on the propagator library, not advice.
+
+Where we search rather than compile (components exceeding the width budget), byte-identical
+*proofs* additionally require: canonical branching order from `≺`; restarts driven by a
+deterministic counter, never wall clock; no PRNG without a fixed seed; no propagator reading
+external mutable state. **A single `HashMap` iteration in a propagator silently destroys the
+guarantee.**
+
+---
+
+## 9. Solver-native artifacts — the actual product
+
+Compiling to **d-DNNF / SDD / reduced MDD** (Darwiche 2001, 2011; Darwiche & Marquis 2002;
+Andersen, Hadžić, Hooker & Tiedemann 2007; Bergman, Cire, van Hoeve & Hooker 2016) makes
+all of the following linear or polynomial in diagram size.
+
+| Artifact | Computation | Operator product |
+|---|---|---|
+| **Backbone** — values in every solution | one traversal | *"Regardless of how the ambiguity resolves, this loan touches BBL 1012920026, GERS `08f2a3…`, and total collateral GLA ≥ 412,000 sf."* **Lets a downstream system act on partial resolution.** |
+| **Exact model count** | one bottom-up pass | A *calibration-free* ambiguity measure. Not a confidence score — a count. 1 = decided, 3 = three named alternatives, 0 = proof of source defect. |
+| **Residual enumeration** | polynomial delay | The full alternative set, streamable. Uno (1997) gives O(V) delay per matching; exact counts via Ryser (1963) at O(2ⁿn) — n=12 → 4.9×10⁴ ops, free. *#P-complete in general (Valiant 1979); intractable at scale, free at 200.* |
+| **MUS** — minimal blame | QuickXplain | *"These five sources cannot all be right, here is the smallest set that proves it, ordered so the least-trusted source is named first."* |
+| **MCS** — minimal repair | hitting sets of MUSes (Reiter 1987); enumeration via CAMUS (Liffiton & Sakallah 2008) or MARCO (Liffiton et al. 2016) | *"Retract either {FEMA `f3` SQMETERS} or {MapPLUTO `NUMBLDGS`} and the tile becomes consistent. Nothing smaller works."* **A repair recommendation, not an error message.** |
+| **Value of information** | count reduction under each hypothetical new fact | *"Buy the certificate-of-occupancy date from this vendor and 61% of your residual ambiguity across the portfolio collapses."* Exact, because counting is exact. |
+| **Minimal network** (Montanari 1974) | PC on the residual component | *"If lot A then FEMA `f3`; if lot B then FEMA `f7` and the POI is a tenant not the owner."* |
+| **Certified refinement** | entailment between last year's diagram and this year's — polytime on SDDs sharing a vtree | *"Here is a machine-checkable proof that our 2027 answer refines our 2026 answer and contradicts nothing."* |
+
+### 9.1 The committed ranking
+
+**Contractual output, build first: the pair (backbone, exact count).** Nearly free once the
+compiler exists, and it is what goes in the SLA. **It converts abstention from a failure
+into a deliverable** — a consumer can safely act on the backbone and safely defer on the
+residual, both precisely.
+
+**Highest-margin single artifact: the ordered MCS lattice.** Backbone can be *approximated*
+— a competitor with a good probabilistic model can produce a "high confidence subset" that
+is usually right, and usually-right sells. **MCS has no approximation.** There is no
+statistical proxy for "the minimal set of retractions that restores consistency." It is
+also the only artifact with a buyer *other than* the person who asked the question — the
+data vendor, the trustee, the risk committee — and **the only one that improves the input
+corpus rather than consuming it, so it compounds.**
+
+**Compounding moat: value of information.** Once counting is exact, VoI is exact, and exact
+VoI turns data acquisition from a procurement guess into an optimisation. This is the thing
+that makes the corpus asymmetric over three years, and it directly answers "which dataset
+do we buy next" from real residuals rather than intuition.
+
+**Regulatory: certified refinement.** In CMBS specifically, *"we can hand the trustee a
+proof that our restatement is a refinement and not a revision"* is worth more than it
+sounds.
+
+---
+
+## 10. Where the frame breaks — answered with a theorem
+
+**Semiring-based CSP** (Bistarelli, Montanari & Rossi, JACM 44(2), 1997):
+
+> **Soft constraint propagation is confluent and reaches a unique fixpoint iff the
+> semiring's combination operator × is idempotent (a × a = a).**
+
+- **Fuzzy / possibilistic** — `⟨[0,1], max, min⟩`. `min` is idempotent. **Confluent. Safe.**
+- **Weighted** — `⟨ℕ∪{∞}, min, +⟩`. `+` is not idempotent. Soft arc consistency (Cooper &
+  Schiex 2004; Larrosa & Schiex 2004) requires equivalence-preserving transformations and
+  **the fixpoint depends on the order they are applied.**
+
+**So "can we just add reliability weights?" is answered no, and here is the paper.**
+
+### 10.1 Where softness lives instead — three places, none of them the solver
+
+1. **In ρ** — declared, versioned, falsifiable bands (§3). Gross-vs-NRA is two hard
+   relations plus a band `[0.78, 0.95]` for office, with a version number and a citation.
+2. **In presentation ranking** — genuine preferences applied to the **already-enumerated
+   finite residual**, as a sort with canonical total order and tie-breaking. Sorting a
+   finite enumerated set is confluent by construction. **The solver never sees the
+   preference.**
+3. **Reliability, which is not a weight** — it sets the *width* of a source's ρ band and
+   supplies the *preference order* handed to QuickXplain. **Reliability never weights a
+   decision. It widens a band and orders a report.**
+
+> **Rule: preferences rank; constraints prune. Never mix.**
+
+### 10.2 The claim-class stratification
+
+If valued/semiring CSP *is* used, it remains deterministic given exact costs and
+tie-breaks — but **adding a soft constraint can change the optimum**, so the "knowledge only
+tightens" guarantee does **not** extend to preferred answers. Output must therefore
+separate:
+
+```
+HARD_FORCED     true in every hard-feasible model
+SOFT_PREFERRED  true in every minimum-cost model under declared policy
+SOFT_RANKED     ranked alternatives, not facts
+```
+
+**Never promote `SOFT_PREFERRED` as a canonical identity fact** unless the product contract
+explicitly allows policy-dependent identity.
+
+> **Softness does not destroy determinism. It destroys the right to call the optimum "the
+> truth." Keep those separate and the architecture remains honest.**
+
+### 10.3 When hard constraints conflict
+
+1. Emit the MUS or a small irreducible conflict.
+2. Compute MCS / minimum-cost repair **as diagnosis only**.
+3. **Do not return a resolved identity.**
+
+If the conflict involves constraints that should have been soft, **the fix is not to weaken
+the solver. The fix is to reclassify the evidence contract.**
+
+**Fallback is not fuzzy matching. It is a lower claim class:** hard residual unresolved;
+soft ranking available; minimal repairs available; human review target available.
+
+---
+
+## 11. What this supersedes in the existing geo epic
+
+| Bead | Status under this plan |
+|---|---|
+| bd-2cbs entity-level model | **Retained and strengthened** — levels become typed variables and channelling constraints |
+| bd-16r1 geometry typed value | **Retained** — the per-tile integer frame is exactly this, now with an arithmetic bound |
+| bd-3nc7 predicate regime | **Resolved** — integers in a tile-local frame; no adaptive-precision filter needed |
+| bd-15ba exact predicates | **Demoted** — Shewchuk becomes a fallback, not the bar |
+| bd-2zdz assemblage subset selection | **Superseded** — becomes `knapsack`/`bin_packing` + set variables, not bespoke interval enumeration |
+| bd-786w coverage abstention | **Superseded** — abstention is the residual model set; reason codes become MUS/MCS output |
+| bd-272d attribute anchoring | **Retained as a constraint**, demoted from decider (see §2.1) |
+| bd-1a12 geocode plausibility | **Retained** — becomes ρ radius selection plus an empty-model-set proof |
+| bd-1uje / bd-3d8p / bd-1c96 / bd-3h2p / bd-3ul7 ambition lane | **Mostly superseded** — assignment and clustering become global constraints with exact propagators; revisit each against §7 |
+| bd-101v visual evidence card | **Retained and easier** — minimal network + MUS are the card's content |
+| bd-tccn worked-case corpus | **Retained, now the validation harness** for the propagator library |
+| bd-35qg address-set source | **Elevated** — the red team's central recommendation: much of the machinery exists to compensate for a missing address-point layer |
+
+---
+
+## 12. The acquisition finding the red team surfaced
+
+> *"Most of the parse forest exists to compensate for a missing data source. You do not
+> have an address-point layer, and you need one."*
+
+NYC PAD / Geosupport contains every legal address per lot including all frontages and
+a/k/a's, encodes Queens grid semantics correctly, and already knows that 9 West Fordham
+Road and 2167 Grand Concourse are the same lot. Deterministic, integer-keyed, explainable,
+no model in it, maintained by the jurisdiction that *defines* the answer.
+
+With it, several hard problems collapse to lookup rather than enumeration. Outside NYC the
+analogue is the county address-point file or the National Address Database. **Imperfect
+coverage is fine — imperfect coverage produces honest abstentions.**
+
+---
+
+## 13. Cost model and the commercial thesis
+
+```
+per tile        ≈ 0.5 s        vs ≈ 1 ms for a spatial join      → 500×
+national pass   ≈ 140 CPU-hours at 10⁶ tiles, embarrassingly parallel
+                ≈ a few hundred dollars of compute
+```
+
+**The moat is not the data.** Overture, FEMA, Microsoft footprints and county parcel data
+are public. The moat is being willing to spend 500× per tile running exact combinatorial
+methods, because the tile bounds the problem to ~200 nodes and turns globally intractable
+techniques into free ones.
+
+Nobody in commercial real estate knows these techniques exist, and nobody who knows these
+techniques has looked at a rent roll.
+
+---
+
+## 14. Open questions and risks
+
+1. **Propagator library scope.** How many of §7's global constraints must be implemented
+   before the first useful tile? Which have usable Rust implementations and which are new
+   work?
+2. **Compilation blowup.** Component sizes are *estimated* at 6–20 variables after
+   geometric filtering. **This has not been measured on real tiles.** If dense Manhattan
+   components run to 60+, exact compilation may not fit the budget. **Measure before
+   committing.**
+3. **ρ band calibration.** Every band is a modelling commitment. Where do the numbers come
+   from, who owns them, and how are they falsified? The 0.78–0.95 office NRA band is
+   illustrative, not derived.
+4. **VeriPB practicality.** Proof logs for a national pass may be enormous. What is
+   actually emitted, retained, and for how long?
+5. **Search fallback.** Components exceeding the width budget need search, which
+   reintroduces branching-order determinism requirements. How often does this happen?
+6. **Does the ROBDD set-variable representation hold** at realistic assemblage sizes?
+7. **Interaction with the BYOP boundary.** Layers 0–4 are a pure function of the tile and
+   cacheable; where exactly does the compiled object sit relative to client data?
+
+---
+
+## 15. Provenance, and what is NOT yet verified
+
+This plan was produced by an adversarial multi-model design session on 2026-08-14/15:
+
+1. A cross-domain technique search (`WIZARD_IDEAS_CC.md`, `WIZARD_IDEAS_COD.md`)
+2. An identifier-authority ambition round (`WIZARD_AMBITION_COD.md`)
+3. Cross-model adversarial scoring (`WIZARD_SCORES_*.md`)
+4. A red team that **destroyed two prior architectures** (`REDTEAM_CC.md`)
+5. This constraint-object round (`CSP_CC.md`, `CSP_COD.md`), where two models converged
+   independently on the same formal object
+
+**Independent convergence between two different model families on the same formalism,
+global constraints, and artifact set is the strongest evidence this plan carries.**
+
+### What is NOT verified
+
+- **The ~50 academic citations above have not been independently checked.** Authors, dates,
+  titles, complexities and theorem statements are as reported by the models. **Verify
+  before citing externally or committing engineering to a claimed complexity.**
+- All performance numbers (0.5 s/tile, 140 CPU-hours, component sizes, propagation costs)
+  are **estimates from the analysis, not measurements.**
+- The information-theoretic checksum argument in §2.1 is internally consistent but its
+  inputs (400× size range, 10–20% NRA gap) are drawn from a small measured sample.
+- Whether usable Rust implementations exist for the named global constraints is **unknown**.
+
+### Session lesson encoded here
+
+Three claims during this session came from model prose rather than returned values, and all
+three were wrong. **Take literal values, record the query, verify citations before relying
+on them.** This document is a design to be validated, not a set of established facts.
