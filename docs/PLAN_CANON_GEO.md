@@ -570,3 +570,115 @@ global constraints, and artifact set is the strongest evidence this plan carries
 Three claims during this session came from model prose rather than returned values, and all
 three were wrong. **Take literal values, record the query, verify citations before relying
 on them.** This document is a design to be validated, not a set of established facts.
+
+---
+
+# Appendix A — Frozen-weight observers and imagery sources
+
+Added 2026-08-15 after operator correction. **This appendix is an open extension point, not
+a commitment.** It records what the architecture does and does not forbid, and exactly what
+admission requires.
+
+## A.1 The correction: neural networks are not banned. Nondeterminism is.
+
+The main plan's constraint is byte-identical reproducibility, not an aversion to models. A
+model with **frozen, hashed, versioned weights, implemented in pure Rust with controlled
+arithmetic** — no platform-variable BLAS, no nondeterministic kernels, no sampling — is
+byte-identical forever and satisfies the determinism requirement exactly as well as an
+integer orientation predicate does.
+
+CMD+RVL has shipped this pattern three times: **cmdrvl-tabfm**, **FrankenWhisper**, and
+**FrankenOCR** (with the `focr` skill on the operator's machine). The
+`ai-model-into-rust-mega-fused-hyper-kernel` skill states the target explicitly as
+**bit-identical model parity**.
+
+A frozen model's version therefore becomes another pinned input in the artifact chain,
+exactly like the registry version, the strategy hash or the tile digest.
+
+## A.2 The rule that keeps it sound: a model is a SOURCE, not a SOLVER
+
+canon's explainability rule — *if you cannot explain a match by pointing at assertion
+scores, it does not ship* — constrains **what the model outputs**, not whether one exists.
+
+| Model output | Admissible? |
+|---|---|
+| "probably the right building, 0.87" | **No.** Opaque scalar, not decomposable, decides nothing legibly |
+| "3 structures inside this polygon" | **Yes** — a count, checkable against `NUMBLDGS`, enters as a constraint |
+| "roof outline at these coordinates" | **Yes** — a geometry, enters ρ like any other observed footprint |
+| "12 floors from facade or shadow" | **Yes** — a number, checkable against `NUMFLOORS` |
+
+> **The model observes. The constraint system decides.** A frozen-weight observer is a
+> sixth source with its own ρ band; nothing else in the architecture changes.
+
+## A.3 The admission gate: you must characterize the error before you can write ρ
+
+ρ requires the *weakest constraint the source can support*. For an integer predicate the
+error is zero. For an observer it must be **measured**, e.g. *"structure count correct
+within ±1 at 94% on NYC-density blocks, degrading to 78% under closed canopy."*
+
+That measurement is real work and it precedes admission. It is also not global: **error
+varies by land cover, density, season and imagery vintage**, so the band is regional, not a
+single constant. No characterization, no admission.
+
+## A.4 What an observer could supply that no landed source does
+
+- **Building count per parcel** — `NUMBLDGS` is unreliable; this checks it independently
+- **A footprint we generate ourselves** — a geometry source we license from nobody
+- **Construction state — is there a building here *now*?** The Allen interval constraints in
+  §7 need demolition and new-construction observations and currently have **no observation
+  source at all**
+- **Confirmation of roof-ridge over-segmentation.** Régin's Hall-set violation *proves*
+  a source split one building into several; imagery *shows* it. Proof and picture in the
+  same evidence card.
+
+## A.5 Imagery and elevation source inventory
+
+**Verified 2026-08-15:**
+
+| Source | Type | Res | License | Access |
+|---|---|---|---|---|
+| **NAIP** (USDA FPAC-BC) | aerial, RGB+NIR | 1 m 2003–17; **0.6 m from 2018**; 0.3 m coastal option | **Public domain** (US Gov work) | Three public S3 buckets — `naip-visualization` (3-band **COG**), `naip-analytic` (4-band MRF), `naip-source` (raw GeoTIFF). STAC catalogs exist (`stactools-naip`, Planetary Computer). |
+
+**NAIP access pattern — the one to use.** COG plus **HTTP range requests**: fetch only the
+byte window covering an H3 cell. No bulk download, no tile server, no API key, no rate
+limit. **Pin the S3 object version or ETag and imagery becomes a content-addressed input**
+like the tile artifact itself; a byte-range read is deterministic.
+
+**NAIP caveats, all real:**
+1. **Vintage varies by state and is not annual** — rotating 2–3 year schedule. Imagery date
+   is a per-tile fact and must enter the temporal constraints as an *observation date*,
+   never as "now."
+2. **Recent coverage needs verifying.** The AWS registry describes 2011–2018 for one bucket
+   while STAC catalogs claim 2010–present. Confirm against the live bucket before planning.
+3. **Leaf-on growing-season imagery.** Canopy obscures structures in tree-heavy areas —
+   irrelevant for dense Manhattan, material for suburban and agency multifamily. This is
+   the dominant term in the ρ band and it is seasonal and geographic.
+
+**Not yet verified — candidates to assess (claims below are from general knowledge and
+MUST be checked before any commitment):**
+
+| Candidate | Why it might matter |
+|---|---|
+| **USGS 3DEP LiDAR** | **Possibly better than imagery for this problem.** Height is *measured*, not inferred; building extraction from point clouds is classical geometry rather than ML, so there may be **no model to characterize at all**; distinguishes building from parking lot trivially; yields floor-count estimates directly against `NUMFLOORS`. Public domain, on AWS Open Data. Coverage incomplete and vintage varies widely. **Assess this before assuming imagery is the right sensor.** |
+| **Sentinel-1 SAR** (ESA) | Radar, ~10 m, all-weather, free and open. Too coarse for footprints but buildings have distinctive double-bounce signatures — potentially useful for *presence and change detection* rather than geometry. |
+| **Sentinel-2** (ESA) | ~10 m optical, free and open. Too coarse for individual buildings; useful for change detection and land cover. |
+| **State and municipal orthoimagery** | Several states and NYC specifically fly higher-resolution orthophotos than NAIP, often public. Best resolution available for the proving ground. |
+| **USGS High Resolution Orthoimagery (HRO)** | Public domain, higher res than NAIP in covered areas. |
+| **NOAA emergency-response imagery** | Post-disaster, high-res, public domain. Narrow but valuable for change events. |
+| **Commercial** — Maxar, Planet, Nearmap, Vexcel, Airbus | Higher res and better cadence, **licensed**. Same containment discipline as §10; resolvable-under-licence, not redistributable. |
+| **Mapbox / Google / Esri basemaps** | **Avoid.** Terms generally forbid caching and redistribution, which is incompatible with a pinned evidence artifact. |
+
+## A.6 The generalization
+
+> **If the frozen-weight pattern holds, any imagery source is just another source.**
+
+The architecture is indifferent to which sensor produced an observation. Each new source
+needs exactly three things and nothing else:
+
+1. a **license posture** — resolvable, redistributable, or neither (§10)
+2. a **vintage** per observation, feeding the temporal constraints
+3. a **characterized error**, which becomes its ρ band (§A.3)
+
+Everything downstream — propagation, the residual, MUS, model counting, the certificate —
+is unchanged. Adding a sensor is a data-onboarding task, not an architectural one. **That
+is the property worth protecting.**
