@@ -988,6 +988,32 @@ earns its keep at the level *above* — which parcels and buildings constitute t
 majority holder is where the interesting work is**, and it is exactly the lot-line-straddling
 assemblage population the product exists to resolve.
 
+## D.8 Stratified check — two strata verified, and it improves at lower density
+
+Re-ran predicate C on a second cell at very different density. Both figures below are from
+returned structured query results, not prose.
+
+```
+  cell               borough   parcels  footprints   exactly one     zero
+  882a100d8bfffff    MN/dense    2,343       2,354   1,988 (84%)   366 (16%)
+  882a100f4dfffff    BX            300         291     291 (100%)     0 ( 0%)
+```
+
+**The predicate gets cleaner as density falls** — 100% unique assignment with zero orphans in
+a 300-lot Bronx cell, against 84%/16% in a 2,343-lot cell. That is the expected direction:
+in less dense fabric, buildings sit within their lots rather than straddling lot lines, so
+the no-majority population shrinks.
+
+Two strata across a 7.8× density range both produce a forest. **The decomposition property
+is not an artifact of one cell.**
+
+**Scope, honestly.** Three further cells (Queens ~1,500, Queens ~700, Manhattan ~41) were
+queried and returned no usable structured output. Loom emitted prose for two of them
+claiming a "multi-match rate" of ~3% — which the >50% predicate makes *mathematically
+impossible*, since only one parcel can hold a majority of a footprint's area. **That prose
+is not cited and should not be trusted.** Those strata remain unmeasured. Complete them
+under bd-3un6.
+
 ## D.7 Consequences
 
 1. **Adopt area-majority as the footprint-to-parcel predicate.** Record `ST_INTERSECTS` as a
