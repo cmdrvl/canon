@@ -899,3 +899,102 @@ Measured across **all 1,192 NYC r8 cells**, so unlike Appendix B this is not n=1
 still NYC-only, and NYC is the dense extreme — a national distribution will have a far
 longer low-density tail. **The sizing must be re-measured per geography before any national
 cost estimate is quoted.**
+
+---
+
+# Appendix D — MEASURED: the predicate is load-bearing, and the obvious one fails
+
+Added 2026-08-15. **The first measurement that supports the architecture rather than
+falsifying it — conditional on a predicate choice that is not the obvious one.**
+
+## D.1 The question
+
+Appendix B showed centroid proximity does not decompose a dense tile at any radius. But
+centroid distance was never the intended filter; the architecture says a footprint belongs
+to a slot when it is *geometrically compatible* with a parcel. So: does a real polygon
+predicate decompose the tile?
+
+## D.2 The measurement
+
+H3 r8 cell `882a100d8bfffff` — **2,343 MapPLUTO lots, 2,354 NYC building footprints.**
+Predicates computed server-side in Snowflake; no geometry shipped. Per footprint, how many
+parcels does it match?
+
+```
+  predicate                          edges    zero        exactly one   more than one
+  A  ST_INTERSECTS                   4,718      17 ( 1%)    240 (10%)    2,097 (89%)
+  B  ST_CONTAINS                       179   2,175 (92%)    179 ( 8%)        0 ( 0%)
+  C  intersects AND >50% of footprint
+     area inside the parcel          1,988     366 (16%)  1,988 (84%)        0 ( 0%)
+```
+
+## D.3 What each predicate does
+
+**A — `ST_INTERSECTS` fails outright.** 89% of footprints touch more than one parcel. In a
+dense block of contiguous row buildings, a footprint touches the lot lines of its
+neighbours, so "intersects" means "is somewhere on this block." Every footprint would chain
+several parcels together and **the tile would not decompose at all** — the same failure as
+centroid proximity, for a different reason.
+
+**B — `ST_CONTAINS` fails in the opposite direction.** 92% of footprints are contained in
+*zero* parcels. Buildings routinely cross lot lines, and the two layers are independently
+digitized at different vintages, so strict nesting almost never holds. Only 179 of 2,354
+footprints sit entirely inside a lot.
+
+**C — area majority works, and is mathematically clean.** 84% of footprints have exactly one
+parcel, and **zero have more than one** — necessarily, since only one parcel can hold more
+than half of a footprint's area. The remaining 16% have no majority holder, which is an
+honest abstention identifying genuine lot-line straddlers.
+
+## D.4 The decomposition result
+
+Under predicate C each footprint has **at most one** parcel edge, so the compatibility graph
+is a **forest**. Components are exactly *one parcel plus the footprints whose area it
+majority-holds* — typically 2–3 variables, far inside any compilation budget.
+
+> **Polygon area-majority decomposes the tile. `ST_INTERSECTS` — the predicate a competent
+> engineer reaches for first — does not.**
+
+So §6's exact-compilation strategy survives Appendix B's falsification, but *only* with the
+right predicate. The choice is not a detail; it is the difference between a forest and a
+single connected block.
+
+## D.5 This is ρ working exactly as specified
+
+The three predicates are three readings of the same evidence, and §3's discipline picks the
+right one without any tuning:
+
+- `ST_INTERSECTS` is the **unsound** reading — "touches" is not "is on," and admitting it
+  asserts more than the geometry supports in the wrong direction.
+- `ST_CONTAINS` is **over-strict** — it demands a nesting the two independently-digitized
+  layers do not have, so it refuses almost everything.
+- **Area majority is the sound relaxation**: the weakest constraint that still says "this
+  building is on this lot," and it fails to a named abstention rather than to a guess.
+
+**The 50% threshold is doing no tuning work** — it is the unique fraction that guarantees
+at most one match. Any lower value reintroduces multi-parcel ambiguity; any higher value
+discards true assignments. It is structural, not calibrated.
+
+## D.6 The honest caveat
+
+The same objection the adversarial review raised about the `MAPPLUTO_BBL` bridge applies
+here in weaker form: **if 84% of footprint-to-parcel assignment is decided by a single
+deterministic predicate, the constraint machinery is not being exercised at that level.**
+Parcel-to-building assignment is largely a solved geometric join.
+
+That is fine, and it should be stated plainly rather than counted as a win: the architecture
+earns its keep at the level *above* — which parcels and buildings constitute the asserted
+**property** — not at the level of which building sits on which lot. **The 16% with no
+majority holder is where the interesting work is**, and it is exactly the lot-line-straddling
+assemblage population the product exists to resolve.
+
+## D.7 Consequences
+
+1. **Adopt area-majority as the footprint-to-parcel predicate.** Record `ST_INTERSECTS` as a
+   rejected candidate with this measurement, so it is not re-proposed.
+2. **§6's decomposition claim is restored** for parcel↔footprint, with components of ~2–3
+   rather than the estimated 6–20. Appendix C's tile-sizing problem is *unaffected* and
+   still stands.
+3. **The 16% no-majority population needs its own path** — it is not an error and must not
+   be dropped.
+4. Still **n=1 cell**, dense Manhattan. Re-measure across strata per bd-3un6.
