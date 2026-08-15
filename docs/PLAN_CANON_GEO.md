@@ -796,3 +796,106 @@ The estimate survived a full red team, an adversarial cross-scoring round, and t
 families independently endorsing the architecture. **It was killed by twenty minutes of
 arithmetic on data we already had.** No amount of adversarial reasoning substitutes for one
 measurement.
+
+---
+
+# Appendix C — MEASURED: the tile is ~7× larger than the plan assumes
+
+Added 2026-08-15, immediately after Appendix B. **This falsifies the single number the entire
+commercial thesis rests on.**
+
+## C.1 What the plan and the epic assume
+
+> §6: "About 200 features per tile, so methods that are globally intractable are often FREE
+> here… **O(n³) is free. Even O(2ⁿ) over a filtered subset can be free.**"
+>
+> bd-2kjx: the work unit is "that cell **plus its 6 neighbours** (7 cells, 0.737 km²) so
+> boundary buildings resolve."
+
+## C.2 The measurement
+
+Feature density across **all 1,192 H3 r8 cells** covering NYC (r8 ≈ 0.737 km², i.e. exactly
+the area of the epic's r9-plus-k-ring work unit):
+
+```
+                    parcels per r8 cell
+  cells                          1,192
+  min                                1
+  median                           638
+  mean                             719
+  p90                            1,587
+  p99                            2,103
+  max                            2,422
+```
+
+Footprints run **1.0–1.6×** the parcel count in dense cells. Worked examples:
+
+```
+  882a107707fffff   2,422 parcels   2,657 footprints   =  5,079 features
+  882a107631fffff   2,385 parcels   3,499 footprints   =  5,884 features
+  882a107733fffff   2,367 parcels   3,644 footprints   =  6,011 features
+```
+
+**Median work unit ≈ 638 parcels + ~700 footprints ≈ 1,340 features. Worst ≈ 6,000.**
+
+## C.3 The diagnosis: the sizing was computed for the blocking cell, not the work unit
+
+A single r9 cell is 0.105 km², one seventh of an r8. Median parcels per r9 cell is therefore
+≈ 638/7 ≈ 91, plus ~100 footprints ≈ **190 features — which is exactly the plan's "~200."**
+
+> **The "~200 features" figure is correct for ONE r9 cell and wrong by 7× for the r9 +
+> k-ring 1 work unit the epic actually specifies.**
+
+The earlier 193-feature observation (Appendix B) came from a 150 m radius disc = 0.071 km²,
+about one tenth of an r8 — consistent with, and therefore not contradicting, this result. It
+simply measured a much smaller area than the stated work unit.
+
+## C.4 Why this breaks the commercial argument
+
+```
+  n =   200    n³ = 8.0e6      free
+  n = 1,340    n³ = 2.4e9      seconds, not milliseconds
+  n = 6,000    n³ = 2.2e11     minutes per tile
+```
+
+The thesis is *"we spend 500× what a spatial join costs, and that is the entire commercial
+thesis."* At the measured median that becomes several thousand times, and the ~0.5 s/tile
+budget and the ~140 CPU-hour national pass in §13 are **not supported**.
+
+## C.5 Options, none of them free
+
+1. **Work unit = one r9 cell.** Restores ~190 features and the whole cost model, but
+   sacrifices the k-ring halo that exists so boundary features resolve. Boundary handling
+   would need a different mechanism.
+2. **Accept 7× and re-price.** Honest, and it makes the national pass materially more
+   expensive; must be re-estimated rather than asserted.
+3. **Drop to r10 + k-ring.** r10 is 7× smaller again, so the work unit returns to ~190
+   features — at the cost of 7× more tiles and more boundary surface per unit area.
+4. **Decompose within the tile.** Only viable if a filter actually decomposes dense tiles,
+   which Appendix B shows centroid proximity does not. Depends entirely on bd-3un6.
+
+**Option 3 is the most likely answer** — it preserves the halo argument and restores the
+sizing — but it must be measured, not assumed, because boundary-crossing features scale with
+perimeter and r10 has considerably more perimeter per unit area.
+
+## C.6 A second live format defect
+
+`H3_R8` is stored as **INTEGER** in `NYC_DCP_MAPPLUTO_HOT` (e.g. `613229552600088575`) and
+as **TEXT** in `NYC_BUILDING_FOOTPRINTS_HOT` (e.g. `'882a107707fffff'`).
+
+This was not deduced — it was observed failing. A first query comparing the two directly
+returned `FOOTPRINT_COUNT: 0` for every cell, which reads as *"there are no buildings in
+this cell"* rather than raising a type error. **A naive join between the two NYC tables on
+H3_R8 silently returns nothing.**
+
+That is now the second such defect in the same table pair, alongside `BBL` being
+`"1014477501.0"` in MapPLUTO and `"1014470001"` in the footprints table. **Both tables are
+NYC municipal sources landed by the same pipeline into the same schema.** Cross-source
+normalization is a first-class ingest concern, not a tidy-up.
+
+## C.7 Scope
+
+Measured across **all 1,192 NYC r8 cells**, so unlike Appendix B this is not n=1. It is
+still NYC-only, and NYC is the dense extreme — a national distribution will have a far
+longer low-density tail. **The sizing must be re-measured per geography before any national
+cost estimate is quoted.**
