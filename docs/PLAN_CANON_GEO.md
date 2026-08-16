@@ -1378,3 +1378,65 @@ bucket/STAC/range-request checks — not model recall. What changed from A.5's a
 
 Catalog provider/channel registration deliberately deferred (recorded in the report);
 the survivors table is the registration-ready input.
+
+---
+
+# Appendix K — MEASURED: cheap tile discriminators do not separate geometry's wrong third; the headroom must come from evidence not yet landed
+
+Added 2026-08-16 (bd-1a12; full tables, exact SQL, failed query shapes, and the
+reconciliation diagnostics in `docs/geo_design_session/PLAUSIBILITY_BD1A12.md`). The
+sharpest test the plan has faced: Gate V2's labeling (154 known-correct, 79 known-incorrect
+PIP answers) made the central premise measurable — can tile-local evidence identify the
+~34% of geometry answers that are wrong?
+
+## K.1 The discriminator panel: no clean separation
+
+On the 233 labeled points, every cheap deterministic tile fact either saturates or
+false-refutes heavily:
+
+```
+  discriminator                    fires correct   fires incorrect   verdict
+  NYC footprint on PIP lot           153/154          79/79          saturated
+  street match (PIP-anchored)        153/154          78/79          saturated
+  house-number in block range        114/154          51/79          catches 35% of wrongs,
+                                                                     false-refutes 26% of rights
+  house-number agrees with PIP lot   123/154          52/79          weak
+  FEMA structure on PIP lot           63/154          28/79          non-separating
+  boundary depth < 3 m                74/154          51/79          false-refutes 48% of rights
+  parity match (where derivable)      68/154          25/79          no independent power
+```
+
+No simple accept/refute rule over these facts beats PIP alone on truth-covered points.
+**With currently landed evidence, the deterministic cascade has no measured headroom over
+the 66% baseline.** The founding W 74th/W 49th proof case reproduces exactly (the tile
+refutes the wrong rooftop point, supports the right interpolated one) — targeted
+refutation works; the aggregate rule does not.
+
+## K.2 The strict street-presence predicate is representation-bound
+
+After a definitional reconciliation (the panel's street row and the universe query were
+measuring different predicates under one name — caught because the subset and universe
+rates could not both be true), the consistent strict form (parsed street matches any
+parcel-address street in the centroid-r9+k1 tile) fires on only **10.38% of the full
+universe and 15.09% of labeled points** — with the tile join verified non-empty (median
+843.5 parcels/tile). The failure is street-*string representation*, not street absence:
+MapPLUTO primary-address spellings vs parsed streets defeat a fixed normalizer ~90% of the
+time. As a refuter it would abstain on ~90% of everything; operationally unusable — and it
+is precisely the gap §7's `regular` address grammar and an address-SET layer (PAD,
+bd-35qg) exist to close.
+
+## K.3 What this means for the plan
+
+1. **The kill-criterion gap (66% → better, at ~95% coverage) is not closable with landed
+   evidence and simple rules.** The measured paths to headroom: the PAD address-set layer
+   (three worked-case receipts in Appendix I), document evidence (ACRIS, per Appendix H),
+   and grammar-level address matching (`regular`) — all pre-identified by the plan, now
+   with measured justification instead of argument.
+2. Trap for all future H3 SQL, measured: stored `H3_R8` equals direct centroid-r8 on
+   856,614/856,614 parcels, but `H3_CELL_TO_PARENT(centroid_r9, 8)` disagrees on 61,607
+   (7.2%) — H3 child/parent nesting is not spatially exact; never mix the two forms in
+   one predicate.
+3. The plan's self-auditing pattern fired again, one level up: the apples-to-oranges
+   predicate was caught by a subset-vs-universe reconciliation check, not by inspection.
+   **Predicate definitions are load-bearing** — the same lesson as Appendices D, F, and H,
+   now with its fourth receipt.
