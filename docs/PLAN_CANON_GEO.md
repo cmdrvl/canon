@@ -660,7 +660,17 @@ coverage/precision plane:
   honesty, per-component cost against Appendix G's sizing.
 - **E5 — Genericity gate.** Repeat E1–E4 in one non-NYC county using only generic
   instances (county parcels, NAD/county address points, NAIP or state ortho). No
-  NYC-specific code path may be load-bearing.
+  NYC-specific code path may be load-bearing. **Operator doctrine (2026-08-16): evidence
+  availability is a property of the geography, not the architecture.** Most geographies
+  will not have a PAD-quality address-set layer; some will lack footprints, document
+  records, or attributes. The resolver must run with *any subset* of §16.3's rows present,
+  do the best the local evidence supports, and **abstain where it cannot** — never degrade
+  precision to preserve coverage. E5's deliverable is therefore not one number but the
+  **evidence-tier → coverage/precision curve**: the operating point at NYC's full stack,
+  at a typical county stack (parcels + NAD/county points + FEMA + NAIP), and at a
+  minimal stack — with abstention rates reported per tier as first-class output. A
+  geography with thin evidence yields honest abstentions, not silent guesses; that is the
+  same band-versus-threshold rule (§3.2) applied to source availability itself.
 
 Kill condition, stated honestly: if E3 — with the attribute channel joined and an
 address-set layer landed — cannot rank the true lot above the wrong one on the majority of
