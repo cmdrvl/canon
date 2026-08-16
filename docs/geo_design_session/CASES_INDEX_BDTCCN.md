@@ -17,7 +17,7 @@ Standing measured context used across cases:
 |---:|---|---|---|---|---|
 | 1 | `CASE_1_CLEAN_ROOFTOP.md` | complete | One Grace Court Corporation, 1 Grace Court, Brooklyn | resolved singleton: parcel `3002510001` plus one building observation from each footprint source | Defines the unambiguous floor and ablation control; both baselines clear when the exact assertion row is pinned |
 | 2 | `CASE_2_ROADBED_GEOCODE.md` | complete | 982 Madison Street, Brooklyn | resolved singleton by address after geocode channel abstains; nearest-lot probe picks wrong BBL `3033570147` | Tile-bounded proximity, no snap-to-nearest, address channel as discriminator |
-| 3 | `CASE_3_*.md` | pending | split/range address | pending | Assemblage, interval semantics, parity, subset sum, NRA-vs-gross mismatch |
+| 3 | `CASE_3_RANGE_ASSEMBLAGE.md` | complete | 107-109-111 North 9th Street, Brooklyn | resolved assemblage: three parcels `3023030029`, `3023030028`, `3023030027` plus three NYC BINs | Assemblage, interval semantics, endpoint expansion, and why one BBL is a false answer |
 | 4 | `CASE_4_*.md` | pending | comma-separated multi-street address | pending | Multi-address fields and chimera parse detection |
 | 5 | `CASE_5_*.md` | pending | two addresses, same corner building | pending | Address disagreement can be noise; geometry may have to win |
 | 6 | `CASE_6_*.md` | pending | dense block, multiple buildings to one parcel | pending | Building-level false-merge risk when parcel geometry cannot discriminate |
