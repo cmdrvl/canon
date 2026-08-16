@@ -1226,3 +1226,65 @@ combining this with Appendix F:
 4. NYC-only, land-biased center universe (parcel-containing cells), all three sources —
    denominators differ from Appendix C's all-1,192-r8-cell, two-source measure by
    construction; both are recorded with their SQL.
+
+---
+
+# Appendix H — MEASURED: the ACRIS truth set exists, caught its own contamination, and puts provisional precision far below coverage
+
+Added 2026-08-16 (bd-179b; full tables and exact SQL in
+`docs/geo_design_session/GROUNDTRUTH_ACRIS_BD179B.md`). First address-independent ground
+truth for the Appendix E baselines: CMBS loans matched to recorded ACRIS mortgages by
+**amount + recording-date window with no address fields anywhere in the join** (bridge:
+`PROPERTY_PERIOD_FACT → LOAN_ISSUANCE` on CIK+ASSETNUMBER; 3,040 five-borough loans).
+
+## H.1 The gate, and what it accepted
+
+Operating point exact-cents ± 30 days, unique-or-discard: **523 accepts** (1,230
+ambiguous discarded, 1,287 no-match), 392 → one BBL, 131 → 2+ BBLs. Truth coverage of
+the baseline grains is honest and low: 582/4,076 points (14.28%), 864/5,269 address keys
+(16.40%).
+
+## H.2 The raw headline, and why it must not be quoted bare
+
+Scored any-overlap (lenient): geometry PIP **29.48%** (166/563), naive address **23.43%**
+(67/286) on truth-covered units. Condo unit-lot representation explains only ~5pp
+(block-grade bounds 34.28% / 28.67%). The dominant failure signature was full-block
+mismatch — which is also the signature of a *wrong unique match*. The contamination
+probe settled it with three independent discriminators:
+
+```
+  signal                     lot-correct accepts        full-block mismatches
+  recording offset           0 negative, median +12d    165/356 negative, spans window
+  ACRIS legal borough        agrees 135/135             disagrees 203/356 (113 w/ county too)
+  amount roundness           non-round: 55.46% precise  $1M multiples: 7.88% precise
+```
+
+Real recordings happen days-to-weeks *after* origination in the property's borough;
+collisions are uniform in time, cross-borough, and concentrated in round amounts.
+**Amount+date uniqueness alone is not a sufficient truth gate.** The raw 29.48% is a
+contaminated estimate and the report says so explicitly.
+
+## H.3 What survives as the provisional precision point
+
+On the cleanest measurable slice (non-round amounts, 119 loans): **geometry PIP ≈ 55%
+(66/119)** against document truth — with ~95% coverage. The coverage/precision plane the
+cascade must beat is therefore provisionally: address-string (28.89% coverage, high
+precision when it fires), geometry (≈95% coverage, ≈55% precision on clean truth). The
+gap between them is the product. Refine the gate (non-negative offset, legal-borough
+agreement, roundness handling or a second discriminator such as lender-name tokens) and
+re-score before treating any precision number as final.
+
+## H.4 The assemblage payoff
+
+Of 125 multi-BBL loans invisible to the geocode grain, condo-signature filtering leaves
+**79 genuine multi-parcel candidates** (24 spanning multiple blocks). That is the first
+measured count of the invisible-assemblage population — the exact population §2's
+architecture exists to resolve — subject to the same gate-refinement caveat.
+
+## H.5 The meta-result
+
+The truth set audited itself: declared bands (unique-or-discard) plus independent
+consistency checks (offset sign, borough, roundness) converted "suspiciously low
+precision" into a *named, attributable defect of the truth gate* rather than a silently
+wrong conclusion. This is §3.2's band-versus-threshold argument operating one level up —
+the strongest process evidence yet that the architecture's self-auditing claim is real.
