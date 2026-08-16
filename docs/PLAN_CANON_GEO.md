@@ -1316,3 +1316,29 @@ Caveats that travel with these numbers: v2 truth coverage is small (242/4,076 po
 5.94%) and the round-amount exclusion biases the truth set toward odd-amount loans;
 lender-name second-discriminator admission of round amounts is the recorded path to a
 larger truth set (originator and party fields are landed).
+
+---
+
+# Appendix I — WORKED: the six-case corpus exists; the code gate is satisfied
+
+Added 2026-08-16 (bd-tccn; index at `docs/geo_design_session/CASES_INDEX_BDTCCN.md`, one
+file per case with structured evidence tables and exact SQL). The operator's 2026-08-14
+"no code until this exists" gate is met: six cases, query-selected (not hand-curated),
+worked end to end from landed data, each forcing a distinct design decision:
+
+| # | Property | Verdict | Decision forced |
+|---|---|---|---|
+| 1 | 1 Grace Court, BK | singleton, 4 sources converge | the clean floor + ablation control; even the sibling "1 GRACE CT" spelling fails naive normalization |
+| 2 | 982 Madison St, BK | singleton via address after geocode abstains; nearest-lot picks the wrong building | tile-bounded proximity; **no snap-to-nearest** |
+| 3 | 107–111 N 9th St, BK | three-parcel assemblage | interval semantics; **one BBL is a false answer** |
+| 4 | 199–205 First Ave + 349/351 E 12th, MN | six-parcel core; parsed "199 E 12th St" rejected as synthesized | multi-address parsing; **chimera rejection before geocode trust** |
+| 5 | 66 Crosby St a/k/a 514 Broadway, MN | singleton despite zero address matches; ACRIS carries both frontages | address disagreement is noise; **a/k/a fields are address sets** |
+| 6 | 305 E 72nd St, MN | parcel singleton, building residual {2 BINs} | **entity-level output**; parcel identity cannot answer the product question |
+
+Recurring acquisition finding: cases 4, 5, and 6 each hit the missing address-set layer
+(only primary addresses in MapPLUTO) — the bd-35qg/PAD elevation from §12, now with three
+worked receipts. Source snapshot from case 1: FEMA NY 5.0M and Microsoft GlobalML NY 5.4M
+rows landed; **Overture reports 0 NY rows** — a landing gap to resolve before Overture
+appears in any tile. These six artifacts are the seed of the `--suite`/`--gold` evaluation
+corpus, the visual evidence card's worked examples (bd-101v), and a showable pre-product
+sales artifact.
