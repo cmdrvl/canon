@@ -1080,3 +1080,91 @@ the population the architecture exists for, and it is now a named, measurable sl
 4.42% hit zero. The single-point, single-lot case dominates the geocode grain — the
 assemblage/multi-parcel problem lives almost entirely below the surface of this table
 and must come from documents (bd-179b, bd-1oid), not from geocode fan-out.
+
+---
+
+# Appendix F — MEASURED: decomposition survives stratification and a second footprint source; Appendix D's 16% was a denominator artifact
+
+Added 2026-08-16 (bd-3un6; full tables and exact SQL in
+`docs/geo_design_session/STRATA_FEMA_BD3UN6.md`). Six NYC cells now measured across a
+~57× density range, plus the first genuine multi-source test using the newly landed
+`FEMA_USA_STRUCTURES_HOT` (135.3M rows, both TEXT and INT H3 keys — the C.6 defect class
+now has typed companions).
+
+## F.1 Stratified predicate C: the forest holds everywhere, with one new shape
+
+Four new strata (MN 41 parcels, QN 1,502, QN 701, SI 101), all with **zero
+multi-matches** — the >50% uniqueness guarantee is structural and held in every cell:
+
+```
+  cell        borough  parcels  footprints  exactly-one    zero      max component
+  882a1008c7  MN            41          45   41 (91.1%)   4 ( 8.9%)      4
+  882a103b6b  QN         1,502       2,007   1,753 (87.3%) 254 (12.7%)   4
+  882a100e25  QN           701       1,049   927 (88.4%)  122 (11.6%)    5
+  882a106019  SI           101         256   154 (60.2%)  102 (39.8%)   71
+```
+
+Three cells decompose into components of ≤5. The Staten Island cell is the new shape:
+still a forest, but with **parcel-star components of 39 and 71** — single large parcels
+holding many structures (campus/complex fabric). Exact compilation survives, but the
+per-component budget must be sized by the largest parcel-star, not by a universal
+"2–3 variables."
+
+## F.2 The denominator correction to Appendix D
+
+Appendix D's 84%/16% dense-Manhattan split is reproduced **only** with the source-asserted
+`SHAPE_AREA` as the fraction's denominator. The pure geometric predicate
+`ST_AREA(intersection)/ST_AREA(footprint)` on the same cell gives **2,332 / 22 / 0**
+(99.1% exactly-one, 0.9% no-majority). Of the 366 "no-majority" footprints, 344 resolve
+under the literal geometric denominator, 311 are clean two-parcel straddlers by
+intersection count, and 300 have ≥99% of their geometric area inside their top two
+parcels.
+
+**The 16% population was mostly an artifact of dividing a computed area by an asserted
+one.** The same failure appeared independently in FEMA's `SQMETERS` field (2 multi-matches
+in Queens where geometry gives 0) and in a units-conversion probe (946 impossible
+multi-matches — dimensional error, caught by the multi=0 sanity gate). This is ρ working
+as specified, one level down: **asserted source area fields are observations to check,
+never denominators to divide by.** Adopt `ST_AREA`-over-`ST_AREA` as the canonical
+predicate-C form; the no-majority residual in dense Manhattan is ~1%, not 16%.
+
+## F.3 The multi-source result: FEMA does not re-percolate the tile
+
+Three-layer merged graph (parcels + NYC footprints + FEMA structures), geometric
+denominators, three cells:
+
+```
+  cell           NYC exact/zero   FEMA exact/zero   merged components  merged max
+  BX  882a100f4d   274 / 17         76 /  39            356               19
+  MN  882a100d8b  1,988 / 366       88 / 152          2,861                6
+  QN  882a103b6b  1,753 / 254     1,078 /  30         1,786                6
+```
+
+**The merged graph remains a forest in all three cells.** Adding a second footprint
+source refines without re-percolating — measured, not asserted, for the first time. FEMA
+coverage is strongly geography-dependent: 97.3% majority-parcel rate in Queens vs 36.7%
+in dense Manhattan (FEMA sees only 240 structures where NYC sees 2,354) — FEMA is a
+corroborating source in outer-borough fabric and nearly absent in the urban core.
+
+## F.4 Cross-source agreement is real but asymmetric
+
+On the Queens cell, NYC and FEMA agree on per-parcel structure counts for 55.2% of
+parcels (829/1,502); where they disagree, NYC sees more on 634 parcels vs FEMA's 39, and
+no disagreement exceeds 3. Over-segmentation vs `NUMBLDGS` is negligible (max overage 1).
+The dominant disagreement mode is FEMA missing whole runs of 2-structure residential
+parcels, not over-segmentation — so Régin-style within-source exclusivity has little to
+catch at the footprint level in this fabric, and the `gcc` coverage-rate constraint
+(§3's FEMA row) is the right admission form.
+
+## F.5 Consequences
+
+1. **§6's decomposition strategy is affirmed at n=6 cells across boroughs and densities,
+   and under multi-source load.** The open sizing question is no longer decomposition —
+   it is Appendix C's work-unit arithmetic (r10+k-ring), which remains unmeasured.
+2. **Appendix D's predicate is right; its denominator was wrong.** Canonical form is
+   geometric-over-geometric. The "16% product population" shrinks to ~1% no-majority
+   plus the parcel-star components — the honest hard residual.
+3. **Parcel-star components (SI max 71) are the new worst case** for per-component
+   compilation budgets; they, not dense Manhattan, bound the component size.
+4. All measurements NYC-only; the bead's suburban/agency-multifamily stratum has no
+   landed source yet.
