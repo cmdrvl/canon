@@ -589,7 +589,11 @@ Output: the **collateral parcel set** `Coll` and **building set** `QB`, delivere
 §10.2 claim classes — `HARD_FORCED` facts (backbone), the exact residual model set with
 its count, `SOFT_RANKED` alternatives where policy allows, or a typed refusal. A residual
 of size >1 is a deliverable, not a failure (§9.1). Case 6's shape is normative: parcel
-singleton, building doubleton, both stated.
+singleton, building doubleton, both stated. **The answer is the best-supported entity at
+each level; any ledger key (BBL, BIN) is an alias projection of that entity, and an
+unavailable ledger form never voids a resolved entity (L.5).** Refutation of the input
+itself ("the asserted address is nowhere in this tile") is an abstention that triggers
+reacquisition — re-geocode and retry — not a terminal failure.
 
 ### 16.2 Candidate enumeration
 
@@ -1625,3 +1629,29 @@ composition rather than point re-ranking) and E5 (the genericity gate).
 
 Ladder status: E1 ✓, E2 ✓ (sparse-here), E3 ✓. E4 and E5 remain, re-aimed by these
 results.
+
+## L.5 Operator doctrine, incorporated (2026-08-16)
+
+Two corrections from operator review of L.4, both now binding:
+
+1. **Abstention is a reacquisition trigger, not a terminal state.** When the tile refutes
+   its input ("this address is nowhere in here"), that is a signal to *re-geocode and
+   retry in the right tile* — a bounded, deterministic outer loop, with each pass pinned
+   like any other run. The 40 gross-error points are therefore not merely
+   honestly-abstained; they are **recoverable**, and the recovery rate of the
+   abstain→re-geocode→retry loop is a measurable number (each retry re-enters the normal
+   pipeline; nothing in the architecture changes).
+2. **The answer is the best-supported entity, not a ledger form.** A BBL is one alias of
+   the property entity, in one ledger's representation. When the unit-BBL form is
+   unavailable or mismatched, delivering **the building (BIN) or the parcel** is a valid,
+   valuable answer — "get what you can get," stated at its claim class. Consequence for
+   measurement: **all precision numbers must be scored at entity grain, not ledger
+   grain.** Appendix H.6's 66% is a ledger-grain number; the 32 condo residues (right
+   building, distance 0.00 m) are *entity-grain correct*. The entity-grain re-score of
+   the labeled set is the immediate follow-up measurement; predicted shape: ~80%
+   entity-grain precision before abstention, mid-90s on answered points with the gross
+   class abstained-for-retry.
+
+This aligns the scoring with what §16.1 and Case 6 already said the output is: parcel
+singleton, building residual, each level stated — never a forced collapse to one ledger's
+key.
