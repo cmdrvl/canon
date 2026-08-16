@@ -1168,3 +1168,61 @@ catch at the footprint level in this fabric, and the `gcc` coverage-rate constra
    compilation budgets; they, not dense Manhattan, bound the component size.
 4. All measurements NYC-only; the bead's suburban/agency-multifamily stratum has no
    landed source yet.
+
+---
+
+# Appendix G — MEASURED: no k-ring configuration restores "~200 features"; the cost model must be component-wise
+
+Added 2026-08-16 (bd-152l; full tables and exact SQL in
+`docs/geo_design_session/WORKUNIT_SIZING_BD152L.md`). This settles Appendix C's Option 3
+with data: measured across every parcel-containing NYC work unit, three sources
+(parcels + NYC footprints + FEMA structures), centroid-derived r9/r10 home cells (no
+landed table has native r9/r10 columns).
+
+## G.1 The distributions
+
+```
+  work unit   centers   median   mean     p90     p99     max    >200      >400
+  r9  + k1      6,829    2,274   2,442   4,619   6,103   7,515   94.77%    90.76%
+  r10 + k1     39,098      418     421     755   1,011   1,329   75.88%    52.14%
+```
+
+r10+k1 cuts the median 5.44× — **and still does not restore ~190.** Three-quarters of
+r10 work units exceed 200 features; half exceed 400. The "~200 features, so O(n³) is
+free" arithmetic does not hold at any measured k-ring configuration once FEMA is
+included and the halo is retained.
+
+## G.2 The boundary tax, measured
+
+Fraction of features whose geometry is not contained in their centroid's home cell:
+
+```
+  source           r9        r10
+  parcels        15.41%    37.24%
+  NYC footprints  8.07%    20.33%
+  FEMA           10.86%    26.14%
+```
+
+Moving r9→r10 raises boundary pressure ~2.4–2.6× across all three sources — Appendix
+C's perimeter warning, quantified. At r10 more than a third of parcels straddle their
+home cell. (Direct `H3_COVERAGE_STRINGS` aggregation timed out twice; the containment
+predicate above is the recorded geometric substitute.)
+
+## G.3 Verdict on Appendix C's options
+
+**Option 3 is directionally right and numerically insufficient.** No uniform-grid work
+unit both preserves the halo and lands near 200 features in NYC. The honest reading,
+combining this with Appendix F:
+
+1. **The tile-wide O(n³) framing is the wrong cost model.** Appendix F shows the
+   compatibility graph decomposes into parcel-star components (max 71) under the
+   canonical geometric predicate — so per-work-unit cost is driven by component-wise
+   compilation plus halo reconciliation, not by tile-wide consistency passes over n.
+2. **§13's national-pass estimate must be re-derived** from: 39,098 r10 units × NYC-scale
+   component distributions, or priced at r9 with in-tile decomposition. Until then, quote
+   neither 0.5 s/tile nor 140 CPU-hours.
+3. **Boundary reconciliation is a first-class cost** at r10 (20–37% of features), not an
+   edge case; bd-2b9d's halo design should assume it.
+4. NYC-only, land-biased center universe (parcel-containing cells), all three sources —
+   denominators differ from Appendix C's all-1,192-r8-cell, two-source measure by
+   construction; both are recorded with their SQL.
