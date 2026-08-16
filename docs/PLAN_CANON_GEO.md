@@ -1655,3 +1655,38 @@ Two corrections from operator review of L.4, both now binding:
 This aligns the scoring with what §16.1 and Case 6 already said the output is: parcel
 singleton, building residual, each level stated — never a forced collapse to one ledger's
 key.
+
+## L.6 MEASURED: the entity-grain operating point
+
+Added 2026-08-16 (bd-s3i9; full tables and exact SQL in
+`docs/geo_design_session/ENTITY_GRAIN_RESCORE.md`). L.5's two doctrines, applied to the
+labeled set with a recorded predicate (`entity_correct := ledger hit OR E1
+condo_representation_residue` — ACRIS condo-unit truth, no ledger hit, missing MapPLUTO
+unit geometry; parcel and building grain are one predicate until a unit→BIN crosswalk
+lands):
+
+```
+  scoring                                        precision
+  ledger grain (H.6, unchanged)                  154/233 = 66.09%
+  entity grain (parcel/building)                 186/233 = 79.83%   (all 32 condo flips)
+  entity grain, gross class abstained-for-retry  186/193 = 96.37%
+  ... excluding 3 contamination suspects         186/190 = 97.89%
+```
+
+**The plan's honest operating point, with no new machinery, is ~96–98% precision on
+answered points** — geometry plus the representation doctrine plus abstention-for-retry.
+The residual wrong answers are the 4 genuine ranking cases (E3's domain) and the
+contamination suspects.
+
+**The retry loop needs fresh acquisition, measured:** of the 40 abstained gross points,
+11 have already-landed alternate geocode rows, but **0 land in a different r9 tile and 0
+PIP into an ACRIS truth block** — the recovery ceiling from landed data is 0/40. Retrying
+requires a new geocode pass or entry through the address channel (PAD, bd-28kn); it is an
+acquisition step, not a re-read.
+
+Caveats that travel: truth coverage remains the Gate V2 slice (5.94% of points,
+non-round-amount biased); the condo flip is predicate-granted, not independently
+adjudicated (Source 2 of bd-179b remains the check); and abstention's *coverage* cost is
+40/233 ≈ 17% of truth-covered points parked for retry. Within those bounds, §13's
+commercial claim now has its first defensible shape: **high-precision answers, honest
+abstentions with a recovery path, and residuals that name themselves.**
