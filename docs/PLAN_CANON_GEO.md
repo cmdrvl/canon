@@ -573,6 +573,99 @@ on them.** This document is a design to be validated, not a set of established f
 
 ---
 
+## 16. The resolution task, operationally
+
+Added 2026-08-16, operator-approved, after the Appendix K review exposed the gap: the plan
+specified the mathematics (§4–§10) and the admission discipline (§3) but never the
+operational middle layer. This section closes it.
+
+### 16.1 The query
+
+Input: one CMBS property record — its address string(s) (possibly multi-address, ranges,
+a/k/a), its geocode(s) with accuracy tier, its asserted attributes (SF, units, year built
+from Annex A / the loan documents), and its loan identity (for document evidence).
+
+Output: the **collateral parcel set** `Coll` and **building set** `QB`, delivered in the
+§10.2 claim classes — `HARD_FORCED` facts (backbone), the exact residual model set with
+its count, `SOFT_RANKED` alternatives where policy allows, or a typed refusal. A residual
+of size >1 is a deliverable, not a failure (§9.1). Case 6's shape is normative: parcel
+singleton, building doubleton, both stated.
+
+### 16.2 Candidate enumeration
+
+Candidates are never proposed by a channel (§2: there is no proposer). The candidate
+universe is the tile: all parcels in the work unit, decomposed into components by the
+canonical geometric predicate (Appendix F/D). `Coll` candidates are subsets of component
+parcels, pruned by hard constraints — the knapsack over asserted SF, adjacency,
+ownership-permits (never forbids), document-asserted BBL sets. Enumerate within
+components (measured sizes: 2–5 typical, parcel-stars to ~71 per Appendix F); the residual
+is whatever survives propagation.
+
+### 16.3 The evidence inventory
+
+Every evidence class, its landed NYC instance, its generic analogue, its ρ, what it feeds,
+and its measured state. **The class is the architecture; the instance is data onboarding
+(Appendix A.6). Canon core never special-cases an instance.** Rows marked UNMEASURED are
+open work, not established capability.
+
+| # | Evidence class | NYC instance | Generic analogue | ρ — sound reading | Feeds | State |
+|---|---|---|---|---|---|---|
+| 1 | Geocode point + tier | `WRGL_EDGAR_CMBS_GEOCODES__STRUCTURED` | any geocoder | disc of tier-dependent radius; never a location, only a bound. `nearest_rooftop_match` is the measured silent-error tier (E.2) | position constraint on candidates | MEASURED: 66% precision alone (H.6) |
+| 2 | Address strings (query side) | `PROPERTY_ADDRESS` + parsed fields | any | existential membership — "some member of `Coll` fronts street S near number N"; parses held as a domain via `regular` (§7.1); never exclusion | `Lo/Hi` range vars, membership | MEASURED: 28.89% exact-fire; string normalization is representation-bound (K.2) |
+| 3 | Address sets (lot side) | **NOT LANDED — NYC PAD (curves bd-28kn)** | county address points, National Address Database, OpenAddresses | the lot's full legal address set; membership tests against it | address-set membership | UNMEASURED; 3 worked-case receipts (I) |
+| 4 | Parcel geometry | `NYC_DCP_MAPPLUTO_HOT` 26v1 | county parcels / Regrid | survey substrate; exact integer predicates (§4) | candidate universe, area-majority anchor | MEASURED (D/F) |
+| 5 | Footprints, multi-source | NYC footprints; FEMA structures; MS GlobalML (NY landed); Overture (**0 NY rows — gap**) | same, national | area-majority assignment with geometric denominators only (F); within-source `alldifferent`; cross-source counts via `gcc` | `X_f`, `Pb_b` slots | MEASURED: forest holds 3-source (F); 55% exact count agreement (F.4) |
+| 6 | Asserted attributes | Annex A / `PROPERTY_MART` SF, units, year | every deal tape | declared bands (§3: e.g. NRA ∈ [0.78,0.95]·gross for office); `knapsack` over candidate `Coll` | `A_b`, `Fl_b`, knapsack | **LANDED, NEVER JOINED INTO ANY TEST — the first unrun test in §17** |
+| 7 | Parcel attributes | `BLDGAREA`, `NUMBLDGS`, units | assessor rolls | observations to check, never denominators (F) | `gcc` counts, area bands | PARTIALLY MEASURED (F.4) |
+| 8 | Document evidence | `NYC_ACRIS_*` external tables | county recorder / title plants | recorded collateral BBL sets bound by amount+date+lender with contamination filters (H) | direct `Coll` evidence; also ground truth | MEASURED as truth instrument (H); unused as solver evidence |
+| 9 | Imagery / elevation observers | none landed; verified catalog in J (NYS/NYC ortho first, 3DEP, NAIP, NOAA event) | national per J | frozen-weight observers emit typed counts/outlines/floors with characterized regional error (A.2–A.3) | `gcc` checks, an own footprint source, change events | UNMEASURED |
+| 10 | POI / tenant | not landed | — | existential presence; tenant ≠ owner | `Y_q` | UNMEASURED |
+| 11 | Ownership | `OWNERNAME` | — | permits assemblage, never forbids (§3) | `Coll` permitting | ~0 bits alone by design |
+| 12 | Temporal / vintage | per-source dates, `YEARBUILT`, document dates, imagery vintage | — | Allen/STP intervals (§7.1) | demolition/rebuild events | UNMEASURED |
+
+Per §2.1, **every row is worth a few bits at most, by design.** The architecture's claim
+is that the bits sum under joint propagation over the candidate set. No row is a decider;
+no row should ever be tested as one.
+
+## 17. Evaluation protocol
+
+Added 2026-08-16, operator-approved. The standing rule this plan lacked, stated first:
+
+> **Constraints are never evaluated as unary accept/refute rules. The unit of measurement
+> is the joint residual over the candidate set.** Individual-signal saturation and
+> false-refutation are expected consequences of §2.1's few-bits premise — measuring them
+> (Appendix K) characterizes inputs; it neither confirms nor refutes the architecture.
+
+The dispositive ladder — each stage gates the next, all numbers from structured results
+with the query recorded, denominators predeclared, scored against the H.6 baselines on the
+coverage/precision plane:
+
+- **E1 — Failure taxonomy.** Classify the 79 labeled Gate V2 failures by cause:
+  adjacent-lot near-miss (with distance to true lot), gross geocode error (W 49th class),
+  assemblage scoring artifact, condo representation residue, residual truth contamination.
+  Bounds achievable headroom per evidence class before anything is built.
+- **E2 — Attribute-channel reconciliation.** Join Annex A asserted SF/units/year to the
+  labeled set; measure band-consistency of asserted SF against the PIP lot vs the true
+  lot. First exercise of inventory row 6.
+- **E3 — Pairwise candidate test (the solver stand-in).** For each labeled failure, score
+  the true lot against the PIP lot under all landed inventory rows jointly. The headroom
+  number is: how often does joint evidence rank the true lot strictly above the wrong
+  one? This is the architecture's claim in measurable form.
+- **E4 — Joint mini-propagation.** Run the actual constraint set (§5–§7) over the six
+  corpus cases (I) and the labeled set: residual sizes, backbone accuracy, abstention
+  honesty, per-component cost against Appendix G's sizing.
+- **E5 — Genericity gate.** Repeat E1–E4 in one non-NYC county using only generic
+  instances (county parcels, NAD/county address points, NAIP or state ortho). No
+  NYC-specific code path may be load-bearing.
+
+Kill condition, stated honestly: if E3 — with the attribute channel joined and an
+address-set layer landed — cannot rank the true lot above the wrong one on the majority of
+E1's addressable failure classes, then the bits do not sum, the 500× premise of §13 fails,
+and the architecture survives only as an honest-abstention engine, which is not the
+product. That is the falsifiable form of "could this possibly work."
+
+---
+
 # Appendix A — Frozen-weight observers and imagery sources
 
 Added 2026-08-15 after operator correction. **This appendix is an open extension point, not
@@ -1440,3 +1533,15 @@ bd-35qg) exist to close.
    predicate was caught by a subset-vs-universe reconciliation check, not by inspection.
    **Predicate definitions are load-bearing** — the same lesson as Appendices D, F, and H,
    now with its fourth receipt.
+
+## K.4 Coda — what this appendix does and does not falsify (added 2026-08-16, on review)
+
+This appendix's original framing overstated. What K measured is that **each tile signal is
+individually weak as a unary accept/refute rule** — which is §2.1's few-bits premise,
+measured, not the architecture's thesis, refuted. The plan never claimed any single
+discriminator separates; it claims weak constraints **sum under joint propagation over the
+candidate set**. That summing test — §17's E3 pairwise candidate test — has not been run,
+and K's panel design (independent 2×2s on the predicted answer only) could not have run
+it. K stands as: (a) a characterization of the input signals, (b) proof that no cheap
+shortcut around the full machinery exists, and (c) the event that forced §16 and §17 into
+the plan. The headroom question remains open until E3 answers it.
