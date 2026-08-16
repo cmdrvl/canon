@@ -1,0 +1,34 @@
+# bd-tccn Worked Case Index
+
+This index tracks the operator ladder from `bd-tccn`. Every completed case records
+structured Loom results and exact SQL in its own file.
+
+Standing measured context used across cases:
+
+- Appendix E: baselines to beat are naive address-string at 28.89% and geometry-only PIP
+  at 94.65%; nearest_rooftop_match is the named silent-error tier.
+- Appendix F: canonical footprint-to-parcel predicate is geometric
+  `ST_AREA(intersection)/ST_AREA(footprint) > 0.5`; source asserted areas are not
+  denominators.
+- Appendix G: feature-count sizing is component-wise; r10/r9 tile counts do not define
+  solver cost by themselves.
+
+| case | file | status | property | verdict | design decision forced |
+|---:|---|---|---|---|---|
+| 1 | `CASE_1_CLEAN_ROOFTOP.md` | complete | One Grace Court Corporation, 1 Grace Court, Brooklyn | resolved singleton: parcel `3002510001` plus one building observation from each footprint source | Defines the unambiguous floor and ablation control; both baselines clear when the exact assertion row is pinned |
+| 2 | `CASE_2_*.md` | pending | single address, geocode in street | pending | Tile-bounded proximity, no snap-to-nearest, address channel as discriminator |
+| 3 | `CASE_3_*.md` | pending | split/range address | pending | Assemblage, interval semantics, parity, subset sum, NRA-vs-gross mismatch |
+| 4 | `CASE_4_*.md` | pending | comma-separated multi-street address | pending | Multi-address fields and chimera parse detection |
+| 5 | `CASE_5_*.md` | pending | two addresses, same corner building | pending | Address disagreement can be noise; geometry may have to win |
+| 6 | `CASE_6_*.md` | pending | dense block, multiple buildings to one parcel | pending | Building-level false-merge risk when parcel geometry cannot discriminate |
+
+Case 1 source availability snapshot:
+
+| source | status |
+|---|---|
+| MapPLUTO | landed, 856,614 rows |
+| NYC building footprints | landed, 1,081,999 rows |
+| FEMA USA Structures | landed for NY, 5,015,922 rows |
+| Microsoft GlobalML | landed for NY, 5,424,624 rows |
+| Overture | aggregate/features/buildings/places report 0 NY rows |
+| NYC PAD | not landed per bd-35qg; record as gap when a case needs an address set |
