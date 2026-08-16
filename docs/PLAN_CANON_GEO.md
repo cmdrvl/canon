@@ -1545,3 +1545,83 @@ and K's panel design (independent 2×2s on the predicted answer only) could not 
 it. K stands as: (a) a characterization of the input signals, (b) proof that no cheap
 shortcut around the full machinery exists, and (c) the event that forced §16 and §17 into
 the plan. The headroom question remains open until E3 answers it.
+
+---
+
+# Appendix L — MEASURED: E1–E3 ran; the failure mass was never a ranking problem
+
+Added 2026-08-16 (bd-3ab6 + bd-2qjj; full tables and exact SQL in
+`docs/geo_design_session/E1_E2_TAXONOMY_ATTR.md` and `E3_PAIRWISE.md`). The §17 ladder's
+first three stages, run on the Gate V2 labeled set (233 PIP-covered points: 154 correct /
+79 incorrect, denominators independently re-reconciled by both agents), interpreted
+jointly per the §17 gate.
+
+## L.1 The taxonomy (E1): two classes own 91% of the failures
+
+```
+  class                              points   signature
+  gross geocode error (>500m)          40     avg 7.1 km, max 23.3 km from true parcel
+  condo representation residue         32     PIP-parcel-to-true distance 0.00 m
+  assemblage-neighbor artifact          2
+  adjacent-lot near miss                2
+  residual truth-contamination          3
+  (sums to 79; sanity arm: 0/154 correct points classified)
+```
+
+The gross class is unambiguous wrong-location input — the true lot is kilometres away and
+**not in any tile the point defines**. The condo class is the opposite: **geometry found
+the right building** (distance 0.00 m); ACRIS records unit BBLs that MapPLUTO does not
+carry as parcels. Neither is a candidate-selection failure. Only 4 points (2+2) are cases
+where re-ranking within the tile is the relevant tool.
+
+## L.2 The attribute channel (E2): thin on this proving ground
+
+Inventory row 6's first exercise: filtered to genuinely SF-denominated assertions
+(`SIZE_MEASURE='SQFT'`), coverage collapses to 10 correct / 17 incorrect labeled points —
+NYC CMBS skews multifamily and asserts UNITS, and MapPLUTO landed no unit-count
+comparator. On the handful of comparable rows the band test does not separate (and
+mildly favors the wrong lot, n=5). Row 6 is recorded as sparse-here, not dead — its
+density is geography- and asset-class-dependent, an E5 question.
+
+## L.3 The pairwise test (E3): blocked by candidate reach, honest on both denominators
+
+```
+  all 79 failures (out-of-scope counted as unsolved):  true-lot wins 0/79
+  7 tile-addressable failures:                          true wins 0, ties 0, PIP wins 7
+  control arm (76 matched correct points):              true lot beats same-tile neighbor 76/76
+```
+
+The scope split is the finding: 31/79 selected true BBLs are absent from MapPLUTO
+(the condo residues), 41 are present but outside the r9+k1 tile (the gross errors) —
+**72/79 failures are unreachable by any tile-local pairwise solver by construction.** Of
+the 7 reachable, joint measured non-ACRIS evidence never ranks the true lot first (2/7
+had an individual true-winning row; the vote still went to PIP) — and 3 of those 7 are
+contamination suspects where "losing" may be correct behavior. The control arm passed:
+the scoring machinery correctly prefers the true lot 76/76 when it is the answer. The
+method works; there is almost nothing in this failure population for it to fix.
+
+## L.4 The verdict under §17
+
+Read strictly, the kill condition fires **for candidate re-ranking with currently landed
+evidence**: the bits do not need to sum because the failures re-ranking could address
+barely exist. But the taxonomy dissolves the premise rather than the plan: the measured
+path from 66% precision to the mid-90s is
+
+1. **a condo/ledger representation bridge** (32 points, deterministic — billing↔unit BBL
+   mapping; the generic class is "ledger representation compilation," squarely canon's
+   identity-compiler competence, no solver required);
+2. **refutation/abstention on wrong-location input** (40 points — bd-1a12's capability
+   with asserted-street semantics, strengthened by an address-set layer; the tile
+   proves the answer is absent and abstains rather than answering);
+3. **honest residual** on the remaining handful (doubletons, contamination suspects).
+
+This reweights the architecture's role on the point-resolution task from candidate
+selection toward **justified abstention and representation compilation — which are §9.1's
+own claimed products.** What the labeled set cannot exercise, and therefore remains
+genuinely open for the constraint machinery, is the *collateral-composition* question —
+which parcels and buildings constitute the property (Appendix I cases 3, 4, 6; the 79
+non-condo multi-BBL loans of H.4) — plus E4 (joint propagation, now pointed at
+composition rather than point re-ranking) and E5 (the genericity gate).
+
+Ladder status: E1 ✓, E2 ✓ (sparse-here), E3 ✓. E4 and E5 remain, re-aimed by these
+results.
