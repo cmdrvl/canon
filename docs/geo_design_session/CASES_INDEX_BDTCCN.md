@@ -19,7 +19,7 @@ Standing measured context used across cases:
 | 2 | `CASE_2_ROADBED_GEOCODE.md` | complete | 982 Madison Street, Brooklyn | resolved singleton by address after geocode channel abstains; nearest-lot probe picks wrong BBL `3033570147` | Tile-bounded proximity, no snap-to-nearest, address channel as discriminator |
 | 3 | `CASE_3_RANGE_ASSEMBLAGE.md` | complete | 107-109-111 North 9th Street, Brooklyn | resolved assemblage: three parcels `3023030029`, `3023030028`, `3023030027` plus three NYC BINs | Assemblage, interval semantics, endpoint expansion, and why one BBL is a false answer |
 | 4 | `CASE_4_CHIMERA_MULTI_STREET.md` | complete | 199, 201, 203, 205 First Avenue and 349 & 351 East 12th Street, Manhattan | resolved six-parcel core plus explicit `351/353 EAST 12 STREET` address-set gap; parsed `199 E 12th St` is rejected as synthesized | Multi-address fields, chimera parse detection, and parsed-address membership checks |
-| 5 | `CASE_5_*.md` | pending | two addresses, same corner building | pending | Address disagreement can be noise; geometry may have to win |
+| 5 | `CASE_5_CORNER_ADDRESS_NOISE.md` | complete | Soho Plaza Corp., 66 Crosby Street a/k/a 514 Broadway, Manhattan | resolved singleton: `1004830013` / 514 BROADWAY / NYC BIN `1007235`; parsed Crosby frontage has no MapPLUTO primary-address match | Address disagreement can be noise; raw `A/K/A` fields are address sets, not contradictions |
 | 6 | `CASE_6_*.md` | pending | dense block, multiple buildings to one parcel | pending | Building-level false-merge risk when parcel geometry cannot discriminate |
 
 Case 1 source availability snapshot:
