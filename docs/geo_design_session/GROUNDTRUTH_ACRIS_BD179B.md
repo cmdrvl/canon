@@ -14,12 +14,13 @@ Data access discipline: every cited number below came from
 
 ## Status
 
-ACRIS Source 1 is usable for a small, clean, address-independent truth set.
-The operating gate is exact cents on origination amount and a +/-30 day
-recording-date window, with uniqueness required per CMBS loan and ambiguous
-loans discarded.
+ACRIS Source 1 is usable as a small address-independent foothold, but the final
+contamination probe shows the exact-cents +/-30 unique gate is not clean enough
+for a headline precision estimate across the full accepted set. The operating
+gate is exact cents on origination amount and a +/-30 day recording-date window,
+with uniqueness required per CMBS loan and ambiguous loans discarded.
 
-Headline result:
+Raw result before contamination decomposition:
 
 - ACRIS truth set: 523 accepted five-borough loans from a 3,040-loan denominator.
 - Geometry PIP lot-grade precision on ACRIS-covered baseline points: 166 / 563
@@ -39,6 +40,17 @@ requested by the orchestrator: any ACRIS legal `LOT` between 1001 and 6999.
 This shows the lot-grade precision is representation-confounded, but only a
 minority of the headline misses are same-block/lot-mismatch cases. Most covered
 misses remain full-block mismatches.
+
+Final contamination probe: the full-block mismatch population has the signature
+of unique-but-wrong amount/date matches. At accepted-loan grain, geometry PIP
+covered 513 / 523 loans and scored 135 / 513 = 26.32% lot-grade precision.
+Correct PIP hits had 0 negative recording offsets; full-block mismatches had
+165 / 356 negative offsets. ACRIS legal borough disagreed with every property
+borough in 203 full-block mismatches, and both recorded and legal borough
+disagreed in 113. Non-round amounts scored 66 / 119 = 55.46%, while 100k/1m
+round amounts scored 69 / 394 = 17.51% and 1m multiples alone scored 19 / 241
+= 7.88%. Treat the raw 29.48% point-grain precision headline as contaminated,
+not a clean baseline-failure estimate.
 
 ## G1: ACRIS Discovery
 
@@ -1500,6 +1512,243 @@ JOIN universes u
   ON c.BASELINE = u.BASELINE
  AND c.ACCURACY_TYPE = u.ACCURACY_TYPE
 ORDER BY c.BASELINE, IFF(c.ACCURACY_TYPE = 'ALL', 0, 1), c.ACCURACY_TYPE;
+```
+
+## Contamination Probe: Unique Amount-Date Matches
+
+This probe answers the final fork for the 370 point-grain full-block
+mismatches: real baseline failure versus truth-set contamination from a
+unique-but-wrong amount/date match. The diagnostic is at accepted-loan grain over
+the 523 ACRIS accepts, not the earlier point grain. Geometry PIP is scored as:
+correct if any MapPLUTO BBL predicted for any attached property point equals any
+ACRIS BBL accepted for the loan; block-match/lot-mismatch if no lot matches but
+at least one predicted `borough+block` matches; full-block mismatch otherwise.
+
+Accepted-loan geometry PIP denominator:
+
+| accepted loans | PIP covered | lot correct | lot precision | block correct | block upper | block-match lot-mismatch | full-block mismatch | no PIP prediction |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 523 | 513 | 135 | 26.32% | 157 | 30.60% | 22 | 356 | 10 |
+
+### 1. Recording-Offset Distribution
+
+`offset_days = RECORDED_DATE - ORIGINATIONDATE`. The correct population clusters
+on non-negative offsets only. The full-block mismatch population spans the full
++/-30-day window, including 165 negative offsets, which is the expected signature
+of amount/date collision contamination.
+
+Summary:
+
+| scored_outcome | scored_detail | loans | negative offsets | zero offsets | positive offsets | min offset | max offset | avg offset | median offset |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| correct | lot_correct | 135 | 0 | 0 | 135 | 2 | 30 | 13.06 | 12.000 |
+| incorrect | block_match_lot_mismatch | 22 | 0 | 1 | 21 | 0 | 30 | 11.82 | 12.000 |
+| incorrect | full_block_mismatch | 356 | 165 | 8 | 183 | -30 | 30 | 0.42 | 1.500 |
+| no_pip_prediction | no_pip_prediction | 10 | 3 | 0 | 7 | -25 | 23 | 4.00 | 6.500 |
+
+Histogram:
+
+| scored_detail | bucket | loans | negative offsets | zero offsets | positive offsets |
+|---|---:|---:|---:|---:|---:|
+| lot_correct | 1..7 | 26 | 0 | 0 | 26 |
+| lot_correct | 8..14 | 62 | 0 | 0 | 62 |
+| lot_correct | 15..30 | 47 | 0 | 0 | 47 |
+| block_match_lot_mismatch | 0 | 1 | 0 | 1 | 0 |
+| block_match_lot_mismatch | 1..7 | 4 | 0 | 0 | 4 |
+| block_match_lot_mismatch | 8..14 | 10 | 0 | 0 | 10 |
+| block_match_lot_mismatch | 15..30 | 7 | 0 | 0 | 7 |
+| full_block_mismatch | -30..-15 | 98 | 98 | 0 | 0 |
+| full_block_mismatch | -14..-8 | 38 | 38 | 0 | 0 |
+| full_block_mismatch | -7..-1 | 29 | 29 | 0 | 0 |
+| full_block_mismatch | 0 | 8 | 0 | 8 | 0 |
+| full_block_mismatch | 1..7 | 44 | 0 | 0 | 44 |
+| full_block_mismatch | 8..14 | 39 | 0 | 0 | 39 |
+| full_block_mismatch | 15..30 | 100 | 0 | 0 | 100 |
+| no_pip_prediction | -30..-15 | 1 | 1 | 0 | 0 |
+| no_pip_prediction | -14..-8 | 2 | 2 | 0 | 0 |
+| no_pip_prediction | 1..7 | 2 | 0 | 0 | 2 |
+| no_pip_prediction | 8..14 | 2 | 0 | 0 | 2 |
+| no_pip_prediction | 15..30 | 3 | 0 | 0 | 3 |
+
+```sql
+WITH ls AS (
+ SELECT DISTINCT l.LOAN_KEY k,CAST(l.ORIGINATIONDATE AS DATE) od,ROUND(l.ORIGINALLOANAMOUNT,2) amt
+ FROM EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT p JOIN EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE l ON p.CIK=l.CIK AND p.ASSETNUMBER=l.ASSETNUMBER
+ WHERE p.COUNTY_FIPS IN ('36005','36047','36061','36081','36085') AND p.HAS_LOAN=TRUE AND l.ORIGINATIONDATE IS NOT NULL AND l.ORIGINALLOANAMOUNT IS NOT NULL
+), ad AS (
+ SELECT DISTINCT DOCUMENT_ID doc,RECORDED_BOROUGH rb,CAST(RECORDED_DATETIME AS DATE) rd,ROUND(DOCUMENT_AMT,2) amt
+ FROM EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT
+ WHERE RELEASE_DT='2026-08-10' AND RECORDED_BOROUGH IN (1,2,3,4,5) AND DOC_TYPE IN ('MTGE','M&CON','CMTG','SMTG','MMTG','SPRD') AND DOCUMENT_AMT BETWEEN 505879.44 AND 135000000
+   AND CAST(RECORDED_DATETIME AS DATE) BETWEEN DATEADD(day,-30,(SELECT MIN(od) FROM ls)) AND DATEADD(day,30,(SELECT MAX(od) FROM ls))
+), ca AS (
+ SELECT ls.k,ad.doc,ad.rb,ad.rd,ls.od,ls.amt,DATEDIFF(day,ls.od,ad.rd) off
+ FROM ls JOIN ad ON ad.amt=ls.amt AND ad.rd BETWEEN DATEADD(day,-30,ls.od) AND DATEADD(day,30,ls.od)
+), cn AS (SELECT k,COUNT(DISTINCT doc)n FROM ca GROUP BY k), ac AS (SELECT ca.* FROM ca JOIN cn USING(k) WHERE n=1),
+ab AS (
+ SELECT DISTINCT ac.k,TO_VARCHAR(l.BOROUGH)||LPAD(TO_VARCHAR(l.BLOCK),5,'0')||LPAD(TO_VARCHAR(l.LOT),4,'0') bbl,TO_VARCHAR(l.BOROUGH)||LPAD(TO_VARCHAR(l.BLOCK),5,'0') blk,l.BOROUGH lb
+ FROM ac JOIN EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT l ON ac.doc=l.DOCUMENT_ID
+ WHERE l.RELEASE_DT='2026-08-10' AND l.BOROUGH IN (1,2,3,4,5) AND l.BLOCK IS NOT NULL AND l.LOT IS NOT NULL
+), ps AS (
+ SELECT DISTINCT p.PROPERTY_KEY pk,l.LOAN_KEY k,CASE TO_VARCHAR(p.COUNTY_FIPS) WHEN '36061' THEN 1 WHEN '36005' THEN 2 WHEN '36047' THEN 3 WHEN '36081' THEN 4 WHEN '36085' THEN 5 END pb
+ FROM EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT p JOIN EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE l ON p.CIK=l.CIK AND p.ASSETNUMBER=l.ASSETNUMBER
+ WHERE p.COUNTY_FIPS IN ('36005','36047','36061','36081','36085') AND p.HAS_LOAN=TRUE
+), gp AS (
+ SELECT DISTINCT ps.k,ps.pk,d.LATITUDE lat,d.LONGITUDE lon
+ FROM ps JOIN ac USING(k) JOIN EDGAR_DB.PROPERTY_MART.PROPERTY_DIM d ON ps.pk=d.PROPERTY_KEY
+ WHERE d.COUNTY_FIPS IN ('36005','36047','36061','36081','36085') AND d.LATITUDE IS NOT NULL AND d.LONGITUDE IS NOT NULL
+), pe AS (
+ SELECT DISTINCT gp.k,REGEXP_REPLACE(TO_VARCHAR(pl.BBL),'\\.0$','') pbbl,SUBSTR(REGEXP_REPLACE(TO_VARCHAR(pl.BBL),'\\.0$',''),1,6) pblk
+ FROM gp JOIN EDGAR_DB.SOURCE.NYC_DCP_MAPPLUTO_HOT pl ON ST_CONTAINS(pl.GEOM_GEOG,ST_POINT(gp.lon,gp.lat))
+), lo AS (
+ SELECT ac.k,ac.doc,ac.rb,ac.rd,ac.od,ac.amt,ac.off,COUNT(DISTINCT pe.pbbl) pred_bbls,COUNT(DISTINCT IFF(pe.pbbl=ab.bbl,pe.pbbl,NULL)) lot_hits,COUNT(DISTINCT IFF(pe.pblk=ab.blk,pe.pblk,NULL)) block_hits
+ FROM ac JOIN ab USING(k) LEFT JOIN pe USING(k)
+ GROUP BY ac.k,ac.doc,ac.rb,ac.rd,ac.od,ac.amt,ac.off
+), o AS (
+ SELECT *,CASE WHEN pred_bbls=0 THEN 'no_pip_prediction' WHEN lot_hits>0 THEN 'correct' ELSE 'incorrect' END scored_outcome,
+          CASE WHEN pred_bbls=0 THEN 'no_pip_prediction' WHEN lot_hits>0 THEN 'lot_correct' WHEN block_hits>0 THEN 'block_match_lot_mismatch' ELSE 'full_block_mismatch' END scored_detail,
+          CASE WHEN off BETWEEN -30 AND -15 THEN '-30..-15' WHEN off BETWEEN -14 AND -8 THEN '-14..-8' WHEN off BETWEEN -7 AND -1 THEN '-7..-1' WHEN off=0 THEN '0' WHEN off BETWEEN 1 AND 7 THEN '1..7' WHEN off BETWEEN 8 AND 14 THEN '8..14' WHEN off BETWEEN 15 AND 30 THEN '15..30' ELSE 'outside' END bucket,
+          CASE WHEN off BETWEEN -30 AND -15 THEN 1 WHEN off BETWEEN -14 AND -8 THEN 2 WHEN off BETWEEN -7 AND -1 THEN 3 WHEN off=0 THEN 4 WHEN off BETWEEN 1 AND 7 THEN 5 WHEN off BETWEEN 8 AND 14 THEN 6 WHEN off BETWEEN 15 AND 30 THEN 7 ELSE 8 END bucket_ord
+ FROM lo
+)
+SELECT 'summary' row_type,scored_outcome,scored_detail,NULL bucket,COUNT(*) loans,SUM(IFF(off<0,1,0)) negative_offsets,SUM(IFF(off=0,1,0)) zero_offsets,SUM(IFF(off>0,1,0)) positive_offsets,MIN(off) min_offset,MAX(off) max_offset,ROUND(AVG(off),2) avg_offset,MEDIAN(off) median_offset
+FROM o GROUP BY scored_outcome,scored_detail
+UNION ALL
+SELECT 'histogram',scored_outcome,scored_detail,bucket,COUNT(*),SUM(IFF(off<0,1,0)),SUM(IFF(off=0,1,0)),SUM(IFF(off>0,1,0)),MIN(off),MAX(off),ROUND(AVG(off),2),MEDIAN(off)
+FROM o GROUP BY scored_outcome,scored_detail,bucket,bucket_ord
+ORDER BY scored_outcome,scored_detail,row_type DESC,bucket;
+```
+
+### 2. Borough Agreement
+
+`RECORDED_BOROUGH` is not clean enough by itself: 68 lot-correct accepts have a
+recorded-borough mismatch while their ACRIS legal borough agrees. The stronger
+contamination indicator is therefore legal-borough disagreement, with the strict
+near-certain bucket requiring both recorded and legal borough to disagree with
+every property county attached to the CMBS loan.
+
+| scored_outcome | scored_detail | loans | recorded borough agrees any property | recorded borough disagrees all properties | legal borough agrees any property | legal borough disagrees all properties | recorded and legal disagree all properties |
+|---|---|---:|---:|---:|---:|---:|---:|
+| correct | lot_correct | 135 | 67 | 68 | 135 | 0 | 0 |
+| incorrect | block_match_lot_mismatch | 22 | 14 | 8 | 22 | 0 | 0 |
+| incorrect | full_block_mismatch | 356 | 205 | 151 | 153 | 203 | 113 |
+| no_pip_prediction | no_pip_prediction | 10 | 4 | 6 | 5 | 5 | 2 |
+
+The strict near-certain contamination bucket is 113 full-block mismatches, with
+0 lot-correct and 0 same-block/lot-mismatch accepts in that bucket.
+
+```sql
+WITH ls AS (
+ SELECT DISTINCT l.LOAN_KEY k,CAST(l.ORIGINATIONDATE AS DATE) od,ROUND(l.ORIGINALLOANAMOUNT,2) amt
+ FROM EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT p JOIN EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE l ON p.CIK=l.CIK AND p.ASSETNUMBER=l.ASSETNUMBER
+ WHERE p.COUNTY_FIPS IN ('36005','36047','36061','36081','36085') AND p.HAS_LOAN=TRUE AND l.ORIGINATIONDATE IS NOT NULL AND l.ORIGINALLOANAMOUNT IS NOT NULL
+), ad AS (
+ SELECT DISTINCT DOCUMENT_ID doc,RECORDED_BOROUGH rb,CAST(RECORDED_DATETIME AS DATE) rd,ROUND(DOCUMENT_AMT,2) amt
+ FROM EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT
+ WHERE RELEASE_DT='2026-08-10' AND RECORDED_BOROUGH IN (1,2,3,4,5) AND DOC_TYPE IN ('MTGE','M&CON','CMTG','SMTG','MMTG','SPRD') AND DOCUMENT_AMT BETWEEN 505879.44 AND 135000000
+   AND CAST(RECORDED_DATETIME AS DATE) BETWEEN DATEADD(day,-30,(SELECT MIN(od) FROM ls)) AND DATEADD(day,30,(SELECT MAX(od) FROM ls))
+), ca AS (
+ SELECT ls.k,ad.doc,ad.rb,ad.rd,ls.od,ls.amt,DATEDIFF(day,ls.od,ad.rd) off
+ FROM ls JOIN ad ON ad.amt=ls.amt AND ad.rd BETWEEN DATEADD(day,-30,ls.od) AND DATEADD(day,30,ls.od)
+), cn AS (SELECT k,COUNT(DISTINCT doc)n FROM ca GROUP BY k), ac AS (SELECT ca.* FROM ca JOIN cn USING(k) WHERE n=1),
+ab AS (
+ SELECT DISTINCT ac.k,TO_VARCHAR(l.BOROUGH)||LPAD(TO_VARCHAR(l.BLOCK),5,'0')||LPAD(TO_VARCHAR(l.LOT),4,'0') bbl,TO_VARCHAR(l.BOROUGH)||LPAD(TO_VARCHAR(l.BLOCK),5,'0') blk,l.BOROUGH lb
+ FROM ac JOIN EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT l ON ac.doc=l.DOCUMENT_ID
+ WHERE l.RELEASE_DT='2026-08-10' AND l.BOROUGH IN (1,2,3,4,5) AND l.BLOCK IS NOT NULL AND l.LOT IS NOT NULL
+), ps AS (
+ SELECT DISTINCT p.PROPERTY_KEY pk,l.LOAN_KEY k,CASE TO_VARCHAR(p.COUNTY_FIPS) WHEN '36061' THEN 1 WHEN '36005' THEN 2 WHEN '36047' THEN 3 WHEN '36081' THEN 4 WHEN '36085' THEN 5 END pb
+ FROM EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT p JOIN EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE l ON p.CIK=l.CIK AND p.ASSETNUMBER=l.ASSETNUMBER
+ WHERE p.COUNTY_FIPS IN ('36005','36047','36061','36081','36085') AND p.HAS_LOAN=TRUE
+), gp AS (
+ SELECT DISTINCT ps.k,ps.pk,d.LATITUDE lat,d.LONGITUDE lon
+ FROM ps JOIN ac USING(k) JOIN EDGAR_DB.PROPERTY_MART.PROPERTY_DIM d ON ps.pk=d.PROPERTY_KEY
+ WHERE d.COUNTY_FIPS IN ('36005','36047','36061','36081','36085') AND d.LATITUDE IS NOT NULL AND d.LONGITUDE IS NOT NULL
+), pe AS (
+ SELECT DISTINCT gp.k,REGEXP_REPLACE(TO_VARCHAR(pl.BBL),'\\.0$','') pbbl,SUBSTR(REGEXP_REPLACE(TO_VARCHAR(pl.BBL),'\\.0$',''),1,6) pblk
+ FROM gp JOIN EDGAR_DB.SOURCE.NYC_DCP_MAPPLUTO_HOT pl ON ST_CONTAINS(pl.GEOM_GEOG,ST_POINT(gp.lon,gp.lat))
+), lo AS (
+ SELECT ac.k,ac.doc,ac.rb,COUNT(DISTINCT pe.pbbl) pred_bbls,COUNT(DISTINCT IFF(pe.pbbl=ab.bbl,pe.pbbl,NULL)) lot_hits,COUNT(DISTINCT IFF(pe.pblk=ab.blk,pe.pblk,NULL)) block_hits,
+        COUNT(DISTINCT ps.pb) property_boroughs,COUNT(DISTINCT ab.lb) legal_boroughs,MAX(IFF(ps.pb=ac.rb,1,0)) recorded_borough_match,MAX(IFF(ps.pb=ab.lb,1,0)) legal_borough_match
+ FROM ac JOIN ab USING(k) JOIN ps USING(k) LEFT JOIN pe USING(k)
+ GROUP BY ac.k,ac.doc,ac.rb
+), o AS (
+ SELECT *,CASE WHEN pred_bbls=0 THEN 'no_pip_prediction' WHEN lot_hits>0 THEN 'correct' ELSE 'incorrect' END scored_outcome,
+          CASE WHEN pred_bbls=0 THEN 'no_pip_prediction' WHEN lot_hits>0 THEN 'lot_correct' WHEN block_hits>0 THEN 'block_match_lot_mismatch' ELSE 'full_block_mismatch' END scored_detail
+ FROM lo
+)
+SELECT scored_outcome,scored_detail,COUNT(*) loans,SUM(IFF(recorded_borough_match=1,1,0)) recorded_borough_agree_any_property,SUM(IFF(recorded_borough_match=0,1,0)) recorded_borough_disagree_all_properties,SUM(IFF(legal_borough_match=1,1,0)) legal_borough_agree_any_property,SUM(IFF(legal_borough_match=0,1,0)) legal_borough_disagree_all_properties,SUM(IFF(recorded_borough_match=0 AND legal_borough_match=0,1,0)) recorded_and_legal_disagree_all_properties,MIN(property_boroughs) min_property_borough_count,MAX(property_boroughs) max_property_borough_count,MIN(legal_boroughs) min_legal_borough_count,MAX(legal_boroughs) max_legal_borough_count
+FROM o
+GROUP BY scored_outcome,scored_detail
+ORDER BY scored_outcome,scored_detail;
+```
+
+### 3. Amount Roundness
+
+Round amounts load most of the contamination. Non-round loans have 55.46%
+accepted-loan PIP lot precision; 100k/1m-round loans have 17.51%, and 1m
+multiples alone have 7.88%.
+
+| grain | amount_class | accepted loans | PIP covered | lot correct | lot precision | block correct | block upper | block-match lot-mismatch | full-block mismatch | no PIP prediction | negative offsets |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| all | ALL | 523 | 513 | 135 | 26.32% | 157 | 30.60% | 22 | 356 | 10 | 168 |
+| binary_100k | non_round_100k | 123 | 119 | 66 | 55.46% | 72 | 60.50% | 6 | 47 | 4 | 23 |
+| binary_100k | round_100k_or_1m | 400 | 394 | 69 | 17.51% | 85 | 21.57% | 16 | 309 | 6 | 145 |
+| fine | multiple_100k_not_1m | 156 | 153 | 50 | 32.68% | 54 | 35.29% | 4 | 99 | 3 | 55 |
+| fine | multiple_1m | 244 | 241 | 19 | 7.88% | 31 | 12.86% | 12 | 210 | 3 | 90 |
+| fine | non_round_100k | 123 | 119 | 66 | 55.46% | 72 | 60.50% | 6 | 47 | 4 | 23 |
+
+Interpretation: the original exact-cents +/-30 unique gate is useful as a
+Source-1 foothold, but it is not clean enough for a headline precision estimate
+on round-dollar loans. The strongest ACRIS-only precision diagnostic is the
+non-round subset; the full accepted set is materially contaminated by amount
+collisions, especially whole-million loans.
+
+```sql
+WITH ls AS (
+ SELECT DISTINCT l.LOAN_KEY k,CAST(l.ORIGINATIONDATE AS DATE) od,ROUND(l.ORIGINALLOANAMOUNT,2) amt
+ FROM EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT p JOIN EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE l ON p.CIK=l.CIK AND p.ASSETNUMBER=l.ASSETNUMBER
+ WHERE p.COUNTY_FIPS IN ('36005','36047','36061','36081','36085') AND p.HAS_LOAN=TRUE AND l.ORIGINATIONDATE IS NOT NULL AND l.ORIGINALLOANAMOUNT IS NOT NULL
+), ad AS (
+ SELECT DISTINCT DOCUMENT_ID doc,RECORDED_BOROUGH rb,CAST(RECORDED_DATETIME AS DATE) rd,ROUND(DOCUMENT_AMT,2) amt
+ FROM EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT
+ WHERE RELEASE_DT='2026-08-10' AND RECORDED_BOROUGH IN (1,2,3,4,5) AND DOC_TYPE IN ('MTGE','M&CON','CMTG','SMTG','MMTG','SPRD') AND DOCUMENT_AMT BETWEEN 505879.44 AND 135000000
+   AND CAST(RECORDED_DATETIME AS DATE) BETWEEN DATEADD(day,-30,(SELECT MIN(od) FROM ls)) AND DATEADD(day,30,(SELECT MAX(od) FROM ls))
+), ca AS (
+ SELECT ls.k,ad.doc,ad.rb,ad.rd,ls.od,ls.amt,DATEDIFF(day,ls.od,ad.rd) off
+ FROM ls JOIN ad ON ad.amt=ls.amt AND ad.rd BETWEEN DATEADD(day,-30,ls.od) AND DATEADD(day,30,ls.od)
+), cn AS (SELECT k,COUNT(DISTINCT doc)n FROM ca GROUP BY k), ac AS (SELECT ca.* FROM ca JOIN cn USING(k) WHERE n=1),
+ab AS (
+ SELECT DISTINCT ac.k,TO_VARCHAR(l.BOROUGH)||LPAD(TO_VARCHAR(l.BLOCK),5,'0')||LPAD(TO_VARCHAR(l.LOT),4,'0') bbl,TO_VARCHAR(l.BOROUGH)||LPAD(TO_VARCHAR(l.BLOCK),5,'0') blk,l.BOROUGH lb
+ FROM ac JOIN EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT l ON ac.doc=l.DOCUMENT_ID
+ WHERE l.RELEASE_DT='2026-08-10' AND l.BOROUGH IN (1,2,3,4,5) AND l.BLOCK IS NOT NULL AND l.LOT IS NOT NULL
+), ps AS (
+ SELECT DISTINCT p.PROPERTY_KEY pk,l.LOAN_KEY k
+ FROM EDGAR_DB.PROPERTY_MART.PROPERTY_PERIOD_FACT p JOIN EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE l ON p.CIK=l.CIK AND p.ASSETNUMBER=l.ASSETNUMBER
+ WHERE p.COUNTY_FIPS IN ('36005','36047','36061','36081','36085') AND p.HAS_LOAN=TRUE
+), gp AS (
+ SELECT DISTINCT ps.k,ps.pk,d.LATITUDE lat,d.LONGITUDE lon
+ FROM ps JOIN ac USING(k) JOIN EDGAR_DB.PROPERTY_MART.PROPERTY_DIM d ON ps.pk=d.PROPERTY_KEY
+ WHERE d.COUNTY_FIPS IN ('36005','36047','36061','36081','36085') AND d.LATITUDE IS NOT NULL AND d.LONGITUDE IS NOT NULL
+), pe AS (
+ SELECT DISTINCT gp.k,REGEXP_REPLACE(TO_VARCHAR(pl.BBL),'\\.0$','') pbbl,SUBSTR(REGEXP_REPLACE(TO_VARCHAR(pl.BBL),'\\.0$',''),1,6) pblk
+ FROM gp JOIN EDGAR_DB.SOURCE.NYC_DCP_MAPPLUTO_HOT pl ON ST_CONTAINS(pl.GEOM_GEOG,ST_POINT(gp.lon,gp.lat))
+), lo AS (
+ SELECT ac.k,ac.amt,ac.off,COUNT(DISTINCT pe.pbbl) pred_bbls,COUNT(DISTINCT IFF(pe.pbbl=ab.bbl,pe.pbbl,NULL)) lot_hits,COUNT(DISTINCT IFF(pe.pblk=ab.blk,pe.pblk,NULL)) block_hits
+ FROM ac JOIN ab USING(k) LEFT JOIN pe USING(k)
+ GROUP BY ac.k,ac.amt,ac.off
+), o AS (
+ SELECT *,IFF(pred_bbls>0,1,0) covered,IFF(lot_hits>0,1,0) lot_correct,IFF(block_hits>0,1,0) block_correct,
+          CASE WHEN MOD(amt,1000000)=0 THEN 'multiple_1m' WHEN MOD(amt,100000)=0 THEN 'multiple_100k_not_1m' ELSE 'non_round_100k' END fine_roundness,
+          IFF(MOD(amt,100000)=0,'round_100k_or_1m','non_round_100k') binary_roundness
+ FROM lo
+), r AS (
+ SELECT 'fine' grain,fine_roundness amount_class,* FROM o
+ UNION ALL SELECT 'binary_100k',binary_roundness,* FROM o
+ UNION ALL SELECT 'all','ALL',* FROM o
+)
+SELECT grain,amount_class,COUNT(*) accepted_loans,SUM(covered) pip_covered,SUM(lot_correct) lot_correct,ROUND(SUM(lot_correct)/NULLIF(SUM(covered),0)*100,2) lot_precision_pct,SUM(block_correct) block_correct,ROUND(SUM(block_correct)/NULLIF(SUM(covered),0)*100,2) block_upper_pct,SUM(IFF(covered=1 AND lot_correct=0 AND block_correct=1,1,0)) block_match_lot_mismatch,SUM(IFF(covered=1 AND block_correct=0,1,0)) full_block_mismatch,SUM(IFF(covered=0,1,0)) no_pip_prediction,SUM(IFF(off<0,1,0)) negative_offsets,MIN(amt) min_amount,MAX(amt) max_amount
+FROM r
+GROUP BY grain,amount_class
+ORDER BY CASE grain WHEN 'all' THEN 1 WHEN 'binary_100k' THEN 2 ELSE 3 END, amount_class;
 ```
 
 ## G6 Stretch: Invisible Assemblage
