@@ -1288,3 +1288,31 @@ consistency checks (offset sign, borough, roundness) converted "suspiciously low
 precision" into a *named, attributable defect of the truth gate* rather than a silently
 wrong conclusion. This is §3.2's band-versus-threshold argument operating one level up —
 the strongest process evidence yet that the architecture's self-auditing claim is real.
+
+## H.6 Gate V2 — the finished kill-criterion plane
+
+Same session, completing H.3's mandate. Operating gate: exact cents, recording offset
+**[0,+45] days**, ACRIS legal borough must agree with a property county, all 100k/1M-round
+amounts dropped, unique-or-discard applied *after* the filters (candidacy recomputed from
+scratch). Sensitivity reconciles to 3,040 loans at every window; [0,+45] accepts 166
+(48 ambiguous, 451 no-match, 2,375 round-excluded).
+
+```
+                       coverage                precision (lot)   precision (block)
+  geometry PIP         94.65% of points        154/233 = 66.09%   169/233 = 72.53%
+  naive address        28.89% of keys          63/93  = 67.74%    71/93  = 76.34%
+  nearest_rooftop PIP  100% of tier            15/29  = 51.72%    18/29  = 62.07%
+  nearest_rooftop addr fires 0/44 truth keys   —                  —
+```
+
+**Both baselines sit at ~two-thirds precision against document truth.** The plan's
+implicit assumption that address matching is high-precision-when-it-fires is also dead:
+67.74% at lot grade. The cascade's target is now concrete — materially exceed ~66–68%
+precision at geometry's coverage, and the ~34% of geometry answers that are wrong (worst
+on nearest_rooftop, the tier where address evidence never fires) are the addressable
+population. G6 on v2 accepts: 25 invisible multi-BBL loans, 15 non-condo.
+
+Caveats that travel with these numbers: v2 truth coverage is small (242/4,076 points,
+5.94%) and the round-amount exclusion biases the truth set toward odd-amount loans;
+lender-name second-discriminator admission of round amounts is the recorded path to a
+larger truth set (originator and party fields are landed).
