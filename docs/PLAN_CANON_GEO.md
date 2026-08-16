@@ -1342,3 +1342,39 @@ rows landed; **Overture reports 0 NY rows** — a landing gap to resolve before 
 appears in any tile. These six artifacts are the seed of the `--suite`/`--gold` evaluation
 corpus, the visual evidence card's worked examples (bd-101v), and a showable pre-product
 sales artifact.
+
+---
+
+# Appendix J — VERIFIED: Appendix A.5's imagery table, from primary sources
+
+Added 2026-08-16 (bd-q5k2; full dossiers with license quotes, live-check receipts, and
+URLs in `docs/geo_design_session/IMAGERY_SOURCES_BDQ5K2.md`; access date 2026-08-16).
+Every A.5 candidate dispositioned from agency pages, license text, and live
+bucket/STAC/range-request checks — not model recall. What changed from A.5's assumptions:
+
+1. **NYS/NYC orthoimagery is the best first source for NYC, not NAIP** — 6-inch true
+   orthos, verified borough downloads for every even year 2006–2024, permissive
+   (NYS open / NYC CC BY 4.0), byte-range-capable with ETags. BC/FP/CD all strong at
+   biennial cadence.
+2. **NAIP's posture changed:** AWS buckets are now Requester-Pays (A.5's "no key, no
+   rate limit" no longer holds); the anonymous path is the Planetary Computer COG mirror
+   (206-verified). The A.5 vintage discrepancy resolves to **2010–2023**, with NY flown
+   only in odd years plus 2022. Demoted to national fallback.
+3. **3DEP survives with a sharpened claim:** public EPT bucket live (NYC = 4.75B points),
+   but Times Square's product is the **2013/Sandy-era** collection — measured height,
+   decade-old. The "no model to characterize" hope is refuted as stated and replaced with
+   the defensible version: deterministic extraction whose error is characterizable from
+   point density, classification, and footprint comparison.
+4. **Sentinel-1/2:** conditional, change-detection only (10 m; BC/FP rejected). **NOAA
+   ERI:** survivor for event-scoped change evidence (0.3–0.5 m, bucket live through 2026
+   events). **USGS HRO:** rejected as a distinct source (legacy 2000–2016, no clean
+   pinnable catalog).
+5. **Commercial tier all conditional** — every vendor (Maxar/Vantor, Planet, Nearmap,
+   Vexcel, Airbus) permits internal use only under contract-bounded terms; Planet's
+   default terms reject local multi-user caching outright. **Basemaps rejected with the
+   governing clauses quoted** — Google expressly forbids digitized building outlines;
+   Mapbox forbids redistributing offline tiles; Esri offline use exists only inside
+   licensed ArcGIS content packages. A.5's "avoid" instinct is now a citation.
+
+Catalog provider/channel registration deliberately deferred (recorded in the report);
+the survivors table is the registration-ready input.
