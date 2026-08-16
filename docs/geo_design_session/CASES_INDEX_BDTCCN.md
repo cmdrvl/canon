@@ -20,7 +20,7 @@ Standing measured context used across cases:
 | 3 | `CASE_3_RANGE_ASSEMBLAGE.md` | complete | 107-109-111 North 9th Street, Brooklyn | resolved assemblage: three parcels `3023030029`, `3023030028`, `3023030027` plus three NYC BINs | Assemblage, interval semantics, endpoint expansion, and why one BBL is a false answer |
 | 4 | `CASE_4_CHIMERA_MULTI_STREET.md` | complete | 199, 201, 203, 205 First Avenue and 349 & 351 East 12th Street, Manhattan | resolved six-parcel core plus explicit `351/353 EAST 12 STREET` address-set gap; parsed `199 E 12th St` is rejected as synthesized | Multi-address fields, chimera parse detection, and parsed-address membership checks |
 | 5 | `CASE_5_CORNER_ADDRESS_NOISE.md` | complete | Soho Plaza Corp., 66 Crosby Street a/k/a 514 Broadway, Manhattan | resolved singleton: `1004830013` / 514 BROADWAY / NYC BIN `1007235`; parsed Crosby frontage has no MapPLUTO primary-address match | Address disagreement can be noise; raw `A/K/A` fields are address sets, not contradictions |
-| 6 | `CASE_6_*.md` | pending | dense block, multiple buildings to one parcel | pending | Building-level false-merge risk when parcel geometry cannot discriminate |
+| 6 | `CASE_6_DENSE_ONE_PARCEL_MULTI_BUILDING.md` | complete | 305 East 72nd Street, Manhattan | parcel singleton `1014477501`, but building-level residual `{1076314, 1085187}` with rooftop point selecting `1076314` only under a source-specific relaxation | Building-level false-merge risk when parcel identity cannot answer the product question |
 
 Case 1 source availability snapshot:
 
