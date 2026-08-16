@@ -1024,3 +1024,59 @@ under bd-3un6.
 3. **The 16% no-majority population needs its own path** — it is not an error and must not
    be dropped.
 4. Still **n=1 cell**, dense Manhattan. Re-measure across strata per bd-3un6.
+
+---
+
+# Appendix E — MEASURED: both kill-criterion baselines, tier-resolved
+
+Added 2026-08-16 (bd-14co; full tables and exact SQL in
+`docs/geo_design_session/BASELINES_BD14CO.md`). **The two numbers the cascade must beat
+now exist, and the tier breakdown localizes exactly where the product's work lives.**
+All figures from returned structured results against MapPLUTO release **26v1**
+(2026-05-01), five-borough CMBS geocode scope, fan-out-aware distinct-point grain.
+
+## E.1 The two baseline points
+
+```
+  naive address-string   28.89% coverage (1,522/5,269 address-county keys), zero multi-match,
+                         97.70% house-number agreement on the keys where it fires
+  geometry-only PIP      94.65% coverage (3,858/4,076 distinct points), zero multi-lot points
+                         on 26v1, 71.41% house-number agreement on comparable hits
+```
+
+The cascade must pass **above both points on the coverage/precision plane**: materially
+more coverage than 28.89% at address-grade precision, and higher precision than
+geometry-only near 94.65% coverage. Precision for both baselines remains unmeasured —
+scoring against PLUTO address→BBL is circular (the CMBS address is the thing under test);
+it is blocked on bd-179b's address-independent ACRIS ground truth.
+
+**Snapshot correction:** the previously recorded 157 multi-lot points do not reproduce on
+26v1 — both `ST_CONTAINS` and `ST_INTERSECTS` now return only one-lot hit points. The
+condo parent/unit overlap population is a property of a specific MapPLUTO release, not a
+stable fact. Do not quote it without pinning its snapshot.
+
+## E.2 The silent-error tier, quantified
+
+`nearest_rooftop_match` (344 points, 8.4% of the tile-scope corpus) is where both
+channels fail **on the same population**:
+
+```
+  tier                    PIP hit   house-number agree   chimera   address-match fires
+  rooftop                  99.91%        78.00%            5.98%        34.13%
+  nearest_rooftop_match   100.00%        48.40%           14.53%         1.52%
+  range_interpolation      53.02%        13.94%            5.94%        24.12%
+```
+
+Geometry is maximally confident exactly where it is least trustworthy (100% hit, less
+than half house-number agreement, 2.4× the rooftop chimera rate), and naive address
+matching almost never fires there (9/593 keys). A cascade that arbitrates between the
+two channels has nothing to arbitrate *with* on this tier — it needs the constraint
+frame's independent evidence (footprints, address ranges, parity, temporal). **This is
+the population the architecture exists for, and it is now a named, measurable slice.**
+
+## E.3 Fan-out at this grain
+
+95.53% of surrogate property keys hit exactly one lot (6,033/6,315); 0.05% hit two;
+4.42% hit zero. The single-point, single-lot case dominates the geocode grain — the
+assemblage/multi-parcel problem lives almost entirely below the surface of this table
+and must come from documents (bd-179b, bd-1oid), not from geocode fan-out.
