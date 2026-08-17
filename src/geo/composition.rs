@@ -116,6 +116,21 @@ pub enum GeoHardConstraintKind {
         level: GeoEntityLevel,
         sets: Vec<Vec<String>>,
     },
+    /// At least one member of the declared candidate set must be selected.
+    /// This is the sound image of an existential evidence statement; it does
+    /// not imply that every candidate is part of the answer.
+    AnyOf {
+        members: Vec<GeoEntityRef>,
+    },
+    /// Exact integer additive band over selected members. Units and band
+    /// calibration belong to the evidence contract that emitted this
+    /// constraint; the solver only performs checked integer arithmetic.
+    IntegerSumBand {
+        level: GeoEntityLevel,
+        values: Vec<GeoIntegerMemberValue>,
+        min: u64,
+        max: u64,
+    },
     AllOrNone {
         members: Vec<GeoEntityRef>,
     },
@@ -123,6 +138,12 @@ pub enum GeoHardConstraintKind {
         if_member: GeoEntityRef,
         then_member: GeoEntityRef,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoIntegerMemberValue {
+    pub id: String,
+    pub value: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -343,6 +364,30 @@ pub fn canonical_composition_bytes(
     serde_json::to_vec(artifact)
 }
 
+/// Validate and normalize-check a request without enumerating its assignments.
+pub fn validate_composition_request(
+    request: &GeoCompositionRequest,
+) -> Result<(), GeoCompositionError> {
+    normalize_request(request).map(|_| ())
+}
+
+/// Return the canonical request representation used by the solver.
+pub fn canonicalize_composition_request(
+    request: &GeoCompositionRequest,
+) -> Result<GeoCompositionRequest, GeoCompositionError> {
+    let normalized = normalize_request(request)?;
+    Ok(GeoCompositionRequest {
+        version: normalized.request_version,
+        universe: GeoCompositionUniverse {
+            parcels: normalized.parcels,
+            buildings: normalized.buildings,
+        },
+        hard_constraints: normalized.hard_constraints,
+        soft_preferences: normalized.soft_preferences,
+        max_assignments: normalized.max_assignments,
+    })
+}
+
 fn normalize_request(
     request: &GeoCompositionRequest,
 ) -> Result<NormalizedRequest, GeoCompositionError> {
@@ -475,6 +520,54 @@ fn normalize_constraint(
                 "hard_constraints[].allowed_sets",
                 sets.iter().map(|set| format!("{set:?}")),
             )?;
+        }
+        GeoHardConstraintKind::AnyOf { members } => {
+            if members.is_empty() {
+                return Err(GeoCompositionError::invalid_input(
+                    "AnyOf requires at least one member",
+                    [("constraint_id", constraint.id.as_str())],
+                ));
+            }
+            for member in members.iter() {
+                validate_member(member, parcels, buildings)?;
+            }
+            members.sort();
+            reject_adjacent_duplicates(
+                "hard_constraints[].any_of",
+                members
+                    .iter()
+                    .map(|member| format!("{}:{}", level_name(member.level), member.id)),
+            )?;
+        }
+        GeoHardConstraintKind::IntegerSumBand {
+            level,
+            values,
+            min,
+            max,
+        } => {
+            level_cardinality(*level, parcels, buildings)?;
+            if values.is_empty() || *min > *max {
+                return Err(GeoCompositionError::invalid_input(
+                    "IntegerSumBand requires values and an ordered band",
+                    [("constraint_id", constraint.id.as_str())],
+                ));
+            }
+            for value in values.iter() {
+                validate_member(
+                    &GeoEntityRef::new(*level, value.id.clone()),
+                    parcels,
+                    buildings,
+                )?;
+            }
+            values.sort();
+            reject_adjacent_duplicates(
+                "hard_constraints[].integer_sum_band",
+                values.iter().map(|value| value.id.as_str()),
+            )?;
+            values.iter().try_fold(0_u64, |sum, value| {
+                sum.checked_add(value.value)
+                    .ok_or_else(|| GeoCompositionError::overflow("integer sum band total"))
+            })?;
         }
         GeoHardConstraintKind::AllOrNone { members } => {
             if members.len() < 2 {
@@ -700,6 +793,22 @@ fn constraint_holds(model: &GeoCompositionModel, constraint: &GeoHardConstraintK
         GeoHardConstraintKind::AllowedSets { level, sets } => model
             .members(*level)
             .is_some_and(|members| sets.iter().any(|allowed| allowed == members)),
+        GeoHardConstraintKind::AnyOf { members } => {
+            members.iter().any(|member| model.contains(member))
+        }
+        GeoHardConstraintKind::IntegerSumBand {
+            level,
+            values,
+            min,
+            max,
+        } => model.members(*level).is_some_and(|members| {
+            let sum = values
+                .iter()
+                .filter(|value| members.binary_search(&value.id).is_ok())
+                .map(|value| value.value)
+                .sum::<u64>();
+            (*min..=*max).contains(&sum)
+        }),
         GeoHardConstraintKind::AllOrNone { members } => {
             let selected = members
                 .iter()

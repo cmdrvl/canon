@@ -6,5 +6,9 @@
 //! exact registry replay path.
 
 pub mod composition;
+pub mod evaluation;
+pub mod evidence;
 
 pub use composition::*;
+pub use evaluation::*;
+pub use evidence::*;

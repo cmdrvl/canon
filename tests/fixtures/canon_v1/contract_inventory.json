@@ -1097,6 +1097,34 @@
       "action": "preserve",
       "access_boundary": "public_crate_api",
       "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_evidence_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_evidence_compilation.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_population_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_population_evaluation.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
     }
   ],
   "incompatibility_rows": [
