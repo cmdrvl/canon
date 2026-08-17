@@ -10,6 +10,40 @@
 
 ---
 
+## Review state and precedence
+
+> Last status reconciliation: **2026-08-17**. This is a review-navigation layer, not an
+> implementation claim. The plan remains proposed and unimplemented.
+
+This document deliberately preserves hypotheses that later measurements falsified. That
+history is evidence, but it creates a precedence problem for a reader who encounters the
+original claim before its correction. Read the document under these rules:
+
+1. An inline **CURRENT STATUS** note controls the prose immediately below it.
+2. A later scoped measurement supersedes an earlier estimate only for the population and
+   predicate it actually measured. It does not silently generalize beyond that scope.
+3. `PROPOSED` means architecture to review; `MEASURED` means a recorded result with a
+   declared denominator; `VERIFIED` means checked against the named primary source or
+   executable contract; `FALSIFIED` means the stated claim must not be used; and `OPEN`
+   means no implementation or product claim may depend on the answer yet.
+4. Appendix status labels describe evidence maturity, not shipped Canon capability.
+
+The controlling state entering the main review is:
+
+| Topic | Current controlling state | Authority |
+|---|---|---|
+| Product boundary | Core Canon remains exact registry replay; GEO is a build-time workbench. | `AGENTS.md`, `README.md`; binding boundary |
+| Decision object | Backbone plus exact residual/model count, stated at entity grain; ledger keys are alias projections. | §§9, 10.2, 16.1; Appendix L.5 |
+| Candidate problem | Point re-ranking is not the dominant measured failure. The unresolved solver question is collateral composition over parcel/building sets. | Appendices L–M; `MEASURED`, with E4 `OPEN` |
+| Footprint→parcel predicate | Strictly more than 50% of computed footprint geometry inside computed parcel geometry; asserted area fields are observations, never denominators. | Appendices D and F; `MEASURED` in six NYC cells |
+| Decomposition | The measured compatibility graph is a forest, but components include parcel stars up to 71 variables. Generic and end-to-end solver sizing remain open. | Appendix F; `MEASURED` NYC-only |
+| Work-unit cost | The 200-feature, 0.5 s/tile, and 140 CPU-hour national figures are not supported. Cost must be measured component-wise with halo reconciliation. | Appendices B, C, F, G; original figures `FALSIFIED`, replacement `OPEN` |
+| Address evidence | PAD materially repairs address representation and restores street-absence refutation, but is evidence rather than an oracle. | Appendix M; `MEASURED` on NYC PAD 26B |
+| Evaluation ladder | E1–E3 are complete. E4 composition and E5 non-NYC evidence-tier curves remain the decisive gates. | §17 and Appendix L; E4/E5 `OPEN` |
+| Current precision claim | The 96–98% entity-grain answered-point estimate is provisional and truth-instrument-limited; Appendix M indicates residual contamination. | Appendices L.6 and M.5; `MEASURED`, not a release claim |
+
+---
+
 ## 1. The thesis
 
 A tile is a **Waltz scene**.
@@ -185,6 +219,11 @@ QB   ⊆ B             collateral building set      (ROBDD set variable)
 `n_fd ≈ 260` finite-domain, `n_int ≈ 210` integer. `d_max = K ≈ 80` before geometric
 filtering; `d_typ ≈ 8` after.
 
+> **CURRENT STATUS — PROPOSED / UNMEASURED.** The variable vocabulary remains the design
+> under review, but these counts are not a measured sizing basis. Appendices F and G replace
+> tile-wide feature arithmetic with component-wise sizing and observe parcel-star components
+> up to 71 variables in NYC.
+
 ### 5.1 Symmetry must be broken completely and soundly
 
 Slots `b₁…b_K` are interchangeable. `K!` symmetry **destroys model counting outright** —
@@ -204,6 +243,14 @@ Wu 1999):
 ---
 
 ## 6. The consistency ladder, with arithmetic
+
+> **CURRENT STATUS — ORIGINAL SIZING FALSIFIED; OPERATOR ORDER PROPOSED.** The 6–20-variable
+> component estimate, 0.5 s tile budget, and tile-wide cost arithmetic below must not be
+> quoted as current. Appendices B and C falsify the original decomposition and work-unit
+> assumptions; Appendix F restores decomposition under the canonical geometric predicate
+> but finds parcel-star components up to 71 variables; Appendix G requires a component-wise
+> cost model with explicit halo reconciliation. No end-to-end solver runtime has been
+> measured. The ladder below is therefore an architectural proposal, not a benchmark.
 
 **The ceiling is not a consistency level.** Régin's `alldifferent` GAC computes strongly
 connected components of the value graph (Tarjan 1972) as an intrinsic step — **those SCCs
@@ -502,6 +549,13 @@ coverage is fine — imperfect coverage produces honest abstentions.**
 
 ## 13. Cost model and the commercial thesis
 
+> **CURRENT STATUS — FALSIFIED / OPEN.** The numerical model in this section is retained as
+> the original commercial hypothesis. Appendices C and G falsify its work-unit sizing, and
+> Appendix F changes the computational unit from the whole tile to geometric components.
+> Until E4 records component compilation, propagation, halo-reconciliation, and fallback
+> costs, neither 0.5 s/tile nor 140 CPU-hours nor “a few hundred dollars” is an admissible
+> product or planning claim.
+
 ```
 per tile        ≈ 0.5 s        vs ≈ 1 ms for a spatial join      → 500×
 national pass   ≈ 140 CPU-hours at 10⁶ tiles, embarrassingly parallel
@@ -520,23 +574,43 @@ techniques has looked at a rent roll.
 
 ## 14. Open questions and risks
 
-1. **Propagator library scope.** How many of §7's global constraints must be implemented
-   before the first useful tile? Which have usable Rust implementations and which are new
-   work?
-2. **Compilation blowup.** Component sizes are *estimated* at 6–20 variables after
-   geometric filtering. **This has not been measured on real tiles.** If dense Manhattan
-   components run to 60+, exact compilation may not fit the budget. **Measure before
-   committing.**
-3. **ρ band calibration.** Every band is a modelling commitment. Where do the numbers come
-   from, who owns them, and how are they falsified? The 0.78–0.95 office NRA band is
-   illustrative, not derived.
-4. **VeriPB practicality.** Proof logs for a national pass may be enormous. What is
-   actually emitted, retained, and for how long?
-5. **Search fallback.** Components exceeding the width budget need search, which
-   reintroduces branching-order determinism requirements. How often does this happen?
-6. **Does the ROBDD set-variable representation hold** at realistic assemblage sizes?
-7. **Interaction with the BYOP boundary.** Layers 0–4 are a pure function of the tile and
-   cacheable; where exactly does the compiled object sit relative to client data?
+These are the current gates for the main review. Earlier questions that measurements have
+partially answered are narrowed here rather than silently removed.
+
+1. **E4 — composition capability.** Can the actual joint constraint set recover honest
+   parcel/building residuals on the six worked cases and the labeled multi-parcel
+   population? Record backbone accuracy, residual sizes, false merges, abstentions, and
+   component costs. Point re-ranking is not a substitute for this test.
+2. **E5 — genericity and evidence tiers.** Does the same architecture run in a non-NYC
+   county without a special code path, and what coverage/precision/abstention curve results
+   as address sets, footprints, document evidence, and attributes disappear?
+3. **Truth-instrument cleanup.** Rebuild or independently adjudicate the Gate V2 truth set
+   with lender/party evidence and a typed condo unit↔billing lot↔building crosswalk before
+   promoting any precision number to a release claim.
+4. **Component-wise performance and fallback.** Measure propagation, exact compilation,
+   model counting, explanation, and halo reconciliation on the observed component
+   distribution, especially parcel stars near 71 variables. Define the deterministic
+   search or decomposition fallback and its claim class before setting a budget.
+5. **ρ contracts and calibration.** For every admitted source, distinguish a logically
+   sound relaxation from an empirically high-coverage band. Name the population, error
+   characterization, owner, version, and falsification procedure. The illustrative
+   0.78–0.95 office NRA band is not yet admissible evidence.
+6. **Solver and compiler feasibility in Rust.** Identify the minimum useful subset of §7,
+   verify maintained implementations or scope new work, and test whether reduced MDD,
+   SDD, or another representation supports the required count/backbone/refinement
+   operations under canonical ordering.
+7. **Certificate practicality.** Verify what VeriPB can certify for the chosen encodings
+   and global propagators, then specify proof granularity, size budgets, retention, and
+   independent-check workflows. Do not promise whole-run certification before this test.
+8. **Deterministic geometry contract.** Validate the tile-local integer projection,
+   quantization error, overflow bounds, boundary semantics, and cross-platform byte parity
+   against the actual ingest/projection path.
+9. **Set representation and BYOP boundary.** Test `Coll`/`QB` representation at realistic
+   assemblage sizes and decide which compiled artifacts may contain client geometry, which
+   can be cached, and which may leave the client environment.
+10. **Citation and theorem audit.** Independently verify every load-bearing theorem,
+    complexity, attribution, and claimed proof-system capability before it appears in an
+    external argument or implementation acceptance criterion.
 
 ---
 
@@ -559,8 +633,10 @@ global constraints, and artifact set is the strongest evidence this plan carries
 - **The ~50 academic citations above have not been independently checked.** Authors, dates,
   titles, complexities and theorem statements are as reported by the models. **Verify
   before citing externally or committing engineering to a claimed complexity.**
-- All performance numbers (0.5 s/tile, 140 CPU-hours, component sizes, propagation costs)
-  are **estimates from the analysis, not measurements.**
+- All solver runtime and national-cost numbers (0.5 s/tile, 140 CPU-hours, propagation and
+  compilation costs) are **estimates from the analysis, not measurements.** Appendices
+  B–G measure work-unit and component distributions, and they falsify the original sizing;
+  they do not supply an end-to-end runtime benchmark.
 - The information-theoretic checksum argument in §2.1 is internally consistent but its
   inputs (400× size range, 10–20% NRA gap) are drawn from a small measured sample.
 - Whether usable Rust implementations exist for the named global constraints is **unknown**.
@@ -677,6 +753,16 @@ address-set layer landed — cannot rank the true lot above the wrong one on the
 E1's addressable failure classes, then the bits do not sum, the 500× premise of §13 fails,
 and the architecture survives only as an honest-abstention engine, which is not the
 product. That is the falsifiable form of "could this possibly work."
+
+> **CURRENT STATUS — E1–E3 MEASURED; ORIGINAL RE-RANKING CLAIM REJECTED; E4/E5 OPEN.**
+> Appendix L records 0/7 true-lot wins on tile-addressable E3 failures, so the narrow claim
+> that joint landed evidence repairs point resolution by candidate re-ranking failed. The
+> same taxonomy shows 72/79 labeled failures were unreachable or ledger-representation
+> cases, so that experiment did not test the remaining collateral-composition claim. This
+> is not a waiver of the kill condition: point re-ranking is no longer a product premise.
+> E4 must now test composition on cases where multiple parcels/buildings are genuinely in
+> scope, and E5 must establish the evidence-tier curve outside NYC. Failure there leaves an
+> abstention/representation compiler, not the proposed constraint-resolution product.
 
 ---
 
@@ -1014,6 +1100,12 @@ cost estimate is quoted.**
 Added 2026-08-15. **The first measurement that supports the architecture rather than
 falsifying it — conditional on a predicate choice that is not the obvious one.**
 
+> **CURRENT STATUS — PREDICATE RETAINED; DENOMINATOR CORRECTED.** Appendix F confirms the
+> strictly-greater-than-50% uniqueness property across six cells and a second footprint
+> source, but replaces the asserted `SHAPE_AREA` denominator used for the 84%/16% result
+> below with computed geometric area. On the original dense-Manhattan cell, the corrected
+> no-majority residual is approximately 1%, not 16%.
+
 ## D.1 The question
 
 Appendix B showed centroid proximity does not decompose a dense tile at any radius. But
@@ -1095,7 +1187,7 @@ earns its keep at the level *above* — which parcels and buildings constitute t
 majority holder is where the interesting work is**, and it is exactly the lot-line-straddling
 assemblage population the product exists to resolve.
 
-## D.8 Stratified check — two strata verified, and it improves at lower density
+## D.7 Stratified check — two strata verified, and it improves at lower density
 
 Re-ran predicate C on a second cell at very different density. Both figures below are from
 returned structured query results, not prose.
@@ -1121,7 +1213,7 @@ impossible*, since only one parcel can hold a majority of a footprint's area. **
 is not cited and should not be trusted.** Those strata remain unmeasured. Complete them
 under bd-3un6.
 
-## D.7 Consequences
+## D.8 Consequences
 
 1. **Adopt area-majority as the footprint-to-parcel predicate.** Record `ST_INTERSECTS` as a
    rejected candidate with this measurement, so it is not re-proposed.
@@ -1674,6 +1766,11 @@ labeled set with a recorded predicate (`entity_correct := ledger hit OR E1
 condo_representation_residue` — ACRIS condo-unit truth, no ledger hit, missing MapPLUTO
 unit geometry; parcel and building grain are one predicate until a unit→BIN crosswalk
 lands):
+
+> **CURRENT STATUS — MEASURED, PROVISIONAL, AND TRUTH-INSTRUMENT-LIMITED.** Appendix M
+> supplies independent PAD evidence that much of the gross class may be Gate V2
+> contamination. Treat the operating point below as a conservative experiment result, not
+> a release-quality precision estimate; the lender/party truth-gate rebuild remains open.
 
 ```
   scoring                                        precision
