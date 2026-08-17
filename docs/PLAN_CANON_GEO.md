@@ -1700,3 +1700,80 @@ adjudicated (Source 2 of bd-179b remains the check); and abstention's *coverage*
 40/233 ≈ 17% of truth-covered points parked for retry. Within those bounds, §13's
 commercial claim now has its first defensible shape: **high-precision answers, honest
 abstentions with a recovery path, and residuals that name themselves.**
+
+---
+
+# Appendix M — MEASURED: PAD wired in; K.2 resolved as representation; the gross class re-reads as truth contamination
+
+Added 2026-08-16/17 (bd-3sot + bd-3ujr; full tables and exact SQL in
+`docs/geo_design_session/PAD_SCALE_BDNEW.md` and `PAD_LABELED_BDNEW.md`). PAD release
+pinned **26B** (2026-05-01). Match predicate recorded in both reports: borough-scoped
+SND street-code match with normalized-street fallback, integer range overlap with
+parity, display-string equality for hyphenates.
+
+## M.1 PAD at scale: the address channel, replaced
+
+```
+  resolution of 5,269 address-county keys:
+    naive MapPLUTO exact (Appendix E)      1,522 / 5,269 = 28.89%   0 multi
+    PAD range-aware                        3,930 / 5,269 = 74.59%   (2,337 unique,
+                                           1,593 multi-BBL = 30.2%, 1,339 unresolved)
+```
+
+2,870 keys resolve **only** through PAD (the corner/frontage/range population MapPLUTO's
+single address missed). The 30.2% multi-BBL rate is the *honest* address ambiguity the
+naive baseline structurally hid — adjudicating it is solver work, not lookup. Queens
+hyphenates resolve at 67.2%; the unresolved residual (1,339 keys, incl. multi-address
+strings and a/k/a forms) is the parse forest's measured population (bd-158y).
+
+## M.2 K.2 resolved: it was representation, and the refuter is back
+
+The K.2 replay — identical point grain, identical centroid-r9+k1 tile semantics, one
+variable changed (lot-side street universe = PAD address sets + SND variants):
+
+```
+  strict street presence   MapPLUTO primary (K.2)   420/4,046 = 10.38%
+                           PAD/SND (this round)   4,005/4,046 = 98.99%
+```
+
+K.2's "90% absence" was ~99% representation artifact. **Street-absence refutation is now
+operationally viable**: 41 points in the whole universe fire it — a tiny, high-signal
+abstention population instead of a catastrophic one.
+
+## M.3 The address-set assumption, quantified
+
+PAD-native cardinality over 874,168 BBLs: mean 1.52 addresses/BBL (max 2,071);
+62.8% single-address, 37.2% multi-address. BINs: mean 1.26/BBL, 25.2% with two or more.
+The architecture's "an address is a set" premise is now a measured distribution, and
+`NUM_ADDRESSES` asserted-vs-computed sanity (Δ −7,765 on 3,137 BBLs) is recorded.
+
+## M.4 PAD on the labeled set: evidence row, not oracle
+
+On the Gate V2 truth slice PAD standalone is sparse and modest — 82/233 coverage
+(35.19%), 43/82 lot/entity precision (52.44%) — and highly asymmetric: in the correct
+class it confirms the right lot 42/43; refutation fires 7/79 vs 1/154 false. The condo
+crosswalk (Q1b) exists for **31/31** missing-geometry condo points but billing-BBL equals
+the PIP lot on only 10/31 — so the entity bridge is **crosswalk + block/geometry
+confirmation**, not key equality. PAD enters §16.3 as evidence rows (membership,
+refutation, crosswalk), not as a standalone resolver.
+
+## M.5 The reinterpretation: much of the "gross" class is contaminated truth
+
+The round's decisive finding: on gross-class points where PAD resolves, it **confirms the
+PIP lot 20/21 times** — the loan's address string, its geocode, and PAD's ledger agree
+with each other and against the ACRIS amount+date match. Three independent channels
+versus one, on top of E1's contamination signals (29/40). Reading: a substantial share of
+the 40 "gross geocode errors" are **residual Gate V2 truth contamination**, not bad
+geocodes. Consequences:
+
+1. **L.6's operating point was conservative** — some abstained-for-retry points were
+   correct answers scored wrong by bad truth; true precision is likely above 96.37% and
+   the 17% abstention cost overstated.
+2. **The lender-name truth-gate expansion (bd-179b) is re-promoted** — it cleans the
+   instrument every other number depends on.
+3. The retry loop's genuine target shrinks toward the truly-wrong-geocode residual
+   (the W 49th class), which M.2's revived street-absence refuter now catches cheaply.
+
+Ladder status unchanged (E4 composition, E5 tier-curve pending); every E5 tier that
+lacks a PAD-equivalent falls back per the §17 doctrine — coverage narrows, precision
+holds, abstention absorbs.
