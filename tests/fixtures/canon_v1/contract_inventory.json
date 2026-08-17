@@ -1083,7 +1083,21 @@
     { "id": "canon_entity_native_review_decisions.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_native_review_import.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_native_scale_generator.v0", "family": "entity", "action": "preserve" },
-    { "id": "canon_entity_native_scale_proof.v0", "family": "entity", "action": "preserve" }
+    { "id": "canon_entity_native_scale_proof.v0", "family": "entity", "action": "preserve" },
+    {
+      "id": "canon_geo_composition_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_composition.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    }
   ],
   "incompatibility_rows": [
     {

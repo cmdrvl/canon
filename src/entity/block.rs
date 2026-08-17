@@ -713,14 +713,14 @@ fn marginal_operator_hits_at_50(
             let Some(pair_key) = normalized_gold_pair_key(pair, surface_ids) else {
                 return false;
             };
-            if !ranks.get(&pair_key).is_some_and(|rank| *rank <= 50) {
+            if ranks.get(&pair_key).is_none_or(|rank| *rank > 50) {
                 return false;
             }
             operator_ranks
                 .iter()
                 .all(|(other_operator_id, other_ranks)| {
                     other_operator_id == operator_id
-                        || !other_ranks.get(&pair_key).is_some_and(|rank| *rank <= 50)
+                        || other_ranks.get(&pair_key).is_none_or(|rank| *rank > 50)
                 })
         })
         .count() as u64

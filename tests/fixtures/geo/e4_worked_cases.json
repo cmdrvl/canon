@@ -1,0 +1,180 @@
+{
+  "evidence_snapshot": {
+    "queried_on": "2026-08-17",
+    "connection": "cmdrvl_curves_admin",
+    "statements": "read_only",
+    "parcel_table": "EDGAR_DB.SOURCE.NYC_DCP_MAPPLUTO_HOT",
+    "building_table": "EDGAR_DB.SOURCE.NYC_BUILDING_FOOTPRINTS_HOT",
+    "building_parcel_predicate": "intersection_area_over_computed_footprint_area_gt_0_5"
+  },
+  "cases": [
+    {
+      "case_id": "case_1_clean_rooftop",
+      "request": {
+        "version": "canon_geo_composition_request.v0",
+        "universe": {
+          "parcels": ["3002510001", "3002510002"],
+          "buildings": [
+            {"id": "3002109", "parcel_ids": ["3002510001"]},
+            {"id": "3002110", "parcel_ids": ["3002510002"]}
+          ]
+        },
+        "hard_constraints": [
+          {"id": "address_set", "constraint": {"kind": "allowed_sets", "level": "parcel", "sets": [["3002510001"]]}},
+          {"id": "area_majority_building", "constraint": {"kind": "allowed_sets", "level": "building", "sets": [["3002109"]]}},
+          {"id": "rooftop_geocode", "constraint": {"kind": "allowed_sets", "level": "parcel", "sets": [["3002510001"]]}}
+        ],
+        "soft_preferences": [],
+        "max_assignments": 64
+      },
+      "expected": {
+        "status": "resolved",
+        "residual_model_count": 1,
+        "hard_forced_parcels": ["3002510001"],
+        "hard_forced_buildings": ["3002109"],
+        "residual_building_sets": [["3002109"]]
+      }
+    },
+    {
+      "case_id": "case_2_roadbed_geocode",
+      "request": {
+        "version": "canon_geo_composition_request.v0",
+        "universe": {
+          "parcels": ["3033570147", "3033660028"],
+          "buildings": [
+            {"id": "3422548", "parcel_ids": ["3033660028"]},
+            {"id": "3422549", "parcel_ids": ["3033570147"]}
+          ]
+        },
+        "hard_constraints": [
+          {"id": "address_membership", "constraint": {"kind": "allowed_sets", "level": "parcel", "sets": [["3033660028"]]}},
+          {"id": "area_majority_building", "constraint": {"kind": "allowed_sets", "level": "building", "sets": [["3422548"]]}}
+        ],
+        "soft_preferences": [],
+        "max_assignments": 64
+      },
+      "expected": {
+        "status": "resolved",
+        "residual_model_count": 1,
+        "hard_forced_parcels": ["3033660028"],
+        "hard_forced_buildings": ["3422548"],
+        "residual_building_sets": [["3422548"]]
+      }
+    },
+    {
+      "case_id": "case_3_range_assemblage",
+      "request": {
+        "version": "canon_geo_composition_request.v0",
+        "universe": {
+          "parcels": ["3023030026", "3023030027", "3023030028", "3023030029"],
+          "buildings": [
+            {"id": "3061654", "parcel_ids": ["3023030026"]},
+            {"id": "3061655", "parcel_ids": ["3023030027"]},
+            {"id": "3061656", "parcel_ids": ["3023030028"]},
+            {"id": "3061657", "parcel_ids": ["3023030029"]}
+          ]
+        },
+        "hard_constraints": [
+          {"id": "address_range_members", "constraint": {"kind": "allowed_sets", "level": "parcel", "sets": [["3023030027", "3023030028", "3023030029"]]}},
+          {"id": "area_majority_buildings", "constraint": {"kind": "allowed_sets", "level": "building", "sets": [["3061655", "3061656", "3061657"]]}}
+        ],
+        "soft_preferences": [],
+        "max_assignments": 512
+      },
+      "expected": {
+        "status": "resolved",
+        "residual_model_count": 1,
+        "hard_forced_parcels": ["3023030027", "3023030028", "3023030029"],
+        "hard_forced_buildings": ["3061655", "3061656", "3061657"],
+        "residual_building_sets": [["3061655", "3061656", "3061657"]]
+      }
+    },
+    {
+      "case_id": "case_4_chimera_multi_street",
+      "request": {
+        "version": "canon_geo_composition_request.v0",
+        "universe": {
+          "parcels": ["1004540041", "1004540042", "1004540043", "1004540044", "1004540045", "1004540046", "1004540047"],
+          "buildings": [
+            {"id": "1006494", "parcel_ids": ["1004540041"]},
+            {"id": "1006495", "parcel_ids": ["1004540042"]},
+            {"id": "1006496", "parcel_ids": ["1004540043"]},
+            {"id": "1006497", "parcel_ids": ["1004540044"]},
+            {"id": "1006498", "parcel_ids": ["1004540045"]},
+            {"id": "1006499", "parcel_ids": ["1004540046"]},
+            {"id": "1006500", "parcel_ids": ["1004540047"]}
+          ]
+        },
+        "hard_constraints": [
+          {"id": "asserted_address_core", "constraint": {"kind": "allowed_sets", "level": "parcel", "sets": [["1004540041", "1004540042", "1004540043", "1004540044", "1004540045", "1004540046"]]}},
+          {"id": "area_majority_buildings", "constraint": {"kind": "allowed_sets", "level": "building", "sets": [["1006494", "1006495", "1006496", "1006497", "1006498", "1006499"]]}}
+        ],
+        "soft_preferences": [],
+        "max_assignments": 20000
+      },
+      "expected": {
+        "status": "resolved",
+        "residual_model_count": 1,
+        "hard_forced_parcels": ["1004540041", "1004540042", "1004540043", "1004540044", "1004540045", "1004540046"],
+        "hard_forced_buildings": ["1006494", "1006495", "1006496", "1006497", "1006498", "1006499"],
+        "residual_building_sets": [["1006494", "1006495", "1006496", "1006497", "1006498", "1006499"]]
+      }
+    },
+    {
+      "case_id": "case_5_corner_address_noise",
+      "request": {
+        "version": "canon_geo_composition_request.v0",
+        "universe": {
+          "parcels": ["1004830012", "1004830013"],
+          "buildings": [
+            {"id": "1007234", "parcel_ids": ["1004830012"]},
+            {"id": "1007235", "parcel_ids": ["1004830013"]}
+          ]
+        },
+        "hard_constraints": [
+          {"id": "address_set_member", "constraint": {"kind": "allowed_sets", "level": "parcel", "sets": [["1004830013"]]}},
+          {"id": "area_majority_building", "constraint": {"kind": "allowed_sets", "level": "building", "sets": [["1007235"]]}},
+          {"id": "point_containment", "constraint": {"kind": "allowed_sets", "level": "parcel", "sets": [["1004830013"]]}}
+        ],
+        "soft_preferences": [],
+        "max_assignments": 64
+      },
+      "expected": {
+        "status": "resolved",
+        "residual_model_count": 1,
+        "hard_forced_parcels": ["1004830013"],
+        "hard_forced_buildings": ["1007235"],
+        "residual_building_sets": [["1007235"]]
+      }
+    },
+    {
+      "case_id": "case_6_dense_one_parcel_multi_building",
+      "request": {
+        "version": "canon_geo_composition_request.v0",
+        "universe": {
+          "parcels": ["1014477501", "1014477502"],
+          "buildings": [
+            {"id": "1076314", "parcel_ids": ["1014477501"]},
+            {"id": "1085187", "parcel_ids": ["1014477501"]},
+            {"id": "1085188", "parcel_ids": ["1014477502"]}
+          ]
+        },
+        "hard_constraints": [
+          {"id": "parcel_containment", "constraint": {"kind": "allowed_sets", "level": "parcel", "sets": [["1014477501"]]}},
+          {"id": "single_collateral_building", "constraint": {"kind": "allowed_sets", "level": "building", "sets": [["1076314"], ["1085187"]]}}
+        ],
+        "soft_preferences": [
+          {"id": "rooftop_point_presentation", "member": {"level": "building", "id": "1076314"}, "cost_if_absent": 10}
+        ],
+        "max_assignments": 64
+      },
+      "expected": {
+        "status": "ambiguous",
+        "residual_model_count": 2,
+        "hard_forced_parcels": ["1014477501"],
+        "hard_forced_buildings": [],
+        "residual_building_sets": [["1076314"], ["1085187"]]
+      }
+    }
+  ]
+}

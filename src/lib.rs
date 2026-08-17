@@ -13,6 +13,7 @@ pub mod doctor;
 pub mod entity;
 pub mod evaluation;
 mod fs_safety;
+pub mod geo;
 pub mod inbox;
 pub mod input;
 pub mod lookup;
