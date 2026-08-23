@@ -1,11 +1,11 @@
 use canon::geo::{
-    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION, GeoCompositionModel,
-    GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef,
-    GeoEvidenceCompilationRequest, GeoEvidenceDisposition, GeoIntegerMemberValue,
-    GeoLabeledCompositionCase, GeoPopulationCaseStatus, GeoPopulationErrorCode,
-    GeoPopulationEvaluationRequest, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
-    GeoRhoSoundness, canonical_evidence_compilation_bytes, compile_evidence, evaluate_population,
-    solve_composition,
+    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
+    DEFAULT_MAX_MATERIALIZED_MODELS, GeoCompositionModel, GeoCompositionStatus,
+    GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef, GeoEvidenceCompilationRequest,
+    GeoEvidenceDisposition, GeoIntegerMemberValue, GeoLabeledCompositionCase,
+    GeoPopulationCaseStatus, GeoPopulationErrorCode, GeoPopulationEvaluationRequest,
+    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoRhoSoundness,
+    canonical_evidence_compilation_bytes, compile_evidence, evaluate_population, solve_composition,
 };
 use serde::Deserialize;
 
@@ -78,6 +78,7 @@ fn sound_rho_contracts_compile_exact_existential_and_integer_sum_constraints() {
             },
         ],
         max_assignments: 8,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
     };
 
     let compiled = compile_evidence(&request).expect("sound evidence must compile");
@@ -123,6 +124,7 @@ fn empirical_constraints_remain_diagnostic_and_preferences_never_prune() {
             },
         ],
         max_assignments: 8,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
     };
 
     let compiled = compile_evidence(&request).expect("empirical evidence must compile safely");
@@ -170,6 +172,7 @@ fn contradictory_sound_observations_name_a_deterministic_conflict() {
             },
         ],
         max_assignments: 4,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
     };
 
     let compiled = compile_evidence(&request).expect("sound conflict must compile");
@@ -210,6 +213,7 @@ fn evidence_compilation_is_byte_identical_under_equivalent_permutations() {
             },
         ],
         max_assignments: 8,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
     };
     let mut permuted = request.clone();
     permuted.universe.parcels.reverse();
@@ -249,6 +253,7 @@ fn population_truth_cannot_change_compilation_or_solver_digests() {
             },
         }],
         max_assignments: 4,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
     };
     let evaluate = |truth: &str| {
         evaluate_population(&GeoPopulationEvaluationRequest {
@@ -375,6 +380,7 @@ fn gate_v2_population_reports_candidate_reach_and_assignment_fallback_honestly()
                     )],
                     observations,
                     max_assignments: 65_536,
+                    max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
                 },
                 truth: GeoCompositionModel {
                     parcels: case.truth_parcels,
@@ -405,17 +411,44 @@ fn gate_v2_population_reports_candidate_reach_and_assignment_fallback_honestly()
         fixture.expected.full_truth_recall_cases
     );
     assert_eq!(artifact.summary.resolved_cases, 0);
-    assert_eq!(artifact.summary.ambiguous_cases, 2);
-    assert_eq!(artifact.summary.assignment_budget_exceeded_cases, 13);
+    // The factorized solver resolves every case that the v0 kernel could
+    // only refuse on global mask budget; all residuals stay ambiguous and
+    // every promotion decision remains an abstention.
+    assert_eq!(artifact.summary.ambiguous_cases, 15);
+    assert_eq!(artifact.summary.assignment_budget_exceeded_cases, 0);
+    assert_eq!(artifact.summary.component_budget_fallback_cases, 0);
     assert_eq!(artifact.summary.abstention_cases, 15);
     assert_eq!(artifact.summary.false_merge_cases, 0);
     assert_eq!(artifact.summary.backbone_false_positive_members, 0);
-    assert!(artifact.cases.iter().all(|case| {
-        matches!(
-            case.status,
-            GeoPopulationCaseStatus::Ambiguous | GeoPopulationCaseStatus::AssignmentBudgetExceeded
-        )
-    }));
+    assert!(
+        artifact
+            .cases
+            .iter()
+            .all(|case| case.status == GeoPopulationCaseStatus::Ambiguous)
+    );
+    // Saturation honesty: universes whose free-variable residual exceeds the
+    // u64 reporting range declare a lower bound instead of a fake count.
+    let fixture_by_id = |id: &str| {
+        population_fixture()
+            .cases
+            .into_iter()
+            .find(|case| case.case_id == id)
+            .expect("fixture case must exist")
+    };
+    for case in &artifact.cases {
+        let source = fixture_by_id(&case.case_id);
+        assert_eq!(
+            case.residual_count_saturated,
+            source.candidate_parcels.len() >= 64,
+            "case {} saturation must match its candidate width",
+            case.case_id
+        );
+        assert_eq!(
+            case.truth_model_in_residual,
+            Some(case.full_truth_recall),
+            "truth models inside the universe must survive in the residual"
+        );
+    }
 }
 
 #[test]

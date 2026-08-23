@@ -39,7 +39,7 @@ The controlling state entering the main review is:
 | Decomposition | The measured compatibility graph is a forest, but components include parcel stars up to 71 variables. Generic and end-to-end solver sizing remain open. | Appendix F; `MEASURED` NYC-only |
 | Work-unit cost | The 200-feature, 0.5 s/tile, and 140 CPU-hour national figures are not supported. Cost must be measured component-wise with halo reconciliation. | Appendices B, C, F, G; original figures `FALSIFIED`, replacement `OPEN` |
 | Address evidence | PAD materially repairs address representation and restores street-absence refutation, but is evidence rather than an oracle. | Appendix M; `MEASURED` on NYC PAD 26B |
-| Evaluation ladder | E1–E3 are complete. E4 composition and E5 non-NYC evidence-tier curves remain the decisive gates. | §17 and Appendix L; E4/E5 `OPEN` |
+| Evaluation ladder | E1–E3 are complete. E4 has an exact factorized residual solver over admitted evidence (bd-2kjx.1–.3); the E4 population numbers and the E5 non-NYC evidence-tier curve remain the decisive gates. | §17 and Appendix L; E4/E5 `OPEN` |
 | Current precision claim | The 96–98% entity-grain answered-point estimate is provisional and truth-instrument-limited; Appendix M indicates residual contamination. | Appendices L.6 and M.5; `MEASURED`, not a release claim |
 
 ---
@@ -763,6 +763,18 @@ product. That is the falsifiable form of "could this possibly work."
 > E4 must now test composition on cases where multiple parcels/buildings are genuinely in
 > scope, and E5 must establish the evidence-tier curve outside NYC. Failure there leaves an
 > abstention/representation compiler, not the proposed constraint-resolution product.
+>
+> **2026-08-23 — E4 solver capability landed (bd-2kjx.1–.3).** The composition
+> kernel now decomposes the variable space over the constraint-incidence graph,
+> solves components exactly inside declared budgets, falls back to a typed
+> `BudgetFallback` for oversized coupled components, and reports exact residual
+> counts and backbones without materializing the Cartesian product (saturated
+> counts are declared lower bounds). On the frozen 15-case Gate V2 harness this
+> replaces the prior 13 assignment-budget refusals with 15/15 exact ambiguous
+> residuals, zero false merges, and truth-in-residual scored by an exact
+> membership predicate. This is solver capability, not the completed E4 gate:
+> adjudicating those residuals against the worked corpus and the multi-BBL
+> population, then the E5 tier curve, remains open.
 
 ---
 

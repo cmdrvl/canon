@@ -9,7 +9,8 @@
 use super::{
     composition::{
         GeoCompositionBackbone, GeoCompositionError, GeoCompositionErrorCode, GeoCompositionModel,
-        GeoCompositionStatus, canonical_composition_bytes, solve_composition,
+        GeoCompositionStatus, canonical_composition_bytes, model_satisfies_request,
+        solve_composition,
     },
     evidence::{
         GeoEvidenceCompilationRequest, GeoEvidenceError, canonical_evidence_compilation_bytes,
@@ -45,6 +46,9 @@ pub enum GeoPopulationCaseStatus {
     Ambiguous,
     Conflict,
     AssignmentBudgetExceeded,
+    /// The solver emitted a typed `BudgetFallback` for at least one
+    /// constraint-connected component; no residual was guessed.
+    ComponentBudgetFallback,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,9 +61,13 @@ pub struct GeoPopulationCaseEvaluation {
     pub candidate_members: u64,
     pub truth_members: u64,
     pub truth_members_in_universe: u64,
-    pub full_truth_recall: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub residual_model_count: Option<u64>,
+    /// Mirrors the solver's `summary_counts_saturated`: a saturated count is
+    /// a declared lower bound, never a point estimate.
+    #[serde(default)]
+    pub residual_count_saturated: bool,
+    pub full_truth_recall: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub truth_model_in_residual: Option<bool>,
     pub hard_forced: GeoCompositionBackbone,
@@ -74,6 +82,7 @@ pub struct GeoPopulationSummary {
     pub ambiguous_cases: u64,
     pub conflict_cases: u64,
     pub assignment_budget_exceeded_cases: u64,
+    pub component_budget_fallback_cases: u64,
     pub abstention_cases: u64,
     pub false_merge_cases: u64,
     pub full_truth_recall_cases: u64,
@@ -222,6 +231,7 @@ pub fn evaluate_population(
                     truth_members_in_universe,
                     full_truth_recall,
                     residual_model_count: None,
+                    residual_count_saturated: false,
                     truth_model_in_residual: None,
                     hard_forced: empty_backbone(),
                     backbone_true_positive_members: 0,
@@ -242,15 +252,25 @@ pub fn evaluate_population(
                     .to_string();
                 let (backbone_true, backbone_false) =
                     score_backbone(&artifact.hard_forced, &case.truth)?;
-                let truth_model_in_residual = full_truth_recall
-                    && artifact.residual_models.binary_search(&case.truth).is_ok();
+                let truth_model_in_residual = if full_truth_recall {
+                    match model_satisfies_request(&compilation.composition_request, &case.truth) {
+                        Ok(satisfied) => satisfied,
+                        Err(error) => return Err(map_composition_error(error)),
+                    }
+                } else {
+                    false
+                };
                 GeoPopulationCaseEvaluation {
                     case_id: case.id,
                     status: match artifact.status {
                         GeoCompositionStatus::Resolved => GeoPopulationCaseStatus::Resolved,
                         GeoCompositionStatus::Ambiguous => GeoPopulationCaseStatus::Ambiguous,
                         GeoCompositionStatus::Conflict => GeoPopulationCaseStatus::Conflict,
+                        GeoCompositionStatus::BudgetFallback => {
+                            GeoPopulationCaseStatus::ComponentBudgetFallback
+                        }
                     },
+                    residual_count_saturated: artifact.summary.summary_counts_saturated,
                     compilation_digest,
                     solver_digest: Some(solver_digest),
                     candidate_members,
@@ -363,6 +383,7 @@ fn summarize(
         ambiguous_cases: 0,
         conflict_cases: 0,
         assignment_budget_exceeded_cases: 0,
+        component_budget_fallback_cases: 0,
         abstention_cases: 0,
         false_merge_cases: 0,
         full_truth_recall_cases: 0,
@@ -384,6 +405,10 @@ fn summarize(
             }
             GeoPopulationCaseStatus::AssignmentBudgetExceeded => {
                 summary.assignment_budget_exceeded_cases += 1;
+                summary.abstention_cases += 1;
+            }
+            GeoPopulationCaseStatus::ComponentBudgetFallback => {
+                summary.component_budget_fallback_cases += 1;
                 summary.abstention_cases += 1;
             }
         }

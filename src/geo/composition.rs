@@ -164,6 +164,20 @@ pub struct GeoCompositionRequest {
     #[serde(default)]
     pub soft_preferences: Vec<GeoSoftPreference>,
     pub max_assignments: u64,
+    /// Upper bound on how many combined residual models may be materialized
+    /// into `residual_models` for presentation. The exact residual count,
+    /// backbone, and component solutions are reported regardless of this
+    /// budget; when the residual exceeds it, only the compact component
+    /// representation is emitted.
+    #[serde(default = "default_max_materialized_models")]
+    pub max_materialized_models: u64,
+}
+
+/// Default cap on combined residual models materialized for presentation.
+pub const DEFAULT_MAX_MATERIALIZED_MODELS: u64 = 4_096;
+
+fn default_max_materialized_models() -> u64 {
+    DEFAULT_MAX_MATERIALIZED_MODELS
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -196,6 +210,10 @@ pub enum GeoCompositionStatus {
     Resolved,
     Ambiguous,
     Conflict,
+    /// At least one constraint-connected component exceeded the declared
+    /// assignment budget before an exact residual could be produced. The
+    /// outcome is a typed handoff with recovery guidance, never a guess.
+    BudgetFallback,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -211,6 +229,15 @@ pub struct GeoSoftRankedModel {
     pub model: GeoCompositionModel,
 }
 
+/// Typed component-budget handoff emitted when a deterministic bounded
+/// search cannot complete inside `max_assignments`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoCompositionFallback {
+    pub component_keys: Vec<String>,
+    pub max_component_variables: usize,
+    pub guidance: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoCompositionSummary {
     pub parcel_candidates: usize,
@@ -219,6 +246,13 @@ pub struct GeoCompositionSummary {
     pub structurally_feasible_assignments: u64,
     pub hard_constraint_evaluations: u64,
     pub residual_model_count: u64,
+    /// True when any counter above was clamped at `u64::MAX` because the
+    /// exact magnitude exceeds the reporting range. A saturated
+    /// `residual_model_count` is a lower bound, never a guess.
+    #[serde(default)]
+    pub summary_counts_saturated: bool,
+    pub component_count: usize,
+    pub residual_models_materialized: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -233,6 +267,8 @@ pub struct GeoCompositionArtifact {
     pub soft_ranked: Vec<GeoSoftRankedModel>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conflict_constraint_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_fallback: Option<GeoCompositionFallback>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -298,64 +334,742 @@ struct NormalizedRequest {
     hard_constraints: Vec<GeoHardConstraint>,
     soft_preferences: Vec<GeoSoftPreference>,
     max_assignments: u64,
+    max_materialized_models: u64,
 }
 
-/// Enumerate the exact hard-feasible parcel/building residual.
+/// Solve the exact hard-feasible parcel/building residual.
 ///
-/// Assignment enumeration is refused before work begins when the full bounded
-/// universe exceeds `max_assignments`.
+/// The variable space decomposes over the constraint-incidence graph:
+/// structural building-to-parcel containment and every hard constraint's
+/// referenced members couple variables into components; unconnected variables
+/// remain free booleans. Each component is solved exactly inside
+/// `max_assignments`; a component whose space exceeds the budget falls to a
+/// deterministic depth-first search with partial-feasibility pruning, and
+/// budget exhaustion there produces a typed `BudgetFallback` handoff instead
+/// of a guess. The combined residual is the constrained product of component
+/// solutions minus the all-empty-parcel combinations; it is materialized into
+/// `residual_models` only when it fits `max_materialized_models`, while the
+/// exact count and backbone are always reported.
 pub fn solve_composition(
     request: &GeoCompositionRequest,
 ) -> Result<GeoCompositionArtifact, GeoCompositionError> {
     let request = normalize_request(request)?;
-    let total_variables = request
+    let solver = FactorizedSolver::new(&request)?;
+    solver.solve()
+}
+
+/// Test one concrete model against the normalized request contract without
+/// enumerating the residual: universe membership, at-least-one-parcel, the
+/// structural containment rule, and every hard constraint must hold. Because
+/// the residual is exactly the set of such models, this decides residual
+/// membership directly and stays exact whether or not the residual was
+/// materialized.
+pub fn model_satisfies_request(
+    request: &GeoCompositionRequest,
+    model: &GeoCompositionModel,
+) -> Result<bool, GeoCompositionError> {
+    let request = normalize_request(request)?;
+    Ok(structural_model_holds(&request, model)
+        && request
+            .hard_constraints
+            .iter()
+            .all(|constraint| constraint_holds(model, &constraint.constraint)))
+}
+
+fn structural_model_holds(request: &NormalizedRequest, model: &GeoCompositionModel) -> bool {
+    if model.parcels.is_empty()
+        || !is_sorted_distinct(&model.parcels)
+        || !is_sorted_distinct(&model.buildings)
+    {
+        return false;
+    }
+    if model
         .parcels
-        .len()
-        .checked_add(request.buildings.len())
-        .ok_or_else(|| GeoCompositionError::overflow("candidate variable count"))?;
-    let candidate_assignments = assignment_count(total_variables, request.max_assignments)?;
-
-    let structural_models =
-        enumerate_structural_models(&request.parcels, &request.buildings, candidate_assignments);
-    let (mut residual_models, hard_constraint_evaluations) =
-        filter_models(&structural_models, &request.hard_constraints)?;
-    residual_models.sort();
-
-    let conflict_constraint_ids = if residual_models.is_empty() {
-        irreducible_conflict(&structural_models, &request.hard_constraints)?
-            .into_iter()
-            .map(|constraint| constraint.id)
-            .collect()
-    } else {
-        Vec::new()
-    };
-    let hard_forced = backbone(&residual_models);
-    let soft_ranked = rank_residual(&residual_models, &request.soft_preferences)?;
-    let status = match residual_models.len() {
-        0 => GeoCompositionStatus::Conflict,
-        1 => GeoCompositionStatus::Resolved,
-        _ => GeoCompositionStatus::Ambiguous,
-    };
-
-    Ok(GeoCompositionArtifact {
-        version: CANON_GEO_COMPOSITION_VERSION.to_string(),
-        request_version: request.request_version,
-        status,
-        summary: GeoCompositionSummary {
-            parcel_candidates: request.parcels.len(),
-            building_candidates: request.buildings.len(),
-            candidate_assignments,
-            structurally_feasible_assignments: u64::try_from(structural_models.len())
-                .map_err(|_| GeoCompositionError::overflow("structural model count"))?,
-            hard_constraint_evaluations,
-            residual_model_count: u64::try_from(residual_models.len())
-                .map_err(|_| GeoCompositionError::overflow("residual model count"))?,
-        },
-        hard_forced,
-        residual_models,
-        soft_ranked,
-        conflict_constraint_ids,
+        .iter()
+        .any(|id| request.parcels.binary_search(id).is_err())
+    {
+        return false;
+    }
+    if model.buildings.iter().any(|id| {
+        request
+            .buildings
+            .binary_search_by(|probe| probe.id.as_str().cmp(id.as_str()))
+            .is_err()
+    }) {
+        return false;
+    }
+    model.buildings.iter().all(|id| {
+        let Ok(building_index) = request
+            .buildings
+            .binary_search_by(|probe| probe.id.as_str().cmp(id.as_str()))
+        else {
+            return false;
+        };
+        let building = &request.buildings[building_index];
+        building.parcel_ids.is_empty()
+            || building
+                .parcel_ids
+                .iter()
+                .any(|parcel_id| model.parcels.binary_search(parcel_id).is_ok())
     })
+}
+
+fn is_sorted_distinct(values: &[String]) -> bool {
+    values.windows(2).all(|pair| pair[0] < pair[1])
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VarLevel {
+    Parcel,
+    Building,
+}
+
+struct FactorizedSolver<'a> {
+    request: &'a NormalizedRequest,
+    total_variables: usize,
+}
+
+impl<'a> FactorizedSolver<'a> {
+    fn new(request: &'a NormalizedRequest) -> Result<Self, GeoCompositionError> {
+        let total_variables = request
+            .parcels
+            .len()
+            .checked_add(request.buildings.len())
+            .ok_or_else(|| GeoCompositionError::overflow("candidate variable count"))?;
+        Ok(Self {
+            request,
+            total_variables,
+        })
+    }
+
+    fn var_level(&self, index: usize) -> VarLevel {
+        if index < self.request.parcels.len() {
+            VarLevel::Parcel
+        } else {
+            VarLevel::Building
+        }
+    }
+
+    fn var_id(&self, index: usize) -> &str {
+        match self.var_level(index) {
+            VarLevel::Parcel => &self.request.parcels[index],
+            VarLevel::Building => &self.request.buildings[index - self.request.parcels.len()].id,
+        }
+    }
+
+    fn parcel_index(&self, id: &str) -> Option<usize> {
+        self.request
+            .parcels
+            .binary_search_by(|probe| probe.as_str().cmp(id))
+            .ok()
+    }
+
+    fn building_index(&self, id: &str) -> Option<usize> {
+        self.request
+            .buildings
+            .binary_search_by(|probe| probe.id.as_str().cmp(id))
+            .ok()
+            .map(|index| self.request.parcels.len() + index)
+    }
+
+    fn var_index(&self, member: &GeoEntityRef) -> Option<usize> {
+        match member.level {
+            GeoEntityLevel::Parcel => self.parcel_index(&member.id),
+            GeoEntityLevel::Building => self.building_index(&member.id),
+            GeoEntityLevel::PoiUnit | GeoEntityLevel::Property => None,
+        }
+    }
+
+    /// Global variable indices referenced by a constraint. Level-wide kinds
+    /// span every variable of their level, which is what keeps them from
+    /// being silently treated as local.
+    fn constraint_members(&self, constraint: &GeoHardConstraint) -> Vec<usize> {
+        let all_of_level = |level: GeoEntityLevel| {
+            (0..self.total_variables)
+                .filter(|index| match level {
+                    GeoEntityLevel::Parcel => self.var_level(*index) == VarLevel::Parcel,
+                    _ => self.var_level(*index) == VarLevel::Building,
+                })
+                .collect::<Vec<_>>()
+        };
+        match &constraint.constraint {
+            GeoHardConstraintKind::Require { member }
+            | GeoHardConstraintKind::Forbid { member } => {
+                self.var_index(member).into_iter().collect()
+            }
+            GeoHardConstraintKind::Cardinality { level, .. }
+            | GeoHardConstraintKind::AllowedSets { level, .. } => all_of_level(*level),
+            GeoHardConstraintKind::AnyOf { members }
+            | GeoHardConstraintKind::AllOrNone { members } => {
+                members.iter().filter_map(|m| self.var_index(m)).collect()
+            }
+            GeoHardConstraintKind::IntegerSumBand { level, values, .. } => values
+                .iter()
+                .filter_map(|value| self.var_index(&GeoEntityRef::new(*level, value.id.clone())))
+                .collect(),
+            GeoHardConstraintKind::Requires {
+                if_member,
+                then_member,
+            } => [if_member, then_member]
+                .iter()
+                .filter_map(|m| self.var_index(m))
+                .collect(),
+        }
+    }
+
+    /// Connected components of the variable-incidence graph, each ascending
+    /// by global index. Edges: structural containment plus every pairwise
+    /// coupling induced by a hard constraint.
+    fn components(&self) -> Vec<Vec<usize>> {
+        let mut adjacency: Vec<BTreeSet<usize>> = vec![BTreeSet::new(); self.total_variables];
+        let mut link = |left: usize, right: usize| {
+            if left != right {
+                adjacency[left].insert(right);
+                adjacency[right].insert(left);
+            }
+        };
+        for offset in 0..self.request.buildings.len() {
+            let building_index = self.request.parcels.len() + offset;
+            for parcel_id in &self.request.buildings[offset].parcel_ids {
+                if let Some(parcel_index) = self.parcel_index(parcel_id) {
+                    link(building_index, parcel_index);
+                }
+            }
+        }
+        for constraint in &self.request.hard_constraints {
+            let members = self.constraint_members(constraint);
+            for left in 0..members.len() {
+                for right in left + 1..members.len() {
+                    link(members[left], members[right]);
+                }
+            }
+        }
+
+        let mut component_of = vec![usize::MAX; self.total_variables];
+        let mut components: Vec<Vec<usize>> = Vec::new();
+        for start in 0..self.total_variables {
+            if component_of[start] != usize::MAX {
+                continue;
+            }
+            let component_id = components.len();
+            component_of[start] = component_id;
+            let mut stack = vec![start];
+            let mut members = Vec::new();
+            while let Some(node) = stack.pop() {
+                members.push(node);
+                for &neighbor in &adjacency[node] {
+                    if component_of[neighbor] == usize::MAX {
+                        component_of[neighbor] = component_id;
+                        stack.push(neighbor);
+                    }
+                }
+            }
+            members.sort_unstable();
+            components.push(members);
+        }
+        components
+    }
+
+    /// Per-component lists of indices into `hard_constraints`. Constraints
+    /// are carried as indices so component solving borrows nothing but the
+    /// normalized request.
+    fn component_constraints(
+        &self,
+        components: &[Vec<usize>],
+    ) -> Result<Vec<Vec<usize>>, GeoCompositionError> {
+        let mut component_of = vec![usize::MAX; self.total_variables];
+        for (component_id, members) in components.iter().enumerate() {
+            for variable in members {
+                component_of[*variable] = component_id;
+            }
+        }
+        let mut per_component: Vec<Vec<usize>> = vec![Vec::new(); components.len()];
+        for (constraint_index, constraint) in self.request.hard_constraints.iter().enumerate() {
+            let members = self.constraint_members(constraint);
+            let Some(&first) = members.first() else {
+                return Err(GeoCompositionError::invalid_input(
+                    "Geo composition constraint references no universe member",
+                    [("constraint_id", constraint.id.as_str())],
+                ));
+            };
+            let component_id = component_of[first];
+            if members
+                .iter()
+                .any(|member| component_of[*member] != component_id)
+            {
+                return Err(GeoCompositionError::invalid_input(
+                    "Geo composition constraint spans decomposition components",
+                    [("constraint_id", constraint.id.as_str())],
+                ));
+            }
+            per_component[component_id].push(constraint_index);
+        }
+        Ok(per_component)
+    }
+
+    fn solve(self) -> Result<GeoCompositionArtifact, GeoCompositionError> {
+        let components = self.components();
+        let component_constraints = self.component_constraints(&components)?;
+        let mut solved: Vec<ComponentOutcome> = Vec::with_capacity(components.len());
+        for (component_id, members) in components.iter().enumerate() {
+            solved.push(self.solve_component(members, &component_constraints[component_id])?);
+        }
+        self.combine(components, solved, component_constraints)
+    }
+
+    fn solve_component(
+        &self,
+        members: &[usize],
+        constraints: &[usize],
+    ) -> Result<ComponentOutcome, GeoCompositionError> {
+        let Some(space) = component_space(members.len(), self.request.max_assignments) else {
+            return self.solve_component_dfs(members, constraints);
+        };
+        let ctx = ComponentContext::new(self, members)?;
+        let mut solution = ComponentSolution::new(ctx.width(), true);
+        for mask in 0..space {
+            if !ctx.structurally_valid(mask) {
+                continue;
+            }
+            solution.structural_count += 1;
+            if ctx.mask_has_parcel(mask) {
+                solution.structural_positive += 1;
+            } else {
+                solution.structural_empty += 1;
+            }
+            let model = ctx.model_from_mask(mask);
+            let mut feasible = true;
+            for constraint_index in constraints {
+                solution.evaluations += 1;
+                let constraint = &self.request.hard_constraints[*constraint_index];
+                if !constraint_holds(&model, &constraint.constraint) {
+                    feasible = false;
+                    break;
+                }
+            }
+            if feasible {
+                solution.record(mask, &ctx);
+            }
+        }
+        Ok(ComponentOutcome::Exact(Box::new(solution)))
+    }
+
+    /// Deterministic depth-first search for components whose assignment
+    /// space exceeds the declared budget. Variables are assigned in canonical
+    /// ascending order, false before true; partial-feasibility pruning skips
+    /// infeasible subtrees; a visit budget bounds the work. Completing the
+    /// search yields exact counts and backbone flags without storing models.
+    fn solve_component_dfs(
+        &self,
+        members: &[usize],
+        constraints: &[usize],
+    ) -> Result<ComponentOutcome, GeoCompositionError> {
+        let ctx = ComponentContext::new(self, members)?;
+        let width = ctx.width();
+        let mut search = DfsSearch {
+            ctx,
+            constraints,
+            budget: self.request.max_assignments,
+            visits: 0,
+            values: 0_u128,
+            assigned_mask: 0_u128,
+            exhausted: false,
+            solution: ComponentSolution::new(width, false),
+        };
+        search.run(0);
+        if search.exhausted {
+            return Ok(ComponentOutcome::Fallback {
+                variable_count: members.len(),
+            });
+        }
+        Ok(ComponentOutcome::Exact(Box::new(search.solution)))
+    }
+
+    fn component_key(&self, members: &[usize]) -> String {
+        let first = members[0];
+        format!(
+            "{}:{}",
+            match self.var_level(first) {
+                VarLevel::Parcel => "parcel",
+                VarLevel::Building => "building",
+            },
+            self.var_id(first)
+        )
+    }
+
+    fn build_fallback(
+        &self,
+        components: &[Vec<usize>],
+        outcomes: &[ComponentOutcome],
+    ) -> Result<Option<GeoCompositionArtifact>, GeoCompositionError> {
+        let fallbacks = outcomes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, outcome)| match outcome {
+                ComponentOutcome::Fallback { variable_count } => Some((index, *variable_count)),
+                ComponentOutcome::Exact(_) => None,
+            })
+            .collect::<Vec<_>>();
+        if fallbacks.is_empty() {
+            return Ok(None);
+        }
+        let component_keys = fallbacks
+            .iter()
+            .map(|(index, _)| self.component_key(&components[*index]))
+            .collect();
+        let max_component_variables = fallbacks
+            .iter()
+            .map(|(_, variable_count)| *variable_count)
+            .max()
+            .unwrap_or_default();
+        Ok(Some(GeoCompositionArtifact {
+            version: CANON_GEO_COMPOSITION_VERSION.to_string(),
+            request_version: self.request.request_version.clone(),
+            status: GeoCompositionStatus::BudgetFallback,
+            summary: self.summary(components, 0, false, 0)?,
+            hard_forced: GeoCompositionBackbone {
+                parcels: Vec::new(),
+                buildings: Vec::new(),
+            },
+            residual_models: Vec::new(),
+            soft_ranked: Vec::new(),
+            conflict_constraint_ids: Vec::new(),
+            budget_fallback: Some(GeoCompositionFallback {
+                component_keys,
+                max_component_variables,
+                guidance: FALLBACK_GUIDANCE.to_string(),
+            }),
+        }))
+    }
+
+    fn summary(
+        &self,
+        components: &[Vec<usize>],
+        residual_model_count: u64,
+        residual_models_materialized: bool,
+        hard_constraint_evaluations: u64,
+    ) -> Result<GeoCompositionSummary, GeoCompositionError> {
+        let mut candidate_assignments: u64 = 1;
+        for members in components {
+            let space = if members.len() >= u64::BITS as usize {
+                u64::MAX
+            } else {
+                1_u64.checked_shl(members.len() as u32).unwrap_or(u64::MAX)
+            };
+            candidate_assignments = candidate_assignments.saturating_mul(space);
+        }
+        Ok(GeoCompositionSummary {
+            parcel_candidates: self.request.parcels.len(),
+            building_candidates: self.request.buildings.len(),
+            candidate_assignments,
+            structurally_feasible_assignments: 0,
+            hard_constraint_evaluations,
+            residual_model_count,
+            summary_counts_saturated: false,
+            component_count: components.len(),
+            residual_models_materialized,
+        })
+    }
+
+    fn combine(
+        self,
+        components: Vec<Vec<usize>>,
+        outcomes: Vec<ComponentOutcome>,
+        component_constraints: Vec<Vec<usize>>,
+    ) -> Result<GeoCompositionArtifact, GeoCompositionError> {
+        if let Some(fallback) = self.build_fallback(&components, &outcomes)? {
+            return Ok(fallback);
+        }
+        let solutions: Vec<ComponentSolution> = outcomes
+            .into_iter()
+            .map(|outcome| match outcome {
+                ComponentOutcome::Exact(solution) => *solution,
+                ComponentOutcome::Fallback { .. } => {
+                    unreachable!("fallback artifacts are handled before combining")
+                }
+            })
+            .collect();
+
+        let mut total_product = 1_u128;
+        let mut empty_product = 1_u128;
+        let mut structural_product = 1_u128;
+        let mut structural_empty_product = 1_u128;
+        let mut evaluations = 0_u128;
+        let mut capable_components = 0_usize;
+        for solution in &solutions {
+            total_product = total_product
+                .checked_mul(solution.count)
+                .ok_or_else(|| GeoCompositionError::overflow("residual product"))?;
+            empty_product = empty_product
+                .checked_mul(solution.empty_count)
+                .ok_or_else(|| GeoCompositionError::overflow("empty-parcel product"))?;
+            structural_product = structural_product
+                .checked_mul(solution.structural_count)
+                .ok_or_else(|| GeoCompositionError::overflow("structural product"))?;
+            structural_empty_product = structural_empty_product
+                .checked_mul(solution.structural_empty)
+                .ok_or_else(|| GeoCompositionError::overflow("structural empty product"))?;
+            evaluations += solution.evaluations;
+            if solution.positive_count > 0 {
+                capable_components += 1;
+            }
+        }
+        let residual_total = total_product
+            .checked_sub(empty_product)
+            .ok_or_else(|| GeoCompositionError::overflow("residual combination"))?;
+
+        if residual_total == 0 {
+            return self.conflict_artifact(
+                &components,
+                &solutions,
+                &component_constraints,
+                evaluations,
+            );
+        }
+
+        let mut backbone_parcels = Vec::new();
+        let mut backbone_buildings = Vec::new();
+        for (component_id, members) in components.iter().enumerate() {
+            let solution = &solutions[component_id];
+            let others_capable = capable_components - usize::from(solution.positive_count > 0) > 0;
+            let (selected_seen, absent_seen) = if !others_capable && solution.positive_count > 0 {
+                (
+                    &solution.positive_seen_selected,
+                    &solution.positive_seen_absent,
+                )
+            } else {
+                (&solution.seen_selected, &solution.seen_absent)
+            };
+            for (slot, variable) in members.iter().enumerate() {
+                if selected_seen[slot] && !absent_seen[slot] {
+                    match self.var_level(*variable) {
+                        VarLevel::Parcel => backbone_parcels.push(self.var_id(*variable)),
+                        VarLevel::Building => backbone_buildings.push(self.var_id(*variable)),
+                    }
+                }
+            }
+        }
+        // Slot order is ascending global index, so ids land sorted per level.
+        let hard_forced = GeoCompositionBackbone {
+            parcels: backbone_parcels.into_iter().map(String::from).collect(),
+            buildings: backbone_buildings.into_iter().map(String::from).collect(),
+        };
+
+        let can_materialize = residual_total <= u128::from(self.request.max_materialized_models)
+            && solutions.iter().all(|solution| solution.masks.is_some());
+        let residual_models = if can_materialize {
+            let mut models = self.materialize(&components, &solutions, residual_total)?;
+            models.sort();
+            models
+        } else {
+            Vec::new()
+        };
+        let soft_ranked = if can_materialize {
+            rank_residual(&residual_models, &self.request.soft_preferences)?
+        } else {
+            Vec::new()
+        };
+
+        let saturate = |value: u128| -> (u64, bool) {
+            match u64::try_from(value) {
+                Ok(count) => (count, false),
+                Err(_) => (u64::MAX, true),
+            }
+        };
+        let (residual_model_count, residual_saturated) = saturate(residual_total);
+        let (structurally_feasible_assignments, structural_saturated) =
+            saturate(structural_product - structural_empty_product);
+        let (hard_constraint_evaluations, evaluations_saturated) = saturate(evaluations);
+
+        Ok(GeoCompositionArtifact {
+            version: CANON_GEO_COMPOSITION_VERSION.to_string(),
+            request_version: self.request.request_version.clone(),
+            status: match residual_total {
+                1 => GeoCompositionStatus::Resolved,
+                _ => GeoCompositionStatus::Ambiguous,
+            },
+            summary: GeoCompositionSummary {
+                structurally_feasible_assignments,
+                hard_constraint_evaluations,
+                residual_model_count,
+                summary_counts_saturated: residual_saturated
+                    || structural_saturated
+                    || evaluations_saturated,
+                ..self.summary(&components, 0, can_materialize, 0)?
+            },
+            hard_forced,
+            residual_models,
+            soft_ranked,
+            conflict_constraint_ids: Vec::new(),
+            budget_fallback: None,
+        })
+    }
+
+    /// Enumerate the combined residual by odometer over retained component
+    /// masks. Called only when every component retained its solutions and the
+    /// exact total fits `max_materialized_models`.
+    fn materialize(
+        &self,
+        components: &[Vec<usize>],
+        solutions: &[ComponentSolution],
+        residual_total: u128,
+    ) -> Result<Vec<GeoCompositionModel>, GeoCompositionError> {
+        let contexts = components
+            .iter()
+            .map(|members| ComponentContext::new(self, members))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut cursor = vec![0_usize; components.len()];
+        let mut models = Vec::with_capacity(usize::try_from(residual_total).unwrap_or_default());
+        loop {
+            let mut any_parcel = false;
+            let mut parcels = Vec::new();
+            let mut buildings = Vec::new();
+            for (component_id, context) in contexts.iter().enumerate() {
+                let masks = solutions[component_id]
+                    .masks
+                    .as_deref()
+                    .expect("materialize requires retained masks");
+                let mask = masks[cursor[component_id]];
+                if context.mask_has_parcel(mask) {
+                    any_parcel = true;
+                }
+                context.append_selection(mask, &mut parcels, &mut buildings);
+            }
+            if any_parcel {
+                parcels.sort();
+                buildings.sort();
+                models.push(GeoCompositionModel { parcels, buildings });
+            }
+            let mut advanced = false;
+            for index in (0..cursor.len()).rev() {
+                cursor[index] += 1;
+                if cursor[index] < solutions[index].masks.as_ref().expect("retained").len() {
+                    advanced = true;
+                    break;
+                }
+                cursor[index] = 0;
+            }
+            if !advanced {
+                break;
+            }
+        }
+        Ok(models)
+    }
+
+    /// Explain an empty combined residual with per-component minimal cores:
+    /// whole-component infeasibility, or incapability of selecting any parcel.
+    fn conflict_artifact(
+        &self,
+        components: &[Vec<usize>],
+        solutions: &[ComponentSolution],
+        component_constraints: &[Vec<usize>],
+        evaluations: u128,
+    ) -> Result<GeoCompositionArtifact, GeoCompositionError> {
+        let mut conflict_ids = BTreeSet::new();
+        for (component_id, solution) in solutions.iter().enumerate() {
+            if solution.count == 0 || solution.positive_count == 0 {
+                let ids = self.component_conflict_core(
+                    &components[component_id],
+                    &component_constraints[component_id],
+                    solution.count == 0,
+                )?;
+                conflict_ids.extend(ids);
+            }
+        }
+        Ok(GeoCompositionArtifact {
+            version: CANON_GEO_COMPOSITION_VERSION.to_string(),
+            request_version: self.request.request_version.clone(),
+            status: GeoCompositionStatus::Conflict,
+            summary: GeoCompositionSummary {
+                hard_constraint_evaluations: u64::try_from(evaluations).unwrap_or(u64::MAX),
+                summary_counts_saturated: u64::try_from(evaluations).is_err(),
+                ..self.summary(components, 0, false, 0)?
+            },
+            hard_forced: GeoCompositionBackbone {
+                parcels: Vec::new(),
+                buildings: Vec::new(),
+            },
+            residual_models: Vec::new(),
+            soft_ranked: Vec::new(),
+            conflict_constraint_ids: conflict_ids.into_iter().collect(),
+            budget_fallback: None,
+        })
+    }
+
+    /// QuickXplain-style linear core reduction over one component's
+    /// enumerable structural space. With `whole_infeasible` the subproblem is
+    /// the plain component; otherwise it is the positivity subproblem that
+    /// asks whether the component can select at least one parcel.
+    fn component_conflict_core(
+        &self,
+        members: &[usize],
+        constraints: &[usize],
+        whole_infeasible: bool,
+    ) -> Result<Vec<String>, GeoCompositionError> {
+        let Some(space) = component_space(members.len(), self.request.max_assignments) else {
+            return Err(GeoCompositionError::invalid_input(
+                "Geo composition conflict analysis requires an enumerable component",
+                [("component_key", self.component_key(members))],
+            ));
+        };
+        let ctx = ComponentContext::new(self, members)?;
+        let require_positive = !whole_infeasible;
+        let mut structural = Vec::new();
+        for mask in 0..space {
+            if !ctx.structurally_valid(mask) {
+                continue;
+            }
+            if require_positive && !ctx.mask_has_parcel(mask) {
+                continue;
+            }
+            structural.push(ctx.model_from_mask(mask));
+        }
+        let mut core: Vec<usize> = (0..constraints.len()).collect();
+        let mut index = 0;
+        while index < core.len() {
+            let candidate: Vec<usize> = core
+                .iter()
+                .copied()
+                .enumerate()
+                .filter(|(position, _)| *position != index)
+                .map(|(_, constraint_index)| constraint_index)
+                .collect();
+            let feasible = structural.iter().any(|model| {
+                candidate.iter().all(|constraint_index| {
+                    constraint_holds(
+                        model,
+                        &self.request.hard_constraints[*constraint_index].constraint,
+                    )
+                }) && (!require_positive || !model.parcels.is_empty())
+            });
+            if !feasible {
+                core = candidate;
+            } else {
+                index += 1;
+            }
+        }
+        let mut ids: Vec<String> = core
+            .into_iter()
+            .map(|constraint_index| self.request.hard_constraints[constraint_index].id.clone())
+            .collect();
+        ids.sort();
+        Ok(ids)
+    }
+}
+
+const FALLBACK_GUIDANCE: &str = "raise max_assignments, narrow the candidate block, or add evidence constraints that decompose the component; no residual was guessed";
+
+/// Per-component assignment space: `2^width` when it fits the declared
+/// budget, else `None` (the component takes the bounded-search path).
+fn component_space(width: usize, max_assignments: u64) -> Option<u128> {
+    if width >= 128 {
+        return None;
+    }
+    let space = 1_u128 << width;
+    let fits = u64::try_from(space)
+        .map(|bounded| bounded <= max_assignments)
+        .unwrap_or(false);
+    fits.then_some(space)
 }
 
 pub fn canonical_composition_bytes(
@@ -369,6 +1083,373 @@ pub fn validate_composition_request(
     request: &GeoCompositionRequest,
 ) -> Result<(), GeoCompositionError> {
     normalize_request(request).map(|_| ())
+}
+
+#[derive(Debug, Clone)]
+enum ComponentOutcome {
+    Exact(Box<ComponentSolution>),
+    Fallback { variable_count: usize },
+}
+
+/// Streaming per-component solution statistics. `masks` retains individual
+/// feasible assignments only when the component was enumerated with
+/// retention; the bounded search path reports counts and backbone flags
+/// without storing models.
+#[derive(Debug, Clone, Default)]
+struct ComponentSolution {
+    count: u128,
+    positive_count: u128,
+    empty_count: u128,
+    structural_count: u128,
+    structural_positive: u128,
+    structural_empty: u128,
+    evaluations: u128,
+    seen_selected: Vec<bool>,
+    seen_absent: Vec<bool>,
+    positive_seen_selected: Vec<bool>,
+    positive_seen_absent: Vec<bool>,
+    masks: Option<Vec<u128>>,
+}
+
+impl ComponentSolution {
+    fn new(width: usize, retain_masks: bool) -> Self {
+        Self {
+            seen_selected: vec![false; width],
+            seen_absent: vec![false; width],
+            positive_seen_selected: vec![false; width],
+            positive_seen_absent: vec![false; width],
+            masks: retain_masks.then(Vec::new),
+            ..Self::default()
+        }
+    }
+
+    fn record(&mut self, mask: u128, context: &ComponentContext<'_>) {
+        self.count += 1;
+        let has_parcel = context.mask_has_parcel(mask);
+        if has_parcel {
+            self.positive_count += 1;
+        } else {
+            self.empty_count += 1;
+        }
+        for slot in 0..context.width() {
+            let selected = mask & (1_u128 << slot) != 0;
+            if selected {
+                self.seen_selected[slot] = true;
+                if has_parcel {
+                    self.positive_seen_selected[slot] = true;
+                }
+            } else {
+                self.seen_absent[slot] = true;
+                if has_parcel {
+                    self.positive_seen_absent[slot] = true;
+                }
+            }
+        }
+        if let Some(masks) = self.masks.as_mut() {
+            masks.push(mask);
+        }
+    }
+}
+
+/// Slot-level view of one component: maps global variables to local bit
+/// positions and evaluates structural rules on raw masks.
+struct ComponentContext<'a> {
+    solver: &'a FactorizedSolver<'a>,
+    /// Global variable indices, ascending.
+    members: Vec<usize>,
+    /// Local slots holding parcel variables.
+    parcel_slots: Vec<usize>,
+    /// `(local slot, request.buildings offset)` for building variables.
+    building_slots: Vec<(usize, usize)>,
+    /// Global variable index to local slot; `usize::MAX` outside the
+    /// component.
+    slot_of_global: Vec<usize>,
+}
+
+impl<'a> ComponentContext<'a> {
+    fn new(
+        solver: &'a FactorizedSolver<'a>,
+        members: &[usize],
+    ) -> Result<Self, GeoCompositionError> {
+        let mut slot_of_global = vec![usize::MAX; solver.total_variables];
+        let mut parcel_slots = Vec::new();
+        let mut building_slots = Vec::new();
+        for (slot, variable) in members.iter().enumerate() {
+            slot_of_global[*variable] = slot;
+            match solver.var_level(*variable) {
+                VarLevel::Parcel => parcel_slots.push(slot),
+                VarLevel::Building => {
+                    building_slots.push((slot, *variable - solver.request.parcels.len()))
+                }
+            }
+        }
+        Ok(Self {
+            solver,
+            members: members.to_vec(),
+            parcel_slots,
+            building_slots,
+            slot_of_global,
+        })
+    }
+
+    fn width(&self) -> usize {
+        self.members.len()
+    }
+
+    fn member_slot(&self, member: &GeoEntityRef) -> Option<usize> {
+        let global = self.solver.var_index(member)?;
+        let slot = self.slot_of_global[global];
+        (slot != usize::MAX).then_some(slot)
+    }
+
+    fn mask_has_parcel(&self, mask: u128) -> bool {
+        self.parcel_slots
+            .iter()
+            .any(|slot| mask & (1_u128 << slot) != 0)
+    }
+
+    /// Structural containment rule: a selected building with declared
+    /// parcels requires at least one of them selected.
+    fn structurally_valid(&self, mask: u128) -> bool {
+        self.building_slots.iter().all(|(slot, offset)| {
+            if mask & (1_u128 << slot) == 0 {
+                return true;
+            }
+            let building = &self.solver.request.buildings[*offset];
+            building.parcel_ids.is_empty()
+                || building.parcel_ids.iter().any(|parcel_id| {
+                    self.solver.parcel_index(parcel_id).is_some_and(|global| {
+                        let parcel_slot = self.slot_of_global[global];
+                        parcel_slot != usize::MAX && mask & (1_u128 << parcel_slot) != 0
+                    })
+                })
+        })
+    }
+
+    fn model_from_mask(&self, mask: u128) -> GeoCompositionModel {
+        let mut parcels = Vec::new();
+        let mut buildings = Vec::new();
+        self.append_selection(mask, &mut parcels, &mut buildings);
+        GeoCompositionModel { parcels, buildings }
+    }
+
+    /// Appends this mask's selected ids in ascending global-index order,
+    /// which is ascending id order within each level.
+    fn append_selection(&self, mask: u128, parcels: &mut Vec<String>, buildings: &mut Vec<String>) {
+        for (slot, variable) in self.members.iter().enumerate() {
+            if mask & (1_u128 << slot) == 0 {
+                continue;
+            }
+            match self.solver.var_level(*variable) {
+                VarLevel::Parcel => parcels.push(self.solver.var_id(*variable).to_string()),
+                VarLevel::Building => buildings.push(self.solver.var_id(*variable).to_string()),
+            }
+        }
+    }
+}
+
+/// Deterministic bounded depth-first search over one oversized component.
+/// Variables are assigned in canonical ascending order, `false` before
+/// `true`; partial-feasibility pruning skips infeasible subtrees; a visit
+/// budget bounds the work. Completion yields exact counts and backbone flags
+/// without storing models.
+struct DfsSearch<'a, 'b> {
+    ctx: ComponentContext<'a>,
+    constraints: &'b [usize],
+    budget: u64,
+    visits: u64,
+    values: u128,
+    assigned_mask: u128,
+    exhausted: bool,
+    solution: ComponentSolution,
+}
+
+impl<'a, 'b> DfsSearch<'a, 'b> {
+    fn run(&mut self, depth: usize) {
+        if self.exhausted {
+            return;
+        }
+        self.visits += 1;
+        if self.visits > self.budget {
+            self.exhausted = true;
+            return;
+        }
+        if depth == self.ctx.width() {
+            self.record_leaf();
+            return;
+        }
+        for value in [false, true] {
+            if value {
+                self.values |= 1_u128 << depth;
+            } else {
+                self.values &= !(1_u128 << depth);
+            }
+            self.assigned_mask |= 1_u128 << depth;
+            if self.partial_feasible(depth + 1) {
+                self.run(depth + 1);
+                if self.exhausted {
+                    return;
+                }
+            }
+        }
+    }
+
+    fn record_leaf(&mut self) {
+        if !self.ctx.structurally_valid(self.values) {
+            return;
+        }
+        self.solution.structural_count += 1;
+        let has_parcel = self.ctx.mask_has_parcel(self.values);
+        if has_parcel {
+            self.solution.structural_positive += 1;
+        } else {
+            self.solution.structural_empty += 1;
+        }
+        let model = self.ctx.model_from_mask(self.values);
+        let mut feasible = true;
+        for constraint_index in self.constraints {
+            self.solution.evaluations += 1;
+            let constraint = &self.ctx.solver.request.hard_constraints[*constraint_index];
+            if !constraint_holds(&model, &constraint.constraint) {
+                feasible = false;
+                break;
+            }
+        }
+        if feasible {
+            let values = self.values;
+            let ctx = &self.ctx;
+            self.solution.record(values, ctx);
+        }
+    }
+
+    /// Prunes when the assigned prefix (`[0, assigned_up_to)`) already
+    /// violates a constraint or makes satisfaction unreachable.
+    fn partial_feasible(&self, assigned_up_to: usize) -> bool {
+        let assigned = |slot: usize| slot < assigned_up_to;
+        let is_set = |slot: usize| self.values & (1_u128 << slot) != 0;
+        for (slot, offset) in &self.ctx.building_slots {
+            if !assigned(*slot) || !is_set(*slot) {
+                continue;
+            }
+            let building = &self.ctx.solver.request.buildings[*offset];
+            if building.parcel_ids.is_empty() {
+                continue;
+            }
+            let every_parcel_decided_false = building.parcel_ids.iter().all(|parcel_id| {
+                self.ctx
+                    .solver
+                    .parcel_index(parcel_id)
+                    .map(|global| {
+                        let parcel_slot = self.ctx.slot_of_global[global];
+                        parcel_slot == usize::MAX || (assigned(parcel_slot) && !is_set(parcel_slot))
+                    })
+                    .unwrap_or(true)
+            });
+            if every_parcel_decided_false {
+                return false;
+            }
+        }
+        for constraint_index in self.constraints {
+            let constraint = &self.ctx.solver.request.hard_constraints[*constraint_index];
+            let holds_prefix = match &constraint.constraint {
+                GeoHardConstraintKind::Require { member } => self
+                    .ctx
+                    .member_slot(member)
+                    .map(|slot| !assigned(slot) || is_set(slot))
+                    .unwrap_or(true),
+                GeoHardConstraintKind::Forbid { member } => self
+                    .ctx
+                    .member_slot(member)
+                    .map(|slot| !assigned(slot) || !is_set(slot))
+                    .unwrap_or(true),
+                GeoHardConstraintKind::Requires {
+                    if_member,
+                    then_member,
+                } => match (
+                    self.ctx.member_slot(if_member),
+                    self.ctx.member_slot(then_member),
+                ) {
+                    (Some(if_slot), Some(then_slot)) => {
+                        !(assigned(if_slot)
+                            && is_set(if_slot)
+                            && assigned(then_slot)
+                            && !is_set(then_slot))
+                    }
+                    _ => true,
+                },
+                GeoHardConstraintKind::AnyOf { members } => {
+                    let slots: Vec<Option<usize>> =
+                        members.iter().map(|m| self.ctx.member_slot(m)).collect();
+                    let all_assigned = slots.iter().all(|slot| slot.map(assigned).unwrap_or(false));
+                    let none_set = slots
+                        .iter()
+                        .all(|slot| slot.is_some_and(|slot| !is_set(slot)));
+                    !(all_assigned && none_set)
+                }
+                GeoHardConstraintKind::AllOrNone { members } => {
+                    let states: Vec<Option<bool>> = members
+                        .iter()
+                        .map(|member| {
+                            self.ctx
+                                .member_slot(member)
+                                .and_then(|slot| assigned(slot).then(|| is_set(slot)))
+                        })
+                        .collect();
+                    let any_true = states.contains(&Some(true));
+                    let any_false = states.contains(&Some(false));
+                    !(any_true && any_false)
+                }
+                GeoHardConstraintKind::IntegerSumBand {
+                    level,
+                    values,
+                    min,
+                    max,
+                } => {
+                    let mut partial = 0_u64;
+                    let mut remaining_max = 0_u64;
+                    for value in values {
+                        let member = GeoEntityRef::new(*level, value.id.clone());
+                        match self.ctx.member_slot(&member) {
+                            Some(slot) if assigned(slot) && is_set(slot) => {
+                                partial += value.value;
+                            }
+                            Some(slot) if !assigned(slot) => remaining_max += value.value,
+                            _ => {}
+                        }
+                    }
+                    partial <= *max && partial + remaining_max >= *min
+                }
+                GeoHardConstraintKind::Cardinality { level, min, max } => {
+                    let mut selected = 0_usize;
+                    let mut unassigned = 0_usize;
+                    for (slot, variable) in self.ctx.members.iter().enumerate() {
+                        let same_level = match level {
+                            GeoEntityLevel::Parcel => {
+                                self.ctx.solver.var_level(*variable) == VarLevel::Parcel
+                            }
+                            _ => self.ctx.solver.var_level(*variable) == VarLevel::Building,
+                        };
+                        if !same_level {
+                            continue;
+                        }
+                        if assigned(slot) {
+                            if is_set(slot) {
+                                selected += 1;
+                            }
+                        } else {
+                            unassigned += 1;
+                        }
+                    }
+                    selected <= *max && selected + unassigned >= *min
+                }
+                GeoHardConstraintKind::AllowedSets { .. } => true,
+            };
+            if !holds_prefix {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 /// Return the canonical request representation used by the solver.
@@ -385,6 +1466,7 @@ pub fn canonicalize_composition_request(
         hard_constraints: normalized.hard_constraints,
         soft_preferences: normalized.soft_preferences,
         max_assignments: normalized.max_assignments,
+        max_materialized_models: normalized.max_materialized_models,
     })
 }
 
@@ -407,7 +1489,6 @@ fn normalize_request(
             [("field", "max_assignments")],
         ));
     }
-
     let mut parcels = request.universe.parcels.clone();
     validate_and_sort_ids("universe.parcels", &mut parcels)?;
     if parcels.is_empty() {
@@ -477,6 +1558,7 @@ fn normalize_request(
         hard_constraints,
         soft_preferences,
         max_assignments: request.max_assignments,
+        max_materialized_models: request.max_materialized_models,
     })
 }
 
@@ -682,107 +1764,6 @@ fn level_cardinality(
     }
 }
 
-fn assignment_count(
-    total_variables: usize,
-    max_assignments: u64,
-) -> Result<u64, GeoCompositionError> {
-    let count = u32::try_from(total_variables)
-        .ok()
-        .filter(|count| *count < u64::BITS)
-        .map(|count| 1_u64 << count);
-    let Some(count) = count else {
-        return Err(GeoCompositionError::new(
-            GeoCompositionErrorCode::BudgetExceeded,
-            "Geo composition universe exceeds the declared assignment budget",
-            [
-                ("estimated_assignments", format!("2^{total_variables}")),
-                ("max_assignments", max_assignments.to_string()),
-            ],
-        ));
-    };
-    if count > max_assignments {
-        return Err(GeoCompositionError::new(
-            GeoCompositionErrorCode::BudgetExceeded,
-            "Geo composition universe exceeds the declared assignment budget",
-            [
-                ("estimated_assignments", count.to_string()),
-                ("max_assignments", max_assignments.to_string()),
-            ],
-        ));
-    }
-    Ok(count)
-}
-
-fn enumerate_structural_models(
-    parcels: &[String],
-    buildings: &[GeoBuildingCandidate],
-    candidate_assignments: u64,
-) -> Vec<GeoCompositionModel> {
-    let mut models = Vec::new();
-    for mask in 0..candidate_assignments {
-        let selected_parcels = parcels
-            .iter()
-            .enumerate()
-            .filter(|(index, _)| mask & (1_u64 << index) != 0)
-            .map(|(_, id)| id.clone())
-            .collect::<Vec<_>>();
-        if selected_parcels.is_empty() {
-            continue;
-        }
-        let selected_parcel_set = selected_parcels.iter().collect::<BTreeSet<_>>();
-        let selected_buildings = buildings
-            .iter()
-            .enumerate()
-            .filter(|(index, _)| mask & (1_u64 << (parcels.len() + index)) != 0)
-            .filter(|(_, building)| {
-                building.parcel_ids.is_empty()
-                    || building
-                        .parcel_ids
-                        .iter()
-                        .any(|parcel_id| selected_parcel_set.contains(parcel_id))
-            })
-            .map(|(_, building)| building.id.clone())
-            .collect::<Vec<_>>();
-        let selected_building_count = buildings
-            .iter()
-            .enumerate()
-            .filter(|(index, _)| mask & (1_u64 << (parcels.len() + index)) != 0)
-            .count();
-        if selected_buildings.len() != selected_building_count {
-            continue;
-        }
-        models.push(GeoCompositionModel {
-            parcels: selected_parcels,
-            buildings: selected_buildings,
-        });
-    }
-    models
-}
-
-fn filter_models(
-    models: &[GeoCompositionModel],
-    constraints: &[GeoHardConstraint],
-) -> Result<(Vec<GeoCompositionModel>, u64), GeoCompositionError> {
-    let mut residual = Vec::new();
-    let mut evaluations = 0_u64;
-    for model in models {
-        let mut feasible = true;
-        for constraint in constraints {
-            evaluations = evaluations
-                .checked_add(1)
-                .ok_or_else(|| GeoCompositionError::overflow("constraint evaluation count"))?;
-            if !constraint_holds(model, &constraint.constraint) {
-                feasible = false;
-                break;
-            }
-        }
-        if feasible {
-            residual.push(model.clone());
-        }
-    }
-    Ok((residual, evaluations))
-}
-
 fn constraint_holds(model: &GeoCompositionModel, constraint: &GeoHardConstraintKind) -> bool {
     match constraint {
         GeoHardConstraintKind::Require { member } => model.contains(member),
@@ -821,47 +1802,6 @@ fn constraint_holds(model: &GeoCompositionModel, constraint: &GeoHardConstraintK
             then_member,
         } => !model.contains(if_member) || model.contains(then_member),
     }
-}
-
-fn irreducible_conflict(
-    models: &[GeoCompositionModel],
-    constraints: &[GeoHardConstraint],
-) -> Result<Vec<GeoHardConstraint>, GeoCompositionError> {
-    let mut core = constraints.to_vec();
-    let mut index = 0;
-    while index < core.len() {
-        let mut candidate = core.clone();
-        candidate.remove(index);
-        let (residual, _) = filter_models(models, &candidate)?;
-        if residual.is_empty() {
-            core = candidate;
-        } else {
-            index += 1;
-        }
-    }
-    Ok(core)
-}
-
-fn backbone(models: &[GeoCompositionModel]) -> GeoCompositionBackbone {
-    let Some(first) = models.first() else {
-        return GeoCompositionBackbone {
-            parcels: Vec::new(),
-            buildings: Vec::new(),
-        };
-    };
-    let parcels = first
-        .parcels
-        .iter()
-        .filter(|id| models.iter().all(|model| model.parcels.contains(id)))
-        .cloned()
-        .collect();
-    let buildings = first
-        .buildings
-        .iter()
-        .filter(|id| models.iter().all(|model| model.buildings.contains(id)))
-        .cloned()
-        .collect();
-    GeoCompositionBackbone { parcels, buildings }
 }
 
 fn rank_residual(

@@ -71,6 +71,13 @@ pub struct GeoEvidenceCompilationRequest {
     pub contracts: Vec<GeoRhoContract>,
     pub observations: Vec<GeoRhoObservation>,
     pub max_assignments: u64,
+    /// Passed through to the composition kernel's materialization budget.
+    #[serde(default = "default_max_materialized_models")]
+    pub max_materialized_models: u64,
+}
+
+fn default_max_materialized_models() -> u64 {
+    super::composition::DEFAULT_MAX_MATERIALIZED_MODELS
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -282,6 +289,7 @@ pub fn compile_evidence(
         hard_constraints,
         soft_preferences,
         max_assignments: request.max_assignments,
+        max_materialized_models: request.max_materialized_models,
     })?;
 
     Ok(GeoEvidenceCompilationArtifact {
