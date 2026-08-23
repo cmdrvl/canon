@@ -461,3 +461,88 @@ fn population_case_budget_refuses_before_any_case_runs() {
     .expect_err("zero population budget must refuse");
     assert_eq!(error.code, GeoPopulationErrorCode::PopulationBudgetExceeded);
 }
+
+#[test]
+fn evidence_enrichment_fixture_stays_joined_to_the_population_fixture() {
+    // Companion fixture (2026-08-23): per-case asserted attributes, geocodes,
+    // query address strings, and per-candidate-parcel MapPLUTO + PAD evidence
+    // for the same 15 Gate V2 cases. The join contract is exact case_id
+    // equality plus full candidate-parcel attribute coverage; PAD absence is
+    // recorded evidence (condo billing lots, vacant lots), never an error.
+    let population = population_fixture();
+    let enrichment: serde_json::Value = serde_json::from_str(include_str!(
+        "fixtures/geo/e4_gate_v2_evidence_enrichment.json"
+    ))
+    .expect("evidence enrichment fixture must parse");
+
+    assert_eq!(
+        enrichment["evidence_snapshot"]["truth_role"],
+        "evaluation_only_never_solver_evidence"
+    );
+    assert_eq!(
+        enrichment["evidence_snapshot"]["companion_of"],
+        "e4_gate_v2_population.json"
+    );
+
+    let enrichment_cases = enrichment["cases"].as_array().expect("cases array");
+    assert_eq!(enrichment_cases.len(), population.cases.len());
+    let mut enrichment_ids: Vec<&str> = enrichment_cases
+        .iter()
+        .map(|case| case["case_id"].as_str().expect("case_id"))
+        .collect();
+    enrichment_ids.sort_unstable();
+    let mut population_ids: Vec<&str> = population
+        .cases
+        .iter()
+        .map(|case| case.case_id.as_str())
+        .collect();
+    population_ids.sort_unstable();
+    assert_eq!(enrichment_ids, population_ids);
+
+    let parcel_attributes = enrichment["candidate_parcel_attributes"]
+        .as_object()
+        .expect("candidate_parcel_attributes object");
+    let mut pad_covered = 0usize;
+    for case in &population.cases {
+        for parcel in &case.candidate_parcels {
+            assert!(
+                parcel_attributes.contains_key(parcel),
+                "candidate parcel {parcel} has no attribute row"
+            );
+        }
+    }
+    for attributes in parcel_attributes.values() {
+        if !attributes["pad"].is_null() {
+            pad_covered += 1;
+        }
+    }
+    assert_eq!(
+        pad_covered as u64,
+        enrichment["expected"]["pad_covered_parcels"]
+            .as_u64()
+            .expect("pad_covered_parcels")
+    );
+
+    for case in enrichment_cases {
+        let properties = case["properties"].as_array().expect("properties array");
+        assert!(!properties.is_empty(), "case without property evidence");
+        for property in properties {
+            let accuracy = property["geocode"]["accuracy_type"]
+                .as_str()
+                .expect("accuracy_type");
+            assert!(
+                matches!(
+                    accuracy,
+                    "rooftop" | "nearest_rooftop_match" | "range_interpolation"
+                ),
+                "unexpected geocode accuracy tier {accuracy}"
+            );
+            assert!(
+                !property["address_strings"]
+                    .as_array()
+                    .expect("addresses")
+                    .is_empty()
+            );
+        }
+    }
+}
