@@ -779,3 +779,65 @@ fn membership_predicate_decides_residual_exactness_without_materialization() {
         );
     }
 }
+
+/// Section 16.1's normative output shapes, pinned by name so future kernel
+/// changes cannot silently drift from the semantics the six-case corpus
+/// forced (Appendix I). Chimera rejection itself lives upstream in evidence
+/// admission; here we assert its downstream consequence: no synthesized
+/// single-parcel reading survives.
+#[test]
+fn normative_section_16_1_shapes_hold_by_name() {
+    let corpus = corpus();
+    let by_id = |id: &str| {
+        corpus
+            .cases
+            .iter()
+            .find(|case| case.case_id == id)
+            .unwrap_or_else(|| panic!("{id} must exist"))
+    };
+
+    // Case 3: the three-parcel range assemblage is ONE answer; a single BBL
+    // is a false answer (interval semantics).
+    let case3 =
+        solve_composition(&by_id("case_3_range_assemblage").request).expect("case 3 must solve");
+    assert_eq!(case3.status, GeoCompositionStatus::Resolved);
+    assert_eq!(
+        case3.hard_forced.parcels,
+        ["3023030027", "3023030028", "3023030029"]
+    );
+
+    // Case 4: six-parcel core resolved as one model.
+    let case4 = solve_composition(&by_id("case_4_chimera_multi_street").request)
+        .expect("case 4 must solve");
+    assert_eq!(case4.status, GeoCompositionStatus::Resolved);
+    assert_eq!(case4.hard_forced.parcels.len(), 6);
+    assert!(
+        !case4
+            .residual_models
+            .iter()
+            .any(|model| model.parcels.len() == 1),
+        "the synthesized single-parcel chimera reading must not survive"
+    );
+
+    // Case 6: parcel singleton with building residual stated separately —
+    // both levels named, never collapsed to one ledger key.
+    let case6 = solve_composition(&by_id("case_6_dense_one_parcel_multi_building").request)
+        .expect("case 6 must solve");
+    assert_eq!(case6.status, GeoCompositionStatus::Ambiguous);
+    assert_eq!(case6.summary.residual_model_count, 2);
+    assert_eq!(case6.hard_forced.parcels, ["1014477501"]);
+    assert_eq!(
+        case6.residual_models.len(),
+        2,
+        "the building residual is the answer and must be stated, not collapsed"
+    );
+    let building_sets: Vec<Vec<String>> = case6
+        .residual_models
+        .iter()
+        .map(|model| model.buildings.clone())
+        .collect();
+    assert_eq!(
+        building_sets,
+        [vec!["1076314".to_string()], vec!["1085187".to_string()]]
+    );
+}
