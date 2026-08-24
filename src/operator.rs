@@ -460,6 +460,18 @@ pub const COMMAND_SAFETY_DECLARATIONS: &[CommandSafetyDeclaration] = &[
         notes: "creates declared project files inside an explicit project directory",
     },
     CommandSafetyDeclaration {
+        command: "geo read",
+        operator_contract_name: None,
+        usage: "geo composition/evidence/population request read",
+        read_only: true,
+        mutation: MutationClass::ReadOnly,
+        network: NetworkClass::Offline,
+        concurrency: ConcurrencyClass::StatelessRead,
+        platforms: &[PlatformClass::PortablePathUtf8],
+        owned_temp_fixtures_only: true,
+        notes: "geo requests are answered on stdout; no registry, cache, or work-dir writes",
+    },
+    CommandSafetyDeclaration {
         command: "unresolved inbox read",
         operator_contract_name: None,
         usage: "unresolved inbox artifact merge/export/read",

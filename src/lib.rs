@@ -170,6 +170,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
         CanonCommand::Doctor(args) => doctor::run(args),
         CanonCommand::Package(package) => run_package_command(package),
         CanonCommand::Project(project) => project::cli::run(project),
+        CanonCommand::Geo(geo) => geo::cli::run(geo),
         CanonCommand::Inbox(inbox) => inbox::cli::run(inbox),
         CanonCommand::Registry(command) => match &command.command {
             RegistrySubcommand::Export(export) => run_registry_export(export),

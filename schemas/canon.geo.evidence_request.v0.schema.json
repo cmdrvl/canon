@@ -1,0 +1,279 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.evidence_request.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.evidence_request.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_evidence_request.v0",
+      "type": "string"
+    },
+    "universe": {
+      "$ref": "#/$defs/universe"
+    },
+    "contracts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rho_contract"
+      }
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rho_observation"
+      }
+    },
+    "max_assignments": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_materialized_models": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "version",
+    "universe",
+    "contracts",
+    "observations",
+    "max_assignments",
+    "max_materialized_models"
+  ],
+  "$defs": {
+    "entity_level": {
+      "type": "string",
+      "enum": [
+        "poi_unit",
+        "building",
+        "parcel",
+        "property"
+      ]
+    },
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/entity_level"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "id"
+      ]
+    },
+    "building_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "parcel_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "parcel_ids"
+      ]
+    },
+    "universe": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parcels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "buildings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/building_candidate"
+          }
+        }
+      },
+      "required": [
+        "parcels",
+        "buildings"
+      ]
+    },
+    "integer_member_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "value"
+      ]
+    },
+    "rho_soundness": {
+      "type": "string",
+      "enum": [
+        "logically_sound",
+        "empirical_high_coverage"
+      ]
+    },
+    "rho_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "soundness": {
+          "$ref": "#/$defs/rho_soundness"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "soundness"
+      ]
+    },
+    "rho_observation_kind": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "exact_sets"
+            },
+            "level": {
+              "$ref": "#/$defs/entity_level"
+            },
+            "sets": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "level",
+            "sets"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "existential_membership"
+            },
+            "members": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/entity_ref"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "members"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "integer_sum_band"
+            },
+            "level": {
+              "$ref": "#/$defs/entity_level"
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/integer_member_value"
+              }
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "level",
+            "values",
+            "min",
+            "max"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "prefer_member"
+            },
+            "member": {
+              "$ref": "#/$defs/entity_ref"
+            },
+            "cost_if_absent": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "member",
+            "cost_if_absent"
+          ]
+        }
+      ]
+    },
+    "rho_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "contract_id": {
+          "type": "string"
+        },
+        "observation": {
+          "$ref": "#/$defs/rho_observation_kind"
+        }
+      },
+      "required": [
+        "id",
+        "contract_id",
+        "observation"
+      ]
+    }
+  }
+}

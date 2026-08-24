@@ -5,6 +5,7 @@
 //! Geo remains a build-time workbench. Nothing in this module changes Canon's
 //! exact registry replay path.
 
+pub mod cli;
 pub mod composition;
 pub mod evaluation;
 pub mod evidence;

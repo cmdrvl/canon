@@ -176,6 +176,16 @@ pub struct GeoCompositionRequest {
 /// Default cap on combined residual models materialized for presentation.
 pub const DEFAULT_MAX_MATERIALIZED_MODELS: u64 = 4_096;
 
+/// Work ceiling for the AnyOf-only closed-form fast path, measured in subset
+/// masks visited: one count pass plus one backbone probe per parcel, each
+/// enumerating 2^k constraint masks. Requests above the ceiling take the
+/// component solver, whose exhaustion is a typed `BudgetFallback` — the fast
+/// path must never become an unbudgeted 2^k enumeration. The ceiling leaves
+/// orders-of-magnitude headroom over every measured adjudication case
+/// (n <= 92, k <= 5 in the mask-loop regime; the 25-disc H4 case enters the
+/// n >= 128 saturation branch and never loops).
+const ANYOF_FASTPATH_MAX_MASK_VISITS: u128 = 1 << 24;
+
 fn default_max_materialized_models() -> u64 {
     DEFAULT_MAX_MATERIALIZED_MODELS
 }
@@ -665,31 +675,19 @@ impl<'a> FactorizedSolver<'a> {
         // term is 2^n: without it every count collapses, which is exactly
         // the bug this comment now guards.
         if n >= 128 {
-            // Beyond exact u128 range: report the declared lower bound.
-            return Ok(Some(GeoCompositionArtifact {
-                version: CANON_GEO_COMPOSITION_VERSION.to_string(),
-                request_version: self.request.request_version.clone(),
-                status: GeoCompositionStatus::Ambiguous,
-                summary: GeoCompositionSummary {
-                    parcel_candidates: self.request.parcels.len(),
-                    building_candidates: 0,
-                    candidate_assignments: saturating_pow2_u64(n),
-                    structurally_feasible_assignments: saturating_pow2_u64(n).saturating_sub(1),
-                    hard_constraint_evaluations: 0,
-                    residual_model_count: u64::MAX,
-                    summary_counts_saturated: true,
-                    component_count: 0,
-                    residual_models_materialized: false,
-                },
-                hard_forced: GeoCompositionBackbone {
-                    parcels: Vec::new(),
-                    buildings: Vec::new(),
-                },
-                residual_models: Vec::new(),
-                soft_ranked: Vec::new(),
-                conflict_constraint_ids: Vec::new(),
-                budget_fallback: None,
-            }));
+            return Ok(Some(self.anyof_saturated_artifact(n)));
+        }
+        // Mask-loop work is (n + 1) probes of 2^k subset masks (one count
+        // pass plus one backbone probe per parcel). Beyond the cap the loop
+        // is no longer "fast": decline the fast path so the component solver
+        // governs, whose budget exhaustion is a typed BudgetFallback rather
+        // than an unbounded enumeration.
+        let mask_visits = (n as u128 + 1).saturating_mul(match u32::try_from(k) {
+            Ok(shift) if shift < 127 => 1_u128 << shift,
+            _ => u128::MAX,
+        });
+        if mask_visits > ANYOF_FASTPATH_MAX_MASK_VISITS {
+            return Ok(None);
         }
         // The alternating sum dips negative in intermediate steps (all
         // singleton subtractions precede the pairwise additions), so the
@@ -803,6 +801,35 @@ impl<'a> FactorizedSolver<'a> {
             conflict_constraint_ids: Vec::new(),
             budget_fallback: None,
         }))
+    }
+
+    /// Beyond the exact u128 range: the declared lower bound with every
+    /// saturation flag raised, never a silent approximation.
+    fn anyof_saturated_artifact(&self, n: usize) -> GeoCompositionArtifact {
+        GeoCompositionArtifact {
+            version: CANON_GEO_COMPOSITION_VERSION.to_string(),
+            request_version: self.request.request_version.clone(),
+            status: GeoCompositionStatus::Ambiguous,
+            summary: GeoCompositionSummary {
+                parcel_candidates: self.request.parcels.len(),
+                building_candidates: 0,
+                candidate_assignments: saturating_pow2_u64(n),
+                structurally_feasible_assignments: saturating_pow2_u64(n).saturating_sub(1),
+                hard_constraint_evaluations: 0,
+                residual_model_count: u64::MAX,
+                summary_counts_saturated: true,
+                component_count: 0,
+                residual_models_materialized: false,
+            },
+            hard_forced: GeoCompositionBackbone {
+                parcels: Vec::new(),
+                buildings: Vec::new(),
+            },
+            residual_models: Vec::new(),
+            soft_ranked: Vec::new(),
+            conflict_constraint_ids: Vec::new(),
+            budget_fallback: None,
+        }
     }
 
     fn solve_component(

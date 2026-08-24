@@ -702,6 +702,43 @@ fn oversized_component_budget_fallback_is_typed_and_deterministic() {
 }
 
 #[test]
+fn anyof_fastpath_declines_oversized_mask_work_into_typed_budget_fallback() {
+    // 30 overlapping AnyOf constraints over 12 parcels put the closed-form
+    // mask loop at (n + 1) * 2^30 visits — far past the fast-path work
+    // ceiling. The solver must decline the fast path and let the component
+    // solver's budget produce the typed handoff instead of enumerating.
+    let parcels: Vec<String> = (0..12).map(|index| format!("p{index:02}")).collect();
+    let constraints: Vec<GeoHardConstraint> = (0..30)
+        .map(|index| GeoHardConstraint {
+            id: format!("anyof-{index:02}"),
+            constraint: GeoHardConstraintKind::AnyOf {
+                members: parcels
+                    .iter()
+                    .skip(index % 3)
+                    .map(|id| GeoEntityRef::new(GeoEntityLevel::Parcel, id.clone()))
+                    .collect(),
+            },
+        })
+        .collect();
+    let request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        universe: GeoCompositionUniverse {
+            parcels,
+            buildings: Vec::new(),
+        },
+        hard_constraints: constraints,
+        soft_preferences: Vec::new(),
+        max_assignments: 1_000,
+        max_materialized_models: 0,
+    };
+    let artifact = solve_composition(&request).expect("decline is a domain outcome");
+    assert_eq!(artifact.status, GeoCompositionStatus::BudgetFallback);
+    assert!(artifact.budget_fallback.is_some());
+    // Fast-path marker absent: component decomposition was used.
+    assert!(artifact.summary.component_count > 0);
+}
+
+#[test]
 fn bounded_search_completes_when_pruning_collapses_the_tree() {
     // Same single-component shape as the fallback test, but Forbid pins
     // eleven parcels and Require forces p00; partial-feasibility pruning

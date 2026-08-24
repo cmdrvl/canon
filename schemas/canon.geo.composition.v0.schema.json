@@ -1,0 +1,214 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.composition.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.composition.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_composition.v0",
+      "type": "string"
+    },
+    "request_version": {
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/composition_status"
+    },
+    "summary": {
+      "$ref": "#/$defs/composition_summary"
+    },
+    "hard_forced": {
+      "$ref": "#/$defs/composition_backbone"
+    },
+    "residual_models": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/composition_model"
+      }
+    },
+    "soft_ranked": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/soft_ranked_model"
+      }
+    },
+    "conflict_constraint_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "budget_fallback": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/composition_fallback"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "version",
+    "request_version",
+    "status",
+    "summary",
+    "hard_forced",
+    "residual_models",
+    "soft_ranked"
+  ],
+  "$defs": {
+    "composition_status": {
+      "type": "string",
+      "enum": [
+        "resolved",
+        "ambiguous",
+        "conflict",
+        "budget_fallback"
+      ]
+    },
+    "composition_model": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parcels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "buildings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "parcels",
+        "buildings"
+      ]
+    },
+    "composition_backbone": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parcels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "buildings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "parcels",
+        "buildings"
+      ]
+    },
+    "soft_ranked_model": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cost": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "model": {
+          "$ref": "#/$defs/composition_model"
+        }
+      },
+      "required": [
+        "rank",
+        "cost",
+        "model"
+      ]
+    },
+    "composition_fallback": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "component_keys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_component_variables": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "guidance": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "component_keys",
+        "max_component_variables",
+        "guidance"
+      ]
+    },
+    "composition_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parcel_candidates": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "building_candidates": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidate_assignments": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "structurally_feasible_assignments": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hard_constraint_evaluations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "residual_model_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "summary_counts_saturated": {
+          "type": "boolean"
+        },
+        "component_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "residual_models_materialized": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "parcel_candidates",
+        "building_candidates",
+        "candidate_assignments",
+        "structurally_feasible_assignments",
+        "hard_constraint_evaluations",
+        "residual_model_count",
+        "summary_counts_saturated",
+        "component_count",
+        "residual_models_materialized"
+      ]
+    }
+  }
+}

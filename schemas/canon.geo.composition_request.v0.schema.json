@@ -1,0 +1,345 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.composition_request.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.composition_request.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_composition_request.v0",
+      "type": "string"
+    },
+    "universe": {
+      "$ref": "#/$defs/universe"
+    },
+    "hard_constraints": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/hard_constraint"
+      }
+    },
+    "soft_preferences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/soft_preference"
+      }
+    },
+    "max_assignments": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_materialized_models": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "version",
+    "universe",
+    "hard_constraints",
+    "soft_preferences",
+    "max_assignments",
+    "max_materialized_models"
+  ],
+  "$defs": {
+    "entity_level": {
+      "type": "string",
+      "enum": [
+        "poi_unit",
+        "building",
+        "parcel",
+        "property"
+      ]
+    },
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/entity_level"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "id"
+      ]
+    },
+    "building_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "parcel_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "parcel_ids"
+      ]
+    },
+    "universe": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parcels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "buildings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/building_candidate"
+          }
+        }
+      },
+      "required": [
+        "parcels",
+        "buildings"
+      ]
+    },
+    "integer_member_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "value"
+      ]
+    },
+    "hard_constraint_kind": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "require"
+            },
+            "member": {
+              "$ref": "#/$defs/entity_ref"
+            }
+          },
+          "required": [
+            "kind",
+            "member"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "forbid"
+            },
+            "member": {
+              "$ref": "#/$defs/entity_ref"
+            }
+          },
+          "required": [
+            "kind",
+            "member"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "cardinality"
+            },
+            "level": {
+              "$ref": "#/$defs/entity_level"
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "level",
+            "min",
+            "max"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "allowed_sets"
+            },
+            "level": {
+              "$ref": "#/$defs/entity_level"
+            },
+            "sets": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "level",
+            "sets"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "any_of"
+            },
+            "members": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/entity_ref"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "members"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "integer_sum_band"
+            },
+            "level": {
+              "$ref": "#/$defs/entity_level"
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/integer_member_value"
+              }
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "kind",
+            "level",
+            "values",
+            "min",
+            "max"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "all_or_none"
+            },
+            "members": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/entity_ref"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "members"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "requires"
+            },
+            "if_member": {
+              "$ref": "#/$defs/entity_ref"
+            },
+            "then_member": {
+              "$ref": "#/$defs/entity_ref"
+            }
+          },
+          "required": [
+            "kind",
+            "if_member",
+            "then_member"
+          ]
+        }
+      ]
+    },
+    "hard_constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "constraint": {
+          "$ref": "#/$defs/hard_constraint_kind"
+        }
+      },
+      "required": [
+        "id",
+        "constraint"
+      ]
+    },
+    "soft_preference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "member": {
+          "$ref": "#/$defs/entity_ref"
+        },
+        "cost_if_absent": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "member",
+        "cost_if_absent"
+      ]
+    }
+  }
+}

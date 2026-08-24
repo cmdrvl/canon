@@ -155,6 +155,36 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo solve",
+      "family": "geo",
+      "clap_path": "geo solve",
+      "operator_name": "geo solve",
+      "primary_contracts": ["canon_geo_composition_request.v0", "canon_geo_composition.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon geo compile-evidence",
+      "family": "geo",
+      "clap_path": "geo compile-evidence",
+      "operator_name": "geo compile-evidence",
+      "primary_contracts": [
+        "canon_geo_evidence_request.v0",
+        "canon_geo_evidence_compilation.v0"
+      ],
+      "action": "preserve"
+    },
+    {
+      "id": "canon geo evaluate",
+      "family": "geo",
+      "clap_path": "geo evaluate",
+      "operator_name": "geo evaluate",
+      "primary_contracts": [
+        "canon_geo_population_request.v0",
+        "canon_geo_population_evaluation.v0"
+      ],
+      "action": "preserve"
+    },
+    {
       "id": "canon inbox list",
       "family": "inbox",
       "clap_path": "inbox list",

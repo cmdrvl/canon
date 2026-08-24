@@ -154,6 +154,8 @@ pub enum CanonCommand {
     Package(PackageCli),
     /// Project bootstrap, validation, and description commands
     Project(ProjectCli),
+    /// Bounded geospatial composition, evidence admission, and evaluation commands
+    Geo(GeoCli),
     /// Unresolved inbox triage, review export, and bounded entity planning
     Inbox(InboxCli),
     /// Registry maintenance and inspection commands
@@ -175,6 +177,12 @@ pub struct PackageCli {
 pub struct ProjectCli {
     #[command(subcommand)]
     pub command: ProjectSubcommand,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoCli {
+    #[command(subcommand)]
+    pub command: GeoSubcommand,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -207,6 +215,38 @@ pub enum ProjectSubcommand {
     Validate(ProjectValidateCli),
     /// Describe project capabilities, state flags, side effects, and next commands
     Describe(ProjectDescribeCli),
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum GeoSubcommand {
+    /// Solve the exact hard-feasible parcel/building residual for a composition request
+    Solve(GeoSolveCli),
+    /// Admit versioned rho observations into a bounded composition request
+    #[command(name = "compile-evidence")]
+    CompileEvidence(GeoCompileEvidenceCli),
+    /// Evaluate labeled composition cases without leaking labels into the solver
+    Evaluate(GeoEvaluateCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoSolveCli {
+    /// JSON file holding a canon_geo_composition_request.v0 request
+    #[arg(long)]
+    pub request: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoCompileEvidenceCli {
+    /// JSON file holding a canon_geo_evidence_request.v0 request
+    #[arg(long)]
+    pub request: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoEvaluateCli {
+    /// JSON file holding a canon_geo_population_request.v0 request
+    #[arg(long)]
+    pub population: PathBuf,
 }
 
 #[derive(Subcommand, Debug, Clone)]

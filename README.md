@@ -376,6 +376,9 @@ canon package pull --registry <OCI_BASE_URL> --repository <REPOSITORY> --cache <
 canon project init <DIR> [--project-id <ID>] [--mapping-profile <REF>] [--emit json|summary]
 canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]
 canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]
+canon geo solve --request <REQUEST.json>
+canon geo compile-evidence --request <REQUEST.json>
+canon geo evaluate --population <POPULATION.json>
 canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]
 canon inbox show --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json|summary]
 canon inbox explain --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json|summary]

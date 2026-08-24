@@ -667,6 +667,189 @@
       ]
     },
     {
+      "name": "geo solve",
+      "usage": "canon geo solve --request <REQUEST.json>",
+      "description": "Solve the exact hard-feasible parcel/building residual for a bounded composition request and emit the canonical artifact on stdout",
+      "output_mode": "json",
+      "output_schema": "canon_geo_composition.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "geo requests are answered on stdout; no registry, cache, or work-dir writes",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "geo composition artifact emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, request IO, parse, or artifact contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon geo evaluate --population <POPULATION.json>",
+      "recovery": {
+        "next_command": "canon geo evaluate --population <POPULATION.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "request",
+          "flag": "--request",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_composition_request.v0 request"
+        }
+      ]
+    },
+    {
+      "name": "geo compile-evidence",
+      "usage": "canon geo compile-evidence --request <REQUEST.json>",
+      "description": "Admit versioned rho observations into a bounded composition request, recording each admission disposition, and emit the canonical artifact on stdout",
+      "output_mode": "json",
+      "output_schema": "canon_geo_evidence_compilation.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "geo requests are answered on stdout; no registry, cache, or work-dir writes",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "geo evidence compilation artifact emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, request IO, parse, or artifact contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon geo solve --request <REQUEST.json>",
+      "recovery": {
+        "next_command": "canon geo solve --request <REQUEST.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "request",
+          "flag": "--request",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_evidence_request.v0 request"
+        }
+      ]
+    },
+    {
+      "name": "geo evaluate",
+      "usage": "canon geo evaluate --population <POPULATION.json>",
+      "description": "Evaluate labeled composition cases without letting labels reach the compiler or solver and emit the canonical evaluation artifact on stdout",
+      "output_mode": "json",
+      "output_schema": "canon_geo_population_evaluation.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "geo requests are answered on stdout; no registry, cache, or work-dir writes",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "geo population evaluation artifact emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, request IO, parse, or artifact contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon geo solve --request <REQUEST.json>",
+      "recovery": {
+        "next_command": "canon geo solve --request <REQUEST.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "population",
+          "flag": "--population",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_population_request.v0 request"
+        }
+      ]
+    },
+    {
       "name": "inbox list",
       "usage": "canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]",
       "description": "Rank unresolved inbox items with stable filtering, pagination, cursors, and next commands without making identity decisions",

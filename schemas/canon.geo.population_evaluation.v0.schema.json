@@ -1,0 +1,226 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.population_evaluation.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.population_evaluation.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_population_evaluation.v0",
+      "type": "string"
+    },
+    "request_version": {
+      "type": "string"
+    },
+    "summary": {
+      "$ref": "#/$defs/population_summary"
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/population_case_evaluation"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "request_version",
+    "summary",
+    "cases"
+  ],
+  "$defs": {
+    "composition_backbone": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parcels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "buildings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "parcels",
+        "buildings"
+      ]
+    },
+    "population_case_status": {
+      "type": "string",
+      "enum": [
+        "resolved",
+        "ambiguous",
+        "conflict",
+        "assignment_budget_exceeded",
+        "component_budget_fallback"
+      ]
+    },
+    "population_case_evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/population_case_status"
+        },
+        "compilation_digest": {
+          "type": "string"
+        },
+        "solver_digest": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "candidate_members": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truth_members": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truth_members_in_universe": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "residual_model_count": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "residual_count_saturated": {
+          "type": "boolean"
+        },
+        "full_truth_recall": {
+          "type": "boolean"
+        },
+        "truth_model_in_residual": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hard_forced": {
+          "$ref": "#/$defs/composition_backbone"
+        },
+        "backbone_true_positive_members": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "backbone_false_positive_members": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "case_id",
+        "status",
+        "compilation_digest",
+        "candidate_members",
+        "truth_members",
+        "truth_members_in_universe",
+        "residual_count_saturated",
+        "full_truth_recall",
+        "hard_forced",
+        "backbone_true_positive_members",
+        "backbone_false_positive_members"
+      ]
+    },
+    "population_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resolved_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ambiguous_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "conflict_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "assignment_budget_exceeded_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "component_budget_fallback_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "abstention_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "false_merge_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "full_truth_recall_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truth_members": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truth_members_in_universe": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "backbone_true_positive_members": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "backbone_false_positive_members": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "cases",
+        "resolved_cases",
+        "ambiguous_cases",
+        "conflict_cases",
+        "assignment_budget_exceeded_cases",
+        "component_budget_fallback_cases",
+        "abstention_cases",
+        "false_merge_cases",
+        "full_truth_recall_cases",
+        "truth_members",
+        "truth_members_in_universe",
+        "backbone_true_positive_members",
+        "backbone_false_positive_members"
+      ]
+    }
+  }
+}
