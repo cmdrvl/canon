@@ -35,6 +35,20 @@ struct PopulationFixture {
 }
 
 #[derive(Debug, Deserialize)]
+struct GeodiscFixture {
+    discs: Vec<GeodiscEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GeodiscEntry {
+    case_id: String,
+    #[serde(default)]
+    property_ordinal: usize,
+    accuracy_type: String,
+    in_disc_bbls: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct PopulationCase {
     case_id: String,
     truth_parcels: Vec<String>,
@@ -189,15 +203,17 @@ enum PadDisposition {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum AdjudicationVerdict {
-    ResolvedByPadSpan,
+    ResolvedByJointChannels,
     CollapsedHonestAmbiguity,
     ThinEvidenceUnchangedVacuousChannel,
     UnchangedNonvacuousChannel,
     RefutationFinding,
+    GeodiscRefutationFinding,
     BaseConflict,
     /// The bounded search could not finish inside the declared budget on an
     /// applied channel. Never read as collapse or resolution.
     ChannelBudgetFallback,
+    /// Truth parcels fall outside the candidate universe or lack the
     /// attribute rows channels read. The recorded L.3 reach limitation;
     /// soundness claims are undefined here and must not fire.
     TruthUnrepresentableReachLimit,
@@ -212,6 +228,9 @@ struct AdjudicationRow {
     parsed_numbers: Vec<u64>,
     pad_set_size: usize,
     pad_disposition: PadDisposition,
+    geodisc_properties: usize,
+    geodisc_applied: usize,
+    geodisc_empty: usize,
     base_residual_model_count: u64,
     base_counts_saturated: bool,
     after_residual_model_count: u64,
@@ -231,6 +250,7 @@ fn adjudicate_row(
     population_case: &PopulationCase,
     enrichment_case: &EnrichmentCase,
     attributes: &BTreeMap<String, ParcelAttributes>,
+    case_discs: &[GeodiscEntry],
 ) -> AdjudicationRow {
     let numbers = parsed_address_numbers(enrichment_case);
     let satisfying =
@@ -275,25 +295,63 @@ fn adjudicate_row(
     let truth_survives_base = model_satisfies_request(&base_request(population_case), &truth_model)
         .expect("validated request");
 
-    let after_artifact = if matches!(disposition, PadDisposition::Applied) {
-        solve_composition(&request).expect("constrained request must solve")
+    // Geodisc channels: one sound constraint per ASSERTED property — every
+    // property's frontage must exist inside the collateral set, so some
+    // selected parcel must sit within that property's declared tier radius.
+    let candidate_set: BTreeSet<&String> = population_case.candidate_parcels.iter().collect();
+    let mut geodisc_properties = 0_usize;
+    let mut geodisc_applied = 0_usize;
+    let mut geodisc_empty = 0_usize;
+    let mut joint_request = request.clone();
+    for disc in case_discs {
+        if disc.in_disc_bbls.is_empty() {
+            // No MapPLUTO centroid at all near this asserted point.
+            geodisc_empty += 1;
+            continue;
+        }
+        geodisc_properties += 1;
+        let members: Vec<GeoEntityRef> = disc
+            .in_disc_bbls
+            .iter()
+            .filter(|id| candidate_set.contains(id))
+            .map(|id| GeoEntityRef::new(GeoEntityLevel::Parcel, id.clone()))
+            .collect();
+        if members.is_empty() {
+            geodisc_empty += 1;
+        } else {
+            geodisc_applied += 1;
+            joint_request.hard_constraints.push(GeoHardConstraint {
+                id: format!("geodisc-{}-{}", disc.property_ordinal, disc.accuracy_type),
+                constraint: GeoHardConstraintKind::AnyOf { members },
+            });
+        }
+    }
+    let any_channel_applied = matches!(disposition, PadDisposition::Applied) || geodisc_applied > 0;
+
+    let pad_only_artifact = if matches!(disposition, PadDisposition::Applied) {
+        solve_composition(&request).expect("pad-only request must solve")
     } else {
         base_artifact.clone()
     };
-    let after_status = if matches!(disposition, PadDisposition::Applied) {
+    let joint_artifact = if any_channel_applied {
+        solve_composition(&joint_request).expect("joint request must solve")
+    } else {
+        base_artifact.clone()
+    };
+    let after_artifact = &joint_artifact;
+    let after_status = if any_channel_applied {
         Some(format!("{:?}", after_artifact.status))
     } else {
         None
     };
-    let after_conflict_ids = if matches!(disposition, PadDisposition::Applied)
-        && after_artifact.status == GeoCompositionStatus::Conflict
-    {
-        after_artifact.conflict_constraint_ids.clone()
-    } else {
-        Vec::new()
-    };
+    let after_conflict_ids =
+        if any_channel_applied && after_artifact.status == GeoCompositionStatus::Conflict {
+            after_artifact.conflict_constraint_ids.clone()
+        } else {
+            Vec::new()
+        };
     let truth_survives_after =
-        model_satisfies_request(&request, &truth_model).expect("validated request");
+        model_satisfies_request(&joint_request, &truth_model).expect("validated request");
 
     // Diagnostic-only empirical channel: asserted SQFT versus MapPLUTO
     // bldg_area within a declared +/-25% band (section 2.1's honest
@@ -345,30 +403,26 @@ fn adjudicate_row(
 
     let verdict = if !truth_representable {
         AdjudicationVerdict::TruthUnrepresentableReachLimit
+    } else if matches!(disposition, PadDisposition::InfeasibleNoCandidateCovers) {
+        AdjudicationVerdict::RefutationFinding
+    } else if geodisc_empty > 0 {
+        AdjudicationVerdict::GeodiscRefutationFinding
+    } else if joint_artifact.status == GeoCompositionStatus::Conflict {
+        AdjudicationVerdict::BaseConflict
+    } else if after_artifact.status == GeoCompositionStatus::BudgetFallback {
+        AdjudicationVerdict::ChannelBudgetFallback
+    } else if after_artifact.status == GeoCompositionStatus::Resolved {
+        AdjudicationVerdict::ResolvedByJointChannels
+    } else if after_artifact.summary.residual_model_count
+        < base_artifact.summary.residual_model_count
+        || pad_only_artifact.summary.residual_model_count
+            < base_artifact.summary.residual_model_count
+    {
+        AdjudicationVerdict::CollapsedHonestAmbiguity
+    } else if geodisc_applied > 0 || matches!(disposition, PadDisposition::Applied) {
+        AdjudicationVerdict::UnchangedNonvacuousChannel
     } else {
-        match disposition {
-            PadDisposition::InfeasibleNoCandidateCovers => AdjudicationVerdict::RefutationFinding,
-            _ if base_artifact.status == GeoCompositionStatus::Conflict => {
-                AdjudicationVerdict::BaseConflict
-            }
-            PadDisposition::Applied
-                if after_artifact.status == GeoCompositionStatus::BudgetFallback =>
-            {
-                AdjudicationVerdict::ChannelBudgetFallback
-            }
-            PadDisposition::Applied => {
-                if after_artifact.status == GeoCompositionStatus::Resolved {
-                    AdjudicationVerdict::ResolvedByPadSpan
-                } else if after_artifact.summary.residual_model_count
-                    < base_artifact.summary.residual_model_count
-                {
-                    AdjudicationVerdict::CollapsedHonestAmbiguity
-                } else {
-                    AdjudicationVerdict::UnchangedNonvacuousChannel
-                }
-            }
-            _ => AdjudicationVerdict::ThinEvidenceUnchangedVacuousChannel,
-        }
+        AdjudicationVerdict::ThinEvidenceUnchangedVacuousChannel
     };
 
     AdjudicationRow {
@@ -379,6 +433,9 @@ fn adjudicate_row(
         parsed_numbers: numbers,
         pad_set_size: satisfying.len(),
         pad_disposition: disposition,
+        geodisc_properties,
+        geodisc_applied,
+        geodisc_empty,
         base_residual_model_count: base_artifact.summary.residual_model_count,
         base_counts_saturated: base_artifact.summary.summary_counts_saturated,
         after_residual_model_count: after_artifact.summary.residual_model_count,
@@ -393,9 +450,20 @@ fn adjudicate_row(
     }
 }
 
-fn load_cases() -> Vec<(PopulationCase, EnrichmentCase)> {
+fn load_cases() -> Vec<(PopulationCase, EnrichmentCase, Vec<GeodiscEntry>)> {
     let population = population_fixture();
     let enrichment = enrichment_fixture();
+    let geodisc = serde_json::from_str::<GeodiscFixture>(include_str!(
+        "fixtures/geo/e4_gate_v2_geodisc.json"
+    ))
+    .expect("geodisc fixture must parse");
+    let mut discs_by_id: BTreeMap<String, Vec<GeodiscEntry>> = BTreeMap::new();
+    for disc in geodisc.discs {
+        discs_by_id
+            .entry(disc.case_id.clone())
+            .or_default()
+            .push(disc);
+    }
     let mut enrichment_by_id: BTreeMap<String, EnrichmentCase> = enrichment
         .cases
         .into_iter()
@@ -407,7 +475,8 @@ fn load_cases() -> Vec<(PopulationCase, EnrichmentCase)> {
         .into_iter()
         .map(|case| {
             let enriched = enrichment_by_id.remove(&case.case_id).expect("joined case");
-            (case, enriched)
+            let discs = discs_by_id.remove(&case.case_id).unwrap_or_default();
+            (case, enriched, discs)
         })
         .collect()
 }
@@ -416,8 +485,8 @@ fn run_adjudication() -> Vec<AdjudicationRow> {
     let attributes = enrichment_fixture().candidate_parcel_attributes;
     load_cases()
         .iter()
-        .map(|(population_case, enrichment_case)| {
-            adjudicate_row(population_case, enrichment_case, &attributes)
+        .map(|(population_case, enrichment_case, discs)| {
+            adjudicate_row(population_case, enrichment_case, &attributes, discs)
         })
         .collect()
 }
@@ -455,11 +524,10 @@ fn adjudication_table_is_complete_and_sound_channels_never_prune_truth() {
         .filter(|row| {
             matches!(
                 row.verdict,
-                AdjudicationVerdict::ResolvedByPadSpan
+                AdjudicationVerdict::ResolvedByJointChannels
                     | AdjudicationVerdict::CollapsedHonestAmbiguity
-                    | AdjudicationVerdict::ThinEvidenceUnchangedVacuousChannel
-                    | AdjudicationVerdict::UnchangedNonvacuousChannel
                     | AdjudicationVerdict::RefutationFinding
+                    | AdjudicationVerdict::GeodiscRefutationFinding
                     | AdjudicationVerdict::BaseConflict
                     | AdjudicationVerdict::ChannelBudgetFallback
                     | AdjudicationVerdict::TruthUnrepresentableReachLimit

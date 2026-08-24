@@ -86,6 +86,48 @@ Verdict totals: **5 collapsed-honest · 2 unchanged-under-saturation ·
    the ±25% band in 1 of 15 cases (4/4 hits there), candidates hit sparsely.
    Row 6 remains sparse-here, not dead.
 
+
+## Joint pass — geocode-disc channel added (2026-08-24)
+
+New pinned fixture: `e4_gate_v2_geodisc.json` (30 property discs; radii
+rooftop=8 m, nearest_rooftop_match/range_interpolation=150 m; distances
+computed server-side as integer millimetres, provenance in-snapshot).
+
+Channel semantics (sound direction): **every asserted property must be
+covered by some selected parcel within its tier radius** — one hard `AnyOf`
+per property, intersected with case candidates.
+
+| Outcome | Count | Notes |
+|---|---:|---|
+| Property discs applied | 12 / 30 | intersected non-empty |
+| Property discs empty vs candidates | 18 | 16 raw-empty + 2 candidate-gap; see below |
+| Joint BudgetFallback | 6 | merged components exceed 2^21 — solver frontier, recorded not guessed |
+| GeodiscRefutationFinding (representable) | 2 | both driven by raw-empty rooftop discs |
+| rho violations | 0 | tripwire held through the joint run |
+
+Findings:
+
+1. **Two provisional geocode-defect proofs** (`41858dad7a1286af`,
+   `da11f90bd6d69f44`): every property of these loans is rooftop-tier yet
+   has **zero MapPLUTO centroids within 8 m**, while truth parcels exist
+   elsewhere. Provisional because the centroid proxy tightens beyond what
+   the source supports on large lots — formal refutation requires
+   `ST_DWITHIN(GEOM_GEOG)` containment semantics (bd-3nc7 track). In
+   `da11f...`, the sibling 150 m disc contains **both truth parcels**: the
+   adjudication machinery just separated trustworthy from untrustworthy
+   channels inside ONE loan.
+2. **Solver frontier moved, honestly**: joint constraints merge PAD and
+   disc components into widths past 2^21; six cases return typed
+   `BudgetFallback` rather than guessed counts (bounded DFS dominates the
+   ~460 s runtime). Next lever is component factorization improvements,
+   not bigger budgets.
+3. Reach unchanged (7/15 representable) — the joint channel cannot speak
+   where truth was never landed.
+
+The "Next" item below is half-done as of this section: centroid landing +
+disc channels are IN; exact containment upgrade and the 79-loan extension
+remain.
+
 ## Next (still open on bd-1g4x)
 
 - Land parcel coordinates/centroids to admit geocode-disc channels exactly
