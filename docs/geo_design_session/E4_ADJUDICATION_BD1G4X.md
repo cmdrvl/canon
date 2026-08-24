@@ -87,46 +87,46 @@ Verdict totals: **5 collapsed-honest · 2 unchanged-under-saturation ·
    Row 6 remains sparse-here, not dead.
 
 
-## Joint pass — geocode-disc channel added (2026-08-24)
+## Joint pass — geocode-disc channel (containment-corrected, 2026-08-24)
 
-New pinned fixture: `e4_gate_v2_geodisc.json` (30 property discs; radii
-rooftop=8 m, nearest_rooftop_match/range_interpolation=150 m; distances
-computed server-side as integer millimetres, provenance in-snapshot).
+Pinned fixture: `e4_gate_v2_geodisc.json`. **The landed derivation
+supersedes an earlier centroid-distance draft from the same day**: two
+provisional rooftop "geocode-defect proofs" were overturned by polygon
+containment — every asserted point has lots at `nearest_mm = 0`
+(`ST_DWITHIN(GEOM_GEOG, pt, 8)`). The centroid proxy pruned unsoundly on
+large lots; the canonical disc is geometry containment per plan §3, exactly
+as Appendix D argued for the footprint predicate. Process receipt: the
+harness tripwire plus one verification query killed the unsound admission
+before it reached any conclusion.
 
 Channel semantics (sound direction): **every asserted property must be
-covered by some selected parcel within its tier radius** — one hard `AnyOf`
-per property, intersected with case candidates.
+covered by some selected parcel whose geometry lies within its tier radius**
+(rooftop 8 m; nearest_rooftop_match / range_interpolation 150 m) — one hard
+`AnyOf` per property, intersected with case candidates.
+
+Joint-run results (base vs base + PAD-span + all property discs):
 
 | Outcome | Count | Notes |
 |---|---:|---|
-| Property discs applied | 12 / 30 | intersected non-empty |
-| Property discs empty vs candidates | 18 | 16 raw-empty + 2 candidate-gap; see below |
-| Joint BudgetFallback | 6 | merged components exceed 2^21 — solver frontier, recorded not guessed |
-| GeodiscRefutationFinding (representable) | 2 | both driven by raw-empty rooftop discs |
-| rho violations | 0 | tripwire held through the joint run |
+| rho violations (representable truth pruned) | **0** | across every applied channel |
+| Measurable honest collapses | 3 | a001 127->112; da11f 524287->442368 (-15.6%); plus reach-limited shrink |
+| Largest measured collapse | 4.6x | 0b6d 2.199e12 -> 4.79e11 on a reach-limited case |
+| ChannelBudgetFallback | 7 | merged PAD+disc components exceed 2^21 width — counts withheld, never guessed |
+| UnchangedNonvacuous (u64-saturated) | 2 | both 92-candidate cases |
+| Reach-limit rows | 8 | adjudication withheld per L.3 gate |
 
-Findings:
+Readings:
 
-1. **Two provisional geocode-defect proofs** (`41858dad7a1286af`,
-   `da11f90bd6d69f44`): every property of these loans is rooftop-tier yet
-   has **zero MapPLUTO centroids within 8 m**, while truth parcels exist
-   elsewhere. Provisional because the centroid proxy tightens beyond what
-   the source supports on large lots — formal refutation requires
-   `ST_DWITHIN(GEOM_GEOG)` containment semantics (bd-3nc7 track). In
-   `da11f...`, the sibling 150 m disc contains **both truth parcels**: the
-   adjudication machinery just separated trustworthy from untrustworthy
-   channels inside ONE loan.
-2. **Solver frontier moved, honestly**: joint constraints merge PAD and
-   disc components into widths past 2^21; six cases return typed
-   `BudgetFallback` rather than guessed counts (bounded DFS dominates the
-   ~460 s runtime). Next lever is component factorization improvements,
-   not bigger budgets.
-3. Reach unchanged (7/15 representable) — the joint channel cannot speak
-   where truth was never landed.
-
-The "Next" item below is half-done as of this section: centroid landing +
-disc channels are IN; exact containment upgrade and the 79-loan extension
-remain.
+1. **Containment discs prune strictly harder than centroid proxies while
+   staying sound** — overlap pulls adjacent frontage lots into the
+   existential set, buying correctness and pruning power together.
+2. **The binding constraint on E4 completion is solver component width**,
+   not evidence availability: seven cases cannot report exact joint
+   residuals inside 2^21 assignments. The named follow-up is factorized
+   decomposition inside merged components (Regin-style SCC /
+   tree-decomposition per the section 6 ladder).
+3. Reach stays 7/15 — eight rows still need their truth parcels landed
+   before adjudication can speak.
 
 ## Next (still open on bd-1g4x)
 

@@ -526,6 +526,8 @@ fn adjudication_table_is_complete_and_sound_channels_never_prune_truth() {
                 row.verdict,
                 AdjudicationVerdict::ResolvedByJointChannels
                     | AdjudicationVerdict::CollapsedHonestAmbiguity
+                    | AdjudicationVerdict::ThinEvidenceUnchangedVacuousChannel
+                    | AdjudicationVerdict::UnchangedNonvacuousChannel
                     | AdjudicationVerdict::RefutationFinding
                     | AdjudicationVerdict::GeodiscRefutationFinding
                     | AdjudicationVerdict::BaseConflict
