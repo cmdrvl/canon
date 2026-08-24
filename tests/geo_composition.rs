@@ -584,7 +584,13 @@ fn factorized_solver_matches_brute_force_oracle_on_random_universes() {
             artifact.summary.residual_model_count, expected_count,
             "iteration {iteration}"
         );
-        assert_eq!(artifact.residual_models, expected, "iteration {iteration}");
+        if artifact.summary.component_count == 0 {
+            // AnyOf-only fast path: exact count and backbone without
+            // materialization; the enumerated list is unavailable by design.
+            assert!(artifact.residual_models.is_empty(), "iteration {iteration}");
+        } else {
+            assert_eq!(artifact.residual_models, expected, "iteration {iteration}");
+        }
         if expected_count > 0 {
             let first = &expected[0];
             let backbone_parcels: Vec<String> = first
@@ -840,4 +846,146 @@ fn normative_section_16_1_shapes_hold_by_name() {
         building_sets,
         [vec!["1076314".to_string()], vec!["1085187".to_string()]]
     );
+}
+
+#[test]
+fn anyof_only_fastpath_matches_brute_force_oracle() {
+    let mut rng = Lcg(0xBEEF_CAFE);
+    for iteration in 0..200 {
+        let parcel_count = 1 + rng.below(6);
+        let parcels: Vec<String> = (0..parcel_count).map(|index| format!("p{index}")).collect();
+        let set_count = 1 + rng.below(4);
+        let constraints = (0..set_count)
+            .map(|index| GeoHardConstraint {
+                id: format!("s{index}"),
+                constraint: GeoHardConstraintKind::AnyOf {
+                    members: parcels
+                        .iter()
+                        .filter(|_| rng.below(2) == 0)
+                        .map(|id| GeoEntityRef::new(GeoEntityLevel::Parcel, id.clone()))
+                        .collect(),
+                },
+            })
+            .filter(|constraint| {
+                matches!(
+                    &constraint.constraint,
+                    GeoHardConstraintKind::AnyOf { members } if !members.is_empty()
+                )
+            })
+            .collect::<Vec<_>>();
+        if constraints.is_empty() {
+            continue;
+        }
+
+        let request = GeoCompositionRequest {
+            version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+            universe: GeoCompositionUniverse {
+                parcels: parcels.clone(),
+                buildings: Vec::new(),
+            },
+            hard_constraints: constraints.clone(),
+            soft_preferences: Vec::new(),
+            max_assignments: 1 << 20,
+            max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+        };
+        let artifact = solve_composition(&request)
+            .unwrap_or_else(|error| panic!("iteration {iteration} must solve: {error}"));
+        let expected = oracle_residual(&parcels, &[], &constraints);
+        let expected_status = match expected.len() {
+            0 => GeoCompositionStatus::Conflict,
+            1 => GeoCompositionStatus::Resolved,
+            _ => GeoCompositionStatus::Ambiguous,
+        };
+        assert_eq!(artifact.status, expected_status, "iteration {iteration}");
+        assert_eq!(
+            artifact.summary.residual_model_count,
+            expected.len() as u64,
+            "iteration {iteration}"
+        );
+        // Fast-path marker: no component decomposition was used.
+        assert_eq!(artifact.summary.component_count, 0);
+        if expected_status == GeoCompositionStatus::Conflict {
+            assert!(!artifact.conflict_constraint_ids.is_empty());
+        }
+    }
+}
+
+#[test]
+fn anyof_fastpath_backbone_and_conflict_cores_are_exact() {
+    // Singleton set forces its member.
+    let forced = |members: &[&str]| {
+        let request = GeoCompositionRequest {
+            version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+            universe: GeoCompositionUniverse {
+                parcels: ["a", "b", "c"].iter().map(|id| id.to_string()).collect(),
+                buildings: Vec::new(),
+            },
+            hard_constraints: vec![GeoHardConstraint {
+                id: "s".to_string(),
+                constraint: GeoHardConstraintKind::AnyOf {
+                    members: members
+                        .iter()
+                        .map(|id| GeoEntityRef::new(GeoEntityLevel::Parcel, (*id).to_string()))
+                        .collect(),
+                },
+            }],
+            soft_preferences: Vec::new(),
+            max_assignments: 1 << 12,
+            max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+        };
+        solve_composition(&request).expect("must solve")
+    };
+    let artifact = forced(&["b"]);
+    assert_eq!(artifact.status, GeoCompositionStatus::Ambiguous);
+    assert_eq!(artifact.hard_forced.parcels, ["b"]);
+    assert_eq!(artifact.summary.residual_model_count, 4); // {b},{a,b},{b,c},{a,b,c}
+
+    // Disjoint singletons are unsatisfiable together; the core names both.
+    let request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        universe: GeoCompositionUniverse {
+            parcels: ["a", "b"].iter().map(|id| id.to_string()).collect(),
+            buildings: Vec::new(),
+        },
+        hard_constraints: vec![
+            GeoHardConstraint {
+                id: "want-a".to_string(),
+                constraint: GeoHardConstraintKind::AnyOf {
+                    members: vec![GeoEntityRef::new(GeoEntityLevel::Parcel, "a")],
+                },
+            },
+            GeoHardConstraint {
+                id: "want-b".to_string(),
+                constraint: GeoHardConstraintKind::AnyOf {
+                    members: vec![GeoEntityRef::new(GeoEntityLevel::Parcel, "b")],
+                },
+            },
+        ],
+        soft_preferences: Vec::new(),
+        max_assignments: 1 << 8,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+    let artifact = solve_composition(&request).expect("must solve");
+    assert_eq!(artifact.status, GeoCompositionStatus::Resolved);
+    assert_eq!(artifact.summary.residual_model_count, 1);
+    assert_eq!(artifact.hard_forced.parcels, ["a", "b"]);
+
+    // An empty AnyOf set is rejected at normalization, never solved.
+    let invalid = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        universe: GeoCompositionUniverse {
+            parcels: vec!["a".to_string()],
+            buildings: Vec::new(),
+        },
+        hard_constraints: vec![GeoHardConstraint {
+            id: "empty-anyof".to_string(),
+            constraint: GeoHardConstraintKind::AnyOf {
+                members: Vec::new(),
+            },
+        }],
+        soft_preferences: Vec::new(),
+        max_assignments: 16,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+    assert!(solve_composition(&invalid).is_err());
 }

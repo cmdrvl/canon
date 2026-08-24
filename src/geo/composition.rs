@@ -608,6 +608,12 @@ impl<'a> FactorizedSolver<'a> {
     }
 
     fn solve(self) -> Result<GeoCompositionArtifact, GeoCompositionError> {
+        // Exact fast path for the pure-existential shape that admitted
+        // evidence channels produce (AnyOf-only, parcel universes): closed
+        // form inclusion-exclusion instead of exponential decomposition.
+        if let Some(artifact) = self.solve_anyof_only()? {
+            return Ok(artifact);
+        }
         let components = self.components();
         let component_constraints = self.component_constraints(&components)?;
         let mut solved: Vec<ComponentOutcome> = Vec::with_capacity(components.len());
@@ -615,6 +621,188 @@ impl<'a> FactorizedSolver<'a> {
             solved.push(self.solve_component(members, &component_constraints[component_id])?);
         }
         self.combine(components, solved, component_constraints)
+    }
+
+    /// Precondition guard for the AnyOf-only fast path.
+    fn is_anyof_only(&self) -> bool {
+        self.request.buildings.is_empty()
+            && !self.request.hard_constraints.is_empty()
+            && self.request.hard_constraints.iter().all(|constraint| {
+                matches!(constraint.constraint, GeoHardConstraintKind::AnyOf { .. })
+            })
+    }
+
+    /// Exact model count and backbone for AnyOf-only parcel universes via
+    /// inclusion-exclusion over the "set i is missed" events:
+    ///
+    ///   count = sum over T of (-1)^|T| * 2^(n - |union of sets in T|)
+    ///
+    /// A parcel is backbone iff removing it from the universe leaves zero
+    /// valid models. Arithmetic beyond exact u128 range saturates with the
+    /// declared flag rather than approximating silently. Soft preferences
+    /// never constrain; this path does not materialize residual models.
+    fn solve_anyof_only(&self) -> Result<Option<GeoCompositionArtifact>, GeoCompositionError> {
+        if !self.is_anyof_only() {
+            return Ok(None);
+        }
+        let n = self.request.parcels.len();
+
+        let member_sets: Vec<Vec<&str>> = self
+            .request
+            .hard_constraints
+            .iter()
+            .map(|constraint| match &constraint.constraint {
+                GeoHardConstraintKind::AnyOf { members } => members
+                    .iter()
+                    .map(|member| member.id.as_str())
+                    .collect::<Vec<_>>(),
+                _ => unreachable!("guarded by is_anyof_only"),
+            })
+            .collect();
+        let k = member_sets.len();
+
+        // Inclusion-exclusion over "set i is missed" events. The T = empty
+        // term is 2^n: without it every count collapses, which is exactly
+        // the bug this comment now guards.
+        if n >= 128 {
+            // Beyond exact u128 range: report the declared lower bound.
+            return Ok(Some(GeoCompositionArtifact {
+                version: CANON_GEO_COMPOSITION_VERSION.to_string(),
+                request_version: self.request.request_version.clone(),
+                status: GeoCompositionStatus::Ambiguous,
+                summary: GeoCompositionSummary {
+                    parcel_candidates: self.request.parcels.len(),
+                    building_candidates: 0,
+                    candidate_assignments: saturating_pow2_u64(n),
+                    structurally_feasible_assignments: saturating_pow2_u64(n).saturating_sub(1),
+                    hard_constraint_evaluations: 0,
+                    residual_model_count: u64::MAX,
+                    summary_counts_saturated: true,
+                    component_count: 0,
+                    residual_models_materialized: false,
+                },
+                hard_forced: GeoCompositionBackbone {
+                    parcels: Vec::new(),
+                    buildings: Vec::new(),
+                },
+                residual_models: Vec::new(),
+                soft_ranked: Vec::new(),
+                conflict_constraint_ids: Vec::new(),
+                budget_fallback: None,
+            }));
+        }
+        // The alternating sum dips negative in intermediate steps (all
+        // singleton subtractions precede the pairwise additions), so the
+        // accumulator is signed; the final value is provably non-negative.
+        let mut hit_count: i128 = 1_i128 << n;
+        let mut evaluations: u128 = 0;
+        for mask in 1_u128..(1_u128 << k) {
+            let mut seen: BTreeSet<&str> = BTreeSet::new();
+            for (position, set) in member_sets.iter().enumerate() {
+                if mask & (1_u128 << position) == 0 {
+                    continue;
+                }
+                for id in set {
+                    evaluations += 1;
+                    seen.insert(id);
+                }
+            }
+            let Some(free) = (n as i128).checked_sub(seen.len() as i128) else {
+                continue;
+            };
+            let term = 1_i128 << free;
+            hit_count = if mask.count_ones() % 2 == 1 {
+                hit_count.checked_sub(term)
+            } else {
+                hit_count.checked_add(term)
+            }
+            .ok_or_else(|| GeoCompositionError::overflow("anyof inclusion-exclusion"))?;
+        }
+        if hit_count < 0 {
+            return Err(GeoCompositionError::overflow(
+                "anyof inclusion-exclusion (negative residual)",
+            ));
+        }
+        let hit_count = hit_count as u128;
+
+        // Backbone: a parcel is forced exactly when no valid model exists
+        // without it. Sets are taken over the reduced universe; probes at
+        // scales near the exact-range ceiling answer "models exist", which
+        // is all the forcing question needs there.
+        let mut backbone_parcels = Vec::new();
+        for parcel_id in self.request.parcels.iter() {
+            let reduced_n = (n as u128) - 1;
+            if reduced_n >= 120 {
+                continue;
+            }
+            let excluded_id = parcel_id.as_str();
+            let mut reduced_hit: i128 = 1_i128 << reduced_n;
+            for mask in 1_u128..(1_u128 << k) {
+                let mut seen: BTreeSet<&str> = BTreeSet::new();
+                for (position, set) in member_sets.iter().enumerate() {
+                    if mask & (1_u128 << position) == 0 {
+                        continue;
+                    }
+                    for id in set {
+                        if *id != excluded_id {
+                            seen.insert(id);
+                        }
+                    }
+                }
+                let Some(free) = (reduced_n as i128).checked_sub(seen.len() as i128) else {
+                    continue;
+                };
+                let term = 1_i128 << free;
+                let op = if mask.count_ones() % 2 == 1 {
+                    reduced_hit.checked_sub(term)
+                } else {
+                    reduced_hit.checked_add(term)
+                };
+                let Some(updated) = op else {
+                    return Err(GeoCompositionError::overflow("anyof backbone probe"));
+                };
+                reduced_hit = updated;
+            }
+            if reduced_hit == 0 {
+                backbone_parcels.push((*parcel_id).to_string());
+            }
+        }
+        backbone_parcels.sort();
+
+        let (residual_model_count, count_saturated) = saturating_u64(hit_count);
+        let (structurally_feasible_assignments, structural_saturated) =
+            saturating_u64((1_u128 << n).saturating_sub(1));
+        let (hard_constraint_evaluations, evaluations_saturated) = saturating_u64(evaluations);
+
+        Ok(Some(GeoCompositionArtifact {
+            version: CANON_GEO_COMPOSITION_VERSION.to_string(),
+            request_version: self.request.request_version.clone(),
+            status: match residual_model_count {
+                1 => GeoCompositionStatus::Resolved,
+                _ => GeoCompositionStatus::Ambiguous,
+            },
+            summary: GeoCompositionSummary {
+                parcel_candidates: self.request.parcels.len(),
+                building_candidates: self.request.buildings.len(),
+                candidate_assignments: saturating_pow2_u64(n),
+                structurally_feasible_assignments,
+                hard_constraint_evaluations,
+                residual_model_count,
+                summary_counts_saturated: count_saturated
+                    || structural_saturated
+                    || evaluations_saturated,
+                component_count: 0,
+                residual_models_materialized: false,
+            },
+            hard_forced: GeoCompositionBackbone {
+                parcels: backbone_parcels,
+                buildings: Vec::new(),
+            },
+            residual_models: Vec::new(),
+            soft_ranked: Vec::new(),
+            conflict_constraint_ids: Vec::new(),
+            budget_fallback: None,
+        }))
     }
 
     fn solve_component(
@@ -1054,6 +1242,23 @@ impl<'a> FactorizedSolver<'a> {
             .collect();
         ids.sort();
         Ok(ids)
+    }
+}
+
+/// `2^n` clamped to the u64 reporting range.
+fn saturating_pow2_u64(n: usize) -> u64 {
+    if n >= u64::BITS as usize {
+        u64::MAX
+    } else {
+        1_u64.checked_shl(n as u32).unwrap_or(u64::MAX)
+    }
+}
+
+/// Exact value with a saturation flag when it exceeds the u64 range.
+fn saturating_u64(value: u128) -> (u64, bool) {
+    match u64::try_from(value) {
+        Ok(value) => (value, false),
+        Err(_) => (u64::MAX, true),
     }
 }
 

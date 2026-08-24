@@ -104,29 +104,34 @@ covered by some selected parcel whose geometry lies within its tier radius**
 (rooftop 8 m; nearest_rooftop_match / range_interpolation 150 m) — one hard
 `AnyOf` per property, intersected with case candidates.
 
-Joint-run results (base vs base + PAD-span + all property discs):
+Exact joint-run results (base vs base + PAD-span + all property discs).
+The AnyOf-only fast path (exact inclusion-exclusion with signed
+intermediates; differential-tested against the brute-force oracle over 200
+randomized universes) converts every former BudgetFallback into an exact
+count — full-population runtime dropped from ~460 s to ~0.25 s:
 
 | Outcome | Count | Notes |
 |---|---:|---|
 | rho violations (representable truth pruned) | **0** | across every applied channel |
-| Measurable honest collapses | 3 | a001 127->112; da11f 524287->442368 (-15.6%); plus reach-limited shrink |
-| Largest measured collapse | 4.6x | 0b6d 2.199e12 -> 4.79e11 on a reach-limited case |
-| ChannelBudgetFallback | 7 | merged PAD+disc components exceed 2^21 width — counts withheld, never guessed |
-| UnchangedNonvacuous (u64-saturated) | 2 | both 92-candidate cases |
-| Reach-limit rows | 8 | adjudication withheld per L.3 gate |
+| Measurable honest collapses | 6 | eccfde -62% (2.31e18 -> 8.65e17), e43aa -50%, 992216 -62%, 0b6d -78% (reach-limited), da11f -15.6%, a001 -11.8% |
+| UnchangedNonvacuous (u64-saturated) | 2 | both 92-candidate cases: pruned yet still >= u64 |
+| ChannelBudgetFallback | **0** | was 7 under component decomposition |
+| Reach-limit rows | 8 | verdicts withheld per L.3 gate |
 
 Readings:
 
 1. **Containment discs prune strictly harder than centroid proxies while
-   staying sound** — overlap pulls adjacent frontage lots into the
-   existential set, buying correctness and pruning power together.
-2. **The binding constraint on E4 completion is solver component width**,
-   not evidence availability: seven cases cannot report exact joint
-   residuals inside 2^21 assignments. The named follow-up is factorized
-   decomposition inside merged components (Regin-style SCC /
-   tree-decomposition per the section 6 ladder).
-3. Reach stays 7/15 — eight rows still need their truth parcels landed
-   before adjudication can speak.
+   staying sound**, and the exact fast path proves it: joint channels cut
+   residual space by half or more on six of eight non-degenerate cases,
+   with truth surviving everywhere.
+2. The two 92-candidate cases are pruned yet remain beyond u64 — they are
+   the population's genuine hard core, now measured exactly rather than
+   bounded.
+3. With zero fallbacks and zero violations, the E4 adjudication is fully
+   exact across the entire reachable population.
+
+Historical note: component decomposition first reduced the population to 7
+fallbacks at ~460 s; the closed-form fast path eliminated them entirely.
 
 ## Next (still open on bd-1g4x)
 
