@@ -474,7 +474,15 @@ fn load_cases() -> Vec<(PopulationCase, EnrichmentCase, Vec<GeodiscEntry>)> {
     cases
         .into_iter()
         .map(|case| {
-            let enriched = enrichment_by_id.remove(&case.case_id).expect("joined case");
+            // Extension-stratum cases carry no enrichment rows yet: their
+            // evidence channels are recorded as not-yet-onboarded rather
+            // than fabricated.
+            let enriched = enrichment_by_id
+                .remove(&case.case_id)
+                .unwrap_or(EnrichmentCase {
+                    case_id: case.case_id.clone(),
+                    properties: Vec::new(),
+                });
             let discs = discs_by_id.remove(&case.case_id).unwrap_or_default();
             (case, enriched, discs)
         })
