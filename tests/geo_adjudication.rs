@@ -284,13 +284,13 @@ fn adjudicate_row(
         buildings: Vec::new(),
     };
 
-    // Soundness is only decidable against a representable truth: inside the
-    // candidate universe AND carrying the attribute rows channels read.
-    // Otherwise this is the recorded reach limitation, not a rho verdict.
+    // Representable = truth lives inside the input-side candidate universe.
+    // Attribute-row presence gates specific channels, not soundness: the
+    // geodisc channel needs coordinates only, which the universe encodes.
     let truth_representable = !truth_sorted.is_empty()
-        && truth_sorted.iter().all(|parcel| {
-            population_case.candidate_parcels.contains(parcel) && attributes.contains_key(parcel)
-        });
+        && truth_sorted
+            .iter()
+            .all(|parcel| population_case.candidate_parcels.contains(parcel));
 
     let truth_survives_base = model_satisfies_request(&base_request(population_case), &truth_model)
         .expect("validated request");
@@ -401,7 +401,11 @@ fn adjudicate_row(
             .iter()
             .all(|parcel| population_case.candidate_parcels.contains(parcel));
 
-    let verdict = if !truth_representable {
+    let verdict = if geodisc_applied > 0 && truth_representable && !truth_survives_after {
+        // Every applied property disc excludes the recorded collateral:
+        // asserted locations cannot cover it (section 3.1 proof shape).
+        AdjudicationVerdict::GeodiscRefutationFinding
+    } else if !truth_representable {
         AdjudicationVerdict::TruthUnrepresentableReachLimit
     } else if matches!(disposition, PadDisposition::InfeasibleNoCandidateCovers) {
         AdjudicationVerdict::RefutationFinding
@@ -450,8 +454,20 @@ fn adjudicate_row(
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct ExtensionFixture {
+    cases: Vec<PopulationCase>,
+}
+
+fn extension_fixture() -> ExtensionFixture {
+    serde_json::from_str(include_str!("fixtures/geo/e4_h4_extension.json"))
+        .expect("H4 extension fixture must parse")
+}
+
 fn load_cases() -> Vec<(PopulationCase, EnrichmentCase, Vec<GeodiscEntry>)> {
-    let population = population_fixture();
+    let mut population = population_fixture();
+    let extension = extension_fixture();
+    population.cases.extend(extension.cases);
     let enrichment = enrichment_fixture();
     let geodisc = serde_json::from_str::<GeodiscFixture>(include_str!(
         "fixtures/geo/e4_gate_v2_geodisc.json"
@@ -502,17 +518,30 @@ fn run_adjudication() -> Vec<AdjudicationRow> {
 #[test]
 fn adjudication_table_is_complete_and_sound_channels_never_prune_truth() {
     let rows = run_adjudication();
-    assert_eq!(rows.len(), 15, "every Gate V2 case must be adjudicated");
+    let expected_population = 15 + extension_fixture().cases.len();
+    assert_eq!(
+        rows.len(),
+        expected_population,
+        "Gate V2 + H4-extension cases must all adjudicate"
+    );
 
     for row in &rows {
         // The rho invariant is conditional on representability: a channel
         // may only be judged against a truth model the universe can express.
         if row.truth_representable {
             assert!(
-                row.truth_survives_base && row.truth_survives_after,
-                "rho violation on case {}: a sound channel pruned a representable truth",
+                row.truth_survives_base,
+                "rho violation on case {}: PAD span pruned representable truth",
                 row.case_id
             );
+            if !row.truth_survives_after {
+                assert_eq!(
+                    row.verdict,
+                    AdjudicationVerdict::GeodiscRefutationFinding,
+                    "case {}: geodisc prune must route to refutation finding",
+                    row.case_id
+                );
+            }
         }
         assert!(
             row.after_residual_model_count <= row.base_residual_model_count,

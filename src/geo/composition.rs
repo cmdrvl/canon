@@ -978,25 +978,40 @@ impl<'a> FactorizedSolver<'a> {
             })
             .collect();
 
-        let mut total_product = 1_u128;
-        let mut empty_product = 1_u128;
-        let mut structural_product = 1_u128;
-        let mut structural_empty_product = 1_u128;
+        // Products saturate at u128 with a declared flag: universes beyond
+        // exact representability report lower bounds, never errors.
+        let mut total_product: u128 = 1;
+        let mut empty_product: u128 = 1;
+        let mut structural_product: u128 = 1;
+        let mut structural_empty_product: u128 = 1;
+        let mut products_saturated = false;
         let mut evaluations = 0_u128;
         let mut capable_components = 0_usize;
         for solution in &solutions {
-            total_product = total_product
-                .checked_mul(solution.count)
-                .ok_or_else(|| GeoCompositionError::overflow("residual product"))?;
-            empty_product = empty_product
-                .checked_mul(solution.empty_count)
-                .ok_or_else(|| GeoCompositionError::overflow("empty-parcel product"))?;
-            structural_product = structural_product
-                .checked_mul(solution.structural_count)
-                .ok_or_else(|| GeoCompositionError::overflow("structural product"))?;
-            structural_empty_product = structural_empty_product
-                .checked_mul(solution.structural_empty)
-                .ok_or_else(|| GeoCompositionError::overflow("structural empty product"))?;
+            let step = |acc: &mut u128, factor: u128, flag: &mut bool| match acc.checked_mul(factor)
+            {
+                Some(value) => *acc = value,
+                None => {
+                    *acc = u128::MAX;
+                    *flag = true;
+                }
+            };
+            step(&mut total_product, solution.count, &mut products_saturated);
+            step(
+                &mut empty_product,
+                solution.empty_count,
+                &mut products_saturated,
+            );
+            step(
+                &mut structural_product,
+                solution.structural_count,
+                &mut products_saturated,
+            );
+            step(
+                &mut structural_empty_product,
+                solution.structural_empty,
+                &mut products_saturated,
+            );
             evaluations += solution.evaluations;
             if solution.positive_count > 0 {
                 capable_components += 1;
@@ -1065,10 +1080,12 @@ impl<'a> FactorizedSolver<'a> {
             }
         };
         let (residual_model_count, residual_saturated) = saturate(residual_total);
-        let (structurally_feasible_assignments, structural_saturated) =
-            saturate(structural_product - structural_empty_product);
+        let (structurally_feasible_assignments, structural_saturated) = saturate(
+            structural_product
+                .checked_sub(structural_empty_product)
+                .unwrap_or(u128::MAX),
+        );
         let (hard_constraint_evaluations, evaluations_saturated) = saturate(evaluations);
-
         Ok(GeoCompositionArtifact {
             version: CANON_GEO_COMPOSITION_VERSION.to_string(),
             request_version: self.request.request_version.clone(),
@@ -1082,7 +1099,8 @@ impl<'a> FactorizedSolver<'a> {
                 residual_model_count,
                 summary_counts_saturated: residual_saturated
                     || structural_saturated
-                    || evaluations_saturated,
+                    || evaluations_saturated
+                    || products_saturated,
                 ..self.summary(&components, 0, can_materialize, 0)?
             },
             hard_forced,
