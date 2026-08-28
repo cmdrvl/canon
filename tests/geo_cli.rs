@@ -52,6 +52,117 @@ fn tiny_composition_request() -> Value {
     })
 }
 
+fn tiny_geometry_request(max_geometry_bytes_per_tile: u64) -> Value {
+    json!({
+        "version": "canon_geo_geometry_request.v0",
+        "frame": {
+            "version": "canon_geo_local_frame.v0",
+            "frame_id": "tile:892a100d26bffff:local-mm:v1",
+            "tile_id": "892a100d26bffff",
+            "source_crs": "LOCAL:TEST-METRES",
+            "source_axis_domain": "planar",
+            "source_decimal_places": 3,
+            "source_origin": { "x": 0, "y": 0 },
+            "affine": {
+                "x_from_source_x_numerator": 1,
+                "x_from_source_y_numerator": 0,
+                "y_from_source_x_numerator": 0,
+                "y_from_source_y_numerator": 1,
+                "denominator": 1
+            },
+            "projection": {
+                "method_id": "fixture-fixed-affine",
+                "method_version": "1.0.0",
+                "parameters_blake3": blake3::hash(b"fixture-fixed-affine-v1").to_hex().to_string(),
+                "max_projection_error_micrometres": 200
+            },
+            "max_abs_coordinate_mm": 2_000_000
+        },
+        "features": [{
+            "feature_id": "parcel-1",
+            "source_crs": "LOCAL:TEST-METRES",
+            "geometry": {
+                "kind": "polygon",
+                "exterior": [
+                    { "x": "0", "y": "0" },
+                    { "x": "5", "y": "0" },
+                    { "x": "5", "y": "5" },
+                    { "x": "0", "y": "5" },
+                    { "x": "0", "y": "0" }
+                ],
+                "holes": []
+            }
+        }],
+        "max_vertices_per_geometry": 100,
+        "max_geometry_bytes_per_tile": max_geometry_bytes_per_tile
+    })
+}
+
+#[test]
+fn geo_materialize_geometry_emits_canonical_values_and_typed_budget_refusals() {
+    let temp = tempdir().expect("tempdir");
+    let request = write_json(
+        temp.path(),
+        "geometry.json",
+        &tiny_geometry_request(100_000),
+    );
+
+    let first = canon_command()
+        .args([
+            "geo",
+            "materialize-geometry",
+            "--request",
+            request.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let second = canon_command()
+        .args([
+            "geo",
+            "materialize-geometry",
+            "--request",
+            request.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    assert_eq!(first.get_output().stdout, second.get_output().stdout);
+    let artifact: Value =
+        serde_json::from_slice(&first.get_output().stdout).expect("geometry tile artifact parses");
+    assert_eq!(artifact["version"], "canon_geo_geometry_tile.v0");
+    assert_eq!(artifact["features"][0]["value"]["kind"], "geometry");
+    assert_eq!(
+        artifact["features"][0]["value"]["value"]["coordinate_unit"],
+        "millimetre"
+    );
+    assert_eq!(artifact["features"][0]["value"]["value"]["vertex_count"], 4);
+
+    let too_small = write_json(
+        temp.path(),
+        "geometry-too-small.json",
+        &tiny_geometry_request(1),
+    );
+    let refusal = canon_command()
+        .args([
+            "geo",
+            "materialize-geometry",
+            "--request",
+            too_small.to_str().unwrap(),
+        ])
+        .assert()
+        .code(2);
+    let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout)
+        .expect("geometry budget refusal parses");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(
+        refusal["refusal"]["detail"]["geo_geometry_error_code"],
+        "tile_byte_budget_exceeded"
+    );
+    assert_eq!(
+        refusal["refusal"]["detail"]["budget"]["policy_id"],
+        "geometry.max_bytes_per_tile"
+    );
+}
+
 #[test]
 fn geo_solve_emits_canonical_composition_artifact_on_stdout() {
     let temp = tempdir().expect("tempdir");

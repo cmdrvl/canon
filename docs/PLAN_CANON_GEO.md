@@ -220,13 +220,31 @@ anywhere in the decision path.**
 > versioned tile/profile inputs. The Linux/macOS CI matrix runs a deterministic
 > boundary-adjacent suite including one-millimetre offsets, translation, and ring reversal.
 >
-> This does **not** complete the geometry value/materialization contract (`bd-16r1`) or
-> area-majority clipping. Empty, unclosed, duplicate, degenerate, and self-intersecting
-> rings refuse at the integer boundary; mixed local frames refuse. Non-finite source
-> coordinates, mixed source CRS, antimeridian crossing, projection error, quantization,
-> canonical ring bytes, holes/multipolygons, and vertex/byte budgets must be rejected or
-> typed before this kernel is called. Exactness is relative to the accepted quantized
-> coordinates, never a claim of exact world geometry.
+> The predicate kernel alone does **not** complete the geometry value/materialization
+> contract (`bd-16r1`) or area-majority clipping. Exactness is relative to accepted
+> quantized coordinates, never a claim of exact world geometry.
+
+> **IMPLEMENTATION STATUS — TYPED ARTIFACT BOUNDARY LANDED 2026-08-28 (`bd-16r1`, IN
+> PROGRESS).** `src/geo/geometry_value.rs` admits source coordinates as fixed-scale decimal
+> strings rather than binary floats, applies a versioned checked-integer affine frame, and
+> snaps exact rational results to millimetres with ties-to-even. The artifact carries source
+> CRS, local-frame id, coordinate unit/scale, vertex count, bbox, projection provenance, the
+> exact maximum snap-error fraction, and a separate declared projection-error envelope.
+> Point, polygon, and multipolygon values have canonical bytes: exteriors are CCW, holes are
+> CW, the lexicographically smallest vertex starts each ring, explicit closing vertices are
+> omitted, and holes/polygons are sorted. Documented adjacent duplicates normalize away;
+> unclosed, degenerate, non-simple, intersecting, or topology-changing results refuse.
+> Non-finite/excess-precision coordinates, mixed CRS, antimeridian crossings, invalid frame
+> digests, arithmetic overflow, raw vertex excess, and canonical geometry-byte excess also
+> have typed refusals. Decision geometry is never simplified or truncated to meet a budget.
+>
+> The deterministic parcel-scale test measures a 499 µm maximum snap on a 5 m geometry;
+> with a separately declared 200 µm projection envelope the serialized audit reports a
+> conservative 420 ppm endpoint-distance error bound. That proves the loss accounting and
+> canonical byte path, **not** that a real H3 frame achieves the declared projection error.
+> Open question 8 remains open until the actual BYOP ingest generates frame constants and
+> calibration receipts over real geometries. Exact/conservative polygon clipping for the
+> area-majority predicate also remains downstream work.
 
 Arithmetic: a 1 km tile spans ~10⁶ mm, coordinates ~2×10⁶. Shoelace terms ~4×10¹²; summed
 over a 10³-vertex polygon ~4×10¹⁵ — inside `i64`, with `i128` carried for headroom.

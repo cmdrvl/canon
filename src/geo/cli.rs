@@ -10,8 +10,8 @@
 use crate::{
     CanonOutput, RefusalCode,
     cli::{
-        GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli, GeoMaterializeEvidenceCli, GeoSolveCli,
-        GeoSubcommand,
+        GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli, GeoMaterializeEvidenceCli,
+        GeoMaterializeGeometryCli, GeoSolveCli, GeoSubcommand,
     },
     refusal,
 };
@@ -39,6 +39,10 @@ use super::{
         canonical_evidence_compilation_bytes, compile_evidence,
         validate_evidence_compilation_artifact,
     },
+    geometry_value::{
+        CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION, GeoGeometryError,
+        GeoGeometryTileRequest, canonical_geometry_tile_bytes, materialize_geometry_tile,
+    },
     materialize::{
         CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoMaterializationError, GeoWarehouseRowsRequest,
         canonical_materialized_evidence_request_bytes, materialize_warehouse_rows,
@@ -48,9 +52,30 @@ use super::{
 pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
     match &geo.command {
         GeoSubcommand::Solve(args) => run_solve(args),
+        GeoSubcommand::MaterializeGeometry(args) => run_materialize_geometry(args),
         GeoSubcommand::MaterializeEvidence(args) => run_materialize_evidence(args),
         GeoSubcommand::CompileEvidence(args) => run_compile_evidence(args),
         GeoSubcommand::Evaluate(args) => run_evaluate(args),
+    }
+}
+
+fn run_materialize_geometry(args: &GeoMaterializeGeometryCli) -> Result<u8, Box<dyn Error>> {
+    let request: GeoGeometryTileRequest = match read_request(
+        &args.request,
+        "request",
+        CANON_GEO_GEOMETRY_REQUEST_VERSION,
+        "canon geo materialize-geometry --request <REQUEST.json>",
+    ) {
+        Ok(request) => request,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let artifact = match materialize_geometry_tile(&request) {
+        Ok(artifact) => artifact,
+        Err(error) => return emit_geometry_error(error),
+    };
+    match canonical_geometry_tile_bytes(&artifact) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_serialization_refusal(CANON_GEO_GEOMETRY_TILE_VERSION, &error),
     }
 }
 
@@ -249,6 +274,23 @@ fn emit_materialization_error(error: GeoMaterializationError) -> Result<u8, Box<
         }),
         Some(
             "repair the rows against canon_geo_warehouse_rows.v0, then rerun canon geo materialize-evidence"
+                .to_string(),
+        ),
+    )
+}
+
+fn emit_geometry_error(error: GeoGeometryError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo geometry request could not be materialized",
+        json!({
+            "geo_geometry_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+            "budget": error.budget,
+        }),
+        Some(
+            "repair the request against canon_geo_geometry_request.v0, then rerun canon geo materialize-geometry"
                 .to_string(),
         ),
     )

@@ -88,6 +88,7 @@ canon project init <DIR> [--project-id <ID>] [--mapping-profile <REF>] [--emit j
 canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]
 canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]
 canon geo solve --request <REQUEST.json>
+canon geo materialize-geometry --request <REQUEST.json>
 canon geo materialize-evidence --rows <ROWS.json>
 canon geo compile-evidence --request <REQUEST.json>
 canon geo evaluate --population <POPULATION.json>

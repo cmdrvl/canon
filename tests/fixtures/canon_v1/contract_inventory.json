@@ -163,6 +163,17 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo materialize-geometry",
+      "family": "geo",
+      "clap_path": "geo materialize-geometry",
+      "operator_name": "geo materialize-geometry",
+      "primary_contracts": [
+        "canon_geo_geometry_request.v0",
+        "canon_geo_geometry_tile.v0"
+      ],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo compile-evidence",
       "family": "geo",
       "clap_path": "geo compile-evidence",
@@ -1134,6 +1145,34 @@
     },
     {
       "id": "canon_geo_composition.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_geometry_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_geometry_value.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_geometry_tile.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_local_frame.v0",
       "family": "geo",
       "action": "preserve",
       "access_boundary": "public_crate_api",

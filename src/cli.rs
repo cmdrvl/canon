@@ -221,6 +221,9 @@ pub enum ProjectSubcommand {
 pub enum GeoSubcommand {
     /// Solve the exact hard-feasible parcel/building residual for a composition request
     Solve(GeoSolveCli),
+    /// Normalize and budget source geometry into canonical tile-local values
+    #[command(name = "materialize-geometry")]
+    MaterializeGeometry(GeoMaterializeGeometryCli),
     /// Fold release-pinned warehouse rows into a typed evidence request
     #[command(name = "materialize-evidence")]
     MaterializeEvidence(GeoMaterializeEvidenceCli),
@@ -234,6 +237,13 @@ pub enum GeoSubcommand {
 #[derive(Args, Debug, Clone)]
 pub struct GeoSolveCli {
     /// JSON file holding a composition request or evidence-compilation artifact
+    #[arg(long)]
+    pub request: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoMaterializeGeometryCli {
+    /// JSON file holding a canon_geo_geometry_request.v0 request
     #[arg(long)]
     pub request: PathBuf,
 }

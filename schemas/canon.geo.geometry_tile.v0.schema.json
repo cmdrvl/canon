@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.geometry_tile.v0.schema.json",
+  "title": "canon.geo.geometry_tile.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "frame",
+    "features",
+    "total_canonical_vertices",
+    "geometry_bytes",
+    "max_vertices_per_geometry",
+    "max_geometry_bytes_per_tile"
+  ],
+  "properties": {
+    "version": { "const": "canon_geo_geometry_tile.v0" },
+    "frame": { "$ref": "#/$defs/frame" },
+    "features": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/feature" }
+    },
+    "total_canonical_vertices": { "type": "integer", "minimum": 0 },
+    "geometry_bytes": { "type": "integer", "minimum": 0 },
+    "max_vertices_per_geometry": { "type": "integer", "minimum": 1 },
+    "max_geometry_bytes_per_tile": { "type": "integer", "minimum": 1 }
+  },
+  "$defs": {
+    "source_point_fixed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "integer" },
+        "y": { "type": "integer" }
+      }
+    },
+    "point_mm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "integer" },
+        "y": { "type": "integer" }
+      }
+    },
+    "affine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x_from_source_x_numerator",
+        "x_from_source_y_numerator",
+        "y_from_source_x_numerator",
+        "y_from_source_y_numerator",
+        "denominator"
+      ],
+      "properties": {
+        "x_from_source_x_numerator": { "type": "integer" },
+        "x_from_source_y_numerator": { "type": "integer" },
+        "y_from_source_x_numerator": { "type": "integer" },
+        "y_from_source_y_numerator": { "type": "integer" },
+        "denominator": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method_id",
+        "method_version",
+        "parameters_blake3",
+        "max_projection_error_micrometres"
+      ],
+      "properties": {
+        "method_id": { "type": "string", "minLength": 1 },
+        "method_version": { "type": "string", "minLength": 1 },
+        "parameters_blake3": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "max_projection_error_micrometres": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "frame_id",
+        "tile_id",
+        "source_crs",
+        "source_axis_domain",
+        "source_decimal_places",
+        "source_origin",
+        "affine",
+        "projection",
+        "max_abs_coordinate_mm"
+      ],
+      "properties": {
+        "version": { "const": "canon_geo_local_frame.v0" },
+        "frame_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "tile_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_crs": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_axis_domain": {
+          "enum": ["planar", "geographic_longitude_latitude"]
+        },
+        "source_decimal_places": { "type": "integer", "minimum": 0, "maximum": 9 },
+        "source_origin": { "$ref": "#/$defs/source_point_fixed" },
+        "affine": { "$ref": "#/$defs/affine" },
+        "projection": { "$ref": "#/$defs/projection" },
+        "max_abs_coordinate_mm": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "bbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_x", "min_y", "max_x", "max_y"],
+      "properties": {
+        "min_x": { "type": "integer" },
+        "min_y": { "type": "integer" },
+        "max_x": { "type": "integer" },
+        "max_y": { "type": "integer" }
+      }
+    },
+    "ring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vertices"],
+      "properties": {
+        "vertices": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/point_mm" }
+        }
+      }
+    },
+    "polygon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exterior"],
+      "properties": {
+        "exterior": { "$ref": "#/$defs/ring" },
+        "holes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ring" }
+        }
+      }
+    },
+    "canonical_geometry": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "coordinate"],
+          "properties": {
+            "kind": { "const": "point" },
+            "coordinate": { "$ref": "#/$defs/point_mm" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "polygon"],
+          "properties": {
+            "kind": { "const": "polygon" },
+            "polygon": { "$ref": "#/$defs/polygon" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "polygons"],
+          "properties": {
+            "kind": { "const": "multi_polygon" },
+            "polygons": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/polygon" }
+            }
+          }
+        }
+      ]
+    },
+    "quantization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_abs_snap_error_numerator_mm",
+        "affine_denominator",
+        "max_abs_snap_error_micrometres_ceiling",
+        "projection_error_envelope_micrometres",
+        "combined_error_envelope_micrometres"
+      ],
+      "properties": {
+        "max_abs_snap_error_numerator_mm": { "type": "integer", "minimum": 0 },
+        "affine_denominator": { "type": "integer", "minimum": 1 },
+        "max_abs_snap_error_micrometres_ceiling": { "type": "integer", "minimum": 0 },
+        "projection_error_envelope_micrometres": { "type": "integer", "minimum": 0 },
+        "combined_error_envelope_micrometres": { "type": "integer", "minimum": 0 },
+        "minimum_nonzero_bbox_extent_mm": { "type": "integer", "minimum": 1 },
+        "endpoint_distance_error_ppm_upper_bound": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "typed_geometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "source_crs",
+        "local_frame_id",
+        "coordinate_unit",
+        "coordinate_scale",
+        "vertex_count",
+        "bbox",
+        "quantization",
+        "geometry"
+      ],
+      "properties": {
+        "version": { "const": "canon_geo_geometry_value.v0" },
+        "source_crs": { "type": "string", "minLength": 1 },
+        "local_frame_id": { "type": "string", "minLength": 1 },
+        "coordinate_unit": { "const": "millimetre" },
+        "coordinate_scale": { "const": 1 },
+        "vertex_count": { "type": "integer", "minimum": 1 },
+        "bbox": { "$ref": "#/$defs/bbox" },
+        "quantization": { "$ref": "#/$defs/quantization" },
+        "geometry": { "$ref": "#/$defs/canonical_geometry" }
+      }
+    },
+    "feature_value": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "geometry" },
+            "value": { "$ref": "#/$defs/typed_geometry" }
+          }
+        }
+      ]
+    },
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["feature_id", "value"],
+      "properties": {
+        "feature_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "value": { "$ref": "#/$defs/feature_value" }
+      }
+    }
+  }
+}

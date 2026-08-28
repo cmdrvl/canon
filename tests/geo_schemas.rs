@@ -1,4 +1,4 @@
-//! Schema-drift guard for the seven registered Geo contracts.
+//! Schema-drift guard for the nine registered Geo contracts.
 //!
 //! For each contract this test: (a) pins the schema file's `title` and
 //! `properties.version.const`, and asserts top-level `additionalProperties`
@@ -11,14 +11,17 @@
 
 use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
+    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
     CANON_GEO_POPULATION_REQUEST_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
-    DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate, GeoCompositionModel,
-    GeoCompositionRequest, GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef,
-    GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoHardConstraint,
-    GeoHardConstraintKind, GeoLabeledCompositionCase, GeoPopulationEvaluationRequest, GeoRhoBasis,
-    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoWarehouseEvidenceRow,
-    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, compile_evidence, evaluate_population,
-    solve_composition,
+    DEFAULT_MAX_MATERIALIZED_MODELS, GeoAffineProjectionMm, GeoBuildingCandidate,
+    GeoCompositionModel, GeoCompositionRequest, GeoCompositionUniverse, GeoEntityLevel,
+    GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef,
+    GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoHardConstraint, GeoHardConstraintKind,
+    GeoLabeledCompositionCase, GeoLocalFrameContract, GeoPopulationEvaluationRequest,
+    GeoProjectionProvenance, GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
+    GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed,
+    GeoWarehouseEvidenceRow, GeoWarehouseParcelRow, GeoWarehouseRowsRequest, compile_evidence,
+    evaluate_population, materialize_geometry_tile, solve_composition,
 };
 use serde_json::Value;
 
@@ -35,6 +38,10 @@ const POPULATION_EVALUATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_evaluation.v0.schema.json");
 const WAREHOUSE_ROWS_SCHEMA: &str =
     include_str!("../schemas/canon.geo.warehouse_rows.v0.schema.json");
+const GEOMETRY_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.geometry_request.v0.schema.json");
+const GEOMETRY_TILE_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.geometry_tile.v0.schema.json");
 
 fn parsed(source: &str) -> Value {
     serde_json::from_str(source).expect("schema file must be valid JSON")
@@ -281,6 +288,58 @@ fn warehouse_rows_request() -> GeoWarehouseRowsRequest {
     }
 }
 
+fn geometry_request() -> GeoGeometryTileRequest {
+    GeoGeometryTileRequest {
+        version: CANON_GEO_GEOMETRY_REQUEST_VERSION.to_string(),
+        frame: GeoLocalFrameContract {
+            version: CANON_GEO_LOCAL_FRAME_VERSION.to_string(),
+            frame_id: "tile:fixture:local-mm:v1".to_string(),
+            tile_id: "fixture".to_string(),
+            source_crs: "LOCAL:FIXTURE".to_string(),
+            source_axis_domain: GeoSourceAxisDomain::Planar,
+            source_decimal_places: 3,
+            source_origin: GeoSourcePointFixed { x: 0, y: 0 },
+            affine: GeoAffineProjectionMm {
+                x_from_source_x_numerator: 1,
+                x_from_source_y_numerator: 0,
+                y_from_source_x_numerator: 0,
+                y_from_source_y_numerator: 1,
+                denominator: 1,
+            },
+            projection: GeoProjectionProvenance {
+                method_id: "fixture-affine".to_string(),
+                method_version: "v1".to_string(),
+                parameters_blake3: blake3::hash(b"fixture-affine").to_hex().to_string(),
+                max_projection_error_micrometres: 200,
+            },
+            max_abs_coordinate_mm: 2_000_000,
+        },
+        features: vec![GeoGeometryFeatureInput {
+            feature_id: "parcel-a".to_string(),
+            source_crs: "LOCAL:FIXTURE".to_string(),
+            geometry: GeoSourceGeometry::Polygon {
+                exterior: vec![
+                    source_point("0", "0"),
+                    source_point("5", "0"),
+                    source_point("5", "5"),
+                    source_point("0", "5"),
+                    source_point("0", "0"),
+                ],
+                holes: Vec::new(),
+            },
+        }],
+        max_vertices_per_geometry: 100,
+        max_geometry_bytes_per_tile: 100_000,
+    }
+}
+
+fn source_point(x: &str, y: &str) -> GeoSourcePointDecimal {
+    GeoSourcePointDecimal {
+        x: x.to_string(),
+        y: y.to_string(),
+    }
+}
+
 #[test]
 fn composition_request_schema_matches_a_real_instance() {
     let request = composition_request();
@@ -289,6 +348,31 @@ fn composition_request_schema_matches_a_real_instance() {
         COMPOSITION_REQUEST_SCHEMA,
         "canon.geo.composition_request.v0",
         "canon_geo_composition_request.v0",
+        &instance,
+    );
+}
+
+#[test]
+fn geometry_request_schema_matches_a_real_instance() {
+    let request = geometry_request();
+    let instance = serde_json::to_value(&request).expect("geometry request must serialize");
+    assert_drift_free(
+        GEOMETRY_REQUEST_SCHEMA,
+        "canon.geo.geometry_request.v0",
+        CANON_GEO_GEOMETRY_REQUEST_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn geometry_tile_schema_matches_a_real_instance() {
+    let artifact =
+        materialize_geometry_tile(&geometry_request()).expect("geometry request materializes");
+    let instance = serde_json::to_value(&artifact).expect("geometry tile must serialize");
+    assert_drift_free(
+        GEOMETRY_TILE_SCHEMA,
+        "canon.geo.geometry_tile.v0",
+        "canon_geo_geometry_tile.v0",
         &instance,
     );
 }

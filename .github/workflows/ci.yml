@@ -59,7 +59,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run safety matrix
-        run: cargo test --test safety_matrix --test geo_geometry
+        run: cargo test --test safety_matrix --test geo_geometry --test geo_geometry_value
 
   build:
     name: Build (${{ matrix.os }})

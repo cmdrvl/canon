@@ -377,6 +377,7 @@ canon project init <DIR> [--project-id <ID>] [--mapping-profile <REF>] [--emit j
 canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]
 canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]
 canon geo solve --request <REQUEST.json>
+canon geo materialize-geometry --request <REQUEST.json>
 canon geo materialize-evidence --rows <ROWS.json>
 canon geo compile-evidence --request <REQUEST.json>
 canon geo evaluate --population <POPULATION.json>
@@ -432,6 +433,15 @@ canon entity profile init <PROFILE> --output <PATH>
 `canon_geo_composition_request.v0` request or the complete
 `canon_geo_evidence_compilation.v0` artifact emitted by `compile-evidence`. Solving the
 compilation artifact preserves its content digest in the composition output.
+
+`canon geo materialize-geometry --request` converts fixed-decimal source coordinates
+through a versioned per-tile integer affine frame into canonical millimetre geometry.
+It emits point, polygon, or multipolygon feature values with explicit CRS/frame metadata,
+bbox, vertex count, exact snap-loss accounting, and a separate projection-error envelope.
+Canonical normalization makes ring direction/start and hole/polygon input ordering
+byte-invariant. Invalid topology, non-finite or over-precision coordinates, mixed CRS,
+antimeridian crossing, overflow, and declared vertex/byte-budget excess are typed refusals;
+decision geometry is never simplified or truncated to fit.
 
 `canon geo materialize-evidence --rows` is the offline bridge from exported relational
 rows to `canon_geo_evidence_request.v0`. Its input contract is

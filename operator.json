@@ -728,6 +728,67 @@
       ]
     },
     {
+      "name": "geo materialize-geometry",
+      "usage": "canon geo materialize-geometry --request <REQUEST.json>",
+      "description": "Normalize fixed-decimal source geometry through a versioned integer affine frame into deterministic, budgeted tile-local geometry values",
+      "output_mode": "json",
+      "output_schema": "canon_geo_geometry_tile.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads a local geometry request and writes canonical geometry only to stdout; it does not acquire source geometry or validate an upstream projection calibration claim",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "canonical Geo geometry tile artifact emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, request IO, parse, geometry, frame, topology, or budget contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon geo materialize-evidence --rows <ROWS.json>",
+      "recovery": {
+        "next_command": "canon geo materialize-geometry --request <REQUEST.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "request",
+          "flag": "--request",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_geometry_request.v0 request"
+        }
+      ]
+    },
+    {
       "name": "geo materialize-evidence",
       "usage": "canon geo materialize-evidence --rows <ROWS.json>",
       "description": "Fold release-pinned offline warehouse rows into a deterministic typed Geo evidence request and validate it through the production evidence compiler",
