@@ -8,10 +8,10 @@
 //! inputs all surface through the library's own error codes.
 
 use crate::{
-    CanonOutput, RefusalCode,
+    CanonOutput, Refusal, RefusalCode,
     cli::{
-        GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli, GeoMaterializeEvidenceCli,
-        GeoMaterializeGeometryCli, GeoSolveCli, GeoSubcommand,
+        GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli, GeoLinkSourcesCli,
+        GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli, GeoSolveCli, GeoSubcommand,
     },
     refusal,
 };
@@ -47,15 +47,40 @@ use super::{
         CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoMaterializationError, GeoWarehouseRowsRequest,
         canonical_materialized_evidence_request_bytes, materialize_warehouse_rows,
     },
+    multisource::{
+        CANON_GEO_MULTISOURCE_REQUEST_VERSION, GeoMultisourceRequest,
+        canonical_multisource_artifact_bytes, materialize_geo_multisource,
+    },
 };
 
 pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
     match &geo.command {
+        GeoSubcommand::LinkSources(args) => run_link_sources(args),
         GeoSubcommand::Solve(args) => run_solve(args),
         GeoSubcommand::MaterializeGeometry(args) => run_materialize_geometry(args),
         GeoSubcommand::MaterializeEvidence(args) => run_materialize_evidence(args),
         GeoSubcommand::CompileEvidence(args) => run_compile_evidence(args),
         GeoSubcommand::Evaluate(args) => run_evaluate(args),
+    }
+}
+
+fn run_link_sources(args: &GeoLinkSourcesCli) -> Result<u8, Box<dyn Error>> {
+    let request: GeoMultisourceRequest = match read_request(
+        &args.request,
+        "request",
+        CANON_GEO_MULTISOURCE_REQUEST_VERSION,
+        "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
+    ) {
+        Ok(request) => request,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let artifact = match materialize_geo_multisource(&request, &args.rows_out) {
+        Ok(artifact) => artifact,
+        Err(refusal) => return emit_library_refusal(refusal),
+    };
+    match canonical_multisource_artifact_bytes(&artifact) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(refusal) => emit_library_refusal(refusal),
     }
 }
 
@@ -336,6 +361,15 @@ fn emit_refusal(
     let output: CanonOutput = refusal::create_refusal(code, message.into(), detail, next_command);
     println!("{}", serde_json::to_string(&output)?);
     Ok(2)
+}
+
+fn emit_library_refusal(refusal: Refusal) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        refusal.code,
+        refusal.message,
+        refusal.detail,
+        refusal.next_command,
+    )
 }
 
 fn write_canonical(bytes: &[u8]) -> Result<u8, Box<dyn Error>> {

@@ -376,6 +376,7 @@ canon package pull --registry <OCI_BASE_URL> --repository <REPOSITORY> --cache <
 canon project init <DIR> [--project-id <ID>] [--mapping-profile <REF>] [--emit json|summary]
 canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]
 canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]
+canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>
 canon geo solve --request <REQUEST.json>
 canon geo materialize-geometry --request <REQUEST.json>
 canon geo materialize-evidence --rows <ROWS.json>
@@ -428,6 +429,17 @@ canon entity explain <RESULT.json> --row <ROW_ID>|--surface-id <SURFACE_ID>|--ca
 canon entity profile list [--emit json|summary]
 canon entity profile init <PROFILE> --output <PATH>
 ```
+
+`canon geo link-sources --request` makes the existing N-source materializer reachable
+without changing the two-tape `canon entity link` contract. The request declares three or
+more named CSV sources, exactly one client-book target, at least one bounded reference,
+optional peers, a complete-by-default comparison graph, and explicit pair budgets.
+`canonical_reference` is refused on this Geo surface: no parcel or footprint vendor wins
+globally by role. The command atomically publishes the merged rows at `--rows-out` and
+emits `canon_entity_multisource_link.v1` on stdout with per-source hashes, the merged-row
+hash, pair-count diagnostics, anchor-conflict abstentions, and a path-independent semantic
+artifact hash suitable for an upstream artifact reference. Roles and source count are
+provenance; they do not become evidence weights or independent constraints.
 
 `canon geo solve --request` accepts either a bare
 `canon_geo_composition_request.v0` request or the complete

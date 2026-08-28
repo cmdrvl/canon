@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.entity.multisource_link.v1.schema.json",
+  "title": "canon.entity.multisource_link.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "artifact_content_hash",
+    "mode",
+    "source_count",
+    "row_count",
+    "canonical_source",
+    "materialized_rows_path",
+    "materialized_rows_hash",
+    "sources",
+    "comparison_graph",
+    "consistency"
+  ],
+  "properties": {
+    "version": { "const": "canon_entity_multisource_link.v1" },
+    "artifact_content_hash": { "$ref": "#/$defs/blake3" },
+    "mode": { "const": "named_sources" },
+    "source_count": { "type": "integer", "minimum": 2 },
+    "row_count": { "type": "integer", "minimum": 0 },
+    "canonical_source": {
+      "oneOf": [{ "type": "string" }, { "type": "null" }]
+    },
+    "materialized_rows_path": { "type": "string", "minLength": 1 },
+    "materialized_rows_hash": { "$ref": "#/$defs/blake3" },
+    "sources": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "comparison_graph": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/comparison_diagnostic" }
+    },
+    "consistency": { "$ref": "#/$defs/consistency" }
+  },
+  "$defs": {
+    "blake3": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "role": {
+      "type": "string",
+      "enum": ["canonical_reference", "reference", "target", "peer"]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "role", "rows_path", "rows_hash", "row_count"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "role": { "$ref": "#/$defs/role" },
+        "rows_path": { "type": "string", "minLength": 1 },
+        "rows_hash": { "$ref": "#/$defs/blake3" },
+        "row_count": { "type": "integer", "minimum": 0 },
+        "local_id_column": { "type": "string", "minLength": 1 },
+        "anchor_namespace": { "type": "string", "minLength": 1 }
+      }
+    },
+    "comparison_diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "left_source",
+        "right_source",
+        "left_rows",
+        "right_rows",
+        "candidate_pair_rows",
+        "max_candidate_rows"
+      ],
+      "properties": {
+        "left_source": { "type": "string", "minLength": 1 },
+        "right_source": { "type": "string", "minLength": 1 },
+        "left_rows": { "type": "integer", "minimum": 0 },
+        "right_rows": { "type": "integer", "minimum": 0 },
+        "candidate_pair_rows": { "type": "integer", "minimum": 0 },
+        "max_candidate_rows": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "source_row_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "row_id", "canonical_id"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "row_id": { "type": "string", "minLength": 1 },
+        "canonical_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "anchor_conflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchor_key", "canonical_ids", "source_rows"],
+      "properties": {
+        "anchor_key": { "type": "string", "minLength": 1 },
+        "canonical_ids": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "source_rows": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/source_row_ref" }
+        }
+      }
+    },
+    "abstention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "anchor_key", "message"],
+      "properties": {
+        "reason": { "const": "anchor_conflict" },
+        "anchor_key": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    },
+    "consistency": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "anchor_conflicts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/anchor_conflict" }
+        },
+        "abstentions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/abstention" }
+        }
+      }
+    }
+  }
+}

@@ -219,6 +219,9 @@ pub enum ProjectSubcommand {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum GeoSubcommand {
+    /// Materialize three or more named sources into one budgeted consistency artifact
+    #[command(name = "link-sources")]
+    LinkSources(GeoLinkSourcesCli),
     /// Solve the exact hard-feasible parcel/building residual for a composition request
     Solve(GeoSolveCli),
     /// Normalize and budget source geometry into canonical tile-local values
@@ -232,6 +235,16 @@ pub enum GeoSubcommand {
     CompileEvidence(GeoCompileEvidenceCli),
     /// Evaluate labeled composition cases without leaking labels into the solver
     Evaluate(GeoEvaluateCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoLinkSourcesCli {
+    /// JSON file holding a canon_geo_multisource_request.v0 request
+    #[arg(long)]
+    pub request: PathBuf,
+    /// CSV path for the deterministic merged source rows
+    #[arg(long = "rows-out")]
+    pub rows_out: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]

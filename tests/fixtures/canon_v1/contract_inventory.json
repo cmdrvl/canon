@@ -155,6 +155,17 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo link-sources",
+      "family": "geo",
+      "clap_path": "geo link-sources",
+      "operator_name": "geo link-sources",
+      "primary_contracts": [
+        "canon_geo_multisource_request.v0",
+        "canon_entity_multisource_link.v1"
+      ],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo solve",
       "family": "geo",
       "clap_path": "geo solve",
@@ -1130,7 +1141,13 @@
       "access_boundary": "internal_source_only",
       "source_path": "src/entity/link.rs"
     },
-    { "id": "canon_entity_multisource_link.v0", "family": "entity", "action": "preserve" },
+    {
+      "id": "canon_entity_multisource_link.v1",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::entity::run::link::multisource"
+    },
     { "id": "canon_entity_native_review.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_native_review_decisions.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_native_review_import.v0", "family": "entity", "action": "preserve" },
@@ -1152,6 +1169,13 @@
     },
     {
       "id": "canon_geo_geometry_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_multisource_request.v0",
       "family": "geo",
       "action": "preserve",
       "access_boundary": "public_crate_api",

@@ -8,19 +8,25 @@
 //! evidence; callers provide exact source rows and optional exact anchor fields.
 
 use super::{
-    LINK_SIDE_COLUMN, LINK_SOURCE_NAME_COLUMN, LINK_SOURCE_ORDINAL_COLUMN, LINK_SOURCE_ROW_COLUMN,
+    EntityArtifactReference, LINK_SIDE_COLUMN, LINK_SOURCE_NAME_COLUMN, LINK_SOURCE_ORDINAL_COLUMN,
+    LINK_SOURCE_ROW_COLUMN,
 };
-use crate::{Refusal, entity::error::EntityRefusalKind};
+use crate::{
+    Refusal,
+    entity::error::EntityRefusalKind,
+    fs_safety::{AtomicPublicationPlan, atomic_temp_sibling, publish_atomic},
+    witness,
+};
 use csv::{ReaderBuilder, StringRecord, WriterBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs::{self, File},
+    fs,
     path::Path,
 };
 
-pub const ENTITY_MULTISOURCE_LINK_VERSION: &str = "canon_entity_multisource_link.v0";
+pub const ENTITY_MULTISOURCE_LINK_VERSION: &str = "canon_entity_multisource_link.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityMultisourceLinkRequest<'a> {
@@ -126,11 +132,13 @@ impl EntitySourceComparison {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntityMultisourceLinkArtifact {
     pub version: String,
+    pub artifact_content_hash: String,
     pub mode: EntityMultisourceLinkMode,
     pub source_count: usize,
     pub row_count: u64,
     pub canonical_source: Option<String>,
     pub materialized_rows_path: String,
+    pub materialized_rows_hash: String,
     pub sources: Vec<EntityMultisourceInput>,
     pub comparison_graph: Vec<EntityComparisonDiagnostic>,
     pub consistency: EntityMultisourceConsistency,
@@ -147,6 +155,7 @@ pub struct EntityMultisourceInput {
     pub name: String,
     pub role: EntitySourceRole,
     pub rows_path: String,
+    pub rows_hash: String,
     pub row_count: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_id_column: Option<String>,
@@ -255,6 +264,18 @@ pub fn materialize_multisource_rows(
 
     let mut source_rows = Vec::new();
     for source in &normalized {
+        if Path::new(&source.rows_path) == request.output_rows {
+            return Err(input_refusal(
+                "Entity multisource output rows must not overwrite a source input",
+                json!({
+                    "stage": "link",
+                    "reason": "input_output_overlap",
+                    "source": source.name,
+                    "path": source.rows_path,
+                    "writes_performed": false
+                }),
+            ));
+        }
         source_rows.push(read_source(source)?);
     }
 
@@ -264,19 +285,78 @@ pub fn materialize_multisource_rows(
         &source_rows,
     )?;
     let consistency = detect_anchor_conflicts(&source_rows);
-    write_materialized_rows(&source_rows, request.output_rows)?;
+    let materialized_rows_hash = write_materialized_rows(&source_rows, request.output_rows)?;
 
-    Ok(EntityMultisourceLinkArtifact {
+    let mut artifact = EntityMultisourceLinkArtifact {
         version: ENTITY_MULTISOURCE_LINK_VERSION.to_string(),
+        artifact_content_hash: String::new(),
         mode: EntityMultisourceLinkMode::NamedSources,
         source_count: source_rows.len(),
         row_count: source_rows.iter().map(|source| source.row_count()).sum(),
         canonical_source,
         materialized_rows_path: request.output_rows.display().to_string(),
+        materialized_rows_hash,
         sources: source_rows.iter().map(SourceRows::artifact_input).collect(),
         comparison_graph: graph,
         consistency,
+    };
+    artifact.artifact_content_hash = hash_multisource_artifact_without_self(&artifact)?;
+    Ok(artifact)
+}
+
+pub fn multisource_artifact_reference(
+    artifact: &EntityMultisourceLinkArtifact,
+) -> Result<EntityArtifactReference, Refusal> {
+    validate_multisource_link_artifact(artifact)?;
+    Ok(EntityArtifactReference {
+        version: artifact.version.clone(),
+        content_hash: artifact.artifact_content_hash.clone(),
     })
+}
+
+pub fn validate_multisource_link_artifact(
+    artifact: &EntityMultisourceLinkArtifact,
+) -> Result<(), Refusal> {
+    if artifact.version != ENTITY_MULTISOURCE_LINK_VERSION {
+        return Err(artifact_refusal(
+            "Entity multisource artifact version mismatch",
+            json!({
+                "stage": "link",
+                "expected": ENTITY_MULTISOURCE_LINK_VERSION,
+                "actual": artifact.version,
+                "writes_performed": false
+            }),
+        ));
+    }
+    let expected = hash_multisource_artifact_without_self(artifact)?;
+    if artifact.artifact_content_hash != expected {
+        return Err(artifact_refusal(
+            "Entity multisource artifact content hash does not match canonical semantics",
+            json!({
+                "stage": "link",
+                "field": "artifact_content_hash",
+                "expected": expected,
+                "actual": artifact.artifact_content_hash,
+                "writes_performed": false
+            }),
+        ));
+    }
+    if artifact.materialized_rows_hash.trim().is_empty()
+        || artifact
+            .sources
+            .iter()
+            .any(|source| source.rows_hash.trim().is_empty())
+    {
+        return Err(artifact_refusal(
+            "Entity multisource artifact requires content hashes for every input and the materialized rows",
+            json!({
+                "stage": "link",
+                "field": "rows_hash",
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -293,6 +373,7 @@ struct NormalizedSource {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SourceRows {
     source: NormalizedSource,
+    rows_hash: String,
     headers: StringRecord,
     records: Vec<StringRecord>,
 }
@@ -307,6 +388,7 @@ impl SourceRows {
             name: self.source.name.clone(),
             role: self.source.role,
             rows_path: self.source.rows_path.clone(),
+            rows_hash: self.rows_hash.clone(),
             row_count: self.row_count(),
             local_id_column: self.source.local_id_column.clone(),
             anchor_namespace: self.source.anchor_namespace.clone(),
@@ -519,7 +601,7 @@ fn normalize_comparison_graph(
 
 fn read_source(source: &NormalizedSource) -> Result<SourceRows, Refusal> {
     let path = Path::new(&source.rows_path);
-    let mut reader = ReaderBuilder::new().from_path(path).map_err(|error| {
+    let bytes = fs::read(path).map_err(|error| {
         input_refusal(
             "Failed to open entity multisource CSV rows",
             json!({
@@ -531,6 +613,8 @@ fn read_source(source: &NormalizedSource) -> Result<SourceRows, Refusal> {
             }),
         )
     })?;
+    let rows_hash = witness::hash_bytes(&bytes);
+    let mut reader = ReaderBuilder::new().from_reader(bytes.as_slice());
     let headers = reader.headers().cloned().map_err(|error| {
         input_refusal(
             "Failed to read entity multisource CSV headers",
@@ -564,12 +648,13 @@ fn read_source(source: &NormalizedSource) -> Result<SourceRows, Refusal> {
         .collect::<Result<Vec<_>, _>>()?;
     Ok(SourceRows {
         source: source.clone(),
+        rows_hash,
         headers,
         records,
     })
 }
 
-fn write_materialized_rows(sources: &[SourceRows], output: &Path) -> Result<(), Refusal> {
+fn write_materialized_rows(sources: &[SourceRows], output: &Path) -> Result<String, Refusal> {
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent).map_err(|error| {
             io_refusal(
@@ -579,14 +664,7 @@ fn write_materialized_rows(sources: &[SourceRows], output: &Path) -> Result<(), 
             )
         })?;
     }
-    let file = File::create(output).map_err(|error| {
-        io_refusal(
-            "Failed to create entity multisource materialized rows",
-            output,
-            error,
-        )
-    })?;
-    let mut writer = WriterBuilder::new().from_writer(file);
+    let mut writer = WriterBuilder::new().from_writer(Vec::new());
     let merged_headers = merged_headers(sources);
     let mut output_headers = merged_headers.clone();
     output_headers.push(LINK_SOURCE_NAME_COLUMN.to_string());
@@ -634,7 +712,27 @@ fn write_materialized_rows(sources: &[SourceRows], output: &Path) -> Result<(), 
             output,
             error,
         )
-    })
+    })?;
+    let bytes = writer.into_inner().map_err(|error| {
+        io_refusal(
+            "Failed to finalize entity multisource materialized rows",
+            output,
+            error,
+        )
+    })?;
+    let publication = AtomicPublicationPlan {
+        logical_field: "entity_multisource_rows".to_string(),
+        destination: output.to_path_buf(),
+        temp_path: atomic_temp_sibling(output, "canon-multisource"),
+    };
+    publish_atomic(&publication, &bytes).map_err(|error| {
+        io_refusal(
+            "Failed to atomically publish entity multisource materialized rows",
+            output,
+            error,
+        )
+    })?;
+    Ok(witness::hash_bytes(&bytes))
 }
 
 fn detect_anchor_conflicts(sources: &[SourceRows]) -> EntityMultisourceConsistency {
@@ -858,7 +956,7 @@ fn input_refusal(message: &'static str, detail: serde_json::Value) -> Refusal {
     EntityRefusalKind::InputContract.to_refusal(
         message,
         detail,
-        Some("Fix entity multisource link inputs, then rerun canon entity link".to_string()),
+        Some("Fix the N-source link inputs, then rerun the calling command".to_string()),
     )
 }
 
@@ -870,6 +968,36 @@ fn budget_refusal(message: &'static str, detail: serde_json::Value) -> Refusal {
     )
 }
 
+fn artifact_refusal(message: &'static str, detail: serde_json::Value) -> Refusal {
+    EntityRefusalKind::ArtifactContract.to_refusal(
+        message,
+        detail,
+        Some("Rebuild the N-source artifact from its pinned source rows".to_string()),
+    )
+}
+
+fn hash_multisource_artifact_without_self(
+    artifact: &EntityMultisourceLinkArtifact,
+) -> Result<String, Refusal> {
+    let mut hashable = artifact.clone();
+    hashable.artifact_content_hash.clear();
+    hashable.materialized_rows_path.clear();
+    for source in &mut hashable.sources {
+        source.rows_path.clear();
+    }
+    let bytes = serde_json::to_vec(&hashable).map_err(|error| {
+        artifact_refusal(
+            "Failed to hash entity multisource artifact",
+            json!({
+                "stage": "link",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    Ok(witness::hash_bytes(&bytes))
+}
+
 fn io_refusal(message: &'static str, path: &Path, error: impl std::fmt::Display) -> Refusal {
     EntityRefusalKind::IoBudget.to_refusal(
         message,
@@ -879,6 +1007,6 @@ fn io_refusal(message: &'static str, path: &Path, error: impl std::fmt::Display)
             "error": error.to_string(),
             "writes_performed": false
         }),
-        Some("Check entity multisource link work-dir permissions, then rerun".to_string()),
+        Some("Check N-source output permissions, then rerun the calling command".to_string()),
     )
 }

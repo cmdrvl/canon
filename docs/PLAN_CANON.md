@@ -87,6 +87,7 @@ canon package pull --registry <OCI_BASE_URL> --repository <REPOSITORY> --cache <
 canon project init <DIR> [--project-id <ID>] [--mapping-profile <REF>] [--emit json|summary]
 canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]
 canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]
+canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>
 canon geo solve --request <REQUEST.json>
 canon geo materialize-geometry --request <REQUEST.json>
 canon geo materialize-evidence --rows <ROWS.json>

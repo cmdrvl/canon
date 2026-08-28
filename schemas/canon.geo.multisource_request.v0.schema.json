@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.multisource_request.v0.schema.json",
+  "title": "canon.geo.multisource_request.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "sources", "default_pair_budget"],
+  "properties": {
+    "version": { "const": "canon_geo_multisource_request.v0" },
+    "sources": {
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "comparison_graph": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/comparison" }
+    },
+    "default_pair_budget": { "type": "integer", "minimum": 1 }
+  },
+  "$defs": {
+    "role": {
+      "type": "string",
+      "enum": ["canonical_reference", "reference", "target", "peer"]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "role", "rows_path"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "role": { "$ref": "#/$defs/role" },
+        "rows_path": { "type": "string", "minLength": 1 },
+        "local_id_column": { "type": "string", "minLength": 1 },
+        "anchor_namespace": { "type": "string", "minLength": 1 },
+        "anchor_column": { "type": "string", "minLength": 1 },
+        "canonical_id_column": { "type": "string", "minLength": 1 }
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["left_source", "right_source"],
+      "properties": {
+        "left_source": { "type": "string", "minLength": 1 },
+        "right_source": { "type": "string", "minLength": 1 },
+        "max_candidate_rows": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

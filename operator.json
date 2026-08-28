@@ -667,6 +667,75 @@
       ]
     },
     {
+      "name": "geo link-sources",
+      "usage": "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
+      "description": "Materialize three or more named local source files into one deterministic N-source consistency artifact with explicit roles, pair budgets, source hashes, and anchor-conflict abstentions",
+      "output_mode": "json",
+      "output_schema": "canon_entity_multisource_link.v1",
+      "status": "implemented",
+      "read_only": false,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads only declared local CSV sources, writes the merged rows to the explicit --rows-out path by atomic sibling rename, and emits the content-addressed artifact on stdout; source count is provenance, not evidence weight",
+        "mutation_class": "OwnedOutput",
+        "network_class": "Offline",
+        "concurrency_class": "AtomicOwnedOutput",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "geo link-sources"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": true,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "N-source consistency artifact emitted and merged rows atomically published",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, role, source, comparison-graph, budget, artifact, or output error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon geo compile-evidence --request <REQUEST.json>",
+      "recovery": {
+        "next_command": "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "request",
+          "flag": "--request",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_multisource_request.v0 request"
+        },
+        {
+          "name": "rows_out",
+          "flag": "--rows-out",
+          "type": "file_path",
+          "required": true,
+          "description": "Owned output path for deterministic merged CSV rows"
+        }
+      ]
+    },
+    {
       "name": "geo solve",
       "usage": "canon geo solve --request <REQUEST.json>",
       "description": "Solve the exact hard-feasible parcel/building residual for a bounded composition request or evidence-compilation artifact and emit the canonical artifact on stdout",

@@ -460,6 +460,21 @@ pub const COMMAND_SAFETY_DECLARATIONS: &[CommandSafetyDeclaration] = &[
         notes: "creates declared project files inside an explicit project directory",
     },
     CommandSafetyDeclaration {
+        command: "geo link-sources",
+        operator_contract_name: Some("geo link-sources"),
+        usage: "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
+        read_only: false,
+        mutation: MutationClass::OwnedOutput,
+        network: NetworkClass::Offline,
+        concurrency: ConcurrencyClass::AtomicOwnedOutput,
+        platforms: &[
+            PlatformClass::PortablePathUtf8,
+            PlatformClass::SameFilesystemAtomicReplace,
+        ],
+        owned_temp_fixtures_only: true,
+        notes: "reads declared local CSV sources and atomically replaces only the explicit merged-row output",
+    },
+    CommandSafetyDeclaration {
         command: "geo read",
         operator_contract_name: None,
         usage: "geo composition/evidence/population request read",

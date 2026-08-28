@@ -6,7 +6,8 @@ use canon::entity::run::link::{
     multisource::{
         ENTITY_MULTISOURCE_LINK_VERSION, EntityMultisourceLinkRequest, EntityNamedSource,
         EntitySourceComparison, EntitySourceRole, complete_comparison_graph,
-        materialize_multisource_rows,
+        materialize_multisource_rows, multisource_artifact_reference,
+        validate_multisource_link_artifact,
     },
 };
 use std::{
@@ -72,9 +73,27 @@ fn multisource_materialization_is_invariant_to_source_and_edge_order() {
     assert_eq!(artifact_a.consistency, artifact_b.consistency);
     assert_eq!(
         strip_path(artifact_a.clone()),
-        strip_path(artifact_b),
+        strip_path(artifact_b.clone()),
         "artifact semantics are independent of input enumeration"
     );
+    assert_eq!(
+        artifact_a.artifact_content_hash, artifact_b.artifact_content_hash,
+        "artifact-chain identity must ignore publication paths"
+    );
+    assert_eq!(
+        artifact_a.materialized_rows_hash,
+        canon::witness::hash_file(&output_a).expect("hash materialized rows")
+    );
+    let reference =
+        multisource_artifact_reference(&artifact_a).expect("construct artifact-chain reference");
+    assert_eq!(reference.version, ENTITY_MULTISOURCE_LINK_VERSION);
+    assert_eq!(reference.content_hash, artifact_a.artifact_content_hash);
+
+    let mut tampered = artifact_a.clone();
+    tampered.row_count += 1;
+    let refusal = validate_multisource_link_artifact(&tampered)
+        .expect_err("semantic mutation invalidates the artifact self-hash");
+    assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
 
     let rows_a = fs::read_to_string(output_a).expect("materialized rows a");
     let rows_b = fs::read_to_string(output_b).expect("materialized rows b");
@@ -162,6 +181,25 @@ fn anchor_conflicts_surface_abstentions_instead_of_transitive_forcing() {
             .message
             .contains("abstain")
     );
+}
+
+#[test]
+fn every_exact_anchor_conflict_has_a_pairwise_witness() {
+    let fixture = MultiSourceFixture::new();
+    let artifact = materialize_multisource_rows(EntityMultisourceLinkRequest {
+        sources: vec![
+            anchored_source("alpha", EntitySourceRole::Reference, &fixture.alpha),
+            anchored_source("gamma", EntitySourceRole::Peer, &fixture.gamma),
+        ],
+        comparison_graph: complete_comparison_graph(["alpha", "gamma"]),
+        canonical_source: None,
+        default_pair_budget: 16,
+        output_rows: &fixture.work_dir.join("pairwise-conflict.csv"),
+    })
+    .expect("pairwise exact-anchor conflict materializes");
+
+    assert_eq!(artifact.consistency.anchor_conflicts.len(), 1);
+    assert_eq!(artifact.consistency.abstentions.len(), 1);
 }
 
 #[test]
@@ -267,6 +305,9 @@ fn strip_path(
     mut artifact: canon::entity::run::link::multisource::EntityMultisourceLinkArtifact,
 ) -> canon::entity::run::link::multisource::EntityMultisourceLinkArtifact {
     artifact.materialized_rows_path.clear();
+    for source in &mut artifact.sources {
+        source.rows_path.clear();
+    }
     artifact
 }
 

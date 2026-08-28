@@ -1,4 +1,4 @@
-//! Schema-drift guard for the nine registered Geo contracts.
+//! Schema-drift guard for the registered Geo contracts.
 //!
 //! For each contract this test: (a) pins the schema file's `title` and
 //! `properties.version.const`, and asserts top-level `additionalProperties`
@@ -9,21 +9,24 @@
 //! alternatives for tagged enums). This does not add a `jsonschema`
 //! dependency; it only catches keys the schema forgot to declare.
 
+use canon::entity::run::link::multisource::EntitySourceRole;
 use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
     CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
-    CANON_GEO_POPULATION_REQUEST_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
-    DEFAULT_MAX_MATERIALIZED_MODELS, GeoAffineProjectionMm, GeoBuildingCandidate,
-    GeoCompositionModel, GeoCompositionRequest, GeoCompositionUniverse, GeoEntityLevel,
-    GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef,
-    GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoHardConstraint, GeoHardConstraintKind,
-    GeoLabeledCompositionCase, GeoLocalFrameContract, GeoPopulationEvaluationRequest,
-    GeoProjectionProvenance, GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
-    GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed,
-    GeoWarehouseEvidenceRow, GeoWarehouseParcelRow, GeoWarehouseRowsRequest, compile_evidence,
-    evaluate_population, materialize_geometry_tile, solve_composition,
+    CANON_GEO_MULTISOURCE_REQUEST_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
+    CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoAffineProjectionMm,
+    GeoBuildingCandidate, GeoCompositionModel, GeoCompositionRequest, GeoCompositionUniverse,
+    GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
+    GeoEvidenceRecordRef, GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoHardConstraint,
+    GeoHardConstraintKind, GeoLabeledCompositionCase, GeoLocalFrameContract, GeoMultisourceRequest,
+    GeoMultisourceSource, GeoPopulationEvaluationRequest, GeoProjectionProvenance, GeoRhoBasis,
+    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoSourceAxisDomain,
+    GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed, GeoWarehouseEvidenceRow,
+    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, compile_evidence, evaluate_population,
+    materialize_geo_multisource, materialize_geometry_tile, solve_composition,
 };
 use serde_json::Value;
+use std::{fs, path::Path};
 
 const COMPOSITION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.composition_request.v0.schema.json");
@@ -42,6 +45,10 @@ const GEOMETRY_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.geometry_request.v0.schema.json");
 const GEOMETRY_TILE_SCHEMA: &str =
     include_str!("../schemas/canon.geo.geometry_tile.v0.schema.json");
+const MULTISOURCE_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.multisource_request.v0.schema.json");
+const MULTISOURCE_ARTIFACT_SCHEMA: &str =
+    include_str!("../schemas/canon.entity.multisource_link.v1.schema.json");
 
 fn parsed(source: &str) -> Value {
     serde_json::from_str(source).expect("schema file must be valid JSON")
@@ -340,6 +347,40 @@ fn source_point(x: &str, y: &str) -> GeoSourcePointDecimal {
     }
 }
 
+fn multisource_request(root: &Path) -> GeoMultisourceRequest {
+    let source_specs = [
+        ("parcel", EntitySourceRole::Reference, "entity:parcel"),
+        ("property", EntitySourceRole::Target, "entity:parcel"),
+        ("footprint", EntitySourceRole::Peer, "entity:other"),
+    ];
+    let sources = source_specs
+        .into_iter()
+        .map(|(name, role, canonical_id)| {
+            let rows_path = root.join(format!("{name}.csv"));
+            fs::write(
+                &rows_path,
+                format!("source_row_id,anchor_id,canonical_id\n{name}-1,shared,{canonical_id}\n"),
+            )
+            .expect("write multisource schema fixture");
+            GeoMultisourceSource {
+                name: name.to_string(),
+                role,
+                rows_path,
+                local_id_column: Some("source_row_id".to_string()),
+                anchor_namespace: Some("fixture-anchor".to_string()),
+                anchor_column: Some("anchor_id".to_string()),
+                canonical_id_column: Some("canonical_id".to_string()),
+            }
+        })
+        .collect();
+    GeoMultisourceRequest {
+        version: CANON_GEO_MULTISOURCE_REQUEST_VERSION.to_string(),
+        sources,
+        comparison_graph: Vec::new(),
+        default_pair_budget: 8,
+    }
+}
+
 #[test]
 fn composition_request_schema_matches_a_real_instance() {
     let request = composition_request();
@@ -373,6 +414,34 @@ fn geometry_tile_schema_matches_a_real_instance() {
         GEOMETRY_TILE_SCHEMA,
         "canon.geo.geometry_tile.v0",
         "canon_geo_geometry_tile.v0",
+        &instance,
+    );
+}
+
+#[test]
+fn multisource_request_schema_matches_a_real_instance() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let request = multisource_request(temp.path());
+    let instance = serde_json::to_value(&request).expect("multisource request must serialize");
+    assert_drift_free(
+        MULTISOURCE_REQUEST_SCHEMA,
+        "canon.geo.multisource_request.v0",
+        CANON_GEO_MULTISOURCE_REQUEST_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn multisource_artifact_schema_matches_a_real_instance() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let request = multisource_request(temp.path());
+    let artifact = materialize_geo_multisource(&request, &temp.path().join("rows.csv"))
+        .expect("multisource request materializes");
+    let instance = serde_json::to_value(&artifact).expect("multisource artifact serializes");
+    assert_drift_free(
+        MULTISOURCE_ARTIFACT_SCHEMA,
+        "canon.entity.multisource_link.v1",
+        "canon_entity_multisource_link.v1",
         &instance,
     );
 }
