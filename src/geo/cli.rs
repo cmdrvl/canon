@@ -9,7 +9,10 @@
 
 use crate::{
     CanonOutput, RefusalCode,
-    cli::{GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli, GeoSolveCli, GeoSubcommand},
+    cli::{
+        GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli, GeoMaterializeEvidenceCli, GeoSolveCli,
+        GeoSubcommand,
+    },
     refusal,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -36,13 +39,38 @@ use super::{
         canonical_evidence_compilation_bytes, compile_evidence,
         validate_evidence_compilation_artifact,
     },
+    materialize::{
+        CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoMaterializationError, GeoWarehouseRowsRequest,
+        canonical_materialized_evidence_request_bytes, materialize_warehouse_rows,
+    },
 };
 
 pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
     match &geo.command {
         GeoSubcommand::Solve(args) => run_solve(args),
+        GeoSubcommand::MaterializeEvidence(args) => run_materialize_evidence(args),
         GeoSubcommand::CompileEvidence(args) => run_compile_evidence(args),
         GeoSubcommand::Evaluate(args) => run_evaluate(args),
+    }
+}
+
+fn run_materialize_evidence(args: &GeoMaterializeEvidenceCli) -> Result<u8, Box<dyn Error>> {
+    let rows: GeoWarehouseRowsRequest = match read_request(
+        &args.rows,
+        "rows",
+        CANON_GEO_WAREHOUSE_ROWS_VERSION,
+        "canon geo materialize-evidence --rows <ROWS.json>",
+    ) {
+        Ok(rows) => rows,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let request = match materialize_warehouse_rows(&rows) {
+        Ok(request) => request,
+        Err(error) => return emit_materialization_error(error),
+    };
+    match canonical_materialized_evidence_request_bytes(&request) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_serialization_refusal(CANON_GEO_EVIDENCE_REQUEST_VERSION, &error),
     }
 }
 
@@ -205,6 +233,22 @@ fn emit_evidence_error(error: GeoEvidenceError) -> Result<u8, Box<dyn Error>> {
         }),
         Some(
             "repair the evidence request against canon_geo_evidence_request.v0, then rerun canon geo compile-evidence"
+                .to_string(),
+        ),
+    )
+}
+
+fn emit_materialization_error(error: GeoMaterializationError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo warehouse rows could not be materialized",
+        json!({
+            "geo_materialization_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(
+            "repair the rows against canon_geo_warehouse_rows.v0, then rerun canon geo materialize-evidence"
                 .to_string(),
         ),
     )

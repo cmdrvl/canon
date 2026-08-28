@@ -2,7 +2,8 @@
 
 > Status: **proposed full architecture with a partial E4 walking skeleton implemented**.
 > The typed evidence compiler, exact parcel/building residual kernel, incidence
-> factorization, bounded fallback, and population evaluator exist; geometry ingest,
+> factorization, bounded fallback, population evaluator, and offline warehouse-row
+> materializer exist; geometry acquisition/ingest,
 > temporal solving, knowledge compilation, halo reconciliation, and the complete E4/E5
 > populations do not. This does not change canon core: runtime lookup remains exact
 > registry lookup.
@@ -15,7 +16,7 @@
 
 ## Review state and precedence
 
-> Last status reconciliation: **2026-08-27**. This is a review-navigation layer, not a
+> Last status reconciliation: **2026-08-28**. This is a review-navigation layer, not a
 > claim that the full architecture ships. The implemented walking skeleton is named
 > explicitly above and in the controlling-state table; everything else remains proposed.
 
@@ -37,10 +38,11 @@ The controlling state entering the main review is:
 | Topic | Current controlling state | Authority |
 |---|---|---|
 | Product boundary | Core Canon remains exact registry replay; GEO is a build-time workbench. | `AGENTS.md`, `README.md`; binding boundary |
+| Offline row bridge | `canon geo materialize-evidence` deterministically groups release-pinned parcel, building/parcel-incidence, rho-contract, and immutable source-record rows into `canon_geo_evidence_request.v0`; duplicate grains and conflicting observation rows refuse, and the production evidence compiler validates the result. It performs no acquisition, and source-record multiplicity remains provenance rather than constraint weight. | `src/geo/materialize.rs`, `canon_geo_warehouse_rows.v0`; implemented build-time workbench contract |
 | Decision object | Entity-grain backbone and residual count with explicit scope and exactness; typed fallback when either is incomplete. Ledger keys are alias projections. | §§9, 10.2, 16.1; Appendix L.5 |
 | Candidate problem | Point re-ranking is not the dominant measured failure. The unresolved solver question is collateral composition over parcel/building sets. | Appendices L–M; `MEASURED`, with E4 `OPEN` |
-| Footprint→parcel predicate | Strictly more than 50% of computed footprint geometry inside computed parcel geometry, within an explicitly interior-disjoint parcel stratum; asserted area fields are observations, never denominators. Overlapping legal parcel hierarchies require typed crosswalks. | Appendices D and F; corrected single-source predicate `MEASURED`, canonical multi-source rerun `OPEN` |
-| Decomposition | Legacy mixed-denominator runs produced forests and parcel stars up to 71 variables. Canonical geometric-over-geometric, overlap-aware, multi-source decomposition remains open; solver incidence factorization is implemented independently. | Appendix F; retained NYC evidence plus `OPEN` canonical rerun |
+| Footprint→parcel predicate | Strictly more than 50% of computed footprint geometry inside computed parcel geometry, within an explicitly interior-disjoint parcel stratum; asserted area fields are observations, never denominators. Candidate reach is independent: a footprint and its majority parcel may have different H3 home cells. Overlapping legal parcel hierarchies require typed crosswalks. | Appendices D.9 and F; corrected single-source predicate and reach split `MEASURED`, controlled-halo multi-source rerun `OPEN` |
+| Decomposition | Legacy mixed-denominator runs produced forests and parcel stars up to 71 variables. A fresh single-source audit found that 20/22 dense-Manhattan and 3/4 Bronx same-cell no-majority cases were actually H3 candidate-reach misses. Canonical geometric-over-geometric, overlap-aware, multi-source decomposition with a controlled halo remains open; solver incidence factorization is implemented independently. | Appendices D.9 and F; retained NYC evidence plus `OPEN` canonical rerun |
 | Work-unit cost | The 200-feature, 0.5 s/tile, and 140 CPU-hour national figures are not supported. Cost must be measured component-wise with halo reconciliation. | Appendices B, C, F, G; original figures `FALSIFIED`, replacement `OPEN` |
 | Address evidence | PAD materially repairs address representation and restores street-absence refutation, but is evidence rather than an oracle. | Appendix M; `MEASURED` on NYC PAD 26B |
 | Evaluation ladder | E1–E3 are complete. E4 has an exact factorized residual solver over admitted evidence (bd-2kjx.1–.3); the E4 population numbers and the E5 non-NYC evidence-tier curve remain the decisive gates. | §17 and Appendix L; E4/E5 `OPEN` |
@@ -1069,6 +1071,16 @@ families independently endorsing the architecture. **It was killed by twenty min
 arithmetic on data we already had.** No amount of adversarial reasoning substitutes for one
 measurement.
 
+## B.8 Fresh pinned reproduction
+
+On 2026-08-28 the observation pull was re-run through cmdrvl-data MCP with MapPLUTO pinned
+to `26v1` / `2026-05-01` and NYC footprints pinned to `2026-08-09`. It returned the same
+100 parcels and 93 footprints. Recomputing the bipartite centroid graph with mean-Earth
+haversine distance reproduced every row of B.2 exactly, including percolation to one
+193-node component at 60 m. Snowflake query
+`01c6b1c1-0821-784b-006c-c7030888c3ce`; executable query and expected block:
+`scripts/geo_measurements/appendix_b_centroid_percolation.sql`.
+
 ---
 
 # Appendix C — MEASURED: the tile is ~7× larger than the plan assumes
@@ -1172,6 +1184,20 @@ still NYC-only, and NYC is the dense extreme — a national distribution will ha
 longer low-density tail. **The sizing must be re-measured per geography before any national
 cost estimate is quoted.**
 
+## C.8 Fresh pinned reproduction and a reach denominator
+
+The 2026-08-28 pinned rerun reproduced the parcel distribution exactly: 1,192
+parcel-containing r8 home cells, 856,614 distinct BBLs, median 637.5, p99 2,103.27, and
+max 2,422. With active NYC footprints pinned to `2026-08-09`, those cells contain
+1,081,175 of 1,081,999 distinct active footprints. The remaining **824 footprints have a
+valid H3 home cell, but that cell has no parcel-centroid home**. They are not solver
+residuals; they are an upstream candidate-reach population.
+
+The fresh two-source total-feature median is 1,395.5, p99 4,824.17, and max 6,011. This
+does not restore the tile-wide cost model; it further supports component-wise solving.
+Snowflake query `01c6b1d2-0821-784b-006c-c7030888c4da`; executable query:
+`scripts/geo_measurements/appendix_c_r8_density.sql`.
+
 ---
 
 # Appendix D — MEASURED: the predicate is load-bearing, and the obvious one fails
@@ -1179,12 +1205,16 @@ cost estimate is quoted.**
 Added 2026-08-15. **The first measurement that supports the architecture rather than
 falsifying it — conditional on a predicate choice that is not the obvious one.**
 
-> **CURRENT STATUS — PREDICATE RETAINED WITH DOMAIN CONDITION; DENOMINATOR CORRECTED.**
+> **CURRENT STATUS — PREDICATE RETAINED WITH DOMAIN AND CANDIDATE-REACH CONDITIONS;
+> DENOMINATOR CORRECTED.**
 > Appendix F replaces the asserted `SHAPE_AREA` denominator used for the original 84%/16%
-> result with computed geometric area. On the dense-Manhattan cell, the corrected
-> no-majority residual is approximately 1%, not 16%. The greater-than-50% uniqueness proof
+> result with computed geometric area. Appendix D.9 then separates the legacy same-H3-home
+> candidate restriction from a bbox-complete reference over the pinned parcel snapshot. In
+> dense Manhattan, same-home-cell lookup reports 22 no-majority footprints; complete reach
+> leaves only 2. In the Bronx, the split is 4 versus 1. The greater-than-50% uniqueness proof
 > also requires an interior-disjoint parcel domain; it is not valid across overlapping
-> condo-unit, billing-lot, and parent-lot geometries.
+> condo-unit, billing-lot, and parent-lot geometries. A production controlled halo must
+> reproduce the complete-reference result before the remaining residual is called geometric.
 
 ## D.1 The question
 
@@ -1226,8 +1256,10 @@ measured cell. At most one majority holder is guaranteed when candidate parcel i
 are disjoint, because two disjoint intersections cannot each exceed half of the same
 footprint area. NYC's parcel layers are not globally disjoint: condo-unit, billing-lot, and
 parent-lot polygons can overlap. Those hierarchies must be typed or stratified before
-invoking the theorem. The remaining 1% have no majority holder, an honest abstention
-identifying lot-line straddlers or geometry disagreement.
+invoking the theorem. The 22 same-cell zeroes are not all geometric abstentions: D.9 finds
+that 20 have a majority parcel in a different H3 home cell. Only the residual after a
+candidate-complete controlled halo may be attributed to lot-line straddling or geometry
+disagreement.
 
 ## D.4 The decomposition result
 
@@ -1271,14 +1303,17 @@ Parcel-to-building assignment is largely a solved geometric join.
 
 That is fine, and it should be stated plainly rather than counted as a win: the architecture
 earns its keep at the level *above* — which parcels and buildings constitute the asserted
-**property** — not at the level of which building sits on which lot. **The approximately 1% with no
-majority holder is where the interesting work is**, and it is exactly the lot-line-straddling
-assemblage population the product exists to resolve.
+**property** — not at the level of which building sits on which lot. **The
+candidate-complete no-majority residual is where the interesting work is.** Under the fresh
+D.9 reference it is 2/2,354 in dense Manhattan, not the 22/2,354 produced by same-home-cell
+blocking. The larger apparent residual was mostly boundary reach, not an assemblage
+population.
 
 ## D.7 Stratified check — two strata verified, and it improves at lower density
 
-Re-ran predicate C on a second cell at very different density. Both figures below are from
-returned structured query results, not prose.
+Re-ran predicate C on a second cell at very different density. Both figures below are the
+retained 2026-08-15 structured results; D.9's release-pinned rerun supersedes their current
+same-cell and candidate-complete counts.
 
 ```
   cell               borough   parcels  footprints   exactly one     zero
@@ -1286,10 +1321,10 @@ returned structured query results, not prose.
   882a100f4dfffff    BX            300         291     291 (100%)     0 ( 0%)
 ```
 
-**The predicate gets cleaner as density falls** — 100% unique assignment with zero orphans in
-a 300-lot Bronx cell, against 99%/1% in a 2,343-lot cell. That is the expected direction:
-in less dense fabric, buildings sit within their lots rather than straddling lot lines, so
-the no-majority population shrinks.
+**The original run suggested the predicate gets cleaner as density falls.** D.9 narrows
+that claim: the current pinned Bronx result is 287/4 under same-cell blocking and 290/1
+under complete candidate reach, while dense Manhattan is 2,332/22 and 2,352/2. Density
+may still matter, but H3 boundary reach was confounded with geometry and must be separated.
 
 Two strata across a 7.8× density range both produce a forest. **The decomposition property
 is not an artifact of one cell.**
@@ -1313,6 +1348,40 @@ Appendix F for the later structured runs.
 3. **The no-majority population needs its own path** — it is not an error and must not
    be dropped.
 4. Still **n=1 cell**, dense Manhattan. Re-measure across strata per bd-3un6.
+
+## D.9 Fresh pinned rerun: candidate reach precedes predicate truth
+
+The 2026-08-28 rerun pinned MapPLUTO to `26v1` / `2026-05-01` and active NYC footprints
+to `2026-08-09`. It measured two candidate universes separately:
+
+- **same H3 home cell** — the legacy Appendix-D restriction on both parcel and footprint
+  centroids;
+- **complete bbox reference** — every parcel in the pinned snapshot remains eligible
+  behind a complete bounding-box prefilter, followed by exact `ST_INTERSECTS` and
+  computed-area majority.
+
+| Cell | Footprints | same-cell one / zero / multi | complete-reference one / zero / multi | repaired only by cross-home parcel |
+|---|---:|---:|---:|---:|
+| Bronx `882a100f4dfffff` | 291 | 287 / 4 / 0 | 290 / 1 / 0 | 3 |
+| Manhattan `882a100d8bfffff` | 2,354 | 2,332 / 22 / 0 | 2,352 / 2 / 0 | 20 |
+
+The same-cell A/B/C query also found zero positive-area parcel-overlap pairs within each
+home-cell parcel population and reconciled every predicate bucket to its footprint
+denominator. The complete reference observed zero majority multi-matches. These are
+empirical topology checks on two pinned strata, not a global proof that NYC parcel
+hierarchies are disjoint.
+
+The correction is architectural: H3 home-cell equality is ownership metadata, not a
+complete spatial candidate predicate. A production work unit remains **tile + controlled
+halo**, and its reach must be tested against the complete reference. The complete reference
+is an audit oracle, not a proposal to solve all 856,614 parcels monolithically; exact
+residual solving still occurs only on the bounded local incidence components.
+
+Executable SQL:
+`scripts/geo_measurements/appendix_d_predicates.sql` and
+`scripts/geo_measurements/appendix_d_candidate_reach.sql`. Fresh file-exact Snowflake
+queries: `01c6b1c0-0821-83a1-006c-c7030888b8de` and
+`01c6b1c0-0821-784b-006c-c7030888c3c6`.
 
 ---
 
@@ -1418,7 +1487,8 @@ in Queens where geometry gives 0) and in a units-conversion probe (946 impossibl
 multi-matches — dimensional error, caught by the multi=0 sanity gate). This is ρ working
 as specified, one level down: **asserted source area fields are observations to check,
 never denominators to divide by.** Adopt `ST_AREA`-over-`ST_AREA` as the canonical
-predicate-C form; the no-majority residual in dense Manhattan is ~1%, not 16%.
+predicate-C form. Under legacy same-cell blocking the no-majority rate is ~1%, not 16%;
+D.9's complete-reference audit reduces it further to 2/2,354.
 
 ## F.3 The multi-source result is retained but not canonical
 
@@ -1458,8 +1528,10 @@ catch at the footprint level in this fabric, and the `gcc` coverage-rate constra
    domain must be rerun together. Appendix G separately settles the r10+k-ring sizing
    arithmetic.
 2. **Appendix D's predicate is right; its denominator was wrong.** Canonical form is
-   geometric-over-geometric. The "16% product population" shrinks to ~1% no-majority
-   plus the parcel-star components — the honest hard residual.
+   geometric-over-geometric. The "16% product population" shrinks first to a ~1%
+   same-cell residual and then to 2/2,354 under D.9's complete-reference reach. Only a
+   controlled-halo rerun can name the production hard residual; parcel-star components
+   remain a separate measured stress shape.
 3. **Parcel-star components (retained SI max 71) are a measured stress shape** for
    per-component compilation budgets, not a proven global bound.
 4. All measurements NYC-only; the bead's suburban/agency-multifamily stratum has no

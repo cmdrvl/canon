@@ -1,0 +1,264 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.warehouse_rows.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.warehouse_rows.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_warehouse_rows.v0",
+      "type": "string"
+    },
+    "parcel_rows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/parcel_row" }
+    },
+    "building_parcel_rows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/building_parcel_row" }
+    },
+    "contracts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rho_contract" }
+    },
+    "evidence_rows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidence_row" }
+    },
+    "max_assignments": { "type": "integer", "minimum": 0 },
+    "max_materialized_models": { "type": "integer", "minimum": 0 }
+  },
+  "required": [
+    "version",
+    "parcel_rows",
+    "building_parcel_rows",
+    "contracts",
+    "evidence_rows",
+    "max_assignments",
+    "max_materialized_models"
+  ],
+  "$defs": {
+    "parcel_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "parcel_id": { "type": "string" } },
+      "required": ["parcel_id"]
+    },
+    "building_parcel_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "building_id": { "type": "string" },
+        "parcel_id": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "required": ["building_id", "parcel_id"]
+    },
+    "entity_level": {
+      "type": "string",
+      "enum": ["poi_unit", "building", "parcel", "property"]
+    },
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": { "$ref": "#/$defs/entity_level" },
+        "id": { "type": "string" }
+      },
+      "required": ["level", "id"]
+    },
+    "integer_member_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "value": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["id", "value"]
+    },
+    "integer_measure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "semantic_id": { "type": "string" },
+        "unit": { "type": "string" },
+        "value_origin": {
+          "type": "string",
+          "enum": ["source_asserted", "exact_derived"]
+        }
+      },
+      "required": ["semantic_id", "unit", "value_origin"]
+    },
+    "rho_basis": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "logical_relaxation" },
+            "invariant_id": { "type": "string" }
+          },
+          "required": ["kind", "invariant_id"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "empirical_calibration" },
+            "population_id": { "type": "string" },
+            "calibration_blake3": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "falsification_rule_id": { "type": "string" }
+          },
+          "required": [
+            "kind",
+            "population_id",
+            "calibration_blake3",
+            "falsification_rule_id"
+          ]
+        }
+      ]
+    },
+    "rho_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "string" },
+        "source_dataset": { "type": "string" },
+        "source_release": { "type": "string" },
+        "source_lineage_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "method_id": { "type": "string" },
+        "method_version": { "type": "string" },
+        "claim_role": {
+          "type": "string",
+          "enum": [
+            "stable_identity_anchor",
+            "temporal_occupancy",
+            "lifecycle_event",
+            "attribute_observation"
+          ]
+        },
+        "basis": { "$ref": "#/$defs/rho_basis" }
+      },
+      "required": [
+        "id",
+        "version",
+        "source_dataset",
+        "source_release",
+        "source_lineage_ids",
+        "method_id",
+        "method_version",
+        "claim_role",
+        "basis"
+      ]
+    },
+    "evidence_record_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_record_id": { "type": "string" },
+        "source_vintage": { "type": "string" },
+        "record_blake3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": ["source_record_id", "source_vintage", "record_blake3"]
+    },
+    "valid_time_interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start_day": { "type": "integer" },
+        "end_day": { "type": "integer" }
+      },
+      "required": ["start_day", "end_day"]
+    },
+    "observation_kind": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "exact_sets" },
+            "level": { "$ref": "#/$defs/entity_level" },
+            "sets": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          },
+          "required": ["kind", "level", "sets"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "existential_membership" },
+            "members": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/entity_ref" }
+            }
+          },
+          "required": ["kind", "members"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "integer_sum_band" },
+            "level": { "$ref": "#/$defs/entity_level" },
+            "measure": { "$ref": "#/$defs/integer_measure" },
+            "values": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/integer_member_value" }
+            },
+            "min": { "type": "integer", "minimum": 0 },
+            "max": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["kind", "level", "measure", "values", "min", "max"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "prefer_member" },
+            "member": { "$ref": "#/$defs/entity_ref" },
+            "cost_if_absent": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["kind", "member", "cost_if_absent"]
+        }
+      ]
+    },
+    "evidence_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "observation_id": { "type": "string" },
+        "contract_id": { "type": "string" },
+        "source_record": { "$ref": "#/$defs/evidence_record_ref" },
+        "valid_time": { "$ref": "#/$defs/valid_time_interval" },
+        "observation": { "$ref": "#/$defs/observation_kind" }
+      },
+      "required": [
+        "observation_id",
+        "contract_id",
+        "source_record",
+        "observation"
+      ]
+    }
+  }
+}

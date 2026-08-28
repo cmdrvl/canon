@@ -377,6 +377,7 @@ canon project init <DIR> [--project-id <ID>] [--mapping-profile <REF>] [--emit j
 canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]
 canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]
 canon geo solve --request <REQUEST.json>
+canon geo materialize-evidence --rows <ROWS.json>
 canon geo compile-evidence --request <REQUEST.json>
 canon geo evaluate --population <POPULATION.json>
 canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]
@@ -431,6 +432,16 @@ canon entity profile init <PROFILE> --output <PATH>
 `canon_geo_composition_request.v0` request or the complete
 `canon_geo_evidence_compilation.v0` artifact emitted by `compile-evidence`. Solving the
 compilation artifact preserves its content digest in the composition output.
+
+`canon geo materialize-evidence --rows` is the offline bridge from exported relational
+rows to `canon_geo_evidence_request.v0`. Its input contract is
+`canon_geo_warehouse_rows.v0`: parcel rows declare the candidate grain,
+building/parcel rows declare candidate incidence (a null parcel is an explicit
+no-containment marker), and evidence rows group immutable source records under one typed
+rho observation. The command rejects duplicate grains and conflicting rows, sorts keyed
+collections, validates the result through the same compiler used by `compile-evidence`,
+and writes only to stdout. It performs no warehouse acquisition, and multiple source
+records remain provenance for one observation rather than independent constraint weight.
 
 ### Arguments
 

@@ -135,6 +135,118 @@ fn geo_solve_refuses_a_malformed_request_file() {
 }
 
 #[test]
+fn geo_materialize_evidence_emits_a_compiler_accepted_request() {
+    let temp = tempdir().expect("tempdir");
+    let rows = write_json(
+        temp.path(),
+        "warehouse-rows.json",
+        &json!({
+            "version": "canon_geo_warehouse_rows.v0",
+            "parcel_rows": [
+                { "parcel_id": "parcel-b" },
+                { "parcel_id": "parcel-a" }
+            ],
+            "building_parcel_rows": [],
+            "contracts": [{
+                "id": "rho.exported-candidates",
+                "version": "1.0.0",
+                "source_dataset": "SOURCE.EXPORTED_PARCEL_FACTS",
+                "source_release": "26v1",
+                "source_lineage_ids": ["SOURCE.NYC_DCP_MAPPLUTO_HOT:26v1"],
+                "method_id": "predicate-c-positive-area",
+                "method_version": "1.0.0",
+                "claim_role": "stable_identity_anchor",
+                "basis": {
+                    "kind": "logical_relaxation",
+                    "invariant_id": "candidate-set-is-a-superset"
+                }
+            }],
+            "evidence_rows": [
+                {
+                    "observation_id": "obs.candidates",
+                    "contract_id": "rho.exported-candidates",
+                    "source_record": {
+                        "source_record_id": "export-row-b",
+                        "source_vintage": "26v1",
+                        "record_blake3": "6ee7136102b255723487ec7a5d9f0a8ac0efc6fdf1972830c25eda91072ee151"
+                    },
+                    "observation": {
+                        "kind": "exact_sets",
+                        "level": "parcel",
+                        "sets": [["parcel-a", "parcel-b"]]
+                    }
+                },
+                {
+                    "observation_id": "obs.candidates",
+                    "contract_id": "rho.exported-candidates",
+                    "source_record": {
+                        "source_record_id": "export-row-a",
+                        "source_vintage": "26v1",
+                        "record_blake3": "c54e12755a1240376324a828921506c5090b4d653d67dad129713a1856f766cc"
+                    },
+                    "observation": {
+                        "kind": "exact_sets",
+                        "level": "parcel",
+                        "sets": [["parcel-a", "parcel-b"]]
+                    }
+                }
+            ],
+            "max_assignments": 64,
+            "max_materialized_models": 64
+        }),
+    );
+
+    let materialized = canon_command()
+        .args([
+            "geo",
+            "materialize-evidence",
+            "--rows",
+            rows.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    assert!(materialized.get_output().stderr.is_empty());
+    let request: Value = serde_json::from_slice(&materialized.get_output().stdout)
+        .expect("materialized request parses");
+    assert_eq!(request["version"], "canon_geo_evidence_request.v0");
+    assert_eq!(
+        request["universe"]["parcels"],
+        json!(["parcel-a", "parcel-b"])
+    );
+    assert_eq!(request["observations"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        request["observations"][0]["source_records"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+
+    let request_path = temp.path().join("evidence-request.json");
+    fs::write(&request_path, &materialized.get_output().stdout)
+        .expect("write materialized request");
+    let compilation = canon_command()
+        .args([
+            "geo",
+            "compile-evidence",
+            "--request",
+            request_path.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let compilation: Value =
+        serde_json::from_slice(&compilation.get_output().stdout).expect("compilation parses");
+    assert_eq!(compilation["admissions"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        compilation["composition_request"]["hard_constraints"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
 fn geo_solve_refuses_a_missing_request_file() {
     let temp = tempdir().expect("tempdir");
     let missing = temp.path().join("absent.json");

@@ -9,7 +9,9 @@ pub mod cli;
 pub mod composition;
 pub mod evaluation;
 pub mod evidence;
+pub mod materialize;
 
 pub use composition::*;
 pub use evaluation::*;
 pub use evidence::*;
+pub use materialize::*;

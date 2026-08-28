@@ -221,6 +221,9 @@ pub enum ProjectSubcommand {
 pub enum GeoSubcommand {
     /// Solve the exact hard-feasible parcel/building residual for a composition request
     Solve(GeoSolveCli),
+    /// Fold release-pinned warehouse rows into a typed evidence request
+    #[command(name = "materialize-evidence")]
+    MaterializeEvidence(GeoMaterializeEvidenceCli),
     /// Admit versioned rho observations into a bounded composition request
     #[command(name = "compile-evidence")]
     CompileEvidence(GeoCompileEvidenceCli),
@@ -240,6 +243,13 @@ pub struct GeoCompileEvidenceCli {
     /// JSON file holding a canon_geo_evidence_request.v0 request
     #[arg(long)]
     pub request: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoMaterializeEvidenceCli {
+    /// JSON file holding canon_geo_warehouse_rows.v0 rows
+    #[arg(long)]
+    pub rows: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]

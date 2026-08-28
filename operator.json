@@ -728,6 +728,67 @@
       ]
     },
     {
+      "name": "geo materialize-evidence",
+      "usage": "canon geo materialize-evidence --rows <ROWS.json>",
+      "description": "Fold release-pinned offline warehouse rows into a deterministic typed Geo evidence request and validate it through the production evidence compiler",
+      "output_mode": "json",
+      "output_schema": "canon_geo_evidence_request.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads an already-exported local row artifact and writes only the typed evidence request to stdout; acquisition and network access remain outside Canon",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "typed Geo evidence request emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, row IO, parse, grain, or evidence contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon geo compile-evidence --request <REQUEST.json>",
+      "recovery": {
+        "next_command": "canon geo materialize-evidence --rows <ROWS.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "rows",
+          "flag": "--rows",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding canon_geo_warehouse_rows.v0 release-pinned offline rows"
+        }
+      ]
+    },
+    {
       "name": "geo compile-evidence",
       "usage": "canon geo compile-evidence --request <REQUEST.json>",
       "description": "Admit versioned rho observations into a bounded composition request, recording each admission disposition, and emit the canonical artifact on stdout",
