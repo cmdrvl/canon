@@ -209,6 +209,25 @@ anywhere in the decision path.**
 > needs an exact rational/scaled construction or a declared conservative boundary rule;
 > integer orientation predicates alone do not settle it.
 
+> **IMPLEMENTATION STATUS — EXACT TOPOLOGICAL KERNEL LANDED 2026-08-28 (`bd-15ba`).**
+> `src/geo/geometry.rs` implements checked `i128` orientation, closed-segment
+> intersection, simple-ring validation, exact integer twice-area, and point-in-ring with
+> an explicit `interior` / `boundary` / `exterior` result. The dependency decision for
+> this subset is **no external geometry crate**: the small integer kernel is the more
+> auditable exact implementation once coordinates have crossed the tile artifact boundary.
+> Neutral geometry machinery lives in the Geo workbench core; provider conventions, CRS
+> selection, projection parameters, and domain-specific predicate policy remain in
+> versioned tile/profile inputs. The Linux/macOS CI matrix runs a deterministic
+> boundary-adjacent suite including one-millimetre offsets, translation, and ring reversal.
+>
+> This does **not** complete the geometry value/materialization contract (`bd-16r1`) or
+> area-majority clipping. Empty, unclosed, duplicate, degenerate, and self-intersecting
+> rings refuse at the integer boundary; mixed local frames refuse. Non-finite source
+> coordinates, mixed source CRS, antimeridian crossing, projection error, quantization,
+> canonical ring bytes, holes/multipolygons, and vertex/byte budgets must be rejected or
+> typed before this kernel is called. Exactness is relative to the accepted quantized
+> coordinates, never a claim of exact world geometry.
+
 Arithmetic: a 1 km tile spans ~10⁶ mm, coordinates ~2×10⁶. Shoelace terms ~4×10¹²; summed
 over a 10³-vertex polygon ~4×10¹⁵ — inside `i64`, with `i128` carried for headroom.
 Orientation predicates are exact `i128` determinants. **No adaptive-precision filter
