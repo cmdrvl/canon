@@ -12,6 +12,9 @@
     "request_version": {
       "type": "string"
     },
+    "evidence_compilation": {
+      "$ref": "#/$defs/evidence_compilation_reference"
+    },
     "status": {
       "$ref": "#/$defs/composition_status"
     },
@@ -20,6 +23,13 @@
     },
     "hard_forced": {
       "$ref": "#/$defs/composition_backbone"
+    },
+    "backbone_complete": {
+      "type": "boolean"
+    },
+    "factorization": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/component_summary" }
     },
     "residual_models": {
       "type": "array",
@@ -39,6 +49,9 @@
         "type": "string"
       }
     },
+    "conflict_core_complete": {
+      "type": "boolean"
+    },
     "budget_fallback": {
       "oneOf": [
         {
@@ -56,10 +69,48 @@
     "status",
     "summary",
     "hard_forced",
+    "backbone_complete",
+    "factorization",
     "residual_models",
     "soft_ranked"
   ],
   "$defs": {
+    "entity_level": {
+      "type": "string",
+      "enum": ["poi_unit", "building", "parcel", "property"]
+    },
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": { "$ref": "#/$defs/entity_level" },
+        "id": { "type": "string" }
+      },
+      "required": ["level", "id"]
+    },
+    "evidence_compilation_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": "canon_geo_evidence_compilation.v0",
+          "type": "string"
+        },
+        "request_version": {
+          "const": "canon_geo_evidence_request.v0",
+          "type": "string"
+        },
+        "blake3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "version",
+        "request_version",
+        "blake3"
+      ]
+    },
     "composition_status": {
       "type": "string",
       "enum": [
@@ -67,6 +118,46 @@
         "ambiguous",
         "conflict",
         "budget_fallback"
+      ]
+    },
+    "component_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "key": { "type": "string" },
+        "variables": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/entity_ref" }
+        },
+        "constraint_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "any_of_inclusion_exclusion",
+            "exhaustive_enumeration",
+            "pruned_depth_first",
+            "budget_fallback"
+          ]
+        },
+        "exact": { "type": "boolean" },
+        "search_visits": { "type": "integer", "minimum": 0 },
+        "hard_feasible_assignments": { "type": "integer", "minimum": 0 },
+        "hard_feasible_assignments_saturated": { "type": "boolean" },
+        "positive_assignments": { "type": "integer", "minimum": 0 },
+        "positive_assignments_saturated": { "type": "boolean" }
+      },
+      "required": [
+        "key",
+        "variables",
+        "constraint_ids",
+        "strategy",
+        "exact",
+        "search_visits",
+        "hard_feasible_assignments_saturated",
+        "positive_assignments_saturated"
       ]
     },
     "composition_model": {
@@ -149,6 +240,10 @@
           "type": "integer",
           "minimum": 0
         },
+        "configured_max_assignments": {
+          "type": "integer",
+          "minimum": 1
+        },
         "guidance": {
           "type": "string"
         }
@@ -156,6 +251,7 @@
       "required": [
         "component_keys",
         "max_component_variables",
+        "configured_max_assignments",
         "guidance"
       ]
     },
@@ -175,17 +271,42 @@
           "type": "integer",
           "minimum": 0
         },
+        "candidate_assignments_saturated": {
+          "type": "boolean"
+        },
         "structurally_feasible_assignments": {
           "type": "integer",
           "minimum": 0
+        },
+        "structurally_feasible_assignments_complete": {
+          "type": "boolean"
+        },
+        "structurally_feasible_assignments_saturated": {
+          "type": "boolean"
         },
         "hard_constraint_evaluations": {
           "type": "integer",
           "minimum": 0
         },
+        "hard_constraint_evaluations_complete": {
+          "type": "boolean"
+        },
+        "hard_constraint_evaluations_saturated": {
+          "type": "boolean"
+        },
         "residual_model_count": {
           "type": "integer",
           "minimum": 0
+        },
+        "model_count_scope": {
+          "const": "entity_selection",
+          "type": "string"
+        },
+        "residual_model_count_complete": {
+          "type": "boolean"
+        },
+        "residual_model_count_saturated": {
+          "type": "boolean"
         },
         "summary_counts_saturated": {
           "type": "boolean"
@@ -202,9 +323,17 @@
         "parcel_candidates",
         "building_candidates",
         "candidate_assignments",
+        "candidate_assignments_saturated",
         "structurally_feasible_assignments",
+        "structurally_feasible_assignments_complete",
+        "structurally_feasible_assignments_saturated",
         "hard_constraint_evaluations",
+        "hard_constraint_evaluations_complete",
+        "hard_constraint_evaluations_saturated",
         "residual_model_count",
+        "model_count_scope",
+        "residual_model_count_complete",
+        "residual_model_count_saturated",
         "summary_counts_saturated",
         "component_count",
         "residual_models_materialized"

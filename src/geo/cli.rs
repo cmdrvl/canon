@@ -12,7 +12,7 @@ use crate::{
     cli::{GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli, GeoSolveCli, GeoSubcommand},
     refusal,
 };
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
     error::Error,
@@ -23,7 +23,7 @@ use std::{
 
 use super::{
     composition::{
-        CANON_GEO_COMPOSITION_REQUEST_VERSION, GeoCompositionError, GeoCompositionRequest,
+        GeoCompositionError, GeoCompositionRequest, GeoEvidenceCompilationReference,
         canonical_composition_bytes, solve_composition,
     },
     evaluation::{
@@ -31,8 +31,10 @@ use super::{
         canonical_population_evaluation_bytes, evaluate_population,
     },
     evidence::{
-        CANON_GEO_EVIDENCE_REQUEST_VERSION, GeoEvidenceCompilationRequest, GeoEvidenceError,
+        CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
+        GeoEvidenceCompilationArtifact, GeoEvidenceCompilationRequest, GeoEvidenceError,
         canonical_evidence_compilation_bytes, compile_evidence,
+        validate_evidence_compilation_artifact,
     },
 };
 
@@ -44,20 +46,51 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum GeoSolveInput {
+    CompositionRequest(GeoCompositionRequest),
+    EvidenceCompilation(GeoEvidenceCompilationArtifact),
+}
+
 fn run_solve(args: &GeoSolveCli) -> Result<u8, Box<dyn Error>> {
-    let request: GeoCompositionRequest = match read_request(
+    let input: GeoSolveInput = match read_request(
         &args.request,
         "request",
-        CANON_GEO_COMPOSITION_REQUEST_VERSION,
+        "canon_geo_composition_request.v0 or canon_geo_evidence_compilation.v0",
         "canon geo solve --request <REQUEST.json>",
     ) {
-        Ok(request) => request,
+        Ok(input) => input,
         Err(exit_code) => return Ok(exit_code),
     };
-    let artifact = match solve_composition(&request) {
+    let (request, evidence_compilation) = match input {
+        GeoSolveInput::CompositionRequest(request) => (request, None),
+        GeoSolveInput::EvidenceCompilation(compilation) => {
+            if let Err(error) = validate_evidence_compilation_artifact(&compilation) {
+                return emit_evidence_error(error);
+            }
+            let bytes = match canonical_evidence_compilation_bytes(&compilation) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    return emit_serialization_refusal(
+                        CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+                        &error,
+                    );
+                }
+            };
+            let reference = GeoEvidenceCompilationReference {
+                version: compilation.version.clone(),
+                request_version: compilation.request_version.clone(),
+                blake3: blake3::hash(&bytes).to_hex().to_string(),
+            };
+            (compilation.composition_request, Some(reference))
+        }
+    };
+    let mut artifact = match solve_composition(&request) {
         Ok(artifact) => artifact,
         Err(error) => return emit_composition_error(error),
     };
+    artifact.evidence_compilation = evidence_compilation;
     match canonical_composition_bytes(&artifact) {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_serialization_refusal("canon_geo_composition.v0", &error),

@@ -1464,12 +1464,13 @@ Exact expensive way:
 
 Emit minimal or irredundant support sets derived from proof DAGs.
 
-### 4.7 Value of Information
+### 4.7 Counterfactual Separation (a Value-of-Information Precursor)
 
 Definition:
 
-For each possible new evidence type, compute whether it can separate the current
-residual alternatives.
+For each precisely stated possible observation, compute whether it can separate the
+current residual alternatives. Expected value of information additionally needs a
+distribution over possible observations, acquisition cost, and decision utility.
 
 Concrete version:
 
@@ -2060,4 +2061,3 @@ answer.
 ```
 
 That is the ambitious defensible form.
-

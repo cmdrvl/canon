@@ -63,14 +63,19 @@ pub struct GeoPopulationCaseEvaluation {
     pub truth_members_in_universe: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub residual_model_count: Option<u64>,
-    /// Mirrors the solver's `summary_counts_saturated`: a saturated count is
-    /// a declared lower bound, never a point estimate.
+    /// Mirrors the solver's `residual_model_count_saturated`: a saturated
+    /// residual is a declared lower bound, never a point estimate. Saturation
+    /// of a different summary counter does not taint this claim.
     #[serde(default)]
     pub residual_count_saturated: bool,
     pub full_truth_recall: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub truth_model_in_residual: Option<bool>,
     pub hard_forced: GeoCompositionBackbone,
+    /// Whether `hard_forced` is the solver's complete hard backbone. A budget
+    /// handoff must never be read as evidence that no member was forced.
+    #[serde(default)]
+    pub backbone_complete: bool,
     pub backbone_true_positive_members: u64,
     pub backbone_false_positive_members: u64,
 }
@@ -86,6 +91,17 @@ pub struct GeoPopulationSummary {
     pub abstention_cases: u64,
     pub false_merge_cases: u64,
     pub full_truth_recall_cases: u64,
+    /// Cases where at least one labeled truth member was absent from the
+    /// candidate universe. These are candidate-generation failures, not
+    /// solver false negatives.
+    pub candidate_recall_failure_cases: u64,
+    /// Cases whose full truth model was representable and for which solver
+    /// residual membership was therefore actually scored.
+    pub solver_truth_scored_cases: u64,
+    /// Scored cases where admitted hard evidence excluded the labeled truth
+    /// model. This is the population falsification count for the active rho
+    /// contracts; it is distinct from a wrong singleton/false merge.
+    pub solver_truth_exclusion_cases: u64,
     pub truth_members: u64,
     pub truth_members_in_universe: u64,
     pub backbone_true_positive_members: u64,
@@ -234,6 +250,7 @@ pub fn evaluate_population(
                     residual_count_saturated: false,
                     truth_model_in_residual: None,
                     hard_forced: empty_backbone(),
+                    backbone_complete: false,
                     backbone_true_positive_members: 0,
                     backbone_false_positive_members: 0,
                 }
@@ -250,15 +267,21 @@ pub fn evaluate_population(
                     })?)
                     .to_hex()
                     .to_string();
-                let (backbone_true, backbone_false) =
-                    score_backbone(&artifact.hard_forced, &case.truth)?;
-                let truth_model_in_residual = if full_truth_recall {
-                    match model_satisfies_request(&compilation.composition_request, &case.truth) {
-                        Ok(satisfied) => satisfied,
-                        Err(error) => return Err(map_composition_error(error)),
-                    }
+                let (backbone_true, backbone_false) = if artifact.backbone_complete {
+                    score_backbone(&artifact.hard_forced, &case.truth)?
                 } else {
-                    false
+                    (0, 0)
+                };
+                let truth_model_in_residual = if full_truth_recall {
+                    Some(
+                        match model_satisfies_request(&compilation.composition_request, &case.truth)
+                        {
+                            Ok(satisfied) => satisfied,
+                            Err(error) => return Err(map_composition_error(error)),
+                        },
+                    )
+                } else {
+                    None
                 };
                 GeoPopulationCaseEvaluation {
                     case_id: case.id,
@@ -270,16 +293,20 @@ pub fn evaluate_population(
                             GeoPopulationCaseStatus::ComponentBudgetFallback
                         }
                     },
-                    residual_count_saturated: artifact.summary.summary_counts_saturated,
+                    residual_count_saturated: artifact.summary.residual_model_count_saturated,
                     compilation_digest,
                     solver_digest: Some(solver_digest),
                     candidate_members,
                     truth_members,
                     truth_members_in_universe,
                     full_truth_recall,
-                    residual_model_count: Some(artifact.summary.residual_model_count),
-                    truth_model_in_residual: Some(truth_model_in_residual),
+                    residual_model_count: artifact
+                        .summary
+                        .residual_model_count_complete
+                        .then_some(artifact.summary.residual_model_count),
+                    truth_model_in_residual,
                     hard_forced: artifact.hard_forced,
+                    backbone_complete: artifact.backbone_complete,
                     backbone_true_positive_members: backbone_true,
                     backbone_false_positive_members: backbone_false,
                 }
@@ -313,6 +340,13 @@ fn validate_case(case: &mut GeoLabeledCompositionCase) -> Result<(), GeoPopulati
     }
     case.truth.parcels.sort();
     case.truth.buildings.sort();
+    if case.truth.parcels.is_empty() && case.truth.buildings.is_empty() {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo population truth must contain at least one member",
+            [("case_id", case.id.as_str())],
+        ));
+    }
     reject_duplicates("truth.parcels", &case.truth.parcels)?;
     reject_duplicates("truth.buildings", &case.truth.buildings)
 }
@@ -387,6 +421,9 @@ fn summarize(
         abstention_cases: 0,
         false_merge_cases: 0,
         full_truth_recall_cases: 0,
+        candidate_recall_failure_cases: 0,
+        solver_truth_scored_cases: 0,
+        solver_truth_exclusion_cases: 0,
         truth_members: 0,
         truth_members_in_universe: 0,
         backbone_true_positive_members: 0,
@@ -414,6 +451,14 @@ fn summarize(
         }
         if case.full_truth_recall {
             summary.full_truth_recall_cases += 1;
+        } else {
+            summary.candidate_recall_failure_cases += 1;
+        }
+        if case.truth_model_in_residual.is_some() {
+            summary.solver_truth_scored_cases += 1;
+        }
+        if case.truth_model_in_residual == Some(false) {
+            summary.solver_truth_exclusion_cases += 1;
         }
         let resolved_wrong = case.status == GeoPopulationCaseStatus::Resolved
             && case.truth_model_in_residual == Some(false);

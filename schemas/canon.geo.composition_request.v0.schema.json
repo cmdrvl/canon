@@ -125,6 +125,19 @@
         "value"
       ]
     },
+    "integer_measure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "semantic_id": { "type": "string" },
+        "unit": { "type": "string" },
+        "value_origin": {
+          "type": "string",
+          "enum": ["source_asserted", "exact_derived"]
+        }
+      },
+      "required": ["semantic_id", "unit", "value_origin"]
+    },
     "hard_constraint_kind": {
       "oneOf": [
         {
@@ -240,6 +253,9 @@
             "level": {
               "$ref": "#/$defs/entity_level"
             },
+            "measure": {
+              "$ref": "#/$defs/integer_measure"
+            },
             "values": {
               "type": "array",
               "items": {
@@ -258,6 +274,7 @@
           "required": [
             "kind",
             "level",
+            "measure",
             "values",
             "min",
             "max"

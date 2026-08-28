@@ -230,7 +230,7 @@ pub enum GeoSubcommand {
 
 #[derive(Args, Debug, Clone)]
 pub struct GeoSolveCli {
-    /// JSON file holding a canon_geo_composition_request.v0 request
+    /// JSON file holding a composition request or evidence-compilation artifact
     #[arg(long)]
     pub request: PathBuf,
 }

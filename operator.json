@@ -669,7 +669,7 @@
     {
       "name": "geo solve",
       "usage": "canon geo solve --request <REQUEST.json>",
-      "description": "Solve the exact hard-feasible parcel/building residual for a bounded composition request and emit the canonical artifact on stdout",
+      "description": "Solve the exact hard-feasible parcel/building residual for a bounded composition request or evidence-compilation artifact and emit the canonical artifact on stdout",
       "output_mode": "json",
       "output_schema": "canon_geo_composition.v0",
       "status": "implemented",
@@ -723,7 +723,7 @@
           "flag": "--request",
           "type": "file_path",
           "required": true,
-          "description": "JSON file holding a canon_geo_composition_request.v0 request"
+          "description": "JSON file holding a canon_geo_composition_request.v0 request or canon_geo_evidence_compilation.v0 artifact"
         }
       ]
     },

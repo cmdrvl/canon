@@ -1,8 +1,9 @@
 use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate,
-    GeoCompositionErrorCode, GeoCompositionModel, GeoCompositionRequest, GeoCompositionStatus,
-    GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind,
-    GeoIdentityRelation, GeoIntegerMemberValue, canonical_composition_bytes,
+    GeoCompositionErrorCode, GeoCompositionModel, GeoCompositionRequest,
+    GeoCompositionSearchStrategy, GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel,
+    GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind, GeoIdentityRelation, GeoIntegerMeasure,
+    GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoSoftPreference, canonical_composition_bytes,
     model_satisfies_request, solve_composition, validate_identity_relation,
 };
 use serde::Deserialize;
@@ -141,7 +142,100 @@ fn contradictory_constraints_return_a_deterministic_irreducible_conflict() {
     let artifact = solve_composition(&request).expect("conflict is a domain result");
     assert_eq!(artifact.status, GeoCompositionStatus::Conflict);
     assert!(artifact.residual_models.is_empty());
+    assert!(artifact.summary.structurally_feasible_assignments_complete);
+    assert_eq!(artifact.summary.structurally_feasible_assignments, 3);
+    assert!(artifact.summary.hard_constraint_evaluations_complete);
+    assert!(artifact.summary.residual_model_count_complete);
+    assert_eq!(artifact.summary.residual_model_count, 0);
+    assert_eq!(artifact.conflict_core_complete, Some(true));
     assert_eq!(artifact.conflict_constraint_ids, ["a_forbid", "z_only_a"]);
+}
+
+#[test]
+fn conflict_core_never_blames_a_constraint_from_an_unrelated_component() {
+    let request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        universe: GeoCompositionUniverse {
+            parcels: vec!["parcel-a".to_string(), "parcel-b".to_string()],
+            buildings: Vec::new(),
+        },
+        hard_constraints: vec![
+            GeoHardConstraint {
+                id: "a_unrelated_require_b".to_string(),
+                constraint: GeoHardConstraintKind::Require {
+                    member: GeoEntityRef::new(GeoEntityLevel::Parcel, "parcel-b"),
+                },
+            },
+            GeoHardConstraint {
+                id: "b_require_a".to_string(),
+                constraint: GeoHardConstraintKind::Require {
+                    member: GeoEntityRef::new(GeoEntityLevel::Parcel, "parcel-a"),
+                },
+            },
+            GeoHardConstraint {
+                id: "c_forbid_a".to_string(),
+                constraint: GeoHardConstraintKind::Forbid {
+                    member: GeoEntityRef::new(GeoEntityLevel::Parcel, "parcel-a"),
+                },
+            },
+        ],
+        soft_preferences: Vec::new(),
+        max_assignments: 4,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+
+    let artifact = solve_composition(&request).expect("conflict is a domain result");
+    assert_eq!(artifact.status, GeoCompositionStatus::Conflict);
+    assert_eq!(
+        artifact.conflict_constraint_ids,
+        ["b_require_a", "c_forbid_a"]
+    );
+    assert_eq!(artifact.conflict_core_complete, Some(true));
+}
+
+#[test]
+fn wide_pruned_conflict_stays_proven_when_minimal_core_analysis_is_not_enumerable() {
+    let parcels = (0..129)
+        .map(|index| format!("p{index:03}"))
+        .collect::<Vec<_>>();
+    let mut hard_constraints = vec![GeoHardConstraint {
+        id: "cardinality-at-least-one".to_string(),
+        constraint: GeoHardConstraintKind::Cardinality {
+            level: GeoEntityLevel::Parcel,
+            min: 1,
+            max: 129,
+        },
+    }];
+    hard_constraints.extend(parcels.iter().map(|id| GeoHardConstraint {
+        id: format!("forbid-{id}"),
+        constraint: GeoHardConstraintKind::Forbid {
+            member: GeoEntityRef::new(GeoEntityLevel::Parcel, id),
+        },
+    }));
+    let request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        universe: GeoCompositionUniverse {
+            parcels,
+            buildings: Vec::new(),
+        },
+        hard_constraints,
+        soft_preferences: Vec::new(),
+        max_assignments: 1_000,
+        max_materialized_models: 0,
+    };
+
+    let artifact = solve_composition(&request).expect("pruned conflict must remain reportable");
+    assert_eq!(artifact.status, GeoCompositionStatus::Conflict);
+    assert!(artifact.summary.residual_model_count_complete);
+    assert_eq!(artifact.summary.residual_model_count, 0);
+    assert_eq!(artifact.conflict_core_complete, Some(false));
+    assert_eq!(artifact.conflict_constraint_ids.len(), 130);
+    assert_eq!(artifact.factorization.len(), 1);
+    assert!(artifact.factorization[0].exact);
+    assert_eq!(
+        artifact.factorization[0].strategy,
+        GeoCompositionSearchStrategy::PrunedDepthFirst
+    );
 }
 
 #[test]
@@ -276,6 +370,7 @@ fn oracle_holds(model: &GeoCompositionModel, kind: &GeoHardConstraintKind) -> bo
             values,
             min,
             max,
+            ..
         } => {
             let members = match level {
                 GeoEntityLevel::Parcel => &model.parcels,
@@ -461,6 +556,11 @@ fn random_constraints(
                 let total: u64 = picked.iter().map(|(_, value)| value).sum();
                 GeoHardConstraintKind::IntegerSumBand {
                     level: GeoEntityLevel::Parcel,
+                    measure: GeoIntegerMeasure {
+                        semantic_id: "fixture:random-additive-value".to_string(),
+                        unit: "fixture_units".to_string(),
+                        value_origin: GeoIntegerValueOrigin::ExactDerived,
+                    },
                     values: picked
                         .into_iter()
                         .map(|(id, value)| GeoIntegerMemberValue { id, value })
@@ -584,9 +684,12 @@ fn factorized_solver_matches_brute_force_oracle_on_random_universes() {
             artifact.summary.residual_model_count, expected_count,
             "iteration {iteration}"
         );
-        if artifact.summary.component_count == 0 {
-            // AnyOf-only fast path: exact count and backbone without
-            // materialization; the enumerated list is unavailable by design.
+        if artifact.factorization.iter().all(|component| {
+            component.strategy == GeoCompositionSearchStrategy::AnyOfInclusionExclusion
+        }) {
+            // AnyOf-only fast path: exact count and backbone without model
+            // materialization. It now exposes the real incidence components
+            // instead of using component_count=0 as an implicit marker.
             assert!(artifact.residual_models.is_empty(), "iteration {iteration}");
         } else {
             assert_eq!(artifact.residual_models, expected, "iteration {iteration}");
@@ -689,8 +792,13 @@ fn oversized_component_budget_fallback_is_typed_and_deterministic() {
     assert_eq!(artifact.status, GeoCompositionStatus::BudgetFallback);
     let fallback = artifact.budget_fallback.as_ref().expect("typed handoff");
     assert_eq!(fallback.max_component_variables, 12);
+    assert_eq!(fallback.configured_max_assignments, 1_000);
     assert_eq!(fallback.component_keys.len(), 1);
     assert!(fallback.guidance.contains("max_assignments"));
+    assert!(!artifact.summary.structurally_feasible_assignments_complete);
+    assert!(!artifact.summary.hard_constraint_evaluations_complete);
+    assert!(!artifact.summary.residual_model_count_complete);
+    assert_eq!(artifact.summary.residual_model_count, 0);
     assert!(artifact.residual_models.is_empty());
     assert!(artifact.hard_forced.parcels.is_empty());
 
@@ -739,6 +847,69 @@ fn anyof_fastpath_declines_oversized_mask_work_into_typed_budget_fallback() {
 }
 
 #[test]
+fn anyof_closed_form_respects_the_request_work_limit() {
+    let request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        universe: GeoCompositionUniverse {
+            parcels: vec!["a".to_string(), "b".to_string()],
+            buildings: Vec::new(),
+        },
+        hard_constraints: vec![GeoHardConstraint {
+            id: "a-or-b".to_string(),
+            constraint: GeoHardConstraintKind::AnyOf {
+                members: vec![
+                    GeoEntityRef::new(GeoEntityLevel::Parcel, "a"),
+                    GeoEntityRef::new(GeoEntityLevel::Parcel, "b"),
+                ],
+            },
+        }],
+        soft_preferences: Vec::new(),
+        max_assignments: 1,
+        max_materialized_models: 0,
+    };
+
+    let artifact = solve_composition(&request).expect("budget exhaustion is a typed outcome");
+    assert_eq!(artifact.status, GeoCompositionStatus::BudgetFallback);
+    assert!(!artifact.summary.residual_model_count_complete);
+    assert_eq!(artifact.factorization[0].search_visits, 1);
+    assert_eq!(
+        artifact.factorization[0].strategy,
+        GeoCompositionSearchStrategy::BudgetFallback
+    );
+}
+
+#[test]
+fn level_wide_incidence_component_does_not_require_a_quadratic_edge_graph() {
+    let candidate_count = 10_000;
+    let request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        universe: GeoCompositionUniverse {
+            parcels: (0..candidate_count)
+                .map(|index| format!("p{index:05}"))
+                .collect(),
+            buildings: Vec::new(),
+        },
+        hard_constraints: vec![GeoHardConstraint {
+            id: "level-wide-cardinality".to_string(),
+            constraint: GeoHardConstraintKind::Cardinality {
+                level: GeoEntityLevel::Parcel,
+                min: 1,
+                max: candidate_count,
+            },
+        }],
+        soft_preferences: Vec::new(),
+        max_assignments: 1,
+        max_materialized_models: 0,
+    };
+
+    let artifact = solve_composition(&request).expect("fallback remains a domain outcome");
+    assert_eq!(artifact.status, GeoCompositionStatus::BudgetFallback);
+    assert_eq!(artifact.factorization.len(), 1);
+    assert_eq!(artifact.factorization[0].variables.len(), candidate_count);
+    assert_eq!(artifact.factorization[0].search_visits, 1);
+}
+
+#[test]
 fn bounded_search_completes_when_pruning_collapses_the_tree() {
     // Same single-component shape as the fallback test, but Forbid pins
     // eleven parcels and Require forces p00; partial-feasibility pruning
@@ -778,6 +949,44 @@ fn bounded_search_completes_when_pruning_collapses_the_tree() {
     assert!(!artifact.summary.summary_counts_saturated);
     assert!(artifact.budget_fallback.is_none());
     assert_eq!(artifact.hard_forced.parcels, ["p00"]);
+}
+
+#[test]
+fn soft_costs_wider_than_u64_never_erase_an_exact_hard_result() {
+    let request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        universe: GeoCompositionUniverse {
+            parcels: vec!["a".to_string(), "b".to_string()],
+            buildings: Vec::new(),
+        },
+        hard_constraints: vec![GeoHardConstraint {
+            id: "require-a".to_string(),
+            constraint: GeoHardConstraintKind::Require {
+                member: GeoEntityRef::new(GeoEntityLevel::Parcel, "a"),
+            },
+        }],
+        soft_preferences: vec![
+            GeoSoftPreference {
+                id: "prefer-b-1".to_string(),
+                member: GeoEntityRef::new(GeoEntityLevel::Parcel, "b"),
+                cost_if_absent: u64::MAX,
+            },
+            GeoSoftPreference {
+                id: "prefer-b-2".to_string(),
+                member: GeoEntityRef::new(GeoEntityLevel::Parcel, "b"),
+                cost_if_absent: u64::MAX,
+            },
+        ],
+        max_assignments: 4,
+        max_materialized_models: 4,
+    };
+
+    let artifact = solve_composition(&request).expect("soft presentation must not erase truth");
+    assert_eq!(artifact.status, GeoCompositionStatus::Ambiguous);
+    assert_eq!(artifact.summary.residual_model_count, 2);
+    assert_eq!(artifact.soft_ranked.len(), 2);
+    assert_eq!(artifact.soft_ranked[0].cost, 0);
+    assert_eq!(artifact.soft_ranked[1].cost, u128::from(u64::MAX) * 2);
 }
 
 #[test]
@@ -939,8 +1148,13 @@ fn anyof_only_fastpath_matches_brute_force_oracle() {
             expected.len() as u64,
             "iteration {iteration}"
         );
-        // Fast-path marker: no component decomposition was used.
-        assert_eq!(artifact.summary.component_count, 0);
+        assert_eq!(
+            artifact.summary.component_count,
+            artifact.factorization.len()
+        );
+        assert!(artifact.factorization.iter().all(|component| {
+            component.strategy == GeoCompositionSearchStrategy::AnyOfInclusionExclusion
+        }));
         if expected_status == GeoCompositionStatus::Conflict {
             assert!(!artifact.conflict_constraint_ids.is_empty());
         }
@@ -1025,4 +1239,267 @@ fn anyof_fastpath_backbone_and_conflict_cores_are_exact() {
         max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
     };
     assert!(solve_composition(&invalid).is_err());
+}
+
+fn singleton_anyof_request(candidate_count: usize) -> GeoCompositionRequest {
+    GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        universe: GeoCompositionUniverse {
+            parcels: (0..candidate_count)
+                .map(|index| format!("p{index:03}"))
+                .collect(),
+            buildings: Vec::new(),
+        },
+        hard_constraints: vec![GeoHardConstraint {
+            id: "force-p000".to_string(),
+            constraint: GeoHardConstraintKind::AnyOf {
+                members: vec![GeoEntityRef::new(GeoEntityLevel::Parcel, "p000")],
+            },
+        }],
+        soft_preferences: Vec::new(),
+        max_assignments: 1_000,
+        max_materialized_models: 0,
+    }
+}
+
+#[test]
+fn integer_sum_bands_reject_overflowing_selected_sums_without_panicking_or_wrapping() {
+    let selected = |parcels: &[&str]| GeoCompositionModel {
+        parcels: parcels.iter().map(|id| (*id).to_string()).collect(),
+        buildings: Vec::new(),
+    };
+    let request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        universe: GeoCompositionUniverse {
+            parcels: vec!["a".to_string(), "b".to_string()],
+            buildings: Vec::new(),
+        },
+        hard_constraints: vec![GeoHardConstraint {
+            id: "u64-boundary".to_string(),
+            constraint: GeoHardConstraintKind::IntegerSumBand {
+                level: GeoEntityLevel::Parcel,
+                measure: GeoIntegerMeasure {
+                    semantic_id: "source_asserted_gross_area".to_string(),
+                    unit: "square_foot".to_string(),
+                    value_origin: GeoIntegerValueOrigin::SourceAsserted,
+                },
+                values: vec![
+                    GeoIntegerMemberValue {
+                        id: "a".to_string(),
+                        value: u64::MAX,
+                    },
+                    GeoIntegerMemberValue {
+                        id: "b".to_string(),
+                        value: u64::MAX,
+                    },
+                ],
+                min: u64::MAX,
+                max: u64::MAX,
+            },
+        }],
+        soft_preferences: Vec::new(),
+        max_assignments: 16,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+
+    assert!(model_satisfies_request(&request, &selected(&["a"])).expect("valid request"));
+    assert!(model_satisfies_request(&request, &selected(&["b"])).expect("valid request"));
+    assert!(
+        !model_satisfies_request(&request, &selected(&["a", "b"]))
+            .expect("overflowing model is still a valid query")
+    );
+
+    let artifact = solve_composition(&request).expect("overflow must not become a panic");
+    assert_eq!(artifact.status, GeoCompositionStatus::Ambiguous);
+    assert_eq!(artifact.summary.residual_model_count, 2);
+    assert!(!artifact.summary.residual_model_count_saturated);
+}
+
+#[test]
+fn singleton_anyof_stays_exact_at_fixed_width_boundaries() {
+    for candidate_count in [63, 64, 119, 120, 126, 127, 128, 129] {
+        let artifact = solve_composition(&singleton_anyof_request(candidate_count))
+            .unwrap_or_else(|error| panic!("{candidate_count} candidates refused: {error}"));
+        assert_eq!(
+            artifact.status,
+            GeoCompositionStatus::Ambiguous,
+            "{candidate_count} candidates"
+        );
+        assert_eq!(
+            artifact.hard_forced.parcels,
+            ["p000"],
+            "the singleton clause forces p000 at {candidate_count} candidates"
+        );
+        assert!(
+            artifact.backbone_complete,
+            "the reported backbone must be declared complete at {candidate_count} candidates"
+        );
+        if candidate_count <= 64 {
+            assert_eq!(
+                artifact.summary.residual_model_count,
+                1_u64 << (candidate_count - 1),
+                "{candidate_count} candidates"
+            );
+            assert!(
+                !artifact.summary.residual_model_count_saturated,
+                "the residual count still fits u64 at {candidate_count} candidates"
+            );
+        } else {
+            assert_eq!(artifact.summary.residual_model_count, u64::MAX);
+            assert!(artifact.summary.residual_model_count_saturated);
+        }
+    }
+}
+
+#[test]
+fn anyof_can_resolve_all_forced_members_beyond_u128_width() {
+    let candidate_count = 129;
+    let parcels: Vec<String> = (0..candidate_count)
+        .map(|index| format!("p{index:03}"))
+        .collect();
+    let request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        universe: GeoCompositionUniverse {
+            parcels: parcels.clone(),
+            buildings: Vec::new(),
+        },
+        hard_constraints: parcels
+            .iter()
+            .map(|id| GeoHardConstraint {
+                id: format!("force-{id}"),
+                constraint: GeoHardConstraintKind::AnyOf {
+                    members: vec![GeoEntityRef::new(GeoEntityLevel::Parcel, id.clone())],
+                },
+            })
+            .collect(),
+        soft_preferences: Vec::new(),
+        max_assignments: 1_000,
+        max_materialized_models: 0,
+    };
+
+    let artifact = solve_composition(&request).expect("all singleton clauses solve directly");
+    assert_eq!(artifact.status, GeoCompositionStatus::Resolved);
+    assert_eq!(artifact.summary.residual_model_count, 1);
+    assert!(!artifact.summary.residual_model_count_saturated);
+    assert_eq!(artifact.hard_forced.parcels, parcels);
+    assert!(artifact.backbone_complete);
+}
+
+#[test]
+fn saturated_component_products_never_turn_satisfiable_models_into_conflicts() {
+    let candidate_count = 128;
+    let parcels: Vec<String> = (0..candidate_count)
+        .map(|index| format!("p{index:03}"))
+        .collect();
+    let buildings: Vec<GeoBuildingCandidate> = (0..candidate_count)
+        .map(|index| GeoBuildingCandidate {
+            id: format!("b{index:03}"),
+            parcel_ids: Vec::new(),
+        })
+        .collect();
+    let request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        universe: GeoCompositionUniverse { parcels, buildings },
+        hard_constraints: (0..candidate_count)
+            .map(|index| GeoHardConstraint {
+                id: format!("requires-{index:03}"),
+                constraint: GeoHardConstraintKind::Requires {
+                    if_member: GeoEntityRef::new(GeoEntityLevel::Parcel, format!("p{index:03}")),
+                    then_member: GeoEntityRef::new(
+                        GeoEntityLevel::Building,
+                        format!("b{index:03}"),
+                    ),
+                },
+            })
+            .collect(),
+        soft_preferences: Vec::new(),
+        max_assignments: 4,
+        max_materialized_models: 0,
+    };
+
+    let witness = GeoCompositionModel {
+        parcels: vec!["p000".to_string()],
+        buildings: vec!["b000".to_string()],
+    };
+    assert!(model_satisfies_request(&request, &witness).expect("request is valid"));
+
+    let artifact = solve_composition(&request).expect("factorized request must solve");
+    assert_eq!(artifact.status, GeoCompositionStatus::Ambiguous);
+    assert_eq!(artifact.summary.residual_model_count, u64::MAX);
+    assert!(artifact.summary.residual_model_count_saturated);
+    assert!(artifact.conflict_constraint_ids.is_empty());
+    assert!(artifact.backbone_complete);
+    assert_eq!(artifact.factorization.len(), candidate_count);
+    assert!(artifact.factorization.iter().all(|component| {
+        component.variables.len() == 2
+            && component.constraint_ids.len() == 1
+            && component.strategy == GeoCompositionSearchStrategy::ExhaustiveEnumeration
+            && component.exact
+            && component.hard_feasible_assignments == Some(3)
+            && component.positive_assignments == Some(1)
+    }));
+}
+
+fn wide_cardinality_request(max_assignments: u64) -> GeoCompositionRequest {
+    GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        universe: GeoCompositionUniverse {
+            parcels: (0..129).map(|index| format!("p{index:03}")).collect(),
+            buildings: Vec::new(),
+        },
+        hard_constraints: vec![GeoHardConstraint {
+            id: "at-least-one".to_string(),
+            constraint: GeoHardConstraintKind::Cardinality {
+                level: GeoEntityLevel::Parcel,
+                min: 1,
+                max: 129,
+            },
+        }],
+        soft_preferences: Vec::new(),
+        max_assignments,
+        max_materialized_models: 0,
+    }
+}
+
+#[test]
+fn width_129_budget_exhaustion_is_typed_instead_of_panicking() {
+    let artifact = solve_composition(&wide_cardinality_request(130))
+        .expect("oversized search exhaustion is a domain outcome");
+    assert_eq!(artifact.status, GeoCompositionStatus::BudgetFallback);
+    assert!(artifact.budget_fallback.is_some());
+    assert!(!artifact.backbone_complete);
+    assert_eq!(artifact.factorization.len(), 1);
+    assert_eq!(
+        artifact.factorization[0].strategy,
+        GeoCompositionSearchStrategy::BudgetFallback
+    );
+    assert!(!artifact.factorization[0].exact);
+    assert_eq!(artifact.factorization[0].search_visits, 130);
+    assert!(!artifact.summary.residual_model_count_complete);
+}
+
+#[test]
+fn width_129_pruned_search_can_still_deliver_a_positive_exact_result() {
+    let mut request = wide_cardinality_request(1_000);
+    request
+        .hard_constraints
+        .extend((0..128).map(|index| GeoHardConstraint {
+            id: format!("forbid-{index:03}"),
+            constraint: GeoHardConstraintKind::Forbid {
+                member: GeoEntityRef::new(GeoEntityLevel::Parcel, format!("p{index:03}")),
+            },
+        }));
+    request.hard_constraints.push(GeoHardConstraint {
+        id: "require-p128".to_string(),
+        constraint: GeoHardConstraintKind::Require {
+            member: GeoEntityRef::new(GeoEntityLevel::Parcel, "p128"),
+        },
+    });
+
+    let artifact = solve_composition(&request).expect("pruning should complete exactly");
+    assert_eq!(artifact.status, GeoCompositionStatus::Resolved);
+    assert_eq!(artifact.summary.residual_model_count, 1);
+    assert!(!artifact.summary.residual_model_count_saturated);
+    assert_eq!(artifact.hard_forced.parcels, ["p128"]);
+    assert!(artifact.backbone_complete);
 }

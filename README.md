@@ -427,6 +427,11 @@ canon entity profile list [--emit json|summary]
 canon entity profile init <PROFILE> --output <PATH>
 ```
 
+`canon geo solve --request` accepts either a bare
+`canon_geo_composition_request.v0` request or the complete
+`canon_geo_evidence_compilation.v0` artifact emitted by `compile-evidence`. Solving the
+compilation artifact preserves its content digest in the composition output.
+
 ### Arguments
 
 | Argument | Description |

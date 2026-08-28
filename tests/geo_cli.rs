@@ -129,7 +129,7 @@ fn geo_solve_refuses_a_malformed_request_file() {
     );
     assert_eq!(
         refusal["refusal"]["detail"]["expected_version"],
-        "canon_geo_composition_request.v0"
+        "canon_geo_composition_request.v0 or canon_geo_evidence_compilation.v0"
     );
     assert!(refusal["refusal"]["next_command"].is_string());
 }
@@ -191,13 +191,27 @@ fn geo_compile_evidence_emits_a_bounded_composition_request() {
                 {
                     "id": "rho.existential",
                     "version": "1.0.0",
-                    "soundness": "logically_sound"
+                    "source_dataset": "fixture:parcel-addresses",
+                    "source_release": "fixture-v1",
+                    "source_lineage_ids": ["fixture:parcel-addresses:upstream"],
+                    "method_id": "fixture:address-existential",
+                    "method_version": "1.0.0",
+                    "claim_role": "stable_identity_anchor",
+                    "basis": {
+                        "kind": "logical_relaxation",
+                        "invariant_id": "fixture:address-membership"
+                    }
                 }
             ],
             "observations": [
                 {
                     "id": "obs.one",
                     "contract_id": "rho.existential",
+                    "source_records": [{
+                        "source_record_id": "parcel-address-row-1",
+                        "source_vintage": "fixture-v1",
+                        "record_blake3": "8c7db293f7195e1a3c4d397c2bcf2f59a4fd289f9a302b295669bcccb938d333"
+                    }],
                     "observation": {
                         "kind": "existential_membership",
                         "members": [{ "level": "parcel", "id": "parcel-a" }]
@@ -233,6 +247,68 @@ fn geo_compile_evidence_emits_a_bounded_composition_request() {
         artifact["composition_request"]["hard_constraints"][0]["constraint"]["kind"],
         "any_of"
     );
+
+    // The compilation artifact itself is a first-class solve input. The solve
+    // output keeps a content-addressed link to the exact admitted evidence
+    // artifact instead of forcing operators to extract and orphan its nested
+    // composition request.
+    let compilation = temp.path().join("compiled-evidence.json");
+    fs::write(&compilation, &stdout).expect("write compilation artifact");
+    let solved = canon_command()
+        .args(["geo", "solve", "--request", compilation.to_str().unwrap()])
+        .assert()
+        .success();
+    let solved: Value =
+        serde_json::from_slice(&solved.get_output().stdout).expect("solve artifact parses");
+    assert_eq!(solved["summary"]["residual_model_count"], 2);
+    assert_eq!(
+        solved["evidence_compilation"]["version"],
+        "canon_geo_evidence_compilation.v0"
+    );
+    assert_eq!(
+        solved["evidence_compilation"]["blake3"],
+        blake3::hash(stdout.trim_end().as_bytes())
+            .to_hex()
+            .to_string()
+    );
+
+    let mut tampered = artifact.clone();
+    tampered["composition_request"]["hard_constraints"][0]["id"] =
+        json!("rho:injected@v1:not-admitted");
+    let tampered_path = write_json(temp.path(), "tampered-compilation.json", &tampered);
+    let refusal = canon_command()
+        .args(["geo", "solve", "--request", tampered_path.to_str().unwrap()])
+        .assert()
+        .code(2);
+    let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout)
+        .expect("tampered compilation refusal parses");
+    assert_eq!(
+        refusal["refusal"]["detail"]["geo_evidence_error_code"],
+        "invalid_input"
+    );
+
+    let mut semantic_tamper = artifact;
+    semantic_tamper["admissions"][0]["observation"]["members"][0]["id"] = json!("parcel-b");
+    let semantic_tamper_path = write_json(
+        temp.path(),
+        "semantic-tamper-compilation.json",
+        &semantic_tamper,
+    );
+    let refusal = canon_command()
+        .args([
+            "geo",
+            "solve",
+            "--request",
+            semantic_tamper_path.to_str().unwrap(),
+        ])
+        .assert()
+        .code(2);
+    let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout)
+        .expect("semantic tamper refusal parses");
+    assert_eq!(
+        refusal["refusal"]["detail"]["message"],
+        "Geo evidence compilation does not replay from its admitted observations"
+    );
 }
 
 #[test]
@@ -257,13 +333,27 @@ fn geo_evaluate_scores_a_minimal_labeled_population() {
                             {
                                 "id": "rho.exact",
                                 "version": "1.0.0",
-                                "soundness": "logically_sound"
+                                "source_dataset": "fixture:parcel-sets",
+                                "source_release": "fixture-v1",
+                                "source_lineage_ids": ["fixture:parcel-sets:upstream"],
+                                "method_id": "fixture:exact-set",
+                                "method_version": "1.0.0",
+                                "claim_role": "stable_identity_anchor",
+                                "basis": {
+                                    "kind": "logical_relaxation",
+                                    "invariant_id": "fixture:exact-set-invariant"
+                                }
                             }
                         ],
                         "observations": [
                             {
                                 "id": "obs.exact",
                                 "contract_id": "rho.exact",
+                                "source_records": [{
+                                    "source_record_id": "parcel-set-row-1",
+                                    "source_vintage": "fixture-v1",
+                                    "record_blake3": "97e7e532ba98fb5ce35769f30b61b738d906c6686f17c7d8bbbf61bf3f8b910c"
+                                }],
                                 "observation": {
                                     "kind": "exact_sets",
                                     "level": "parcel",

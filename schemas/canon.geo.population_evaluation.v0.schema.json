@@ -126,6 +126,9 @@
         "hard_forced": {
           "$ref": "#/$defs/composition_backbone"
         },
+        "backbone_complete": {
+          "type": "boolean"
+        },
         "backbone_true_positive_members": {
           "type": "integer",
           "minimum": 0
@@ -145,6 +148,7 @@
         "residual_count_saturated",
         "full_truth_recall",
         "hard_forced",
+        "backbone_complete",
         "backbone_true_positive_members",
         "backbone_false_positive_members"
       ]
@@ -189,6 +193,18 @@
           "type": "integer",
           "minimum": 0
         },
+        "candidate_recall_failure_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "solver_truth_scored_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "solver_truth_exclusion_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
         "truth_members": {
           "type": "integer",
           "minimum": 0
@@ -216,6 +232,9 @@
         "abstention_cases",
         "false_merge_cases",
         "full_truth_recall_cases",
+        "candidate_recall_failure_cases",
+        "solver_truth_scored_cases",
+        "solver_truth_exclusion_cases",
         "truth_members",
         "truth_members_in_universe",
         "backbone_true_positive_members",

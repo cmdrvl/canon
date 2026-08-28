@@ -13,10 +13,10 @@ use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
     CANON_GEO_POPULATION_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate,
     GeoCompositionModel, GeoCompositionRequest, GeoCompositionUniverse, GeoEntityLevel,
-    GeoEntityRef, GeoEvidenceCompilationRequest, GeoHardConstraint, GeoHardConstraintKind,
-    GeoLabeledCompositionCase, GeoPopulationEvaluationRequest, GeoRhoContract, GeoRhoObservation,
-    GeoRhoObservationKind, GeoRhoSoundness, compile_evidence, evaluate_population,
-    solve_composition,
+    GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef,
+    GeoHardConstraint, GeoHardConstraintKind, GeoLabeledCompositionCase,
+    GeoPopulationEvaluationRequest, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
+    GeoRhoObservationKind, compile_evidence, evaluate_population, solve_composition,
 };
 use serde_json::Value;
 
@@ -212,11 +212,25 @@ fn evidence_request() -> GeoEvidenceCompilationRequest {
         contracts: vec![GeoRhoContract {
             id: "contract-1".to_string(),
             version: "v1".to_string(),
-            soundness: GeoRhoSoundness::LogicallySound,
+            source_dataset: "fixture:dataset".to_string(),
+            source_release: "fixture-v1".to_string(),
+            source_lineage_ids: vec!["fixture:upstream-dataset".to_string()],
+            method_id: "fixture:method".to_string(),
+            method_version: "v1".to_string(),
+            claim_role: GeoEvidenceClaimRole::AttributeObservation,
+            basis: GeoRhoBasis::LogicalRelaxation {
+                invariant_id: "fixture:invariant".to_string(),
+            },
         }],
         observations: vec![GeoRhoObservation {
             id: "obs-1".to_string(),
             contract_id: "contract-1".to_string(),
+            source_records: vec![GeoEvidenceRecordRef {
+                source_record_id: "row-1".to_string(),
+                source_vintage: "fixture-v1".to_string(),
+                record_blake3: blake3::hash(b"row-1").to_hex().to_string(),
+            }],
+            valid_time: None,
             observation: GeoRhoObservationKind::ExistentialMembership {
                 members: vec![
                     GeoEntityRef::new(GeoEntityLevel::Parcel, "parcel-a"),

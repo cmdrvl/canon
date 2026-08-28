@@ -1,8 +1,11 @@
 # PLAN_CANON_GEO — The Tile as a Compiled Constraint Object
 
-> Status: **proposed architecture**, not yet implemented. Supersedes the resolution
-> approach sketched across bd-2kjx and its children. Does not change canon core: runtime
-> lookup remains exact registry lookup.
+> Status: **proposed full architecture with a partial E4 walking skeleton implemented**.
+> The typed evidence compiler, exact parcel/building residual kernel, incidence
+> factorization, bounded fallback, and population evaluator exist; geometry ingest,
+> temporal solving, knowledge compilation, halo reconciliation, and the complete E4/E5
+> populations do not. This does not change canon core: runtime lookup remains exact
+> registry lookup.
 >
 > Date: 2026-08-15. Derived from an adversarial multi-model design session (see
 > [Provenance](#15-provenance-and-what-is-not-yet-verified) — **the ~50 academic citations
@@ -12,8 +15,9 @@
 
 ## Review state and precedence
 
-> Last status reconciliation: **2026-08-17**. This is a review-navigation layer, not an
-> implementation claim. The plan remains proposed and unimplemented.
+> Last status reconciliation: **2026-08-27**. This is a review-navigation layer, not a
+> claim that the full architecture ships. The implemented walking skeleton is named
+> explicitly above and in the controlling-state table; everything else remains proposed.
 
 This document deliberately preserves hypotheses that later measurements falsified. That
 history is evidence, but it creates a precedence problem for a reader who encounters the
@@ -33,13 +37,14 @@ The controlling state entering the main review is:
 | Topic | Current controlling state | Authority |
 |---|---|---|
 | Product boundary | Core Canon remains exact registry replay; GEO is a build-time workbench. | `AGENTS.md`, `README.md`; binding boundary |
-| Decision object | Backbone plus exact residual/model count, stated at entity grain; ledger keys are alias projections. | §§9, 10.2, 16.1; Appendix L.5 |
+| Decision object | Entity-grain backbone and residual count with explicit scope and exactness; typed fallback when either is incomplete. Ledger keys are alias projections. | §§9, 10.2, 16.1; Appendix L.5 |
 | Candidate problem | Point re-ranking is not the dominant measured failure. The unresolved solver question is collateral composition over parcel/building sets. | Appendices L–M; `MEASURED`, with E4 `OPEN` |
-| Footprint→parcel predicate | Strictly more than 50% of computed footprint geometry inside computed parcel geometry; asserted area fields are observations, never denominators. | Appendices D and F; `MEASURED` in six NYC cells |
-| Decomposition | The measured compatibility graph is a forest, but components include parcel stars up to 71 variables. Generic and end-to-end solver sizing remain open. | Appendix F; `MEASURED` NYC-only |
+| Footprint→parcel predicate | Strictly more than 50% of computed footprint geometry inside computed parcel geometry, within an explicitly interior-disjoint parcel stratum; asserted area fields are observations, never denominators. Overlapping legal parcel hierarchies require typed crosswalks. | Appendices D and F; corrected single-source predicate `MEASURED`, canonical multi-source rerun `OPEN` |
+| Decomposition | Legacy mixed-denominator runs produced forests and parcel stars up to 71 variables. Canonical geometric-over-geometric, overlap-aware, multi-source decomposition remains open; solver incidence factorization is implemented independently. | Appendix F; retained NYC evidence plus `OPEN` canonical rerun |
 | Work-unit cost | The 200-feature, 0.5 s/tile, and 140 CPU-hour national figures are not supported. Cost must be measured component-wise with halo reconciliation. | Appendices B, C, F, G; original figures `FALSIFIED`, replacement `OPEN` |
 | Address evidence | PAD materially repairs address representation and restores street-absence refutation, but is evidence rather than an oracle. | Appendix M; `MEASURED` on NYC PAD 26B |
 | Evaluation ladder | E1–E3 are complete. E4 has an exact factorized residual solver over admitted evidence (bd-2kjx.1–.3); the E4 population numbers and the E5 non-NYC evidence-tier curve remain the decisive gates. | §17 and Appendix L; E4/E5 `OPEN` |
+| Time semantics | Evidence admissions preserve whole-day valid-time intervals, and v0 deliberately keeps every time-scoped observation diagnostic because composition has no query-as-of domain. Allen/STP inference is not implemented. | §§3, 7, 16.3; compiler contract implemented, temporal solver `OPEN` |
 | Current precision claim | The 96–98% entity-grain answered-point estimate is provisional and truth-instrument-limited; Appendix M indicates residual contamination. | Appendices L.6 and M.5; `MEASURED`, not a release claim |
 
 ---
@@ -66,8 +71,8 @@ properties are *provable* rather than asserted.
 | Property | Mechanism | Authority |
 |---|---|---|
 | Fixpoint unique regardless of application order | monotone, contracting, correct propagators on a finite lattice | Tarski 1955; Cousot & Cousot 1977; Apt 1999 |
-| Compiled form is canonical — same tile, same bytes, any machine | reduced ordered decision diagram, variable order derived from the H3 index | Bryant 1986; Darwiche 2011 (SDD) |
-| Adding a source can only refine, never contradict — **and this is checkable** | `Models(T ∧ c) ⊆ Models(T)`, entailment test between last year's diagram and this year's | Darwiche & Marquis 2002 |
+| Compiled semantics can have a canonical normal form; byte identity additionally requires a frozen serializer | reduced OBDD under a fixed variable order, or compressed/normalized SDD under a fixed vtree. General d-DNNF is not canonical. | Bryant 1986; Darwiche 2011 (SDD) |
+| Adding admitted hard evidence can only narrow the model set; it may expose a contradiction by making that set empty | `Models(T ∧ c) ⊆ Models(T)` plus a separate non-emptiness check; entailment alone must not label an empty successor a healthy refinement | Darwiche & Marquis 2002 |
 | Abstention is the residual, not a threshold | the answer is the model set; a singleton is a decision, a doubleton is an honest doubleton | — |
 | Empty model set is a **proof of source defect** with a minimal ordered blame set | MUS via preference-ordered QuickXplain; repairs via hitting-set duality | Reiter 1987; Junker 2004; Liffiton & Sakallah 2008 |
 | Every conclusion explainable by naming evidence | minimal environment supporting the conclusion, computed on demand | de Kleer 1986 (ATMS) |
@@ -137,7 +142,7 @@ frame survive noisy sources.**
 | Geocode `g`, `rooftop` | same | `r = 8 m` — sharp, and legitimately so |
 | Parcel `ADDRESS = "355 E 12 ST"` | "this lot's address is 355 E 12 St" | "355 E 12 St is *one of* this lot's addresses" — membership, never functional equality |
 | Query address `199 First Ave` | "match a lot whose ADDRESS = 199 First Ave" | "*some* member of the collateral set fronts First Avenue at 199" — existential over the set variable |
-| `BLDGAREA = 214,300` | "GLA is 214,300" | gross above-grade exact; net rentable `∈ [⌊0.78x⌋, ⌈0.95x⌉]` for `BLDGCLASS ∈ O*`, a separate declared relation |
+| `BLDGAREA = 214,300` | "GLA is 214,300" | source-asserted gross above-grade area in the source's declared unit; never mix with exact geometry-derived area. Any net-rentable relation stays diagnostic until a population, calibration artifact, and falsification rule make its band admissible. |
 | `OWNERNAME` equal after normalization | "same owner" | "these lots *may* form an assemblage" — permits, never forbids |
 | `OWNERNAME` different | "different owner ⟹ not assembled" | **no constraint at all** |
 | FEMA county coverage 92% | unused | `gcc` lower bound: ≥ `⌈0.80·K⌉` slots carry a FEMA observation |
@@ -160,6 +165,19 @@ of source records, that a specific vendor's declared tolerance was breached on a
 parcel. **That is a falsifiable claim you can put in an email to Overture, FEMA, or a
 servicer.**
 
+The implemented v0 admission contract makes the premise inspectable rather than accepting
+a caller-supplied `sound=true`: logical relaxations name their invariant; empirical bands
+name a population, calibration digest, and falsification rule. This is provenance and a
+falsifiable claim, **not a proof that the named invariant is actually sound**. Population
+evaluation must still record every representable truth excluded by admitted hard evidence.
+Time-scoped observations are preserved but remain diagnostic until the composition query
+has an explicit as-of domain; otherwise an interval fact would be silently projected into
+timeless identity. Compilation admissions retain the typed observation itself, so `solve`
+can recompile and verify one-to-one source-observation-constraint parity before attaching a
+content digest. Every rho contract also carries sorted upstream lineage identifiers so
+shared ancestry is visible; different lineage labels are not proof of statistical
+independence. The digest proves artifact identity and integrity, not source truth.
+
 ### 3.2 The band-versus-threshold rule
 
 > **A threshold selects. A band restricts.** A wrong threshold silently produces a wrong
@@ -181,6 +199,14 @@ affine map.
 **No transcendental function, no floating-point value, and no `f64` comparison appears
 anywhere in the decision path.**
 
+> **CURRENT STATUS — PROPOSED, AND “EXACT” HAS A BOUNDARY.** Integer arithmetic can make
+> decisions exact with respect to the serialized, quantized local coordinates. It does not
+> make the source survey infallible or the affine approximation geodetically exact.
+> Projection and snapping need a measured error envelope. Polygon clipping can introduce
+> rational intersection vertices even when every input vertex is integral, so area-majority
+> needs an exact rational/scaled construction or a declared conservative boundary rule;
+> integer orientation predicates alone do not settle it.
+
 Arithmetic: a 1 km tile spans ~10⁶ mm, coordinates ~2×10⁶. Shoelace terms ~4×10¹²; summed
 over a 10³-vertex polygon ~4×10¹⁵ — inside `i64`, with `i128` carried for headroom.
 Orientation predicates are exact `i128` determinants. **No adaptive-precision filter
@@ -200,8 +226,10 @@ Canonical total order `≺` on all features: `(source_rank, source_native_id_byt
 `source_rank` from a versioned table. Variable order, diagram order, report order and
 tie-breaks all derive from `≺`. **No hash-map iteration in any order-sensitive path.**
 
-**Latent layer.** Parcels `P` are given (~25/tile); geometry is survey ground truth,
-attributes go through ρ. Latent buildings `B = {b₁…b_K}`, `K = Σ_p NUMBLDGS(p)` where
+**Latent layer.** Parcels `P` are given (~25/tile); parcel geometry is a versioned candidate
+substrate within its source scope, not metaphysical ground truth, and overlapping legal
+hierarchies require typed crosswalks. Attributes go through ρ. Latent buildings
+`B = {b₁…b_K}`, `K = Σ_p NUMBLDGS(p)` where
 present, else per-component max footprint count across sources, plus `⌈0.2K⌉` slack slots
 under an `atmost`. `K ≈ 60–80`.
 
@@ -353,6 +381,11 @@ collateral described in the 2019 offering document no longer exists.** A five-al
 finding, falling out of a 1983 paper. *Cheap wrong way:* `WHERE year_built <= 2019` — it
 filters rows instead of detecting events, so the rebuild is invisible.
 
+> **CURRENT STATUS — OPEN.** The evidence compiler now preserves valid-time intervals and
+> refuses to turn them into timeless hard or soft constraints. No Allen/STP network or
+> query-as-of composition domain is implemented, so no demolition/rebuild proof is a
+> current Canon capability.
+
 **Congruence closure makes identity conflicts proofs.** Maintain equivalence classes of
 entity variables and identifier literals; every union records the named evidence
 responsible; **every attempted union with an incompatible namespace id produces a conflict
@@ -385,7 +418,11 @@ themselves in clauses; the resolution derivation is the proof. Certified with **
 
 ### 8.1 The committed architecture
 
-- **Answer layer:** compile. No search → no learned clauses → no order-dependence at all.
+- **Answer layer:** compile to a representation selected for the required operations. A
+  canonical reduced form under a frozen order/vtree can remove semantic representation
+  variance; compilation may still search, and byte identity additionally depends on a
+  deterministic implementation and frozen serializer. General d-DNNF does not provide
+  canonicity by itself.
 - **Explanation layer:** QuickXplain on demand, ordered by declared source reliability.
   Artifact is a minimal set of named source records: *"lots 1012920026 and 1012920001 are
   separated by exactly {FEMA `f3` SQMETERS = 3,240; MapPLUTO `NUMBLDGS` = 2; the First
@@ -396,9 +433,14 @@ themselves in clauses; the resolution derivation is the proof. Certified with **
 
 ### 8.2 The determinism precondition people skip
 
-**Confluence requires every propagator to be a monotone function of the domain store.** Any
-propagator using randomised rounding, sampling, or an early-exit budget is non-monotone and
-**voids the theorem.** That is a hard rule on the propagator library, not advice.
+**Confluence, determinism, soundness, and completion are separate contracts.** For a fixed
+initial store, fair iteration of monotone contracting propagators to quiescence on a finite
+lattice yields the order-independent closure relevant here. Monotonicity alone does not
+make a propagator sound, and a deterministic function can still be unsound. Randomized
+rounding or sampling destroys reproducibility unless fully frozen and may also destroy
+soundness/monotonicity. An early work limit does **not** automatically make each propagator
+non-monotone; it means closure may be incomplete, so the artifact must say so instead of
+claiming the fixpoint theorem.
 
 Where we search rather than compile (components exceeding the width budget), byte-identical
 *proofs* additionally require: canonical branching order from `≺`; restarts driven by a
@@ -417,20 +459,23 @@ all of the following linear or polynomial in diagram size.
 | Artifact | Computation | Operator product |
 |---|---|---|
 | **Backbone** — values in every solution | one traversal | *"Regardless of how the ambiguity resolves, this loan touches BBL 1012920026, GERS `08f2a3…`, and total collateral GLA ≥ 412,000 sf."* **Lets a downstream system act on partial resolution.** |
-| **Exact model count** | one bottom-up pass | A *calibration-free* ambiguity measure. Not a confidence score — a count. 1 = decided, 3 = three named alternatives, 0 = proof of source defect. |
-| **Residual enumeration** | polynomial delay | The full alternative set, streamable. Uno (1997) gives O(V) delay per matching; exact counts via Ryser (1963) at O(2ⁿn) — n=12 → 4.9×10⁴ ops, free. *#P-complete in general (Valiant 1979); intractable at scale, free at 200.* |
+| **Exact model count** | one bottom-up pass over a completed deterministic/decomposable representation | A *calibration-free* ambiguity measure. Not a confidence score — a count. A completed unsaturated 1 = decided, 3 = three named alternatives, and 0 = proof of source defect; fallback placeholders and saturated lower bounds are different claim classes. |
+| **Residual enumeration** | polynomial delay for supported compiled/matching classes | The full alternative set when materialization is within budget. Ryser (1963) gives O(2ⁿn) exact matching counts — practical for small proven factors such as n=12, not for a raw n=200 component. *#P-complete in general (Valiant 1979); tractability must come from measured decomposition or compiled width, never tile row count alone.* |
 | **MUS** — minimal blame | QuickXplain | *"These five sources cannot all be right, here is the smallest set that proves it, ordered so the least-trusted source is named first."* |
 | **MCS** — minimal repair | hitting sets of MUSes (Reiter 1987); enumeration via CAMUS (Liffiton & Sakallah 2008) or MARCO (Liffiton et al. 2016) | *"Retract either {FEMA `f3` SQMETERS} or {MapPLUTO `NUMBLDGS`} and the tile becomes consistent. Nothing smaller works."* **A repair recommendation, not an error message.** |
-| **Value of information** | count reduction under each hypothetical new fact | *"Buy the certificate-of-occupancy date from this vendor and 61% of your residual ambiguity across the portfolio collapses."* Exact, because counting is exact. |
+| **Counterfactual separation power** | exact count reduction under each precisely stated hypothetical fact | *"If the certificate-of-occupancy date has value `d`, this exact fraction of the residual is eliminated."* This is exact realized/counterfactual reduction, not yet expected value of information. |
 | **Minimal network** (Montanari 1974) | PC on the residual component | *"If lot A then FEMA `f3`; if lot B then FEMA `f7` and the POI is a tenant not the owner."* |
-| **Certified refinement** | entailment between last year's diagram and this year's — polytime on SDDs sharing a vtree | *"Here is a machine-checkable proof that our 2027 answer refines our 2026 answer and contradicts nothing."* |
+| **Certified refinement** | entailment plus non-emptiness between diagrams over the same declared universe and semantics; polytime on SDDs sharing a vtree | *"Every 2027 model was allowed in 2026, and at least one 2027 model remains."* An empty successor is a typed contradiction, not a vacuous success. |
 
 ### 9.1 The committed ranking
 
-**Contractual output, build first: the pair (backbone, exact count).** Nearly free once the
-compiler exists, and it is what goes in the SLA. **It converts abstention from a failure
-into a deliverable** — a consumer can safely act on the backbone and safely defer on the
-residual, both precisely.
+**Contractual output, build first: backbone completeness plus a scoped count and its
+exactness.** Exact backbone/count are nearly free once a suitable compiler exists; before
+then, count completeness, saturation, and typed budget fallback must remain distinct. A
+fallback placeholder is not zero; a completed unsaturated zero is a proof of conflict; a
+completed saturated value is a declared lower bound, not an exact `u64` count.
+This converts abstention from a failure into a deliverable without making the SLA depend on
+an unchosen representation.
 
 **Highest-margin single artifact: the ordered MCS lattice.** Backbone can be *approximated*
 — a competitor with a good probabilistic model can produce a "high confidence subset" that
@@ -440,14 +485,18 @@ also the only artifact with a buyer *other than* the person who asked the questi
 data vendor, the trustee, the risk committee — and **the only one that improves the input
 corpus rather than consuming it, so it compounds.**
 
-**Compounding moat: value of information.** Once counting is exact, VoI is exact, and exact
-VoI turns data acquisition from a procurement guess into an optimisation. This is the thing
+**Compounding moat: a value-of-information foundation.** Exact counting makes separation
+under each hypothetical observation exact. Turning that into expected VoI and procurement
+optimisation additionally requires a calibrated distribution over possible observations,
+acquisition cost, and decision utility; those must never be inferred from count reduction
+alone. This is the thing
 that makes the corpus asymmetric over three years, and it directly answers "which dataset
 do we buy next" from real residuals rather than intuition.
 
 **Regulatory: certified refinement.** In CMBS specifically, *"we can hand the trustee a
-proof that our restatement is a refinement and not a revision"* is worth more than it
-sounds.
+proof that every surviving restatement model was previously allowed, and that the new set
+is nonempty"* is worth more than it sounds. If the successor is empty, the deliverable is
+a contradiction certificate instead—not a vacuously true refinement claim.
 
 ---
 
@@ -625,14 +674,19 @@ This plan was produced by an adversarial multi-model design session on 2026-08-1
 5. This constraint-object round (`CSP_CC.md`, `CSP_COD.md`), where two models converged
    independently on the same formal object
 
-**Independent convergence between two different model families on the same formalism,
-global constraints, and artifact set is the strongest evidence this plan carries.**
+Convergence between two model families is useful hypothesis-generation evidence, but it is
+not independent empirical validation: both models can inherit the same literature priors,
+prompt framing, and blind spots. The strongest evidence is executable counterexamples,
+fresh measurements with declared denominators, and held-out truth gates. Model convergence
+earns an experiment; it does not pass one.
 
 ### What is NOT verified
 
-- **The ~50 academic citations above have not been independently checked.** Authors, dates,
-  titles, complexities and theorem statements are as reported by the models. **Verify
-  before citing externally or committing engineering to a claimed complexity.**
+- **Most of the ~50 academic citations above have not been independently checked.** The
+  2026-08-27 audit checked the narrow canonicity and fixpoint corrections against primary
+  Bryant/Darwiche/Cousot sources; it did not validate the remaining authors, dates,
+  complexities, or proof-system claims. **Verify each load-bearing claim before citing it
+  externally or committing engineering to it.**
 - All solver runtime and national-cost numbers (0.5 s/tile, 140 CPU-hours, propagation and
   compilation costs) are **estimates from the analysis, not measurements.** Appendices
   B–G measure work-unit and component distributions, and they falsify the original sizing;
@@ -662,8 +716,12 @@ a/k/a), its geocode(s) with accuracy tier, its asserted attributes (SF, units, y
 from Annex A / the loan documents), and its loan identity (for document evidence).
 
 Output: the **collateral parcel set** `Coll` and **building set** `QB`, delivered in the
-§10.2 claim classes — `HARD_FORCED` facts (backbone), the exact residual model set with
-its count, `SOFT_RANKED` alternatives where policy allows, or a typed refusal. A residual
+§10.2 claim classes — `HARD_FORCED` facts when the backbone is complete, a residual count
+with entity-selection scope plus independent completeness and saturation metadata,
+materialized residual models only inside the declared presentation budget, `SOFT_RANKED`
+alternatives where policy allows, or a typed fallback/refusal. A proven empty residual is
+kept distinct from explanation completeness: an oversized conflict may carry a
+deterministic constraint superset when minimal-core reduction exceeds its own budget. A residual
 of size >1 is a deliverable, not a failure (§9.1). Case 6's shape is normative: parcel
 singleton, building doubleton, both stated. **The answer is the best-supported entity at
 each level; any ledger key (BBL, BIN) is an alias projection of that entity, and an
@@ -674,8 +732,10 @@ reacquisition — re-geocode and retry — not a terminal failure.
 ### 16.2 Candidate enumeration
 
 Candidates are never proposed by a channel (§2: there is no proposer). The candidate
-universe is the tile: all parcels in the work unit, decomposed into components by the
-canonical geometric predicate (Appendix F/D). `Coll` candidates are subsets of component
+universe is the bounded tile/halo: all parcels in the work unit. Geometry may add typed
+compatibility constraints inside a declared parcel stratum; the solver then decomposes the
+actual variable/constraint incidence graph rather than assuming a forest from geometry
+alone. `Coll` candidates are subsets of component
 parcels, pruned by hard constraints — the knapsack over asserted SF, adjacency,
 ownership-permits (never forbids), document-asserted BBL sets. Enumerate within
 components (measured sizes: 2–5 typical, parcel-stars to ~71 per Appendix F); the residual
@@ -690,21 +750,23 @@ open work, not established capability.
 
 | # | Evidence class | NYC instance | Generic analogue | ρ — sound reading | Feeds | State |
 |---|---|---|---|---|---|---|
-| 1 | Geocode point + tier | `WRGL_EDGAR_CMBS_GEOCODES__STRUCTURED` | any geocoder | disc of tier-dependent radius; never a location, only a bound. `nearest_rooftop_match` is the measured silent-error tier (E.2) | position constraint on candidates | MEASURED: 66% precision alone (H.6) |
+| 1 | Geocode point + tier | `WRGL_EDGAR_CMBS_GEOCODES__STRUCTURED` | any geocoder | proposed disc of tier-dependent radius; never a location, only a bound. The E4 extension contains one reachable-truth falsification, so the current GeoDISC contract is diagnostic pending recalibration. | counterfactual position separation; hard constraint only after an admissible contract | MEASURED separation and falsification; hard admission `OPEN` |
 | 2 | Address strings (query side) | `PROPERTY_ADDRESS` + parsed fields | any | existential membership — "some member of `Coll` fronts street S near number N"; parses held as a domain via `regular` (§7.1); never exclusion | `Lo/Hi` range vars, membership | MEASURED: 28.89% exact-fire; string normalization is representation-bound (K.2) |
 | 3 | Address sets (lot side) | **LANDED 2026-08-16**: `NYC_DCP_PAD_ADDRESS_HOT` (1.32M), `_PAD_BBL_HOT` (874K), `_PAD_SND_HOT` (121K street names) + EXT/meta | county address points, National Address Database, OpenAddresses | the lot's full legal address set; membership tests against it | address-set membership; direct address→BBL+BIN lookup | VERIFIED on acceptance probes: Crosby/Broadway both frontages (Case 5); 241–249 W 74 range→BBL 1011660007 (retry case, no geocoder); Queens hyphenate 130-50 146 St→3 BINs (F.4's disagreement parcel confirmed) |
 | 4 | Parcel geometry | `NYC_DCP_MAPPLUTO_HOT` 26v1 | county parcels / Regrid | survey substrate; exact integer predicates (§4) | candidate universe, area-majority anchor | MEASURED (D/F) |
-| 5 | Footprints, multi-source | NYC footprints; FEMA structures; MS GlobalML (NY landed); Overture (**0 NY rows — gap**) | same, national | area-majority assignment with geometric denominators only (F); within-source `alldifferent`; cross-source counts via `gcc` | `X_f`, `Pb_b` slots | MEASURED: forest holds 3-source (F); 55% exact count agreement (F.4) |
-| 6 | Asserted attributes | Annex A / `PROPERTY_MART` SF, units, year | every deal tape | declared bands (§3: e.g. NRA ∈ [0.78,0.95]·gross for office); `knapsack` over candidate `Coll` | `A_b`, `Fl_b`, knapsack | **LANDED, NEVER JOINED INTO ANY TEST — the first unrun test in §17** |
+| 5 | Footprints, multi-source | NYC footprints; FEMA structures; MS GlobalML (NY landed); Overture (**0 NY rows — gap**) | same, national | geometric-area majority inside an interior-disjoint parcel stratum; overlapping legal hierarchies use typed crosswalks; within-source `alldifferent`; cross-source counts via `gcc` | `X_f`, `Pb_b` slots | Mixed-contract forest retained (F); canonical multi-source rerun `OPEN`; 55% retained count agreement (F.4) |
+| 6 | Asserted attributes | Annex A / `PROPERTY_MART` SF, units, year | every deal tape | exact integer bands only when semantic id, unit, value origin, and calibration basis agree; the illustrative office NRA/gross band is diagnostic, not admitted | `A_b`, `Fl_b`, knapsack | LANDED; typed evidence compiler implemented; population calibration/joint test `OPEN` |
 | 7 | Parcel attributes | `BLDGAREA`, `NUMBLDGS`, units | assessor rolls | observations to check, never denominators (F) | `gcc` counts, area bands | PARTIALLY MEASURED (F.4) |
 | 8 | Document evidence | `NYC_ACRIS_*` external tables | county recorder / title plants | recorded collateral BBL sets bound by amount+date+lender with contamination filters (H) | direct `Coll` evidence; also ground truth | MEASURED as truth instrument (H); unused as solver evidence |
 | 9 | Imagery / elevation observers | none landed; verified catalog in J (NYS/NYC ortho first, 3DEP, NAIP, NOAA event) | national per J | frozen-weight observers emit typed counts/outlines/floors with characterized regional error (A.2–A.3) | `gcc` checks, an own footprint source, change events | UNMEASURED |
 | 10 | POI / tenant | not landed | — | existential presence; tenant ≠ owner | `Y_q` | UNMEASURED |
 | 11 | Ownership | `OWNERNAME` | — | permits assemblage, never forbids (§3) | `Coll` permitting | ~0 bits alone by design |
-| 12 | Temporal / vintage | per-source dates, `YEARBUILT`, document dates, imagery vintage | — | Allen/STP intervals (§7.1) | demolition/rebuild events | UNMEASURED |
+| 12 | Temporal / vintage | per-source dates, `YEARBUILT`, document dates, imagery vintage | — | closed whole-day valid-time intervals; diagnostic until an explicit query-as-of domain and Allen/STP solver exist (§7.1) | future demolition/rebuild events | Interval admission implemented; temporal inference `OPEN` |
 
 Per §2.1, **every row is worth a few bits at most, by design.** The architecture's claim
-is that the bits sum under joint propagation over the candidate set. No row is a decider;
+is that joint propagation measures the *conditional* residual reduction after all prior
+evidence—not that nominal source bits add independently. Redundant constraints contribute
+zero additional reduction; shared-lineage errors remain shared risks. No row is a decider;
 no row should ever be tested as one.
 
 ## 17. Evaluation protocol
@@ -764,17 +826,20 @@ product. That is the falsifiable form of "could this possibly work."
 > scope, and E5 must establish the evidence-tier curve outside NYC. Failure there leaves an
 > abstention/representation compiler, not the proposed constraint-resolution product.
 >
-> **2026-08-23 — E4 solver capability landed (bd-2kjx.1–.3).** The composition
+> **2026-08-28 — E4 solver capability repaired and reverified
+> (bd-2kjx.1–.3).** The composition
 > kernel now decomposes the variable space over the constraint-incidence graph,
 > solves components exactly inside declared budgets, falls back to a typed
-> `BudgetFallback` for oversized coupled components, and reports exact residual
-> counts and backbones without materializing the Cartesian product (saturated
-> counts are declared lower bounds). On the frozen 15-case Gate V2 harness this
-> replaces the prior 13 assignment-budget refusals with 15/15 exact ambiguous
-> residuals, zero false merges, and truth-in-residual scored by an exact
-> membership predicate. This is solver capability, not the completed E4 gate:
-> adjudicating those residuals against the worked corpus and the multi-BBL
-> population, then the E5 tier curve, remains open.
+> `BudgetFallback` for oversized coupled components, and reports whether each
+> residual count and backbone is exact. Saturated counts are declared lower
+> bounds. The earlier implementation incorrectly conflated `u64` saturation
+> with infeasibility and used fixed-width selection masks; boundary and
+> disconnected-product counterexamples now cover those defects. The current
+> 17-case E4 harness solves without fallback and preserves every reachable
+> truth under admitted hard evidence, but reaches only 9/17 truths. A proposed
+> GeoDISC hard contract also has one empirical falsification and therefore
+> remains diagnostic. The explicit 79-case acceptance test remains open, as
+> do truth-instrument cleanup and the E5 evidence-tier curve.
 
 ---
 
@@ -877,12 +942,14 @@ MUST be checked before any commitment):**
 
 > **If the frozen-weight pattern holds, any imagery source is just another source.**
 
-The architecture is indifferent to which sensor produced an observation. Each new source
-needs exactly three things and nothing else:
+The constraint kernel is largely indifferent to which sensor produced an observation, but
+calibration and dependence are not. Each new source needs at least four things:
 
 1. a **license posture** — resolvable, redistributable, or neither (§10)
 2. a **vintage** per observation, feeding the temporal constraints
 3. a **characterized error**, which becomes its ρ band (§A.3)
+4. **upstream lineage** — imagery flight, municipal layer, model, and derived products that
+   may share one error mechanism with another nominal source
 
 Everything downstream — propagation, the residual, MUS, model counting, the certificate —
 is unchanged. Adding a sensor is a data-onboarding task, not an architectural one. **That
@@ -1112,11 +1179,12 @@ cost estimate is quoted.**
 Added 2026-08-15. **The first measurement that supports the architecture rather than
 falsifying it — conditional on a predicate choice that is not the obvious one.**
 
-> **CURRENT STATUS — PREDICATE RETAINED; DENOMINATOR CORRECTED.** Appendix F confirms the
-> strictly-greater-than-50% uniqueness property across six cells and a second footprint
-> source, but replaces the asserted `SHAPE_AREA` denominator used for the 84%/16% result
-> below with computed geometric area. On the original dense-Manhattan cell, the corrected
-> no-majority residual is approximately 1%, not 16%.
+> **CURRENT STATUS — PREDICATE RETAINED WITH DOMAIN CONDITION; DENOMINATOR CORRECTED.**
+> Appendix F replaces the asserted `SHAPE_AREA` denominator used for the original 84%/16%
+> result with computed geometric area. On the dense-Manhattan cell, the corrected
+> no-majority residual is approximately 1%, not 16%. The greater-than-50% uniqueness proof
+> also requires an interior-disjoint parcel domain; it is not valid across overlapping
+> condo-unit, billing-lot, and parent-lot geometries.
 
 ## D.1 The question
 
@@ -1136,7 +1204,7 @@ parcels does it match?
   A  ST_INTERSECTS                   4,718      17 ( 1%)    240 (10%)    2,097 (89%)
   B  ST_CONTAINS                       179   2,175 (92%)    179 ( 8%)        0 ( 0%)
   C  intersects AND >50% of footprint
-     area inside the parcel          1,988     366 (16%)  1,988 (84%)        0 ( 0%)
+     geometric area inside parcel    2,332      22 ( 1%)  2,332 (99%)        0 ( 0%)
 ```
 
 ## D.3 What each predicate does
@@ -1152,16 +1220,22 @@ centroid proximity, for a different reason.
 digitized at different vintages, so strict nesting almost never holds. Only 179 of 2,354
 footprints sit entirely inside a lot.
 
-**C — area majority works, and is mathematically clean.** 84% of footprints have exactly one
-parcel, and **zero have more than one** — necessarily, since only one parcel can hold more
-than half of a footprint's area. The remaining 16% have no majority holder, which is an
-honest abstention identifying genuine lot-line straddlers.
+**C — geometric-area majority works empirically on this stratum and has a clean conditional
+theorem.** 99% of footprints have exactly one parcel and zero have more than one in this
+measured cell. At most one majority holder is guaranteed when candidate parcel interiors
+are disjoint, because two disjoint intersections cannot each exceed half of the same
+footprint area. NYC's parcel layers are not globally disjoint: condo-unit, billing-lot, and
+parent-lot polygons can overlap. Those hierarchies must be typed or stratified before
+invoking the theorem. The remaining 1% have no majority holder, an honest abstention
+identifying lot-line straddlers or geometry disagreement.
 
 ## D.4 The decomposition result
 
-Under predicate C each footprint has **at most one** parcel edge, so the compatibility graph
-is a **forest**. Components are exactly *one parcel plus the footprints whose area it
-majority-holds* — typically 2–3 variables, far inside any compilation budget.
+On the measured interior-disjoint stratum, predicate C gives each footprint at most one
+parcel edge, so the compatibility graph is a **forest**. Components are exactly *one parcel
+plus the footprints whose area it majority-holds* — typically 2–3 variables, far inside
+any compilation budget. The compiler must check or construct that stratum; it must not
+infer global forest structure from the threshold alone.
 
 > **Polygon area-majority decomposes the tile. `ST_INTERSECTS` — the predicate a competent
 > engineer reaches for first — does not.**
@@ -1179,23 +1253,25 @@ right one without any tuning:
   asserts more than the geometry supports in the wrong direction.
 - `ST_CONTAINS` is **over-strict** — it demands a nesting the two independently-digitized
   layers do not have, so it refuses almost everything.
-- **Area majority is the sound relaxation**: the weakest constraint that still says "this
-  building is on this lot," and it fails to a named abstention rather than to a guess.
+- **Geometric-area majority is admissible only with declared units, value origin, and
+  parcel-domain topology**: it is a weak reading of "this building is on this lot," and it
+  fails to a named abstention rather than to a guess.
 
-**The 50% threshold is doing no tuning work** — it is the unique fraction that guarantees
-at most one match. Any lower value reintroduces multi-parcel ambiguity; any higher value
-discards true assignments. It is structural, not calibrated.
+**The 50% threshold is doing no tuning work inside an interior-disjoint domain** — it is the
+boundary above which at most one match is possible. Across overlapping legal parcel
+hierarchies it provides no such guarantee. Any higher value trades coverage for a narrower
+relation and therefore needs a source contract; it cannot be called automatically sound.
 
 ## D.6 The honest caveat
 
 The same objection the adversarial review raised about the `MAPPLUTO_BBL` bridge applies
-here in weaker form: **if 84% of footprint-to-parcel assignment is decided by a single
+here in weaker form: **if 99% of footprint-to-parcel assignment is decided by a single
 deterministic predicate, the constraint machinery is not being exercised at that level.**
 Parcel-to-building assignment is largely a solved geometric join.
 
 That is fine, and it should be stated plainly rather than counted as a win: the architecture
 earns its keep at the level *above* — which parcels and buildings constitute the asserted
-**property** — not at the level of which building sits on which lot. **The 16% with no
+**property** — not at the level of which building sits on which lot. **The approximately 1% with no
 majority holder is where the interesting work is**, and it is exactly the lot-line-straddling
 assemblage population the product exists to resolve.
 
@@ -1206,12 +1282,12 @@ returned structured query results, not prose.
 
 ```
   cell               borough   parcels  footprints   exactly one     zero
-  882a100d8bfffff    MN/dense    2,343       2,354   1,988 (84%)   366 (16%)
+  882a100d8bfffff    MN/dense    2,343       2,354   2,332 (99%)    22 ( 1%)
   882a100f4dfffff    BX            300         291     291 (100%)     0 ( 0%)
 ```
 
 **The predicate gets cleaner as density falls** — 100% unique assignment with zero orphans in
-a 300-lot Bronx cell, against 84%/16% in a 2,343-lot cell. That is the expected direction:
+a 300-lot Bronx cell, against 99%/1% in a 2,343-lot cell. That is the expected direction:
 in less dense fabric, buildings sit within their lots rather than straddling lot lines, so
 the no-majority population shrinks.
 
@@ -1220,19 +1296,21 @@ is not an artifact of one cell.**
 
 **Scope, honestly.** Three further cells (Queens ~1,500, Queens ~700, Manhattan ~41) were
 queried and returned no usable structured output. Loom emitted prose for two of them
-claiming a "multi-match rate" of ~3% — which the >50% predicate makes *mathematically
-impossible*, since only one parcel can hold a majority of a footprint's area. **That prose
-is not cited and should not be trusted.** Those strata remain unmeasured. Complete them
-under bd-3un6.
+claiming a "multi-match rate" of ~3%. That is impossible only in an interior-disjoint
+parcel domain; it is possible when legal parcel geometries overlap. **That prose is not
+cited and should not be trusted**, but the reason is missing structured output, not a
+globally valid uniqueness theorem. Those strata remain unmeasured in this appendix; see
+Appendix F for the later structured runs.
 
 ## D.8 Consequences
 
-1. **Adopt area-majority as the footprint-to-parcel predicate.** Record `ST_INTERSECTS` as a
-   rejected candidate with this measurement, so it is not re-proposed.
+1. **Adopt geometric-area majority for interior-disjoint parcel strata.** Record
+   `ST_INTERSECTS` as a rejected candidate with this measurement, and route overlapping
+   parcel hierarchies through typed containment/crosswalk constraints.
 2. **§6's decomposition claim is restored** for parcel↔footprint, with components of ~2–3
    rather than the estimated 6–20. Appendix C's tile-sizing problem is *unaffected* and
    still stands.
-3. **The 16% no-majority population needs its own path** — it is not an error and must not
+3. **The no-majority population needs its own path** — it is not an error and must not
    be dropped.
 4. Still **n=1 cell**, dense Manhattan. Re-measure across strata per bd-3un6.
 
@@ -1302,10 +1380,13 @@ Added 2026-08-16 (bd-3un6; full tables and exact SQL in
 `FEMA_USA_STRUCTURES_HOT` (135.3M rows, both TEXT and INT H3 keys — the C.6 defect class
 now has typed companions).
 
-## F.1 Stratified predicate C: the forest holds everywhere, with one new shape
+## F.1 Stratified legacy predicate: observed forests, with one new shape
 
 Four new strata (MN 41 parcels, QN 1,502, QN 701, SI 101), all with **zero
-multi-matches** — the >50% uniqueness guarantee is structural and held in every cell:
+multi-matches** under the Appendix-D-compatible `SHAPE_AREA` denominator. These are
+observations, not an unconditional uniqueness theorem; the table mixed geometric
+intersection areas with a source-asserted denominator and therefore is not the canonical
+predicate now specified in F.2:
 
 ```
   cell        borough  parcels  footprints  exactly-one    zero      max component
@@ -1339,10 +1420,11 @@ as specified, one level down: **asserted source area fields are observations to 
 never denominators to divide by.** Adopt `ST_AREA`-over-`ST_AREA` as the canonical
 predicate-C form; the no-majority residual in dense Manhattan is ~1%, not 16%.
 
-## F.3 The multi-source result: FEMA does not re-percolate the tile
+## F.3 The multi-source result is retained but not canonical
 
-Three-layer merged graph (parcels + NYC footprints + FEMA structures), geometric
-denominators, three cells:
+The recorded three-layer merged graph (parcels + NYC footprints + FEMA structures) used a
+geometric denominator for FEMA but the superseded source `SHAPE_AREA` denominator for NYC.
+Its literal retained output is:
 
 ```
   cell           NYC exact/zero   FEMA exact/zero   merged components  merged max
@@ -1351,8 +1433,10 @@ denominators, three cells:
   QN  882a103b6b  1,753 / 254     1,078 /  30         1,786                6
 ```
 
-**The merged graph remains a forest in all three cells.** Adding a second footprint
-source refines without re-percolating — measured, not asserted, for the first time. FEMA
+**That mixed-contract merged graph was a forest in all three cells.** It does not establish
+that the canonical geometric-over-geometric multi-source graph remains a forest; that
+requires a rerun from the preserved SQL with both channels corrected and overlapping legal
+parcel domains typed. FEMA
 coverage is strongly geography-dependent: 97.3% majority-parcel rate in Queens vs 36.7%
 in dense Manhattan (FEMA sees only 240 structures where NYC sees 2,354) — FEMA is a
 corroborating source in outer-borough fabric and nearly absent in the urban core.
@@ -1369,14 +1453,15 @@ catch at the footprint level in this fabric, and the `gcc` coverage-rate constra
 
 ## F.5 Consequences
 
-1. **§6's decomposition strategy is affirmed at n=6 cells across boroughs and densities,
-   and under multi-source load.** The open sizing question is no longer decomposition —
-   it is Appendix C's work-unit arithmetic (r10+k-ring), which remains unmeasured.
+1. **The retained runs show promising decomposition at n=6 cells, but do not yet affirm the
+   canonical multi-source strategy.** The corrected denominator and overlapping-parcel
+   domain must be rerun together. Appendix G separately settles the r10+k-ring sizing
+   arithmetic.
 2. **Appendix D's predicate is right; its denominator was wrong.** Canonical form is
    geometric-over-geometric. The "16% product population" shrinks to ~1% no-majority
    plus the parcel-star components — the honest hard residual.
-3. **Parcel-star components (SI max 71) are the new worst case** for per-component
-   compilation budgets; they, not dense Manhattan, bound the component size.
+3. **Parcel-star components (retained SI max 71) are a measured stress shape** for
+   per-component compilation budgets, not a proven global bound.
 4. All measurements NYC-only; the bead's suburban/agency-multifamily stratum has no
    landed source yet.
 

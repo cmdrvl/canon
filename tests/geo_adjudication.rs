@@ -13,8 +13,10 @@
 //!   fixture data decide membership; no floats, no fuzzy string matching.
 //! - Asserted size versus MapPLUTO `bldg_area` (rows 6/7) stays EMPIRICAL. It
 //!   is measured as a diagnostic band overlap and never constrains.
-//! - Geocode discs (row 1) are unavailable offline (parcel coordinates are
-//!   not landed) and recorded as such rather than approximated.
+//! - Geocode discs (row 1) are evaluated as an EMPIRICAL counterfactual. The
+//!   landed population now contains a falsification, so the channel is not
+//!   admitted as a hard constraint. It still reports its exact separation
+//!   power and the source-contract breach instead of disappearing.
 //!
 //! Verdicts use the predeclared ladder at the bottom of this file. The one
 //! absolute invariant under rho soundness: a sound channel must never prune
@@ -163,6 +165,19 @@ fn pad_span_satisfying_set(
         .collect()
 }
 
+/// Exact inclusive ±25% integer band: floor(3v/4), ceil(5v/4).
+/// The upper endpoint clamps only when the mathematical result is outside the
+/// u64 measurement domain. No floating-point rounding enters the receipt.
+fn asserted_area_diagnostic_band(value: u64) -> (u64, u64) {
+    let value = u128::from(value);
+    let low = (value * 3) / 4;
+    let high = (value * 5).div_ceil(4);
+    (
+        u64::try_from(low).expect("three quarters of u64 fits u64"),
+        u64::try_from(high).unwrap_or(u64::MAX),
+    )
+}
+
 fn base_request(case: &PopulationCase) -> GeoCompositionRequest {
     let mut parcels = case.candidate_parcels.clone();
     parcels.sort();
@@ -209,6 +224,7 @@ enum AdjudicationVerdict {
     UnchangedNonvacuousChannel,
     RefutationFinding,
     GeodiscRefutationFinding,
+    EmpiricalDiagnosticOnly,
     BaseConflict,
     /// The bounded search could not finish inside the declared budget on an
     /// applied channel. Never read as collapse or resolution.
@@ -241,6 +257,9 @@ struct AdjudicationRow {
     after_conflict_ids: Vec<String>,
     truth_survives_base: bool,
     truth_survives_after: bool,
+    geodisc_counterfactual_residual_model_count: u64,
+    geodisc_counterfactual_counts_saturated: bool,
+    geodisc_truth_survives_counterfactual: bool,
     sqft_band_candidate_hits: u64,
     sqft_band_truth_hits: u64,
     verdict: AdjudicationVerdict,
@@ -295,14 +314,16 @@ fn adjudicate_row(
     let truth_survives_base = model_satisfies_request(&base_request(population_case), &truth_model)
         .expect("validated request");
 
-    // Geodisc channels: one sound constraint per ASSERTED property — every
-    // property's frontage must exist inside the collateral set, so some
-    // selected parcel must sit within that property's declared tier radius.
+    // Geodisc channels are evaluated counterfactually, not admitted. The
+    // source assertion plus radius is an empirical premise, and the expanded
+    // population contains a representable truth that falsifies it. Keeping a
+    // separate request preserves its exact separation power without letting
+    // an uncalibrated source contract prune the admitted residual.
     let candidate_set: BTreeSet<&String> = population_case.candidate_parcels.iter().collect();
     let mut geodisc_properties = 0_usize;
     let mut geodisc_applied = 0_usize;
     let mut geodisc_empty = 0_usize;
-    let mut joint_request = request.clone();
+    let mut geodisc_counterfactual_request = request.clone();
     for disc in case_discs {
         if disc.in_disc_bbls.is_empty() {
             // No MapPLUTO centroid at all near this asserted point.
@@ -320,42 +341,50 @@ fn adjudicate_row(
             geodisc_empty += 1;
         } else {
             geodisc_applied += 1;
-            joint_request.hard_constraints.push(GeoHardConstraint {
-                id: format!("geodisc-{}-{}", disc.property_ordinal, disc.accuracy_type),
-                constraint: GeoHardConstraintKind::AnyOf { members },
-            });
+            geodisc_counterfactual_request
+                .hard_constraints
+                .push(GeoHardConstraint {
+                    id: format!("geodisc-{}-{}", disc.property_ordinal, disc.accuracy_type),
+                    constraint: GeoHardConstraintKind::AnyOf { members },
+                });
         }
     }
-    let any_channel_applied = matches!(disposition, PadDisposition::Applied) || geodisc_applied > 0;
+    let hard_channel_applied = matches!(disposition, PadDisposition::Applied);
 
     let pad_only_artifact = if matches!(disposition, PadDisposition::Applied) {
         solve_composition(&request).expect("pad-only request must solve")
     } else {
         base_artifact.clone()
     };
-    let joint_artifact = if any_channel_applied {
-        solve_composition(&joint_request).expect("joint request must solve")
+    let geodisc_counterfactual_artifact = if geodisc_applied > 0 {
+        solve_composition(&geodisc_counterfactual_request)
+            .expect("geodisc counterfactual request must solve")
     } else {
-        base_artifact.clone()
+        pad_only_artifact.clone()
     };
-    let after_artifact = &joint_artifact;
-    let after_status = if any_channel_applied {
+    let after_artifact = &pad_only_artifact;
+    let after_status = if hard_channel_applied {
         Some(format!("{:?}", after_artifact.status))
     } else {
         None
     };
     let after_conflict_ids =
-        if any_channel_applied && after_artifact.status == GeoCompositionStatus::Conflict {
+        if hard_channel_applied && after_artifact.status == GeoCompositionStatus::Conflict {
             after_artifact.conflict_constraint_ids.clone()
         } else {
             Vec::new()
         };
     let truth_survives_after =
-        model_satisfies_request(&joint_request, &truth_model).expect("validated request");
+        model_satisfies_request(&request, &truth_model).expect("validated request");
+    let geodisc_truth_survives_counterfactual =
+        model_satisfies_request(&geodisc_counterfactual_request, &truth_model)
+            .expect("validated geodisc counterfactual request");
 
     // Diagnostic-only empirical channel: asserted SQFT versus MapPLUTO
     // bldg_area within a declared +/-25% band (section 2.1's honest
-    // half-width). Never a constraint; recorded for the VoI table.
+    // half-width). Never a constraint; recorded for realized residual
+    // reduction. It is not expected value of information without a
+    // counterfactual outcome distribution and acquisition cost.
     let sqft_values: Vec<u64> = enrichment_case
         .properties
         .iter()
@@ -376,8 +405,7 @@ fn adjudicate_row(
     let mut sqft_band_candidate_hits = 0_u64;
     let mut sqft_band_truth_hits = 0_u64;
     for value in &sqft_values {
-        let low = (*value as f64 * 0.75).floor() as u64;
-        let high = (*value as f64 * 1.25).ceil() as u64;
+        let (low, high) = asserted_area_diagnostic_band(*value);
         for parcel in population_case
             .candidate_parcels
             .iter()
@@ -401,33 +429,35 @@ fn adjudicate_row(
             .iter()
             .all(|parcel| population_case.candidate_parcels.contains(parcel));
 
-    let verdict = if geodisc_applied > 0 && truth_representable && !truth_survives_after {
-        // Every applied property disc excludes the recorded collateral:
-        // asserted locations cannot cover it (section 3.1 proof shape).
-        AdjudicationVerdict::GeodiscRefutationFinding
-    } else if !truth_representable {
-        AdjudicationVerdict::TruthUnrepresentableReachLimit
-    } else if matches!(disposition, PadDisposition::InfeasibleNoCandidateCovers) {
-        AdjudicationVerdict::RefutationFinding
-    } else if geodisc_empty > 0 {
-        AdjudicationVerdict::GeodiscRefutationFinding
-    } else if joint_artifact.status == GeoCompositionStatus::Conflict {
-        AdjudicationVerdict::BaseConflict
-    } else if after_artifact.status == GeoCompositionStatus::BudgetFallback {
-        AdjudicationVerdict::ChannelBudgetFallback
-    } else if after_artifact.status == GeoCompositionStatus::Resolved {
-        AdjudicationVerdict::ResolvedByJointChannels
-    } else if after_artifact.summary.residual_model_count
-        < base_artifact.summary.residual_model_count
-        || pad_only_artifact.summary.residual_model_count
-            < base_artifact.summary.residual_model_count
-    {
-        AdjudicationVerdict::CollapsedHonestAmbiguity
-    } else if geodisc_applied > 0 || matches!(disposition, PadDisposition::Applied) {
-        AdjudicationVerdict::UnchangedNonvacuousChannel
-    } else {
-        AdjudicationVerdict::ThinEvidenceUnchangedVacuousChannel
-    };
+    let verdict =
+        if geodisc_applied > 0 && truth_representable && !geodisc_truth_survives_counterfactual {
+            // The empirical counterfactual excludes the recorded collateral. It
+            // is a falsification receipt for the proposed source contract, never
+            // permission to prune the admitted hard residual.
+            AdjudicationVerdict::GeodiscRefutationFinding
+        } else if !truth_representable {
+            AdjudicationVerdict::TruthUnrepresentableReachLimit
+        } else if matches!(disposition, PadDisposition::InfeasibleNoCandidateCovers) {
+            AdjudicationVerdict::RefutationFinding
+        } else if geodisc_empty > 0 {
+            AdjudicationVerdict::GeodiscRefutationFinding
+        } else if after_artifact.status == GeoCompositionStatus::Conflict {
+            AdjudicationVerdict::BaseConflict
+        } else if after_artifact.status == GeoCompositionStatus::BudgetFallback {
+            AdjudicationVerdict::ChannelBudgetFallback
+        } else if after_artifact.status == GeoCompositionStatus::Resolved {
+            AdjudicationVerdict::ResolvedByJointChannels
+        } else if residual_is_strictly_smaller(after_artifact, &base_artifact)
+            || residual_is_strictly_smaller(&pad_only_artifact, &base_artifact)
+        {
+            AdjudicationVerdict::CollapsedHonestAmbiguity
+        } else if matches!(disposition, PadDisposition::Applied) {
+            AdjudicationVerdict::UnchangedNonvacuousChannel
+        } else if geodisc_applied > 0 {
+            AdjudicationVerdict::EmpiricalDiagnosticOnly
+        } else {
+            AdjudicationVerdict::ThinEvidenceUnchangedVacuousChannel
+        };
 
     AdjudicationRow {
         case_id: population_case.case_id.clone(),
@@ -441,16 +471,39 @@ fn adjudicate_row(
         geodisc_applied,
         geodisc_empty,
         base_residual_model_count: base_artifact.summary.residual_model_count,
-        base_counts_saturated: base_artifact.summary.summary_counts_saturated,
+        base_counts_saturated: base_artifact.summary.residual_model_count_saturated,
         after_residual_model_count: after_artifact.summary.residual_model_count,
-        after_counts_saturated: after_artifact.summary.summary_counts_saturated,
+        after_counts_saturated: after_artifact.summary.residual_model_count_saturated,
         after_status,
         after_conflict_ids,
         truth_survives_base,
         truth_survives_after,
+        geodisc_counterfactual_residual_model_count: geodisc_counterfactual_artifact
+            .summary
+            .residual_model_count,
+        geodisc_counterfactual_counts_saturated: geodisc_counterfactual_artifact
+            .summary
+            .residual_model_count_saturated,
+        geodisc_truth_survives_counterfactual,
         sqft_band_candidate_hits,
         sqft_band_truth_hits,
         verdict,
+    }
+}
+
+fn residual_is_strictly_smaller(
+    candidate: &canon::geo::GeoCompositionArtifact,
+    baseline: &canon::geo::GeoCompositionArtifact,
+) -> bool {
+    let candidate_count = candidate.summary.residual_model_count;
+    let baseline_count = baseline.summary.residual_model_count;
+    match (
+        candidate.summary.residual_model_count_saturated,
+        baseline.summary.residual_model_count_saturated,
+    ) {
+        (false, true) => true,
+        (false, false) => candidate_count < baseline_count,
+        (true, _) => false,
     }
 }
 
@@ -516,6 +569,16 @@ fn run_adjudication() -> Vec<AdjudicationRow> {
 }
 
 #[test]
+fn asserted_area_diagnostic_band_uses_exact_integer_arithmetic_at_boundaries() {
+    assert_eq!(asserted_area_diagnostic_band(1), (0, 2));
+    assert_eq!(asserted_area_diagnostic_band(4), (3, 5));
+    assert_eq!(
+        asserted_area_diagnostic_band(u64::MAX),
+        (13_835_058_055_282_163_711, u64::MAX)
+    );
+}
+
+#[test]
 fn adjudication_table_is_complete_and_sound_channels_never_prune_truth() {
     let rows = run_adjudication();
     let expected_population = 15 + extension_fixture().cases.len();
@@ -534,11 +597,16 @@ fn adjudication_table_is_complete_and_sound_channels_never_prune_truth() {
                 "rho violation on case {}: PAD span pruned representable truth",
                 row.case_id
             );
-            if !row.truth_survives_after {
+            assert!(
+                row.truth_survives_after,
+                "rho violation on case {}: admitted hard evidence pruned representable truth",
+                row.case_id
+            );
+            if !row.geodisc_truth_survives_counterfactual {
                 assert_eq!(
                     row.verdict,
                     AdjudicationVerdict::GeodiscRefutationFinding,
-                    "case {}: geodisc prune must route to refutation finding",
+                    "case {}: empirical geodisc falsification must route to a finding",
                     row.case_id
                 );
             }
@@ -567,6 +635,7 @@ fn adjudication_table_is_complete_and_sound_channels_never_prune_truth() {
                     | AdjudicationVerdict::UnchangedNonvacuousChannel
                     | AdjudicationVerdict::RefutationFinding
                     | AdjudicationVerdict::GeodiscRefutationFinding
+                    | AdjudicationVerdict::EmpiricalDiagnosticOnly
                     | AdjudicationVerdict::BaseConflict
                     | AdjudicationVerdict::ChannelBudgetFallback
                     | AdjudicationVerdict::TruthUnrepresentableReachLimit
@@ -587,7 +656,7 @@ fn adjudication_table_is_complete_and_sound_channels_never_prune_truth() {
     // Operator-facing table for the bead report.
     for row in &rows {
         println!(
-            "{:>16} cand={:>3} recall={:<5} repr={:<5} nums={:?} pad={:>2}/{:<3} {:?} base={:>15}{} after={:>15}{} st={:?} conf={:?} sqft(c/t)={}/{} -> {:?}",
+            "{:>16} cand={:>3} recall={:<5} repr={:<5} nums={:?} pad={:>2}/{:<3} {:?} base={:>15}{} hard={:>15}{} geodisc_cf={:>15}{} geodisc_truth={:<5} st={:?} conf={:?} sqft(c/t)={}/{} -> {:?}",
             row.case_id,
             row.candidate_count,
             row.full_truth_recall,
@@ -600,6 +669,13 @@ fn adjudication_table_is_complete_and_sound_channels_never_prune_truth() {
             if row.base_counts_saturated { "+" } else { "" },
             row.after_residual_model_count,
             if row.after_counts_saturated { "+" } else { "" },
+            row.geodisc_counterfactual_residual_model_count,
+            if row.geodisc_counterfactual_counts_saturated {
+                "+"
+            } else {
+                ""
+            },
+            row.geodisc_truth_survives_counterfactual,
             row.after_status,
             row.after_conflict_ids,
             row.sqft_band_candidate_hits,
@@ -607,4 +683,42 @@ fn adjudication_table_is_complete_and_sound_channels_never_prune_truth() {
             row.verdict,
         );
     }
+}
+
+#[test]
+#[ignore = "E4 remains open; run explicitly to test the frozen acceptance gate"]
+fn e4_acceptance_gate_requires_the_full_population_to_be_reachable() {
+    // Frozen before this rerun from bd-1g4x's declared target population. E4
+    // cannot pass on the convenient truth-representable subset: candidate
+    // reach is part of the end-to-end system, even though solver soundness is
+    // scored only where the truth model is representable.
+    const REQUIRED_GENUINE_MULTI_PARCEL_CASES: usize = 79;
+
+    let rows = run_adjudication();
+    let representable = rows.iter().filter(|row| row.truth_representable).count();
+    let rho_violations = rows
+        .iter()
+        .filter(|row| row.truth_representable && !row.truth_survives_after)
+        .count();
+    let budget_fallbacks = rows
+        .iter()
+        .filter(|row| row.after_status.as_deref() == Some("BudgetFallback"))
+        .count();
+    let empirical_falsifications = rows
+        .iter()
+        .filter(|row| row.truth_representable && !row.geodisc_truth_survives_counterfactual)
+        .count();
+
+    let passed = rows.len() >= REQUIRED_GENUINE_MULTI_PARCEL_CASES
+        && representable == rows.len()
+        && rho_violations == 0
+        && budget_fallbacks == 0;
+
+    assert!(
+        passed,
+        "E4 OPEN: cases={}/{REQUIRED_GENUINE_MULTI_PARCEL_CASES}, reachable={}/{}, rho_violations={rho_violations}, budget_fallbacks={budget_fallbacks}, empirical_falsifications={empirical_falsifications}",
+        rows.len(),
+        representable,
+        rows.len(),
+    );
 }
