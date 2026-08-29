@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.tile_reconciliation.v0.schema.json",
+  "title": "canon.geo.tile_reconciliation.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "request_version",
+    "h3_resolution",
+    "halo_k",
+    "batches",
+    "input_proposals",
+    "owned_decisions",
+    "discarded_halo_proposals",
+    "batch_receipts",
+    "decisions"
+  ],
+  "properties": {
+    "version": { "const": "canon_geo_tile_reconciliation.v0" },
+    "request_version": { "const": "canon_geo_tile_reconciliation_request.v0" },
+    "h3_resolution": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "halo_k": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+    "batches": { "type": "integer", "minimum": 1 },
+    "input_proposals": { "type": "integer", "minimum": 0 },
+    "owned_decisions": { "type": "integer", "minimum": 0 },
+    "discarded_halo_proposals": { "type": "integer", "minimum": 0 },
+    "batch_receipts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/batch_receipt" }
+    },
+    "decisions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/reconciled_decision" }
+    }
+  },
+  "$defs": {
+    "h3_cell": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{15}$"
+    },
+    "decision_member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_name", "feature_id", "home_cell"],
+      "properties": {
+        "source_name": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "feature_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "home_cell": { "$ref": "#/$defs/h3_cell" }
+      }
+    },
+    "batch_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["center_cell", "work_unit_blake3", "proposal_count"],
+      "properties": {
+        "center_cell": { "$ref": "#/$defs/h3_cell" },
+        "work_unit_blake3": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
+        "proposal_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "reconciled_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_id",
+        "owner_cell",
+        "payload_blake3",
+        "members",
+        "proposal_copies"
+      ],
+      "properties": {
+        "decision_id": { "type": "string", "pattern": "^geo-decision:[0-9a-f]{64}$" },
+        "owner_cell": { "$ref": "#/$defs/h3_cell" },
+        "payload_blake3": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/decision_member" }
+        },
+        "proposal_copies": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

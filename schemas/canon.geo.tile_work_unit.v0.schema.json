@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.tile_work_unit.v0.schema.json",
+  "title": "canon.geo.tile_work_unit.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "request_version",
+    "center_cell",
+    "h3_resolution",
+    "halo_k",
+    "work_cells",
+    "features",
+    "center_feature_count",
+    "halo_feature_count",
+    "max_features",
+    "max_work_cells"
+  ],
+  "properties": {
+    "version": { "const": "canon_geo_tile_work_unit.v0" },
+    "request_version": { "const": "canon_geo_tile_work_request.v0" },
+    "center_cell": { "$ref": "#/$defs/h3_cell" },
+    "h3_resolution": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "halo_k": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+    "work_cells": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/h3_cell" }
+    },
+    "features": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/feature_membership" }
+    },
+    "center_feature_count": { "type": "integer", "minimum": 0 },
+    "halo_feature_count": { "type": "integer", "minimum": 0 },
+    "max_features": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+    "max_work_cells": { "type": "integer", "minimum": 1, "maximum": 100000 }
+  },
+  "$defs": {
+    "h3_cell": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{15}$"
+    },
+    "feature_membership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_name", "feature_id", "home_cell", "placement"],
+      "properties": {
+        "source_name": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "feature_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "home_cell": { "$ref": "#/$defs/h3_cell" },
+        "placement": { "enum": ["center", "halo"] }
+      }
+    }
+  }
+}

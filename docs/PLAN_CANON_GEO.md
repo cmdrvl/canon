@@ -3,10 +3,12 @@
 > Status: **proposed full architecture with a partial E4 walking skeleton implemented**.
 > The typed evidence compiler, exact parcel/building residual kernel, incidence
 > factorization, bounded fallback, population evaluator, and offline warehouse-row
-> materializer exist; geometry acquisition/ingest,
-> temporal solving, knowledge compilation, halo reconciliation, and the complete E4/E5
-> populations do not. This does not change canon core: runtime lookup remains exact
-> registry lookup.
+> materializer exist. Deterministic H3 center-plus-halo work-unit materialization and
+> cross-boundary ownership reconciliation now exist over explicit upstream home-cell
+> assignments; empirical candidate reach, warehouse/client H3 parity, and component cost
+> remain open. Geometry acquisition/ingest, temporal solving, knowledge compilation, and
+> the complete E4/E5 populations do not exist. This does not change canon core: runtime
+> lookup remains exact registry lookup.
 >
 > Date: 2026-08-15. Derived from an adversarial multi-model design session (see
 > [Provenance](#15-provenance-and-what-is-not-yet-verified) — **the ~50 academic citations
@@ -40,6 +42,7 @@ The controlling state entering the main review is:
 | Product boundary | Core Canon remains exact registry replay; GEO is a build-time workbench. | `AGENTS.md`, `README.md`; binding boundary |
 | N-source row composition | `canon geo link-sources` now materializes three or more named local CSV sources through the existing entity multisource kernel. Geo requires exactly one target, at least one bounded reference, permits peers, refuses a globally canonical vendor role, defaults to the complete comparison graph, enforces per-pair budgets, emits anchor-conflict abstentions, and content-hashes every input and the merged rows. The semantic artifact hash excludes publication paths and is compatible with `EntityArtifactReference`; source count remains provenance rather than evidence weight. This is row composition, not spatial candidate reach, constraint admission, or solving. | `src/geo/multisource.rs`, `src/entity/multisource.rs`, `canon_geo_multisource_request.v0`, `canon_entity_multisource_link.v1`; implemented build-time workbench contract |
 | Offline row bridge | `canon geo materialize-evidence` deterministically groups release-pinned parcel, building/parcel-incidence, rho-contract, and immutable source-record rows into `canon_geo_evidence_request.v0`; duplicate grains and conflicting observation rows refuse, and the production evidence compiler validates the result. It performs no acquisition, and source-record multiplicity remains provenance rather than constraint weight. | `src/geo/materialize.rs`, `canon_geo_warehouse_rows.v0`; implemented build-time workbench contract |
+| Tile work and boundary ownership | `canon geo tile-work` materializes one budgeted H3 center-plus-halo work unit from explicit source-feature home cells; `canon geo reconcile-tiles` validates the exact work unit supplied to each local solver, requires every proposal member to occur in it, records a work-unit digest receipt, emits one owned decision per canonical member set, and refuses missing owners, halo-only decisions, unavailable members, and differing payload digests for the same members. H3 supplies blocking and ownership only, never geometric truth. Canon does not yet derive or empirically validate home cells, prove global candidate recall, measure real component distributions, or interpret the solver payload behind its digest. | `src/geo/tile.rs`, `canon_geo_tile_work_*.v0`, `canon_geo_tile_reconciliation*.v0`; executable local contract `IMPLEMENTED`, empirical scaling/reach/parity `OPEN` |
 | Decision object | Entity-grain backbone and residual count with explicit scope and exactness; typed fallback when either is incomplete. Ledger keys are alias projections. | §§9, 10.2, 16.1; Appendix L.5 |
 | Candidate problem | Point re-ranking is not the dominant measured failure. The unresolved solver question is collateral composition over parcel/building sets. | Appendices L–M; `MEASURED`, with E4 `OPEN` |
 | Footprint→parcel predicate | Strictly more than 50% of computed footprint geometry inside computed parcel geometry, within an explicitly interior-disjoint parcel stratum; asserted area fields are observations, never denominators. Candidate reach is independent: a footprint and its majority parcel may have different H3 home cells. Overlapping legal parcel hierarchies require typed crosswalks. | Appendices D.9 and F; corrected single-source predicate and reach split `MEASURED`, controlled-halo multi-source rerun `OPEN` |

@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.tile_reconciliation_request.v0.schema.json",
+  "title": "canon.geo.tile_reconciliation_request.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "halo_k",
+    "batches",
+    "max_batches",
+    "max_proposals",
+    "max_members_per_decision",
+    "max_features_per_batch",
+    "max_work_cells_per_batch"
+  ],
+  "properties": {
+    "version": { "const": "canon_geo_tile_reconciliation_request.v0" },
+    "halo_k": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+    "batches": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/decision_batch" }
+    },
+    "max_batches": { "type": "integer", "minimum": 1, "maximum": 100000 },
+    "max_proposals": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+    "max_members_per_decision": { "type": "integer", "minimum": 1, "maximum": 100000 },
+    "max_features_per_batch": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+    "max_work_cells_per_batch": { "type": "integer", "minimum": 1, "maximum": 100000 }
+  },
+  "$defs": {
+    "h3_cell": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{15}$"
+    },
+    "decision_member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_name", "feature_id", "home_cell"],
+      "properties": {
+        "source_name": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "feature_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "home_cell": { "$ref": "#/$defs/h3_cell" }
+      }
+    },
+    "decision_proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["payload_blake3", "members"],
+      "properties": {
+        "payload_blake3": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/decision_member" }
+        }
+      }
+    },
+    "feature_membership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_name", "feature_id", "home_cell", "placement"],
+      "properties": {
+        "source_name": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "feature_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "home_cell": { "$ref": "#/$defs/h3_cell" },
+        "placement": { "enum": ["center", "halo"] }
+      }
+    },
+    "work_unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "request_version",
+        "center_cell",
+        "h3_resolution",
+        "halo_k",
+        "work_cells",
+        "features",
+        "center_feature_count",
+        "halo_feature_count",
+        "max_features",
+        "max_work_cells"
+      ],
+      "properties": {
+        "version": { "const": "canon_geo_tile_work_unit.v0" },
+        "request_version": { "const": "canon_geo_tile_work_request.v0" },
+        "center_cell": { "$ref": "#/$defs/h3_cell" },
+        "h3_resolution": { "type": "integer", "minimum": 0, "maximum": 15 },
+        "halo_k": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "work_cells": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/h3_cell" }
+        },
+        "features": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/feature_membership" }
+        },
+        "center_feature_count": { "type": "integer", "minimum": 0 },
+        "halo_feature_count": { "type": "integer", "minimum": 0 },
+        "max_features": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "max_work_cells": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      }
+    },
+    "decision_batch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["work_unit", "proposals"],
+      "properties": {
+        "work_unit": { "$ref": "#/$defs/work_unit" },
+        "proposals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/decision_proposal" }
+        }
+      }
+    }
+  }
+}

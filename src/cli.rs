@@ -222,6 +222,12 @@ pub enum GeoSubcommand {
     /// Materialize three or more named sources into one budgeted consistency artifact
     #[command(name = "link-sources")]
     LinkSources(GeoLinkSourcesCli),
+    /// Build one bounded H3 center-plus-halo feature work unit
+    #[command(name = "tile-work")]
+    TileWork(GeoTileWorkCli),
+    /// Reconcile independently solved tile decisions under one ownership rule
+    #[command(name = "reconcile-tiles")]
+    ReconcileTiles(GeoReconcileTilesCli),
     /// Solve the exact hard-feasible parcel/building residual for a composition request
     Solve(GeoSolveCli),
     /// Normalize and budget source geometry into canonical tile-local values
@@ -245,6 +251,20 @@ pub struct GeoLinkSourcesCli {
     /// CSV path for the deterministic merged source rows
     #[arg(long = "rows-out")]
     pub rows_out: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoTileWorkCli {
+    /// JSON file holding a canon_geo_tile_work_request.v0 request
+    #[arg(long)]
+    pub request: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoReconcileTilesCli {
+    /// JSON file holding a canon_geo_tile_reconciliation_request.v0 request
+    #[arg(long)]
+    pub request: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]

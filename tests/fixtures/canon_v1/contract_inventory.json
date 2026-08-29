@@ -166,6 +166,28 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo tile-work",
+      "family": "geo",
+      "clap_path": "geo tile-work",
+      "operator_name": "geo tile-work",
+      "primary_contracts": [
+        "canon_geo_tile_work_request.v0",
+        "canon_geo_tile_work_unit.v0"
+      ],
+      "action": "preserve"
+    },
+    {
+      "id": "canon geo reconcile-tiles",
+      "family": "geo",
+      "clap_path": "geo reconcile-tiles",
+      "operator_name": "geo reconcile-tiles",
+      "primary_contracts": [
+        "canon_geo_tile_reconciliation_request.v0",
+        "canon_geo_tile_reconciliation.v0"
+      ],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo solve",
       "family": "geo",
       "clap_path": "geo solve",
@@ -1173,6 +1195,41 @@
       "action": "preserve",
       "access_boundary": "public_crate_api",
       "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_tile_work_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_tile_work_unit.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_tile_reconciliation_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_tile_reconciliation.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_tile_decision.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/geo/tile.rs"
     },
     {
       "id": "canon_geo_multisource_request.v0",

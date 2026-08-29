@@ -11,7 +11,8 @@ use crate::{
     CanonOutput, Refusal, RefusalCode,
     cli::{
         GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli, GeoLinkSourcesCli,
-        GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli, GeoSolveCli, GeoSubcommand,
+        GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli, GeoReconcileTilesCli, GeoSolveCli,
+        GeoSubcommand, GeoTileWorkCli,
     },
     refusal,
 };
@@ -51,16 +52,64 @@ use super::{
         CANON_GEO_MULTISOURCE_REQUEST_VERSION, GeoMultisourceRequest,
         canonical_multisource_artifact_bytes, materialize_geo_multisource,
     },
+    tile::{
+        CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_VERSION,
+        CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION, GeoTileError,
+        GeoTileReconciliationRequest, GeoTileWorkRequest, canonical_tile_reconciliation_bytes,
+        canonical_tile_work_unit_bytes, materialize_tile_work_unit, reconcile_tile_decisions,
+    },
 };
 
 pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
     match &geo.command {
         GeoSubcommand::LinkSources(args) => run_link_sources(args),
+        GeoSubcommand::TileWork(args) => run_tile_work(args),
+        GeoSubcommand::ReconcileTiles(args) => run_reconcile_tiles(args),
         GeoSubcommand::Solve(args) => run_solve(args),
         GeoSubcommand::MaterializeGeometry(args) => run_materialize_geometry(args),
         GeoSubcommand::MaterializeEvidence(args) => run_materialize_evidence(args),
         GeoSubcommand::CompileEvidence(args) => run_compile_evidence(args),
         GeoSubcommand::Evaluate(args) => run_evaluate(args),
+    }
+}
+
+fn run_tile_work(args: &GeoTileWorkCli) -> Result<u8, Box<dyn Error>> {
+    let request: GeoTileWorkRequest = match read_request(
+        &args.request,
+        "request",
+        CANON_GEO_TILE_WORK_REQUEST_VERSION,
+        "canon geo tile-work --request <REQUEST.json>",
+    ) {
+        Ok(request) => request,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let artifact = match materialize_tile_work_unit(&request) {
+        Ok(artifact) => artifact,
+        Err(error) => return emit_tile_error(error),
+    };
+    match canonical_tile_work_unit_bytes(&artifact) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_serialization_refusal(CANON_GEO_TILE_WORK_UNIT_VERSION, &error),
+    }
+}
+
+fn run_reconcile_tiles(args: &GeoReconcileTilesCli) -> Result<u8, Box<dyn Error>> {
+    let request: GeoTileReconciliationRequest = match read_request(
+        &args.request,
+        "request",
+        CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
+        "canon geo reconcile-tiles --request <REQUEST.json>",
+    ) {
+        Ok(request) => request,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let artifact = match reconcile_tile_decisions(&request) {
+        Ok(artifact) => artifact,
+        Err(error) => return emit_tile_error(error),
+    };
+    match canonical_tile_reconciliation_bytes(&artifact) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_serialization_refusal(CANON_GEO_TILE_RECONCILIATION_VERSION, &error),
     }
 }
 
@@ -316,6 +365,22 @@ fn emit_geometry_error(error: GeoGeometryError) -> Result<u8, Box<dyn Error>> {
         }),
         Some(
             "repair the request against canon_geo_geometry_request.v0, then rerun canon geo materialize-geometry"
+                .to_string(),
+        ),
+    )
+}
+
+fn emit_tile_error(error: GeoTileError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo tile request could not be materialized or reconciled",
+        json!({
+            "geo_tile_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(
+            "repair the request against its canon_geo_tile_*.v0 contract, then rerun the same canon geo command"
                 .to_string(),
         ),
     )

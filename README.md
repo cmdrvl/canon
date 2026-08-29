@@ -377,6 +377,8 @@ canon project init <DIR> [--project-id <ID>] [--mapping-profile <REF>] [--emit j
 canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]
 canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]
 canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>
+canon geo tile-work --request <REQUEST.json>
+canon geo reconcile-tiles --request <REQUEST.json>
 canon geo solve --request <REQUEST.json>
 canon geo materialize-geometry --request <REQUEST.json>
 canon geo materialize-evidence --rows <ROWS.json>
@@ -440,6 +442,27 @@ emits `canon_entity_multisource_link.v1` on stdout with per-source hashes, the m
 hash, pair-count diagnostics, anchor-conflict abstentions, and a path-independent semantic
 artifact hash suitable for an upstream artifact reference. Roles and source count are
 provenance; they do not become evidence weights or independent constraints.
+
+`canon geo tile-work --request` turns explicit upstream H3 home-cell assignments into a
+budgeted center-plus-`k`-ring work unit. The artifact records the complete ordered work
+cell set and classifies every supplied feature as center or halo. Mixed resolutions,
+duplicate source features, features outside the declared work cells, and cell/feature
+budget overruns refuse. Canon does not derive H3 cells from coordinates here: H3 is only a
+blocking and ownership index, and the geometry contracts remain authoritative for spatial
+predicates. Consequently this command cannot prove candidate recall or validate the
+upstream coordinate-to-H3 assignment. Declared budgets are additionally capped by fixed
+schema/kernel ceilings. A work unit is an envelope for incidence factorization and small
+exact residuals; it is not an instruction to solve every feature in the tile monolithically.
+
+`canon geo reconcile-tiles --request` consumes independently solved decision batches,
+including the exact canonical work unit supplied to each solver, and emits one decision
+per canonical member set plus a BLAKE3 receipt for every input work unit. A proposal member
+must occur in that work unit with the same home cell. The owner is the numerically smallest
+member home cell, independent of source names, input order, or worker completion order. A
+missing owner work unit, a proposal seen only from halo work units, an unavailable member,
+or different payload digests for the same members is a typed refusal; conflicts are never
+silently merged. The reconciler checks payload digests, not the payload semantics, which
+remain the local solver's responsibility.
 
 `canon geo solve --request` accepts either a bare
 `canon_geo_composition_request.v0` request or the complete

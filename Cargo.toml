@@ -19,6 +19,7 @@ blake3 = "1"
 petgraph = "0.6"
 ureq = { version = "2", features = ["json"] }
 rapidfuzz = "=0.5.0"
+h3o = { version = "=0.10.0", default-features = false }
 
 [dev-dependencies]
 tempfile = "3"

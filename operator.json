@@ -736,6 +736,128 @@
       ]
     },
     {
+      "name": "geo tile-work",
+      "usage": "canon geo tile-work --request <REQUEST.json>",
+      "description": "Materialize a deterministic, budgeted H3 center-plus-halo feature work unit from explicit upstream home-cell assignments",
+      "output_mode": "json",
+      "output_schema": "canon_geo_tile_work_unit.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads an offline request and emits one bounded work unit on stdout; H3 is used only for blocking and ownership, never as a geometric truth predicate",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "bounded Geo tile work-unit artifact emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, request IO, H3, resolution, reach, or budget contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "factor each work unit into incidence components and solve only bounded residuals",
+      "recovery": {
+        "next_command": "canon geo tile-work --request <REQUEST.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "request",
+          "flag": "--request",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_tile_work_request.v0 request"
+        }
+      ]
+    },
+    {
+      "name": "geo reconcile-tiles",
+      "usage": "canon geo reconcile-tiles --request <REQUEST.json>",
+      "description": "Reconcile independently solved tile decisions under a deterministic H3 ownership rule and refuse orphaned or non-confluent boundary results",
+      "output_mode": "json",
+      "output_schema": "canon_geo_tile_reconciliation.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads offline decision batches and emits one owned decision per canonical member set on stdout; it does not merge conflicting solver payloads",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "deterministically owned Geo tile decisions emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, request IO, budget, ownership, orphan, or non-confluence contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "admit reconciled decision payloads into the evidence workflow",
+      "recovery": {
+        "next_command": "canon geo reconcile-tiles --request <REQUEST.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "request",
+          "flag": "--request",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_tile_reconciliation_request.v0 request"
+        }
+      ]
+    },
+    {
       "name": "geo solve",
       "usage": "canon geo solve --request <REQUEST.json>",
       "description": "Solve the exact hard-feasible parcel/building residual for a bounded composition request or evidence-compilation artifact and emit the canonical artifact on stdout",

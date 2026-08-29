@@ -5,8 +5,10 @@
 //! artifact bytes out, typed refusals with exit code 2 on bad input.
 
 use assert_cmd::Command;
+use canon::geo::{GeoTileWorkRequest, materialize_tile_work_unit};
+use h3o::CellIndex;
 use serde_json::{Value, json};
-use std::{fs, path::PathBuf};
+use std::{collections::BTreeSet, fs, path::PathBuf, str::FromStr};
 use tempfile::tempdir;
 
 fn canon_command() -> Command {
@@ -98,6 +100,104 @@ fn tiny_geometry_request(max_geometry_bytes_per_tile: u64) -> Value {
     })
 }
 
+fn tile_cells() -> (CellIndex, CellIndex, CellIndex) {
+    let center = CellIndex::from_str("892a100d26bffff").expect("valid fixture cell");
+    let neighbor = center
+        .grid_disk_safe(1)
+        .find(|cell| *cell != center)
+        .expect("fixture cell has a neighbor");
+    let k1 = center.grid_disk_safe(1).collect::<BTreeSet<_>>();
+    let outside = center
+        .grid_disk_safe(2)
+        .find(|cell| !k1.contains(cell))
+        .expect("k2 contains a cell outside k1");
+    (center, neighbor, outside)
+}
+
+fn tiny_tile_work_request(home_cell: CellIndex) -> Value {
+    let (center, _, _) = tile_cells();
+    json!({
+        "version": "canon_geo_tile_work_request.v0",
+        "center_cell": center.to_string(),
+        "halo_k": 1,
+        "features": [{
+            "source_name": "parcel",
+            "feature_id": "parcel-a",
+            "home_cell": home_cell.to_string()
+        }],
+        "max_features": 8,
+        "max_work_cells": 7
+    })
+}
+
+fn tiny_tile_reconciliation_request(second_payload: &str) -> Value {
+    let (first, second, _) = tile_cells();
+    let members = json!([
+        {
+            "source_name": "parcel",
+            "feature_id": "parcel-a",
+            "home_cell": first.to_string()
+        },
+        {
+            "source_name": "building",
+            "feature_id": "building-a",
+            "home_cell": second.to_string()
+        }
+    ]);
+    let work_unit = |center: CellIndex| {
+        let request: GeoTileWorkRequest = serde_json::from_value(json!({
+            "version": "canon_geo_tile_work_request.v0",
+            "center_cell": center.to_string(),
+            "halo_k": 1,
+            "features": [
+                {
+                    "source_name": "parcel",
+                    "feature_id": "parcel-a",
+                    "home_cell": first.to_string()
+                },
+                {
+                    "source_name": "building",
+                    "feature_id": "building-a",
+                    "home_cell": second.to_string()
+                }
+            ],
+            "max_features": 8,
+            "max_work_cells": 7
+        }))
+        .expect("typed tile work request");
+        serde_json::to_value(
+            materialize_tile_work_unit(&request).expect("tile work unit materializes"),
+        )
+        .expect("tile work unit serializes")
+    };
+    let first_payload = format!("blake3:{}", blake3::hash(b"tile payload").to_hex());
+    json!({
+        "version": "canon_geo_tile_reconciliation_request.v0",
+        "halo_k": 1,
+        "batches": [
+            {
+                "work_unit": work_unit(first),
+                "proposals": [{
+                    "payload_blake3": first_payload,
+                    "members": members.clone()
+                }]
+            },
+            {
+                "work_unit": work_unit(second),
+                "proposals": [{
+                    "payload_blake3": second_payload,
+                    "members": members
+                }]
+            }
+        ],
+        "max_batches": 4,
+        "max_proposals": 8,
+        "max_members_per_decision": 8,
+        "max_features_per_batch": 8,
+        "max_work_cells_per_batch": 7
+    })
+}
+
 #[test]
 fn geo_materialize_geometry_emits_canonical_values_and_typed_budget_refusals() {
     let temp = tempdir().expect("tempdir");
@@ -160,6 +260,98 @@ fn geo_materialize_geometry_emits_canonical_values_and_typed_budget_refusals() {
     assert_eq!(
         refusal["refusal"]["detail"]["budget"]["policy_id"],
         "geometry.max_bytes_per_tile"
+    );
+}
+
+#[test]
+fn geo_tile_work_emits_a_bounded_work_unit_and_refuses_outside_reach() {
+    let temp = tempdir().expect("tempdir");
+    let (center, _, outside) = tile_cells();
+    let request = write_json(
+        temp.path(),
+        "tile-work.json",
+        &tiny_tile_work_request(center),
+    );
+    let first = canon_command()
+        .args(["geo", "tile-work", "--request", request.to_str().unwrap()])
+        .assert()
+        .success();
+    let second = canon_command()
+        .args(["geo", "tile-work", "--request", request.to_str().unwrap()])
+        .assert()
+        .success();
+    assert_eq!(first.get_output().stdout, second.get_output().stdout);
+    let artifact: Value = serde_json::from_slice(&first.get_output().stdout).unwrap();
+    assert_eq!(artifact["version"], "canon_geo_tile_work_unit.v0");
+    assert_eq!(artifact["work_cells"].as_array().unwrap().len(), 7);
+    assert_eq!(artifact["center_feature_count"], 1);
+    assert_eq!(artifact["halo_feature_count"], 0);
+
+    let outside_request = write_json(
+        temp.path(),
+        "tile-work-outside.json",
+        &tiny_tile_work_request(outside),
+    );
+    let refusal = canon_command()
+        .args([
+            "geo",
+            "tile-work",
+            "--request",
+            outside_request.to_str().unwrap(),
+        ])
+        .assert()
+        .code(2);
+    let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout).unwrap();
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(
+        refusal["refusal"]["detail"]["geo_tile_error_code"],
+        "feature_outside_halo"
+    );
+}
+
+#[test]
+fn geo_reconcile_tiles_emits_one_owner_and_refuses_nonconfluence() {
+    let temp = tempdir().expect("tempdir");
+    let payload = format!("blake3:{}", blake3::hash(b"tile payload").to_hex());
+    let request = write_json(
+        temp.path(),
+        "reconcile.json",
+        &tiny_tile_reconciliation_request(&payload),
+    );
+    let success = canon_command()
+        .args([
+            "geo",
+            "reconcile-tiles",
+            "--request",
+            request.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let artifact: Value = serde_json::from_slice(&success.get_output().stdout).unwrap();
+    assert_eq!(artifact["version"], "canon_geo_tile_reconciliation.v0");
+    assert_eq!(artifact["input_proposals"], 2);
+    assert_eq!(artifact["owned_decisions"], 1);
+    assert_eq!(artifact["discarded_halo_proposals"], 1);
+
+    let conflicting = format!("blake3:{}", blake3::hash(b"conflicting payload").to_hex());
+    let bad_request = write_json(
+        temp.path(),
+        "reconcile-conflict.json",
+        &tiny_tile_reconciliation_request(&conflicting),
+    );
+    let refusal = canon_command()
+        .args([
+            "geo",
+            "reconcile-tiles",
+            "--request",
+            bad_request.to_str().unwrap(),
+        ])
+        .assert()
+        .code(2);
+    let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout).unwrap();
+    assert_eq!(
+        refusal["refusal"]["detail"]["geo_tile_error_code"],
+        "non_confluent_decision"
     );
 }
 
