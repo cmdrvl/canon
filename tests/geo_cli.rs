@@ -5,9 +5,11 @@
 //! artifact bytes out, typed refusals with exit code 2 on bad input.
 
 use assert_cmd::Command;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use canon::geo::{GeoTileWorkRequest, materialize_tile_work_unit};
 use h3o::CellIndex;
 use serde_json::{Value, json};
+use sha2::{Digest as _, Sha256};
 use std::{collections::BTreeSet, fs, path::PathBuf, str::FromStr};
 use tempfile::tempdir;
 
@@ -97,6 +99,60 @@ fn tiny_geometry_request(max_geometry_bytes_per_tile: u64) -> Value {
         }],
         "max_vertices_per_geometry": 100,
         "max_geometry_bytes_per_tile": max_geometry_bytes_per_tile
+    })
+}
+
+fn tiny_warehouse_geometry_request(declared_sha256: Option<&str>) -> Value {
+    let points = [
+        (980_252.301_632_881_2_f64, 191_655.610_172_272_3_f64),
+        (980_352.301_632_881_2, 191_655.610_172_272_3),
+        (980_352.301_632_881_2, 191_755.610_172_272_3),
+        (980_252.301_632_881_2, 191_755.610_172_272_3),
+        (980_252.301_632_881_2, 191_655.610_172_272_3),
+    ];
+    let mut wkb = vec![1];
+    wkb.extend_from_slice(&3_u32.to_le_bytes());
+    wkb.extend_from_slice(&1_u32.to_le_bytes());
+    wkb.extend_from_slice(&(points.len() as u32).to_le_bytes());
+    for (x, y) in points {
+        wkb.extend_from_slice(&x.to_le_bytes());
+        wkb.extend_from_slice(&y.to_le_bytes());
+    }
+    let sha256: String = Sha256::digest(&wkb)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    json!({
+        "version": "canon_geo_warehouse_geometry_rows.v0",
+        "tile_id": "892a100d26bffff",
+        "frame_id": "tile:892a100d26bffff:epsg2263-mm:v0",
+        "source_crs": "EPSG:2263",
+        "source_srid": 2263,
+        "source_decimal_places": 9,
+        "source_origin": { "x": "980000", "y": "191000" },
+        "source_unit_to_millimetres": {
+            "unit_id": "us-survey-foot",
+            "numerator": 1200000,
+            "denominator": 3937
+        },
+        "rows": [{
+            "feature_id": "parcel-1",
+            "source_record_id": "mn/000000/1",
+            "source_dataset": "nyc_dcp_mappluto",
+            "source_release": "26v2",
+            "source_release_date": "2026-08-01",
+            "source_geometry_contract_version": "nyc_dcp_mappluto_geometry_evidence.v3",
+            "source_archive_sha256": "e06eca9034731bc23f058bf532090e3c1ea6aed44a8128c6928f33872da34ab5",
+            "source_crs": "EPSG:2263",
+            "source_srid": 2263,
+            "source_geom_wkb_base64": BASE64_STANDARD.encode(&wkb),
+            "source_geom_wkb_sha256": declared_sha256.unwrap_or(&sha256),
+            "transform_execution_id": "sha256-execution-26v2",
+            "transform_definition_id": "sha256-definition-hpgn"
+        }],
+        "max_abs_coordinate_mm": 1000000,
+        "max_vertices_per_geometry": 10000,
+        "max_geometry_bytes_per_tile": 1000000
     })
 }
 
@@ -260,6 +316,68 @@ fn geo_materialize_geometry_emits_canonical_values_and_typed_budget_refusals() {
     assert_eq!(
         refusal["refusal"]["detail"]["budget"]["policy_id"],
         "geometry.max_bytes_per_tile"
+    );
+}
+
+#[test]
+fn geo_materialize_warehouse_geometry_verifies_source_bytes_and_emits_receipts() {
+    let temp = tempdir().expect("tempdir");
+    let rows = write_json(
+        temp.path(),
+        "warehouse-geometry.json",
+        &tiny_warehouse_geometry_request(None),
+    );
+    let first = canon_command()
+        .args([
+            "geo",
+            "materialize-warehouse-geometry",
+            "--rows",
+            rows.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let second = canon_command()
+        .args([
+            "geo",
+            "materialize-warehouse-geometry",
+            "--rows",
+            rows.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    assert_eq!(first.get_output().stdout, second.get_output().stdout);
+    let artifact: Value = serde_json::from_slice(&first.get_output().stdout)
+        .expect("warehouse geometry artifact parses");
+    assert_eq!(artifact["version"], "canon_geo_warehouse_geometry.v0");
+    assert_eq!(artifact["source_receipt"]["source_crs"], "EPSG:2263");
+    assert_eq!(
+        artifact["geometry_tile"]["frame"]["projection"]["max_projection_error_micrometres"],
+        0
+    );
+    assert_eq!(
+        artifact["source_receipt"]["max_abs_source_quantization_error_micrometres_ceiling"],
+        1
+    );
+
+    let bad = write_json(
+        temp.path(),
+        "warehouse-geometry-bad.json",
+        &tiny_warehouse_geometry_request(Some(&"0".repeat(64))),
+    );
+    let refusal = canon_command()
+        .args([
+            "geo",
+            "materialize-warehouse-geometry",
+            "--rows",
+            bad.to_str().unwrap(),
+        ])
+        .assert()
+        .code(2);
+    let refusal: Value =
+        serde_json::from_slice(&refusal.get_output().stdout).expect("digest refusal parses");
+    assert_eq!(
+        refusal["refusal"]["detail"]["geo_geometry_error_code"],
+        "invalid_source_digest"
     );
 }
 

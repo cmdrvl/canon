@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.warehouse_geometry_rows.v0.schema.json",
+  "title": "canon.geo.warehouse_geometry_rows.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "tile_id",
+    "frame_id",
+    "source_crs",
+    "source_srid",
+    "source_decimal_places",
+    "source_origin",
+    "source_unit_to_millimetres",
+    "rows",
+    "max_abs_coordinate_mm",
+    "max_vertices_per_geometry",
+    "max_geometry_bytes_per_tile"
+  ],
+  "properties": {
+    "version": { "const": "canon_geo_warehouse_geometry_rows.v0" },
+    "tile_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "frame_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "source_crs": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "source_srid": { "type": "integer", "minimum": 1 },
+    "source_decimal_places": { "type": "integer", "minimum": 0, "maximum": 9 },
+    "source_origin": { "$ref": "#/$defs/source_point_decimal" },
+    "source_unit_to_millimetres": { "$ref": "#/$defs/exact_unit" },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/row" }
+    },
+    "max_abs_coordinate_mm": { "type": "integer", "minimum": 1 },
+    "max_vertices_per_geometry": { "type": "integer", "minimum": 1 },
+    "max_geometry_bytes_per_tile": { "type": "integer", "minimum": 1 }
+  },
+  "$defs": {
+    "source_point_decimal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "string" },
+        "y": { "type": "string" }
+      }
+    },
+    "exact_unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit_id", "numerator", "denominator"],
+      "properties": {
+        "unit_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "numerator": { "type": "integer", "minimum": 1 },
+        "denominator": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "feature_id",
+        "source_record_id",
+        "source_dataset",
+        "source_release",
+        "source_release_date",
+        "source_geometry_contract_version",
+        "source_archive_sha256",
+        "source_crs",
+        "source_srid",
+        "source_geom_wkb_base64",
+        "source_geom_wkb_sha256",
+        "transform_execution_id",
+        "transform_definition_id"
+      ],
+      "properties": {
+        "feature_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_record_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_dataset": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_release": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_release_date": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_geometry_contract_version": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_archive_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "source_crs": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_srid": { "type": "integer", "minimum": 1 },
+        "source_geom_wkb_base64": { "type": "string", "minLength": 4 },
+        "source_geom_wkb_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "transform_execution_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "transform_definition_id": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    }
+  }
+}

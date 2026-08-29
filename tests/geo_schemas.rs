@@ -9,27 +9,31 @@
 //! alternatives for tagged enums). This does not add a `jsonschema`
 //! dependency; it only catches keys the schema forgot to declare.
 
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use canon::entity::run::link::multisource::EntitySourceRole;
 use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
     CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
     CANON_GEO_MULTISOURCE_REQUEST_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
     CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
-    CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoAffineProjectionMm,
-    GeoBuildingCandidate, GeoCompositionModel, GeoCompositionRequest, GeoCompositionUniverse,
-    GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
-    GeoEvidenceRecordRef, GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoHardConstraint,
+    CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
+    DEFAULT_MAX_MATERIALIZED_MODELS, GeoAffineProjectionMm, GeoBuildingCandidate,
+    GeoCompositionModel, GeoCompositionRequest, GeoCompositionUniverse, GeoEntityLevel,
+    GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef,
+    GeoExactSourceUnitMm, GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoHardConstraint,
     GeoHardConstraintKind, GeoLabeledCompositionCase, GeoLocalFrameContract, GeoMultisourceRequest,
     GeoMultisourceSource, GeoPopulationEvaluationRequest, GeoProjectionProvenance, GeoRhoBasis,
     GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoSourceAxisDomain,
     GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed, GeoTileDecisionBatch,
     GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileFeatureRef,
     GeoTileReconciliationRequest, GeoTileWorkRequest, GeoWarehouseEvidenceRow,
-    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, compile_evidence, evaluate_population,
-    materialize_geo_multisource, materialize_geometry_tile, materialize_tile_work_unit,
+    GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest, GeoWarehouseParcelRow,
+    GeoWarehouseRowsRequest, compile_evidence, evaluate_population, materialize_geo_multisource,
+    materialize_geometry_tile, materialize_tile_work_unit, materialize_warehouse_geometry,
     reconcile_tile_decisions, solve_composition,
 };
 use serde_json::Value;
+use sha2::{Digest as _, Sha256};
 use std::{fs, path::Path};
 
 const COMPOSITION_REQUEST_SCHEMA: &str =
@@ -49,6 +53,10 @@ const GEOMETRY_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.geometry_request.v0.schema.json");
 const GEOMETRY_TILE_SCHEMA: &str =
     include_str!("../schemas/canon.geo.geometry_tile.v0.schema.json");
+const WAREHOUSE_GEOMETRY_ROWS_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.warehouse_geometry_rows.v0.schema.json");
+const WAREHOUSE_GEOMETRY_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.warehouse_geometry.v0.schema.json");
 const TILE_WORK_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.tile_work_request.v0.schema.json");
 const TILE_WORK_UNIT_SCHEMA: &str =
@@ -104,8 +112,17 @@ fn resolve_ref<'a>(schema: &'a Value, reference: &str) -> &'a Value {
 /// `$ref`.
 fn assert_instance_matches_schema(root: &Value, subschema: &Value, instance: &Value, path: &str) {
     if let Some(reference) = subschema.get("$ref").and_then(Value::as_str) {
-        let resolved = resolve_ref(root, reference);
-        assert_instance_matches_schema(root, resolved, instance, path);
+        if reference.starts_with('#') {
+            let resolved = resolve_ref(root, reference);
+            assert_instance_matches_schema(root, resolved, instance, path);
+        } else {
+            let source = match reference {
+                "canon.geo.geometry_tile.v0.schema.json" => GEOMETRY_TILE_SCHEMA,
+                _ => panic!("external $ref {reference} is not registered in the schema test"),
+            };
+            let external = parsed(source);
+            assert_instance_matches_schema(&external, &external, instance, path);
+        }
         return;
     }
 
@@ -352,6 +369,62 @@ fn geometry_request() -> GeoGeometryTileRequest {
     }
 }
 
+fn warehouse_geometry_request() -> GeoWarehouseGeometryRowsRequest {
+    let points = [
+        (980_252.301_632_881_2_f64, 191_655.610_172_272_3_f64),
+        (980_352.301_632_881_2, 191_655.610_172_272_3),
+        (980_352.301_632_881_2, 191_755.610_172_272_3),
+        (980_252.301_632_881_2, 191_755.610_172_272_3),
+        (980_252.301_632_881_2, 191_655.610_172_272_3),
+    ];
+    let mut wkb = Vec::new();
+    wkb.push(1);
+    wkb.extend_from_slice(&3_u32.to_le_bytes());
+    wkb.extend_from_slice(&1_u32.to_le_bytes());
+    wkb.extend_from_slice(&(points.len() as u32).to_le_bytes());
+    for (x, y) in points {
+        wkb.extend_from_slice(&x.to_le_bytes());
+        wkb.extend_from_slice(&y.to_le_bytes());
+    }
+    let sha256: String = Sha256::digest(&wkb)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    GeoWarehouseGeometryRowsRequest {
+        version: CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION.to_string(),
+        tile_id: "892a100d26bffff".to_string(),
+        frame_id: "tile:892a100d26bffff:epsg2263-mm:v0".to_string(),
+        source_crs: "EPSG:2263".to_string(),
+        source_srid: 2263,
+        source_decimal_places: 9,
+        source_origin: source_point("980000", "191000"),
+        source_unit_to_millimetres: GeoExactSourceUnitMm {
+            unit_id: "us-survey-foot".to_string(),
+            numerator: 1_200_000,
+            denominator: 3_937,
+        },
+        rows: vec![GeoWarehouseGeometryRow {
+            feature_id: "parcel-a".to_string(),
+            source_record_id: "mn/000000/1".to_string(),
+            source_dataset: "nyc_dcp_mappluto".to_string(),
+            source_release: "26v2".to_string(),
+            source_release_date: "2026-08-01".to_string(),
+            source_geometry_contract_version: "nyc_dcp_mappluto_geometry_evidence.v3".to_string(),
+            source_archive_sha256:
+                "e06eca9034731bc23f058bf532090e3c1ea6aed44a8128c6928f33872da34ab5".to_string(),
+            source_crs: "EPSG:2263".to_string(),
+            source_srid: 2263,
+            source_geom_wkb_base64: BASE64_STANDARD.encode(&wkb),
+            source_geom_wkb_sha256: sha256,
+            transform_execution_id: "sha256-execution-26v2".to_string(),
+            transform_definition_id: "sha256-definition-hpgn".to_string(),
+        }],
+        max_abs_coordinate_mm: 1_000_000,
+        max_vertices_per_geometry: 10_000,
+        max_geometry_bytes_per_tile: 1_000_000,
+    }
+}
+
 fn tile_work_request() -> GeoTileWorkRequest {
     GeoTileWorkRequest {
         version: CANON_GEO_TILE_WORK_REQUEST_VERSION.to_string(),
@@ -466,6 +539,31 @@ fn geometry_tile_schema_matches_a_real_instance() {
         GEOMETRY_TILE_SCHEMA,
         "canon.geo.geometry_tile.v0",
         "canon_geo_geometry_tile.v0",
+        &instance,
+    );
+}
+
+#[test]
+fn warehouse_geometry_rows_schema_matches_a_real_instance() {
+    let request = warehouse_geometry_request();
+    let instance = serde_json::to_value(&request).expect("warehouse geometry rows serialize");
+    assert_drift_free(
+        WAREHOUSE_GEOMETRY_ROWS_SCHEMA,
+        "canon.geo.warehouse_geometry_rows.v0",
+        CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn warehouse_geometry_schema_matches_a_real_instance() {
+    let artifact = materialize_warehouse_geometry(&warehouse_geometry_request())
+        .expect("warehouse geometry materializes");
+    let instance = serde_json::to_value(&artifact).expect("warehouse geometry serializes");
+    assert_drift_free(
+        WAREHOUSE_GEOMETRY_SCHEMA,
+        "canon.geo.warehouse_geometry.v0",
+        "canon_geo_warehouse_geometry.v0",
         &instance,
     );
 }

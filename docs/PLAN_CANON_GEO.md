@@ -246,9 +246,33 @@ anywhere in the decision path.**
 > with a separately declared 200 µm projection envelope the serialized audit reports a
 > conservative 420 ppm endpoint-distance error bound. That proves the loss accounting and
 > canonical byte path, **not** that a real H3 frame achieves the declared projection error.
-> Open question 8 remains open until the actual BYOP ingest generates frame constants and
-> calibration receipts over real geometries. Exact/conservative polygon clipping for the
-> area-majority predicate also remains downstream work.
+>
+> **IMPLEMENTATION STATUS — RELEASE-PINNED SOURCE-PLANE BRIDGE LANDED 2026-08-29
+> (`bd-16r1`).** `canon geo materialize-warehouse-geometry --rows` consumes exported
+> `NYC_DCP_MAPPLUTO_GEOM_V3_EXT`-shape rows offline. It recomputes the SHA-256 of canonical
+> base64 ISO WKB before decoding, admits only 2D point/polygon/multipolygon geometry, and
+> rejects a mixture of releases, archive digests, geometry-contract versions, CRS/SRID, or
+> transform executions. IEEE-754 WKB coordinates cross an explicit, measured first
+> quantization boundary into fixed 9-decimal source units; the exact US-survey-foot ratio
+> `1,200,000 / 3,937` then maps EPSG:2263 source coordinates into local integer millimetres.
+> The tile request carries an explicit versioned source origin. It is deliberately not
+> derived from the current row bounds, because that would move every prior local coordinate
+> when a later evidence row expands the bounds. The frame-parameter digest depends only on
+> the frame definition, not on row membership or release metadata.
+>
+> A fresh 26v2 MapPLUTO v3 source row was decoded through the CLI: its declared WKB SHA-256
+> matched recomputation, 20 raw vertices normalized to 19 canonical vertices, WKB-to-
+> 9-decimal loss rounded up to 1 µm, and fixed-decimal-to-millimetre snapping rounded up to
+> 491 µm. Repeated fresh-process output was byte-identical (SHA-256
+> `b090c157aa37cd72c67d726f2f5bf9f829e9ff9e00b297769368626bb444ec59`). The source-plane affine declares
+> zero projection error because it is only exact translation and unit conversion; the pinned
+> source-to-WGS84 execution/definition ids are retained as sibling-plane provenance and its
+> measured transform disagreement is never summed into source-plane local geometry.
+>
+> This proves the bounded source-WKB-to-local-integer path for an observed v3 row and keeps
+> the two loss planes separate. It does **not** prove source survey accuracy, world truth,
+> all-row validity, candidate recall, H3 assignment parity, or exact area-majority clipping.
+> Those population measurements and predicates remain separate downstream gates.
 
 Arithmetic: a 1 km tile spans ~10⁶ mm, coordinates ~2×10⁶. Shoelace terms ~4×10¹²; summed
 over a 10³-vertex polygon ~4×10¹⁵ — inside `i64`, with `i128` carried for headroom.

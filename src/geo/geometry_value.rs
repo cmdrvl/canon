@@ -12,7 +12,9 @@ use super::geometry::{
     GeoLinearRingMm, GeoPointLocation, GeoPointMm, GeoPredicateError, GeoPredicateErrorCode,
     GeoSegmentIntersection, exact_segment_intersection,
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
@@ -23,6 +25,12 @@ pub const CANON_GEO_GEOMETRY_REQUEST_VERSION: &str = "canon_geo_geometry_request
 pub const CANON_GEO_GEOMETRY_VALUE_VERSION: &str = "canon_geo_geometry_value.v0";
 pub const CANON_GEO_GEOMETRY_TILE_VERSION: &str = "canon_geo_geometry_tile.v0";
 pub const CANON_GEO_LOCAL_FRAME_VERSION: &str = "canon_geo_local_frame.v0";
+pub const CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION: &str = "canon_geo_warehouse_geometry_rows.v0";
+pub const CANON_GEO_WAREHOUSE_GEOMETRY_VERSION: &str = "canon_geo_warehouse_geometry.v0";
+
+const CANON_GEO_PLANAR_FRAME_METHOD_ID: &str = "canon:planar-source-affine";
+const CANON_GEO_PLANAR_FRAME_METHOD_VERSION: &str = "v0";
+const ISO_WKB_2D_BASE64_ENCODING: &str = "iso-wkb-2d-base64";
 
 const MAX_SOURCE_DECIMAL_PLACES: u32 = 9;
 const MAX_IDENTIFIER_BYTES: usize = 256;
@@ -253,6 +261,109 @@ pub struct GeoGeometryTileArtifact {
     pub max_geometry_bytes_per_tile: u64,
 }
 
+/// Exact conversion from one source coordinate unit to millimetres. For
+/// EPSG:2263 US survey feet this is 1_200_000 / 3_937 mm.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoExactSourceUnitMm {
+    pub unit_id: String,
+    pub numerator: u64,
+    pub denominator: u64,
+}
+
+/// One release-pinned row from a warehouse source-geometry plane. The base64
+/// bytes are decoded and their SHA-256 is recomputed before any coordinate is
+/// admitted. Transform ids link the source and WGS84 sibling planes; the
+/// source-plane local frame does not reapply that WGS84 operation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoWarehouseGeometryRow {
+    pub feature_id: String,
+    pub source_record_id: String,
+    pub source_dataset: String,
+    pub source_release: String,
+    pub source_release_date: String,
+    pub source_geometry_contract_version: String,
+    pub source_archive_sha256: String,
+    pub source_crs: String,
+    pub source_srid: u32,
+    pub source_geom_wkb_base64: String,
+    pub source_geom_wkb_sha256: String,
+    pub transform_execution_id: String,
+    pub transform_definition_id: String,
+}
+
+/// Offline warehouse-row materialization request. `source_decimal_places`
+/// declares the first Canon quantization boundary. The row-level receipt
+/// measures WKB-f64 -> fixed-decimal loss separately from local-mm snapping.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoWarehouseGeometryRowsRequest {
+    pub version: String,
+    pub tile_id: String,
+    pub frame_id: String,
+    pub source_crs: String,
+    pub source_srid: u32,
+    pub source_decimal_places: u32,
+    /// Stable, versioned frame anchor. It must be reused when later evidence
+    /// accretes into the same tile; deriving it from the current row set would
+    /// rewrite every prior local coordinate.
+    pub source_origin: GeoSourcePointDecimal,
+    pub source_unit_to_millimetres: GeoExactSourceUnitMm,
+    pub rows: Vec<GeoWarehouseGeometryRow>,
+    pub max_abs_coordinate_mm: i64,
+    pub max_vertices_per_geometry: u64,
+    pub max_geometry_bytes_per_tile: u64,
+}
+
+/// Exact fixed-decimal quantization error. The magnitude is
+/// `numerator / denominator` of one fixed-decimal source unit; one such unit
+/// is `10^-source_decimal_places` source units.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoSourceQuantizationFraction {
+    pub numerator: u64,
+    pub denominator: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoWarehouseGeometryRowReceipt {
+    pub feature_id: String,
+    pub source_record_id: String,
+    pub source_geom_wkb_sha256: String,
+    pub decoded_vertex_count: u64,
+    pub max_abs_source_quantization_error_fixed: GeoSourceQuantizationFraction,
+    pub max_abs_source_quantization_error_micrometres_ceiling: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoWarehouseGeometrySourceReceipt {
+    pub source_encoding: String,
+    pub source_dataset: String,
+    pub source_release: String,
+    pub source_release_date: String,
+    pub source_geometry_contract_version: String,
+    pub source_archive_sha256: String,
+    pub source_crs: String,
+    pub source_srid: u32,
+    pub source_decimal_places: u32,
+    pub source_bounds_fixed: GeoSourceBoundsFixed,
+    pub source_unit_to_millimetres: GeoExactSourceUnitMm,
+    pub transform_execution_id: String,
+    pub transform_definition_id: String,
+    pub max_abs_source_quantization_error_fixed: GeoSourceQuantizationFraction,
+    pub max_abs_source_quantization_error_micrometres_ceiling: u64,
+    pub rows: Vec<GeoWarehouseGeometryRowReceipt>,
+}
+
+/// Source-plane geometry artifact. Error quantities stay on separate planes:
+/// `source_receipt` reports WKB-to-decimal admission loss, while each typed
+/// geometry reports affine-to-millimetre snapping. The local affine itself is
+/// an exact translation and unit conversion and therefore declares zero
+/// projection error; WGS84 transform disagreement is not folded into it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoWarehouseGeometryArtifact {
+    pub version: String,
+    pub source_receipt: GeoWarehouseGeometrySourceReceipt,
+    pub geometry_tile: GeoGeometryTileArtifact,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GeoGeometryBudgetLimit {
@@ -283,6 +394,11 @@ pub enum GeoGeometryErrorCode {
     InvalidInput,
     InvalidFrame,
     InvalidCoordinate,
+    InvalidSourceDigest,
+    InvalidSourceEncoding,
+    MalformedWkb,
+    UnsupportedGeometryType,
+    MixedSourceExecution,
     NonFiniteCoordinate,
     SourcePrecisionExceeded,
     MixedCrs,
@@ -501,6 +617,880 @@ pub fn canonical_geometry_tile_bytes(
     artifact: &GeoGeometryTileArtifact,
 ) -> Result<Vec<u8>, serde_json::Error> {
     serde_json::to_vec(artifact)
+}
+
+pub fn canonical_warehouse_geometry_bytes(
+    artifact: &GeoWarehouseGeometryArtifact,
+) -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(artifact)
+}
+
+#[derive(Debug)]
+struct DecodedWarehouseGeometry {
+    row: GeoWarehouseGeometryRow,
+    geometry: GeoSourceGeometry,
+    vertex_count: u64,
+    max_error: GeoSourceQuantizationFraction,
+    bounds: GeoSourceBoundsFixed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoSourceBoundsFixed {
+    pub min_x: i64,
+    pub min_y: i64,
+    pub max_x: i64,
+    pub max_y: i64,
+}
+
+impl GeoSourceBoundsFixed {
+    fn include(&mut self, other: Self) {
+        self.min_x = self.min_x.min(other.min_x);
+        self.min_y = self.min_y.min(other.min_y);
+        self.max_x = self.max_x.max(other.max_x);
+        self.max_y = self.max_y.max(other.max_y);
+    }
+}
+
+/// Decode release-pinned ISO WKB rows, verify their source hashes, construct
+/// one exact source-plane affine frame, then delegate topology normalization
+/// and tile budgeting to the canonical geometry materializer.
+pub fn materialize_warehouse_geometry(
+    request: &GeoWarehouseGeometryRowsRequest,
+) -> Result<GeoWarehouseGeometryArtifact, GeoGeometryError> {
+    validate_warehouse_geometry_request(request)?;
+
+    let mut rows = request.rows.clone();
+    rows.sort_by(|left, right| {
+        left.feature_id
+            .cmp(&right.feature_id)
+            .then_with(|| left.source_record_id.cmp(&right.source_record_id))
+    });
+    reject_duplicate_warehouse_rows(&rows)?;
+    let first = rows.first().cloned().ok_or_else(|| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidInput,
+            "Warehouse geometry request must contain at least one row",
+            std::iter::empty::<(&str, &str)>(),
+        )
+    })?;
+    validate_homogeneous_source_rows(request, &first, &rows)?;
+
+    let mut decoded = Vec::with_capacity(rows.len());
+    let mut global_bounds: Option<GeoSourceBoundsFixed> = None;
+    let mut global_error = GeoSourceQuantizationFraction {
+        numerator: 0,
+        denominator: 1,
+    };
+    for row in rows {
+        let value = decode_warehouse_geometry_row(
+            row,
+            request.source_decimal_places,
+            request.max_vertices_per_geometry,
+        )?;
+        if let Some(bounds) = &mut global_bounds {
+            bounds.include(value.bounds);
+        } else {
+            global_bounds = Some(value.bounds);
+        }
+        global_error = max_quantization_fraction(global_error, value.max_error)?;
+        decoded.push(value);
+    }
+    let bounds = global_bounds.ok_or_else(|| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::EmptyGeometry,
+            "Decoded warehouse geometry did not contain coordinates",
+            std::iter::empty::<(&str, &str)>(),
+        )
+    })?;
+
+    let affine = exact_source_unit_affine(
+        &request.source_unit_to_millimetres,
+        request.source_decimal_places,
+    )?;
+    let source_origin = GeoSourcePointFixed {
+        x: parse_fixed_decimal(
+            "source_origin.x",
+            &request.source_origin.x,
+            request.source_decimal_places,
+        )?,
+        y: parse_fixed_decimal(
+            "source_origin.y",
+            &request.source_origin.y,
+            request.source_decimal_places,
+        )?,
+    };
+    let parameters = serde_json::to_vec(&(
+        (
+            CANON_GEO_PLANAR_FRAME_METHOD_ID,
+            CANON_GEO_PLANAR_FRAME_METHOD_VERSION,
+        ),
+        (
+            &request.tile_id,
+            &request.frame_id,
+            &request.source_crs,
+            request.source_srid,
+            request.source_decimal_places,
+            &request.source_unit_to_millimetres,
+        ),
+        source_origin,
+    ))
+    .map_err(|error| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::Serialization,
+            "Local-frame parameter serialization failed",
+            [("error", error.to_string())],
+        )
+    })?;
+    let frame = GeoLocalFrameContract {
+        version: CANON_GEO_LOCAL_FRAME_VERSION.to_string(),
+        frame_id: request.frame_id.clone(),
+        tile_id: request.tile_id.clone(),
+        source_crs: request.source_crs.clone(),
+        source_axis_domain: GeoSourceAxisDomain::Planar,
+        source_decimal_places: request.source_decimal_places,
+        source_origin,
+        affine,
+        projection: GeoProjectionProvenance {
+            method_id: CANON_GEO_PLANAR_FRAME_METHOD_ID.to_string(),
+            method_version: CANON_GEO_PLANAR_FRAME_METHOD_VERSION.to_string(),
+            parameters_blake3: blake3::hash(&parameters).to_hex().to_string(),
+            max_projection_error_micrometres: 0,
+        },
+        max_abs_coordinate_mm: request.max_abs_coordinate_mm,
+    };
+    let geometry_request = GeoGeometryTileRequest {
+        version: CANON_GEO_GEOMETRY_REQUEST_VERSION.to_string(),
+        frame,
+        features: decoded
+            .iter()
+            .map(|value| GeoGeometryFeatureInput {
+                feature_id: value.row.feature_id.clone(),
+                source_crs: value.row.source_crs.clone(),
+                geometry: value.geometry.clone(),
+            })
+            .collect(),
+        max_vertices_per_geometry: request.max_vertices_per_geometry,
+        max_geometry_bytes_per_tile: request.max_geometry_bytes_per_tile,
+    };
+    let geometry_tile = materialize_geometry_tile(&geometry_request)?;
+
+    let mut row_receipts = Vec::with_capacity(decoded.len());
+    for value in decoded {
+        row_receipts.push(GeoWarehouseGeometryRowReceipt {
+            feature_id: value.row.feature_id,
+            source_record_id: value.row.source_record_id,
+            source_geom_wkb_sha256: value.row.source_geom_wkb_sha256,
+            decoded_vertex_count: value.vertex_count,
+            max_abs_source_quantization_error_fixed: value.max_error,
+            max_abs_source_quantization_error_micrometres_ceiling:
+                source_error_micrometres_ceiling(
+                    value.max_error,
+                    request.source_decimal_places,
+                    &request.source_unit_to_millimetres,
+                )?,
+        });
+    }
+    let source_receipt = GeoWarehouseGeometrySourceReceipt {
+        source_encoding: ISO_WKB_2D_BASE64_ENCODING.to_string(),
+        source_dataset: first.source_dataset.clone(),
+        source_release: first.source_release.clone(),
+        source_release_date: first.source_release_date.clone(),
+        source_geometry_contract_version: first.source_geometry_contract_version.clone(),
+        source_archive_sha256: first.source_archive_sha256.clone(),
+        source_crs: request.source_crs.clone(),
+        source_srid: request.source_srid,
+        source_decimal_places: request.source_decimal_places,
+        source_bounds_fixed: bounds,
+        source_unit_to_millimetres: request.source_unit_to_millimetres.clone(),
+        transform_execution_id: first.transform_execution_id.clone(),
+        transform_definition_id: first.transform_definition_id.clone(),
+        max_abs_source_quantization_error_fixed: global_error,
+        max_abs_source_quantization_error_micrometres_ceiling: source_error_micrometres_ceiling(
+            global_error,
+            request.source_decimal_places,
+            &request.source_unit_to_millimetres,
+        )?,
+        rows: row_receipts,
+    };
+    Ok(GeoWarehouseGeometryArtifact {
+        version: CANON_GEO_WAREHOUSE_GEOMETRY_VERSION.to_string(),
+        source_receipt,
+        geometry_tile,
+    })
+}
+
+fn validate_warehouse_geometry_request(
+    request: &GeoWarehouseGeometryRowsRequest,
+) -> Result<(), GeoGeometryError> {
+    if request.version != CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::UnsupportedVersion,
+            "Unsupported warehouse geometry rows version",
+            [
+                ("actual", request.version.as_str()),
+                ("expected", CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION),
+            ],
+        ));
+    }
+    for (field, value) in [
+        ("tile_id", request.tile_id.as_str()),
+        ("frame_id", request.frame_id.as_str()),
+        ("source_crs", request.source_crs.as_str()),
+        (
+            "source_unit_to_millimetres.unit_id",
+            request.source_unit_to_millimetres.unit_id.as_str(),
+        ),
+    ] {
+        validate_identifier(field, value)?;
+    }
+    if request.source_srid == 0
+        || request.source_decimal_places > MAX_SOURCE_DECIMAL_PLACES
+        || request.source_unit_to_millimetres.numerator == 0
+        || request.source_unit_to_millimetres.denominator == 0
+        || request.max_abs_coordinate_mm <= 0
+        || request.max_vertices_per_geometry == 0
+        || request.max_geometry_bytes_per_tile == 0
+    {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidInput,
+            "Warehouse geometry frame, unit conversion, and budgets must be positive and supported",
+            [
+                ("source_srid", request.source_srid.to_string()),
+                (
+                    "source_decimal_places",
+                    request.source_decimal_places.to_string(),
+                ),
+                (
+                    "unit_numerator",
+                    request.source_unit_to_millimetres.numerator.to_string(),
+                ),
+                (
+                    "unit_denominator",
+                    request.source_unit_to_millimetres.denominator.to_string(),
+                ),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn reject_duplicate_warehouse_rows(
+    rows: &[GeoWarehouseGeometryRow],
+) -> Result<(), GeoGeometryError> {
+    let mut feature_ids = BTreeSet::new();
+    let mut record_ids = BTreeSet::new();
+    for row in rows {
+        validate_identifier("rows[].feature_id", &row.feature_id)?;
+        validate_identifier("rows[].source_record_id", &row.source_record_id)?;
+        if !feature_ids.insert(row.feature_id.as_str()) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidInput,
+                "Warehouse geometry rows repeat a feature id",
+                [("feature_id", row.feature_id.as_str())],
+            ));
+        }
+        if !record_ids.insert(row.source_record_id.as_str()) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidInput,
+                "Warehouse geometry rows repeat a source record id",
+                [("source_record_id", row.source_record_id.as_str())],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_homogeneous_source_rows(
+    request: &GeoWarehouseGeometryRowsRequest,
+    first: &GeoWarehouseGeometryRow,
+    rows: &[GeoWarehouseGeometryRow],
+) -> Result<(), GeoGeometryError> {
+    validate_sha256("rows[].source_archive_sha256", &first.source_archive_sha256)?;
+    for (field, value) in [
+        ("rows[].source_dataset", first.source_dataset.as_str()),
+        ("rows[].source_release", first.source_release.as_str()),
+        (
+            "rows[].source_release_date",
+            first.source_release_date.as_str(),
+        ),
+        (
+            "rows[].source_geometry_contract_version",
+            first.source_geometry_contract_version.as_str(),
+        ),
+        (
+            "rows[].transform_execution_id",
+            first.transform_execution_id.as_str(),
+        ),
+        (
+            "rows[].transform_definition_id",
+            first.transform_definition_id.as_str(),
+        ),
+    ] {
+        validate_identifier(field, value)?;
+    }
+    for row in rows {
+        if row.source_crs != request.source_crs || row.source_srid != request.source_srid {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::MixedCrs,
+                "Warehouse geometry rows must match the request source CRS and SRID",
+                [
+                    ("feature_id", row.feature_id.as_str()),
+                    ("row_source_crs", row.source_crs.as_str()),
+                    ("request_source_crs", request.source_crs.as_str()),
+                    ("row_source_srid", row.source_srid.to_string().as_str()),
+                    (
+                        "request_source_srid",
+                        request.source_srid.to_string().as_str(),
+                    ),
+                ],
+            ));
+        }
+        let homogeneous = row.source_dataset == first.source_dataset
+            && row.source_release == first.source_release
+            && row.source_release_date == first.source_release_date
+            && row.source_geometry_contract_version == first.source_geometry_contract_version
+            && row.source_archive_sha256 == first.source_archive_sha256
+            && row.transform_execution_id == first.transform_execution_id
+            && row.transform_definition_id == first.transform_definition_id;
+        if !homogeneous {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::MixedSourceExecution,
+                "One local geometry tile cannot mix releases, archives, contracts, or transform executions",
+                [("feature_id", row.feature_id.as_str())],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn exact_source_unit_affine(
+    unit: &GeoExactSourceUnitMm,
+    source_decimal_places: u32,
+) -> Result<GeoAffineProjectionMm, GeoGeometryError> {
+    let scale = u128::try_from(pow10_i128(source_decimal_places)?)
+        .map_err(|_| GeoGeometryError::overflow("source decimal scale conversion"))?;
+    let numerator = u128::from(unit.numerator);
+    let denominator = u128::from(unit.denominator)
+        .checked_mul(scale)
+        .ok_or_else(|| GeoGeometryError::overflow("source unit affine denominator"))?;
+    let divisor = gcd_u128(numerator, denominator);
+    let numerator = i64::try_from(numerator / divisor)
+        .map_err(|_| GeoGeometryError::overflow("source unit affine numerator"))?;
+    let denominator = u64::try_from(denominator / divisor)
+        .map_err(|_| GeoGeometryError::overflow("source unit affine denominator conversion"))?;
+    Ok(GeoAffineProjectionMm {
+        x_from_source_x_numerator: numerator,
+        x_from_source_y_numerator: 0,
+        y_from_source_x_numerator: 0,
+        y_from_source_y_numerator: numerator,
+        denominator,
+    })
+}
+
+fn source_error_micrometres_ceiling(
+    error: GeoSourceQuantizationFraction,
+    source_decimal_places: u32,
+    unit: &GeoExactSourceUnitMm,
+) -> Result<u64, GeoGeometryError> {
+    let scale = u128::try_from(pow10_i128(source_decimal_places)?)
+        .map_err(|_| GeoGeometryError::overflow("source error decimal scale"))?;
+    let numerator = u128::from(error.numerator)
+        .checked_mul(u128::from(unit.numerator))
+        .and_then(|value| value.checked_mul(1_000))
+        .ok_or_else(|| GeoGeometryError::overflow("source error micrometre numerator"))?;
+    let denominator = u128::from(error.denominator)
+        .checked_mul(scale)
+        .and_then(|value| value.checked_mul(u128::from(unit.denominator)))
+        .ok_or_else(|| GeoGeometryError::overflow("source error micrometre denominator"))?;
+    u64::try_from(ceil_ratio_u128(
+        numerator,
+        denominator,
+        "source error micrometre ceiling",
+    )?)
+    .map_err(|_| GeoGeometryError::overflow("source error micrometre conversion"))
+}
+
+fn max_quantization_fraction(
+    left: GeoSourceQuantizationFraction,
+    right: GeoSourceQuantizationFraction,
+) -> Result<GeoSourceQuantizationFraction, GeoGeometryError> {
+    let left_cross = u128::from(left.numerator)
+        .checked_mul(u128::from(right.denominator))
+        .ok_or_else(|| GeoGeometryError::overflow("source quantization comparison"))?;
+    let right_cross = u128::from(right.numerator)
+        .checked_mul(u128::from(left.denominator))
+        .ok_or_else(|| GeoGeometryError::overflow("source quantization comparison"))?;
+    Ok(if right_cross > left_cross {
+        right
+    } else {
+        left
+    })
+}
+
+fn gcd_u128(mut left: u128, mut right: u128) -> u128 {
+    while right != 0 {
+        let remainder = left % right;
+        left = right;
+        right = remainder;
+    }
+    left.max(1)
+}
+
+fn decode_warehouse_geometry_row(
+    row: GeoWarehouseGeometryRow,
+    source_decimal_places: u32,
+    max_vertices: u64,
+) -> Result<DecodedWarehouseGeometry, GeoGeometryError> {
+    validate_sha256("rows[].source_geom_wkb_sha256", &row.source_geom_wkb_sha256)?;
+    let bytes = BASE64_STANDARD
+        .decode(row.source_geom_wkb_base64.as_bytes())
+        .map_err(|error| {
+            GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidSourceEncoding,
+                "Warehouse source geometry is not canonical base64",
+                [
+                    ("feature_id", row.feature_id.as_str()),
+                    ("error", error.to_string().as_str()),
+                ],
+            )
+        })?;
+    if BASE64_STANDARD.encode(&bytes) != row.source_geom_wkb_base64 {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceEncoding,
+            "Warehouse source geometry base64 is not in canonical padded form",
+            [("feature_id", row.feature_id.as_str())],
+        ));
+    }
+    let actual_sha256 = sha256_hex(&bytes);
+    if actual_sha256 != row.source_geom_wkb_sha256 {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceDigest,
+            "Warehouse source geometry bytes do not match their declared SHA-256",
+            [
+                ("feature_id", row.feature_id.as_str()),
+                ("expected", row.source_geom_wkb_sha256.as_str()),
+                ("actual", actual_sha256.as_str()),
+            ],
+        ));
+    }
+
+    let mut cursor = WkbCursor::new(&bytes);
+    let mut accumulator = WkbDecodeAccumulator::new(source_decimal_places, max_vertices);
+    let geometry = decode_wkb_geometry(&mut cursor, &mut accumulator, true)?;
+    if cursor.remaining() != 0 {
+        return Err(malformed_wkb(
+            "ISO WKB contains trailing bytes after the top-level geometry",
+            cursor.position(),
+        ));
+    }
+    let bounds = accumulator.bounds.ok_or_else(|| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::EmptyGeometry,
+            "Decoded warehouse WKB did not contain coordinates",
+            [("feature_id", row.feature_id.as_str())],
+        )
+    })?;
+    Ok(DecodedWarehouseGeometry {
+        row,
+        geometry,
+        vertex_count: accumulator.vertex_count,
+        max_error: accumulator.max_error,
+        bounds,
+    })
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let digest = Sha256::digest(bytes);
+    let mut output = String::with_capacity(64);
+    for byte in digest {
+        let _ = write!(&mut output, "{byte:02x}");
+    }
+    output
+}
+
+fn validate_sha256(field: &str, value: &str) -> Result<(), GeoGeometryError> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceDigest,
+            "Geo source digests must be lowercase SHA-256 hex",
+            [("field", field), ("value", value)],
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+enum WkbEndian {
+    Big,
+    Little,
+}
+
+struct WkbCursor<'a> {
+    bytes: &'a [u8],
+    position: usize,
+}
+
+impl<'a> WkbCursor<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, position: 0 }
+    }
+
+    fn position(&self) -> usize {
+        self.position
+    }
+
+    fn remaining(&self) -> usize {
+        self.bytes.len().saturating_sub(self.position)
+    }
+
+    fn read_exact<const N: usize>(&mut self) -> Result<[u8; N], GeoGeometryError> {
+        let end = self
+            .position
+            .checked_add(N)
+            .ok_or_else(|| GeoGeometryError::overflow("WKB cursor"))?;
+        let slice = self.bytes.get(self.position..end).ok_or_else(|| {
+            malformed_wkb("ISO WKB ended before the declared geometry", self.position)
+        })?;
+        self.position = end;
+        slice
+            .try_into()
+            .map_err(|_| malformed_wkb("ISO WKB field had an invalid byte width", self.position))
+    }
+
+    fn read_endian(&mut self) -> Result<WkbEndian, GeoGeometryError> {
+        match self.read_exact::<1>()?[0] {
+            0 => Ok(WkbEndian::Big),
+            1 => Ok(WkbEndian::Little),
+            value => Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::MalformedWkb,
+                "ISO WKB byte-order marker must be zero or one",
+                [
+                    ("position", self.position.saturating_sub(1).to_string()),
+                    ("marker", value.to_string()),
+                ],
+            )),
+        }
+    }
+
+    fn read_u32(&mut self, endian: WkbEndian) -> Result<u32, GeoGeometryError> {
+        let bytes = self.read_exact::<4>()?;
+        Ok(match endian {
+            WkbEndian::Big => u32::from_be_bytes(bytes),
+            WkbEndian::Little => u32::from_le_bytes(bytes),
+        })
+    }
+
+    fn read_f64_bits(&mut self, endian: WkbEndian) -> Result<u64, GeoGeometryError> {
+        let bytes = self.read_exact::<8>()?;
+        Ok(match endian {
+            WkbEndian::Big => u64::from_be_bytes(bytes),
+            WkbEndian::Little => u64::from_le_bytes(bytes),
+        })
+    }
+}
+
+struct WkbDecodeAccumulator {
+    source_decimal_places: u32,
+    max_vertices: u64,
+    vertex_count: u64,
+    max_error: GeoSourceQuantizationFraction,
+    bounds: Option<GeoSourceBoundsFixed>,
+}
+
+impl WkbDecodeAccumulator {
+    fn new(source_decimal_places: u32, max_vertices: u64) -> Self {
+        Self {
+            source_decimal_places,
+            max_vertices,
+            vertex_count: 0,
+            max_error: GeoSourceQuantizationFraction {
+                numerator: 0,
+                denominator: 1,
+            },
+            bounds: None,
+        }
+    }
+
+    fn reserve_vertices(&mut self, additional: u32) -> Result<usize, GeoGeometryError> {
+        let additional_u64 = u64::from(additional);
+        let observed = self
+            .vertex_count
+            .checked_add(additional_u64)
+            .ok_or_else(|| GeoGeometryError::overflow("decoded WKB vertex count"))?;
+        if observed > self.max_vertices {
+            return Err(GeoGeometryError::budget(
+                GeoGeometryErrorCode::VertexBudgetExceeded,
+                "Decoded WKB exceeds the declared per-value vertex budget",
+                GeoGeometryBudgetBreach {
+                    policy_id: "geometry.max_vertices_per_value".to_string(),
+                    limit: GeoGeometryBudgetLimit::MaxVerticesPerGeometry,
+                    enforcement: GeoGeometryBudgetEnforcement::RefuseBeforeMaterialization,
+                    observed,
+                    configured: self.max_vertices,
+                },
+                std::iter::empty::<(&str, &str)>(),
+            ));
+        }
+        self.vertex_count = observed;
+        usize::try_from(additional)
+            .map_err(|_| GeoGeometryError::overflow("decoded WKB allocation size"))
+    }
+
+    fn container_capacity(
+        &self,
+        count: u32,
+        context: &'static str,
+    ) -> Result<usize, GeoGeometryError> {
+        let count = u64::from(count);
+        if count > self.max_vertices {
+            return Err(GeoGeometryError::budget(
+                GeoGeometryErrorCode::VertexBudgetExceeded,
+                "Decoded WKB container count cannot fit within the declared vertex budget",
+                GeoGeometryBudgetBreach {
+                    policy_id: "geometry.max_vertices_per_value".to_string(),
+                    limit: GeoGeometryBudgetLimit::MaxVerticesPerGeometry,
+                    enforcement: GeoGeometryBudgetEnforcement::RefuseBeforeMaterialization,
+                    observed: count,
+                    configured: self.max_vertices,
+                },
+                [("context", context)],
+            ));
+        }
+        usize::try_from(count)
+            .map_err(|_| GeoGeometryError::overflow("decoded WKB container allocation size"))
+    }
+
+    fn coordinate(
+        &mut self,
+        x_bits: u64,
+        y_bits: u64,
+    ) -> Result<GeoSourcePointDecimal, GeoGeometryError> {
+        let (x, x_fixed, x_error) = quantize_f64_to_decimal(x_bits, self.source_decimal_places)?;
+        let (y, y_fixed, y_error) = quantize_f64_to_decimal(y_bits, self.source_decimal_places)?;
+        self.max_error = max_quantization_fraction(self.max_error, x_error)?;
+        self.max_error = max_quantization_fraction(self.max_error, y_error)?;
+        let point_bounds = GeoSourceBoundsFixed {
+            min_x: x_fixed,
+            min_y: y_fixed,
+            max_x: x_fixed,
+            max_y: y_fixed,
+        };
+        if let Some(bounds) = &mut self.bounds {
+            bounds.include(point_bounds);
+        } else {
+            self.bounds = Some(point_bounds);
+        }
+        Ok(GeoSourcePointDecimal { x, y })
+    }
+}
+
+fn decode_wkb_geometry(
+    cursor: &mut WkbCursor<'_>,
+    accumulator: &mut WkbDecodeAccumulator,
+    top_level: bool,
+) -> Result<GeoSourceGeometry, GeoGeometryError> {
+    let endian = cursor.read_endian()?;
+    let geometry_type = cursor.read_u32(endian)?;
+    match geometry_type {
+        1 if top_level => {
+            accumulator.reserve_vertices(1)?;
+            let coordinate = accumulator
+                .coordinate(cursor.read_f64_bits(endian)?, cursor.read_f64_bits(endian)?)?;
+            Ok(GeoSourceGeometry::Point { coordinate })
+        }
+        3 => {
+            let polygon = decode_wkb_polygon_body(cursor, endian, accumulator)?;
+            Ok(GeoSourceGeometry::Polygon {
+                exterior: polygon.exterior,
+                holes: polygon.holes,
+            })
+        }
+        6 if top_level => {
+            let polygon_count = cursor.read_u32(endian)?;
+            if polygon_count == 0 {
+                return Err(GeoGeometryError::new(
+                    GeoGeometryErrorCode::EmptyGeometry,
+                    "ISO WKB multipolygon must contain at least one polygon",
+                    std::iter::empty::<(&str, &str)>(),
+                ));
+            }
+            let capacity = accumulator.container_capacity(polygon_count, "multipolygon members")?;
+            let mut polygons = Vec::with_capacity(capacity);
+            for _ in 0..polygon_count {
+                let member = decode_wkb_geometry(cursor, accumulator, false)?;
+                match member {
+                    GeoSourceGeometry::Polygon { exterior, holes } => {
+                        polygons.push(GeoSourcePolygon { exterior, holes });
+                    }
+                    _ => {
+                        return Err(malformed_wkb(
+                            "ISO WKB multipolygon member was not a polygon",
+                            cursor.position(),
+                        ));
+                    }
+                }
+            }
+            Ok(GeoSourceGeometry::MultiPolygon { polygons })
+        }
+        value => Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::UnsupportedGeometryType,
+            "Warehouse WKB must be 2D ISO Point, Polygon, or MultiPolygon without EWKB flags",
+            [
+                ("geometry_type", value.to_string()),
+                ("top_level", top_level.to_string()),
+            ],
+        )),
+    }
+}
+
+fn decode_wkb_polygon_body(
+    cursor: &mut WkbCursor<'_>,
+    endian: WkbEndian,
+    accumulator: &mut WkbDecodeAccumulator,
+) -> Result<GeoSourcePolygon, GeoGeometryError> {
+    let ring_count = cursor.read_u32(endian)?;
+    if ring_count == 0 {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::EmptyGeometry,
+            "ISO WKB polygon must contain an exterior ring",
+            std::iter::empty::<(&str, &str)>(),
+        ));
+    }
+    let capacity = accumulator.container_capacity(ring_count, "polygon rings")?;
+    let mut rings = Vec::with_capacity(capacity);
+    for _ in 0..ring_count {
+        let coordinate_count = cursor.read_u32(endian)?;
+        let capacity = accumulator.reserve_vertices(coordinate_count)?;
+        let mut ring = Vec::with_capacity(capacity);
+        for _ in 0..coordinate_count {
+            ring.push(
+                accumulator
+                    .coordinate(cursor.read_f64_bits(endian)?, cursor.read_f64_bits(endian)?)?,
+            );
+        }
+        rings.push(ring);
+    }
+    let mut rings = rings.into_iter();
+    let exterior = rings.next().ok_or_else(|| {
+        malformed_wkb(
+            "ISO WKB polygon did not contain an exterior ring",
+            cursor.position(),
+        )
+    })?;
+    Ok(GeoSourcePolygon {
+        exterior,
+        holes: rings.collect(),
+    })
+}
+
+fn quantize_f64_to_decimal(
+    bits: u64,
+    decimal_places: u32,
+) -> Result<(String, i64, GeoSourceQuantizationFraction), GeoGeometryError> {
+    let negative = bits >> 63 != 0;
+    let biased_exponent = ((bits >> 52) & 0x7ff) as u16;
+    let fraction = bits & ((1_u64 << 52) - 1);
+    if biased_exponent == 0x7ff {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::NonFiniteCoordinate,
+            "Non-finite WKB coordinates are not admissible geometry",
+            [("f64_bits", format!("{bits:016x}"))],
+        ));
+    }
+    if biased_exponent == 0 && fraction == 0 {
+        return Ok((
+            format_fixed_decimal(0, decimal_places)?,
+            0,
+            GeoSourceQuantizationFraction {
+                numerator: 0,
+                denominator: 1,
+            },
+        ));
+    }
+    if biased_exponent == 0 {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::SourcePrecisionExceeded,
+            "Subnormal WKB coordinates fall outside the exact fixed-decimal admission budget",
+            [("f64_bits", format!("{bits:016x}"))],
+        ));
+    }
+
+    let mantissa = u128::from((1_u64 << 52) | fraction);
+    let binary_exponent = i32::from(biased_exponent) - 1023 - 52;
+    let decimal_scale = u128::try_from(pow10_i128(decimal_places)?)
+        .map_err(|_| GeoGeometryError::overflow("WKB decimal scale"))?;
+    let unsigned_scaled_numerator = mantissa
+        .checked_mul(decimal_scale)
+        .ok_or_else(|| GeoGeometryError::overflow("WKB fixed-decimal numerator"))?;
+    let (unsigned_scaled_numerator, denominator) = if binary_exponent >= 0 {
+        let shift = u32::try_from(binary_exponent)
+            .map_err(|_| GeoGeometryError::overflow("WKB positive binary exponent"))?;
+        (
+            unsigned_scaled_numerator
+                .checked_shl(shift)
+                .ok_or_else(|| GeoGeometryError::overflow("WKB coordinate magnitude"))?,
+            1_u64,
+        )
+    } else {
+        let shift = binary_exponent.unsigned_abs();
+        if shift >= 64 {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::SourcePrecisionExceeded,
+                "WKB coordinate needs a binary denominator outside the exact admission budget",
+                [("binary_denominator_power", shift.to_string())],
+            ));
+        }
+        (unsigned_scaled_numerator, 1_u64 << shift)
+    };
+    let signed_numerator = i128::try_from(unsigned_scaled_numerator)
+        .map_err(|_| GeoGeometryError::overflow("signed WKB coordinate numerator"))?;
+    let signed_numerator = if negative {
+        signed_numerator
+            .checked_neg()
+            .ok_or_else(|| GeoGeometryError::overflow("negative WKB coordinate"))?
+    } else {
+        signed_numerator
+    };
+    let (fixed, error_numerator) = round_rational_ties_even(signed_numerator, denominator)?;
+    let divisor = gcd_u128(error_numerator, u128::from(denominator));
+    let error = GeoSourceQuantizationFraction {
+        numerator: u64::try_from(error_numerator / divisor)
+            .map_err(|_| GeoGeometryError::overflow("WKB quantization numerator"))?,
+        denominator: u64::try_from(u128::from(denominator) / divisor)
+            .map_err(|_| GeoGeometryError::overflow("WKB quantization denominator"))?,
+    };
+    Ok((format_fixed_decimal(fixed, decimal_places)?, fixed, error))
+}
+
+fn format_fixed_decimal(value: i64, decimal_places: u32) -> Result<String, GeoGeometryError> {
+    if decimal_places == 0 {
+        return Ok(value.to_string());
+    }
+    let scale = u64::try_from(pow10_i128(decimal_places)?)
+        .map_err(|_| GeoGeometryError::overflow("fixed-decimal formatting scale"))?;
+    let magnitude = value.unsigned_abs();
+    let whole = magnitude / scale;
+    let fraction = magnitude % scale;
+    let width = usize::try_from(decimal_places)
+        .map_err(|_| GeoGeometryError::overflow("fixed-decimal formatting width"))?;
+    Ok(format!(
+        "{}{whole}.{fraction:0width$}",
+        if value.is_negative() { "-" } else { "" }
+    ))
+}
+
+fn malformed_wkb(message: &str, position: usize) -> GeoGeometryError {
+    GeoGeometryError::new(
+        GeoGeometryErrorCode::MalformedWkb,
+        message,
+        [("position", position.to_string())],
+    )
 }
 
 fn materialize_geometry(

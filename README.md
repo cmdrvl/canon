@@ -381,6 +381,7 @@ canon geo tile-work --request <REQUEST.json>
 canon geo reconcile-tiles --request <REQUEST.json>
 canon geo solve --request <REQUEST.json>
 canon geo materialize-geometry --request <REQUEST.json>
+canon geo materialize-warehouse-geometry --rows <ROWS.json>
 canon geo materialize-evidence --rows <ROWS.json>
 canon geo compile-evidence --request <REQUEST.json>
 canon geo evaluate --population <POPULATION.json>
@@ -477,6 +478,18 @@ Canonical normalization makes ring direction/start and hole/polygon input orderi
 byte-invariant. Invalid topology, non-finite or over-precision coordinates, mixed CRS,
 antimeridian crossing, overflow, and declared vertex/byte-budget excess are typed refusals;
 decision geometry is never simplified or truncated to fit.
+
+`canon geo materialize-warehouse-geometry --rows` is the release-pinned source-plane
+bridge. It recomputes each base64 ISO-WKB SHA-256, refuses mixed source releases,
+archives, CRS/SRID values, geometry contracts, or transform executions, and decodes only
+2D point, polygon, and multipolygon values. For planar sources it uses the supplied stable,
+versioned source origin and exact source-unit-to-millimetre ratio to construct a bounded
+local frame. Reusing that origin is mandatory: deriving it from the current row bounds
+would move earlier canonical coordinates when new evidence accretes. The artifact reports
+WKB-float to fixed-decimal admission loss separately from fixed-decimal to integer-
+millimetre snapping; the exact source-plane affine translation declares zero projection
+error. Transform ids retain linkage to the WGS84 interoperability sibling, but that
+operation is not reapplied to decision geometry.
 
 `canon geo materialize-evidence --rows` is the offline bridge from exported relational
 rows to `canon_geo_evidence_request.v0`. Its input contract is

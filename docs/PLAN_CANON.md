@@ -92,6 +92,7 @@ canon geo tile-work --request <REQUEST.json>
 canon geo reconcile-tiles --request <REQUEST.json>
 canon geo solve --request <REQUEST.json>
 canon geo materialize-geometry --request <REQUEST.json>
+canon geo materialize-warehouse-geometry --rows <ROWS.json>
 canon geo materialize-evidence --rows <ROWS.json>
 canon geo compile-evidence --request <REQUEST.json>
 canon geo evaluate --population <POPULATION.json>

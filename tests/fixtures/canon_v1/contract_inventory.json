@@ -207,6 +207,17 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo materialize-warehouse-geometry",
+      "family": "geo",
+      "clap_path": "geo materialize-warehouse-geometry",
+      "operator_name": "geo materialize-warehouse-geometry",
+      "primary_contracts": [
+        "canon_geo_warehouse_geometry_rows.v0",
+        "canon_geo_warehouse_geometry.v0"
+      ],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo compile-evidence",
       "family": "geo",
       "clap_path": "geo compile-evidence",
@@ -1247,6 +1258,20 @@
     },
     {
       "id": "canon_geo_geometry_tile.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_warehouse_geometry_rows.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_warehouse_geometry.v0",
       "family": "geo",
       "action": "preserve",
       "access_boundary": "public_crate_api",

@@ -980,6 +980,67 @@
       ]
     },
     {
+      "name": "geo materialize-warehouse-geometry",
+      "usage": "canon geo materialize-warehouse-geometry --rows <ROWS.json>",
+      "description": "Verify release-pinned warehouse ISO-WKB bytes, use an explicit stable source origin and exact planar unit ratio to construct a local-millimetre frame, and emit canonical budgeted geometry with separate source-quantization and local-snap receipts",
+      "output_mode": "json",
+      "output_schema": "canon_geo_warehouse_geometry.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads an already-exported local warehouse-row artifact, recomputes each WKB SHA-256, and writes only the canonical geometry artifact to stdout; the caller must reuse the versioned source origin for a tile so accreted rows cannot shift existing coordinates; it never queries the warehouse or reaches the network",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "verified warehouse source geometry and canonical local geometry tile emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / request IO, source digest, WKB, mixed execution, topology, frame, or budget contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon geo tile-work --request <REQUEST.json>",
+      "recovery": {
+        "next_command": "canon geo materialize-warehouse-geometry --rows <ROWS.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "rows",
+          "flag": "--rows",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding canon_geo_warehouse_geometry_rows.v0 rows"
+        }
+      ]
+    },
+    {
       "name": "geo materialize-evidence",
       "usage": "canon geo materialize-evidence --rows <ROWS.json>",
       "description": "Fold release-pinned offline warehouse rows into a deterministic typed Geo evidence request and validate it through the production evidence compiler",

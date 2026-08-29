@@ -233,6 +233,9 @@ pub enum GeoSubcommand {
     /// Normalize and budget source geometry into canonical tile-local values
     #[command(name = "materialize-geometry")]
     MaterializeGeometry(GeoMaterializeGeometryCli),
+    /// Decode release-pinned warehouse WKB into a verified source-plane geometry tile
+    #[command(name = "materialize-warehouse-geometry")]
+    MaterializeWarehouseGeometry(GeoMaterializeWarehouseGeometryCli),
     /// Fold release-pinned warehouse rows into a typed evidence request
     #[command(name = "materialize-evidence")]
     MaterializeEvidence(GeoMaterializeEvidenceCli),
@@ -279,6 +282,13 @@ pub struct GeoMaterializeGeometryCli {
     /// JSON file holding a canon_geo_geometry_request.v0 request
     #[arg(long)]
     pub request: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoMaterializeWarehouseGeometryCli {
+    /// JSON file holding canon_geo_warehouse_geometry_rows.v0 rows
+    #[arg(long)]
+    pub rows: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]

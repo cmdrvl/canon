@@ -1,12 +1,17 @@
 #![forbid(unsafe_code)]
 
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use canon::geo::{
-    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_LOCAL_FRAME_VERSION, GeoAffineProjectionMm,
-    GeoCanonicalGeometryMm, GeoFeatureValue, GeoGeometryBudgetEnforcement, GeoGeometryErrorCode,
+    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
+    CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, GeoAffineProjectionMm, GeoCanonicalGeometryMm,
+    GeoExactSourceUnitMm, GeoFeatureValue, GeoGeometryBudgetEnforcement, GeoGeometryErrorCode,
     GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoLocalFrameContract,
     GeoProjectionProvenance, GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal,
-    GeoSourcePointFixed, canonical_geometry_tile_bytes, materialize_geometry_tile,
+    GeoSourcePointFixed, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
+    canonical_geometry_tile_bytes, canonical_warehouse_geometry_bytes, materialize_geometry_tile,
+    materialize_warehouse_geometry,
 };
+use sha2::{Digest as _, Sha256};
 
 const CRS: &str = "LOCAL:TEST-METRES";
 
@@ -277,6 +282,133 @@ fn vertex_and_tile_byte_budgets_refuse_without_truncating_geometry() {
     );
 }
 
+#[test]
+fn warehouse_wkb_builds_exact_epsg2263_frame_with_separate_loss_receipts() {
+    let mut request = warehouse_request(vec![warehouse_row(
+        "parcel-1",
+        "mn/000000/1",
+        &polygon_wkb(&[
+            (980_252.301_632_881_2, 191_655.610_172_272_3),
+            (980_352.301_632_881_2, 191_655.610_172_272_3),
+            (980_352.301_632_881_2, 191_755.610_172_272_3),
+            (980_252.301_632_881_2, 191_755.610_172_272_3),
+            (980_252.301_632_881_2, 191_655.610_172_272_3),
+        ]),
+    )]);
+    let first = materialize_warehouse_geometry(&request).expect("warehouse WKB materializes");
+    request.rows.reverse();
+    let second = materialize_warehouse_geometry(&request).expect("reordered rows materialize");
+
+    assert_eq!(
+        canonical_warehouse_geometry_bytes(&first).unwrap(),
+        canonical_warehouse_geometry_bytes(&second).unwrap()
+    );
+    assert_eq!(
+        first.geometry_tile.frame.projection.method_id,
+        "canon:planar-source-affine"
+    );
+    assert_eq!(
+        first
+            .geometry_tile
+            .frame
+            .projection
+            .max_projection_error_micrometres,
+        0
+    );
+    assert_eq!(
+        first.geometry_tile.frame.affine.x_from_source_x_numerator,
+        3
+    );
+    assert_eq!(first.geometry_tile.frame.affine.denominator, 9_842_500);
+    assert_eq!(
+        first
+            .source_receipt
+            .max_abs_source_quantization_error_micrometres_ceiling,
+        1
+    );
+    let GeoFeatureValue::Geometry { value } = &first.geometry_tile.features[0].value;
+    assert!(value.quantization.max_abs_snap_error_micrometres_ceiling <= 500);
+    assert_eq!(value.quantization.projection_error_envelope_micrometres, 0);
+    assert_eq!(first.source_receipt.rows[0].decoded_vertex_count, 5);
+    assert_eq!(
+        first.source_receipt.transform_execution_id,
+        "sha256-execution-26v2"
+    );
+
+    let mut accreted_request = request.clone();
+    accreted_request.rows.push(warehouse_row(
+        "parcel-2",
+        "mn/000000/2",
+        &polygon_wkb(&[
+            (981_000.0, 192_000.0),
+            (981_010.0, 192_000.0),
+            (981_010.0, 192_010.0),
+            (981_000.0, 192_010.0),
+            (981_000.0, 192_000.0),
+        ]),
+    ));
+    let accreted = materialize_warehouse_geometry(&accreted_request)
+        .expect("new evidence materializes in the stable frame");
+    assert_eq!(first.geometry_tile.frame, accreted.geometry_tile.frame);
+    assert_eq!(
+        first.geometry_tile.features[0],
+        accreted.geometry_tile.features[0]
+    );
+}
+
+#[test]
+fn warehouse_wkb_refuses_digest_drift_mixed_execution_and_unsupported_type() {
+    let bytes = polygon_wkb(&[
+        (0.0, 0.0),
+        (10.0, 0.0),
+        (10.0, 10.0),
+        (0.0, 10.0),
+        (0.0, 0.0),
+    ]);
+    let mut bad_digest = warehouse_request(vec![warehouse_row("parcel-1", "mn/000000/1", &bytes)]);
+    bad_digest.rows[0].source_geom_wkb_sha256 = "0".repeat(64);
+    let error = materialize_warehouse_geometry(&bad_digest)
+        .expect_err("digest mismatch must refuse before decoding");
+    assert_eq!(error.code, GeoGeometryErrorCode::InvalidSourceDigest);
+
+    let mut second = warehouse_row("parcel-2", "mn/000000/2", &bytes);
+    second.transform_execution_id = "sha256-execution-other".to_string();
+    let mixed = warehouse_request(vec![
+        warehouse_row("parcel-1", "mn/000000/1", &bytes),
+        second,
+    ]);
+    let error =
+        materialize_warehouse_geometry(&mixed).expect_err("mixed release execution must refuse");
+    assert_eq!(error.code, GeoGeometryErrorCode::MixedSourceExecution);
+
+    let mut line_string = Vec::new();
+    line_string.push(1);
+    line_string.extend_from_slice(&2_u32.to_le_bytes());
+    line_string.extend_from_slice(&2_u32.to_le_bytes());
+    for (x, y) in [(0.0_f64, 0.0_f64), (1.0, 1.0)] {
+        line_string.extend_from_slice(&x.to_le_bytes());
+        line_string.extend_from_slice(&y.to_le_bytes());
+    }
+    let unsupported = warehouse_request(vec![warehouse_row("line-1", "mn/000000/3", &line_string)]);
+    let error =
+        materialize_warehouse_geometry(&unsupported).expect_err("unsupported WKB type must refuse");
+    assert_eq!(error.code, GeoGeometryErrorCode::UnsupportedGeometryType);
+
+    let mut excessive_ring_count = Vec::new();
+    excessive_ring_count.push(1);
+    excessive_ring_count.extend_from_slice(&3_u32.to_le_bytes());
+    excessive_ring_count.extend_from_slice(&100_u32.to_le_bytes());
+    let mut bounded = warehouse_request(vec![warehouse_row(
+        "parcel-1",
+        "mn/000000/4",
+        &excessive_ring_count,
+    )]);
+    bounded.max_vertices_per_geometry = 10;
+    let error = materialize_warehouse_geometry(&bounded)
+        .expect_err("container count must refuse before a large allocation");
+    assert_eq!(error.code, GeoGeometryErrorCode::VertexBudgetExceeded);
+}
+
 fn request(
     frame: GeoLocalFrameContract,
     geometry: GeoSourceGeometry,
@@ -375,4 +507,62 @@ fn point(x: &str, y: &str) -> GeoSourcePointDecimal {
         x: x.to_string(),
         y: y.to_string(),
     }
+}
+
+fn warehouse_request(rows: Vec<GeoWarehouseGeometryRow>) -> GeoWarehouseGeometryRowsRequest {
+    GeoWarehouseGeometryRowsRequest {
+        version: CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION.to_string(),
+        tile_id: "892a100d26bffff".to_string(),
+        frame_id: "tile:892a100d26bffff:epsg2263-mm:v0".to_string(),
+        source_crs: "EPSG:2263".to_string(),
+        source_srid: 2263,
+        source_decimal_places: 9,
+        source_origin: point("980000", "191000"),
+        source_unit_to_millimetres: GeoExactSourceUnitMm {
+            unit_id: "us-survey-foot".to_string(),
+            numerator: 1_200_000,
+            denominator: 3_937,
+        },
+        rows,
+        max_abs_coordinate_mm: 1_000_000,
+        max_vertices_per_geometry: 10_000,
+        max_geometry_bytes_per_tile: 1_000_000,
+    }
+}
+
+fn warehouse_row(
+    feature_id: &str,
+    source_record_id: &str,
+    bytes: &[u8],
+) -> GeoWarehouseGeometryRow {
+    let digest = Sha256::digest(bytes);
+    GeoWarehouseGeometryRow {
+        feature_id: feature_id.to_string(),
+        source_record_id: source_record_id.to_string(),
+        source_dataset: "nyc_dcp_mappluto".to_string(),
+        source_release: "26v2".to_string(),
+        source_release_date: "2026-08-01".to_string(),
+        source_geometry_contract_version: "nyc_dcp_mappluto_geometry_evidence.v3".to_string(),
+        source_archive_sha256: "e06eca9034731bc23f058bf532090e3c1ea6aed44a8128c6928f33872da34ab5"
+            .to_string(),
+        source_crs: "EPSG:2263".to_string(),
+        source_srid: 2263,
+        source_geom_wkb_base64: BASE64_STANDARD.encode(bytes),
+        source_geom_wkb_sha256: digest.iter().map(|byte| format!("{byte:02x}")).collect(),
+        transform_execution_id: "sha256-execution-26v2".to_string(),
+        transform_definition_id: "sha256-definition-hpgn".to_string(),
+    }
+}
+
+fn polygon_wkb(points: &[(f64, f64)]) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    bytes.push(1);
+    bytes.extend_from_slice(&3_u32.to_le_bytes());
+    bytes.extend_from_slice(&1_u32.to_le_bytes());
+    bytes.extend_from_slice(&(points.len() as u32).to_le_bytes());
+    for (x, y) in points {
+        bytes.extend_from_slice(&x.to_le_bytes());
+        bytes.extend_from_slice(&y.to_le_bytes());
+    }
+    bytes
 }

@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.warehouse_geometry.v0.schema.json",
+  "title": "canon.geo.warehouse_geometry.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "source_receipt", "geometry_tile"],
+  "properties": {
+    "version": { "const": "canon_geo_warehouse_geometry.v0" },
+    "source_receipt": { "$ref": "#/$defs/source_receipt" },
+    "geometry_tile": { "$ref": "canon.geo.geometry_tile.v0.schema.json" }
+  },
+  "$defs": {
+    "exact_unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit_id", "numerator", "denominator"],
+      "properties": {
+        "unit_id": { "type": "string", "minLength": 1 },
+        "numerator": { "type": "integer", "minimum": 1 },
+        "denominator": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "fraction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["numerator", "denominator"],
+      "properties": {
+        "numerator": { "type": "integer", "minimum": 0 },
+        "denominator": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "source_bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_x", "min_y", "max_x", "max_y"],
+      "properties": {
+        "min_x": { "type": "integer" },
+        "min_y": { "type": "integer" },
+        "max_x": { "type": "integer" },
+        "max_y": { "type": "integer" }
+      }
+    },
+    "row_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "feature_id",
+        "source_record_id",
+        "source_geom_wkb_sha256",
+        "decoded_vertex_count",
+        "max_abs_source_quantization_error_fixed",
+        "max_abs_source_quantization_error_micrometres_ceiling"
+      ],
+      "properties": {
+        "feature_id": { "type": "string", "minLength": 1 },
+        "source_record_id": { "type": "string", "minLength": 1 },
+        "source_geom_wkb_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "decoded_vertex_count": { "type": "integer", "minimum": 1 },
+        "max_abs_source_quantization_error_fixed": { "$ref": "#/$defs/fraction" },
+        "max_abs_source_quantization_error_micrometres_ceiling": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "source_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_encoding",
+        "source_dataset",
+        "source_release",
+        "source_release_date",
+        "source_geometry_contract_version",
+        "source_archive_sha256",
+        "source_crs",
+        "source_srid",
+        "source_decimal_places",
+        "source_bounds_fixed",
+        "source_unit_to_millimetres",
+        "transform_execution_id",
+        "transform_definition_id",
+        "max_abs_source_quantization_error_fixed",
+        "max_abs_source_quantization_error_micrometres_ceiling",
+        "rows"
+      ],
+      "properties": {
+        "source_encoding": { "const": "iso-wkb-2d-base64" },
+        "source_dataset": { "type": "string", "minLength": 1 },
+        "source_release": { "type": "string", "minLength": 1 },
+        "source_release_date": { "type": "string", "minLength": 1 },
+        "source_geometry_contract_version": { "type": "string", "minLength": 1 },
+        "source_archive_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "source_crs": { "type": "string", "minLength": 1 },
+        "source_srid": { "type": "integer", "minimum": 1 },
+        "source_decimal_places": { "type": "integer", "minimum": 0, "maximum": 9 },
+        "source_bounds_fixed": { "$ref": "#/$defs/source_bounds" },
+        "source_unit_to_millimetres": { "$ref": "#/$defs/exact_unit" },
+        "transform_execution_id": { "type": "string", "minLength": 1 },
+        "transform_definition_id": { "type": "string", "minLength": 1 },
+        "max_abs_source_quantization_error_fixed": { "$ref": "#/$defs/fraction" },
+        "max_abs_source_quantization_error_micrometres_ceiling": { "type": "integer", "minimum": 0 },
+        "rows": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/row_receipt" }
+        }
+      }
+    }
+  }
+}

@@ -11,8 +11,8 @@ use crate::{
     CanonOutput, Refusal, RefusalCode,
     cli::{
         GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli, GeoLinkSourcesCli,
-        GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli, GeoReconcileTilesCli, GeoSolveCli,
-        GeoSubcommand, GeoTileWorkCli,
+        GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli, GeoMaterializeWarehouseGeometryCli,
+        GeoReconcileTilesCli, GeoSolveCli, GeoSubcommand, GeoTileWorkCli,
     },
     refusal,
 };
@@ -41,8 +41,11 @@ use super::{
         validate_evidence_compilation_artifact,
     },
     geometry_value::{
-        CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION, GeoGeometryError,
-        GeoGeometryTileRequest, canonical_geometry_tile_bytes, materialize_geometry_tile,
+        CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
+        CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_VERSION,
+        GeoGeometryError, GeoGeometryTileRequest, GeoWarehouseGeometryRowsRequest,
+        canonical_geometry_tile_bytes, canonical_warehouse_geometry_bytes,
+        materialize_geometry_tile, materialize_warehouse_geometry,
     },
     materialize::{
         CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoMaterializationError, GeoWarehouseRowsRequest,
@@ -67,9 +70,34 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
         GeoSubcommand::ReconcileTiles(args) => run_reconcile_tiles(args),
         GeoSubcommand::Solve(args) => run_solve(args),
         GeoSubcommand::MaterializeGeometry(args) => run_materialize_geometry(args),
+        GeoSubcommand::MaterializeWarehouseGeometry(args) => {
+            run_materialize_warehouse_geometry(args)
+        }
         GeoSubcommand::MaterializeEvidence(args) => run_materialize_evidence(args),
         GeoSubcommand::CompileEvidence(args) => run_compile_evidence(args),
         GeoSubcommand::Evaluate(args) => run_evaluate(args),
+    }
+}
+
+fn run_materialize_warehouse_geometry(
+    args: &GeoMaterializeWarehouseGeometryCli,
+) -> Result<u8, Box<dyn Error>> {
+    let rows: GeoWarehouseGeometryRowsRequest = match read_request(
+        &args.rows,
+        "rows",
+        CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
+        "canon geo materialize-warehouse-geometry --rows <ROWS.json>",
+    ) {
+        Ok(rows) => rows,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let artifact = match materialize_warehouse_geometry(&rows) {
+        Ok(artifact) => artifact,
+        Err(error) => return emit_geometry_error(error),
+    };
+    match canonical_warehouse_geometry_bytes(&artifact) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_serialization_refusal(CANON_GEO_WAREHOUSE_GEOMETRY_VERSION, &error),
     }
 }
 
