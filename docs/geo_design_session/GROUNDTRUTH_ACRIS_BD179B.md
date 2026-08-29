@@ -4,9 +4,10 @@ Date: 2026-08-16
 
 Agent: PearlSparrow
 
-Scope: five-borough CMBS geocode scope from
+Original G1-G6 scope: five-borough CMBS geocode scope from
 `EDGAR_DB.DBT_WRANGLING_EDGAR.WRGL_EDGAR_CMBS_GEOCODES__STRUCTURED` with
-`COUNTY_FIPS in ('36005','36047','36061','36081','36085')`.
+`COUNTY_FIPS in ('36005','36047','36061','36081','36085')`. Controlling G7
+scope: the raw filed-county universe declared in G7.1 and G7.6.
 
 Data access discipline: every cited number below came from
 `cmdrvl orchestrator query --tenant salt --timeout 300 --raw` and returned
@@ -14,7 +15,17 @@ Data access discipline: every cited number below came from
 
 ## Status
 
-ACRIS Source 1 is usable as a small address-independent foothold, but the final
+**Controlling update, 2026-08-28:** G7 supersedes Gate V2 for truth admission. A
+provenance audit found that the earlier bridge's `RECORDED_BOROUGH` was derived
+from geocoded `COUNTY_FIPS`, so the earlier claim of a wholly
+address-channel-independent borough gate was too strong. G7 rebuilds the gate
+from raw filed `PROPERTYCOUNTY`, adds the lender/party discriminator as a
+separate truth plane, and keeps reach separate from precision. The earlier
+sections remain as historical measurements and sensitivity evidence; they are
+not release truth claims.
+
+Historical G1-G6 status: ACRIS Source 1 is usable as a small
+address-independent foothold, but the final
 contamination probe shows the exact-cents +/-30 unique gate is not clean enough
 for a headline precision estimate across the full accepted set. The operating
 gate is exact cents on origination amount and a +/-30 day recording-date window,
@@ -2348,3 +2359,359 @@ ORDER BY section,grain,acris_class,pip_class,condo_class,block_class;
   `tool_responses[*].structuredContent`; it is discarded and no numbers from it
   are cited. The shorter sensitivity query recorded in the Gate V2 section
   returned structured results and is the cited source.
+
+## G7: 2026-08-28 Filed-County Lender/Party Rebuild
+
+This section is the controlling ACRIS measurement. It was executed against the
+live warehouse through the repaired `cmdrvl-data` MCP path. Every source table
+was discovered and described before measurement SQL; every cited measurement
+returned a nonzero structured result. Reveal catalog discovery supplied table
+keys and lineage, while the data MCP supplied live schema and query results.
+
+### G7.1 Why Gate V2 Had To Be Rebuilt
+
+The earlier Gate V2 used the borough carried by
+`PROPERTY_MART.LOAN_ISSUANCE_PROPERTY`. Reveal provenance receipt
+`049e10cc99e1e15b` resolved that field to:
+
+```sql
+CASE county_fips
+  WHEN 36061 THEN 1
+  WHEN 36005 THEN 2
+  WHEN 36047 THEN 3
+  WHEN 36081 THEN 4
+  WHEN 36085 THEN 5
+END
+```
+
+That `COUNTY_FIPS` is geocoder-derived. The gate still did not compare address
+strings, but its borough restriction could suppress cross-borough geocoder
+errors. It was therefore not independent enough to carry the truth claim made
+in H.6. The correction is not to discard that run: it remains a useful
+sensitivity plane. The correction is to stop admitting it as controlling truth.
+
+Reveal provenance receipt `e441595de4d416a3` resolved
+`PROPERTY_PERIOD_FACT.PROPERTYCOUNTY` as the raw filed property county from the
+selected latest property-period snapshot. G7 admits only this mapping:
+
+```text
+NEW YORK | MANHATTAN | NY061  -> ACRIS borough 1
+BRONX                         -> ACRIS borough 2
+KINGS | BROOKLYN             -> ACRIS borough 3
+QUEENS                        -> ACRIS borough 4
+RICHMOND                      -> ACRIS borough 5
+anything else or missing      -> abstain
+```
+
+No geocoder county, parsed address, MapPLUTO address, or address-normalization
+key enters truth admission. Geocoded points enter only later, as the prediction
+being scored.
+
+### G7.2 Pinned Sources And Live Controls
+
+| source | pin | live control |
+|---|---|---:|
+| ACRIS master | `RELEASE_DT = 2026-08-10` | 17,065,090 rows |
+| ACRIS legals | `RELEASE_DT = 2026-08-10` | 22,727,180 rows |
+| ACRIS parties | `RELEASE_DT = 2026-08-10` | 46,540,137 rows |
+| loan-property bridge | build `3aed6660-ce1c-46a9-aeb2-7296c134ce8f` | 51,496 rows |
+| MapPLUTO 26v1 | `2026-05-01`, `shoreline_clipped` | 856,614 distinct BBLs |
+| MapPLUTO 26v2 | `2026-08-01`, `shoreline_clipped` | 856,687 distinct BBLs |
+
+The bridge build was observed on 2026-08-28. The exact catalog keys used for
+discovery were:
+
+```text
+snowflake://edgar_db.source/nyc_acris_real_property_master_ext
+snowflake://edgar_db.source/nyc_acris_real_property_legals_ext
+snowflake://edgar_db.source/nyc_acris_real_property_parties_ext
+snowflake://edgar_db.property_mart/loan_issuance
+snowflake://edgar_db.property_mart/loan_issuance_property
+snowflake://edgar_db.property_mart/property_period_fact
+```
+
+Reveal lineage showed that `LOAN_ISSUANCE_PROPERTY` depends on
+`LOAN_ISSUANCE`, `PROPERTY_DIM`, and `PROPERTY_PERIOD_FACT`. Reveal did not
+reliably resolve the ACRIS control-code table or MapPLUTO by exact search, so
+those were verified through live table listing and description rather than
+silently inferred from catalog search.
+
+### G7.3 Declared Matching Semantics
+
+ACRIS `DOCUMENT_AMT` is a floating-point source field. Both sides are therefore
+compared as integer cents:
+
+```sql
+ROUND(value * 100, 0)::NUMBER(38,0)
+```
+
+This is exact arithmetic relative to the declared cents quantization. It is not
+a claim that the floating source representation, the recorded instrument, or
+world truth is exact.
+
+The non-round plane uses exact cents, origination-to-recording offset `[0,+45]`
+days, filed-county/legal-borough agreement, and unique-or-discard after all
+filters. It excludes amounts divisible by $100,000.
+
+The round plane requires a second discriminator before legal confirmation:
+exact equality between `LOAN_ISSUANCE.ORIGINATORNAME` and the ACRIS lender party
+name after applying the same narrow transform to both:
+
+```sql
+TRIM(REGEXP_REPLACE(UPPER(name), '[^A-Z0-9 ]', ' '))
+```
+
+This transform deliberately does **not** collapse internal whitespace, strip
+corporate suffixes, compare token sets, use containment, or make a fuzzy match.
+Those may recover candidates, but they cannot be admitted as truth until their
+error rate is separately measured.
+
+The ACRIS control-code table establishes the lender party role by document type:
+
+| document types | lender `PARTY_TYPE` |
+|---|---:|
+| `CMTG`, `M&CON`, `MTGE`, `SMTG`, `SPRD` | 2 |
+| `MMTG` | 1 |
+
+An exact lender hit is a second discriminator, not a second independent source:
+the party row and mortgage row belong to the same ACRIS record. Source count is
+never substituted for independent information.
+
+### G7.4 Bounded Query Shape
+
+The first all-in-one amount/date/borough/party/legal join was cancelled after
+45.16 seconds. A second monolithic formulation was also cancelled. Neither was
+repeated after the failure mode became deterministic.
+
+The successful formulation follows the system's intended mathematics:
+
+1. Pin the 2,974-loan filed-county section and form exact amount/date/party
+   candidates.
+2. Aggregate that small relation into a single array row so the MCP returns the
+   complete candidate set rather than truncating rows.
+3. Bind the returned candidates as an explicit `VALUES` residual and join only
+   that residual to ACRIS legals.
+4. Require legal-borough agreement, then count candidate documents at loan grain
+   and accept only one-document loans.
+5. Attach accepted document BBL sets to collateral only within the same filed
+   borough, then score the separately pinned MapPLUTO releases.
+
+The essential residual shape is:
+
+```sql
+WITH residual(loan_key, document_id, filed_borough, plane) AS (
+  SELECT * FROM VALUES
+    -- literal rows returned by the bounded candidate stage
+), legal_edges AS (
+  SELECT DISTINCT r.loan_key, r.document_id, r.plane,
+         l.borough, l.block, l.lot
+  FROM residual r
+  JOIN EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT l
+    ON l.document_id = r.document_id
+   AND l.release_dt = '2026-08-10'
+   AND l.borough = r.filed_borough
+)
+SELECT ... FROM legal_edges;
+```
+
+This is a bounded section followed by a small exact residual. It is not evidence
+for, and must never be described as, a monolithic national or 500k-candidate
+solve.
+
+The MCP success envelope did not expose Snowflake query IDs. They were recovered
+from `EDGAR_DB.INFORMATION_SCHEMA.QUERY_HISTORY`, following upstream
+`br-1h1l`. The MCP also capped ordinary row fetches at 200 despite a higher
+requested limit; the array-row stage was necessary to preserve the denominator.
+
+### G7.5 Query Receipts And Discarded Attempts
+
+| purpose | Snowflake query ID | disposition |
+|---|---|---|
+| ACRIS release controls | `01c6b399-0821-86f2-006c-c703088970d2` | cited |
+| bridge build discovery | `01c6b399-0821-83a1-006c-c7030889494e` | cited |
+| initial geocoder-borough scope | `01c6b39b-0821-83a1-006c-c7030889495e` | diagnostic only |
+| ACRIS lender role controls | `01c6b39b-0821-83a1-006c-c70308894962` | cited |
+| first monolithic join | `01c6b39c-0821-83a1-006c-c7030889496e` | cancelled; no numbers cited |
+| second monolithic join | `01c6b3a5-0821-86f2-006c-c70308897116` | cancelled; no numbers cited |
+| truncated exact candidate rows | `01c6b3a1-0821-83a1-006c-c70308894982` | discarded |
+| legal join over truncated residual | `01c6b3a1-0821-86f2-006c-c70308897102` | discarded |
+| corrected diagnostic array | `01c6b3a3-0821-86f2-006c-c7030889710e` | diagnostic only |
+| corrected diagnostic legal residual | `01c6b3a3-0821-83a1-006c-c70308894992` | diagnostic only |
+| filed-county universe | `01c6b3b2-0821-86f2-006c-c7030889718a` | cited |
+| filed exact-lender candidate array | `01c6b3b2-0821-83a1-006c-c703088949f2` | cited |
+| filed non-round V2 candidate array | `01c6b3b2-0821-86f2-006c-c7030889718e` | cited |
+| filed exact-lender legal residual | `01c6b3b3-0821-83a1-006c-c703088949fa` | cited |
+| filed non-round legal residual | `01c6b3b3-0821-86f2-006c-c70308897196` | cited |
+| filed-county dual-release score | `01c6b3b3-0821-83a1-006c-c70308894a02` | cited |
+
+The first 200-row legal result produced 85 round accepts. That number is not
+cited anywhere because its denominator was silently truncated. The corrected
+array/residual run is the only admitted result.
+
+### G7.6 Filed-Country Universe And Truth-Gate Reach
+
+The filed-county universe contains 2,974 distinct loans:
+
+| plane | eligible loans | originator text | no originator text | multi-filed-borough |
+|---|---:|---:|---:|---:|
+| non-round | 653 | 605 | 48 | 35 |
+| round | 2,321 | 2,173 | 148 | 122 |
+| total | 2,974 | 2,778 | 196 | 157 |
+
+The non-round V2 gate produced 654 master candidate pairs on 262 loans and 687
+candidate borough triples. Legal confirmation retained 313 loan-document pairs
+on 221 candidate loans:
+
+| non-round disposition | loans |
+|---|---:|
+| unique accept | 172 |
+| ambiguous after all filters | 49 |
+| no match | 432 |
+| round, outside plane | 2,321 |
+| **reconciled universe** | **2,974** |
+
+The 172 accepts comprise 137 one-BBL and 35 multi-BBL loans, carrying 446 ACRIS
+BBL edges. Acceptance reach is 172/653 = **26.34%** of the non-round eligible
+plane and 172/2,974 = **5.78%** of the full filed-county universe.
+
+Across all amount classes, exact lender matching produced 324 pairs on 229
+loans. The round subset contained 277 pairs on 182 loans. Legal confirmation
+retained 235 pairs on 179 loans; three exact-lender candidate loans had no legal
+confirmation. The final round plane is:
+
+| round exact-lender disposition | loans |
+|---|---:|
+| originator text available | 2,173 |
+| exact lender candidate | 182 |
+| unique legal accept | 149 |
+| ambiguous legal match | 30 |
+| no legal confirmation after exact lender | 3 |
+
+The 149 accepts comprise 135 one-BBL and 14 multi-BBL loans, carrying 353 ACRIS
+BBL edges. Originator-text reach is 2,173/2,321 = **93.62%**; exact-lender reach
+is 182/2,321 = **7.84%**; final acceptance reach is 149/2,321 = **6.42%** and
+149/2,974 = **5.01%** of the full universe.
+
+Because the planes are disjoint, accepted-loan coverage can be added:
+321/2,974 = **10.79%**. This is a reach number only. Their scored precision must
+not be pooled.
+
+### G7.7 Scoring Contract And Separate Association Planes
+
+MapPLUTO scoring uses a bounding-box prefilter followed by exact
+`ST_CONTAINS`. The two pinned releases are scored independently. No MapPLUTO
+address field enters the prediction.
+
+For each exact geocode point, the latest `ASOF` observation is used. When the
+latest observation contains more than one accuracy type, its tier is `mixed`.
+Observed as-of dates range from 2025-01-01 through 2026-08-01.
+
+An ACRIS BBL is attached only to collateral rows whose raw filed borough agrees
+with the legal borough. Truth is split by the number of property keys attached
+within the truth boroughs:
+
+- `single_property`: the loan-level document truth has one collateral property
+  association in scope.
+- `multi_property`: the document supplies a set of BBLs for a loan with multiple
+  property keys. Set-valued overlap is a lenient upper plane; it does not prove
+  which BBL belongs to which property key.
+
+That split cannot be pooled. Otherwise every BBL on a multi-property mortgage
+would be copied onto every collateral and the measurement would silently award
+correctness without resolving loan-to-property incidence.
+
+### G7.8 Point-Grain Results
+
+`PIP reached` is candidate reach on the accepted truth slice. Lot and block
+precision use `PIP reached` as denominator and remain distinct from truth-gate
+acceptance reach in G7.6.
+
+| truth plane | association | class loans | truth points | PIP reached | reach | lot correct | lot precision | block correct | block precision |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| non-round | single | 115 | 104 | 100 | 96.15% | 59 | 59.00% | 67 | 67.00% |
+| non-round | multi | 57 | 153 | 148 | 96.73% | 127 | 85.81% | 133 | 89.86% |
+| round exact lender | single | 98 | 94 | 93 | 98.94% | 69 | 74.19% | 79 | 84.95% |
+| round exact lender | multi | 51 | 99 | 93 | 93.94% | 71 | 76.34% | 82 | 88.17% |
+
+The non-round 59.00%/85.81% single/multi gap is load-bearing evidence that a
+pooled score would hide association ambiguity. The round exact-lender plane is
+steadier at 74.19%/76.34%, but it is still a selected sensitivity plane, not
+independent adjudication.
+
+### G7.9 Property-Key Results
+
+| truth plane | association | property units | geocoded | PIP reached | lot correct | lot precision | block correct | block precision |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| non-round | single | 115 | 113 | 109 | 67 | 61.47% | 75 | 68.81% |
+| non-round | multi | 161 | 159 | 153 | 131 | 85.62% | 137 | 89.54% |
+| round exact lender | single | 98 | 97 | 96 | 72 | 75.00% | 82 | 85.42% |
+| round exact lender | multi | 112 | 110 | 104 | 78 | 75.00% | 90 | 86.54% |
+
+Property-key and exact-point grains answer different questions and are retained
+separately. Neither changes the admission reach in G7.6.
+
+### G7.10 Representativeness And Accuracy Strata
+
+Accepted-loan filed-borough distribution is sharply different by plane:
+
+| plane | Manhattan | Bronx | Brooklyn | Queens | multi-borough | total |
+|---|---:|---:|---:|---:|---:|---:|
+| non-round | 77 | 30 | 26 | 37 | 2 | 172 |
+| round exact lender | 146 | 0 | 0 | 3 | 0 | 149 |
+
+The round exact-lender gate improves truth coverage but not representativeness;
+98.0% of its accepts are Manhattan-only.
+
+Selected 26v2 point-grain accuracy strata are shown with exact denominators:
+
+| plane / association | accuracy tier | lot correct / reached | block correct / reached |
+|---|---|---:|---:|
+| non-round / single | nearest_rooftop_match | 9/13 = 69.23% | 9/13 = 69.23% |
+| non-round / single | rooftop | 49/85 = 57.65% | 57/85 = 67.06% |
+| non-round / multi | nearest_rooftop_match | 10/17 = 58.82% | 13/17 = 76.47% |
+| non-round / multi | rooftop | 113/125 = 90.40% | 116/125 = 92.80% |
+| round lender / single | nearest_rooftop_match | 10/12 = 83.33% | 11/12 = 91.67% |
+| round lender / single | rooftop | 56/76 = 73.68% | 63/76 = 82.89% |
+| round lender / multi | nearest_rooftop_match | 5/7 = 71.43% | 5/7 = 71.43% |
+| round lender / multi | rooftop | 64/79 = 81.01% | 74/79 = 93.67% |
+
+The remaining range/place/intersection/street cells are small. They are retained
+in the query result with their exact denominators and are not generalized from.
+
+### G7.11 Release Sensitivity And Calibrated Conclusion
+
+There were 57 comparable scored strata across MapPLUTO 26v1 and 26v2 and zero
+metric differences. This proves equality only for these rows and these
+aggregates. It does not prove the releases are globally equal or interchangeable.
+
+What the evidence supports:
+
+- Filed-county admission removes the known geocoder-borough feedback from the
+  ACRIS truth gate.
+- Exact lender/party equality recovers a round-amount truth plane without
+  pretending free-text similarity is exact identity.
+- Candidate reach remains low: 26.34% on the non-round plane and 6.42% on the
+  round exact-lender plane. This is upstream of solver correctness.
+- PIP precision depends strongly on the association plane. The 59.00%
+  single-property non-round result and 85.81% multi-property set-valued result
+  must not be combined.
+- The exact-lender plane is useful corroboration and coverage, not independent
+  truth, and it is overwhelmingly Manhattan-selected.
+- These measurements grade a geometry-only PIP baseline against document truth.
+  They do not establish solver soundness, completeness, confluence, or world
+  truth.
+
+What remains open before a release precision claim:
+
+- stratified human adjudication from rendered geometry without reading the
+  address channel;
+- explicit disagreement reporting between filed ACRIS, address-derived PLUTO,
+  and adjudication truth planes;
+- validation of any broader lender-name normalization before it can admit
+  candidates;
+- exact loan-to-property association evidence for multi-property mortgages.
+
+The measurement advances the evidence-stacking ambition precisely because it
+does not collapse these unresolved distinctions. It narrows the admissible
+truth set, exposes when that set is empty or weak, and leaves each evidence plane
+available for later composition without laundering correlation into certainty.

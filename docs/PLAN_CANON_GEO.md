@@ -1638,10 +1638,14 @@ combining this with Appendix F:
 # Appendix H — MEASURED: the ACRIS truth set exists, caught its own contamination, and puts provisional precision far below coverage
 
 Added 2026-08-16 (bd-179b; full tables and exact SQL in
-`docs/geo_design_session/GROUNDTRUTH_ACRIS_BD179B.md`). First address-independent ground
-truth for the Appendix E baselines: CMBS loans matched to recorded ACRIS mortgages by
-**amount + recording-date window with no address fields anywhere in the join** (bridge:
+`docs/geo_design_session/GROUNDTRUTH_ACRIS_BD179B.md`). First attempt at address-independent
+ground truth for the Appendix E baselines: CMBS loans matched to recorded ACRIS mortgages by
+**amount + recording-date window without an address-string match** (bridge:
 `PROPERTY_PERIOD_FACT → LOAN_ISSUANCE` on CIK+ASSETNUMBER; 3,040 five-borough loans).
+The original run did, however, scope borough through a field derived from the geocoder's
+`COUNTY_FIPS`. H.7 records the later provenance finding and the controlling rebuild from
+raw filed `PROPERTYCOUNTY`; the original run remains a historical diagnostic, not the
+release truth plane.
 
 ## H.1 The gate, and what it accepted
 
@@ -1695,7 +1699,7 @@ precision" into a *named, attributable defect of the truth gate* rather than a s
 wrong conclusion. This is §3.2's band-versus-threshold argument operating one level up —
 the strongest process evidence yet that the architecture's self-auditing claim is real.
 
-## H.6 Gate V2 — the finished kill-criterion plane
+## H.6 Gate V2 — historical diagnostic, superseded for truth admission by H.7
 
 Same session, completing H.3's mandate. Operating gate: exact cents, recording offset
 **[0,+45] days**, ACRIS legal borough must agree with a property county, all 100k/1M-round
@@ -1721,7 +1725,82 @@ population. G6 on v2 accepts: 25 invisible multi-BBL loans, 15 non-condo.
 Caveats that travel with these numbers: v2 truth coverage is small (242/4,076 points,
 5.94%) and the round-amount exclusion biases the truth set toward odd-amount loans;
 lender-name second-discriminator admission of round amounts is the recorded path to a
-larger truth set (originator and party fields are landed).
+larger truth set (originator and party fields are landed). The 2026-08-28 provenance audit
+also showed that `LOAN_ISSUANCE_PROPERTY.RECORDED_BOROUGH` was derived from geocoded
+`COUNTY_FIPS`. Therefore the claim that this plane used no address-derived channel was too
+strong. Retain its measurements for sensitivity only; H.7 controls truth admission.
+
+## H.7 Filed-county lender/party rebuild — controlling ACRIS measurement
+
+Measured 2026-08-28 through the repaired live MCP path, after catalog discovery and table
+description. The bridge snapshot is pinned to build
+`3aed6660-ce1c-46a9-aeb2-7296c134ce8f`; ACRIS is pinned to `RELEASE_DT = 2026-08-10`;
+MapPLUTO is scored separately at `26v1 / 2026-05-01 / shoreline_clipped` and
+`26v2 / 2026-08-01 / shoreline_clipped`. The truth gate maps the latest raw filed
+`PROPERTY_PERIOD_FACT.PROPERTYCOUNTY` to an ACRIS borough. Missing or unrecognized filed
+counties abstain. Geocoder-derived county is not admitted to truth selection.
+
+The declared 2,974-loan universe separates two truth planes:
+
+```
+  plane                                  eligible  unique accepts  reach of plane
+  non-round amount/date/legal borough        653             172      26.34%
+  round + exact lender/party name           2,321             149       6.42%
+  disjoint accepted-loan reach            2,974             321      10.79%
+```
+
+The round plane first requires exact equality between the CMBS originator and the ACRIS
+lender party after the same deliberately narrow transform: uppercase, replace each
+non-alphanumeric character with a space, trim. It does not collapse internal whitespace,
+strip legal suffixes, perform token containment, or use fuzzy matching. Lender party type
+is document-type-specific: type 2 for `CMTG`, `M&CON`, `MTGE`, `SMTG`, and `SPRD`; type 1
+for `MMTG`. Since ACRIS `DOCUMENT_AMT` is floating-point, amount equality is exact only
+relative to the declared cents quantization
+`ROUND(value * 100, 0)::NUMBER(38,0)`, not exact relative to the source instrument or the
+world.
+
+Candidate reach and scored precision are different quantities. Of the non-round plane,
+172/653 loans were uniquely admitted; 49 were ambiguous and 432 had no match. Of the round
+plane, 182/2,321 reached an exact lender candidate, 179 had legal confirmation, 149 were
+unique accepts, and 30 remained ambiguous. Source count is not treated as independent
+information, and the two planes are not pooled into a precision headline.
+
+Point-grain PIP scoring against document BBL sets, using the latest geocode observation per
+exact point and the same filed-borough association, is:
+
+```
+  truth plane / association       truth points  PIP reached  lot correct  block correct
+  non-round / single-property              104          100   59 (59.00%)   67 (67.00%)
+  non-round / multi-property               153          148  127 (85.81%)  133 (89.86%)
+  round exact-lender / single               94           93   69 (74.19%)   79 (84.95%)
+  round exact-lender / multi                 99           93   71 (76.34%)   82 (88.17%)
+```
+
+The single/multi split is load-bearing. A multi-property loan carries a loan-level ACRIS
+BBL set; copying that set to every collateral property is lenient set-valued scoring and
+does not establish the exact loan-to-property association. Pooling it with single-property
+precision would hide that ambiguity. The sharp non-round gap (59.00% versus 85.81%) is
+empirical evidence of the confound. The exact-lender plane is steadier, but it mostly
+expands coverage and is not independent adjudication: 146/149 accepted loans are
+Manhattan-only and three are Queens-only.
+
+The same score at property-key grain is 67/109 and 131/153 lot-correct for non-round
+single/multi, and 72/96 and 78/104 for round exact-lender single/multi. Both MapPLUTO
+releases produced the same metrics on all 57 comparable scored strata. That is scoped
+equality for this measurement, not evidence of global release equivalence.
+
+The computational shape was itself a scaling test: a monolithic warehouse join hit the
+repeatable client-cancellation path, while materializing the small exact-candidate relation
+into one array row and binding its few hundred residual pairs as an explicit `VALUES`
+relation let the legal confirmation complete. This is the intended mathematics: bounded
+candidate section, then a small exact residual—not a national or 500k-candidate
+monolithic solve.
+
+These are PIP baseline measurements against document truth, not solver correctness or a
+release precision claim. Candidate-reach failure remains upstream of solver truth; human
+adjudication of the contested strata remains open. Exact query IDs, denominators,
+provenance receipts, borough and accuracy strata, discarded partials, and the bounded SQL
+shape are recorded in the bd-179b report.
 
 ---
 
