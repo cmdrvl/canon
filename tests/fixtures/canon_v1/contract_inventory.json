@@ -166,6 +166,17 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo materialize-home-cells",
+      "family": "geo",
+      "clap_path": "geo materialize-home-cells",
+      "operator_name": "geo materialize-home-cells",
+      "primary_contracts": [
+        "canon_geo_home_cell_rows.v0",
+        "canon_geo_home_cell_assignment.v0"
+      ],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo tile-work",
       "family": "geo",
       "clap_path": "geo tile-work",
@@ -1202,6 +1213,20 @@
     },
     {
       "id": "canon_geo_geometry_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_home_cell_rows.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_home_cell_assignment.v0",
       "family": "geo",
       "action": "preserve",
       "access_boundary": "public_crate_api",

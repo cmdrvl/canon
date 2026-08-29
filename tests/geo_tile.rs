@@ -1,11 +1,13 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
+    CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
+    CANON_GEO_TILE_WORK_REQUEST_VERSION, GeoHomeCellParity, GeoHomeCellRow, GeoHomeCellRowsRequest,
     GeoTileDecisionBatch, GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileErrorCode,
     GeoTileFeatureRef, GeoTilePlacement, GeoTileReconciliationRequest, GeoTileWorkRequest,
-    canonical_tile_reconciliation_bytes, canonical_tile_work_unit_bytes,
-    materialize_tile_work_unit, reconcile_tile_decisions,
+    canonical_home_cell_assignment_bytes, canonical_tile_reconciliation_bytes,
+    canonical_tile_work_unit_bytes, materialize_home_cells, materialize_tile_work_unit,
+    reconcile_tile_decisions,
 };
 use h3o::{CellIndex, Resolution};
 use std::{collections::BTreeSet, str::FromStr};
@@ -43,6 +45,35 @@ fn work_request(center: CellIndex, features: Vec<GeoTileFeatureRef>) -> GeoTileW
         features,
         max_features: 16,
         max_work_cells: 7,
+    }
+}
+
+fn home_cell_row(feature_id: &str, claimed_home_cell: Option<String>) -> GeoHomeCellRow {
+    GeoHomeCellRow {
+        source_name: "mappluto".to_string(),
+        feature_id: feature_id.to_string(),
+        source_snapshot: "26v2/2026-08-01/geom-v3".to_string(),
+        source_record_id: format!("mn/000000/{feature_id}"),
+        geometry_sha256: "5ed87d37d872789086452c35f658f5628ba870ca36072c495bb88519592403ed"
+            .to_string(),
+        representative_point_method: "centroid_of_derived_wgs84_geometry".to_string(),
+        longitude: "-73.977264000".to_string(),
+        latitude: "40.753429000".to_string(),
+        transform_execution_id: Some("sha256-execution-26v2".to_string()),
+        transform_definition_id: Some("sha256-definition-hpgn".to_string()),
+        claimed_home_cell,
+    }
+}
+
+fn home_cell_request(rows: Vec<GeoHomeCellRow>) -> GeoHomeCellRowsRequest {
+    GeoHomeCellRowsRequest {
+        version: CANON_GEO_HOME_CELL_ROWS_VERSION.to_string(),
+        coordinate_crs: "EPSG:4326".to_string(),
+        coordinate_decimal_places: 9,
+        h3_resolution: 9,
+        stability_radius_fixed: 1_000,
+        rows,
+        max_rows: 16,
     }
 }
 
@@ -137,6 +168,110 @@ fn tile_work_unit_is_center_plus_controlled_halo_and_byte_deterministic() {
             .iter()
             .any(|feature| feature.placement == GeoTilePlacement::Halo)
     );
+}
+
+#[test]
+fn home_cells_bind_representative_points_and_report_parity_without_becoming_truth() {
+    // h3o's known answer for (40.753429, -73.977264). The historical
+    // Snowflake-helper receipt returned 892a100d26bffff for this point; keeping
+    // the h3o answer explicit prevents parity tests from normalizing that
+    // observed disagreement away.
+    let expected = "892a100d62bffff".to_string();
+    let neighbor = CellIndex::from_str(&expected)
+        .unwrap()
+        .grid_disk_safe(1)
+        .find(|cell| cell.to_string() != expected)
+        .unwrap()
+        .to_string();
+    let original = home_cell_request(vec![
+        home_cell_row("unclaimed", None),
+        home_cell_row("match", Some(expected.clone())),
+        home_cell_row("mismatch", Some(neighbor)),
+    ]);
+    let mut permuted = original.clone();
+    permuted.rows.reverse();
+
+    let artifact = materialize_home_cells(&original).expect("home cells materialize");
+    let repeated = materialize_home_cells(&permuted).expect("permuted rows materialize");
+    assert_eq!(artifact, repeated);
+    assert_eq!(artifact.features[0].home_cell, expected);
+    assert_eq!(artifact.summary.total, 3);
+    assert_eq!(artifact.summary.claimed, 2);
+    assert_eq!(artifact.summary.matches, 1);
+    assert_eq!(artifact.summary.mismatches, 1);
+    assert_eq!(artifact.summary.unclaimed, 1);
+    assert_eq!(artifact.summary.max_minimum_stability_halo_k, 0);
+    assert_eq!(artifact.tile_work_features.len(), 3);
+    assert!(
+        artifact
+            .features
+            .iter()
+            .all(|feature| feature.home_cell == expected)
+    );
+    assert!(artifact.features.iter().any(|feature| {
+        feature.feature_id == "mismatch" && feature.parity == GeoHomeCellParity::Mismatch
+    }));
+    assert_eq!(
+        canonical_home_cell_assignment_bytes(&artifact).unwrap(),
+        canonical_home_cell_assignment_bytes(&repeated).unwrap()
+    );
+}
+
+#[test]
+fn home_cells_refuse_bad_coordinates_digests_transforms_and_claimed_resolution() {
+    let mut request = home_cell_request(vec![home_cell_row("bad-coordinate", None)]);
+    request.rows[0].latitude = "91.000000000".to_string();
+    let error = materialize_home_cells(&request).expect_err("latitude outside WGS84 must refuse");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidCoordinate);
+
+    let mut request = home_cell_request(vec![home_cell_row("bad-digest", None)]);
+    request.rows[0].geometry_sha256 = "ABC".to_string();
+    let error = materialize_home_cells(&request).expect_err("bad digest must refuse");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidSourceDigest);
+
+    let mut request = home_cell_request(vec![home_cell_row("half-transform", None)]);
+    request.rows[0].transform_definition_id = None;
+    let error = materialize_home_cells(&request).expect_err("half transform binding must refuse");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidInput);
+
+    let coarse = CellIndex::from_str("892a100d26bffff")
+        .unwrap()
+        .parent(Resolution::Eight)
+        .unwrap()
+        .to_string();
+    let request = home_cell_request(vec![home_cell_row("wrong-resolution", Some(coarse))]);
+    let error = materialize_home_cells(&request).expect_err("claimed r8 under r9 must refuse");
+    assert_eq!(error.code, GeoTileErrorCode::ResolutionMismatch);
+
+    let mut first = home_cell_row("mixed-a", None);
+    let mut second = home_cell_row("mixed-b", None);
+    first.source_snapshot = "26v1/2026-05-01/geom-v3".to_string();
+    second.source_snapshot = "26v2/2026-08-01/geom-v3".to_string();
+    let request = home_cell_request(vec![first, second]);
+    let error = materialize_home_cells(&request)
+        .expect_err("one source name must not collapse two temporal snapshots");
+    assert_eq!(error.code, GeoTileErrorCode::MixedSourceSnapshot);
+
+    let mut request = home_cell_request(vec![home_cell_row("wide-envelope", None)]);
+    request.stability_radius_fixed = 100_001;
+    let error = materialize_home_cells(&request)
+        .expect_err("coordinate envelope wider than 0.0001 degrees must refuse");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidInput);
+}
+
+#[test]
+fn home_cells_expose_boundary_sensitivity_as_a_minimum_halo_requirement() {
+    let center = CellIndex::from_str("892a100d26bffff").unwrap();
+    let vertex = center.boundary()[0];
+    let mut row = home_cell_row("boundary", None);
+    row.longitude = format!("{:.9}", vertex.lng());
+    row.latitude = format!("{:.9}", vertex.lat());
+    let artifact = materialize_home_cells(&home_cell_request(vec![row]))
+        .expect("boundary probe materializes as an explicit sensitivity set");
+    assert!(artifact.features[0].stability_cells.len() > 1);
+    assert!(artifact.features[0].minimum_stability_halo_k >= 1);
+    assert_eq!(artifact.summary.boundary_sensitive, 1);
+    assert!(artifact.summary.max_minimum_stability_halo_k >= 1);
 }
 
 #[test]

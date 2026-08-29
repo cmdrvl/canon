@@ -222,6 +222,9 @@ pub enum GeoSubcommand {
     /// Materialize three or more named sources into one budgeted consistency artifact
     #[command(name = "link-sources")]
     LinkSources(GeoLinkSourcesCli),
+    /// Derive auditable H3 home cells from release-bound representative points
+    #[command(name = "materialize-home-cells")]
+    MaterializeHomeCells(GeoMaterializeHomeCellsCli),
     /// Build one bounded H3 center-plus-halo feature work unit
     #[command(name = "tile-work")]
     TileWork(GeoTileWorkCli),
@@ -261,6 +264,13 @@ pub struct GeoTileWorkCli {
     /// JSON file holding a canon_geo_tile_work_request.v0 request
     #[arg(long)]
     pub request: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoMaterializeHomeCellsCli {
+    /// JSON file holding canon_geo_home_cell_rows.v0 rows
+    #[arg(long)]
+    pub rows: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]

@@ -3,7 +3,7 @@
 -- about the entire tables.
 WITH cells AS (
   SELECT * FROM VALUES
-    ('MN_DENSE', '882a100d8bfffff'),
+    ('BK_DENSE', '882a100d8bfffff'),
     ('BX_LOWER', '882a100f4dfffff'),
     ('QN_1500', '882a103b6bfffff')
     AS c(cell_name, h3_cell)

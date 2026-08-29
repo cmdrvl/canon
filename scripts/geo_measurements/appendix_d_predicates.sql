@@ -4,7 +4,7 @@
 WITH cells AS (
   SELECT * FROM VALUES
     ('BX_LOWER', '882a100f4dfffff'),
-    ('MN_DENSE', '882a100d8bfffff')
+    ('BK_DENSE', '882a100d8bfffff')
     AS c(cell_name, h3_cell)
 ), parcels AS (
   SELECT c.cell_name, p.BBL AS parcel_id, p.GEOM_GEOG AS geom
@@ -77,4 +77,4 @@ FROM metrics m
 ORDER BY cell_name;
 
 -- Expected 2026-08-28 majority one/zero/multi:
--- BX_LOWER 287/4/0; MN_DENSE 2332/22/0.
+-- BX_LOWER 287/4/0; BK_DENSE 2332/22/0.

@@ -13,24 +13,25 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use canon::entity::run::link::multisource::EntitySourceRole;
 use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
-    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
-    CANON_GEO_MULTISOURCE_REQUEST_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
-    CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
-    CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
-    DEFAULT_MAX_MATERIALIZED_MODELS, GeoAffineProjectionMm, GeoBuildingCandidate,
-    GeoCompositionModel, GeoCompositionRequest, GeoCompositionUniverse, GeoEntityLevel,
-    GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef,
-    GeoExactSourceUnitMm, GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoHardConstraint,
-    GeoHardConstraintKind, GeoLabeledCompositionCase, GeoLocalFrameContract, GeoMultisourceRequest,
-    GeoMultisourceSource, GeoPopulationEvaluationRequest, GeoProjectionProvenance, GeoRhoBasis,
-    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoSourceAxisDomain,
-    GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed, GeoTileDecisionBatch,
-    GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileFeatureRef,
-    GeoTileReconciliationRequest, GeoTileWorkRequest, GeoWarehouseEvidenceRow,
-    GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest, GeoWarehouseParcelRow,
-    GeoWarehouseRowsRequest, compile_evidence, evaluate_population, materialize_geo_multisource,
-    materialize_geometry_tile, materialize_tile_work_unit, materialize_warehouse_geometry,
-    reconcile_tile_decisions, solve_composition,
+    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
+    CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_MULTISOURCE_REQUEST_VERSION,
+    CANON_GEO_POPULATION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
+    CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
+    CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoAffineProjectionMm,
+    GeoBuildingCandidate, GeoCompositionModel, GeoCompositionRequest, GeoCompositionUniverse,
+    GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
+    GeoEvidenceRecordRef, GeoExactSourceUnitMm, GeoGeometryFeatureInput, GeoGeometryTileRequest,
+    GeoHardConstraint, GeoHardConstraintKind, GeoHomeCellRow, GeoHomeCellRowsRequest,
+    GeoLabeledCompositionCase, GeoLocalFrameContract, GeoMultisourceRequest, GeoMultisourceSource,
+    GeoPopulationEvaluationRequest, GeoProjectionProvenance, GeoRhoBasis, GeoRhoContract,
+    GeoRhoObservation, GeoRhoObservationKind, GeoSourceAxisDomain, GeoSourceGeometry,
+    GeoSourcePointDecimal, GeoSourcePointFixed, GeoTileDecisionBatch, GeoTileDecisionMember,
+    GeoTileDecisionProposal, GeoTileFeatureRef, GeoTileReconciliationRequest, GeoTileWorkRequest,
+    GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
+    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, compile_evidence, evaluate_population,
+    materialize_geo_multisource, materialize_geometry_tile, materialize_home_cells,
+    materialize_tile_work_unit, materialize_warehouse_geometry, reconcile_tile_decisions,
+    solve_composition,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -57,6 +58,10 @@ const WAREHOUSE_GEOMETRY_ROWS_SCHEMA: &str =
     include_str!("../schemas/canon.geo.warehouse_geometry_rows.v0.schema.json");
 const WAREHOUSE_GEOMETRY_SCHEMA: &str =
     include_str!("../schemas/canon.geo.warehouse_geometry.v0.schema.json");
+const HOME_CELL_ROWS_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.home_cell_rows.v0.schema.json");
+const HOME_CELL_ASSIGNMENT_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.home_cell_assignment.v0.schema.json");
 const TILE_WORK_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.tile_work_request.v0.schema.json");
 const TILE_WORK_UNIT_SCHEMA: &str =
@@ -440,6 +445,31 @@ fn tile_work_request() -> GeoTileWorkRequest {
     }
 }
 
+fn home_cell_rows_request() -> GeoHomeCellRowsRequest {
+    GeoHomeCellRowsRequest {
+        version: CANON_GEO_HOME_CELL_ROWS_VERSION.to_string(),
+        coordinate_crs: "EPSG:4326".to_string(),
+        coordinate_decimal_places: 9,
+        h3_resolution: 8,
+        stability_radius_fixed: 1_000,
+        rows: vec![GeoHomeCellRow {
+            source_name: "mappluto".to_string(),
+            feature_id: "parcel-a".to_string(),
+            source_snapshot: "26v2/2026-08-01/geom-v3".to_string(),
+            source_record_id: "mn/000000/1".to_string(),
+            geometry_sha256: "5ed87d37d872789086452c35f658f5628ba870ca36072c495bb88519592403ed"
+                .to_string(),
+            representative_point_method: "centroid_of_derived_wgs84_geometry".to_string(),
+            longitude: "-73.977264000".to_string(),
+            latitude: "40.753429000".to_string(),
+            transform_execution_id: Some("sha256-execution-26v2".to_string()),
+            transform_definition_id: Some("sha256-definition-hpgn".to_string()),
+            claimed_home_cell: None,
+        }],
+        max_rows: 8,
+    }
+}
+
 fn tile_reconciliation_request() -> GeoTileReconciliationRequest {
     let work_unit =
         materialize_tile_work_unit(&tile_work_request()).expect("tile work unit materializes");
@@ -564,6 +594,31 @@ fn warehouse_geometry_schema_matches_a_real_instance() {
         WAREHOUSE_GEOMETRY_SCHEMA,
         "canon.geo.warehouse_geometry.v0",
         "canon_geo_warehouse_geometry.v0",
+        &instance,
+    );
+}
+
+#[test]
+fn home_cell_rows_schema_matches_a_real_instance() {
+    let request = home_cell_rows_request();
+    let instance = serde_json::to_value(&request).expect("home-cell rows serialize");
+    assert_drift_free(
+        HOME_CELL_ROWS_SCHEMA,
+        "canon.geo.home_cell_rows.v0",
+        CANON_GEO_HOME_CELL_ROWS_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn home_cell_assignment_schema_matches_a_real_instance() {
+    let artifact = materialize_home_cells(&home_cell_rows_request())
+        .expect("home-cell assignment materializes");
+    let instance = serde_json::to_value(&artifact).expect("home-cell assignment serializes");
+    assert_drift_free(
+        HOME_CELL_ASSIGNMENT_SCHEMA,
+        "canon.geo.home_cell_assignment.v0",
+        "canon_geo_home_cell_assignment.v0",
         &instance,
     );
 }

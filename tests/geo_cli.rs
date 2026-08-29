@@ -156,6 +156,30 @@ fn tiny_warehouse_geometry_request(declared_sha256: Option<&str>) -> Value {
     })
 }
 
+fn tiny_home_cell_rows(coordinate_crs: &str) -> Value {
+    json!({
+        "version": "canon_geo_home_cell_rows.v0",
+        "coordinate_crs": coordinate_crs,
+        "coordinate_decimal_places": 9,
+        "h3_resolution": 9,
+        "stability_radius_fixed": 1000,
+        "rows": [{
+            "source_name": "mappluto",
+            "feature_id": "parcel-a",
+            "source_snapshot": "26v2/2026-08-01/geom-v3",
+            "source_record_id": "mn/000000/1",
+            "geometry_sha256": "5ed87d37d872789086452c35f658f5628ba870ca36072c495bb88519592403ed",
+            "representative_point_method": "centroid_of_derived_wgs84_geometry",
+            "longitude": "-73.977264000",
+            "latitude": "40.753429000",
+            "transform_execution_id": "sha256-execution-26v2",
+            "transform_definition_id": "sha256-definition-hpgn",
+            "claimed_home_cell": "892a100d26bffff"
+        }],
+        "max_rows": 8
+    })
+}
+
 fn tile_cells() -> (CellIndex, CellIndex, CellIndex) {
     let center = CellIndex::from_str("892a100d26bffff").expect("valid fixture cell");
     let neighbor = center
@@ -424,6 +448,62 @@ fn geo_tile_work_emits_a_bounded_work_unit_and_refuses_outside_reach() {
     assert_eq!(
         refusal["refusal"]["detail"]["geo_tile_error_code"],
         "feature_outside_halo"
+    );
+}
+
+#[test]
+fn geo_materialize_home_cells_emits_h3o_assignment_and_reports_claimed_mismatch() {
+    let temp = tempdir().expect("tempdir");
+    let rows = write_json(
+        temp.path(),
+        "home-cells.json",
+        &tiny_home_cell_rows("EPSG:4326"),
+    );
+    let first = canon_command()
+        .args([
+            "geo",
+            "materialize-home-cells",
+            "--rows",
+            rows.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let second = canon_command()
+        .args([
+            "geo",
+            "materialize-home-cells",
+            "--rows",
+            rows.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    assert_eq!(first.get_output().stdout, second.get_output().stdout);
+    let artifact: Value = serde_json::from_slice(&first.get_output().stdout).unwrap();
+    assert_eq!(artifact["version"], "canon_geo_home_cell_assignment.v0");
+    assert_eq!(artifact["features"][0]["home_cell"], "892a100d62bffff");
+    assert_eq!(artifact["features"][0]["parity"], "mismatch");
+    assert_eq!(artifact["summary"]["mismatches"], 1);
+    assert_eq!(artifact["tile_work_features"][0]["feature_id"], "parcel-a");
+
+    let bad = write_json(
+        temp.path(),
+        "home-cells-bad-crs.json",
+        &tiny_home_cell_rows("EPSG:2263"),
+    );
+    let refusal = canon_command()
+        .args([
+            "geo",
+            "materialize-home-cells",
+            "--rows",
+            bad.to_str().unwrap(),
+        ])
+        .assert()
+        .code(2);
+    let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout).unwrap();
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(
+        refusal["refusal"]["detail"]["geo_tile_error_code"],
+        "invalid_input"
     );
 }
 

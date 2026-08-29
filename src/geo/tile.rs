@@ -10,7 +10,8 @@
 //! may observe the same decision, but reconciliation either produces one owned
 //! decision or refuses an orphan/non-confluent boundary result.
 
-use h3o::CellIndex;
+use super::geometry_value::parse_fixed_decimal;
+use h3o::{CellIndex, LatLng, Resolution};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -21,6 +22,8 @@ use std::{
 
 pub const CANON_GEO_TILE_WORK_REQUEST_VERSION: &str = "canon_geo_tile_work_request.v0";
 pub const CANON_GEO_TILE_WORK_UNIT_VERSION: &str = "canon_geo_tile_work_unit.v0";
+pub const CANON_GEO_HOME_CELL_ROWS_VERSION: &str = "canon_geo_home_cell_rows.v0";
+pub const CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION: &str = "canon_geo_home_cell_assignment.v0";
 pub const CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION: &str =
     "canon_geo_tile_reconciliation_request.v0";
 pub const CANON_GEO_TILE_RECONCILIATION_VERSION: &str = "canon_geo_tile_reconciliation.v0";
@@ -31,6 +34,9 @@ const MAX_WORK_CELLS: u64 = 100_000;
 const MAX_RECONCILIATION_BATCHES: u64 = 100_000;
 const MAX_RECONCILIATION_PROPOSALS: u64 = 1_000_000;
 const MAX_MEMBERS_PER_DECISION: u64 = 100_000;
+const MAX_HOME_CELL_ROWS: u64 = 1_000_000;
+const MAX_COORDINATE_DECIMAL_PLACES: u32 = 9;
+const MAX_STABILITY_RADIUS_FIXED: u64 = 10_000_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -41,6 +47,117 @@ pub struct GeoTileFeatureRef {
     /// point. Cell computation belongs to ingest; this contract makes the
     /// ownership input explicit and auditable.
     pub home_cell: String,
+}
+
+/// One offline representative-point row used to derive an H3 blocking and
+/// ownership cell. The geometry digest and optional transform identifiers bind
+/// the point to evidence; H3 itself is never admitted as geometric truth.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoHomeCellRow {
+    pub source_name: String,
+    pub feature_id: String,
+    pub source_snapshot: String,
+    pub source_record_id: String,
+    pub geometry_sha256: String,
+    pub representative_point_method: String,
+    pub longitude: String,
+    pub latitude: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transform_execution_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transform_definition_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claimed_home_cell: Option<String>,
+}
+
+/// Offline rows exported from one or more release-pinned source snapshots.
+/// Coordinates are fixed decimal text so request parsing never depends on a
+/// JSON-number implementation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoHomeCellRowsRequest {
+    pub version: String,
+    pub coordinate_crs: String,
+    pub coordinate_decimal_places: u32,
+    pub h3_resolution: u8,
+    /// Probe radius in exact fixed coordinate units. At nine decimal places,
+    /// 1,000 units is one microdegree. All nine corner/axis/centre probes are
+    /// retained as a sensitivity set rather than collapsed into a false claim
+    /// that the representative point is world-exact.
+    pub stability_radius_fixed: u64,
+    pub rows: Vec<GeoHomeCellRow>,
+    pub max_rows: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoHomeCellParity {
+    NotClaimed,
+    Match,
+    Mismatch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRepresentativePointFixed {
+    pub longitude: i64,
+    pub latitude: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoHomeCellFeatureAssignment {
+    pub source_name: String,
+    pub feature_id: String,
+    pub source_snapshot: String,
+    pub source_record_id: String,
+    pub geometry_sha256: String,
+    pub representative_point_method: String,
+    pub representative_point_fixed: GeoRepresentativePointFixed,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transform_execution_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transform_definition_id: Option<String>,
+    pub home_cell: String,
+    /// Cells reached by the nine deterministic corner, axis, and center probes
+    /// of the declared coordinate envelope. More than one cell is a sampled
+    /// blocking-boundary sensitivity finding, not a second identity assertion
+    /// or exhaustive coverage of the continuous envelope.
+    pub stability_cells: Vec<String>,
+    /// Smallest H3 grid radius from `home_cell` containing every retained
+    /// stability probe. A work planner can compare this directly with its
+    /// controlled halo rather than assuming one ring is always sufficient.
+    pub minimum_stability_halo_k: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claimed_home_cell: Option<String>,
+    pub parity: GeoHomeCellParity,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoHomeCellAssignmentSummary {
+    pub total: u64,
+    pub boundary_sensitive: u64,
+    pub max_minimum_stability_halo_k: u32,
+    pub claimed: u64,
+    pub matches: u64,
+    pub mismatches: u64,
+    pub unclaimed: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoHomeCellAssignmentArtifact {
+    pub version: String,
+    pub request_version: String,
+    pub coordinate_crs: String,
+    pub coordinate_decimal_places: u32,
+    pub h3_resolution: u8,
+    pub stability_radius_fixed: u64,
+    pub features: Vec<GeoHomeCellFeatureAssignment>,
+    pub tile_work_features: Vec<GeoTileFeatureRef>,
+    pub summary: GeoHomeCellAssignmentSummary,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -168,6 +285,9 @@ pub struct GeoTileReconciliationArtifact {
 pub enum GeoTileErrorCode {
     UnsupportedVersion,
     InvalidInput,
+    InvalidCoordinate,
+    InvalidSourceDigest,
+    MixedSourceSnapshot,
     InvalidH3Cell,
     ResolutionMismatch,
     HaloBudgetExceeded,
@@ -241,6 +361,227 @@ struct ValidatedWorkUnit {
     center: CellIndex,
     feature_home_cells: FeatureHomeCells,
     blake3: String,
+}
+
+/// Derive deterministic H3 home cells from release-bound representative points.
+///
+/// The primary cell is h3o's cell for the admitted fixed-decimal coordinate.
+/// Nine points probe the declared coordinate envelope and their cells are
+/// retained explicitly. A mismatch against a claimed warehouse cell is reported rather
+/// than refused because parity is an empirical finding; malformed or
+/// wrong-resolution claims still refuse.
+pub fn materialize_home_cells(
+    request: &GeoHomeCellRowsRequest,
+) -> Result<GeoHomeCellAssignmentArtifact, GeoTileError> {
+    if request.version != CANON_GEO_HOME_CELL_ROWS_VERSION {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::UnsupportedVersion,
+            "Unsupported Geo home-cell rows version",
+            [
+                ("actual", request.version.as_str()),
+                ("expected", CANON_GEO_HOME_CELL_ROWS_VERSION),
+            ],
+        ));
+    }
+    if request.coordinate_crs != "EPSG:4326" {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidInput,
+            "H3 representative points must use explicit EPSG:4326 longitude/latitude",
+            [("coordinate_crs", request.coordinate_crs.as_str())],
+        ));
+    }
+    if request.coordinate_decimal_places > MAX_COORDINATE_DECIMAL_PLACES {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidInput,
+            "Geo home-cell coordinate precision exceeds the deterministic admission limit",
+            [
+                (
+                    "coordinate_decimal_places",
+                    request.coordinate_decimal_places.to_string(),
+                ),
+                ("hard_max", MAX_COORDINATE_DECIMAL_PLACES.to_string()),
+            ],
+        ));
+    }
+    if request.stability_radius_fixed > MAX_STABILITY_RADIUS_FIXED {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidInput,
+            "Geo home-cell stability radius exceeds the kernel ceiling",
+            [
+                (
+                    "stability_radius_fixed",
+                    request.stability_radius_fixed.to_string(),
+                ),
+                ("hard_max", MAX_STABILITY_RADIUS_FIXED.to_string()),
+            ],
+        ));
+    }
+    validate_budget("max_rows", request.max_rows, MAX_HOME_CELL_ROWS)?;
+    let row_count = usize_to_u64(request.rows.len(), "home_cell_rows.len")?;
+    if row_count == 0 || row_count > request.max_rows {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::FeatureBudgetExceeded,
+            "Geo home-cell row count is empty or exceeds the declared budget",
+            [
+                ("observed", row_count.to_string()),
+                ("configured", request.max_rows.to_string()),
+            ],
+        ));
+    }
+    let resolution = Resolution::try_from(request.h3_resolution).map_err(|error| {
+        GeoTileError::new(
+            GeoTileErrorCode::ResolutionMismatch,
+            "Geo home-cell request uses an unsupported H3 resolution",
+            [
+                ("h3_resolution", request.h3_resolution.to_string()),
+                ("error", error.to_string()),
+            ],
+        )
+    })?;
+    let scale = fixed_decimal_scale(request.coordinate_decimal_places)?;
+    let stability_radius = i64::try_from(request.stability_radius_fixed)
+        .map_err(|_| GeoTileError::overflow("stability_radius_fixed"))?;
+    validate_stability_radius(stability_radius, scale)?;
+    let mut seen_features = BTreeSet::new();
+    let mut seen_records = BTreeSet::new();
+    let mut source_signatures = BTreeMap::new();
+    let mut features = Vec::with_capacity(request.rows.len());
+
+    for row in &request.rows {
+        for (field, value) in [
+            ("rows[].source_name", row.source_name.as_str()),
+            ("rows[].feature_id", row.feature_id.as_str()),
+            ("rows[].source_snapshot", row.source_snapshot.as_str()),
+            ("rows[].source_record_id", row.source_record_id.as_str()),
+            (
+                "rows[].representative_point_method",
+                row.representative_point_method.as_str(),
+            ),
+        ] {
+            validate_identifier(field, value)?;
+        }
+        validate_sha256("rows[].geometry_sha256", &row.geometry_sha256)?;
+        validate_transform_pair(row)?;
+        validate_source_signature(&mut source_signatures, row)?;
+        let feature_key = (row.source_name.clone(), row.feature_id.clone());
+        if !seen_features.insert(feature_key) {
+            return Err(GeoTileError::new(
+                GeoTileErrorCode::DuplicateFeature,
+                "Geo home-cell rows repeat a source feature",
+                [
+                    ("source_name", row.source_name.as_str()),
+                    ("feature_id", row.feature_id.as_str()),
+                ],
+            ));
+        }
+        let record_key = (row.source_name.clone(), row.source_record_id.clone());
+        if !seen_records.insert(record_key) {
+            return Err(GeoTileError::new(
+                GeoTileErrorCode::DuplicateFeature,
+                "Geo home-cell rows repeat a source record",
+                [
+                    ("source_name", row.source_name.as_str()),
+                    ("source_record_id", row.source_record_id.as_str()),
+                ],
+            ));
+        }
+        let longitude = parse_home_coordinate(
+            "longitude",
+            &row.longitude,
+            request.coordinate_decimal_places,
+        )?;
+        let latitude =
+            parse_home_coordinate("latitude", &row.latitude, request.coordinate_decimal_places)?;
+        validate_longitude_latitude(longitude, latitude, scale)?;
+        let home = cell_for_fixed(longitude, latitude, scale, resolution)?;
+        let (stability_cells, minimum_stability_halo_k) =
+            stability_cells(longitude, latitude, scale, stability_radius, resolution)?;
+        let claimed = row
+            .claimed_home_cell
+            .as_deref()
+            .map(|value| parse_claimed_cell(value, resolution))
+            .transpose()?;
+        let parity = match claimed {
+            None => GeoHomeCellParity::NotClaimed,
+            Some(cell) if cell == home => GeoHomeCellParity::Match,
+            Some(_) => GeoHomeCellParity::Mismatch,
+        };
+        features.push(GeoHomeCellFeatureAssignment {
+            source_name: row.source_name.clone(),
+            feature_id: row.feature_id.clone(),
+            source_snapshot: row.source_snapshot.clone(),
+            source_record_id: row.source_record_id.clone(),
+            geometry_sha256: row.geometry_sha256.clone(),
+            representative_point_method: row.representative_point_method.clone(),
+            representative_point_fixed: GeoRepresentativePointFixed {
+                longitude,
+                latitude,
+            },
+            transform_execution_id: row.transform_execution_id.clone(),
+            transform_definition_id: row.transform_definition_id.clone(),
+            home_cell: home.to_string(),
+            stability_cells,
+            minimum_stability_halo_k,
+            claimed_home_cell: claimed.map(|cell| cell.to_string()),
+            parity,
+        });
+    }
+    features.sort();
+    let tile_work_features = features
+        .iter()
+        .map(|feature| GeoTileFeatureRef {
+            source_name: feature.source_name.clone(),
+            feature_id: feature.feature_id.clone(),
+            home_cell: feature.home_cell.clone(),
+        })
+        .collect::<Vec<_>>();
+    let mut summary = GeoHomeCellAssignmentSummary {
+        total: row_count,
+        boundary_sensitive: 0,
+        max_minimum_stability_halo_k: 0,
+        claimed: 0,
+        matches: 0,
+        mismatches: 0,
+        unclaimed: 0,
+    };
+    for feature in &features {
+        if feature.stability_cells.len() > 1 {
+            summary.boundary_sensitive = checked_add(
+                summary.boundary_sensitive,
+                1,
+                "home_cell_summary.boundary_sensitive",
+            )?;
+        }
+        summary.max_minimum_stability_halo_k = summary
+            .max_minimum_stability_halo_k
+            .max(feature.minimum_stability_halo_k);
+        match feature.parity {
+            GeoHomeCellParity::NotClaimed => {
+                summary.unclaimed =
+                    checked_add(summary.unclaimed, 1, "home_cell_summary.unclaimed")?;
+            }
+            GeoHomeCellParity::Match => {
+                summary.claimed = checked_add(summary.claimed, 1, "home_cell_summary.claimed")?;
+                summary.matches = checked_add(summary.matches, 1, "home_cell_summary.matches")?;
+            }
+            GeoHomeCellParity::Mismatch => {
+                summary.claimed = checked_add(summary.claimed, 1, "home_cell_summary.claimed")?;
+                summary.mismatches =
+                    checked_add(summary.mismatches, 1, "home_cell_summary.mismatches")?;
+            }
+        }
+    }
+    Ok(GeoHomeCellAssignmentArtifact {
+        version: CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION.to_string(),
+        request_version: request.version.clone(),
+        coordinate_crs: request.coordinate_crs.clone(),
+        coordinate_decimal_places: request.coordinate_decimal_places,
+        h3_resolution: request.h3_resolution,
+        stability_radius_fixed: request.stability_radius_fixed,
+        features,
+        tile_work_features,
+        summary,
+    })
 }
 
 /// Build one exact center-plus-halo feature work unit.
@@ -615,6 +956,12 @@ pub fn canonical_tile_work_unit_bytes(
     serde_json::to_vec(artifact)
 }
 
+pub fn canonical_home_cell_assignment_bytes(
+    artifact: &GeoHomeCellAssignmentArtifact,
+) -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(artifact)
+}
+
 pub fn canonical_tile_reconciliation_bytes(
     artifact: &GeoTileReconciliationArtifact,
 ) -> Result<Vec<u8>, serde_json::Error> {
@@ -772,6 +1119,242 @@ fn parse_cell(value: &str, field: &str) -> Result<CellIndex, GeoTileError> {
         ));
     }
     Ok(cell)
+}
+
+fn parse_home_coordinate(
+    axis: &str,
+    value: &str,
+    decimal_places: u32,
+) -> Result<i64, GeoTileError> {
+    parse_fixed_decimal(axis, value, decimal_places).map_err(|error| {
+        GeoTileError::new(
+            GeoTileErrorCode::InvalidCoordinate,
+            "Geo home-cell representative point is not an admissible fixed decimal",
+            [
+                ("axis", axis.to_string()),
+                ("value", value.to_string()),
+                ("cause", format!("{:?}", error.code)),
+                ("cause_message", error.message),
+            ],
+        )
+    })
+}
+
+fn fixed_decimal_scale(decimal_places: u32) -> Result<i64, GeoTileError> {
+    let mut scale = 1_i64;
+    for _ in 0..decimal_places {
+        scale = scale
+            .checked_mul(10)
+            .ok_or_else(|| GeoTileError::overflow("coordinate_decimal_scale"))?;
+    }
+    Ok(scale)
+}
+
+fn validate_longitude_latitude(
+    longitude: i64,
+    latitude: i64,
+    scale: i64,
+) -> Result<(), GeoTileError> {
+    let max_longitude = scale
+        .checked_mul(180)
+        .ok_or_else(|| GeoTileError::overflow("longitude_bound"))?;
+    let max_latitude = scale
+        .checked_mul(90)
+        .ok_or_else(|| GeoTileError::overflow("latitude_bound"))?;
+    if longitude < -max_longitude
+        || longitude > max_longitude
+        || latitude < -max_latitude
+        || latitude > max_latitude
+    {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidCoordinate,
+            "Geo home-cell representative point falls outside longitude/latitude bounds",
+            [
+                ("longitude_fixed", longitude.to_string()),
+                ("latitude_fixed", latitude.to_string()),
+                ("coordinate_scale", scale.to_string()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn cell_for_fixed(
+    longitude: i64,
+    latitude: i64,
+    scale: i64,
+    resolution: Resolution,
+) -> Result<CellIndex, GeoTileError> {
+    let longitude_degrees = (longitude as f64) / (scale as f64);
+    let latitude_degrees = (latitude as f64) / (scale as f64);
+    let point = LatLng::new(latitude_degrees, longitude_degrees).map_err(|error| {
+        GeoTileError::new(
+            GeoTileErrorCode::InvalidCoordinate,
+            "Geo home-cell representative point could not enter h3o",
+            [
+                ("longitude_fixed", longitude.to_string()),
+                ("latitude_fixed", latitude.to_string()),
+                ("coordinate_scale", scale.to_string()),
+                ("error", error.to_string()),
+            ],
+        )
+    })?;
+    Ok(point.to_cell(resolution))
+}
+
+fn stability_cells(
+    longitude: i64,
+    latitude: i64,
+    scale: i64,
+    radius: i64,
+    resolution: Resolution,
+) -> Result<(Vec<String>, u32), GeoTileError> {
+    let home = cell_for_fixed(longitude, latitude, scale, resolution)?;
+    let mut cells = BTreeSet::new();
+    for longitude_offset in [-radius, 0, radius] {
+        for latitude_offset in [-radius, 0, radius] {
+            let probed_longitude = longitude
+                .checked_add(longitude_offset)
+                .ok_or_else(|| GeoTileError::overflow("stability_probe.longitude"))?;
+            let probed_latitude = latitude
+                .checked_add(latitude_offset)
+                .ok_or_else(|| GeoTileError::overflow("stability_probe.latitude"))?;
+            validate_longitude_latitude(probed_longitude, probed_latitude, scale)?;
+            cells.insert(cell_for_fixed(
+                probed_longitude,
+                probed_latitude,
+                scale,
+                resolution,
+            )?);
+        }
+    }
+    let mut minimum_halo_k = 0_u32;
+    for cell in &cells {
+        let distance = home.grid_distance(*cell).map_err(|error| {
+            GeoTileError::new(
+                GeoTileErrorCode::InvalidH3Cell,
+                "Geo home-cell stability probe has no deterministic local H3 grid distance",
+                [
+                    ("home_cell", home.to_string()),
+                    ("probe_cell", cell.to_string()),
+                    ("error", error.to_string()),
+                ],
+            )
+        })?;
+        let distance = u32::try_from(distance)
+            .map_err(|_| GeoTileError::overflow("minimum_stability_halo_k"))?;
+        minimum_halo_k = minimum_halo_k.max(distance);
+    }
+    Ok((
+        cells.into_iter().map(|cell| cell.to_string()).collect(),
+        minimum_halo_k,
+    ))
+}
+
+fn validate_stability_radius(radius: i64, scale: i64) -> Result<(), GeoTileError> {
+    let scaled_radius = u128::try_from(radius)
+        .map_err(|_| GeoTileError::overflow("stability_radius_fixed"))?
+        .checked_mul(10_000)
+        .ok_or_else(|| GeoTileError::overflow("stability_radius_degrees"))?;
+    if scaled_radius > u128::try_from(scale).map_err(|_| GeoTileError::overflow("scale"))? {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidInput,
+            "Geo home-cell stability radius exceeds 0.0001 coordinate degrees",
+            [
+                ("stability_radius_fixed", radius.to_string()),
+                ("coordinate_scale", scale.to_string()),
+                ("maximum_degrees", "0.0001".to_string()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn parse_claimed_cell(
+    value: &str,
+    expected_resolution: Resolution,
+) -> Result<CellIndex, GeoTileError> {
+    let cell = parse_cell(value, "rows[].claimed_home_cell")?;
+    if cell.resolution() != expected_resolution {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::ResolutionMismatch,
+            "Claimed Geo home cell uses a different H3 resolution",
+            [
+                (
+                    "expected_resolution",
+                    u8::from(expected_resolution).to_string(),
+                ),
+                ("actual_resolution", u8::from(cell.resolution()).to_string()),
+                ("actual_cell", value.to_string()),
+            ],
+        ));
+    }
+    Ok(cell)
+}
+
+fn validate_sha256(field: &str, value: &str) -> Result<(), GeoTileError> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidSourceDigest,
+            "Geo home-cell source geometry digest must be canonical lowercase SHA-256",
+            [("field", field), ("value", value)],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_transform_pair(row: &GeoHomeCellRow) -> Result<(), GeoTileError> {
+    match (
+        row.transform_execution_id.as_deref(),
+        row.transform_definition_id.as_deref(),
+    ) {
+        (None, None) => Ok(()),
+        (Some(execution), Some(definition)) => {
+            validate_identifier("rows[].transform_execution_id", execution)?;
+            validate_identifier("rows[].transform_definition_id", definition)
+        }
+        _ => Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidInput,
+            "Geo home-cell transform execution and definition identifiers must be supplied together",
+            [
+                ("source_name", row.source_name.as_str()),
+                ("feature_id", row.feature_id.as_str()),
+            ],
+        )),
+    }
+}
+
+type SourceSignature = (String, String, Option<String>, Option<String>);
+
+fn validate_source_signature(
+    signatures: &mut BTreeMap<String, SourceSignature>,
+    row: &GeoHomeCellRow,
+) -> Result<(), GeoTileError> {
+    let signature = (
+        row.source_snapshot.clone(),
+        row.representative_point_method.clone(),
+        row.transform_execution_id.clone(),
+        row.transform_definition_id.clone(),
+    );
+    if let Some(expected) = signatures.get(&row.source_name) {
+        if expected != &signature {
+            return Err(GeoTileError::new(
+                GeoTileErrorCode::MixedSourceSnapshot,
+                "One Geo home-cell source name cannot mix snapshots, point methods, or transform executions",
+                [
+                    ("source_name", row.source_name.as_str()),
+                    ("source_snapshot", row.source_snapshot.as_str()),
+                ],
+            ));
+        }
+    } else {
+        signatures.insert(row.source_name.clone(), signature);
+    }
+    Ok(())
 }
 
 fn require_resolution(

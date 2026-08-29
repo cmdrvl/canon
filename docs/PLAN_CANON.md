@@ -88,6 +88,7 @@ canon project init <DIR> [--project-id <ID>] [--mapping-profile <REF>] [--emit j
 canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]
 canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]
 canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>
+canon geo materialize-home-cells --rows <ROWS.json>
 canon geo tile-work --request <REQUEST.json>
 canon geo reconcile-tiles --request <REQUEST.json>
 canon geo solve --request <REQUEST.json>

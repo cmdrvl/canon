@@ -11,6 +11,15 @@ Scope:
 - All cited counts must come from returned structured result tables, not Loom prose.
 - Predicate C means `ST_INTERSECTS(parcel, footprint) AND footprint_area_inside_parcel / footprint_area > 0.5`.
 
+Correction, 2026-08-29: the historical `MN_DENSE` label was wrong. A fresh
+release-pinned borough/coordinate control proved H3 cell `882a100d8bfffff` is
+Brooklyn (all 2,343 MapPLUTO borough codes `BK`; all 2,354 footprint BBLs use
+borough prefix 3). This report now uses `BK_DENSE`. Counts and predicate results
+are retained as historical results; only their geographic interpretation changes.
+The 2026-08-29 source-bound geom-v3 rerun in PLAN_CANON_GEO D.10 changes one
+Brooklyn row (same-cell 2,333/21, complete-reference 2,353/1) and supersedes
+these HOT-only operational counts without rewriting this measurement record.
+
 Sanity gates:
 
 - For predicate C, `multi_count` must be `0` because two disjoint parcels cannot each contain more than half of the same footprint area.
@@ -23,7 +32,7 @@ Appendix D already verified:
 
 | Cell | Stratum | Parcels | NYC Footprints | Exactly One | Zero | Multi |
 |---|---:|---:|---:|---:|---:|---:|
-| `882a100d8bfffff` | Manhattan dense | 2,343 | 2,354 | 1,988 (84%) | 366 (16%) | 0 |
+| `882a100d8bfffff` | Brooklyn dense | 2,343 | 2,354 | 1,988 (84%) | 366 (16%) | 0 |
 | `882a100f4dfffff` | Bronx lower-density | 300 | 291 | 291 (100%) | 0 (0%) | 0 |
 
 ## T1 — Stratified NYC Predicate-C Measurements
@@ -32,7 +41,7 @@ Status: complete for four additional strata.
 
 Important denominator finding:
 
-Appendix D's published dense Manhattan count (`1,988` exactly-one, `366` zero) is not
+Appendix D's published dense Brooklyn count (`1,988` exactly-one, `366` zero) is not
 reproduced by the literal geometric denominator `ST_AREA(footprint.GEOM_GEOG)`. It is
 reproduced by the source `NYC_BUILDING_FOOTPRINTS_HOT.SHAPE_AREA` denominator:
 
@@ -70,7 +79,7 @@ T1 finding:
   two large parcel-star components of size 39 and 71. Exact compilation survives as a forest
   but not as a universal 2-5-variable component claim.
 - The literal `ST_AREA(footprint)` denominator is cleaner in every measured cell, but it does
-  not reproduce Appendix D's 16% dense-Manhattan no-majority population.
+  not reproduce Appendix D's 16% dense-Brooklyn no-majority population.
 
 Cell-selection SQL:
 
@@ -406,7 +415,7 @@ FEMA candidate counts used the exploded coverage table
 | Cell | Parcels | NYC footprints | FEMA by coverage | FEMA by HOT `H3_R8` |
 |---|---:|---:|---:|---:|
 | `882a100f4dfffff` BX | 300 | 291 | 115 | 116 |
-| `882a100d8bfffff` MN dense | 2,343 | 2,354 | 240 | 241 |
+| `882a100d8bfffff` BK dense | 2,343 | 2,354 | 240 | 241 |
 | `882a103b6bfffff` QN | 1,502 | 2,007 | 1,108 | 1,108 |
 
 Three-layer result:
@@ -414,17 +423,17 @@ Three-layer result:
 | Cell | Parcels | NYC exactly/zero/multi | FEMA exactly/zero/multi | FEMA `SQMETERS` exactly/zero/multi | Merged components | Merged mean | Merged max | Merged histogram | Sanity |
 |---|---:|---:|---:|---:|---:|---:|---:|---|---|
 | `882a100f4dfffff` BX | 300 | 274 / 17 / 0 | 76 / 39 / 0 | 75 / 40 / 0 | 356 | 1.983 | 19 | `1:122, 2:174, 3:36, 4:14, 5:4, 6:3, 7:1, 8:1, 19:1` | PASS |
-| `882a100d8bfffff` MN dense | 2,343 | 1,988 / 366 / 0 | 88 / 152 / 0 | 88 / 152 / 0 | 2,861 | 1.726 | 6 | `1:913, 2:1845, 3:83, 4:16, 5:3, 6:1` | PASS |
+| `882a100d8bfffff` BK dense | 2,343 | 1,988 / 366 / 0 | 88 / 152 / 0 | 88 / 152 / 0 | 2,861 | 1.726 | 6 | `1:913, 2:1845, 3:83, 4:16, 5:3, 6:1` | PASS |
 | `882a103b6bfffff` QN | 1,502 | 1,753 / 254 / 0 | 1,078 / 30 / 0 | 1,067 / 39 / 2 | 1,786 | 2.585 | 6 | `1:448, 2:299, 3:666, 4:293, 5:79, 6:1` | PASS |
 
 T2 finding:
 
 - Adding FEMA as a second footprint source does not re-percolate the graph under the geometric
   FEMA denominator. The merged graph remains a forest in all three cells.
-- FEMA coverage is sparse in dense Manhattan: only 88 of 240 FEMA structures (36.67%) get a
+- FEMA coverage is sparse in dense Brooklyn: only 88 of 240 FEMA structures (36.67%) get a
   majority parcel, with 152 zero-majority. It is much stronger in the Queens cell: 1,078 of
   1,108 (97.29%) get a majority parcel.
-- Bronx has a larger merged component (`max = 19`) than the dense Manhattan and Queens cells
+- Bronx has a larger merged component (`max = 19`) than the dense Brooklyn and Queens cells
   (`max = 6`), but this is still a parcel-star component, not tile percolation.
 - `SQMETERS` is not safe as a drop-in denominator: in Queens it gives 2 FEMA multi-matches,
   while the geometric denominator gives 0. This is a source-field unit/semantics warning.
@@ -433,7 +442,7 @@ FEMA candidate count SQL:
 
 ```sql
 WITH cells AS (
-  SELECT 'MN_DENSE' AS cell_name, '882a100d8bfffff' AS h3_cell, H3_STRING_TO_INT('882a100d8bfffff') AS h3_r8_int
+  SELECT 'BK_DENSE' AS cell_name, '882a100d8bfffff' AS h3_cell, H3_STRING_TO_INT('882a100d8bfffff') AS h3_r8_int
   UNION ALL
   SELECT 'BX_BASE', '882a100f4dfffff', H3_STRING_TO_INT('882a100f4dfffff')
   UNION ALL
@@ -489,7 +498,7 @@ T2 measurement SQL:
 
 ```sql
 WITH cells AS (
-  SELECT 'MN_DENSE' AS cell_name, '882a100d8bfffff' AS h3_cell, H3_STRING_TO_INT('882a100d8bfffff') AS h3_r8_int
+  SELECT 'BK_DENSE' AS cell_name, '882a100d8bfffff' AS h3_cell, H3_STRING_TO_INT('882a100d8bfffff') AS h3_r8_int
   UNION ALL
   SELECT 'BX_BASE', '882a100f4dfffff', H3_STRING_TO_INT('882a100f4dfffff')
   UNION ALL
@@ -718,12 +727,12 @@ JOIN component_hist_string ch ON ch.cell_name = pc.cell_name
 ORDER BY pc.cell_name;
 ```
 
-## T3 — Dense Manhattan No-Majority Characterization
+## T3 — Dense Brooklyn No-Majority Characterization
 
-Status: complete for dense Manhattan cell `882a100d8bfffff`.
+Status: complete for dense Brooklyn cell `882a100d8bfffff`.
 
 Population characterized: the 366 NYC footprints with zero Appendix-D-compatible
-`SHAPE_AREA` majority parcel in the dense Manhattan cell.
+`SHAPE_AREA` majority parcel in the dense Brooklyn cell.
 
 | No-majority footprints | 0 intersecting parcels | 1 intersecting parcel | Exactly 2 intersecting parcels | >2 intersecting parcels | Intersecting-parcel histogram |
 |---:|---:|---:|---:|---:|---|

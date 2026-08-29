@@ -736,6 +736,67 @@
       ]
     },
     {
+      "name": "geo materialize-home-cells",
+      "usage": "canon geo materialize-home-cells --rows <ROWS.json>",
+      "description": "Derive deterministic H3 blocking and ownership cells from release-bound fixed-decimal EPSG:4326 representative points, retaining source geometry bindings, nine-point coordinate-envelope probes, minimum probe-covering halos, and claimed-cell parity",
+      "output_mode": "json",
+      "output_schema": "canon_geo_home_cell_assignment.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads an offline row artifact and writes only stdout; h3o cell assignments are blocking and ownership metadata, never geometric truth; claimed warehouse mismatches remain visible, and one source name cannot mix temporal snapshots or transform executions",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "deterministic Geo home-cell assignment artifact emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, request IO, CRS, coordinate, digest, transform-binding, H3, resolution, duplicate, or budget error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon geo tile-work --request <REQUEST.json>",
+      "recovery": {
+        "next_command": "canon geo materialize-home-cells --rows <ROWS.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "rows",
+          "flag": "--rows",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding canon_geo_home_cell_rows.v0 rows"
+        }
+      ]
+    },
+    {
       "name": "geo tile-work",
       "usage": "canon geo tile-work --request <REQUEST.json>",
       "description": "Materialize a deterministic, budgeted H3 center-plus-halo feature work unit from explicit upstream home-cell assignments",

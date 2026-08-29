@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.home_cell_assignment.v0.schema.json",
+  "title": "canon.geo.home_cell_assignment.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "request_version",
+    "coordinate_crs",
+    "coordinate_decimal_places",
+    "h3_resolution",
+    "stability_radius_fixed",
+    "features",
+    "tile_work_features",
+    "summary"
+  ],
+  "properties": {
+    "version": { "const": "canon_geo_home_cell_assignment.v0" },
+    "request_version": { "const": "canon_geo_home_cell_rows.v0" },
+    "coordinate_crs": { "const": "EPSG:4326" },
+    "coordinate_decimal_places": { "type": "integer", "minimum": 0, "maximum": 9 },
+    "h3_resolution": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "stability_radius_fixed": { "type": "integer", "minimum": 0, "maximum": 10000000 },
+    "features": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/assignment" }
+    },
+    "tile_work_features": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/tile_work_feature" }
+    },
+    "summary": { "$ref": "#/$defs/summary" }
+  },
+  "$defs": {
+    "identifier": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "h3_cell": { "type": "string", "pattern": "^[0-9a-f]{15}$" },
+    "fixed_point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["longitude", "latitude"],
+      "properties": {
+        "longitude": { "type": "integer" },
+        "latitude": { "type": "integer" }
+      }
+    },
+    "assignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_name",
+        "feature_id",
+        "source_snapshot",
+        "source_record_id",
+        "geometry_sha256",
+        "representative_point_method",
+        "representative_point_fixed",
+        "home_cell",
+        "stability_cells",
+        "minimum_stability_halo_k",
+        "parity"
+      ],
+      "properties": {
+        "source_name": { "$ref": "#/$defs/identifier" },
+        "feature_id": { "$ref": "#/$defs/identifier" },
+        "source_snapshot": { "$ref": "#/$defs/identifier" },
+        "source_record_id": { "$ref": "#/$defs/identifier" },
+        "geometry_sha256": { "$ref": "#/$defs/sha256" },
+        "representative_point_method": { "$ref": "#/$defs/identifier" },
+        "representative_point_fixed": { "$ref": "#/$defs/fixed_point" },
+        "transform_execution_id": { "$ref": "#/$defs/identifier" },
+        "transform_definition_id": { "$ref": "#/$defs/identifier" },
+        "home_cell": { "$ref": "#/$defs/h3_cell" },
+        "stability_cells": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/h3_cell" }
+        },
+        "minimum_stability_halo_k": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "claimed_home_cell": { "$ref": "#/$defs/h3_cell" },
+        "parity": { "enum": ["not_claimed", "match", "mismatch"] }
+      }
+    },
+    "tile_work_feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_name", "feature_id", "home_cell"],
+      "properties": {
+        "source_name": { "$ref": "#/$defs/identifier" },
+        "feature_id": { "$ref": "#/$defs/identifier" },
+        "home_cell": { "$ref": "#/$defs/h3_cell" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "boundary_sensitive", "max_minimum_stability_halo_k", "claimed", "matches", "mismatches", "unclaimed"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "boundary_sensitive": { "type": "integer", "minimum": 0 },
+        "max_minimum_stability_halo_k": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "claimed": { "type": "integer", "minimum": 0 },
+        "matches": { "type": "integer", "minimum": 0 },
+        "mismatches": { "type": "integer", "minimum": 0 },
+        "unclaimed": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

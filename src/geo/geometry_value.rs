@@ -1701,7 +1701,7 @@ fn parse_source_point(
     Ok(point)
 }
 
-fn parse_fixed_decimal(
+pub(super) fn parse_fixed_decimal(
     axis: &str,
     value: &str,
     decimal_places: u32,

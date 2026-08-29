@@ -11,8 +11,9 @@ use crate::{
     CanonOutput, Refusal, RefusalCode,
     cli::{
         GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli, GeoLinkSourcesCli,
-        GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli, GeoMaterializeWarehouseGeometryCli,
-        GeoReconcileTilesCli, GeoSolveCli, GeoSubcommand, GeoTileWorkCli,
+        GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli, GeoMaterializeHomeCellsCli,
+        GeoMaterializeWarehouseGeometryCli, GeoReconcileTilesCli, GeoSolveCli, GeoSubcommand,
+        GeoTileWorkCli,
     },
     refusal,
 };
@@ -56,16 +57,20 @@ use super::{
         canonical_multisource_artifact_bytes, materialize_geo_multisource,
     },
     tile::{
+        CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_VERSION,
-        CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION, GeoTileError,
-        GeoTileReconciliationRequest, GeoTileWorkRequest, canonical_tile_reconciliation_bytes,
-        canonical_tile_work_unit_bytes, materialize_tile_work_unit, reconcile_tile_decisions,
+        CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
+        GeoHomeCellRowsRequest, GeoTileError, GeoTileReconciliationRequest, GeoTileWorkRequest,
+        canonical_home_cell_assignment_bytes, canonical_tile_reconciliation_bytes,
+        canonical_tile_work_unit_bytes, materialize_home_cells, materialize_tile_work_unit,
+        reconcile_tile_decisions,
     },
 };
 
 pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
     match &geo.command {
         GeoSubcommand::LinkSources(args) => run_link_sources(args),
+        GeoSubcommand::MaterializeHomeCells(args) => run_materialize_home_cells(args),
         GeoSubcommand::TileWork(args) => run_tile_work(args),
         GeoSubcommand::ReconcileTiles(args) => run_reconcile_tiles(args),
         GeoSubcommand::Solve(args) => run_solve(args),
@@ -76,6 +81,26 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
         GeoSubcommand::MaterializeEvidence(args) => run_materialize_evidence(args),
         GeoSubcommand::CompileEvidence(args) => run_compile_evidence(args),
         GeoSubcommand::Evaluate(args) => run_evaluate(args),
+    }
+}
+
+fn run_materialize_home_cells(args: &GeoMaterializeHomeCellsCli) -> Result<u8, Box<dyn Error>> {
+    let rows: GeoHomeCellRowsRequest = match read_request(
+        &args.rows,
+        "rows",
+        CANON_GEO_HOME_CELL_ROWS_VERSION,
+        "canon geo materialize-home-cells --rows <ROWS.json>",
+    ) {
+        Ok(rows) => rows,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let artifact = match materialize_home_cells(&rows) {
+        Ok(artifact) => artifact,
+        Err(error) => return emit_home_cell_error(error),
+    };
+    match canonical_home_cell_assignment_bytes(&artifact) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_serialization_refusal(CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, &error),
     }
 }
 
@@ -409,6 +434,22 @@ fn emit_tile_error(error: GeoTileError) -> Result<u8, Box<dyn Error>> {
         }),
         Some(
             "repair the request against its canon_geo_tile_*.v0 contract, then rerun the same canon geo command"
+                .to_string(),
+        ),
+    )
+}
+
+fn emit_home_cell_error(error: GeoTileError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo home-cell rows could not be materialized",
+        json!({
+            "geo_tile_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(
+            "repair the rows against canon_geo_home_cell_rows.v0, then rerun canon geo materialize-home-cells"
                 .to_string(),
         ),
     )

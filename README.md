@@ -377,6 +377,7 @@ canon project init <DIR> [--project-id <ID>] [--mapping-profile <REF>] [--emit j
 canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]
 canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]
 canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>
+canon geo materialize-home-cells --rows <ROWS.json>
 canon geo tile-work --request <REQUEST.json>
 canon geo reconcile-tiles --request <REQUEST.json>
 canon geo solve --request <REQUEST.json>
@@ -444,16 +445,31 @@ hash, pair-count diagnostics, anchor-conflict abstentions, and a path-independen
 artifact hash suitable for an upstream artifact reference. Roles and source count are
 provenance; they do not become evidence weights or independent constraints.
 
-`canon geo tile-work --request` turns explicit upstream H3 home-cell assignments into a
+`canon geo materialize-home-cells --rows` derives deterministic H3 blocking/ownership cells
+offline from release-bound, fixed-decimal EPSG:4326 representative points using h3o. Each
+row binds the point to a source snapshot, record, geometry SHA-256, representative-point
+method, and optional transform execution/definition pair. The artifact reports claimed
+warehouse-cell matches and mismatches rather than treating a claim as authority, and
+retains the cells reached by nine deterministic corner, axis, and center probes of a
+declared coordinate perturbation envelope. That sampled sensitivity set and its minimum
+covering halo expose blocking-boundary fragility; they do not exhaustively cover the
+continuous envelope and are not additional identity evidence. The digest is a typed
+binding, not a recomputation: geometry bytes are intentionally absent from this artifact.
+One source name cannot mix snapshots, point methods, or transform executions, preventing
+temporal evidence from becoming a timeless blocking claim. H3 remains an index, never a
+substitute for exact geometric predicates.
+
+`canon geo tile-work --request` turns explicit H3 home-cell assignments, including the
+`tile_work_features` projection emitted by `materialize-home-cells`, into a
 budgeted center-plus-`k`-ring work unit. The artifact records the complete ordered work
 cell set and classifies every supplied feature as center or halo. Mixed resolutions,
 duplicate source features, features outside the declared work cells, and cell/feature
-budget overruns refuse. Canon does not derive H3 cells from coordinates here: H3 is only a
-blocking and ownership index, and the geometry contracts remain authoritative for spatial
-predicates. Consequently this command cannot prove candidate recall or validate the
-upstream coordinate-to-H3 assignment. Declared budgets are additionally capped by fixed
-schema/kernel ceilings. A work unit is an envelope for incidence factorization and small
-exact residuals; it is not an instruction to solve every feature in the tile monolithically.
+budget overruns refuse. Geometry contracts remain authoritative for spatial predicates,
+and even verified home-cell assignment cannot prove candidate recall: reach still requires
+comparison against a complete bounded reference. Declared budgets are additionally capped
+by fixed schema/kernel ceilings. A work unit is an envelope for incidence factorization and
+small exact residuals; it is not an instruction to solve every feature in the tile
+monolithically.
 
 `canon geo reconcile-tiles --request` consumes independently solved decision batches,
 including the exact canonical work unit supplied to each solver, and emits one decision
