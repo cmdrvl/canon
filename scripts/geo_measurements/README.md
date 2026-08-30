@@ -133,6 +133,35 @@ and excludes FEMA, client layers, and every non-geometric constraint. The result
 does not establish citywide recall, exact-local-integer predicate parity, full
 Snowflake↔h3o assignment parity, or a solver runtime distribution.
 
+## 2026-08-30 Overture third-plane receipt
+
+`appendix_f_overture_three_source.sql` adds Overture buildings pinned to
+`2026-07-22.0` / `2026-07-22` without changing the MapPLUTO or NYC-footprint
+pins above. The statement returned 24 nonzero source-stratum rows under query
+`01c6bcc3-0821-a0dc-006c-c703088c2682` in 35,772 ms. Every emitted sanity field
+passed.
+
+- Overture center observations: 6,018 at r8 and 1,401 at r9. Controlled k1 and
+  the complete parcel reference both classified `6,005 / 13 / 0` at r8 and
+  `1,400 / 1 / 0` at r9 (one / zero / multiple majority parcels).
+- Overture repaired 88 same-cell misses at r8 and 66 at r9; no complete-reference
+  majority edge fell outside k1.
+- The combined raw-observation graph remains a forest, but its maximum parcel
+  star grows to 128 at r8 and 118 at r9. Those are observation-node counts, not
+  deduplicated latent buildings or final solver variables.
+- 7,360/7,419 measured Overture observations declare OpenStreetMap lineage.
+  Overture and direct OSM geometry therefore cannot be counted as independent
+  evidence. Raw OSM semantic tags may still be a distinct evidence channel when
+  preserved with record/version lineage and ODbL attribution.
+
+The upstream convenience contracts are not healthy: the pinned H3 coverage
+projection returned zero rows (`01c6bcbd-0821-a0dc-006c-c703088c2502`), and the
+typed building view failed its 28-versus-33-column contract
+(`01c6bcbc-0821-9afc-006c-c703088c06e6`). The working base table has 6,443,512
+distinct New York buildings with valid H3 anchors
+(`01c6bcbd-0821-a0dc-006c-c703088c24fe`), which is the explicitly documented
+bypass used by this measurement.
+
 Appendix B's query returns the frozen observation set. Build the bipartite graph
 between parcel and footprint centroids using haversine distance with mean Earth
 radius `6,371,008.8 m`; for each declared radius, connected components include

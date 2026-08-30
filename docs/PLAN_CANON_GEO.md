@@ -6,9 +6,10 @@
 > materializer exist. Deterministic H3 center-plus-halo work-unit materialization and
 > cross-boundary ownership reconciliation now exist over explicit upstream home-cell
 > assignments; controlled-halo candidate reach is positive in six NYC r8 strata and the
-> stress-selected logical r9 child of each stratum. Two-source work-unit volume and
-> parcel/footprint majority-incidence components are measured there, while citywide and
-> multi-source reach, warehouse/client H3 parity, and final solver-component cost remain
+> stress-selected logical r9 child of each stratum. Parcel/footprint majority-incidence
+> components are measured there first with NYC footprints and then with a lineage-aware
+> Overture building plane. Citywide reach, source-to-source latent-building
+> reconciliation, warehouse/client H3 parity, and final solver-component cost remain
 > open. Geometry
 > acquisition/ingest, temporal solving, knowledge compilation, and
 > the complete E4/E5 populations do not exist. This does not change canon core: runtime
@@ -49,9 +50,9 @@ The controlling state entering the main review is:
 | Tile work and boundary ownership | `canon geo materialize-home-cells` derives release-bound h3o cells from fixed-decimal WGS84 representative points, retains geometry/transform bindings, nine-point coordinate-envelope probes, the minimum probe-covering halo, and claimed-cell parity; it refuses temporal snapshot/method/transform mixing under one source name. The geometry digest is validated as a binding but cannot be recomputed because this artifact intentionally omits geometry bytes. `canon geo tile-work` materializes one budgeted H3 center-plus-halo work unit; `canon geo reconcile-tiles` validates the exact work unit supplied to each local solver, records a work-unit digest receipt, emits one owned decision per canonical member set, and refuses missing owners, halo-only decisions, unavailable members, and differing payload digests for the same members. H3 supplies blocking and ownership only, never geometric truth. Fresh v3 rows expose complete centroids but null source-plane H3 fields, correctly requiring this derived sibling. D.11 finds positive k1 reach in six r8 strata and one deliberately dense r9 child per stratum, with explicit Canon neighbor disks. It does not establish citywide recall, global h3o parity, client-layer coverage, or solver-payload interpretation. | `src/geo/tile.rs`, `canon_geo_home_cell_*.v0`, `canon_geo_tile_work_*.v0`, `canon_geo_tile_reconciliation*.v0`; executable assignment/ownership contract `IMPLEMENTED`, stratified bounded reach `MEASURED`, generalization `OPEN` |
 | Decision object | Entity-grain backbone and residual count with explicit scope and exactness; typed fallback when either is incomplete. Ledger keys are alias projections. | §§9, 10.2, 16.1; Appendix L.5 |
 | Candidate problem | Point re-ranking is not the dominant measured failure. The unresolved solver question is collateral composition over parcel/building sets. | Appendices L–M; `MEASURED`, with E4 `OPEN` |
-| Footprint→parcel predicate | Strictly more than 50% of computed footprint geometry inside computed parcel geometry, within an explicitly interior-disjoint parcel stratum; asserted area fields are observations, never denominators. Candidate reach is independent: a footprint and its majority parcel may have different H3 home cells. Overlapping legal parcel hierarchies require typed crosswalks. | Appendices D.9–D.11 and F; corrected predicate/reach split and stratified single-source halo `MEASURED`, broader multi-layer rerun `OPEN` |
-| Decomposition | Legacy mixed-denominator runs produced forests and parcel stars up to 71 variables. D.11's fresh geom-v3 single-source controlled-halo graph remains a forest in all twelve measured r8/r9 strata, with maxima 3–65 at r9 and 4–71 at r8. Those are parcel/center-footprint majority-incidence components, not the final solver graph: additional admitted evidence may couple parcels. Canonical overlap-aware multi-source decomposition remains open; solver incidence factorization is implemented independently. | Appendices D.11 and F; stratified single-source predicate incidence `MEASURED`, multi-source solver incidence `OPEN` |
-| Work-unit cost | The 200-feature, 0.5 s/tile, and 140 CPU-hour national figures are not supported. D.11 measures two-source r9+k1 work units of 378–4,670 nodes in a stress-biased six-cell sample, while predicate-incidence maxima remain 3–65. This separation supports component-wise solving but does not benchmark compilation or include FEMA/client layers. | Appendices B, C, D.11, F, G; original figures `FALSIFIED`, replacement runtime model `OPEN` |
+| Footprint→parcel predicate | Strictly more than 50% of computed footprint geometry inside computed parcel geometry, within an explicitly interior-disjoint parcel stratum; asserted area fields are observations, never denominators. Candidate reach is independent: a footprint and its majority parcel may have different H3 home cells. The fresh NYC+Overture rerun finds k1 equal to the complete parcel reference in all twelve measured strata for both footprint planes. Overlapping legal parcel hierarchies still require typed crosswalks. | Appendices D.9–D.11 and F.6; corrected predicate/reach split and stratified two-footprint-source halo `MEASURED`, FEMA/client rerun `OPEN` |
+| Decomposition | Legacy mixed-denominator runs produced forests and parcel stars up to 71 variables. D.11's fresh geom-v3 NYC-footprint graph remains a forest in all twelve measured r8/r9 strata, with maxima 3–65 at r9 and 4–71 at r8. F.6 adds Overture observations and remains a forest, but raw observation maxima rise to 5–118 at r9 and 7–128 at r8. Those are parcel/center-observation predicate-incidence components, not deduplicated latent buildings or final solver widths: source reconciliation and additional evidence may merge or couple them. Canonical overlap-aware solver decomposition remains open; solver incidence factorization is implemented independently. | Appendices D.11 and F.6; stratified multi-source predicate incidence `MEASURED`, multi-source solver incidence `OPEN` |
+| Work-unit cost | The 200-feature, 0.5 s/tile, and 140 CPU-hour national figures are not supported. D.11 measures two-source r9+k1 work units of 378–4,670 nodes. F.6's raw three-plane work units are 596–7,015 nodes at r9, while predicate-incidence maxima are 5–118. This supports component-wise solving but also proves that raw source rows must not be mistaken for latent-building variables; compilation, source reconciliation, FEMA, and client-layer costs remain unbenchmarked. | Appendices B, C, D.11, F.6, G; original figures `FALSIFIED`, replacement runtime model `OPEN` |
 | Address evidence | PAD materially repairs address representation and restores street-absence refutation, but is evidence rather than an oracle. | Appendix M; `MEASURED` on NYC PAD 26B |
 | Evaluation ladder | E1–E3 are complete. E4 has an exact factorized residual solver over admitted evidence (bd-2kjx.1–.3); the E4 population numbers and the E5 non-NYC evidence-tier curve remain the decisive gates. | §17 and Appendix L; E4/E5 `OPEN` |
 | Time semantics | Evidence admissions preserve whole-day valid-time intervals, and v0 deliberately keeps every time-scoped observation diagnostic because composition has no query-as-of domain. Allen/STP inference is not implemented. | §§3, 7, 16.3; compiler contract implemented, temporal solver `OPEN` |
@@ -61,7 +62,7 @@ The 2026-08-29 and 2026-08-30 live home-cell receipts are preserved in
 `scripts/geo_measurements/README.md`. It includes complete v3 null-H3 controls,
 a 10/10 bounded footprint h3o parity sample, a deterministic five-row MapPLUTO
 v3 artifact, the two-cell controlled-halo result, the twelve-stratum r8/r9
-reach and predicate-incidence measurement, and the correction that
+NYC-footprint and Overture reach/predicate-incidence measurements, and the correction that
 `882a100d8bfffff` is dense Brooklyn rather than Manhattan. None is promoted to
 global candidate-recall proof or final solver cost.
 
@@ -1709,6 +1710,58 @@ catch at the footprint level in this fabric, and the `gcc` coverage-rate constra
    per-component compilation budgets, not a proven global bound.
 4. All measurements NYC-only; the bead's suburban/agency-multifamily stratum has no
    landed source yet.
+
+## F.6 Fresh Overture third-plane rerun: positive reach, correlated lineage, wider raw stars
+
+On 2026-08-30, `scripts/geo_measurements/appendix_f_overture_three_source.sql`
+added release-pinned Overture buildings (`2026-07-22.0` / `2026-07-22`) to the
+same six r8 and six r9 strata used by D.11. MapPLUTO remained pinned to geom-v3
+`26v2` / `2026-08-01`; NYC footprints remained pinned to `2026-08-09`. The
+query returned 24 nonzero source-stratum rows in 35,772 ms under Snowflake query
+`01c6bcc3-0821-a0dc-006c-c703088c2682`. Every work-unit, denominator, reach,
+source-forest, source-count, and component-accounting check passed.
+
+| Resolution | Source | Center observations | same-cell one / zero / multi | k1 = complete one / zero / multi | OSM lineage |
+|---|---|---:|---:|---:|---:|
+| r8 | NYC footprints | 6,002 | 5,895 / 107 / 0 | 5,995 / 7 / 0 | n/a |
+| r8 | Overture buildings | 6,018 | 5,917 / 101 / 0 | 6,005 / 13 / 0 | 5,967 |
+| r9 | NYC footprints | 1,419 | 1,344 / 75 / 0 | 1,418 / 1 / 0 | n/a |
+| r9 | Overture buildings | 1,401 | 1,334 / 67 / 0 | 1,400 / 1 / 0 | 1,393 |
+
+`truth_outside_k1=0` for every source-stratum row. This is a second positive
+footprint-plane reach result over exactly the declared strata, not citywide
+recall. The complete parcel snapshot remains an audit oracle only; each solve
+still receives one bounded center-plus-k1 work unit.
+
+The combined raw-observation work units span 3,709–38,667 nodes at r8 and
+596–7,015 at r9. Parcel-star maxima rise from D.11's 4–71 to 7–128 at r8 and
+from 3–65 to 5–118 at r9 because geometrically similar observations from two
+footprint planes are both present. That is a useful upper bound on the
+predicate-incidence graph and a warning against budgeting the solver by source
+row count. It is **not** a latent-building count: source-to-source equivalence,
+segmentation disagreement, and admission into the actual solver incidence graph
+remain unimplemented and unmeasured.
+
+Lineage prevents an even more serious interpretation error. Across the measured
+Overture centers, 7,360/7,419 observations (99.20%) declare OpenStreetMap in
+`SOURCES_JSON`. A direct OSM/Overpass building polygon is therefore usually the
+same upstream evidence, not an independent corroborating vote. Direct OSM can
+still add a useful *semantic* plane—entrances, address tags, building parts,
+names, uses, levels, and POIs—but a production artifact must pin extract bytes or
+a replication sequence, preserve ODbL attribution, and retain OSM record/version
+lineage. A mutable live Overpass response is suitable for a bounded capability
+probe, not a reproducible solver input.
+
+The upstream landing is only partially repaired. The base table exposes
+6,443,512 distinct New York building features with valid H3 anchors (query
+`01c6bcbd-0821-a0dc-006c-c703088c24fe`, 1,315 ms), so the bounded measurement is
+real. However, `OVERTURE_MAPS_FEATURE_H3_COVERAGE` still returns zero pinned
+building rows (`01c6bcbd-0821-a0dc-006c-c703088c2502`), and
+`OVERTURE_MAPS_BUILDINGS_HOT` fails compilation because its declared 28 columns
+do not match the 33 produced by its view query
+(`01c6bcbc-0821-9afc-006c-c703088c06e6`). The landing bead remains open until
+those contracts are repaired; bypassing them through the working base table is
+measurement progress, not closure.
 
 ---
 
