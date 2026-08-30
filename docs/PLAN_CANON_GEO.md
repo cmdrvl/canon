@@ -5,8 +5,11 @@
 > factorization, bounded fallback, population evaluator, and offline warehouse-row
 > materializer exist. Deterministic H3 center-plus-halo work-unit materialization and
 > cross-boundary ownership reconciliation now exist over explicit upstream home-cell
-> assignments; bounded r8+k1 candidate reach is positive in two measured NYC cells, while
-> broader reach, warehouse/client H3 parity, and component cost remain open. Geometry
+> assignments; controlled-halo candidate reach is positive in six NYC r8 strata and the
+> stress-selected logical r9 child of each stratum. Two-source work-unit volume and
+> parcel/footprint majority-incidence components are measured there, while citywide and
+> multi-source reach, warehouse/client H3 parity, and final solver-component cost remain
+> open. Geometry
 > acquisition/ingest, temporal solving, knowledge compilation, and
 > the complete E4/E5 populations do not exist. This does not change canon core: runtime
 > lookup remains exact registry lookup.
@@ -19,7 +22,7 @@
 
 ## Review state and precedence
 
-> Last status reconciliation: **2026-08-29**. This is a review-navigation layer, not a
+> Last status reconciliation: **2026-08-30**. This is a review-navigation layer, not a
 > claim that the full architecture ships. The implemented walking skeleton is named
 > explicitly above and in the controlling-state table; everything else remains proposed.
 
@@ -43,23 +46,24 @@ The controlling state entering the main review is:
 | Product boundary | Core Canon remains exact registry replay; GEO is a build-time workbench. | `AGENTS.md`, `README.md`; binding boundary |
 | N-source row composition | `canon geo link-sources` now materializes three or more named local CSV sources through the existing entity multisource kernel. Geo requires exactly one target, at least one bounded reference, permits peers, refuses a globally canonical vendor role, defaults to the complete comparison graph, enforces per-pair budgets, emits anchor-conflict abstentions, and content-hashes every input and the merged rows. The semantic artifact hash excludes publication paths and is compatible with `EntityArtifactReference`; source count remains provenance rather than evidence weight. This is row composition, not spatial candidate reach, constraint admission, or solving. | `src/geo/multisource.rs`, `src/entity/multisource.rs`, `canon_geo_multisource_request.v0`, `canon_entity_multisource_link.v1`; implemented build-time workbench contract |
 | Offline row bridge | `canon geo materialize-evidence` deterministically groups release-pinned parcel, building/parcel-incidence, rho-contract, and immutable source-record rows into `canon_geo_evidence_request.v0`; duplicate grains and conflicting observation rows refuse, and the production evidence compiler validates the result. It performs no acquisition, and source-record multiplicity remains provenance rather than constraint weight. | `src/geo/materialize.rs`, `canon_geo_warehouse_rows.v0`; implemented build-time workbench contract |
-| Tile work and boundary ownership | `canon geo materialize-home-cells` derives release-bound h3o cells from fixed-decimal WGS84 representative points, retains geometry/transform bindings, nine-point coordinate-envelope probes, the minimum probe-covering halo, and claimed-cell parity; it refuses temporal snapshot/method/transform mixing under one source name. The geometry digest is validated as a binding but cannot be recomputed because this artifact intentionally omits geometry bytes. `canon geo tile-work` materializes one budgeted H3 center-plus-halo work unit; `canon geo reconcile-tiles` validates the exact work unit supplied to each local solver, records a work-unit digest receipt, emits one owned decision per canonical member set, and refuses missing owners, halo-only decisions, unavailable members, and differing payload digests for the same members. H3 supplies blocking and ownership only, never geometric truth. Fresh v3 rows expose complete centroids but null source-plane H3 fields, correctly requiring this derived sibling. D.10 finds positive bounded r8+k1 reach in two cells; broad candidate recall, real component distributions, and solver-payload interpretation remain open. | `src/geo/tile.rs`, `canon_geo_home_cell_*.v0`, `canon_geo_tile_work_*.v0`, `canon_geo_tile_reconciliation*.v0`; executable assignment/ownership contract `IMPLEMENTED`, bounded two-cell reach `MEASURED`, empirical scaling `OPEN` |
+| Tile work and boundary ownership | `canon geo materialize-home-cells` derives release-bound h3o cells from fixed-decimal WGS84 representative points, retains geometry/transform bindings, nine-point coordinate-envelope probes, the minimum probe-covering halo, and claimed-cell parity; it refuses temporal snapshot/method/transform mixing under one source name. The geometry digest is validated as a binding but cannot be recomputed because this artifact intentionally omits geometry bytes. `canon geo tile-work` materializes one budgeted H3 center-plus-halo work unit; `canon geo reconcile-tiles` validates the exact work unit supplied to each local solver, records a work-unit digest receipt, emits one owned decision per canonical member set, and refuses missing owners, halo-only decisions, unavailable members, and differing payload digests for the same members. H3 supplies blocking and ownership only, never geometric truth. Fresh v3 rows expose complete centroids but null source-plane H3 fields, correctly requiring this derived sibling. D.11 finds positive k1 reach in six r8 strata and one deliberately dense r9 child per stratum, with explicit Canon neighbor disks. It does not establish citywide recall, global h3o parity, client-layer coverage, or solver-payload interpretation. | `src/geo/tile.rs`, `canon_geo_home_cell_*.v0`, `canon_geo_tile_work_*.v0`, `canon_geo_tile_reconciliation*.v0`; executable assignment/ownership contract `IMPLEMENTED`, stratified bounded reach `MEASURED`, generalization `OPEN` |
 | Decision object | Entity-grain backbone and residual count with explicit scope and exactness; typed fallback when either is incomplete. Ledger keys are alias projections. | §§9, 10.2, 16.1; Appendix L.5 |
 | Candidate problem | Point re-ranking is not the dominant measured failure. The unresolved solver question is collateral composition over parcel/building sets. | Appendices L–M; `MEASURED`, with E4 `OPEN` |
-| Footprint→parcel predicate | Strictly more than 50% of computed footprint geometry inside computed parcel geometry, within an explicitly interior-disjoint parcel stratum; asserted area fields are observations, never denominators. Candidate reach is independent: a footprint and its majority parcel may have different H3 home cells. Overlapping legal parcel hierarchies require typed crosswalks. | Appendices D.9, D.10, and F; corrected predicate/reach split and bounded two-cell halo `MEASURED`, broader multi-layer rerun `OPEN` |
-| Decomposition | Legacy mixed-denominator runs produced forests and parcel stars up to 71 variables. A fresh single-source audit found that 20/22 dense-Brooklyn and 3/4 Bronx same-cell no-majority cases were actually H3 candidate-reach misses. Canonical geometric-over-geometric, overlap-aware, multi-source decomposition with a controlled halo remains open; solver incidence factorization is implemented independently. | Appendices D.9 and F; retained NYC evidence plus `OPEN` canonical rerun |
-| Work-unit cost | The 200-feature, 0.5 s/tile, and 140 CPU-hour national figures are not supported. Cost must be measured component-wise with halo reconciliation. | Appendices B, C, F, G; original figures `FALSIFIED`, replacement `OPEN` |
+| Footprint→parcel predicate | Strictly more than 50% of computed footprint geometry inside computed parcel geometry, within an explicitly interior-disjoint parcel stratum; asserted area fields are observations, never denominators. Candidate reach is independent: a footprint and its majority parcel may have different H3 home cells. Overlapping legal parcel hierarchies require typed crosswalks. | Appendices D.9–D.11 and F; corrected predicate/reach split and stratified single-source halo `MEASURED`, broader multi-layer rerun `OPEN` |
+| Decomposition | Legacy mixed-denominator runs produced forests and parcel stars up to 71 variables. D.11's fresh geom-v3 single-source controlled-halo graph remains a forest in all twelve measured r8/r9 strata, with maxima 3–65 at r9 and 4–71 at r8. Those are parcel/center-footprint majority-incidence components, not the final solver graph: additional admitted evidence may couple parcels. Canonical overlap-aware multi-source decomposition remains open; solver incidence factorization is implemented independently. | Appendices D.11 and F; stratified single-source predicate incidence `MEASURED`, multi-source solver incidence `OPEN` |
+| Work-unit cost | The 200-feature, 0.5 s/tile, and 140 CPU-hour national figures are not supported. D.11 measures two-source r9+k1 work units of 378–4,670 nodes in a stress-biased six-cell sample, while predicate-incidence maxima remain 3–65. This separation supports component-wise solving but does not benchmark compilation or include FEMA/client layers. | Appendices B, C, D.11, F, G; original figures `FALSIFIED`, replacement runtime model `OPEN` |
 | Address evidence | PAD materially repairs address representation and restores street-absence refutation, but is evidence rather than an oracle. | Appendix M; `MEASURED` on NYC PAD 26B |
 | Evaluation ladder | E1–E3 are complete. E4 has an exact factorized residual solver over admitted evidence (bd-2kjx.1–.3); the E4 population numbers and the E5 non-NYC evidence-tier curve remain the decisive gates. | §17 and Appendix L; E4/E5 `OPEN` |
 | Time semantics | Evidence admissions preserve whole-day valid-time intervals, and v0 deliberately keeps every time-scoped observation diagnostic because composition has no query-as-of domain. Allen/STP inference is not implemented. | §§3, 7, 16.3; compiler contract implemented, temporal solver `OPEN` |
 | Current precision claim | The 96–98% entity-grain answered-point estimate is provisional and truth-instrument-limited; Appendix M indicates residual contamination. | Appendices L.6 and M.5; `MEASURED`, not a release claim |
 
-The 2026-08-29 live home-cell receipt is preserved in
+The 2026-08-29 and 2026-08-30 live home-cell receipts are preserved in
 `scripts/geo_measurements/README.md`. It includes complete v3 null-H3 controls,
 a 10/10 bounded footprint h3o parity sample, a deterministic five-row MapPLUTO
-v3 artifact, the two-cell controlled-halo reach result, and the correction that
-`882a100d8bfffff` is dense Brooklyn rather than Manhattan. None of these is
-promoted to global candidate-recall proof.
+v3 artifact, the two-cell controlled-halo result, the twelve-stratum r8/r9
+reach and predicate-incidence measurement, and the correction that
+`882a100d8bfffff` is dense Brooklyn rather than Manhattan. None is promoted to
+global candidate-recall proof or final solver cost.
 
 ---
 
@@ -1492,6 +1496,65 @@ about another resolution or source, or a solver-correctness result. Snowflake
 GEOGRAPHY predicates provide the empirical comparison; Canon's exactness remains
 relative to quantized local integer geometry. The complete reference is an audit
 oracle only, never a proposal to solve the national parcel population together.
+
+## D.11 Stratified geom-v3 rerun: r8/r9 reach and incidence are different scales
+
+On 2026-08-30, the controlled-halo audit expanded to six r8 strata across all five
+boroughs and one stress-selected logical r9 child per stratum. Selection ranks the
+combined parcel-plus-footprint population whose representative points independently
+bin to the r8 stratum; it is deliberately stress-biased, not a random or
+population-representative sample. MapPLUTO is pinned to geom-v3 `26v2` /
+`2026-08-01`; active NYC footprints remain pinned to `2026-08-09`.
+
+Snowflake's two current point-to-cell functions first reproduced h3o's known r9 answer
+`892a100d62bffff` for the historical bad control point. Representative points were then
+assigned in Snowflake, while every seven-cell neighbor disk was emitted by
+`canon geo tile-work`. This repairs the old helper control enough for a warehouse
+measurement; it does **not** prove full-population Snowflake↔h3o parity.
+
+H3's hierarchy has exact logical ancestry but only approximate geometric containment.
+Consequently a point in a selected r9 cell may independently bin to an adjacent r8 cell
+rather than that r9 cell's logical parent. The selection receipt now reports both grains.
+Complete-r9 versus selection-in-r8 populations differed in Manhattan small by 10 parcels
+and 10 footprints, Queens medium by 20 and 35, and Staten Island by 0 and 6; the other
+three strata had no difference. The r9 table below uses the complete r9 populations.
+
+| Stratum | Work nodes r8 / r9 | Target footprints r8 / r9 | same-cell one/zero r8 | k1/global one/zero r8 | same-cell one/zero r9 | k1/global one/zero r9 | max incidence component r8 / r9 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Brooklyn dense | 25,786 / 4,670 | 2,354 / 375 | 2,333 / 21 | 2,353 / 1 | 366 / 9 | 374 / 1 | 5 / 5 |
+| Bronx lower | 2,688 / 617 | 291 / 69 | 287 / 4 | 290 / 1 | 67 / 2 | 69 / 0 | 9 / 3 |
+| Manhattan small | 2,403 / 378 | 45 / 34 | 42 / 3 | 45 / 0 | 34 / 0 | 34 / 0 | 4 / 3 |
+| Queens dense | 15,062 / 2,451 | 2,007 / 362 | 1,993 / 14 | 2,007 / 0 | 352 / 10 | 362 / 0 | 4 / 4 |
+| Queens medium | 11,856 / 3,489 | 1,049 / 386 | 1,036 / 13 | 1,044 / 5 | 372 / 14 | 386 / 0 | 5 / 4 |
+| Staten Island low | 2,260 / 662 | 256 / 193 | 204 / 52 | 256 / 0 | 153 / 40 | 193 / 0 | 71 / 65 |
+
+Across the six r8 centers, k1 recovered 100 same-cell misses and matched the complete
+reference for all 6,002 target footprints: 5,995 had one majority parcel, 7 had none,
+and zero had multiple majority parcels. Across the six r9 centers, k1 recovered 74
+same-cell misses and likewise matched the complete reference for all 1,419 targets:
+1,418 one, 1 none, 0 multiple. `truth_outside_k1 = 0` in every row. Work-unit,
+same/k1/global denominator, reach, forest, and component-accounting sanity checks all
+passed.
+
+The component graph contains every parcel in the k1 work unit plus center-owned
+footprints, with an edge only for the computed-geometric-area majority predicate.
+Therefore its many isolated parcels are real in this graph and its component maximum is
+more informative than its median of one. The Staten Island parcel-star persists at both
+resolutions (71 at r8, 65 at r9); r9 reduces work volume without removing the long-tail
+shape. These components are **not** claimed as final solver widths. Address, deed,
+collateral-set, attribute, and temporal constraints can join parcel variables that this
+single geometric channel leaves separate.
+
+The deterministic r9-center selection query is
+`scripts/geo_measurements/appendix_d_stratified_halo_centers.sql`; file-exact Snowflake
+query `01c6bc81-0821-9afc-006c-c703088c04f6` ran in 7,171 ms. It returns both the
+selection-in-r8 and complete-r9 denominators for all six declared centers, with both
+population-partition sanity checks passing. The main executable query is
+`scripts/geo_measurements/appendix_d_stratified_halo.sql`; file-exact Snowflake query
+`01c6bc7d-0821-a0dc-006c-c703088c231a` ran in 23,572 ms and returned twelve rows. It
+contains two sources only; FEMA, other footprint layers, client coverage holes, exact
+local-integer replay, citywide recall, and solver compilation/runtime distributions
+remain open.
 
 ---
 

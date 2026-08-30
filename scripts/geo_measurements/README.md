@@ -91,6 +91,48 @@ These receipts validate an executable source-to-blocking bridge and bounded
 k1 reach for exactly two cells. They do not prove citywide candidate recall,
 other resolutions, or solver correctness.
 
+## 2026-08-30 stratified r8/r9 receipt
+
+`appendix_d_stratified_halo_centers.sql` deterministically chooses one logical
+r9 child of each declared r8 stratum by ranking the combined parcel-plus-footprint
+population whose representative points independently bin to that r8, breaking ties
+by canonical H3 text. H3 logical ancestry is exact but geometric containment across
+resolutions is approximate, so the query separately reports the complete population
+of each selected r9 cell and the points that independently bin to another r8. The
+file-exact query `01c6bc81-0821-9afc-006c-c703088c04f6` ran in 7,171 ms;
+both population-partition sanity checks passed in all six rows.
+
+`appendix_d_stratified_halo.sql` pins MapPLUTO geom-v3 to `26v2` /
+`2026-08-01` and active NYC footprints to `2026-08-09`. It expands the audit
+to six r8 strata across all boroughs and the stress-selected r9 logical child.
+The r9 selection is a deliberate stress sample, not a population distribution.
+
+Complete-r9 versus selection-in-r8 populations differed in Manhattan small by
+10 parcels and 10 footprints, Queens medium by 20 and 35, and Staten Island by
+0 and 6; the other three strata had no difference. The measurement below uses
+the complete independently point-binned population at each resolution.
+
+Before the measurement, both current Snowflake point-to-cell functions returned
+h3o's `892a100d62bffff` for the historical bad control point. Canon emitted all
+twelve explicit k1 disks. File-exact query
+`01c6bc7d-0821-a0dc-006c-c703088c231a` ran in 23,572 ms and returned twelve
+nonzero rows with all seven sanity columns passing.
+
+- r8: 6,002 center footprints; same-cell `5,895 / 107 / 0`, k1 and complete
+  reference both `5,995 / 7 / 0`; 100 same-cell misses repaired by k1.
+- r9: 1,419 center footprints; same-cell `1,344 / 75 / 0`, k1 and complete
+  reference both `1,418 / 1 / 0`; 74 same-cell misses repaired by k1.
+- `truth_outside_k1=0` in all twelve strata. Two-source work-unit sizes were
+  2,260–25,786 nodes at r8 and 378–4,670 at r9.
+- Majority-incidence component maxima were 4–71 at r8 and 3–65 at r9. The
+  Staten Island parcel-star survives the resolution change.
+
+The component graph is explicitly limited to k1 parcels, center-owned NYC
+footprints, and geometric-area-majority edges. It is not the final solver graph
+and excludes FEMA, client layers, and every non-geometric constraint. The result
+does not establish citywide recall, exact-local-integer predicate parity, full
+Snowflake↔h3o assignment parity, or a solver runtime distribution.
+
 Appendix B's query returns the frozen observation set. Build the bipartite graph
 between parcel and footprint centroids using haversine distance with mean Earth
 radius `6,371,008.8 m`; for each declared radius, connected components include
