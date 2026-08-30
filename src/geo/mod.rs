@@ -13,6 +13,7 @@ pub mod geometry;
 pub mod geometry_value;
 pub mod materialize;
 pub mod multisource;
+pub mod residual_benchmark;
 pub mod tile;
 
 pub use composition::*;
@@ -22,4 +23,5 @@ pub use geometry::*;
 pub use geometry_value::*;
 pub use materialize::*;
 pub use multisource::*;
+pub use residual_benchmark::*;
 pub use tile::*;

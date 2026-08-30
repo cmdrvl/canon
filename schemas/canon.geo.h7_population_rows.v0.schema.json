@@ -1,0 +1,474 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.h7_population_rows.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.h7_population_rows.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_h7_population_rows.v0",
+      "type": "string"
+    },
+    "population_scope": { "$ref": "#/$defs/population_scope" },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "plane_denominators": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/plane_denominator" }
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/warehouse_row" }
+    },
+    "max_cases": { "type": "integer", "minimum": 1 },
+    "max_assignments": { "type": "integer", "minimum": 1 },
+    "max_materialized_models": { "type": "integer", "minimum": 1 }
+  },
+  "required": [
+    "version",
+    "population_scope",
+    "provenance",
+    "plane_denominators",
+    "rows",
+    "max_cases",
+    "max_assignments",
+    "max_materialized_models"
+  ],
+  "$defs": {
+    "truth_plane": {
+      "type": "string",
+      "enum": [
+        "non_round_amount_date_legal_borough",
+        "round_exact_lender_party"
+      ]
+    },
+    "association_plane": {
+      "type": "string",
+      "enum": ["single_property", "multi_property"]
+    },
+    "reach_status": {
+      "type": "string",
+      "enum": ["full", "partial", "none"]
+    },
+    "population_scope": {
+      "type": "string",
+      "enum": ["fixture_subset", "retained_complete", "live_complete"]
+    },
+    "result_mode": {
+      "type": "string",
+      "enum": ["live", "replay"]
+    },
+    "query_disposition": {
+      "type": "string",
+      "enum": ["cited", "diagnostic_only", "discarded", "cancelled"]
+    },
+    "discrepancy_status": {
+      "type": "string",
+      "enum": ["open", "resolved"]
+    },
+    "source_record_role": {
+      "type": "string",
+      "enum": [
+        "bridge_loan",
+        "acris_master",
+        "acris_legal",
+        "acris_party",
+        "mappluto_candidate",
+        "geocode_diagnostic"
+      ]
+    },
+    "external_receipt_kind": {
+      "type": "string",
+      "enum": [
+        "reveal_lineage",
+        "archived_appendix_g7",
+        "warehouse_query_history"
+      ]
+    },
+    "mappluto_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "release": { "type": "string" },
+        "release_dt": { "type": "string" },
+        "variant": { "type": "string" },
+        "geometry_contract_version": { "type": "string" }
+      },
+      "required": [
+        "release",
+        "release_dt",
+        "variant",
+        "geometry_contract_version"
+      ]
+    },
+    "filed_county_mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "filed_county": { "type": "string" },
+        "acris_borough": { "type": "integer", "minimum": 1, "maximum": 5 }
+      },
+      "required": ["filed_county", "acris_borough"]
+    },
+    "borough_edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "filed_county": { "type": "string" },
+        "filed_borough": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "legal_borough": { "type": "integer", "minimum": 1, "maximum": 5 }
+      },
+      "required": ["filed_county", "filed_borough", "legal_borough"]
+    },
+    "source_hash": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": { "type": "string" },
+        "hash_kind": { "type": "string" },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": ["source", "hash_kind", "sha256"]
+    },
+    "query_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "purpose": { "type": "string" },
+        "truth_plane": { "$ref": "#/$defs/truth_plane" },
+        "query_id": { "type": "string" },
+        "query_text_ref": { "type": "string" },
+        "normalized_query_text": { "type": "string" },
+        "query_blake3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "result_rows": { "type": "integer", "minimum": 0 },
+        "row_cap": { "type": "integer", "minimum": 1 },
+        "disposition": { "$ref": "#/$defs/query_disposition" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "purpose": { "const": "live_non_round_acris_candidate_legal_residual" }
+            },
+            "required": ["purpose"]
+          },
+          "then": {
+            "properties": {
+              "truth_plane": { "const": "non_round_amount_date_legal_borough" }
+            },
+            "required": ["truth_plane"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "purpose": { "const": "live_round_lender_acris_candidate_legal_residual" }
+            },
+            "required": ["purpose"]
+          },
+          "then": {
+            "properties": {
+              "truth_plane": { "const": "round_exact_lender_party" }
+            },
+            "required": ["truth_plane"]
+          }
+        }
+      ],
+      "required": [
+        "purpose",
+        "query_text_ref",
+        "query_blake3",
+        "result_rows",
+        "row_cap",
+        "disposition"
+      ]
+    },
+    "external_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "receipt_id": { "type": "string" },
+        "kind": { "$ref": "#/$defs/external_receipt_kind" },
+        "purpose": { "type": "string" }
+      },
+      "required": ["receipt_id", "kind", "purpose"]
+    },
+    "empirical_discrepancy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "subject": { "type": "string" },
+        "archived_measurement": { "type": "string" },
+        "fresh_measurement": { "type": "string" },
+        "status": { "$ref": "#/$defs/discrepancy_status" },
+        "receipt_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": [
+        "subject",
+        "archived_measurement",
+        "fresh_measurement",
+        "status",
+        "receipt_ids"
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "result_mode": { "$ref": "#/$defs/result_mode" },
+        "as_of": { "type": "string" },
+        "acris_release_dt": { "type": "string" },
+        "bridge_build_id": { "type": "string" },
+        "collateral_scope": {
+          "const": "nyc_filed_collateral_slice",
+          "type": "string"
+        },
+        "mappluto_releases": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/mappluto_pin" }
+        },
+        "primary_candidate_release": { "$ref": "#/$defs/mappluto_pin" },
+        "amount_cents_quantization": { "type": "string" },
+        "round_amount_lattice_cents": { "type": "integer", "minimum": 1 },
+        "lender_match_transform": { "type": "string" },
+        "filed_county_mapping": {
+          "type": "array",
+          "minItems": 8,
+          "items": { "$ref": "#/$defs/filed_county_mapping" }
+        },
+        "source_hashes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/source_hash" }
+        },
+        "query_receipts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/query_receipt" }
+        },
+        "external_receipts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/external_receipt" }
+        },
+        "empirical_discrepancies": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/empirical_discrepancy" }
+        },
+        "row_cap": { "type": "integer", "minimum": 1 },
+        "observed_rows": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "result_mode",
+        "as_of",
+        "acris_release_dt",
+        "bridge_build_id",
+        "collateral_scope",
+        "mappluto_releases",
+        "primary_candidate_release",
+        "amount_cents_quantization",
+        "round_amount_lattice_cents",
+        "lender_match_transform",
+        "filed_county_mapping",
+        "source_hashes",
+        "query_receipts",
+        "external_receipts",
+        "empirical_discrepancies",
+        "row_cap",
+        "observed_rows"
+      ]
+    },
+    "plane_denominator": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "truth_plane": { "$ref": "#/$defs/truth_plane" },
+        "eligible_loans": { "type": "integer", "minimum": 1 },
+        "candidate_loans": { "type": "integer", "minimum": 0 },
+        "legal_confirmed_candidate_loans": { "type": "integer", "minimum": 0 },
+        "accepted_loans": { "type": "integer", "minimum": 1 },
+        "ambiguous_loans": { "type": "integer", "minimum": 0 },
+        "candidate_no_legal_confirmation_loans": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "no_candidate_loans": { "type": "integer", "minimum": 0 },
+        "selected_multi_parcel_loans": { "type": "integer", "minimum": 1 }
+      },
+      "required": [
+        "truth_plane",
+        "eligible_loans",
+        "candidate_loans",
+        "legal_confirmed_candidate_loans",
+        "accepted_loans",
+        "ambiguous_loans",
+        "candidate_no_legal_confirmation_loans",
+        "no_candidate_loans",
+        "selected_multi_parcel_loans"
+      ]
+    },
+    "loan_field_distinct_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "originatorname": { "type": "integer", "minimum": 0 },
+        "originator_match_text": { "type": "integer", "minimum": 0 },
+        "originationdate": { "type": "integer", "minimum": 0 },
+        "originalloanamount": { "type": "integer", "minimum": 0 },
+        "filed_borough": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "originatorname",
+        "originator_match_text",
+        "originationdate",
+        "originalloanamount",
+        "filed_borough"
+      ]
+    },
+    "evidence_record_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_record_id": { "type": "string" },
+        "source_vintage": { "type": "string" },
+        "record_blake3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": ["source_record_id", "source_vintage", "record_blake3"]
+    },
+    "source_evidence_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "role": { "$ref": "#/$defs/source_record_role" },
+        "parcel_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string" }
+        },
+        "source_record": { "$ref": "#/$defs/evidence_record_ref" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "role": { "enum": ["acris_legal", "mappluto_candidate"] }
+            },
+            "required": ["role"]
+          },
+          "then": {
+            "properties": {
+              "parcel_ids": { "minItems": 1, "maxItems": 1 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "role": {
+                "enum": [
+                  "bridge_loan",
+                  "acris_master",
+                  "acris_party",
+                  "geocode_diagnostic"
+                ]
+              }
+            },
+            "required": ["role"]
+          },
+          "then": {
+            "properties": {
+              "parcel_ids": { "maxItems": 0 }
+            }
+          }
+        }
+      ],
+      "required": ["role", "parcel_ids", "source_record"]
+    },
+    "warehouse_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "loan_key": { "type": "string" },
+        "document_id": { "type": "string" },
+        "truth_plane": { "$ref": "#/$defs/truth_plane" },
+        "association_plane": { "$ref": "#/$defs/association_plane" },
+        "candidate_release": { "$ref": "#/$defs/mappluto_pin" },
+        "property_state": {
+          "const": "NY",
+          "type": "string"
+        },
+        "filed_county": { "type": "string" },
+        "filed_borough": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "legal_borough": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "accepted_borough_edges": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/borough_edge" }
+        },
+        "geocoded_county_fips": { "type": "string" },
+        "doc_type": { "type": "string" },
+        "originationdate": { "type": "string" },
+        "amount_cents": { "type": "integer", "minimum": 1 },
+        "is_round_100k_lattice": { "type": "boolean" },
+        "originatorname": { "type": "string" },
+        "originator_match_text": { "type": "string" },
+        "lender_match_text": { "type": "string" },
+        "lender_party_type": { "type": "string" },
+        "loan_field_distinct_counts": {
+          "$ref": "#/$defs/loan_field_distinct_counts"
+        },
+        "truth_parcels": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string" }
+        },
+        "candidate_parcels": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "reach_status": { "$ref": "#/$defs/reach_status" },
+        "reach_reason": { "type": "string" },
+        "source_records": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/source_evidence_record" }
+        }
+      },
+      "required": [
+        "loan_key",
+        "document_id",
+        "truth_plane",
+        "association_plane",
+        "candidate_release",
+        "property_state",
+        "filed_county",
+        "filed_borough",
+        "legal_borough",
+        "accepted_borough_edges",
+        "doc_type",
+        "originationdate",
+        "amount_cents",
+        "is_round_100k_lattice",
+        "loan_field_distinct_counts",
+        "truth_parcels",
+        "candidate_parcels",
+        "reach_status",
+        "reach_reason",
+        "source_records"
+      ]
+    }
+  }
+}

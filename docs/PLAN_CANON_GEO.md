@@ -1925,8 +1925,22 @@ description. The bridge snapshot is pinned to build
 `3aed6660-ce1c-46a9-aeb2-7296c134ce8f`; ACRIS is pinned to `RELEASE_DT = 2026-08-10`;
 MapPLUTO is scored separately at `26v1 / 2026-05-01 / shoreline_clipped` and
 `26v2 / 2026-08-01 / shoreline_clipped`. The truth gate maps the latest raw filed
-`PROPERTY_PERIOD_FACT.PROPERTYCOUNTY` to an ACRIS borough. Missing or unrecognized filed
-counties abstain. Geocoder-derived county is not admitted to truth selection.
+`PROPERTY_PERIOD_FACT.PROPERTYCOUNTY` to an ACRIS borough and requires raw filed
+`PROPERTYSTATE = 'NY'` from the same source. Missing or unrecognized filed counties
+abstain, and same-named counties outside New York do not enter H.7. Geocoder-derived
+county is not admitted to truth selection.
+
+Fresh control `01c6bd17-0821-a0dc-006c-c703088c2796` (197 ms, 7 rows) reproduced
+the 2,974-loan filed-state/county universe exactly: 653 non-round plus 2,321
+round. The raw county-only 3,016 result and the geocoder `COUNTY_FIPS` 647/2,291
+result are diagnostic-only. The 42 raw county-only extras were same-named counties
+outside New York: GA 29, CA 6, VA 5, NC 3, null 3, and NA 1, with overlapping
+loans across state buckets.
+
+H.7 truth is therefore scoped as the `nyc_filed_collateral_slice`. A mixed-state
+loan admitted through raw New York filed collateral is evaluated only for its NYC
+ACRIS slice; the materializer must not silently label that subset as full
+national collateral truth.
 
 The declared 2,974-loan universe separates two truth planes:
 
@@ -1947,11 +1961,44 @@ relative to the declared cents quantization
 `ROUND(value * 100, 0)::NUMBER(38,0)`, not exact relative to the source instrument or the
 world.
 
+Fresh originator availability control `01c6bd19-0821-9afc-006c-c703088c0936`
+(313 ms, 2 rows), with lineage receipts `1385b1fd64bf266f` and
+`dbd7d7dbc84727b2`, reports 653/653 non-round and 2,317/2,321 round originator
+text availability. That conflicts with the archived G7 availability figures
+(605/653 and 2,173/2,321). Treat it as an open empirical discrepancy; the
+historical 149 round exact-lender accepts are retained, not freshly reproduced,
+until the bounded ACRIS candidate/legal residual is rerun.
+
+Fresh round candidate aggregation `01c6bd25-0821-a0dc-006c-c703088c27be`
+(42,031 ms, nonzero array row) likewise conflicts with archived G7: it found
+2,317 round loans with exact originator text, 311 candidate loans, and 439
+loan-document pairs, versus archived 2,173 / 182 / 277. The cached identical
+repeat `01c6bd26-0821-9afc-006c-c703088c095a` is not an independent receipt.
+The aggregate-to-flatten legal continuation
+`01c6bd28-0821-a0dc-006c-c703088c27c6` hit deterministic client cancellation
+000604/57014 at 45,044 ms, so no fresh round legal counts are admissible.
+
 Candidate reach and scored precision are different quantities. Of the non-round plane,
-172/653 loans were uniquely admitted; 49 were ambiguous and 432 had no match. Of the round
-plane, 182/2,321 reached an exact lender candidate, 179 had legal confirmation, 149 were
-unique accepts, and 30 remained ambiguous. Source count is not treated as independent
-information, and the two planes are not pooled into a precision headline.
+262/653 reached an amount/date/legal-borough candidate; 221 had legal confirmation, 172
+were uniquely admitted, 49 remained ambiguous, 41 candidate loans had no legal
+confirmation, and 391 had no candidate. Of the round plane, 182/2,321 reached an exact
+lender candidate; 179 had legal confirmation, 149 were unique accepts, 30 remained
+ambiguous, three candidate loans had no legal confirmation, and 2,139 had no candidate.
+Source count is not treated as independent information, and the two planes are not pooled
+into a precision headline.
+
+The retained H.7 measurements define the `retained_complete` multi-BBL replay
+contract: 35 non-round accepted loan subjects plus 14 round accepted loan
+subjects, selected by accepted ACRIS `BBL_COUNT > 1` after legal acceptance. A
+typed artifact may claim `retained_complete` only when the supplied rows carry
+those 49 subjects, both pinned MapPLUTO candidate releases per subject (98
+release-run rows), matching payload row counts, preserved syntactically
+validated source hashes, and at least one non-fixture SQL-bound cited query receipt. Canon
+validates the source-hash syntax and identities but does not recompute source
+bytes in this offline materializer. The checked in-repo fixture remains
+`fixture_subset` with 1+1 subjects. The association-plane split below is a
+separate property-key stratum; neither the 49 retained subjects nor the 98
+release-run rows satisfy the frozen E4 target of 79 genuine cases.
 
 Point-grain PIP scoring against document BBL sets, using the latest geocode observation per
 exact point and the same filed-borough association, is:
@@ -1971,6 +2018,10 @@ precision would hide that ambiguity. The sharp non-round gap (59.00% versus 85.8
 empirical evidence of the confound. The exact-lender plane is steadier, but it mostly
 expands coverage and is not independent adjudication: 146/149 accepted loans are
 Manhattan-only and three are Queens-only.
+
+Do not use the G7.7 property-key association strata as the H.7 E4 selector:
+the 57 non-round and 51 round multi-property class loans are not the 35/14
+accepted ACRIS multi-BBL truth population.
 
 The same score at property-key grain is 67/109 and 131/153 lot-correct for non-round
 single/multi, and 72/96 and 78/104 for round exact-lender single/multi. Both MapPLUTO

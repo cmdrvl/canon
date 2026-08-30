@@ -977,6 +977,7 @@ fn geo_evaluate_scores_a_minimal_labeled_population() {
                         "max_assignments": 64,
                         "max_materialized_models": 64
                     },
+                    "truth_plane": "gate_v2_historical",
                     "truth": { "parcels": ["parcel-a"], "buildings": [] }
                 }
             ]

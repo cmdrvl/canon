@@ -242,6 +242,9 @@ pub enum GeoSubcommand {
     /// Fold release-pinned warehouse rows into a typed evidence request
     #[command(name = "materialize-evidence")]
     MaterializeEvidence(GeoMaterializeEvidenceCli),
+    /// Materialize controlling Appendix H.7 multi-parcel rows into a labeled population
+    #[command(name = "materialize-h7-population")]
+    MaterializeH7Population(GeoMaterializeH7PopulationCli),
     /// Admit versioned rho observations into a bounded composition request
     #[command(name = "compile-evidence")]
     CompileEvidence(GeoCompileEvidenceCli),
@@ -311,6 +314,13 @@ pub struct GeoCompileEvidenceCli {
 #[derive(Args, Debug, Clone)]
 pub struct GeoMaterializeEvidenceCli {
     /// JSON file holding canon_geo_warehouse_rows.v0 rows
+    #[arg(long)]
+    pub rows: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoMaterializeH7PopulationCli {
+    /// JSON file holding canon_geo_h7_population_rows.v0 rows
     #[arg(long)]
     pub rows: PathBuf,
 }

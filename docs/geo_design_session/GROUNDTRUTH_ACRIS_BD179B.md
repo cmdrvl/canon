@@ -2392,7 +2392,14 @@ sensitivity plane. The correction is to stop admitting it as controlling truth.
 
 Reveal provenance receipt `e441595de4d416a3` resolved
 `PROPERTY_PERIOD_FACT.PROPERTYCOUNTY` as the raw filed property county from the
-selected latest property-period snapshot. G7 admits only this mapping:
+selected latest property-period snapshot. G7 now also requires raw filed
+`PROPERTYSTATE = 'NY'` from the same property-period source before the county
+mapping can admit a loan. Fresh control query
+`01c6bd17-0821-a0dc-006c-c703088c2796` (197 ms, 7 rows) reproduced the
+2,974-loan universe exactly under `PROPERTYSTATE = 'NY'`: 653 non-round and
+2,321 round. The earlier raw county-only 3,016 diagnostic contained 42
+same-named-county cross-state extras: GA 29, CA 6, VA 5, NC 3, null 3, and NA 1,
+with overlap across state buckets. G7 admits only this state-guarded mapping:
 
 ```text
 NEW YORK | MANHATTAN | NY061  -> ACRIS borough 1
@@ -2406,6 +2413,33 @@ anything else or missing      -> abstain
 No geocoder county, parsed address, MapPLUTO address, or address-normalization
 key enters truth admission. Geocoded points enter only later, as the prediction
 being scored.
+
+Mixed-state loans admitted by the raw NY filed rows are scoped as
+`nyc_filed_collateral_slice`, not as full national collateral truth. A legal
+residual that materializes H.7 rows must preserve that scope explicitly rather
+than silently treating the NYC ACRIS subset as the whole loan.
+
+Fresh originator availability control
+`01c6bd19-0821-9afc-006c-c703088c0936` (313 ms, 2 rows), with lineage receipts
+`1385b1fd64bf266f` for raw ABS-EE `ORIGINATORNAME` inheritance and
+`dbd7d7dbc84727b2` for `ORIGINATOR_MATCH_TEXT` at source commit
+`e7c8989527cd2fed84749226bf807bf8a0c83fa4`, reports originator text on
+653/653 non-round and 2,317/2,321 round loans, with 0/4 absent and no
+ambiguities. This conflicts with the archived G7 availability figures
+(605/653 and 2,173/2,321). It is retained as an open empirical discrepancy.
+Until the bounded ACRIS candidate/legal residual is rerun, the historical
+149-loan round exact-lender acceptance is retained evidence, not freshly
+reproduced acceptance.
+
+Fresh bounded round candidate aggregation
+`01c6bd25-0821-a0dc-006c-c703088c27be` (42,031 ms, nonzero array row) reported
+2,317 round loans with exact originator text, 311 candidate loans, and 439
+loan-document pairs, versus archived G7 2,173 / 182 / 277. Cached identical
+repeat `01c6bd26-0821-9afc-006c-c703088c095a` is not independent. The bounded
+aggregate-to-flatten legal continuation
+`01c6bd28-0821-a0dc-006c-c703088c27c6` hit deterministic client cancellation
+000604/57014 at 45,044 ms. It is discarded/cancelled, not evidence; no fresh
+round legal counts are admissible from that attempt.
 
 ### G7.2 Pinned Sources And Live Controls
 
@@ -2564,15 +2598,20 @@ on 221 candidate loans:
 
 | non-round disposition | loans |
 |---|---:|
+| amount/date/legal-borough candidate | 262 |
+| legal-confirmed candidate | 221 |
 | unique accept | 172 |
 | ambiguous after all filters | 49 |
-| no match | 432 |
+| candidate without legal confirmation | 41 |
+| no candidate | 391 |
 | round, outside plane | 2,321 |
 | **reconciled universe** | **2,974** |
 
 The 172 accepts comprise 137 one-BBL and 35 multi-BBL loans, carrying 446 ACRIS
-BBL edges. Acceptance reach is 172/653 = **26.34%** of the non-round eligible
-plane and 172/2,974 = **5.78%** of the full filed-county universe.
+BBL edges. The multi-BBL count is defined here by accepted ACRIS truth
+`BBL_COUNT > 1`, after legal acceptance, not by bridge property-key count.
+Acceptance reach is 172/653 = **26.34%** of the non-round eligible plane and
+172/2,974 = **5.78%** of the full filed-county universe.
 
 Across all amount classes, exact lender matching produced 324 pairs on 229
 loans. The round subset contained 277 pairs on 182 loans. Legal confirmation
@@ -2583,18 +2622,33 @@ confirmation. The final round plane is:
 |---|---:|
 | originator text available | 2,173 |
 | exact lender candidate | 182 |
+| legal-confirmed exact lender candidate | 179 |
 | unique legal accept | 149 |
 | ambiguous legal match | 30 |
 | no legal confirmation after exact lender | 3 |
+| no exact-lender candidate | 2,139 |
 
 The 149 accepts comprise 135 one-BBL and 14 multi-BBL loans, carrying 353 ACRIS
-BBL edges. Originator-text reach is 2,173/2,321 = **93.62%**; exact-lender reach
-is 182/2,321 = **7.84%**; final acceptance reach is 149/2,321 = **6.42%** and
-149/2,974 = **5.01%** of the full universe.
+BBL edges. The multi-BBL count is again accepted ACRIS truth `BBL_COUNT > 1`,
+not an upstream bridge multi-property selector. Originator-text reach is
+2,173/2,321 = **93.62%**; exact-lender reach is 182/2,321 = **7.84%**; final
+acceptance reach is 149/2,321 = **6.42%** and 149/2,974 = **5.01%** of the full
+universe.
 
 Because the planes are disjoint, accepted-loan coverage can be added:
 321/2,974 = **10.79%**. This is a reach number only. Their scored precision must
 not be pooled.
+
+The retained H.7 measurements therefore define a `retained_complete` contract:
+35 non-round plus 14 round multi-BBL loan subjects, or 49 unique accepted loans.
+A typed artifact may claim that scope only when supplied rows include both
+pinned MapPLUTO candidate releases per subject (98 release-run rows), matching
+payload row counts, preserved syntactically validated source hashes, and cited
+non-fixture SQL-bound receipts. Canon validates source-hash syntax and source/hash-kind
+identity uniqueness but does not recompute source bytes in this offline
+materializer. The current checked fixture is only `fixture_subset` with 1+1
+subjects. The 49 subjects and 98 release rows do not satisfy the frozen E4
+target of 79 genuine cases.
 
 ### G7.7 Scoring Contract And Separate Association Planes
 
@@ -2619,6 +2673,11 @@ within the truth boroughs:
 That split cannot be pooled. Otherwise every BBL on a multi-property mortgage
 would be copied onto every collateral and the measurement would silently award
 correctness without resolving loan-to-property incidence.
+
+G7.7's association-plane split is separate from G7.6's multi-BBL population.
+The 57 non-round and 51 round multi-property class loans are property-key
+association strata on accepted rows; they are not interchangeable with the
+35/14 accepted ACRIS multi-BBL truth subjects.
 
 ### G7.8 Point-Grain Results
 

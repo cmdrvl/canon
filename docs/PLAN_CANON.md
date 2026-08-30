@@ -95,6 +95,7 @@ canon geo solve --request <REQUEST.json>
 canon geo materialize-geometry --request <REQUEST.json>
 canon geo materialize-warehouse-geometry --rows <ROWS.json>
 canon geo materialize-evidence --rows <ROWS.json>
+canon geo materialize-h7-population --rows <ROWS.json>
 canon geo compile-evidence --request <REQUEST.json>
 canon geo evaluate --population <POPULATION.json>
 canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]

@@ -61,12 +61,43 @@
         "component_budget_fallback"
       ]
     },
+    "truth_plane": {
+      "type": "string",
+      "enum": [
+        "gate_v2_historical",
+        "non_round_amount_date_legal_borough",
+        "round_exact_lender_party",
+        "address_derived_control",
+        "human_adjudication"
+      ]
+    },
+    "candidate_reach_status": {
+      "type": "string",
+      "enum": [
+        "full",
+        "partial",
+        "none"
+      ]
+    },
+    "evidence_coverage_status": {
+      "type": "string",
+      "enum": [
+        "no_observations",
+        "diagnostic_only",
+        "soft_preference_only",
+        "soft_and_diagnostic_only",
+        "hard_constraint_present"
+      ]
+    },
     "population_case_evaluation": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "case_id": {
           "type": "string"
+        },
+        "truth_plane": {
+          "$ref": "#/$defs/truth_plane"
         },
         "status": {
           "$ref": "#/$defs/population_case_status"
@@ -96,6 +127,33 @@
           "type": "integer",
           "minimum": 0
         },
+        "candidate_reach": {
+          "$ref": "#/$defs/candidate_reach_status"
+        },
+        "evidence_coverage": {
+          "$ref": "#/$defs/evidence_coverage_status"
+        },
+        "evidence_observations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_records": {
+          "description": "Total immutable source-record references attached to admitted observations; provenance volume only, not independent-information count, confidence, or votes.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "hard_constraint_observations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "soft_preference_observations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "diagnostic_observations": {
+          "type": "integer",
+          "minimum": 0
+        },
         "residual_model_count": {
           "oneOf": [
             {
@@ -107,6 +165,9 @@
             }
           ]
         },
+        "residual_count_complete": {
+          "type": "boolean"
+        },
         "residual_count_saturated": {
           "type": "boolean"
         },
@@ -114,6 +175,7 @@
           "type": "boolean"
         },
         "truth_model_in_residual": {
+          "description": "Exact formula-membership result for the labeled truth model against the admitted composition request. Present only when candidate reach is full; still meaningful for component budget fallback when residual count and backbone are incomplete.",
           "oneOf": [
             {
               "type": "boolean"
@@ -122,6 +184,9 @@
               "type": "null"
             }
           ]
+        },
+        "solver_truth_scored": {
+          "type": "boolean"
         },
         "hard_forced": {
           "$ref": "#/$defs/composition_backbone"
@@ -136,19 +201,102 @@
         "backbone_false_positive_members": {
           "type": "integer",
           "minimum": 0
+        },
+        "abstained": {
+          "type": "boolean"
+        },
+        "false_merge": {
+          "type": "boolean",
+          "description": "True only when the solver resolves to an exact singleton that excludes the labeled truth model. Complete-backbone false positives on ambiguous residuals remain backbone accuracy diagnostics, not false merges."
         }
       },
       "required": [
         "case_id",
+        "truth_plane",
         "status",
         "compilation_digest",
         "candidate_members",
         "truth_members",
         "truth_members_in_universe",
+        "candidate_reach",
+        "evidence_coverage",
+        "evidence_observations",
+        "evidence_records",
+        "hard_constraint_observations",
+        "soft_preference_observations",
+        "diagnostic_observations",
+        "residual_count_complete",
         "residual_count_saturated",
         "full_truth_recall",
+        "solver_truth_scored",
         "hard_forced",
         "backbone_complete",
+        "backbone_true_positive_members",
+        "backbone_false_positive_members",
+        "abstained",
+        "false_merge"
+      ]
+    },
+    "truth_plane_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "truth_plane": { "$ref": "#/$defs/truth_plane" },
+        "cases": { "type": "integer", "minimum": 0 },
+        "resolved_cases": { "type": "integer", "minimum": 0 },
+        "ambiguous_cases": { "type": "integer", "minimum": 0 },
+        "conflict_cases": { "type": "integer", "minimum": 0 },
+        "abstention_cases": { "type": "integer", "minimum": 0 },
+        "false_merge_cases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Resolved-singleton cases that exclude the labeled truth model; ambiguous backbone false positives are counted only in backbone_false_positive_members."
+        },
+        "candidate_reach_full_cases": { "type": "integer", "minimum": 0 },
+        "candidate_reach_partial_cases": { "type": "integer", "minimum": 0 },
+        "candidate_reach_none_cases": { "type": "integer", "minimum": 0 },
+        "solver_truth_scored_cases": { "type": "integer", "minimum": 0 },
+        "solver_truth_exclusion_cases": { "type": "integer", "minimum": 0 },
+        "residual_count_complete_cases": { "type": "integer", "minimum": 0 },
+        "residual_count_saturated_cases": { "type": "integer", "minimum": 0 },
+        "residual_count_unavailable_cases": { "type": "integer", "minimum": 0 },
+        "component_budget_fallback_cases": { "type": "integer", "minimum": 0 },
+        "assignment_budget_exceeded_cases": { "type": "integer", "minimum": 0 },
+        "evidence_no_observation_cases": { "type": "integer", "minimum": 0 },
+        "evidence_diagnostic_only_cases": { "type": "integer", "minimum": 0 },
+        "evidence_soft_preference_only_cases": { "type": "integer", "minimum": 0 },
+        "evidence_soft_and_diagnostic_only_cases": { "type": "integer", "minimum": 0 },
+        "evidence_hard_constraint_cases": { "type": "integer", "minimum": 0 },
+        "truth_members": { "type": "integer", "minimum": 0 },
+        "truth_members_in_universe": { "type": "integer", "minimum": 0 },
+        "backbone_true_positive_members": { "type": "integer", "minimum": 0 },
+        "backbone_false_positive_members": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "truth_plane",
+        "cases",
+        "resolved_cases",
+        "ambiguous_cases",
+        "conflict_cases",
+        "abstention_cases",
+        "false_merge_cases",
+        "candidate_reach_full_cases",
+        "candidate_reach_partial_cases",
+        "candidate_reach_none_cases",
+        "solver_truth_scored_cases",
+        "solver_truth_exclusion_cases",
+        "residual_count_complete_cases",
+        "residual_count_saturated_cases",
+        "residual_count_unavailable_cases",
+        "component_budget_fallback_cases",
+        "assignment_budget_exceeded_cases",
+        "evidence_no_observation_cases",
+        "evidence_diagnostic_only_cases",
+        "evidence_soft_preference_only_cases",
+        "evidence_soft_and_diagnostic_only_cases",
+        "evidence_hard_constraint_cases",
+        "truth_members",
+        "truth_members_in_universe",
         "backbone_true_positive_members",
         "backbone_false_positive_members"
       ]
@@ -160,6 +308,12 @@
         "cases": {
           "type": "integer",
           "minimum": 0
+        },
+        "truth_planes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/truth_plane_summary"
+          }
         },
         "resolved_cases": {
           "type": "integer",
@@ -187,13 +341,46 @@
         },
         "false_merge_cases": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "description": "Resolved-singleton cases that exclude the labeled truth model; ambiguous backbone false positives are counted only in backbone_false_positive_members."
         },
         "full_truth_recall_cases": {
           "type": "integer",
           "minimum": 0
         },
+        "candidate_reach_full_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidate_reach_partial_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidate_reach_none_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
         "candidate_recall_failure_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_no_observation_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_diagnostic_only_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_soft_preference_only_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_soft_and_diagnostic_only_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_hard_constraint_cases": {
           "type": "integer",
           "minimum": 0
         },
@@ -202,6 +389,22 @@
           "minimum": 0
         },
         "solver_truth_exclusion_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "residual_count_complete_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "residual_count_saturated_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "residual_count_unavailable_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "backbone_complete_cases": {
           "type": "integer",
           "minimum": 0
         },
@@ -224,6 +427,7 @@
       },
       "required": [
         "cases",
+        "truth_planes",
         "resolved_cases",
         "ambiguous_cases",
         "conflict_cases",
@@ -232,9 +436,21 @@
         "abstention_cases",
         "false_merge_cases",
         "full_truth_recall_cases",
+        "candidate_reach_full_cases",
+        "candidate_reach_partial_cases",
+        "candidate_reach_none_cases",
         "candidate_recall_failure_cases",
+        "evidence_no_observation_cases",
+        "evidence_diagnostic_only_cases",
+        "evidence_soft_preference_only_cases",
+        "evidence_soft_and_diagnostic_only_cases",
+        "evidence_hard_constraint_cases",
         "solver_truth_scored_cases",
         "solver_truth_exclusion_cases",
+        "residual_count_complete_cases",
+        "residual_count_saturated_cases",
+        "residual_count_unavailable_cases",
+        "backbone_complete_cases",
         "truth_members",
         "truth_members_in_universe",
         "backbone_true_positive_members",

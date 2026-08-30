@@ -13,7 +13,12 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use canon::entity::run::link::multisource::EntitySourceRole;
 use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
-    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
+    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_H7_ACRIS_RELEASE_DT,
+    CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION, CANON_GEO_H7_BRIDGE_BUILD_ID,
+    CANON_GEO_H7_COLLATERAL_SCOPE, CANON_GEO_H7_LENDER_MATCH_TRANSFORM,
+    CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
+    CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_PRIMARY_MAPPLUTO_RELEASE,
+    CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS, CANON_GEO_HOME_CELL_ROWS_VERSION,
     CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_MULTISOURCE_REQUEST_VERSION,
     CANON_GEO_POPULATION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
     CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
@@ -21,15 +26,20 @@ use canon::geo::{
     GeoBuildingCandidate, GeoCompositionModel, GeoCompositionRequest, GeoCompositionUniverse,
     GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
     GeoEvidenceRecordRef, GeoExactSourceUnitMm, GeoGeometryFeatureInput, GeoGeometryTileRequest,
-    GeoHardConstraint, GeoHardConstraintKind, GeoHomeCellRow, GeoHomeCellRowsRequest,
-    GeoLabeledCompositionCase, GeoLocalFrameContract, GeoMultisourceRequest, GeoMultisourceSource,
-    GeoPopulationEvaluationRequest, GeoProjectionProvenance, GeoRhoBasis, GeoRhoContract,
-    GeoRhoObservation, GeoRhoObservationKind, GeoSourceAxisDomain, GeoSourceGeometry,
-    GeoSourcePointDecimal, GeoSourcePointFixed, GeoTileDecisionBatch, GeoTileDecisionMember,
-    GeoTileDecisionProposal, GeoTileFeatureRef, GeoTileReconciliationRequest, GeoTileWorkRequest,
-    GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
-    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, compile_evidence, evaluate_population,
-    materialize_geo_multisource, materialize_geometry_tile, materialize_home_cells,
+    GeoH7AssociationPlane, GeoH7BoroughEdge, GeoH7CandidateReachStatus, GeoH7FiledCountyMapping,
+    GeoH7MapplutoReleasePin, GeoH7PlaneDenominator, GeoH7PopulationProvenance,
+    GeoH7PopulationRowsRequest, GeoH7PopulationScope, GeoH7PopulationWarehouseRow,
+    GeoH7QueryDisposition, GeoH7QueryReceipt, GeoH7ResultMode, GeoH7SourceEvidenceRecord,
+    GeoH7SourceRecordRole, GeoHardConstraint, GeoHardConstraintKind, GeoHomeCellRow,
+    GeoHomeCellRowsRequest, GeoLabeledCompositionCase, GeoLocalFrameContract,
+    GeoMultisourceRequest, GeoMultisourceSource, GeoPopulationEvaluationRequest,
+    GeoProjectionProvenance, GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
+    GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed,
+    GeoTileDecisionBatch, GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileFeatureRef,
+    GeoTileReconciliationRequest, GeoTileWorkRequest, GeoTruthPlane, GeoWarehouseEvidenceRow,
+    GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest, GeoWarehouseParcelRow,
+    GeoWarehouseRowsRequest, compile_evidence, evaluate_population, materialize_geo_multisource,
+    materialize_geometry_tile, materialize_h7_population_rows, materialize_home_cells,
     materialize_tile_work_unit, materialize_warehouse_geometry, reconcile_tile_decisions,
     solve_composition,
 };
@@ -74,6 +84,10 @@ const MULTISOURCE_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.multisource_request.v0.schema.json");
 const MULTISOURCE_ARTIFACT_SCHEMA: &str =
     include_str!("../schemas/canon.entity.multisource_link.v1.schema.json");
+const H7_POPULATION_ROWS_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.h7_population_rows.v0.schema.json");
+const H7_POPULATION_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.h7_population.v0.schema.json");
 
 fn parsed(source: &str) -> Value {
     serde_json::from_str(source).expect("schema file must be valid JSON")
@@ -121,12 +135,26 @@ fn assert_instance_matches_schema(root: &Value, subschema: &Value, instance: &Va
             let resolved = resolve_ref(root, reference);
             assert_instance_matches_schema(root, resolved, instance, path);
         } else {
-            let source = match reference {
+            let (schema_file, fragment) = reference
+                .split_once('#')
+                .map_or((reference, ""), |(schema_file, fragment)| {
+                    (schema_file, fragment)
+                });
+            let source = match schema_file {
                 "canon.geo.geometry_tile.v0.schema.json" => GEOMETRY_TILE_SCHEMA,
+                "canon.geo.h7_population_rows.v0.schema.json" => H7_POPULATION_ROWS_SCHEMA,
+                "canon.geo.population_request.v0.schema.json" => POPULATION_REQUEST_SCHEMA,
                 _ => panic!("external $ref {reference} is not registered in the schema test"),
             };
             let external = parsed(source);
-            assert_instance_matches_schema(&external, &external, instance, path);
+            let external_schema = if fragment.is_empty() {
+                &external
+            } else {
+                external
+                    .pointer(fragment)
+                    .unwrap_or_else(|| panic!("external $ref {reference} does not resolve"))
+            };
+            assert_instance_matches_schema(&external, external_schema, instance, path);
         }
         return;
     }
@@ -702,6 +730,45 @@ fn multisource_artifact_schema_matches_a_real_instance() {
 }
 
 #[test]
+fn h7_population_schemas_are_registered_with_version_constants() {
+    assert_schema_shape(
+        &parsed(H7_POPULATION_ROWS_SCHEMA),
+        "canon.geo.h7_population_rows.v0",
+        CANON_GEO_H7_POPULATION_ROWS_VERSION,
+    );
+    assert_schema_shape(
+        &parsed(H7_POPULATION_SCHEMA),
+        "canon.geo.h7_population.v0",
+        CANON_GEO_H7_POPULATION_VERSION,
+    );
+}
+
+#[test]
+fn h7_population_rows_schema_matches_a_real_instance() {
+    let request = h7_population_rows_request();
+    let instance = serde_json::to_value(&request).expect("H7 rows request must serialize");
+    assert_drift_free(
+        H7_POPULATION_ROWS_SCHEMA,
+        "canon.geo.h7_population_rows.v0",
+        CANON_GEO_H7_POPULATION_ROWS_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn h7_population_artifact_schema_matches_a_real_instance() {
+    let artifact = materialize_h7_population_rows(&h7_population_rows_request())
+        .expect("H7 fixture subset must materialize");
+    let instance = serde_json::to_value(&artifact).expect("H7 artifact must serialize");
+    assert_drift_free(
+        H7_POPULATION_SCHEMA,
+        "canon.geo.h7_population.v0",
+        CANON_GEO_H7_POPULATION_VERSION,
+        &instance,
+    );
+}
+
+#[test]
 fn composition_artifact_schema_matches_a_real_instance() {
     let artifact = solve_composition(&composition_request()).expect("request must solve");
     let instance = serde_json::to_value(&artifact).expect("artifact must serialize");
@@ -756,6 +823,7 @@ fn population_request_schema_matches_a_real_instance() {
         cases: vec![GeoLabeledCompositionCase {
             id: "case-1".to_string(),
             evidence: evidence_request(),
+            truth_plane: GeoTruthPlane::GateV2Historical,
             truth: GeoCompositionModel {
                 parcels: vec!["parcel-a".to_string()],
                 buildings: Vec::new(),
@@ -773,12 +841,25 @@ fn population_request_schema_matches_a_real_instance() {
 }
 
 #[test]
+fn population_request_schema_matches_runtime_max_cases_boundary() {
+    let schema = parsed(POPULATION_REQUEST_SCHEMA);
+    assert_eq!(
+        schema
+            .pointer("/properties/max_cases/minimum")
+            .and_then(Value::as_u64),
+        Some(1),
+        "schema must reject max_cases=0 because the evaluator rejects it"
+    );
+}
+
+#[test]
 fn population_evaluation_artifact_schema_matches_a_real_instance() {
     let request = GeoPopulationEvaluationRequest {
         version: CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
         cases: vec![GeoLabeledCompositionCase {
             id: "case-1".to_string(),
             evidence: evidence_request(),
+            truth_plane: GeoTruthPlane::GateV2Historical,
             truth: GeoCompositionModel {
                 parcels: vec!["parcel-a".to_string()],
                 buildings: Vec::new(),
@@ -794,4 +875,255 @@ fn population_evaluation_artifact_schema_matches_a_real_instance() {
         "canon_geo_population_evaluation.v0",
         &instance,
     );
+}
+
+fn h7_population_rows_request() -> GeoH7PopulationRowsRequest {
+    GeoH7PopulationRowsRequest {
+        version: CANON_GEO_H7_POPULATION_ROWS_VERSION.to_string(),
+        population_scope: GeoH7PopulationScope::FixtureSubset,
+        provenance: GeoH7PopulationProvenance {
+            result_mode: GeoH7ResultMode::Replay,
+            as_of: "2026-08-30T00:00:00Z".to_string(),
+            acris_release_dt: CANON_GEO_H7_ACRIS_RELEASE_DT.to_string(),
+            bridge_build_id: CANON_GEO_H7_BRIDGE_BUILD_ID.to_string(),
+            collateral_scope: CANON_GEO_H7_COLLATERAL_SCOPE.to_string(),
+            mappluto_releases: vec![h7_mappluto_pin("26v2"), h7_mappluto_pin("26v1")],
+            primary_candidate_release: h7_mappluto_pin(CANON_GEO_H7_PRIMARY_MAPPLUTO_RELEASE),
+            amount_cents_quantization: CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION.to_string(),
+            round_amount_lattice_cents: CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS,
+            lender_match_transform: CANON_GEO_H7_LENDER_MATCH_TRANSFORM.to_string(),
+            filed_county_mapping: h7_filed_county_mapping(),
+            source_hashes: Vec::new(),
+            query_receipts: vec![h7_query_receipt(
+                "fixture_raw_property_state_ny_control_653_2321",
+                7,
+            )],
+            external_receipts: Vec::new(),
+            empirical_discrepancies: Vec::new(),
+            row_cap: 10,
+            observed_rows: 0,
+        },
+        plane_denominators: vec![
+            GeoH7PlaneDenominator {
+                truth_plane: GeoTruthPlane::NonRoundAmountDateLegalBorough,
+                eligible_loans: 653,
+                candidate_loans: 262,
+                legal_confirmed_candidate_loans: 221,
+                accepted_loans: 172,
+                ambiguous_loans: 49,
+                candidate_no_legal_confirmation_loans: 41,
+                no_candidate_loans: 391,
+                selected_multi_parcel_loans: 1,
+            },
+            GeoH7PlaneDenominator {
+                truth_plane: GeoTruthPlane::RoundExactLenderParty,
+                eligible_loans: 2321,
+                candidate_loans: 182,
+                legal_confirmed_candidate_loans: 179,
+                accepted_loans: 149,
+                ambiguous_loans: 30,
+                candidate_no_legal_confirmation_loans: 3,
+                no_candidate_loans: 2139,
+                selected_multi_parcel_loans: 1,
+            },
+        ],
+        rows: vec![
+            h7_row("schema-non-round", "schema-doc-non-round", "26v1", false),
+            h7_row("schema-non-round", "schema-doc-non-round", "26v2", false),
+            h7_row("schema-round", "schema-doc-round", "26v1", true),
+            h7_row("schema-round", "schema-doc-round", "26v2", true),
+        ],
+        max_cases: 8,
+        max_assignments: 64,
+        max_materialized_models: 64,
+    }
+}
+
+fn h7_row(
+    loan_key: &str,
+    document_id: &str,
+    release: &str,
+    round: bool,
+) -> GeoH7PopulationWarehouseRow {
+    let candidate_release = h7_mappluto_pin(release);
+    let mut source_records = vec![
+        h7_source_record(
+            GeoH7SourceRecordRole::BridgeLoan,
+            &format!("{loan_key}:bridge-loan"),
+            CANON_GEO_H7_BRIDGE_BUILD_ID,
+            &[],
+        ),
+        h7_source_record(
+            GeoH7SourceRecordRole::AcrisMaster,
+            &format!("{document_id}:master"),
+            CANON_GEO_H7_ACRIS_RELEASE_DT,
+            &[],
+        ),
+        h7_source_record(
+            GeoH7SourceRecordRole::AcrisLegal,
+            &format!("{document_id}:legal-bbl-1"),
+            CANON_GEO_H7_ACRIS_RELEASE_DT,
+            &["1000000001"],
+        ),
+        h7_source_record(
+            GeoH7SourceRecordRole::AcrisLegal,
+            &format!("{document_id}:legal-bbl-2"),
+            CANON_GEO_H7_ACRIS_RELEASE_DT,
+            &["1000000002"],
+        ),
+        h7_source_record(
+            GeoH7SourceRecordRole::MapplutoCandidate,
+            &format!("{loan_key}:{release}:mappluto-candidate-1"),
+            candidate_release.release_dt.as_str(),
+            &["1000000001"],
+        ),
+    ];
+    if release == "26v1" {
+        source_records.push(h7_source_record(
+            GeoH7SourceRecordRole::MapplutoCandidate,
+            &format!("{loan_key}:{release}:mappluto-candidate-2"),
+            candidate_release.release_dt.as_str(),
+            &["1000000002"],
+        ));
+        source_records.push(h7_source_record(
+            GeoH7SourceRecordRole::MapplutoCandidate,
+            &format!("{loan_key}:{release}:mappluto-candidate-3"),
+            candidate_release.release_dt.as_str(),
+            &["1000000003"],
+        ));
+    }
+    if round {
+        source_records.push(h7_source_record(
+            GeoH7SourceRecordRole::AcrisParty,
+            &format!("{document_id}:party"),
+            CANON_GEO_H7_ACRIS_RELEASE_DT,
+            &[],
+        ));
+    }
+    GeoH7PopulationWarehouseRow {
+        loan_key: loan_key.to_string(),
+        document_id: document_id.to_string(),
+        truth_plane: if round {
+            GeoTruthPlane::RoundExactLenderParty
+        } else {
+            GeoTruthPlane::NonRoundAmountDateLegalBorough
+        },
+        association_plane: GeoH7AssociationPlane::MultiProperty,
+        candidate_release,
+        property_state: "NY".to_string(),
+        filed_county: "KINGS".to_string(),
+        filed_borough: 3,
+        legal_borough: 3,
+        accepted_borough_edges: vec![GeoH7BoroughEdge {
+            filed_county: "KINGS".to_string(),
+            filed_borough: 3,
+            legal_borough: 3,
+        }],
+        geocoded_county_fips: Some("36047".to_string()),
+        doc_type: if round { "MMTG" } else { "MTGE" }.to_string(),
+        originationdate: "2025-01-15".to_string(),
+        amount_cents: if round { 50_000_000 } else { 12_345_678 },
+        is_round_100k_lattice: round,
+        originatorname: round.then(|| "Acme Bank".to_string()),
+        originator_match_text: round.then(|| "ACME BANK".to_string()),
+        lender_match_text: round.then(|| "ACME BANK".to_string()),
+        lender_party_type: round.then(|| "1".to_string()),
+        loan_field_distinct_counts: canon::geo::GeoH7LoanFieldDistinctCounts {
+            originatorname: if round { 1 } else { 0 },
+            originator_match_text: if round { 1 } else { 0 },
+            originationdate: 1,
+            originalloanamount: 1,
+            filed_borough: 1,
+        },
+        truth_parcels: vec!["1000000002".to_string(), "1000000001".to_string()],
+        candidate_parcels: if release == "26v2" {
+            vec!["1000000001".to_string()]
+        } else {
+            vec![
+                "1000000003".to_string(),
+                "1000000002".to_string(),
+                "1000000001".to_string(),
+            ]
+        },
+        reach_status: if release == "26v2" {
+            GeoH7CandidateReachStatus::Partial
+        } else {
+            GeoH7CandidateReachStatus::Full
+        },
+        reach_reason: "schema_fixture_candidate_release_scored_against_truth".to_string(),
+        source_records,
+    }
+}
+
+fn h7_mappluto_pin(release: &str) -> GeoH7MapplutoReleasePin {
+    let release_dt = match release {
+        "26v1" => "2026-05-01",
+        "26v2" => "2026-08-01",
+        _ => "2026-12-01",
+    };
+    GeoH7MapplutoReleasePin {
+        release: release.to_string(),
+        release_dt: release_dt.to_string(),
+        variant: "shoreline_clipped".to_string(),
+        geometry_contract_version: CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION.to_string(),
+    }
+}
+
+fn h7_filed_county_mapping() -> Vec<GeoH7FiledCountyMapping> {
+    [
+        ("NEW YORK", 1),
+        ("MANHATTAN", 1),
+        ("NY061", 1),
+        ("BRONX", 2),
+        ("KINGS", 3),
+        ("BROOKLYN", 3),
+        ("QUEENS", 4),
+        ("RICHMOND", 5),
+    ]
+    .into_iter()
+    .map(|(filed_county, acris_borough)| GeoH7FiledCountyMapping {
+        filed_county: filed_county.to_string(),
+        acris_borough,
+    })
+    .collect()
+}
+
+fn h7_source_record(
+    role: GeoH7SourceRecordRole,
+    source_record_id: &str,
+    source_vintage: &str,
+    parcel_ids: &[&str],
+) -> GeoH7SourceEvidenceRecord {
+    GeoH7SourceEvidenceRecord {
+        role,
+        parcel_ids: parcel_ids
+            .iter()
+            .map(|parcel_id| (*parcel_id).to_string())
+            .collect(),
+        source_record: GeoEvidenceRecordRef {
+            source_record_id: source_record_id.to_string(),
+            source_vintage: source_vintage.to_string(),
+            record_blake3: blake3::hash(
+                format!("schema-h7-source\0{source_record_id}\0{source_vintage}").as_bytes(),
+            )
+            .to_hex()
+            .to_string(),
+        },
+    }
+}
+
+fn h7_query_receipt(purpose: &str, result_rows: u64) -> GeoH7QueryReceipt {
+    let query_text_ref = format!("fixture:h7-schema:{purpose}");
+    let fixture_text = format!("{query_text_ref}:synthetic-diagnostic");
+    GeoH7QueryReceipt {
+        purpose: purpose.to_string(),
+        truth_plane: None,
+        query_id: None,
+        query_text_ref,
+        normalized_query_text: None,
+        query_blake3: blake3::hash(fixture_text.as_bytes()).to_hex().to_string(),
+        result_rows,
+        row_cap: 100,
+        disposition: GeoH7QueryDisposition::DiagnosticOnly,
+    }
 }

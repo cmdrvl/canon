@@ -1163,6 +1163,67 @@
       ]
     },
     {
+      "name": "geo materialize-h7-population",
+      "usage": "canon geo materialize-h7-population --rows <ROWS.json>",
+      "description": "Materialize release-pinned Appendix H.7 accepted-loan rows into a typed population artifact, preserving truth planes, association-plane strata, candidate-release rows, population_scope, and primary 26v2 solver subjects",
+      "output_mode": "json",
+      "output_schema": "canon_geo_h7_population.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads an offline H.7 row artifact and writes only a typed population artifact to stdout; provenance stays outside solver evidence and acquisition/network access remain outside Canon. FixtureSubset is non-gate proof; the checked fixture is 1+1 subjects. RetainedComplete is a claim a supplied artifact may make only when it carries the archived H.7 multi-BBL contract: 35 non-round plus 14 round unique loan subjects, both pinned 26v1/26v2 candidate releases per subject, 98 release-run rows, matching observed_rows, preserved syntactically validated source hashes, and non-fixture SQL-bound cited receipts. Canon validates source-hash syntax and source/hash-kind identity uniqueness but does not recompute source bytes in this offline materializer. No committed 98-row RetainedComplete artifact exists here. Neither 49 subjects nor 98 rows satisfies the frozen E4 target of 79 genuine cases. LiveComplete is data-driven and requires separate nonzero SQL-bound cited legal-residual receipts for both H.7 planes: truth_plane=non_round_amount_date_legal_borough with purpose=live_non_round_acris_candidate_legal_residual, and truth_plane=round_exact_lender_party with purpose=live_round_lender_acris_candidate_legal_residual. collateral_scope is nyc_filed_collateral_slice, not full national collateral.",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "typed H.7 population artifact emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, row IO, parse, release, provenance, denominator, truth-plane, or evidence contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "extract emitted .population to <POPULATION.json>, then run canon geo evaluate --population <POPULATION.json>",
+      "recovery": {
+        "next_command": "canon geo materialize-h7-population --rows <ROWS.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "rows",
+          "flag": "--rows",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding canon_geo_h7_population_rows.v0 release-pinned Appendix H.7 rows"
+        }
+      ]
+    },
+    {
       "name": "geo compile-evidence",
       "usage": "canon geo compile-evidence --request <REQUEST.json>",
       "description": "Admit versioned rho observations into a bounded composition request, recording each admission disposition, and emit the canonical artifact on stdout",

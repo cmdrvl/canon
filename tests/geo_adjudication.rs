@@ -26,7 +26,7 @@
 use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCompositionRequest,
     GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef, GeoHardConstraint,
-    GeoHardConstraintKind, model_satisfies_request, solve_composition,
+    GeoHardConstraintKind, GeoTruthPlane, model_satisfies_request, solve_composition,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -238,6 +238,7 @@ enum AdjudicationVerdict {
 #[derive(Debug, Clone, Serialize)]
 struct AdjudicationRow {
     case_id: String,
+    truth_plane: GeoTruthPlane,
     candidate_count: usize,
     full_truth_recall: bool,
     truth_representable: bool,
@@ -461,6 +462,7 @@ fn adjudicate_row(
 
     AdjudicationRow {
         case_id: population_case.case_id.clone(),
+        truth_plane: GeoTruthPlane::GateV2Historical,
         candidate_count: population_case.candidate_parcels.len(),
         full_truth_recall,
         truth_representable,
@@ -643,6 +645,11 @@ fn adjudication_table_is_complete_and_sound_channels_never_prune_truth() {
         })
         .count();
     assert_eq!(classified, rows.len());
+    assert!(
+        rows.iter()
+            .all(|row| row.truth_plane == GeoTruthPlane::GateV2Historical),
+        "current E4 adjudication rows must remain typed to the Gate V2 historical plane"
+    );
 
     // Reach accounting: how many cases are even adjudicable today.
     let representable = rows.iter().filter(|row| row.truth_representable).count();

@@ -11,9 +11,9 @@ use crate::{
     CanonOutput, Refusal, RefusalCode,
     cli::{
         GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli, GeoLinkSourcesCli,
-        GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli, GeoMaterializeHomeCellsCli,
-        GeoMaterializeWarehouseGeometryCli, GeoReconcileTilesCli, GeoSolveCli, GeoSubcommand,
-        GeoTileWorkCli,
+        GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli, GeoMaterializeH7PopulationCli,
+        GeoMaterializeHomeCellsCli, GeoMaterializeWarehouseGeometryCli, GeoReconcileTilesCli,
+        GeoSolveCli, GeoSubcommand, GeoTileWorkCli,
     },
     refusal,
 };
@@ -49,8 +49,11 @@ use super::{
         materialize_geometry_tile, materialize_warehouse_geometry,
     },
     materialize::{
-        CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoMaterializationError, GeoWarehouseRowsRequest,
-        canonical_materialized_evidence_request_bytes, materialize_warehouse_rows,
+        CANON_GEO_H7_POPULATION_ROWS_VERSION, CANON_GEO_H7_POPULATION_VERSION,
+        CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoH7PopulationRowsRequest, GeoMaterializationError,
+        GeoWarehouseRowsRequest, canonical_h7_population_bytes,
+        canonical_materialized_evidence_request_bytes, materialize_h7_population_rows,
+        materialize_warehouse_rows,
     },
     multisource::{
         CANON_GEO_MULTISOURCE_REQUEST_VERSION, GeoMultisourceRequest,
@@ -79,6 +82,7 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
             run_materialize_warehouse_geometry(args)
         }
         GeoSubcommand::MaterializeEvidence(args) => run_materialize_evidence(args),
+        GeoSubcommand::MaterializeH7Population(args) => run_materialize_h7_population(args),
         GeoSubcommand::CompileEvidence(args) => run_compile_evidence(args),
         GeoSubcommand::Evaluate(args) => run_evaluate(args),
     }
@@ -223,6 +227,28 @@ fn run_materialize_evidence(args: &GeoMaterializeEvidenceCli) -> Result<u8, Box<
     match canonical_materialized_evidence_request_bytes(&request) {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_serialization_refusal(CANON_GEO_EVIDENCE_REQUEST_VERSION, &error),
+    }
+}
+
+fn run_materialize_h7_population(
+    args: &GeoMaterializeH7PopulationCli,
+) -> Result<u8, Box<dyn Error>> {
+    let rows: GeoH7PopulationRowsRequest = match read_request(
+        &args.rows,
+        "rows",
+        CANON_GEO_H7_POPULATION_ROWS_VERSION,
+        "canon geo materialize-h7-population --rows <ROWS.json>",
+    ) {
+        Ok(rows) => rows,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let artifact = match materialize_h7_population_rows(&rows) {
+        Ok(artifact) => artifact,
+        Err(error) => return emit_h7_population_materialization_error(error),
+    };
+    match canonical_h7_population_bytes(&artifact) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_serialization_refusal(CANON_GEO_H7_POPULATION_VERSION, &error),
     }
 }
 
@@ -401,6 +427,24 @@ fn emit_materialization_error(error: GeoMaterializationError) -> Result<u8, Box<
         }),
         Some(
             "repair the rows against canon_geo_warehouse_rows.v0, then rerun canon geo materialize-evidence"
+                .to_string(),
+        ),
+    )
+}
+
+fn emit_h7_population_materialization_error(
+    error: GeoMaterializationError,
+) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo H.7 population rows could not be materialized",
+        json!({
+            "geo_materialization_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(
+            "repair the rows against canon_geo_h7_population_rows.v0, then rerun canon geo materialize-h7-population"
                 .to_string(),
         ),
     )

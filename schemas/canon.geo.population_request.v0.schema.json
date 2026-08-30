@@ -17,7 +17,7 @@
     },
     "max_cases": {
       "type": "integer",
-      "minimum": 0
+      "minimum": 1
     }
   },
   "required": [
@@ -33,6 +33,16 @@
         "building",
         "parcel",
         "property"
+      ]
+    },
+    "truth_plane": {
+      "type": "string",
+      "enum": [
+        "gate_v2_historical",
+        "non_round_amount_date_legal_borough",
+        "round_exact_lender_party",
+        "address_derived_control",
+        "human_adjudication"
       ]
     },
     "entity_ref": {
@@ -420,6 +430,9 @@
         "evidence": {
           "$ref": "#/$defs/evidence_compilation_request"
         },
+        "truth_plane": {
+          "$ref": "#/$defs/truth_plane"
+        },
         "truth": {
           "$ref": "#/$defs/composition_model"
         }
@@ -427,6 +440,7 @@
       "required": [
         "id",
         "evidence",
+        "truth_plane",
         "truth"
       ]
     }
