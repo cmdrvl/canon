@@ -1,0 +1,509 @@
+{
+  "version": "canon_geo_measurement_manifest.v0",
+  "scope": "bd-3mo1",
+  "offline_only": true,
+  "required_measurement_ids": [
+    "appendix_b_centroid_percolation",
+    "appendix_c_r8_density",
+    "appendix_d_same_cell_predicates",
+    "appendix_d_candidate_reach",
+    "appendix_d_stratified_halo_centers",
+    "appendix_d_stratified_halo",
+    "appendix_f_overture_three_source"
+  ],
+  "measurements": [
+    {
+      "id": "appendix_b_centroid_percolation",
+      "section": "B",
+      "description": "Appendix B 150 m centroid-percolation observation pull plus retained component summary.",
+      "sql_path": "scripts/geo_measurements/appendix_b_centroid_percolation.sql",
+      "as_of": "2026-08-28",
+      "expected_row_count": 193,
+      "release_pins": {
+        "mappluto.release": "26v1",
+        "mappluto.release_dt": "2026-05-01",
+        "nyc_footprints.release_dt": "2026-08-09"
+      },
+      "denominator_fields": [
+        "observation_count"
+      ],
+      "expected_denominators": {
+        "observation_count": 193
+      },
+      "expected_sanity": {
+        "artifact_row_count_matches_expected": true
+      },
+      "result_fields": [
+        "source",
+        "native_id",
+        "lon",
+        "lat"
+      ],
+      "expected_result_rows": [],
+      "source_sql_sha256": "02ea51f828ee98933450d485f0d19cf864be271db6a67195f3a1ae274aaf4813",
+      "execution_transform": "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit",
+      "result_row_validation": "artifact_digest_only",
+      "limitations": [
+        "Exact full result rows are not embedded in the manifest; consistency validation binds result artifact bytes, executed query text bytes, result-set digest, row count, denominators, and sanity only.",
+        "Appendix B component summary is not recomputed from raw observations by this offline runner.",
+        "The local source SQL byte digest is separate from the cmdrvl-data normalized executed query text digest."
+      ]
+    },
+    {
+      "id": "appendix_c_r8_density",
+      "section": "C",
+      "description": "Appendix C all-NYC r8 density and reach denominator.",
+      "sql_path": "scripts/geo_measurements/appendix_c_r8_density.sql",
+      "as_of": "2026-08-28",
+      "expected_row_count": 1,
+      "release_pins": {
+        "mappluto.release": "26v1",
+        "mappluto.release_dt": "2026-05-01",
+        "nyc_footprints.release_dt": "2026-08-09"
+      },
+      "denominator_fields": [
+        "parcel_containing_cell_count",
+        "parcel_denominator",
+        "active_footprint_denominator"
+      ],
+      "expected_denominators": {
+        "parcel_containing_cell_count": 1192,
+        "parcel_denominator": 856614,
+        "active_footprint_denominator": 1081999
+      },
+      "expected_sanity": {
+        "invalid_count_cells": 0,
+        "null_h3_footprints": 0
+      },
+      "result_fields": [
+        "parcel_containing_cell_count",
+        "parcel_denominator",
+        "parcel_min",
+        "parcel_median",
+        "parcel_mean",
+        "parcel_p90",
+        "parcel_p99",
+        "parcel_max",
+        "footprint_denominator_in_parcel_cells",
+        "active_footprint_denominator",
+        "footprints_outside_parcel_home_cells",
+        "null_h3_footprints",
+        "footprint_median",
+        "footprint_max",
+        "total_feature_median",
+        "total_feature_p99",
+        "total_feature_max",
+        "invalid_count_cells"
+      ],
+      "expected_result_rows": [],
+      "source_sql_sha256": "f2949907d151dc4cc2ed8cbbe7261beebe6229dd1054858d82c13de5cd0685c4",
+      "execution_transform": "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit",
+      "result_row_validation": "artifact_digest_only",
+      "limitations": [
+        "Exact full result rows are not embedded in the manifest; consistency validation binds result artifact bytes, executed query text bytes, result-set digest, row count, denominators, and sanity only.",
+        "Appendix C percentile values remain artifact-bound; this runner derives only declared denominator and sanity fields from the artifact row.",
+        "The local source SQL byte digest is separate from the cmdrvl-data normalized executed query text digest."
+      ]
+    },
+    {
+      "id": "appendix_d_same_cell_predicates",
+      "section": "D.9",
+      "description": "Appendix D same-H3-home-cell predicate reproduction for two cells.",
+      "sql_path": "scripts/geo_measurements/appendix_d_predicates.sql",
+      "as_of": "2026-08-28",
+      "expected_row_count": 2,
+      "release_pins": {
+        "mappluto.release": "26v1",
+        "mappluto.release_dt": "2026-05-01",
+        "nyc_footprints.release_dt": "2026-08-09"
+      },
+      "denominator_fields": [
+        "total_footprints"
+      ],
+      "expected_denominators": {
+        "total_footprints": 2645
+      },
+      "expected_sanity": {
+        "denominator_sanity": "PASS",
+        "positive_area_parcel_overlap_pairs": 0
+      },
+      "result_fields": [
+        "cell_name",
+        "footprint_count",
+        "intersects_zero",
+        "intersects_one",
+        "intersects_multi",
+        "contains_zero",
+        "contains_one",
+        "contains_multi",
+        "majority_zero",
+        "majority_one",
+        "majority_multi",
+        "parcel_count",
+        "positive_area_parcel_overlap_pairs",
+        "denominator_sanity"
+      ],
+      "expected_result_rows": [],
+      "source_sql_sha256": "e840c043b551caa694cd035a3ece374394c5a90f83ad062da61bfffa786829dc",
+      "execution_transform": "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit",
+      "result_row_validation": "artifact_digest_only",
+      "limitations": [
+        "Exact full result rows are not embedded in the manifest; consistency validation binds result artifact bytes, executed query text bytes, result-set digest, row count, denominators, and sanity only.",
+        "Appendix D same-cell intersects/contains/majority buckets are checked through artifact-derived denominators and sanity, not complete manifest row equality.",
+        "The local source SQL byte digest is separate from the cmdrvl-data normalized executed query text digest."
+      ]
+    },
+    {
+      "id": "appendix_d_candidate_reach",
+      "section": "D.10",
+      "description": "Appendix D controlled-halo candidate reach against complete bbox reference.",
+      "sql_path": "scripts/geo_measurements/appendix_d_candidate_reach.sql",
+      "as_of": "2026-08-29",
+      "expected_row_count": 2,
+      "release_pins": {
+        "mappluto.release": "26v1",
+        "mappluto.release_dt": "2026-05-01",
+        "nyc_footprints.release_dt": "2026-08-09"
+      },
+      "denominator_fields": [
+        "total_footprints"
+      ],
+      "expected_denominators": {
+        "total_footprints": 2645
+      },
+      "expected_sanity": {
+        "denominator_sanity": "PASS",
+        "truth_outside_k1": 0
+      },
+      "result_fields": [
+        "cell_name",
+        "footprint_count",
+        "same_cell_one",
+        "same_cell_zero",
+        "k1_one",
+        "k1_zero",
+        "global_one",
+        "global_zero",
+        "global_multi",
+        "truth_outside_k1",
+        "repaired_by_k1",
+        "denominator_sanity"
+      ],
+      "expected_result_rows": [
+        {
+          "cell_name": "BK_DENSE",
+          "footprint_count": 2354,
+          "same_cell_one": 2333,
+          "same_cell_zero": 21,
+          "k1_one": 2353,
+          "k1_zero": 1,
+          "global_one": 2353,
+          "global_zero": 1,
+          "global_multi": 0,
+          "truth_outside_k1": 0,
+          "repaired_by_k1": 20,
+          "denominator_sanity": "PASS"
+        },
+        {
+          "cell_name": "BX_LOWER",
+          "footprint_count": 291,
+          "same_cell_one": 287,
+          "same_cell_zero": 4,
+          "k1_one": 290,
+          "k1_zero": 1,
+          "global_one": 290,
+          "global_zero": 1,
+          "global_multi": 0,
+          "truth_outside_k1": 0,
+          "repaired_by_k1": 3,
+          "denominator_sanity": "PASS"
+        }
+      ],
+      "source_sql_sha256": "670ef0f861f81482ab3d36127927251c2020ec64bc3b2e29a54eca0dfcf4eb14",
+      "execution_transform": "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit",
+      "result_row_validation": "exact_manifest_rows",
+      "limitations": []
+    },
+    {
+      "id": "appendix_d_stratified_halo_centers",
+      "section": "D.11",
+      "description": "Appendix D deterministic r9 center selection for six r8 strata.",
+      "sql_path": "scripts/geo_measurements/appendix_d_stratified_halo_centers.sql",
+      "as_of": "2026-08-30",
+      "expected_row_count": 6,
+      "release_pins": {
+        "mappluto.release": "26v2",
+        "mappluto.release_dt": "2026-08-01",
+        "nyc_footprints.release_dt": "2026-08-09"
+      },
+      "denominator_fields": [
+        "selected_center_count"
+      ],
+      "expected_denominators": {
+        "selected_center_count": 6
+      },
+      "expected_sanity": {
+        "parcel_population_partition_sanity": "PASS",
+        "footprint_population_partition_sanity": "PASS"
+      },
+      "result_fields": [
+        "cell_name",
+        "r8_cell",
+        "r9_cell",
+        "selection_parcels_in_r8",
+        "selection_footprints_in_r8",
+        "selection_combined_in_r8",
+        "full_r9_parcels",
+        "full_r9_footprints",
+        "parcels_assigned_other_r8",
+        "footprints_assigned_other_r8",
+        "parcel_population_partition_sanity",
+        "footprint_population_partition_sanity"
+      ],
+      "expected_result_rows": [
+        {
+          "cell_name": "BK_DENSE",
+          "r8_cell": "882a100d8bfffff",
+          "r9_cell": "892a100d8a3ffff",
+          "selection_parcels_in_r8": 369,
+          "selection_footprints_in_r8": 375,
+          "selection_combined_in_r8": 744,
+          "full_r9_parcels": 369,
+          "full_r9_footprints": 375,
+          "parcels_assigned_other_r8": 0,
+          "footprints_assigned_other_r8": 0,
+          "parcel_population_partition_sanity": "PASS",
+          "footprint_population_partition_sanity": "PASS"
+        },
+        {
+          "cell_name": "BX_LOWER",
+          "r8_cell": "882a100f4dfffff",
+          "r9_cell": "892a100f4c3ffff",
+          "selection_parcels_in_r8": 86,
+          "selection_footprints_in_r8": 69,
+          "selection_combined_in_r8": 155,
+          "full_r9_parcels": 86,
+          "full_r9_footprints": 69,
+          "parcels_assigned_other_r8": 0,
+          "footprints_assigned_other_r8": 0,
+          "parcel_population_partition_sanity": "PASS",
+          "footprint_population_partition_sanity": "PASS"
+        },
+        {
+          "cell_name": "MN_SMALL",
+          "r8_cell": "882a1008c7fffff",
+          "r9_cell": "892a1008c67ffff",
+          "selection_parcels_in_r8": 26,
+          "selection_footprints_in_r8": 24,
+          "selection_combined_in_r8": 50,
+          "full_r9_parcels": 36,
+          "full_r9_footprints": 34,
+          "parcels_assigned_other_r8": 10,
+          "footprints_assigned_other_r8": 10,
+          "parcel_population_partition_sanity": "PASS",
+          "footprint_population_partition_sanity": "PASS"
+        },
+        {
+          "cell_name": "QN_DENSE",
+          "r8_cell": "882a103b6bfffff",
+          "r9_cell": "892a103b6b7ffff",
+          "selection_parcels_in_r8": 266,
+          "selection_footprints_in_r8": 362,
+          "selection_combined_in_r8": 628,
+          "full_r9_parcels": 266,
+          "full_r9_footprints": 362,
+          "parcels_assigned_other_r8": 0,
+          "footprints_assigned_other_r8": 0,
+          "parcel_population_partition_sanity": "PASS",
+          "footprint_population_partition_sanity": "PASS"
+        },
+        {
+          "cell_name": "QN_MEDIUM",
+          "r8_cell": "882a100e25fffff",
+          "r9_cell": "892a100e24fffff",
+          "selection_parcels_in_r8": 213,
+          "selection_footprints_in_r8": 351,
+          "selection_combined_in_r8": 564,
+          "full_r9_parcels": 233,
+          "full_r9_footprints": 386,
+          "parcels_assigned_other_r8": 20,
+          "footprints_assigned_other_r8": 35,
+          "parcel_population_partition_sanity": "PASS",
+          "footprint_population_partition_sanity": "PASS"
+        },
+        {
+          "cell_name": "SI_LOW",
+          "r8_cell": "882a106019fffff",
+          "r9_cell": "892a1060197ffff",
+          "selection_parcels_in_r8": 70,
+          "selection_footprints_in_r8": 187,
+          "selection_combined_in_r8": 257,
+          "full_r9_parcels": 70,
+          "full_r9_footprints": 193,
+          "parcels_assigned_other_r8": 0,
+          "footprints_assigned_other_r8": 6,
+          "parcel_population_partition_sanity": "PASS",
+          "footprint_population_partition_sanity": "PASS"
+        }
+      ],
+      "source_sql_sha256": "7f49c5329fb3cfb97caae2195b65237c0001e07758ad0e4acae0cabf66278e23",
+      "execution_transform": "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit",
+      "result_row_validation": "exact_manifest_rows",
+      "limitations": []
+    },
+    {
+      "id": "appendix_d_stratified_halo",
+      "section": "D.11",
+      "description": "Appendix D six-stratum r8/r9 controlled-halo reach and incidence measurement.",
+      "sql_path": "scripts/geo_measurements/appendix_d_stratified_halo.sql",
+      "as_of": "2026-08-30",
+      "expected_row_count": 12,
+      "release_pins": {
+        "mappluto.release": "26v2",
+        "mappluto.release_dt": "2026-08-01",
+        "nyc_footprints.release_dt": "2026-08-09"
+      },
+      "denominator_fields": [
+        "r8_target_footprints",
+        "r9_target_footprints"
+      ],
+      "expected_denominators": {
+        "r8_target_footprints": 6002,
+        "r9_target_footprints": 1419
+      },
+      "expected_sanity": {
+        "work_unit_sanity": "PASS",
+        "same_denominator_sanity": "PASS",
+        "k1_denominator_sanity": "PASS",
+        "global_denominator_sanity": "PASS",
+        "reach_sanity": "PASS",
+        "forest_sanity": "PASS",
+        "component_accounting_sanity": "PASS",
+        "truth_outside_k1": 0
+      },
+      "result_fields": [
+        "stratum",
+        "resolution",
+        "center_cell",
+        "work_parcels",
+        "work_footprints",
+        "work_unit_nodes",
+        "target_footprints",
+        "same_one",
+        "same_zero",
+        "same_multi",
+        "k1_one",
+        "k1_zero",
+        "k1_multi",
+        "global_one",
+        "global_zero",
+        "global_multi",
+        "truth_outside_k1",
+        "repaired_by_k1",
+        "component_count",
+        "component_nodes",
+        "mean_component_size",
+        "median_component_size",
+        "p90_component_size",
+        "max_component_size",
+        "component_size_histogram",
+        "work_unit_sanity",
+        "same_denominator_sanity",
+        "k1_denominator_sanity",
+        "global_denominator_sanity",
+        "reach_sanity",
+        "forest_sanity",
+        "component_accounting_sanity"
+      ],
+      "expected_result_rows": [],
+      "source_sql_sha256": "8dac886bd80da1ef8c86c001da93e8813821c6b1f894a44736558fc652dc30f2",
+      "execution_transform": "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit",
+      "result_row_validation": "artifact_digest_only",
+      "limitations": [
+        "Exact full result rows are not embedded in the manifest; consistency validation binds result artifact bytes, executed query text bytes, result-set digest, row count, denominators, and sanity only.",
+        "Appendix D stratified halo component statistics and histograms are artifact-bound; this runner derives declared denominators and sanity only.",
+        "The local source SQL byte digest is separate from the cmdrvl-data normalized executed query text digest."
+      ]
+    },
+    {
+      "id": "appendix_f_overture_three_source",
+      "section": "F.6",
+      "description": "Appendix F Overture third-plane controlled-halo source-stratum measurement.",
+      "sql_path": "scripts/geo_measurements/appendix_f_overture_three_source.sql",
+      "as_of": "2026-08-30",
+      "expected_row_count": 24,
+      "release_pins": {
+        "mappluto.release": "26v2",
+        "mappluto.release_dt": "2026-08-01",
+        "nyc_footprints.release_dt": "2026-08-09",
+        "overture.release": "2026-07-22.0",
+        "overture.release_dt": "2026-07-22"
+      },
+      "denominator_fields": [
+        "total_center_observations",
+        "overture_osm_lineage_observations"
+      ],
+      "expected_denominators": {
+        "total_center_observations": 14840,
+        "overture_osm_lineage_observations": 7360
+      },
+      "expected_sanity": {
+        "work_unit_sanity": "PASS",
+        "same_denominator_sanity": "PASS",
+        "k1_denominator_sanity": "PASS",
+        "global_denominator_sanity": "PASS",
+        "reach_sanity": "PASS",
+        "source_forest_sanity": "PASS",
+        "source_count_sanity": "PASS",
+        "component_accounting_sanity": "PASS",
+        "truth_outside_k1": 0
+      },
+      "result_fields": [
+        "stratum",
+        "resolution",
+        "center_cell",
+        "source_name",
+        "work_parcels",
+        "work_nyc_footprints",
+        "work_overture_buildings",
+        "work_unit_nodes",
+        "target_observations",
+        "osm_lineage_observations",
+        "same_one",
+        "same_zero",
+        "same_multi",
+        "k1_one",
+        "k1_zero",
+        "k1_multi",
+        "global_one",
+        "global_zero",
+        "global_multi",
+        "truth_outside_k1",
+        "repaired_by_k1",
+        "component_count",
+        "component_nodes",
+        "mean_component_size",
+        "median_component_size",
+        "p90_component_size",
+        "max_component_size",
+        "work_unit_sanity",
+        "same_denominator_sanity",
+        "k1_denominator_sanity",
+        "global_denominator_sanity",
+        "reach_sanity",
+        "source_forest_sanity",
+        "source_count_sanity",
+        "component_accounting_sanity"
+      ],
+      "expected_result_rows": [],
+      "source_sql_sha256": "6676d9ef650dd56742cc3f22e2be4e0964cce72540caf4f3985ce1ce86b8abc4",
+      "execution_transform": "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit",
+      "result_row_validation": "artifact_digest_only",
+      "limitations": [
+        "Exact full result rows are not embedded in the manifest; consistency validation binds result artifact bytes, executed query text bytes, result-set digest, row count, denominators, and sanity only.",
+        "Appendix F emits 24 source-stratum rows; this runner derives declared totals and sanity from artifact rows but does not embed the full retained live result table in the manifest.",
+        "The local source SQL byte digest is separate from the cmdrvl-data normalized executed query text digest."
+      ]
+    }
+  ]
+}

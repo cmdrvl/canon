@@ -1,6 +1,7 @@
 use canon::geo::{
-    GeoLinearRingMm, GeoOrientation, GeoPointLocation, GeoPointMm, GeoPredicateErrorCode,
-    GeoSegmentIntersection, exact_orientation, exact_segment_intersection,
+    GeoAreaMajorityErrorCode, GeoLinearRingMm, GeoOrientation, GeoPointLocation, GeoPointMm,
+    GeoPredicateErrorCode, GeoSegmentIntersection, exact_orientation, exact_segment_intersection,
+    footprint_majority_area_inside_parcel,
 };
 
 const FRAME: &str = "tile:892a100d26bffff:local-mm:v1";
@@ -179,6 +180,184 @@ fn ring_area_is_exact_but_only_relative_to_quantized_coordinates() {
 }
 
 #[test]
+fn footprint_majority_area_inside_parcel_handles_basic_area_cases_exactly() {
+    let footprint = ring(&[(0, 0), (100, 0), (100, 10), (0, 10)]);
+
+    let containing_parcel = ring(&[(-10, -10), (110, -10), (110, 20), (-10, 20)]);
+    assert!(
+        footprint_majority_area_inside_parcel(&footprint, &containing_parcel).unwrap(),
+        "fully contained footprint must satisfy strict area majority"
+    );
+
+    let disjoint_parcel = ring(&[(200, 0), (300, 0), (300, 10), (200, 10)]);
+    assert!(
+        !footprint_majority_area_inside_parcel(&footprint, &disjoint_parcel).unwrap(),
+        "disjoint parcel has zero footprint area inside"
+    );
+
+    let half_parcel = ring(&[(-10, -10), (50, -10), (50, 20), (-10, 20)]);
+    assert!(
+        !footprint_majority_area_inside_parcel(&footprint, &half_parcel).unwrap(),
+        "exactly half of the computed footprint area is false"
+    );
+
+    let one_millimetre_over_half_parcel = ring(&[(-10, -10), (51, -10), (51, 20), (-10, 20)]);
+    assert!(
+        footprint_majority_area_inside_parcel(&footprint, &one_millimetre_over_half_parcel)
+            .unwrap(),
+        "one millimetre more than half the computed area is true"
+    );
+}
+
+#[test]
+fn footprint_majority_area_inside_parcel_handles_crossing_and_concave_rings() {
+    let footprint = ring(&[(0, 0), (100, 0), (100, 100), (0, 100)]);
+    let crossing_parcel = ring(&[(-20, 25), (75, 25), (75, 75), (-20, 75)]);
+    assert!(
+        !footprint_majority_area_inside_parcel(&footprint, &crossing_parcel).unwrap(),
+        "crossing alone is not enough when only 37.5% of footprint area is inside"
+    );
+
+    let concave_parcel = ring(&[(0, 0), (60, 0), (60, 20), (20, 20), (20, 60), (0, 60)]);
+    let concave_footprint = ring(&[(5, 5), (30, 5), (30, 30), (5, 30)]);
+    assert!(
+        footprint_majority_area_inside_parcel(&concave_footprint, &concave_parcel).unwrap(),
+        "concave parcel intersection must be evaluated by area, not vertex count"
+    );
+}
+
+#[test]
+fn footprint_majority_area_inside_parcel_is_reversal_and_translation_invariant() {
+    let footprint_coords = [(0, 0), (100, 0), (100, 10), (0, 10)];
+    let parcel_coords = [(-10, -10), (51, -10), (51, 20), (-10, 20)];
+
+    for (translated_x, translated_y, reverse_footprint, reverse_parcel) in [
+        (0, 0, false, false),
+        (10_000, -7_000, false, true),
+        (-44_000, 91_000, true, false),
+        (2_000_000, 3_000_000, true, true),
+    ] {
+        let footprint = translated_ring(
+            &footprint_coords,
+            translated_x,
+            translated_y,
+            reverse_footprint,
+        );
+        let parcel = translated_ring(&parcel_coords, translated_x, translated_y, reverse_parcel);
+        assert!(
+            footprint_majority_area_inside_parcel(&footprint, &parcel).unwrap(),
+            "translation=({translated_x},{translated_y}) reverse_footprint={reverse_footprint} reverse_parcel={reverse_parcel}"
+        );
+    }
+}
+
+#[test]
+fn footprint_majority_area_inside_parcel_rejects_shortcut_predicates() {
+    let footprint = ring(&[(0, 0), (100, 0), (100, 100), (0, 100)]);
+    let centroid_containing_parcel = ring(&[(45, 45), (55, 45), (55, 55), (45, 55)]);
+
+    assert!(
+        !footprint_majority_area_inside_parcel(&footprint, &centroid_containing_parcel).unwrap(),
+        "bbox overlap, footprint centroid containment, and parcel vertices inside the footprint do not imply area majority"
+    );
+}
+
+#[test]
+fn footprint_majority_area_inside_parcel_uses_rational_threshold_for_odd_double_area() {
+    let footprint = ring(&[(0, 0), (7, 0), (0, 1)]);
+    let parcel = ring(&[(-1, -1), (2, -1), (2, 2), (-1, 2)]);
+
+    assert!(
+        !footprint_majority_area_inside_parcel(&footprint, &parcel).unwrap(),
+        "left slice has double-area 24/7, which is below the strict half threshold 7/2"
+    );
+}
+
+#[test]
+fn footprint_majority_area_inside_parcel_handles_near_half_diagonal_rational_cuts() {
+    let footprint = ring(&[(0, 0), (101, 0), (0, 1)]);
+    let below_half = ring(&[(-1, -1), (29, -1), (29, 2), (-1, 2)]);
+    let above_half = ring(&[(-1, -1), (30, -1), (30, 2), (-1, 2)]);
+
+    assert!(
+        !footprint_majority_area_inside_parcel(&footprint, &below_half).unwrap(),
+        "x<=29 slice has double-area 5017/101, below strict half threshold 101/2"
+    );
+    assert!(
+        footprint_majority_area_inside_parcel(&footprint, &above_half).unwrap(),
+        "x<=30 slice has double-area 5160/101, above strict half threshold 101/2"
+    );
+}
+
+#[test]
+fn footprint_majority_area_inside_parcel_handles_partial_collinear_overlap_with_area() {
+    let footprint = ring(&[(0, 0), (10, 0), (10, 10), (0, 10)]);
+    let parcel = ring(&[(4, 0), (14, 0), (14, 10), (4, 10)]);
+
+    assert!(
+        footprint_majority_area_inside_parcel(&footprint, &parcel).unwrap(),
+        "partial collinear edge overlap still encloses 60% of the footprint area"
+    );
+}
+
+#[test]
+fn footprint_majority_area_inside_parcel_handles_concave_footprint_across_boundary() {
+    let footprint = ring(&[(0, 0), (6, 0), (6, 2), (2, 2), (2, 6), (0, 6)]);
+    let parcel = ring(&[(-1, -1), (3, -1), (3, 7), (-1, 7)]);
+
+    assert!(
+        footprint_majority_area_inside_parcel(&footprint, &parcel).unwrap(),
+        "parcel cuts a concave footprint but contains 14/20 square units"
+    );
+}
+
+#[test]
+fn footprint_majority_area_inside_parcel_collinear_reflex_subdivision_is_not_false() {
+    let footprint = ring(&[(0, 0), (3, 0), (6, 0), (6, 2), (2, 2), (2, 6), (0, 6)]);
+    let parcel = ring(&[(-1, -1), (7, -1), (7, 7), (-1, 7)]);
+
+    match footprint_majority_area_inside_parcel(&footprint, &parcel) {
+        Ok(true) => {}
+        Ok(false) => panic!("containing parcel cannot be false for a valid subdivided footprint"),
+        Err(error) => assert_eq!(error.code, GeoAreaMajorityErrorCode::UnsupportedTopology),
+    }
+}
+
+#[test]
+fn footprint_majority_area_inside_parcel_refuses_mixed_frames() {
+    let footprint = ring(&[(0, 0), (10, 0), (10, 10), (0, 10)]);
+    let parcel = ring_in_frame(
+        "tile:892a100d26bffff:other-local-mm:v1",
+        &[(-1, -1), (11, -1), (11, 11), (-1, 11)],
+    );
+
+    let error = footprint_majority_area_inside_parcel(&footprint, &parcel).unwrap_err();
+    assert_eq!(error.code, GeoAreaMajorityErrorCode::MixedFrame);
+}
+
+#[test]
+fn footprint_majority_area_inside_parcel_refuses_overflow_without_float_fallback() {
+    let footprint = ring(&[(i64::MIN, 0), (i64::MAX, 0), (0, 1)]);
+    let parcel = ring(&[(0, i64::MIN), (0, i64::MAX), (1, 0)]);
+
+    let error = footprint_majority_area_inside_parcel(&footprint, &parcel).unwrap_err();
+    assert_eq!(error.code, GeoAreaMajorityErrorCode::ArithmeticOverflow);
+}
+
+#[test]
+fn footprint_majority_area_inside_parcel_large_identical_square_is_never_false() {
+    let max = i64::MAX;
+    let footprint = ring(&[(0, 0), (max, 0), (max, max), (0, max)]);
+    let parcel = ring(&[(0, 0), (max, 0), (max, max), (0, max)]);
+
+    match footprint_majority_area_inside_parcel(&footprint, &parcel) {
+        Ok(true) => {}
+        Ok(false) => panic!("identical constructor-valid rings cannot be classified as false"),
+        Err(error) => assert_eq!(error.code, GeoAreaMajorityErrorCode::ArithmeticOverflow),
+    }
+}
+
+#[test]
 fn extreme_integer_input_refuses_on_overflow_without_float_fallback() {
     let error = exact_orientation(
         GeoPointMm::new(i64::MIN, i64::MIN),
@@ -187,6 +366,36 @@ fn extreme_integer_input_refuses_on_overflow_without_float_fallback() {
     )
     .unwrap_err();
     assert_eq!(error.code, GeoPredicateErrorCode::ArithmeticOverflow);
+}
+
+fn ring(coords: &[(i64, i64)]) -> GeoLinearRingMm {
+    translated_ring(coords, 0, 0, false)
+}
+
+fn ring_in_frame(frame: &str, coords: &[(i64, i64)]) -> GeoLinearRingMm {
+    let mut vertices = coords
+        .iter()
+        .map(|(x, y)| GeoPointMm::new(*x, *y))
+        .collect::<Vec<_>>();
+    vertices.push(vertices[0]);
+    GeoLinearRingMm::new(frame, vertices).unwrap()
+}
+
+fn translated_ring(
+    coords: &[(i64, i64)],
+    translated_x: i64,
+    translated_y: i64,
+    reverse: bool,
+) -> GeoLinearRingMm {
+    let mut vertices = coords
+        .iter()
+        .map(|(x, y)| GeoPointMm::new(x + translated_x, y + translated_y))
+        .collect::<Vec<_>>();
+    if reverse {
+        vertices.reverse();
+    }
+    vertices.push(vertices[0]);
+    GeoLinearRingMm::new(FRAME, vertices).unwrap()
 }
 
 fn rectangle(translated_x: i64, translated_y: i64, reverse: bool) -> GeoLinearRingMm {

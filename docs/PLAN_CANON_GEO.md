@@ -47,6 +47,7 @@ The controlling state entering the main review is:
 | Product boundary | Core Canon remains exact registry replay; GEO is a build-time workbench. | `AGENTS.md`, `README.md`; binding boundary |
 | N-source row composition | `canon geo link-sources` now materializes three or more named local CSV sources through the existing entity multisource kernel. Geo requires exactly one target, at least one bounded reference, permits peers, refuses a globally canonical vendor role, defaults to the complete comparison graph, enforces per-pair budgets, emits anchor-conflict abstentions, and content-hashes every input and the merged rows. The semantic artifact hash excludes publication paths and is compatible with `EntityArtifactReference`; source count remains provenance rather than evidence weight. This is row composition, not spatial candidate reach, constraint admission, or solving. | `src/geo/multisource.rs`, `src/entity/multisource.rs`, `canon_geo_multisource_request.v0`, `canon_entity_multisource_link.v1`; implemented build-time workbench contract |
 | Offline row bridge | `canon geo materialize-evidence` deterministically groups release-pinned parcel, building/parcel-incidence, rho-contract, and immutable source-record rows into `canon_geo_evidence_request.v0`; duplicate grains and conflicting observation rows refuse, and the production evidence compiler validates the result. It performs no acquisition, and source-record multiplicity remains provenance rather than constraint weight. | `src/geo/materialize.rs`, `canon_geo_warehouse_rows.v0`; implemented build-time workbench contract |
+| Measurement receipt integrity | The companion `canon_geo_measurements` binary emits a deterministic offline plan or checks supplied result artifacts and receipts against the pinned B/C/D/F manifest. It recomputes local source-SQL bytes, normalized executed-query-text bytes, artifact bytes, an unordered canonical result-set digest, row-derived denominators, and declared sanity fields. A successful row is only `receipt_consistent`: the operator-supplied proof class is reported separately, and the runner does not attest live execution, query-history provenance, or source authenticity. | `src/bin/canon_geo_measurements.rs`, `scripts/geo_measurements/manifest.json`; offline integrity contract `IMPLEMENTED`, live provenance `OPEN` |
 | Tile work and boundary ownership | `canon geo materialize-home-cells` derives release-bound h3o cells from fixed-decimal WGS84 representative points, retains geometry/transform bindings, nine-point coordinate-envelope probes, the minimum probe-covering halo, and claimed-cell parity; it refuses temporal snapshot/method/transform mixing under one source name. The geometry digest is validated as a binding but cannot be recomputed because this artifact intentionally omits geometry bytes. `canon geo tile-work` materializes one budgeted H3 center-plus-halo work unit; `canon geo reconcile-tiles` validates the exact work unit supplied to each local solver, records a work-unit digest receipt, emits one owned decision per canonical member set, and refuses missing owners, halo-only decisions, unavailable members, and differing payload digests for the same members. H3 supplies blocking and ownership only, never geometric truth. Fresh v3 rows expose complete centroids but null source-plane H3 fields, correctly requiring this derived sibling. D.11 finds positive k1 reach in six r8 strata and one deliberately dense r9 child per stratum, with explicit Canon neighbor disks. It does not establish citywide recall, global h3o parity, client-layer coverage, or solver-payload interpretation. | `src/geo/tile.rs`, `canon_geo_home_cell_*.v0`, `canon_geo_tile_work_*.v0`, `canon_geo_tile_reconciliation*.v0`; executable assignment/ownership contract `IMPLEMENTED`, stratified bounded reach `MEASURED`, generalization `OPEN` |
 | Decision object | Entity-grain backbone and residual count with explicit scope and exactness; typed fallback when either is incomplete. Ledger keys are alias projections. | §§9, 10.2, 16.1; Appendix L.5 |
 | Candidate problem | Point re-ranking is not the dominant measured failure. The unresolved solver question is collateral composition over parcel/building sets. | Appendices L–M; `MEASURED`, with E4 `OPEN` |
@@ -240,6 +241,24 @@ anywhere in the decision path.**
 > The predicate kernel alone does **not** complete the geometry value/materialization
 > contract (`bd-16r1`) or area-majority clipping. Exactness is relative to accepted
 > quantized coordinates, never a claim of exact world geometry.
+
+> **IMPLEMENTATION STATUS — EXACT SIMPLE-RING AREA MAJORITY LANDED 2026-08-30
+> (`bd-2b9d`, IN PROGRESS).** `src/geo/geometry.rs` now computes the strict
+> geometric-over-geometric `intersection_area > footprint_area / 2` predicate for two
+> validated simple rings in the same local integer frame. It ear-triangulates each ring,
+> constructs triangle-intersection vertices as checked exact rationals, and sums computed
+> geometric area without source-asserted area fields, floating point, or epsilons. Exact
+> half is false. Mixed frames, arithmetic overflow, and unsupported topology refuse with
+> typed errors rather than falling back to an approximate answer. Adversarial tests cover
+> rational cuts on both sides of half, partial collinear overlap, concave footprints and
+> parcels, reversal/translation invariance, mixed frames, and overflow.
+>
+> This is deliberately a **bounded simple-ring kernel**, not yet the whole production
+> parcel/footprint predicate. Polygon holes and multipolygon aggregation still need an
+> explicit decision-domain composition rule; rational-denominator growth and runtime must
+> be measured on real source-plane geometry; and candidate-complete tile + controlled-halo
+> replay must precede any recall or decomposition claim. A typed overflow or unsupported-
+> topology result is an abstention, not evidence that a footprint lacks a majority parcel.
 
 > **IMPLEMENTATION STATUS — TYPED ARTIFACT BOUNDARY LANDED 2026-08-28 (`bd-16r1`, IN
 > PROGRESS).** `src/geo/geometry_value.rs` admits source coordinates as fixed-scale decimal
@@ -834,7 +853,7 @@ open work, not established capability.
 | 2 | Address strings (query side) | `PROPERTY_ADDRESS` + parsed fields | any | existential membership — "some member of `Coll` fronts street S near number N"; parses held as a domain via `regular` (§7.1); never exclusion | `Lo/Hi` range vars, membership | MEASURED: 28.89% exact-fire; string normalization is representation-bound (K.2) |
 | 3 | Address sets (lot side) | **LANDED 2026-08-16**: `NYC_DCP_PAD_ADDRESS_HOT` (1.32M), `_PAD_BBL_HOT` (874K), `_PAD_SND_HOT` (121K street names) + EXT/meta | county address points, National Address Database, OpenAddresses | the lot's full legal address set; membership tests against it | address-set membership; direct address→BBL+BIN lookup | VERIFIED on acceptance probes: Crosby/Broadway both frontages (Case 5); 241–249 W 74 range→BBL 1011660007 (retry case, no geocoder); Queens hyphenate 130-50 146 St→3 BINs (F.4's disagreement parcel confirmed) |
 | 4 | Parcel geometry | `NYC_DCP_MAPPLUTO_HOT` 26v1 | county parcels / Regrid | survey substrate; exact integer predicates (§4) | candidate universe, area-majority anchor | MEASURED (D/F) |
-| 5 | Footprints, multi-source | NYC footprints; FEMA structures; MS GlobalML (NY landed); Overture (**0 NY rows — gap**) | same, national | geometric-area majority inside an interior-disjoint parcel stratum; overlapping legal hierarchies use typed crosswalks; within-source `alldifferent`; cross-source counts via `gcc` | `X_f`, `Pb_b` slots | Mixed-contract forest retained (F); canonical multi-source rerun `OPEN`; 55% retained count agreement (F.4) |
+| 5 | Footprints, multi-source | NYC footprints; FEMA structures; MS GlobalML (NY landed); Overture buildings (landed and measured in F.6's bounded six-stratum sample) | same, national | geometric-area majority inside an interior-disjoint parcel stratum; overlapping legal hierarchies use typed crosswalks; within-source `alldifferent`; cross-source counts via `gcc` | `X_f`, `Pb_b` slots | Mixed-contract forest retained (F); NYC+Overture predicate-incidence measured in F.6; latent-building reconciliation and canonical multi-source solver rerun `OPEN`; 55% retained count agreement (F.4) |
 | 6 | Asserted attributes | Annex A / `PROPERTY_MART` SF, units, year | every deal tape | exact integer bands only when semantic id, unit, value origin, and calibration basis agree; the illustrative office NRA/gross band is diagnostic, not admitted | `A_b`, `Fl_b`, knapsack | LANDED; typed evidence compiler implemented; population calibration/joint test `OPEN` |
 | 7 | Parcel attributes | `BLDGAREA`, `NUMBLDGS`, units | assessor rolls | observations to check, never denominators (F) | `gcc` counts, area bands | PARTIALLY MEASURED (F.4) |
 | 8 | Document evidence | `NYC_ACRIS_*` external tables | county recorder / title plants | recorded collateral BBL sets bound by amount+date+lender with contamination filters (H) | direct `Coll` evidence; also ground truth | MEASURED as truth instrument (H); unused as solver evidence |
@@ -2035,6 +2054,19 @@ relation let the legal confirmation complete. This is the intended mathematics: 
 candidate section, then a small exact residual—not a national or 500k-candidate
 monolithic solve.
 
+A fresh 2026-08-30 staged control sharpens where the current bottleneck sits. Stage 1
+query `01c6befd-0821-9afc-006c-c703088ce26e` completed in 6.966 seconds with guard
+`ok` and exported all 653 non-round loan parameters. Stage 2 then cancelled at the
+45-second client boundary when unsharded (`01c6bf06-0821-9afc-006c-c703088ce28e`),
+at shard 0/16 (`01c6bf19-0821-a6c8-006c-c703088d02f2`), and after the query was
+flattened at shards 0/16 (`01c6bf36-0821-a0dc-006c-c703088cf4ca`) and 0/64
+(`01c6bf38-0821-a0dc-006c-c703088cf4d2`). The flat 0/16 and 0/64 attempts both
+reported the same 954,601 bytes scanned, so smaller logical shards did not prune the
+external MASTER access path. Stage 3 has therefore not been freshly executed, and the
+retained H.7 accepts remain retained evidence rather than a new live reproduction. The
+next positive path is a release-pinned MASTER/PARTY candidate fact or index, or a
+retrievable long-read MCP execution—not a fan-out of deterministic timeout queries.
+
 These are PIP baseline measurements against document truth, not solver correctness or a
 release precision claim. Candidate-reach failure remains upstream of solver truth; human
 adjudication of the contested strata remains open. Exact query IDs, denominators,
@@ -2061,11 +2093,13 @@ worked end to end from landed data, each forcing a distinct design decision:
 
 Recurring acquisition finding: cases 4, 5, and 6 each hit the missing address-set layer
 (only primary addresses in MapPLUTO) — the bd-35qg/PAD elevation from §12, now with three
-worked receipts. Source snapshot from case 1: FEMA NY 5.0M and Microsoft GlobalML NY 5.4M
-rows landed; **Overture reports 0 NY rows** — a landing gap to resolve before Overture
-appears in any tile. These six artifacts are the seed of the `--suite`/`--gold` evaluation
-corpus, the visual evidence card's worked examples (bd-101v), and a showable pre-product
-sales artifact.
+worked receipts. The case-1 source snapshot recorded FEMA NY 5.0M and Microsoft GlobalML
+NY 5.4M rows landed while **Overture reported 0 NY rows**. That was an historical
+2026-08-16 landing gap, superseded for the bounded six-stratum population by the
+2026-08-30 F.6 Overture measurement; it must not be read as current source state or as a
+complete NYC Overture denominator. These six artifacts are the seed of the
+`--suite`/`--gold` evaluation corpus, the visual evidence card's worked examples
+(bd-101v), and a showable pre-product sales artifact.
 
 ---
 
