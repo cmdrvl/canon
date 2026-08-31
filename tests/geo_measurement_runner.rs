@@ -2,14 +2,14 @@
 
 use assert_cmd::Command;
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest as _, Sha256};
 use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
 };
-use tempfile::{TempDir, tempdir};
+use tempfile::{tempdir, TempDir};
 
 const MANIFEST: &str = include_str!("../scripts/geo_measurements/manifest.json");
 const RECEIPTS_VERSION: &str = "canon_geo_measurement_receipts.v0";
@@ -25,6 +25,13 @@ fn bin() -> Command {
 
 fn manifest_value() -> Value {
     serde_json::from_str(MANIFEST).expect("manifest parses")
+}
+
+fn manifest_measurement_count() -> usize {
+    manifest_value()["measurements"]
+        .as_array()
+        .expect("measurements")
+        .len()
 }
 
 struct MeasurementFixture {
@@ -219,6 +226,7 @@ fn artifact_rows(measurement: &Value) -> Value {
         }
         "appendix_d_stratified_halo" => stratified_halo_rows(),
         "appendix_f_overture_three_source" => overture_rows(),
+        "e5_franklin_county_thin_tier_readiness_v0" => measurement["expected_result_rows"].clone(),
         other => panic!("unexpected measurement {other}"),
     }
 }
@@ -421,8 +429,48 @@ fn derive_denominators(measurement_id: &str, rows: &[Value]) -> Value {
             "total_center_observations": sum_rows(rows, "target_observations"),
             "overture_osm_lineage_observations": sum_rows_where(rows, "osm_lineage_observations", "source_name", &json!("overture_building"))
         }),
+        "e5_franklin_county_thin_tier_readiness_v0" => e5_denominators(rows),
         other => panic!("unexpected measurement {other}"),
     }
+}
+
+fn e5_denominators(rows: &[Value]) -> Value {
+    let mut denominators = serde_json::Map::new();
+    for field in [
+        "subject_properties",
+        "subject_loans",
+        "multi_property_loans",
+        "subject_center_cells",
+        "work_cells",
+    ] {
+        denominators.insert(field.to_string(), json!(shared_u64(rows, field)));
+    }
+    for evidence_class in [
+        "fema_structures",
+        "microsoft_footprints",
+        "overture_addresses",
+        "overture_buildings",
+    ] {
+        let row = rows
+            .iter()
+            .find(|row| row["evidence_class"] == evidence_class)
+            .expect("e5 evidence row");
+        for field in ["feature_rows", "distinct_features", "occupied_work_cells"] {
+            denominators.insert(
+                format!("{evidence_class}.{field}"),
+                json!(row[field].as_u64().expect("u64 field")),
+            );
+        }
+    }
+    Value::Object(denominators)
+}
+
+fn shared_u64(rows: &[Value], field: &str) -> u64 {
+    let first = rows[0][field].as_u64().expect("shared u64 field");
+    assert!(rows
+        .iter()
+        .all(|row| row[field].as_u64().expect("shared u64 field") == first));
+    first
 }
 
 fn derive_sanity(measurement: &Value, rows: &[Value]) -> Value {
@@ -614,18 +662,14 @@ fn plan_is_ordered_offline_and_excludes_h7() {
         plan["execution"],
         "operator_fed_cmdrvl_data_receipts_only_no_snowflake_execution"
     );
-    assert!(
-        plan["claim_boundary"]
-            .as_str()
-            .expect("claim boundary")
-            .contains("contract fixture")
-    );
-    assert!(
-        plan["claim_boundary"]
-            .as_str()
-            .expect("claim boundary")
-            .contains("unordered canonical result set")
-    );
+    assert!(plan["claim_boundary"]
+        .as_str()
+        .expect("claim boundary")
+        .contains("contract fixture"));
+    assert!(plan["claim_boundary"]
+        .as_str()
+        .expect("claim boundary")
+        .contains("unordered canonical result set"));
     let ids = plan["measurements"]
         .as_array()
         .expect("measurements")
@@ -641,7 +685,8 @@ fn plan_is_ordered_offline_and_excludes_h7() {
             "appendix_d_candidate_reach",
             "appendix_d_stratified_halo_centers",
             "appendix_d_stratified_halo",
-            "appendix_f_overture_three_source"
+            "appendix_f_overture_three_source",
+            "e5_franklin_county_thin_tier_readiness_v0"
         ]
     );
     assert!(!ids.iter().any(|id| id.to_ascii_lowercase().contains("h7")));
@@ -667,7 +712,10 @@ fn valid_receipts_verify_and_permutation_is_deterministic() {
     let fixture = valid_fixture();
     let (ok, report) = run_report(&fixture);
     assert!(ok, "{report}");
-    assert_eq!(report["summary"]["receipt_consistent"], 7);
+    assert_eq!(
+        report["summary"]["receipt_consistent"],
+        json!(manifest_measurement_count())
+    );
     assert!(report["summary"].get("verified").is_none());
     assert_eq!(report["summary"]["malformed"], 0);
     assert_eq!(report["measurements"][0]["status"], "receipt_consistent");
@@ -685,13 +733,11 @@ fn valid_receipts_verify_and_permutation_is_deterministic() {
         report["measurements"][0]["executed_query_text_path"],
         "queries/appendix_b_centroid_percolation.sql"
     );
-    assert!(
-        report["measurements"][0]["details"]
-            .as_array()
-            .expect("details")
-            .iter()
-            .any(|detail| detail == LIVENESS_NOT_ATTESTED)
-    );
+    assert!(report["measurements"][0]["details"]
+        .as_array()
+        .expect("details")
+        .iter()
+        .any(|detail| detail == LIVENESS_NOT_ATTESTED));
     assert_eq!(
         report["measurements"][0]["execution_transform"],
         EXECUTION_TRANSFORM
@@ -719,10 +765,16 @@ fn valid_receipts_verify_and_permutation_is_deterministic() {
 #[test]
 fn missing_and_duplicate_receipts_are_rejected() {
     let mut missing = valid_fixture();
+    let missing_index = missing.receipts["receipts"]
+        .as_array_mut()
+        .expect("receipts")
+        .iter()
+        .position(|receipt| receipt["measurement_id"] == "appendix_f_overture_three_source")
+        .expect("appendix F receipt");
     missing.receipts["receipts"]
         .as_array_mut()
         .expect("receipts")
-        .pop();
+        .remove(missing_index);
     write_fixture_receipts(&missing);
     let (ok, report) = run_report(&missing);
     assert!(!ok);
@@ -953,7 +1005,10 @@ fn manifest_derived_synthetic_fresh_live_is_not_verified() {
     let report: Value = serde_json::from_slice(&output.stdout).expect("report json");
     assert_eq!(report["summary"]["receipt_consistent"], 0);
     assert!(report["summary"].get("verified").is_none());
-    assert_eq!(report["summary"]["malformed"], 7);
+    assert_eq!(
+        report["summary"]["malformed"],
+        json!(manifest_measurement_count())
+    );
 }
 
 #[test]
@@ -968,30 +1023,45 @@ fn self_authored_fresh_live_bundle_is_not_live_attested() {
     write_fixture_receipts(&fixture);
     let (ok, report) = run_report(&fixture);
     assert!(ok, "{report}");
-    assert_eq!(report["summary"]["receipt_consistent"], 7);
+    assert_eq!(
+        report["summary"]["receipt_consistent"],
+        json!(manifest_measurement_count())
+    );
     assert!(report["summary"].get("verified").is_none());
     assert_eq!(report["measurements"][0]["status"], "receipt_consistent");
     assert_eq!(
         report["measurements"][0]["declared_proof_class"],
         "fresh_live"
     );
-    assert!(
-        report["measurements"][0]["details"]
-            .as_array()
-            .expect("details")
-            .iter()
-            .any(|detail| detail == LIVENESS_NOT_ATTESTED)
-    );
+    assert!(report["measurements"][0]["details"]
+        .as_array()
+        .expect("details")
+        .iter()
+        .any(|detail| detail == LIVENESS_NOT_ATTESTED));
 }
 
 #[test]
 fn malformed_manifest_contract_is_rejected() {
-    let cases: [ManifestMutationCase; 12] = [
+    let cases: [ManifestMutationCase; 16] = [
         ("manifest_measurement_order", |manifest: &mut Value| {
             manifest["measurements"]
                 .as_array_mut()
                 .expect("measurements")
                 .swap(0, 1);
+        }),
+        ("missing_core_prefix_id", |manifest: &mut Value| {
+            manifest["required_measurement_ids"]
+                .as_array_mut()
+                .expect("required ids")
+                .remove(0);
+            manifest["measurements"]
+                .as_array_mut()
+                .expect("measurements")
+                .remove(0);
+        }),
+        ("mutated_core_prefix_id", |manifest: &mut Value| {
+            manifest["required_measurement_ids"][0] = json!("appendix_b_centroid_percolation_v9");
+            manifest["measurements"][0]["id"] = json!("appendix_b_centroid_percolation_v9");
         }),
         ("duplicate_manifest_id", |manifest: &mut Value| {
             manifest["measurements"][1]["id"] = manifest["measurements"][0]["id"].clone();
@@ -1034,6 +1104,39 @@ fn malformed_manifest_contract_is_rejected() {
         ("h7_excluded", |manifest: &mut Value| {
             manifest["measurements"][0]["id"] = json!("appendix_h7_forbidden");
             manifest["required_measurement_ids"][0] = json!("appendix_h7_forbidden");
+        }),
+        ("duplicate_extension_id", |manifest: &mut Value| {
+            let extension = manifest["measurements"]
+                .as_array()
+                .expect("measurements")
+                .last()
+                .expect("extension")
+                .clone();
+            manifest["required_measurement_ids"]
+                .as_array_mut()
+                .expect("required ids")
+                .push(json!("e5_franklin_county_thin_tier_readiness_v0"));
+            manifest["measurements"]
+                .as_array_mut()
+                .expect("measurements")
+                .push(extension);
+        }),
+        ("unsorted_extension_ids", |manifest: &mut Value| {
+            let mut extension = manifest["measurements"]
+                .as_array()
+                .expect("measurements")
+                .last()
+                .expect("extension")
+                .clone();
+            extension["id"] = json!("e4_unsorted_extension_v0");
+            manifest["required_measurement_ids"]
+                .as_array_mut()
+                .expect("required ids")
+                .push(json!("e4_unsorted_extension_v0"));
+            manifest["measurements"]
+                .as_array_mut()
+                .expect("measurements")
+                .push(extension);
         }),
     ];
 

@@ -23,7 +23,7 @@ const EXECUTION_CHANNEL: &str = "cmdrvl_data_mcp";
 const EXECUTION_TRANSFORM: &str = "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit";
 const LIVENESS_NOT_ATTESTED: &str = "receipt is internally consistent, but this offline runner does not attest liveness, authenticity, or query-history provenance";
 const CLAIM_BOUNDARY: &str = "Offline receipt consistency validation only. A receipt_consistent row means the receipt is bound to result artifact bytes and executed query text bytes, and matches the manifest's declared offline checks. source_sql_sha256 is the local file byte digest; executed_query_text_sha256 is recomputed from the supplied normalized query text artifact after the declared cmdrvl-data/Snowflake transform. This proves byte integrity, not authenticity or liveness. result_set_sha256 is over an unordered canonical result set sorted deterministically by compact JSON row encoding. Integration-test positive JSON is a contract fixture, not live proof of cmdrvl-data execution.";
-const REQUIRED_MEASUREMENT_IDS: &[&str] = &[
+const REQUIRED_CORE_MEASUREMENT_IDS: &[&str] = &[
     "appendix_b_centroid_percolation",
     "appendix_c_r8_density",
     "appendix_d_same_cell_predicates",
@@ -313,32 +313,24 @@ fn validate_manifest(repo_root: &Path, manifest: Manifest) -> Result<Manifest, A
     }
     if !manifest.offline_only {
         return Err(AppError::new(
-            "manifest must be offline_only; this runner never executes Snowflake or E5",
+            "manifest must be offline_only; this runner never executes Snowflake or warehouse queries",
         ));
     }
-    let required = REQUIRED_MEASUREMENT_IDS
-        .iter()
-        .copied()
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    if manifest.required_measurement_ids != required {
-        return Err(AppError::new(
-            "manifest required_measurement_ids must match the bd-3mo1 B/C/D/F set in order",
-        ));
-    }
+    validate_required_measurement_ids(&manifest.required_measurement_ids)?;
+    let declared = manifest.required_measurement_ids.clone();
     let measurement_ids = manifest
         .measurements
         .iter()
         .map(|measurement| measurement.id.clone())
         .collect::<Vec<_>>();
-    if measurement_ids != required {
+    if measurement_ids != declared {
         return Err(AppError::new(
-            "manifest measurements must appear exactly in REQUIRED_MEASUREMENT_IDS order",
+            "manifest measurements must appear exactly in required_measurement_ids order",
         ));
     }
 
     let mut seen = BTreeSet::new();
-    let required_set = required.iter().cloned().collect::<BTreeSet<_>>();
+    let declared_set = declared.iter().cloned().collect::<BTreeSet<_>>();
     for measurement in &manifest.measurements {
         if !seen.insert(measurement.id.clone()) {
             return Err(AppError::new(format!(
@@ -346,7 +338,7 @@ fn validate_manifest(repo_root: &Path, manifest: Manifest) -> Result<Manifest, A
                 measurement.id
             )));
         }
-        if !required_set.contains(&measurement.id) {
+        if !declared_set.contains(&measurement.id) {
             return Err(AppError::new(format!(
                 "manifest contains undeclared measurement id {}",
                 measurement.id
@@ -360,6 +352,7 @@ fn validate_manifest(repo_root: &Path, manifest: Manifest) -> Result<Manifest, A
                 measurement.id
             )));
         }
+        validate_measurement_claim_boundary(measurement)?;
         validate_relative_sql_path(&measurement.sql_path)?;
         validate_sha256("source_sql_sha256", &measurement.source_sql_sha256)?;
         if measurement.execution_transform != EXECUTION_TRANSFORM {
@@ -488,8 +481,8 @@ fn validate_manifest(repo_root: &Path, manifest: Manifest) -> Result<Manifest, A
             )));
         }
     }
-    if seen != required_set {
-        let missing = required
+    if seen != declared_set {
+        let missing = declared
             .iter()
             .filter(|id| !seen.contains(*id))
             .cloned()
@@ -500,6 +493,102 @@ fn validate_manifest(repo_root: &Path, manifest: Manifest) -> Result<Manifest, A
         )));
     }
     Ok(manifest)
+}
+
+fn validate_required_measurement_ids(ids: &[String]) -> Result<(), AppError> {
+    assert_unique_strings(ids, "required_measurement_ids")?;
+    let core = REQUIRED_CORE_MEASUREMENT_IDS
+        .iter()
+        .copied()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if ids.len() < core.len() {
+        return Err(AppError::new(
+            "manifest required_measurement_ids is missing mandatory B/C/D/F core measurements",
+        ));
+    }
+    if ids[..core.len()] != core[..] {
+        return Err(AppError::new(
+            "manifest required_measurement_ids must begin with the mandatory B/C/D/F core prefix in order",
+        ));
+    }
+    let extensions = &ids[core.len()..];
+    for id in extensions {
+        validate_extension_measurement_id(id)?;
+    }
+    if extensions.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return Err(AppError::new(
+            "manifest extension measurement ids must be lexicographically sorted after the B/C/D/F core prefix",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_extension_measurement_id(id: &str) -> Result<(), AppError> {
+    let Some((_, version)) = id.rsplit_once("_v") else {
+        return Err(AppError::new(format!(
+            "extension measurement id {id} must carry a _vN suffix"
+        )));
+    };
+    if version.is_empty() || !version.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(AppError::new(format!(
+            "extension measurement id {id} must carry a numeric _vN suffix"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_measurement_claim_boundary(measurement: &ManifestMeasurement) -> Result<(), AppError> {
+    if !(measurement.id.starts_with("e5_")
+        || measurement.section.to_ascii_lowercase().starts_with("e5"))
+    {
+        return Ok(());
+    }
+    if measurement.result_row_validation != "exact_manifest_rows" {
+        return Err(AppError::new(format!(
+            "E5 measurement {} must use exact_manifest_rows so bounded preflight rows are not inferred",
+            measurement.id
+        )));
+    }
+    let boundary_text = format!(
+        "{} {}",
+        measurement.description,
+        measurement.limitations.join(" ")
+    )
+    .to_ascii_lowercase();
+    for phrase in [
+        "bounded source availability",
+        "not e5 accuracy",
+        "not parcel reach",
+        "not four independent votes",
+    ] {
+        if !boundary_text.contains(phrase) {
+            return Err(AppError::new(format!(
+                "E5 measurement {} must state the {phrase} boundary",
+                measurement.id
+            )));
+        }
+    }
+    if boundary_text.contains("e5 complete") || boundary_text.contains("live_attested") {
+        return Err(AppError::new(format!(
+            "E5 measurement {} cannot claim E5 completion or live attestation",
+            measurement.id
+        )));
+    }
+    for field in &measurement.result_fields {
+        let field = field.to_ascii_lowercase();
+        if field.contains("precision")
+            || field.contains("accuracy")
+            || field.contains("e5_complete")
+            || field.contains("live_attested")
+        {
+            return Err(AppError::new(format!(
+                "E5 measurement {} result field {field} would overclaim this source-availability preflight",
+                measurement.id
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn load_receipts(path: &Path) -> Result<Vec<Receipt>, AppError> {
@@ -640,7 +729,7 @@ fn report_for(manifest: &Manifest, receipts: &[Receipt], receipt_base: &Path) ->
         version: REPORT_VERSION.to_string(),
         scope: manifest.scope.clone(),
         offline_only: true,
-        execution: "offline_validation_only_no_snowflake_or_e5_execution".to_string(),
+        execution: "offline_validation_only_no_snowflake_execution".to_string(),
         claim_boundary: CLAIM_BOUNDARY.to_string(),
         summary,
         measurements: rows,
@@ -1131,6 +1220,17 @@ fn derive_denominators(
                 )?,
             );
         }
+        "e5_franklin_county_thin_tier_readiness_v0" => {
+            for field in &measurement.denominator_fields {
+                let value = if let Some((evidence_class, source_field)) = field.split_once('.') {
+                    let row = single_evidence_class_row(measurement, rows, evidence_class)?;
+                    required_u64(row, source_field)?
+                } else {
+                    shared_u64(rows, field)?
+                };
+                denominators.insert(field.clone(), value);
+            }
+        }
         other => {
             return Err(format!(
                 "no denominator derivation is declared for measurement {other}"
@@ -1180,6 +1280,48 @@ fn single_row<'a>(
         ));
     }
     Ok(&rows[0])
+}
+
+fn single_evidence_class_row<'a>(
+    measurement: &ManifestMeasurement,
+    rows: &'a [BTreeMap<String, Value>],
+    evidence_class: &str,
+) -> Result<&'a BTreeMap<String, Value>, String> {
+    let mut matches = rows
+        .iter()
+        .filter(|row| row.get("evidence_class").and_then(Value::as_str) == Some(evidence_class));
+    let Some(row) = matches.next() else {
+        return Err(format!(
+            "measurement {} is missing evidence_class {evidence_class}",
+            measurement.id
+        ));
+    };
+    if matches.next().is_some() {
+        return Err(format!(
+            "measurement {} has duplicate evidence_class {evidence_class}",
+            measurement.id
+        ));
+    }
+    Ok(row)
+}
+
+fn shared_u64(rows: &[BTreeMap<String, Value>], field: &str) -> Result<u64, String> {
+    let mut values = rows.iter().map(|row| required_u64(row, field));
+    let Some(first) = values.next() else {
+        return Err(format!(
+            "cannot derive shared denominator {field} from empty rows"
+        ));
+    };
+    let first = first?;
+    for value in values {
+        let value = value?;
+        if value != first {
+            return Err(format!(
+                "shared denominator {field} differs across artifact rows"
+            ));
+        }
+    }
+    Ok(first)
 }
 
 fn sum_u64(rows: &[BTreeMap<String, Value>], field: &str) -> Result<u64, String> {
