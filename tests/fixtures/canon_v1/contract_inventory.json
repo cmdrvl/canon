@@ -283,6 +283,19 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo materialize-address-evidence",
+      "family": "geo",
+      "clap_path": "geo materialize-address-evidence",
+      "operator_name": "geo materialize-address-evidence",
+      "primary_contracts": [
+        "canon_geo_address_parcel_evidence_request.v0",
+        "canon_geo_address_parcel_bridge_request.v0",
+        "canon_geo_address_parcel_bridge.v0",
+        "canon_geo_address_parcel_evidence_bundle.v0"
+      ],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo materialize-h7-population",
       "family": "geo",
       "clap_path": "geo materialize-h7-population",
@@ -1334,6 +1347,70 @@
       "access_boundary": "public_crate_api",
       "crate_module": "canon::geo",
       "source_path": "schemas/canon.geo.pad_membership.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_address_parcel_bridge_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.address_parcel_bridge_request.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_address_parcel_bridge.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.address_parcel_bridge.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_address_parcel_evidence_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.address_parcel_evidence_request.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_address_parcel_evidence_bundle.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.address_parcel_evidence_bundle.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_discovery_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.discovery_request.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_acquisition_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.acquisition_request.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_acquisition_receipt.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.acquisition_receipt.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_entity_projection.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.composition.v0.schema.json"
     },
     {
       "id": "canon_geo_composition_profile.v0",

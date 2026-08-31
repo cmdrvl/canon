@@ -541,6 +541,10 @@ fn run_refuses_pending_node_without_registered_executor_or_output_bytes() {
             .unwrap()
             .contains("no registered real executor")
     );
+    assert_eq!(
+        refusal["refusal"]["next_command"],
+        "repair the reported plan, executor, receipt, or workspace condition, then rerun canon project run --plan <PLAN>"
+    );
     assert!(
         !project_dir
             .join("work/sources/source_alpha/intake.jsonl")

@@ -12,6 +12,19 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use canon::entity::run::link::multisource::EntitySourceRole;
 use canon::geo::{
+    CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
+    CANON_GEO_DISCOVERY_REQUEST_VERSION, GeoAcquisitionCounts, GeoAcquisitionDenominator,
+    GeoAcquisitionProofClass, GeoAcquisitionReceipt, GeoAcquisitionRequest,
+    GeoAcquisitionResumability, GeoAcquisitionTerminalState, GeoBoundedSubset,
+    GeoColumnReadabilityProbe, GeoDenominatorSource, GeoDigest, GeoDigestAlgorithm,
+    GeoDiscoveryReleaseSelectionPolicy, GeoDiscoveryRequest, GeoDiscoveryStep, GeoExecutorKind,
+    GeoExecutorTrace, GeoFieldRole, GeoLocalArtifactDigest, GeoNullOrdering, GeoOrderDirection,
+    GeoOrderingTerm, GeoPaginationReceipt, GeoPaginationRequest, GeoProjectionOperation,
+    GeoReleasePin, GeoReleaseSelectionMode, GeoRequestedField, GeoRowByteCeilings,
+    GeoSubsetPredicate, GeoSubsetPredicateKind, geo_acquisition_request_id,
+    geo_acquisition_request_semantic_hash, geo_discovery_request_id,
+};
+use canon::geo::{
     CANON_GEO_ADDRESS_PARSE_FOREST_VERSION, CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION,
     CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
     CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_GEOMETRY_REQUEST_VERSION,
@@ -122,6 +135,12 @@ const CONTROL_REGIONAL_INVENTORY_SCHEMA: &str =
     include_str!("../schemas/canon.geo.regional_inventory.v0.schema.json");
 const CONTROL_RESOURCE_BUDGET_SCHEMA: &str =
     include_str!("../schemas/canon.geo.resource_budget.v0.schema.json");
+const DISCOVERY_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.discovery_request.v0.schema.json");
+const ACQUISITION_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.acquisition_request.v0.schema.json");
+const ACQUISITION_RECEIPT_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.acquisition_receipt.v0.schema.json");
 
 fn parsed(source: &str) -> Value {
     serde_json::from_str(source).expect("schema file must be valid JSON")
@@ -479,11 +498,241 @@ fn control_digest(label: &str) -> String {
     format!("blake3:{}", blake3::hash(label.as_bytes()).to_hex())
 }
 
+fn contract_blake3_digest(digest_id: &str, bytes: &[u8]) -> GeoDigest {
+    GeoDigest {
+        digest_id: digest_id.to_string(),
+        algorithm: GeoDigestAlgorithm::Blake3,
+        hex_digest: blake3::hash(bytes).to_hex().to_string(),
+    }
+}
+
+fn contract_sha256_digest(digest_id: &str, bytes: &[u8]) -> GeoDigest {
+    GeoDigest {
+        digest_id: digest_id.to_string(),
+        algorithm: GeoDigestAlgorithm::Sha256,
+        hex_digest: Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+    }
+}
+
 fn control_region() -> GeoBoundedGeography {
     GeoBoundedGeography {
         geography_id: "region.fixture.control".to_string(),
         geography_kind: "declared_test_region".to_string(),
         description: "Control contract fixture region".to_string(),
+    }
+}
+
+fn discovery_contract_subset() -> GeoBoundedSubset {
+    GeoBoundedSubset {
+        subset_id: "subset.fixture.discovery-r8-k1".to_string(),
+        geography: control_region(),
+        h3_cells: vec!["882a107707fffff".to_string()],
+        predicates: vec![GeoSubsetPredicate {
+            predicate_id: "predicate.discovery.h3".to_string(),
+            kind: GeoSubsetPredicateKind::H3Cells,
+            expression: "declared h3 r8 center plus controlled halo k=1".to_string(),
+        }],
+    }
+}
+
+fn discovery_contract_fields() -> Vec<GeoRequestedField> {
+    vec![
+        GeoRequestedField {
+            field_id: "source_record_id".to_string(),
+            role: GeoFieldRole::Identifier,
+            required: true,
+        },
+        GeoRequestedField {
+            field_id: "geometry_wkb_sha256".to_string(),
+            role: GeoFieldRole::Digest,
+            required: true,
+        },
+        GeoRequestedField {
+            field_id: "h3_cell".to_string(),
+            role: GeoFieldRole::Ordering,
+            required: true,
+        },
+    ]
+}
+
+fn discovery_contract_fields_with_geometry() -> Vec<GeoRequestedField> {
+    let mut fields = discovery_contract_fields();
+    fields.push(GeoRequestedField {
+        field_id: "footprint_wkb".to_string(),
+        role: GeoFieldRole::Geometry,
+        required: true,
+    });
+    fields
+}
+
+fn discovery_contract_projection() -> GeoProjectionOperation {
+    GeoProjectionOperation {
+        coordinate_reference_system: "EPSG:4326".to_string(),
+        operation_id: "identity-wgs84".to_string(),
+        operation_version: "v1".to_string(),
+        operation_digest: contract_sha256_digest("projection.identity-wgs84", b"identity-wgs84"),
+    }
+}
+
+fn discovery_contract_request() -> GeoDiscoveryRequest {
+    let subset = discovery_contract_subset();
+    let fields = discovery_contract_fields();
+    let mut request = GeoDiscoveryRequest {
+        version: CANON_GEO_DISCOVERY_REQUEST_VERSION.to_string(),
+        request_id: String::new(),
+        bounded_geography: control_region(),
+        subset: subset.clone(),
+        requested_entity_levels: vec![GeoControlEntityLevel::Building],
+        requested_evidence_classes: vec![GeoEvidenceClass::BuildingFootprint],
+        release_selection: GeoDiscoveryReleaseSelectionPolicy {
+            as_of_utc_day: "2026-08-31".to_string(),
+            mode: GeoReleaseSelectionMode::LatestNotAfterAsOf,
+            candidate_release_ids: Vec::new(),
+        },
+        releases: Vec::new(),
+        fields: fields.clone(),
+        required_steps: vec![
+            GeoDiscoveryStep::CatalogSearch,
+            GeoDiscoveryStep::ListReleases,
+            GeoDiscoveryStep::DescribeSchema,
+            GeoDiscoveryStep::ColumnReadabilityProbe,
+        ],
+        column_readability_probe: GeoColumnReadabilityProbe {
+            probe_id: "probe.fixture.discovery-columns".to_string(),
+            fields: fields.iter().map(|field| field.field_id.clone()).collect(),
+            subset,
+            ceilings: GeoRowByteCeilings {
+                max_rows: 5,
+                max_bytes: 8192,
+            },
+        },
+        ceilings: GeoRowByteCeilings {
+            max_rows: 5,
+            max_bytes: 8192,
+        },
+    };
+    request.request_id = geo_discovery_request_id(&request).expect("discovery id computes");
+    request
+}
+
+fn acquisition_contract_request() -> GeoAcquisitionRequest {
+    let mut request = GeoAcquisitionRequest {
+        version: CANON_GEO_ACQUISITION_REQUEST_VERSION.to_string(),
+        request_id: String::new(),
+        discovery_request_id: Some(discovery_contract_request().request_id),
+        bounded_geography: control_region(),
+        subset: discovery_contract_subset(),
+        releases: vec![GeoReleasePin {
+            source_instance_id: "source.fixture.building-footprints".to_string(),
+            release_id: "release.fixture.2026-08-31".to_string(),
+            release_digest: contract_sha256_digest(
+                "release.fixture.building-footprints",
+                b"release.fixture.2026-08-31",
+            ),
+        }],
+        fields: discovery_contract_fields(),
+        projection: None,
+        ordering: vec![GeoOrderingTerm {
+            position: 0,
+            field_id: "source_record_id".to_string(),
+            direction: GeoOrderDirection::Asc,
+            nulls: GeoNullOrdering::Last,
+        }],
+        pagination: GeoPaginationRequest {
+            page_size_rows: 10,
+            page_token: None,
+        },
+        ceilings: GeoRowByteCeilings {
+            max_rows: 10,
+            max_bytes: 1_048_576,
+        },
+        positive_path_min_rows: 1,
+    };
+    request.request_id = geo_acquisition_request_id(&request).expect("acquisition id computes");
+    request
+}
+
+fn geometric_acquisition_contract_request() -> GeoAcquisitionRequest {
+    let mut request = acquisition_contract_request();
+    request.fields = discovery_contract_fields_with_geometry();
+    request.projection = Some(discovery_contract_projection());
+    request.request_id = geo_acquisition_request_id(&request).expect("acquisition id computes");
+    request
+}
+
+fn acquisition_contract_receipt() -> GeoAcquisitionReceipt {
+    acquisition_contract_receipt_for(acquisition_contract_request())
+}
+
+fn geometric_acquisition_contract_receipt() -> GeoAcquisitionReceipt {
+    acquisition_contract_receipt_for(geometric_acquisition_contract_request())
+}
+
+fn acquisition_contract_receipt_for(request: GeoAcquisitionRequest) -> GeoAcquisitionReceipt {
+    GeoAcquisitionReceipt {
+        version: CANON_GEO_ACQUISITION_RECEIPT_VERSION.to_string(),
+        request_id: request.request_id.clone(),
+        request_semantic_hash: geo_acquisition_request_semantic_hash(&request)
+            .expect("request hash computes"),
+        terminal_state: GeoAcquisitionTerminalState::Complete,
+        proof_class: GeoAcquisitionProofClass::Live,
+        executor: Some(GeoExecutorTrace {
+            executor_kind: GeoExecutorKind::QueryEngine,
+            executor_id: "fixture-query-engine".to_string(),
+            executor_version: "v1".to_string(),
+            tool_id: "fixture-query-tool".to_string(),
+            tool_version: "v1".to_string(),
+            executor_request_id: "request-123".to_string(),
+            executor_query_id: "query-123".to_string(),
+            executor_attempt_id: None,
+        }),
+        fixture_id: None,
+        retained_receipt_id: None,
+        bounded_geography: request.bounded_geography.clone(),
+        subset: request.subset.clone(),
+        releases: request.releases.clone(),
+        fields: request.fields.clone(),
+        projection: request.projection.clone(),
+        normalized_executed_request_digest: contract_sha256_digest(
+            "executor.normalized_request",
+            b"normalized executor request",
+        ),
+        pagination: GeoPaginationReceipt {
+            requested_page: request.pagination.clone(),
+            next_page_token: None,
+            rows_truncated: false,
+            bytes_truncated: false,
+        },
+        counts: GeoAcquisitionCounts {
+            rows: 2,
+            bytes: 512,
+        },
+        denominators: vec![GeoAcquisitionDenominator {
+            denominator_id: "denominator.result.rows".to_string(),
+            source: GeoDenominatorSource::ResultArtifact,
+            count: 2,
+            unit: "row".to_string(),
+            description: "Rows in the bounded subset result".to_string(),
+        }],
+        source_digests: vec![request.releases[0].release_digest.clone()],
+        result_digests: vec![contract_blake3_digest("result.rows", b"result rows")],
+        local_artifacts: vec![GeoLocalArtifactDigest {
+            artifact_id: "artifact.fixture.rows".to_string(),
+            media_type: "application/jsonl".to_string(),
+            byte_count: 512,
+            digest: contract_blake3_digest("artifact.rows", b"artifact rows"),
+        }],
+        unreadable_columns: Vec::new(),
+        resumability: GeoAcquisitionResumability {
+            resumable: false,
+            resume_token: None,
+            resume_request_id: None,
+            retry_guidance: "terminal receipt requires no resume action".to_string(),
+        },
+        terminal_detail: None,
     }
 }
 
@@ -1007,6 +1256,66 @@ fn control_resource_budget_schema_matches_a_real_instance() {
         CONTROL_RESOURCE_BUDGET_SCHEMA,
         "canon.geo.resource_budget.v0",
         CANON_GEO_RESOURCE_BUDGET_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn discovery_request_schema_matches_a_real_instance() {
+    let instance =
+        serde_json::to_value(discovery_contract_request()).expect("discovery request serializes");
+    assert_drift_free(
+        DISCOVERY_REQUEST_SCHEMA,
+        "canon.geo.discovery_request.v0",
+        CANON_GEO_DISCOVERY_REQUEST_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn acquisition_request_schema_matches_a_real_instance() {
+    let instance = serde_json::to_value(acquisition_contract_request())
+        .expect("acquisition request serializes");
+    assert_drift_free(
+        ACQUISITION_REQUEST_SCHEMA,
+        "canon.geo.acquisition_request.v0",
+        CANON_GEO_ACQUISITION_REQUEST_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn geometric_acquisition_request_schema_matches_a_real_instance() {
+    let instance = serde_json::to_value(geometric_acquisition_contract_request())
+        .expect("geometric acquisition request serializes");
+    assert_drift_free(
+        ACQUISITION_REQUEST_SCHEMA,
+        "canon.geo.acquisition_request.v0",
+        CANON_GEO_ACQUISITION_REQUEST_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn acquisition_receipt_schema_matches_a_real_instance() {
+    let instance = serde_json::to_value(acquisition_contract_receipt())
+        .expect("acquisition receipt serializes");
+    assert_drift_free(
+        ACQUISITION_RECEIPT_SCHEMA,
+        "canon.geo.acquisition_receipt.v0",
+        CANON_GEO_ACQUISITION_RECEIPT_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn geometric_acquisition_receipt_schema_matches_a_real_instance() {
+    let instance = serde_json::to_value(geometric_acquisition_contract_receipt())
+        .expect("geometric acquisition receipt serializes");
+    assert_drift_free(
+        ACQUISITION_RECEIPT_SCHEMA,
+        "canon.geo.acquisition_receipt.v0",
+        CANON_GEO_ACQUISITION_RECEIPT_VERSION,
         &instance,
     );
 }

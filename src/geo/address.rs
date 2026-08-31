@@ -15,12 +15,27 @@ use std::{
     fmt,
 };
 
+use super::{
+    composition::{GeoEntityLevel, GeoEntityRef},
+    control::GeoAsOf,
+    evidence::{
+        GeoEvidenceRecordRef, GeoRhoObservation, GeoRhoObservationKind, GeoValidTimeInterval,
+    },
+};
+
 pub const CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION: &str = "canon_geo_address_parse_request.v0";
 pub const CANON_GEO_ADDRESS_PARSE_FOREST_VERSION: &str = "canon_geo_address_parse_forest.v0";
 pub const CANON_GEO_ADDRESS_QUERY_GRAMMAR_ID: &str = "canon_geo_address_query_regular";
 pub const CANON_GEO_ADDRESS_QUERY_GRAMMAR_VERSION: &str = "canon_geo_address_query_regular.v0";
 pub const CANON_GEO_PAD_ADDRESS_SET_VERSION: &str = "canon_geo_pad_address_set.v0";
 pub const CANON_GEO_PAD_MEMBERSHIP_VERSION: &str = "canon_geo_pad_membership.v0";
+pub const CANON_GEO_ADDRESS_PARCEL_BRIDGE_REQUEST_VERSION: &str =
+    "canon_geo_address_parcel_bridge_request.v0";
+pub const CANON_GEO_ADDRESS_PARCEL_BRIDGE_VERSION: &str = "canon_geo_address_parcel_bridge.v0";
+pub const CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION: &str =
+    "canon_geo_address_parcel_evidence_request.v0";
+pub const CANON_GEO_ADDRESS_PARCEL_EVIDENCE_BUNDLE_VERSION: &str =
+    "canon_geo_address_parcel_evidence_bundle.v0";
 
 const MAX_RANGE_CARDINALITY: usize = 1_000;
 
@@ -495,6 +510,118 @@ pub enum GeoPadCompatibilityReason {
     QueryRangeCoveredByMembers,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoAddressParcelBridgeRequest {
+    pub version: String,
+    pub observation_id: String,
+    pub contract_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_as_of: Option<GeoAsOf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_time: Option<GeoValidTimeInterval>,
+    pub member_source_records: Vec<GeoPadMemberSourceRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoPadMemberSourceRecord {
+    pub member_id: String,
+    /// BLAKE3 of the normalized `GeoPadAddressMember` JSON bytes. This binds
+    /// the lot/address payload used by the bridge to the source-record
+    /// association without pretending to authenticate the upstream row.
+    pub normalized_member_blake3: String,
+    pub source_record: GeoEvidenceRecordRef,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoAddressParcelBridgeStatus {
+    EvidenceObservation,
+    DiagnosticAbstention,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoAddressParcelDiagnosticCode {
+    NoParseReadings,
+    NoSourceMemberSupport,
+    NoBoundSourceRecords,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoAddressParcelDiagnostic {
+    pub code: GeoAddressParcelDiagnosticCode,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub candidate_keys: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub matched_member_ids_without_source_records: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoAddressParcelReadingSupport {
+    pub reading_id: String,
+    pub candidate_key: String,
+    pub status: GeoPadCandidateStatus,
+    pub asserted_member: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub matched_member_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_supported_member_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parcel_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_record_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoAddressParcelBridge {
+    pub version: String,
+    pub request_version: String,
+    pub parse_forest_version: String,
+    pub pad_membership_version: String,
+    pub grammar: GeoAddressGrammarRef,
+    pub jurisdiction: GeoAddressJurisdiction,
+    pub input: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query_as_of: Option<GeoAsOf>,
+    pub status: GeoAddressParcelBridgeStatus,
+    pub readings: Vec<GeoAddressParcelReadingSupport>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parcel_candidates: Vec<GeoEntityRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_records: Vec<GeoEvidenceRecordRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_time: Option<GeoValidTimeInterval>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation: Option<GeoRhoObservation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diagnostic: Option<GeoAddressParcelDiagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoAddressParcelEvidenceRequest {
+    pub version: String,
+    pub parse_request: GeoAddressParseRequest,
+    pub address_set: GeoPadAddressSet,
+    pub bridge_request: GeoAddressParcelBridgeRequest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoAddressParcelEvidenceBundle {
+    pub version: String,
+    pub request_version: String,
+    pub parse_forest: GeoAddressParseForest,
+    pub pad_membership: GeoPadMembershipEvaluation,
+    pub bridge: GeoAddressParcelBridge,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GeoAddressErrorCode {
@@ -690,6 +817,248 @@ pub fn evaluate_pad_membership(
     })
 }
 
+pub fn build_address_parcel_evidence(
+    request: &GeoAddressParcelEvidenceRequest,
+) -> Result<GeoAddressParcelEvidenceBundle, GeoAddressError> {
+    if request.version != CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION {
+        return Err(GeoAddressError::new(
+            GeoAddressErrorCode::UnsupportedVersion,
+            "unsupported address parcel evidence request version",
+            [
+                (
+                    "expected",
+                    CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION,
+                ),
+                ("actual", request.version.as_str()),
+            ],
+        ));
+    }
+
+    let parse_forest = parse_address_forest(&request.parse_request)?;
+    let pad_membership = evaluate_pad_membership(&parse_forest, &request.address_set)?;
+    let bridge = bridge_pad_membership_to_parcel_observation(
+        &parse_forest,
+        &request.address_set,
+        &pad_membership,
+        &request.bridge_request,
+    )?;
+
+    Ok(GeoAddressParcelEvidenceBundle {
+        version: CANON_GEO_ADDRESS_PARCEL_EVIDENCE_BUNDLE_VERSION.to_string(),
+        request_version: request.version.clone(),
+        parse_forest,
+        pad_membership,
+        bridge,
+    })
+}
+
+pub fn bridge_pad_membership_to_parcel_observation(
+    forest: &GeoAddressParseForest,
+    address_set: &GeoPadAddressSet,
+    membership: &GeoPadMembershipEvaluation,
+    request: &GeoAddressParcelBridgeRequest,
+) -> Result<GeoAddressParcelBridge, GeoAddressError> {
+    if request.version != CANON_GEO_ADDRESS_PARCEL_BRIDGE_REQUEST_VERSION {
+        return Err(GeoAddressError::new(
+            GeoAddressErrorCode::UnsupportedVersion,
+            "unsupported address parcel bridge request version",
+            [
+                ("expected", CANON_GEO_ADDRESS_PARCEL_BRIDGE_REQUEST_VERSION),
+                ("actual", request.version.as_str()),
+            ],
+        ));
+    }
+    validate_bridge_identifier("observation_id", &request.observation_id)?;
+    validate_bridge_identifier("contract_id", &request.contract_id)?;
+    let query_day = request
+        .query_as_of
+        .as_ref()
+        .map(validate_bridge_query_as_of)
+        .transpose()?;
+    if let Some(interval) = request.valid_time
+        && interval.start_day > interval.end_day
+    {
+        return Err(GeoAddressError::invalid_input(
+            "address parcel bridge valid-time intervals must be ordered",
+            [("field", "valid_time")],
+        ));
+    }
+    if let (Some(query_day), Some(interval)) = (query_day, request.valid_time)
+        && (query_day < interval.start_day || query_day > interval.end_day)
+    {
+        return Err(GeoAddressError::invalid_input(
+            "address parcel bridge query_as_of must fall inside valid_time",
+            [
+                ("query_day", query_day.to_string()),
+                ("valid_time_start_day", interval.start_day.to_string()),
+                ("valid_time_end_day", interval.end_day.to_string()),
+            ],
+        ));
+    }
+    if membership.version != CANON_GEO_PAD_MEMBERSHIP_VERSION {
+        return Err(GeoAddressError::new(
+            GeoAddressErrorCode::UnsupportedVersion,
+            "unsupported PAD membership evaluation version",
+            [
+                ("expected", CANON_GEO_PAD_MEMBERSHIP_VERSION),
+                ("actual", membership.version.as_str()),
+            ],
+        ));
+    }
+
+    let replayed = evaluate_pad_membership(forest, address_set)?;
+    if canonical_pad_membership_bytes(&replayed)? != canonical_pad_membership_bytes(membership)? {
+        return Err(GeoAddressError::invalid_input(
+            "PAD membership evaluation does not replay from the supplied parse forest and address set",
+            [("field", "membership")],
+        ));
+    }
+
+    let mut members_by_id = BTreeMap::new();
+    for member in &address_set.members {
+        members_by_id.insert(member.member_id.clone(), member);
+    }
+
+    let mut records_by_member: BTreeMap<String, BTreeMap<String, GeoEvidenceRecordRef>> =
+        BTreeMap::new();
+    for binding in &request.member_source_records {
+        validate_bridge_identifier("member_source_records[].member_id", &binding.member_id)?;
+        validate_bridge_source_record(&binding.source_record)?;
+        let Some(member) = members_by_id.get(&binding.member_id) else {
+            return Err(GeoAddressError::invalid_input(
+                "address parcel bridge source-record binding references an unknown PAD member",
+                [("member_id", binding.member_id.as_str())],
+            ));
+        };
+        let expected_member_blake3 = geo_pad_member_blake3(member)?;
+        if binding.normalized_member_blake3 != expected_member_blake3 {
+            return Err(GeoAddressError::invalid_input(
+                "address parcel bridge source-record binding does not match the normalized PAD member payload",
+                [
+                    ("member_id", binding.member_id.as_str()),
+                    ("expected_member_blake3", expected_member_blake3.as_str()),
+                    (
+                        "actual_member_blake3",
+                        binding.normalized_member_blake3.as_str(),
+                    ),
+                ],
+            ));
+        }
+        insert_bridge_source_record(
+            records_by_member
+                .entry(binding.member_id.clone())
+                .or_default(),
+            binding.source_record.clone(),
+        )?;
+    }
+
+    let mut canonical_results = replayed.results;
+    canonical_results.sort_by(|left, right| left.candidate_key.cmp(&right.candidate_key));
+
+    let mut readings = Vec::with_capacity(canonical_results.len());
+    let mut parcel_candidates = BTreeMap::<String, GeoEntityRef>::new();
+    let mut observation_source_records = BTreeMap::<String, GeoEvidenceRecordRef>::new();
+    let mut matched_member_ids_without_source_records = BTreeSet::new();
+
+    for result in canonical_results {
+        let mut matched_member_ids = result.matched_member_ids.clone();
+        matched_member_ids.sort();
+        matched_member_ids.dedup();
+        let mut source_supported_member_ids = BTreeSet::new();
+        let mut parcel_ids = BTreeSet::new();
+        let mut source_record_ids = BTreeSet::new();
+
+        if result.asserted_member {
+            for member_id in &matched_member_ids {
+                let Some(source_records) = records_by_member.get(member_id) else {
+                    matched_member_ids_without_source_records.insert(member_id.clone());
+                    continue;
+                };
+                let member = members_by_id
+                    .get(member_id)
+                    .expect("membership replay only emits known PAD member ids");
+                validate_bridge_identifier("address_set.members[].lot_id", &member.lot_id)?;
+                source_supported_member_ids.insert(member_id.clone());
+                parcel_ids.insert(member.lot_id.clone());
+                for source_record in source_records.values() {
+                    source_record_ids.insert(source_record.source_record_id.clone());
+                    insert_bridge_source_record(
+                        &mut observation_source_records,
+                        source_record.clone(),
+                    )?;
+                }
+            }
+        }
+
+        for parcel_id in &parcel_ids {
+            parcel_candidates.insert(
+                parcel_id.clone(),
+                GeoEntityRef::new(GeoEntityLevel::Parcel, parcel_id.clone()),
+            );
+        }
+
+        readings.push(GeoAddressParcelReadingSupport {
+            reading_id: result.candidate.reading_id,
+            candidate_key: result.candidate_key,
+            status: result.status,
+            asserted_member: result.asserted_member,
+            matched_member_ids,
+            source_supported_member_ids: source_supported_member_ids.into_iter().collect(),
+            parcel_ids: parcel_ids.into_iter().collect(),
+            source_record_ids: source_record_ids.into_iter().collect(),
+        });
+    }
+
+    let parcel_candidates = parcel_candidates.into_values().collect::<Vec<_>>();
+    let source_records = observation_source_records.into_values().collect::<Vec<_>>();
+    let observation = if parcel_candidates.is_empty() {
+        None
+    } else {
+        Some(GeoRhoObservation {
+            id: request.observation_id.clone(),
+            contract_id: request.contract_id.clone(),
+            source_records: source_records.clone(),
+            valid_time: request.valid_time,
+            observation: GeoRhoObservationKind::ExistentialMembership {
+                members: parcel_candidates.clone(),
+            },
+        })
+    };
+    let diagnostic = if observation.is_some() {
+        None
+    } else {
+        Some(address_parcel_bridge_diagnostic(
+            forest,
+            &readings,
+            matched_member_ids_without_source_records
+                .into_iter()
+                .collect(),
+        ))
+    };
+
+    Ok(GeoAddressParcelBridge {
+        version: CANON_GEO_ADDRESS_PARCEL_BRIDGE_VERSION.to_string(),
+        request_version: request.version.clone(),
+        parse_forest_version: forest.version.clone(),
+        pad_membership_version: membership.version.clone(),
+        grammar: forest.grammar.clone(),
+        jurisdiction: forest.jurisdiction.clone(),
+        input: forest.input.clone(),
+        query_as_of: request.query_as_of.clone(),
+        status: if observation.is_some() {
+            GeoAddressParcelBridgeStatus::EvidenceObservation
+        } else {
+            GeoAddressParcelBridgeStatus::DiagnosticAbstention
+        },
+        readings,
+        parcel_candidates,
+        source_records,
+        valid_time: request.valid_time,
+        observation,
+        diagnostic,
+    })
+}
+
 pub fn canonical_address_parse_forest_bytes(
     forest: &GeoAddressParseForest,
 ) -> Result<Vec<u8>, GeoAddressError> {
@@ -707,6 +1076,101 @@ pub fn canonical_address_parse_forest_bytes(
     serde_json::to_vec(&canonical).map_err(|error| {
         GeoAddressError::invalid_input(
             "failed to serialize canonical address parse forest",
+            [("serde", error.to_string())],
+        )
+    })
+}
+
+pub fn geo_pad_member_blake3(member: &GeoPadAddressMember) -> Result<String, GeoAddressError> {
+    serde_json::to_vec(member)
+        .map(|bytes| blake3::hash(&bytes).to_hex().to_string())
+        .map_err(|error| {
+            GeoAddressError::invalid_input(
+                "failed to hash normalized PAD member payload",
+                [("serde", error.to_string())],
+            )
+        })
+}
+
+pub fn canonical_address_parcel_bridge_bytes(
+    bridge: &GeoAddressParcelBridge,
+) -> Result<Vec<u8>, GeoAddressError> {
+    let mut canonical = bridge.clone();
+    canonical.readings.sort_by(|left, right| {
+        left.candidate_key
+            .cmp(&right.candidate_key)
+            .then(left.reading_id.cmp(&right.reading_id))
+    });
+    for reading in &mut canonical.readings {
+        reading.matched_member_ids.sort();
+        reading.matched_member_ids.dedup();
+        reading.source_supported_member_ids.sort();
+        reading.source_supported_member_ids.dedup();
+        reading.parcel_ids.sort();
+        reading.parcel_ids.dedup();
+        reading.source_record_ids.sort();
+        reading.source_record_ids.dedup();
+    }
+    canonical.parcel_candidates.sort();
+    canonical.parcel_candidates.dedup();
+    canonical.source_records.sort();
+    canonical.source_records.dedup();
+    if let Some(observation) = &mut canonical.observation {
+        observation.source_records.sort();
+        observation.source_records.dedup();
+        if let GeoRhoObservationKind::ExistentialMembership { members } =
+            &mut observation.observation
+        {
+            members.sort();
+            members.dedup();
+        }
+    }
+    if let Some(diagnostic) = &mut canonical.diagnostic {
+        diagnostic.candidate_keys.sort();
+        diagnostic.candidate_keys.dedup();
+        diagnostic.matched_member_ids_without_source_records.sort();
+        diagnostic.matched_member_ids_without_source_records.dedup();
+    }
+    serde_json::to_vec(&canonical).map_err(|error| {
+        GeoAddressError::invalid_input(
+            "failed to serialize canonical address parcel bridge",
+            [("serde", error.to_string())],
+        )
+    })
+}
+
+pub fn canonical_address_parcel_evidence_bundle_bytes(
+    bundle: &GeoAddressParcelEvidenceBundle,
+) -> Result<Vec<u8>, GeoAddressError> {
+    let mut canonical = bundle.clone();
+    canonical.parse_forest = serde_json::from_slice(&canonical_address_parse_forest_bytes(
+        &canonical.parse_forest,
+    )?)
+    .map_err(|error| {
+        GeoAddressError::invalid_input(
+            "failed to rebuild canonical address parse forest",
+            [("serde", error.to_string())],
+        )
+    })?;
+    canonical.pad_membership =
+        serde_json::from_slice(&canonical_pad_membership_bytes(&canonical.pad_membership)?)
+            .map_err(|error| {
+                GeoAddressError::invalid_input(
+                    "failed to rebuild canonical PAD membership evaluation",
+                    [("serde", error.to_string())],
+                )
+            })?;
+    canonical.bridge =
+        serde_json::from_slice(&canonical_address_parcel_bridge_bytes(&canonical.bridge)?)
+            .map_err(|error| {
+                GeoAddressError::invalid_input(
+                    "failed to rebuild canonical address parcel bridge",
+                    [("serde", error.to_string())],
+                )
+            })?;
+    serde_json::to_vec(&canonical).map_err(|error| {
+        GeoAddressError::invalid_input(
+            "failed to serialize canonical address parcel evidence bundle",
             [("serde", error.to_string())],
         )
     })
@@ -733,6 +1197,119 @@ pub fn canonical_pad_membership_bytes(
             [("serde", error.to_string())],
         )
     })
+}
+
+fn address_parcel_bridge_diagnostic(
+    forest: &GeoAddressParseForest,
+    readings: &[GeoAddressParcelReadingSupport],
+    matched_member_ids_without_source_records: Vec<String>,
+) -> GeoAddressParcelDiagnostic {
+    let candidate_keys = readings
+        .iter()
+        .map(|reading| reading.candidate_key.clone())
+        .collect::<Vec<_>>();
+    let any_asserted_member = readings.iter().any(|reading| reading.asserted_member);
+    let code = if forest.candidates.is_empty() {
+        GeoAddressParcelDiagnosticCode::NoParseReadings
+    } else if any_asserted_member && !matched_member_ids_without_source_records.is_empty() {
+        GeoAddressParcelDiagnosticCode::NoBoundSourceRecords
+    } else {
+        GeoAddressParcelDiagnosticCode::NoSourceMemberSupport
+    };
+    let message = match code {
+        GeoAddressParcelDiagnosticCode::NoParseReadings => {
+            "address parse forest has no candidate readings"
+        }
+        GeoAddressParcelDiagnosticCode::NoSourceMemberSupport => {
+            "no address reading has source-member support"
+        }
+        GeoAddressParcelDiagnosticCode::NoBoundSourceRecords => {
+            "supported address readings lack immutable source-record bindings"
+        }
+    };
+    GeoAddressParcelDiagnostic {
+        code,
+        message: message.to_string(),
+        candidate_keys,
+        matched_member_ids_without_source_records,
+    }
+}
+
+fn insert_bridge_source_record(
+    target: &mut BTreeMap<String, GeoEvidenceRecordRef>,
+    record: GeoEvidenceRecordRef,
+) -> Result<(), GeoAddressError> {
+    if let Some(existing) = target.get(&record.source_record_id) {
+        if existing != &record {
+            return Err(GeoAddressError::invalid_input(
+                "source-record bindings reuse an id with different metadata",
+                [("source_record_id", record.source_record_id.as_str())],
+            ));
+        }
+        return Ok(());
+    }
+    target.insert(record.source_record_id.clone(), record);
+    Ok(())
+}
+
+fn validate_bridge_source_record(record: &GeoEvidenceRecordRef) -> Result<(), GeoAddressError> {
+    validate_bridge_identifier(
+        "member_source_records[].source_record.source_record_id",
+        &record.source_record_id,
+    )?;
+    validate_bridge_identifier(
+        "member_source_records[].source_record.source_vintage",
+        &record.source_vintage,
+    )?;
+    if record.record_blake3.len() != 64
+        || !record
+            .record_blake3
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(GeoAddressError::invalid_input(
+            "address parcel bridge source-record digests must be 64 lowercase BLAKE3 hex characters",
+            [
+                (
+                    "field",
+                    "member_source_records[].source_record.record_blake3",
+                ),
+                ("value", record.record_blake3.as_str()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_bridge_query_as_of(as_of: &GeoAsOf) -> Result<i64, GeoAddressError> {
+    validate_bridge_identifier("query_as_of.semantic_id", &as_of.semantic_id)?;
+    if as_of.unit != "utc_day" {
+        return Err(GeoAddressError::invalid_input(
+            "address parcel bridge query_as_of unit must be utc_day",
+            [("unit", as_of.unit.as_str())],
+        ));
+    }
+    let day = chrono::NaiveDate::parse_from_str(&as_of.utc_day, "%Y-%m-%d").map_err(|error| {
+        GeoAddressError::invalid_input(
+            "address parcel bridge query_as_of must be a valid YYYY-MM-DD UTC day",
+            [
+                ("utc_day".to_string(), as_of.utc_day.clone()),
+                ("error".to_string(), error.to_string()),
+            ],
+        )
+    })?;
+    let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).expect("Unix epoch is valid");
+    Ok(day.signed_duration_since(epoch).num_days())
+}
+
+fn validate_bridge_identifier(field: &str, value: &str) -> Result<(), GeoAddressError> {
+    if value.is_empty() || value.trim() != value {
+        return Err(GeoAddressError::invalid_input(
+            "address parcel bridge identifiers must be non-empty and already canonical",
+            [("field", field), ("value", value)],
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]

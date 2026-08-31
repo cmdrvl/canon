@@ -388,6 +388,7 @@ canon geo solve --request <REQUEST.json>
 canon geo materialize-geometry --request <REQUEST.json>
 canon geo materialize-warehouse-geometry --rows <ROWS.json>
 canon geo materialize-evidence --rows <ROWS.json>
+canon geo materialize-address-evidence --request <REQUEST.json>
 canon geo materialize-h7-population --rows <ROWS.json>
 canon geo materialize-h7-staging-batch --batch <BATCH.json>
 canon geo compile-evidence --request <REQUEST.json>
@@ -523,6 +524,24 @@ collections, validates the result through the same compiler used by `compile-evi
 and writes only to stdout. It performs no warehouse acquisition, and multiple source
 records remain provenance for one observation rather than independent constraint weight.
 
+`canon geo materialize-address-evidence --request` is the single-call offline bridge
+from an address parse request plus a PAD address set to an address/PAD parcel
+observation bundle. The request contract is
+`canon_geo_address_parcel_evidence_request.v0`, which carries the parse request,
+PAD set, and `canon_geo_address_parcel_bridge_request.v0`; the emitted
+`canon_geo_address_parcel_evidence_bundle.v0` preserves the parse forest, PAD
+membership, and `canon_geo_address_parcel_bridge.v0`. Supported ambiguous readings
+union their parcel candidates. Readings without PAD source-member support stay
+diagnostic, so the command may abstain instead of fabricating an empty hard
+constraint. When the bridge emits `bridge.observation`, that observation still must
+be wrapped by a separately authored `canon_geo_evidence_request.v0` with an explicit
+candidate universe and matching rho `contracts` before `compile-evidence` can admit
+it. The bundle itself is not a compiler-ready evidence request. Each source-record
+association carries a Canon-recomputed BLAKE3 of the normalized PAD member payload,
+so an id-only binding cannot silently change the lot/address content. That integrity
+link does not authenticate upstream PAD bytes or replace an acquisition receipt. The
+command performs no live acquisition and makes no empirical truth claim.
+
 `canon geo materialize-h7-staging-batch --batch` is the bounded NYC/H.7 profile adapter
 for the staging-derived source-record payload contract. It validates batch guards,
 denominators, release pins, source-record bytes, and profile truth planes before delegating
@@ -578,7 +597,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `project describe <DIR> [--manifest <PATH>] [--emit json\|summary]` | Describe project capabilities, state flags, side effects, and next commands. |
 | `project lock refresh --manifest <MANIFEST> --out <LOCK> [--emit json\|summary]` | Hash actual declared local source bytes and atomically refresh a `canon.project.lock.v1` artifact. |
 | `project plan --manifest <MANIFEST> --lock <LOCK> [--out <PLAN>] [--cache-hit <NODE>...] [--emit json\|summary]` | Emit the native validated `canon.project.plan.v1` artifact and executable `project run --node` next commands. |
-| `project run [--plan <PLAN>] [--manifest <MANIFEST>] [--lock <LOCK>] [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json\|summary]` | Validate a project plan and reuse existing `canon.project.run.v2` receipts; pending nodes refuse because no public typed executor is registered. |
+| `project run [--plan <PLAN>] [--manifest <MANIFEST>] [--lock <LOCK>] [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json\|summary]` | Validate a project plan, reuse valid `canon.project.run.v2` receipts, and execute supported pending nodes through registered internal offline executors. Unknown or unsafe executor declarations still refuse before publication. |
 | `inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json\|summary]` | List ranked unresolved inbox items with deterministic pagination and typed filters. |
 | `inbox show --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json\|summary]` | Show one unresolved inbox item and its next commands. |
 | `inbox explain --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json\|summary]` | Explain one inbox item's priority score components and provenance. |

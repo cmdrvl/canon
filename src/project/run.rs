@@ -3,7 +3,8 @@
 use super::{
     plan::{
         ProjectExtensionNodePolicy, ProjectPlan, ProjectPlanCacheDecision, ProjectPlanError,
-        ProjectPlanHashRef, ProjectPlanNode, ProjectPlanNodeClass, project_plan_node_cache_key,
+        ProjectPlanHashRef, ProjectPlanNode, ProjectPlanNodeClass,
+        ProjectPlanOutputMaterialization, ProjectPlanSideEffectKind, project_plan_node_cache_key,
         validate_extension_node_effects,
     },
     receipt::{
@@ -13,6 +14,7 @@ use super::{
         read_node_receipt, replace_node_receipt,
     },
 };
+use crate::fs_safety::{PlannedAccess, resolve_workspace_path as resolve_fs_workspace_path};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -146,6 +148,8 @@ pub trait ProjectNodeExecutor {
         context: &ProjectNodeExecutionContext,
     ) -> ProjectRunResult<ProjectNodeExecutionResult>;
 }
+
+pub const PROJECT_INTERNAL_COPY_FILE_EXECUTOR: &str = "copy-file-v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectRunNodeReport {
@@ -343,6 +347,15 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
     )
 }
 
+pub fn run_project_plan_with_registered_executors(
+    plan: &ProjectPlan,
+    policy: &ProjectRunPolicy,
+) -> ProjectRunResult<ProjectRunReport> {
+    let mut executor = ProjectRegisteredNodeExecutor::new(&policy.workspace_root);
+    ensure_pending_nodes_have_registered_executors(plan, policy, &executor)?;
+    run_project_plan(plan, policy, &mut executor)
+}
+
 pub fn inspect_project_run_reuse_only(
     plan: &ProjectPlan,
     policy: &ProjectRunPolicy,
@@ -435,6 +448,410 @@ pub fn canonical_project_run_report_bytes(report: &ProjectRunReport) -> ProjectR
             format!("failed to serialize project run report: {error}"),
         )
     })
+}
+
+type ProjectInternalExecutorFn =
+    fn(&ProjectInternalNodeExecution<'_>) -> ProjectRunResult<ProjectNodeExecutionResult>;
+type ProjectInternalValidatorFn =
+    fn(&ProjectPlanNode, &Path, &ProjectInternalCommand) -> ProjectRunResult<()>;
+
+#[derive(Clone, Copy)]
+struct ProjectInternalExecutorEntry {
+    validate: ProjectInternalValidatorFn,
+    execute: ProjectInternalExecutorFn,
+}
+
+#[derive(Debug, Clone)]
+struct ProjectInternalCommand {
+    executor_id: String,
+    args: BTreeMap<String, String>,
+}
+
+struct ProjectInternalNodeExecution<'a> {
+    node: &'a ProjectPlanNode,
+    context: &'a ProjectNodeExecutionContext,
+    workspace_root: &'a Path,
+    command: &'a ProjectInternalCommand,
+}
+
+pub struct ProjectRegisteredNodeExecutor {
+    workspace_root: PathBuf,
+    executors: BTreeMap<String, ProjectInternalExecutorEntry>,
+}
+
+impl ProjectRegisteredNodeExecutor {
+    pub fn new(workspace_root: impl Into<PathBuf>) -> Self {
+        let mut executor = Self {
+            workspace_root: workspace_root.into(),
+            executors: BTreeMap::new(),
+        };
+        executor.register(
+            PROJECT_INTERNAL_COPY_FILE_EXECUTOR,
+            validate_copy_file_executor_contract,
+            execute_copy_file_executor,
+        );
+        executor
+    }
+
+    fn register(
+        &mut self,
+        executor_id: &str,
+        validate: ProjectInternalValidatorFn,
+        execute: ProjectInternalExecutorFn,
+    ) {
+        self.executors.insert(
+            executor_id.to_string(),
+            ProjectInternalExecutorEntry { validate, execute },
+        );
+    }
+
+    fn declaration_for_node(
+        &self,
+        node: &ProjectPlanNode,
+    ) -> ProjectRunResult<(ProjectInternalCommand, ProjectInternalExecutorEntry)> {
+        let command = parse_internal_command(node)?;
+        let Some(entry) = self.executors.get(&command.executor_id) else {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ExecutionFailed,
+                Some(node.node_id.clone()),
+                format!(
+                    "project run has no registered real executor named {} for pending node {}",
+                    command.executor_id, node.node_id
+                ),
+            ));
+        };
+        (entry.validate)(node, &self.workspace_root, &command)?;
+        Ok((command, *entry))
+    }
+}
+
+impl ProjectNodeExecutor for ProjectRegisteredNodeExecutor {
+    fn execute(
+        &mut self,
+        node: &ProjectPlanNode,
+        context: &ProjectNodeExecutionContext,
+    ) -> ProjectRunResult<ProjectNodeExecutionResult> {
+        let (command, entry) = self.declaration_for_node(node)?;
+        let execution = ProjectInternalNodeExecution {
+            node,
+            context,
+            workspace_root: &self.workspace_root,
+            command: &command,
+        };
+        (entry.execute)(&execution)
+    }
+}
+
+fn ensure_pending_nodes_have_registered_executors(
+    plan: &ProjectPlan,
+    policy: &ProjectRunPolicy,
+    executor: &ProjectRegisteredNodeExecutor,
+) -> ProjectRunResult<()> {
+    validate_plan_shape(plan)?;
+    let policy = finalize_policy(policy)?;
+    let target_nodes = selected_node_closure(plan, &policy.selected_nodes)?;
+    let existing = load_existing_receipts(plan, &policy)?;
+    if !existing.poisoned_receipts.is_empty() {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            None,
+            format!(
+                "poisoned project receipts: {}",
+                existing.poisoned_receipts.join(", ")
+            ),
+        ));
+    }
+
+    let mut valid_receipts = existing.valid_receipts;
+    let completed_receipts = existing.completed_receipts;
+    let mut invalidated_nodes = existing.invalidated_nodes;
+    invalidated_nodes.extend(descendants(plan, &invalidated_nodes));
+    for invalidated in &invalidated_nodes {
+        valid_receipts.remove(invalidated);
+    }
+
+    for node in &plan.nodes {
+        if !target_nodes.contains(&node.node_id) || valid_receipts.contains_key(&node.node_id) {
+            continue;
+        }
+        ensure_declared_node_effects_allowed(node, &policy)?;
+        ensure_outputs_publishable(
+            node,
+            &policy.workspace_root,
+            completed_receipts.get(&node.node_id),
+        )?;
+        executor.declaration_for_node(node)?;
+    }
+    Ok(())
+}
+
+fn parse_internal_command(node: &ProjectPlanNode) -> ProjectRunResult<ProjectInternalCommand> {
+    let tokens = node.command.split_ascii_whitespace().collect::<Vec<_>>();
+    if tokens.len() < 4
+        || tokens[0] != "canon"
+        || tokens[1] != "project"
+        || tokens[2] != "internal-node"
+    {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ExecutionFailed,
+            Some(node.node_id.clone()),
+            format!(
+                "project run has no registered real executor for pending node {}; command must declare `canon project internal-node <executor-id>`",
+                node.node_id
+            ),
+        ));
+    }
+    let mut args = BTreeMap::new();
+    let mut index = 4;
+    while index < tokens.len() {
+        let flag = tokens[index];
+        let Some(key) = flag.strip_prefix("--") else {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ExecutionFailed,
+                Some(node.node_id.clone()),
+                format!("internal executor argument {flag} must be a --key token"),
+            ));
+        };
+        if key.is_empty() || index + 1 >= tokens.len() || tokens[index + 1].starts_with("--") {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ExecutionFailed,
+                Some(node.node_id.clone()),
+                format!("internal executor argument --{key} must have a value"),
+            ));
+        }
+        if args
+            .insert(key.to_string(), tokens[index + 1].to_string())
+            .is_some()
+        {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ExecutionFailed,
+                Some(node.node_id.clone()),
+                format!("internal executor argument --{key} was declared more than once"),
+            ));
+        }
+        index += 2;
+    }
+    Ok(ProjectInternalCommand {
+        executor_id: tokens[3].to_string(),
+        args,
+    })
+}
+
+fn validate_copy_file_executor_contract(
+    node: &ProjectPlanNode,
+    workspace_root: &Path,
+    command: &ProjectInternalCommand,
+) -> ProjectRunResult<()> {
+    let input = required_internal_arg(node, command, "input")?;
+    let input_digest = required_internal_arg(node, command, "input-digest")?;
+    let output_id = required_internal_arg(node, command, "output-id")?;
+    let output_digest = required_internal_arg(node, command, "output-digest")?;
+    reject_extra_internal_args(
+        node,
+        command,
+        &["input", "input-digest", "output-id", "output-digest"],
+    )?;
+    validate_blake3_arg(node, "input-digest", input_digest)?;
+    validate_blake3_arg(node, "output-digest", output_digest)?;
+    resolve_internal_read_path(node, workspace_root, input)?;
+    normalize_relative_path(Path::new(input)).map_err(|message| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::WorkspacePolicy,
+            Some(node.node_id.clone()),
+            format!("internal executor input path is outside the workspace: {message}"),
+        )
+    })?;
+    if node.class != ProjectPlanNodeClass::Computation {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ExecutionFailed,
+            Some(node.node_id.clone()),
+            "copy-file-v1 can execute only computation nodes",
+        ));
+    }
+    if !declares_side_effect(node, ProjectPlanSideEffectKind::ReadsInput)
+        || !declares_side_effect(node, ProjectPlanSideEffectKind::WritesArtifact)
+    {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ExecutionFailed,
+            Some(node.node_id.clone()),
+            "copy-file-v1 nodes must declare both read-input and write-artifact side effects",
+        ));
+    }
+    if node.side_effects.iter().any(|effect| {
+        !matches!(
+            effect.kind,
+            ProjectPlanSideEffectKind::ReadsInput | ProjectPlanSideEffectKind::WritesArtifact
+        )
+    }) {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ExecutionFailed,
+            Some(node.node_id.clone()),
+            "copy-file-v1 is offline/read-only apart from declared artifact publication",
+        ));
+    }
+    if node.outputs.len() != 1
+        || node.outputs[0].output_id != output_id
+        || node.outputs[0].materialization != ProjectPlanOutputMaterialization::PlannedArtifact
+    {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ExecutionFailed,
+            Some(node.node_id.clone()),
+            "copy-file-v1 must bind exactly one planned-artifact output matching --output-id",
+        ));
+    }
+    if input_digest != output_digest {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ExecutionFailed,
+            Some(node.node_id.clone()),
+            "copy-file-v1 output digest must match the declared input digest",
+        ));
+    }
+    if !node
+        .content_hash_inputs
+        .iter()
+        .any(|input| input.content_hash == input_digest)
+    {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ExecutionFailed,
+            Some(node.node_id.clone()),
+            "copy-file-v1 input digest must be present in content_hash_inputs",
+        ));
+    }
+    Ok(())
+}
+
+fn execute_copy_file_executor(
+    execution: &ProjectInternalNodeExecution<'_>,
+) -> ProjectRunResult<ProjectNodeExecutionResult> {
+    validate_copy_file_executor_contract(
+        execution.node,
+        execution.workspace_root,
+        execution.command,
+    )?;
+    let input = required_internal_arg(execution.node, execution.command, "input")?;
+    let input_digest = required_internal_arg(execution.node, execution.command, "input-digest")?;
+    let output_id = required_internal_arg(execution.node, execution.command, "output-id")?;
+    let output_digest = required_internal_arg(execution.node, execution.command, "output-digest")?;
+    let absolute_input =
+        resolve_internal_read_path(execution.node, execution.workspace_root, input)?;
+    let bytes = fs::read(&absolute_input).map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::ExecutionFailed,
+            Some(execution.node.node_id.clone()),
+            format!(
+                "copy-file-v1 could not read declared input {}: {error}",
+                absolute_input.display()
+            ),
+        )
+    })?;
+    let actual_digest = digest_bytes(&bytes);
+    if actual_digest != input_digest || actual_digest != output_digest {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ExecutionFailed,
+            Some(execution.node.node_id.clone()),
+            format!(
+                "copy-file-v1 content digest mismatch for {}: expected {}, got {}",
+                absolute_input.display(),
+                input_digest,
+                actual_digest
+            ),
+        ));
+    }
+    let mut outputs = BTreeMap::new();
+    outputs.insert(output_id.to_string(), bytes);
+    let mut result = ProjectNodeExecutionResult::with_outputs(outputs);
+    result.deterministic_usage.insert(
+        "dependency_semantic_hash_count".to_string(),
+        execution.context.dependency_semantic_hashes.len() as u64,
+    );
+    result.deterministic_usage.insert(
+        "input_bytes".to_string(),
+        result.outputs[output_id].len() as u64,
+    );
+    Ok(result)
+}
+
+fn resolve_internal_read_path(
+    node: &ProjectPlanNode,
+    workspace_root: &Path,
+    relative_path: &str,
+) -> ProjectRunResult<PathBuf> {
+    resolve_fs_workspace_path(
+        workspace_root,
+        "internal_executor.input",
+        Path::new(relative_path),
+        PlannedAccess::Read,
+    )
+    .map(|resolution| resolution.absolute_path)
+    .map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::WorkspacePolicy,
+            Some(node.node_id.clone()),
+            format!("internal executor input path failed workspace safety: {error}"),
+        )
+    })
+}
+
+fn required_internal_arg<'a>(
+    node: &ProjectPlanNode,
+    command: &'a ProjectInternalCommand,
+    key: &str,
+) -> ProjectRunResult<&'a str> {
+    command.args.get(key).map(String::as_str).ok_or_else(|| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::ExecutionFailed,
+            Some(node.node_id.clone()),
+            format!("internal executor {} requires --{key}", command.executor_id),
+        )
+    })
+}
+
+fn reject_extra_internal_args(
+    node: &ProjectPlanNode,
+    command: &ProjectInternalCommand,
+    allowed: &[&str],
+) -> ProjectRunResult<()> {
+    let allowed = allowed.iter().copied().collect::<BTreeSet<_>>();
+    let extras = command
+        .args
+        .keys()
+        .filter(|key| !allowed.contains(key.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if extras.is_empty() {
+        return Ok(());
+    }
+    Err(ProjectRunError::new(
+        ProjectRunErrorCode::ExecutionFailed,
+        Some(node.node_id.clone()),
+        format!(
+            "internal executor {} received unsupported arguments: {}",
+            command.executor_id,
+            extras.join(", ")
+        ),
+    ))
+}
+
+fn validate_blake3_arg(node: &ProjectPlanNode, key: &str, value: &str) -> ProjectRunResult<()> {
+    let Some(hex) = value.strip_prefix("blake3:") else {
+        return Err(invalid_blake3_arg(node, key));
+    };
+    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(invalid_blake3_arg(node, key));
+    }
+    Ok(())
+}
+
+fn invalid_blake3_arg(node: &ProjectPlanNode, key: &str) -> ProjectRunError {
+    ProjectRunError::new(
+        ProjectRunErrorCode::ExecutionFailed,
+        Some(node.node_id.clone()),
+        format!("internal executor argument --{key} must be a blake3 digest"),
+    )
+}
+
+fn declares_side_effect(node: &ProjectPlanNode, kind: ProjectPlanSideEffectKind) -> bool {
+    node.side_effects.iter().any(|effect| effect.kind == kind)
 }
 
 fn execute_node<E: ProjectNodeExecutor>(
@@ -728,6 +1145,7 @@ fn publish_outputs(
     stale_receipt: Option<&ProjectRunNodeReceipt>,
     outputs: BTreeMap<String, Vec<u8>>,
 ) -> ProjectRunResult<Vec<ProjectRunOutputReceipt>> {
+    ensure_returned_outputs_match_declared(node, &outputs)?;
     let mut receipts = Vec::new();
     for output in &node.outputs {
         let bytes = outputs.get(&output.output_id).ok_or_else(|| {
@@ -769,20 +1187,50 @@ fn publish_outputs(
     Ok(receipts)
 }
 
+fn ensure_returned_outputs_match_declared(
+    node: &ProjectPlanNode,
+    outputs: &BTreeMap<String, Vec<u8>>,
+) -> ProjectRunResult<()> {
+    let declared = node
+        .outputs
+        .iter()
+        .map(|output| output.output_id.clone())
+        .collect::<BTreeSet<_>>();
+    let returned = outputs.keys().cloned().collect::<BTreeSet<_>>();
+    if returned == declared {
+        return Ok(());
+    }
+    Err(ProjectRunError::new(
+        ProjectRunErrorCode::ExecutionFailed,
+        Some(node.node_id.clone()),
+        format!(
+            "executor outputs must exactly match declared output ids: expected [{}], got [{}]",
+            declared.into_iter().collect::<Vec<_>>().join(", "),
+            returned.into_iter().collect::<Vec<_>>().join(", ")
+        ),
+    ))
+}
+
 fn ensure_outputs_publishable(
     node: &ProjectPlanNode,
     workspace_root: &Path,
     stale_receipt: Option<&ProjectRunNodeReceipt>,
 ) -> ProjectRunResult<()> {
     for output in &node.outputs {
-        let relative = normalize_relative_path(Path::new(&output.path)).map_err(|message| {
+        let path = resolve_fs_workspace_path(
+            workspace_root,
+            "project_run.output",
+            Path::new(&output.path),
+            PlannedAccess::Write,
+        )
+        .map(|resolution| resolution.absolute_path)
+        .map_err(|error| {
             ProjectRunError::new(
                 ProjectRunErrorCode::WorkspacePolicy,
                 Some(node.node_id.clone()),
-                message,
+                format!("project output path failed workspace safety: {error}"),
             )
         })?;
-        let path = workspace_root.join(relative);
         if !path.exists() {
             continue;
         }
@@ -825,11 +1273,34 @@ fn publish_atomic_bytes(
 ) -> Result<(), String> {
     let relative_output = normalize_relative_path(relative_output)
         .map_err(|message| format!("invalid output path: {message}"))?;
-    let final_path = workspace_root.join(&relative_output);
-    let temp_root = workspace_root
-        .join(normalize_relative_path(work_dir)?)
-        .join(".tmp");
-    fs::create_dir_all(&temp_root).map_err(|error| {
+    let final_path = resolve_fs_workspace_path(
+        workspace_root,
+        "project_run.output",
+        &relative_output,
+        PlannedAccess::Write,
+    )
+    .map(|resolution| resolution.absolute_path)
+    .map_err(|error| format!("project output path failed workspace safety: {error}"))?;
+    let temp_name = format!(
+        "{}.{}.tmp",
+        path_token(&relative_output),
+        digest_bytes(bytes).replace(':', "_")
+    );
+    let temp_relative = normalize_relative_path(work_dir)?
+        .join(".tmp")
+        .join(temp_name);
+    let temp_path = resolve_fs_workspace_path(
+        workspace_root,
+        "project_run.output_temp",
+        &temp_relative,
+        PlannedAccess::Write,
+    )
+    .map(|resolution| resolution.absolute_path)
+    .map_err(|error| format!("project output temp path failed workspace safety: {error}"))?;
+    let temp_root = temp_path
+        .parent()
+        .expect("normalized project output temp path has a parent");
+    fs::create_dir_all(temp_root).map_err(|error| {
         format!(
             "failed to create temp root {}: {error}",
             temp_root.display()
@@ -843,12 +1314,6 @@ fn publish_atomic_bytes(
             )
         })?;
     }
-    let temp_name = format!(
-        "{}.{}.tmp",
-        path_token(&relative_output),
-        digest_bytes(bytes).replace(':', "_")
-    );
-    let temp_path = temp_root.join(temp_name);
     prepare_atomic_output_temp(&temp_path, bytes)?;
     finish_atomic_output_publish(&temp_path, &final_path, bytes, expected_existing)
 }
@@ -949,14 +1414,20 @@ fn outputs_match_receipt(
     receipt: &ProjectRunNodeReceipt,
 ) -> ProjectRunResult<bool> {
     for output in &receipt.outputs {
-        let relative = normalize_relative_path(Path::new(&output.path)).map_err(|message| {
+        let path = resolve_fs_workspace_path(
+            workspace_root,
+            "project_run.receipt_output",
+            Path::new(&output.path),
+            PlannedAccess::Read,
+        )
+        .map(|resolution| resolution.absolute_path)
+        .map_err(|error| {
             ProjectRunError::new(
                 ProjectRunErrorCode::WorkspacePolicy,
                 Some(receipt.node_id.clone()),
-                message,
+                format!("receipt output path failed workspace safety: {error}"),
             )
         })?;
-        let path = workspace_root.join(relative);
         let Ok(bytes) = fs::read(&path) else {
             return Ok(false);
         };
@@ -1076,11 +1547,23 @@ fn receipt_path(policy: &ProjectRunPolicy, node_id: &str) -> ProjectRunResult<Pa
     let work_dir = normalize_relative_path(&policy.work_dir).map_err(|message| {
         ProjectRunError::new(ProjectRunErrorCode::WorkspacePolicy, None, message)
     })?;
-    Ok(policy
-        .workspace_root
-        .join(work_dir)
+    let relative = work_dir
         .join("receipts")
-        .join(format!("{}.json", node_id_token(node_id))))
+        .join(format!("{}.json", node_id_token(node_id)));
+    resolve_fs_workspace_path(
+        &policy.workspace_root,
+        "project_run.receipt",
+        &relative,
+        PlannedAccess::Write,
+    )
+    .map(|resolution| resolution.absolute_path)
+    .map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::WorkspacePolicy,
+            Some(node_id.to_string()),
+            format!("project receipt path failed workspace safety: {error}"),
+        )
+    })
 }
 
 fn receipt_hash_inputs(inputs: &[ProjectPlanHashRef]) -> Vec<ProjectRunHashRef> {

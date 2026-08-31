@@ -1,0 +1,296 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.acquisition_request.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.acquisition_request.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": "canon_geo_acquisition_request.v0", "type": "string" },
+    "request_id": {
+      "type": "string",
+      "pattern": "^canon_geo_acquisition_request\\.v0:[0-9a-f]{64}$"
+    },
+    "discovery_request_id": {
+      "type": "string",
+      "pattern": "^canon_geo_discovery_request\\.v0:[0-9a-f]{64}$"
+    },
+    "bounded_geography": { "$ref": "#/$defs/bounded_geography" },
+    "subset": { "$ref": "#/$defs/bounded_subset" },
+    "releases": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/release_pin" }
+    },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/requested_field" }
+    },
+    "projection": { "$ref": "#/$defs/projection_operation" },
+    "ordering": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/ordering_term" }
+    },
+    "pagination": { "$ref": "#/$defs/pagination_request" },
+    "ceilings": { "$ref": "#/$defs/row_byte_ceilings" },
+    "positive_path_min_rows": { "type": "integer", "minimum": 0 }
+  },
+  "required": [
+    "version",
+    "request_id",
+    "bounded_geography",
+    "subset",
+    "releases",
+    "fields",
+    "ordering",
+    "pagination",
+    "ceilings",
+    "positive_path_min_rows"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "fields": {
+            "contains": {
+              "type": "object",
+              "properties": { "role": { "const": "geometry" } },
+              "required": ["role"]
+            }
+          }
+        },
+        "required": ["fields"]
+      },
+      "then": { "required": ["projection"] },
+      "else": { "not": { "required": ["projection"] } }
+    }
+  ],
+  "$defs": {
+    "bounded_geography": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "geography_id": { "type": "string", "minLength": 1 },
+        "geography_kind": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["geography_id", "geography_kind", "description"]
+    },
+    "subset_predicate_kind": {
+      "type": "string",
+      "enum": [
+        "h3_cells",
+        "bounding_box",
+        "administrative_boundary",
+        "explicit_identifiers",
+        "temporal_partition",
+        "release_partition"
+      ]
+    },
+    "subset_predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "predicate_id": { "type": "string", "minLength": 1 },
+        "kind": { "$ref": "#/$defs/subset_predicate_kind" },
+        "expression": { "type": "string", "minLength": 1 }
+      },
+      "required": ["predicate_id", "kind", "expression"]
+    },
+    "bounded_subset": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "subset_id": { "type": "string", "minLength": 1 },
+        "geography": { "$ref": "#/$defs/bounded_geography" },
+        "h3_cells": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "predicates": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/subset_predicate" }
+        }
+      },
+      "required": ["subset_id", "geography", "predicates"],
+      "anyOf": [
+        { "properties": { "h3_cells": { "minItems": 1 } }, "required": ["h3_cells"] },
+        { "properties": { "predicates": { "minItems": 1 } } }
+      ]
+    },
+    "release_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_instance_id": { "type": "string", "minLength": 1 },
+        "release_id": { "type": "string", "minLength": 1 },
+        "release_digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["source_instance_id", "release_id", "release_digest"]
+    },
+    "digest_algorithm": {
+      "type": "string",
+      "enum": ["blake3", "sha256", "sha512"]
+    },
+    "digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "digest_id": { "type": "string", "minLength": 1 },
+        "algorithm": { "$ref": "#/$defs/digest_algorithm" },
+        "hex_digest": { "type": "string", "pattern": "^[0-9a-f]+$" }
+      },
+      "required": ["digest_id", "algorithm", "hex_digest"],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "algorithm": { "enum": ["blake3", "sha256"] } },
+            "required": ["algorithm"]
+          },
+          "then": {
+            "properties": { "hex_digest": { "pattern": "^[0-9a-f]{64}$" } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "algorithm": { "const": "sha512" } },
+            "required": ["algorithm"]
+          },
+          "then": {
+            "properties": { "hex_digest": { "pattern": "^[0-9a-f]{128}$" } }
+          }
+        }
+      ]
+    },
+    "field_role": {
+      "type": "string",
+      "enum": [
+        "identifier",
+        "geometry",
+        "attribute",
+        "temporal",
+        "ordering",
+        "denominator",
+        "digest",
+        "provenance"
+      ]
+    },
+    "requested_field": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "field_id": { "type": "string", "minLength": 1 },
+        "role": { "$ref": "#/$defs/field_role" },
+        "required": { "type": "boolean" }
+      },
+      "required": ["field_id", "role", "required"]
+    },
+    "projection_operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "coordinate_reference_system": { "type": "string", "minLength": 1 },
+        "operation_id": { "type": "string", "minLength": 1 },
+        "operation_version": { "type": "string", "minLength": 1 },
+        "operation_digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": [
+        "coordinate_reference_system",
+        "operation_id",
+        "operation_version",
+        "operation_digest"
+      ]
+    },
+    "order_direction": {
+      "type": "string",
+      "enum": ["asc", "desc"]
+    },
+    "null_ordering": {
+      "type": "string",
+      "enum": ["first", "last"]
+    },
+    "ordering_term": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "position": { "type": "integer", "minimum": 0 },
+        "field_id": { "type": "string", "minLength": 1 },
+        "direction": { "$ref": "#/$defs/order_direction" },
+        "nulls": { "$ref": "#/$defs/null_ordering" }
+      },
+      "required": ["position", "field_id", "direction", "nulls"]
+    },
+    "pagination_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "page_size_rows": { "type": "integer", "minimum": 1 },
+        "page_token": { "type": "string", "minLength": 1 }
+      },
+      "required": ["page_size_rows"]
+    },
+    "row_byte_ceilings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_rows": { "type": "integer", "minimum": 1 },
+        "max_bytes": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["max_rows", "max_bytes"]
+    }
+  },
+  "examples": [
+    {
+      "version": "canon_geo_acquisition_request.v0",
+      "request_id": "canon_geo_acquisition_request.v0:0000000000000000000000000000000000000000000000000000000000000000",
+      "bounded_geography": {
+        "geography_id": "region.fixture.franklin-oh",
+        "geography_kind": "county_fips",
+        "description": "Franklin County, Ohio fixture"
+      },
+      "subset": {
+        "subset_id": "subset.fixture.franklin-r8-k1",
+        "geography": {
+          "geography_id": "region.fixture.franklin-oh",
+          "geography_kind": "county_fips",
+          "description": "Franklin County, Ohio fixture"
+        },
+        "h3_cells": ["882a107707fffff"],
+        "predicates": [
+          {
+            "predicate_id": "predicate.h3.r8.k1",
+            "kind": "h3_cells",
+            "expression": "declared h3 r8 center plus controlled halo k=1"
+          }
+        ]
+      },
+      "releases": [
+        {
+          "source_instance_id": "source.fixture.building-footprints",
+          "release_id": "release.fixture.2026-08-31",
+          "release_digest": {
+            "digest_id": "release.fixture.building-footprints",
+            "algorithm": "sha256",
+            "hex_digest": "1111111111111111111111111111111111111111111111111111111111111111"
+          }
+        }
+      ],
+      "fields": [
+        { "field_id": "source_record_id", "role": "identifier", "required": true },
+        { "field_id": "geometry_wkb_sha256", "role": "digest", "required": true }
+      ],
+      "ordering": [
+        { "position": 0, "field_id": "source_record_id", "direction": "asc", "nulls": "last" }
+      ],
+      "pagination": { "page_size_rows": 100 },
+      "ceilings": { "max_rows": 100, "max_bytes": 1048576 },
+      "positive_path_min_rows": 1
+    }
+  ]
+}

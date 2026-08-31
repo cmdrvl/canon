@@ -493,13 +493,16 @@ pub const COMMAND_SAFETY_DECLARATIONS: &[CommandSafetyDeclaration] = &[
         command: "project run",
         operator_contract_name: Some("project run"),
         usage: "canon project run --plan <PLAN> [--node <NODE>]",
-        read_only: true,
-        mutation: MutationClass::ReadOnly,
+        read_only: false,
+        mutation: MutationClass::OwnedOutput,
         network: NetworkClass::Offline,
-        concurrency: ConcurrencyClass::StatelessRead,
-        platforms: &[PlatformClass::PortablePathUtf8],
+        concurrency: ConcurrencyClass::AtomicOwnedOutput,
+        platforms: &[
+            PlatformClass::PortablePathUtf8,
+            PlatformClass::SameFilesystemAtomicReplace,
+        ],
         owned_temp_fixtures_only: true,
-        notes: "public surface validates plans and reuses existing canon.project.run.v2 receipts only; pending nodes refuse until a typed executor is registered",
+        notes: "validates and reuses canon.project.run.v2 receipts, and executes pending nodes only through registered internal offline executors; each declared output and receipt uses atomic single-file publication inside the explicit workspace, but multi-artifact transactionality remains open",
     },
     CommandSafetyDeclaration {
         command: "geo capabilities",
@@ -539,6 +542,18 @@ pub const COMMAND_SAFETY_DECLARATIONS: &[CommandSafetyDeclaration] = &[
         platforms: &[PlatformClass::PortablePathUtf8],
         owned_temp_fixtures_only: true,
         notes: "geo requests are answered on stdout; no registry, cache, or work-dir writes",
+    },
+    CommandSafetyDeclaration {
+        command: "geo materialize-address-evidence",
+        operator_contract_name: Some("geo materialize-address-evidence"),
+        usage: "canon geo materialize-address-evidence --request <REQUEST.json>",
+        read_only: true,
+        mutation: MutationClass::ReadOnly,
+        network: NetworkClass::Offline,
+        concurrency: ConcurrencyClass::StatelessRead,
+        platforms: &[PlatformClass::PortablePathUtf8],
+        owned_temp_fixtures_only: true,
+        notes: "reads one declared local address/PAD request and emits the deterministic parse, membership, and parcel-evidence bridge bundle on stdout; no network or file writes",
     },
     CommandSafetyDeclaration {
         command: "unresolved inbox read",
@@ -1721,11 +1736,10 @@ fn behavior_metadata_drifts(
             });
         }
         push_safety_footprint_drifts(&mut drifts, command_name, row, &sources);
-        if recovery_next_command_required(command_name)
-            && row
-                .recovery_next_command
-                .as_deref()
-                .is_none_or(str::is_empty)
+        if row
+            .recovery_next_command
+            .as_deref()
+            .is_none_or(str::is_empty)
         {
             drifts.push(OperatorBehaviorMetadataDrift {
                 command: command_name.clone(),
@@ -1737,10 +1751,6 @@ fn behavior_metadata_drifts(
         }
     }
     drifts
-}
-
-fn recovery_next_command_required(command_name: &str) -> bool {
-    command_name != "project run"
 }
 
 fn binding_does_not_match_row(

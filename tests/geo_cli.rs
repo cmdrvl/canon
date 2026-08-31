@@ -56,6 +56,55 @@ fn tiny_composition_request() -> Value {
     })
 }
 
+fn tiny_address_evidence_request() -> Value {
+    let member = json!({
+        "member_id": "pad:first:199",
+        "lot_id": "1004540041",
+        "house": { "kind": "discrete", "value": 199 },
+        "street": {
+            "name": [{ "kind": "ordinal", "value": 1 }],
+            "suffix": "avenue"
+        }
+    });
+    let typed_member: canon::geo::GeoPadAddressMember =
+        serde_json::from_value(member.clone()).expect("address member fixture parses");
+    let normalized_member_blake3 =
+        canon::geo::geo_pad_member_blake3(&typed_member).expect("address member fixture hashes");
+    json!({
+        "version": "canon_geo_address_parcel_evidence_request.v0",
+        "parse_request": {
+            "version": "canon_geo_address_parse_request.v0",
+            "input": "199 First Avenue",
+            "jurisdiction": { "kind": "nyc", "borough": "manhattan" }
+        },
+        "address_set": {
+            "version": "canon_geo_pad_address_set.v0",
+            "jurisdiction": { "kind": "nyc", "borough": "manhattan" },
+            "members": [member]
+        },
+        "bridge_request": {
+            "version": "canon_geo_address_parcel_bridge_request.v0",
+            "observation_id": "obs.address.pad.membership",
+            "contract_id": "rho.address.pad.membership",
+            "query_as_of": {
+                "utc_day": "2026-08-31",
+                "semantic_id": "demo:query_as_of",
+                "unit": "utc_day",
+                "origin": "caller_declared"
+            },
+            "member_source_records": [{
+                "member_id": "pad:first:199",
+                "normalized_member_blake3": normalized_member_blake3,
+                "source_record": {
+                    "source_record_id": "pad:26B:first:199",
+                    "source_vintage": "26B/2026-05-01",
+                    "record_blake3": blake3::hash(b"pad:26B:first:199").to_hex().to_string()
+                }
+            }]
+        }
+    })
+}
+
 fn tiny_geometry_request(max_geometry_bytes_per_tile: u64) -> Value {
     json!({
         "version": "canon_geo_geometry_request.v0",
@@ -748,6 +797,129 @@ fn geo_materialize_evidence_emits_a_compiler_accepted_request() {
             .unwrap()
             .len(),
         1
+    );
+}
+
+#[test]
+fn geo_materialize_address_evidence_runs_the_parse_pad_and_bridge_stages() {
+    let temp = tempdir().expect("tempdir");
+    let request = write_json(
+        temp.path(),
+        "address-evidence.json",
+        &tiny_address_evidence_request(),
+    );
+
+    let first = canon_command()
+        .args([
+            "geo",
+            "materialize-address-evidence",
+            "--request",
+            request.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    let second = canon_command()
+        .args([
+            "geo",
+            "materialize-address-evidence",
+            "--request",
+            request.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+    assert_eq!(first.get_output().stdout, second.get_output().stdout);
+
+    let bundle: Value =
+        serde_json::from_slice(&first.get_output().stdout).expect("address evidence bundle parses");
+    assert_eq!(
+        bundle["version"],
+        "canon_geo_address_parcel_evidence_bundle.v0"
+    );
+    assert_eq!(bundle["bridge"]["status"], "evidence_observation");
+    assert_eq!(
+        bundle["bridge"]["parcel_candidates"],
+        json!([{ "level": "parcel", "id": "1004540041" }])
+    );
+    assert_eq!(
+        bundle["bridge"]["observation"]["observation"]["kind"],
+        "existential_membership"
+    );
+    assert!(bundle.get("universe").is_none());
+    assert!(bundle.get("contracts").is_none());
+    assert!(bundle.get("observations").is_none());
+}
+
+#[test]
+fn geo_materialize_address_evidence_bundle_is_not_a_direct_compile_request() {
+    let temp = tempdir().expect("tempdir");
+    let request = write_json(
+        temp.path(),
+        "address-evidence.json",
+        &tiny_address_evidence_request(),
+    );
+
+    let materialized = canon_command()
+        .args([
+            "geo",
+            "materialize-address-evidence",
+            "--request",
+            request.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let bundle_path = temp.path().join("address-bundle.json");
+    fs::write(&bundle_path, &materialized).expect("write address bundle");
+
+    let refusal = canon_command()
+        .args([
+            "geo",
+            "compile-evidence",
+            "--request",
+            bundle_path.to_str().unwrap(),
+        ])
+        .assert()
+        .code(2)
+        .get_output()
+        .stdout
+        .clone();
+    let refusal: Value = serde_json::from_slice(&refusal).expect("refusal parses");
+    assert_eq!(refusal["refusal"]["code"], "E_PARSE");
+    assert_eq!(
+        refusal["refusal"]["detail"]["expected_version"],
+        "canon_geo_evidence_request.v0"
+    );
+}
+
+#[test]
+fn geo_materialize_address_evidence_refuses_an_unknown_pad_source_binding() {
+    let temp = tempdir().expect("tempdir");
+    let mut request_value = tiny_address_evidence_request();
+    request_value["bridge_request"]["member_source_records"][0]["member_id"] = json!("pad:unknown");
+    let request = write_json(temp.path(), "bad-address-evidence.json", &request_value);
+
+    let refusal = canon_command()
+        .args([
+            "geo",
+            "materialize-address-evidence",
+            "--request",
+            request.to_str().unwrap(),
+        ])
+        .assert()
+        .code(2)
+        .get_output()
+        .stdout
+        .clone();
+    let refusal: Value = serde_json::from_slice(&refusal).expect("refusal parses");
+    assert_eq!(
+        refusal["refusal"]["detail"]["geo_address_error_code"],
+        "invalid_input"
+    );
+    assert_eq!(
+        refusal["refusal"]["next_command"],
+        "repair the request against canon_geo_address_parcel_evidence_request.v0, then rerun canon geo materialize-address-evidence"
     );
 }
 

@@ -1,0 +1,132 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.address_parcel_bridge_request.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.address_parcel_bridge_request.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_address_parcel_bridge_request.v0",
+      "type": "string"
+    },
+    "observation_id": {
+      "type": "string"
+    },
+    "contract_id": {
+      "type": "string"
+    },
+    "query_as_of": {
+      "$ref": "#/$defs/as_of"
+    },
+    "valid_time": {
+      "$ref": "#/$defs/valid_time_interval"
+    },
+    "member_source_records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/pad_member_source_record"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "observation_id",
+    "contract_id",
+    "member_source_records"
+  ],
+  "$defs": {
+    "as_of": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "utc_day": {
+          "type": "string"
+        },
+        "semantic_id": {
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/value_origin"
+        }
+      },
+      "required": [
+        "utc_day",
+        "semantic_id",
+        "unit",
+        "origin"
+      ]
+    },
+    "evidence_record_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_record_id": {
+          "type": "string"
+        },
+        "source_vintage": {
+          "type": "string"
+        },
+        "record_blake3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "source_record_id",
+        "source_vintage",
+        "record_blake3"
+      ]
+    },
+    "pad_member_source_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "member_id": {
+          "type": "string"
+        },
+        "normalized_member_blake3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "source_record": {
+          "$ref": "#/$defs/evidence_record_ref"
+        }
+      },
+      "required": [
+        "member_id",
+        "normalized_member_blake3",
+        "source_record"
+      ]
+    },
+    "valid_time_interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start_day": {
+          "type": "integer"
+        },
+        "end_day": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start_day",
+        "end_day"
+      ]
+    },
+    "value_origin": {
+      "type": "string",
+      "enum": [
+        "caller_declared",
+        "binary_default",
+        "source_release",
+        "local_artifact",
+        "adapter_contract",
+        "operator_policy"
+      ]
+    }
+  }
+}

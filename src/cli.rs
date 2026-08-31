@@ -227,7 +227,7 @@ pub enum ProjectSubcommand {
     Lock(ProjectLockCli),
     /// Compile a validated project plan from a manifest and lock
     Plan(ProjectPlanCli),
-    /// Validate a project plan, reuse existing v2 receipts, and refuse pending nodes
+    /// Validate a project plan, reuse valid v2 receipts, and run supported pending nodes
     Run(ProjectRunCli),
 }
 
@@ -270,6 +270,9 @@ pub enum GeoSubcommand {
     /// Fold release-pinned warehouse rows into a typed evidence request
     #[command(name = "materialize-evidence")]
     MaterializeEvidence(GeoMaterializeEvidenceCli),
+    /// Parse an address, test PAD membership, and emit a typed parcel-evidence bridge
+    #[command(name = "materialize-address-evidence")]
+    MaterializeAddressEvidence(GeoMaterializeAddressEvidenceCli),
     /// Materialize controlling Appendix H.7 multi-parcel rows into a labeled population
     #[command(name = "materialize-h7-population")]
     MaterializeH7Population(GeoMaterializeH7PopulationCli),
@@ -354,6 +357,13 @@ pub struct GeoMaterializeEvidenceCli {
     /// JSON file holding canon_geo_warehouse_rows.v0 rows
     #[arg(long)]
     pub rows: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoMaterializeAddressEvidenceCli {
+    /// JSON file holding canon_geo_address_parcel_evidence_request.v0
+    #[arg(long)]
+    pub request: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -686,19 +696,19 @@ pub struct ProjectPlanCli {
 
 #[derive(Args, Debug, Clone)]
 pub struct ProjectRunCli {
-    /// Project plan artifact path for reuse-only validation
+    /// Project plan artifact path for validated execution or receipt reuse
     #[arg(long)]
     pub plan: Option<PathBuf>,
 
-    /// Project manifest path used when compiling a plan inline for reuse-only validation
+    /// Project manifest path used when compiling a plan inline for execution or reuse
     #[arg(long)]
     pub manifest: Option<PathBuf>,
 
-    /// Project lock artifact path used when compiling a plan inline for reuse-only validation
+    /// Project lock artifact path used when compiling a plan inline for execution or reuse
     #[arg(long)]
     pub lock: Option<PathBuf>,
 
-    /// Node id to inspect/reuse, including its dependencies; pending nodes still refuse
+    /// Node id to execute or reuse, including its dependencies
     #[arg(long = "node")]
     pub nodes: Vec<String>,
 
@@ -710,15 +720,15 @@ pub struct ProjectRunCli {
     #[arg(long = "work-dir", default_value = "work")]
     pub work_dir: PathBuf,
 
-    /// Recorded policy ceiling for reuse-only reports; does not enable execution
+    /// Deterministic scheduler-width ceiling; the current executor loop is serial
     #[arg(long = "max-parallelism", default_value_t = 1)]
     pub max_parallelism: usize,
 
-    /// Permit validation of declared network effects; does not enable execution
+    /// Permit declared network effects at the policy gate; internal executors remain offline
     #[arg(long = "allow-network")]
     pub allow_network: bool,
 
-    /// Permit validation of declared mutation gates; does not enable execution
+    /// Permit declared mutation gates at the policy gate; a registered executor is still required
     #[arg(long = "allow-mutation-gates")]
     pub allow_mutation_gates: bool,
 

@@ -10,9 +10,11 @@
 > **Reuse finding:** Canon contains library-level `canon.project.plan.v1` and
 > `canon.project.run.v2` machinery for manifests, locks, DAGs, receipts, resume,
 > invalidation, lifecycle, and workspace policy. The public project CLI exposes lock
-> refresh and pure planning, while `project run` is validation/reuse-only until typed
-> node executors are registered. Geo must extend this substrate, not build a parallel
-> orchestrator.
+> refresh and pure planning, while `project run` validates/reuses v2 receipts and executes
+> pending nodes only through registered internal offline executors. The first narrow
+> `copy-file-v1` executor proves positive dispatch; Geo overlay/delegation and
+> multi-artifact transactionality remain open. Geo must extend this substrate, not build
+> a parallel orchestrator.
 
 ## 1. Purpose
 
@@ -210,6 +212,13 @@ protocol-neutral `canon_geo_discovery_request.v0` and `canon_geo_acquisition_req
 artifacts; an external executor may satisfy them through Reveal catalog discovery,
 Snowflake, S3, local files, or a future service. Canon never embeds the executor, its
 credentials, or its network behavior in the deterministic build.
+
+These three request/receipt contracts are now implemented as public, offline-validated
+library types. Discovery may begin without a release pin under an explicit as-of selection
+policy; acquisition requires concrete release pins and bounded ordering/pagination. A
+projection operation is required exactly when geometry fields are requested and forbidden
+for non-geometric evidence, so deeds, addresses, party records, and other sources do not
+inherit a fake CRS requirement. Planner/run consumption is still open.
 
 Discovery proceeds from cheap metadata to bounded evidence:
 

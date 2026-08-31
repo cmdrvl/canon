@@ -1,0 +1,660 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.acquisition_receipt.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.acquisition_receipt.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": "canon_geo_acquisition_receipt.v0", "type": "string" },
+    "request_id": {
+      "type": "string",
+      "pattern": "^canon_geo_acquisition_request\\.v0:[0-9a-f]{64}$"
+    },
+    "request_semantic_hash": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "terminal_state": { "$ref": "#/$defs/terminal_state" },
+    "proof_class": { "$ref": "#/$defs/proof_class" },
+    "executor": { "$ref": "#/$defs/executor_trace" },
+    "fixture_id": { "type": "string", "minLength": 1 },
+    "retained_receipt_id": { "type": "string", "minLength": 1 },
+    "bounded_geography": { "$ref": "#/$defs/bounded_geography" },
+    "subset": { "$ref": "#/$defs/bounded_subset" },
+    "releases": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/release_pin" }
+    },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/requested_field" }
+    },
+    "projection": { "$ref": "#/$defs/projection_operation" },
+    "normalized_executed_request_digest": { "$ref": "#/$defs/digest" },
+    "pagination": { "$ref": "#/$defs/pagination_receipt" },
+    "counts": { "$ref": "#/$defs/acquisition_counts" },
+    "denominators": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/denominator" }
+    },
+    "source_digests": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/digest" }
+    },
+    "result_digests": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/digest" }
+    },
+    "local_artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/local_artifact_digest" }
+    },
+    "unreadable_columns": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "resumability": { "$ref": "#/$defs/resumability" },
+    "terminal_detail": { "type": "string", "minLength": 1 }
+  },
+  "required": [
+    "version",
+    "request_id",
+    "request_semantic_hash",
+    "terminal_state",
+    "proof_class",
+    "bounded_geography",
+    "subset",
+    "releases",
+    "fields",
+    "normalized_executed_request_digest",
+    "pagination",
+    "counts",
+    "denominators",
+    "source_digests",
+    "result_digests",
+    "local_artifacts",
+    "unreadable_columns",
+    "resumability"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "fields": {
+            "contains": {
+              "type": "object",
+              "properties": { "role": { "const": "geometry" } },
+              "required": ["role"]
+            }
+          }
+        },
+        "required": ["fields"]
+      },
+      "then": { "required": ["projection"] },
+      "else": { "not": { "required": ["projection"] } }
+    },
+    {
+      "if": {
+        "properties": { "proof_class": { "const": "fixture" } },
+        "required": ["proof_class"]
+      },
+      "then": {
+        "required": ["fixture_id"],
+        "not": {
+          "anyOf": [
+            { "required": ["executor"] },
+            { "required": ["retained_receipt_id"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "proof_class": { "const": "retained" } },
+        "required": ["proof_class"]
+      },
+      "then": {
+        "required": ["executor", "retained_receipt_id"],
+        "not": { "required": ["fixture_id"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "proof_class": { "const": "live" } },
+        "required": ["proof_class"]
+      },
+      "then": {
+        "required": ["executor"],
+        "not": {
+          "anyOf": [
+            { "required": ["fixture_id"] },
+            { "required": ["retained_receipt_id"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "terminal_state": { "const": "COMPLETE" } },
+        "required": ["terminal_state"]
+      },
+      "then": {
+        "properties": {
+          "counts": { "properties": { "rows": { "minimum": 1 } } },
+          "pagination": {
+            "properties": {
+              "rows_truncated": { "const": false },
+              "bytes_truncated": { "const": false }
+            },
+            "not": { "required": ["next_page_token"] }
+          },
+          "unreadable_columns": { "maxItems": 0 },
+          "resumability": {
+            "properties": { "resumable": { "const": false } },
+            "not": {
+              "anyOf": [
+                { "required": ["resume_token"] },
+                { "required": ["resume_request_id"] }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "terminal_state": { "const": "ZERO_ROWS" } },
+        "required": ["terminal_state"]
+      },
+      "then": {
+        "properties": {
+          "counts": { "properties": { "rows": { "const": 0 } } },
+          "pagination": {
+            "properties": {
+              "rows_truncated": { "const": false },
+              "bytes_truncated": { "const": false }
+            },
+            "not": { "required": ["next_page_token"] }
+          },
+          "unreadable_columns": { "maxItems": 0 },
+          "resumability": {
+            "properties": { "resumable": { "const": false } },
+            "not": {
+              "anyOf": [
+                { "required": ["resume_token"] },
+                { "required": ["resume_request_id"] }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "terminal_state": { "const": "PARTIAL" } },
+        "required": ["terminal_state"]
+      },
+      "then": {
+        "required": ["terminal_detail"],
+        "properties": {
+          "counts": { "properties": { "rows": { "minimum": 1 } } },
+          "unreadable_columns": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "terminal_state": { "enum": ["TIMEOUT", "CANCELED"] }
+        },
+        "required": ["terminal_state"]
+      },
+      "then": {
+        "required": ["terminal_detail"],
+        "properties": { "unreadable_columns": { "maxItems": 0 } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "terminal_state": { "const": "UNREADABLE_COLUMNS" } },
+        "required": ["terminal_state"]
+      },
+      "then": {
+        "required": ["terminal_detail"],
+        "properties": {
+          "counts": { "properties": { "rows": { "const": 0 } } },
+          "pagination": {
+            "properties": {
+              "rows_truncated": { "const": false },
+              "bytes_truncated": { "const": false }
+            },
+            "not": { "required": ["next_page_token"] }
+          },
+          "unreadable_columns": { "minItems": 1 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resumability": {
+            "properties": { "resumable": { "const": true } },
+            "required": ["resumable"]
+          }
+        },
+        "required": ["resumability"]
+      },
+      "then": {
+        "anyOf": [
+          { "properties": { "resumability": { "required": ["resume_token"] } } },
+          {
+            "properties": {
+              "resumability": { "required": ["resume_request_id"] }
+            }
+          },
+          { "properties": { "pagination": { "required": ["next_page_token"] } } }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resumability": {
+            "properties": { "resumable": { "const": false } },
+            "required": ["resumable"]
+          }
+        },
+        "required": ["resumability"]
+      },
+      "then": {
+        "properties": {
+          "resumability": {
+            "not": {
+              "anyOf": [
+                { "required": ["resume_token"] },
+                { "required": ["resume_request_id"] }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "terminal_state": {
+      "type": "string",
+      "enum": [
+        "COMPLETE",
+        "ZERO_ROWS",
+        "TIMEOUT",
+        "CANCELED",
+        "PARTIAL",
+        "UNREADABLE_COLUMNS"
+      ]
+    },
+    "proof_class": {
+      "type": "string",
+      "enum": ["fixture", "retained", "live"]
+    },
+    "executor_kind": {
+      "type": "string",
+      "enum": [
+        "catalog",
+        "query_engine",
+        "object_store",
+        "http_service",
+        "local_file",
+        "manual_export",
+        "other"
+      ]
+    },
+    "executor_trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "executor_kind": { "$ref": "#/$defs/executor_kind" },
+        "executor_id": { "type": "string", "minLength": 1 },
+        "executor_version": { "type": "string", "minLength": 1 },
+        "tool_id": { "type": "string", "minLength": 1 },
+        "tool_version": { "type": "string", "minLength": 1 },
+        "executor_request_id": { "type": "string", "minLength": 1 },
+        "executor_query_id": { "type": "string", "minLength": 1 },
+        "executor_attempt_id": { "type": "string", "minLength": 1 }
+      },
+      "required": [
+        "executor_kind",
+        "executor_id",
+        "executor_version",
+        "tool_id",
+        "tool_version",
+        "executor_request_id",
+        "executor_query_id"
+      ]
+    },
+    "bounded_geography": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "geography_id": { "type": "string", "minLength": 1 },
+        "geography_kind": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["geography_id", "geography_kind", "description"]
+    },
+    "subset_predicate_kind": {
+      "type": "string",
+      "enum": [
+        "h3_cells",
+        "bounding_box",
+        "administrative_boundary",
+        "explicit_identifiers",
+        "temporal_partition",
+        "release_partition"
+      ]
+    },
+    "subset_predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "predicate_id": { "type": "string", "minLength": 1 },
+        "kind": { "$ref": "#/$defs/subset_predicate_kind" },
+        "expression": { "type": "string", "minLength": 1 }
+      },
+      "required": ["predicate_id", "kind", "expression"]
+    },
+    "bounded_subset": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "subset_id": { "type": "string", "minLength": 1 },
+        "geography": { "$ref": "#/$defs/bounded_geography" },
+        "h3_cells": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "predicates": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/subset_predicate" }
+        }
+      },
+      "required": ["subset_id", "geography", "predicates"],
+      "anyOf": [
+        { "properties": { "h3_cells": { "minItems": 1 } }, "required": ["h3_cells"] },
+        { "properties": { "predicates": { "minItems": 1 } } }
+      ]
+    },
+    "release_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_instance_id": { "type": "string", "minLength": 1 },
+        "release_id": { "type": "string", "minLength": 1 },
+        "release_digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["source_instance_id", "release_id", "release_digest"]
+    },
+    "field_role": {
+      "type": "string",
+      "enum": [
+        "identifier",
+        "geometry",
+        "attribute",
+        "temporal",
+        "ordering",
+        "denominator",
+        "digest",
+        "provenance"
+      ]
+    },
+    "requested_field": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "field_id": { "type": "string", "minLength": 1 },
+        "role": { "$ref": "#/$defs/field_role" },
+        "required": { "type": "boolean" }
+      },
+      "required": ["field_id", "role", "required"]
+    },
+    "projection_operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "coordinate_reference_system": { "type": "string", "minLength": 1 },
+        "operation_id": { "type": "string", "minLength": 1 },
+        "operation_version": { "type": "string", "minLength": 1 },
+        "operation_digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": [
+        "coordinate_reference_system",
+        "operation_id",
+        "operation_version",
+        "operation_digest"
+      ]
+    },
+    "pagination_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "page_size_rows": { "type": "integer", "minimum": 1 },
+        "page_token": { "type": "string", "minLength": 1 }
+      },
+      "required": ["page_size_rows"]
+    },
+    "pagination_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requested_page": { "$ref": "#/$defs/pagination_request" },
+        "next_page_token": { "type": "string", "minLength": 1 },
+        "rows_truncated": { "type": "boolean" },
+        "bytes_truncated": { "type": "boolean" }
+      },
+      "required": ["requested_page", "rows_truncated", "bytes_truncated"]
+    },
+    "acquisition_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rows": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["rows", "bytes"]
+    },
+    "digest_algorithm": {
+      "type": "string",
+      "enum": ["blake3", "sha256", "sha512"]
+    },
+    "digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "digest_id": { "type": "string", "minLength": 1 },
+        "algorithm": { "$ref": "#/$defs/digest_algorithm" },
+        "hex_digest": { "type": "string", "pattern": "^[0-9a-f]+$" }
+      },
+      "required": ["digest_id", "algorithm", "hex_digest"],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "algorithm": { "enum": ["blake3", "sha256"] } },
+            "required": ["algorithm"]
+          },
+          "then": {
+            "properties": { "hex_digest": { "pattern": "^[0-9a-f]{64}$" } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "algorithm": { "const": "sha512" } },
+            "required": ["algorithm"]
+          },
+          "then": {
+            "properties": { "hex_digest": { "pattern": "^[0-9a-f]{128}$" } }
+          }
+        }
+      ]
+    },
+    "denominator_source": {
+      "type": "string",
+      "enum": ["requested_subset", "executor_reported", "result_artifact"]
+    },
+    "denominator": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "denominator_id": { "type": "string", "minLength": 1 },
+        "source": { "$ref": "#/$defs/denominator_source" },
+        "count": { "type": "integer", "minimum": 0 },
+        "unit": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["denominator_id", "source", "count", "unit", "description"]
+    },
+    "local_artifact_digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": { "type": "string", "minLength": 1 },
+        "media_type": { "type": "string", "minLength": 1 },
+        "byte_count": { "type": "integer", "minimum": 0 },
+        "digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["artifact_id", "media_type", "byte_count", "digest"]
+    },
+    "resumability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resumable": { "type": "boolean" },
+        "resume_token": { "type": "string", "minLength": 1 },
+        "resume_request_id": {
+          "type": "string",
+          "pattern": "^canon_geo_acquisition_request\\.v0:[0-9a-f]{64}$"
+        },
+        "retry_guidance": { "type": "string", "minLength": 1 }
+      },
+      "required": ["resumable", "retry_guidance"]
+    }
+  },
+  "examples": [
+    {
+      "version": "canon_geo_acquisition_receipt.v0",
+      "request_id": "canon_geo_acquisition_request.v0:0000000000000000000000000000000000000000000000000000000000000000",
+      "request_semantic_hash": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+      "terminal_state": "COMPLETE",
+      "proof_class": "live",
+      "executor": {
+        "executor_kind": "query_engine",
+        "executor_id": "fixture-query-engine",
+        "executor_version": "v1",
+        "tool_id": "fixture-query-tool",
+        "tool_version": "v1",
+        "executor_request_id": "request-123",
+        "executor_query_id": "query-123"
+      },
+      "bounded_geography": {
+        "geography_id": "region.fixture.franklin-oh",
+        "geography_kind": "county_fips",
+        "description": "Franklin County, Ohio fixture"
+      },
+      "subset": {
+        "subset_id": "subset.fixture.franklin-r8-k1",
+        "geography": {
+          "geography_id": "region.fixture.franklin-oh",
+          "geography_kind": "county_fips",
+          "description": "Franklin County, Ohio fixture"
+        },
+        "h3_cells": ["882a107707fffff"],
+        "predicates": [
+          {
+            "predicate_id": "predicate.h3.r8.k1",
+            "kind": "h3_cells",
+            "expression": "declared h3 r8 center plus controlled halo k=1"
+          }
+        ]
+      },
+      "releases": [
+        {
+          "source_instance_id": "source.fixture.building-footprints",
+          "release_id": "release.fixture.2026-08-31",
+          "release_digest": {
+            "digest_id": "release.fixture.building-footprints",
+            "algorithm": "sha256",
+            "hex_digest": "1111111111111111111111111111111111111111111111111111111111111111"
+          }
+        }
+      ],
+      "fields": [
+        { "field_id": "source_record_id", "role": "identifier", "required": true },
+        { "field_id": "geometry_wkb_sha256", "role": "digest", "required": true }
+      ],
+      "normalized_executed_request_digest": {
+        "digest_id": "executor.normalized_request",
+        "algorithm": "sha256",
+        "hex_digest": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "pagination": {
+        "requested_page": { "page_size_rows": 100 },
+        "rows_truncated": false,
+        "bytes_truncated": false
+      },
+      "counts": { "rows": 2, "bytes": 512 },
+      "denominators": [
+        {
+          "denominator_id": "denominator.matching_rows",
+          "source": "result_artifact",
+          "count": 2,
+          "unit": "row",
+          "description": "Rows in the bounded subset result"
+        }
+      ],
+      "source_digests": [
+        {
+          "digest_id": "source.release",
+          "algorithm": "blake3",
+          "hex_digest": "1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ],
+      "result_digests": [
+        {
+          "digest_id": "result.rows",
+          "algorithm": "blake3",
+          "hex_digest": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ],
+      "local_artifacts": [
+        {
+          "artifact_id": "artifact.fixture.rows",
+          "media_type": "application/jsonl",
+          "byte_count": 512,
+          "digest": {
+            "digest_id": "artifact.rows",
+            "algorithm": "blake3",
+            "hex_digest": "2222222222222222222222222222222222222222222222222222222222222222"
+          }
+        }
+      ],
+      "unreadable_columns": [],
+      "resumability": {
+        "resumable": false,
+        "retry_guidance": "terminal receipt requires no resume action"
+      }
+    }
+  ]
+}

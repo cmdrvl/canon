@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 
 #[allow(dead_code)]
+#[path = "../src/fs_safety.rs"]
+mod fs_safety;
+#[allow(dead_code)]
 #[path = "../src/project/lock.rs"]
 mod lock;
 #[allow(dead_code)]
@@ -24,18 +27,20 @@ use manifest::{
     ProjectManifest, ProjectPackageKind, load_project_manifest_toml, project_manifest_digest,
 };
 use plan::{
-    ProjectPlan, ProjectPlanErrorCode, ProjectPlanNode, ProjectPlanNodeClass,
+    ProjectPlan, ProjectPlanErrorCode, ProjectPlanHashRef, ProjectPlanNode, ProjectPlanNodeClass,
     ProjectPlanRefusalCondition, ProjectPlanRequest, ProjectPlanSideEffect,
     ProjectPlanSideEffectKind, compile_project_plan, project_plan_node_cache_key,
 };
 use receipt::{
-    ProjectReceiptErrorCode, canonical_node_receipt_bytes, finalized_node_receipt,
-    parse_node_receipt, project_run_schema_version, read_node_receipt, write_node_receipt,
+    ProjectReceiptErrorCode, ProjectRunNodeOutcome, canonical_node_receipt_bytes,
+    finalized_node_receipt, parse_node_receipt, project_run_schema_version, read_node_receipt,
+    write_node_receipt,
 };
 use run::{
-    ProjectNodeExecutionContext, ProjectNodeExecutionResult, ProjectNodeExecutor, ProjectRunError,
-    ProjectRunErrorCode, ProjectRunFailurePolicy, ProjectRunPolicy,
-    canonical_project_run_report_bytes, run_project_plan,
+    PROJECT_INTERNAL_COPY_FILE_EXECUTOR, ProjectNodeExecutionContext, ProjectNodeExecutionResult,
+    ProjectNodeExecutor, ProjectRunError, ProjectRunErrorCode, ProjectRunFailurePolicy,
+    ProjectRunPolicy, canonical_project_run_report_bytes, run_project_plan,
+    run_project_plan_with_registered_executors,
 };
 use serde_json::Value;
 use std::{
@@ -519,6 +524,269 @@ fn stale_cache_key_after_semantic_contract_change_refuses_before_execution() {
             .message
             .contains("node cache key must bind command, declared side effects")
     );
+}
+
+#[test]
+fn registered_internal_copy_file_executor_runs_pending_node_and_reuses_receipt() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let input_bytes = b"id,name\n1,Alice\n";
+    write_workspace_file(temp.path(), "input/source.csv", input_bytes);
+    let mut plan = single_node_plan();
+    configure_internal_copy_node(&mut plan, "alpha", "input/source.csv", input_bytes);
+    let policy = ProjectRunPolicy::new(temp.path(), "work");
+
+    let first = run_project_plan_with_registered_executors(&plan, &policy)
+        .expect("registered executor run");
+
+    assert_eq!(first.executed_nodes, vec!["alpha".to_string()]);
+    assert_eq!(first.resumed_nodes, Vec::<String>::new());
+    assert!(first.failed_nodes.is_empty());
+    assert_eq!(
+        fs::read(artifact_path(temp.path(), &plan, "alpha")).expect("published artifact"),
+        input_bytes
+    );
+    let receipt = read_node_receipt(&receipt_path(temp.path(), "alpha")).expect("node receipt");
+    assert_eq!(receipt.outputs[0].content_digest, digest_bytes(input_bytes));
+    assert_eq!(receipt.outputs[0].byte_count, input_bytes.len() as u64);
+
+    let second = run_project_plan_with_registered_executors(&plan, &policy)
+        .expect("registered executor resume");
+
+    assert!(second.executed_nodes.is_empty());
+    assert_eq!(second.resumed_nodes, vec!["alpha".to_string()]);
+}
+
+#[test]
+fn unknown_registered_executor_refuses_before_publication_or_receipt() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let input_bytes = b"id,name\n1,Alice\n";
+    write_workspace_file(temp.path(), "input/source.csv", input_bytes);
+    let mut plan = single_node_plan();
+    configure_internal_copy_node(&mut plan, "alpha", "input/source.csv", input_bytes);
+    plan.nodes[0].command = plan.nodes[0]
+        .command
+        .replace(PROJECT_INTERNAL_COPY_FILE_EXECUTOR, "missing-executor-v1");
+    refresh_node_cache_key(&mut plan.nodes[0]);
+    plan.graph_hash = digest_bytes(b"unknown-registered-executor");
+
+    let error = run_project_plan_with_registered_executors(
+        &plan,
+        &ProjectRunPolicy::new(temp.path(), "work"),
+    )
+    .expect_err("unknown executor refuses");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ExecutionFailed);
+    assert!(error.message.contains("no registered real executor"));
+    assert!(!artifact_path(temp.path(), &plan, "alpha").exists());
+    assert!(!receipt_path(temp.path(), "alpha").exists());
+}
+
+#[test]
+fn undeclared_internal_copy_input_refuses_before_publication_or_receipt() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let input_bytes = b"id,name\n1,Alice\n";
+    write_workspace_file(temp.path(), "input/source.csv", input_bytes);
+    let mut plan = single_node_plan();
+    configure_internal_copy_node(&mut plan, "alpha", "input/source.csv", input_bytes);
+    plan.nodes[0]
+        .side_effects
+        .retain(|effect| effect.kind != ProjectPlanSideEffectKind::ReadsInput);
+    refresh_node_cache_key(&mut plan.nodes[0]);
+    plan.graph_hash = digest_bytes(b"undeclared-copy-input");
+
+    let error = run_project_plan_with_registered_executors(
+        &plan,
+        &ProjectRunPolicy::new(temp.path(), "work"),
+    )
+    .expect_err("undeclared input refuses");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ExecutionFailed);
+    assert!(error.message.contains("read-input"));
+    assert!(!artifact_path(temp.path(), &plan, "alpha").exists());
+    assert!(!receipt_path(temp.path(), "alpha").exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn registered_internal_copy_file_executor_refuses_symlink_escape_input() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let outside = tempfile::tempdir().expect("outside tempdir");
+    let outside_bytes = b"id,name\n1,outside\n";
+    fs::write(outside.path().join("outside.csv"), outside_bytes).expect("outside bytes");
+    fs::create_dir_all(temp.path().join("input")).expect("input dir");
+    symlink(
+        outside.path().join("outside.csv"),
+        temp.path().join("input/escape.csv"),
+    )
+    .expect("escape symlink");
+    let mut plan = single_node_plan();
+    configure_internal_copy_node(&mut plan, "alpha", "input/escape.csv", outside_bytes);
+
+    let error = run_project_plan_with_registered_executors(
+        &plan,
+        &ProjectRunPolicy::new(temp.path(), "work"),
+    )
+    .expect_err("symlink escape refuses before execution");
+
+    assert_eq!(error.code, ProjectRunErrorCode::WorkspacePolicy);
+    assert!(error.message.contains("workspace safety"));
+    assert!(error.message.contains("outside the workspace"));
+    assert!(!artifact_path(temp.path(), &plan, "alpha").exists());
+    assert!(!receipt_path(temp.path(), "alpha").exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn registered_internal_copy_file_executor_refuses_symlink_escape_output_parent() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let outside = tempfile::tempdir().expect("outside tempdir");
+    let input_bytes = b"id,name\n1,Alice\n";
+    write_workspace_file(temp.path(), "input/source.csv", input_bytes);
+    symlink(outside.path(), temp.path().join("published")).expect("output parent symlink");
+    let mut plan = single_node_plan();
+    configure_internal_copy_node(&mut plan, "alpha", "input/source.csv", input_bytes);
+    plan.nodes[0].outputs[0].path = "published/alpha.json".to_string();
+    refresh_node_cache_key(&mut plan.nodes[0]);
+    plan.graph_hash = digest_bytes(b"symlink-output-parent");
+
+    let error = run_project_plan_with_registered_executors(
+        &plan,
+        &ProjectRunPolicy::new(temp.path(), "work"),
+    )
+    .expect_err("symlink output parent refuses before execution");
+
+    assert_eq!(error.code, ProjectRunErrorCode::WorkspacePolicy);
+    assert!(
+        error
+            .message
+            .contains("output path failed workspace safety")
+    );
+    assert!(!outside.path().join("alpha.json").exists());
+    assert!(!receipt_path(temp.path(), "alpha").exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn project_run_refuses_symlink_escape_work_directory() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let outside = tempfile::tempdir().expect("outside tempdir");
+    let input_bytes = b"id,name\n1,Alice\n";
+    write_workspace_file(temp.path(), "input/source.csv", input_bytes);
+    symlink(outside.path(), temp.path().join("work")).expect("work directory symlink");
+    let mut plan = single_node_plan();
+    configure_internal_copy_node(&mut plan, "alpha", "input/source.csv", input_bytes);
+
+    let error = run_project_plan_with_registered_executors(
+        &plan,
+        &ProjectRunPolicy::new(temp.path(), "work"),
+    )
+    .expect_err("symlink work directory refuses before execution");
+
+    assert_eq!(error.code, ProjectRunErrorCode::WorkspacePolicy);
+    assert!(
+        error
+            .message
+            .contains("receipt path failed workspace safety")
+    );
+    assert!(!outside.path().join("receipts/alpha.json").exists());
+    assert!(!outside.path().join("alpha.json").exists());
+}
+
+#[test]
+fn registered_executor_content_digest_mismatch_writes_failure_receipt_without_artifact() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let input_bytes = b"id,name\n1,Alice\n";
+    write_workspace_file(temp.path(), "input/source.csv", input_bytes);
+    let mut plan = single_node_plan();
+    configure_internal_copy_node(&mut plan, "alpha", "input/source.csv", input_bytes);
+    plan.nodes[0].command = internal_copy_command(
+        "input/source.csv",
+        &digest_bytes(b"declared-wrong"),
+        &plan.nodes[0].outputs[0].output_id,
+        &digest_bytes(b"declared-wrong"),
+    );
+    plan.nodes[0].content_hash_inputs = vec![ProjectPlanHashRef {
+        ref_id: "input.source.csv".to_string(),
+        content_hash: digest_bytes(b"declared-wrong"),
+    }];
+    refresh_node_cache_key(&mut plan.nodes[0]);
+    plan.graph_hash = digest_bytes(b"copy-digest-mismatch");
+    let mut policy = ProjectRunPolicy::new(temp.path(), "work");
+    policy.failure_policy = ProjectRunFailurePolicy::CollectIndependentFailures;
+
+    let report =
+        run_project_plan_with_registered_executors(&plan, &policy).expect("failure report");
+
+    assert_eq!(report.failed_nodes, vec!["alpha".to_string()]);
+    assert!(!artifact_path(temp.path(), &plan, "alpha").exists());
+    let receipt =
+        read_node_receipt(&receipt_path(temp.path(), "alpha")).expect("failure receipt validates");
+    assert_eq!(receipt.outcome, ProjectRunNodeOutcome::Failed);
+    assert!(receipt.outputs.is_empty());
+}
+
+#[test]
+fn output_publishes_before_v2_receipt_for_registered_executor_recovery() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let input_bytes = b"id,name\n1,Alice\n";
+    write_workspace_file(temp.path(), "input/source.csv", input_bytes);
+    let mut plan = single_node_plan();
+    configure_internal_copy_node(&mut plan, "alpha", "input/source.csv", input_bytes);
+    fs::create_dir_all(temp.path().join("work")).expect("work dir");
+    fs::write(
+        temp.path().join("work/receipts"),
+        b"receipt parent collision",
+    )
+    .expect("receipt parent collision");
+
+    let error = run_project_plan_with_registered_executors(
+        &plan,
+        &ProjectRunPolicy::new(temp.path(), "work"),
+    )
+    .expect_err("receipt publication fails after artifact publication");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert_eq!(
+        fs::read(artifact_path(temp.path(), &plan, "alpha")).expect("artifact published"),
+        input_bytes
+    );
+    assert!(!receipt_path(temp.path(), "alpha").exists());
+}
+
+#[test]
+fn registered_executor_target_scope_reuses_only_selected_closure() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    write_workspace_file(temp.path(), "input/alpha.csv", b"id\nalpha\n");
+    write_workspace_file(temp.path(), "input/beta.csv", b"id\nbeta\n");
+    let mut plan = independent_plan();
+    configure_internal_copy_node(&mut plan, "alpha", "input/alpha.csv", b"id\nalpha\n");
+    configure_internal_copy_node(&mut plan, "beta", "input/beta.csv", b"id\nbeta\n");
+    let mut policy = ProjectRunPolicy::new(temp.path(), "work");
+    policy.selected_nodes.insert("alpha".to_string());
+
+    let first =
+        run_project_plan_with_registered_executors(&plan, &policy).expect("selected alpha run");
+
+    assert_eq!(first.executed_nodes, vec!["alpha".to_string()]);
+    assert!(first.resumed_nodes.is_empty());
+    assert_eq!(first.receipt.completed_nodes, vec!["alpha".to_string()]);
+    assert!(artifact_path(temp.path(), &plan, "alpha").exists());
+    assert!(!artifact_path(temp.path(), &plan, "beta").exists());
+    assert!(!receipt_path(temp.path(), "beta").exists());
+
+    let second =
+        run_project_plan_with_registered_executors(&plan, &policy).expect("selected alpha reuse");
+
+    assert!(second.executed_nodes.is_empty());
+    assert_eq!(second.resumed_nodes, vec!["alpha".to_string()]);
+    assert_eq!(second.receipt.completed_nodes, vec!["alpha".to_string()]);
+    assert!(!artifact_path(temp.path(), &plan, "beta").exists());
 }
 
 #[test]
@@ -1266,6 +1534,55 @@ fn change_alpha_identity(plan: &mut ProjectPlan) {
     alpha.content_hash_inputs[0].content_hash = digest_bytes(b"changed-alpha-input");
     refresh_node_cache_key(alpha);
     plan.graph_hash = digest_bytes(b"changed-single-node-plan");
+}
+
+fn configure_internal_copy_node(
+    plan: &mut ProjectPlan,
+    node_id: &str,
+    input_path: &str,
+    input_bytes: &[u8],
+) {
+    let digest = digest_bytes(input_bytes);
+    let node = plan
+        .nodes
+        .iter_mut()
+        .find(|node| node.node_id == node_id)
+        .unwrap_or_else(|| panic!("node {node_id} exists"));
+    node.command = internal_copy_command(input_path, &digest, &node.outputs[0].output_id, &digest);
+    node.content_hash_inputs = vec![ProjectPlanHashRef {
+        ref_id: format!("input.{input_path}"),
+        content_hash: digest,
+    }];
+    node.side_effects = vec![
+        ProjectPlanSideEffect {
+            kind: ProjectPlanSideEffectKind::ReadsInput,
+            description: "reads declared workspace input".to_string(),
+        },
+        ProjectPlanSideEffect {
+            kind: ProjectPlanSideEffectKind::WritesArtifact,
+            description: "writes declared project artifact".to_string(),
+        },
+    ];
+    refresh_node_cache_key(node);
+    plan.graph_hash = digest_bytes(format!("internal-copy-{node_id}").as_bytes());
+}
+
+fn internal_copy_command(
+    input_path: &str,
+    input_digest: &str,
+    output_id: &str,
+    output_digest: &str,
+) -> String {
+    format!(
+        "canon project internal-node {PROJECT_INTERNAL_COPY_FILE_EXECUTOR} --input {input_path} --input-digest {input_digest} --output-id {output_id} --output-digest {output_digest}"
+    )
+}
+
+fn write_workspace_file(root: &Path, relative: &str, bytes: &[u8]) {
+    let path = root.join(relative);
+    fs::create_dir_all(path.parent().expect("workspace file parent"))
+        .expect("workspace file parent");
+    fs::write(path, bytes).expect("workspace file bytes");
 }
 
 fn mutate_command_contract(node: &mut ProjectPlanNode) {

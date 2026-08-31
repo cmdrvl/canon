@@ -26,9 +26,9 @@ use super::{
     ProjectPlanRequest, ProjectRunError, ProjectRunErrorCode, ProjectRunPolicy, ProjectRunReport,
     ProjectTemporalContract, ProjectTemporalMode, canonical_project_lock_bytes,
     canonical_project_plan_bytes, canonical_project_run_report_bytes, compile_project_plan,
-    digest_bytes, inspect_project_run_reuse_only, load_project_manifest_toml,
-    project_manifest_digest, project_manifest_projection, project_temporal_contract,
-    refresh_project_lock, render_project_plan_summary, validate_project_plan,
+    digest_bytes, load_project_manifest_toml, project_manifest_digest, project_manifest_projection,
+    project_temporal_contract, refresh_project_lock, render_project_plan_summary,
+    run_project_plan_with_registered_executors, validate_project_plan,
 };
 
 const PROJECT_CLI_SCHEMA_VERSION: &str = "canon.project.cli.v1";
@@ -504,7 +504,7 @@ fn run_project_run(args: &ProjectRunCli) -> Result<u8, Box<dyn Error>> {
     policy.allow_network = args.allow_network;
     policy.allow_mutation_gates = args.allow_mutation_gates;
 
-    match inspect_project_run_reuse_only(&plan, &policy) {
+    match run_project_plan_with_registered_executors(&plan, &policy) {
         Ok(report) => {
             emit_run_report(&report, &args.emit)?;
             Ok(0)
@@ -885,15 +885,18 @@ fn emit_project_run_error(
         ProjectRunErrorCode::AtomicPublication => RefusalCode::EIo,
         _ => RefusalCode::EEntityArtifactContract,
     };
+    let next_command = error.next_command.unwrap_or_else(|| {
+        "repair the reported plan, executor, receipt, or workspace condition, then rerun canon project run --plan <PLAN>".to_string()
+    });
     emit_refusal(
         code,
-        "Project run could not validate/reuse the requested receipts",
+        "Project run could not execute/reuse the requested project nodes",
         json!({
             "code": format!("{:?}", error.code),
             "node_id": error.node_id,
             "message": error.message,
         }),
-        error.next_command,
+        Some(next_command),
         emit,
     )
 }
@@ -1282,13 +1285,14 @@ fn project_capabilities() -> ProjectCapabilities {
             },
             ProjectCommandCapability {
                 command: "canon project run --plan <PLAN>",
-                read_only: true,
+                read_only: false,
                 side_effects: vec![
                     "validates plan and existing receipts",
                     "reuses only fully validated completed receipts",
-                    "refuses pending nodes without registered real executors",
+                    "executes pending nodes only through registered internal offline executors",
+                    "publishes each declared output and v2 node receipt with atomic single-file replacement; multi-artifact transactionality remains open",
                 ],
-                outputs: vec!["canon.project.run.v2 refusal or reuse report"],
+                outputs: vec!["canon.project.run.v2 run report"],
                 next_command: None,
                 examples: vec!["canon project run --plan ./canon-project/work/project.plan.json"],
             },

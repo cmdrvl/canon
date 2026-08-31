@@ -101,6 +101,7 @@ canon geo solve --request <REQUEST.json>
 canon geo materialize-geometry --request <REQUEST.json>
 canon geo materialize-warehouse-geometry --rows <ROWS.json>
 canon geo materialize-evidence --rows <ROWS.json>
+canon geo materialize-address-evidence --request <REQUEST.json>
 canon geo materialize-h7-population --rows <ROWS.json>
 canon geo materialize-h7-staging-batch --batch <BATCH.json>
 canon geo compile-evidence --request <REQUEST.json>
@@ -153,11 +154,26 @@ canon entity profile list [--emit json|summary]
 canon entity profile init <PROFILE> --output <PATH>
 ```
 
-Project `run` is currently a public validation/resume surface only. It validates
-`canon.project.plan.v1`, checks declared side-effect policy, and reuses existing
-fully validated `canon.project.run.v2` receipts and output bytes. Pending nodes
-refuse with an actionable executor-registration handoff because no public typed
-project node executor is registered in this surface.
+Project `run` validates `canon.project.plan.v1`, checks declared side-effect
+policy, reuses fully validated `canon.project.run.v2` receipts and output bytes,
+and can execute pending nodes only through registered internal offline
+executors. The first deliberately narrow executor is `copy-file-v1`, which
+rechecks a declared input digest and publishes one declared output. Unknown or
+unsafe executor declarations refuse before publication. Each output and receipt
+uses atomic single-file publication; output-plus-receipt and multi-output
+transactionality remain open.
+
+Geo leaf command boundary: `canon geo materialize-address-evidence --request`
+consumes `canon_geo_address_parcel_evidence_request.v0` and its nested
+`canon_geo_address_parcel_bridge_request.v0`, evaluates only local address/PAD
+artifacts, and emits `canon_geo_address_parcel_evidence_bundle.v0` containing
+`canon_geo_address_parcel_bridge.v0`. It is offline address/PAD -> typed parcel
+existential evidence, not live acquisition, not truth measurement, and valid
+unsupported cases may diagnostically abstain instead of emitting an empty hard
+constraint. Each source-record association must also carry Canon's BLAKE3 of the
+normalized PAD member payload used by the bridge. This prevents an id-only
+binding from silently changing the lot/address payload, but it does not
+authenticate the upstream PAD row or replace an acquisition receipt.
 
 Arguments:
 - `<INPUT>`: CSV or JSONL file with IDs to canonicalize. Format is detected by file extension: `.csv` and `.tsv` are parsed as CSV; `.jsonl` and `.ndjson` are parsed as JSONL. Files with unrecognized or missing extensions are REFUSAL (`E_PARSE`). Use `-` for stdin (JSONL only; CSV requires seekable input for delimiter detection).

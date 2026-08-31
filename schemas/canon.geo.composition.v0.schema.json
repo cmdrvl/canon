@@ -64,6 +64,16 @@
           "type": "null"
         }
       ]
+    },
+    "entity_projection": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/entity_projection"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [
@@ -220,6 +230,107 @@
       "required": [
         "parcels",
         "buildings"
+      ]
+    },
+    "projected_entity_level": {
+      "type": "string",
+      "enum": ["building", "parcel", "site", "address"]
+    },
+    "entity_projection_status": {
+      "type": "string",
+      "enum": [
+        "exact_residual",
+        "count_lower_bound",
+        "conflict",
+        "budget_fallback",
+        "suppressed",
+        "unsupported"
+      ]
+    },
+    "entity_level_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": { "$ref": "#/$defs/projected_entity_level" },
+        "status": { "$ref": "#/$defs/entity_projection_status" },
+        "candidates": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "hard_forced": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "backbone_complete": {
+          "type": "boolean"
+        },
+        "residual_status": {
+          "$ref": "#/$defs/composition_status"
+        },
+        "residual_model_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "residual_model_count_complete": {
+          "type": "boolean"
+        },
+        "residual_model_count_saturated": {
+          "type": "boolean"
+        },
+        "residual_models_materialized": {
+          "type": "boolean"
+        },
+        "residual_sets": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "status",
+        "candidates",
+        "hard_forced",
+        "backbone_complete",
+        "residual_model_count_complete",
+        "residual_model_count_saturated",
+        "residual_models_materialized",
+        "residual_sets",
+        "reason"
+      ]
+    },
+    "entity_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": "canon_geo_entity_projection.v0",
+          "type": "string"
+        },
+        "profile": {
+          "$ref": "#/$defs/composition_profile"
+        },
+        "exactness_basis": {
+          "const": "exact_relative_to_declared_candidate_universe_and_quantized_representations",
+          "type": "string"
+        },
+        "levels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entity_level_projection"
+          }
+        }
+      },
+      "required": [
+        "version",
+        "profile",
+        "exactness_basis",
+        "levels"
       ]
     },
     "soft_ranked_model": {

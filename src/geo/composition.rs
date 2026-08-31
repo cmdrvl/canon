@@ -18,6 +18,7 @@ use std::{
 pub const CANON_GEO_COMPOSITION_REQUEST_VERSION: &str = "canon_geo_composition_request.v0";
 pub const CANON_GEO_COMPOSITION_VERSION: &str = "canon_geo_composition.v0";
 pub const CANON_GEO_COMPOSITION_PROFILE_VERSION: &str = "canon_geo_composition_profile.v0";
+pub const CANON_GEO_ENTITY_PROJECTION_VERSION: &str = "canon_geo_entity_projection.v0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -291,6 +292,52 @@ pub struct GeoCompositionBackbone {
     pub buildings: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoProjectedEntityLevel {
+    Building,
+    Parcel,
+    Site,
+    Address,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoEntityProjectionStatus {
+    ExactResidual,
+    CountLowerBound,
+    Conflict,
+    BudgetFallback,
+    Suppressed,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoEntityLevelProjection {
+    pub level: GeoProjectedEntityLevel,
+    pub status: GeoEntityProjectionStatus,
+    pub candidates: Vec<String>,
+    pub hard_forced: Vec<String>,
+    pub backbone_complete: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub residual_status: Option<GeoCompositionStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub residual_model_count: Option<u64>,
+    pub residual_model_count_complete: bool,
+    pub residual_model_count_saturated: bool,
+    pub residual_models_materialized: bool,
+    pub residual_sets: Vec<Vec<String>>,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoEntityProjection {
+    pub version: String,
+    pub profile: GeoCompositionProfile,
+    pub exactness_basis: String,
+    pub levels: Vec<GeoEntityLevelProjection>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoSoftRankedModel {
     pub rank: u64,
@@ -425,6 +472,8 @@ pub struct GeoCompositionArtifact {
     pub conflict_core_complete: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub budget_fallback: Option<GeoCompositionFallback>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity_projection: Option<GeoEntityProjection>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -964,6 +1013,7 @@ impl<'a> FactorizedSolver<'a> {
             conflict_constraint_ids: Vec::new(),
             conflict_core_complete: None,
             budget_fallback: None,
+            entity_projection: None,
         }))
     }
 
@@ -1160,20 +1210,32 @@ impl<'a> FactorizedSolver<'a> {
             .map(|(_, variable_count)| *variable_count)
             .max()
             .unwrap_or_default();
+        let status = GeoCompositionStatus::BudgetFallback;
+        let summary = self.summary(components, 0, false, 0)?;
+        let hard_forced = GeoCompositionBackbone {
+            parcels: Vec::new(),
+            buildings: Vec::new(),
+        };
+        let residual_models = Vec::new();
+        let entity_projection = build_entity_projection(
+            self.request,
+            status,
+            &summary,
+            &hard_forced,
+            false,
+            &residual_models,
+        );
         Ok(Some(GeoCompositionArtifact {
             version: CANON_GEO_COMPOSITION_VERSION.to_string(),
             request_version: self.request.request_version.clone(),
             profile: self.request.profile.clone(),
             evidence_compilation: None,
-            status: GeoCompositionStatus::BudgetFallback,
-            summary: self.summary(components, 0, false, 0)?,
-            hard_forced: GeoCompositionBackbone {
-                parcels: Vec::new(),
-                buildings: Vec::new(),
-            },
+            status,
+            summary,
+            hard_forced,
             backbone_complete: false,
             factorization: self.factorization(components, component_constraints, outcomes),
-            residual_models: Vec::new(),
+            residual_models,
             soft_ranked: Vec::new(),
             conflict_constraint_ids: Vec::new(),
             conflict_core_complete: None,
@@ -1183,6 +1245,7 @@ impl<'a> FactorizedSolver<'a> {
                 configured_max_assignments: self.request.max_assignments,
                 guidance: FALLBACK_GUIDANCE.to_string(),
             }),
+            entity_projection,
         }))
     }
 
@@ -1331,32 +1394,43 @@ impl<'a> FactorizedSolver<'a> {
         };
 
         let base_summary = self.summary(&components, 0, can_materialize, 0)?;
+        let status = if residual.is_exactly(1) {
+            GeoCompositionStatus::Resolved
+        } else {
+            GeoCompositionStatus::Ambiguous
+        };
+        let summary = GeoCompositionSummary {
+            structurally_feasible_assignments: structural_positive.value,
+            structurally_feasible_assignments_complete: true,
+            structurally_feasible_assignments_saturated: structural_positive.saturated,
+            hard_constraint_evaluations: evaluations.value,
+            hard_constraint_evaluations_complete: true,
+            hard_constraint_evaluations_saturated: evaluations.saturated,
+            residual_model_count: residual.value,
+            residual_model_count_complete: true,
+            residual_model_count_saturated: residual.saturated,
+            summary_counts_saturated: base_summary.candidate_assignments_saturated
+                || structural_positive.saturated
+                || evaluations.saturated
+                || residual.saturated,
+            ..base_summary
+        };
+        let entity_projection = build_entity_projection(
+            self.request,
+            status,
+            &summary,
+            &hard_forced,
+            true,
+            &residual_models,
+        );
+
         Ok(GeoCompositionArtifact {
             version: CANON_GEO_COMPOSITION_VERSION.to_string(),
             request_version: self.request.request_version.clone(),
             profile: self.request.profile.clone(),
             evidence_compilation: None,
-            status: if residual.is_exactly(1) {
-                GeoCompositionStatus::Resolved
-            } else {
-                GeoCompositionStatus::Ambiguous
-            },
-            summary: GeoCompositionSummary {
-                structurally_feasible_assignments: structural_positive.value,
-                structurally_feasible_assignments_complete: true,
-                structurally_feasible_assignments_saturated: structural_positive.saturated,
-                hard_constraint_evaluations: evaluations.value,
-                hard_constraint_evaluations_complete: true,
-                hard_constraint_evaluations_saturated: evaluations.saturated,
-                residual_model_count: residual.value,
-                residual_model_count_complete: true,
-                residual_model_count_saturated: residual.saturated,
-                summary_counts_saturated: base_summary.candidate_assignments_saturated
-                    || structural_positive.saturated
-                    || evaluations.saturated
-                    || residual.saturated,
-                ..base_summary
-            },
+            status,
+            summary,
             hard_forced,
             backbone_complete: true,
             factorization,
@@ -1365,6 +1439,7 @@ impl<'a> FactorizedSolver<'a> {
             conflict_constraint_ids: Vec::new(),
             conflict_core_complete: None,
             budget_fallback: None,
+            entity_projection,
         })
     }
 
@@ -1444,36 +1519,50 @@ impl<'a> FactorizedSolver<'a> {
             }
         }
         let base_summary = self.summary(components, 0, false, 0)?;
+        let status = GeoCompositionStatus::Conflict;
+        let summary = GeoCompositionSummary {
+            structurally_feasible_assignments: structural_positive.value,
+            structurally_feasible_assignments_complete: true,
+            structurally_feasible_assignments_saturated: structural_positive.saturated,
+            hard_constraint_evaluations: evaluation_count.value,
+            hard_constraint_evaluations_complete: true,
+            hard_constraint_evaluations_saturated: evaluation_count.saturated,
+            residual_model_count_complete: true,
+            summary_counts_saturated: base_summary.candidate_assignments_saturated
+                || structural_positive.saturated
+                || evaluation_count.saturated,
+            ..base_summary
+        };
+        let hard_forced = GeoCompositionBackbone {
+            parcels: Vec::new(),
+            buildings: Vec::new(),
+        };
+        let residual_models = Vec::new();
+        let entity_projection = build_entity_projection(
+            self.request,
+            status,
+            &summary,
+            &hard_forced,
+            false,
+            &residual_models,
+        );
+
         Ok(GeoCompositionArtifact {
             version: CANON_GEO_COMPOSITION_VERSION.to_string(),
             request_version: self.request.request_version.clone(),
             profile: self.request.profile.clone(),
             evidence_compilation: None,
-            status: GeoCompositionStatus::Conflict,
-            summary: GeoCompositionSummary {
-                structurally_feasible_assignments: structural_positive.value,
-                structurally_feasible_assignments_complete: true,
-                structurally_feasible_assignments_saturated: structural_positive.saturated,
-                hard_constraint_evaluations: evaluation_count.value,
-                hard_constraint_evaluations_complete: true,
-                hard_constraint_evaluations_saturated: evaluation_count.saturated,
-                residual_model_count_complete: true,
-                summary_counts_saturated: base_summary.candidate_assignments_saturated
-                    || structural_positive.saturated
-                    || evaluation_count.saturated,
-                ..base_summary
-            },
-            hard_forced: GeoCompositionBackbone {
-                parcels: Vec::new(),
-                buildings: Vec::new(),
-            },
+            status,
+            summary,
+            hard_forced,
             backbone_complete: false,
             factorization,
-            residual_models: Vec::new(),
+            residual_models,
             soft_ranked: Vec::new(),
             conflict_constraint_ids: conflict_ids.into_iter().collect(),
             conflict_core_complete: Some(conflict_core_complete),
             budget_fallback: None,
+            entity_projection,
         })
     }
 
@@ -2563,6 +2652,117 @@ fn rank_residual(
             })
         })
         .collect()
+}
+
+fn build_entity_projection(
+    request: &NormalizedRequest,
+    residual_status: GeoCompositionStatus,
+    summary: &GeoCompositionSummary,
+    hard_forced: &GeoCompositionBackbone,
+    backbone_complete: bool,
+    residual_models: &[GeoCompositionModel],
+) -> Option<GeoEntityProjection> {
+    if request.profile.selection_level != GeoEntityLevel::Building {
+        return None;
+    }
+
+    let building_status = match residual_status {
+        GeoCompositionStatus::Resolved | GeoCompositionStatus::Ambiguous
+            if summary.residual_model_count_complete
+                && !summary.residual_model_count_saturated
+                && backbone_complete =>
+        {
+            GeoEntityProjectionStatus::ExactResidual
+        }
+        GeoCompositionStatus::Resolved | GeoCompositionStatus::Ambiguous => {
+            GeoEntityProjectionStatus::CountLowerBound
+        }
+        GeoCompositionStatus::Conflict => GeoEntityProjectionStatus::Conflict,
+        GeoCompositionStatus::BudgetFallback => GeoEntityProjectionStatus::BudgetFallback,
+    };
+
+    let building_residual_sets = if summary.residual_models_materialized {
+        residual_models
+            .iter()
+            .map(|model| model.buildings.clone())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    Some(GeoEntityProjection {
+        version: CANON_GEO_ENTITY_PROJECTION_VERSION.to_string(),
+        profile: request.profile.clone(),
+        exactness_basis:
+            "exact_relative_to_declared_candidate_universe_and_quantized_representations"
+                .to_string(),
+        levels: vec![
+            GeoEntityLevelProjection {
+                level: GeoProjectedEntityLevel::Building,
+                status: building_status,
+                candidates: request
+                    .buildings
+                    .iter()
+                    .map(|building| building.id.clone())
+                    .collect(),
+                hard_forced: hard_forced.buildings.clone(),
+                backbone_complete,
+                residual_status: Some(residual_status),
+                residual_model_count: Some(summary.residual_model_count),
+                residual_model_count_complete: summary.residual_model_count_complete,
+                residual_model_count_saturated: summary.residual_model_count_saturated,
+                residual_models_materialized: summary.residual_models_materialized,
+                residual_sets: building_residual_sets,
+                reason: "building is the selected finite-domain entity level for this profile"
+                    .to_string(),
+            },
+            GeoEntityLevelProjection {
+                level: GeoProjectedEntityLevel::Parcel,
+                status: GeoEntityProjectionStatus::Suppressed,
+                candidates: Vec::new(),
+                hard_forced: Vec::new(),
+                backbone_complete: false,
+                residual_status: None,
+                residual_model_count: None,
+                residual_model_count_complete: false,
+                residual_model_count_saturated: false,
+                residual_models_materialized: false,
+                residual_sets: Vec::new(),
+                reason: "building profile has no parcel candidate universe; parcel answers are suppressed rather than inferred"
+                    .to_string(),
+            },
+            GeoEntityLevelProjection {
+                level: GeoProjectedEntityLevel::Site,
+                status: GeoEntityProjectionStatus::Unsupported,
+                candidates: Vec::new(),
+                hard_forced: Vec::new(),
+                backbone_complete: false,
+                residual_status: None,
+                residual_model_count: None,
+                residual_model_count_complete: false,
+                residual_model_count_saturated: false,
+                residual_models_materialized: false,
+                residual_sets: Vec::new(),
+                reason: "site grain has no finite candidate domain or containment contract in canon_geo_composition_request.v0"
+                    .to_string(),
+            },
+            GeoEntityLevelProjection {
+                level: GeoProjectedEntityLevel::Address,
+                status: GeoEntityProjectionStatus::Unsupported,
+                candidates: Vec::new(),
+                hard_forced: Vec::new(),
+                backbone_complete: false,
+                residual_status: None,
+                residual_model_count: None,
+                residual_model_count_complete: false,
+                residual_model_count_saturated: false,
+                residual_models_materialized: false,
+                residual_sets: Vec::new(),
+                reason: "address grain has no finite candidate domain or membership-to-building contract in canon_geo_composition_request.v0"
+                    .to_string(),
+            },
+        ],
+    })
 }
 
 const fn level_name(level: GeoEntityLevel) -> &'static str {

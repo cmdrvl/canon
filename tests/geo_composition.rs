@@ -1,10 +1,11 @@
 use canon::geo::{
     CANON_GEO_COMPOSITION_PROFILE_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
-    DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate, GeoCompositionErrorCode,
-    GeoCompositionModel, GeoCompositionProfile, GeoCompositionRequest,
+    CANON_GEO_ENTITY_PROJECTION_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate,
+    GeoCompositionErrorCode, GeoCompositionModel, GeoCompositionProfile, GeoCompositionRequest,
     GeoCompositionSearchStrategy, GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel,
-    GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind, GeoIdentityRelation, GeoIntegerMeasure,
-    GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoSoftPreference, canonical_composition_bytes,
+    GeoEntityProjectionStatus, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind,
+    GeoIdentityRelation, GeoIntegerMeasure, GeoIntegerMemberValue, GeoIntegerValueOrigin,
+    GeoProjectedEntityLevel, GeoSoftPreference, canonical_composition_bytes,
     model_satisfies_request, solve_composition, validate_identity_relation,
 };
 use serde::Deserialize;
@@ -797,6 +798,89 @@ fn explicit_building_profile_enumerates_residual_models_without_parcels() {
         )
         .expect("request should validate")
     );
+}
+
+#[test]
+fn building_profile_emits_typed_entity_projection_handoff() {
+    let artifact =
+        solve_composition(&building_only_request()).expect("building-only profile should solve");
+    let projection = artifact
+        .entity_projection
+        .as_ref()
+        .expect("building profile must emit an entity-level handoff");
+
+    assert_eq!(projection.version, CANON_GEO_ENTITY_PROJECTION_VERSION);
+    assert_eq!(projection.profile, GeoCompositionProfile::building());
+    assert_eq!(
+        projection.exactness_basis,
+        "exact_relative_to_declared_candidate_universe_and_quantized_representations"
+    );
+    assert_eq!(
+        projection
+            .levels
+            .iter()
+            .map(|level| level.level)
+            .collect::<Vec<_>>(),
+        vec![
+            GeoProjectedEntityLevel::Building,
+            GeoProjectedEntityLevel::Parcel,
+            GeoProjectedEntityLevel::Site,
+            GeoProjectedEntityLevel::Address,
+        ]
+    );
+
+    let entry = |level| {
+        projection
+            .levels
+            .iter()
+            .find(|entry| entry.level == level)
+            .unwrap_or_else(|| panic!("{level:?} projection must exist"))
+    };
+    let building = entry(GeoProjectedEntityLevel::Building);
+    assert_eq!(building.status, GeoEntityProjectionStatus::ExactResidual);
+    assert_eq!(
+        building.candidates,
+        ["building-a", "building-b", "building-c"]
+    );
+    assert!(building.hard_forced.is_empty());
+    assert!(building.backbone_complete);
+    assert_eq!(
+        building.residual_status,
+        Some(GeoCompositionStatus::Ambiguous)
+    );
+    assert_eq!(building.residual_model_count, Some(3));
+    assert!(building.residual_model_count_complete);
+    assert!(!building.residual_model_count_saturated);
+    assert!(building.residual_models_materialized);
+    assert_eq!(
+        building.residual_sets,
+        [
+            vec!["building-a".to_string()],
+            vec!["building-a".to_string(), "building-c".to_string()],
+            vec!["building-b".to_string()]
+        ]
+    );
+
+    let parcel = entry(GeoProjectedEntityLevel::Parcel);
+    assert_eq!(parcel.status, GeoEntityProjectionStatus::Suppressed);
+    assert!(parcel.candidates.is_empty());
+    assert!(parcel.hard_forced.is_empty());
+    assert!(!parcel.backbone_complete);
+    assert_eq!(parcel.residual_status, None);
+    assert_eq!(parcel.residual_model_count, None);
+    assert!(parcel.reason.contains("no parcel candidate universe"));
+
+    for unsupported in [
+        entry(GeoProjectedEntityLevel::Site),
+        entry(GeoProjectedEntityLevel::Address),
+    ] {
+        assert_eq!(unsupported.status, GeoEntityProjectionStatus::Unsupported);
+        assert!(unsupported.candidates.is_empty());
+        assert!(unsupported.hard_forced.is_empty());
+        assert!(!unsupported.backbone_complete);
+        assert_eq!(unsupported.residual_model_count, None);
+        assert!(unsupported.reason.contains("no finite candidate domain"));
+    }
 }
 
 #[test]

@@ -840,19 +840,20 @@
     {
       "name": "project run",
       "usage": "canon project run (--plan <PLAN>|--manifest <MANIFEST> --lock <LOCK>) [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json|summary]",
-      "description": "Validate a project plan and reuse existing canon.project.run.v2 receipts; pending nodes refuse because no public typed executor is registered",
+      "description": "Validate a project plan, reuse valid canon.project.run.v2 receipts, and execute supported pending nodes through registered internal offline executors",
       "output_mode": "mixed",
       "output_schema": "canon.project.run.v2",
       "status": "implemented",
-      "read_only": true,
+      "read_only": false,
       "safety": {
         "owned_temp_fixtures_only": true,
-        "notes": "public surface validates plans and reuses existing canon.project.run.v2 receipts only; pending nodes refuse until a typed executor is registered",
-        "mutation_class": "ReadOnly",
+        "notes": "validates and reuses canon.project.run.v2 receipts, and executes pending nodes only through registered internal offline executors; each declared output file and receipt uses atomic single-file publication inside the explicit workspace, but output+receipt and multi-output publication are not one transaction and remain open",
+        "mutation_class": "OwnedOutput",
         "network_class": "Offline",
-        "concurrency_class": "StatelessRead",
+        "concurrency_class": "AtomicOwnedOutput",
         "platform_classes": [
-          "PortablePathUtf8"
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
         ],
         "declaration_command": "project run"
       },
@@ -868,25 +869,26 @@
         "writes_deprecation_notices": false,
         "writes_registry_files": false,
         "writes_mapping_sidecars": false,
-        "writes_work_dir": false,
-        "writes_project_files": false,
-        "writes_output_files": false,
+        "writes_work_dir": true,
+        "writes_project_files": true,
+        "writes_output_files": true,
         "uses_network": false,
         "reads_project_files": true
       },
       "exit_codes": {
         "0": {
-          "meaning": "all selected nodes were already backed by valid v2 receipts and outputs",
+          "meaning": "all selected nodes were executed or reused with validated v2 receipts and outputs",
           "domain": "positive"
         },
         "2": {
-          "meaning": "REFUSAL / unsupported pending executor, side-effect policy, stale artifact, or artifact contract error",
+          "meaning": "REFUSAL / unsupported executor, side-effect policy, stale artifact, workspace escape, or artifact contract error",
           "domain": "error"
         }
       },
       "recovery": {
-        "reason": "no positive public recovery command exists for pending project nodes until a typed executor is registered",
-        "escalation": "register a real typed project executor or inspect existing canon.project.run.v2 receipts",
+        "reason": "the plan is invalid, stale, unsafe, or names a pending node without a registered internal executor",
+        "escalation": "correct the declared node contract or provide a registered internal executor, then rerun the same immutable plan revision",
+        "next_command": "canon project run --plan <PLAN>",
         "refusal_exit_code": 2
       },
       "options": [
@@ -894,26 +896,26 @@
           "name": "plan",
           "flag": "--plan",
           "type": "file_path",
-          "description": "Project plan artifact path for reuse-only validation"
+          "description": "Project plan artifact path for validated execution or receipt reuse"
         },
         {
           "name": "manifest",
           "flag": "--manifest",
           "type": "file_path",
-          "description": "Project manifest path used when compiling a plan inline for reuse-only validation"
+          "description": "Project manifest path used when compiling a plan inline for execution or reuse"
         },
         {
           "name": "lock",
           "flag": "--lock",
           "type": "file_path",
-          "description": "Project lock artifact path used when compiling a plan inline for reuse-only validation"
+          "description": "Project lock artifact path used when compiling a plan inline for execution or reuse"
         },
         {
           "name": "node",
           "flag": "--node",
           "type": "string",
           "multiple": true,
-          "description": "Node id to inspect/reuse, including dependencies; pending nodes still refuse"
+          "description": "Node id to execute or reuse, including dependencies"
         },
         {
           "name": "workspace",
@@ -934,21 +936,21 @@
           "flag": "--max-parallelism",
           "type": "integer",
           "default": 1,
-          "description": "Recorded policy ceiling for reuse-only reports; does not enable execution"
+          "description": "Deterministic scheduler-width ceiling; the current executor loop remains serial"
         },
         {
           "name": "allow_network",
           "flag": "--allow-network",
           "type": "boolean",
           "default": false,
-          "description": "Permit validation of declared network effects; does not enable execution"
+          "description": "Permit declared network effects at the policy gate; registered internal executors remain offline"
         },
         {
           "name": "allow_mutation_gates",
           "flag": "--allow-mutation-gates",
           "type": "boolean",
           "default": false,
-          "description": "Permit validation of declared mutation gates; does not enable execution"
+          "description": "Permit declared mutation gates at the policy gate; execution still requires a matching registered internal executor"
         },
         {
           "name": "emit",
@@ -1513,6 +1515,67 @@
           "type": "file_path",
           "required": true,
           "description": "JSON file holding canon_geo_warehouse_rows.v0 release-pinned offline rows"
+        }
+      ]
+    },
+    {
+      "name": "geo materialize-address-evidence",
+      "usage": "canon geo materialize-address-evidence --request <REQUEST.json>",
+      "description": "Parse canon_geo_address_parcel_evidence_request.v0, evaluate PAD membership, apply canon_geo_address_parcel_bridge_request.v0, and emit canon_geo_address_parcel_evidence_bundle.v0 with nested canon_geo_address_parcel_bridge.v0 audit fields and an optional observation",
+      "output_mode": "json",
+      "output_schema": "canon_geo_address_parcel_evidence_bundle.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads one declared local address/PAD request, recomputes each normalized PAD-member BLAKE3 binding, and emits the deterministic parse, membership, and parcel-observation bridge bundle on stdout; no network or file writes; unsupported readings may diagnostically abstain rather than fabricate hard evidence, and the emitted bundle does not include the candidate universe or rho contracts required by compile-evidence; normalized-member integrity does not authenticate upstream bytes or make the artifact a truth/acquisition receipt",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo materialize-address-evidence"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "address/PAD parcel evidence bundle emitted, possibly with diagnostic abstention instead of a hard observation",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, request IO, parse, PAD, bridge, source-record, or evidence contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "if bridge.status is evidence_observation, copy bridge.observation into a complete canon_geo_evidence_request.v0 with explicit universe and contracts, then run canon geo compile-evidence --request <REQUEST.json>",
+      "recovery": {
+        "next_command": "canon geo materialize-address-evidence --request <REQUEST.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "request",
+          "flag": "--request",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding canon_geo_address_parcel_evidence_request.v0"
         }
       ]
     },

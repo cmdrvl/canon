@@ -11,10 +11,10 @@ use crate::{
     CanonOutput, Refusal, RefusalCode,
     cli::{
         GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli,
-        GeoLinkSourcesCli, GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli,
-        GeoMaterializeH7PopulationCli, GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
-        GeoMaterializeWarehouseGeometryCli, GeoReconcileTilesCli, GeoSolveCli, GeoSubcommand,
-        GeoTileWorkCli,
+        GeoLinkSourcesCli, GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli,
+        GeoMaterializeGeometryCli, GeoMaterializeH7PopulationCli, GeoMaterializeH7StagingBatchCli,
+        GeoMaterializeHomeCellsCli, GeoMaterializeWarehouseGeometryCli, GeoReconcileTilesCli,
+        GeoSolveCli, GeoSubcommand, GeoTileWorkCli,
     },
     refusal,
 };
@@ -28,6 +28,11 @@ use std::{
 };
 
 use super::{
+    address::{
+        CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION, GeoAddressError,
+        GeoAddressParcelEvidenceRequest, build_address_parcel_evidence,
+        canonical_address_parcel_evidence_bundle_bytes,
+    },
     composition::{
         GeoCompositionError, GeoCompositionRequest, GeoEvidenceCompilationReference,
         canonical_composition_bytes, solve_composition,
@@ -86,6 +91,7 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
             run_materialize_warehouse_geometry(args)
         }
         GeoSubcommand::MaterializeEvidence(args) => run_materialize_evidence(args),
+        GeoSubcommand::MaterializeAddressEvidence(args) => run_materialize_address_evidence(args),
         GeoSubcommand::MaterializeH7Population(args) => run_materialize_h7_population(args),
         GeoSubcommand::MaterializeH7StagingBatch(args) => run_materialize_h7_staging_batch(args),
         GeoSubcommand::CompileEvidence(args) => run_compile_evidence(args),
@@ -247,6 +253,28 @@ fn run_materialize_evidence(args: &GeoMaterializeEvidenceCli) -> Result<u8, Box<
     match canonical_materialized_evidence_request_bytes(&request) {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_serialization_refusal(CANON_GEO_EVIDENCE_REQUEST_VERSION, &error),
+    }
+}
+
+fn run_materialize_address_evidence(
+    args: &GeoMaterializeAddressEvidenceCli,
+) -> Result<u8, Box<dyn Error>> {
+    let request: GeoAddressParcelEvidenceRequest = match read_request(
+        &args.request,
+        "request",
+        CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION,
+        "canon geo materialize-address-evidence --request <REQUEST.json>",
+    ) {
+        Ok(request) => request,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let bundle = match build_address_parcel_evidence(&request) {
+        Ok(bundle) => bundle,
+        Err(error) => return emit_address_error(error),
+    };
+    match canonical_address_parcel_evidence_bundle_bytes(&bundle) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_address_error(error),
     }
 }
 
@@ -469,6 +497,22 @@ fn emit_materialization_error(error: GeoMaterializationError) -> Result<u8, Box<
         }),
         Some(
             "repair the rows against canon_geo_warehouse_rows.v0, then rerun canon geo materialize-evidence"
+                .to_string(),
+        ),
+    )
+}
+
+fn emit_address_error(error: GeoAddressError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo address/PAD evidence request could not be materialized",
+        json!({
+            "geo_address_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(
+            "repair the request against canon_geo_address_parcel_evidence_request.v0, then rerun canon geo materialize-address-evidence"
                 .to_string(),
         ),
     )

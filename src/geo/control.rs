@@ -8,13 +8,19 @@
 
 use super::{
     address::{
-        CANON_GEO_ADDRESS_PARSE_FOREST_VERSION, CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION,
-        CANON_GEO_ADDRESS_QUERY_GRAMMAR_VERSION, CANON_GEO_PAD_ADDRESS_SET_VERSION,
-        CANON_GEO_PAD_MEMBERSHIP_VERSION,
+        CANON_GEO_ADDRESS_PARCEL_BRIDGE_REQUEST_VERSION, CANON_GEO_ADDRESS_PARCEL_BRIDGE_VERSION,
+        CANON_GEO_ADDRESS_PARCEL_EVIDENCE_BUNDLE_VERSION,
+        CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION, CANON_GEO_ADDRESS_PARSE_FOREST_VERSION,
+        CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION, CANON_GEO_ADDRESS_QUERY_GRAMMAR_VERSION,
+        CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
     },
     composition::{
         CANON_GEO_COMPOSITION_PROFILE_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
-        CANON_GEO_COMPOSITION_VERSION,
+        CANON_GEO_COMPOSITION_VERSION, CANON_GEO_ENTITY_PROJECTION_VERSION,
+    },
+    discovery::{
+        CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
+        CANON_GEO_DISCOVERY_REQUEST_VERSION,
     },
     evaluation::{CANON_GEO_POPULATION_EVALUATION_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION},
     evidence::{CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION},
@@ -955,6 +961,21 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "deterministic semantic counter budget contract",
         ),
         contract(
+            CANON_GEO_DISCOVERY_REQUEST_VERSION,
+            "schemas/canon.geo.discovery_request.v0.schema.json",
+            "protocol-neutral bounded catalog discovery request contract",
+        ),
+        contract(
+            CANON_GEO_ACQUISITION_REQUEST_VERSION,
+            "schemas/canon.geo.acquisition_request.v0.schema.json",
+            "release-pinned bounded external acquisition request contract",
+        ),
+        contract(
+            CANON_GEO_ACQUISITION_RECEIPT_VERSION,
+            "schemas/canon.geo.acquisition_receipt.v0.schema.json",
+            "verified external acquisition receipt contract",
+        ),
+        contract(
             CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION,
             "schemas/canon.geo.address_parse_request.v0.schema.json",
             "regular-address parse request contract",
@@ -980,6 +1001,26 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "PAD membership evaluation contract",
         ),
         contract(
+            CANON_GEO_ADDRESS_PARCEL_BRIDGE_REQUEST_VERSION,
+            "schemas/canon.geo.address_parcel_bridge_request.v0.schema.json",
+            "address/PAD evidence bridge request contract",
+        ),
+        contract(
+            CANON_GEO_ADDRESS_PARCEL_BRIDGE_VERSION,
+            "schemas/canon.geo.address_parcel_bridge.v0.schema.json",
+            "address/PAD parcel-candidate evidence bridge contract",
+        ),
+        contract(
+            CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION,
+            "schemas/canon.geo.address_parcel_evidence_request.v0.schema.json",
+            "single-call address-to-parcel evidence request contract",
+        ),
+        contract(
+            CANON_GEO_ADDRESS_PARCEL_EVIDENCE_BUNDLE_VERSION,
+            "schemas/canon.geo.address_parcel_evidence_bundle.v0.schema.json",
+            "single-call address-to-parcel evidence bundle contract",
+        ),
+        contract(
             CANON_GEO_COMPOSITION_PROFILE_VERSION,
             "schemas/canon.geo.composition_request.v0.schema.json#/$defs/composition_profile",
             "parcel/building composition profile contract",
@@ -993,6 +1034,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             CANON_GEO_COMPOSITION_VERSION,
             "schemas/canon.geo.composition.v0.schema.json",
             "exact residual composition artifact contract",
+        ),
+        contract(
+            CANON_GEO_ENTITY_PROJECTION_VERSION,
+            "schemas/canon.geo.composition.v0.schema.json#/$defs/entity_projection",
+            "entity-level projection over a bounded composition residual",
         ),
         contract(
             CANON_GEO_GEOMETRY_REQUEST_VERSION,
@@ -1175,6 +1221,12 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
         command(
             "canon geo materialize-evidence --rows <ROWS.json>",
             CANON_GEO_EVIDENCE_REQUEST_VERSION,
+            true,
+            false,
+        ),
+        command(
+            "canon geo materialize-address-evidence --request <REQUEST.json>",
+            CANON_GEO_ADDRESS_PARCEL_EVIDENCE_BUNDLE_VERSION,
             true,
             false,
         ),

@@ -1,0 +1,32 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.address_parcel_evidence_bundle.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.address_parcel_evidence_bundle.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_address_parcel_evidence_bundle.v0",
+      "type": "string"
+    },
+    "request_version": {
+      "type": "string"
+    },
+    "parse_forest": {
+      "$ref": "canon.geo.address_parse_forest.v0.schema.json"
+    },
+    "pad_membership": {
+      "$ref": "canon.geo.pad_membership.v0.schema.json"
+    },
+    "bridge": {
+      "$ref": "canon.geo.address_parcel_bridge.v0.schema.json"
+    }
+  },
+  "required": [
+    "version",
+    "request_version",
+    "parse_forest",
+    "pad_membership",
+    "bridge"
+  ]
+}

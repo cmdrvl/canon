@@ -2,11 +2,12 @@
 
 use canon::geo::{
     CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCompositionProfile,
-    GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceRecordRef, GeoIntegerMeasure,
-    GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoMaterializationErrorCode, GeoRhoBasis,
+    GeoCompositionStatus, GeoEntityLevel, GeoEntityProjectionStatus, GeoEntityRef,
+    GeoEvidenceClaimRole, GeoEvidenceRecordRef, GeoIntegerMeasure, GeoIntegerMemberValue,
+    GeoIntegerValueOrigin, GeoMaterializationErrorCode, GeoProjectedEntityLevel, GeoRhoBasis,
     GeoRhoContract, GeoRhoObservationKind, GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow,
     GeoWarehouseParcelRow, GeoWarehouseRowsRequest, canonical_materialized_evidence_request_bytes,
-    compile_evidence, materialize_warehouse_rows,
+    compile_evidence, materialize_warehouse_rows, solve_composition,
 };
 
 fn record(id: &str) -> GeoEvidenceRecordRef {
@@ -450,6 +451,46 @@ fn building_profile_bytes_are_stable_under_input_row_permutations() {
         canonical_materialized_evidence_request_bytes(&original).unwrap(),
         canonical_materialized_evidence_request_bytes(&permuted).unwrap()
     );
+}
+
+#[test]
+fn building_profile_warehouse_rows_solve_to_entity_projection_handoff() {
+    let request = materialize_warehouse_rows(&building_rows()).expect("rows should materialize");
+    let compiled = compile_evidence(&request).expect("request should compile");
+    let artifact =
+        solve_composition(&compiled.composition_request).expect("building request should solve");
+    let projection = artifact
+        .entity_projection
+        .expect("building solve must emit entity projection");
+
+    let building = projection
+        .levels
+        .iter()
+        .find(|entry| entry.level == GeoProjectedEntityLevel::Building)
+        .expect("building projection");
+    assert_eq!(building.status, GeoEntityProjectionStatus::ExactResidual);
+    assert_eq!(
+        building.residual_status,
+        Some(GeoCompositionStatus::Resolved)
+    );
+    assert_eq!(building.candidates, ["building-a", "building-b"]);
+    assert_eq!(building.hard_forced, ["building-a", "building-b"]);
+    assert!(building.backbone_complete);
+    assert_eq!(building.residual_model_count, Some(1));
+    assert_eq!(
+        building.residual_sets,
+        [vec!["building-a".to_string(), "building-b".to_string()]]
+    );
+
+    let parcel = projection
+        .levels
+        .iter()
+        .find(|entry| entry.level == GeoProjectedEntityLevel::Parcel)
+        .expect("parcel projection");
+    assert_eq!(parcel.status, GeoEntityProjectionStatus::Suppressed);
+    assert!(parcel.residual_model_count.is_none());
+    assert!(parcel.candidates.is_empty());
+    assert!(!parcel.backbone_complete);
 }
 
 #[test]

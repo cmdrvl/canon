@@ -1,0 +1,321 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.discovery_request.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.discovery_request.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": "canon_geo_discovery_request.v0", "type": "string" },
+    "request_id": {
+      "type": "string",
+      "pattern": "^canon_geo_discovery_request\\.v0:[0-9a-f]{64}$"
+    },
+    "bounded_geography": { "$ref": "#/$defs/bounded_geography" },
+    "subset": { "$ref": "#/$defs/bounded_subset" },
+    "requested_entity_levels": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/entity_level" }
+    },
+    "requested_evidence_classes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/evidence_class" }
+    },
+    "release_selection": { "$ref": "#/$defs/release_selection_policy" },
+    "releases": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/release_pin" }
+    },
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/requested_field" }
+    },
+    "required_steps": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "contains": { "const": "column_readability_probe" },
+      "items": { "$ref": "#/$defs/discovery_step" }
+    },
+    "column_readability_probe": { "$ref": "#/$defs/column_readability_probe" },
+    "ceilings": { "$ref": "#/$defs/row_byte_ceilings" }
+  },
+  "required": [
+    "version",
+    "request_id",
+    "bounded_geography",
+    "subset",
+    "requested_entity_levels",
+    "requested_evidence_classes",
+    "release_selection",
+    "releases",
+    "fields",
+    "required_steps",
+    "column_readability_probe",
+    "ceilings"
+  ],
+  "$defs": {
+    "entity_level": {
+      "type": "string",
+      "enum": ["site", "property", "parcel", "building", "unit", "address", "poi"]
+    },
+    "evidence_class": {
+      "type": "string",
+      "enum": [
+        "geocode_point",
+        "address_string",
+        "address_set",
+        "parcel_geometry",
+        "building_footprint",
+        "asserted_attribute",
+        "entity_relation",
+        "temporal_observation"
+      ]
+    },
+    "discovery_step": {
+      "type": "string",
+      "enum": [
+        "catalog_search",
+        "list_releases",
+        "describe_schema",
+        "column_readability_probe"
+      ]
+    },
+    "field_role": {
+      "type": "string",
+      "enum": [
+        "identifier",
+        "geometry",
+        "attribute",
+        "temporal",
+        "ordering",
+        "denominator",
+        "digest",
+        "provenance"
+      ]
+    },
+    "subset_predicate_kind": {
+      "type": "string",
+      "enum": [
+        "h3_cells",
+        "bounding_box",
+        "administrative_boundary",
+        "explicit_identifiers",
+        "temporal_partition",
+        "release_partition"
+      ]
+    },
+    "digest_algorithm": {
+      "type": "string",
+      "enum": ["blake3", "sha256", "sha512"]
+    },
+    "digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "digest_id": { "type": "string", "minLength": 1 },
+        "algorithm": { "$ref": "#/$defs/digest_algorithm" },
+        "hex_digest": { "type": "string", "pattern": "^[0-9a-f]+$" }
+      },
+      "required": ["digest_id", "algorithm", "hex_digest"],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "algorithm": { "enum": ["blake3", "sha256"] } },
+            "required": ["algorithm"]
+          },
+          "then": {
+            "properties": { "hex_digest": { "pattern": "^[0-9a-f]{64}$" } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "algorithm": { "const": "sha512" } },
+            "required": ["algorithm"]
+          },
+          "then": {
+            "properties": { "hex_digest": { "pattern": "^[0-9a-f]{128}$" } }
+          }
+        }
+      ]
+    },
+    "release_selection_mode": {
+      "type": "string",
+      "enum": ["latest_not_after_as_of", "exact_release_ids", "all_overlapping_as_of"]
+    },
+    "release_selection_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "as_of_utc_day": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "mode": { "$ref": "#/$defs/release_selection_mode" },
+        "candidate_release_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "required": ["as_of_utc_day", "mode"]
+    },
+    "bounded_geography": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "geography_id": { "type": "string", "minLength": 1 },
+        "geography_kind": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["geography_id", "geography_kind", "description"]
+    },
+    "subset_predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "predicate_id": { "type": "string", "minLength": 1 },
+        "kind": { "$ref": "#/$defs/subset_predicate_kind" },
+        "expression": { "type": "string", "minLength": 1 }
+      },
+      "required": ["predicate_id", "kind", "expression"]
+    },
+    "bounded_subset": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "subset_id": { "type": "string", "minLength": 1 },
+        "geography": { "$ref": "#/$defs/bounded_geography" },
+        "h3_cells": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "predicates": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/subset_predicate" }
+        }
+      },
+      "required": ["subset_id", "geography", "predicates"],
+      "anyOf": [
+        { "properties": { "h3_cells": { "minItems": 1 } }, "required": ["h3_cells"] },
+        { "properties": { "predicates": { "minItems": 1 } } }
+      ]
+    },
+    "release_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_instance_id": { "type": "string", "minLength": 1 },
+        "release_id": { "type": "string", "minLength": 1 },
+        "release_digest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["source_instance_id", "release_id", "release_digest"]
+    },
+    "requested_field": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "field_id": { "type": "string", "minLength": 1 },
+        "role": { "$ref": "#/$defs/field_role" },
+        "required": { "type": "boolean" }
+      },
+      "required": ["field_id", "role", "required"]
+    },
+    "row_byte_ceilings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_rows": { "type": "integer", "minimum": 1 },
+        "max_bytes": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["max_rows", "max_bytes"]
+    },
+    "column_readability_probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "probe_id": { "type": "string", "minLength": 1 },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "subset": { "$ref": "#/$defs/bounded_subset" },
+        "ceilings": { "$ref": "#/$defs/row_byte_ceilings" }
+      },
+      "required": ["probe_id", "fields", "subset", "ceilings"]
+    }
+  },
+  "examples": [
+    {
+      "version": "canon_geo_discovery_request.v0",
+      "request_id": "canon_geo_discovery_request.v0:0000000000000000000000000000000000000000000000000000000000000000",
+      "bounded_geography": {
+        "geography_id": "region.fixture.franklin-oh",
+        "geography_kind": "county_fips",
+        "description": "Franklin County, Ohio fixture"
+      },
+      "subset": {
+        "subset_id": "subset.fixture.franklin-r8-k1",
+        "geography": {
+          "geography_id": "region.fixture.franklin-oh",
+          "geography_kind": "county_fips",
+          "description": "Franklin County, Ohio fixture"
+        },
+        "h3_cells": ["882a107707fffff"],
+        "predicates": [
+          {
+            "predicate_id": "predicate.h3.r8.k1",
+            "kind": "h3_cells",
+            "expression": "declared h3 r8 center plus controlled halo k=1"
+          }
+        ]
+      },
+      "requested_entity_levels": ["building"],
+      "requested_evidence_classes": ["building_footprint"],
+      "release_selection": {
+        "as_of_utc_day": "2026-08-31",
+        "mode": "latest_not_after_as_of"
+      },
+      "releases": [],
+      "fields": [
+        { "field_id": "source_record_id", "role": "identifier", "required": true },
+        { "field_id": "geometry_wkb_sha256", "role": "digest", "required": true }
+      ],
+      "required_steps": [
+        "catalog_search",
+        "list_releases",
+        "describe_schema",
+        "column_readability_probe"
+      ],
+      "column_readability_probe": {
+        "probe_id": "probe.fixture.columns",
+        "fields": ["source_record_id", "geometry_wkb_sha256"],
+        "subset": {
+          "subset_id": "subset.fixture.franklin-r8-k1",
+          "geography": {
+            "geography_id": "region.fixture.franklin-oh",
+            "geography_kind": "county_fips",
+            "description": "Franklin County, Ohio fixture"
+          },
+          "h3_cells": ["882a107707fffff"],
+          "predicates": [
+            {
+              "predicate_id": "predicate.h3.r8.k1",
+              "kind": "h3_cells",
+              "expression": "declared h3 r8 center plus controlled halo k=1"
+            }
+          ]
+        },
+        "ceilings": { "max_rows": 5, "max_bytes": 8192 }
+      },
+      "ceilings": { "max_rows": 5, "max_bytes": 8192 }
+    }
+  ]
+}
