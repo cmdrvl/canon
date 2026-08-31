@@ -23,7 +23,9 @@ use super::{
         GeoRhoObservationKind, GeoValidTimeInterval, compile_evidence,
     },
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
+use serde::{Deserializer, de};
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
@@ -179,11 +181,54 @@ pub enum GeoH7SourceRecordRole {
     GeocodeDiagnostic,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct GeoH7SourceEvidenceRecord {
     pub role: GeoH7SourceRecordRole,
     pub parcel_ids: Vec<String>,
     pub source_record: GeoEvidenceRecordRef,
+}
+
+impl<'de> Deserialize<'de> for GeoH7SourceEvidenceRecord {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct WireSourceRecord {
+            source_record_id: String,
+            source_vintage: String,
+            #[serde(default)]
+            record_blake3: String,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct WireRecord {
+            role: GeoH7SourceRecordRole,
+            parcel_ids: Vec<String>,
+            source_record: WireSourceRecord,
+            #[serde(default)]
+            source_record_bytes_base64: Option<String>,
+        }
+
+        let wire = WireRecord::deserialize(deserializer)?;
+        let record_blake3 = h7_source_record_digest_from_wire(
+            &wire.source_record.source_record_id,
+            &wire.source_record.record_blake3,
+            wire.source_record_bytes_base64.as_deref(),
+        )
+        .map_err(de::Error::custom)?;
+        Ok(Self {
+            role: wire.role,
+            parcel_ids: wire.parcel_ids,
+            source_record: GeoEvidenceRecordRef {
+                source_record_id: wire.source_record.source_record_id,
+                source_vintage: wire.source_record.source_vintage,
+                record_blake3,
+            },
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -3021,6 +3066,60 @@ fn require_single_h7_source_parcel(
         ));
     }
     Ok(())
+}
+
+fn h7_source_record_digest_from_wire(
+    source_record_id: &str,
+    declared_record_blake3: &str,
+    source_record_bytes_base64: Option<&str>,
+) -> Result<String, String> {
+    if !declared_record_blake3.is_empty() && !is_lowercase_blake3_hex(declared_record_blake3) {
+        return Err(format!(
+            "Geo H.7 source_record.record_blake3 is not canonical lowercase BLAKE3 for {source_record_id}"
+        ));
+    }
+
+    let Some(source_record_bytes_base64) = source_record_bytes_base64 else {
+        if declared_record_blake3.is_empty() {
+            return Err(format!(
+                "Geo H.7 source evidence requires record_blake3 or source_record_bytes_base64 for {source_record_id}"
+            ));
+        }
+        return Ok(declared_record_blake3.to_string());
+    };
+
+    let bytes = BASE64_STANDARD
+        .decode(source_record_bytes_base64.as_bytes())
+        .map_err(|error| {
+            format!(
+                "Geo H.7 source_record_bytes_base64 is not canonical base64 for {source_record_id}: {error}"
+            )
+        })?;
+    if BASE64_STANDARD.encode(&bytes) != source_record_bytes_base64 {
+        return Err(format!(
+            "Geo H.7 source_record_bytes_base64 is not in canonical padded form for {source_record_id}"
+        ));
+    }
+    if bytes.is_empty() {
+        return Err(format!(
+            "Geo H.7 source_record_bytes_base64 decodes to an empty source record for {source_record_id}"
+        ));
+    }
+
+    let computed = blake3::hash(&bytes).to_hex().to_string();
+    if !declared_record_blake3.is_empty() && declared_record_blake3 != computed {
+        return Err(format!(
+            "Geo H.7 source_record.record_blake3 does not match source_record_bytes_base64 for {source_record_id}"
+        ));
+    }
+    Ok(computed)
+}
+
+fn is_lowercase_blake3_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn validate_h7_source_record(
