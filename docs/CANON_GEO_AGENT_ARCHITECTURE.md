@@ -3,7 +3,8 @@
 > Status: **normative target architecture; partially implemented Geo control plane**.
 > This document defines how an agent should operate Canon Geo as one coherent system.
 > Shipped control-plane commands are `canon geo capabilities --emit json` and offline
-> `canon geo plan`; `geo run` and `geo inspect` remain proposed/unavailable.
+> `canon geo plan`, plus bounded offline `canon geo run` for the current five-stage
+> parcel/building composition plan. `geo inspect` remains proposed/unavailable.
 > The mathematical model and empirical gates remain governed by
 > [`PLAN_CANON_GEO.md`](./PLAN_CANON_GEO.md).
 
@@ -13,9 +14,12 @@
 > refresh and pure planning, while `project run` validates/reuses v2 receipts and executes
 > pending nodes only through registered internal offline executors. The first narrow
 > `copy-file-v1` executor proves positive dispatch; Geo plan now emits a semantic overlay
-> over one validated project DAG. Geo run delegation and
-> multi-artifact transactionality remain open. Geo must extend this substrate, not build
-> a parallel orchestrator.
+> over one validated project DAG, and bounded Geo run delegates the current five Geo stages
+> through that runner. Its `--satisfy` path validates an explicit receipt against explicit
+> local bytes only; it does not mutate the immutable plan, clear acquisition blockers,
+> update inventory, or replan. Multi-artifact transactionality, immutable Geo run revision
+> lineage, cross-agent concurrency, and inspect remain open. Geo must extend this substrate,
+> not build a parallel orchestrator.
 
 ## 1. Purpose
 
@@ -31,7 +35,7 @@ question + capabilities + resolution profile + resource budget
   + regional evidence inventory or typed discovery gaps
 ```
 
-and compiles them into:
+and, in the target control plane, compiles them into:
 
 ```text
 deterministic plan -> immutable run revisions -> typed answer + explanation + next action
@@ -219,7 +223,13 @@ library types. Discovery may begin without a release pin under an explicit as-of
 policy; acquisition requires concrete release pins and bounded ordering/pagination. A
 projection operation is required exactly when geometry fields are requested and forbidden
 for non-geometric evidence, so deeds, addresses, party records, and other sources do not
-inherit a fake CRS requirement. Planner/run consumption is still open.
+inherit a fake CRS requirement. Planner consumption is implemented for the current
+parcel/building profile, and run consumption is implemented only for explicit local input
+bindings plus `--satisfy` validation of explicit acquisition receipts against those local
+bytes. The satisfy check does not mutate the immutable plan, clear acquisition blockers,
+update inventory, or replan; genuine advancement requires a new plan whose inventory and
+inputs reflect the acquired evidence. Live acquisition and proof remain
+outside Canon.
 
 Discovery proceeds from cheap metadata to bounded evidence:
 
@@ -405,21 +415,36 @@ reference, but the control plane does not bypass existing registry governance.
 
 ## 5. The run manifest: the agent's durable working memory
 
-`canon_geo_run.v0` is the one object an agent needs to resume work. It is a typed Geo view
-over generic `canon.project.run.v2` node receipts, not a second receipt store or scheduler.
-It is not a log bundle; it is a validated index over immutable artifacts.
+`canon_geo_run.v0` is the durable object an agent uses to resume bounded Geo work. It is a
+typed Geo view over generic `canon.project.run.v2` node receipts, not a second receipt store
+or scheduler. It is not a log bundle; it is a validated index over typed inputs, project
+outputs, grain states, blockers, deterministic usage, and next actions.
 
-Each revision contains:
+The current shipped v0 contains:
 
-- hashes of the question, capabilities, inventory, profile, plan, and budget;
-- phase state and gate outcomes;
-- source-release and acquisition receipts;
-- artifact references with semantic hashes and schemas;
-- deterministic usage counters;
-- blockers, abstentions, contradictions, and typed fallbacks;
-- current answers and their exactness/truth-plane status;
-- ordered next actions with preconditions and expected effects;
-- dependency edges used for incremental invalidation.
+- a `plan_ref` with hashes of the plan, project graph, question, capabilities, inventory
+  planning input, profile, and budget planning input;
+- status and phase over the current five-stage run;
+- explicit local artifact input refs keyed by `node_id` plus `binding_id`, with digest,
+  JSON media type, contract version, and byte count;
+- typed project output refs for completed nodes;
+- per-grain status, missing evidence classes, project node ids, claim limitation, and next
+  action text;
+- blockers and ordered next actions, including acquisition blockers that are not cleared by
+  `--satisfy` validation;
+- deterministic usage counters aggregated from project node receipts;
+- an optional `canon.project.run.v2` report;
+- operational observation fields kept outside semantic identity.
+
+`--satisfy REQUEST_ID=RECEIPT.json` is not a state transition for the immutable plan. It is
+only a guard that checks the explicit receipt against explicit local bytes bound with
+`--input NODE_ID:BINDING_ID=PATH`; it does not update the inventory, mark discovery or
+acquisition blockers resolved, or replan. Once evidence is actually acquired, the genuine
+advancement path is to create a new plan whose inventory and inputs include that evidence.
+
+It does not yet contain the full target answer projection, generic source-release receipt
+index, separate abstention/contradiction/fallback collections, registry proposal refs,
+immutable run revision lineage, or cross-agent concurrency protocol.
 
 Semantic dependency hashes include declared inputs, policy, node contract, dependency
 semantic hashes, output content digests, and deterministic usage counters that control
@@ -430,9 +455,11 @@ execution timestamps, worker order, and machine identity
 are operational metadata and do not enter semantic hashes. Declared query-as-of, source
 valid-time, transaction-time, and release-time values remain semantic inputs. A phase
 commits only after its output validates and hashes. Publication
-uses atomic same-filesystem replacement. Re-running the same plan against the same inputs
-is idempotent and reuses verified artifacts. An interrupted run resumes from the last
-validated phase without repeating acquisition or exact solves.
+uses atomic same-filesystem replacement. The current run path reuses verified
+`canon.project.run.v2` receipts within one work directory and resumes completed node
+outputs when their effective project input hashes still match. Generic immutable revision
+reuse, external-acquisition deduplication, and multi-agent concurrency remain target
+behavior rather than shipped Geo semantics.
 
 Long phases emit bounded progress events on stderr or an explicitly requested JSONL
 progress stream. Events name the current plan node, last committed artifact, deterministic
@@ -447,12 +474,18 @@ DRAFTED -> PREFLIGHTED -> MATERIALIZED -> REACH_CHECKED -> COMPILED
         -> FACTORIZED -> SOLVED -> RECONCILED -> EVALUATED
 
 Any phase may instead yield:
-WAITING_FOR_INPUT | UNSUPPORTED_GRAIN | ABSTAINED | CONTRADICTED | BUDGET_FALLBACK
+COMPLETED | PARTIAL | WAITING_FOR_INPUT | UNSUPPORTED_GRAIN | FAILED | CANCELLED
+| BUDGET_FALLBACK | ABSTAINED | CONTRADICTED
 ```
 
 Those states retain every completed reusable artifact and an exact recovery action.
 
 ### 5.1 Parallel agents and deterministic convergence
+
+This subsection remains target architecture. The current bounded `geo run` preserves
+deterministic semantic identity and project receipt reuse, but it does not implement the
+immutable revision proposal flow, ready-node claims, or cross-agent concurrency protocol
+described below.
 
 Plan nodes have stable semantic ids and explicit dependencies, so multiple agents may
 claim independent ready nodes—most importantly different bounded sections or incidence
@@ -472,14 +505,14 @@ parallelism level may change elapsed time, never semantic output.
 
 ## 6. Minimal agent command surface
 
-Leaf commands remain independently callable and machine-described. The target control
-plane currently ships capability introspection and offline planning, while execution and
-inspection remain target operations:
+Leaf commands remain independently callable and machine-described. The control plane
+currently ships capability introspection, offline planning, and bounded offline execution
+for the current five-stage parcel/building plan; inspection remains a target operation:
 
 ```text
 canon geo capabilities --emit json
 canon geo plan --question Q.json --capabilities C.json --inventory I.json --profile P.json --budget B.json
-canon geo run --plan PLAN.json --work-dir DIR [--satisfy REQUEST_ID=RECEIPT.json]...
+canon geo run --plan PLAN.json --work-dir DIR [--input NODE_ID:BINDING_ID=PATH]... [--satisfy REQUEST_ID=RECEIPT.json]...
 canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-next]
 ```
 
@@ -489,9 +522,14 @@ canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-
   mutation. It does not acquire data, execute nodes, or turn unverified candidate reach into
   truth reach.
 - `run` delegates scheduling, receipts, resume, and workspace safety to the shared project
-  substrate; it orchestrates only offline leaf capabilities, accepts explicit responses
-  to outstanding discovery/acquisition requests, and resumes by default; it remains
-  proposed/unavailable.
+  substrate; it orchestrates only offline leaf capabilities in the current five-stage
+  parcel/building plan, accepts explicit local input bindings, may validate supplied
+  acquisition receipts against those explicit bytes, emits `canon_geo_run.v0`, and resumes
+  from verified project receipts in one work directory. The `--satisfy` validation path
+  does not mutate the immutable plan, clear acquisition blockers, update inventory, or
+  replan; evidence that changes the run requires a new plan whose inventory and inputs
+  include that evidence. It does not perform live acquisition, provide live proof, or
+  implement generic immutable revision/concurrency semantics.
 - `inspect` is the one-call situation report, explanation, diff, and next-action surface;
   it remains proposed/unavailable.
 
@@ -499,9 +537,10 @@ canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-
 expected output contract, deterministic cost ceiling, and the reason the action can change
 the answer. Human prose is a rendering of those fields, not the only representation.
 
-Until `geo run` and `geo inspect` exist, agents must execute planned work through the
-implemented leaf commands listed by `canon --describe`; documentation must label execution
-and inspection commands as planned rather than advertising them as shipped.
+Until `geo inspect` exists, agents must inspect run state through the emitted
+`canon_geo_run.v0`, project receipts, and implemented leaf commands listed by
+`canon --describe`; documentation must label inspection as planned rather than advertising
+it as shipped.
 
 ## 7. Resource minimization
 
@@ -637,8 +676,9 @@ It changes the build order in five ways:
 2. Capability discovery and the question/profile/inventory contracts precede composite
    orchestration.
 3. Candidate reach is a first-class plan gate, never inferred from solver evaluation.
-4. A resumable run manifest and incremental invalidation prevent repeated warehouse pulls
-   and repeated exact solves.
+4. The bounded run manifest now reuses verified project receipts for unchanged current-plan
+   nodes; fuller immutable-revision invalidation still has to land before repeated
+   warehouse pulls and exact solves are generically avoided.
 5. Next-evidence selection operates on the current residual and declared costs, making
    evidence stacking deliberate rather than indiscriminate.
 

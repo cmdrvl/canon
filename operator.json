@@ -29,6 +29,7 @@
       "canon package pull --registry <OCI_BASE_URL> --repository <REPOSITORY> --cache <DIR> (--digest <sha256:...>|--tag <TAG>) [--emit json|summary]",
       "canon geo capabilities --emit json",
       "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>",
+      "canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]",
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "canon registry export --format dbt-seed|search-index --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]",
       "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
@@ -1069,7 +1070,7 @@
           "domain": "error"
         }
       },
-      "next_command": "inspect project_plan.runnable and project_plan.next_commands; invoke a listed leaf only after materializing its declared local input artifact, because canon geo run remains planned/unavailable",
+      "next_command": "canon geo run --plan <PLAN.json> --work-dir <DIR> --input <NODE_ID:BINDING_ID=PATH>",
       "recovery": {
         "next_command": "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>",
         "refusal_exit_code": 2
@@ -1109,6 +1110,89 @@
           "type": "file_path",
           "required": true,
           "description": "JSON file holding a canon_geo_resource_budget.v0 budget"
+        }
+      ]
+    },
+    {
+      "name": "geo run",
+      "usage": "canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]",
+      "description": "Run a canon_geo_plan.v0 offline through the shared project runner with explicit local typed input bindings, resumable project receipts, and an optional acquisition-satisfaction validation guard; emits a single canon_geo_run.v0 artifact on stdout; the command does not acquire data, reach the network, mutate the plan, clear blockers, update inventory, replan, or treat acquisition receipts as truth",
+      "output_mode": "json",
+      "output_schema": "canon_geo_run.v0",
+      "status": "implemented",
+      "read_only": false,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads the declared plan, explicit --input files, and explicit --satisfy receipt files; writes only planned Geo artifacts beneath --work-dir and deterministic project receipts beneath --work-dir/.canon/geo-run; --satisfy is a validation guard only: receipt local artifacts are paired only to explicit --input bytes by actual BLAKE3 digest and byte count, and successful validation does not mutate the plan, clear blockers, update inventory, or replan; network acquisition remains outside Canon",
+        "mutation_class": "OwnedOutput",
+        "network_class": "Offline",
+        "concurrency_class": "IsolatedRunner",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "geo run"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": true,
+        "writes_project_files": false,
+        "writes_output_files": true,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "canonical Geo run artifact emitted; status may be COMPLETED, PARTIAL, WAITING_FOR_INPUT, UNSUPPORTED_GRAIN, FAILED, CANCELLED, ABSTAINED, CONTRADICTED, or BUDGET_FALLBACK",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, plan IO, input IO, receipt IO, parse, satisfaction, workspace, project-run, or artifact contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon geo run --plan <PLAN.json> --work-dir <DIR> --input <NODE_ID:BINDING_ID=PATH>",
+      "recovery": {
+        "next_command": "canon geo run --plan <PLAN.json> --work-dir <DIR> --input <NODE_ID:BINDING_ID=PATH>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "plan",
+          "flag": "--plan",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_plan.v0 plan"
+        },
+        {
+          "name": "work_dir",
+          "flag": "--work-dir",
+          "type": "directory_path",
+          "required": true,
+          "description": "Geo run workspace root; planned output paths land beneath this directory and internal receipts use .canon/geo-run"
+        },
+        {
+          "name": "input",
+          "flag": "--input",
+          "type": "repeatable_string",
+          "required": false,
+          "description": "Local typed input binding as NODE_ID:BINDING_ID=PATH; the file bytes are hashed and bound into the effective project DAG"
+        },
+        {
+          "name": "satisfy",
+          "flag": "--satisfy",
+          "type": "repeatable_string",
+          "required": false,
+          "description": "Validate an acquisition handoff as REQUEST_ID=RECEIPT.json without mutating the plan, clearing blockers, updating inventory, or replanning; receipt local artifacts are paired only to explicit --input bytes by digest and byte count"
         }
       ]
     },

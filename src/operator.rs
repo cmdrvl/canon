@@ -517,6 +517,21 @@ pub const COMMAND_SAFETY_DECLARATIONS: &[CommandSafetyDeclaration] = &[
         notes: "compiled Geo control capability contract only; no project, catalog, input-file, or network reads",
     },
     CommandSafetyDeclaration {
+        command: "geo run",
+        operator_contract_name: Some("geo run"),
+        usage: "canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]",
+        read_only: false,
+        mutation: MutationClass::OwnedOutput,
+        network: NetworkClass::Offline,
+        concurrency: ConcurrencyClass::IsolatedRunner,
+        platforms: &[
+            PlatformClass::PortablePathUtf8,
+            PlatformClass::SameFilesystemAtomicReplace,
+        ],
+        owned_temp_fixtures_only: true,
+        notes: "reads only explicit local plan, input, and optional satisfaction-receipt files; publishes planned artifacts and receipts beneath the explicit workspace with atomic single-file replacement; cross-agent concurrency and multi-artifact transactionality remain open",
+    },
+    CommandSafetyDeclaration {
         command: "geo link-sources",
         operator_contract_name: Some("geo link-sources"),
         usage: "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",

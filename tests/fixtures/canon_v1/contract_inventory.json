@@ -195,6 +195,14 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo run",
+      "family": "geo",
+      "clap_path": "geo run",
+      "operator_name": "geo run",
+      "primary_contracts": ["canon_geo_run.v0"],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo link-sources",
       "family": "geo",
       "clap_path": "geo link-sources",
@@ -1311,6 +1319,14 @@
       "source_path": "schemas/canon.geo.plan.v0.schema.json"
     },
     {
+      "id": "canon_geo_run.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.run.v0.schema.json"
+    },
+    {
       "id": "canon_geo_regional_inventory.v0",
       "family": "geo",
       "action": "preserve",
@@ -1419,6 +1435,21 @@
       "access_boundary": "public_crate_api",
       "crate_module": "canon::geo",
       "source_path": "schemas/canon.geo.acquisition_receipt.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_acquisition_satisfaction.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "src/geo/satisfy.rs"
+    },
+    {
+      "id": "canon.geo.project_node_executor.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "internal_source_only",
+      "source_path": "src/geo/executor.rs"
     },
     {
       "id": "canon_geo_entity_projection.v0",

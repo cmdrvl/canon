@@ -323,7 +323,6 @@ fn compute_node_semantic_hash(receipt: &ProjectRunNodeReceipt) -> ProjectReceipt
         deterministic_usage: &'a BTreeMap<String, u64>,
         next_action: ProjectRunNextAction,
         failure_code: &'a Option<String>,
-        failure_message: &'a Option<String>,
     }
 
     let mut canonical = receipt.clone();
@@ -348,7 +347,6 @@ fn compute_node_semantic_hash(receipt: &ProjectRunNodeReceipt) -> ProjectReceipt
         deterministic_usage: &canonical.deterministic_usage,
         next_action: canonical.next_action,
         failure_code: &canonical.failure_code,
-        failure_message: &canonical.failure_message,
     };
     serde_json::to_vec(&semantic)
         .map(|bytes| digest_bytes(&bytes))
@@ -376,6 +374,7 @@ fn compute_node_telemetry_hash(receipt: &ProjectRunNodeReceipt) -> ProjectReceip
         duration_millis: u64,
         resource_observations: &'a BTreeMap<String, u64>,
         publication_paths: Vec<TelemetryOutput<'a>>,
+        failure_message: &'a Option<String>,
     }
 
     let mut canonical = receipt.clone();
@@ -395,6 +394,7 @@ fn compute_node_telemetry_hash(receipt: &ProjectRunNodeReceipt) -> ProjectReceip
                 path: &output.path,
             })
             .collect(),
+        failure_message: &canonical.failure_message,
     };
     serde_json::to_vec(&telemetry)
         .map(|bytes| digest_bytes(&bytes))

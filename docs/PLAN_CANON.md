@@ -94,6 +94,7 @@ canon project plan --manifest <MANIFEST> --lock <LOCK> [--out <PLAN>] [--cache-h
 canon project run [--plan <PLAN>] [--manifest <MANIFEST>] [--lock <LOCK>] [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json|summary]
 canon geo capabilities [--emit json]
 canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>
+canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]
 canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>
 canon geo materialize-home-cells --rows <ROWS.json>
 canon geo tile-work --request <REQUEST.json>

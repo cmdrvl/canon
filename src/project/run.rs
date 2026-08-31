@@ -120,6 +120,22 @@ impl ProjectRunPolicy {
 pub struct ProjectNodeExecutionContext {
     pub node_id: String,
     pub dependency_semantic_hashes: BTreeMap<String, String>,
+    /// Content-validated outputs from completed direct dependencies.
+    ///
+    /// These bytes are operational execution context, not semantic identity.
+    /// Their digests are already represented by the dependency receipts and
+    /// are rechecked immediately before the executor is invoked. Supplying
+    /// them here lets a fresh executor resume after earlier nodes were reused
+    /// without trusting ambient files or rebuilding a domain-specific cache.
+    pub dependency_outputs: BTreeMap<String, Vec<ProjectDependencyOutput>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectDependencyOutput {
+    pub output_id: String,
+    pub content_digest: String,
+    pub byte_count: u64,
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -874,9 +890,11 @@ fn execute_node<E: ProjectNodeExecutor>(
     ensure_outputs_publishable(node, &policy.workspace_root, stale_receipt)?;
     let dependency_semantic_hashes = dependency_semantic_hashes(node, valid_receipts)?;
     let dependency_receipt_hashes = dependency_receipt_hashes(node, valid_receipts)?;
+    let dependency_outputs = dependency_outputs(node, valid_receipts, &policy.workspace_root)?;
     let context = ProjectNodeExecutionContext {
         node_id: node.node_id.clone(),
         dependency_semantic_hashes: dependency_semantic_hashes.clone(),
+        dependency_outputs,
     };
     let result = executor.execute(node, &context)?;
     let output_receipts = publish_outputs(
@@ -908,6 +926,85 @@ fn execute_node<E: ProjectNodeExecutor>(
         receipt_hash: String::new(),
     })
     .map_err(ProjectRunError::from)
+}
+
+fn dependency_outputs(
+    node: &ProjectPlanNode,
+    valid_receipts: &BTreeMap<String, ProjectRunNodeReceipt>,
+    workspace_root: &Path,
+) -> ProjectRunResult<BTreeMap<String, Vec<ProjectDependencyOutput>>> {
+    let mut dependencies = BTreeMap::new();
+    for dependency_id in &node.dependencies {
+        let receipt = valid_receipts.get(dependency_id).ok_or_else(|| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::StaleArtifact,
+                Some(node.node_id.clone()),
+                format!(
+                    "dependency {dependency_id} has no validated completed receipt before execution"
+                ),
+            )
+        })?;
+        let mut outputs = Vec::with_capacity(receipt.outputs.len());
+        for output in &receipt.outputs {
+            let path = resolve_fs_workspace_path(
+                workspace_root,
+                "project_run.dependency_output",
+                Path::new(&output.path),
+                PlannedAccess::Read,
+            )
+            .map(|resolution| resolution.absolute_path)
+            .map_err(|error| {
+                ProjectRunError::new(
+                    ProjectRunErrorCode::WorkspacePolicy,
+                    Some(node.node_id.clone()),
+                    format!(
+                        "dependency output {}:{} failed workspace safety: {error}",
+                        dependency_id, output.output_id
+                    ),
+                )
+            })?;
+            let bytes = fs::read(&path).map_err(|error| {
+                ProjectRunError::new(
+                    ProjectRunErrorCode::StaleArtifact,
+                    Some(node.node_id.clone()),
+                    format!(
+                        "failed to read dependency output {}:{}: {error}",
+                        dependency_id, output.output_id
+                    ),
+                )
+            })?;
+            let byte_count = u64::try_from(bytes.len()).map_err(|_| {
+                ProjectRunError::new(
+                    ProjectRunErrorCode::StaleArtifact,
+                    Some(node.node_id.clone()),
+                    format!(
+                        "dependency output {}:{} byte count exceeds u64",
+                        dependency_id, output.output_id
+                    ),
+                )
+            })?;
+            let content_digest = digest_bytes(&bytes);
+            if byte_count != output.byte_count || content_digest != output.content_digest {
+                return Err(ProjectRunError::new(
+                    ProjectRunErrorCode::StaleArtifact,
+                    Some(node.node_id.clone()),
+                    format!(
+                        "dependency output {}:{} bytes no longer match its validated receipt",
+                        dependency_id, output.output_id
+                    ),
+                ));
+            }
+            outputs.push(ProjectDependencyOutput {
+                output_id: output.output_id.clone(),
+                content_digest,
+                byte_count,
+                bytes,
+            });
+        }
+        outputs.sort_by(|left, right| left.output_id.cmp(&right.output_id));
+        dependencies.insert(dependency_id.clone(), outputs);
+    }
+    Ok(dependencies)
 }
 
 fn finish_report(
@@ -1024,18 +1121,64 @@ fn load_existing_receipts(
         existing
             .completed_receipts
             .insert(node.node_id.clone(), receipt.clone());
-        if node_receipt_matches_current(plan, node, &receipt)
-            && outputs_match_receipt(&policy.workspace_root, &receipt)?
-            && dependencies_match_receipts(node, &receipt, &existing.valid_receipts)
+    }
+
+    // Project plans are serialized in deterministic node-id order, not
+    // necessarily dependency order. Reuse validation must therefore walk the
+    // DAG topologically: validating a child before its completed parent has
+    // been admitted would falsely invalidate the child and every descendant.
+    for node in dependency_ordered_nodes(plan)? {
+        let Some(receipt) = existing.completed_receipts.get(&node.node_id) else {
+            continue;
+        };
+        if node_receipt_matches_current(plan, node, receipt)
+            && outputs_match_receipt(&policy.workspace_root, receipt)?
+            && dependencies_match_receipts(node, receipt, &existing.valid_receipts)
         {
             existing
                 .valid_receipts
-                .insert(node.node_id.clone(), receipt);
+                .insert(node.node_id.clone(), receipt.clone());
         } else {
             existing.invalidated_nodes.insert(node.node_id.clone());
         }
     }
     Ok(existing)
+}
+
+fn dependency_ordered_nodes(plan: &ProjectPlan) -> ProjectRunResult<Vec<&ProjectPlanNode>> {
+    let mut remaining = plan
+        .nodes
+        .iter()
+        .map(|node| (node.node_id.as_str(), node))
+        .collect::<BTreeMap<_, _>>();
+    let mut admitted = BTreeSet::new();
+    let mut ordered = Vec::with_capacity(plan.nodes.len());
+    while !remaining.is_empty() {
+        let ready = remaining
+            .iter()
+            .filter(|(_, node)| {
+                node.dependencies
+                    .iter()
+                    .all(|dependency| admitted.contains(dependency))
+            })
+            .map(|(node_id, _)| *node_id)
+            .collect::<Vec<_>>();
+        if ready.is_empty() {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                None,
+                "project plan dependency order could not be resolved during receipt validation",
+            ));
+        }
+        for node_id in ready {
+            let node = remaining
+                .remove(node_id)
+                .expect("ready project node remains present");
+            admitted.insert(node_id.to_string());
+            ordered.push(node);
+        }
+    }
+    Ok(ordered)
 }
 
 fn ready_nodes<'a>(
@@ -1450,6 +1593,17 @@ fn node_receipt_matches_current(
         && receipt.node_cache_key == node.cache.cache_key
         && receipt.outcome == ProjectRunNodeOutcome::Completed
         && receipt.content_hash_inputs == receipt_hash_inputs(&node.content_hash_inputs)
+        && receipt_outputs_match_node(node, receipt)
+}
+
+fn receipt_outputs_match_node(node: &ProjectPlanNode, receipt: &ProjectRunNodeReceipt) -> bool {
+    receipt.outputs.len() == node.outputs.len()
+        && node.outputs.iter().all(|planned| {
+            receipt
+                .outputs
+                .iter()
+                .any(|actual| actual.output_id == planned.output_id && actual.path == planned.path)
+        })
 }
 
 fn dependencies_match_receipts(

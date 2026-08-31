@@ -22,23 +22,24 @@ use canon::geo::{
     CANON_GEO_POPULATION_EVALUATION_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
     CANON_GEO_QUESTION_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
     CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION,
-    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
-    CANON_GEO_TILE_RECONCILIATION_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
-    CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
-    CANON_GEO_WAREHOUSE_GEOMETRY_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
-    GeoAbstentionDisposition, GeoAbstentionPolicy, GeoAsOf, GeoBoundedGeography, GeoBudgetAction,
-    GeoCapabilities, GeoCapabilityStatus, GeoCapabilityStatusSets, GeoClaimClass,
-    GeoCommandCapability, GeoContractCapability, GeoControlEntityLevel, GeoControlErrorCode,
-    GeoControlProperty, GeoEgressClass, GeoEvidenceClass, GeoGeometryTransformContract,
-    GeoInventorySupportStatus, GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef,
-    GeoNativeEntityScope, GeoNumericBound, GeoNumericMeasure, GeoQuestion, GeoRegionalInventory,
-    GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter,
-    GeoSourceAvailability, GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass,
-    GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
-    GeoValueOrigin, canonical_capabilities_bytes, canonical_question_bytes,
-    canonical_regional_inventory_bytes, canonical_resource_budget_bytes,
-    capabilities_semantic_hash, default_geo_capabilities, evaluate_inventory_support,
-    question_semantic_hash, regional_inventory_planning_hash, resource_budget_semantic_hash,
+    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_RUN_VERSION,
+    CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_VERSION,
+    CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
+    CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_VERSION,
+    CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoAbstentionDisposition, GeoAbstentionPolicy, GeoAsOf,
+    GeoBoundedGeography, GeoBudgetAction, GeoCapabilities, GeoCapabilityStatus,
+    GeoCapabilityStatusSets, GeoClaimClass, GeoCommandCapability, GeoContractCapability,
+    GeoControlEntityLevel, GeoControlErrorCode, GeoControlProperty, GeoEgressClass,
+    GeoEvidenceClass, GeoGeometryTransformContract, GeoInventorySupportStatus, GeoLicenseClass,
+    GeoLocalAcquisitionState, GeoLocalArtifactRef, GeoNativeEntityScope, GeoNumericBound,
+    GeoNumericMeasure, GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance,
+    GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoSourceAvailability,
+    GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass, GeoTelemetryDeclaration,
+    GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope, GeoValueOrigin,
+    canonical_capabilities_bytes, canonical_question_bytes, canonical_regional_inventory_bytes,
+    canonical_resource_budget_bytes, capabilities_semantic_hash, default_geo_capabilities,
+    evaluate_inventory_support, question_semantic_hash, regional_inventory_planning_hash,
+    resource_budget_semantic_hash,
 };
 use clap::CommandFactory;
 use serde_json::{Value, json};
@@ -119,6 +120,7 @@ fn expected_implemented_contracts() -> BTreeSet<&'static str> {
         CANON_GEO_REGIONAL_INVENTORY_VERSION,
         CANON_GEO_RESOURCE_BUDGET_VERSION,
         CANON_GEO_PLAN_VERSION,
+        CANON_GEO_RUN_VERSION,
         CANON_GEO_DISCOVERY_REQUEST_VERSION,
         CANON_GEO_ACQUISITION_REQUEST_VERSION,
         CANON_GEO_ACQUISITION_RECEIPT_VERSION,
@@ -176,6 +178,10 @@ fn expected_implemented_commands() -> BTreeMap<&'static str, (&'static str, bool
         (
             "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>",
             (CANON_GEO_PLAN_VERSION, true, false),
+        ),
+        (
+            "canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]",
+            (CANON_GEO_RUN_VERSION, false, false),
         ),
         (
             "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
@@ -597,13 +603,10 @@ fn geo_capabilities_cover_compiled_leaf_commands_and_public_contracts() {
         .collect::<BTreeMap<_, _>>();
     assert_eq!(
         unavailable_commands,
-        BTreeMap::from([
-            (
-                "canon geo inspect",
-                ("planned_not_implemented", true, false)
-            ),
-            ("canon geo run", ("planned_not_implemented", false, false)),
-        ])
+        BTreeMap::from([(
+            "canon geo inspect",
+            ("planned_not_implemented", true, false),
+        )])
     );
     for command in &artifact.commands.unavailable {
         assert!(

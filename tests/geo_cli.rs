@@ -259,6 +259,385 @@ fn tiny_tile_work_request(home_cell: CellIndex) -> Value {
     })
 }
 
+fn synthetic_building_center_cell() -> &'static str {
+    "892a100d62bffff"
+}
+
+fn synthetic_building_home_cell_rows() -> Value {
+    let center = synthetic_building_center_cell();
+    json!({
+        "version": "canon_geo_home_cell_rows.v0",
+        "coordinate_crs": "EPSG:4326",
+        "coordinate_decimal_places": 9,
+        "h3_resolution": 9,
+        "stability_radius_fixed": 1000,
+        "rows": [
+            synthetic_building_home_cell_row("building-a", "synthetic-not-live/building-a", center),
+            synthetic_building_home_cell_row("building-b", "synthetic-not-live/building-b", center)
+        ],
+        "max_rows": 16
+    })
+}
+
+fn synthetic_building_home_cell_row(
+    feature_id: &str,
+    source_record_id: &str,
+    center: &str,
+) -> Value {
+    json!({
+        "source_name": "synthetic_building_fixture_not_live",
+        "feature_id": feature_id,
+        "source_snapshot": "synthetic-fixture-not-live/2026-08-31",
+        "source_record_id": source_record_id,
+        "geometry_sha256": "5ed87d37d872789086452c35f658f5628ba870ca36072c495bb88519592403ed",
+        "representative_point_method": "synthetic_centroid_of_fixture_geometry",
+        "longitude": "-73.977264000",
+        "latitude": "40.753429000",
+        "transform_execution_id": "synthetic-not-live-transform-execution",
+        "transform_definition_id": "synthetic-not-live-transform-definition",
+        "claimed_home_cell": center
+    })
+}
+
+fn synthetic_building_tile_work_request() -> Value {
+    let center = synthetic_building_center_cell();
+    json!({
+        "version": "canon_geo_tile_work_request.v0",
+        "center_cell": center,
+        "halo_k": 1,
+        "features": [
+            {
+                "source_name": "synthetic_building_fixture_not_live",
+                "feature_id": "building-a",
+                "home_cell": center
+            },
+            {
+                "source_name": "synthetic_building_fixture_not_live",
+                "feature_id": "building-b",
+                "home_cell": center
+            }
+        ],
+        "max_features": 16,
+        "max_work_cells": 7
+    })
+}
+
+fn synthetic_building_warehouse_rows() -> Value {
+    json!({
+        "version": "canon_geo_warehouse_rows.v0",
+        "profile": {
+            "version": "canon_geo_composition_profile.v0",
+            "selection_level": "building"
+        },
+        "parcel_rows": [],
+        "building_parcel_rows": [
+            {
+                "building_id": "building-b",
+                "parcel_id": null
+            },
+            {
+                "building_id": "building-a",
+                "parcel_id": null
+            }
+        ],
+        "contracts": [{
+            "id": "rho.synthetic-not-live.building-set",
+            "version": "1.0.0",
+            "source_dataset": "synthetic.not_live.building_fixture",
+            "source_release": "synthetic-not-live/2026-08-31",
+            "source_lineage_ids": ["synthetic.not_live.building_fixture.release"],
+            "method_id": "synthetic-not-live-building-candidate-set",
+            "method_version": "1.0.0",
+            "claim_role": "stable_identity_anchor",
+            "basis": {
+                "kind": "logical_relaxation",
+                "invariant_id": "synthetic-not-live-candidate-set-is-a-superset"
+            }
+        }],
+        "evidence_rows": [
+            {
+                "observation_id": "obs.synthetic-not-live.building-set",
+                "contract_id": "rho.synthetic-not-live.building-set",
+                "source_record": {
+                    "source_record_id": "synthetic-not-live-row-b",
+                    "source_vintage": "synthetic-not-live/2026-08-31",
+                    "record_blake3": blake3::hash(b"synthetic-not-live-row-b").to_hex().to_string()
+                },
+                "observation": {
+                    "kind": "exact_sets",
+                    "level": "building",
+                    "sets": [["building-a", "building-b"]]
+                }
+            },
+            {
+                "observation_id": "obs.synthetic-not-live.building-set",
+                "contract_id": "rho.synthetic-not-live.building-set",
+                "source_record": {
+                    "source_record_id": "synthetic-not-live-row-a",
+                    "source_vintage": "synthetic-not-live/2026-08-31",
+                    "record_blake3": blake3::hash(b"synthetic-not-live-row-a").to_hex().to_string()
+                },
+                "observation": {
+                    "kind": "exact_sets",
+                    "level": "building",
+                    "sets": [["building-a", "building-b"]]
+                }
+            }
+        ],
+        "max_assignments": 128,
+        "max_materialized_models": 64
+    })
+}
+
+fn geo_run_building_question() -> Value {
+    json!({
+        "version": "canon_geo_question.v0",
+        "question_id": "question.synthetic-not-live.geo-run.building",
+        "subject_bindings": [
+            {
+                "role": "target",
+                "binding_class": "operator_label",
+                "value": "synthetic-not-live building fixture"
+            }
+        ],
+        "bounded_geography": geo_plan_region(),
+        "requested_grains": [{
+            "entity_level": "building",
+            "required_evidence_classes": ["building_footprint"],
+            "optional_evidence_classes": ["address_set"]
+        }],
+        "query_as_of": geo_plan_as_of("2026-08-31", "question.synthetic-not-live.query_as_of.utc_day"),
+        "requested_claim_classes": ["candidate_reach", "stable_identity"],
+        "presentation_limits": [
+            geo_plan_bound("presentation.synthetic-not-live.max_models", "models", 16, "model"),
+            geo_plan_bound("presentation.synthetic-not-live.max_candidates", "candidates", 32, "candidate")
+        ],
+        "abstention_policy": {
+            "unsupported_grain": "report_unsupported",
+            "unresolved_residual": "report_residual",
+            "budget_fallback": "report_residual"
+        },
+        "decision_policy": null,
+        "resource_budget_ref": "budget.fixture.geo-plan"
+    })
+}
+
+fn write_geo_run_building_plan(dir: &std::path::Path) -> PathBuf {
+    let paths = GeoPlanInputPaths {
+        question: write_json(
+            dir,
+            "synthetic-not-live-question.json",
+            &geo_run_building_question(),
+        ),
+        capabilities: write_geo_plan_capabilities(dir),
+        inventory: write_json(
+            dir,
+            "synthetic-not-live-inventory.json",
+            &geo_plan_inventory(false),
+        ),
+        profile: write_json(
+            dir,
+            "synthetic-not-live-profile.json",
+            &geo_plan_profile("canon_geo_composition_profile.v0"),
+        ),
+        budget: write_json(
+            dir,
+            "synthetic-not-live-budget.json",
+            &geo_plan_budget(false),
+        ),
+    };
+    let assert = geo_plan_command(&paths).assert().success();
+    assert!(assert.get_output().stderr.is_empty());
+    let plan: Value = serde_json::from_slice(&assert.get_output().stdout).expect("plan parses");
+    assert_eq!(plan["status"], "planned");
+    assert_eq!(
+        plan["project_plan"]["nodes"].as_array().unwrap().len(),
+        5,
+        "synthetic building demo must exercise the five Geo leaf commands"
+    );
+    let path = dir.join("synthetic-not-live-building-plan.json");
+    fs::write(&path, &assert.get_output().stdout).expect("write synthetic Geo plan");
+    path
+}
+
+fn write_geo_run_synthetic_input_set(dir: &std::path::Path) -> (PathBuf, PathBuf, PathBuf) {
+    (
+        write_json(
+            dir,
+            "synthetic-not-live-home-cell-rows.json",
+            &synthetic_building_home_cell_rows(),
+        ),
+        write_json(
+            dir,
+            "synthetic-not-live-tile-work-request.json",
+            &synthetic_building_tile_work_request(),
+        ),
+        write_json(
+            dir,
+            "synthetic-not-live-warehouse-rows.json",
+            &synthetic_building_warehouse_rows(),
+        ),
+    )
+}
+
+fn geo_run_acquisition_inventory() -> Value {
+    let mut inventory = geo_plan_inventory(false);
+    let source = inventory["sources"]
+        .as_array_mut()
+        .expect("inventory sources are an array")
+        .iter_mut()
+        .find(|source| source["source_instance_id"] == "source.fixture.building-footprints")
+        .expect("building footprint source exists");
+    source["local_state"] = json!({ "state": "missing" });
+    inventory
+}
+
+fn write_geo_run_acquisition_plan(dir: &std::path::Path) -> (PathBuf, Value) {
+    let paths = GeoPlanInputPaths {
+        question: write_json(
+            dir,
+            "synthetic-not-live-acquisition-question.json",
+            &geo_run_building_question(),
+        ),
+        capabilities: write_geo_plan_capabilities(dir),
+        inventory: write_json(
+            dir,
+            "synthetic-not-live-acquisition-inventory.json",
+            &geo_run_acquisition_inventory(),
+        ),
+        profile: write_json(
+            dir,
+            "synthetic-not-live-acquisition-profile.json",
+            &geo_plan_profile("canon_geo_composition_profile.v0"),
+        ),
+        budget: write_json(
+            dir,
+            "synthetic-not-live-acquisition-budget.json",
+            &geo_plan_budget(false),
+        ),
+    };
+    let assert = geo_plan_command(&paths).assert().success();
+    assert!(assert.get_output().stderr.is_empty());
+    let plan_bytes = assert.get_output().stdout.clone();
+    let plan: Value = serde_json::from_slice(&plan_bytes).expect("acquisition plan parses");
+    assert_eq!(plan["status"], "partial");
+    let acquisition_requests = plan["external_requests"]
+        .as_array()
+        .expect("external requests")
+        .iter()
+        .filter(|request| request["kind"] == "acquisition")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        acquisition_requests.len(),
+        1,
+        "synthetic missing-local plan must emit one acquisition request"
+    );
+    let acquisition = acquisition_requests[0];
+    assert_eq!(
+        acquisition["handoff"]["expected_receipt_contract"],
+        "canon_geo_acquisition_receipt.v0"
+    );
+    assert_eq!(
+        acquisition["handoff"]["required_result_digest_algorithm"],
+        "blake3"
+    );
+    let path = dir.join("synthetic-not-live-acquisition-plan.json");
+    fs::write(&path, plan_bytes).expect("write synthetic acquisition Geo plan");
+    (path, acquisition["request"].clone())
+}
+
+fn synthetic_not_live_empty_acquisition_artifact() -> Value {
+    json!({
+        "version": "canon_geo_warehouse_rows.v0",
+        "profile": {
+            "version": "canon_geo_composition_profile.v0",
+            "selection_level": "building"
+        },
+        "parcel_rows": [],
+        "building_parcel_rows": [],
+        "contracts": [],
+        "evidence_rows": [],
+        "max_assignments": 16,
+        "max_materialized_models": 16
+    })
+}
+
+fn geo_cli_blake3_digest(digest_id: &str, bytes: &[u8]) -> Value {
+    json!({
+        "digest_id": digest_id,
+        "algorithm": "blake3",
+        "hex_digest": blake3::hash(bytes).to_hex().to_string()
+    })
+}
+
+fn write_geo_run_zero_rows_acquisition_receipt(
+    dir: &std::path::Path,
+    request: &Value,
+    artifact_bytes: &[u8],
+) -> PathBuf {
+    let typed_request: canon::geo::GeoAcquisitionRequest =
+        serde_json::from_value(request.clone()).expect("acquisition request parses");
+    let request_semantic_hash = canon::geo::geo_acquisition_request_semantic_hash(&typed_request)
+        .expect("acquisition request semantic hash computes");
+    let artifact_digest =
+        geo_cli_blake3_digest("artifact.synthetic-not-live.zero_rows", artifact_bytes);
+    let receipt = json!({
+        "version": "canon_geo_acquisition_receipt.v0",
+        "request_id": request["request_id"].clone(),
+        "request_semantic_hash": request_semantic_hash,
+        "terminal_state": "ZERO_ROWS",
+        "proof_class": "fixture",
+        "fixture_id": "synthetic-not-live.geo-cli.zero-rows",
+        "bounded_geography": request["bounded_geography"].clone(),
+        "subset": request["subset"].clone(),
+        "releases": request["releases"].clone(),
+        "fields": request["fields"].clone(),
+        "projection": request["projection"].clone(),
+        "normalized_executed_request_digest": geo_cli_blake3_digest(
+            "normalized.synthetic-not-live.zero_rows",
+            b"synthetic-not-live-zero-rows-executed-request"
+        ),
+        "pagination": {
+            "requested_page": request["pagination"].clone(),
+            "rows_truncated": false,
+            "bytes_truncated": false
+        },
+        "counts": {
+            "rows": 0,
+            "bytes": artifact_bytes.len() as u64
+        },
+        "denominators": [{
+            "denominator_id": "requested_subset.synthetic-not-live",
+            "source": "requested_subset",
+            "count": 0,
+            "unit": "row",
+            "description": "synthetic-not-live zero-row acquisition denominator"
+        }],
+        "source_digests": [
+            geo_cli_blake3_digest("source.synthetic-not-live.zero_rows", b"synthetic-not-live-source")
+        ],
+        "result_digests": [
+            geo_cli_blake3_digest("result.synthetic-not-live.zero_rows", artifact_bytes)
+        ],
+        "local_artifacts": [{
+            "artifact_id": "artifact.synthetic-not-live.zero_rows",
+            "media_type": "application/json",
+            "byte_count": artifact_bytes.len() as u64,
+            "digest": artifact_digest
+        }],
+        "unreadable_columns": [],
+        "resumability": {
+            "resumable": false,
+            "retry_guidance": "retry the same synthetic-not-live request with a positive receipt"
+        }
+    });
+    write_json(
+        dir,
+        "synthetic-not-live-zero-rows-acquisition-receipt.json",
+        &receipt,
+    )
+}
+
 fn geo_plan_digest(label: &str) -> String {
     format!("blake3:{}", blake3::hash(label.as_bytes()).to_hex())
 }
@@ -630,6 +1009,211 @@ fn geo_plan_is_byte_identical_for_reordered_inputs() {
     let first = geo_plan_command(&paths_a).assert().success();
     let second = geo_plan_command(&paths_b).assert().success();
     assert_eq!(first.get_output().stdout, second.get_output().stdout);
+}
+
+#[test]
+fn geo_run_cli_executes_synthetic_not_live_five_leaf_building_chain() {
+    let temp = tempdir().expect("tempdir");
+    let input_dir = temp.path().join("synthetic-not-live-inputs");
+    fs::create_dir(&input_dir).expect("create synthetic input dir");
+    let plan = write_geo_run_building_plan(&input_dir);
+    let (home_cells, tile_work, warehouse_rows) = write_geo_run_synthetic_input_set(&input_dir);
+    let work_dir = temp.path().join("synthetic-not-live-work");
+    fs::create_dir(&work_dir).expect("create synthetic run work dir");
+    let home_binding = format!("geo.building.home_cells:rows={}", home_cells.display());
+    let tile_binding = format!("geo.building.section:request={}", tile_work.display());
+    let warehouse_binding = format!(
+        "geo.building.materialize_evidence:rows={}",
+        warehouse_rows.display()
+    );
+
+    let assert = canon_command()
+        .arg("geo")
+        .arg("run")
+        .arg("--plan")
+        .arg(&plan)
+        .arg("--work-dir")
+        .arg(&work_dir)
+        .arg("--input")
+        .arg(&home_binding)
+        .arg("--input")
+        .arg(&tile_binding)
+        .arg("--input")
+        .arg(&warehouse_binding)
+        .assert()
+        .success();
+    assert!(assert.get_output().stderr.is_empty());
+
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf-8 stdout");
+    assert!(stdout.ends_with('\n'));
+    let run: Value = serde_json::from_str(stdout.trim_end()).expect("run JSON parses");
+    assert_eq!(run["version"], "canon_geo_run.v0");
+    assert_eq!(run["status"], "COMPLETED", "run JSON: {run}");
+    assert_eq!(run["phase"], "SOLVED");
+    let semantic_hash = run["semantic_hash"].as_str().expect("semantic hash");
+    assert!(semantic_hash.starts_with("blake3:"));
+    assert_eq!(
+        run["run_id"],
+        format!(
+            "canon_geo_run.v0:{}",
+            semantic_hash.trim_start_matches("blake3:")
+        )
+    );
+    assert_eq!(
+        run["project_run_report"]["executed_nodes"],
+        json!([
+            "geo.building.compile_evidence",
+            "geo.building.home_cells",
+            "geo.building.materialize_evidence",
+            "geo.building.section",
+            "geo.building.solve"
+        ])
+    );
+    assert_eq!(run["artifact_inputs"].as_array().unwrap().len(), 3);
+    assert_eq!(run["output_refs"].as_array().unwrap().len(), 5);
+    assert!(
+        run["output_refs"].as_array().unwrap().iter().any(|output| {
+            output["artifact_id"] == "geo.building.solve/solve"
+                && output["contract_version"] == "canon_geo_composition.v0"
+        }),
+        "run JSON must expose the typed solve output ref"
+    );
+
+    let solve_path = work_dir.join("geo/building/solve.json");
+    let solve_bytes = fs::read(&solve_path).expect("solve artifact is published");
+    let solve: Value = serde_json::from_slice(&solve_bytes).expect("solve artifact parses");
+    assert_eq!(solve["version"], "canon_geo_composition.v0");
+    assert_eq!(solve["status"], "resolved");
+    assert_eq!(solve["summary"]["residual_model_count"], 1);
+    assert_eq!(solve["summary"]["component_count"], 1);
+    assert_eq!(solve["factorization"][0]["key"], "building:building-a");
+    assert_eq!(
+        solve["evidence_compilation"]["version"],
+        "canon_geo_evidence_compilation.v0"
+    );
+}
+
+#[test]
+fn geo_run_cli_refuses_synthetic_not_live_wrong_explicit_binding_contract() {
+    let temp = tempdir().expect("tempdir");
+    let input_dir = temp.path().join("synthetic-not-live-inputs");
+    fs::create_dir(&input_dir).expect("create synthetic input dir");
+    let plan = write_geo_run_building_plan(&input_dir);
+    let (home_cells, _, warehouse_rows) = write_geo_run_synthetic_input_set(&input_dir);
+    let work_dir = temp.path().join("synthetic-not-live-work");
+    fs::create_dir(&work_dir).expect("create synthetic run work dir");
+    let home_binding = format!("geo.building.home_cells:rows={}", home_cells.display());
+    let wrong_tile_binding = format!("geo.building.section:request={}", home_cells.display());
+    let warehouse_binding = format!(
+        "geo.building.materialize_evidence:rows={}",
+        warehouse_rows.display()
+    );
+
+    let refusal = canon_command()
+        .arg("geo")
+        .arg("run")
+        .arg("--plan")
+        .arg(&plan)
+        .arg("--work-dir")
+        .arg(&work_dir)
+        .arg("--input")
+        .arg(&home_binding)
+        .arg("--input")
+        .arg(&wrong_tile_binding)
+        .arg("--input")
+        .arg(&warehouse_binding)
+        .assert()
+        .code(2);
+
+    let refusal: Value =
+        serde_json::from_slice(&refusal.get_output().stdout).expect("wrong binding refusal parses");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        refusal["refusal"]["detail"]["geo_run_error_code"],
+        "ARTIFACT_CONTRACT"
+    );
+    assert!(
+        refusal["refusal"]["detail"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("input binding contract")
+    );
+    assert!(
+        !work_dir.join("geo/building/solve.json").exists(),
+        "wrong explicit binding must refuse before publishing a solve artifact"
+    );
+}
+
+#[test]
+fn geo_run_cli_refuses_synthetic_not_live_non_positive_acquisition_satisfaction() {
+    let temp = tempdir().expect("tempdir");
+    let input_dir = temp.path().join("synthetic-not-live-acquisition-inputs");
+    fs::create_dir(&input_dir).expect("create synthetic acquisition input dir");
+    let (plan, request) = write_geo_run_acquisition_plan(&input_dir);
+    let artifact = write_json(
+        &input_dir,
+        "synthetic-not-live-zero-rows-artifact.json",
+        &synthetic_not_live_empty_acquisition_artifact(),
+    );
+    let artifact_bytes = fs::read(&artifact).expect("read synthetic acquisition artifact");
+    let receipt = write_geo_run_zero_rows_acquisition_receipt(
+        &input_dir,
+        &request,
+        artifact_bytes.as_slice(),
+    );
+    let work_dir = temp.path().join("synthetic-not-live-acquisition-work");
+    fs::create_dir(&work_dir).expect("create synthetic acquisition work dir");
+    let request_id = request["request_id"]
+        .as_str()
+        .expect("acquisition request id");
+    let input_binding = format!("geo.synthetic.acquisition:artifact={}", artifact.display());
+    let satisfaction = format!("{request_id}={}", receipt.display());
+
+    let assert = canon_command()
+        .arg("geo")
+        .arg("run")
+        .arg("--plan")
+        .arg(&plan)
+        .arg("--work-dir")
+        .arg(&work_dir)
+        .arg("--input")
+        .arg(&input_binding)
+        .arg("--satisfy")
+        .arg(&satisfaction)
+        .assert()
+        .code(2);
+    assert!(
+        assert.get_output().stderr.is_empty(),
+        "non-positive satisfaction must be a refusal, not a stderr warning"
+    );
+
+    let refusal: Value = serde_json::from_slice(&assert.get_output().stdout)
+        .expect("non-positive satisfaction refusal parses");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        refusal["refusal"]["message"],
+        "Geo run --satisfy receipt did not meet its positive acquisition gate"
+    );
+    assert_eq!(refusal["refusal"]["detail"]["request_id"], request_id);
+    assert_eq!(refusal["refusal"]["detail"]["status"], "not_satisfied");
+    let findings = refusal["refusal"]["detail"]["findings"]
+        .as_array()
+        .expect("satisfaction findings");
+    assert!(
+        findings.iter().any(|finding| {
+            finding["code"] == "zero_rows"
+                && finding["detail"]["rows"] == "0"
+                && finding["detail"]["positive_path_min_rows"] == "1"
+        }),
+        "refusal must expose the zero-row acquisition finding"
+    );
+    assert_ne!(refusal["version"], "canon_geo_run.v0");
+    assert!(
+        !work_dir.join("geo/building/solve.json").exists(),
+        "non-positive satisfaction must refuse before an ordinary run publishes solve output"
+    );
 }
 
 #[test]

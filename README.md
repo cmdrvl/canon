@@ -381,6 +381,7 @@ canon project plan --manifest <MANIFEST> --lock <LOCK> [--out <PLAN>] [--cache-h
 canon project run [--plan <PLAN>] [--manifest <MANIFEST>] [--lock <LOCK>] [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json|summary]
 canon geo capabilities [--emit json]
 canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>
+canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]
 canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>
 canon geo materialize-home-cells --rows <ROWS.json>
 canon geo tile-work --request <REQUEST.json>
@@ -557,7 +558,24 @@ profile only: omitted/default `parcel` still requires a parcel universe, explici
 typed instead of poisoning supported grains. Missing local source inputs become typed
 discovery/acquisition requests when the required release or as-of selector is present;
 otherwise they remain explicit discovery gaps. The command does not execute work, acquire
-data, prove candidate reach without an independent reference, or ship `geo run`/`geo inspect`.
+data, or prove candidate reach without an independent reference.
+
+`canon geo run --plan --work-dir` is a bounded offline run over the Geo plan's single
+validated project DAG. It delegates to the shared project runner and registered internal
+Geo executor for the current five-stage chain: materialize home cells, build the bounded
+tile section, materialize evidence, compile evidence, then solve composition. `--input` is
+optional at invocation because a blocked plan or missing local artifacts can still produce
+a typed `WAITING_FOR_INPUT` run with exact next actions. When supplied, public inputs are
+local exogenous leaf artifacts only: home-cell rows, tile-work requests, and warehouse
+rows, each bound by artifact id, media/contract, byte count, and canonical BLAKE3 digest.
+Compile-evidence and solve are fed by declared dependency outputs, not by external
+overrides. `--satisfy` validates consistency between acquisition receipts and explicit
+input bytes only; it does not mutate the plan, clear acquisition blockers, or replan.
+
+Open Geo limits remain: acquisition stays outside Canon's deterministic offline run,
+exactness is representation-relative to admitted candidates and contracts, candidate reach
+is an upstream proof obligation, immutable cross-release reuse in the same work directory is
+not guaranteed, E5/live scale proof is not shipped, and `geo inspect` remains open.
 
 ### Arguments
 
@@ -609,6 +627,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `project lock refresh --manifest <MANIFEST> --out <LOCK> [--emit json\|summary]` | Hash actual declared local source bytes and atomically refresh a `canon.project.lock.v1` artifact. |
 | `project plan --manifest <MANIFEST> --lock <LOCK> [--out <PLAN>] [--cache-hit <NODE>...] [--emit json\|summary]` | Emit the native validated `canon.project.plan.v1` artifact and executable `project run --node` next commands. |
 | `project run [--plan <PLAN>] [--manifest <MANIFEST>] [--lock <LOCK>] [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json\|summary]` | Validate a project plan, reuse valid `canon.project.run.v2` receipts, and execute supported pending nodes through registered internal offline executors. Unknown or unsafe executor declarations still refuse before publication. |
+| `geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]` | Execute or preflight the current bounded offline Geo five-stage chain through the shared project runner and Geo executor, using only local exogenous leaf inputs when provided. It resumes validated completed outputs, refuses undeclared commands or compile/solve input overrides, and emits a `canon_geo_run.v0` projection over `canon.project.run.v2` receipts. `--satisfy` checks receipt/explicit-byte consistency only; it does not mutate the plan, clear acquisition blockers, or replan. |
 | `inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json\|summary]` | List ranked unresolved inbox items with deterministic pagination and typed filters. |
 | `inbox show --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json\|summary]` | Show one unresolved inbox item and its next commands. |
 | `inbox explain --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json\|summary]` | Explain one inbox item's priority score components and provenance. |
@@ -1446,7 +1465,14 @@ parcel layer.
 The Geo planner and target run view reuse Canon's shared project
 manifest/lock/plan/run/receipt substrate; they are not a second orchestration engine.
 `canon geo plan` now ships as an offline/read-only planner over one validated
-`canon.project.plan.v1` DAG, while `geo run` and `geo inspect` remain open.
+`canon.project.plan.v1` DAG. `canon geo run` now ships as the bounded offline run
+projection over that DAG: with optional explicit local home-cell rows, tile-work request,
+and warehouse rows, it runs materialize-home-cells -> tile-work -> materialize-evidence ->
+compile-evidence -> solve through the shared project runner and emits `canon_geo_run.v0`
+over `canon.project.run.v2` receipts. Without required local inputs, it can still return a
+typed `WAITING_FOR_INPUT` run. It resumes validated completed outputs, refuses undeclared
+commands or compile/solve input overrides, and treats `--satisfy` as receipt/explicit-byte
+consistency validation only, not plan mutation or replanning.
 
 `canon geo capabilities --emit json` ships as a deterministic, offline description of the
 compiled Geo control contracts. Use `canon geo plan --question <QUESTION.json>
@@ -1454,7 +1480,11 @@ compiled Geo control contracts. Use `canon geo plan --question <QUESTION.json>
 --budget <BUDGET.json>` to emit `canon_geo_plan.v0`. The current composition profile is
 parcel/building only; candidate reach remains independently unverified unless the inputs
 name a reference that proves it. Existing leaf commands remain independently callable via
-`canon --describe`, but there is no shipped Geo execution or live-proof surface yet.
+`canon --describe`.
+
+Geo run is not live acquisition or live proof: acquisition remains external, exactness is
+representation-relative, candidate reach is upstream, immutable cross-release same-workdir
+reuse is not guaranteed, E5/live scale proof is not shipped, and `geo inspect` remains open.
 
 ---
 

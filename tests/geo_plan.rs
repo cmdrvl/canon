@@ -13,7 +13,7 @@ use canon::geo::{
     GeoSourceAvailability, GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass,
     GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
     GeoValueOrigin, canonical_geo_plan_bytes, capabilities_semantic_hash, compile_geo_plan,
-    default_geo_capabilities, validate_geo_plan,
+    default_geo_capabilities, geo_discovery_request_id, geo_plan_semantic_hash, validate_geo_plan,
 };
 
 fn digest(label: &str) -> String {
@@ -408,6 +408,48 @@ fn unknown_source_with_as_of_emits_a_typed_discovery_request() {
 }
 
 #[test]
+fn discovery_handoff_ids_and_prose_do_not_change_planning_identity() {
+    let mut discovery_question = question(false);
+    discovery_question.query_as_of = Some(GeoAsOf {
+        utc_day: "2026-08-31".to_string(),
+        semantic_id: "query.as_of".to_string(),
+        unit: "utc_day".to_string(),
+        origin: GeoValueOrigin::CallerDeclared,
+    });
+    let inventory = GeoRegionalInventory {
+        version: CANON_GEO_REGIONAL_INVENTORY_VERSION.to_string(),
+        inventory_id: "inventory.discovery.plan".to_string(),
+        region: region(),
+        sources: Vec::new(),
+        discovery_gaps: vec![GeoDiscoveryGap {
+            gap_id: "gap.building_footprint".to_string(),
+            requested_entity_level: Some(GeoControlEntityLevel::Building),
+            requested_evidence_class: GeoEvidenceClass::BuildingFootprint,
+            reason: "no local source instance is declared".to_string(),
+            next_command: "route to an external catalog executor".to_string(),
+        }],
+    };
+    let plan =
+        compile_geo_plan(request(discovery_question, inventory, budget())).expect("discovery plan");
+    let mut relabelled = plan.clone();
+    let GeoPlanExternalRequest::Discovery { gap_id, request } =
+        &mut relabelled.external_requests[0]
+    else {
+        panic!("expected discovery request");
+    };
+    *gap_id = "renamed.operator.gap".to_string();
+    request.column_readability_probe.probe_id = "renamed.operator.probe".to_string();
+    request.request_id = geo_discovery_request_id(request).expect("recompute request id");
+
+    assert_ne!(plan.external_requests, relabelled.external_requests);
+    assert_eq!(
+        geo_plan_semantic_hash(&plan).expect("original hash"),
+        geo_plan_semantic_hash(&relabelled).expect("relabelled hash")
+    );
+    validate_geo_plan(&relabelled).expect("relabelled discovery provenance remains valid");
+}
+
+#[test]
 fn source_names_and_telemetry_do_not_change_planning_identity() {
     let first = compile_geo_plan(request(
         question(false),
@@ -475,6 +517,37 @@ fn unavailable_source_name_is_provenance_not_acquisition_planning_identity() {
     );
     assert_eq!(first.semantic_hash, second.semantic_hash);
     assert_eq!(first.plan_id, second.plan_id);
+}
+
+#[test]
+fn explanatory_prose_does_not_change_planning_identity() {
+    let plan = compile_geo_plan(request(
+        question(false),
+        inventory("building-source", GeoSourceAvailability::Available),
+        budget(),
+    ))
+    .expect("plan");
+    let original_bytes = canonical_geo_plan_bytes(&plan).expect("canonical plan");
+    let mut reworded = plan.clone();
+    reworded
+        .diagnostics
+        .push("operator-only diagnostic".to_string());
+    reworded.grain_outcomes[0].claim_limitation = "reworded explanation".to_string();
+    reworded.grain_outcomes[0].next_action = "reworded operator handoff".to_string();
+    reworded.geo_nodes[0].preconditions[0].detail = "reworded gate explanation".to_string();
+    reworded.geo_nodes[0].cost_estimate_ranges[0].basis =
+        "reworded non-semantic estimate basis".to_string();
+    reworded.geo_nodes[0].transitions.success = "reworded success handoff".to_string();
+
+    assert_eq!(
+        geo_plan_semantic_hash(&plan).expect("original hash"),
+        geo_plan_semantic_hash(&reworded).expect("reworded hash")
+    );
+    validate_geo_plan(&reworded).expect("reworded prose preserves semantic validity");
+    assert_ne!(
+        original_bytes,
+        canonical_geo_plan_bytes(&reworded).expect("reworded canonical plan")
+    );
 }
 
 #[test]

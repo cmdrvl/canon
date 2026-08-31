@@ -14,17 +14,19 @@ use crate::{
         GeoLinkSourcesCli, GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli,
         GeoMaterializeGeometryCli, GeoMaterializeH7PopulationCli, GeoMaterializeH7StagingBatchCli,
         GeoMaterializeHomeCellsCli, GeoMaterializeWarehouseGeometryCli, GeoPlanCli,
-        GeoReconcileTilesCli, GeoSolveCli, GeoSubcommand, GeoTileWorkCli,
+        GeoReconcileTilesCli, GeoRunCli, GeoSolveCli, GeoSubcommand, GeoTileWorkCli,
     },
+    project::ProjectRunPolicy,
     refusal,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
+    collections::{BTreeMap, BTreeSet},
     error::Error,
     fs,
     io::{self, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use super::{
@@ -44,6 +46,7 @@ use super::{
         GeoControlError, GeoQuestion, GeoRegionalInventory, GeoResourceBudget,
         canonical_capabilities_bytes, default_geo_capabilities,
     },
+    discovery::{CANON_GEO_ACQUISITION_RECEIPT_VERSION, GeoAcquisitionReceipt, GeoDigestAlgorithm},
     evaluation::{
         CANON_GEO_POPULATION_REQUEST_VERSION, GeoPopulationError, GeoPopulationEvaluationRequest,
         canonical_population_evaluation_bytes, evaluate_population,
@@ -73,7 +76,19 @@ use super::{
         CANON_GEO_MULTISOURCE_REQUEST_VERSION, GeoMultisourceRequest,
         canonical_multisource_artifact_bytes, materialize_geo_multisource,
     },
-    plan::{GeoPlanError, GeoPlanRequest, canonical_geo_plan_bytes, compile_geo_plan},
+    plan::{
+        CANON_GEO_PLAN_VERSION, GeoPlan, GeoPlanError, GeoPlanRequest, canonical_geo_plan_bytes,
+        compile_geo_plan,
+    },
+    run::{
+        CANON_GEO_RUN_VERSION, GeoRunError, GeoRunInputBinding, GeoRunRequest,
+        canonical_geo_run_bytes, run_geo_plan,
+    },
+    satisfy::{
+        GeoSatisfactionAssignment, GeoSatisfactionFileBinding, GeoSatisfactionRunInput,
+        GeoSatisfactionRunInputFileBinding, GeoSatisfactionStatus, GeoSatisfyError,
+        parse_geo_satisfaction_assignment, satisfy_geo_acquisition_for_run,
+    },
     tile::{
         CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_VERSION,
@@ -86,11 +101,14 @@ use super::{
 };
 
 const GEO_PLAN_NEXT_COMMAND: &str = "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>";
+const GEO_RUN_NEXT_COMMAND: &str =
+    "canon geo run --plan <PLAN.json> --work-dir <DIR> --input <NODE_ID:BINDING_ID=PATH>";
 
 pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
     match &geo.command {
         GeoSubcommand::Capabilities(args) => run_capabilities(args),
         GeoSubcommand::Plan(args) => run_plan(args),
+        GeoSubcommand::Run(args) => run_geo_run(args),
         GeoSubcommand::LinkSources(args) => run_link_sources(args),
         GeoSubcommand::MaterializeHomeCells(args) => run_materialize_home_cells(args),
         GeoSubcommand::TileWork(args) => run_tile_work(args),
@@ -184,6 +202,84 @@ fn run_plan(args: &GeoPlanCli) -> Result<u8, Box<dyn Error>> {
     match canonical_geo_plan_bytes(&plan) {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_plan_error(error),
+    }
+}
+
+fn run_geo_run(args: &GeoRunCli) -> Result<u8, Box<dyn Error>> {
+    let plan: GeoPlan = match read_request(
+        &args.plan,
+        "plan",
+        CANON_GEO_PLAN_VERSION,
+        GEO_RUN_NEXT_COMMAND,
+    ) {
+        Ok(plan) => plan,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let input_files = match read_geo_run_inputs(&args.input) {
+        Ok(inputs) => inputs,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let satisfaction_bindings = match validate_geo_satisfactions(&plan, &args.satisfy, &input_files)
+    {
+        Ok(bindings) => bindings,
+        Err(exit_code) => return Ok(exit_code),
+    };
+
+    let input_bindings = input_files
+        .into_iter()
+        .map(|input| {
+            let binding = GeoRunInputBinding::from_bytes(
+                input.node_id,
+                input.binding_id,
+                input.contract_version,
+                input.bytes,
+            );
+            (
+                (binding.node_id.clone(), binding.binding_id.clone()),
+                binding,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    for binding in satisfaction_bindings {
+        let key = (binding.node_id.clone(), binding.binding_id.clone());
+        match input_bindings.get(&key) {
+            Some(explicit) if explicit == &binding => {}
+            Some(_) => {
+                return emit_refusal(
+                    RefusalCode::EEntityArtifactContract,
+                    "Geo satisfaction binding disagrees with its explicit --input bytes",
+                    json!({
+                        "node_id": key.0,
+                        "binding_id": key.1,
+                    }),
+                    Some(GEO_RUN_NEXT_COMMAND.to_string()),
+                );
+            }
+            None => {
+                return emit_refusal(
+                    RefusalCode::EEntityArtifactContract,
+                    "Geo satisfaction binding has no matching explicit --input",
+                    json!({
+                        "node_id": key.0,
+                        "binding_id": key.1,
+                    }),
+                    Some(GEO_RUN_NEXT_COMMAND.to_string()),
+                );
+            }
+        }
+    }
+    let request = GeoRunRequest::new(
+        plan,
+        ProjectRunPolicy::new(&args.work_dir, ".canon/geo-run"),
+        input_bindings.into_values().collect(),
+    );
+    let run = match run_geo_plan(request) {
+        Ok(run) => run,
+        Err(error) => return emit_run_error(error),
+    };
+    match canonical_geo_run_bytes(&run) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_run_error(error),
     }
 }
 
@@ -486,6 +582,447 @@ fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
     }
 }
 
+#[derive(Debug, Clone)]
+struct GeoRunInputFile {
+    node_id: String,
+    binding_id: String,
+    path: PathBuf,
+    contract_version: String,
+    content_digest: String,
+    byte_count: u64,
+    bytes: Vec<u8>,
+}
+
+fn read_geo_run_inputs(values: &[String]) -> Result<Vec<GeoRunInputFile>, u8> {
+    let mut seen = BTreeSet::new();
+    let mut inputs = Vec::with_capacity(values.len());
+    for value in values {
+        let assignment = match parse_geo_run_input_assignment(value) {
+            Ok(assignment) => assignment,
+            Err(message) => {
+                return Err(emit_refusal(
+                    RefusalCode::EParse,
+                    "Geo run --input must be NODE_ID:BINDING_ID=PATH",
+                    json!({
+                        "input": value,
+                        "error": message,
+                    }),
+                    Some(GEO_RUN_NEXT_COMMAND.to_string()),
+                )
+                .unwrap_or(2));
+            }
+        };
+        let key = (assignment.node_id.clone(), assignment.binding_id.clone());
+        if !seen.insert(key.clone()) {
+            return Err(emit_refusal(
+                RefusalCode::EParse,
+                "Geo run --input declares the same node binding more than once",
+                json!({
+                    "node_id": key.0,
+                    "binding_id": key.1,
+                }),
+                Some(GEO_RUN_NEXT_COMMAND.to_string()),
+            )
+            .unwrap_or(2));
+        }
+        let bytes = match fs::read(&assignment.path) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                return Err(emit_refusal(
+                    RefusalCode::EIo,
+                    "Could not read the Geo --input file",
+                    json!({
+                        "input": value,
+                        "path": path_string(&assignment.path),
+                        "error": error.to_string(),
+                    }),
+                    Some(GEO_RUN_NEXT_COMMAND.to_string()),
+                )
+                .unwrap_or(2));
+            }
+        };
+        let contract_version = json_contract_version(&bytes, &assignment.path)?;
+        let byte_count = match u64::try_from(bytes.len()) {
+            Ok(byte_count) => byte_count,
+            Err(_) => {
+                return Err(emit_refusal(
+                    RefusalCode::EEntityArtifactContract,
+                    "Geo run --input file byte count overflowed u64",
+                    json!({
+                        "path": path_string(&assignment.path),
+                    }),
+                    Some(GEO_RUN_NEXT_COMMAND.to_string()),
+                )
+                .unwrap_or(2));
+            }
+        };
+        inputs.push(GeoRunInputFile {
+            node_id: assignment.node_id,
+            binding_id: assignment.binding_id,
+            path: assignment.path,
+            contract_version,
+            content_digest: blake3_prefixed(&bytes),
+            byte_count,
+            bytes,
+        });
+    }
+    inputs.sort_by(|left, right| {
+        (&left.node_id, &left.binding_id, &left.path).cmp(&(
+            &right.node_id,
+            &right.binding_id,
+            &right.path,
+        ))
+    });
+    Ok(inputs)
+}
+
+#[derive(Debug, Clone)]
+struct GeoRunInputAssignment {
+    node_id: String,
+    binding_id: String,
+    path: PathBuf,
+}
+
+fn parse_geo_run_input_assignment(value: &str) -> Result<GeoRunInputAssignment, String> {
+    let (target, path) = value
+        .split_once('=')
+        .ok_or_else(|| "missing '=' separator".to_string())?;
+    let mut target_parts = target.split(':');
+    let node_id = target_parts
+        .next()
+        .ok_or_else(|| "missing node id".to_string())?;
+    let binding_id = target_parts
+        .next()
+        .ok_or_else(|| "missing binding id".to_string())?;
+    if target_parts.next().is_some() {
+        return Err("left side must be exactly NODE_ID:BINDING_ID".to_string());
+    }
+    if node_id.is_empty()
+        || binding_id.is_empty()
+        || path.is_empty()
+        || node_id.trim() != node_id
+        || binding_id.trim() != binding_id
+        || path.trim() != path
+    {
+        return Err("node id, binding id, and path must be non-empty and trimmed".to_string());
+    }
+    Ok(GeoRunInputAssignment {
+        node_id: node_id.to_string(),
+        binding_id: binding_id.to_string(),
+        path: PathBuf::from(path),
+    })
+}
+
+fn json_contract_version(bytes: &[u8], path: &Path) -> Result<String, u8> {
+    let value: Value = serde_json::from_slice(bytes).map_err(|error| {
+        emit_refusal(
+            RefusalCode::EParse,
+            "Could not parse the Geo --input file",
+            json!({
+                "path": path_string(path),
+                "expected_version": "typed Geo JSON artifact",
+                "error": error.to_string(),
+            }),
+            Some(GEO_RUN_NEXT_COMMAND.to_string()),
+        )
+        .unwrap_or(2)
+    })?;
+    value
+        .get("version")
+        .and_then(Value::as_str)
+        .filter(|version| !version.is_empty() && version.trim() == *version)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            emit_refusal(
+                RefusalCode::EEntityArtifactContract,
+                "Geo --input file must carry a non-empty string version",
+                json!({
+                    "path": path_string(path),
+                }),
+                Some(GEO_RUN_NEXT_COMMAND.to_string()),
+            )
+            .unwrap_or(2)
+        })
+}
+
+fn validate_geo_satisfactions(
+    plan: &GeoPlan,
+    values: &[String],
+    inputs: &[GeoRunInputFile],
+) -> Result<Vec<GeoRunInputBinding>, u8> {
+    let mut seen = BTreeSet::new();
+    let mut assignments = Vec::with_capacity(values.len());
+    for value in values {
+        let assignment = match parse_geo_satisfaction_assignment(value) {
+            Ok(assignment) => assignment,
+            Err(error) => return Err(emit_satisfy_error(error).unwrap_or(2)),
+        };
+        if !seen.insert(assignment.request_id.clone()) {
+            return Err(emit_refusal(
+                RefusalCode::EParse,
+                "Geo run --satisfy declares the same request more than once",
+                json!({
+                    "request_id": assignment.request_id,
+                }),
+                Some(GEO_RUN_NEXT_COMMAND.to_string()),
+            )
+            .unwrap_or(2));
+        }
+        assignments.push(assignment);
+    }
+    let mut verified_run_bindings = Vec::new();
+    for assignment in assignments {
+        let receipt = read_geo_acquisition_receipt(&assignment)?;
+        let run_input_files =
+            pair_receipt_run_input_targets(&assignment.request_id, &receipt, inputs)?;
+        let result_digest_files =
+            pair_receipt_result_digests(&assignment.request_id, &receipt, inputs)?;
+        let satisfaction = match satisfy_geo_acquisition_for_run(GeoSatisfactionRunInput {
+            plan,
+            inventory: None,
+            assignment,
+            run_input_files,
+            result_digest_files,
+        }) {
+            Ok(satisfaction) => satisfaction,
+            Err(error) => return Err(emit_satisfy_error(error).unwrap_or(2)),
+        };
+        if satisfaction.satisfaction.status != GeoSatisfactionStatus::Satisfied {
+            return Err(emit_refusal(
+                RefusalCode::EEntityArtifactContract,
+                "Geo run --satisfy receipt did not meet its positive acquisition gate",
+                json!({
+                    "request_id": satisfaction.satisfaction.request_id,
+                    "status": code_name(&satisfaction.satisfaction.status),
+                    "findings": satisfaction.satisfaction.findings,
+                }),
+                Some(GEO_RUN_NEXT_COMMAND.to_string()),
+            )
+            .unwrap_or(2));
+        }
+        verified_run_bindings.extend(satisfaction.run_input_bindings);
+    }
+    verified_run_bindings.sort_by(|left, right| {
+        (&left.node_id, &left.binding_id).cmp(&(&right.node_id, &right.binding_id))
+    });
+    Ok(verified_run_bindings)
+}
+
+fn read_geo_acquisition_receipt(
+    assignment: &GeoSatisfactionAssignment,
+) -> Result<GeoAcquisitionReceipt, u8> {
+    let bytes = match fs::read(&assignment.receipt_path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return Err(emit_refusal(
+                RefusalCode::EIo,
+                "Could not read the Geo --satisfy receipt file",
+                json!({
+                    "request_id": assignment.request_id.as_str(),
+                    "receipt": path_string(&assignment.receipt_path),
+                    "error": error.to_string(),
+                }),
+                Some(GEO_RUN_NEXT_COMMAND.to_string()),
+            )
+            .unwrap_or(2));
+        }
+    };
+    serde_json::from_slice(&bytes).map_err(|error| {
+        emit_refusal(
+            RefusalCode::EParse,
+            "Could not parse the Geo --satisfy receipt file",
+            json!({
+                "request_id": assignment.request_id.as_str(),
+                "receipt": path_string(&assignment.receipt_path),
+                "expected_version": CANON_GEO_ACQUISITION_RECEIPT_VERSION,
+                "error": error.to_string(),
+            }),
+            Some(GEO_RUN_NEXT_COMMAND.to_string()),
+        )
+        .unwrap_or(2)
+    })
+}
+
+fn pair_receipt_run_input_targets(
+    request_id: &str,
+    receipt: &GeoAcquisitionReceipt,
+    inputs: &[GeoRunInputFile],
+) -> Result<Vec<GeoSatisfactionRunInputFileBinding>, u8> {
+    let mut bindings = Vec::with_capacity(receipt.local_artifacts.len());
+    for artifact in &receipt.local_artifacts {
+        let expected_digest =
+            match blake3_digest_string(artifact.digest.algorithm, &artifact.digest.hex_digest) {
+                Some(digest) => digest,
+                None => {
+                    return Err(emit_unsupported_receipt_digest_refusal(
+                        request_id,
+                        artifact.artifact_id.as_str(),
+                        artifact.digest.algorithm,
+                    ));
+                }
+            };
+        let candidates = matching_inputs(inputs, &expected_digest, artifact.byte_count);
+        match candidates.as_slice() {
+            [input] => bindings.push(GeoSatisfactionRunInputFileBinding {
+                local_artifact_id: artifact.artifact_id.clone(),
+                node_id: input.node_id.clone(),
+                binding_id: input.binding_id.clone(),
+                contract_version: input.contract_version.clone(),
+                path: input.path.clone(),
+            }),
+            [] => {
+                return Err(emit_refusal(
+                    RefusalCode::EEntityArtifactContract,
+                    "Geo run could not match a receipt local artifact to any explicit --input file",
+                    json!({
+                        "request_id": request_id,
+                        "artifact_id": artifact.artifact_id.as_str(),
+                        "expected_digest": expected_digest,
+                        "expected_byte_count": artifact.byte_count,
+                        "input_count": inputs.len(),
+                    }),
+                    Some(GEO_RUN_NEXT_COMMAND.to_string()),
+                )
+                .unwrap_or(2));
+            }
+            _ => {
+                return Err(emit_refusal(
+                    RefusalCode::EEntityArtifactContract,
+                    "Geo run receipt local artifact matches more than one explicit --input file",
+                    json!({
+                        "request_id": request_id,
+                        "artifact_id": artifact.artifact_id.as_str(),
+                        "expected_digest": expected_digest,
+                        "expected_byte_count": artifact.byte_count,
+                        "candidates": candidates.iter().map(|input| input.describe()).collect::<Vec<_>>(),
+                    }),
+                    Some(GEO_RUN_NEXT_COMMAND.to_string()),
+                )
+                .unwrap_or(2));
+            }
+        }
+    }
+    Ok(bindings)
+}
+
+fn emit_unsupported_receipt_digest_refusal(
+    request_id: &str,
+    artifact_id: &str,
+    algorithm: GeoDigestAlgorithm,
+) -> u8 {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo run can pair only BLAKE3 local artifact digests to explicit --input files",
+        json!({
+            "request_id": request_id,
+            "artifact_id": artifact_id,
+            "digest_algorithm": format!("{:?}", algorithm),
+        }),
+        Some(GEO_RUN_NEXT_COMMAND.to_string()),
+    )
+    .unwrap_or(2)
+}
+
+fn pair_receipt_result_digests(
+    request_id: &str,
+    receipt: &GeoAcquisitionReceipt,
+    inputs: &[GeoRunInputFile],
+) -> Result<Vec<GeoSatisfactionFileBinding>, u8> {
+    let local_digests = receipt
+        .local_artifacts
+        .iter()
+        .filter_map(|artifact| {
+            blake3_digest_string(artifact.digest.algorithm, &artifact.digest.hex_digest)
+        })
+        .collect::<BTreeSet<_>>();
+    let mut bindings = Vec::new();
+    for digest in &receipt.result_digests {
+        let Some(expected_digest) = blake3_digest_string(digest.algorithm, &digest.hex_digest)
+        else {
+            continue;
+        };
+        if local_digests.contains(&expected_digest) {
+            continue;
+        }
+        let candidates = matching_inputs(inputs, &expected_digest, receipt.counts.bytes);
+        match candidates.as_slice() {
+            [input] => bindings.push(GeoSatisfactionFileBinding {
+                binding_id: digest.digest_id.clone(),
+                path: input.path.clone(),
+            }),
+            [] => {
+                return Err(emit_refusal(
+                    RefusalCode::EEntityArtifactContract,
+                    "Geo run could not match a receipt result digest to any explicit --input file",
+                    json!({
+                        "request_id": request_id,
+                        "digest_id": digest.digest_id.as_str(),
+                        "expected_digest": expected_digest,
+                        "expected_byte_count": receipt.counts.bytes,
+                        "input_count": inputs.len(),
+                    }),
+                    Some(GEO_RUN_NEXT_COMMAND.to_string()),
+                )
+                .unwrap_or(2));
+            }
+            _ => {
+                return Err(emit_refusal(
+                    RefusalCode::EEntityArtifactContract,
+                    "Geo run receipt result digest matches more than one explicit --input file",
+                    json!({
+                        "request_id": request_id,
+                        "digest_id": digest.digest_id.as_str(),
+                        "expected_digest": expected_digest,
+                        "expected_byte_count": receipt.counts.bytes,
+                        "candidates": candidates.iter().map(|input| input.describe()).collect::<Vec<_>>(),
+                    }),
+                    Some(GEO_RUN_NEXT_COMMAND.to_string()),
+                )
+                .unwrap_or(2));
+            }
+        }
+    }
+    bindings.sort_by(|left, right| left.binding_id.cmp(&right.binding_id));
+    Ok(bindings)
+}
+
+fn matching_inputs<'a>(
+    inputs: &'a [GeoRunInputFile],
+    expected_digest: &str,
+    expected_byte_count: u64,
+) -> Vec<&'a GeoRunInputFile> {
+    let mut candidates = inputs
+        .iter()
+        .filter(|input| {
+            input.content_digest == expected_digest && input.byte_count == expected_byte_count
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by_key(|candidate| candidate.describe());
+    candidates
+}
+
+impl GeoRunInputFile {
+    fn describe(&self) -> String {
+        format!(
+            "{}:{}={}",
+            self.node_id,
+            self.binding_id,
+            path_string(&self.path)
+        )
+    }
+}
+
+fn blake3_digest_string(algorithm: GeoDigestAlgorithm, hex_digest: &str) -> Option<String> {
+    match algorithm {
+        GeoDigestAlgorithm::Blake3 => Some(format!("blake3:{hex_digest}")),
+        _ => None,
+    }
+}
+
+fn blake3_prefixed(bytes: &[u8]) -> String {
+    format!("blake3:{}", blake3::hash(bytes).to_hex())
+}
+
 /// Read and parse one typed Geo request file.
 ///
 /// IO and parse failures are distinct refusals so an operator can tell a
@@ -685,6 +1222,37 @@ fn emit_plan_error(error: GeoPlanError) -> Result<u8, Box<dyn Error>> {
         }),
         Some(
             "repair the plan inputs against canon_geo_question.v0, canon_geo_capabilities.v0, canon_geo_regional_inventory.v0, canon_geo_composition_profile.v0, and canon_geo_resource_budget.v0, then rerun canon geo plan"
+                .to_string(),
+        ),
+    )
+}
+
+fn emit_run_error(error: GeoRunError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo run request could not be executed",
+        json!({
+            "geo_run_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(format!(
+            "repair the plan and explicit inputs against {CANON_GEO_RUN_VERSION}, then rerun canon geo run"
+        )),
+    )
+}
+
+fn emit_satisfy_error(error: GeoSatisfyError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo acquisition satisfaction could not be validated",
+        json!({
+            "geo_satisfy_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(
+            "repair the REQUEST_ID=RECEIPT.json handoff and explicit --input bytes, then rerun canon geo run"
                 .to_string(),
         ),
     )

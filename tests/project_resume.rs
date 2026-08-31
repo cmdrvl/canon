@@ -298,6 +298,24 @@ fn telemetry_variation_preserves_semantic_hashes_and_downstream_artifacts() {
 }
 
 #[test]
+fn failure_prose_is_integrity_protected_but_not_semantic_identity() {
+    let mut first = standalone_receipt(Path::new("unused"), "failed-node");
+    first.outcome = ProjectRunNodeOutcome::Failed;
+    first.next_action = receipt::ProjectRunNextAction::InspectFailure;
+    first.failure_code = Some("E_INPUT".to_string());
+    first.failure_message = Some("failed to read /first/workspace/input.json".to_string());
+    let first = finalized_node_receipt(first).expect("first failure receipt");
+
+    let mut second = first.clone();
+    second.failure_message = Some("failed to read /second/workspace/input.json".to_string());
+    let second = finalized_node_receipt(second).expect("second failure receipt");
+
+    assert_eq!(first.semantic_hash, second.semantic_hash);
+    assert_ne!(first.telemetry_hash, second.telemetry_hash);
+    assert_ne!(first.receipt_hash, second.receipt_hash);
+}
+
+#[test]
 fn deterministic_usage_counters_are_semantic_dependency_inputs() {
     let plan = chain_plan();
     let first_dir = tempfile::tempdir().expect("first");
@@ -405,7 +423,7 @@ fn run_report_serializes_schema_declared_hash_surfaces() {
 }
 
 #[test]
-fn executor_context_carries_only_dependency_semantic_hashes() {
+fn executor_context_carries_dependency_semantics_and_validated_output_bytes() {
     let temp = tempfile::tempdir().expect("tempdir");
     let plan = chain_plan();
     let mut executor = ContextRecordingExecutor::default();
@@ -436,6 +454,21 @@ fn executor_context_carries_only_dependency_semantic_hashes() {
     assert_eq!(
         beta.dependency_receipt_hashes.get("alpha"),
         Some(&alpha.receipt_hash)
+    );
+    let alpha_outputs = executor
+        .dependency_outputs
+        .get("beta")
+        .and_then(|dependencies| dependencies.get("alpha"))
+        .expect("beta receives alpha outputs");
+    assert_eq!(alpha_outputs.len(), 1);
+    assert_eq!(alpha_outputs[0].output_id, alpha.outputs[0].output_id);
+    assert_eq!(
+        alpha_outputs[0].content_digest,
+        alpha.outputs[0].content_digest
+    );
+    assert_eq!(
+        alpha_outputs[0].bytes,
+        fs::read(artifact_path(temp.path(), &plan, "alpha")).expect("alpha artifact")
     );
 }
 
@@ -554,6 +587,39 @@ fn registered_internal_copy_file_executor_runs_pending_node_and_reuses_receipt()
 
     assert!(second.executed_nodes.is_empty());
     assert_eq!(second.resumed_nodes, vec!["alpha".to_string()]);
+}
+
+#[test]
+fn completed_receipt_with_foreign_output_id_is_refused_not_resumed() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let input_bytes = b"id,name\n1,Alice\n";
+    write_workspace_file(temp.path(), "input/source.csv", input_bytes);
+    let mut plan = single_node_plan();
+    configure_internal_copy_node(&mut plan, "alpha", "input/source.csv", input_bytes);
+    let policy = ProjectRunPolicy::new(temp.path(), "work");
+
+    run_project_plan_with_registered_executors(&plan, &policy).expect("initial execution");
+    let path = receipt_path(temp.path(), "alpha");
+    let mut receipt = read_node_receipt(&path).expect("initial receipt");
+    receipt.outputs[0].output_id = "foreign-output".to_string();
+    let receipt = finalized_node_receipt(receipt).expect("foreign output receipt finalizes");
+    fs::write(
+        &path,
+        canonical_node_receipt_bytes(&receipt).expect("foreign output receipt bytes"),
+    )
+    .expect("write foreign output receipt");
+
+    let error = run_project_plan_with_registered_executors(&plan, &policy)
+        .expect_err("foreign output receipt leaves an unrecoverable stale artifact");
+
+    assert_eq!(error.code, ProjectRunErrorCode::StaleArtifact);
+    assert!(error.message.contains("has no valid prior receipt"));
+    assert_eq!(
+        fs::read(artifact_path(temp.path(), &plan, "alpha")).expect("artifact preserved"),
+        input_bytes
+    );
+    let preserved = read_node_receipt(&path).expect("foreign receipt remains integrity-valid");
+    assert_eq!(preserved.outputs[0].output_id, "foreign-output");
 }
 
 #[test]
@@ -1299,6 +1365,7 @@ impl ProjectNodeExecutor for TelemetryExecutor {
 #[derive(Default)]
 struct ContextRecordingExecutor {
     dependency_contexts: BTreeMap<String, BTreeMap<String, String>>,
+    dependency_outputs: BTreeMap<String, BTreeMap<String, Vec<run::ProjectDependencyOutput>>>,
 }
 
 impl ProjectNodeExecutor for ContextRecordingExecutor {
@@ -1311,6 +1378,8 @@ impl ProjectNodeExecutor for ContextRecordingExecutor {
             context.node_id.clone(),
             context.dependency_semantic_hashes.clone(),
         );
+        self.dependency_outputs
+            .insert(context.node_id.clone(), context.dependency_outputs.clone());
         let mut outputs = BTreeMap::new();
         for output in &node.outputs {
             outputs.insert(

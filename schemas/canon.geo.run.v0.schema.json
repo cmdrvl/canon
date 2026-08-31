@@ -1,0 +1,446 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.run.v0.schema.json",
+  "title": "canon.geo.run.v0",
+  "description": "Strict schema for the serialized GeoRun artifact in src/geo/run.rs. The manifest is a Geo semantic projection over canon.project.run.v2 reports and keeps operational observation fields separate from semantic identity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "run_id",
+    "semantic_hash",
+    "status",
+    "phase",
+    "plan_ref",
+    "observation"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon_geo_run.v0"
+    },
+    "run_id": {
+      "$ref": "#/$defs/run_id"
+    },
+    "semantic_hash": {
+      "$ref": "#/$defs/blake3_digest"
+    },
+    "status": {
+      "$ref": "#/$defs/run_status"
+    },
+    "phase": {
+      "$ref": "#/$defs/run_phase"
+    },
+    "plan_ref": {
+      "$ref": "#/$defs/run_plan_ref"
+    },
+    "artifact_inputs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/run_artifact_ref"
+      }
+    },
+    "output_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/run_output_ref"
+      }
+    },
+    "grain_states": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/run_grain_state"
+      }
+    },
+    "deterministic_usage": {
+      "$ref": "#/$defs/usage_map"
+    },
+    "blockers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/run_blocker"
+      }
+    },
+    "next_actions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/next_action"
+      }
+    },
+    "project_run_report": {
+      "$ref": "canon.project.run.v2.schema.json"
+    },
+    "observation": {
+      "$ref": "#/$defs/run_observation"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["status"],
+        "properties": { "status": { "const": "COMPLETED" } }
+      },
+      "then": {
+        "required": ["project_run_report"],
+        "properties": {
+          "blockers": { "maxItems": 0 },
+          "next_actions": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["status"],
+        "properties": { "status": { "const": "WAITING_FOR_INPUT" } }
+      },
+      "then": {
+        "anyOf": [
+          {
+            "required": ["blockers"],
+            "properties": { "blockers": { "minItems": 1 } }
+          },
+          {
+            "required": ["next_actions"],
+            "properties": { "next_actions": { "minItems": 1 } }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": ["status"],
+        "properties": { "status": { "enum": ["FAILED", "CANCELLED"] } }
+      },
+      "then": {
+        "required": ["project_run_report", "blockers"],
+        "properties": { "blockers": { "minItems": 1 } }
+      }
+    }
+  ],
+  "x-canon-contract": {
+    "canonical_contract": "canon_geo_run.v0",
+    "project_run_contract": "canon.project.run.v2",
+    "typed_geo_view_over_project_receipts": true,
+    "no_network_acquisition": true,
+    "content_validated_resume": true,
+    "deterministic_order_required": true,
+    "source_release_time_is_semantic_through_plan_ref": true,
+    "declared_query_as_of_is_semantic_through_plan_ref": true,
+    "deterministic_usage_controls_budget_fallback": true,
+    "semantic_identity_includes": [
+      "version",
+      "status",
+      "phase",
+      "plan_ref",
+      "artifact_inputs",
+      "artifact_inputs.node_id",
+      "artifact_inputs.binding_id",
+      "output_refs",
+      "grain_states.entity_level",
+      "grain_states.status",
+      "grain_states.missing_evidence_classes",
+      "grain_states.project_node_ids",
+      "blockers.blocker_id",
+      "blockers.kind",
+      "blockers.project_node_id",
+      "blockers.entity_level",
+      "next_actions.action_id",
+      "next_actions.kind",
+      "next_actions.project_node_id",
+      "next_actions.artifact_id",
+      "next_actions.expected_contract",
+      "next_actions.media_type",
+      "next_actions.command",
+      "deterministic_usage",
+      "project_run_report.schema_version",
+      "project_run_report.project_id",
+      "project_run_report.plan_graph_hash",
+      "project_run_report.receipt.completed_nodes",
+      "project_run_report.receipt.failed_nodes",
+      "project_run_report.receipt.cancelled_nodes",
+      "project_run_report.receipt.invalidated_nodes",
+      "project_run_report.receipt.blocked_nodes",
+      "project_run_report.receipt.node_receipts[].node_id",
+      "project_run_report.receipt.node_receipts[].outcome",
+      "project_run_report.receipt.node_receipts[].content_hash_inputs",
+      "project_run_report.receipt.node_receipts[].dependency_semantic_hashes",
+      "project_run_report.receipt.node_receipts[].outputs[].output_id",
+      "project_run_report.receipt.node_receipts[].outputs[].content_digest",
+      "project_run_report.receipt.node_receipts[].outputs[].byte_count",
+      "project_run_report.receipt.node_receipts[].deterministic_usage",
+      "project_run_report.receipt.node_receipts[].next_action",
+      "project_run_report.receipt.node_receipts[].failure_code"
+    ],
+    "semantic_identity_excludes": [
+      "observation.workspace_path",
+      "observation.observed_at_utc",
+      "observation.host_id",
+      "observation.process_id",
+      "observation.resource_observations",
+      "project_run_report.max_parallelism",
+      "project_run_report.max_ready_width",
+      "project_run_report.executed_nodes",
+      "project_run_report.resumed_nodes",
+      "project_run_report.failed_nodes",
+      "project_run_report.cancelled_nodes",
+      "project_run_report.invalidated_nodes",
+      "project_run_report.blocked_nodes",
+      "project_run_report.next_actions",
+      "project_run_report.node_reports",
+      "project_run_report.run_receipt_hash",
+      "project_run_report.receipt.receipt_hash",
+      "project_run_report.receipt.node_receipts[].semantic_hash",
+      "project_run_report.receipt.node_receipts[].telemetry_hash",
+      "project_run_report.receipt.node_receipts[].receipt_hash",
+      "project_run_report.receipt.node_receipts[].dependency_receipt_hashes",
+      "project_run_report.receipt.node_receipts[].duration_millis",
+      "project_run_report.receipt.node_receipts[].resource_observations",
+      "project_run_report.receipt.node_receipts[].failure_message",
+      "project_run_report.receipt.node_receipts[].outputs[].path",
+      "paths",
+      "ambient_timestamps",
+      "host",
+      "pid",
+      "worker_order"
+    ]
+  },
+  "$defs": {
+    "blake3_digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^canon_geo_run\\.v0:[0-9a-f]{64}$"
+    },
+    "local_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$"
+    },
+    "project_node_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"
+    },
+    "non_empty_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "contract_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^canon(_|\\.)[A-Za-z0-9_.-]+\\.v[0-9]+$"
+    },
+    "expected_contract": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^canon(_|\\.)[A-Za-z0-9_.-]+\\.v[0-9]+(\\|canon(_|\\.)[A-Za-z0-9_.-]+\\.v[0-9]+)*$"
+    },
+    "entity_level": {
+      "type": "string",
+      "enum": ["site", "property", "parcel", "building", "unit", "address", "poi"]
+    },
+    "run_phase": {
+      "type": "string",
+      "enum": [
+        "DRAFTED",
+        "PREFLIGHTED",
+        "MATERIALIZED",
+        "REACH_CHECKED",
+        "COMPILED",
+        "FACTORIZED",
+        "SOLVED",
+        "RECONCILED",
+        "EVALUATED"
+      ]
+    },
+    "run_status": {
+      "type": "string",
+      "enum": [
+        "COMPLETED",
+        "PARTIAL",
+        "WAITING_FOR_INPUT",
+        "UNSUPPORTED_GRAIN",
+        "FAILED",
+        "CANCELLED",
+        "BUDGET_FALLBACK",
+        "ABSTAINED",
+        "CONTRADICTED"
+      ]
+    },
+    "usage_map": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "run_plan_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plan_id",
+        "semantic_hash",
+        "project_id",
+        "project_graph_hash",
+        "question_hash",
+        "capabilities_hash",
+        "inventory_planning_hash",
+        "profile_hash",
+        "budget_planning_hash"
+      ],
+      "properties": {
+        "plan_id": { "type": "string", "pattern": "^canon_geo_plan\\.v0:[0-9a-f]{64}$" },
+        "semantic_hash": { "$ref": "#/$defs/blake3_digest" },
+        "project_id": { "$ref": "#/$defs/local_id" },
+        "project_graph_hash": { "$ref": "#/$defs/blake3_digest" },
+        "question_hash": { "$ref": "#/$defs/blake3_digest" },
+        "capabilities_hash": { "$ref": "#/$defs/blake3_digest" },
+        "inventory_planning_hash": { "$ref": "#/$defs/blake3_digest" },
+        "profile_hash": { "$ref": "#/$defs/blake3_digest" },
+        "budget_planning_hash": { "$ref": "#/$defs/blake3_digest" }
+      }
+    },
+    "run_artifact_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node_id",
+        "binding_id",
+        "artifact_id",
+        "content_digest",
+        "media_type",
+        "contract_version",
+        "byte_count"
+      ],
+      "properties": {
+        "node_id": { "$ref": "#/$defs/project_node_id" },
+        "binding_id": { "$ref": "#/$defs/local_id" },
+        "artifact_id": { "$ref": "#/$defs/non_empty_text" },
+        "content_digest": { "$ref": "#/$defs/blake3_digest" },
+        "media_type": { "const": "application/json" },
+        "contract_version": { "$ref": "#/$defs/contract_version" },
+        "byte_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "run_output_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_id",
+        "project_node_id",
+        "output_id",
+        "content_digest",
+        "byte_count",
+        "media_type",
+        "contract_version"
+      ],
+      "properties": {
+        "artifact_id": { "$ref": "#/$defs/non_empty_text" },
+        "project_node_id": { "$ref": "#/$defs/project_node_id" },
+        "output_id": { "$ref": "#/$defs/local_id" },
+        "content_digest": { "$ref": "#/$defs/blake3_digest" },
+        "byte_count": { "type": "integer", "minimum": 0 },
+        "media_type": { "const": "application/json" },
+        "contract_version": { "$ref": "#/$defs/contract_version" }
+      }
+    },
+    "grain_status": {
+      "type": "string",
+      "enum": [
+        "planned_relative_to_declared_universe",
+        "waiting_for_acquisition",
+        "unsupported_by_profile",
+        "unsupported_by_inventory",
+        "missing_leaf_capability"
+      ]
+    },
+    "run_grain_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_level", "status", "claim_limitation", "next_action"],
+      "properties": {
+        "entity_level": { "$ref": "#/$defs/entity_level" },
+        "status": { "$ref": "#/$defs/grain_status" },
+        "missing_evidence_classes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/non_empty_text" }
+        },
+        "project_node_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/project_node_id" }
+        },
+        "claim_limitation": { "$ref": "#/$defs/non_empty_text" },
+        "next_action": { "$ref": "#/$defs/non_empty_text" }
+      }
+    },
+    "run_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workspace_path": { "$ref": "#/$defs/non_empty_text" },
+        "observed_at_utc": { "$ref": "#/$defs/non_empty_text" },
+        "host_id": { "$ref": "#/$defs/non_empty_text" },
+        "process_id": { "type": "integer", "minimum": 0 },
+        "resource_observations": { "$ref": "#/$defs/usage_map" }
+      }
+    },
+    "run_blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blocker_id", "kind", "reason"],
+      "properties": {
+        "blocker_id": { "$ref": "#/$defs/non_empty_text" },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "WAITING_FOR_INPUT",
+            "UNSUPPORTED_GRAIN",
+            "MISSING_LEAF_CAPABILITY",
+            "PROJECT_FAILURE",
+            "PROJECT_CANCELLED",
+            "PROJECT_BLOCKED"
+          ]
+        },
+        "project_node_id": { "$ref": "#/$defs/project_node_id" },
+        "entity_level": { "$ref": "#/$defs/entity_level" },
+        "reason": { "$ref": "#/$defs/non_empty_text" }
+      }
+    },
+    "next_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action_id", "kind", "reason"],
+      "properties": {
+        "action_id": { "$ref": "#/$defs/non_empty_text" },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "SATISFY_ACQUISITION",
+            "SATISFY_DISCOVERY",
+            "SUPPLY_LOCAL_ARTIFACT",
+            "EXECUTE_PROJECT_NODE",
+            "INSPECT_FAILURE",
+            "RESUME",
+            "UNSUPPORTED_GRAIN"
+          ]
+        },
+        "project_node_id": { "$ref": "#/$defs/project_node_id" },
+        "artifact_id": { "$ref": "#/$defs/non_empty_text" },
+        "expected_contract": { "$ref": "#/$defs/expected_contract" },
+        "media_type": { "$ref": "#/$defs/non_empty_text" },
+        "command": { "$ref": "#/$defs/non_empty_text" },
+        "reason": { "$ref": "#/$defs/non_empty_text" }
+      }
+    }
+  }
+}

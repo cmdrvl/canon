@@ -159,9 +159,16 @@ question + capabilities + regional inventory + resolution profile + budget
   components. Network acquisition remains outside Canon's deterministic offline build.
 - Geo planning/runs must extend the shared `src/project/` manifest/lock/plan/run/receipt
   substrate. Do not create a second scheduler, cache, receipt store, or workspace policy.
-- The proposed `geo capabilities/plan/run/inspect` control plane is not implemented yet.
-  Until it is, use the leaf commands reported by `canon --describe` and do not advertise
-  planned commands as shipped.
+- Geo capabilities, planning, and the bounded offline run surface exist. `geo run` delegates
+  one validated project DAG through registered internal Geo executors for the current
+  five-stage offline chain: materialize home cells, build the bounded tile section,
+  materialize evidence, compile evidence, then solve composition. It accepts only local
+  exogenous leaf inputs such as home-cell rows, tile-work requests, and warehouse rows; no
+  ambient shell or network acquisition is part of the run.
+- Open limits remain explicit: acquisition is external, exactness is representation-relative,
+  candidate reach is an upstream proof obligation, immutable cross-release reuse in the same
+  work directory is not guaranteed, E5/live scale proof is not shipped, and `geo inspect`
+  remains open.
 
 ### 3. Summary invariant
 

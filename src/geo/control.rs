@@ -36,6 +36,7 @@ use super::{
     multisource::CANON_GEO_MULTISOURCE_REQUEST_VERSION,
     plan::CANON_GEO_PLAN_VERSION,
     residual_benchmark::{CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION},
+    run::CANON_GEO_RUN_VERSION,
     tile::{
         CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_VERSION,
@@ -967,6 +968,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "offline Geo semantic plan overlay contract",
         ),
         contract(
+            CANON_GEO_RUN_VERSION,
+            "schemas/canon.geo.run.v0.schema.json",
+            "bounded resumable Geo run artifact contract",
+        ),
+        contract(
             CANON_GEO_DISCOVERY_REQUEST_VERSION,
             "schemas/canon.geo.discovery_request.v0.schema.json",
             "protocol-neutral bounded catalog discovery request contract",
@@ -1189,6 +1195,12 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             false,
         ),
         command(
+            "canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]",
+            CANON_GEO_RUN_VERSION,
+            false,
+            false,
+        ),
+        command(
             "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
             ENTITY_MULTISOURCE_LINK_VERSION,
             false,
@@ -1270,10 +1282,12 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
 }
 
 fn unavailable_geo_commands() -> Vec<GeoCommandCapability> {
-    vec![
-        command("canon geo run", "planned_not_implemented", false, false),
-        command("canon geo inspect", "planned_not_implemented", true, false),
-    ]
+    vec![command(
+        "canon geo inspect",
+        "planned_not_implemented",
+        true,
+        false,
+    )]
 }
 
 pub fn canonicalize_capabilities(

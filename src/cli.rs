@@ -249,6 +249,8 @@ pub enum GeoSubcommand {
     Capabilities(GeoCapabilitiesCli),
     /// Compile a deterministic offline Geo plan from declared local inputs
     Plan(GeoPlanCli),
+    /// Run a Geo plan offline with explicit local input bindings
+    Run(GeoRunCli),
     /// Materialize three or more named sources into one budgeted consistency artifact
     #[command(name = "link-sources")]
     LinkSources(GeoLinkSourcesCli),
@@ -312,6 +314,22 @@ pub struct GeoPlanCli {
     /// JSON file holding a canon_geo_resource_budget.v0 budget
     #[arg(long)]
     pub budget: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoRunCli {
+    /// JSON file holding a canon_geo_plan.v0 plan
+    #[arg(long)]
+    pub plan: PathBuf,
+    /// Directory used as the Geo run workspace
+    #[arg(long = "work-dir")]
+    pub work_dir: PathBuf,
+    /// Local typed input binding as NODE_ID:BINDING_ID=PATH; repeatable
+    #[arg(long = "input", value_name = "NODE_ID:BINDING_ID=PATH")]
+    pub input: Vec<String>,
+    /// Acquisition satisfaction as REQUEST_ID=RECEIPT.json; repeatable
+    #[arg(long = "satisfy", value_name = "REQUEST_ID=RECEIPT.json")]
+    pub satisfy: Vec<String>,
 }
 
 #[derive(Args, Debug, Clone)]

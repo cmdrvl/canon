@@ -347,10 +347,39 @@ struct GeoPlanSemanticProjection<'a> {
     profile_hash: &'a str,
     budget_planning_hash: &'a str,
     project_graph_hash: &'a str,
-    geo_nodes: &'a [GeoPlanNodeOverlay],
-    grain_outcomes: &'a [GeoPlanGrainOutcome],
+    geo_nodes: Vec<GeoPlanNodeSemanticProjection<'a>>,
+    grain_outcomes: Vec<GeoPlanGrainOutcomeSemanticProjection<'a>>,
     external_request_planning_hashes: Vec<String>,
-    diagnostics: &'a [String],
+}
+
+#[derive(Serialize)]
+struct GeoPlanPreconditionSemanticProjection {
+    plane: GeoPlanGatePlane,
+    status: GeoPlanGateStatus,
+}
+
+#[derive(Serialize)]
+struct GeoPlanNodeSemanticProjection<'a> {
+    project_node_id: &'a str,
+    stage: GeoPlanStage,
+    entity_level: Option<GeoControlEntityLevel>,
+    evidence_classes: &'a [GeoEvidenceClass],
+    claim_classes: &'a [super::GeoClaimClass],
+    expected_output_contract: &'a str,
+    preconditions: Vec<GeoPlanPreconditionSemanticProjection>,
+    claim_effect: GeoPlanClaimEffect,
+    bounded_section_required: bool,
+    incidence_factorization_required: bool,
+    exact_solve_scope: &'a Option<GeoPlanExactSolveScope>,
+    deterministic_bounds: &'a [GeoNumericBound],
+}
+
+#[derive(Serialize)]
+struct GeoPlanGrainOutcomeSemanticProjection<'a> {
+    entity_level: GeoControlEntityLevel,
+    status: GeoPlanGrainStatus,
+    missing_evidence_classes: &'a [GeoEvidenceClass],
+    project_node_ids: &'a [String],
 }
 
 #[derive(Serialize)]
@@ -362,7 +391,6 @@ struct GeoAcquisitionReleasePlanningRef<'a> {
 #[derive(Serialize)]
 struct GeoAcquisitionPlanningProjection<'a> {
     version: &'a str,
-    discovery_request_id: &'a Option<String>,
     bounded_geography: &'a super::GeoBoundedGeography,
     subset: &'a GeoBoundedSubset,
     releases: Vec<GeoAcquisitionReleasePlanningRef<'a>>,
@@ -372,7 +400,25 @@ struct GeoAcquisitionPlanningProjection<'a> {
     pagination: &'a GeoPaginationRequest,
     ceilings: &'a GeoRowByteCeilings,
     positive_path_min_rows: u64,
-    handoff: &'a GeoPlanAcquisitionHandoff,
+    expected_receipt_contract: &'a str,
+    required_result_digest_algorithm: GeoDigestAlgorithm,
+}
+
+#[derive(Serialize)]
+struct GeoDiscoveryPlanningProjection<'a> {
+    version: &'a str,
+    bounded_geography: &'a super::GeoBoundedGeography,
+    subset: &'a GeoBoundedSubset,
+    requested_entity_levels: &'a [GeoControlEntityLevel],
+    requested_evidence_classes: &'a [GeoEvidenceClass],
+    release_selection: &'a GeoDiscoveryReleaseSelectionPolicy,
+    releases: Vec<GeoAcquisitionReleasePlanningRef<'a>>,
+    fields: &'a [GeoRequestedField],
+    required_steps: &'a [GeoDiscoveryStep],
+    readability_fields: &'a [String],
+    readability_subset: &'a GeoBoundedSubset,
+    readability_ceilings: &'a GeoRowByteCeilings,
+    ceilings: &'a GeoRowByteCeilings,
 }
 
 pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError> {
@@ -764,6 +810,41 @@ pub fn geo_plan_semantic_hash(plan: &GeoPlan) -> Result<String, GeoPlanError> {
         .map(external_request_planning_hash)
         .collect::<Result<Vec<_>, _>>()?;
     external_request_planning_hashes.sort();
+    let geo_nodes = plan
+        .geo_nodes
+        .iter()
+        .map(|node| GeoPlanNodeSemanticProjection {
+            project_node_id: &node.project_node_id,
+            stage: node.stage,
+            entity_level: node.entity_level,
+            evidence_classes: &node.evidence_classes,
+            claim_classes: &node.claim_classes,
+            expected_output_contract: &node.expected_output_contract,
+            preconditions: node
+                .preconditions
+                .iter()
+                .map(|precondition| GeoPlanPreconditionSemanticProjection {
+                    plane: precondition.plane,
+                    status: precondition.status,
+                })
+                .collect(),
+            claim_effect: node.claim_effect,
+            bounded_section_required: node.bounded_section_required,
+            incidence_factorization_required: node.incidence_factorization_required,
+            exact_solve_scope: &node.exact_solve_scope,
+            deterministic_bounds: &node.deterministic_bounds,
+        })
+        .collect();
+    let grain_outcomes = plan
+        .grain_outcomes
+        .iter()
+        .map(|outcome| GeoPlanGrainOutcomeSemanticProjection {
+            entity_level: outcome.entity_level,
+            status: outcome.status,
+            missing_evidence_classes: &outcome.missing_evidence_classes,
+            project_node_ids: &outcome.project_node_ids,
+        })
+        .collect();
     let projection = GeoPlanSemanticProjection {
         version: &plan.version,
         question_hash: &plan.question_ref.semantic_hash,
@@ -772,10 +853,9 @@ pub fn geo_plan_semantic_hash(plan: &GeoPlan) -> Result<String, GeoPlanError> {
         profile_hash: &plan.profile_ref.semantic_hash,
         budget_planning_hash: &plan.budget_ref.planning_hash,
         project_graph_hash: &plan.project_plan.graph_hash,
-        geo_nodes: &plan.geo_nodes,
-        grain_outcomes: &plan.grain_outcomes,
+        geo_nodes,
+        grain_outcomes,
         external_request_planning_hashes,
-        diagnostics: &plan.diagnostics,
     };
     digest_json(&projection)
 }
@@ -795,7 +875,6 @@ fn external_request_planning_hash(
                 .collect();
             digest_json(&GeoAcquisitionPlanningProjection {
                 version: &request.version,
-                discovery_request_id: &request.discovery_request_id,
                 bounded_geography: &request.bounded_geography,
                 subset: &request.subset,
                 releases,
@@ -805,13 +884,40 @@ fn external_request_planning_hash(
                 pagination: &request.pagination,
                 ceilings: &request.ceilings,
                 positive_path_min_rows: request.positive_path_min_rows,
-                handoff,
+                expected_receipt_contract: &handoff.expected_receipt_contract,
+                required_result_digest_algorithm: handoff.required_result_digest_algorithm,
             })
         }
-        GeoPlanExternalRequest::Discovery { gap_id, request } => {
-            digest_json(&("discovery", gap_id, request))
+        GeoPlanExternalRequest::Discovery { request, .. } => {
+            let releases = request
+                .releases
+                .iter()
+                .map(|release| GeoAcquisitionReleasePlanningRef {
+                    release_id: &release.release_id,
+                    release_digest: &release.release_digest,
+                })
+                .collect();
+            digest_json(&GeoDiscoveryPlanningProjection {
+                version: &request.version,
+                bounded_geography: &request.bounded_geography,
+                subset: &request.subset,
+                requested_entity_levels: &request.requested_entity_levels,
+                requested_evidence_classes: &request.requested_evidence_classes,
+                release_selection: &request.release_selection,
+                releases,
+                fields: &request.fields,
+                required_steps: &request.required_steps,
+                readability_fields: &request.column_readability_probe.fields,
+                readability_subset: &request.column_readability_probe.subset,
+                readability_ceilings: &request.column_readability_probe.ceilings,
+                ceilings: &request.ceilings,
+            })
         }
-        GeoPlanExternalRequest::DiscoveryGap { gap } => digest_json(&("discovery_gap", gap)),
+        GeoPlanExternalRequest::DiscoveryGap { gap } => digest_json(&(
+            "discovery_gap",
+            gap.requested_entity_level,
+            gap.requested_evidence_class,
+        )),
     }
 }
 
