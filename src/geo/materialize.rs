@@ -26,6 +26,7 @@ use super::{
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
 use serde::{Deserializer, de};
+use serde_json::Value as JsonValue;
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
@@ -33,6 +34,8 @@ use std::{
 };
 
 pub const CANON_GEO_WAREHOUSE_ROWS_VERSION: &str = "canon_geo_warehouse_rows.v0";
+pub const CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION: &str =
+    "canon_geo_h7_staging_source_record_bytes_batch.v0";
 pub const CANON_GEO_H7_POPULATION_ROWS_VERSION: &str = "canon_geo_h7_population_rows.v0";
 pub const CANON_GEO_H7_POPULATION_VERSION: &str = "canon_geo_h7_population.v0";
 pub const CANON_GEO_H7_ACRIS_RELEASE_DT: &str = "2026-08-10";
@@ -56,6 +59,14 @@ pub const CANON_GEO_H7_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS: u64 = 35;
 pub const CANON_GEO_H7_COMPLETE_ROUND_MULTI_PARCEL_LOANS: u64 = 14;
 pub const CANON_GEO_H7_COMPLETE_MULTI_PARCEL_LOANS: u64 = 49;
 pub const CANON_GEO_H7_COMPLETE_RELEASE_ROWS: u64 = 98;
+
+const CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_ROW_CONTRACT: &str =
+    "h7_staging_source_record_bytes_export_row.v0";
+const CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_ROW_KIND: &str = "source_record_payload_release_row";
+const CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_GUARD_ROW_KIND: &str = "guard_failure";
+const CANON_GEO_H7_DERIVED_SOURCE_RECORD_PAYLOAD_VERSION: &str =
+    "h7_derived_source_record_payload.v0";
+const CANON_GEO_H7_DERIVED_SOURCE_RECORD_CLASS: &str = "derived_immutable_evidence_record";
 
 /// One row at the parcel-candidate grain.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -208,7 +219,7 @@ impl<'de> Deserialize<'de> for GeoH7SourceEvidenceRecord {
             role: GeoH7SourceRecordRole,
             parcel_ids: Vec<String>,
             source_record: WireSourceRecord,
-            #[serde(default)]
+            #[serde(default, deserialize_with = "deserialize_optional_non_null_string")]
             source_record_bytes_base64: Option<String>,
         }
 
@@ -229,6 +240,32 @@ impl<'de> Deserialize<'de> for GeoH7SourceEvidenceRecord {
             },
         })
     }
+}
+
+fn deserialize_optional_non_null_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    String::deserialize(deserializer).map(Some)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoH7StagingEvidenceRecordRef {
+    pub source_record_id: String,
+    pub source_vintage: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub record_blake3: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoH7StagingSourceEvidenceRecord {
+    pub role: GeoH7SourceRecordRole,
+    #[serde(default)]
+    pub parcel_ids: Vec<String>,
+    pub source_record: GeoH7StagingEvidenceRecordRef,
+    pub source_record_bytes_base64: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -366,6 +403,353 @@ pub struct GeoH7PopulationRowsRequest {
     pub max_assignments: u64,
     #[serde(default = "default_max_materialized_models")]
     pub max_materialized_models: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoH7StagingSourceRecordBytesBatchRequest {
+    pub version: String,
+    pub population_scope: GeoH7PopulationScope,
+    pub provenance: GeoH7PopulationProvenance,
+    pub plane_denominators: Vec<GeoH7PlaneDenominator>,
+    pub staging_rows: Vec<GeoH7StagingSourceRecordBytesRow>,
+    pub max_cases: usize,
+    pub max_assignments: u64,
+    #[serde(default = "default_max_materialized_models")]
+    pub max_materialized_models: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoH7StagingSourceRecordBytesRow {
+    #[serde(alias = "ROW_CONTRACT")]
+    pub row_contract: String,
+    #[serde(alias = "ROW_KIND")]
+    pub row_kind: String,
+    #[serde(alias = "GUARD_STATUS")]
+    pub guard_status: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "REFUSAL_REASON"
+    )]
+    pub refusal_reason: Option<String>,
+    #[serde(alias = "PIP_BLOCK_POPULATION_QUERY_ID")]
+    pub pip_block_population_query_id: String,
+    #[serde(alias = "PAYLOAD_CONTRACT")]
+    pub payload_contract: String,
+    #[serde(alias = "SOURCE_RECORD_CLASS")]
+    pub source_record_class: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ACCEPTED_TRUTH_QUERY_ID"
+    )]
+    pub accepted_truth_query_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "LOAN_KEY")]
+    pub loan_key: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "DOCUMENT_ID"
+    )]
+    pub document_id: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "TRUTH_PLANE"
+    )]
+    pub truth_plane: Option<GeoTruthPlane>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ASSOCIATION_PLANE"
+    )]
+    pub association_plane: Option<GeoH7AssociationPlane>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "MAPPLUTO_RELEASE"
+    )]
+    pub mappluto_release: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "MAPPLUTO_RELEASE_DT"
+    )]
+    pub mappluto_release_dt: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "MAPPLUTO_VARIANT"
+    )]
+    pub mappluto_variant: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "CANDIDATE_RELEASE"
+    )]
+    pub candidate_release: Option<GeoH7MapplutoReleasePin>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "PROPERTY_STATE"
+    )]
+    pub property_state: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "FILED_COUNTY"
+    )]
+    pub filed_county: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "FILED_BOROUGH"
+    )]
+    pub filed_borough: Option<u8>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "LEGAL_BOROUGH"
+    )]
+    pub legal_borough: Option<u8>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ACCEPTED_BOROUGH_EDGES"
+    )]
+    pub accepted_borough_edges: Option<Vec<GeoH7BoroughEdge>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "GEOCODED_COUNTY_FIPS"
+    )]
+    pub geocoded_county_fips: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "DOC_TYPE")]
+    pub doc_type: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ORIGINATIONDATE"
+    )]
+    pub originationdate: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "AMOUNT_CENTS"
+    )]
+    pub amount_cents: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "IS_ROUND_100K_LATTICE"
+    )]
+    pub is_round_100k_lattice: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ORIGINATORNAME"
+    )]
+    pub originatorname: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ORIGINATOR_MATCH_TEXT"
+    )]
+    pub originator_match_text: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "LENDER_MATCH_TEXT"
+    )]
+    pub lender_match_text: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "LENDER_PARTY_TYPE"
+    )]
+    pub lender_party_type: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "LOAN_FIELD_DISTINCT_COUNTS"
+    )]
+    pub loan_field_distinct_counts: Option<GeoH7LoanFieldDistinctCounts>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "TRUTH_PARCELS"
+    )]
+    pub truth_parcels: Option<Vec<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "CANDIDATE_PARCELS"
+    )]
+    pub candidate_parcels: Option<Vec<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "REACH_STATUS"
+    )]
+    pub reach_status: Option<GeoH7CandidateReachStatus>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "REACH_REASON"
+    )]
+    pub reach_reason: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "SOURCE_RECORDS"
+    )]
+    pub source_records: Option<Vec<GeoH7StagingSourceEvidenceRecord>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "SOURCE_RECORD_COUNT"
+    )]
+    pub source_record_count: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "BRIDGE_SOURCE_RECORD_COUNT"
+    )]
+    pub bridge_source_record_count: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ACRIS_MASTER_SOURCE_RECORD_COUNT"
+    )]
+    pub acris_master_source_record_count: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ACRIS_PARTY_SOURCE_RECORD_COUNT"
+    )]
+    pub acris_party_source_record_count: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ACRIS_LEGAL_SOURCE_RECORD_COUNT"
+    )]
+    pub acris_legal_source_record_count: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "MAPPLUTO_SOURCE_RECORD_COUNT"
+    )]
+    pub mappluto_source_record_count: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "MIN_SOURCE_RECORD_PAYLOAD_UTF8_BYTES"
+    )]
+    pub min_source_record_payload_utf8_bytes: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "MAX_SOURCE_RECORD_PAYLOAD_UTF8_BYTES"
+    )]
+    pub max_source_record_payload_utf8_bytes: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "TOTAL_SOURCE_RECORD_PAYLOAD_UTF8_BYTES"
+    )]
+    pub total_source_record_payload_utf8_bytes: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "MAX_SOURCE_RECORD_PAYLOAD_BASE64_CHARS"
+    )]
+    pub max_source_record_payload_base64_chars: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "CANDIDATE_BBL_COUNT"
+    )]
+    pub candidate_bbl_count: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "TRUTH_BBL_COUNT"
+    )]
+    pub truth_bbl_count: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "REACHED_TRUTH_BBLS"
+    )]
+    pub reached_truth_bbls: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "WHOLE_ACCEPTED_LOANS"
+    )]
+    pub whole_accepted_loans: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "WHOLE_RELEASE_ROWS"
+    )]
+    pub whole_release_rows: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "WHOLE_ZERO_CANDIDATE_RELEASE_ROWS"
+    )]
+    pub whole_zero_candidate_release_rows: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ACCEPTED_PLANE_ELIGIBLE_LOANS"
+    )]
+    pub accepted_plane_eligible_loans: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ACCEPTED_PLANE_LEGAL_CANDIDATE_LOANS"
+    )]
+    pub accepted_plane_legal_candidate_loans: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ACCEPTED_PLANE_LEGAL_CONFIRMED_CANDIDATE_LOANS"
+    )]
+    pub accepted_plane_legal_confirmed_candidate_loans: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ACCEPTED_PLANE_ACCEPTED_LOANS"
+    )]
+    pub accepted_plane_accepted_loans: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ACCEPTED_PLANE_AMBIGUOUS_LOANS"
+    )]
+    pub accepted_plane_ambiguous_loans: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ACCEPTED_PLANE_CANDIDATE_WITHOUT_LEGAL_LOANS"
+    )]
+    pub accepted_plane_candidate_without_legal_loans: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ACCEPTED_PLANE_NO_CANDIDATE_LOANS"
+    )]
+    pub accepted_plane_no_candidate_loans: Option<u64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "ACCEPTED_PLANE_SELECTED_MULTI_PARCEL_LOANS"
+    )]
+    pub accepted_plane_selected_multi_parcel_loans: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -691,6 +1075,92 @@ pub fn canonical_materialized_evidence_request_bytes(
     request: &GeoEvidenceCompilationRequest,
 ) -> Result<Vec<u8>, serde_json::Error> {
     serde_json::to_vec(request)
+}
+
+/// Convert a bounded H.7 NYC staging-profile source-record byte export into
+/// the existing population-row request surface.
+///
+/// This is only the H.7 staging adapter. It refuses guard rows, stale/mixed
+/// staging metadata, denominator drift, and incomplete batches before
+/// delegating to the same H.7 materializer used by
+/// `canon geo materialize-h7-population`.
+pub fn h7_population_rows_from_staging_source_record_bytes_batch(
+    batch: &GeoH7StagingSourceRecordBytesBatchRequest,
+) -> Result<GeoH7PopulationRowsRequest, GeoMaterializationError> {
+    if batch.version != CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION {
+        return Err(GeoMaterializationError {
+            code: GeoMaterializationErrorCode::UnsupportedVersion,
+            message: "Unsupported Geo H.7 staging source-record batch version".to_string(),
+            detail: [
+                ("actual".to_string(), batch.version.clone()),
+                (
+                    "expected".to_string(),
+                    CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION.to_string(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        });
+    }
+    if batch.staging_rows.is_empty() {
+        return Err(h7_invalid(
+            "Geo H.7 staging source-record batches must be non-empty",
+            [("staging_rows", "0".to_string())],
+        ));
+    }
+    let denominators = validate_h7_denominators(&batch.plane_denominators)?;
+    let mut metadata: Option<GeoH7StagingBatchMetadata> = None;
+    let mut population_rows = Vec::with_capacity(batch.staging_rows.len());
+    for (row_index, row) in batch.staging_rows.iter().enumerate() {
+        validate_h7_staging_envelope(row_index, row)?;
+        let row_metadata = GeoH7StagingBatchMetadata::from_row(row_index, row)?;
+        if let Some(expected) = &metadata {
+            if expected != &row_metadata {
+                return Err(h7_invalid(
+                    "Geo H.7 staging rows carry conflicting batch metadata",
+                    [
+                        ("row_index", row_index.to_string()),
+                        (
+                            "pip_block_population_query_id",
+                            row.pip_block_population_query_id.clone(),
+                        ),
+                        (
+                            "accepted_truth_query_id",
+                            row.accepted_truth_query_id.clone().unwrap_or_default(),
+                        ),
+                    ],
+                ));
+            }
+        } else {
+            metadata = Some(row_metadata);
+        }
+
+        let population_row = h7_population_row_from_staging_row(row_index, row)?;
+        validate_h7_staging_release_pin(row_index, row, &population_row)?;
+        validate_h7_staging_denominator(row_index, row, &denominators)?;
+        validate_h7_staging_row_counts(row_index, row, &population_row)?;
+        population_rows.push(population_row);
+    }
+
+    validate_h7_staging_whole_counts(&metadata, &population_rows)?;
+
+    Ok(GeoH7PopulationRowsRequest {
+        version: CANON_GEO_H7_POPULATION_ROWS_VERSION.to_string(),
+        population_scope: batch.population_scope,
+        provenance: batch.provenance.clone(),
+        plane_denominators: batch.plane_denominators.clone(),
+        rows: population_rows,
+        max_cases: batch.max_cases,
+        max_assignments: batch.max_assignments,
+        max_materialized_models: batch.max_materialized_models,
+    })
+}
+
+pub fn materialize_h7_staging_source_record_bytes_batch(
+    batch: &GeoH7StagingSourceRecordBytesBatchRequest,
+) -> Result<GeoH7PopulationArtifact, GeoMaterializationError> {
+    let rows = h7_population_rows_from_staging_source_record_bytes_batch(batch)?;
+    materialize_h7_population_rows(&rows)
 }
 
 /// Convert release-pinned Appendix H.7 warehouse rows into a typed population
@@ -1481,6 +1951,893 @@ fn validate_h7_query_receipt_binding(
             [
                 ("purpose", receipt.purpose.clone()),
                 ("query_text_ref", receipt.query_text_ref.clone()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GeoH7StagingBatchMetadata {
+    pip_block_population_query_id: String,
+    accepted_truth_query_id: String,
+    payload_contract: String,
+    source_record_class: String,
+    whole_accepted_loans: u64,
+    whole_release_rows: u64,
+    whole_zero_candidate_release_rows: u64,
+}
+
+impl GeoH7StagingBatchMetadata {
+    fn from_row(
+        row_index: usize,
+        row: &GeoH7StagingSourceRecordBytesRow,
+    ) -> Result<Self, GeoMaterializationError> {
+        Ok(Self {
+            pip_block_population_query_id: row.pip_block_population_query_id.clone(),
+            accepted_truth_query_id: required_h7_staging_field(
+                row_index,
+                "accepted_truth_query_id",
+                &row.accepted_truth_query_id,
+            )?,
+            payload_contract: row.payload_contract.clone(),
+            source_record_class: row.source_record_class.clone(),
+            whole_accepted_loans: required_h7_staging_field(
+                row_index,
+                "whole_accepted_loans",
+                &row.whole_accepted_loans,
+            )?,
+            whole_release_rows: required_h7_staging_field(
+                row_index,
+                "whole_release_rows",
+                &row.whole_release_rows,
+            )?,
+            whole_zero_candidate_release_rows: required_h7_staging_field(
+                row_index,
+                "whole_zero_candidate_release_rows",
+                &row.whole_zero_candidate_release_rows,
+            )?,
+        })
+    }
+}
+
+fn validate_h7_staging_envelope(
+    row_index: usize,
+    row: &GeoH7StagingSourceRecordBytesRow,
+) -> Result<(), GeoMaterializationError> {
+    if row.row_contract != CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_ROW_CONTRACT {
+        return Err(h7_invalid(
+            "Geo H.7 staging rows use an unsupported row contract",
+            [
+                ("row_index", row_index.to_string()),
+                ("row_contract", row.row_contract.clone()),
+            ],
+        ));
+    }
+    if row.row_kind != CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_ROW_KIND {
+        return Err(h7_invalid(
+            "Geo H.7 staging adapter only accepts source-record payload release rows",
+            [
+                ("row_index", row_index.to_string()),
+                ("row_kind", row.row_kind.clone()),
+                (
+                    "guard_row_kind",
+                    CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_GUARD_ROW_KIND.to_string(),
+                ),
+            ],
+        ));
+    }
+    if row.guard_status != "ok" {
+        return Err(h7_invalid(
+            "Geo H.7 staging rows must have an ok upstream guard",
+            [
+                ("row_index", row_index.to_string()),
+                ("guard_status", row.guard_status.clone()),
+                (
+                    "refusal_reason",
+                    row.refusal_reason.clone().unwrap_or_default(),
+                ),
+            ],
+        ));
+    }
+    if row
+        .refusal_reason
+        .as_deref()
+        .is_some_and(|reason| !reason.is_empty())
+    {
+        return Err(h7_invalid(
+            "Geo H.7 staging rows with ok guards must not carry refusal reasons",
+            [
+                ("row_index", row_index.to_string()),
+                (
+                    "refusal_reason",
+                    row.refusal_reason.clone().unwrap_or_default(),
+                ),
+            ],
+        ));
+    }
+    validate_h7_string(
+        "pip_block_population_query_id",
+        &row.pip_block_population_query_id,
+    )?;
+    if row.payload_contract != CANON_GEO_H7_DERIVED_SOURCE_RECORD_PAYLOAD_VERSION {
+        return Err(h7_invalid(
+            "Geo H.7 staging rows use an unsupported source-record payload contract",
+            [
+                ("row_index", row_index.to_string()),
+                ("payload_contract", row.payload_contract.clone()),
+            ],
+        ));
+    }
+    if row.source_record_class != CANON_GEO_H7_DERIVED_SOURCE_RECORD_CLASS {
+        return Err(h7_invalid(
+            "Geo H.7 staging rows use an unsupported source-record class",
+            [
+                ("row_index", row_index.to_string()),
+                ("source_record_class", row.source_record_class.clone()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn h7_population_row_from_staging_row(
+    row_index: usize,
+    row: &GeoH7StagingSourceRecordBytesRow,
+) -> Result<GeoH7PopulationWarehouseRow, GeoMaterializationError> {
+    let staging_source_records =
+        required_h7_staging_field(row_index, "source_records", &row.source_records)?;
+    let source_records =
+        h7_source_records_from_staging_payloads(row_index, &staging_source_records)?;
+    Ok(GeoH7PopulationWarehouseRow {
+        loan_key: required_h7_staging_field(row_index, "loan_key", &row.loan_key)?,
+        document_id: required_h7_staging_field(row_index, "document_id", &row.document_id)?,
+        truth_plane: required_h7_staging_field(row_index, "truth_plane", &row.truth_plane)?,
+        association_plane: required_h7_staging_field(
+            row_index,
+            "association_plane",
+            &row.association_plane,
+        )?,
+        candidate_release: required_h7_staging_field(
+            row_index,
+            "candidate_release",
+            &row.candidate_release,
+        )?,
+        property_state: required_h7_staging_field(
+            row_index,
+            "property_state",
+            &row.property_state,
+        )?,
+        filed_county: required_h7_staging_field(row_index, "filed_county", &row.filed_county)?,
+        filed_borough: required_h7_staging_field(row_index, "filed_borough", &row.filed_borough)?,
+        legal_borough: required_h7_staging_field(row_index, "legal_borough", &row.legal_borough)?,
+        accepted_borough_edges: required_h7_staging_field(
+            row_index,
+            "accepted_borough_edges",
+            &row.accepted_borough_edges,
+        )?,
+        geocoded_county_fips: row.geocoded_county_fips.clone(),
+        doc_type: required_h7_staging_field(row_index, "doc_type", &row.doc_type)?,
+        originationdate: required_h7_staging_field(
+            row_index,
+            "originationdate",
+            &row.originationdate,
+        )?,
+        amount_cents: required_h7_staging_field(row_index, "amount_cents", &row.amount_cents)?,
+        is_round_100k_lattice: required_h7_staging_field(
+            row_index,
+            "is_round_100k_lattice",
+            &row.is_round_100k_lattice,
+        )?,
+        originatorname: row.originatorname.clone(),
+        originator_match_text: row.originator_match_text.clone(),
+        lender_match_text: row.lender_match_text.clone(),
+        lender_party_type: row.lender_party_type.clone(),
+        loan_field_distinct_counts: required_h7_staging_field(
+            row_index,
+            "loan_field_distinct_counts",
+            &row.loan_field_distinct_counts,
+        )?,
+        truth_parcels: required_h7_staging_field(row_index, "truth_parcels", &row.truth_parcels)?,
+        candidate_parcels: required_h7_staging_field(
+            row_index,
+            "candidate_parcels",
+            &row.candidate_parcels,
+        )?,
+        reach_status: required_h7_staging_field(row_index, "reach_status", &row.reach_status)?,
+        reach_reason: required_h7_staging_field(row_index, "reach_reason", &row.reach_reason)?,
+        source_records,
+    })
+}
+
+fn h7_source_records_from_staging_payloads(
+    row_index: usize,
+    records: &[GeoH7StagingSourceEvidenceRecord],
+) -> Result<Vec<GeoH7SourceEvidenceRecord>, GeoMaterializationError> {
+    records
+        .iter()
+        .enumerate()
+        .map(|(record_index, record)| {
+            h7_source_record_from_staging_payload(row_index, record_index, record)
+        })
+        .collect()
+}
+
+fn h7_source_record_from_staging_payload(
+    row_index: usize,
+    record_index: usize,
+    record: &GeoH7StagingSourceEvidenceRecord,
+) -> Result<GeoH7SourceEvidenceRecord, GeoMaterializationError> {
+    validate_h7_string(
+        "staging_source_record.source_record_id",
+        &record.source_record.source_record_id,
+    )?;
+    validate_h7_string(
+        "staging_source_record.source_vintage",
+        &record.source_record.source_vintage,
+    )?;
+    for parcel_id in &record.parcel_ids {
+        validate_h7_string("staging_source_record.parcel_id", parcel_id)?;
+    }
+    validate_h7_staging_source_payload(row_index, record_index, record)?;
+    let record_blake3 = h7_source_record_digest_from_wire(
+        &record.source_record.source_record_id,
+        &record.source_record.record_blake3,
+        Some(&record.source_record_bytes_base64),
+    )
+    .map_err(|message| {
+        h7_invalid(
+            "Geo H.7 staging source-record bytes failed digest validation",
+            [
+                ("row_index", row_index.to_string()),
+                ("record_index", record_index.to_string()),
+                (
+                    "source_record_id",
+                    record.source_record.source_record_id.clone(),
+                ),
+                ("reason", message),
+            ],
+        )
+    })?;
+    Ok(GeoH7SourceEvidenceRecord {
+        role: record.role,
+        parcel_ids: record.parcel_ids.clone(),
+        source_record: GeoEvidenceRecordRef {
+            source_record_id: record.source_record.source_record_id.clone(),
+            source_vintage: record.source_record.source_vintage.clone(),
+            record_blake3,
+        },
+    })
+}
+
+fn validate_h7_staging_source_payload(
+    row_index: usize,
+    record_index: usize,
+    record: &GeoH7StagingSourceEvidenceRecord,
+) -> Result<(), GeoMaterializationError> {
+    let payload = h7_staging_source_payload_pairs(row_index, record_index, record)?;
+    require_h7_staging_payload_value(
+        row_index,
+        record_index,
+        record,
+        &payload,
+        "payload_contract",
+        CANON_GEO_H7_DERIVED_SOURCE_RECORD_PAYLOAD_VERSION,
+    )?;
+    require_h7_staging_payload_value(
+        row_index,
+        record_index,
+        record,
+        &payload,
+        "source_record_class",
+        CANON_GEO_H7_DERIVED_SOURCE_RECORD_CLASS,
+    )?;
+    require_h7_staging_payload_value(
+        row_index,
+        record_index,
+        record,
+        &payload,
+        "role",
+        h7_source_record_role_name(record.role),
+    )?;
+    require_h7_staging_payload_value(
+        row_index,
+        record_index,
+        record,
+        &payload,
+        "source_record_id",
+        &record.source_record.source_record_id,
+    )?;
+    require_h7_staging_payload_value(
+        row_index,
+        record_index,
+        record,
+        &payload,
+        "source_vintage",
+        &record.source_record.source_vintage,
+    )?;
+
+    match record.role {
+        GeoH7SourceRecordRole::AcrisLegal => {
+            let parcel_id =
+                single_h7_staging_payload_parcel(row_index, record_index, record, "legal_bbl")?;
+            require_h7_staging_payload_value(
+                row_index,
+                record_index,
+                record,
+                &payload,
+                "legal_bbl",
+                parcel_id,
+            )?;
+        }
+        GeoH7SourceRecordRole::MapplutoCandidate => {
+            let parcel_id =
+                single_h7_staging_payload_parcel(row_index, record_index, record, "bbl_key")?;
+            require_h7_staging_payload_value(
+                row_index,
+                record_index,
+                record,
+                &payload,
+                "bbl_key",
+                parcel_id,
+            )?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn h7_staging_source_payload_pairs(
+    row_index: usize,
+    record_index: usize,
+    record: &GeoH7StagingSourceEvidenceRecord,
+) -> Result<BTreeMap<String, String>, GeoMaterializationError> {
+    let bytes = BASE64_STANDARD
+        .decode(record.source_record_bytes_base64.as_bytes())
+        .map_err(|error| {
+            h7_invalid(
+                "Geo H.7 staging source_record_bytes_base64 is not canonical base64",
+                [
+                    ("row_index", row_index.to_string()),
+                    ("record_index", record_index.to_string()),
+                    (
+                        "source_record_id",
+                        record.source_record.source_record_id.clone(),
+                    ),
+                    ("reason", error.to_string()),
+                ],
+            )
+        })?;
+    if BASE64_STANDARD.encode(&bytes) != record.source_record_bytes_base64 {
+        return Err(h7_invalid(
+            "Geo H.7 staging source_record_bytes_base64 is not in canonical padded form",
+            [
+                ("row_index", row_index.to_string()),
+                ("record_index", record_index.to_string()),
+                (
+                    "source_record_id",
+                    record.source_record.source_record_id.clone(),
+                ),
+            ],
+        ));
+    }
+    if bytes.is_empty() {
+        return Err(h7_invalid(
+            "Geo H.7 staging source_record_bytes_base64 decodes to an empty derived payload",
+            [
+                ("row_index", row_index.to_string()),
+                ("record_index", record_index.to_string()),
+                (
+                    "source_record_id",
+                    record.source_record.source_record_id.clone(),
+                ),
+            ],
+        ));
+    }
+    let text = std::str::from_utf8(&bytes).map_err(|error| {
+        h7_invalid(
+            "Geo H.7 staging derived source-record payload is not UTF-8 JSON",
+            [
+                ("row_index", row_index.to_string()),
+                ("record_index", record_index.to_string()),
+                (
+                    "source_record_id",
+                    record.source_record.source_record_id.clone(),
+                ),
+                ("reason", error.to_string()),
+            ],
+        )
+    })?;
+    let value: JsonValue = serde_json::from_str(text).map_err(|error| {
+        h7_invalid(
+            "Geo H.7 staging derived source-record payload is not JSON",
+            [
+                ("row_index", row_index.to_string()),
+                ("record_index", record_index.to_string()),
+                (
+                    "source_record_id",
+                    record.source_record.source_record_id.clone(),
+                ),
+                ("reason", error.to_string()),
+            ],
+        )
+    })?;
+    let pairs = value.as_array().ok_or_else(|| {
+        h7_invalid(
+            "Geo H.7 staging derived source-record payload must be a key/value-pair array",
+            [
+                ("row_index", row_index.to_string()),
+                ("record_index", record_index.to_string()),
+                (
+                    "source_record_id",
+                    record.source_record.source_record_id.clone(),
+                ),
+            ],
+        )
+    })?;
+    let mut fields = BTreeMap::new();
+    for (pair_index, pair) in pairs.iter().enumerate() {
+        let pair = pair.as_array().ok_or_else(|| {
+            h7_invalid(
+                "Geo H.7 staging derived source-record payload entries must be arrays",
+                [
+                    ("row_index", row_index.to_string()),
+                    ("record_index", record_index.to_string()),
+                    ("pair_index", pair_index.to_string()),
+                    (
+                        "source_record_id",
+                        record.source_record.source_record_id.clone(),
+                    ),
+                ],
+            )
+        })?;
+        if pair.len() != 2 {
+            return Err(h7_invalid(
+                "Geo H.7 staging derived source-record payload entries must have exactly two items",
+                [
+                    ("row_index", row_index.to_string()),
+                    ("record_index", record_index.to_string()),
+                    ("pair_index", pair_index.to_string()),
+                    (
+                        "source_record_id",
+                        record.source_record.source_record_id.clone(),
+                    ),
+                    ("items", pair.len().to_string()),
+                ],
+            ));
+        }
+        let key = pair[0].as_str().ok_or_else(|| {
+            h7_invalid(
+                "Geo H.7 staging derived source-record payload keys must be strings",
+                [
+                    ("row_index", row_index.to_string()),
+                    ("record_index", record_index.to_string()),
+                    ("pair_index", pair_index.to_string()),
+                    (
+                        "source_record_id",
+                        record.source_record.source_record_id.clone(),
+                    ),
+                ],
+            )
+        })?;
+        let value = pair[1].as_str().ok_or_else(|| {
+            h7_invalid(
+                "Geo H.7 staging derived source-record payload values must be strings",
+                [
+                    ("row_index", row_index.to_string()),
+                    ("record_index", record_index.to_string()),
+                    ("pair_index", pair_index.to_string()),
+                    ("key", key.to_string()),
+                    (
+                        "source_record_id",
+                        record.source_record.source_record_id.clone(),
+                    ),
+                ],
+            )
+        })?;
+        validate_h7_string("staging_source_payload.key", key)?;
+        if fields.insert(key.to_string(), value.to_string()).is_some() {
+            return Err(h7_invalid(
+                "Geo H.7 staging derived source-record payload repeats a key",
+                [
+                    ("row_index", row_index.to_string()),
+                    ("record_index", record_index.to_string()),
+                    ("pair_index", pair_index.to_string()),
+                    ("key", key.to_string()),
+                    (
+                        "source_record_id",
+                        record.source_record.source_record_id.clone(),
+                    ),
+                ],
+            ));
+        }
+    }
+    Ok(fields)
+}
+
+fn require_h7_staging_payload_value(
+    row_index: usize,
+    record_index: usize,
+    record: &GeoH7StagingSourceEvidenceRecord,
+    payload: &BTreeMap<String, String>,
+    key: &'static str,
+    expected: &str,
+) -> Result<(), GeoMaterializationError> {
+    let actual = payload.get(key).ok_or_else(|| {
+        h7_invalid(
+            "Geo H.7 staging derived source-record payload is missing a required key",
+            [
+                ("row_index", row_index.to_string()),
+                ("record_index", record_index.to_string()),
+                ("key", key.to_string()),
+                (
+                    "source_record_id",
+                    record.source_record.source_record_id.clone(),
+                ),
+            ],
+        )
+    })?;
+    if actual != expected {
+        return Err(h7_invalid(
+            "Geo H.7 staging derived source-record payload does not match its wrapper",
+            [
+                ("row_index", row_index.to_string()),
+                ("record_index", record_index.to_string()),
+                ("key", key.to_string()),
+                ("actual", actual.clone()),
+                ("expected", expected.to_string()),
+                (
+                    "source_record_id",
+                    record.source_record.source_record_id.clone(),
+                ),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn single_h7_staging_payload_parcel<'a>(
+    row_index: usize,
+    record_index: usize,
+    record: &'a GeoH7StagingSourceEvidenceRecord,
+    payload_key: &'static str,
+) -> Result<&'a str, GeoMaterializationError> {
+    if record.parcel_ids.len() != 1 {
+        return Err(h7_invalid(
+            "Geo H.7 staging derived parcel payloads must bind exactly one wrapper parcel",
+            [
+                ("row_index", row_index.to_string()),
+                ("record_index", record_index.to_string()),
+                ("payload_key", payload_key.to_string()),
+                ("parcel_ids", record.parcel_ids.len().to_string()),
+                (
+                    "source_record_id",
+                    record.source_record.source_record_id.clone(),
+                ),
+            ],
+        ));
+    }
+    Ok(record.parcel_ids[0].as_str())
+}
+
+fn validate_h7_staging_release_pin(
+    row_index: usize,
+    row: &GeoH7StagingSourceRecordBytesRow,
+    population_row: &GeoH7PopulationWarehouseRow,
+) -> Result<(), GeoMaterializationError> {
+    let mappluto_release =
+        required_h7_staging_field(row_index, "mappluto_release", &row.mappluto_release)?;
+    let mappluto_release_dt =
+        required_h7_staging_field(row_index, "mappluto_release_dt", &row.mappluto_release_dt)?;
+    let mappluto_variant =
+        required_h7_staging_field(row_index, "mappluto_variant", &row.mappluto_variant)?;
+    let expected = (
+        mappluto_release,
+        mappluto_release_dt,
+        mappluto_variant,
+        CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION.to_string(),
+    );
+    let actual = mappluto_pin_key(&population_row.candidate_release);
+    if actual != expected {
+        return Err(h7_invalid(
+            "Geo H.7 staging release fields disagree with candidate_release",
+            [
+                ("row_index", row_index.to_string()),
+                ("loan_key", population_row.loan_key.clone()),
+                ("mappluto_release", expected.0),
+                ("candidate_release", actual.0),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_h7_staging_denominator(
+    row_index: usize,
+    row: &GeoH7StagingSourceRecordBytesRow,
+    denominators: &BTreeMap<GeoTruthPlane, GeoH7PlaneDenominator>,
+) -> Result<(), GeoMaterializationError> {
+    let truth_plane = required_h7_staging_field(row_index, "truth_plane", &row.truth_plane)?;
+    let denominator = denominators.get(&truth_plane).ok_or_else(|| {
+        h7_invalid(
+            "Geo H.7 staging row lacks an operator denominator for its truth plane",
+            [
+                ("row_index", row_index.to_string()),
+                ("truth_plane", h7_plane_name(truth_plane).to_string()),
+            ],
+        )
+    })?;
+    let checks = [
+        (
+            "accepted_plane_eligible_loans",
+            required_h7_staging_field(
+                row_index,
+                "accepted_plane_eligible_loans",
+                &row.accepted_plane_eligible_loans,
+            )?,
+            denominator.eligible_loans,
+        ),
+        (
+            "accepted_plane_legal_candidate_loans",
+            required_h7_staging_field(
+                row_index,
+                "accepted_plane_legal_candidate_loans",
+                &row.accepted_plane_legal_candidate_loans,
+            )?,
+            denominator.candidate_loans,
+        ),
+        (
+            "accepted_plane_legal_confirmed_candidate_loans",
+            required_h7_staging_field(
+                row_index,
+                "accepted_plane_legal_confirmed_candidate_loans",
+                &row.accepted_plane_legal_confirmed_candidate_loans,
+            )?,
+            denominator.legal_confirmed_candidate_loans,
+        ),
+        (
+            "accepted_plane_accepted_loans",
+            required_h7_staging_field(
+                row_index,
+                "accepted_plane_accepted_loans",
+                &row.accepted_plane_accepted_loans,
+            )?,
+            denominator.accepted_loans,
+        ),
+        (
+            "accepted_plane_ambiguous_loans",
+            required_h7_staging_field(
+                row_index,
+                "accepted_plane_ambiguous_loans",
+                &row.accepted_plane_ambiguous_loans,
+            )?,
+            denominator.ambiguous_loans,
+        ),
+        (
+            "accepted_plane_candidate_without_legal_loans",
+            required_h7_staging_field(
+                row_index,
+                "accepted_plane_candidate_without_legal_loans",
+                &row.accepted_plane_candidate_without_legal_loans,
+            )?,
+            denominator.candidate_no_legal_confirmation_loans,
+        ),
+        (
+            "accepted_plane_no_candidate_loans",
+            required_h7_staging_field(
+                row_index,
+                "accepted_plane_no_candidate_loans",
+                &row.accepted_plane_no_candidate_loans,
+            )?,
+            denominator.no_candidate_loans,
+        ),
+        (
+            "accepted_plane_selected_multi_parcel_loans",
+            required_h7_staging_field(
+                row_index,
+                "accepted_plane_selected_multi_parcel_loans",
+                &row.accepted_plane_selected_multi_parcel_loans,
+            )?,
+            denominator.selected_multi_parcel_loans,
+        ),
+    ];
+    for (field, actual, expected) in checks {
+        if actual != expected {
+            return Err(h7_invalid(
+                "Geo H.7 staging denominator fields disagree with operator denominators",
+                [
+                    ("row_index", row_index.to_string()),
+                    ("truth_plane", h7_plane_name(truth_plane).to_string()),
+                    ("field", field.to_string()),
+                    ("actual", actual.to_string()),
+                    ("expected", expected.to_string()),
+                ],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_h7_staging_row_counts(
+    row_index: usize,
+    row: &GeoH7StagingSourceRecordBytesRow,
+    population_row: &GeoH7PopulationWarehouseRow,
+) -> Result<(), GeoMaterializationError> {
+    require_h7_staging_count(
+        row_index,
+        "source_record_count",
+        row.source_record_count,
+        len_u64(&population_row.source_records, "source_records")?,
+    )?;
+    require_h7_staging_count(
+        row_index,
+        "truth_bbl_count",
+        row.truth_bbl_count,
+        len_u64(&population_row.truth_parcels, "truth_parcels")?,
+    )?;
+    require_h7_staging_count(
+        row_index,
+        "candidate_bbl_count",
+        row.candidate_bbl_count,
+        len_u64(&population_row.candidate_parcels, "candidate_parcels")?,
+    )?;
+    let reached_truth_bbls = population_row
+        .truth_parcels
+        .iter()
+        .filter(|parcel_id| population_row.candidate_parcels.contains(parcel_id))
+        .count();
+    require_h7_staging_count(
+        row_index,
+        "reached_truth_bbls",
+        row.reached_truth_bbls,
+        u64::try_from(reached_truth_bbls).map_err(|_| h7_overflow("reached_truth_bbls"))?,
+    )?;
+
+    let mut role_counts = BTreeMap::new();
+    for record in &population_row.source_records {
+        h7_increment(
+            role_counts.entry(record.role).or_insert(0),
+            "staging_source_role_count",
+        )?;
+    }
+    require_h7_staging_count(
+        row_index,
+        "bridge_source_record_count",
+        row.bridge_source_record_count,
+        *role_counts
+            .get(&GeoH7SourceRecordRole::BridgeLoan)
+            .unwrap_or(&0),
+    )?;
+    require_h7_staging_count(
+        row_index,
+        "acris_master_source_record_count",
+        row.acris_master_source_record_count,
+        *role_counts
+            .get(&GeoH7SourceRecordRole::AcrisMaster)
+            .unwrap_or(&0),
+    )?;
+    require_h7_staging_count(
+        row_index,
+        "acris_party_source_record_count",
+        row.acris_party_source_record_count,
+        *role_counts
+            .get(&GeoH7SourceRecordRole::AcrisParty)
+            .unwrap_or(&0),
+    )?;
+    require_h7_staging_count(
+        row_index,
+        "acris_legal_source_record_count",
+        row.acris_legal_source_record_count,
+        *role_counts
+            .get(&GeoH7SourceRecordRole::AcrisLegal)
+            .unwrap_or(&0),
+    )?;
+    require_h7_staging_count(
+        row_index,
+        "mappluto_source_record_count",
+        row.mappluto_source_record_count,
+        *role_counts
+            .get(&GeoH7SourceRecordRole::MapplutoCandidate)
+            .unwrap_or(&0),
+    )?;
+    Ok(())
+}
+
+fn validate_h7_staging_whole_counts(
+    metadata: &Option<GeoH7StagingBatchMetadata>,
+    rows: &[GeoH7PopulationWarehouseRow],
+) -> Result<(), GeoMaterializationError> {
+    let metadata = metadata.as_ref().ok_or_else(|| {
+        h7_invalid(
+            "Geo H.7 staging batch metadata was not observed",
+            [("staging_rows", "0".to_string())],
+        )
+    })?;
+    let release_rows = len_u64(rows, "staging_rows")?;
+    if metadata.whole_release_rows != release_rows {
+        return Err(h7_invalid(
+            "Geo H.7 staging whole-release row denominator must match the supplied batch",
+            [
+                (
+                    "whole_release_rows",
+                    metadata.whole_release_rows.to_string(),
+                ),
+                ("staging_rows", release_rows.to_string()),
+            ],
+        ));
+    }
+    let accepted_loans = rows
+        .iter()
+        .map(|row| row.loan_key.clone())
+        .collect::<BTreeSet<_>>();
+    let accepted_loans_len = len_u64_set(&accepted_loans, "staging_accepted_loans")?;
+    if metadata.whole_accepted_loans != accepted_loans_len {
+        return Err(h7_invalid(
+            "Geo H.7 staging whole-accepted-loan denominator must match the supplied batch",
+            [
+                (
+                    "whole_accepted_loans",
+                    metadata.whole_accepted_loans.to_string(),
+                ),
+                ("staging_accepted_loans", accepted_loans_len.to_string()),
+            ],
+        ));
+    }
+    let zero_candidate_rows = rows
+        .iter()
+        .filter(|row| row.candidate_parcels.is_empty())
+        .count();
+    let zero_candidate_rows = u64::try_from(zero_candidate_rows)
+        .map_err(|_| h7_overflow("zero_candidate_release_rows"))?;
+    if metadata.whole_zero_candidate_release_rows != zero_candidate_rows {
+        return Err(h7_invalid(
+            "Geo H.7 staging zero-candidate release denominator must match the supplied batch",
+            [
+                (
+                    "whole_zero_candidate_release_rows",
+                    metadata.whole_zero_candidate_release_rows.to_string(),
+                ),
+                (
+                    "zero_candidate_release_rows",
+                    zero_candidate_rows.to_string(),
+                ),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn required_h7_staging_field<T: Clone>(
+    row_index: usize,
+    field: &'static str,
+    value: &Option<T>,
+) -> Result<T, GeoMaterializationError> {
+    value.clone().ok_or_else(|| {
+        h7_invalid(
+            "Geo H.7 staging source-record rows are missing a required payload field",
+            [
+                ("row_index", row_index.to_string()),
+                ("field", field.to_string()),
+            ],
+        )
+    })
+}
+
+fn require_h7_staging_count(
+    row_index: usize,
+    field: &'static str,
+    actual: Option<u64>,
+    expected: u64,
+) -> Result<(), GeoMaterializationError> {
+    let actual = required_h7_staging_field(row_index, field, &actual)?;
+    if actual != expected {
+        return Err(h7_invalid(
+            "Geo H.7 staging count fields disagree with decoded row payloads",
+            [
+                ("row_index", row_index.to_string()),
+                ("field", field.to_string()),
+                ("actual", actual.to_string()),
+                ("expected", expected.to_string()),
             ],
         ));
     }
@@ -2440,6 +3797,13 @@ fn canonicalize_h7_provenance(provenance: &GeoH7PopulationProvenance) -> GeoH7Po
     canonical
         .query_receipts
         .sort_by(|left, right| left.purpose.cmp(&right.purpose));
+    canonical.external_receipts.sort_by(|left, right| {
+        (&left.receipt_id, left.kind, &left.purpose).cmp(&(
+            &right.receipt_id,
+            right.kind,
+            &right.purpose,
+        ))
+    });
     canonical
         .empirical_discrepancies
         .sort_by(|left, right| left.subject.cmp(&right.subject));

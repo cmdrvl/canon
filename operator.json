@@ -1224,6 +1224,67 @@
       ]
     },
     {
+      "name": "geo materialize-h7-staging-batch",
+      "usage": "canon geo materialize-h7-staging-batch --batch <BATCH.json>",
+      "description": "Adapt bounded H.7 NYC staging-profile derived source-record payload rows into the existing H.7 population materializer, preserving profile-specific truth planes, NYC collateral scope, and release pins",
+      "output_mode": "json",
+      "output_schema": "canon_geo_h7_population.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads a canon_geo_h7_staging_source_record_bytes_batch.v0 file and writes only a typed H.7 population artifact to stdout. This is an H.7 NYC staging-profile adapter, not the generic regional evidence engine: it accepts operator-supplied provenance, H.7 plane denominators, budgets, and Snowflake-shaped staging rows; rejects guard/non-ok/mixed/incomplete batches; validates derived Canon source-record key/value payload bytes; converts only source_record_payload_release_row fields into canon_geo_h7_population_rows.v0; and delegates validation to the existing H.7 population materializer. It does not acquire warehouse data, recompute original source rows, turn fixtures into live proof, or broaden the generic rho compiler.",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "typed H.7 population artifact emitted from the staging-profile batch",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, batch IO, parse, staging envelope, release, provenance, denominator, truth-plane, or evidence contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "extract emitted .population to <POPULATION.json>, then run canon geo evaluate --population <POPULATION.json>",
+      "recovery": {
+        "next_command": "canon geo materialize-h7-staging-batch --batch <BATCH.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "batch",
+          "flag": "--batch",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding canon_geo_h7_staging_source_record_bytes_batch.v0 for the H.7 NYC staging profile"
+        }
+      ]
+    },
+    {
       "name": "geo compile-evidence",
       "usage": "canon geo compile-evidence --request <REQUEST.json>",
       "description": "Admit versioned rho observations into a bounded composition request, recording each admission disposition, and emit the canonical artifact on stdout",

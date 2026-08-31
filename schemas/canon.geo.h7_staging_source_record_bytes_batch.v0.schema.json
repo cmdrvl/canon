@@ -1,0 +1,457 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.h7_staging_source_record_bytes_batch.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.h7_staging_source_record_bytes_batch.v0",
+  "description": "H.7 NYC staging-profile batch contract for adapting Snowflake derived Canon source-record payload byte rows into canon_geo_h7_population_rows.v0 before the existing H.7 population materializer. The payload bytes are derived Canon key/value records, not full/original source rows.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_h7_staging_source_record_bytes_batch.v0",
+      "type": "string"
+    },
+    "population_scope": {
+      "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/population_scope"
+    },
+    "provenance": {
+      "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/provenance"
+    },
+    "plane_denominators": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/plane_denominator"
+      }
+    },
+    "staging_rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/staging_row"
+      }
+    },
+    "max_cases": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_assignments": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_materialized_models": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "version",
+    "population_scope",
+    "provenance",
+    "plane_denominators",
+    "staging_rows",
+    "max_cases",
+    "max_assignments",
+    "max_materialized_models"
+  ],
+  "$defs": {
+    "nullable_string": {
+      "type": ["string", "null"]
+    },
+    "nullable_integer": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "nullable_boolean": {
+      "type": ["boolean", "null"]
+    },
+    "nullable_truth_plane": {
+      "oneOf": [
+        {
+          "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/truth_plane"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_association_plane": {
+      "oneOf": [
+        {
+          "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/association_plane"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_reach_status": {
+      "oneOf": [
+        {
+          "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/reach_status"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_mappluto_pin": {
+      "oneOf": [
+        {
+          "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/mappluto_pin"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_borough_edges": {
+      "oneOf": [
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/borough_edge"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_loan_field_distinct_counts": {
+      "oneOf": [
+        {
+          "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/loan_field_distinct_counts"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_truth_parcels": {
+      "oneOf": [
+        {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_parcels": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "staging_evidence_record_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_record_id": { "type": "string" },
+        "source_vintage": { "type": "string" },
+        "record_blake3": {
+          "type": "string",
+          "pattern": "^$|^[0-9a-f]{64}$"
+        }
+      },
+      "required": ["source_record_id", "source_vintage"]
+    },
+    "staging_source_evidence_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/source_record_role"
+        },
+        "parcel_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "source_record": {
+          "$ref": "#/$defs/staging_evidence_record_ref"
+        },
+        "source_record_bytes_base64": {
+          "type": "string",
+          "minLength": 4,
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+        }
+      },
+      "required": [
+        "role",
+        "parcel_ids",
+        "source_record",
+        "source_record_bytes_base64"
+      ]
+    },
+    "nullable_source_records": {
+      "oneOf": [
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/staging_source_evidence_record"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_property_state": {
+      "oneOf": [
+        {
+          "const": "NY",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullable_borough": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 5
+    },
+    "staging_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "row_contract": {
+          "const": "h7_staging_source_record_bytes_export_row.v0",
+          "type": "string"
+        },
+        "ROW_CONTRACT": {
+          "const": "h7_staging_source_record_bytes_export_row.v0",
+          "type": "string"
+        },
+        "row_kind": {
+          "type": "string",
+          "enum": ["source_record_payload_release_row", "guard_failure"]
+        },
+        "ROW_KIND": {
+          "type": "string",
+          "enum": ["source_record_payload_release_row", "guard_failure"]
+        },
+        "guard_status": {
+          "type": "string",
+          "enum": ["ok", "refused"]
+        },
+        "GUARD_STATUS": {
+          "type": "string",
+          "enum": ["ok", "refused"]
+        },
+        "refusal_reason": { "$ref": "#/$defs/nullable_string" },
+        "REFUSAL_REASON": { "$ref": "#/$defs/nullable_string" },
+        "pip_block_population_query_id": { "type": "string" },
+        "PIP_BLOCK_POPULATION_QUERY_ID": { "type": "string" },
+        "payload_contract": {
+          "const": "h7_derived_source_record_payload.v0",
+          "type": "string"
+        },
+        "PAYLOAD_CONTRACT": {
+          "const": "h7_derived_source_record_payload.v0",
+          "type": "string"
+        },
+        "source_record_class": {
+          "const": "derived_immutable_evidence_record",
+          "type": "string"
+        },
+        "SOURCE_RECORD_CLASS": {
+          "const": "derived_immutable_evidence_record",
+          "type": "string"
+        },
+        "accepted_truth_query_id": { "$ref": "#/$defs/nullable_string" },
+        "ACCEPTED_TRUTH_QUERY_ID": { "$ref": "#/$defs/nullable_string" },
+        "loan_key": { "$ref": "#/$defs/nullable_string" },
+        "LOAN_KEY": { "$ref": "#/$defs/nullable_string" },
+        "document_id": { "$ref": "#/$defs/nullable_string" },
+        "DOCUMENT_ID": { "$ref": "#/$defs/nullable_string" },
+        "truth_plane": { "$ref": "#/$defs/nullable_truth_plane" },
+        "TRUTH_PLANE": { "$ref": "#/$defs/nullable_truth_plane" },
+        "association_plane": { "$ref": "#/$defs/nullable_association_plane" },
+        "ASSOCIATION_PLANE": { "$ref": "#/$defs/nullable_association_plane" },
+        "mappluto_release": { "$ref": "#/$defs/nullable_string" },
+        "MAPPLUTO_RELEASE": { "$ref": "#/$defs/nullable_string" },
+        "mappluto_release_dt": { "$ref": "#/$defs/nullable_string" },
+        "MAPPLUTO_RELEASE_DT": { "$ref": "#/$defs/nullable_string" },
+        "mappluto_variant": { "$ref": "#/$defs/nullable_string" },
+        "MAPPLUTO_VARIANT": { "$ref": "#/$defs/nullable_string" },
+        "candidate_release": { "$ref": "#/$defs/nullable_mappluto_pin" },
+        "CANDIDATE_RELEASE": { "$ref": "#/$defs/nullable_mappluto_pin" },
+        "property_state": { "$ref": "#/$defs/nullable_property_state" },
+        "PROPERTY_STATE": { "$ref": "#/$defs/nullable_property_state" },
+        "filed_county": { "$ref": "#/$defs/nullable_string" },
+        "FILED_COUNTY": { "$ref": "#/$defs/nullable_string" },
+        "filed_borough": { "$ref": "#/$defs/nullable_borough" },
+        "FILED_BOROUGH": { "$ref": "#/$defs/nullable_borough" },
+        "legal_borough": { "$ref": "#/$defs/nullable_borough" },
+        "LEGAL_BOROUGH": { "$ref": "#/$defs/nullable_borough" },
+        "accepted_borough_edges": { "$ref": "#/$defs/nullable_borough_edges" },
+        "ACCEPTED_BOROUGH_EDGES": { "$ref": "#/$defs/nullable_borough_edges" },
+        "geocoded_county_fips": { "$ref": "#/$defs/nullable_string" },
+        "GEOCODED_COUNTY_FIPS": { "$ref": "#/$defs/nullable_string" },
+        "doc_type": { "$ref": "#/$defs/nullable_string" },
+        "DOC_TYPE": { "$ref": "#/$defs/nullable_string" },
+        "originationdate": { "$ref": "#/$defs/nullable_string" },
+        "ORIGINATIONDATE": { "$ref": "#/$defs/nullable_string" },
+        "amount_cents": { "$ref": "#/$defs/nullable_integer" },
+        "AMOUNT_CENTS": { "$ref": "#/$defs/nullable_integer" },
+        "is_round_100k_lattice": { "$ref": "#/$defs/nullable_boolean" },
+        "IS_ROUND_100K_LATTICE": { "$ref": "#/$defs/nullable_boolean" },
+        "originatorname": { "$ref": "#/$defs/nullable_string" },
+        "ORIGINATORNAME": { "$ref": "#/$defs/nullable_string" },
+        "originator_match_text": { "$ref": "#/$defs/nullable_string" },
+        "ORIGINATOR_MATCH_TEXT": { "$ref": "#/$defs/nullable_string" },
+        "lender_match_text": { "$ref": "#/$defs/nullable_string" },
+        "LENDER_MATCH_TEXT": { "$ref": "#/$defs/nullable_string" },
+        "lender_party_type": { "$ref": "#/$defs/nullable_string" },
+        "LENDER_PARTY_TYPE": { "$ref": "#/$defs/nullable_string" },
+        "loan_field_distinct_counts": {
+          "$ref": "#/$defs/nullable_loan_field_distinct_counts"
+        },
+        "LOAN_FIELD_DISTINCT_COUNTS": {
+          "$ref": "#/$defs/nullable_loan_field_distinct_counts"
+        },
+        "truth_parcels": { "$ref": "#/$defs/nullable_truth_parcels" },
+        "TRUTH_PARCELS": { "$ref": "#/$defs/nullable_truth_parcels" },
+        "candidate_parcels": { "$ref": "#/$defs/nullable_parcels" },
+        "CANDIDATE_PARCELS": { "$ref": "#/$defs/nullable_parcels" },
+        "reach_status": { "$ref": "#/$defs/nullable_reach_status" },
+        "REACH_STATUS": { "$ref": "#/$defs/nullable_reach_status" },
+        "reach_reason": { "$ref": "#/$defs/nullable_string" },
+        "REACH_REASON": { "$ref": "#/$defs/nullable_string" },
+        "source_records": { "$ref": "#/$defs/nullable_source_records" },
+        "SOURCE_RECORDS": { "$ref": "#/$defs/nullable_source_records" },
+        "source_record_count": { "$ref": "#/$defs/nullable_integer" },
+        "SOURCE_RECORD_COUNT": { "$ref": "#/$defs/nullable_integer" },
+        "bridge_source_record_count": { "$ref": "#/$defs/nullable_integer" },
+        "BRIDGE_SOURCE_RECORD_COUNT": { "$ref": "#/$defs/nullable_integer" },
+        "acris_master_source_record_count": { "$ref": "#/$defs/nullable_integer" },
+        "ACRIS_MASTER_SOURCE_RECORD_COUNT": { "$ref": "#/$defs/nullable_integer" },
+        "acris_party_source_record_count": { "$ref": "#/$defs/nullable_integer" },
+        "ACRIS_PARTY_SOURCE_RECORD_COUNT": { "$ref": "#/$defs/nullable_integer" },
+        "acris_legal_source_record_count": { "$ref": "#/$defs/nullable_integer" },
+        "ACRIS_LEGAL_SOURCE_RECORD_COUNT": { "$ref": "#/$defs/nullable_integer" },
+        "mappluto_source_record_count": { "$ref": "#/$defs/nullable_integer" },
+        "MAPPLUTO_SOURCE_RECORD_COUNT": { "$ref": "#/$defs/nullable_integer" },
+        "min_source_record_payload_utf8_bytes": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "MIN_SOURCE_RECORD_PAYLOAD_UTF8_BYTES": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "max_source_record_payload_utf8_bytes": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "MAX_SOURCE_RECORD_PAYLOAD_UTF8_BYTES": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "total_source_record_payload_utf8_bytes": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "TOTAL_SOURCE_RECORD_PAYLOAD_UTF8_BYTES": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "max_source_record_payload_base64_chars": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "MAX_SOURCE_RECORD_PAYLOAD_BASE64_CHARS": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "candidate_bbl_count": { "$ref": "#/$defs/nullable_integer" },
+        "CANDIDATE_BBL_COUNT": { "$ref": "#/$defs/nullable_integer" },
+        "truth_bbl_count": { "$ref": "#/$defs/nullable_integer" },
+        "TRUTH_BBL_COUNT": { "$ref": "#/$defs/nullable_integer" },
+        "reached_truth_bbls": { "$ref": "#/$defs/nullable_integer" },
+        "REACHED_TRUTH_BBLS": { "$ref": "#/$defs/nullable_integer" },
+        "whole_accepted_loans": { "$ref": "#/$defs/nullable_integer" },
+        "WHOLE_ACCEPTED_LOANS": { "$ref": "#/$defs/nullable_integer" },
+        "whole_release_rows": { "$ref": "#/$defs/nullable_integer" },
+        "WHOLE_RELEASE_ROWS": { "$ref": "#/$defs/nullable_integer" },
+        "whole_zero_candidate_release_rows": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "WHOLE_ZERO_CANDIDATE_RELEASE_ROWS": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "accepted_plane_eligible_loans": { "$ref": "#/$defs/nullable_integer" },
+        "ACCEPTED_PLANE_ELIGIBLE_LOANS": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "accepted_plane_legal_candidate_loans": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "ACCEPTED_PLANE_LEGAL_CANDIDATE_LOANS": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "accepted_plane_legal_confirmed_candidate_loans": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "ACCEPTED_PLANE_LEGAL_CONFIRMED_CANDIDATE_LOANS": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "accepted_plane_accepted_loans": { "$ref": "#/$defs/nullable_integer" },
+        "ACCEPTED_PLANE_ACCEPTED_LOANS": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "accepted_plane_ambiguous_loans": { "$ref": "#/$defs/nullable_integer" },
+        "ACCEPTED_PLANE_AMBIGUOUS_LOANS": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "accepted_plane_candidate_without_legal_loans": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "ACCEPTED_PLANE_CANDIDATE_WITHOUT_LEGAL_LOANS": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "accepted_plane_no_candidate_loans": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "ACCEPTED_PLANE_NO_CANDIDATE_LOANS": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "accepted_plane_selected_multi_parcel_loans": {
+          "$ref": "#/$defs/nullable_integer"
+        },
+        "ACCEPTED_PLANE_SELECTED_MULTI_PARCEL_LOANS": {
+          "$ref": "#/$defs/nullable_integer"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "row_contract",
+            "row_kind",
+            "guard_status",
+            "pip_block_population_query_id",
+            "payload_contract",
+            "source_record_class"
+          ]
+        },
+        {
+          "required": [
+            "ROW_CONTRACT",
+            "ROW_KIND",
+            "GUARD_STATUS",
+            "PIP_BLOCK_POPULATION_QUERY_ID",
+            "PAYLOAD_CONTRACT",
+            "SOURCE_RECORD_CLASS"
+          ]
+        }
+      ]
+    }
+  }
+}

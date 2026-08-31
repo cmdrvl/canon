@@ -262,6 +262,17 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo materialize-h7-staging-batch",
+      "family": "geo",
+      "clap_path": "geo materialize-h7-staging-batch",
+      "operator_name": "geo materialize-h7-staging-batch",
+      "primary_contracts": [
+        "canon_geo_h7_staging_source_record_bytes_batch.v0",
+        "canon_geo_h7_population.v0"
+      ],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo evaluate",
       "family": "geo",
       "clap_path": "geo evaluate",
@@ -1363,6 +1374,14 @@
       "access_boundary": "public_crate_api",
       "crate_module": "canon::geo",
       "source_path": "schemas/canon.geo.h7_population_rows.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_h7_staging_source_record_bytes_batch.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.h7_staging_source_record_bytes_batch.v0.schema.json"
     },
     {
       "id": "canon_geo_h7_population.v0",
