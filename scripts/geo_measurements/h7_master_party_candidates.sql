@@ -3,10 +3,12 @@
 -- This is the second of three acquisition-side single-SELECT stages for
 -- bd-7bcp. It consumes the Stage-1 bridge-only loan-parameter payload through
 -- RESULT_SCAN, filters one deterministic loan-key shard, and emits flat rows:
--- one row per shard loan/document/recorded-borough candidate plus one
+-- one row per shard loan/document candidate plus one
 -- no-candidate row for each shard loan without a MASTER/PARTY candidate. It
--- does not join ACRIS LEGALS or MapPLUTO, does not emit nested candidate
--- arrays, and cannot produce canon_geo_h7_population_rows.v0.
+-- deliberately does not use MASTER.RECORDED_BOROUGH as truth: filed-borough
+-- agreement is tested against LEGALS in Stage 3. It does not join ACRIS
+-- LEGALS or MapPLUTO, does not emit nested candidate arrays, and cannot
+-- produce canon_geo_h7_population_rows.v0.
 --
 -- Coordinator sequence:
 --   1. Run h7_multi_parcel_population.sql once per selected plane and preserve
@@ -19,11 +21,10 @@
 --        '__BD7BCP_H7_SHARD_INDEX__'
 --      Do not rewrite candidate_sentinel_markers; those split marker
 --      expressions are the immutable unbound guards.
---   3. Intended shard plans after the physical candidate access path is
---      repaired: 16 shards for 'non_round_amount_date_legal_borough' and 64
---      shards for 'round_exact_lender_party'. Do not fan these out against the
---      current external-table shape: the 0/16 and 0/64 controls below both hit
---      the same client-cancellation boundary.
+--   3. The release-pinned staging tables precompute amount/date/name fields and
+--      make the candidate path bounded and queryable. Use enough shards that
+--      every returned row set remains below the MCP row cap; shard count is an
+--      execution parameter, never part of the truth definition.
 --   4. Run h7_multi_parcel_legal_residual.sql once for each successful
 --      Stage-2 shard query id with the same plane, shard_count, and
 --      shard_index.
@@ -47,12 +48,15 @@
 --   removed; the retained local rendered-source digest begins dfe5e330.
 -- * 01c6bf38-0821-a0dc-006c-c703088cf4d2, 45.052s: flat shard 0/64
 --   non-round Stage 2 also timed out. The smaller logical shard did not reduce
---   the 954,601-byte external MASTER scan, so retries are stopped pending a
---   release-pinned candidate fact/index or a retrievable long-read MCP path.
+--   the 954,601-byte external MASTER scan. That raw path is retired here; the
+--   staging implementation below supersedes it. Fresh staging receipts
+--   01c6bfc9 (non-round shard 0/16) and 01c6bfcd (round shard 0/64) completed
+--   in 9.456s and 9.499s respectively.
 --
--- This row stream has no source hashes and no legal truth. Downstream
--- materialization must bind the executed SQL text/hash/query id and attach
--- preserved, syntactically validated source hashes.
+-- This row stream carries staging source-record identifiers and raw-file
+-- hashes for MASTER and the selected exact PARTY assertion. It still has no
+-- legal truth. Downstream materialization must additionally bind the executed
+-- SQL text/hash/query id and the Stage-3 LEGALS/MapPLUTO records.
 
 WITH
 candidate_params AS (
@@ -74,7 +78,7 @@ candidate_params AS (
     45::NUMBER(9,0) AS max_recording_offset_days,
     3000::NUMBER(38,0) AS max_loan_parameter_rows,
     64::NUMBER(38,0) AS max_shard_loan_parameter_rows,
-    10000::NUMBER(38,0) AS max_candidate_borough_rows,
+    10000::NUMBER(38,0) AS max_candidate_document_rows,
     256::NUMBER(38,0) AS max_shard_count,
     'MOD(ABS(MD5_NUMBER_LOWER64(TO_VARCHAR(loan_key))), shard_count)'::TEXT
       AS shard_partition_expression
@@ -227,26 +231,32 @@ master_candidates_non_round AS (
     CAST(m.recorded_datetime AS DATE) AS recorded_date,
     DATEDIFF(day, l.originationdate, CAST(m.recorded_datetime AS DATE))
       AS recording_offset_days,
-    'EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT:'
-      || TO_VARCHAR((SELECT acris_release_dt FROM candidate_params))
+    'EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_MASTER:'
+      || TO_VARCHAR(m.release_dt)
+      || ':'
+      || TO_VARCHAR(m.source_row_number::NUMBER(38,0))
       || ':'
       || m.document_id::TEXT AS acris_master_source_record_id,
+    m.raw_csv_sha256::TEXT AS acris_master_raw_csv_sha256,
+    m.filename::TEXT AS acris_master_filename,
     NULL::TEXT AS lender_match_text,
     NULL::TEXT AS lender_party_type,
-    NULL::TEXT AS acris_party_source_record_id
+    NULL::VARIANT AS acris_party_source_record_ids,
+    NULL::VARIANT AS acris_party_raw_csv_sha256s,
+    NULL::VARIANT AS acris_party_filenames
   FROM sharded_loan_parameters l
   JOIN candidate_params selected
     ON selected.selected_truth_plane = 'non_round_amount_date_legal_borough'
-  JOIN EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT m
+  JOIN EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_MASTER m
     ON m.release_dt = (SELECT acris_release_dt FROM candidate_params)
-   AND ROUND(m.document_amt * 100, 0)::NUMBER(38,0) = l.amount_cents
-   AND CAST(m.recorded_datetime AS DATE) BETWEEN l.originationdate
+   AND m.amount_cents = l.amount_cents
+   AND m.recorded_date BETWEEN l.originationdate
      AND DATEADD(day, (SELECT max_recording_offset_days FROM candidate_params),
        l.originationdate)
+   AND m.document_row_rank = 1
   JOIN mortgage_doc_types dt
-    ON UPPER(TRIM(m.doc_type)) = dt.doc_type
+    ON m.doc_type_norm = dt.doc_type
   WHERE l.truth_plane = 'non_round_amount_date_legal_borough'
-    AND ARRAY_CONTAINS(m.recorded_borough::VARIANT, l.filed_boroughs)
 ),
 master_candidates_round AS (
   SELECT DISTINCT
@@ -275,44 +285,55 @@ master_candidates_round AS (
     CAST(m.recorded_datetime AS DATE) AS recorded_date,
     DATEDIFF(day, l.originationdate, CAST(m.recorded_datetime AS DATE))
       AS recording_offset_days,
-    'EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT:'
-      || TO_VARCHAR((SELECT acris_release_dt FROM candidate_params))
+    'EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_MASTER:'
+      || TO_VARCHAR(m.release_dt)
+      || ':'
+      || TO_VARCHAR(m.source_row_number::NUMBER(38,0))
       || ':'
       || m.document_id::TEXT AS acris_master_source_record_id,
-    TRIM(REGEXP_REPLACE(UPPER(party.name), '[^A-Z0-9 ]', ' '))
-      AS lender_match_text,
+    m.raw_csv_sha256::TEXT AS acris_master_raw_csv_sha256,
+    m.filename::TEXT AS acris_master_filename,
+    party.party_name_norm::TEXT AS lender_match_text,
     party.party_type::TEXT AS lender_party_type,
-    'EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_PARTIES_EXT:'
-      || TO_VARCHAR((SELECT acris_release_dt FROM candidate_params))
-      || ':'
-      || m.document_id::TEXT
-      || ':'
-      || party.party_type::TEXT
-      || ':'
-      || TRIM(REGEXP_REPLACE(UPPER(party.name), '[^A-Z0-9 ]', ' '))
-      AS acris_party_source_record_id
+    ARRAY_CONSTRUCT(
+      'EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES:'
+        || TO_VARCHAR(party.release_dt)
+        || ':'
+        || TO_VARCHAR(party.source_row_number::NUMBER(38,0))
+        || ':'
+        || party.document_id::TEXT
+    ) AS acris_party_source_record_ids,
+    ARRAY_CONSTRUCT(party.raw_csv_sha256::TEXT)
+      AS acris_party_raw_csv_sha256s,
+    ARRAY_CONSTRUCT(party.filename::TEXT) AS acris_party_filenames
   FROM sharded_loan_parameters l
   JOIN candidate_params selected
     ON selected.selected_truth_plane = 'round_exact_lender_party'
-  JOIN EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_MASTER_EXT m
+  JOIN EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_MASTER m
     ON m.release_dt = (SELECT acris_release_dt FROM candidate_params)
-   AND ROUND(m.document_amt * 100, 0)::NUMBER(38,0) = l.amount_cents
-   AND CAST(m.recorded_datetime AS DATE) BETWEEN l.originationdate
+   AND m.amount_cents = l.amount_cents
+   AND m.recorded_date BETWEEN l.originationdate
      AND DATEADD(day, (SELECT max_recording_offset_days FROM candidate_params),
        l.originationdate)
+   AND m.document_row_rank = 1
   JOIN mortgage_doc_types dt
-    ON UPPER(TRIM(m.doc_type)) = dt.doc_type
+    ON m.doc_type_norm = dt.doc_type
   JOIN lender_party_roles role
-    ON UPPER(TRIM(m.doc_type)) = role.doc_type
-  JOIN EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_PARTIES_EXT party
+    ON m.doc_type_norm = role.doc_type
+  JOIN EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES party
     ON party.release_dt = m.release_dt
    AND party.document_id = m.document_id
    AND party.party_type::TEXT = role.lender_party_type
-   AND TRIM(REGEXP_REPLACE(UPPER(party.name), '[^A-Z0-9 ]', ' '))
-      = l.originator_match_text
+   AND party.party_name_norm = l.originator_match_text
   WHERE l.truth_plane = 'round_exact_lender_party'
     AND l.originator_match_text IS NOT NULL
-    AND ARRAY_CONTAINS(m.recorded_borough::VARIANT, l.filed_boroughs)
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY l.loan_key, m.document_id
+    ORDER BY
+      party.source_row_number::NUMBER(38,0),
+      party.raw_csv_sha256::TEXT,
+      party.filename::TEXT
+  ) = 1
 ),
 master_candidates AS (
   SELECT * FROM master_candidates_non_round
@@ -321,7 +342,7 @@ master_candidates AS (
 ),
 candidate_counts AS (
   SELECT
-    COUNT(*) AS candidate_borough_rows,
+    COUNT(*) AS candidate_document_rows,
     COUNT(DISTINCT loan_key) AS candidate_loans,
     COUNT(DISTINCT loan_key || '|' || document_id) AS loan_document_pairs
   FROM master_candidates
@@ -351,7 +372,7 @@ denominator AS (
     COALESCE(s.shard_loan_parameter_rows, 0) AS shard_loan_parameter_rows,
     COALESCE(c.candidate_loans, 0) AS candidate_loans,
     COALESCE(c.loan_document_pairs, 0) AS loan_document_pairs,
-    COALESCE(c.candidate_borough_rows, 0) AS candidate_borough_rows,
+    COALESCE(c.candidate_document_rows, 0) AS candidate_document_rows,
     COALESCE(n.no_candidate_loans, 0) AS no_candidate_loans,
     COALESCE(w.whole_plane_eligible_loans, 0) = COALESCE(v.loan_parameter_rows, 0)
       AS whole_plane_reconciles,
@@ -490,9 +511,9 @@ guard_failures AS (
         > (SELECT max_shard_loan_parameter_rows FROM candidate_params)
     UNION ALL
     SELECT
-      'candidate_borough_rows_exceed_bound',
-      (SELECT candidate_borough_rows FROM candidate_counts)
-        > (SELECT max_candidate_borough_rows FROM candidate_params)
+      'candidate_document_rows_exceed_bound',
+      (SELECT candidate_document_rows FROM candidate_counts)
+        > (SELECT max_candidate_document_rows FROM candidate_params)
     UNION ALL
     SELECT
       'loan_parameter_missing_loan_key',
@@ -547,7 +568,7 @@ guard_summary AS (
 ),
 candidate_output AS (
   SELECT
-    'h7_stage2_master_party_candidate_row.v0'::TEXT AS row_contract,
+    'h7_stage2_master_party_candidate_row.v1'::TEXT AS row_contract,
     'candidate'::TEXT AS row_kind,
     g.guard_status,
     NULL::TEXT AS guard_failure_reason,
@@ -573,7 +594,7 @@ candidate_output AS (
     d.candidate_loans,
     d.no_candidate_loans,
     d.loan_document_pairs,
-    d.candidate_borough_rows,
+    d.candidate_document_rows,
     d.whole_plane_reconciles,
     d.shard_candidate_reconciles,
     c.loan_key,
@@ -600,7 +621,11 @@ candidate_output AS (
     c.lender_match_text,
     c.lender_party_type,
     c.acris_master_source_record_id,
-    c.acris_party_source_record_id
+    c.acris_master_raw_csv_sha256,
+    c.acris_master_filename,
+    c.acris_party_source_record_ids,
+    c.acris_party_raw_csv_sha256s,
+    c.acris_party_filenames
   FROM master_candidates c
   CROSS JOIN denominator d
   CROSS JOIN guard_summary g
@@ -608,7 +633,7 @@ candidate_output AS (
 ),
 no_candidate_output AS (
   SELECT
-    'h7_stage2_master_party_candidate_row.v0'::TEXT AS row_contract,
+    'h7_stage2_master_party_candidate_row.v1'::TEXT AS row_contract,
     'no_candidate'::TEXT AS row_kind,
     g.guard_status,
     NULL::TEXT AS guard_failure_reason,
@@ -634,7 +659,7 @@ no_candidate_output AS (
     d.candidate_loans,
     d.no_candidate_loans,
     d.loan_document_pairs,
-    d.candidate_borough_rows,
+    d.candidate_document_rows,
     d.whole_plane_reconciles,
     d.shard_candidate_reconciles,
     n.loan_key,
@@ -661,7 +686,11 @@ no_candidate_output AS (
     NULL::TEXT AS lender_match_text,
     NULL::TEXT AS lender_party_type,
     NULL::TEXT AS acris_master_source_record_id,
-    NULL::TEXT AS acris_party_source_record_id
+    NULL::TEXT AS acris_master_raw_csv_sha256,
+    NULL::TEXT AS acris_master_filename,
+    NULL::VARIANT AS acris_party_source_record_ids,
+    NULL::VARIANT AS acris_party_raw_csv_sha256s,
+    NULL::VARIANT AS acris_party_filenames
   FROM no_candidate_loans n
   CROSS JOIN denominator d
   CROSS JOIN guard_summary g
@@ -669,7 +698,7 @@ no_candidate_output AS (
 ),
 guard_output AS (
   SELECT
-    'h7_stage2_master_party_candidate_row.v0'::TEXT AS row_contract,
+    'h7_stage2_master_party_candidate_row.v1'::TEXT AS row_contract,
     'guard_failure'::TEXT AS row_kind,
     g.guard_status,
     f.failure_reason AS guard_failure_reason,
@@ -695,7 +724,7 @@ guard_output AS (
     d.candidate_loans,
     d.no_candidate_loans,
     d.loan_document_pairs,
-    d.candidate_borough_rows,
+    d.candidate_document_rows,
     d.whole_plane_reconciles,
     d.shard_candidate_reconciles,
     NULL::TEXT AS loan_key,
@@ -722,7 +751,11 @@ guard_output AS (
     NULL::TEXT AS lender_match_text,
     NULL::TEXT AS lender_party_type,
     NULL::TEXT AS acris_master_source_record_id,
-    NULL::TEXT AS acris_party_source_record_id
+    NULL::TEXT AS acris_master_raw_csv_sha256,
+    NULL::TEXT AS acris_master_filename,
+    NULL::VARIANT AS acris_party_source_record_ids,
+    NULL::VARIANT AS acris_party_raw_csv_sha256s,
+    NULL::VARIANT AS acris_party_filenames
   FROM guard_failures f
   CROSS JOIN denominator d
   CROSS JOIN guard_summary g

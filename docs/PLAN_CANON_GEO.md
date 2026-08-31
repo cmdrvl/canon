@@ -1961,13 +1961,14 @@ loan admitted through raw New York filed collateral is evaluated only for its NY
 ACRIS slice; the materializer must not silently label that subset as full
 national collateral truth.
 
-The declared 2,974-loan universe separates two truth planes:
+The declared 2,974-loan universe separates two truth planes. The controlling
+fresh 2026-08-30 staging-table rerun is:
 
 ```
   plane                                  eligible  unique accepts  reach of plane
   non-round amount/date/legal borough        653             172      26.34%
-  round + exact lender/party name           2,321             149       6.42%
-  disjoint accepted-loan reach            2,974             321      10.79%
+  round + exact lender/party name           2,321             270      11.63%
+  disjoint accepted-loan reach              2,974             442      14.86%
 ```
 
 The round plane first requires exact equality between the CMBS originator and the ACRIS
@@ -1984,9 +1985,9 @@ Fresh originator availability control `01c6bd19-0821-9afc-006c-c703088c0936`
 (313 ms, 2 rows), with lineage receipts `1385b1fd64bf266f` and
 `dbd7d7dbc84727b2`, reports 653/653 non-round and 2,317/2,321 round originator
 text availability. That conflicts with the archived G7 availability figures
-(605/653 and 2,173/2,321). Treat it as an open empirical discrepancy; the
-historical 149 round exact-lender accepts are retained, not freshly reproduced,
-until the bounded ACRIS candidate/legal residual is rerun.
+(605/653 and 2,173/2,321). The release-pinned staging rerun below reproduces
+2,317/2,321 and resolves the current-snapshot denominator in favor of the fresh
+bridge; the archived figures remain historical evidence.
 
 Fresh round candidate aggregation `01c6bd25-0821-a0dc-006c-c703088c27be`
 (42,031 ms, nonzero array row) likewise conflicts with archived G7: it found
@@ -1995,14 +1996,15 @@ loan-document pairs, versus archived 2,173 / 182 / 277. The cached identical
 repeat `01c6bd26-0821-9afc-006c-c703088c095a` is not an independent receipt.
 The aggregate-to-flatten legal continuation
 `01c6bd28-0821-a0dc-006c-c703088c27c6` hit deterministic client cancellation
-000604/57014 at 45,044 ms, so no fresh round legal counts are admissible.
+000604/57014 at 45,044 ms. That raw-table attempt remains discarded; the
+staging-table rerun below now supplies fresh legal counts.
 
 Candidate reach and scored precision are different quantities. Of the non-round plane,
 262/653 reached an amount/date/legal-borough candidate; 221 had legal confirmation, 172
 were uniquely admitted, 49 remained ambiguous, 41 candidate loans had no legal
-confirmation, and 391 had no candidate. Of the round plane, 182/2,321 reached an exact
-lender candidate; 179 had legal confirmation, 149 were unique accepts, 30 remained
-ambiguous, three candidate loans had no legal confirmation, and 2,139 had no candidate.
+confirmation, and 391 had no candidate. In the fresh round plane, 311/2,321 reached an
+exact lender candidate; 306 had legal confirmation, 270 were unique accepts, 36 remained
+ambiguous, five candidate loans had no legal confirmation, and 2,010 had no candidate.
 Source count is not treated as independent information, and the two planes are not pooled
 into a precision headline.
 
@@ -2019,7 +2021,21 @@ bytes in this offline materializer. The checked in-repo fixture remains
 separate property-key stratum; neither the 49 retained subjects nor the 98
 release-run rows satisfy the frozen E4 target of 79 genuine cases.
 
-Point-grain PIP scoring against document BBL sets, using the latest geocode observation per
+The fresh denominator control finds 35 non-round plus 36 round uniquely
+accepted multi-BBL subjects, or 71. The accepted-truth handoff now materializes
+all 71 with row-level source records and hashes, but this becomes a
+`live_complete` population only after candidate reach and both MapPLUTO
+releases are added. Fourteen of the 15 existing Gate V2 loans are inside those
+71; one is outside, and the two H.4 extension cases carry no H.7 loan key.
+Their maximum currently demonstrated union is therefore 74, not 88. The
+frozen 79-case gate remains short by five genuine, non-duplicate cases; it must
+not be passed by counting release rows, duplicate truth planes, or
+retained/live replays twice.
+
+The following point-grain PIP table remains the archived 35+14 scored cohort;
+the 22 newly admitted round multi-BBL subjects have not been scored and are not
+silently pooled into it. Point-grain PIP scoring against document BBL sets,
+using the latest geocode observation per
 exact point and the same filed-borough association, is:
 
 ```
@@ -2054,18 +2070,128 @@ relation let the legal confirmation complete. This is the intended mathematics: 
 candidate section, then a small exact residual—not a national or 500k-candidate
 monolithic solve.
 
-A fresh 2026-08-30 staged control sharpens where the current bottleneck sits. Stage 1
-query `01c6befd-0821-9afc-006c-c703088ce26e` completed in 6.966 seconds with guard
-`ok` and exported all 653 non-round loan parameters. Stage 2 then cancelled at the
-45-second client boundary when unsharded (`01c6bf06-0821-9afc-006c-c703088ce28e`),
-at shard 0/16 (`01c6bf19-0821-a6c8-006c-c703088d02f2`), and after the query was
-flattened at shards 0/16 (`01c6bf36-0821-a0dc-006c-c703088cf4ca`) and 0/64
-(`01c6bf38-0821-a0dc-006c-c703088cf4d2`). The flat 0/16 and 0/64 attempts both
-reported the same 954,601 bytes scanned, so smaller logical shards did not prune the
-external MASTER access path. Stage 3 has therefore not been freshly executed, and the
-retained H.7 accepts remain retained evidence rather than a new live reproduction. The
-next positive path is a release-pinned MASTER/PARTY candidate fact or index, or a
-retrievable long-read MCP execution—not a fan-out of deterministic timeout queries.
+A fresh 2026-08-30 staged execution confirms that the upstream repair changed the
+physical boundary. Stage 1 non-round query
+`01c6befd-0821-9afc-006c-c703088ce26e` completed in 6.966 seconds with guard
+`ok` and exported all 653 loan parameters. Corrected Stage 2 shard 0/16 over
+`DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_MASTER` completed as
+`01c6bfc9-0821-a0dc-006c-c703088d15fe` in 9.456 seconds: 40 shard loans,
+19 candidate loans, 42 candidate documents, 21 no-candidate loans, and both
+denominator checks true. Corrected Stage 3
+`01c6bfca-0821-a0dc-006c-c703088d160a` completed in 7.156 seconds against
+filed-borough/LEGAL equality with no refused rows.
+
+Round Stage 1 `01c6bfcb-0821-a6c8-006c-c703088d253a` completed in 6.499
+seconds and exported all 2,321 parameters. A discarded first rewrite
+(`01c6bfcc-0821-a6c8-006c-c703088d2542`) pre-aggregated all 46.5 million
+PARTY rows and timed out; it is not evidence. The corrected selective join
+collapses duplicate exact-party assertions deterministically after the
+candidate restriction. Round shard 0/64 completed as
+`01c6bfcd-0821-a6c8-006c-c703088d2546` in 9.499 seconds with 34 loans,
+6 candidate loans, 9 candidate documents, 28 no-candidate loans, and both
+denominator checks true. Its LEGALS continuation
+`01c6bfce-0821-a6c8-006c-c703088d254e` completed in 6.553 seconds with no
+refused rows. It includes a live example where MASTER recorded borough 1 is
+only diagnostic while filed boroughs 2 and 3 control the LEGALS probes—the
+case the superseded ordering would have silently removed.
+
+The file-backed full-plane control
+`h7_staging_denominator_control.sql`, query
+`01c6bfd2-0821-a0dc-006c-c703088d1612`, completed in 3.508 seconds. It
+reproduced the non-round 653/262/221/172/49/41/391 algebra and measured the
+fresh round 2,321/311/306/270/36/5/2,010 algebra. All six plane-specific
+denominator checks passed. Accepted multi-BBL truth is 35 non-round plus 36
+round. This aggregate proves the population counts and subject keys, not the
+row-level `live_complete` artifact, candidate reach, or solver result.
+
+The row-capped handoff is executable as `h7_staging_truth_export.sql`. Query
+`01c6bfda-0821-a0dc-006c-c703088d161e` completed in 10.305 seconds and
+returned 71 distinct accepted loan/document rows, carrying 626 distinct BBL
+edges with per-subject cardinality 2–172. A `RESULT_SCAN` validation found zero
+row-contract mismatches, row-cap failures, BBL-count mismatches, non-multi-BBL
+rows, missing MASTER provenance, insufficient LEGALS provenance, invalid round
+PARTY witnesses, or PARTY leakage into the non-round plane. The file SHA-256 is
+`230e40407e805e0ec4783185dcd731edb2285553051c91f69e726dd32aea13e1`.
+Nesting sorted BBLs at accepted-loan grain prevents the 172-BBL subject from
+being clipped by a 200-row transport cap; it does not turn source-row count
+into independent information. The export intentionally omits MapPLUTO
+candidate parcels, so it proves accepted legal truth and provenance—not
+candidate reach, solver correctness, or `live_complete` status.
+
+Candidate reach is now measured independently by
+`h7_staging_halo_reach_control.sql`. A direct formulation that recomputed H3
+over both pinned parcel releases was cancelled as
+`01c6bfe1-0821-a0dc-006c-c703088d1642` and not repeated. The repaired
+`STG_GEO_GEOMETRY_HOT_KEYS` path exposes 856,614 and 856,687 valid populated r8
+MapPLUTO keys for 26v1 and 26v2. The checked-in control now parameterizes the
+halo. File-backed k1 query `01c6bff9-0821-a6c8-006c-c703088d25d2`
+completed in 3.218 seconds and k2 query
+`01c6bff9-0821-a6c8-006c-c703088d25d6` in 4.557 seconds; all eight emitted
+guards were `ok` and the selector string was bound to the actual halo.
+
+For both releases, non-round subject reach is 24 full / 2 partial / 9 none and
+round reach is 28 / 1 / 7. The combined 52/71 full-reach count is a candidate
+channel result, not solver accuracy. The two releases have the same subject
+status counts and truth-edge hits in this slice, while their candidate
+cardinalities differ slightly; this is scoped equality only.
+
+Increasing the halo to k2 did not recover one additional accepted legal-truth
+edge or subject. It instead raised median section candidates from 5,758 to
+14,449 non-round and 4,931 to 10,992 round, with section maxima of 31,631 and
+29,788 and loan-union maxima of 50,035 and 58,184. This is useful negative
+evidence: the remaining legal-truth misses are not repaired by one more H3
+ring and should be investigated as association/geocode/discriminator failures,
+not paid for with ever-wider solve regions.
+
+The execution geometry rejects a monolithic interpretation. Across 101
+non-round and 63 round point-owned r8+k1 sections, median parcel counts are
+5,758 and 4,931, p90 is 12,576 and approximately 9,652, and the maximum is
+13,663. One non-round section is empty. Unioning a loan's sections yields
+1,192–27,120 parcel candidates, so those unions are reach diagnostics only.
+Exact solving still requires each bounded section to be reduced through its
+evidence-incidence components and then solved as small residuals. Snowflake H3
+is empirical blocking in this receipt; h3o replay remains required before the
+cells can be admitted as canonical home-cell artifacts.
+
+The point envelope also makes the truth-plane boundary visible: non-round
+collateral points extend to latitude 42.913397 and longitude -75.596272 even
+though the loan was admitted through raw NYC filed county plus ACRIS legal
+borough. A geocoded point can therefore explain a reach miss but cannot negate
+the accepted legal truth. The source SHA-256 is
+`6eaec54140218e1ecb8154abb76fe770b26737d1abe6c0dada3a71a4a2368dee`.
+
+The next bounded boundary is executable as
+`h7_staging_incidence_shard.sql`. All 16 deterministic shards completed in
+12.452–17.931 seconds each and returned 88 distinct r8+k1 center sections.
+Aggregate receipt `01c6bff7-0821-a6c8-006c-c703088d25c2` reconciled 497,128
+parcel memberships plus 176,086 raw observations. Section work units contain
+5–17,617 nodes (median 6,987; p90 13,219.6), but every section's component
+median is 1, the median section p90 is 3, and the maximum observed raw
+predicate-incidence component is 109. There were zero multi-majority
+observations and zero component-shape or accounting failures.
+
+The wider sample also corrects the earlier favorable shard-0 halo result.
+Eight raw observations in three sections have their unique complete-reference
+majority parcel outside k1. Diagnostic query
+`01c6bff8-0821-a0dc-006c-c703088d1682` placed all eight parcel home cells in
+ring 2. They are predicate-reach misses, distinct from the unchanged H.7 legal-
+truth reach under k2. One additional section has five observations but zero
+MapPLUTO work parcels: it is the collateral point at 42.913397, -75.596272,
+not an NYC parcel section. Exception receipt
+`01c6bff7-0821-a0dc-006c-c703088d167e` preserves all four affected sections.
+
+This is positive evidence for the proposed scaling argument, not its proof.
+It now covers every accepted-subject point-owned center, but uses Snowflake
+`GEOGRAPHY` rather than Canon's exact local integer predicates and treats NYC
+and Overture records as raw observation nodes rather than reconciled latent
+buildings. Overture frequently carries OSM lineage, so its agreement with NYC
+is not automatically independent evidence. Additional constraints can also
+couple these predicate stars in the solver graph. The first ad hoc attempt is
+discarded because a raw-number/text BBL mismatch produced zero local parcels;
+the file-backed query normalizes the raw `.0` suffix and separately requires a
+nonzero work unit. Exact per-shard query IDs are retained beside the script in
+the measurement README. Its source SHA-256 is
+`d289cc42f742cdfb2b009a8630b10a9122d22fe8c9faa5fd8d71ff94c26734e1`.
 
 These are PIP baseline measurements against document truth, not solver correctness or a
 release precision claim. Candidate-reach failure remains upstream of solver truth; human

@@ -15,9 +15,9 @@
 --      receipts.
 --   2. Run h7_master_party_candidates.sql with this query id, the same
 --      selected plane, and explicit shard_count/shard_index values to produce
---      bounded ACRIS MASTER/PARTY candidates only after its documented
---      physical access-path dependency is repaired. The 0/16 and 0/64 controls
---      both cancelled; do not fan out the current external-table shape.
+--      bounded ACRIS MASTER/PARTY candidates from the release-pinned staging
+--      tables. The earlier raw external-table 0/16 and 0/64 controls cancelled;
+--      do not restore that physical access path.
 --   3. Run h7_multi_parcel_legal_residual.sql once per successful Stage-2
 --      shard query id with the same selected plane, shard_count, and
 --      shard_index to produce bounded LEGALS/MapPLUTO residuals.
@@ -72,7 +72,12 @@
 --   compile 15.525s, execute 29.529s, 954601 bytes scanned; rendered SHA-256
 --   7b56597985857254b5e940686a287f71fe2faa5a9fead4bfb6b688c3c17367bb.
 --   Later 0/16 and 0/64 controls also cancelled, so logical sharding alone is
---   insufficient; see h7_master_party_candidates.sql for the full receipts.
+--   insufficient on the raw external path; see h7_master_party_candidates.sql
+--   for the full receipts and its successful staging-table replacement.
+-- * 01c6bfd2-0821-a0dc-006c-c703088d1612, 3.508s:
+--   the file-backed staging control measured all 2,974 subjects and all plane
+--   denominator identities passed. Accepted multi-BBL truth is 35 non-round
+--   plus 36 round; this does not make Stage 1 a population artifact.
 
 WITH
 params AS (

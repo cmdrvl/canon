@@ -22,6 +22,18 @@ const H7_POPULATION_ROWS_SCHEMA: &str =
     include_str!("../schemas/canon.geo.h7_population_rows.v0.schema.json");
 const H7_POPULATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.h7_population.v0.schema.json");
+const H7_STAGE2_SQL: &str =
+    include_str!("../scripts/geo_measurements/h7_master_party_candidates.sql");
+const H7_STAGE3_SQL: &str =
+    include_str!("../scripts/geo_measurements/h7_multi_parcel_legal_residual.sql");
+const H7_DENOMINATOR_CONTROL_SQL: &str =
+    include_str!("../scripts/geo_measurements/h7_staging_denominator_control.sql");
+const H7_ACCEPTED_TRUTH_EXPORT_SQL: &str =
+    include_str!("../scripts/geo_measurements/h7_staging_truth_export.sql");
+const H7_HALO_REACH_CONTROL_SQL: &str =
+    include_str!("../scripts/geo_measurements/h7_staging_halo_reach_control.sql");
+const H7_INCIDENCE_SHARD_SQL: &str =
+    include_str!("../scripts/geo_measurements/h7_staging_incidence_shard.sql");
 
 fn base_request() -> GeoH7PopulationRowsRequest {
     GeoH7PopulationRowsRequest {
@@ -301,6 +313,104 @@ fn materializes_replay_population_without_pooling_truth_planes_or_candidate_rele
     let bytes = canonical_h7_population_bytes(&artifact).expect("canonical bytes");
     let replay = canonical_h7_population_bytes(&artifact).expect("canonical bytes replay");
     assert_eq!(bytes, replay);
+}
+
+#[test]
+fn h7_sql_uses_staging_columns_and_defers_borough_truth_to_legals() {
+    for table in [
+        "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_MASTER",
+        "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES",
+    ] {
+        assert!(H7_STAGE2_SQL.contains(table), "Stage 2 must use {table}");
+    }
+    assert!(H7_STAGE2_SQL.contains("m.amount_cents = l.amount_cents"));
+    assert!(H7_STAGE2_SQL.contains("m.recorded_date BETWEEN l.originationdate"));
+    assert!(H7_STAGE2_SQL.contains("party.party_name_norm = l.originator_match_text"));
+    assert!(H7_STAGE2_SQL.contains("m.document_row_rank = 1"));
+    assert!(H7_STAGE2_SQL.contains("h7_stage2_master_party_candidate_row.v1"));
+    assert!(H7_STAGE2_SQL.contains("acris_master_raw_csv_sha256"));
+    assert!(H7_STAGE2_SQL.contains("acris_party_raw_csv_sha256s"));
+    assert!(
+        !H7_STAGE2_SQL.contains("ARRAY_CONTAINS(m.recorded_borough"),
+        "MASTER recorded borough is diagnostic and must not reject candidates"
+    );
+    assert!(
+        !H7_STAGE2_SQL.contains("NYC_ACRIS_REAL_PROPERTY_MASTER_EXT m"),
+        "the repaired staging path must not fall back to raw MASTER"
+    );
+
+    assert!(H7_STAGE3_SQL.contains("h7_stage3_legal_residual_row.v1"));
+    assert!(H7_STAGE3_SQL.contains("LATERAL FLATTEN(input => s.filed_boroughs)"));
+    assert!(H7_STAGE3_SQL.contains("l.legal_borough = k.filed_borough"));
+    assert!(H7_STAGE3_SQL.contains("STG_GEO_NYC_ACRIS_LEGALS"));
+    assert!(
+        !H7_STAGE3_SQL.contains("l.legal_borough = s.recorded_borough"),
+        "LEGAL truth must agree with the filed borough, not MASTER metadata"
+    );
+
+    assert!(H7_DENOMINATOR_CONTROL_SQL.contains("accepted_multi_bbl_subjects"));
+    assert!(H7_DENOMINATOR_CONTROL_SQL.contains("legal_document_count = 1"));
+    assert!(H7_DENOMINATOR_CONTROL_SQL.contains("accepted_bbl_count > 1"));
+    assert!(
+        !H7_DENOMINATOR_CONTROL_SQL.contains("m.recorded_borough ="),
+        "the full-plane control must preserve the same truth ordering"
+    );
+
+    assert!(H7_ACCEPTED_TRUTH_EXPORT_SQL.contains("h7_staging_accepted_truth_row.v0"));
+    assert!(H7_ACCEPTED_TRUTH_EXPORT_SQL.contains("ARRAY_AGG(DISTINCT legal_bbl)"));
+    assert!(H7_ACCEPTED_TRUTH_EXPORT_SQL.contains("ORDER BY legal_bbl"));
+    assert!(H7_ACCEPTED_TRUTH_EXPORT_SQL.contains("acris_legal_source_records"));
+    assert!(H7_ACCEPTED_TRUTH_EXPORT_SQL.contains("export_row_cap_reconciles"));
+    assert!(H7_ACCEPTED_TRUTH_EXPORT_SQL.contains("l.legal_borough = c.filed_borough"));
+    assert!(
+        !H7_ACCEPTED_TRUTH_EXPORT_SQL.contains("l.legal_borough = c.recorded_borough"),
+        "the accepted-truth export must bind LEGALS to filed borough"
+    );
+    assert!(
+        !H7_ACCEPTED_TRUTH_EXPORT_SQL.contains("candidate_release"),
+        "accepted legal truth must not pretend candidate reach has been measured"
+    );
+
+    assert!(H7_HALO_REACH_CONTROL_SQL.contains("STG_GEO_GEOMETRY_HOT_KEYS"));
+    assert!(H7_HALO_REACH_CONTROL_SQL.contains("H3_GRID_DISK"));
+    assert!(H7_HALO_REACH_CONTROL_SQL.contains("__BD2B9D_H7_HALO_K__"));
+    assert!(H7_HALO_REACH_CONTROL_SQL.contains("(SELECT halo_k FROM params)::TEXT"));
+    assert!(!H7_HALO_REACH_CONTROL_SQL.contains("point_k1'::TEXT"));
+    assert!(H7_HALO_REACH_CONTROL_SQL.contains("section_candidate_edges"));
+    assert!(H7_HALO_REACH_CONTROL_SQL.contains("candidate_bbl IS NOT NULL"));
+    assert!(H7_HALO_REACH_CONTROL_SQL.contains("full_reach_subjects"));
+    assert!(H7_HALO_REACH_CONTROL_SQL.contains("partial_reach_subjects"));
+    assert!(H7_HALO_REACH_CONTROL_SQL.contains("no_reach_subjects"));
+    assert!(H7_HALO_REACH_CONTROL_SQL.contains("empty_work_sections"));
+    assert!(H7_HALO_REACH_CONTROL_SQL.contains("accepted_truth_repeats_loan"));
+    assert!(
+        !H7_HALO_REACH_CONTROL_SQL.contains("STG_GEO_NYC_MAPPLUTO_PARCEL_VINTAGES"),
+        "the bounded reach control must use the populated H3 key index"
+    );
+    assert!(
+        !H7_HALO_REACH_CONTROL_SQL.contains("H3_POINT_TO_CELL_STRING(ST_MAKEPOINT(p.centroid"),
+        "the bounded reach control must not recompute all parcel H3 keys"
+    );
+
+    assert!(H7_INCIDENCE_SHARD_SQL.contains("STG_GEO_GEOMETRY_HOT_KEYS"));
+    assert!(H7_INCIDENCE_SHARD_SQL.contains("H3_GRID_DISK"));
+    assert!(H7_INCIDENCE_SHARD_SQL.contains("parcel_components"));
+    assert!(H7_INCIDENCE_SHARD_SQL.contains("truth_outside_k1"));
+    assert!(H7_INCIDENCE_SHARD_SQL.contains("k1_multi"));
+    assert!(H7_INCIDENCE_SHARD_SQL.contains("nonzero_work_unit_sanity"));
+    assert!(H7_INCIDENCE_SHARD_SQL.contains("component_shape_sanity"));
+    assert!(H7_INCIDENCE_SHARD_SQL.contains("component_accounting_sanity"));
+    assert!(H7_INCIDENCE_SHARD_SQL.contains("NYC_BUILDING_FOOTPRINTS_HOT"));
+    assert!(H7_INCIDENCE_SHARD_SQL.contains("OVERTURE_MAPS_FEATURES_HOT"));
+    assert!(
+        H7_INCIDENCE_SHARD_SQL
+            .contains("REGEXP_REPLACE(TO_CHAR(p.bbl), '[.]0$', '') = k.parcel_id"),
+        "raw geom-v3 BBLs must be normalized before joining staging keys"
+    );
+    assert!(
+        !H7_INCIDENCE_SHARD_SQL.contains("p.bbl = k.parcel_id"),
+        "numeric raw BBL rendering must not be compared directly with the text key"
+    );
 }
 
 #[test]

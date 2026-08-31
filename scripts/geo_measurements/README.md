@@ -162,6 +162,118 @@ distinct New York buildings with valid H3 anchors
 (`01c6bcbd-0821-a0dc-006c-c703088c24fe`), which is the explicitly documented
 bypass used by this measurement.
 
+## 2026-08-30 H.7 staging-table truth control
+
+`h7_staging_denominator_control.sql` uses the release-pinned ACRIS staging
+MASTER/PARTIES/LEGALS tables and keeps the H.7 ordering explicit: candidate
+documents are formed before filed-borough equality is tested against LEGALS.
+MASTER `RECORDED_BOROUGH` is diagnostic and cannot reject a candidate.
+
+Query `01c6bfd2-0821-a0dc-006c-c703088d1612` completed in 3,508 ms with two
+nonzero rows and all denominator controls true. Non-round reproduced
+653 eligible / 262 candidate / 221 legal-confirmed / 172 accepted / 49
+ambiguous / 41 no-legal / 391 no-candidate, including 35 accepted multi-BBL
+subjects. Round measured 2,321 / 311 / 306 / 270 / 36 / 5 / 2,010, including
+36 accepted multi-BBL subjects. The 71 subject keys are returned as a bounded
+array; this is a denominator and subject-selection control, not a typed
+population artifact or solver evaluation.
+
+`h7_staging_truth_export.sql` turns that selection into a bounded accepted-
+truth handoff without claiming candidate reach. Query
+`01c6bfda-0821-a0dc-006c-c703088d161e` completed in 10,305 ms and returned 71
+distinct loan/document rows: 35 non-round and 36 round. Each row carries sorted
+distinct truth BBLs plus bridge, MASTER, selected exact-PARTY, and LEGALS source
+records and raw-file hashes. A direct `RESULT_SCAN` validation found zero
+contract, row-cap, BBL-count, provenance, party-witness, or plane-leakage
+failures; the 71 subjects contain 626 distinct BBL edges, from 2 to 172 per
+subject. The query's source SHA-256 is
+`230e40407e805e0ec4783185dcd731edb2285553051c91f69e726dd32aea13e1`.
+It is not `canon_geo_h7_population_rows.v0`: MapPLUTO candidate parcels and
+both release runs remain deliberately absent and must be measured separately.
+
+`h7_staging_halo_reach_control.sql` measures that next plane without merging it
+into truth or solver correctness. A first formulation recomputed H3 over both
+full parcel releases and was cancelled as
+`01c6bfe1-0821-a0dc-006c-c703088d1642`; it was discarded and not repeated.
+The positive path uses `STG_GEO_GEOMETRY_HOT_KEYS`, which has exactly 856,614
+and 856,687 valid, populated r8 MapPLUTO keys for the two pins. Rendered against
+the accepted-truth query above and halo 1, query
+`01c6bff9-0821-a6c8-006c-c703088d25d2` completed in 3,218 ms with four
+guard-`ok` rows. Halo-2 sensitivity query
+`01c6bff9-0821-a6c8-006c-c703088d25d6` completed in 4,557 ms with the same.
+
+- Non-round reach is 24 full / 2 partial / 9 none over 35 subjects in both
+  releases; round reach is 28 / 1 / 7 over 36. Thus 52/71 subjects have full
+  r8+k1 candidate reach, independently of any solver result.
+- The 164 point-owned work sections are not yet small exact residuals. Median
+  parcel counts are 5,758 non-round and 4,931 round; p90 is 12,576 and about
+  9,652; the maximum is 13,663. One non-round section is empty.
+- Unioning sections by loan is explicitly diagnostic and produces 1,192–27,120
+  candidates. Those unions must never be presented as monolithic solve inputs;
+  the next boundary is section incidence components.
+- The non-round point envelope reaches latitude 42.913397 and longitude
+  -75.596272 despite accepted NYC filed/legal truth. This is candidate-channel
+  error, not evidence against ACRIS truth.
+- k2 recovered no additional accepted legal-truth edge or subject. It raised
+  median section candidates to 14,449 non-round and 10,992 round, with maxima
+  31,631 and 29,788; loan-union maxima rose to 50,035 and 58,184. Wider halos
+  therefore do not repair the remaining association failures and must not be
+  used as a substitute for better candidate generation.
+
+The source SHA-256 is
+`6eaec54140218e1ecb8154abb76fe770b26737d1abe6c0dada3a71a4a2368dee`.
+Snowflake H3 is an empirical blocking calculation here; canonical home-cell
+artifacts still require h3o replay.
+
+`h7_staging_incidence_shard.sql` performs the next bounded reduction. It owns
+work by r8 center cell, expands only the selected center+k1 sections, joins
+pinned MapPLUTO geometry, and measures raw NYC/Overture majority-overlap
+incidence components. All 16 shards over accepted-truth query
+`01c6bfda-0821-a0dc-006c-c703088d161e` completed:
+
+| shard | query id | ms | centers |
+|---:|---|---:|---:|
+| 0 | `01c6bfee-0821-a6c8-006c-c703088d259a` | 15,159 | 4 |
+| 1 | `01c6bff2-0821-a0dc-006c-c703088d165e` | 17,931 | 6 |
+| 2 | `01c6bff2-0821-a6c8-006c-c703088d25a6` | 14,457 | 4 |
+| 3 | `01c6bff2-0821-a6c8-006c-c703088d25a2` | 15,740 | 8 |
+| 4 | `01c6bff2-0821-a6c8-006c-c703088d25aa` | 13,635 | 4 |
+| 5 | `01c6bff3-0821-a6c8-006c-c703088d25ae` | 13,803 | 5 |
+| 6 | `01c6bff3-0821-a6c8-006c-c703088d25b2` | 15,959 | 9 |
+| 7 | `01c6bff3-0821-a6c8-006c-c703088d25b6` | 12,452 | 2 |
+| 8 | `01c6bff4-0821-a0dc-006c-c703088d1662` | 13,415 | 3 |
+| 9 | `01c6bff4-0821-a0dc-006c-c703088d1666` | 15,713 | 8 |
+| 10 | `01c6bff5-0821-a0dc-006c-c703088d166e` | 13,512 | 3 |
+| 11 | `01c6bff5-0821-a6c8-006c-c703088d25ba` | 15,689 | 9 |
+| 12 | `01c6bff4-0821-a0dc-006c-c703088d166a` | 14,502 | 5 |
+| 13 | `01c6bff6-0821-a6c8-006c-c703088d25be` | 13,312 | 8 |
+| 14 | `01c6bff5-0821-a0dc-006c-c703088d1672` | 13,634 | 4 |
+| 15 | `01c6bff6-0821-a0dc-006c-c703088d1676` | 14,466 | 6 |
+
+Aggregate query `01c6bff7-0821-a6c8-006c-c703088d25c2` reconciled 88
+distinct centers, 497,128 parcel memberships, and 176,086 raw observations.
+Work units contain 5–17,617 nodes (median 6,987; p90 13,219.6). Every section
+has component median 1; the median section p90 is 3, and the global observed
+maximum is 109. There were zero multi-majority observations and zero shape or
+accounting failures.
+
+Exception query `01c6bff7-0821-a0dc-006c-c703088d167e` found eight unique-
+majority observations outside k1 across three sections and one remote section
+with five observations but zero MapPLUTO parcels. Ring diagnostic
+`01c6bff8-0821-a0dc-006c-c703088d1682` places all eight majority parcels in
+k2. The empty section is the collateral point at 42.913397, -75.596272; it is
+candidate-channel error, not a contradiction of accepted NYC legal truth.
+
+A discarded precursor joined raw MapPLUTO numeric BBLs directly to normalized
+text keys and silently produced zero parcels. The file-backed query strips the
+raw `.0` suffix and makes a nonzero work unit an independent sanity condition.
+Components remain raw observation stars, not reconciled latent buildings or
+the final constraint-incidence graph; Overture/OSM lineage overlap also
+prevents source count from becoming independent evidence. Snowflake geometry
+and H3 remain empirical until exact local integer and h3o replay. The source
+SHA-256 is
+`d289cc42f742cdfb2b009a8630b10a9122d22fe8c9faa5fd8d71ff94c26734e1`.
+
 Appendix B's query returns the frozen observation set. Build the bipartite graph
 between parcel and footprint centroids using haversine distance with mean Earth
 radius `6,371,008.8 m`; for each declared radius, connected components include

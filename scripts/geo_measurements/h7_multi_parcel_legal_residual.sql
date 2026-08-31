@@ -1,10 +1,10 @@
 -- Appendix H.7 Stage 3 flat ACRIS LEGALS residual shard SQL.
 --
 -- This is the third acquisition-side single-shard query for H.7. It consumes
--- one successful Stage-2 h7_stage2_master_party_candidate_row.v0 RESULT_SCAN
+-- one successful Stage-2 h7_stage2_master_party_candidate_row.v1 RESULT_SCAN
 -- shard and emits flat scalar rows at candidate/no-candidate/no-legal/legal or
 -- guard-failure grain. It first binds ACRIS LEGALS to the shard's distinct
--- document/recorded-borough keys, then joins the two pinned MapPLUTO geom-v3
+-- loan/document/filed-borough keys, then joins the two pinned MapPLUTO geom-v3
 -- scoring releases only for legal/no-legal rows. Plane/shard/denominator
 -- columns repeat on every upstream row; MapPLUTO pins are null when they are
 -- not applicable. It deliberately performs no OBJECT/ARRAY aggregation.
@@ -30,9 +30,9 @@ residual_params AS (
       AS shard_count,
     TRY_TO_NUMBER('__BD7BCP_H7_SHARD_INDEX__')::NUMBER(38,0)
       AS shard_index,
-    'h7_stage2_master_party_candidate_row.v0'::TEXT
+    'h7_stage2_master_party_candidate_row.v1'::TEXT
       AS expected_stage2_row_contract,
-    'h7_stage3_legal_residual_row.v0'::TEXT AS output_row_contract,
+    'h7_stage3_legal_residual_row.v1'::TEXT AS output_row_contract,
     '3aed6660-ce1c-46a9-aeb2-7296c134ce8f'::TEXT AS bridge_build_id,
     '2026-08-10'::DATE AS acris_release_dt,
     256::NUMBER(38,0) AS max_shard_count,
@@ -84,7 +84,7 @@ stage2_rows AS (
     candidate_loans::NUMBER(38,0) AS candidate_loans,
     no_candidate_loans::NUMBER(38,0) AS no_candidate_loans,
     loan_document_pairs::NUMBER(38,0) AS loan_document_pairs,
-    candidate_borough_rows::NUMBER(38,0) AS candidate_borough_rows,
+    candidate_document_rows::NUMBER(38,0) AS candidate_document_rows,
     whole_plane_reconciles::BOOLEAN AS whole_plane_reconciles,
     shard_candidate_reconciles::BOOLEAN AS shard_candidate_reconciles,
     loan_key::TEXT AS loan_key,
@@ -111,7 +111,11 @@ stage2_rows AS (
     lender_match_text::TEXT AS lender_match_text,
     lender_party_type::TEXT AS lender_party_type,
     acris_master_source_record_id::TEXT AS acris_master_source_record_id,
-    acris_party_source_record_id::TEXT AS acris_party_source_record_id
+    acris_master_raw_csv_sha256::TEXT AS acris_master_raw_csv_sha256,
+    acris_master_filename::TEXT AS acris_master_filename,
+    acris_party_source_record_ids AS acris_party_source_record_ids,
+    acris_party_raw_csv_sha256s AS acris_party_raw_csv_sha256s,
+    acris_party_filenames AS acris_party_filenames
   FROM TABLE(RESULT_SCAN('__BD7BCP_H7_STAGE2_CANDIDATE_QUERY_ID__'))
 ),
 stage2_rows_or_empty AS (
@@ -153,14 +157,11 @@ stage2_stats AS (
     COUNT_IF(acris_release_dt IS NULL
       OR acris_release_dt <> (SELECT acris_release_dt FROM residual_params))
       AS stage2_acris_release_mismatch_rows,
-    COUNT_IF(stage2_row_kind = 'candidate'
-      AND (document_id IS NULL OR recorded_borough IS NULL))
+    COUNT_IF(stage2_row_kind = 'candidate' AND document_id IS NULL)
       AS stage2_candidate_key_missing_rows,
     COUNT_IF(stage2_row_kind = 'candidate'
-      AND NOT COALESCE(
-        ARRAY_CONTAINS(recorded_borough::VARIANT, filed_boroughs),
-        FALSE
-      )) AS stage2_candidate_filed_borough_mismatch_rows
+      AND (filed_boroughs IS NULL OR ARRAY_SIZE(filed_boroughs) = 0))
+      AS stage2_candidate_missing_filed_boroughs_rows
   FROM stage2_rows
 ),
 guard_failures AS (
@@ -252,8 +253,8 @@ guard_failures AS (
     SELECT 'stage2_candidate_key_missing',
       (SELECT stage2_candidate_key_missing_rows FROM stage2_stats) <> 0
     UNION ALL
-    SELECT 'stage2_candidate_filed_borough_mismatch',
-      (SELECT stage2_candidate_filed_borough_mismatch_rows FROM stage2_stats)
+    SELECT 'stage2_candidate_missing_filed_boroughs',
+      (SELECT stage2_candidate_missing_filed_boroughs_rows FROM stage2_stats)
         <> 0
   )
   WHERE failed
@@ -275,59 +276,63 @@ row_emission_modes AS (
     ('guard_failure', 'guard_failure', FALSE),
     ('legal_probe', 'candidate', TRUE)
 ),
-candidate_document_borough_keys AS (
+candidate_loan_document_borough_keys AS (
   SELECT DISTINCT
+    s.loan_key,
     s.document_id,
-    s.recorded_borough
-  FROM stage2_rows s
-  CROSS JOIN guard_summary g
-  WHERE g.stage3_guard_status = 'ok'
+    filed.value::NUMBER(38,0) AS filed_borough
+  FROM stage2_rows s,
+    LATERAL FLATTEN(input => s.filed_boroughs) filed
+  WHERE (SELECT stage3_guard_status FROM guard_summary) = 'ok'
     AND s.stage2_row_kind = 'candidate'
     AND s.stage2_guard_status = 'ok'
+    AND s.loan_key IS NOT NULL
     AND s.document_id IS NOT NULL
-    AND s.recorded_borough IS NOT NULL
+    AND filed.value::NUMBER(38,0) IN (1, 2, 3, 4, 5)
 ),
 acris_legals AS (
   SELECT
+    k.loan_key AS legal_loan_key,
+    k.filed_borough,
     l.release_dt,
     l.source_row_number::NUMBER(38,0) AS legal_source_row_number,
     l.document_id::TEXT AS legal_document_id,
     l.record_type::TEXT AS legal_record_type,
-    l.borough::NUMBER(38,0) AS legal_borough,
+    l.legal_borough::NUMBER(38,0) AS legal_borough,
     l.block::NUMBER(38,0) AS legal_block,
     l.lot::NUMBER(38,0) AS legal_lot,
     l.bbl::TEXT AS legal_bbl_raw,
     COALESCE(
       REGEXP_REPLACE(TO_VARCHAR(l.bbl), '[.]0$', ''),
-      TO_VARCHAR(l.borough::NUMBER(38,0))
+      TO_VARCHAR(l.legal_borough::NUMBER(38,0))
         || LPAD(TO_VARCHAR(l.block::NUMBER(38,0)), 5, '0')
         || LPAD(TO_VARCHAR(l.lot::NUMBER(38,0)), 4, '0')
     ) AS legal_bbl,
-    TO_VARCHAR(l.borough::NUMBER(38,0))
+    TO_VARCHAR(l.legal_borough::NUMBER(38,0))
       || LPAD(TO_VARCHAR(l.block::NUMBER(38,0)), 5, '0') AS legal_block_key,
     IFF(TRY_TO_NUMBER(l.lot) BETWEEN 1001 AND 6999, TRUE, FALSE)
       AS legal_is_condo_unit_lot,
     l.good_through_date AS legal_good_through_date,
     l.raw_csv_sha256::TEXT AS legal_raw_csv_sha256,
     l.filename::TEXT AS legal_filename,
-    'EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT:'
+    'EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_LEGALS:'
       || TO_VARCHAR(l.release_dt)
       || ':'
       || TO_VARCHAR(l.source_row_number::NUMBER(38,0))
       || ':'
       || l.document_id::TEXT
       || ':'
-      || TO_VARCHAR(l.borough::NUMBER(38,0))
+      || TO_VARCHAR(l.legal_borough::NUMBER(38,0))
       || ':'
       || TO_VARCHAR(l.block::NUMBER(38,0))
       || ':'
       || TO_VARCHAR(l.lot::NUMBER(38,0)) AS acris_legal_source_record_id
-  FROM EDGAR_DB.SOURCE.NYC_ACRIS_REAL_PROPERTY_LEGALS_EXT l
-  JOIN candidate_document_borough_keys k
+  FROM EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_LEGALS l
+  JOIN candidate_loan_document_borough_keys k
     ON l.document_id = k.document_id
-   AND l.borough = k.recorded_borough
+   AND l.legal_borough = k.filed_borough
   WHERE l.release_dt = (SELECT acris_release_dt FROM residual_params)
-    AND l.borough IN (1, 2, 3, 4, 5)
+    AND l.legal_borough IN (1, 2, 3, 4, 5)
     AND l.block IS NOT NULL
     AND l.lot IS NOT NULL
 )
@@ -378,7 +383,7 @@ SELECT
   s.candidate_loans,
   s.no_candidate_loans,
   s.loan_document_pairs,
-  s.candidate_borough_rows,
+  s.candidate_document_rows,
   s.whole_plane_reconciles,
   s.shard_candidate_reconciles,
   s.loan_key,
@@ -395,6 +400,7 @@ SELECT
   s.diagnostic_county_fips,
   s.document_id,
   s.recorded_borough,
+  IFF(m.probes_legal, k.filed_borough, NULL)::NUMBER(38,0) AS filed_borough,
   s.doc_type,
   s.crfn,
   TO_VARCHAR(s.document_date) AS document_date,
@@ -454,7 +460,11 @@ SELECT
   END AS legal_status,
   s.bridge_source_record_ids,
   s.acris_master_source_record_id,
-  s.acris_party_source_record_id,
+  s.acris_master_raw_csv_sha256,
+  s.acris_master_filename,
+  s.acris_party_source_record_ids,
+  s.acris_party_raw_csv_sha256s,
+  s.acris_party_filenames,
   IFF(m.probes_legal, l.acris_legal_source_record_id, NULL)::TEXT
     AS acris_legal_source_record_id,
   IFF(
@@ -477,10 +487,15 @@ JOIN row_emission_modes m
 CROSS JOIN guard_summary g
 LEFT JOIN mappluto_release_pins p
   ON m.probes_legal
+LEFT JOIN candidate_loan_document_borough_keys k
+  ON m.probes_legal
+ AND k.loan_key = s.loan_key
+ AND k.document_id = s.document_id
 LEFT JOIN acris_legals l
   ON m.probes_legal
+ AND l.legal_loan_key = s.loan_key
  AND l.legal_document_id = s.document_id
- AND l.legal_borough = s.recorded_borough
+ AND l.legal_borough = k.filed_borough
 LEFT JOIN EDGAR_DB.SOURCE.NYC_DCP_MAPPLUTO_GEOM_V3_EXT mp
   ON m.probes_legal
  AND l.legal_bbl IS NOT NULL
