@@ -451,6 +451,144 @@
             "SOURCE_RECORD_CLASS"
           ]
         }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "row_kind": {
+                "const": "source_record_payload_release_row"
+              }
+            },
+            "required": ["row_kind"]
+          },
+          "then": {
+            "required": [
+              "row_contract",
+              "row_kind",
+              "guard_status",
+              "pip_block_population_query_id",
+              "payload_contract",
+              "source_record_class",
+              "accepted_truth_query_id",
+              "loan_key",
+              "document_id",
+              "truth_plane",
+              "association_plane",
+              "mappluto_release",
+              "mappluto_release_dt",
+              "mappluto_variant",
+              "candidate_release",
+              "property_state",
+              "filed_county",
+              "filed_borough",
+              "legal_borough",
+              "accepted_borough_edges",
+              "doc_type",
+              "originationdate",
+              "amount_cents",
+              "is_round_100k_lattice",
+              "loan_field_distinct_counts",
+              "truth_parcels",
+              "candidate_parcels",
+              "reach_status",
+              "reach_reason",
+              "source_records",
+              "source_record_count",
+              "bridge_source_record_count",
+              "acris_master_source_record_count",
+              "acris_party_source_record_count",
+              "acris_legal_source_record_count",
+              "mappluto_source_record_count",
+              "min_source_record_payload_utf8_bytes",
+              "max_source_record_payload_utf8_bytes",
+              "total_source_record_payload_utf8_bytes",
+              "max_source_record_payload_base64_chars",
+              "candidate_bbl_count",
+              "truth_bbl_count",
+              "reached_truth_bbls",
+              "whole_accepted_loans",
+              "whole_release_rows",
+              "whole_zero_candidate_release_rows",
+              "accepted_plane_eligible_loans",
+              "accepted_plane_legal_candidate_loans",
+              "accepted_plane_legal_confirmed_candidate_loans",
+              "accepted_plane_accepted_loans",
+              "accepted_plane_ambiguous_loans",
+              "accepted_plane_candidate_without_legal_loans",
+              "accepted_plane_no_candidate_loans",
+              "accepted_plane_selected_multi_parcel_loans"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "ROW_KIND": {
+                "const": "source_record_payload_release_row"
+              }
+            },
+            "required": ["ROW_KIND"]
+          },
+          "then": {
+            "required": [
+              "ROW_CONTRACT",
+              "ROW_KIND",
+              "GUARD_STATUS",
+              "PIP_BLOCK_POPULATION_QUERY_ID",
+              "PAYLOAD_CONTRACT",
+              "SOURCE_RECORD_CLASS",
+              "ACCEPTED_TRUTH_QUERY_ID",
+              "LOAN_KEY",
+              "DOCUMENT_ID",
+              "TRUTH_PLANE",
+              "ASSOCIATION_PLANE",
+              "MAPPLUTO_RELEASE",
+              "MAPPLUTO_RELEASE_DT",
+              "MAPPLUTO_VARIANT",
+              "CANDIDATE_RELEASE",
+              "PROPERTY_STATE",
+              "FILED_COUNTY",
+              "FILED_BOROUGH",
+              "LEGAL_BOROUGH",
+              "ACCEPTED_BOROUGH_EDGES",
+              "DOC_TYPE",
+              "ORIGINATIONDATE",
+              "AMOUNT_CENTS",
+              "IS_ROUND_100K_LATTICE",
+              "LOAN_FIELD_DISTINCT_COUNTS",
+              "TRUTH_PARCELS",
+              "CANDIDATE_PARCELS",
+              "REACH_STATUS",
+              "REACH_REASON",
+              "SOURCE_RECORDS",
+              "SOURCE_RECORD_COUNT",
+              "BRIDGE_SOURCE_RECORD_COUNT",
+              "ACRIS_MASTER_SOURCE_RECORD_COUNT",
+              "ACRIS_PARTY_SOURCE_RECORD_COUNT",
+              "ACRIS_LEGAL_SOURCE_RECORD_COUNT",
+              "MAPPLUTO_SOURCE_RECORD_COUNT",
+              "MIN_SOURCE_RECORD_PAYLOAD_UTF8_BYTES",
+              "MAX_SOURCE_RECORD_PAYLOAD_UTF8_BYTES",
+              "TOTAL_SOURCE_RECORD_PAYLOAD_UTF8_BYTES",
+              "MAX_SOURCE_RECORD_PAYLOAD_BASE64_CHARS",
+              "CANDIDATE_BBL_COUNT",
+              "TRUTH_BBL_COUNT",
+              "REACHED_TRUTH_BBLS",
+              "WHOLE_ACCEPTED_LOANS",
+              "WHOLE_RELEASE_ROWS",
+              "WHOLE_ZERO_CANDIDATE_RELEASE_ROWS",
+              "ACCEPTED_PLANE_ELIGIBLE_LOANS",
+              "ACCEPTED_PLANE_LEGAL_CANDIDATE_LOANS",
+              "ACCEPTED_PLANE_LEGAL_CONFIRMED_CANDIDATE_LOANS",
+              "ACCEPTED_PLANE_ACCEPTED_LOANS",
+              "ACCEPTED_PLANE_AMBIGUOUS_LOANS",
+              "ACCEPTED_PLANE_CANDIDATE_WITHOUT_LEGAL_LOANS",
+              "ACCEPTED_PLANE_NO_CANDIDATE_LOANS",
+              "ACCEPTED_PLANE_SELECTED_MULTI_PARCEL_LOANS"
+            ]
+          }
+        }
       ]
     }
   }

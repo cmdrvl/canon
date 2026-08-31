@@ -2,17 +2,17 @@
 
 > Status: **normative target architecture; partially implemented leaf capabilities**.
 > This document defines how an agent should operate Canon Geo as one coherent system.
-> It does not claim that the proposed control-plane commands or artifacts ship today.
+> The only shipped control-plane command is `canon geo capabilities --emit json`;
+> `geo plan`, `geo run`, and `geo inspect` remain proposed/unavailable.
 > The mathematical model and empirical gates remain governed by
 > [`PLAN_CANON_GEO.md`](./PLAN_CANON_GEO.md).
 
-> **Reuse finding:** Canon already contains library-level `canon.project.plan.v1` and
-> `canon.project.run.v1` machinery for manifests, locks, DAGs, receipts, resume,
-> invalidation, lifecycle, and workspace policy. It is not exposed by the current project
-> CLI and its planner is cluster/link-shaped. Geo must extend and harden this substrate,
-> not build a parallel orchestrator. In particular, current node receipt hashes include
-> runtime duration/resource telemetry, so they are not yet suitable as semantic dependency
-> identities for Geo.
+> **Reuse finding:** Canon contains library-level `canon.project.plan.v1` and
+> `canon.project.run.v2` machinery for manifests, locks, DAGs, receipts, resume,
+> invalidation, lifecycle, and workspace policy. The public project CLI exposes lock
+> refresh and pure planning, while `project run` is validation/reuse-only until typed
+> node executors are registered. Geo must extend this substrate, not build a parallel
+> orchestrator.
 
 ## 1. Purpose
 
@@ -391,7 +391,7 @@ reference, but the control plane does not bypass existing registry governance.
 ## 5. The run manifest: the agent's durable working memory
 
 `canon_geo_run.v0` is the one object an agent needs to resume work. It is a typed Geo view
-over generic `canon.project.run.v1` node receipts, not a second receipt store or scheduler.
+over generic `canon.project.run.v2` node receipts, not a second receipt store or scheduler.
 It is not a log bundle; it is a validated index over immutable artifacts.
 
 Each revision contains:
@@ -458,7 +458,8 @@ parallelism level may change elapsed time, never semantic output.
 ## 6. Minimal agent command surface
 
 Leaf commands remain independently callable and machine-described. The target control
-plane adds only four top-level operations:
+plane currently ships capability introspection and proposes three orchestration
+operations:
 
 ```text
 canon geo capabilities --emit json
@@ -467,21 +468,24 @@ canon geo run --plan PLAN.json --work-dir DIR [--satisfy REQUEST_ID=RECEIPT.json
 canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-next]
 ```
 
-- `capabilities` answers what this build can do without reading a project.
+- `capabilities` is shipped offline/read-only and answers what this build can do without
+  reading a project.
 - `plan` validates intent and emits the Geo overlay plus its generic project DAG without
-  mutation.
+  mutation; it remains proposed/unavailable.
 - `run` delegates scheduling, receipts, resume, and workspace safety to the shared project
   substrate; it orchestrates only offline leaf capabilities, accepts explicit responses
-  to outstanding discovery/acquisition requests, and resumes by default.
-- `inspect` is the one-call situation report, explanation, diff, and next-action surface.
+  to outstanding discovery/acquisition requests, and resumes by default; it remains
+  proposed/unavailable.
+- `inspect` is the one-call situation report, explanation, diff, and next-action surface;
+  it remains proposed/unavailable.
 
 `inspect` must emit structured next actions containing the exact command, required inputs,
 expected output contract, deterministic cost ceiling, and the reason the action can change
 the answer. Human prose is a rendering of those fields, not the only representation.
 
-Until these commands exist, agents must use the implemented leaf commands listed by
-`canon --describe`; documentation must label the control plane as planned rather than
-advertising it as shipped.
+Until `geo plan`, `geo run`, and `geo inspect` exist, agents must use the implemented leaf
+commands listed by `canon --describe`; documentation must label those orchestration
+commands as planned rather than advertising them as shipped.
 
 ## 7. Resource minimization
 

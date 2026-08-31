@@ -8,9 +8,10 @@
 //! prune the residual; empirical observations remain diagnostic or soft.
 
 use super::composition::{
-    CANON_GEO_COMPOSITION_REQUEST_VERSION, GeoCompositionError, GeoCompositionRequest,
-    GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind,
-    GeoIntegerMeasure, GeoIntegerMemberValue, GeoSoftPreference, canonicalize_composition_request,
+    CANON_GEO_COMPOSITION_REQUEST_VERSION, GeoCompositionError, GeoCompositionProfile,
+    GeoCompositionRequest, GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef, GeoHardConstraint,
+    GeoHardConstraintKind, GeoIntegerMeasure, GeoIntegerMemberValue, GeoSoftPreference,
+    canonicalize_composition_request,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -138,6 +139,8 @@ pub enum GeoRhoObservationKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoEvidenceCompilationRequest {
     pub version: String,
+    #[serde(default)]
+    pub profile: GeoCompositionProfile,
     pub universe: GeoCompositionUniverse,
     pub contracts: Vec<GeoRhoContract>,
     pub observations: Vec<GeoRhoObservation>,
@@ -423,6 +426,7 @@ pub fn compile_evidence(
 
     let composition_request = canonicalize_composition_request(&GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: request.profile.clone(),
         universe: request.universe.clone(),
         hard_constraints,
         soft_preferences,
@@ -595,6 +599,7 @@ pub fn validate_evidence_compilation_artifact(
 
     let reconstructed = GeoEvidenceCompilationRequest {
         version: artifact.request_version.clone(),
+        profile: artifact.composition_request.profile.clone(),
         universe: artifact.composition_request.universe.clone(),
         contracts: contracts_by_id
             .values()

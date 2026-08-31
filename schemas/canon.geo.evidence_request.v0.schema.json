@@ -9,6 +9,9 @@
       "const": "canon_geo_evidence_request.v0",
       "type": "string"
     },
+    "profile": {
+      "$ref": "#/$defs/composition_profile"
+    },
     "universe": {
       "$ref": "#/$defs/universe"
     },
@@ -65,6 +68,23 @@
       "required": [
         "level",
         "id"
+      ]
+    },
+    "composition_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": "canon_geo_composition_profile.v0",
+          "type": "string"
+        },
+        "selection_level": {
+          "$ref": "#/$defs/entity_level"
+        }
+      },
+      "required": [
+        "version",
+        "selection_level"
       ]
     },
     "building_candidate": {

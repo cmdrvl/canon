@@ -33,10 +33,11 @@ use plan::{ProjectPlan, ProjectPlanRequest, compile_project_plan};
 use receipt::{
     CANON_PROJECT_RUN_VERSION, ProjectRunNodeReceipt, ProjectRunReceipt, finalized_run_receipt,
 };
+use serde_json::Value;
 use state::{
-    ProjectAuditReceipt, ProjectExportReceipt, ProjectLifecycleBlockerCode, ProjectLifecycleState,
-    ProjectMutationPreview, ProjectPromotionReceipt, ProjectReplayReceipt, ProjectReviewReceipt,
-    ProjectStateErrorCode, project_state_schema_version,
+    ProjectAuditReceipt, ProjectExportReceipt, ProjectLifecycleBlockerCode, ProjectLifecycleReport,
+    ProjectLifecycleState, ProjectMutationPreview, ProjectPromotionReceipt, ProjectReplayReceipt,
+    ProjectReviewReceipt, ProjectStateErrorCode, project_state_schema_version,
 };
 use std::path::PathBuf;
 
@@ -65,7 +66,7 @@ fn lifecycle_reports_one_state_and_next_command_at_each_gate() {
         planned.blockers[0].code,
         ProjectLifecycleBlockerCode::EvidenceNotReady
     );
-    assert!(planned.next_commands.contains_key("run"));
+    assert_no_reuse_only_lifecycle_next_command(&planned);
 
     let run = completed_run(&plan);
     let evidence_ready = evaluate_project_lifecycle(ProjectLifecycleRequest::new(
@@ -77,7 +78,7 @@ fn lifecycle_reports_one_state_and_next_command_at_each_gate() {
     ))
     .expect("evidence status");
     assert_eq!(evidence_ready.state, ProjectLifecycleState::EvidenceReady);
-    assert!(evidence_ready.next_commands.contains_key("review"));
+    assert_no_reuse_only_lifecycle_next_command(&evidence_ready);
 
     let binding = lifecycle_binding_for_plan_run(
         &plan,
@@ -100,6 +101,7 @@ fn lifecycle_reports_one_state_and_next_command_at_each_gate() {
         review_required.blockers[0].code,
         ProjectLifecycleBlockerCode::ReviewPending
     );
+    assert_no_reuse_only_lifecycle_next_command(&review_required);
 
     let mut request = ProjectLifecycleRequest::new(
         plan.clone(),
@@ -116,7 +118,7 @@ fn lifecycle_reports_one_state_and_next_command_at_each_gate() {
         audited.blockers[0].code,
         ProjectLifecycleBlockerCode::PromotionPreviewMissing
     );
-    assert!(audited.next_commands.contains_key("promote_preview"));
+    assert_no_reuse_only_lifecycle_next_command(&audited);
 
     let mut request = ProjectLifecycleRequest::new(
         plan.clone(),
@@ -141,6 +143,7 @@ fn lifecycle_reports_one_state_and_next_command_at_each_gate() {
             .intended_paths
             .contains(&"registries/entities/aliases.json".to_string())
     );
+    assert_no_reuse_only_lifecycle_next_command(&promotable);
 
     let mut request = ProjectLifecycleRequest::new(
         plan.clone(),
@@ -154,7 +157,7 @@ fn lifecycle_reports_one_state_and_next_command_at_each_gate() {
     request.promotion = Some(promotion_receipt(binding.clone(), true));
     let promoted = evaluate_project_lifecycle(request).expect("promoted");
     assert_eq!(promoted.state, ProjectLifecycleState::Promoted);
-    assert!(promoted.next_commands.contains_key("apply"));
+    assert_no_reuse_only_lifecycle_next_command(&promoted);
 
     let mut request = ProjectLifecycleRequest::new(
         plan.clone(),
@@ -169,7 +172,7 @@ fn lifecycle_reports_one_state_and_next_command_at_each_gate() {
     request.replay = Some(replay_receipt(binding.clone(), true));
     let replay_verified = evaluate_project_lifecycle(request).expect("replay verified");
     assert_eq!(replay_verified.state, ProjectLifecycleState::ReplayVerified);
-    assert!(replay_verified.next_commands.contains_key("export"));
+    assert_no_reuse_only_lifecycle_next_command(&replay_verified);
 
     let mut request = ProjectLifecycleRequest::new(
         plan.clone(),
@@ -187,6 +190,65 @@ fn lifecycle_reports_one_state_and_next_command_at_each_gate() {
     assert_eq!(exported.state, ProjectLifecycleState::Exported);
     assert!(exported.blockers.is_empty());
     assert!(exported.next_commands.is_empty());
+}
+
+#[test]
+fn uncompleted_lifecycle_actions_do_not_route_to_reuse_only_run() {
+    let plan = minimal_plan();
+    let run = completed_run(&plan);
+    let binding = lifecycle_binding_for_plan_run(
+        &plan,
+        &run,
+        REGISTRY_DIGEST,
+        POLICY_DIGEST,
+        STRATEGY_DIGEST,
+    );
+
+    let planned = evaluate_project_lifecycle(ProjectLifecycleRequest::new(
+        plan.clone(),
+        None,
+        REGISTRY_DIGEST,
+        POLICY_DIGEST,
+        STRATEGY_DIGEST,
+    ))
+    .expect("planned report");
+    assert_no_reuse_only_lifecycle_next_command(&planned);
+
+    let mut request = ProjectLifecycleRequest::new(
+        plan.clone(),
+        Some(run.clone()),
+        REGISTRY_DIGEST,
+        POLICY_DIGEST,
+        STRATEGY_DIGEST,
+    );
+    request.review = Some(review_receipt(binding.clone(), 1, 0, 0));
+    let review_required = evaluate_project_lifecycle(request).expect("review required report");
+    assert_no_reuse_only_lifecycle_next_command(&review_required);
+
+    let mut request = ProjectLifecycleRequest::new(
+        plan.clone(),
+        Some(run.clone()),
+        REGISTRY_DIGEST,
+        POLICY_DIGEST,
+        STRATEGY_DIGEST,
+    );
+    request.review = Some(review_receipt(binding.clone(), 0, 1, 0));
+    request.audit = Some(audit_receipt(binding.clone(), true));
+    let audited = evaluate_project_lifecycle(request).expect("audited report");
+    assert_no_reuse_only_lifecycle_next_command(&audited);
+
+    let mut request = ProjectLifecycleRequest::new(
+        plan,
+        Some(run),
+        REGISTRY_DIGEST,
+        POLICY_DIGEST,
+        STRATEGY_DIGEST,
+    );
+    request.review = Some(review_receipt(binding.clone(), 0, 1, 0));
+    request.audit = Some(audit_receipt(binding.clone(), true));
+    request.promotion = Some(promotion_receipt(binding, true));
+    let promoted = evaluate_project_lifecycle(request).expect("promoted report");
+    assert_no_reuse_only_lifecycle_next_command(&promoted);
 }
 
 #[test]
@@ -427,6 +489,69 @@ fn export_receipts(
             partial: false,
         })
         .collect()
+}
+
+fn assert_no_reuse_only_lifecycle_next_command(report: &ProjectLifecycleReport) {
+    assert!(
+        report.next_commands.is_empty(),
+        "unimplemented lifecycle actions must not advertise recovery commands: {:?}",
+        report.next_commands
+    );
+    for blocker in &report.blockers {
+        assert!(
+            blocker
+                .next_command
+                .as_deref()
+                .is_none_or(|command| !command.contains("canon project run")),
+            "blocker {:?} routes to reuse-only run: {:?}",
+            blocker.code,
+            blocker.next_command
+        );
+    }
+
+    let value = serde_json::to_value(report).expect("lifecycle report serializes");
+    assert_no_keyed_reuse_only_run_next_command(&value);
+}
+
+fn assert_no_keyed_reuse_only_run_next_command(value: &Value) {
+    match value {
+        Value::Object(map) => {
+            for (key, nested) in map {
+                if key == "next_command" {
+                    assert!(
+                        !nested
+                            .as_str()
+                            .is_some_and(|command| command.contains("canon project run")),
+                        "next_command routes uncompleted lifecycle action to reuse-only run: {nested:?}"
+                    );
+                }
+                if key == "next_commands" {
+                    for command in json_strings(nested) {
+                        assert!(
+                            !command.contains("canon project run"),
+                            "next_commands routes uncompleted lifecycle action to reuse-only run: {command}"
+                        );
+                    }
+                }
+                assert_no_keyed_reuse_only_run_next_command(nested);
+            }
+        }
+        Value::Array(values) => {
+            for nested in values {
+                assert_no_keyed_reuse_only_run_next_command(nested);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn json_strings(value: &Value) -> Vec<String> {
+    match value {
+        Value::String(string) => vec![string.clone()],
+        Value::Array(values) => values.iter().flat_map(json_strings).collect(),
+        Value::Object(map) => map.values().flat_map(json_strings).collect(),
+        _ => Vec::new(),
+    }
 }
 
 fn minimal_manifest() -> ProjectManifest {

@@ -10,9 +10,9 @@
 use crate::{
     CanonOutput, Refusal, RefusalCode,
     cli::{
-        GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli, GeoLinkSourcesCli,
-        GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli, GeoMaterializeH7PopulationCli,
-        GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
+        GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli,
+        GeoLinkSourcesCli, GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli,
+        GeoMaterializeH7PopulationCli, GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
         GeoMaterializeWarehouseGeometryCli, GeoReconcileTilesCli, GeoSolveCli, GeoSubcommand,
         GeoTileWorkCli,
     },
@@ -32,6 +32,7 @@ use super::{
         GeoCompositionError, GeoCompositionRequest, GeoEvidenceCompilationReference,
         canonical_composition_bytes, solve_composition,
     },
+    control::{GeoControlError, canonical_capabilities_bytes, default_geo_capabilities},
     evaluation::{
         CANON_GEO_POPULATION_REQUEST_VERSION, GeoPopulationError, GeoPopulationEvaluationRequest,
         canonical_population_evaluation_bytes, evaluate_population,
@@ -74,6 +75,7 @@ use super::{
 
 pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
     match &geo.command {
+        GeoSubcommand::Capabilities(args) => run_capabilities(args),
         GeoSubcommand::LinkSources(args) => run_link_sources(args),
         GeoSubcommand::MaterializeHomeCells(args) => run_materialize_home_cells(args),
         GeoSubcommand::TileWork(args) => run_tile_work(args),
@@ -88,6 +90,21 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
         GeoSubcommand::MaterializeH7StagingBatch(args) => run_materialize_h7_staging_batch(args),
         GeoSubcommand::CompileEvidence(args) => run_compile_evidence(args),
         GeoSubcommand::Evaluate(args) => run_evaluate(args),
+    }
+}
+
+fn run_capabilities(args: &GeoCapabilitiesCli) -> Result<u8, Box<dyn Error>> {
+    match args.emit {
+        GeoCapabilitiesEmitMode::Json => {
+            let capabilities = match default_geo_capabilities() {
+                Ok(capabilities) => capabilities,
+                Err(error) => return emit_control_error(error),
+            };
+            match canonical_capabilities_bytes(&capabilities) {
+                Ok(bytes) => write_canonical(&bytes),
+                Err(error) => emit_control_error(error),
+            }
+        }
     }
 }
 
@@ -537,6 +554,19 @@ fn emit_population_error(error: GeoPopulationError) -> Result<u8, Box<dyn Error>
             "repair the population request against canon_geo_population_request.v0, then rerun canon geo evaluate"
                 .to_string(),
         ),
+    )
+}
+
+fn emit_control_error(error: GeoControlError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo control contract could not be emitted",
+        json!({
+            "geo_control_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some("canon geo capabilities --emit json".to_string()),
     )
 }
 

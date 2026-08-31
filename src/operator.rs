@@ -460,6 +460,60 @@ pub const COMMAND_SAFETY_DECLARATIONS: &[CommandSafetyDeclaration] = &[
         notes: "creates declared project files inside an explicit project directory",
     },
     CommandSafetyDeclaration {
+        command: "project lock refresh",
+        operator_contract_name: Some("project lock refresh"),
+        usage: "canon project lock refresh --manifest <MANIFEST> --out <LOCK>",
+        read_only: false,
+        mutation: MutationClass::OwnedOutput,
+        network: NetworkClass::Offline,
+        concurrency: ConcurrencyClass::AtomicOwnedOutput,
+        platforms: &[
+            PlatformClass::PortablePathUtf8,
+            PlatformClass::SameFilesystemAtomicReplace,
+        ],
+        owned_temp_fixtures_only: true,
+        notes: "reads actual declared local source bytes and atomically writes only the explicit lock artifact",
+    },
+    CommandSafetyDeclaration {
+        command: "project plan",
+        operator_contract_name: Some("project plan"),
+        usage: "canon project plan --manifest <MANIFEST> --lock <LOCK> [--out <PLAN>]",
+        read_only: false,
+        mutation: MutationClass::OwnedOutput,
+        network: NetworkClass::Offline,
+        concurrency: ConcurrencyClass::AtomicOwnedOutput,
+        platforms: &[
+            PlatformClass::PortablePathUtf8,
+            PlatformClass::SameFilesystemAtomicReplace,
+        ],
+        owned_temp_fixtures_only: true,
+        notes: "compiles a pure project plan from manifest and lock; writes only an explicit plan artifact when --out is supplied",
+    },
+    CommandSafetyDeclaration {
+        command: "project run",
+        operator_contract_name: Some("project run"),
+        usage: "canon project run --plan <PLAN> [--node <NODE>]",
+        read_only: true,
+        mutation: MutationClass::ReadOnly,
+        network: NetworkClass::Offline,
+        concurrency: ConcurrencyClass::StatelessRead,
+        platforms: &[PlatformClass::PortablePathUtf8],
+        owned_temp_fixtures_only: true,
+        notes: "public surface validates plans and reuses existing canon.project.run.v2 receipts only; pending nodes refuse until a typed executor is registered",
+    },
+    CommandSafetyDeclaration {
+        command: "geo capabilities",
+        operator_contract_name: Some("geo capabilities"),
+        usage: "canon geo capabilities --emit json",
+        read_only: true,
+        mutation: MutationClass::ReadOnly,
+        network: NetworkClass::Offline,
+        concurrency: ConcurrencyClass::StatelessRead,
+        platforms: &[PlatformClass::PortablePathUtf8],
+        owned_temp_fixtures_only: true,
+        notes: "compiled Geo control capability contract only; no project, catalog, input-file, or network reads",
+    },
+    CommandSafetyDeclaration {
         command: "geo link-sources",
         operator_contract_name: Some("geo link-sources"),
         usage: "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
@@ -1667,10 +1721,11 @@ fn behavior_metadata_drifts(
             });
         }
         push_safety_footprint_drifts(&mut drifts, command_name, row, &sources);
-        if row
-            .recovery_next_command
-            .as_deref()
-            .is_none_or(str::is_empty)
+        if recovery_next_command_required(command_name)
+            && row
+                .recovery_next_command
+                .as_deref()
+                .is_none_or(str::is_empty)
         {
             drifts.push(OperatorBehaviorMetadataDrift {
                 command: command_name.clone(),
@@ -1682,6 +1737,10 @@ fn behavior_metadata_drifts(
         }
     }
     drifts
+}
+
+fn recovery_next_command_required(command_name: &str) -> bool {
+    command_name != "project run"
 }
 
 fn binding_does_not_match_row(

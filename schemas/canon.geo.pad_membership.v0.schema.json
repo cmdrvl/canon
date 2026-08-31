@@ -1,0 +1,108 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.pad_membership.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.pad_membership.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_pad_membership.v0",
+      "type": "string"
+    },
+    "parse_forest_version": {
+      "type": "string"
+    },
+    "address_set_version": {
+      "type": "string"
+    },
+    "grammar": {
+      "$ref": "canon.geo.address_parse_forest.v0.schema.json#/$defs/grammar_ref"
+    },
+    "jurisdiction": {
+      "$ref": "canon.geo.address_parse_request.v0.schema.json#/$defs/address_jurisdiction"
+    },
+    "input": {
+      "type": "string"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/candidate_evaluation"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "parse_forest_version",
+    "address_set_version",
+    "grammar",
+    "jurisdiction",
+    "input",
+    "results"
+  ],
+  "$defs": {
+    "candidate_evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "candidate_key": {
+          "type": "string"
+        },
+        "candidate": {
+          "$ref": "canon.geo.address_parse_forest.v0.schema.json#/$defs/address_candidate"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "exact_member",
+            "range_contained",
+            "covered_by_address_set",
+            "compatible_only",
+            "no_source_member"
+          ]
+        },
+        "asserted_member": {
+          "type": "boolean"
+        },
+        "compatible": {
+          "type": "boolean"
+        },
+        "matched_member_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "compatible_member_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/compatibility_reason"
+          }
+        }
+      },
+      "required": [
+        "candidate_key",
+        "candidate",
+        "status",
+        "asserted_member",
+        "compatible"
+      ]
+    },
+    "compatibility_reason": {
+      "type": "string",
+      "enum": [
+        "exact_street",
+        "query_suffix_unspecified",
+        "exact_house_number",
+        "pad_range_contains_query",
+        "query_range_covered_by_members"
+      ]
+    }
+  }
+}

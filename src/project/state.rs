@@ -49,7 +49,7 @@ impl ProjectStateError {
         Self {
             code,
             message: message.into(),
-            next_command: Some("canon project status --plan <PLAN> --run <RUN>".to_string()),
+            next_command: None,
         }
     }
 
@@ -208,7 +208,8 @@ pub struct ProjectCompletedReceipt {
 pub struct ProjectLifecycleBlocker {
     pub code: ProjectLifecycleBlockerCode,
     pub message: String,
-    pub next_command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_command: Option<String>,
 }
 
 impl ProjectLifecycleBlocker {
@@ -220,7 +221,18 @@ impl ProjectLifecycleBlocker {
         Self {
             code,
             message: message.into(),
-            next_command: next_command.into(),
+            next_command: Some(next_command.into()),
+        }
+    }
+
+    pub fn without_next_command(
+        code: ProjectLifecycleBlockerCode,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            next_command: None,
         }
     }
 }

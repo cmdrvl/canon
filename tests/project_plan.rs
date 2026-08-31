@@ -19,9 +19,11 @@ use manifest::{
     project_manifest_digest,
 };
 use plan::{
-    ProjectPlanCacheDecision, ProjectPlanErrorCode, ProjectPlanNodeClass, ProjectPlanNodeKind,
-    ProjectPlanRequest, canonical_project_plan_bytes, compile_project_plan,
-    project_plan_schema_version, render_project_plan_summary, validate_project_plan,
+    ProjectExtensionNodePolicy, ProjectPlanCacheDecision, ProjectPlanErrorCode,
+    ProjectPlanNodeClass, ProjectPlanNodeKind, ProjectPlanRefusalCondition, ProjectPlanRequest,
+    ProjectPlanSideEffect, ProjectPlanSideEffectKind, canonical_project_plan_bytes,
+    compile_project_plan, project_plan_node_cache_key, project_plan_schema_version,
+    render_project_plan_summary, validate_extension_node_effects, validate_project_plan,
 };
 use serde_json::Value;
 use std::{
@@ -284,6 +286,127 @@ fn source_scan_keeps_project_plan_contract_domain_neutral() {
             "project plan schema should remain domain-neutral: {banned}"
         );
     }
+}
+
+#[test]
+fn max_runtime_seconds_is_runtime_policy_not_a_semantic_node_limit() {
+    let first_manifest = minimal_manifest();
+    let second_manifest = load_project_manifest_toml(
+        &MINIMAL_TOML.replace("max_runtime_seconds = 600", "max_runtime_seconds = 3600"),
+    )
+    .expect("runtime-only manifest loads");
+
+    let first_plan = compile_project_plan(request(
+        first_manifest.clone(),
+        lock_for_manifest(&first_manifest),
+    ))
+    .expect("first plan compiles");
+    let second_plan = compile_project_plan(request(
+        second_manifest.clone(),
+        lock_for_manifest(&second_manifest),
+    ))
+    .expect("second plan compiles");
+
+    assert_eq!(first_plan.nodes.len(), second_plan.nodes.len());
+    for (first, second) in first_plan.nodes.iter().zip(second_plan.nodes.iter()) {
+        assert_eq!(first.node_id, second.node_id);
+        assert!(!first.limits.contains_key("max_runtime_seconds"));
+        assert!(!second.limits.contains_key("max_runtime_seconds"));
+        assert_eq!(first.cache.cache_key, second.cache.cache_key);
+    }
+}
+
+#[test]
+fn semantic_node_cache_key_binds_command_side_effects_and_refusals() {
+    let manifest = minimal_manifest();
+    let plan = compile_project_plan(request(manifest.clone(), lock_for_manifest(&manifest)))
+        .expect("plan compiles");
+    let base = node(&plan, "intake.source_alpha");
+    assert_eq!(
+        base.cache.cache_key,
+        project_plan_node_cache_key(base).expect("base cache key")
+    );
+
+    let mut command_changed = base.clone();
+    command_changed.command =
+        "canon project execute --plan work/plan.json --node intake.source_alpha.v2".to_string();
+    assert_ne!(
+        base.cache.cache_key,
+        project_plan_node_cache_key(&command_changed).expect("command cache key")
+    );
+
+    let mut effect_changed = base.clone();
+    effect_changed.side_effects.push(ProjectPlanSideEffect {
+        kind: ProjectPlanSideEffectKind::ReadsInput,
+        description: "additional declared input read".to_string(),
+    });
+    assert_ne!(
+        base.cache.cache_key,
+        project_plan_node_cache_key(&effect_changed).expect("effect cache key")
+    );
+
+    let mut refusal_changed = base.clone();
+    refusal_changed
+        .refusal_conditions
+        .push(ProjectPlanRefusalCondition {
+            code: ProjectPlanErrorCode::ManifestPolicy,
+            message: "additional declared precondition".to_string(),
+            next_command: Some("canon project validate --manifest <MANIFEST>".to_string()),
+        });
+    assert_ne!(
+        base.cache.cache_key,
+        project_plan_node_cache_key(&refusal_changed).expect("refusal cache key")
+    );
+}
+
+#[test]
+fn extension_node_validation_rejects_undeclared_network_and_mutation_effects() {
+    let manifest = minimal_manifest();
+    let plan = compile_project_plan(request(manifest.clone(), lock_for_manifest(&manifest)))
+        .expect("plan compiles");
+    let mut extension_node = node(&plan, "intake.source_alpha").clone();
+    extension_node.node_id = "extension.synthetic".to_string();
+    extension_node.command = "canon extension run synthetic_entrypoint".to_string();
+    extension_node.side_effects.push(ProjectPlanSideEffect {
+        kind: ProjectPlanSideEffectKind::MayUseNetwork,
+        description: "network request declared by extension package".to_string(),
+    });
+    extension_node.side_effects.push(ProjectPlanSideEffect {
+        kind: ProjectPlanSideEffectKind::MutatesRegistry,
+        description: "registry mutation declared by extension package".to_string(),
+    });
+
+    let error = validate_extension_node_effects(
+        &extension_node,
+        &ProjectExtensionNodePolicy::offline_read_only(),
+    )
+    .expect_err("undeclared side effects refuse");
+    assert_eq!(error.code, ProjectPlanErrorCode::ManifestPolicy);
+    assert_eq!(error.diagnostics.len(), 2);
+    assert!(
+        error
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("network access"))
+    );
+    assert!(
+        error
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("registry mutation"))
+    );
+
+    let mut shell_node = extension_node.clone();
+    shell_node.command = "canon extension run synthetic; curl example.invalid".to_string();
+    let error = validate_extension_node_effects(
+        &shell_node,
+        &ProjectExtensionNodePolicy {
+            allow_network: true,
+            allow_registry_mutation: true,
+        },
+    )
+    .expect_err("ambient shell command refuses");
+    assert_eq!(error.code, ProjectPlanErrorCode::ArtifactContract);
 }
 
 fn minimal_manifest() -> ProjectManifest {

@@ -1,13 +1,15 @@
 use canon::geo::{
     CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
-    DEFAULT_MAX_MATERIALIZED_MODELS, GeoCandidateReachStatus, GeoCompositionModel,
-    GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef,
-    GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceCoverageStatus,
-    GeoEvidenceDisposition, GeoEvidenceRecordRef, GeoIntegerMeasure, GeoIntegerMemberValue,
-    GeoIntegerValueOrigin, GeoLabeledCompositionCase, GeoPopulationCaseStatus,
-    GeoPopulationErrorCode, GeoPopulationEvaluationRequest, GeoRhoBasis, GeoRhoContract,
-    GeoRhoObservation, GeoRhoObservationKind, GeoRhoSoundness, GeoTruthPlane, GeoValidTimeInterval,
-    canonical_evidence_compilation_bytes, compile_evidence, evaluate_population, solve_composition,
+    DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate, GeoCandidateReachStatus,
+    GeoCompositionModel, GeoCompositionProfile, GeoCompositionStatus, GeoCompositionUniverse,
+    GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
+    GeoEvidenceCoverageStatus, GeoEvidenceDisposition, GeoEvidenceRecordRef, GeoIntegerMeasure,
+    GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoLabeledCompositionCase,
+    GeoPopulationCaseStatus, GeoPopulationErrorCode, GeoPopulationEvaluationArtifact,
+    GeoPopulationEvaluationRequest, GeoPopulationSummary, GeoPopulationTruthPlaneSummary,
+    GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoRhoSoundness,
+    GeoTruthPlane, GeoValidTimeInterval, canonical_evidence_compilation_bytes, compile_evidence,
+    evaluate_population, solve_composition, validate_population_evaluation_artifact,
 };
 use serde::Deserialize;
 
@@ -55,10 +57,139 @@ fn source_record(id: &str) -> GeoEvidenceRecordRef {
     }
 }
 
+fn building_universe(ids: &[&str]) -> GeoCompositionUniverse {
+    GeoCompositionUniverse {
+        parcels: Vec::new(),
+        buildings: ids
+            .iter()
+            .map(|id| GeoBuildingCandidate {
+                id: (*id).to_string(),
+                parcel_ids: Vec::new(),
+            })
+            .collect(),
+    }
+}
+
+fn hard_population_case(
+    id: &str,
+    plane: GeoTruthPlane,
+    universe_ids: &[&str],
+    forced: &str,
+    truth_ids: &[&str],
+) -> GeoLabeledCompositionCase {
+    GeoLabeledCompositionCase {
+        id: id.to_string(),
+        evidence: GeoEvidenceCompilationRequest {
+            version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+            profile: Default::default(),
+            universe: universe(universe_ids),
+            contracts: vec![contract(id, GeoRhoSoundness::LogicallySound)],
+            observations: vec![GeoRhoObservation {
+                id: "declared-hard-evidence".to_string(),
+                contract_id: id.to_string(),
+                source_records: vec![source_record(&format!("{id}-row"))],
+                valid_time: None,
+                observation: GeoRhoObservationKind::ExistentialMembership {
+                    members: vec![GeoEntityRef::new(GeoEntityLevel::Parcel, forced)],
+                },
+            }],
+            max_assignments: 8,
+            max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+        },
+        truth_plane: plane,
+        truth: GeoCompositionModel {
+            parcels: parcels(truth_ids),
+            buildings: Vec::new(),
+        },
+    }
+}
+
+fn mixed_denominator_population() -> GeoPopulationEvaluationArtifact {
+    evaluate_population(&GeoPopulationEvaluationRequest {
+        version: CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        cases: vec![
+            hard_population_case(
+                "gate-none-reach",
+                GeoTruthPlane::GateV2Historical,
+                &["p1"],
+                "p1",
+                &["p9"],
+            ),
+            hard_population_case(
+                "gate-partial-reach",
+                GeoTruthPlane::GateV2Historical,
+                &["p1", "p2"],
+                "p1",
+                &["p1", "p9"],
+            ),
+            hard_population_case(
+                "round-full-falsification",
+                GeoTruthPlane::RoundExactLenderParty,
+                &["p1", "p2", "p3"],
+                "p1",
+                &["p3"],
+            ),
+        ],
+        max_cases: 3,
+    })
+    .expect("mixed population evaluates")
+}
+
+fn plane_sum(
+    summary: &GeoPopulationSummary,
+    field: impl Fn(&GeoPopulationTruthPlaneSummary) -> u64,
+) -> u64 {
+    summary.truth_planes.iter().map(field).sum()
+}
+
+fn assert_summary_matches_truth_plane_sums(summary: &GeoPopulationSummary) {
+    macro_rules! assert_plane_sum {
+        ($field:ident) => {
+            assert_eq!(
+                summary.$field,
+                plane_sum(summary, |plane| plane.$field),
+                "{}",
+                stringify!($field)
+            );
+        };
+    }
+
+    assert_plane_sum!(cases);
+    assert_plane_sum!(population_eligible_cases);
+    assert_plane_sum!(resolved_cases);
+    assert_plane_sum!(ambiguous_cases);
+    assert_plane_sum!(conflict_cases);
+    assert_plane_sum!(abstention_cases);
+    assert_plane_sum!(false_merge_cases);
+    assert_plane_sum!(candidate_reach_evaluated_cases);
+    assert_plane_sum!(candidate_reach_full_cases);
+    assert_plane_sum!(candidate_reach_partial_cases);
+    assert_plane_sum!(candidate_reach_none_cases);
+    assert_plane_sum!(solver_truth_scored_cases);
+    assert_plane_sum!(solver_artifact_cases);
+    assert_plane_sum!(empirical_falsification_eligible_cases);
+    assert_plane_sum!(solver_truth_exclusion_cases);
+    assert_plane_sum!(residual_count_complete_cases);
+    assert_plane_sum!(residual_count_saturated_cases);
+    assert_plane_sum!(residual_count_unavailable_cases);
+    assert_plane_sum!(component_budget_fallback_cases);
+    assert_plane_sum!(assignment_budget_exceeded_cases);
+    assert_plane_sum!(evidence_no_observation_cases);
+    assert_plane_sum!(evidence_diagnostic_only_cases);
+    assert_plane_sum!(evidence_soft_preference_only_cases);
+    assert_plane_sum!(evidence_soft_and_diagnostic_only_cases);
+    assert_plane_sum!(evidence_hard_constraint_cases);
+    assert_plane_sum!(truth_members);
+    assert_plane_sum!(truth_members_in_universe);
+    assert_plane_sum!(backbone_true_positive_members);
+    assert_plane_sum!(backbone_false_positive_members);
+}
+
 #[test]
 fn sound_rho_contracts_compile_exact_existential_and_integer_sum_constraints() {
     let request = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: universe(&["p1", "p2", "p3"]),
         contracts: vec![contract("admitted", GeoRhoSoundness::LogicallySound)],
         observations: vec![
@@ -141,9 +272,86 @@ fn sound_rho_contracts_compile_exact_existential_and_integer_sum_constraints() {
 }
 
 #[test]
+fn building_profile_threads_through_evidence_compilation() {
+    let request = GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: GeoCompositionProfile::building(),
+        universe: building_universe(&["building-c", "building-a", "building-b"]),
+        contracts: vec![contract(
+            "admitted-building",
+            GeoRhoSoundness::LogicallySound,
+        )],
+        observations: vec![GeoRhoObservation {
+            id: "allowed-buildings".to_string(),
+            contract_id: "admitted-building".to_string(),
+            source_records: vec![source_record("allowed-buildings-row")],
+            valid_time: None,
+            observation: GeoRhoObservationKind::ExactSets {
+                level: GeoEntityLevel::Building,
+                sets: vec![
+                    vec!["building-b".to_string()],
+                    vec!["building-c".to_string(), "building-a".to_string()],
+                    vec!["building-a".to_string()],
+                ],
+            },
+        }],
+        max_assignments: 16,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+
+    let compiled = compile_evidence(&request).expect("building evidence must compile");
+    assert_eq!(
+        compiled.composition_request.profile,
+        GeoCompositionProfile::building()
+    );
+    assert!(compiled.composition_request.universe.parcels.is_empty());
+    let solved = solve_composition(&compiled.composition_request).expect("compiled request solves");
+    assert_eq!(solved.status, GeoCompositionStatus::Ambiguous);
+    assert_eq!(solved.summary.residual_model_count, 3);
+    assert_eq!(
+        solved
+            .residual_models
+            .iter()
+            .map(|model| model.buildings.clone())
+            .collect::<Vec<_>>(),
+        [
+            vec!["building-a".to_string()],
+            vec!["building-a".to_string(), "building-c".to_string()],
+            vec!["building-b".to_string()]
+        ]
+    );
+}
+
+#[test]
+fn building_profile_with_parcel_universe_refuses_during_evidence_compilation() {
+    let error = compile_evidence(&GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: GeoCompositionProfile::building(),
+        universe: GeoCompositionUniverse {
+            parcels: parcels(&["parcel-a", "parcel-b"]),
+            buildings: vec![GeoBuildingCandidate {
+                id: "building-a".to_string(),
+                parcel_ids: Vec::new(),
+            }],
+        },
+        contracts: Vec::new(),
+        observations: Vec::new(),
+        max_assignments: 16,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    })
+    .expect_err("evidence compilation must not create false building-grain counts");
+
+    assert_eq!(error.code, canon::geo::GeoEvidenceErrorCode::Composition);
+    assert_eq!(error.detail["composition_code"], "UnsupportedGrain");
+    assert_eq!(error.detail["selection_level"], "building");
+    assert_eq!(error.detail["field"], "universe.parcels");
+}
+
+#[test]
 fn evidence_without_immutable_source_records_is_rejected_before_admission() {
     let error = compile_evidence(&GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: universe(&["p1"]),
         contracts: vec![contract("admitted", GeoRhoSoundness::LogicallySound)],
         observations: vec![GeoRhoObservation {
@@ -168,6 +376,7 @@ fn temporal_occupancy_cannot_be_smuggled_in_as_timeless_property_identity() {
     occupancy.claim_role = GeoEvidenceClaimRole::TemporalOccupancy;
     let request = |valid_time| GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: universe(&["p1", "p2"]),
         contracts: vec![occupancy.clone()],
         observations: vec![GeoRhoObservation {
@@ -229,6 +438,7 @@ fn temporal_occupancy_cannot_be_smuggled_in_as_timeless_property_identity() {
 fn empirical_constraints_remain_diagnostic_and_preferences_never_prune() {
     let request = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: universe(&["p1", "p2", "p3"]),
         contracts: vec![contract(
             "calibrated-only",
@@ -285,6 +495,7 @@ fn empirical_constraints_remain_diagnostic_and_preferences_never_prune() {
 fn contradictory_sound_observations_name_a_deterministic_conflict() {
     let request = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: universe(&["p1", "p2"]),
         contracts: vec![contract("admitted", GeoRhoSoundness::LogicallySound)],
         observations: vec![
@@ -323,9 +534,72 @@ fn contradictory_sound_observations_name_a_deterministic_conflict() {
 }
 
 #[test]
+fn population_counts_conflict_as_solver_artifact_abstention_not_resolved() {
+    let evidence = GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: universe(&["p1", "p2"]),
+        contracts: vec![contract("admitted", GeoRhoSoundness::LogicallySound)],
+        observations: vec![
+            GeoRhoObservation {
+                id: "z-only-p1".to_string(),
+                contract_id: "admitted".to_string(),
+                source_records: vec![source_record("z-only-p1-row")],
+                valid_time: None,
+                observation: GeoRhoObservationKind::ExactSets {
+                    level: GeoEntityLevel::Parcel,
+                    sets: vec![parcels(&["p1"])],
+                },
+            },
+            GeoRhoObservation {
+                id: "a-needs-p2".to_string(),
+                contract_id: "admitted".to_string(),
+                source_records: vec![source_record("a-needs-p2-row")],
+                valid_time: None,
+                observation: GeoRhoObservationKind::ExistentialMembership {
+                    members: vec![GeoEntityRef::new(GeoEntityLevel::Parcel, "p2")],
+                },
+            },
+        ],
+        max_assignments: 4,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+    let artifact = evaluate_population(&GeoPopulationEvaluationRequest {
+        version: CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        cases: vec![GeoLabeledCompositionCase {
+            id: "population-conflict".to_string(),
+            evidence,
+            truth_plane: GeoTruthPlane::GateV2Historical,
+            truth: GeoCompositionModel {
+                parcels: parcels(&["p1"]),
+                buildings: Vec::new(),
+            },
+        }],
+        max_cases: 1,
+    })
+    .expect("conflict is a typed population outcome");
+
+    let case = &artifact.cases[0];
+    assert_eq!(case.status, GeoPopulationCaseStatus::Conflict);
+    assert!(case.solver_digest.is_some());
+    assert!(case.abstained);
+    assert_eq!(case.residual_model_count, Some(0));
+    assert!(case.residual_count_complete);
+    assert!(!case.false_merge);
+    assert_eq!(artifact.summary.conflict_cases, 1);
+    assert_eq!(artifact.summary.solver_artifact_cases, 1);
+    assert_eq!(artifact.summary.abstention_cases, 1);
+    assert_eq!(artifact.summary.resolved_cases, 0);
+    assert_eq!(artifact.summary.ambiguous_cases, 0);
+    assert_eq!(artifact.summary.component_budget_fallback_cases, 0);
+    assert_eq!(artifact.summary.assignment_budget_exceeded_cases, 0);
+}
+
+#[test]
 fn evidence_compilation_is_byte_identical_under_equivalent_permutations() {
     let request = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: universe(&["p1", "p2", "p3"]),
         contracts: vec![
             contract("soft", GeoRhoSoundness::EmpiricalHighCoverage),
@@ -380,6 +654,7 @@ fn evidence_compilation_is_byte_identical_under_equivalent_permutations() {
 fn population_truth_cannot_change_compilation_or_solver_digests() {
     let evidence = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: universe(&["p1", "p2"]),
         contracts: vec![contract(
             "observed-point",
@@ -428,6 +703,7 @@ fn population_truth_cannot_change_compilation_or_solver_digests() {
 fn population_keeps_candidate_reach_failures_out_of_solver_truth_metrics() {
     let evidence = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: universe(&["p1", "p2"]),
         contracts: Vec::new(),
         observations: Vec::new(),
@@ -460,9 +736,13 @@ fn population_keeps_candidate_reach_failures_out_of_solver_truth_metrics() {
         GeoEvidenceCoverageStatus::NoObservations
     );
     assert!(!case.false_merge);
+    assert_eq!(artifact.summary.population_eligible_cases, 1);
+    assert_eq!(artifact.summary.candidate_reach_evaluated_cases, 1);
     assert_eq!(artifact.summary.candidate_reach_none_cases, 1);
     assert_eq!(artifact.summary.candidate_recall_failure_cases, 1);
+    assert_eq!(artifact.summary.solver_artifact_cases, 1);
     assert_eq!(artifact.summary.solver_truth_scored_cases, 0);
+    assert_eq!(artifact.summary.empirical_falsification_eligible_cases, 0);
     assert_eq!(artifact.summary.false_merge_cases, 0);
     assert_eq!(artifact.summary.solver_truth_exclusion_cases, 0);
 }
@@ -471,6 +751,7 @@ fn population_keeps_candidate_reach_failures_out_of_solver_truth_metrics() {
 fn population_keeps_partial_candidate_reach_out_of_solver_truth_metrics() {
     let evidence = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: universe(&["p1", "p2"]),
         contracts: Vec::new(),
         observations: Vec::new(),
@@ -502,9 +783,13 @@ fn population_keeps_partial_candidate_reach_out_of_solver_truth_metrics() {
     assert_eq!(case.backbone_true_positive_members, 0);
     assert_eq!(case.backbone_false_positive_members, 0);
     assert!(!case.false_merge);
+    assert_eq!(artifact.summary.population_eligible_cases, 1);
+    assert_eq!(artifact.summary.candidate_reach_evaluated_cases, 1);
     assert_eq!(artifact.summary.candidate_reach_partial_cases, 1);
     assert_eq!(artifact.summary.candidate_recall_failure_cases, 1);
+    assert_eq!(artifact.summary.solver_artifact_cases, 1);
     assert_eq!(artifact.summary.solver_truth_scored_cases, 0);
+    assert_eq!(artifact.summary.empirical_falsification_eligible_cases, 0);
     assert_eq!(artifact.summary.false_merge_cases, 0);
 }
 
@@ -512,6 +797,7 @@ fn population_keeps_partial_candidate_reach_out_of_solver_truth_metrics() {
 fn population_does_not_score_false_merge_when_truth_is_unreachable() {
     let evidence = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: universe(&["p1"]),
         contracts: vec![contract("declared-anchor", GeoRhoSoundness::LogicallySound)],
         observations: vec![GeoRhoObservation {
@@ -556,8 +842,12 @@ fn population_does_not_score_false_merge_when_truth_is_unreachable() {
     assert_eq!(case.backbone_false_positive_members, 0);
     assert!(!case.false_merge);
     assert_eq!(artifact.summary.resolved_cases, 1);
+    assert_eq!(artifact.summary.population_eligible_cases, 1);
+    assert_eq!(artifact.summary.candidate_reach_evaluated_cases, 1);
     assert_eq!(artifact.summary.candidate_recall_failure_cases, 1);
+    assert_eq!(artifact.summary.solver_artifact_cases, 1);
     assert_eq!(artifact.summary.solver_truth_scored_cases, 0);
+    assert_eq!(artifact.summary.empirical_falsification_eligible_cases, 0);
     assert_eq!(artifact.summary.false_merge_cases, 0);
 }
 
@@ -567,6 +857,7 @@ fn population_reports_diagnostic_and_soft_diagnostic_evidence_coverage_separatel
         id: "coverage-diagnostic-only".to_string(),
         evidence: GeoEvidenceCompilationRequest {
             version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+            profile: Default::default(),
             universe: universe(&["p1", "p2"]),
             contracts: vec![contract(
                 "empirical-diagnostic",
@@ -598,6 +889,7 @@ fn population_reports_diagnostic_and_soft_diagnostic_evidence_coverage_separatel
         id: "coverage-soft-and-diagnostic".to_string(),
         evidence: GeoEvidenceCompilationRequest {
             version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+            profile: Default::default(),
             universe: universe(&["p1", "p2"]),
             contracts: vec![contract(
                 "empirical-mixed",
@@ -696,6 +988,7 @@ fn population_summarizes_h7_truth_planes_without_pooling() {
             id: id.to_string(),
             evidence: GeoEvidenceCompilationRequest {
                 version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+                profile: Default::default(),
                 universe: universe(&["p1", "p2", "p3"]),
                 contracts: vec![contract(id, GeoRhoSoundness::LogicallySound)],
                 observations: vec![GeoRhoObservation {
@@ -763,9 +1056,80 @@ fn population_summarizes_h7_truth_planes_without_pooling() {
 }
 
 #[test]
+fn population_denominators_keep_reach_feasibility_and_falsification_disjoint_by_truth_plane() {
+    let artifact = mixed_denominator_population();
+
+    assert_eq!(artifact.summary.cases, 3);
+    assert_eq!(artifact.summary.population_eligible_cases, 3);
+    assert_eq!(artifact.summary.candidate_reach_evaluated_cases, 3);
+    assert_eq!(artifact.summary.candidate_reach_full_cases, 1);
+    assert_eq!(artifact.summary.candidate_reach_partial_cases, 1);
+    assert_eq!(artifact.summary.candidate_reach_none_cases, 1);
+    assert_eq!(artifact.summary.candidate_recall_failure_cases, 2);
+    assert_eq!(artifact.summary.solver_artifact_cases, 3);
+    assert_eq!(artifact.summary.solver_truth_scored_cases, 1);
+    assert_eq!(artifact.summary.empirical_falsification_eligible_cases, 1);
+    assert_eq!(artifact.summary.solver_truth_exclusion_cases, 1);
+    assert_summary_matches_truth_plane_sums(&artifact.summary);
+
+    let gate = artifact
+        .summary
+        .truth_planes
+        .iter()
+        .find(|summary| summary.truth_plane == GeoTruthPlane::GateV2Historical)
+        .expect("Gate V2 plane summary");
+    assert_eq!(gate.cases, 2);
+    assert_eq!(gate.population_eligible_cases, 2);
+    assert_eq!(gate.candidate_reach_evaluated_cases, 2);
+    assert_eq!(gate.candidate_reach_full_cases, 0);
+    assert_eq!(gate.candidate_reach_partial_cases, 1);
+    assert_eq!(gate.candidate_reach_none_cases, 1);
+    assert_eq!(gate.solver_artifact_cases, 2);
+    assert_eq!(gate.solver_truth_scored_cases, 0);
+    assert_eq!(gate.empirical_falsification_eligible_cases, 0);
+    assert_eq!(gate.solver_truth_exclusion_cases, 0);
+
+    let round = artifact
+        .summary
+        .truth_planes
+        .iter()
+        .find(|summary| summary.truth_plane == GeoTruthPlane::RoundExactLenderParty)
+        .expect("round truth plane summary");
+    assert_eq!(round.cases, 1);
+    assert_eq!(round.population_eligible_cases, 1);
+    assert_eq!(round.candidate_reach_evaluated_cases, 1);
+    assert_eq!(round.candidate_reach_full_cases, 1);
+    assert_eq!(round.solver_artifact_cases, 1);
+    assert_eq!(round.solver_truth_scored_cases, 1);
+    assert_eq!(round.empirical_falsification_eligible_cases, 1);
+    assert_eq!(round.solver_truth_exclusion_cases, 1);
+}
+
+#[test]
+fn population_evaluation_validator_rejects_truth_plane_shared_counter_tamper() {
+    let mut artifact = mixed_denominator_population();
+    validate_population_evaluation_artifact(&artifact).expect("fixture artifact is valid");
+
+    artifact.summary.truth_planes[0].solver_artifact_cases += 1;
+    let error = validate_population_evaluation_artifact(&artifact)
+        .expect_err("truth-plane shared-counter tamper must be refused");
+
+    assert_eq!(error.code, GeoPopulationErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("scope").map(String::as_str),
+        Some("truth_planes_sum")
+    );
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("solver_artifact_cases")
+    );
+}
+
+#[test]
 fn population_counts_ambiguous_truth_exclusions_as_rho_contract_falsifications() {
     let evidence = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: universe(&["p1", "p2", "p3"]),
         contracts: vec![contract("claimed-logical", GeoRhoSoundness::LogicallySound)],
         observations: vec![GeoRhoObservation {
@@ -812,6 +1176,7 @@ fn population_counts_ambiguous_truth_exclusions_as_rho_contract_falsifications()
 fn population_reports_ambiguous_backbone_false_positive_without_false_merge() {
     let evidence = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: universe(&["p1", "p2", "p3"]),
         contracts: vec![contract("allowed-sets", GeoRhoSoundness::LogicallySound)],
         observations: vec![GeoRhoObservation {
@@ -862,6 +1227,7 @@ fn population_never_reports_budget_fallback_placeholder_zero_as_a_model_count() 
         .collect::<Vec<_>>();
     let evidence = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: parcel_ids.clone(),
             buildings: Vec::new(),
@@ -903,10 +1269,18 @@ fn population_never_reports_budget_fallback_placeholder_zero_as_a_model_count() 
     assert_eq!(case.residual_model_count, None);
     assert!(!case.residual_count_complete);
     assert!(!case.residual_count_saturated);
+    assert!(case.solver_digest.is_some());
     assert_eq!(case.truth_model_in_residual, Some(true));
     assert!(case.solver_truth_scored);
     assert!(!case.backbone_complete);
+    assert!(case.abstained);
     assert_eq!(artifact.summary.component_budget_fallback_cases, 1);
+    assert_eq!(artifact.summary.solver_artifact_cases, 1);
+    assert_eq!(artifact.summary.abstention_cases, 1);
+    assert_eq!(artifact.summary.resolved_cases, 0);
+    assert_eq!(artifact.summary.ambiguous_cases, 0);
+    assert_eq!(artifact.summary.conflict_cases, 0);
+    assert_eq!(artifact.summary.assignment_budget_exceeded_cases, 0);
     assert_eq!(artifact.summary.solver_truth_scored_cases, 1);
     assert_eq!(artifact.summary.solver_truth_exclusion_cases, 0);
     assert_eq!(artifact.summary.residual_count_unavailable_cases, 1);
@@ -921,6 +1295,7 @@ fn population_rejects_empty_truth_labels_instead_of_calling_them_full_recall() {
             id: "empty-truth".to_string(),
             evidence: GeoEvidenceCompilationRequest {
                 version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+                profile: Default::default(),
                 universe: universe(&["p1"]),
                 contracts: Vec::new(),
                 observations: Vec::new(),
@@ -1034,6 +1409,7 @@ fn gate_v2_population_reports_candidate_reach_and_assignment_fallback_honestly()
                 id: case.case_id,
                 evidence: GeoEvidenceCompilationRequest {
                     version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+                    profile: Default::default(),
                     universe: GeoCompositionUniverse {
                         parcels: case.candidate_parcels,
                         buildings: Vec::new(),

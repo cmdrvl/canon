@@ -133,6 +133,9 @@ pub struct GeoPopulationCaseEvaluation {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoPopulationSummary {
     pub cases: u64,
+    /// Cases admitted to the labeled population after request validation. This
+    /// is the population denominator; reach failures remain eligible cases.
+    pub population_eligible_cases: u64,
     pub truth_planes: Vec<GeoPopulationTruthPlaneSummary>,
     pub resolved_cases: u64,
     pub ambiguous_cases: u64,
@@ -142,6 +145,9 @@ pub struct GeoPopulationSummary {
     pub abstention_cases: u64,
     pub false_merge_cases: u64,
     pub full_truth_recall_cases: u64,
+    /// Cases for which candidate reach was evaluated. This denominator is
+    /// independent of solver feasibility and empirical falsification.
+    pub candidate_reach_evaluated_cases: u64,
     pub candidate_reach_full_cases: u64,
     pub candidate_reach_partial_cases: u64,
     pub candidate_reach_none_cases: u64,
@@ -157,6 +163,13 @@ pub struct GeoPopulationSummary {
     /// Cases whose full truth model was representable and for which solver
     /// residual membership was therefore actually scored.
     pub solver_truth_scored_cases: u64,
+    /// Cases where the composition solver emitted a typed artifact. This is an
+    /// artifact-emission count only; conflicts and budget fallbacks are not
+    /// claimed as feasible or exact solves.
+    pub solver_artifact_cases: u64,
+    /// Denominator for empirical falsification: cases whose truth label was
+    /// representable and scored against the admitted solver residual.
+    pub empirical_falsification_eligible_cases: u64,
     /// Scored cases where admitted hard evidence excluded the labeled truth
     /// model. This is the population falsification count for the active rho
     /// contracts; it is distinct from a wrong singleton/false merge.
@@ -175,15 +188,19 @@ pub struct GeoPopulationSummary {
 pub struct GeoPopulationTruthPlaneSummary {
     pub truth_plane: GeoTruthPlane,
     pub cases: u64,
+    pub population_eligible_cases: u64,
     pub resolved_cases: u64,
     pub ambiguous_cases: u64,
     pub conflict_cases: u64,
     pub abstention_cases: u64,
     pub false_merge_cases: u64,
+    pub candidate_reach_evaluated_cases: u64,
     pub candidate_reach_full_cases: u64,
     pub candidate_reach_partial_cases: u64,
     pub candidate_reach_none_cases: u64,
     pub solver_truth_scored_cases: u64,
+    pub solver_artifact_cases: u64,
+    pub empirical_falsification_eligible_cases: u64,
     pub solver_truth_exclusion_cases: u64,
     pub residual_count_complete_cases: u64,
     pub residual_count_saturated_cases: u64,
@@ -455,6 +472,44 @@ pub fn canonical_population_evaluation_bytes(
     artifact: &GeoPopulationEvaluationArtifact,
 ) -> Result<Vec<u8>, serde_json::Error> {
     serde_json::to_vec(artifact)
+}
+
+pub fn validate_population_evaluation_artifact(
+    artifact: &GeoPopulationEvaluationArtifact,
+) -> Result<(), GeoPopulationError> {
+    if artifact.version != CANON_GEO_POPULATION_EVALUATION_VERSION {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::UnsupportedVersion,
+            "Unsupported Geo population evaluation artifact version",
+            [
+                ("actual", artifact.version.as_str()),
+                ("expected", CANON_GEO_POPULATION_EVALUATION_VERSION),
+            ],
+        ));
+    }
+    if artifact.request_version != CANON_GEO_POPULATION_REQUEST_VERSION {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::UnsupportedVersion,
+            "Unsupported Geo population evaluation request version",
+            [
+                ("actual", artifact.request_version.as_str()),
+                ("expected", CANON_GEO_POPULATION_REQUEST_VERSION),
+            ],
+        ));
+    }
+    for case in &artifact.cases {
+        validate_case_evaluation(case)?;
+    }
+    validate_summary(&artifact.summary)?;
+    let expected_summary = summarize(&artifact.cases)?;
+    if artifact.summary != expected_summary {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo population evaluation summary does not match case evaluations",
+            [("field", "summary")],
+        ));
+    }
+    Ok(())
 }
 
 fn validate_case(case: &mut GeoLabeledCompositionCase) -> Result<(), GeoPopulationError> {
@@ -785,6 +840,7 @@ fn summarize(
 ) -> Result<GeoPopulationSummary, GeoPopulationError> {
     let mut summary = GeoPopulationSummary {
         cases: checked_len(cases.len(), "cases")?,
+        population_eligible_cases: 0,
         truth_planes: Vec::new(),
         resolved_cases: 0,
         ambiguous_cases: 0,
@@ -794,6 +850,7 @@ fn summarize(
         abstention_cases: 0,
         false_merge_cases: 0,
         full_truth_recall_cases: 0,
+        candidate_reach_evaluated_cases: 0,
         candidate_reach_full_cases: 0,
         candidate_reach_partial_cases: 0,
         candidate_reach_none_cases: 0,
@@ -804,6 +861,8 @@ fn summarize(
         evidence_soft_and_diagnostic_only_cases: 0,
         evidence_hard_constraint_cases: 0,
         solver_truth_scored_cases: 0,
+        solver_artifact_cases: 0,
+        empirical_falsification_eligible_cases: 0,
         solver_truth_exclusion_cases: 0,
         residual_count_complete_cases: 0,
         residual_count_saturated_cases: 0,
@@ -816,6 +875,17 @@ fn summarize(
     };
     let mut truth_planes = BTreeMap::<GeoTruthPlane, GeoPopulationTruthPlaneSummary>::new();
     for case in cases {
+        checked_inc(
+            &mut summary.population_eligible_cases,
+            "population_eligible_cases",
+        )?;
+        checked_inc(
+            &mut summary.candidate_reach_evaluated_cases,
+            "candidate_reach_evaluated_cases",
+        )?;
+        if case.solver_digest.is_some() {
+            checked_inc(&mut summary.solver_artifact_cases, "solver_artifact_cases")?;
+        }
         match case.status {
             GeoPopulationCaseStatus::Resolved => {
                 checked_inc(&mut summary.resolved_cases, "resolved_cases")?;
@@ -911,6 +981,10 @@ fn summarize(
                 &mut summary.solver_truth_scored_cases,
                 "solver_truth_scored_cases",
             )?;
+            checked_inc(
+                &mut summary.empirical_falsification_eligible_cases,
+                "empirical_falsification_eligible_cases",
+            )?;
         }
         if case.truth_model_in_residual == Some(false) {
             checked_inc(
@@ -970,7 +1044,367 @@ fn summarize(
             .record(case)?;
     }
     summary.truth_planes = truth_planes.into_values().collect();
+    validate_summary(&summary)?;
     Ok(summary)
+}
+
+fn validate_summary(summary: &GeoPopulationSummary) -> Result<(), GeoPopulationError> {
+    validate_summary_denominators(
+        "summary",
+        summary.cases,
+        summary.population_eligible_cases,
+        summary.candidate_reach_evaluated_cases,
+        summary.candidate_reach_full_cases,
+        summary.candidate_reach_partial_cases,
+        summary.candidate_reach_none_cases,
+        summary.solver_truth_scored_cases,
+        summary.empirical_falsification_eligible_cases,
+        summary.solver_truth_exclusion_cases,
+    )?;
+    validate_truth_plane_sums(summary)?;
+    for plane in &summary.truth_planes {
+        validate_summary_denominators(
+            "truth_plane",
+            plane.cases,
+            plane.population_eligible_cases,
+            plane.candidate_reach_evaluated_cases,
+            plane.candidate_reach_full_cases,
+            plane.candidate_reach_partial_cases,
+            plane.candidate_reach_none_cases,
+            plane.solver_truth_scored_cases,
+            plane.empirical_falsification_eligible_cases,
+            plane.solver_truth_exclusion_cases,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_truth_plane_sums(summary: &GeoPopulationSummary) -> Result<(), GeoPopulationError> {
+    validate_truth_plane_sum(
+        "cases",
+        summary.cases,
+        summary.truth_planes.iter().map(|plane| plane.cases),
+    )?;
+    validate_truth_plane_sum(
+        "population_eligible_cases",
+        summary.population_eligible_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.population_eligible_cases),
+    )?;
+    validate_truth_plane_sum(
+        "resolved_cases",
+        summary.resolved_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.resolved_cases),
+    )?;
+    validate_truth_plane_sum(
+        "ambiguous_cases",
+        summary.ambiguous_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.ambiguous_cases),
+    )?;
+    validate_truth_plane_sum(
+        "conflict_cases",
+        summary.conflict_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.conflict_cases),
+    )?;
+    validate_truth_plane_sum(
+        "abstention_cases",
+        summary.abstention_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.abstention_cases),
+    )?;
+    validate_truth_plane_sum(
+        "false_merge_cases",
+        summary.false_merge_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.false_merge_cases),
+    )?;
+    validate_truth_plane_sum(
+        "candidate_reach_evaluated_cases",
+        summary.candidate_reach_evaluated_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.candidate_reach_evaluated_cases),
+    )?;
+    validate_truth_plane_sum(
+        "candidate_reach_full_cases",
+        summary.candidate_reach_full_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.candidate_reach_full_cases),
+    )?;
+    validate_truth_plane_sum(
+        "candidate_reach_partial_cases",
+        summary.candidate_reach_partial_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.candidate_reach_partial_cases),
+    )?;
+    validate_truth_plane_sum(
+        "candidate_reach_none_cases",
+        summary.candidate_reach_none_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.candidate_reach_none_cases),
+    )?;
+    validate_truth_plane_sum(
+        "solver_truth_scored_cases",
+        summary.solver_truth_scored_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.solver_truth_scored_cases),
+    )?;
+    validate_truth_plane_sum(
+        "solver_artifact_cases",
+        summary.solver_artifact_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.solver_artifact_cases),
+    )?;
+    validate_truth_plane_sum(
+        "empirical_falsification_eligible_cases",
+        summary.empirical_falsification_eligible_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.empirical_falsification_eligible_cases),
+    )?;
+    validate_truth_plane_sum(
+        "solver_truth_exclusion_cases",
+        summary.solver_truth_exclusion_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.solver_truth_exclusion_cases),
+    )?;
+    validate_truth_plane_sum(
+        "residual_count_complete_cases",
+        summary.residual_count_complete_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.residual_count_complete_cases),
+    )?;
+    validate_truth_plane_sum(
+        "residual_count_saturated_cases",
+        summary.residual_count_saturated_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.residual_count_saturated_cases),
+    )?;
+    validate_truth_plane_sum(
+        "residual_count_unavailable_cases",
+        summary.residual_count_unavailable_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.residual_count_unavailable_cases),
+    )?;
+    validate_truth_plane_sum(
+        "component_budget_fallback_cases",
+        summary.component_budget_fallback_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.component_budget_fallback_cases),
+    )?;
+    validate_truth_plane_sum(
+        "assignment_budget_exceeded_cases",
+        summary.assignment_budget_exceeded_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.assignment_budget_exceeded_cases),
+    )?;
+    validate_truth_plane_sum(
+        "evidence_no_observation_cases",
+        summary.evidence_no_observation_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.evidence_no_observation_cases),
+    )?;
+    validate_truth_plane_sum(
+        "evidence_diagnostic_only_cases",
+        summary.evidence_diagnostic_only_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.evidence_diagnostic_only_cases),
+    )?;
+    validate_truth_plane_sum(
+        "evidence_soft_preference_only_cases",
+        summary.evidence_soft_preference_only_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.evidence_soft_preference_only_cases),
+    )?;
+    validate_truth_plane_sum(
+        "evidence_soft_and_diagnostic_only_cases",
+        summary.evidence_soft_and_diagnostic_only_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.evidence_soft_and_diagnostic_only_cases),
+    )?;
+    validate_truth_plane_sum(
+        "evidence_hard_constraint_cases",
+        summary.evidence_hard_constraint_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.evidence_hard_constraint_cases),
+    )?;
+    validate_truth_plane_sum(
+        "truth_members",
+        summary.truth_members,
+        summary.truth_planes.iter().map(|plane| plane.truth_members),
+    )?;
+    validate_truth_plane_sum(
+        "truth_members_in_universe",
+        summary.truth_members_in_universe,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.truth_members_in_universe),
+    )?;
+    validate_truth_plane_sum(
+        "backbone_true_positive_members",
+        summary.backbone_true_positive_members,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.backbone_true_positive_members),
+    )?;
+    validate_truth_plane_sum(
+        "backbone_false_positive_members",
+        summary.backbone_false_positive_members,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.backbone_false_positive_members),
+    )
+}
+
+fn validate_truth_plane_sum(
+    field: &'static str,
+    expected: u64,
+    values: impl IntoIterator<Item = u64>,
+) -> Result<(), GeoPopulationError> {
+    let actual = sum_u64(values, field)?;
+    if actual != expected {
+        return Err(summary_invariant_error(
+            "truth_planes_sum",
+            field,
+            expected,
+            actual,
+        ));
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_summary_denominators(
+    scope: &'static str,
+    cases: u64,
+    population_eligible_cases: u64,
+    candidate_reach_evaluated_cases: u64,
+    candidate_reach_full_cases: u64,
+    candidate_reach_partial_cases: u64,
+    candidate_reach_none_cases: u64,
+    solver_truth_scored_cases: u64,
+    empirical_falsification_eligible_cases: u64,
+    solver_truth_exclusion_cases: u64,
+) -> Result<(), GeoPopulationError> {
+    if population_eligible_cases != cases {
+        return Err(summary_invariant_error(
+            scope,
+            "population_eligible_cases",
+            cases,
+            population_eligible_cases,
+        ));
+    }
+    let reach_cases = sum_u64(
+        [
+            candidate_reach_full_cases,
+            candidate_reach_partial_cases,
+            candidate_reach_none_cases,
+        ],
+        "candidate_reach_cases",
+    )?;
+    if candidate_reach_evaluated_cases != reach_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "candidate_reach_evaluated_cases",
+            reach_cases,
+            candidate_reach_evaluated_cases,
+        ));
+    }
+    if candidate_reach_evaluated_cases != population_eligible_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "candidate_reach_evaluated_cases",
+            population_eligible_cases,
+            candidate_reach_evaluated_cases,
+        ));
+    }
+    if empirical_falsification_eligible_cases != solver_truth_scored_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "empirical_falsification_eligible_cases",
+            solver_truth_scored_cases,
+            empirical_falsification_eligible_cases,
+        ));
+    }
+    if solver_truth_exclusion_cases > empirical_falsification_eligible_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "solver_truth_exclusion_cases",
+            empirical_falsification_eligible_cases,
+            solver_truth_exclusion_cases,
+        ));
+    }
+    Ok(())
+}
+
+fn summary_invariant_error(
+    scope: &'static str,
+    field: &'static str,
+    expected: u64,
+    actual: u64,
+) -> GeoPopulationError {
+    GeoPopulationError::new(
+        GeoPopulationErrorCode::InvalidInput,
+        "Geo population summary denominators are internally inconsistent",
+        [
+            ("scope", scope.to_string()),
+            ("field", field.to_string()),
+            ("expected", expected.to_string()),
+            ("actual", actual.to_string()),
+        ],
+    )
 }
 
 impl GeoPopulationTruthPlaneSummary {
@@ -978,15 +1412,19 @@ impl GeoPopulationTruthPlaneSummary {
         Self {
             truth_plane,
             cases: 0,
+            population_eligible_cases: 0,
             resolved_cases: 0,
             ambiguous_cases: 0,
             conflict_cases: 0,
             abstention_cases: 0,
             false_merge_cases: 0,
+            candidate_reach_evaluated_cases: 0,
             candidate_reach_full_cases: 0,
             candidate_reach_partial_cases: 0,
             candidate_reach_none_cases: 0,
             solver_truth_scored_cases: 0,
+            solver_artifact_cases: 0,
+            empirical_falsification_eligible_cases: 0,
             solver_truth_exclusion_cases: 0,
             residual_count_complete_cases: 0,
             residual_count_saturated_cases: 0,
@@ -1007,6 +1445,20 @@ impl GeoPopulationTruthPlaneSummary {
 
     fn record(&mut self, case: &GeoPopulationCaseEvaluation) -> Result<(), GeoPopulationError> {
         checked_inc(&mut self.cases, "truth_plane.cases")?;
+        checked_inc(
+            &mut self.population_eligible_cases,
+            "truth_plane.population_eligible_cases",
+        )?;
+        checked_inc(
+            &mut self.candidate_reach_evaluated_cases,
+            "truth_plane.candidate_reach_evaluated_cases",
+        )?;
+        if case.solver_digest.is_some() {
+            checked_inc(
+                &mut self.solver_artifact_cases,
+                "truth_plane.solver_artifact_cases",
+            )?;
+        }
         match case.status {
             GeoPopulationCaseStatus::Resolved => {
                 checked_inc(&mut self.resolved_cases, "truth_plane.resolved_cases")?;
@@ -1093,6 +1545,10 @@ impl GeoPopulationTruthPlaneSummary {
                 &mut self.solver_truth_scored_cases,
                 "truth_plane.solver_truth_scored_cases",
             )?;
+            checked_inc(
+                &mut self.empirical_falsification_eligible_cases,
+                "truth_plane.empirical_falsification_eligible_cases",
+            )?;
         }
         if case.truth_model_in_residual == Some(false) {
             checked_inc(
@@ -1159,6 +1615,14 @@ fn checked_add(target: &mut u64, value: u64, field: &str) -> Result<(), GeoPopul
 
 fn checked_inc(target: &mut u64, field: &str) -> Result<(), GeoPopulationError> {
     checked_add(target, 1, field)
+}
+
+fn sum_u64(values: impl IntoIterator<Item = u64>, field: &str) -> Result<u64, GeoPopulationError> {
+    let mut total = 0;
+    for value in values {
+        checked_add(&mut total, value, field)?;
+    }
+    Ok(total)
 }
 
 fn empty_backbone() -> GeoCompositionBackbone {

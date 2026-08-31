@@ -1,0 +1,242 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.project.run.v2.schema.json",
+  "title": "canon.project.run.v2",
+  "description": "Deterministic Canon project run report and hash-linked node receipt contract for resumable DAG execution. v2 separates semantic dependency identity from telemetry integrity and refuses v1 receipts for execution reuse.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "plan_graph_hash",
+    "run_receipt_hash",
+    "max_parallelism",
+    "max_ready_width",
+    "executed_nodes",
+    "resumed_nodes",
+    "failed_nodes",
+    "cancelled_nodes",
+    "invalidated_nodes",
+    "blocked_nodes",
+    "next_actions",
+    "receipt",
+    "node_reports"
+  ],
+  "properties": {
+    "schema_version": { "const": "canon.project.run.v2" },
+    "project_id": { "type": "string", "minLength": 1 },
+    "plan_graph_hash": { "$ref": "#/$defs/blake3_digest" },
+    "run_receipt_hash": { "$ref": "#/$defs/blake3_digest" },
+    "max_parallelism": { "type": "integer", "minimum": 1 },
+    "max_ready_width": { "type": "integer", "minimum": 0 },
+    "executed_nodes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "resumed_nodes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "failed_nodes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "cancelled_nodes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "invalidated_nodes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "blocked_nodes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "next_actions": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "receipt": { "$ref": "#/$defs/run_receipt" },
+    "node_reports": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node_report" }
+    }
+  },
+  "x-canon-contract": {
+    "content_validated_resume": true,
+    "existence_is_not_completion": true,
+    "atomic_publication_required": true,
+    "hash_linked_node_receipts": true,
+    "semantic_dependency_identity": true,
+    "telemetry_integrity_separated": true,
+    "deterministic_usage_hash_bound": true,
+    "runtime_telemetry_not_dependency_identity": true,
+    "v1_receipts_refused_for_execution_reuse": true,
+    "pending_nodes_require_registered_real_executor": true
+  },
+  "$defs": {
+    "blake3_digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-fA-F]{64}$"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["completed", "failed", "cancelled"]
+    },
+    "next_action": {
+      "type": "string",
+      "enum": [
+        "reuse_receipt",
+        "execute_dependents",
+        "retry_node",
+        "inspect_failure",
+        "resume"
+      ]
+    },
+    "hash_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref_id", "content_hash"],
+      "properties": {
+        "ref_id": { "type": "string", "minLength": 1 },
+        "content_hash": { "$ref": "#/$defs/blake3_digest" }
+      }
+    },
+    "output_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["output_id", "path", "content_digest", "byte_count"],
+      "properties": {
+        "output_id": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "content_digest": { "$ref": "#/$defs/blake3_digest" },
+        "byte_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "node_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "project_id",
+        "plan_graph_hash",
+        "node_id",
+        "node_cache_key",
+        "outcome",
+        "duration_millis",
+        "next_action",
+        "semantic_hash",
+        "telemetry_hash",
+        "receipt_hash"
+      ],
+      "properties": {
+        "schema_version": { "const": "canon.project.run.v2" },
+        "project_id": { "type": "string", "minLength": 1 },
+        "plan_graph_hash": { "$ref": "#/$defs/blake3_digest" },
+        "node_id": { "type": "string", "minLength": 1 },
+        "node_cache_key": { "$ref": "#/$defs/blake3_digest" },
+        "content_hash_inputs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/hash_ref" }
+        },
+        "dependency_semantic_hashes": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/blake3_digest" }
+        },
+        "dependency_receipt_hashes": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/blake3_digest" }
+        },
+        "outputs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/output_receipt" }
+        },
+        "outcome": { "$ref": "#/$defs/outcome" },
+        "deterministic_usage": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "duration_millis": { "type": "integer", "minimum": 0 },
+        "resource_observations": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "next_action": { "$ref": "#/$defs/next_action" },
+        "failure_code": { "type": "string", "minLength": 1 },
+        "failure_message": { "type": "string", "minLength": 1 },
+        "semantic_hash": { "$ref": "#/$defs/blake3_digest" },
+        "telemetry_hash": { "$ref": "#/$defs/blake3_digest" },
+        "receipt_hash": { "$ref": "#/$defs/blake3_digest" }
+      }
+    },
+    "run_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "project_id",
+        "plan_graph_hash",
+        "receipt_hash",
+        "completed_nodes",
+        "failed_nodes",
+        "cancelled_nodes",
+        "invalidated_nodes",
+        "blocked_nodes",
+        "node_receipts"
+      ],
+      "properties": {
+        "schema_version": { "const": "canon.project.run.v2" },
+        "project_id": { "type": "string", "minLength": 1 },
+        "plan_graph_hash": { "$ref": "#/$defs/blake3_digest" },
+        "receipt_hash": { "$ref": "#/$defs/blake3_digest" },
+        "completed_nodes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "failed_nodes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "cancelled_nodes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "invalidated_nodes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "blocked_nodes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "node_receipts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/node_receipt" }
+        }
+      }
+    },
+    "node_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "outcome"],
+      "properties": {
+        "node_id": { "type": "string", "minLength": 1 },
+        "outcome": { "$ref": "#/$defs/outcome" },
+        "receipt_hash": { "$ref": "#/$defs/blake3_digest" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

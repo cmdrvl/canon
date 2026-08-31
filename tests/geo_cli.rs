@@ -643,6 +643,10 @@ fn geo_materialize_evidence_emits_a_compiler_accepted_request() {
         "warehouse-rows.json",
         &json!({
             "version": "canon_geo_warehouse_rows.v0",
+            "profile": {
+                "version": "canon_geo_composition_profile.v0",
+                "selection_level": "parcel"
+            },
             "parcel_rows": [
                 { "parcel_id": "parcel-b" },
                 { "parcel_id": "parcel-a" }

@@ -63,7 +63,7 @@ impl ProjectPlanError {
             code,
             message: message.into(),
             diagnostics: Vec::new(),
-            next_command: Some("canon project validate --manifest <MANIFEST>".to_string()),
+            next_command: Some("canon project validate <DIR> --manifest <MANIFEST>".to_string()),
         }
     }
 
@@ -101,7 +101,7 @@ impl From<ProjectManifestError> for ProjectPlanError {
                 node_id: None,
                 message: format!("project manifest refused with {:?}", error.code),
             }],
-            next_command: Some("canon project validate --manifest <MANIFEST>".to_string()),
+            next_command: Some("canon project validate <DIR> --manifest <MANIFEST>".to_string()),
         }
     }
 }
@@ -292,8 +292,6 @@ struct LockCoverage {
 
 struct PlanBuilder<'a> {
     manifest: &'a ProjectManifest,
-    manifest_digest: &'a str,
-    lock_digest: &'a str,
     manifest_path: &'a Path,
     lock_path: &'a Path,
     plan_artifact_path: Option<&'a Path>,
@@ -326,8 +324,6 @@ pub fn compile_project_plan(request: ProjectPlanRequest) -> ProjectPlanResult<Pr
 
     let mut builder = PlanBuilder {
         manifest: &manifest,
-        manifest_digest: &manifest_digest,
-        lock_digest: &lock_digest,
         manifest_path: &request.manifest_path,
         lock_path: &request.lock_path,
         plan_artifact_path: request.plan_artifact_path.as_deref(),
@@ -442,6 +438,87 @@ pub fn validate_project_plan(plan: &ProjectPlan) -> ProjectPlanResult<ProjectPla
     Ok(canonical)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectExtensionNodePolicy {
+    pub allow_network: bool,
+    pub allow_registry_mutation: bool,
+}
+
+impl ProjectExtensionNodePolicy {
+    pub fn offline_read_only() -> Self {
+        Self {
+            allow_network: false,
+            allow_registry_mutation: false,
+        }
+    }
+}
+
+pub fn validate_extension_node_effects(
+    node: &ProjectPlanNode,
+    policy: &ProjectExtensionNodePolicy,
+) -> ProjectPlanResult<()> {
+    if node.command.trim().is_empty() || contains_shell_control(&node.command) {
+        return Err(ProjectPlanError::with_diagnostics(
+            ProjectPlanErrorCode::ArtifactContract,
+            "extension node command must be a declared entrypoint, not an ambient shell string",
+            vec![ProjectPlanDiagnostic {
+                code: ProjectPlanErrorCode::ArtifactContract,
+                node_id: Some(node.node_id.clone()),
+                message: "command contains shell control syntax or is empty".to_string(),
+            }],
+        ));
+    }
+
+    let mut diagnostics = Vec::new();
+    for effect in &node.side_effects {
+        match effect.kind {
+            ProjectPlanSideEffectKind::MayUseNetwork if !policy.allow_network => {
+                diagnostics.push(ProjectPlanDiagnostic {
+                    code: ProjectPlanErrorCode::ManifestPolicy,
+                    node_id: Some(node.node_id.clone()),
+                    message: "extension node requested network access that was not declared"
+                        .to_string(),
+                });
+            }
+            ProjectPlanSideEffectKind::MutatesRegistry if !policy.allow_registry_mutation => {
+                diagnostics.push(ProjectPlanDiagnostic {
+                    code: ProjectPlanErrorCode::ManifestPolicy,
+                    node_id: Some(node.node_id.clone()),
+                    message: "extension node requested registry mutation that was not declared"
+                        .to_string(),
+                });
+            }
+            _ => {}
+        }
+    }
+    if node.class == ProjectPlanNodeClass::ExternalMaterialization && !policy.allow_network {
+        diagnostics.push(ProjectPlanDiagnostic {
+            code: ProjectPlanErrorCode::ManifestPolicy,
+            node_id: Some(node.node_id.clone()),
+            message: "external materialization nodes require declared network permission"
+                .to_string(),
+        });
+    }
+    if node.class == ProjectPlanNodeClass::MutationGate && !policy.allow_registry_mutation {
+        diagnostics.push(ProjectPlanDiagnostic {
+            code: ProjectPlanErrorCode::ManifestPolicy,
+            node_id: Some(node.node_id.clone()),
+            message: "mutation gate nodes require declared registry mutation permission"
+                .to_string(),
+        });
+    }
+
+    if diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(ProjectPlanError::with_diagnostics(
+            ProjectPlanErrorCode::ManifestPolicy,
+            "extension node side effects exceed declared policy",
+            diagnostics,
+        ))
+    }
+}
+
 impl<'a> PlanBuilder<'a> {
     fn build(&mut self) -> ProjectPlanResult<()> {
         self.add_external_materialization_node()?;
@@ -500,7 +577,7 @@ impl<'a> PlanBuilder<'a> {
             refusal_conditions: vec![refusal_condition(
                 ProjectPlanErrorCode::IncompatibleMode,
                 "network execution must stay within runtime.declared_hosts",
-                Some("canon project validate --manifest <MANIFEST>"),
+                Some("canon project validate <DIR> --manifest <MANIFEST>"),
             )],
         })?;
         self.external_materialization_node = Some(node_id);
@@ -521,11 +598,10 @@ impl<'a> PlanBuilder<'a> {
                 kind: ProjectPlanNodeKind::Intake,
                 class: ProjectPlanNodeClass::Computation,
                 dependencies: Vec::new(),
-                content_hash_inputs: vec![
-                    hash_ref("manifest", self.manifest_digest.to_string()),
-                    hash_ref("lock", self.lock_digest.to_string()),
-                    hash_ref(format!("source.{}", source.source_id), source_hash),
-                ],
+                content_hash_inputs: vec![hash_ref(
+                    format!("source.{}", source.source_id),
+                    source_hash,
+                )],
                 outputs: vec![output_spec(
                     format!("{}.intake", source.source_id),
                     format!("work/sources/{}/intake.jsonl", source.source_id),
@@ -587,7 +663,7 @@ impl<'a> PlanBuilder<'a> {
                 refusal_conditions: vec![refusal_condition(
                     ProjectPlanErrorCode::ManifestPolicy,
                     "source mapping package and profile must be lock-pinned",
-                    Some("canon project validate --manifest <MANIFEST>"),
+                    Some("canon project validate <DIR> --manifest <MANIFEST>"),
                 )],
             })?;
         }
@@ -765,7 +841,7 @@ impl<'a> PlanBuilder<'a> {
             refusal_conditions: vec![refusal_condition(
                 ProjectPlanErrorCode::ReviewPolicy,
                 "review queue must fit max_review_items and preserve the review band",
-                Some("canon project validate --manifest <MANIFEST>"),
+                Some("canon project validate <DIR> --manifest <MANIFEST>"),
             )],
         })?;
         Ok(node_id)
@@ -802,7 +878,7 @@ impl<'a> PlanBuilder<'a> {
             refusal_conditions: vec![refusal_condition(
                 ProjectPlanErrorCode::ReviewPolicy,
                 "promotion requires accepted review decisions and evaluation evidence",
-                Some("canon project review export --plan <PLAN>"),
+                None,
             )],
         })?;
         Ok(node_id)
@@ -844,7 +920,7 @@ impl<'a> PlanBuilder<'a> {
             refusal_conditions: vec![refusal_condition(
                 ProjectPlanErrorCode::OutputCollision,
                 "declared output path must have exactly one producer",
-                Some("canon project validate --manifest <MANIFEST>"),
+                Some("canon project validate <DIR> --manifest <MANIFEST>"),
             )],
         })
     }
@@ -862,7 +938,7 @@ impl<'a> PlanBuilder<'a> {
             self.plan_artifact_path,
             &spec.node_id,
         );
-        let cache_key = node_cache_key(&spec)?;
+        let cache_key = node_cache_key(&spec, &command)?;
         let decision = if spec.cache_eligible {
             if self.cache_hits.contains(&spec.node_id) {
                 ProjectPlanCacheDecision::Hit
@@ -1451,25 +1527,123 @@ fn compute_graph_hash(plan: &ProjectPlan) -> ProjectPlanResult<String> {
         })
 }
 
-fn node_cache_key(spec: &NodeSpec) -> ProjectPlanResult<String> {
+pub fn project_plan_node_cache_key(node: &ProjectPlanNode) -> ProjectPlanResult<String> {
+    let outputs = node
+        .outputs
+        .iter()
+        .map(|output| NodeCacheOutput {
+            output_id: output.output_id.clone(),
+            path: output.path.clone(),
+            materialization: output.materialization,
+        })
+        .collect::<Vec<_>>();
+    node_cache_key_from_parts(NodeCacheParts {
+        node_id: &node.node_id,
+        kind: node.kind,
+        class: node.class,
+        command: &node.command,
+        dependencies: node.dependencies.clone(),
+        content_hash_inputs: node.content_hash_inputs.clone(),
+        outputs,
+        limits: node.limits.clone(),
+        side_effects: node.side_effects.clone(),
+        refusal_conditions: node.refusal_conditions.clone(),
+    })
+}
+
+fn node_cache_key(spec: &NodeSpec, command: &str) -> ProjectPlanResult<String> {
+    let outputs = spec
+        .outputs
+        .iter()
+        .map(|output| NodeCacheOutput {
+            output_id: output.output_id.clone(),
+            path: output.path.clone(),
+            materialization: output.materialization,
+        })
+        .collect::<Vec<_>>();
+    node_cache_key_from_parts(NodeCacheParts {
+        node_id: &spec.node_id,
+        kind: spec.kind,
+        class: spec.class,
+        command,
+        dependencies: spec.dependencies.clone(),
+        content_hash_inputs: spec.content_hash_inputs.clone(),
+        outputs,
+        limits: spec.limits.clone(),
+        side_effects: spec.side_effects.clone(),
+        refusal_conditions: spec.refusal_conditions.clone(),
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct NodeCacheOutput {
+    output_id: String,
+    path: String,
+    materialization: ProjectPlanOutputMaterialization,
+}
+
+struct NodeCacheParts<'a> {
+    node_id: &'a str,
+    kind: ProjectPlanNodeKind,
+    class: ProjectPlanNodeClass,
+    command: &'a str,
+    dependencies: Vec<String>,
+    content_hash_inputs: Vec<ProjectPlanHashRef>,
+    outputs: Vec<NodeCacheOutput>,
+    limits: BTreeMap<String, u64>,
+    side_effects: Vec<ProjectPlanSideEffect>,
+    refusal_conditions: Vec<ProjectPlanRefusalCondition>,
+}
+
+fn node_cache_key_from_parts(mut parts: NodeCacheParts<'_>) -> ProjectPlanResult<String> {
     #[derive(Serialize)]
     struct CacheMaterial<'a> {
         node_id: &'a str,
         kind: ProjectPlanNodeKind,
         class: ProjectPlanNodeClass,
+        command: &'a str,
         dependencies: &'a [String],
         content_hash_inputs: &'a [ProjectPlanHashRef],
-        outputs: &'a [OutputSpec],
+        outputs: &'a [NodeCacheOutput],
         limits: &'a BTreeMap<String, u64>,
+        side_effects: &'a [ProjectPlanSideEffect],
+        refusal_conditions: &'a [ProjectPlanRefusalCondition],
     }
+
+    parts.dependencies.sort();
+    parts.dependencies.dedup();
+    parts
+        .content_hash_inputs
+        .sort_by(|left, right| left.ref_id.cmp(&right.ref_id));
+    parts
+        .content_hash_inputs
+        .dedup_by(|left, right| left.ref_id == right.ref_id);
+    parts
+        .outputs
+        .sort_by(|left, right| left.output_id.cmp(&right.output_id));
+    parts.side_effects.sort_by(|left, right| {
+        left.kind
+            .cmp(&right.kind)
+            .then(left.description.cmp(&right.description))
+    });
+    parts.refusal_conditions.sort_by(|left, right| {
+        left.code
+            .cmp(&right.code)
+            .then(left.message.cmp(&right.message))
+            .then(left.next_command.cmp(&right.next_command))
+    });
+
     let material = CacheMaterial {
-        node_id: &spec.node_id,
-        kind: spec.kind,
-        class: spec.class,
-        dependencies: &spec.dependencies,
-        content_hash_inputs: &spec.content_hash_inputs,
-        outputs: &spec.outputs,
-        limits: &spec.limits,
+        node_id: parts.node_id,
+        kind: parts.kind,
+        class: parts.class,
+        command: parts.command,
+        dependencies: &parts.dependencies,
+        content_hash_inputs: &parts.content_hash_inputs,
+        outputs: &parts.outputs,
+        limits: &parts.limits,
+        side_effects: &parts.side_effects,
+        refusal_conditions: &parts.refusal_conditions,
     };
     serde_json::to_vec(&material)
         .map(|bytes| digest_bytes(&bytes))
@@ -1495,6 +1669,12 @@ fn sort_node_internals(nodes: &mut [ProjectPlanNode]) {
     }
 }
 
+fn contains_shell_control(command: &str) -> bool {
+    command
+        .chars()
+        .any(|character| matches!(character, '|' | '&' | ';' | '`' | '$' | '\n' | '\r'))
+}
+
 fn source_limits(
     source: &ProjectSourceDeclaration,
     budgets: &ProjectResourceBudgets,
@@ -1510,21 +1690,11 @@ fn mode_limits(budgets: &ProjectResourceBudgets) -> BTreeMap<String, u64> {
     BTreeMap::from([
         ("max_candidates".to_string(), budgets.max_candidates),
         ("max_rows".to_string(), budgets.max_rows),
-        (
-            "max_runtime_seconds".to_string(),
-            budgets.max_runtime_seconds,
-        ),
     ])
 }
 
 fn review_limits(budgets: &ProjectResourceBudgets) -> BTreeMap<String, u64> {
-    BTreeMap::from([
-        ("max_review_items".to_string(), budgets.max_review_items),
-        (
-            "max_runtime_seconds".to_string(),
-            budgets.max_runtime_seconds,
-        ),
-    ])
+    BTreeMap::from([("max_review_items".to_string(), budgets.max_review_items)])
 }
 
 fn output_spec(
@@ -1593,17 +1763,20 @@ fn node_command(
     plan_artifact_path: Option<&Path>,
     node_id: &str,
 ) -> String {
+    let workspace = manifest_path.parent().unwrap_or_else(|| Path::new("."));
     if let Some(plan_path) = plan_artifact_path {
         return format!(
-            "canon project execute --plan {} --node {}",
+            "canon project run --plan {} --workspace {} --node {}",
             shell_token(&normalized_display_path(plan_path)),
+            shell_token(&normalized_display_path(workspace)),
             shell_token(node_id)
         );
     }
     format!(
-        "canon project execute --manifest {} --lock {} --node {}",
+        "canon project run --manifest {} --lock {} --workspace {} --node {}",
         shell_token(&normalized_display_path(manifest_path)),
         shell_token(&normalized_display_path(lock_path)),
+        shell_token(&normalized_display_path(workspace)),
         shell_token(node_id)
     )
 }

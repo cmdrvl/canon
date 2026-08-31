@@ -9,6 +9,9 @@
       "const": "canon_geo_warehouse_rows.v0",
       "type": "string"
     },
+    "profile": {
+      "$ref": "canon.geo.composition_request.v0.schema.json#/$defs/composition_profile"
+    },
     "parcel_rows": {
       "type": "array",
       "items": { "$ref": "#/$defs/parcel_row" }
@@ -30,6 +33,7 @@
   },
   "required": [
     "version",
+    "profile",
     "parcel_rows",
     "building_parcel_rows",
     "contracts",

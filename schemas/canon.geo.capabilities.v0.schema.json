@@ -1,0 +1,356 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.capabilities.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.capabilities.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": "canon_geo_capabilities.v0", "type": "string" },
+    "semantic_hash": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
+    "crate_version": { "type": "string" },
+    "status": { "$ref": "#/$defs/capability_status" },
+    "next_command": { "type": "string" },
+    "contracts": { "$ref": "#/$defs/contract_status_sets" },
+    "commands": { "$ref": "#/$defs/command_status_sets" },
+    "vocabularies": { "$ref": "#/$defs/vocabularies" },
+    "deterministic_ceilings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/numeric_bound" }
+    },
+    "properties": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/scoped_property" }
+    },
+    "runtime_side_effects": { "$ref": "#/$defs/runtime_side_effects" }
+  },
+  "required": [
+    "version",
+    "semantic_hash",
+    "crate_version",
+    "status",
+    "next_command",
+    "contracts",
+    "commands",
+    "vocabularies",
+    "deterministic_ceilings",
+    "properties",
+    "runtime_side_effects"
+  ],
+  "$defs": {
+    "capability_status": {
+      "type": "string",
+      "enum": ["implemented", "diagnostic_only", "unavailable"]
+    },
+    "entity_level": {
+      "type": "string",
+      "enum": ["site", "property", "parcel", "building", "unit", "address", "poi"]
+    },
+    "relation": {
+      "type": "string",
+      "enum": ["same_as", "contains", "part_of", "within", "on", "fronts", "intersects"]
+    },
+    "evidence_class": {
+      "type": "string",
+      "enum": [
+        "geocode_point",
+        "address_string",
+        "address_set",
+        "parcel_geometry",
+        "building_footprint",
+        "asserted_attribute",
+        "entity_relation",
+        "temporal_observation"
+      ]
+    },
+    "claim_class": {
+      "type": "string",
+      "enum": [
+        "candidate_reach",
+        "stable_identity",
+        "collateral_composition",
+        "temporal_occupancy",
+        "lifecycle_state",
+        "attribute_band"
+      ]
+    },
+    "control_property": {
+      "type": "string",
+      "enum": ["deterministic", "confluent", "sound", "complete", "canonical"]
+    },
+    "value_origin": {
+      "type": "string",
+      "enum": [
+        "caller_declared",
+        "binary_default",
+        "source_release",
+        "local_artifact",
+        "adapter_contract",
+        "operator_policy"
+      ]
+    },
+    "resource_counter": {
+      "type": "string",
+      "enum": [
+        "bytes",
+        "rows",
+        "cells",
+        "candidates",
+        "variables",
+        "states",
+        "models",
+        "operations",
+        "proof_bytes"
+      ]
+    },
+    "budget_action": {
+      "type": "string",
+      "enum": [
+        "refuse_before_work",
+        "refuse_before_output",
+        "truncate_presentation_only",
+        "report_budget_fallback"
+      ]
+    },
+    "numeric_bound": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "semantic_id": { "type": "string" },
+        "counter": { "$ref": "#/$defs/resource_counter" },
+        "value": { "type": "integer", "minimum": 0 },
+        "unit": { "type": "string" },
+        "origin": { "$ref": "#/$defs/value_origin" },
+        "action": { "$ref": "#/$defs/budget_action" }
+      },
+      "required": ["semantic_id", "counter", "value", "unit", "origin", "action"]
+    },
+    "contract_capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": { "type": "string" },
+        "schema_path": { "type": "string" },
+        "status": { "$ref": "#/$defs/capability_status" },
+        "notes": { "type": "string" }
+      },
+      "required": ["contract_version", "schema_path", "status", "notes"]
+    },
+    "command_capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "command": { "type": "string" },
+        "output_contract": { "type": "string" },
+        "read_only": { "type": "boolean" },
+        "uses_network": { "type": "boolean" }
+      },
+      "required": ["command", "output_contract", "read_only", "uses_network"]
+    },
+    "contract_status_sets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "implemented": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/contract_capability" }
+        },
+        "diagnostic_only": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/contract_capability" }
+        },
+        "unavailable": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/contract_capability" }
+        }
+      },
+      "required": ["implemented", "diagnostic_only", "unavailable"]
+    },
+    "command_status_sets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "implemented": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/command_capability" }
+        },
+        "diagnostic_only": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/command_capability" }
+        },
+        "unavailable": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/command_capability" }
+        }
+      },
+      "required": ["implemented", "diagnostic_only", "unavailable"]
+    },
+    "string_status_sets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "implemented": { "type": "array", "items": { "type": "string" } },
+        "diagnostic_only": { "type": "array", "items": { "type": "string" } },
+        "unavailable": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["implemented", "diagnostic_only", "unavailable"]
+    },
+    "vocabularies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entity_levels": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/entity_level" }
+        },
+        "relations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/relation" }
+        },
+        "evidence_classes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence_class" }
+        },
+        "claim_classes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/claim_class" }
+        },
+        "properties": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/control_property" }
+        },
+        "rho_families": { "$ref": "#/$defs/string_status_sets" },
+        "geometry_predicates": { "$ref": "#/$defs/string_status_sets" },
+        "solver_backends": { "$ref": "#/$defs/string_status_sets" }
+      },
+      "required": [
+        "entity_levels",
+        "relations",
+        "evidence_classes",
+        "claim_classes",
+        "properties",
+        "rho_families",
+        "geometry_predicates",
+        "solver_backends"
+      ]
+    },
+    "scoped_property": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "property": { "$ref": "#/$defs/control_property" },
+        "scope": { "type": "string" },
+        "status": { "$ref": "#/$defs/capability_status" },
+        "basis": { "type": "string" }
+      },
+      "required": ["property", "scope", "status", "basis"]
+    },
+    "runtime_side_effects": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "read_only": { "type": "boolean" },
+        "reads_stdin": { "type": "boolean" },
+        "reads_input_files": { "type": "boolean" },
+        "reads_catalog": { "type": "boolean" },
+        "writes_files": { "type": "boolean" },
+        "uses_network": { "type": "boolean" }
+      },
+      "required": [
+        "read_only",
+        "reads_stdin",
+        "reads_input_files",
+        "reads_catalog",
+        "writes_files",
+        "uses_network"
+      ]
+    }
+  },
+  "examples": [
+    {
+      "version": "canon_geo_capabilities.v0",
+      "semantic_hash": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+      "crate_version": "0.12.1",
+      "status": "implemented",
+      "next_command": "canon --describe",
+      "contracts": {
+        "implemented": [
+          {
+            "contract_version": "canon_geo_question.v0",
+            "schema_path": "schemas/canon.geo.question.v0.schema.json",
+            "status": "implemented",
+            "notes": "source-generic question intent contract"
+          }
+        ],
+        "diagnostic_only": [],
+        "unavailable": []
+      },
+      "commands": {
+        "implemented": [
+          {
+            "command": "canon geo capabilities --emit json",
+            "output_contract": "canon_geo_capabilities.v0",
+            "read_only": true,
+            "uses_network": false
+          }
+        ],
+        "diagnostic_only": [],
+        "unavailable": [
+          {
+            "command": "canon geo plan",
+            "output_contract": "planned_not_implemented",
+            "read_only": true,
+            "uses_network": false
+          }
+        ]
+      },
+      "vocabularies": {
+        "entity_levels": ["building", "parcel"],
+        "relations": ["contains", "same_as"],
+        "evidence_classes": ["building_footprint", "parcel_geometry"],
+        "claim_classes": ["candidate_reach", "collateral_composition"],
+        "properties": ["canonical", "complete", "confluent", "deterministic", "sound"],
+        "rho_families": {
+          "implemented": ["logical_relaxation"],
+          "diagnostic_only": ["time_scoped_observation_without_temporal_solver"],
+          "unavailable": ["allen_interval_algebra_solver"]
+        },
+        "geometry_predicates": {
+          "implemented": ["integer_local_geometry_materialization"],
+          "diagnostic_only": [],
+          "unavailable": ["national_single_solve_geometry_truth"]
+        },
+        "solver_backends": {
+          "implemented": ["exhaustive_enumeration"],
+          "diagnostic_only": [],
+          "unavailable": ["allen_stp_temporal"]
+        }
+      },
+      "deterministic_ceilings": [
+        {
+          "semantic_id": "composition.default_max_materialized_models",
+          "counter": "models",
+          "value": 4096,
+          "unit": "model",
+          "origin": "binary_default",
+          "action": "truncate_presentation_only"
+        }
+      ],
+      "properties": [
+        {
+          "property": "deterministic",
+          "scope": "canon_geo_capabilities.v0 canonical JSON",
+          "status": "implemented",
+          "basis": "sorted vectors and no ambient time inputs"
+        }
+      ],
+      "runtime_side_effects": {
+        "read_only": true,
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_catalog": false,
+        "writes_files": false,
+        "uses_network": false
+      }
+    }
+  ]
+}

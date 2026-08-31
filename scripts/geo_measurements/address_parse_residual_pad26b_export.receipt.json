@@ -1,0 +1,72 @@
+{
+  "version": "canon_geo_address_parse_residual_export_receipt.v0",
+  "bead": "bd-158y",
+  "measurement_id": "bd-158y_address_parse_residual_pad26b_live",
+  "proof_class": "live",
+  "contract": "canon_geo_address_parse_residual_export.v0",
+  "disposition": "bounded_positive_export",
+  "claim_boundary": "Bounded non-fixture export of the PAD-unresolved address-county residual. This is not the full 1339-row corpus artifact and not parser acceptance proof.",
+  "query_as_of": "2026-08-31",
+  "source_pins": {
+    "geocode_table": {
+      "table": "EDGAR_DB.DBT_WRANGLING_EDGAR.WRGL_EDGAR_CMBS_GEOCODES__STRUCTURED",
+      "asof_cutoff": "2026-08-01",
+      "source_hash_status": "not_exposed_by_described_table"
+    },
+    "pad_address_table": {
+      "table": "EDGAR_DB.SOURCE.NYC_DCP_PAD_ADDRESS_HOT",
+      "release": "26B",
+      "release_dt": "2026-05-01",
+      "is_current_release": true,
+      "source_zip_sha256": "016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd"
+    }
+  },
+  "denominators": {
+    "address_county_keys": 5269,
+    "parsed_street_keys": 5226,
+    "parsed_number_keys": 5247,
+    "pad_matched_keys": 3930,
+    "pad_unresolved_keys": 1339,
+    "pad_unique_keys": 2337,
+    "pad_multi_bbl_keys": 1593,
+    "pad_bbl_edges": 6469,
+    "max_pad_bbls_per_key": 92
+  },
+  "bounded_export": {
+    "export_row_cap": 25,
+    "observed_rows": 25,
+    "row_status": "ok",
+    "guard_rows": 0
+  },
+  "query_receipts": [
+    {
+      "purpose": "pad26b_residual_denominator_control",
+      "query_id": "01c6c258-0821-aa0e-006c-c703088ec5da",
+      "status": "SUCCESS",
+      "rows_produced": 8,
+      "total_elapsed_ms": 3000
+    },
+    {
+      "purpose": "pad26b_residual_bounded_export",
+      "query_id": "01c6c25d-0821-ab8c-006c-c703088f36ce",
+      "status": "SUCCESS",
+      "rows_produced": 25,
+      "total_elapsed_ms": 8163,
+      "bytes_scanned": 562350080,
+      "compilation_time_ms": 2710,
+      "execution_time_ms": 3612
+    },
+    {
+      "purpose": "discarded_full_residual_export_attempt",
+      "query_id": "01c6c25b-0821-ab8c-006c-c703088f34da",
+      "status": "CANCELED",
+      "disposition": "discarded_timeout_not_positive_evidence"
+    }
+  ],
+  "negative_controls": [
+    {
+      "purpose": "row_cap_denominator_guard_correction",
+      "finding": "An earlier 25-row attempt returned zero because it incorrectly required pad_unresolved_keys <= export_row_cap. That zero-row guard failure is not positive evidence and is not cited as a live export."
+    }
+  ]
+}

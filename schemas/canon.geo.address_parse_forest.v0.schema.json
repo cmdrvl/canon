@@ -1,0 +1,379 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.address_parse_forest.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.address_parse_forest.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_address_parse_forest.v0",
+      "type": "string"
+    },
+    "request_version": {
+      "type": "string"
+    },
+    "grammar": {
+      "$ref": "#/$defs/grammar_ref"
+    },
+    "jurisdiction": {
+      "$ref": "canon.geo.address_parse_request.v0.schema.json#/$defs/address_jurisdiction"
+    },
+    "input": {
+      "type": "string"
+    },
+    "placeholder": {
+      "$ref": "#/$defs/placeholder"
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/address_candidate"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "request_version",
+    "grammar",
+    "jurisdiction",
+    "input",
+    "candidates"
+  ],
+  "$defs": {
+    "address_annotation": {
+      "type": "string",
+      "enum": [
+        "aka_alternative",
+        "enumerated_house_number",
+        "slash_range",
+        "dash_range",
+        "dash_list_range",
+        "queens_hyphenate_literal",
+        "implicit_ordinal_street_suffix"
+      ]
+    },
+    "address_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reading_id": {
+          "type": "string"
+        },
+        "canonical_key": {
+          "type": "string"
+        },
+        "display": {
+          "type": "string"
+        },
+        "source_grammar": {
+          "$ref": "#/$defs/grammar_ref"
+        },
+        "source_segment": {
+          "type": "string"
+        },
+        "house": {
+          "$ref": "#/$defs/house_number"
+        },
+        "street": {
+          "$ref": "#/$defs/street"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/address_annotation"
+          }
+        }
+      },
+      "required": [
+        "reading_id",
+        "canonical_key",
+        "display",
+        "source_grammar",
+        "source_segment",
+        "house",
+        "street"
+      ]
+    },
+    "grammar_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ]
+    },
+    "house_number": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "discrete",
+              "type": "string"
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "$ref": "#/$defs/range_slash"
+        },
+        {
+          "$ref": "#/$defs/range_dash"
+        },
+        {
+          "$ref": "#/$defs/range_dash_list"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "hyphenated_literal",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ]
+        }
+      ]
+    },
+    "parity": {
+      "type": "string",
+      "enum": [
+        "any",
+        "even",
+        "odd"
+      ]
+    },
+    "placeholder": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "various",
+            "multiple",
+            "unknown",
+            "to_be_determined"
+          ]
+        },
+        "token": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "token"
+      ]
+    },
+    "range_common": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "range",
+          "type": "string"
+        },
+        "start": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "end": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "parity": {
+          "$ref": "#/$defs/parity"
+        },
+        "operator": {
+          "type": "string"
+        },
+        "asserted_numbers": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "start",
+        "end",
+        "parity",
+        "operator",
+        "asserted_numbers"
+      ]
+    },
+    "range_dash": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/range_common"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operator": {
+              "const": "dash",
+              "type": "string"
+            },
+            "asserted_numbers": {
+              "minItems": 2,
+              "maxItems": 2
+            }
+          }
+        }
+      ]
+    },
+    "range_dash_list": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/range_common"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operator": {
+              "const": "dash_list",
+              "type": "string"
+            },
+            "asserted_numbers": {
+              "minItems": 3
+            }
+          }
+        }
+      ]
+    },
+    "range_slash": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/range_common"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operator": {
+              "const": "slash",
+              "type": "string"
+            },
+            "asserted_numbers": {
+              "minItems": 2,
+              "maxItems": 2
+            }
+          }
+        }
+      ]
+    },
+    "street": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pre_direction": {
+          "$ref": "#/$defs/street_direction"
+        },
+        "name": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/street_name_token"
+          }
+        },
+        "suffix": {
+          "$ref": "#/$defs/street_suffix"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "street_direction": {
+      "type": "string",
+      "enum": [
+        "north",
+        "south",
+        "east",
+        "west"
+      ]
+    },
+    "street_name_token": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "literal",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ordinal",
+              "type": "string"
+            },
+            "value": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ]
+        }
+      ]
+    },
+    "street_suffix": {
+      "type": "string",
+      "enum": [
+        "avenue",
+        "boulevard",
+        "court",
+        "drive",
+        "lane",
+        "place",
+        "road",
+        "street",
+        "terrace"
+      ]
+    }
+  }
+}

@@ -243,6 +243,11 @@
       "properties": {
         "truth_plane": { "$ref": "#/$defs/truth_plane" },
         "cases": { "type": "integer", "minimum": 0 },
+        "population_eligible_cases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Truth-plane denominator of validated labeled population cases; candidate reach failures remain eligible cases."
+        },
         "resolved_cases": { "type": "integer", "minimum": 0 },
         "ambiguous_cases": { "type": "integer", "minimum": 0 },
         "conflict_cases": { "type": "integer", "minimum": 0 },
@@ -252,10 +257,25 @@
           "minimum": 0,
           "description": "Resolved-singleton cases that exclude the labeled truth model; ambiguous backbone false positives are counted only in backbone_false_positive_members."
         },
+        "candidate_reach_evaluated_cases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Truth-plane denominator for candidate generation/reach accounting."
+        },
         "candidate_reach_full_cases": { "type": "integer", "minimum": 0 },
         "candidate_reach_partial_cases": { "type": "integer", "minimum": 0 },
         "candidate_reach_none_cases": { "type": "integer", "minimum": 0 },
         "solver_truth_scored_cases": { "type": "integer", "minimum": 0 },
+        "solver_artifact_cases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Truth-plane cases where the composition solver emitted a typed artifact, independent of candidate reach; conflicts and budget fallbacks are not claimed as feasible or exact solves."
+        },
+        "empirical_falsification_eligible_cases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Truth-plane denominator for solver residual falsification claims."
+        },
         "solver_truth_exclusion_cases": { "type": "integer", "minimum": 0 },
         "residual_count_complete_cases": { "type": "integer", "minimum": 0 },
         "residual_count_saturated_cases": { "type": "integer", "minimum": 0 },
@@ -275,15 +295,19 @@
       "required": [
         "truth_plane",
         "cases",
+        "population_eligible_cases",
         "resolved_cases",
         "ambiguous_cases",
         "conflict_cases",
         "abstention_cases",
         "false_merge_cases",
+        "candidate_reach_evaluated_cases",
         "candidate_reach_full_cases",
         "candidate_reach_partial_cases",
         "candidate_reach_none_cases",
         "solver_truth_scored_cases",
+        "solver_artifact_cases",
+        "empirical_falsification_eligible_cases",
         "solver_truth_exclusion_cases",
         "residual_count_complete_cases",
         "residual_count_saturated_cases",
@@ -308,6 +332,11 @@
         "cases": {
           "type": "integer",
           "minimum": 0
+        },
+        "population_eligible_cases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Validated labeled population cases; candidate reach failures remain in this denominator rather than disappearing."
         },
         "truth_planes": {
           "type": "array",
@@ -347,6 +376,11 @@
         "full_truth_recall_cases": {
           "type": "integer",
           "minimum": 0
+        },
+        "candidate_reach_evaluated_cases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Population cases evaluated for candidate generation/reach."
         },
         "candidate_reach_full_cases": {
           "type": "integer",
@@ -388,6 +422,16 @@
           "type": "integer",
           "minimum": 0
         },
+        "solver_artifact_cases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Cases where the composition solver emitted a typed artifact, independent of reach and empirical scoring eligibility; conflicts and budget fallbacks are not claimed as feasible or exact solves."
+        },
+        "empirical_falsification_eligible_cases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Cases whose representable truth model was scored against the admitted residual; denominator for solver_truth_exclusion_cases."
+        },
         "solver_truth_exclusion_cases": {
           "type": "integer",
           "minimum": 0
@@ -427,6 +471,7 @@
       },
       "required": [
         "cases",
+        "population_eligible_cases",
         "truth_planes",
         "resolved_cases",
         "ambiguous_cases",
@@ -436,6 +481,7 @@
         "abstention_cases",
         "false_merge_cases",
         "full_truth_recall_cases",
+        "candidate_reach_evaluated_cases",
         "candidate_reach_full_cases",
         "candidate_reach_partial_cases",
         "candidate_reach_none_cases",
@@ -446,6 +492,8 @@
         "evidence_soft_and_diagnostic_only_cases",
         "evidence_hard_constraint_cases",
         "solver_truth_scored_cases",
+        "solver_artifact_cases",
+        "empirical_falsification_eligible_cases",
         "solver_truth_exclusion_cases",
         "residual_count_complete_cases",
         "residual_count_saturated_cases",

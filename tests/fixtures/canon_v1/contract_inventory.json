@@ -155,6 +155,38 @@
       "action": "preserve"
     },
     {
+      "id": "canon project lock refresh",
+      "family": "project",
+      "clap_path": "project lock refresh",
+      "operator_name": "project lock refresh",
+      "primary_contracts": ["canon.project.lock.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon project plan",
+      "family": "project",
+      "clap_path": "project plan",
+      "operator_name": "project plan",
+      "primary_contracts": ["canon.project.plan.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon project run",
+      "family": "project",
+      "clap_path": "project run",
+      "operator_name": "project run",
+      "primary_contracts": ["canon.project.run.v2"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon geo capabilities",
+      "family": "geo",
+      "clap_path": "geo capabilities",
+      "operator_name": "geo capabilities",
+      "primary_contracts": ["canon_geo_capabilities.v0"],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo link-sources",
       "family": "geo",
       "clap_path": "geo link-sources",
@@ -1198,6 +1230,7 @@
     { "id": "canon.project.cli.v1", "family": "project", "action": "preserve" },
     { "id": "canon.project.plan.v1", "family": "project", "action": "preserve" },
     { "id": "canon.project.run.v1", "family": "project", "action": "preserve" },
+    { "id": "canon.project.run.v2", "family": "project", "action": "preserve" },
     { "id": "canon.project.state.v1", "family": "project", "action": "preserve" },
     { "id": "canon.registry.build.v1", "family": "registry", "action": "preserve" },
     { "id": "canon.registry.merge_plan.v1", "family": "registry", "action": "preserve" },
@@ -1234,6 +1267,82 @@
     { "id": "canon_entity_native_review_import.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_native_scale_generator.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_native_scale_proof.v0", "family": "entity", "action": "preserve" },
+    {
+      "id": "canon_geo_question.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_capabilities.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_regional_inventory.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_resource_budget.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_address_parse_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.address_parse_request.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_address_parse_forest.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.address_parse_forest.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_address_query_regular.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "src/geo/address.rs"
+    },
+    {
+      "id": "canon_geo_pad_address_set.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.pad_address_set.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_pad_membership.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.pad_membership.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_composition_profile.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "src/geo/composition.rs"
+    },
     {
       "id": "canon_geo_composition_request.v0",
       "family": "geo",

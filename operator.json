@@ -18,12 +18,16 @@
       "canon project init <DIR> [--project-id <ID>] [--mapping-profile <PROFILE>] [--emit json|summary]",
       "canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]",
       "canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]",
+      "canon project lock refresh --manifest <MANIFEST> --out <LOCK> [--emit json|summary]",
+      "canon project plan --manifest <MANIFEST> --lock <LOCK> [--out <PLAN>] [--cache-hit <NODE>...] [--emit json|summary]",
+      "canon project run (--plan <PLAN>|--manifest <MANIFEST> --lock <LOCK>) [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json|summary]",
       "canon package pack --root <DIR> --package <package.json> --out <ARCHIVE>",
       "canon package inspect <ARCHIVE> [--emit json|summary]",
       "canon package verify <ARCHIVE> [--emit json|summary]",
       "canon package unpack <ARCHIVE> --target <EMPTY_DIR> [--emit json|summary]",
       "canon package push --archive <ARCHIVE> --registry <OCI_BASE_URL> --repository <REPOSITORY> [--tag <TAG>] [--emit json|summary]",
       "canon package pull --registry <OCI_BASE_URL> --repository <REPOSITORY> --cache <DIR> (--digest <sha256:...>|--tag <TAG>) [--emit json|summary]",
+      "canon geo capabilities --emit json",
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "canon registry export --format dbt-seed|search-index --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]",
       "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
@@ -637,9 +641,9 @@
           "domain": "error"
         }
       },
-      "next_command": "canon project validate <DIR> --manifest <PATH>",
+      "next_command": "canon project lock refresh --manifest <MANIFEST> --out <LOCK>",
       "recovery": {
-        "next_command": "canon project validate <DIR> --manifest <PATH>",
+        "next_command": "canon project lock refresh --manifest <MANIFEST> --out <LOCK>",
         "refusal_exit_code": 2
       },
       "options": [
@@ -663,6 +667,356 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json (canon.project.cli.v1 report) or summary"
+        }
+      ]
+    },
+    {
+      "name": "project lock refresh",
+      "usage": "canon project lock refresh --manifest <MANIFEST> --out <LOCK> [--emit json|summary]",
+      "description": "Refresh a project lock from a valid manifest and the actual bytes of every declared local source",
+      "output_mode": "mixed",
+      "output_schema": "canon.project.lock.v1",
+      "status": "implemented",
+      "read_only": false,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads actual declared local source bytes and atomically writes only the explicit lock artifact",
+        "mutation_class": "OwnedOutput",
+        "network_class": "Offline",
+        "concurrency_class": "AtomicOwnedOutput",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "project lock refresh"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": true,
+        "writes_output_files": true,
+        "uses_network": false,
+        "reads_project_files": true
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "project lock artifact refreshed",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / missing input, IO, or artifact contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon project plan --manifest <MANIFEST> --lock <LOCK>",
+      "recovery": {
+        "next_command": "canon project lock refresh --manifest <MANIFEST> --out <LOCK>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "manifest",
+          "flag": "--manifest",
+          "type": "file_path",
+          "required": true,
+          "description": "Project manifest path"
+        },
+        {
+          "name": "out",
+          "flag": "--out",
+          "type": "file_path",
+          "required": true,
+          "description": "Lock artifact output path"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json (canon.project.lock.v1) or summary"
+        }
+      ]
+    },
+    {
+      "name": "project plan",
+      "usage": "canon project plan --manifest <MANIFEST> --lock <LOCK> [--out <PLAN>] [--cache-hit <NODE>...] [--emit json|summary]",
+      "description": "Compile a native canon.project.plan.v1 dry-run DAG from a valid project manifest and lock",
+      "output_mode": "mixed",
+      "output_schema": "canon.project.plan.v1",
+      "status": "implemented",
+      "read_only": false,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "compiles a pure project plan from manifest and lock; writes only an explicit plan artifact when --out is supplied",
+        "mutation_class": "OwnedOutput",
+        "network_class": "Offline",
+        "concurrency_class": "AtomicOwnedOutput",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "project plan"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": true,
+        "writes_output_files": true,
+        "uses_network": false,
+        "reads_project_files": true
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "project plan artifact emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / stale lock, IO, or artifact contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon project run --plan <PLAN>",
+      "recovery": {
+        "next_command": "canon project lock refresh --manifest <MANIFEST> --out <LOCK>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "manifest",
+          "flag": "--manifest",
+          "type": "file_path",
+          "required": true,
+          "description": "Project manifest path"
+        },
+        {
+          "name": "lock",
+          "flag": "--lock",
+          "type": "file_path",
+          "required": true,
+          "description": "Project lock artifact path"
+        },
+        {
+          "name": "out",
+          "flag": "--out",
+          "type": "file_path",
+          "description": "Optional plan artifact output path"
+        },
+        {
+          "name": "cache_hit",
+          "flag": "--cache-hit",
+          "type": "string",
+          "multiple": true,
+          "description": "Node id whose existing cache entry should be treated as a hit"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json (canon.project.plan.v1) or summary"
+        }
+      ]
+    },
+    {
+      "name": "project run",
+      "usage": "canon project run (--plan <PLAN>|--manifest <MANIFEST> --lock <LOCK>) [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json|summary]",
+      "description": "Validate a project plan and reuse existing canon.project.run.v2 receipts; pending nodes refuse because no public typed executor is registered",
+      "output_mode": "mixed",
+      "output_schema": "canon.project.run.v2",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "public surface validates plans and reuses existing canon.project.run.v2 receipts only; pending nodes refuse until a typed executor is registered",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "project run"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false,
+        "reads_project_files": true
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "all selected nodes were already backed by valid v2 receipts and outputs",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / unsupported pending executor, side-effect policy, stale artifact, or artifact contract error",
+          "domain": "error"
+        }
+      },
+      "recovery": {
+        "reason": "no positive public recovery command exists for pending project nodes until a typed executor is registered",
+        "escalation": "register a real typed project executor or inspect existing canon.project.run.v2 receipts",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "plan",
+          "flag": "--plan",
+          "type": "file_path",
+          "description": "Project plan artifact path for reuse-only validation"
+        },
+        {
+          "name": "manifest",
+          "flag": "--manifest",
+          "type": "file_path",
+          "description": "Project manifest path used when compiling a plan inline for reuse-only validation"
+        },
+        {
+          "name": "lock",
+          "flag": "--lock",
+          "type": "file_path",
+          "description": "Project lock artifact path used when compiling a plan inline for reuse-only validation"
+        },
+        {
+          "name": "node",
+          "flag": "--node",
+          "type": "string",
+          "multiple": true,
+          "description": "Node id to inspect/reuse, including dependencies; pending nodes still refuse"
+        },
+        {
+          "name": "workspace",
+          "flag": "--workspace",
+          "type": "directory_path",
+          "default": ".",
+          "description": "Workspace root containing existing v2 receipts and declared relative outputs"
+        },
+        {
+          "name": "work_dir",
+          "flag": "--work-dir",
+          "type": "directory_path",
+          "default": "work",
+          "description": "Work directory under the workspace containing v2 receipts"
+        },
+        {
+          "name": "max_parallelism",
+          "flag": "--max-parallelism",
+          "type": "integer",
+          "default": 1,
+          "description": "Recorded policy ceiling for reuse-only reports; does not enable execution"
+        },
+        {
+          "name": "allow_network",
+          "flag": "--allow-network",
+          "type": "boolean",
+          "default": false,
+          "description": "Permit validation of declared network effects; does not enable execution"
+        },
+        {
+          "name": "allow_mutation_gates",
+          "flag": "--allow-mutation-gates",
+          "type": "boolean",
+          "default": false,
+          "description": "Permit validation of declared mutation gates; does not enable execution"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json (canon.project.run.v2 report or refusal) or summary"
+        }
+      ]
+    },
+    {
+      "name": "geo capabilities",
+      "usage": "canon geo capabilities --emit json",
+      "description": "Emit the compiled offline Canon Geo control capability contract, including source-generic contract versions, vocabularies, deterministic ceilings, property scope, and planned unavailable control-plane commands",
+      "output_mode": "json",
+      "output_schema": "canon_geo_capabilities.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "compiled Geo control capability contract only; no project, catalog, input-file, or network reads",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo capabilities"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": false,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "Geo capabilities artifact emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI or artifact contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon --describe",
+      "recovery": {
+        "next_command": "canon geo capabilities --emit json",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json"
         }
       ]
     },

@@ -1,0 +1,129 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.resource_budget.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.resource_budget.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": "canon_geo_resource_budget.v0", "type": "string" },
+    "budget_id": { "type": "string" },
+    "deterministic_bounds": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/numeric_bound" }
+    },
+    "telemetry": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/telemetry_declaration" }
+    }
+  },
+  "required": ["version", "budget_id", "deterministic_bounds"],
+  "$defs": {
+    "value_origin": {
+      "type": "string",
+      "enum": [
+        "caller_declared",
+        "binary_default",
+        "source_release",
+        "local_artifact",
+        "adapter_contract",
+        "operator_policy"
+      ]
+    },
+    "resource_counter": {
+      "type": "string",
+      "enum": [
+        "bytes",
+        "rows",
+        "cells",
+        "candidates",
+        "variables",
+        "states",
+        "models",
+        "operations",
+        "proof_bytes"
+      ]
+    },
+    "budget_action": {
+      "type": "string",
+      "enum": [
+        "refuse_before_work",
+        "refuse_before_output",
+        "truncate_presentation_only",
+        "report_budget_fallback"
+      ]
+    },
+    "numeric_bound": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "semantic_id": { "type": "string" },
+        "counter": { "$ref": "#/$defs/resource_counter" },
+        "value": { "type": "integer", "minimum": 0 },
+        "unit": { "type": "string" },
+        "origin": { "$ref": "#/$defs/value_origin" },
+        "action": { "$ref": "#/$defs/budget_action" }
+      },
+      "required": ["semantic_id", "counter", "value", "unit", "origin", "action"]
+    },
+    "telemetry_metric": {
+      "type": "string",
+      "enum": ["wall_time", "cpu_time", "peak_rss_bytes", "currency_cost"]
+    },
+    "telemetry_semantic_effect": {
+      "const": "none",
+      "type": "string"
+    },
+    "telemetry_declaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "metric": { "$ref": "#/$defs/telemetry_metric" },
+        "unit": { "type": "string" },
+        "origin": { "$ref": "#/$defs/value_origin" },
+        "semantic_effect": { "$ref": "#/$defs/telemetry_semantic_effect" }
+      },
+      "required": ["metric", "unit", "origin", "semantic_effect"]
+    }
+  },
+  "examples": [
+    {
+      "version": "canon_geo_resource_budget.v0",
+      "budget_id": "budget.fixture.control",
+      "deterministic_bounds": [
+        {
+          "semantic_id": "budget.max_rows",
+          "counter": "rows",
+          "value": 1000,
+          "unit": "row",
+          "origin": "caller_declared",
+          "action": "refuse_before_work"
+        },
+        {
+          "semantic_id": "budget.max_models",
+          "counter": "models",
+          "value": 16,
+          "unit": "model",
+          "origin": "caller_declared",
+          "action": "truncate_presentation_only"
+        },
+        {
+          "semantic_id": "budget.max_proof_bytes",
+          "counter": "proof_bytes",
+          "value": 8192,
+          "unit": "byte",
+          "origin": "caller_declared",
+          "action": "report_budget_fallback"
+        }
+      ],
+      "telemetry": [
+        {
+          "metric": "wall_time",
+          "unit": "millisecond",
+          "origin": "operator_policy",
+          "semantic_effect": "none"
+        }
+      ]
+    }
+  ]
+}

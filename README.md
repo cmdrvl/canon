@@ -376,6 +376,10 @@ canon package pull --registry <OCI_BASE_URL> --repository <REPOSITORY> --cache <
 canon project init <DIR> [--project-id <ID>] [--mapping-profile <REF>] [--emit json|summary]
 canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]
 canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]
+canon project lock refresh --manifest <MANIFEST> --out <LOCK> [--emit json|summary]
+canon project plan --manifest <MANIFEST> --lock <LOCK> [--out <PLAN>] [--cache-hit <NODE>...] [--emit json|summary]
+canon project run [--plan <PLAN>] [--manifest <MANIFEST>] [--lock <LOCK>] [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json|summary]
+canon geo capabilities [--emit json]
 canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>
 canon geo materialize-home-cells --rows <ROWS.json>
 canon geo tile-work --request <REQUEST.json>
@@ -572,6 +576,9 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `project init <DIR> [--project-id <ID>] [--mapping-profile <REF>] [--emit json\|summary]` | Create a minimal neutral project manifest in an explicit empty or missing directory. |
 | `project validate <DIR> [--manifest <PATH>] [--emit json\|summary]` | Validate a project manifest and report deterministic diagnostics. |
 | `project describe <DIR> [--manifest <PATH>] [--emit json\|summary]` | Describe project capabilities, state flags, side effects, and next commands. |
+| `project lock refresh --manifest <MANIFEST> --out <LOCK> [--emit json\|summary]` | Hash actual declared local source bytes and atomically refresh a `canon.project.lock.v1` artifact. |
+| `project plan --manifest <MANIFEST> --lock <LOCK> [--out <PLAN>] [--cache-hit <NODE>...] [--emit json\|summary]` | Emit the native validated `canon.project.plan.v1` artifact and executable `project run --node` next commands. |
+| `project run [--plan <PLAN>] [--manifest <MANIFEST>] [--lock <LOCK>] [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json\|summary]` | Validate a project plan and reuse existing `canon.project.run.v2` receipts; pending nodes refuse because no public typed executor is registered. |
 | `inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json\|summary]` | List ranked unresolved inbox items with deterministic pagination and typed filters. |
 | `inbox show --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json\|summary]` | Show one unresolved inbox item and its next commands. |
 | `inbox explain --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json\|summary]` | Explain one inbox item's priority score components and provenance. |
@@ -1411,8 +1418,10 @@ manifest/lock/plan/run/receipt substrate; they are not a second orchestration en
 library substrate exists today, but its plan/run CLI and Geo integration remain open and
 must be hardened before being advertised.
 
-The proposed `canon geo capabilities`, `plan`, `run`, and `inspect` commands do not ship
-yet. Until they do, use only the implemented leaf commands reported by `canon --describe`.
+`canon geo capabilities --emit json` ships as a deterministic, offline description of the
+compiled Geo control contracts. The proposed `canon geo plan`, `run`, and `inspect`
+commands do not ship yet. Until they do, use only the implemented leaf commands reported
+by `canon --describe`.
 
 ---
 

@@ -1,0 +1,407 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.regional_inventory.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.regional_inventory.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": "canon_geo_regional_inventory.v0", "type": "string" },
+    "inventory_id": { "type": "string" },
+    "region": { "$ref": "#/$defs/bounded_geography" },
+    "sources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/source_instance" }
+    },
+    "discovery_gaps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/discovery_gap" }
+    }
+  },
+  "required": ["version", "inventory_id", "region", "sources", "discovery_gaps"],
+  "$defs": {
+    "entity_level": {
+      "type": "string",
+      "enum": ["site", "property", "parcel", "building", "unit", "address", "poi"]
+    },
+    "evidence_class": {
+      "type": "string",
+      "enum": [
+        "geocode_point",
+        "address_string",
+        "address_set",
+        "parcel_geometry",
+        "building_footprint",
+        "asserted_attribute",
+        "entity_relation",
+        "temporal_observation"
+      ]
+    },
+    "value_origin": {
+      "type": "string",
+      "enum": [
+        "caller_declared",
+        "binary_default",
+        "source_release",
+        "local_artifact",
+        "adapter_contract",
+        "operator_policy"
+      ]
+    },
+    "source_availability": {
+      "type": "string",
+      "enum": ["available", "partial", "missing", "discovery_required", "unreadable"]
+    },
+    "license_class": {
+      "type": "string",
+      "enum": [
+        "public_redistributable",
+        "public_attribution_required",
+        "restricted_local_only",
+        "unknown"
+      ]
+    },
+    "egress_class": {
+      "type": "string",
+      "enum": ["shareable", "derived_only", "local_only", "unknown"]
+    },
+    "bounded_geography": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "geography_id": { "type": "string" },
+        "geography_kind": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["geography_id", "geography_kind", "description"]
+    },
+    "as_of": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "utc_day": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "semantic_id": { "type": "string" },
+        "unit": { "const": "utc_day", "type": "string" },
+        "origin": { "$ref": "#/$defs/value_origin" }
+      },
+      "required": ["utc_day", "semantic_id", "unit", "origin"]
+    },
+    "date_interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start_utc_day": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "end_utc_day": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+      },
+      "required": ["start_utc_day", "end_utc_day"]
+    },
+    "temporal_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "valid_time": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/date_interval" }]
+        },
+        "transaction_time": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/date_interval" }]
+        },
+        "release_time": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/as_of" }]
+        }
+      }
+    },
+    "source_release": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "release_id": { "type": "string" },
+        "release_digest": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" }
+      },
+      "required": ["release_id", "release_digest"]
+    },
+    "native_scope": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "native_entity", "type": "string" },
+            "entity_level": { "$ref": "#/$defs/entity_level" }
+          },
+          "required": ["kind", "entity_level"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "observation_only", "type": "string" }
+          },
+          "required": ["kind"]
+        }
+      ]
+    },
+    "coverage_predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "coverage_id": { "type": "string" },
+        "region": { "$ref": "#/$defs/bounded_geography" },
+        "predicate": { "type": "string" }
+      },
+      "required": ["coverage_id", "region", "predicate"]
+    },
+    "local_artifact_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": { "type": "string" },
+        "content_hash": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
+        "media_type": { "type": "string" }
+      },
+      "required": ["artifact_id", "content_hash", "media_type"]
+    },
+    "local_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": { "$ref": "#/$defs/source_availability" },
+        "local_ref": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/local_artifact_ref" }]
+        }
+      },
+      "required": ["state"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": { "enum": ["available", "partial"] }
+            },
+            "required": ["state"]
+          },
+          "then": {
+            "properties": {
+              "local_ref": { "$ref": "#/$defs/local_artifact_ref" }
+            },
+            "required": ["local_ref"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": { "enum": ["missing", "discovery_required", "unreadable"] }
+            },
+            "required": ["state"]
+          },
+          "then": {
+            "properties": {
+              "local_ref": { "type": "null" }
+            }
+          }
+        }
+      ]
+    },
+    "resource_counter": {
+      "type": "string",
+      "enum": [
+        "bytes",
+        "rows",
+        "cells",
+        "candidates",
+        "variables",
+        "states",
+        "models",
+        "operations",
+        "proof_bytes"
+      ]
+    },
+    "numeric_measure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "semantic_id": { "type": "string" },
+        "value": { "type": "integer", "minimum": 0 },
+        "unit": { "type": "string" },
+        "origin": { "$ref": "#/$defs/value_origin" }
+      },
+      "required": ["semantic_id", "value", "unit", "origin"]
+    },
+    "geometry_transform_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "geometry_contract_version": { "type": "string" },
+        "coordinate_reference_system": { "type": "string" },
+        "transform_id": { "type": "string" },
+        "transform_digest": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
+        "numeric_error_bounds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/numeric_measure" }
+        }
+      },
+      "required": [
+        "geometry_contract_version",
+        "coordinate_reference_system",
+        "transform_id",
+        "transform_digest"
+      ]
+    },
+    "source_instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_instance_id": { "type": "string" },
+        "release": { "$ref": "#/$defs/source_release" },
+        "temporal_scope": { "$ref": "#/$defs/temporal_scope" },
+        "lineage_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "native_scope": { "$ref": "#/$defs/native_scope" },
+        "evidence_classes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/evidence_class" }
+        },
+        "coverage": { "$ref": "#/$defs/coverage_predicate" },
+        "local_state": { "$ref": "#/$defs/local_state" },
+        "geometry": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/geometry_transform_contract" }]
+        },
+        "license_class": { "$ref": "#/$defs/license_class" },
+        "egress_class": { "$ref": "#/$defs/egress_class" },
+        "estimates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/numeric_measure" }
+        }
+      },
+      "required": [
+        "source_instance_id",
+        "release",
+        "temporal_scope",
+        "lineage_ids",
+        "native_scope",
+        "evidence_classes",
+        "coverage",
+        "local_state",
+        "license_class",
+        "egress_class"
+      ]
+    },
+    "discovery_gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gap_id": { "type": "string" },
+        "requested_entity_level": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/entity_level" }]
+        },
+        "requested_evidence_class": { "$ref": "#/$defs/evidence_class" },
+        "reason": { "type": "string" },
+        "next_command": { "type": "string" }
+      },
+      "required": ["gap_id", "requested_evidence_class", "reason", "next_command"]
+    }
+  },
+  "examples": [
+    {
+      "version": "canon_geo_regional_inventory.v0",
+      "inventory_id": "inventory.fixture.no-parcel",
+      "region": {
+        "geography_id": "region.fixture.no-parcel",
+        "geography_kind": "declared_test_region",
+        "description": "Parcel-free fixture region"
+      },
+      "sources": [
+        {
+          "source_instance_id": "arbitrary-building-source-a",
+          "release": {
+            "release_id": "release.fixture.buildings",
+            "release_digest": "blake3:1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "temporal_scope": {},
+          "lineage_ids": ["lineage.fixture.buildings"],
+          "native_scope": { "kind": "native_entity", "entity_level": "building" },
+          "evidence_classes": ["building_footprint"],
+          "coverage": {
+            "coverage_id": "coverage.fixture.no-parcel",
+            "region": {
+              "geography_id": "region.fixture.no-parcel",
+              "geography_kind": "declared_test_region",
+              "description": "Parcel-free fixture region"
+            },
+            "predicate": "all declared building records in the fixture region"
+          },
+          "local_state": {
+            "state": "available",
+            "local_ref": {
+              "artifact_id": "local.fixture.buildings",
+              "content_hash": "blake3:2222222222222222222222222222222222222222222222222222222222222222",
+              "media_type": "application/json"
+            }
+          },
+          "license_class": "public_redistributable",
+          "egress_class": "shareable",
+          "estimates": [
+            {
+              "semantic_id": "source.estimated_rows",
+              "value": 2,
+              "unit": "row",
+              "origin": "source_release"
+            }
+          ]
+        }
+      ],
+      "discovery_gaps": []
+    },
+    {
+      "version": "canon_geo_regional_inventory.v0",
+      "inventory_id": "inventory.fixture.unsupported-parcel-grain",
+      "region": {
+        "geography_id": "region.fixture.no-parcel",
+        "geography_kind": "declared_test_region",
+        "description": "Parcel-free fixture region"
+      },
+      "sources": [
+        {
+          "source_instance_id": "arbitrary-parcel-name-without-parcel-geometry",
+          "release": {
+            "release_id": "release.fixture.parcel-addresses",
+            "release_digest": "blake3:3333333333333333333333333333333333333333333333333333333333333333"
+          },
+          "temporal_scope": {},
+          "lineage_ids": ["lineage.fixture.parcel-addresses"],
+          "native_scope": { "kind": "native_entity", "entity_level": "parcel" },
+          "evidence_classes": ["address_set"],
+          "coverage": {
+            "coverage_id": "coverage.fixture.no-parcel",
+            "region": {
+              "geography_id": "region.fixture.no-parcel",
+              "geography_kind": "declared_test_region",
+              "description": "Parcel-free fixture region"
+            },
+            "predicate": "declared parcel address records only"
+          },
+          "local_state": {
+            "state": "available",
+            "local_ref": {
+              "artifact_id": "local.fixture.parcel-addresses",
+              "content_hash": "blake3:4444444444444444444444444444444444444444444444444444444444444444",
+              "media_type": "application/json"
+            }
+          },
+          "license_class": "public_redistributable",
+          "egress_class": "shareable"
+        }
+      ],
+      "discovery_gaps": [
+        {
+          "gap_id": "gap.parcel.parcel_geometry",
+          "requested_entity_level": "parcel",
+          "requested_evidence_class": "parcel_geometry",
+          "reason": "no available source declares parcel geometry",
+          "next_command": "supply a local source instance in canon_geo_regional_inventory.v0"
+        }
+      ]
+    }
+  ]
+}

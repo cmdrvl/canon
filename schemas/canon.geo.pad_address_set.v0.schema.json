@@ -1,0 +1,53 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.pad_address_set.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.pad_address_set.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_pad_address_set.v0",
+      "type": "string"
+    },
+    "jurisdiction": {
+      "$ref": "canon.geo.address_parse_request.v0.schema.json#/$defs/address_jurisdiction"
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/pad_address_member"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "jurisdiction",
+    "members"
+  ],
+  "$defs": {
+    "pad_address_member": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "member_id": {
+          "type": "string"
+        },
+        "lot_id": {
+          "type": "string"
+        },
+        "house": {
+          "$ref": "canon.geo.address_parse_forest.v0.schema.json#/$defs/house_number"
+        },
+        "street": {
+          "$ref": "canon.geo.address_parse_forest.v0.schema.json#/$defs/street"
+        }
+      },
+      "required": [
+        "member_id",
+        "lot_id",
+        "house",
+        "street"
+      ]
+    }
+  }
+}

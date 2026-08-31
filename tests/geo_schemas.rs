@@ -12,36 +12,53 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use canon::entity::run::link::multisource::EntitySourceRole;
 use canon::geo::{
-    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
-    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_H7_ACRIS_RELEASE_DT,
-    CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION, CANON_GEO_H7_BRIDGE_BUILD_ID,
-    CANON_GEO_H7_COLLATERAL_SCOPE, CANON_GEO_H7_LENDER_MATCH_TRANSFORM,
-    CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
-    CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_PRIMARY_MAPPLUTO_RELEASE,
-    CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS, CANON_GEO_HOME_CELL_ROWS_VERSION,
+    CANON_GEO_ADDRESS_PARSE_FOREST_VERSION, CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION,
+    CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
+    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_GEOMETRY_REQUEST_VERSION,
+    CANON_GEO_H7_ACRIS_RELEASE_DT, CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION,
+    CANON_GEO_H7_BRIDGE_BUILD_ID, CANON_GEO_H7_COLLATERAL_SCOPE,
+    CANON_GEO_H7_LENDER_MATCH_TRANSFORM, CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
+    CANON_GEO_H7_POPULATION_ROWS_VERSION, CANON_GEO_H7_POPULATION_VERSION,
+    CANON_GEO_H7_PRIMARY_MAPPLUTO_RELEASE, CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS,
+    CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
     CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_MULTISOURCE_REQUEST_VERSION,
-    CANON_GEO_POPULATION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
-    CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
-    CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoAffineProjectionMm,
-    GeoBuildingCandidate, GeoCompositionModel, GeoCompositionRequest, GeoCompositionUniverse,
-    GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
-    GeoEvidenceRecordRef, GeoExactSourceUnitMm, GeoGeometryFeatureInput, GeoGeometryTileRequest,
-    GeoH7AssociationPlane, GeoH7BoroughEdge, GeoH7CandidateReachStatus, GeoH7FiledCountyMapping,
-    GeoH7MapplutoReleasePin, GeoH7PlaneDenominator, GeoH7PopulationProvenance,
-    GeoH7PopulationRowsRequest, GeoH7PopulationScope, GeoH7PopulationWarehouseRow,
-    GeoH7QueryDisposition, GeoH7QueryReceipt, GeoH7ResultMode, GeoH7SourceEvidenceRecord,
-    GeoH7SourceRecordRole, GeoHardConstraint, GeoHardConstraintKind, GeoHomeCellRow,
-    GeoHomeCellRowsRequest, GeoLabeledCompositionCase, GeoLocalFrameContract,
-    GeoMultisourceRequest, GeoMultisourceSource, GeoPopulationEvaluationRequest,
-    GeoProjectionProvenance, GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
+    CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
+    CANON_GEO_POPULATION_REQUEST_VERSION, CANON_GEO_QUESTION_VERSION,
+    CANON_GEO_REGIONAL_INVENTORY_VERSION, CANON_GEO_RESOURCE_BUDGET_VERSION,
+    CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
+    CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
+    DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy,
+    GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity, GeoAddressParseRequest,
+    GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm, GeoAsOf, GeoBoundedGeography,
+    GeoBudgetAction, GeoBuildingCandidate, GeoClaimClass, GeoCompositionModel,
+    GeoCompositionProfile, GeoCompositionRequest, GeoCompositionUniverse, GeoControlEntityLevel,
+    GeoCoveragePredicate, GeoEgressClass, GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole,
+    GeoEvidenceClass, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoExactSourceUnitMm,
+    GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoH7AssociationPlane, GeoH7BoroughEdge,
+    GeoH7CandidateReachStatus, GeoH7FiledCountyMapping, GeoH7MapplutoReleasePin,
+    GeoH7PlaneDenominator, GeoH7PopulationProvenance, GeoH7PopulationRowsRequest,
+    GeoH7PopulationScope, GeoH7PopulationWarehouseRow, GeoH7QueryDisposition, GeoH7QueryReceipt,
+    GeoH7ResultMode, GeoH7SourceEvidenceRecord, GeoH7SourceRecordRole,
+    GeoH7StagingEvidenceRecordRef, GeoH7StagingSourceEvidenceRecord,
+    GeoH7StagingSourceRecordBytesBatchRequest, GeoH7StagingSourceRecordBytesRow, GeoHardConstraint,
+    GeoHardConstraintKind, GeoHomeCellRow, GeoHomeCellRowsRequest, GeoLabeledCompositionCase,
+    GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef, GeoLocalFrameContract,
+    GeoMultisourceRequest, GeoMultisourceSource, GeoNativeEntityScope, GeoNumericBound,
+    GeoNumericMeasure, GeoNycBorough, GeoPadAddressMember, GeoPadAddressSet,
+    GeoPopulationEvaluationRequest, GeoProjectionProvenance, GeoQuestion, GeoRegionalInventory,
+    GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter,
+    GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoSourceAvailability,
     GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed,
-    GeoTileDecisionBatch, GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileFeatureRef,
-    GeoTileReconciliationRequest, GeoTileWorkRequest, GeoTruthPlane, GeoWarehouseEvidenceRow,
-    GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest, GeoWarehouseParcelRow,
-    GeoWarehouseRowsRequest, compile_evidence, evaluate_population, materialize_geo_multisource,
-    materialize_geometry_tile, materialize_h7_population_rows, materialize_home_cells,
-    materialize_tile_work_unit, materialize_warehouse_geometry, reconcile_tile_decisions,
-    solve_composition,
+    GeoSourceRelease, GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding,
+    GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
+    GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileDecisionBatch, GeoTileDecisionMember,
+    GeoTileDecisionProposal, GeoTileFeatureRef, GeoTileReconciliationRequest, GeoTileWorkRequest,
+    GeoTruthPlane, GeoValueOrigin, GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow,
+    GeoWarehouseGeometryRowsRequest, GeoWarehouseParcelRow, GeoWarehouseRowsRequest,
+    compile_evidence, default_geo_capabilities, evaluate_pad_membership, evaluate_population,
+    materialize_geo_multisource, materialize_geometry_tile, materialize_h7_population_rows,
+    materialize_home_cells, materialize_tile_work_unit, materialize_warehouse_geometry,
+    parse_address_forest, reconcile_tile_decisions, solve_composition,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -88,6 +105,23 @@ const H7_POPULATION_ROWS_SCHEMA: &str =
     include_str!("../schemas/canon.geo.h7_population_rows.v0.schema.json");
 const H7_POPULATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.h7_population.v0.schema.json");
+const H7_STAGING_SOURCE_RECORD_BYTES_BATCH_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.h7_staging_source_record_bytes_batch.v0.schema.json");
+const ADDRESS_PARSE_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.address_parse_request.v0.schema.json");
+const ADDRESS_PARSE_FOREST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.address_parse_forest.v0.schema.json");
+const PAD_ADDRESS_SET_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.pad_address_set.v0.schema.json");
+const PAD_MEMBERSHIP_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.pad_membership.v0.schema.json");
+const CONTROL_QUESTION_SCHEMA: &str = include_str!("../schemas/canon.geo.question.v0.schema.json");
+const CONTROL_CAPABILITIES_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.capabilities.v0.schema.json");
+const CONTROL_REGIONAL_INVENTORY_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.regional_inventory.v0.schema.json");
+const CONTROL_RESOURCE_BUDGET_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.resource_budget.v0.schema.json");
 
 fn parsed(source: &str) -> Value {
     serde_json::from_str(source).expect("schema file must be valid JSON")
@@ -114,6 +148,13 @@ fn assert_schema_shape(schema: &Value, expected_title: &str, expected_version_co
     );
 }
 
+fn required_contains(schema: &Value, pointer: &str, field: &str) -> bool {
+    schema
+        .pointer(pointer)
+        .and_then(Value::as_array)
+        .is_some_and(|fields| fields.iter().any(|value| value.as_str() == Some(field)))
+}
+
 /// Resolve a `$ref` such as `#/$defs/entity_ref` against the schema root.
 fn resolve_ref<'a>(schema: &'a Value, reference: &str) -> &'a Value {
     let path = reference
@@ -122,6 +163,37 @@ fn resolve_ref<'a>(schema: &'a Value, reference: &str) -> &'a Value {
     schema
         .pointer(path)
         .unwrap_or_else(|| panic!("$ref {reference} does not resolve"))
+}
+
+fn external_schema_source(schema_file: &str, reference: &str) -> &'static str {
+    match schema_file {
+        "canon.geo.address_parse_request.v0.schema.json" => ADDRESS_PARSE_REQUEST_SCHEMA,
+        "canon.geo.address_parse_forest.v0.schema.json" => ADDRESS_PARSE_FOREST_SCHEMA,
+        "canon.geo.pad_address_set.v0.schema.json" => PAD_ADDRESS_SET_SCHEMA,
+        "canon.geo.pad_membership.v0.schema.json" => PAD_MEMBERSHIP_SCHEMA,
+        "canon.geo.composition_request.v0.schema.json" => COMPOSITION_REQUEST_SCHEMA,
+        "canon.geo.geometry_tile.v0.schema.json" => GEOMETRY_TILE_SCHEMA,
+        "canon.geo.h7_population_rows.v0.schema.json" => H7_POPULATION_ROWS_SCHEMA,
+        "canon.geo.population_request.v0.schema.json" => POPULATION_REQUEST_SCHEMA,
+        _ => panic!("external $ref {reference} is not registered in the schema test"),
+    }
+}
+
+fn resolve_external_ref(reference: &str) -> Value {
+    let (schema_file, fragment) = reference
+        .split_once('#')
+        .map_or((reference, ""), |(schema_file, fragment)| {
+            (schema_file, fragment)
+        });
+    let external = parsed(external_schema_source(schema_file, reference));
+    if fragment.is_empty() {
+        external
+    } else {
+        external
+            .pointer(fragment)
+            .unwrap_or_else(|| panic!("external $ref {reference} does not resolve"))
+            .clone()
+    }
 }
 
 /// Recursively assert that every key present in `instance` is declared by
@@ -140,13 +212,7 @@ fn assert_instance_matches_schema(root: &Value, subschema: &Value, instance: &Va
                 .map_or((reference, ""), |(schema_file, fragment)| {
                     (schema_file, fragment)
                 });
-            let source = match schema_file {
-                "canon.geo.geometry_tile.v0.schema.json" => GEOMETRY_TILE_SCHEMA,
-                "canon.geo.h7_population_rows.v0.schema.json" => H7_POPULATION_ROWS_SCHEMA,
-                "canon.geo.population_request.v0.schema.json" => POPULATION_REQUEST_SCHEMA,
-                _ => panic!("external $ref {reference} is not registered in the schema test"),
-            };
-            let external = parsed(source);
+            let external = parsed(external_schema_source(schema_file, reference));
             let external_schema = if fragment.is_empty() {
                 &external
             } else {
@@ -155,6 +221,22 @@ fn assert_instance_matches_schema(root: &Value, subschema: &Value, instance: &Va
                     .unwrap_or_else(|| panic!("external $ref {reference} does not resolve"))
             };
             assert_instance_matches_schema(&external, external_schema, instance, path);
+        }
+        return;
+    }
+
+    if subschema.get("properties").is_none()
+        && let Some(all_of) = subschema.get("allOf").and_then(Value::as_array)
+    {
+        let Value::Object(object) = instance else {
+            return;
+        };
+        for (key, value) in object {
+            let child_path = format!("{path}.{key}");
+            let walked = all_of
+                .iter()
+                .any(|part| walk_property_if_declared(root, part, key, value, &child_path));
+            assert!(walked, "{child_path}: key not declared by allOf at {path}");
         }
         return;
     }
@@ -172,6 +254,14 @@ fn assert_instance_matches_schema(root: &Value, subschema: &Value, instance: &Va
             // schema declared it, nothing further to walk into.
             return;
         }
+        if instance.is_array() {
+            let chosen = alternatives
+                .iter()
+                .find(|alt| alt.get("type").and_then(Value::as_str) == Some("array"))
+                .unwrap_or_else(|| panic!("{path}: no oneOf array alternative matches"));
+            assert_instance_matches_schema(root, chosen, instance, path);
+            return;
+        }
         let Value::Object(object) = instance else {
             panic!("{path}: expected an object for oneOf, got {instance:?}");
         };
@@ -180,30 +270,23 @@ fn assert_instance_matches_schema(root: &Value, subschema: &Value, instance: &Va
         // first alternative whose required properties are all present.
         let chosen = alternatives
             .iter()
-            .find(|alt| {
-                let Some(kind_const) = alt
-                    .pointer("/properties/kind/const")
-                    .and_then(Value::as_str)
-                else {
-                    return false;
-                };
-                object.get("kind").and_then(Value::as_str) == Some(kind_const)
-            })
+            .find(|alt| object_one_of_alternative_matches(root, alt, object, true))
             .or_else(|| {
-                alternatives.iter().find(|alt| {
-                    let required = alt
-                        .get("required")
-                        .and_then(Value::as_array)
-                        .map(|values| values.as_slice())
-                        .unwrap_or(&[]);
-                    required
-                        .iter()
-                        .all(|key| object.contains_key(key.as_str().unwrap_or("")))
-                })
+                alternatives
+                    .iter()
+                    .find(|alt| object_one_of_alternative_matches(root, alt, object, false))
             })
             .unwrap_or_else(|| panic!("{path}: no oneOf alternative matches {instance:?}"));
-        assert_instance_matches_schema(root, chosen, instance, path);
-        return;
+        if chosen.get("$ref").is_some()
+            || chosen.get("properties").is_some()
+            || chosen.get("items").is_some()
+            || chosen.get("oneOf").is_some()
+        {
+            assert_instance_matches_schema(root, chosen, instance, path);
+            return;
+        }
+        // Some schemas use oneOf only to require one of several column-name
+        // conventions; the enclosing schema still declares the object fields.
     }
 
     match instance {
@@ -245,6 +328,97 @@ fn assert_instance_matches_schema(root: &Value, subschema: &Value, instance: &Va
     }
 }
 
+fn object_one_of_alternative_matches(
+    root: &Value,
+    alternative: &Value,
+    object: &serde_json::Map<String, Value>,
+    require_kind_match: bool,
+) -> bool {
+    if alternative.get("type").and_then(Value::as_str) == Some("null") {
+        return false;
+    }
+    let resolved_external;
+    let resolved = match alternative.get("$ref").and_then(Value::as_str) {
+        Some(reference) if reference.starts_with('#') => resolve_ref(root, reference),
+        Some(reference) => {
+            resolved_external = resolve_external_ref(reference);
+            &resolved_external
+        }
+        None => alternative,
+    };
+    if let Some(kind_const) = resolved
+        .pointer("/properties/kind/const")
+        .and_then(Value::as_str)
+    {
+        return object.get("kind").and_then(Value::as_str) == Some(kind_const);
+    }
+    if require_kind_match {
+        return false;
+    }
+    let required = required_fields_for_object_match(root, resolved);
+    !required.is_empty() && required.iter().all(|key| object.contains_key(key.as_str()))
+}
+
+fn required_fields_for_object_match(root: &Value, schema: &Value) -> Vec<String> {
+    let resolved_external;
+    let resolved = match schema.get("$ref").and_then(Value::as_str) {
+        Some(reference) if reference.starts_with('#') => resolve_ref(root, reference),
+        Some(reference) => {
+            resolved_external = resolve_external_ref(reference);
+            &resolved_external
+        }
+        None => schema,
+    };
+    let mut required = resolved
+        .get("required")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    if let Some(all_of) = resolved.get("allOf").and_then(Value::as_array) {
+        for part in all_of {
+            required.extend(required_fields_for_object_match(root, part));
+        }
+    }
+    required.sort();
+    required.dedup();
+    required
+}
+
+fn walk_property_if_declared(
+    root: &Value,
+    subschema: &Value,
+    key: &str,
+    value: &Value,
+    child_path: &str,
+) -> bool {
+    let resolved_external;
+    let resolved = match subschema.get("$ref").and_then(Value::as_str) {
+        Some(reference) if reference.starts_with('#') => resolve_ref(root, reference),
+        Some(reference) => {
+            resolved_external = resolve_external_ref(reference);
+            &resolved_external
+        }
+        None => subschema,
+    };
+    if let Some(properties) = resolved.get("properties").and_then(Value::as_object)
+        && let Some(child_schema) = properties.get(key)
+    {
+        assert_instance_matches_schema(root, child_schema, value, child_path);
+        return true;
+    }
+    resolved
+        .get("allOf")
+        .and_then(Value::as_array)
+        .is_some_and(|all_of| {
+            all_of
+                .iter()
+                .any(|part| walk_property_if_declared(root, part, key, value, child_path))
+        })
+}
+
 fn assert_drift_free(
     schema_source: &str,
     expected_title: &str,
@@ -254,6 +428,186 @@ fn assert_drift_free(
     let schema = parsed(schema_source);
     assert_schema_shape(&schema, expected_title, expected_version);
     assert_instance_matches_schema(&schema, &schema, instance, "$");
+}
+
+fn address_parse_request() -> GeoAddressParseRequest {
+    GeoAddressParseRequest {
+        version: CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION.to_string(),
+        input: "241/249 West 74th Street".to_string(),
+        jurisdiction: Some(GeoAddressJurisdiction::nyc_borough(
+            GeoNycBorough::Manhattan,
+        )),
+    }
+}
+
+fn address_parse_forest() -> canon::geo::GeoAddressParseForest {
+    parse_address_forest(&address_parse_request()).expect("address fixture parses")
+}
+
+fn address_pad_set() -> GeoPadAddressSet {
+    let west_74th = GeoAddressStreet::ordinal(
+        Some(GeoStreetDirection::West),
+        74,
+        Some(GeoStreetSuffix::Street),
+    )
+    .expect("street fixture is valid");
+    GeoPadAddressSet {
+        version: CANON_GEO_PAD_ADDRESS_SET_VERSION.to_string(),
+        jurisdiction: GeoAddressJurisdiction::nyc_borough(GeoNycBorough::Manhattan),
+        members: vec![GeoPadAddressMember::new(
+            "pad:w74:241-249",
+            "mn:w74:lot",
+            GeoAddressHouseNumber::range(
+                241,
+                249,
+                GeoAddressParity::Odd,
+                GeoAddressRangeOperator::Slash,
+                vec![241, 249],
+            )
+            .expect("range fixture is valid"),
+            west_74th,
+        )],
+    }
+}
+
+fn address_pad_membership() -> canon::geo::GeoPadMembershipEvaluation {
+    evaluate_pad_membership(&address_parse_forest(), &address_pad_set())
+        .expect("address membership evaluates")
+}
+
+fn control_digest(label: &str) -> String {
+    format!("blake3:{}", blake3::hash(label.as_bytes()).to_hex())
+}
+
+fn control_region() -> GeoBoundedGeography {
+    GeoBoundedGeography {
+        geography_id: "region.fixture.control".to_string(),
+        geography_kind: "declared_test_region".to_string(),
+        description: "Control contract fixture region".to_string(),
+    }
+}
+
+fn control_as_of() -> GeoAsOf {
+    GeoAsOf {
+        utc_day: "2026-08-31".to_string(),
+        semantic_id: "question.query_as_of.utc_day".to_string(),
+        unit: "utc_day".to_string(),
+        origin: GeoValueOrigin::CallerDeclared,
+    }
+}
+
+fn control_budget() -> GeoResourceBudget {
+    GeoResourceBudget {
+        version: CANON_GEO_RESOURCE_BUDGET_VERSION.to_string(),
+        budget_id: "budget.fixture.control".to_string(),
+        deterministic_bounds: vec![GeoNumericBound {
+            semantic_id: "budget.max_models".to_string(),
+            counter: GeoResourceCounter::Models,
+            value: 16,
+            unit: "model".to_string(),
+            origin: GeoValueOrigin::CallerDeclared,
+            action: GeoBudgetAction::TruncatePresentationOnly,
+        }],
+        telemetry: vec![GeoTelemetryDeclaration {
+            metric: GeoTelemetryMetric::WallTime,
+            unit: "millisecond".to_string(),
+            origin: GeoValueOrigin::OperatorPolicy,
+            semantic_effect: GeoTelemetrySemanticEffect::None,
+        }],
+    }
+}
+
+fn control_question() -> GeoQuestion {
+    GeoQuestion {
+        version: CANON_GEO_QUESTION_VERSION.to_string(),
+        question_id: "question.fixture.control".to_string(),
+        subject_bindings: vec![
+            GeoSubjectBinding {
+                role: "operator_case".to_string(),
+                binding_class: GeoSubjectBindingClass::OperatorLabel,
+                value: "case-control".to_string(),
+            },
+            GeoSubjectBinding {
+                role: "input_address".to_string(),
+                binding_class: GeoSubjectBindingClass::AddressText,
+                value: "10 Fixture St".to_string(),
+            },
+        ],
+        bounded_geography: control_region(),
+        requested_grains: vec![GeoRequestedGrain {
+            entity_level: GeoControlEntityLevel::Building,
+            required_evidence_classes: vec![GeoEvidenceClass::BuildingFootprint],
+            optional_evidence_classes: vec![GeoEvidenceClass::AddressSet],
+        }],
+        query_as_of: Some(control_as_of()),
+        requested_claim_classes: vec![GeoClaimClass::StableIdentity, GeoClaimClass::CandidateReach],
+        presentation_limits: vec![GeoNumericBound {
+            semantic_id: "question.presentation.max_models".to_string(),
+            counter: GeoResourceCounter::Models,
+            value: 16,
+            unit: "model".to_string(),
+            origin: GeoValueOrigin::CallerDeclared,
+            action: GeoBudgetAction::TruncatePresentationOnly,
+        }],
+        abstention_policy: GeoAbstentionPolicy {
+            unsupported_grain: GeoAbstentionDisposition::ReportUnsupported,
+            unresolved_residual: GeoAbstentionDisposition::ReportResidual,
+            budget_fallback: GeoAbstentionDisposition::ReportResidual,
+        },
+        decision_policy: None,
+        resource_budget_ref: "budget.fixture.control".to_string(),
+    }
+}
+
+fn control_inventory() -> GeoRegionalInventory {
+    GeoRegionalInventory {
+        version: CANON_GEO_REGIONAL_INVENTORY_VERSION.to_string(),
+        inventory_id: "inventory.fixture.control".to_string(),
+        region: control_region(),
+        sources: vec![GeoRegionalSourceInstance {
+            source_instance_id: "source.fixture.building-footprints".to_string(),
+            release: GeoSourceRelease {
+                release_id: "release.fixture.building-footprints".to_string(),
+                release_digest: control_digest("release.fixture.building-footprints"),
+            },
+            temporal_scope: GeoTemporalScope {
+                valid_time: Some(canon::geo::GeoDateInterval {
+                    start_utc_day: "2026-01-01".to_string(),
+                    end_utc_day: "2026-12-31".to_string(),
+                }),
+                transaction_time: None,
+                release_time: Some(control_as_of()),
+            },
+            lineage_ids: vec!["lineage.fixture.building-footprints".to_string()],
+            native_scope: GeoNativeEntityScope::NativeEntity {
+                entity_level: GeoControlEntityLevel::Building,
+            },
+            evidence_classes: vec![GeoEvidenceClass::BuildingFootprint],
+            coverage: GeoCoveragePredicate {
+                coverage_id: "coverage.fixture.control".to_string(),
+                region: control_region(),
+                predicate: "all declared fixture records in the control region".to_string(),
+            },
+            local_state: GeoLocalAcquisitionState {
+                state: GeoSourceAvailability::Available,
+                local_ref: Some(GeoLocalArtifactRef {
+                    artifact_id: "local.fixture.building-footprints".to_string(),
+                    content_hash: control_digest("local.fixture.building-footprints"),
+                    media_type: "application/json".to_string(),
+                }),
+            },
+            geometry: None,
+            license_class: GeoLicenseClass::PublicRedistributable,
+            egress_class: GeoEgressClass::Shareable,
+            estimates: vec![GeoNumericMeasure {
+                semantic_id: "source.estimated_rows".to_string(),
+                value: 2,
+                unit: "row".to_string(),
+                origin: GeoValueOrigin::SourceRelease,
+            }],
+        }],
+        discovery_gaps: Vec::new(),
+    }
 }
 
 fn small_universe() -> GeoCompositionUniverse {
@@ -269,6 +623,7 @@ fn small_universe() -> GeoCompositionUniverse {
 fn composition_request() -> GeoCompositionRequest {
     GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: small_universe(),
         hard_constraints: vec![GeoHardConstraint {
             id: "any-of-parcels".to_string(),
@@ -288,6 +643,7 @@ fn composition_request() -> GeoCompositionRequest {
 fn evidence_request() -> GeoEvidenceCompilationRequest {
     GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: small_universe(),
         contracts: vec![GeoRhoContract {
             id: "contract-1".to_string(),
@@ -327,6 +683,7 @@ fn warehouse_rows_request() -> GeoWarehouseRowsRequest {
     let evidence = evidence_request();
     GeoWarehouseRowsRequest {
         version: CANON_GEO_WAREHOUSE_ROWS_VERSION.to_string(),
+        profile: Default::default(),
         parcel_rows: evidence
             .universe
             .parcels
@@ -565,6 +922,96 @@ fn multisource_request(root: &Path) -> GeoMultisourceRequest {
 }
 
 #[test]
+fn address_parse_request_schema_matches_a_real_instance() {
+    let instance =
+        serde_json::to_value(address_parse_request()).expect("address request serializes");
+    assert_drift_free(
+        ADDRESS_PARSE_REQUEST_SCHEMA,
+        "canon.geo.address_parse_request.v0",
+        CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn address_parse_forest_schema_matches_a_real_instance() {
+    let instance = serde_json::to_value(address_parse_forest()).expect("forest serializes");
+    assert_drift_free(
+        ADDRESS_PARSE_FOREST_SCHEMA,
+        "canon.geo.address_parse_forest.v0",
+        CANON_GEO_ADDRESS_PARSE_FOREST_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn pad_address_set_schema_matches_a_real_instance() {
+    let instance = serde_json::to_value(address_pad_set()).expect("PAD set serializes");
+    assert_drift_free(
+        PAD_ADDRESS_SET_SCHEMA,
+        "canon.geo.pad_address_set.v0",
+        CANON_GEO_PAD_ADDRESS_SET_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn pad_membership_schema_matches_a_real_instance() {
+    let instance = serde_json::to_value(address_pad_membership()).expect("membership serializes");
+    assert_drift_free(
+        PAD_MEMBERSHIP_SCHEMA,
+        "canon.geo.pad_membership.v0",
+        CANON_GEO_PAD_MEMBERSHIP_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn control_question_schema_matches_a_real_instance() {
+    let instance = serde_json::to_value(control_question()).expect("question serializes");
+    assert_drift_free(
+        CONTROL_QUESTION_SCHEMA,
+        "canon.geo.question.v0",
+        CANON_GEO_QUESTION_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn control_capabilities_schema_matches_a_real_instance() {
+    let capabilities = default_geo_capabilities().expect("capabilities build");
+    let instance = serde_json::to_value(capabilities).expect("capabilities serialize");
+    assert_drift_free(
+        CONTROL_CAPABILITIES_SCHEMA,
+        "canon.geo.capabilities.v0",
+        CANON_GEO_CAPABILITIES_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn control_regional_inventory_schema_matches_a_real_instance() {
+    let instance = serde_json::to_value(control_inventory()).expect("inventory serializes");
+    assert_drift_free(
+        CONTROL_REGIONAL_INVENTORY_SCHEMA,
+        "canon.geo.regional_inventory.v0",
+        CANON_GEO_REGIONAL_INVENTORY_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn control_resource_budget_schema_matches_a_real_instance() {
+    let instance = serde_json::to_value(control_budget()).expect("budget serializes");
+    assert_drift_free(
+        CONTROL_RESOURCE_BUDGET_SCHEMA,
+        "canon.geo.resource_budget.v0",
+        CANON_GEO_RESOURCE_BUDGET_VERSION,
+        &instance,
+    );
+}
+
+#[test]
 fn composition_request_schema_matches_a_real_instance() {
     let request = composition_request();
     let instance = serde_json::to_value(&request).expect("request must serialize");
@@ -741,6 +1188,11 @@ fn h7_population_schemas_are_registered_with_version_constants() {
         "canon.geo.h7_population.v0",
         CANON_GEO_H7_POPULATION_VERSION,
     );
+    assert_schema_shape(
+        &parsed(H7_STAGING_SOURCE_RECORD_BYTES_BATCH_SCHEMA),
+        "canon.geo.h7_staging_source_record_bytes_batch.v0",
+        CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
+    );
 }
 
 #[test]
@@ -764,6 +1216,18 @@ fn h7_population_artifact_schema_matches_a_real_instance() {
         H7_POPULATION_SCHEMA,
         "canon.geo.h7_population.v0",
         CANON_GEO_H7_POPULATION_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn h7_staging_source_record_bytes_batch_schema_matches_a_real_instance() {
+    let request = h7_staging_source_record_bytes_batch_request();
+    let instance = serde_json::to_value(&request).expect("H7 staging batch must serialize");
+    assert_drift_free(
+        H7_STAGING_SOURCE_RECORD_BYTES_BATCH_SCHEMA,
+        "canon.geo.h7_staging_source_record_bytes_batch.v0",
+        CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
         &instance,
     );
 }
@@ -805,6 +1269,30 @@ fn warehouse_rows_schema_matches_a_real_instance() {
 }
 
 #[test]
+fn warehouse_rows_schema_requires_profile_ref() {
+    let schema = parsed(WAREHOUSE_ROWS_SCHEMA);
+    assert_eq!(
+        schema
+            .pointer("/properties/profile/$ref")
+            .and_then(Value::as_str),
+        Some("canon.geo.composition_request.v0.schema.json#/$defs/composition_profile")
+    );
+    assert!(required_contains(&schema, "/required", "profile"));
+
+    let rows = GeoWarehouseRowsRequest {
+        profile: GeoCompositionProfile::building(),
+        ..warehouse_rows_request()
+    };
+    let instance = serde_json::to_value(&rows).expect("warehouse rows must serialize");
+    assert_drift_free(
+        WAREHOUSE_ROWS_SCHEMA,
+        "canon.geo.warehouse_rows.v0",
+        CANON_GEO_WAREHOUSE_ROWS_VERSION,
+        &instance,
+    );
+}
+
+#[test]
 fn evidence_compilation_artifact_schema_matches_a_real_instance() {
     let artifact = compile_evidence(&evidence_request()).expect("evidence must compile");
     let instance = serde_json::to_value(&artifact).expect("artifact must serialize");
@@ -814,6 +1302,37 @@ fn evidence_compilation_artifact_schema_matches_a_real_instance() {
         "canon_geo_evidence_compilation.v0",
         &instance,
     );
+}
+
+#[test]
+fn emitted_composition_artifact_schemas_require_profile() {
+    let composition_schema = parsed(COMPOSITION_SCHEMA);
+    assert!(required_contains(
+        &composition_schema,
+        "/required",
+        "profile"
+    ));
+
+    let evidence_compilation_schema = parsed(EVIDENCE_COMPILATION_SCHEMA);
+    assert!(required_contains(
+        &evidence_compilation_schema,
+        "/$defs/composition_request/required",
+        "profile"
+    ));
+
+    let composition_request_schema = parsed(COMPOSITION_REQUEST_SCHEMA);
+    assert!(!required_contains(
+        &composition_request_schema,
+        "/required",
+        "profile"
+    ));
+
+    let evidence_request_schema = parsed(EVIDENCE_REQUEST_SCHEMA);
+    assert!(!required_contains(
+        &evidence_request_schema,
+        "/required",
+        "profile"
+    ));
 }
 
 #[test]
@@ -936,6 +1455,137 @@ fn h7_population_rows_request() -> GeoH7PopulationRowsRequest {
         max_cases: 8,
         max_assignments: 64,
         max_materialized_models: 64,
+    }
+}
+
+fn h7_staging_source_record_bytes_batch_request() -> GeoH7StagingSourceRecordBytesBatchRequest {
+    let rows_request = h7_population_rows_request();
+    let denominators = rows_request
+        .plane_denominators
+        .iter()
+        .map(|denominator| (denominator.truth_plane, denominator))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let staging_rows = rows_request
+        .rows
+        .iter()
+        .map(|row| {
+            h7_staging_source_record_bytes_row(
+                row,
+                denominators
+                    .get(&row.truth_plane)
+                    .expect("denominator for row plane"),
+            )
+        })
+        .collect();
+
+    GeoH7StagingSourceRecordBytesBatchRequest {
+        version: CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION.to_string(),
+        population_scope: rows_request.population_scope,
+        provenance: rows_request.provenance,
+        plane_denominators: rows_request.plane_denominators,
+        staging_rows,
+        max_cases: rows_request.max_cases,
+        max_assignments: rows_request.max_assignments,
+        max_materialized_models: rows_request.max_materialized_models,
+    }
+}
+
+fn h7_staging_source_record_bytes_row(
+    row: &GeoH7PopulationWarehouseRow,
+    denominator: &GeoH7PlaneDenominator,
+) -> GeoH7StagingSourceRecordBytesRow {
+    let source_records = row
+        .source_records
+        .iter()
+        .map(h7_staging_source_record)
+        .collect::<Vec<_>>();
+    let payload_counts = h7_staging_payload_counts(&source_records);
+
+    GeoH7StagingSourceRecordBytesRow {
+        row_contract: "h7_staging_source_record_bytes_export_row.v0".to_string(),
+        row_kind: "source_record_payload_release_row".to_string(),
+        guard_status: "ok".to_string(),
+        refusal_reason: None,
+        pip_block_population_query_id: "schema-pip-block-query".to_string(),
+        payload_contract: "h7_derived_source_record_payload.v0".to_string(),
+        source_record_class: "derived_immutable_evidence_record".to_string(),
+        accepted_truth_query_id: Some("schema-accepted-truth-query".to_string()),
+        loan_key: Some(row.loan_key.clone()),
+        document_id: Some(row.document_id.clone()),
+        truth_plane: Some(row.truth_plane),
+        association_plane: Some(row.association_plane),
+        mappluto_release: Some(row.candidate_release.release.clone()),
+        mappluto_release_dt: Some(row.candidate_release.release_dt.clone()),
+        mappluto_variant: Some(row.candidate_release.variant.clone()),
+        candidate_release: Some(row.candidate_release.clone()),
+        property_state: Some(row.property_state.clone()),
+        filed_county: Some(row.filed_county.clone()),
+        filed_borough: Some(row.filed_borough),
+        legal_borough: Some(row.legal_borough),
+        accepted_borough_edges: Some(row.accepted_borough_edges.clone()),
+        geocoded_county_fips: row.geocoded_county_fips.clone(),
+        doc_type: Some(row.doc_type.clone()),
+        originationdate: Some(row.originationdate.clone()),
+        amount_cents: Some(row.amount_cents),
+        is_round_100k_lattice: Some(row.is_round_100k_lattice),
+        originatorname: row.originatorname.clone(),
+        originator_match_text: row.originator_match_text.clone(),
+        lender_match_text: row.lender_match_text.clone(),
+        lender_party_type: row.lender_party_type.clone(),
+        loan_field_distinct_counts: Some(row.loan_field_distinct_counts.clone()),
+        truth_parcels: Some(row.truth_parcels.clone()),
+        candidate_parcels: Some(row.candidate_parcels.clone()),
+        reach_status: Some(row.reach_status),
+        reach_reason: Some(row.reach_reason.clone()),
+        source_records: Some(source_records.clone()),
+        source_record_count: Some(source_records.len() as u64),
+        bridge_source_record_count: Some(h7_staging_role_count(
+            &source_records,
+            GeoH7SourceRecordRole::BridgeLoan,
+        )),
+        acris_master_source_record_count: Some(h7_staging_role_count(
+            &source_records,
+            GeoH7SourceRecordRole::AcrisMaster,
+        )),
+        acris_party_source_record_count: Some(h7_staging_role_count(
+            &source_records,
+            GeoH7SourceRecordRole::AcrisParty,
+        )),
+        acris_legal_source_record_count: Some(h7_staging_role_count(
+            &source_records,
+            GeoH7SourceRecordRole::AcrisLegal,
+        )),
+        mappluto_source_record_count: Some(h7_staging_role_count(
+            &source_records,
+            GeoH7SourceRecordRole::MapplutoCandidate,
+        )),
+        min_source_record_payload_utf8_bytes: Some(payload_counts.0),
+        max_source_record_payload_utf8_bytes: Some(payload_counts.1),
+        total_source_record_payload_utf8_bytes: Some(payload_counts.2),
+        max_source_record_payload_base64_chars: Some(payload_counts.3),
+        candidate_bbl_count: Some(row.candidate_parcels.len() as u64),
+        truth_bbl_count: Some(row.truth_parcels.len() as u64),
+        reached_truth_bbls: Some(
+            row.truth_parcels
+                .iter()
+                .filter(|parcel_id| row.candidate_parcels.contains(parcel_id))
+                .count() as u64,
+        ),
+        whole_accepted_loans: Some(2),
+        whole_release_rows: Some(4),
+        whole_zero_candidate_release_rows: Some(0),
+        accepted_plane_eligible_loans: Some(denominator.eligible_loans),
+        accepted_plane_legal_candidate_loans: Some(denominator.candidate_loans),
+        accepted_plane_legal_confirmed_candidate_loans: Some(
+            denominator.legal_confirmed_candidate_loans,
+        ),
+        accepted_plane_accepted_loans: Some(denominator.accepted_loans),
+        accepted_plane_ambiguous_loans: Some(denominator.ambiguous_loans),
+        accepted_plane_candidate_without_legal_loans: Some(
+            denominator.candidate_no_legal_confirmation_loans,
+        ),
+        accepted_plane_no_candidate_loans: Some(denominator.no_candidate_loans),
+        accepted_plane_selected_multi_parcel_loans: Some(denominator.selected_multi_parcel_loans),
     }
 }
 
@@ -1109,6 +1759,111 @@ fn h7_source_record(
             .to_hex()
             .to_string(),
         },
+    }
+}
+
+fn h7_staging_source_record(
+    record: &GeoH7SourceEvidenceRecord,
+) -> GeoH7StagingSourceEvidenceRecord {
+    let source_record_bytes_base64 = h7_staging_source_record_payload_base64(record);
+    let record_blake3 = blake3::hash(
+        BASE64_STANDARD
+            .decode(source_record_bytes_base64.as_bytes())
+            .expect("canonical staging source payload")
+            .as_slice(),
+    )
+    .to_hex()
+    .to_string();
+    GeoH7StagingSourceEvidenceRecord {
+        role: record.role,
+        parcel_ids: record.parcel_ids.clone(),
+        source_record: GeoH7StagingEvidenceRecordRef {
+            source_record_id: record.source_record.source_record_id.clone(),
+            source_vintage: record.source_record.source_vintage.clone(),
+            record_blake3,
+        },
+        source_record_bytes_base64,
+    }
+}
+
+fn h7_staging_source_record_payload_base64(record: &GeoH7SourceEvidenceRecord) -> String {
+    let mut pairs = vec![
+        vec![
+            "payload_contract".to_string(),
+            "h7_derived_source_record_payload.v0".to_string(),
+        ],
+        vec![
+            "source_record_class".to_string(),
+            "derived_immutable_evidence_record".to_string(),
+        ],
+        vec![
+            "role".to_string(),
+            h7_source_record_role_name(record.role).to_string(),
+        ],
+        vec![
+            "source_record_id".to_string(),
+            record.source_record.source_record_id.clone(),
+        ],
+        vec![
+            "source_vintage".to_string(),
+            record.source_record.source_vintage.clone(),
+        ],
+    ];
+    if let Some(parcel_id) = record.parcel_ids.first() {
+        match record.role {
+            GeoH7SourceRecordRole::AcrisLegal => {
+                pairs.push(vec!["legal_bbl".to_string(), parcel_id.clone()]);
+            }
+            GeoH7SourceRecordRole::MapplutoCandidate => {
+                pairs.push(vec!["bbl_key".to_string(), parcel_id.clone()]);
+            }
+            _ => {}
+        }
+    }
+    pairs.sort_by(|left, right| left[0].cmp(&right[0]));
+    BASE64_STANDARD.encode(serde_json::to_vec(&pairs).expect("staging source payload JSON"))
+}
+
+fn h7_staging_payload_counts(records: &[GeoH7StagingSourceEvidenceRecord]) -> (u64, u64, u64, u64) {
+    let mut min_utf8_bytes: Option<u64> = None;
+    let mut max_utf8_bytes = 0_u64;
+    let mut total_utf8_bytes = 0_u64;
+    let mut max_base64_chars = 0_u64;
+
+    for record in records {
+        let bytes = BASE64_STANDARD
+            .decode(record.source_record_bytes_base64.as_bytes())
+            .expect("canonical staging source payload");
+        let utf8_bytes = bytes.len() as u64;
+        min_utf8_bytes = Some(min_utf8_bytes.map_or(utf8_bytes, |current| current.min(utf8_bytes)));
+        max_utf8_bytes = max_utf8_bytes.max(utf8_bytes);
+        total_utf8_bytes += utf8_bytes;
+        max_base64_chars = max_base64_chars.max(record.source_record_bytes_base64.len() as u64);
+    }
+
+    (
+        min_utf8_bytes.unwrap_or(0),
+        max_utf8_bytes,
+        total_utf8_bytes,
+        max_base64_chars,
+    )
+}
+
+fn h7_staging_role_count(
+    records: &[GeoH7StagingSourceEvidenceRecord],
+    role: GeoH7SourceRecordRole,
+) -> u64 {
+    records.iter().filter(|record| record.role == role).count() as u64
+}
+
+fn h7_source_record_role_name(role: GeoH7SourceRecordRole) -> &'static str {
+    match role {
+        GeoH7SourceRecordRole::BridgeLoan => "bridge_loan",
+        GeoH7SourceRecordRole::AcrisMaster => "acris_master",
+        GeoH7SourceRecordRole::AcrisLegal => "acris_legal",
+        GeoH7SourceRecordRole::AcrisParty => "acris_party",
+        GeoH7SourceRecordRole::MapplutoCandidate => "mappluto_candidate",
+        GeoH7SourceRecordRole::GeocodeDiagnostic => "geocode_diagnostic",
     }
 }
 

@@ -104,6 +104,7 @@ fn reconciliation_request(batches: Vec<GeoTileDecisionBatch>) -> GeoTileReconcil
 fn section_local_composition_request(parcel_id: &str, building_id: &str) -> GeoCompositionRequest {
     GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: vec![parcel_id.to_string()],
             buildings: vec![GeoBuildingCandidate {

@@ -1,0 +1,258 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.question.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.question.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": "canon_geo_question.v0", "type": "string" },
+    "question_id": { "type": "string" },
+    "subject_bindings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/subject_binding" }
+    },
+    "bounded_geography": { "$ref": "#/$defs/bounded_geography" },
+    "requested_grains": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/requested_grain" }
+    },
+    "query_as_of": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/as_of" }]
+    },
+    "requested_claim_classes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/claim_class" }
+    },
+    "presentation_limits": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/numeric_bound" }
+    },
+    "abstention_policy": { "$ref": "#/$defs/abstention_policy" },
+    "decision_policy": {
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/decision_policy_ref" }]
+    },
+    "resource_budget_ref": { "type": "string" }
+  },
+  "required": [
+    "version",
+    "question_id",
+    "subject_bindings",
+    "bounded_geography",
+    "requested_grains",
+    "requested_claim_classes",
+    "presentation_limits",
+    "abstention_policy",
+    "resource_budget_ref"
+  ],
+  "$defs": {
+    "entity_level": {
+      "type": "string",
+      "enum": ["site", "property", "parcel", "building", "unit", "address", "poi"]
+    },
+    "evidence_class": {
+      "type": "string",
+      "enum": [
+        "geocode_point",
+        "address_string",
+        "address_set",
+        "parcel_geometry",
+        "building_footprint",
+        "asserted_attribute",
+        "entity_relation",
+        "temporal_observation"
+      ]
+    },
+    "claim_class": {
+      "type": "string",
+      "enum": [
+        "candidate_reach",
+        "stable_identity",
+        "collateral_composition",
+        "temporal_occupancy",
+        "lifecycle_state",
+        "attribute_band"
+      ]
+    },
+    "value_origin": {
+      "type": "string",
+      "enum": [
+        "caller_declared",
+        "binary_default",
+        "source_release",
+        "local_artifact",
+        "adapter_contract",
+        "operator_policy"
+      ]
+    },
+    "resource_counter": {
+      "type": "string",
+      "enum": [
+        "bytes",
+        "rows",
+        "cells",
+        "candidates",
+        "variables",
+        "states",
+        "models",
+        "operations",
+        "proof_bytes"
+      ]
+    },
+    "budget_action": {
+      "type": "string",
+      "enum": [
+        "refuse_before_work",
+        "refuse_before_output",
+        "truncate_presentation_only",
+        "report_budget_fallback"
+      ]
+    },
+    "numeric_bound": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "semantic_id": { "type": "string" },
+        "counter": { "$ref": "#/$defs/resource_counter" },
+        "value": { "type": "integer", "minimum": 0 },
+        "unit": { "type": "string" },
+        "origin": { "$ref": "#/$defs/value_origin" },
+        "action": { "$ref": "#/$defs/budget_action" }
+      },
+      "required": ["semantic_id", "counter", "value", "unit", "origin", "action"]
+    },
+    "as_of": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "utc_day": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "semantic_id": { "type": "string" },
+        "unit": { "const": "utc_day", "type": "string" },
+        "origin": { "$ref": "#/$defs/value_origin" }
+      },
+      "required": ["utc_day", "semantic_id", "unit", "origin"]
+    },
+    "bounded_geography": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "geography_id": { "type": "string" },
+        "geography_kind": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["geography_id", "geography_kind", "description"]
+    },
+    "subject_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "role": { "type": "string" },
+        "binding_class": {
+          "type": "string",
+          "enum": ["address_text", "source_identifier", "coordinate", "operator_label"]
+        },
+        "value": { "type": "string" }
+      },
+      "required": ["role", "binding_class", "value"]
+    },
+    "requested_grain": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entity_level": { "$ref": "#/$defs/entity_level" },
+        "required_evidence_classes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/evidence_class" }
+        },
+        "optional_evidence_classes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence_class" }
+        }
+      },
+      "required": [
+        "entity_level",
+        "required_evidence_classes",
+        "optional_evidence_classes"
+      ]
+    },
+    "abstention_disposition": {
+      "type": "string",
+      "enum": ["report_unsupported", "report_residual", "refuse"]
+    },
+    "abstention_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unsupported_grain": { "$ref": "#/$defs/abstention_disposition" },
+        "unresolved_residual": { "$ref": "#/$defs/abstention_disposition" },
+        "budget_fallback": { "$ref": "#/$defs/abstention_disposition" }
+      },
+      "required": ["unsupported_grain", "unresolved_residual", "budget_fallback"]
+    },
+    "decision_policy_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy_id": { "type": "string" },
+        "version": { "type": "string" },
+        "content_hash": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" }
+      },
+      "required": ["policy_id", "version", "content_hash"]
+    }
+  },
+  "examples": [
+    {
+      "version": "canon_geo_question.v0",
+      "question_id": "question.full.control-fixture",
+      "subject_bindings": [
+        { "role": "input_address", "binding_class": "address_text", "value": "305 E 72nd St" },
+        { "role": "operator_case", "binding_class": "operator_label", "value": "case-6" }
+      ],
+      "bounded_geography": {
+        "geography_id": "region.fixture.nyc-block",
+        "geography_kind": "declared_test_region",
+        "description": "Fixture block used only for contract validation"
+      },
+      "requested_grains": [
+        {
+          "entity_level": "building",
+          "required_evidence_classes": ["building_footprint"],
+          "optional_evidence_classes": ["address_set", "asserted_attribute"]
+        },
+        {
+          "entity_level": "parcel",
+          "required_evidence_classes": ["parcel_geometry"],
+          "optional_evidence_classes": ["address_set"]
+        }
+      ],
+      "query_as_of": {
+        "utc_day": "2026-08-31",
+        "semantic_id": "question.query_as_of.utc_day",
+        "unit": "utc_day",
+        "origin": "caller_declared"
+      },
+      "requested_claim_classes": ["candidate_reach", "collateral_composition"],
+      "presentation_limits": [
+        {
+          "semantic_id": "question.presentation.max_models",
+          "counter": "models",
+          "value": 16,
+          "unit": "model",
+          "origin": "caller_declared",
+          "action": "truncate_presentation_only"
+        }
+      ],
+      "abstention_policy": {
+        "unsupported_grain": "report_unsupported",
+        "unresolved_residual": "report_residual",
+        "budget_fallback": "report_residual"
+      },
+      "decision_policy": {
+        "policy_id": "policy.fixture.losses",
+        "version": "v0",
+        "content_hash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "resource_budget_ref": "budget.fixture.control"
+    }
+  ]
+}

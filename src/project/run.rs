@@ -2,14 +2,15 @@
 
 use super::{
     plan::{
-        ProjectPlan, ProjectPlanCacheDecision, ProjectPlanHashRef, ProjectPlanNode,
-        ProjectPlanNodeClass,
+        ProjectExtensionNodePolicy, ProjectPlan, ProjectPlanCacheDecision, ProjectPlanError,
+        ProjectPlanHashRef, ProjectPlanNode, ProjectPlanNodeClass, project_plan_node_cache_key,
+        validate_extension_node_effects,
     },
     receipt::{
         CANON_PROJECT_RUN_VERSION, ProjectReceiptError, ProjectRunHashRef, ProjectRunNextAction,
         ProjectRunNodeOutcome, ProjectRunNodeReceipt, ProjectRunOutputReceipt, ProjectRunReceipt,
         canonical_run_receipt_bytes, digest_bytes, finalized_node_receipt, finalized_run_receipt,
-        read_node_receipt, write_node_receipt,
+        read_node_receipt, replace_node_receipt,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -18,7 +19,7 @@ use std::{
     error::Error,
     fmt,
     fs::{self, OpenOptions},
-    io::Write,
+    io::{self, Write},
     path::{Component, Path, PathBuf},
 };
 
@@ -56,7 +57,7 @@ impl ProjectRunError {
             code,
             node_id,
             message: message.into(),
-            next_command: Some("canon project run --plan <PLAN>".to_string()),
+            next_command: None,
         }
     }
 }
@@ -93,6 +94,7 @@ pub struct ProjectRunPolicy {
     pub max_parallelism: usize,
     pub failure_policy: ProjectRunFailurePolicy,
     pub selected_nodes: BTreeSet<String>,
+    pub allow_network: bool,
     pub allow_mutation_gates: bool,
     pub cancel_before_nodes: BTreeSet<String>,
 }
@@ -105,6 +107,7 @@ impl ProjectRunPolicy {
             max_parallelism: 1,
             failure_policy: ProjectRunFailurePolicy::FailFast,
             selected_nodes: BTreeSet::new(),
+            allow_network: false,
             allow_mutation_gates: false,
             cancel_before_nodes: BTreeSet::new(),
         }
@@ -114,12 +117,13 @@ impl ProjectRunPolicy {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectNodeExecutionContext {
     pub node_id: String,
-    pub dependency_receipt_hashes: BTreeMap<String, String>,
+    pub dependency_semantic_hashes: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectNodeExecutionResult {
     pub outputs: BTreeMap<String, Vec<u8>>,
+    pub deterministic_usage: BTreeMap<String, u64>,
     pub duration_millis: u64,
     pub resource_observations: BTreeMap<String, u64>,
 }
@@ -128,6 +132,7 @@ impl ProjectNodeExecutionResult {
     pub fn with_outputs(outputs: BTreeMap<String, Vec<u8>>) -> Self {
         Self {
             outputs,
+            deterministic_usage: BTreeMap::new(),
             duration_millis: 0,
             resource_observations: BTreeMap::new(),
         }
@@ -160,22 +165,22 @@ pub struct ProjectRunReport {
     pub run_receipt_hash: String,
     pub max_parallelism: usize,
     pub max_ready_width: usize,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub executed_nodes: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub resumed_nodes: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub failed_nodes: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub cancelled_nodes: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub invalidated_nodes: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub blocked_nodes: Vec<String>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default)]
     pub next_actions: BTreeMap<String, String>,
     pub receipt: ProjectRunReceipt,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub node_reports: Vec<ProjectRunNodeReport>,
 }
 
@@ -200,8 +205,13 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
     }
 
     let mut valid_receipts = existing.valid_receipts;
+    let completed_receipts = existing.completed_receipts;
+    let prior_receipts = existing.prior_receipts;
     let mut invalidated_nodes = existing.invalidated_nodes;
     invalidated_nodes.extend(descendants(plan, &invalidated_nodes));
+    for invalidated in &invalidated_nodes {
+        valid_receipts.remove(invalidated);
+    }
 
     let mut report = ProjectRunReport {
         schema_version: CANON_PROJECT_RUN_VERSION.to_string(),
@@ -211,10 +221,18 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
         max_parallelism: policy.max_parallelism,
         max_ready_width: 0,
         executed_nodes: Vec::new(),
-        resumed_nodes: valid_receipts.keys().cloned().collect(),
+        resumed_nodes: valid_receipts
+            .keys()
+            .filter(|node_id| target_nodes.contains(*node_id))
+            .cloned()
+            .collect(),
         failed_nodes: Vec::new(),
         cancelled_nodes: Vec::new(),
-        invalidated_nodes: invalidated_nodes.iter().cloned().collect(),
+        invalidated_nodes: invalidated_nodes
+            .iter()
+            .filter(|node_id| target_nodes.contains(*node_id))
+            .cloned()
+            .collect(),
         blocked_nodes: Vec::new(),
         next_actions: BTreeMap::new(),
         receipt: empty_run_receipt(plan),
@@ -247,7 +265,7 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
                     "E_PROJECT_CANCELLED",
                     "project run cancelled before node execution",
                 )?;
-                write_receipt(&policy, &receipt)?;
+                write_receipt(&policy, &receipt, prior_receipts.get(&node.node_id))?;
                 report.cancelled_nodes.push(node.node_id.clone());
                 report.node_reports.push(node_report(
                     node,
@@ -259,9 +277,16 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
                 break;
             }
 
-            match execute_node(plan, node, &policy, &valid_receipts, executor) {
+            match execute_node(
+                plan,
+                node,
+                &policy,
+                &valid_receipts,
+                &completed_receipts,
+                executor,
+            ) {
                 Ok(receipt) => {
-                    write_receipt(&policy, &receipt)?;
+                    write_receipt(&policy, &receipt, prior_receipts.get(&node.node_id))?;
                     report.executed_nodes.push(node.node_id.clone());
                     report.node_reports.push(node_report(
                         node,
@@ -281,7 +306,7 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
                         &format!("{:?}", error.code),
                         &error.message,
                     )?;
-                    write_receipt(&policy, &receipt)?;
+                    write_receipt(&policy, &receipt, prior_receipts.get(&node.node_id))?;
                     failed_nodes.insert(node.node_id.clone());
                     report.failed_nodes.push(node.node_id.clone());
                     report.node_reports.push(node_report(
@@ -291,7 +316,14 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
                         Some(&error.message),
                     ));
                     if policy.failure_policy == ProjectRunFailurePolicy::FailFast {
-                        return finish_report(plan, &policy, report, valid_receipts, failed_nodes);
+                        return finish_report(
+                            plan,
+                            &policy,
+                            &target_nodes,
+                            report,
+                            valid_receipts,
+                            failed_nodes,
+                        );
                     }
                 }
             }
@@ -301,7 +333,98 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
         }
     }
 
-    finish_report(plan, &policy, report, valid_receipts, failed_nodes)
+    finish_report(
+        plan,
+        &policy,
+        &target_nodes,
+        report,
+        valid_receipts,
+        failed_nodes,
+    )
+}
+
+pub fn inspect_project_run_reuse_only(
+    plan: &ProjectPlan,
+    policy: &ProjectRunPolicy,
+) -> ProjectRunResult<ProjectRunReport> {
+    validate_plan_shape(plan)?;
+    let policy = finalize_policy(policy)?;
+    let target_nodes = selected_node_closure(plan, &policy.selected_nodes)?;
+    let existing = load_existing_receipts(plan, &policy)?;
+    if !existing.poisoned_receipts.is_empty() {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            None,
+            format!(
+                "poisoned project receipts: {}",
+                existing.poisoned_receipts.join(", ")
+            ),
+        ));
+    }
+
+    let mut valid_receipts = existing.valid_receipts;
+    let mut invalidated_nodes = existing.invalidated_nodes;
+    invalidated_nodes.extend(descendants(plan, &invalidated_nodes));
+    for invalidated in &invalidated_nodes {
+        valid_receipts.remove(invalidated);
+    }
+
+    let report = ProjectRunReport {
+        schema_version: CANON_PROJECT_RUN_VERSION.to_string(),
+        project_id: plan.project_id.clone(),
+        plan_graph_hash: plan.graph_hash.clone(),
+        run_receipt_hash: String::new(),
+        max_parallelism: policy.max_parallelism,
+        max_ready_width: 0,
+        executed_nodes: Vec::new(),
+        resumed_nodes: valid_receipts
+            .keys()
+            .filter(|node_id| target_nodes.contains(*node_id))
+            .cloned()
+            .collect(),
+        failed_nodes: Vec::new(),
+        cancelled_nodes: Vec::new(),
+        invalidated_nodes: invalidated_nodes
+            .iter()
+            .filter(|node_id| target_nodes.contains(*node_id))
+            .cloned()
+            .collect(),
+        blocked_nodes: Vec::new(),
+        next_actions: BTreeMap::new(),
+        receipt: empty_run_receipt(plan),
+        node_reports: Vec::new(),
+    };
+
+    let completed = valid_receipts.keys().cloned().collect::<BTreeSet<_>>();
+    let mut unsupported = Vec::new();
+    for node in &plan.nodes {
+        if !target_nodes.contains(&node.node_id) || completed.contains(&node.node_id) {
+            continue;
+        }
+        ensure_declared_node_effects_allowed(node, &policy)?;
+        unsupported.push(node.node_id.clone());
+    }
+    if !unsupported.is_empty() {
+        unsupported.sort();
+        return Err(ProjectRunError {
+            code: ProjectRunErrorCode::ExecutionFailed,
+            node_id: unsupported.first().cloned(),
+            message: format!(
+                "project run has no registered real executor for pending nodes: {}; this public surface can validate plans and reuse existing completed receipts only",
+                unsupported.join(", ")
+            ),
+            next_command: None,
+        });
+    }
+
+    finish_report(
+        plan,
+        &policy,
+        &target_nodes,
+        report,
+        valid_receipts,
+        BTreeSet::new(),
+    )
 }
 
 pub fn canonical_project_run_report_bytes(report: &ProjectRunReport) -> ProjectRunResult<Vec<u8>> {
@@ -319,6 +442,7 @@ fn execute_node<E: ProjectNodeExecutor>(
     node: &ProjectPlanNode,
     policy: &ProjectRunPolicy,
     valid_receipts: &BTreeMap<String, ProjectRunNodeReceipt>,
+    completed_receipts: &BTreeMap<String, ProjectRunNodeReceipt>,
     executor: &mut E,
 ) -> ProjectRunResult<ProjectRunNodeReceipt> {
     if node.class == ProjectPlanNodeClass::MutationGate && !policy.allow_mutation_gates {
@@ -328,17 +452,21 @@ fn execute_node<E: ProjectNodeExecutor>(
             "mutation gate requires explicit project run approval",
         ));
     }
-    ensure_outputs_absent(node, &policy.workspace_root)?;
+    ensure_declared_node_effects_allowed(node, policy)?;
+    let stale_receipt = completed_receipts.get(&node.node_id);
+    ensure_outputs_publishable(node, &policy.workspace_root, stale_receipt)?;
+    let dependency_semantic_hashes = dependency_semantic_hashes(node, valid_receipts)?;
     let dependency_receipt_hashes = dependency_receipt_hashes(node, valid_receipts)?;
     let context = ProjectNodeExecutionContext {
         node_id: node.node_id.clone(),
-        dependency_receipt_hashes: dependency_receipt_hashes.clone(),
+        dependency_semantic_hashes: dependency_semantic_hashes.clone(),
     };
     let result = executor.execute(node, &context)?;
     let output_receipts = publish_outputs(
         node,
         &policy.workspace_root,
         &policy.work_dir,
+        stale_receipt,
         result.outputs,
     )?;
     finalized_node_receipt(ProjectRunNodeReceipt {
@@ -348,14 +476,18 @@ fn execute_node<E: ProjectNodeExecutor>(
         node_id: node.node_id.clone(),
         node_cache_key: node.cache.cache_key.clone(),
         content_hash_inputs: receipt_hash_inputs(&node.content_hash_inputs),
+        dependency_semantic_hashes,
         dependency_receipt_hashes,
         outputs: output_receipts,
         outcome: ProjectRunNodeOutcome::Completed,
+        deterministic_usage: result.deterministic_usage,
         duration_millis: result.duration_millis,
         resource_observations: result.resource_observations,
         next_action: ProjectRunNextAction::ExecuteDependents,
         failure_code: None,
         failure_message: None,
+        semantic_hash: String::new(),
+        telemetry_hash: String::new(),
         receipt_hash: String::new(),
     })
     .map_err(ProjectRunError::from)
@@ -364,17 +496,25 @@ fn execute_node<E: ProjectNodeExecutor>(
 fn finish_report(
     plan: &ProjectPlan,
     policy: &ProjectRunPolicy,
+    target_nodes: &BTreeSet<String>,
     mut report: ProjectRunReport,
     valid_receipts: BTreeMap<String, ProjectRunNodeReceipt>,
     failed_nodes: BTreeSet<String>,
 ) -> ProjectRunResult<ProjectRunReport> {
+    let valid_receipts = valid_receipts
+        .into_iter()
+        .filter(|(node_id, _)| target_nodes.contains(node_id))
+        .collect::<BTreeMap<_, _>>();
     let completed = valid_receipts.keys().cloned().collect::<BTreeSet<_>>();
     let mut blocked = BTreeSet::new();
-    for node in &plan.nodes {
+    for node in plan
+        .nodes
+        .iter()
+        .filter(|node| target_nodes.contains(&node.node_id))
+    {
         if completed.contains(&node.node_id)
             || report.cancelled_nodes.contains(&node.node_id)
             || report.failed_nodes.contains(&node.node_id)
-            || report.invalidated_nodes.contains(&node.node_id)
         {
             continue;
         }
@@ -394,6 +534,7 @@ fn finish_report(
     report.next_actions = plan
         .nodes
         .iter()
+        .filter(|node| target_nodes.contains(&node.node_id))
         .filter(|node| !completed.contains(&node.node_id) && !blocked.contains(&node.node_id))
         .map(|node| (node.node_id.clone(), node.command.clone()))
         .collect();
@@ -421,6 +562,8 @@ fn finish_report(
 #[derive(Debug, Default)]
 struct ExistingReceipts {
     valid_receipts: BTreeMap<String, ProjectRunNodeReceipt>,
+    completed_receipts: BTreeMap<String, ProjectRunNodeReceipt>,
+    prior_receipts: BTreeMap<String, ProjectRunNodeReceipt>,
     invalidated_nodes: BTreeSet<String>,
     poisoned_receipts: Vec<String>,
 }
@@ -444,10 +587,27 @@ fn load_existing_receipts(
                 continue;
             }
         };
+        if receipt.project_id != plan.project_id || receipt.node_id != node.node_id {
+            existing.poisoned_receipts.push(format!(
+                "{} (receipt belongs to project_id={} node_id={}, expected project_id={} node_id={})",
+                path.display(),
+                receipt.project_id,
+                receipt.node_id,
+                plan.project_id,
+                node.node_id
+            ));
+            continue;
+        }
+        existing
+            .prior_receipts
+            .insert(node.node_id.clone(), receipt.clone());
         if receipt.outcome != ProjectRunNodeOutcome::Completed {
             continue;
         }
-        if node_receipt_matches_current(node, &receipt)
+        existing
+            .completed_receipts
+            .insert(node.node_id.clone(), receipt.clone());
+        if node_receipt_matches_current(plan, node, &receipt)
             && outputs_match_receipt(&policy.workspace_root, &receipt)?
             && dependencies_match_receipts(node, &receipt, &existing.valid_receipts)
         {
@@ -474,7 +634,13 @@ fn ready_nodes<'a>(
         .filter(|node| target_nodes.contains(&node.node_id))
         .filter(|node| !valid_receipts.contains_key(&node.node_id))
         .filter(|node| !failed_nodes.contains(&node.node_id))
-        .filter(|node| !invalidated_nodes.contains(&node.node_id))
+        .filter(|node| {
+            invalidated_nodes.contains(&node.node_id)
+                || !node.dependencies.iter().any(|dependency| {
+                    invalidated_nodes.contains(dependency)
+                        && !valid_receipts.contains_key(dependency)
+                })
+        })
         .filter(|node| {
             if node.cache.decision == ProjectPlanCacheDecision::Hit {
                 return false;
@@ -559,6 +725,7 @@ fn publish_outputs(
     node: &ProjectPlanNode,
     workspace_root: &Path,
     work_dir: &Path,
+    stale_receipt: Option<&ProjectRunNodeReceipt>,
     outputs: BTreeMap<String, Vec<u8>>,
 ) -> ProjectRunResult<Vec<ProjectRunOutputReceipt>> {
     let mut receipts = Vec::new();
@@ -573,15 +740,25 @@ fn publish_outputs(
                 ),
             )
         })?;
-        publish_atomic_bytes(workspace_root, work_dir, Path::new(&output.path), bytes).map_err(
-            |error| {
-                ProjectRunError::new(
-                    ProjectRunErrorCode::AtomicPublication,
-                    Some(node.node_id.clone()),
-                    error,
-                )
-            },
-        )?;
+        let stale_output = stale_receipt.and_then(|receipt| {
+            receipt.outputs.iter().find(|candidate| {
+                candidate.output_id == output.output_id && candidate.path == output.path
+            })
+        });
+        publish_atomic_bytes(
+            workspace_root,
+            work_dir,
+            Path::new(&output.path),
+            bytes,
+            stale_output,
+        )
+        .map_err(|error| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::AtomicPublication,
+                Some(node.node_id.clone()),
+                error,
+            )
+        })?;
         receipts.push(ProjectRunOutputReceipt {
             output_id: output.output_id.clone(),
             path: output.path.clone(),
@@ -592,21 +769,63 @@ fn publish_outputs(
     Ok(receipts)
 }
 
+fn ensure_outputs_publishable(
+    node: &ProjectPlanNode,
+    workspace_root: &Path,
+    stale_receipt: Option<&ProjectRunNodeReceipt>,
+) -> ProjectRunResult<()> {
+    for output in &node.outputs {
+        let relative = normalize_relative_path(Path::new(&output.path)).map_err(|message| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::WorkspacePolicy,
+                Some(node.node_id.clone()),
+                message,
+            )
+        })?;
+        let path = workspace_root.join(relative);
+        if !path.exists() {
+            continue;
+        }
+        let Some(stale_output) = stale_receipt.and_then(|receipt| {
+            receipt
+                .outputs
+                .iter()
+                .find(|candidate| candidate.output_id == output.output_id)
+        }) else {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::StaleArtifact,
+                Some(node.node_id.clone()),
+                format!(
+                    "existing artifact {} has no valid prior receipt for recovery",
+                    path.display()
+                ),
+            ));
+        };
+        if stale_output.path != output.path {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::StaleArtifact,
+                Some(node.node_id.clone()),
+                format!(
+                    "existing artifact {} does not match the prior receipt path for {}",
+                    path.display(),
+                    output.output_id
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn publish_atomic_bytes(
     workspace_root: &Path,
     work_dir: &Path,
     relative_output: &Path,
     bytes: &[u8],
+    expected_existing: Option<&ProjectRunOutputReceipt>,
 ) -> Result<(), String> {
     let relative_output = normalize_relative_path(relative_output)
         .map_err(|message| format!("invalid output path: {message}"))?;
     let final_path = workspace_root.join(&relative_output);
-    if final_path.exists() {
-        return Err(format!(
-            "refusing to overwrite existing artifact {}",
-            final_path.display()
-        ));
-    }
     let temp_root = workspace_root
         .join(normalize_relative_path(work_dir)?)
         .join(".tmp");
@@ -630,67 +849,99 @@ fn publish_atomic_bytes(
         digest_bytes(bytes).replace(':', "_")
     );
     let temp_path = temp_root.join(temp_name);
-    let mut file = OpenOptions::new()
+    prepare_atomic_output_temp(&temp_path, bytes)?;
+    finish_atomic_output_publish(&temp_path, &final_path, bytes, expected_existing)
+}
+
+fn prepare_atomic_output_temp(temp_path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let mut file = match OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(&temp_path)
-        .map_err(|error| {
-            format!(
+        .open(temp_path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            let existing = fs::read(temp_path).map_err(|read_error| {
+                format!(
+                    "failed to read existing temp artifact {}: {read_error}",
+                    temp_path.display()
+                )
+            })?;
+            if existing == bytes {
+                return Ok(());
+            }
+            return Err(format!(
+                "refusing to reuse deterministic temp artifact {} because its contents do not match the intended artifact bytes",
+                temp_path.display()
+            ));
+        }
+        Err(error) => {
+            return Err(format!(
                 "failed to create temp artifact {}: {error}",
                 temp_path.display()
-            )
-        })?;
+            ));
+        }
+    };
     file.write_all(bytes).map_err(|error| {
+        let _ = fs::remove_file(temp_path);
         format!(
             "failed to write temp artifact {}: {error}",
             temp_path.display()
         )
     })?;
     file.sync_all().map_err(|error| {
+        let _ = fs::remove_file(temp_path);
         format!(
             "failed to sync temp artifact {}: {error}",
             temp_path.display()
         )
     })?;
-    drop(file);
+    Ok(())
+}
+
+fn finish_atomic_output_publish(
+    temp_path: &Path,
+    final_path: &Path,
+    bytes: &[u8],
+    expected_existing: Option<&ProjectRunOutputReceipt>,
+) -> Result<(), String> {
+    let intended_digest = digest_bytes(bytes);
     if final_path.exists() {
-        return Err(format!(
-            "refusing to publish over concurrently created artifact {}",
-            final_path.display()
-        ));
+        let existing = fs::read(final_path).map_err(|error| {
+            let _ = fs::remove_file(temp_path);
+            format!(
+                "failed to read existing artifact {} before replacement: {error}",
+                final_path.display()
+            )
+        })?;
+        if digest_bytes(&existing) == intended_digest && existing.len() == bytes.len() {
+            let _ = fs::remove_file(temp_path);
+            return Ok(());
+        }
+        let Some(expected) = expected_existing else {
+            let _ = fs::remove_file(temp_path);
+            return Err(format!(
+                "refusing to publish over concurrently created artifact {}",
+                final_path.display()
+            ));
+        };
+        if digest_bytes(&existing) != expected.content_digest
+            || existing.len() as u64 != expected.byte_count
+        {
+            let _ = fs::remove_file(temp_path);
+            return Err(format!(
+                "refusing to replace artifact {} because it no longer matches the recoverable prior receipt",
+                final_path.display()
+            ));
+        }
     }
-    fs::rename(&temp_path, &final_path).map_err(|error| {
+    fs::rename(temp_path, final_path).map_err(|error| {
         format!(
             "failed to atomically publish {} to {}: {error}",
             temp_path.display(),
             final_path.display()
         )
     })
-}
-
-fn ensure_outputs_absent(node: &ProjectPlanNode, workspace_root: &Path) -> ProjectRunResult<()> {
-    for output in &node.outputs {
-        let path = workspace_root.join(normalize_relative_path(Path::new(&output.path)).map_err(
-            |message| {
-                ProjectRunError::new(
-                    ProjectRunErrorCode::WorkspacePolicy,
-                    Some(node.node_id.clone()),
-                    message,
-                )
-            },
-        )?);
-        if path.exists() {
-            return Err(ProjectRunError::new(
-                ProjectRunErrorCode::StaleArtifact,
-                Some(node.node_id.clone()),
-                format!(
-                    "existing artifact {} has no valid current receipt",
-                    path.display()
-                ),
-            ));
-        }
-    }
-    Ok(())
 }
 
 fn outputs_match_receipt(
@@ -717,8 +968,13 @@ fn outputs_match_receipt(
     Ok(true)
 }
 
-fn node_receipt_matches_current(node: &ProjectPlanNode, receipt: &ProjectRunNodeReceipt) -> bool {
+fn node_receipt_matches_current(
+    plan: &ProjectPlan,
+    node: &ProjectPlanNode,
+    receipt: &ProjectRunNodeReceipt,
+) -> bool {
     receipt.schema_version == CANON_PROJECT_RUN_VERSION
+        && receipt.project_id == plan.project_id
         && receipt.node_id == node.node_id
         && receipt.node_cache_key == node.cache.cache_key
         && receipt.outcome == ProjectRunNodeOutcome::Completed
@@ -730,10 +986,28 @@ fn dependencies_match_receipts(
     receipt: &ProjectRunNodeReceipt,
     valid_receipts: &BTreeMap<String, ProjectRunNodeReceipt>,
 ) -> bool {
-    let Ok(expected) = dependency_receipt_hashes(node, valid_receipts) else {
+    let Ok(expected) = dependency_semantic_hashes(node, valid_receipts) else {
         return false;
     };
-    receipt.dependency_receipt_hashes == expected
+    receipt.dependency_semantic_hashes == expected
+}
+
+fn dependency_semantic_hashes(
+    node: &ProjectPlanNode,
+    valid_receipts: &BTreeMap<String, ProjectRunNodeReceipt>,
+) -> ProjectRunResult<BTreeMap<String, String>> {
+    let mut hashes = BTreeMap::new();
+    for dependency in &node.dependencies {
+        let receipt = valid_receipts.get(dependency).ok_or_else(|| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(node.node_id.clone()),
+                format!("dependency {dependency} has no completed receipt"),
+            )
+        })?;
+        hashes.insert(dependency.clone(), receipt.semantic_hash.clone());
+    }
+    Ok(hashes)
 }
 
 fn dependency_receipt_hashes(
@@ -770,15 +1044,20 @@ fn terminal_receipt(
         node_id: node.node_id.clone(),
         node_cache_key: node.cache.cache_key.clone(),
         content_hash_inputs: receipt_hash_inputs(&node.content_hash_inputs),
+        dependency_semantic_hashes: dependency_semantic_hashes(node, valid_receipts)
+            .unwrap_or_default(),
         dependency_receipt_hashes: dependency_receipt_hashes(node, valid_receipts)
             .unwrap_or_default(),
         outputs: Vec::new(),
         outcome,
+        deterministic_usage: BTreeMap::new(),
         duration_millis: 0,
         resource_observations: BTreeMap::new(),
         next_action,
         failure_code: Some(failure_code.to_string()),
         failure_message: Some(failure_message.to_string()),
+        semantic_hash: String::new(),
+        telemetry_hash: String::new(),
         receipt_hash: String::new(),
     })
     .map_err(ProjectRunError::from)
@@ -787,9 +1066,10 @@ fn terminal_receipt(
 fn write_receipt(
     policy: &ProjectRunPolicy,
     receipt: &ProjectRunNodeReceipt,
+    expected_existing: Option<&ProjectRunNodeReceipt>,
 ) -> ProjectRunResult<()> {
     let path = receipt_path(policy, &receipt.node_id)?;
-    write_node_receipt(&path, receipt).map_err(ProjectRunError::from)
+    replace_node_receipt(&path, receipt, expected_existing).map_err(ProjectRunError::from)
 }
 
 fn receipt_path(policy: &ProjectRunPolicy, node_id: &str) -> ProjectRunResult<PathBuf> {
@@ -875,8 +1155,61 @@ fn validate_plan_shape(plan: &ProjectPlan) -> ProjectRunResult<()> {
                 ));
             }
         }
+        let expected_cache_key = project_plan_node_cache_key(node).map_err(|error| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(node.node_id.clone()),
+                format!(
+                    "project plan node cache key could not be validated: {}",
+                    error.message
+                ),
+            )
+        })?;
+        if node.cache.cache_key != expected_cache_key {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(node.node_id.clone()),
+                format!(
+                    "project plan node cache key must bind command, declared side effects, refusal conditions, inputs, outputs, and limits: expected {expected_cache_key}, got {}",
+                    node.cache.cache_key
+                ),
+            ));
+        }
     }
     Ok(())
+}
+
+fn ensure_declared_node_effects_allowed(
+    node: &ProjectPlanNode,
+    policy: &ProjectRunPolicy,
+) -> ProjectRunResult<()> {
+    let extension_policy = ProjectExtensionNodePolicy {
+        allow_network: policy.allow_network,
+        allow_registry_mutation: policy.allow_mutation_gates,
+    };
+    // This validates declared effects before dispatch; it is not a sandbox for executor code.
+    validate_extension_node_effects(node, &extension_policy).map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::WorkspacePolicy,
+            Some(node.node_id.clone()),
+            format!(
+                "declared node effects exceed project run policy: {}",
+                plan_error_details(&error)
+            ),
+        )
+    })
+}
+
+fn plan_error_details(error: &ProjectPlanError) -> String {
+    if error.diagnostics.is_empty() {
+        return error.message.clone();
+    }
+    error
+        .diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.message.as_str())
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 fn finalize_policy(policy: &ProjectRunPolicy) -> ProjectRunResult<ProjectRunPolicy> {

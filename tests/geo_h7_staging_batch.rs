@@ -138,6 +138,39 @@ fn staging_batch_schema_declares_runtime_handoff_shape() {
             ["type"],
         "string"
     );
+    let row_required_sets = schema["$defs"]["staging_row"]["allOf"]
+        .as_array()
+        .expect("payload row required schemas");
+    assert!(
+        row_required_sets.iter().any(|required_schema| {
+            required_schema["then"]["required"]
+                .as_array()
+                .expect("lowercase required array")
+                .iter()
+                .any(|key| key == "accepted_plane_eligible_loans")
+                && required_schema["then"]["required"]
+                    .as_array()
+                    .expect("lowercase required array")
+                    .iter()
+                    .any(|key| key == "total_source_record_payload_utf8_bytes")
+        }),
+        "schema must require runtime denominator and payload byte fields"
+    );
+    assert!(
+        row_required_sets.iter().any(|required_schema| {
+            required_schema["then"]["required"]
+                .as_array()
+                .expect("uppercase required array")
+                .iter()
+                .any(|key| key == "ACCEPTED_PLANE_ELIGIBLE_LOANS")
+                && required_schema["then"]["required"]
+                    .as_array()
+                    .expect("uppercase required array")
+                    .iter()
+                    .any(|key| key == "TOTAL_SOURCE_RECORD_PAYLOAD_UTF8_BYTES")
+        }),
+        "schema must require Snowflake runtime denominator and payload byte fields"
+    );
 
     let instance = serde_json::to_value(staging_batch()).expect("batch serializes");
     let top_props = schema["properties"]
@@ -271,6 +304,55 @@ fn staging_batch_rejects_malformed_derived_payload_shape() {
     let error = h7_population_rows_from_staging_source_record_bytes_batch(&batch)
         .expect_err("duplicate payload keys rejected");
     assert!(error.message.contains("repeats a key"));
+}
+
+#[test]
+fn staging_batch_rejects_missing_required_public_budget() {
+    let mut value = serde_json::to_value(staging_batch()).expect("batch serializes");
+    value
+        .as_object_mut()
+        .expect("batch object")
+        .remove("max_materialized_models");
+
+    let error = serde_json::from_value::<GeoH7StagingSourceRecordBytesBatchRequest>(value)
+        .expect_err("public staging batch budget is required");
+    assert!(error.to_string().contains("max_materialized_models"));
+}
+
+#[test]
+fn staging_batch_rejects_missing_explicit_staging_parcel_ids() {
+    let mut value = serde_json::to_value(staging_batch()).expect("batch serializes");
+    value["staging_rows"][0]["source_records"][0]
+        .as_object_mut()
+        .expect("staging source record object")
+        .remove("parcel_ids");
+
+    let error = serde_json::from_value::<GeoH7StagingSourceRecordBytesBatchRequest>(value)
+        .expect_err("staging source records must carry explicit parcel_ids");
+    assert!(error.to_string().contains("parcel_ids"));
+}
+
+#[test]
+fn staging_batch_rejects_payload_byte_accounting_drift() {
+    let mut batch = staging_batch();
+    batch.staging_rows[0].total_source_record_payload_utf8_bytes = Some(1);
+
+    let error = h7_population_rows_from_staging_source_record_bytes_batch(&batch)
+        .expect_err("payload byte totals must match derived source-record payloads");
+    assert!(error.message.contains("staging count fields disagree"));
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("total_source_record_payload_utf8_bytes")
+    );
+
+    let mut batch = staging_batch();
+    batch.staging_rows[0].max_source_record_payload_base64_chars = Some(1);
+    let error = h7_population_rows_from_staging_source_record_bytes_batch(&batch)
+        .expect_err("payload base64 max length must match derived source-record payloads");
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("max_source_record_payload_base64_chars")
+    );
 }
 
 #[test]
@@ -410,6 +492,7 @@ fn staging_row(
             &[],
         ));
     }
+    let payload_counts = source_record_payload_counts(&source_records);
 
     GeoH7StagingSourceRecordBytesRow {
         row_contract: STAGING_ROW_CONTRACT.to_string(),
@@ -481,10 +564,10 @@ fn staging_row(
             &source_records,
             GeoH7SourceRecordRole::MapplutoCandidate,
         )),
-        min_source_record_payload_utf8_bytes: None,
-        max_source_record_payload_utf8_bytes: None,
-        total_source_record_payload_utf8_bytes: None,
-        max_source_record_payload_base64_chars: None,
+        min_source_record_payload_utf8_bytes: Some(payload_counts.min_utf8_bytes),
+        max_source_record_payload_utf8_bytes: Some(payload_counts.max_utf8_bytes),
+        total_source_record_payload_utf8_bytes: Some(payload_counts.total_utf8_bytes),
+        max_source_record_payload_base64_chars: Some(payload_counts.max_base64_chars),
         candidate_bbl_count: Some(2),
         truth_bbl_count: Some(2),
         reached_truth_bbls: Some(2),
@@ -503,6 +586,41 @@ fn staging_row(
         ),
         accepted_plane_no_candidate_loans: Some(denominator.no_candidate_loans),
         accepted_plane_selected_multi_parcel_loans: Some(denominator.selected_multi_parcel_loans),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SourceRecordPayloadCounts {
+    min_utf8_bytes: u64,
+    max_utf8_bytes: u64,
+    total_utf8_bytes: u64,
+    max_base64_chars: u64,
+}
+
+fn source_record_payload_counts(
+    records: &[GeoH7StagingSourceEvidenceRecord],
+) -> SourceRecordPayloadCounts {
+    let mut min_utf8_bytes: Option<u64> = None;
+    let mut max_utf8_bytes = 0_u64;
+    let mut total_utf8_bytes = 0_u64;
+    let mut max_base64_chars = 0_u64;
+
+    for record in records {
+        let bytes = BASE64_STANDARD
+            .decode(record.source_record_bytes_base64.as_bytes())
+            .expect("canonical payload base64");
+        let utf8_bytes = bytes.len() as u64;
+        min_utf8_bytes = Some(min_utf8_bytes.map_or(utf8_bytes, |current| current.min(utf8_bytes)));
+        max_utf8_bytes = max_utf8_bytes.max(utf8_bytes);
+        total_utf8_bytes += utf8_bytes;
+        max_base64_chars = max_base64_chars.max(record.source_record_bytes_base64.len() as u64);
+    }
+
+    SourceRecordPayloadCounts {
+        min_utf8_bytes: min_utf8_bytes.unwrap_or(0),
+        max_utf8_bytes,
+        total_utf8_bytes,
+        max_base64_chars,
     }
 }
 

@@ -554,6 +554,7 @@ pub fn geo_residual_order_sensitivity_case(pair_count: usize) -> GeoResidualBenc
         measurement_basis: "Classic equality-pair OBDD order-sensitivity control; not a measured Geo incidence claim.".to_string(),
         request: GeoCompositionRequest {
             version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+            profile: Default::default(),
             universe: GeoCompositionUniverse { parcels, buildings },
             hard_constraints,
             soft_preferences: Vec::new(),
@@ -604,6 +605,7 @@ fn geo_residual_star_case(
         measurement_basis: measurement_basis.to_string(),
         request: GeoCompositionRequest {
             version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+            profile: Default::default(),
             universe: GeoCompositionUniverse {
                 parcels: vec![parcel],
                 buildings,

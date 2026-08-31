@@ -1,6 +1,7 @@
 use canon::geo::{
-    CANON_GEO_COMPOSITION_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate,
-    GeoCompositionErrorCode, GeoCompositionModel, GeoCompositionRequest,
+    CANON_GEO_COMPOSITION_PROFILE_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
+    DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate, GeoCompositionErrorCode,
+    GeoCompositionModel, GeoCompositionProfile, GeoCompositionRequest,
     GeoCompositionSearchStrategy, GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel,
     GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind, GeoIdentityRelation, GeoIntegerMeasure,
     GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoSoftPreference, canonical_composition_bytes,
@@ -115,6 +116,7 @@ fn cross_level_same_as_is_rejected_but_typed_containment_is_allowed() {
 fn contradictory_constraints_return_a_deterministic_irreducible_conflict() {
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: vec!["parcel-a".to_string(), "parcel-b".to_string()],
             buildings: Vec::new(),
@@ -155,6 +157,7 @@ fn contradictory_constraints_return_a_deterministic_irreducible_conflict() {
 fn conflict_core_never_blames_a_constraint_from_an_unrelated_component() {
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: vec!["parcel-a".to_string(), "parcel-b".to_string()],
             buildings: Vec::new(),
@@ -214,6 +217,7 @@ fn wide_pruned_conflict_stays_proven_when_minimal_core_analysis_is_not_enumerabl
     }));
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels,
             buildings: Vec::new(),
@@ -242,6 +246,7 @@ fn wide_pruned_conflict_stays_proven_when_minimal_core_analysis_is_not_enumerabl
 fn global_mask_overflow_now_solves_exactly() {
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: (0..10).map(|index| format!("parcel-{index:02}")).collect(),
             buildings: Vec::new(),
@@ -268,6 +273,7 @@ fn global_mask_overflow_now_solves_exactly() {
 fn zero_assignment_budget_refuses_validation() {
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: vec!["parcel-a".to_string()],
             buildings: Vec::new(),
@@ -598,6 +604,7 @@ fn random_constraints(
 fn selected_building_requires_one_of_its_declared_parcels() {
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: vec!["parcel-a".to_string(), "parcel-b".to_string()],
             buildings: vec![GeoBuildingCandidate {
@@ -631,6 +638,230 @@ fn selected_building_requires_one_of_its_declared_parcels() {
 }
 
 #[test]
+fn omitted_profile_defaults_to_parcel_and_still_rejects_empty_parcels() {
+    let request: GeoCompositionRequest = serde_json::from_str(
+        r#"{
+          "version": "canon_geo_composition_request.v0",
+          "universe": {
+            "parcels": [],
+            "buildings": [{"id": "building-a", "parcel_ids": []}]
+          },
+          "hard_constraints": [],
+          "soft_preferences": [],
+          "max_assignments": 8,
+          "max_materialized_models": 8
+        }"#,
+    )
+    .expect("omitted profile should deserialize through the default parcel profile");
+
+    assert_eq!(request.profile, GeoCompositionProfile::parcel());
+    let error = solve_composition(&request).expect_err("default parcel profile requires parcels");
+    assert_eq!(error.code, GeoCompositionErrorCode::InvalidInput);
+    assert_eq!(error.detail["field"], "universe.parcels");
+}
+
+#[test]
+fn unsupported_profile_grains_are_typed_not_generic_invalid_input() {
+    for (selection_level, expected_name) in [
+        (GeoEntityLevel::PoiUnit, "poi_unit"),
+        (GeoEntityLevel::Property, "property"),
+    ] {
+        let request = GeoCompositionRequest {
+            version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+            profile: GeoCompositionProfile {
+                version: CANON_GEO_COMPOSITION_PROFILE_VERSION.to_string(),
+                selection_level,
+            },
+            universe: GeoCompositionUniverse {
+                parcels: vec!["parcel-a".to_string()],
+                buildings: Vec::new(),
+            },
+            hard_constraints: Vec::new(),
+            soft_preferences: Vec::new(),
+            max_assignments: 8,
+            max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+        };
+
+        let error = solve_composition(&request).expect_err("unsupported grain must refuse");
+        assert_eq!(error.code, GeoCompositionErrorCode::UnsupportedGrain);
+        assert_eq!(error.detail["selection_level"], expected_name);
+    }
+}
+
+#[test]
+fn building_profile_refuses_parcel_side_variables_before_count_inflation() {
+    let request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: GeoCompositionProfile::building(),
+        universe: GeoCompositionUniverse {
+            parcels: vec!["parcel-a".to_string(), "parcel-b".to_string()],
+            buildings: vec![GeoBuildingCandidate {
+                id: "building-a".to_string(),
+                parcel_ids: Vec::new(),
+            }],
+        },
+        hard_constraints: vec![GeoHardConstraint {
+            id: "select-building".to_string(),
+            constraint: GeoHardConstraintKind::AllowedSets {
+                level: GeoEntityLevel::Building,
+                sets: vec![vec!["building-a".to_string()]],
+            },
+        }],
+        soft_preferences: Vec::new(),
+        max_assignments: 16,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+
+    let error = solve_composition(&request)
+        .expect_err("nonempty parcel universe must not inflate building-grain counts");
+    assert_eq!(error.code, GeoCompositionErrorCode::UnsupportedGrain);
+    assert_eq!(error.detail["selection_level"], "building");
+    assert_eq!(error.detail["field"], "universe.parcels");
+}
+
+fn building_only_request() -> GeoCompositionRequest {
+    GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: GeoCompositionProfile::building(),
+        universe: GeoCompositionUniverse {
+            parcels: Vec::new(),
+            buildings: vec![
+                GeoBuildingCandidate {
+                    id: "building-c".to_string(),
+                    parcel_ids: Vec::new(),
+                },
+                GeoBuildingCandidate {
+                    id: "building-a".to_string(),
+                    parcel_ids: Vec::new(),
+                },
+                GeoBuildingCandidate {
+                    id: "building-b".to_string(),
+                    parcel_ids: Vec::new(),
+                },
+            ],
+        },
+        hard_constraints: vec![GeoHardConstraint {
+            id: "allowed-building-sets".to_string(),
+            constraint: GeoHardConstraintKind::AllowedSets {
+                level: GeoEntityLevel::Building,
+                sets: vec![
+                    vec!["building-c".to_string(), "building-a".to_string()],
+                    vec!["building-b".to_string()],
+                    vec!["building-a".to_string()],
+                ],
+            },
+        }],
+        soft_preferences: Vec::new(),
+        max_assignments: 16,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    }
+}
+
+#[test]
+fn explicit_building_profile_enumerates_residual_models_without_parcels() {
+    let request = building_only_request();
+    let artifact = solve_composition(&request).expect("building-only profile should solve");
+
+    assert_eq!(artifact.profile, GeoCompositionProfile::building());
+    assert_eq!(artifact.status, GeoCompositionStatus::Ambiguous);
+    assert_eq!(artifact.summary.parcel_candidates, 0);
+    assert_eq!(artifact.summary.building_candidates, 3);
+    assert_eq!(artifact.summary.structurally_feasible_assignments, 7);
+    assert_eq!(artifact.summary.residual_model_count, 3);
+    assert!(artifact.summary.residual_models_materialized);
+    assert!(
+        artifact
+            .residual_models
+            .iter()
+            .all(|model| model.parcels.is_empty())
+    );
+    assert_eq!(
+        artifact
+            .residual_models
+            .iter()
+            .map(|model| model.buildings.clone())
+            .collect::<Vec<_>>(),
+        [
+            vec!["building-a".to_string()],
+            vec!["building-a".to_string(), "building-c".to_string()],
+            vec!["building-b".to_string()]
+        ]
+    );
+    assert!(
+        model_satisfies_request(
+            &request,
+            &GeoCompositionModel {
+                parcels: Vec::new(),
+                buildings: vec!["building-b".to_string()],
+            }
+        )
+        .expect("request should validate")
+    );
+}
+
+#[test]
+fn building_profile_rejects_empty_universe_and_dangling_parcel_references() {
+    let empty_all = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: GeoCompositionProfile::building(),
+        universe: GeoCompositionUniverse {
+            parcels: Vec::new(),
+            buildings: Vec::new(),
+        },
+        hard_constraints: Vec::new(),
+        soft_preferences: Vec::new(),
+        max_assignments: 8,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+    let error = solve_composition(&empty_all).expect_err("empty selected universe must reject");
+    assert_eq!(error.code, GeoCompositionErrorCode::InvalidInput);
+    assert_eq!(error.detail["field"], "universe.buildings");
+
+    let dangling = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: GeoCompositionProfile::building(),
+        universe: GeoCompositionUniverse {
+            parcels: Vec::new(),
+            buildings: vec![GeoBuildingCandidate {
+                id: "building-a".to_string(),
+                parcel_ids: vec!["parcel-missing".to_string()],
+            }],
+        },
+        hard_constraints: Vec::new(),
+        soft_preferences: Vec::new(),
+        max_assignments: 8,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+    let error = solve_composition(&dangling).expect_err("dangling parcel link must reject");
+    assert_eq!(error.code, GeoCompositionErrorCode::InvalidInput);
+    assert_eq!(error.detail["building_id"], "building-a");
+    assert_eq!(error.detail["parcel_id"], "parcel-missing");
+}
+
+#[test]
+fn building_profile_canonical_bytes_and_model_order_are_deterministic() {
+    let request = building_only_request();
+    let mut permuted = request.clone();
+    permuted.universe.buildings.reverse();
+    if let GeoHardConstraintKind::AllowedSets { sets, .. } =
+        &mut permuted.hard_constraints[0].constraint
+    {
+        sets.reverse();
+        for set in sets {
+            set.reverse();
+        }
+    }
+
+    let original = solve_composition(&request).expect("original must solve");
+    let permuted = solve_composition(&permuted).expect("permuted must solve");
+    assert_eq!(original.residual_models, permuted.residual_models);
+    assert_eq!(
+        canonical_composition_bytes(&original).expect("original artifact must serialize"),
+        canonical_composition_bytes(&permuted).expect("permuted artifact must serialize")
+    );
+}
+
+#[test]
 fn factorized_solver_matches_brute_force_oracle_on_random_universes() {
     let mut rng = Lcg(0x5EED_1A12);
     for iteration in 0..300 {
@@ -660,6 +891,7 @@ fn factorized_solver_matches_brute_force_oracle_on_random_universes() {
 
         let request = GeoCompositionRequest {
             version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+            profile: Default::default(),
             universe: GeoCompositionUniverse {
                 parcels: parcels.clone(),
                 buildings: buildings.clone(),
@@ -726,6 +958,7 @@ fn star_universe(star_count: usize) -> GeoCompositionRequest {
         .collect();
     GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse { parcels, buildings },
         hard_constraints: Vec::new(),
         soft_preferences: Vec::new(),
@@ -773,6 +1006,7 @@ fn oversized_component_budget_fallback_is_typed_and_deterministic() {
     let parcels: Vec<String> = (0..12).map(|index| format!("p{index:02}")).collect();
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: parcels.clone(),
             buildings: Vec::new(),
@@ -830,6 +1064,7 @@ fn anyof_fastpath_declines_oversized_mask_work_into_typed_budget_fallback() {
         .collect();
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels,
             buildings: Vec::new(),
@@ -850,6 +1085,7 @@ fn anyof_fastpath_declines_oversized_mask_work_into_typed_budget_fallback() {
 fn anyof_closed_form_respects_the_request_work_limit() {
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: vec!["a".to_string(), "b".to_string()],
             buildings: Vec::new(),
@@ -883,6 +1119,7 @@ fn level_wide_incidence_component_does_not_require_a_quadratic_edge_graph() {
     let candidate_count = 10_000;
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: (0..candidate_count)
                 .map(|index| format!("p{index:05}"))
@@ -934,6 +1171,7 @@ fn bounded_search_completes_when_pruning_collapses_the_tree() {
     });
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels,
             buildings: Vec::new(),
@@ -955,6 +1193,7 @@ fn bounded_search_completes_when_pruning_collapses_the_tree() {
 fn soft_costs_wider_than_u64_never_erase_an_exact_hard_result() {
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: vec!["a".to_string(), "b".to_string()],
             buildings: Vec::new(),
@@ -993,6 +1232,7 @@ fn soft_costs_wider_than_u64_never_erase_an_exact_hard_result() {
 fn membership_predicate_decides_residual_exactness_without_materialization() {
     let base = |max_materialized_models: u64| GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: ["a", "b", "c"].iter().map(|id| id.to_string()).collect(),
             buildings: vec![GeoBuildingCandidate {
@@ -1125,6 +1365,7 @@ fn anyof_only_fastpath_matches_brute_force_oracle() {
 
         let request = GeoCompositionRequest {
             version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+            profile: Default::default(),
             universe: GeoCompositionUniverse {
                 parcels: parcels.clone(),
                 buildings: Vec::new(),
@@ -1167,6 +1408,7 @@ fn anyof_fastpath_backbone_and_conflict_cores_are_exact() {
     let forced = |members: &[&str]| {
         let request = GeoCompositionRequest {
             version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+            profile: Default::default(),
             universe: GeoCompositionUniverse {
                 parcels: ["a", "b", "c"].iter().map(|id| id.to_string()).collect(),
                 buildings: Vec::new(),
@@ -1194,6 +1436,7 @@ fn anyof_fastpath_backbone_and_conflict_cores_are_exact() {
     // Disjoint singletons are unsatisfiable together; the core names both.
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: ["a", "b"].iter().map(|id| id.to_string()).collect(),
             buildings: Vec::new(),
@@ -1224,6 +1467,7 @@ fn anyof_fastpath_backbone_and_conflict_cores_are_exact() {
     // An empty AnyOf set is rejected at normalization, never solved.
     let invalid = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: vec!["a".to_string()],
             buildings: Vec::new(),
@@ -1244,6 +1488,7 @@ fn anyof_fastpath_backbone_and_conflict_cores_are_exact() {
 fn singleton_anyof_request(candidate_count: usize) -> GeoCompositionRequest {
     GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: (0..candidate_count)
                 .map(|index| format!("p{index:03}"))
@@ -1270,6 +1515,7 @@ fn integer_sum_bands_reject_overflowing_selected_sums_without_panicking_or_wrapp
     };
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: vec!["a".to_string(), "b".to_string()],
             buildings: Vec::new(),
@@ -1359,6 +1605,7 @@ fn anyof_can_resolve_all_forced_members_beyond_u128_width() {
         .collect();
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: parcels.clone(),
             buildings: Vec::new(),
@@ -1399,6 +1646,7 @@ fn saturated_component_products_never_turn_satisfiable_models_into_conflicts() {
         .collect();
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse { parcels, buildings },
         hard_constraints: (0..candidate_count)
             .map(|index| GeoHardConstraint {
@@ -1443,6 +1691,7 @@ fn saturated_component_products_never_turn_satisfiable_models_into_conflicts() {
 fn wide_cardinality_request(max_assignments: u64) -> GeoCompositionRequest {
     GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: (0..129).map(|index| format!("p{index:03}")).collect(),
             buildings: Vec::new(),

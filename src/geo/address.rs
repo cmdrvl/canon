@@ -35,7 +35,7 @@ pub enum GeoNycBorough {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GeoAddressJurisdiction {
     /// NYC PAD/SND semantics. `borough: None` is deliberately ambiguous: the
     /// Queens hyphenate rule is jurisdictional, so callers must name a borough.
@@ -64,6 +64,7 @@ impl GeoAddressJurisdiction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoAddressParseRequest {
     pub version: String,
     pub input: String,
@@ -72,6 +73,7 @@ pub struct GeoAddressParseRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoAddressGrammarRef {
     pub id: String,
     pub version: String,
@@ -96,12 +98,14 @@ pub enum GeoAddressPlaceholderKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoAddressPlaceholder {
     pub kind: GeoAddressPlaceholderKind,
     pub token: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoAddressParseForest {
     pub version: String,
     pub request_version: String,
@@ -114,6 +118,7 @@ pub struct GeoAddressParseForest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoAddressCandidate {
     pub reading_id: String,
     pub canonical_key: String,
@@ -155,7 +160,7 @@ pub enum GeoAddressRangeOperator {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GeoAddressHouseNumber {
     Discrete {
         value: u32,
@@ -299,13 +304,14 @@ pub enum GeoStreetSuffix {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GeoStreetNameToken {
     Literal { value: String },
     Ordinal { value: u16 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoAddressStreet {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pre_direction: Option<GeoStreetDirection>,
@@ -399,6 +405,7 @@ impl GeoAddressStreet {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoPadAddressSet {
     pub version: String,
     pub jurisdiction: GeoAddressJurisdiction,
@@ -406,6 +413,7 @@ pub struct GeoPadAddressSet {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoPadAddressMember {
     pub member_id: String,
     pub lot_id: String,
@@ -440,6 +448,7 @@ impl GeoPadAddressMember {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoPadMembershipEvaluation {
     pub version: String,
     pub parse_forest_version: String,
@@ -451,6 +460,7 @@ pub struct GeoPadMembershipEvaluation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoPadCandidateEvaluation {
     pub candidate_key: String,
     pub candidate: GeoAddressCandidate,
@@ -502,6 +512,7 @@ pub enum GeoAddressErrorCode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoAddressError {
     pub code: GeoAddressErrorCode,
     pub message: String,
@@ -805,10 +816,15 @@ fn parse_segment(
             house_terms.push(parse_house_token(&tokens[cursor], borough)?);
             cursor += 1;
             let separator_start = cursor;
+            let mut consumed_separator = false;
             while cursor < tokens.len() && is_group_separator(&tokens[cursor]) {
+                consumed_separator = true;
                 cursor += 1;
             }
-            if cursor < tokens.len() && looks_like_house_token(&tokens[cursor]) {
+            if consumed_separator
+                && cursor < tokens.len()
+                && looks_like_house_token(&tokens[cursor])
+            {
                 saw_house_separator = true;
                 continue;
             }
@@ -1440,7 +1456,7 @@ fn canonical_annotations(mut annotations: Vec<GeoAddressAnnotation>) -> Vec<GeoA
 
 fn infer_range_parity(start: u32, end: u32) -> GeoAddressParity {
     if start % 2 == end % 2 {
-        if start % 2 == 0 {
+        if start.is_multiple_of(2) {
             GeoAddressParity::Even
         } else {
             GeoAddressParity::Odd
@@ -1453,7 +1469,7 @@ fn infer_range_parity(start: u32, end: u32) -> GeoAddressParity {
 fn parity_accepts(parity: GeoAddressParity, value: u32) -> bool {
     match parity {
         GeoAddressParity::Any => true,
-        GeoAddressParity::Even => value % 2 == 0,
+        GeoAddressParity::Even => value.is_multiple_of(2),
         GeoAddressParity::Odd => value % 2 == 1,
     }
 }

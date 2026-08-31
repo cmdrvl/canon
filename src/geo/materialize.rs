@@ -11,7 +11,7 @@
 use super::{
     composition::{
         DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate, GeoCompositionModel,
-        GeoCompositionUniverse,
+        GeoCompositionProfile, GeoCompositionUniverse, GeoEntityLevel,
     },
     evaluation::{
         CANON_GEO_POPULATION_REQUEST_VERSION, GeoLabeledCompositionCase,
@@ -70,6 +70,7 @@ const CANON_GEO_H7_DERIVED_SOURCE_RECORD_CLASS: &str = "derived_immutable_eviden
 
 /// One row at the parcel-candidate grain.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoWarehouseParcelRow {
     pub parcel_id: String,
 }
@@ -80,6 +81,7 @@ pub struct GeoWarehouseParcelRow {
 /// no containment candidate was admitted. It may not be mixed with incidence
 /// rows for the same building.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoWarehouseBuildingParcelRow {
     pub building_id: String,
     pub parcel_id: Option<String>,
@@ -92,6 +94,7 @@ pub struct GeoWarehouseBuildingParcelRow {
 /// grouped as provenance for one observation rather than counted as separate
 /// evidence constraints.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoWarehouseEvidenceRow {
     pub observation_id: String,
     pub contract_id: String,
@@ -102,8 +105,10 @@ pub struct GeoWarehouseEvidenceRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoWarehouseRowsRequest {
     pub version: String,
+    pub profile: GeoCompositionProfile,
     pub parcel_rows: Vec<GeoWarehouseParcelRow>,
     #[serde(default)]
     pub building_parcel_rows: Vec<GeoWarehouseBuildingParcelRow>,
@@ -262,7 +267,6 @@ pub struct GeoH7StagingEvidenceRecordRef {
 #[serde(deny_unknown_fields)]
 pub struct GeoH7StagingSourceEvidenceRecord {
     pub role: GeoH7SourceRecordRole,
-    #[serde(default)]
     pub parcel_ids: Vec<String>,
     pub source_record: GeoH7StagingEvidenceRecordRef,
     pub source_record_bytes_base64: String,
@@ -415,7 +419,6 @@ pub struct GeoH7StagingSourceRecordBytesBatchRequest {
     pub staging_rows: Vec<GeoH7StagingSourceRecordBytesRow>,
     pub max_cases: usize,
     pub max_assignments: u64,
-    #[serde(default = "default_max_materialized_models")]
     pub max_materialized_models: u64,
 }
 
@@ -916,6 +919,53 @@ struct PendingObservation {
     source_records: BTreeMap<String, GeoEvidenceRecordRef>,
 }
 
+fn canonicalize_warehouse_observation_kind(
+    observation: &GeoRhoObservationKind,
+) -> GeoRhoObservationKind {
+    match observation {
+        GeoRhoObservationKind::ExactSets { level, sets } => {
+            let mut sets = sets.clone();
+            for set in &mut sets {
+                set.sort();
+            }
+            sets.sort();
+            GeoRhoObservationKind::ExactSets {
+                level: *level,
+                sets,
+            }
+        }
+        GeoRhoObservationKind::ExistentialMembership { members } => {
+            let mut members = members.clone();
+            members.sort();
+            GeoRhoObservationKind::ExistentialMembership { members }
+        }
+        GeoRhoObservationKind::IntegerSumBand {
+            level,
+            measure,
+            values,
+            min,
+            max,
+        } => {
+            let mut values = values.clone();
+            values.sort();
+            GeoRhoObservationKind::IntegerSumBand {
+                level: *level,
+                measure: measure.clone(),
+                values,
+                min: *min,
+                max: *max,
+            }
+        }
+        GeoRhoObservationKind::PreferMember {
+            member,
+            cost_if_absent,
+        } => GeoRhoObservationKind::PreferMember {
+            member: member.clone(),
+            cost_if_absent: *cost_if_absent,
+        },
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct GeoH7AcceptedLoanTruthKey {
     document_id: String,
@@ -953,6 +1003,21 @@ pub fn materialize_warehouse_rows(
         ));
     }
 
+    let building_profile = rows.profile.selection_level == GeoEntityLevel::Building;
+    if building_profile && !rows.parcel_rows.is_empty() {
+        return Err(GeoMaterializationError::invalid(
+            "Building-profile warehouse rows must not declare parcel candidates",
+            [
+                ("selection_level", "building"),
+                ("field", "parcel_rows"),
+                (
+                    "reason",
+                    "parcel side variables would inflate building-grain counts",
+                ),
+            ],
+        ));
+    }
+
     let mut parcels = BTreeSet::new();
     for row in &rows.parcel_rows {
         if !parcels.insert(row.parcel_id.clone()) {
@@ -966,6 +1031,21 @@ pub fn materialize_warehouse_rows(
     let mut seen_building_rows = BTreeSet::new();
     let mut building_candidates: BTreeMap<String, (bool, BTreeSet<String>)> = BTreeMap::new();
     for row in &rows.building_parcel_rows {
+        if building_profile && row.parcel_id.is_some() {
+            return Err(GeoMaterializationError::invalid(
+                "Building-profile warehouse rows must not declare parcel incidences",
+                [
+                    ("selection_level", "building"),
+                    ("field", "building_parcel_rows.parcel_id"),
+                    ("building_id", row.building_id.as_str()),
+                    ("parcel_id", row.parcel_id.as_deref().unwrap_or("null")),
+                    (
+                        "reason",
+                        "mixed parcel/building projection would inflate building-grain counts",
+                    ),
+                ],
+            ));
+        }
         if !seen_building_rows.insert((row.building_id.clone(), row.parcel_id.clone())) {
             return Err(GeoMaterializationError::invalid(
                 "Geo warehouse building/parcel rows repeat the declared grain",
@@ -1002,17 +1082,18 @@ pub fn materialize_warehouse_rows(
 
     let mut pending: BTreeMap<String, PendingObservation> = BTreeMap::new();
     for row in &rows.evidence_rows {
+        let observation = canonicalize_warehouse_observation_kind(&row.observation);
         let entry = pending
             .entry(row.observation_id.clone())
             .or_insert_with(|| PendingObservation {
                 contract_id: row.contract_id.clone(),
                 valid_time: row.valid_time,
-                observation: row.observation.clone(),
+                observation: observation.clone(),
                 source_records: BTreeMap::new(),
             });
         if entry.contract_id != row.contract_id
             || entry.valid_time != row.valid_time
-            || entry.observation != row.observation
+            || entry.observation != observation
         {
             return Err(GeoMaterializationError::invalid(
                 "Rows for one Geo observation disagree on typed semantics",
@@ -1055,6 +1136,7 @@ pub fn materialize_warehouse_rows(
     contracts.sort_by(|left, right| left.id.cmp(&right.id));
     let request = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: rows.profile.clone(),
         universe: GeoCompositionUniverse {
             parcels: parcels.into_iter().collect(),
             buildings,
@@ -1311,6 +1393,7 @@ pub fn materialize_h7_population_rows(
             id: case.subject_id.clone(),
             evidence: GeoEvidenceCompilationRequest {
                 version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+                profile: Default::default(),
                 universe: GeoCompositionUniverse {
                     parcels: case.candidate_parcels.clone(),
                     buildings: Vec::new(),
@@ -2292,48 +2375,7 @@ fn h7_staging_source_payload_pairs(
     record_index: usize,
     record: &GeoH7StagingSourceEvidenceRecord,
 ) -> Result<BTreeMap<String, String>, GeoMaterializationError> {
-    let bytes = BASE64_STANDARD
-        .decode(record.source_record_bytes_base64.as_bytes())
-        .map_err(|error| {
-            h7_invalid(
-                "Geo H.7 staging source_record_bytes_base64 is not canonical base64",
-                [
-                    ("row_index", row_index.to_string()),
-                    ("record_index", record_index.to_string()),
-                    (
-                        "source_record_id",
-                        record.source_record.source_record_id.clone(),
-                    ),
-                    ("reason", error.to_string()),
-                ],
-            )
-        })?;
-    if BASE64_STANDARD.encode(&bytes) != record.source_record_bytes_base64 {
-        return Err(h7_invalid(
-            "Geo H.7 staging source_record_bytes_base64 is not in canonical padded form",
-            [
-                ("row_index", row_index.to_string()),
-                ("record_index", record_index.to_string()),
-                (
-                    "source_record_id",
-                    record.source_record.source_record_id.clone(),
-                ),
-            ],
-        ));
-    }
-    if bytes.is_empty() {
-        return Err(h7_invalid(
-            "Geo H.7 staging source_record_bytes_base64 decodes to an empty derived payload",
-            [
-                ("row_index", row_index.to_string()),
-                ("record_index", record_index.to_string()),
-                (
-                    "source_record_id",
-                    record.source_record.source_record_id.clone(),
-                ),
-            ],
-        ));
-    }
+    let bytes = h7_staging_source_payload_bytes(row_index, record_index, record)?;
     let text = std::str::from_utf8(&bytes).map_err(|error| {
         h7_invalid(
             "Geo H.7 staging derived source-record payload is not UTF-8 JSON",
@@ -2453,6 +2495,116 @@ fn h7_staging_source_payload_pairs(
         }
     }
     Ok(fields)
+}
+
+fn h7_staging_source_payload_bytes(
+    row_index: usize,
+    record_index: usize,
+    record: &GeoH7StagingSourceEvidenceRecord,
+) -> Result<Vec<u8>, GeoMaterializationError> {
+    let bytes = BASE64_STANDARD
+        .decode(record.source_record_bytes_base64.as_bytes())
+        .map_err(|error| {
+            h7_invalid(
+                "Geo H.7 staging source_record_bytes_base64 is not canonical base64",
+                [
+                    ("row_index", row_index.to_string()),
+                    ("record_index", record_index.to_string()),
+                    (
+                        "source_record_id",
+                        record.source_record.source_record_id.clone(),
+                    ),
+                    ("reason", error.to_string()),
+                ],
+            )
+        })?;
+    if BASE64_STANDARD.encode(&bytes) != record.source_record_bytes_base64 {
+        return Err(h7_invalid(
+            "Geo H.7 staging source_record_bytes_base64 is not in canonical padded form",
+            [
+                ("row_index", row_index.to_string()),
+                ("record_index", record_index.to_string()),
+                (
+                    "source_record_id",
+                    record.source_record.source_record_id.clone(),
+                ),
+            ],
+        ));
+    }
+    if bytes.is_empty() {
+        return Err(h7_invalid(
+            "Geo H.7 staging source_record_bytes_base64 decodes to an empty derived payload",
+            [
+                ("row_index", row_index.to_string()),
+                ("record_index", record_index.to_string()),
+                (
+                    "source_record_id",
+                    record.source_record.source_record_id.clone(),
+                ),
+            ],
+        ));
+    }
+    Ok(bytes)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GeoH7StagingPayloadWireCounts {
+    min_utf8_bytes: u64,
+    max_utf8_bytes: u64,
+    total_utf8_bytes: u64,
+    max_base64_chars: u64,
+}
+
+fn h7_staging_payload_wire_counts(
+    row_index: usize,
+    records: &[GeoH7StagingSourceEvidenceRecord],
+) -> Result<GeoH7StagingPayloadWireCounts, GeoMaterializationError> {
+    if records.is_empty() {
+        return Err(h7_invalid(
+            "Geo H.7 staging source_records must be nonempty for payload byte accounting",
+            [("row_index", row_index.to_string())],
+        ));
+    }
+
+    let mut min_utf8_bytes: Option<u64> = None;
+    let mut max_utf8_bytes = 0_u64;
+    let mut total_utf8_bytes = 0_u64;
+    let mut max_base64_chars = 0_u64;
+
+    for (record_index, record) in records.iter().enumerate() {
+        let bytes = h7_staging_source_payload_bytes(row_index, record_index, record)?;
+        std::str::from_utf8(&bytes).map_err(|error| {
+            h7_invalid(
+                "Geo H.7 staging derived source-record payload is not UTF-8 JSON",
+                [
+                    ("row_index", row_index.to_string()),
+                    ("record_index", record_index.to_string()),
+                    (
+                        "source_record_id",
+                        record.source_record.source_record_id.clone(),
+                    ),
+                    ("reason", error.to_string()),
+                ],
+            )
+        })?;
+        let utf8_bytes =
+            u64::try_from(bytes.len()).map_err(|_| h7_overflow("source_record_payload_bytes"))?;
+        min_utf8_bytes = Some(min_utf8_bytes.map_or(utf8_bytes, |current| current.min(utf8_bytes)));
+        max_utf8_bytes = max_utf8_bytes.max(utf8_bytes);
+        total_utf8_bytes = total_utf8_bytes
+            .checked_add(utf8_bytes)
+            .ok_or_else(|| h7_overflow("total_source_record_payload_utf8_bytes"))?;
+        let base64_chars = u64::try_from(record.source_record_bytes_base64.len())
+            .map_err(|_| h7_overflow("source_record_payload_base64_chars"))?;
+        max_base64_chars = max_base64_chars.max(base64_chars);
+    }
+
+    Ok(GeoH7StagingPayloadWireCounts {
+        min_utf8_bytes: min_utf8_bytes.unwrap_or(0),
+        max_utf8_bytes,
+        total_utf8_bytes,
+        max_base64_chars,
+    })
 }
 
 fn require_h7_staging_payload_value(
@@ -2663,6 +2815,9 @@ fn validate_h7_staging_row_counts(
     row: &GeoH7StagingSourceRecordBytesRow,
     population_row: &GeoH7PopulationWarehouseRow,
 ) -> Result<(), GeoMaterializationError> {
+    let staging_source_records =
+        required_h7_staging_field(row_index, "source_records", &row.source_records)?;
+    let payload_counts = h7_staging_payload_wire_counts(row_index, &staging_source_records)?;
     require_h7_staging_count(
         row_index,
         "source_record_count",
@@ -2739,6 +2894,30 @@ fn validate_h7_staging_row_counts(
         *role_counts
             .get(&GeoH7SourceRecordRole::MapplutoCandidate)
             .unwrap_or(&0),
+    )?;
+    require_h7_staging_count(
+        row_index,
+        "min_source_record_payload_utf8_bytes",
+        row.min_source_record_payload_utf8_bytes,
+        payload_counts.min_utf8_bytes,
+    )?;
+    require_h7_staging_count(
+        row_index,
+        "max_source_record_payload_utf8_bytes",
+        row.max_source_record_payload_utf8_bytes,
+        payload_counts.max_utf8_bytes,
+    )?;
+    require_h7_staging_count(
+        row_index,
+        "total_source_record_payload_utf8_bytes",
+        row.total_source_record_payload_utf8_bytes,
+        payload_counts.total_utf8_bytes,
+    )?;
+    require_h7_staging_count(
+        row_index,
+        "max_source_record_payload_base64_chars",
+        row.max_source_record_payload_base64_chars,
+        payload_counts.max_base64_chars,
     )?;
     Ok(())
 }
@@ -3064,6 +3243,7 @@ fn materialize_h7_case(
     );
     let evidence_request = GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: candidate_parcels.clone(),
             buildings: Vec::new(),

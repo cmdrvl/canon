@@ -1,9 +1,10 @@
 # PLAN_CANON_GEO — The Tile as a Compiled Constraint Object
 
 > Status: **proposed full architecture with a partial E4 walking skeleton implemented**.
-> The typed evidence compiler, exact parcel/building residual kernel, incidence
-> factorization, bounded fallback, population evaluator, and offline warehouse-row
-> materializer exist. Deterministic H3 center-plus-halo work-unit materialization and
+> The typed evidence compiler, exact parcel/building residual kernel, explicit
+> parcel-default/building selection profiles, incidence factorization, bounded fallback,
+> population evaluator, and profile-aware offline warehouse-row materializer exist.
+> Deterministic H3 center-plus-halo work-unit materialization and
 > cross-boundary ownership reconciliation now exist over explicit upstream home-cell
 > assignments; controlled-halo candidate reach is positive in six NYC r8 strata and the
 > stress-selected logical r9 child of each stratum. Parcel/footprint majority-incidence
@@ -49,10 +50,10 @@ The controlling state entering the main review is:
 | Topic | Current controlling state | Authority |
 |---|---|---|
 | Product boundary | Core Canon remains exact registry replay; GEO is a build-time workbench. | `AGENTS.md`, `README.md`; binding boundary |
-| Agent operating model | The target surface is question + regional inventory + resolution profile + deterministic budget -> plan -> immutable run revisions -> typed answer/explanation/next action. Leaf Geo commands remain the only implemented surface today; `capabilities`, `plan`, `run`, and `inspect` are proposed, not shipped. Source instances belong in adapters/inventories, never core branches. | `CANON_GEO_AGENT_ARCHITECTURE.md`; normative target, control plane `OPEN` |
-| Shared project substrate | Library-level `canon.project.plan.v1` and `canon.project.run.v1` already provide manifest/lock DAGs, receipts, resume, invalidation, lifecycle, and workspace policy, but current CLI exposes only project init/validate/describe and the planner is cluster/link-shaped. Geo must extend this substrate rather than create a second scheduler. Current node receipt identity includes runtime duration/resource telemetry, so semantic-vs-observational hashing must be repaired before Geo depends on it. | `src/project/{manifest,lock,plan,run,receipt,lifecycle,workspace}.rs`; reusable library substrate `PARTIAL`, agent-safe Geo integration `OPEN` |
+| Agent operating model | The target surface is question + regional inventory + resolution profile + deterministic budget -> plan -> immutable run revisions -> typed answer/explanation/next action. Leaf Geo commands remain the implemented surface today, and `canon geo capabilities --emit json` is shipped as an offline/read-only capability artifact. `geo plan`, `geo run`, and `geo inspect` remain proposed/unavailable. Source instances belong in adapters/inventories, never core branches. | `CANON_GEO_AGENT_ARCHITECTURE.md`; normative target, control plane `OPEN` |
+| Shared project substrate | Library-level `canon.project.plan.v1` and `canon.project.run.v2` provide manifest/lock DAGs, receipts, resume, invalidation, lifecycle, and workspace policy. The project CLI now exposes lock refresh and pure planning; public project run validates/reuses v2 receipts and refuses pending nodes until typed executors are registered. Geo must extend this substrate rather than create a second scheduler. | `src/project/{manifest,lock,plan,run,receipt,lifecycle,workspace}.rs`; reusable library substrate `PARTIAL`, agent-safe Geo integration `OPEN` |
 | N-source row composition | `canon geo link-sources` now materializes three or more named local CSV sources through the existing entity multisource kernel. Geo requires exactly one target, at least one bounded reference, permits peers, refuses a globally canonical vendor role, defaults to the complete comparison graph, enforces per-pair budgets, emits anchor-conflict abstentions, and content-hashes every input and the merged rows. The semantic artifact hash excludes publication paths and is compatible with `EntityArtifactReference`; source count remains provenance rather than evidence weight. This is row composition, not spatial candidate reach, constraint admission, or solving. | `src/geo/multisource.rs`, `src/entity/multisource.rs`, `canon_geo_multisource_request.v0`, `canon_entity_multisource_link.v1`; implemented build-time workbench contract |
-| Offline row bridge | `canon geo materialize-evidence` deterministically groups release-pinned parcel, building/parcel-incidence, rho-contract, and immutable source-record rows into `canon_geo_evidence_request.v0`; duplicate grains and conflicting observation rows refuse, and the production evidence compiler validates the result. It performs no acquisition, and source-record multiplicity remains provenance rather than constraint weight. | `src/geo/materialize.rs`, `canon_geo_warehouse_rows.v0`; implemented build-time workbench contract |
+| Offline row bridge | `canon geo materialize-evidence` deterministically groups release-pinned profile-permitted parcel/building rows, parcel incidence where declared, rho-contract, and immutable source-record rows into `canon_geo_evidence_request.v0`; duplicate grains and conflicting observation rows refuse, and the production evidence compiler validates the result. The backward-compatible default parcel profile still requires parcel candidates; explicit building profile permits an empty parcel universe, rejects parcel rows/incidences, and preserves building-only evidence. It performs no acquisition, and source-record multiplicity remains provenance rather than constraint weight. | `src/geo/materialize.rs`, `canon_geo_warehouse_rows.v0`; implemented build-time workbench contract |
 | Measurement receipt integrity | The companion `canon_geo_measurements` binary emits a deterministic offline plan or checks supplied result artifacts and receipts against the pinned B/C/D/F manifest. It recomputes local source-SQL bytes, normalized executed-query-text bytes, artifact bytes, an unordered canonical result-set digest, row-derived denominators, and declared sanity fields. A successful row is only `receipt_consistent`: the operator-supplied proof class is reported separately, and the runner does not attest live execution, query-history provenance, or source authenticity. | `src/bin/canon_geo_measurements.rs`, `scripts/geo_measurements/manifest.json`; offline integrity contract `IMPLEMENTED`, live provenance `OPEN` |
 | Tile work and boundary ownership | `canon geo materialize-home-cells` derives release-bound h3o cells from fixed-decimal WGS84 representative points, retains geometry/transform bindings, nine-point coordinate-envelope probes, the minimum probe-covering halo, and claimed-cell parity; it refuses temporal snapshot/method/transform mixing under one source name. The geometry digest is validated as a binding but cannot be recomputed because this artifact intentionally omits geometry bytes. `canon geo tile-work` materializes one budgeted H3 center-plus-halo work unit; `canon geo reconcile-tiles` validates the exact work unit supplied to each local solver, records a work-unit digest receipt, emits one owned decision per canonical member set, and refuses missing owners, halo-only decisions, unavailable members, and differing payload digests for the same members. H3 supplies blocking and ownership only, never geometric truth. Fresh v3 rows expose complete centroids but null source-plane H3 fields, correctly requiring this derived sibling. D.11 finds positive k1 reach in six r8 strata and one deliberately dense r9 child per stratum, with explicit Canon neighbor disks. It does not establish citywide recall, global h3o parity, client-layer coverage, or solver-payload interpretation. | `src/geo/tile.rs`, `canon_geo_home_cell_*.v0`, `canon_geo_tile_work_*.v0`, `canon_geo_tile_reconciliation*.v0`; executable assignment/ownership contract `IMPLEMENTED`, stratified bounded reach `MEASURED`, generalization `OPEN` |
 | Decision object | Entity-grain backbone and residual count with explicit scope and exactness; typed fallback when either is incomplete. Ledger keys are alias projections. | §§9, 10.2, 16.1; Appendix L.5 |
@@ -62,7 +63,7 @@ The controlling state entering the main review is:
 | Work-unit cost | The 200-feature, 0.5 s/tile, and 140 CPU-hour national figures are not supported. D.11 measures two-source r9+k1 work units of 378–4,670 nodes. F.6's raw three-plane work units are 596–7,015 nodes at r9, while predicate-incidence maxima are 5–118. This supports component-wise solving but also proves that raw source rows must not be mistaken for latent-building variables; compilation, source reconciliation, FEMA, and client-layer costs remain unbenchmarked. | Appendices B, C, D.11, F.6, G; original figures `FALSIFIED`, replacement runtime model `OPEN` |
 | Address evidence | PAD materially repairs address representation and restores street-absence refutation, but is evidence rather than an oracle. | Appendix M; `MEASURED` on NYC PAD 26B |
 | Evaluation ladder | E1–E3 are complete. E4 has an exact factorized residual solver over admitted evidence (bd-2kjx.1–.3); the E4 population numbers and the E5 non-NYC evidence-tier curve remain the decisive gates. | §17 and Appendix L; E4/E5 `OPEN` |
-| E5 geography preflight | Franklin County, Ohio (`39049`) is a measured candidate, not a completed E5 run. The pinned collateral build supplies 151 geocoded properties / 202 loans / 152 multi-property loans across 114 r8 centers. Their 585 distinct center+k1 work cells have nonzero pinned FEMA structures, Microsoft footprints, Overture addresses, and Overture buildings. No non-NYC county parcel layer was found in the live warehouse inventory, so parcel-grain candidate reach, E1–E4 replay, precision, and the evidence-tier curve remain unmeasured. The other layers remain a valid future minimal-stack case; they are not made useless by the parcel absence. Current composition v0 still requires at least one parcel candidate, so building/site/address-only exact operation is an explicit implementation gap under `bd-2cbs`, not a shipped genericity claim. The applicable FEMA Ohio partition is dated 2023-05-02 even though a 2025-06-06 partition exists elsewhere; E5 must pin vintages per geography. | `e5_franklin_county_thin_tier_readiness.sql`, query `01c6c151-0821-a0dc-006c-c703088daaba`; bounded source availability `MEASURED`, parcel-free exact solve and E5 `OPEN` |
+| E5 geography preflight | Franklin County, Ohio (`39049`) is a measured candidate, not a completed E5 run. The pinned collateral build supplies 151 geocoded properties / 202 loans / 152 multi-property loans across 114 r8 centers. Their 585 distinct center+k1 work cells have nonzero pinned FEMA structures, Microsoft footprints, Overture addresses, and Overture buildings. No non-NYC county parcel layer was found in the live warehouse inventory, so parcel-grain candidate reach, E1–E4 replay, precision, and the evidence-tier curve remain unmeasured; no parcel-grain answer may be claimed without a parcel source. The other layers remain a valid future minimal-stack case, and explicit building composition/materialization now permits their parcel-free building universe without consulting the legacy parcel oracle. Franklin row-grain export/source reconciliation and actual E5 coverage/precision remain open. The applicable FEMA Ohio partition is dated 2023-05-02 even though a 2025-06-06 partition exists elsewhere; E5 must pin vintages per geography. | `e5_franklin_county_thin_tier_readiness.sql`, query `01c6c151-0821-a0dc-006c-c703088daaba`; bounded source availability `MEASURED`, parcel-free building solve `IMPLEMENTED`, E5 `OPEN` |
 | Time semantics | Evidence admissions preserve whole-day valid-time intervals, and v0 deliberately keeps every time-scoped observation diagnostic because composition has no query-as-of domain. Allen/STP inference is not implemented. | §§3, 7, 16.3; compiler contract implemented, temporal solver `OPEN` |
 | Current precision claim | The 96–98% entity-grain answered-point estimate is provisional and truth-instrument-limited; Appendix M indicates residual contamination. | Appendices L.6 and M.5; `MEASURED`, not a release claim |
 
@@ -121,18 +122,20 @@ reconciliation confluence, and truth quality remain different gates.
 The target control surface is deliberately small:
 
 ```text
-canon geo capabilities
+canon geo capabilities --emit json
 canon geo plan --question ... --inventory ... --profile ... --budget ...
 canon geo run --plan ... --work-dir ... [--satisfy REQUEST_ID=RECEIPT.json]...
 canon geo inspect --run ... [--compare ...] [--recommend-next]
 ```
 
-These commands are **OPEN design targets**, not current CLI claims. Existing leaf commands
-remain independently callable and machine-described. Composite execution stays offline;
-missing network inputs become typed discovery/acquisition requests rather than hidden
-provider calls. External executors may use Reveal catalog discovery, Snowflake, S3, or
-future services, but Canon validates one protocol-neutral receipt carrying release,
-bounded subset, pagination state, query/request id, denominators, digests, and proof class.
+The first command is shipped as an offline/read-only leaf that emits
+`canon_geo_capabilities.v0`; `geo plan`, `geo run`, and `geo inspect` remain **OPEN
+design targets**, not current CLI claims. Existing leaf commands remain independently
+callable and machine-described. Composite execution stays offline; missing network inputs
+become typed discovery/acquisition requests rather than hidden provider calls. External
+executors may use Reveal catalog discovery, Snowflake, S3, or future services, but Canon
+validates one protocol-neutral receipt carrying release, bounded subset, pagination state,
+query/request id, denominators, digests, and proof class.
 
 ---
 
@@ -886,9 +889,11 @@ not vendors and not a mandatory parcel source.
 The current proving-ground adapter supplies one CMBS property record—its address string(s)
 (possibly multi-address, ranges, a/k/a), geocode(s) with accuracy tier, asserted attributes
 (SF, units, year built from Annex A / the loan documents), and loan identity for document
-evidence. Current composition v0 produces parcel/building answers and still requires a
-non-empty parcel candidate universe; that is an implementation limit owned by `bd-2cbs`,
-not the generic query contract.
+evidence. Current composition v0 has explicit `canon_geo_composition_profile.v0` selection
+levels: omitted/default `parcel` preserves the non-empty parcel universe requirement, and
+explicit `building` permits an empty parcel universe while enumerating building-level
+residuals without consulting a legacy parcel oracle. It does not create a parcel-grain
+answer without a parcel source.
 
 For the current CMBS profile, output is the **collateral parcel set** `Coll` and **building
 set** `QB`, delivered in the
@@ -911,10 +916,12 @@ not erase a supported building/site result.
 
 Candidates are never proposed by a channel (§2: there is no proposer). The generic
 candidate universe is every profile-permitted entity in the bounded tile/halo, separated
-by entity level and relation type. Current composition v0 instantiates this as all parcels
-in the work unit plus building/parcel incidences. Geometry may add typed compatibility
-constraints inside a declared stratum; the solver then decomposes the actual
-variable/constraint incidence graph rather than assuming a forest from geometry alone.
+by entity level and relation type. Under the default parcel profile, current composition v0
+instantiates this as all parcels in the work unit plus building/parcel incidences. Under
+explicit building selection, it uses the declared building universe directly and permits no
+parcel side variables. Geometry may add typed compatibility constraints inside a declared
+stratum; the solver then decomposes the actual variable/constraint incidence graph rather
+than assuming a forest from geometry alone.
 For the current CMBS profile, `Coll` candidates are subsets of component parcels, pruned by
 hard constraints—the knapsack over asserted SF, adjacency, ownership-permits (never
 forbids), and document-asserted BBL sets. Enumerate within components (measured sizes: 2–5
@@ -1002,9 +1009,10 @@ coverage/precision plane:
   still lacks a non-NYC county parcel layer, so the parcel-grain E1–E4 comparison
   cannot yet be repeated and no coverage/precision point exists. Franklin remains
   useful as the future minimal-stack case: missing parcels must suppress parcel
-  answers, not discard its building/address/observation evidence. That behavior is
-  not shipped yet—composition v0 still requires at least one parcel candidate, and
-  `bd-2cbs` owns the generic entity-universe/profile boundary. FEMA is pinned to the
+  answers, not discard its building/address/observation evidence. That behavior now
+  ships for explicit building selection in composition/materialization, but Franklin
+  still needs row-grain export/source reconciliation before any actual E5 run, and
+  the coverage/precision curve remains unmeasured. FEMA is pinned to the
   Ohio-applicable 2023-05-02 partition rather than silently inheriting the unrelated
   global 2025-06-06 date.
 
@@ -2276,8 +2284,9 @@ better or that it should replace tile ownership.
 One accepted subject has zero containing parcels and therefore zero block
 candidates. H.7 now keeps such a release row and its `reach=none` denominator
 instead of refusing the empirical result, but excludes it from the exact
-solver population; the composition kernel still requires a nonempty candidate
-universe. A precursor query
+default parcel-profile solver population; parcel-grain composition still
+requires a nonempty parcel candidate universe. The explicit building profile
+removes the old parcel-oracle dependency only for building-grain questions. A precursor query
 `01c6c11b-0821-a6c8-006c-c703088db796` is discarded because candidate-row
 multiplication reported the impossible 75 reached truth edges out of 73. The
 corrected query uses distinct truth membership plus an explicit reached≤truth

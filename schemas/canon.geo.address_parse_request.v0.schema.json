@@ -1,0 +1,63 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.address_parse_request.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.address_parse_request.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_address_parse_request.v0",
+      "type": "string"
+    },
+    "input": {
+      "type": "string"
+    },
+    "jurisdiction": {
+      "$ref": "#/$defs/address_jurisdiction"
+    }
+  },
+  "required": [
+    "version",
+    "input"
+  ],
+  "$defs": {
+    "nyc_borough": {
+      "type": "string",
+      "enum": [
+        "bronx",
+        "brooklyn",
+        "manhattan",
+        "queens",
+        "staten_island"
+      ]
+    },
+    "address_jurisdiction": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "nyc",
+              "type": "string"
+            },
+            "borough": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/nyc_borough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "borough"
+          ]
+        }
+      ]
+    }
+  }
+}

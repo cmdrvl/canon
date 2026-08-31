@@ -17,6 +17,7 @@ use std::{
 
 pub const CANON_GEO_COMPOSITION_REQUEST_VERSION: &str = "canon_geo_composition_request.v0";
 pub const CANON_GEO_COMPOSITION_VERSION: &str = "canon_geo_composition.v0";
+pub const CANON_GEO_COMPOSITION_PROFILE_VERSION: &str = "canon_geo_composition_profile.v0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -88,6 +89,34 @@ pub struct GeoBuildingCandidate {
 pub struct GeoCompositionUniverse {
     pub parcels: Vec<String>,
     pub buildings: Vec<GeoBuildingCandidate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoCompositionProfile {
+    pub version: String,
+    pub selection_level: GeoEntityLevel,
+}
+
+impl GeoCompositionProfile {
+    pub fn parcel() -> Self {
+        Self {
+            version: CANON_GEO_COMPOSITION_PROFILE_VERSION.to_string(),
+            selection_level: GeoEntityLevel::Parcel,
+        }
+    }
+
+    pub fn building() -> Self {
+        Self {
+            version: CANON_GEO_COMPOSITION_PROFILE_VERSION.to_string(),
+            selection_level: GeoEntityLevel::Building,
+        }
+    }
+}
+
+impl Default for GeoCompositionProfile {
+    fn default() -> Self {
+        Self::parcel()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,6 +202,8 @@ pub struct GeoSoftPreference {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoCompositionRequest {
     pub version: String,
+    #[serde(default)]
+    pub profile: GeoCompositionProfile,
     pub universe: GeoCompositionUniverse,
     #[serde(default)]
     pub hard_constraints: Vec<GeoHardConstraint>,
@@ -370,6 +401,8 @@ pub struct GeoCompositionSummary {
 pub struct GeoCompositionArtifact {
     pub version: String,
     pub request_version: String,
+    #[serde(default)]
+    pub profile: GeoCompositionProfile,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence_compilation: Option<GeoEvidenceCompilationReference>,
     pub status: GeoCompositionStatus,
@@ -398,6 +431,7 @@ pub struct GeoCompositionArtifact {
 #[serde(rename_all = "snake_case")]
 pub enum GeoCompositionErrorCode {
     UnsupportedVersion,
+    UnsupportedGrain,
     InvalidInput,
     BudgetExceeded,
     ArithmeticOverflow,
@@ -433,6 +467,13 @@ impl GeoCompositionError {
         Self::new(GeoCompositionErrorCode::InvalidInput, message, detail)
     }
 
+    fn unsupported_grain(
+        message: impl Into<String>,
+        detail: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+    ) -> Self {
+        Self::new(GeoCompositionErrorCode::UnsupportedGrain, message, detail)
+    }
+
     fn overflow(context: &str) -> Self {
         Self::new(
             GeoCompositionErrorCode::ArithmeticOverflow,
@@ -452,12 +493,23 @@ impl Error for GeoCompositionError {}
 
 struct NormalizedRequest {
     request_version: String,
+    profile: GeoCompositionProfile,
     parcels: Vec<String>,
     buildings: Vec<GeoBuildingCandidate>,
     hard_constraints: Vec<GeoHardConstraint>,
     soft_preferences: Vec<GeoSoftPreference>,
     max_assignments: u64,
     max_materialized_models: u64,
+}
+
+impl NormalizedRequest {
+    fn model_has_selection(&self, model: &GeoCompositionModel) -> bool {
+        match self.profile.selection_level {
+            GeoEntityLevel::Parcel => !model.parcels.is_empty(),
+            GeoEntityLevel::Building => !model.buildings.is_empty(),
+            GeoEntityLevel::PoiUnit | GeoEntityLevel::Property => false,
+        }
+    }
 }
 
 /// Solve the exact hard-feasible parcel/building residual.
@@ -470,7 +522,7 @@ struct NormalizedRequest {
 /// deterministic depth-first search with partial-feasibility pruning, and
 /// budget exhaustion there produces a typed `BudgetFallback` handoff instead
 /// of a guess. The combined residual is the constrained product of component
-/// solutions minus the all-empty-parcel combinations; it is materialized into
+/// solutions minus the combinations empty at the selected level; it is materialized into
 /// `residual_models` only when it fits `max_materialized_models`. Count
 /// exactness and backbone completeness are explicit; a budget fallback never
 /// manufactures either view.
@@ -483,10 +535,10 @@ pub fn solve_composition(
 }
 
 /// Test one concrete model against the normalized request contract without
-/// enumerating the residual: universe membership, at-least-one-parcel, the
-/// structural containment rule, and every hard constraint must hold. Because
-/// the residual is exactly the set of such models, this decides residual
-/// membership directly and stays exact whether or not the residual was
+/// enumerating the residual: universe membership, at least one selected-level
+/// member, the structural containment rule, and every hard constraint must
+/// hold. Because the residual is exactly the set of such models, this decides
+/// residual membership directly and stays exact whether or not the residual was
 /// materialized.
 pub fn model_satisfies_request(
     request: &GeoCompositionRequest,
@@ -501,7 +553,7 @@ pub fn model_satisfies_request(
 }
 
 fn structural_model_holds(request: &NormalizedRequest, model: &GeoCompositionModel) -> bool {
-    if model.parcels.is_empty()
+    if !request.model_has_selection(model)
         || !is_sorted_distinct(&model.parcels)
         || !is_sorted_distinct(&model.buildings)
     {
@@ -729,7 +781,8 @@ impl<'a> FactorizedSolver<'a> {
 
     /// Precondition guard for the AnyOf-only fast path.
     fn is_anyof_only(&self) -> bool {
-        self.request.buildings.is_empty()
+        self.request.profile.selection_level == GeoEntityLevel::Parcel
+            && self.request.buildings.is_empty()
             && !self.request.hard_constraints.is_empty()
             && self.request.hard_constraints.iter().all(|constraint| {
                 matches!(constraint.constraint, GeoHardConstraintKind::AnyOf { .. })
@@ -874,6 +927,7 @@ impl<'a> FactorizedSolver<'a> {
         Ok(Some(GeoCompositionArtifact {
             version: CANON_GEO_COMPOSITION_VERSION.to_string(),
             request_version: self.request.request_version.clone(),
+            profile: self.request.profile.clone(),
             evidence_compilation: None,
             status: if residual_count.is_exactly(1) {
                 GeoCompositionStatus::Resolved
@@ -928,7 +982,7 @@ impl<'a> FactorizedSolver<'a> {
                 continue;
             }
             solution.structural_count += 1;
-            if ctx.mask_has_parcel(mask) {
+            if ctx.mask_has_selection(mask) {
                 solution.structural_positive += 1;
             } else {
                 solution.structural_empty += 1;
@@ -1109,6 +1163,7 @@ impl<'a> FactorizedSolver<'a> {
         Ok(Some(GeoCompositionArtifact {
             version: CANON_GEO_COMPOSITION_VERSION.to_string(),
             request_version: self.request.request_version.clone(),
+            profile: self.request.profile.clone(),
             evidence_compilation: None,
             status: GeoCompositionStatus::BudgetFallback,
             summary: self.summary(components, 0, false, 0)?,
@@ -1279,6 +1334,7 @@ impl<'a> FactorizedSolver<'a> {
         Ok(GeoCompositionArtifact {
             version: CANON_GEO_COMPOSITION_VERSION.to_string(),
             request_version: self.request.request_version.clone(),
+            profile: self.request.profile.clone(),
             evidence_compilation: None,
             status: if residual.is_exactly(1) {
                 GeoCompositionStatus::Resolved
@@ -1328,7 +1384,7 @@ impl<'a> FactorizedSolver<'a> {
         let mut cursor = vec![0_usize; components.len()];
         let mut models = Vec::with_capacity(residual_total);
         loop {
-            let mut any_parcel = false;
+            let mut any_selection = false;
             let mut parcels = Vec::new();
             let mut buildings = Vec::new();
             for (component_id, context) in contexts.iter().enumerate() {
@@ -1337,12 +1393,12 @@ impl<'a> FactorizedSolver<'a> {
                     .as_deref()
                     .expect("materialize requires retained masks");
                 let mask = masks[cursor[component_id]];
-                if context.mask_has_parcel(mask) {
-                    any_parcel = true;
+                if context.mask_has_selection(mask) {
+                    any_selection = true;
                 }
                 context.append_selection(mask, &mut parcels, &mut buildings);
             }
-            if any_parcel {
+            if any_selection {
                 parcels.sort();
                 buildings.sort();
                 models.push(GeoCompositionModel { parcels, buildings });
@@ -1364,7 +1420,7 @@ impl<'a> FactorizedSolver<'a> {
     }
 
     /// Explain an empty combined residual with per-component minimal cores:
-    /// whole-component infeasibility, or incapability of selecting any parcel.
+    /// whole-component infeasibility, or incapability of selecting the requested level.
     fn conflict_artifact(
         &self,
         components: &[Vec<usize>],
@@ -1391,6 +1447,7 @@ impl<'a> FactorizedSolver<'a> {
         Ok(GeoCompositionArtifact {
             version: CANON_GEO_COMPOSITION_VERSION.to_string(),
             request_version: self.request.request_version.clone(),
+            profile: self.request.profile.clone(),
             evidence_compilation: None,
             status: GeoCompositionStatus::Conflict,
             summary: GeoCompositionSummary {
@@ -1423,7 +1480,7 @@ impl<'a> FactorizedSolver<'a> {
     /// QuickXplain-style linear core reduction over one component's
     /// enumerable structural space. With `whole_infeasible` the subproblem is
     /// the plain component; otherwise it is the positivity subproblem that
-    /// asks whether the component can select at least one parcel.
+    /// asks whether the component can select at least one requested-level member.
     fn component_conflict_core(
         &self,
         members: &[usize],
@@ -1445,7 +1502,7 @@ impl<'a> FactorizedSolver<'a> {
             if !ctx.structurally_valid(mask) {
                 continue;
             }
-            if require_positive && !ctx.mask_has_parcel(mask) {
+            if require_positive && !ctx.mask_has_selection(mask) {
                 continue;
             }
             structural.push(ctx.model_from_mask(mask));
@@ -1469,7 +1526,7 @@ impl<'a> FactorizedSolver<'a> {
                         model,
                         &self.request.hard_constraints[*constraint_index].constraint,
                     )
-                }) && (!require_positive || !model.parcels.is_empty())
+                }) && (!require_positive || self.request.model_has_selection(model))
             });
             if !feasible {
                 core = candidate;
@@ -1703,8 +1760,8 @@ impl ComponentSolution {
 
     fn record_selection(&mut self, selection: &[bool], context: &ComponentContext<'_>) {
         self.count += 1;
-        let has_parcel = context.selection_has_parcel(selection);
-        if has_parcel {
+        let has_selection = context.selection_has_selection(selection);
+        if has_selection {
             self.positive_count += 1;
         } else {
             self.empty_count += 1;
@@ -1712,12 +1769,12 @@ impl ComponentSolution {
         for (slot, selected) in selection.iter().copied().enumerate() {
             if selected {
                 self.seen_selected[slot] = true;
-                if has_parcel {
+                if has_selection {
                     self.positive_seen_selected[slot] = true;
                 }
             } else {
                 self.seen_absent[slot] = true;
-                if has_parcel {
+                if has_selection {
                     self.positive_seen_absent[slot] = true;
                 }
             }
@@ -1731,8 +1788,8 @@ struct ComponentContext<'a> {
     solver: &'a FactorizedSolver<'a>,
     /// Global variable indices, ascending.
     members: Vec<usize>,
-    /// Local slots holding parcel variables.
-    parcel_slots: Vec<usize>,
+    /// Local slots holding variables at the profile's selected level.
+    selection_slots: Vec<usize>,
     /// `(local slot, request.buildings offset)` for building variables.
     building_slots: Vec<(usize, usize)>,
     /// Global variable index to local slot; `usize::MAX` outside the
@@ -1746,21 +1803,28 @@ impl<'a> ComponentContext<'a> {
         members: &[usize],
     ) -> Result<Self, GeoCompositionError> {
         let mut slot_of_global = vec![usize::MAX; solver.total_variables];
-        let mut parcel_slots = Vec::new();
+        let mut selection_slots = Vec::new();
         let mut building_slots = Vec::new();
         for (slot, variable) in members.iter().enumerate() {
             slot_of_global[*variable] = slot;
-            match solver.var_level(*variable) {
-                VarLevel::Parcel => parcel_slots.push(slot),
-                VarLevel::Building => {
+            let level = solver.entity_level(*variable);
+            if level == solver.request.profile.selection_level {
+                selection_slots.push(slot);
+            }
+            match level {
+                GeoEntityLevel::Parcel => {}
+                GeoEntityLevel::Building => {
                     building_slots.push((slot, *variable - solver.request.parcels.len()))
                 }
+                GeoEntityLevel::PoiUnit | GeoEntityLevel::Property => unreachable!(
+                    "composition variables are only created for parcel and building levels"
+                ),
             }
         }
         Ok(Self {
             solver,
             members: members.to_vec(),
-            parcel_slots,
+            selection_slots,
             building_slots,
             slot_of_global,
         })
@@ -1776,14 +1840,14 @@ impl<'a> ComponentContext<'a> {
         (slot != usize::MAX).then_some(slot)
     }
 
-    fn mask_has_parcel(&self, mask: u128) -> bool {
-        self.parcel_slots
+    fn mask_has_selection(&self, mask: u128) -> bool {
+        self.selection_slots
             .iter()
             .any(|slot| mask & (1_u128 << slot) != 0)
     }
 
-    fn selection_has_parcel(&self, selection: &[bool]) -> bool {
-        self.parcel_slots.iter().any(|slot| selection[*slot])
+    fn selection_has_selection(&self, selection: &[bool]) -> bool {
+        self.selection_slots.iter().any(|slot| selection[*slot])
     }
 
     /// Structural containment rule: a selected building with declared
@@ -1902,8 +1966,8 @@ impl<'a, 'b> DfsSearch<'a, 'b> {
             return;
         }
         self.solution.structural_count += 1;
-        let has_parcel = self.ctx.selection_has_parcel(&self.values);
-        if has_parcel {
+        let has_selection = self.ctx.selection_has_selection(&self.values);
+        if has_selection {
             self.solution.structural_positive += 1;
         } else {
             self.solution.structural_empty += 1;
@@ -2071,6 +2135,7 @@ pub fn canonicalize_composition_request(
     let normalized = normalize_request(request)?;
     Ok(GeoCompositionRequest {
         version: normalized.request_version,
+        profile: normalized.profile,
         universe: GeoCompositionUniverse {
             parcels: normalized.parcels,
             buildings: normalized.buildings,
@@ -2101,12 +2166,26 @@ fn normalize_request(
             [("field", "max_assignments")],
         ));
     }
+    let profile = normalize_profile(&request.profile)?;
     let mut parcels = request.universe.parcels.clone();
     validate_and_sort_ids("universe.parcels", &mut parcels)?;
-    if parcels.is_empty() {
+    if profile.selection_level == GeoEntityLevel::Parcel && parcels.is_empty() {
         return Err(GeoCompositionError::invalid_input(
             "Geo composition requires at least one parcel candidate",
             [("field", "universe.parcels")],
+        ));
+    }
+    if profile.selection_level == GeoEntityLevel::Building && !parcels.is_empty() {
+        return Err(GeoCompositionError::unsupported_grain(
+            "Building-profile composition does not yet support parcel side variables",
+            [
+                ("selection_level", level_name(profile.selection_level)),
+                ("field", "universe.parcels"),
+                (
+                    "reason",
+                    "projected building-grain counting is not implemented",
+                ),
+            ],
         ));
     }
     let parcel_set = parcels.iter().cloned().collect::<BTreeSet<_>>();
@@ -2136,6 +2215,12 @@ fn normalize_request(
         .iter()
         .map(|building| building.id.clone())
         .collect::<BTreeSet<_>>();
+    if profile.selection_level == GeoEntityLevel::Building && buildings.is_empty() {
+        return Err(GeoCompositionError::invalid_input(
+            "Geo composition requires at least one selected-level candidate",
+            [("field", "universe.buildings")],
+        ));
+    }
 
     let mut hard_constraints = request.hard_constraints.clone();
     for constraint in &mut hard_constraints {
@@ -2165,6 +2250,7 @@ fn normalize_request(
 
     Ok(NormalizedRequest {
         request_version: request.version.clone(),
+        profile,
         parcels,
         buildings,
         hard_constraints,
@@ -2172,6 +2258,30 @@ fn normalize_request(
         max_assignments: request.max_assignments,
         max_materialized_models: request.max_materialized_models,
     })
+}
+
+fn normalize_profile(
+    profile: &GeoCompositionProfile,
+) -> Result<GeoCompositionProfile, GeoCompositionError> {
+    if profile.version != CANON_GEO_COMPOSITION_PROFILE_VERSION {
+        return Err(GeoCompositionError::new(
+            GeoCompositionErrorCode::UnsupportedVersion,
+            "Unsupported Geo composition profile version",
+            [
+                ("actual", profile.version.as_str()),
+                ("expected", CANON_GEO_COMPOSITION_PROFILE_VERSION),
+            ],
+        ));
+    }
+    match profile.selection_level {
+        GeoEntityLevel::Parcel | GeoEntityLevel::Building => Ok(profile.clone()),
+        GeoEntityLevel::PoiUnit | GeoEntityLevel::Property => {
+            Err(GeoCompositionError::unsupported_grain(
+                "Geo composition profiles support only parcel or building selection levels",
+                [("selection_level", level_name(profile.selection_level))],
+            ))
+        }
+    }
 }
 
 fn normalize_constraint(

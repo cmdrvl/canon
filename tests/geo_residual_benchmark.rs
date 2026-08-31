@@ -239,6 +239,7 @@ fn duplicate_case_ids_and_order_names_are_rejected() {
 fn obdd_membership_rejects_noncanonical_unknown_or_duplicate_models() {
     let request = GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels: vec!["p0".to_string(), "p1".to_string()],
             buildings: Vec::new(),
@@ -287,6 +288,7 @@ fn answer_set_materialization_allows_exact_count_equal_to_cap() {
             .to_string(),
         request: GeoCompositionRequest {
             version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+            profile: Default::default(),
             universe: GeoCompositionUniverse {
                 parcels: vec!["p0".to_string()],
                 buildings: vec![GeoBuildingCandidate {
@@ -336,6 +338,7 @@ fn terminal_root_reports_fixed_terminal_overhead_separately() {
             .to_string(),
         request: GeoCompositionRequest {
             version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+            profile: Default::default(),
             universe: GeoCompositionUniverse {
                 parcels: vec!["p0".to_string()],
                 buildings: Vec::new(),

@@ -89,6 +89,10 @@ canon package pull --registry <OCI_BASE_URL> --repository <REPOSITORY> --cache <
 canon project init <DIR> [--project-id <ID>] [--mapping-profile <REF>] [--emit json|summary]
 canon project validate <DIR> [--manifest <PATH>] [--emit json|summary]
 canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]
+canon project lock refresh --manifest <MANIFEST> --out <LOCK> [--emit json|summary]
+canon project plan --manifest <MANIFEST> --lock <LOCK> [--out <PLAN>] [--cache-hit <NODE>...] [--emit json|summary]
+canon project run [--plan <PLAN>] [--manifest <MANIFEST>] [--lock <LOCK>] [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json|summary]
+canon geo capabilities [--emit json]
 canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>
 canon geo materialize-home-cells --rows <ROWS.json>
 canon geo tile-work --request <REQUEST.json>
@@ -148,6 +152,12 @@ canon entity explain <RESULT.json> --row <ROW_ID>|--surface-id <SURFACE_ID>|--ca
 canon entity profile list [--emit json|summary]
 canon entity profile init <PROFILE> --output <PATH>
 ```
+
+Project `run` is currently a public validation/resume surface only. It validates
+`canon.project.plan.v1`, checks declared side-effect policy, and reuses existing
+fully validated `canon.project.run.v2` receipts and output bytes. Pending nodes
+refuse with an actionable executor-registration handoff because no public typed
+project node executor is registered in this surface.
 
 Arguments:
 - `<INPUT>`: CSV or JSONL file with IDs to canonicalize. Format is detected by file extension: `.csv` and `.tsv` are parsed as CSV; `.jsonl` and `.ndjson` are parsed as JSONL. Files with unrecognized or missing extensions are REFUSAL (`E_PARSE`). Use `-` for stdin (JSONL only; CSV requires seekable input for delimiter detection).

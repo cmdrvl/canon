@@ -187,6 +187,7 @@ fn base_request(case: &PopulationCase) -> GeoCompositionRequest {
     preferences.dedup();
     GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
         universe: GeoCompositionUniverse {
             parcels,
             buildings: Vec::new(),

@@ -185,6 +185,14 @@ pub struct GeoCli {
     pub command: GeoSubcommand,
 }
 
+/// Emit mode for Geo capability inspection
+#[derive(Debug, Clone, ValueEnum, Default)]
+pub enum GeoCapabilitiesEmitMode {
+    /// Structured canon_geo_capabilities.v0 JSON
+    #[default]
+    Json,
+}
+
 #[derive(Args, Debug, Clone)]
 pub struct InboxCli {
     #[command(subcommand)]
@@ -215,10 +223,30 @@ pub enum ProjectSubcommand {
     Validate(ProjectValidateCli),
     /// Describe project capabilities, state flags, side effects, and next commands
     Describe(ProjectDescribeCli),
+    /// Manage project lock artifacts
+    Lock(ProjectLockCli),
+    /// Compile a validated project plan from a manifest and lock
+    Plan(ProjectPlanCli),
+    /// Validate a project plan, reuse existing v2 receipts, and refuse pending nodes
+    Run(ProjectRunCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ProjectLockCli {
+    #[command(subcommand)]
+    pub command: ProjectLockSubcommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum ProjectLockSubcommand {
+    /// Refresh a project lock from current manifest and declared local source bytes
+    Refresh(ProjectLockRefreshCli),
 }
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum GeoSubcommand {
+    /// Emit compiled offline Canon Geo capability contracts
+    Capabilities(GeoCapabilitiesCli),
     /// Materialize three or more named sources into one budgeted consistency artifact
     #[command(name = "link-sources")]
     LinkSources(GeoLinkSourcesCli),
@@ -253,6 +281,13 @@ pub enum GeoSubcommand {
     CompileEvidence(GeoCompileEvidenceCli),
     /// Evaluate labeled composition cases without leaking labels into the solver
     Evaluate(GeoEvaluateCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoCapabilitiesCli {
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: GeoCapabilitiesEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -605,6 +640,87 @@ pub struct ProjectDescribeCli {
     /// Manifest path, relative to the project directory unless absolute
     #[arg(long, default_value = "canon.project.toml")]
     pub manifest: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: ProjectEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ProjectLockRefreshCli {
+    /// Project manifest path to lock
+    #[arg(long)]
+    pub manifest: PathBuf,
+
+    /// Lock artifact output path
+    #[arg(long)]
+    pub out: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: ProjectEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ProjectPlanCli {
+    /// Project manifest path
+    #[arg(long)]
+    pub manifest: PathBuf,
+
+    /// Project lock artifact path
+    #[arg(long)]
+    pub lock: PathBuf,
+
+    /// Optional plan artifact output path
+    #[arg(long)]
+    pub out: Option<PathBuf>,
+
+    /// Node id whose existing cache entry should be treated as a hit
+    #[arg(long = "cache-hit")]
+    pub cache_hits: Vec<String>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: ProjectEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ProjectRunCli {
+    /// Project plan artifact path for reuse-only validation
+    #[arg(long)]
+    pub plan: Option<PathBuf>,
+
+    /// Project manifest path used when compiling a plan inline for reuse-only validation
+    #[arg(long)]
+    pub manifest: Option<PathBuf>,
+
+    /// Project lock artifact path used when compiling a plan inline for reuse-only validation
+    #[arg(long)]
+    pub lock: Option<PathBuf>,
+
+    /// Node id to inspect/reuse, including its dependencies; pending nodes still refuse
+    #[arg(long = "node")]
+    pub nodes: Vec<String>,
+
+    /// Workspace root containing existing v2 receipts and declared relative outputs
+    #[arg(long, default_value = ".")]
+    pub workspace: PathBuf,
+
+    /// Work directory under the workspace containing v2 receipts
+    #[arg(long = "work-dir", default_value = "work")]
+    pub work_dir: PathBuf,
+
+    /// Recorded policy ceiling for reuse-only reports; does not enable execution
+    #[arg(long = "max-parallelism", default_value_t = 1)]
+    pub max_parallelism: usize,
+
+    /// Permit validation of declared network effects; does not enable execution
+    #[arg(long = "allow-network")]
+    pub allow_network: bool,
+
+    /// Permit validation of declared mutation gates; does not enable execution
+    #[arg(long = "allow-mutation-gates")]
+    pub allow_mutation_gates: bool,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]

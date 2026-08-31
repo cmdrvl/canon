@@ -8,6 +8,7 @@
 pub mod address;
 pub mod cli;
 pub mod composition;
+pub mod control;
 pub mod evaluation;
 pub mod evidence;
 pub mod geometry;
@@ -19,6 +20,7 @@ pub mod tile;
 
 pub use address::*;
 pub use composition::*;
+pub use control::*;
 pub use evaluation::*;
 pub use evidence::*;
 pub use geometry::*;

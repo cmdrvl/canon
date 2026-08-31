@@ -100,7 +100,7 @@ pub fn evaluate_project_lifecycle(
 
     let mut completed_receipts = Vec::new();
     let mut mutation_previews = Vec::new();
-    let mut next_commands = BTreeMap::new();
+    let next_commands = BTreeMap::new();
     let mut blockers = Vec::new();
 
     if let Some(run) = &request.run_receipt {
@@ -111,26 +111,16 @@ pub fn evaluate_project_lifecycle(
     }
 
     let state = if !evidence_is_ready(&request) {
-        blockers.push(ProjectLifecycleBlocker::new(
+        blockers.push(ProjectLifecycleBlocker::without_next_command(
             ProjectLifecycleBlockerCode::EvidenceNotReady,
             "project evidence nodes have not all completed successfully",
-            "canon project run --plan <PLAN>",
         ));
-        next_commands.insert(
-            "run".to_string(),
-            "canon project run --plan <PLAN>".to_string(),
-        );
         ProjectLifecycleState::Planned
     } else if request.review.is_none() {
-        blockers.push(ProjectLifecycleBlocker::new(
+        blockers.push(ProjectLifecycleBlocker::without_next_command(
             ProjectLifecycleBlockerCode::ReviewNotExported,
             "evidence is ready but no bound review bundle has been exported",
-            "canon project review export --plan <PLAN> --run <RUN>",
         ));
-        next_commands.insert(
-            "review".to_string(),
-            "canon project review export --plan <PLAN> --run <RUN>".to_string(),
-        );
         ProjectLifecycleState::EvidenceReady
     } else {
         let review = request.review.as_ref().expect("review checked");
@@ -140,47 +130,31 @@ pub fn evaluate_project_lifecycle(
         ));
 
         if review.pending_decisions > 0 {
-            blockers.push(ProjectLifecycleBlocker::new(
+            blockers.push(ProjectLifecycleBlocker::without_next_command(
                 ProjectLifecycleBlockerCode::ReviewPending,
                 format!(
                     "{} review decisions remain pending",
                     review.pending_decisions
                 ),
-                "canon project review import --plan <PLAN> --review <REVIEW>",
             ));
-            next_commands.insert(
-                "review".to_string(),
-                "canon project review import --plan <PLAN> --review <REVIEW>".to_string(),
-            );
             ProjectLifecycleState::ReviewRequired
         } else if review.accepted_decisions == 0 {
-            blockers.push(ProjectLifecycleBlocker::new(
+            blockers.push(ProjectLifecycleBlocker::without_next_command(
                 ProjectLifecycleBlockerCode::ReviewRejected,
                 "review contains no accepted decisions to promote",
-                "canon project review export --plan <PLAN> --include review",
             ));
-            next_commands.insert(
-                "review".to_string(),
-                "canon project review export --plan <PLAN> --include review".to_string(),
-            );
             ProjectLifecycleState::ReviewRequired
         } else if request.audit.is_none() {
-            blockers.push(ProjectLifecycleBlocker::new(
+            blockers.push(ProjectLifecycleBlocker::without_next_command(
                 ProjectLifecycleBlockerCode::AuditMissing,
                 "accepted review decisions need an audit receipt before promotion",
-                "canon project audit --plan <PLAN> --review <REVIEW>",
             ));
-            next_commands.insert(
-                "audit".to_string(),
-                "canon project audit --plan <PLAN> --review <REVIEW>".to_string(),
-            );
             ProjectLifecycleState::ReviewRequired
         } else {
             audited_state(
                 request,
                 &mut completed_receipts,
                 &mut mutation_previews,
-                &mut next_commands,
                 &mut blockers,
             )?
         }
@@ -202,7 +176,6 @@ fn audited_state(
     request: ProjectLifecycleRequest,
     completed_receipts: &mut Vec<ProjectCompletedReceipt>,
     mutation_previews: &mut Vec<ProjectMutationPreview>,
-    next_commands: &mut BTreeMap<String, String>,
     blockers: &mut Vec<ProjectLifecycleBlocker>,
 ) -> ProjectStateResult<ProjectLifecycleState> {
     let audit = request.audit.as_ref().expect("audit checked");
@@ -211,28 +184,18 @@ fn audited_state(
         audit.receipt_id.clone(),
     ));
     if !audit.passed {
-        blockers.push(ProjectLifecycleBlocker::new(
+        blockers.push(ProjectLifecycleBlocker::without_next_command(
             ProjectLifecycleBlockerCode::AuditRejected,
             "audit receipt rejected the reviewed decisions",
-            "canon project review export --plan <PLAN> --include rejected",
         ));
-        next_commands.insert(
-            "review".to_string(),
-            "canon project review export --plan <PLAN> --include rejected".to_string(),
-        );
         return Ok(ProjectLifecycleState::Audited);
     }
 
     let Some(promotion) = request.promotion.as_ref() else {
-        blockers.push(ProjectLifecycleBlocker::new(
+        blockers.push(ProjectLifecycleBlocker::without_next_command(
             ProjectLifecycleBlockerCode::PromotionPreviewMissing,
             "audit passed but no mutation preview has been produced",
-            "canon project promote --plan <PLAN> --dry-run",
         ));
-        next_commands.insert(
-            "promote_preview".to_string(),
-            "canon project promote --plan <PLAN> --dry-run".to_string(),
-        );
         return Ok(ProjectLifecycleState::Audited);
     };
 
@@ -242,15 +205,10 @@ fn audited_state(
             promotion.receipt_id.clone(),
         ));
         mutation_previews.push(promotion.mutation_preview.clone());
-        blockers.push(ProjectLifecycleBlocker::new(
+        blockers.push(ProjectLifecycleBlocker::without_next_command(
             ProjectLifecycleBlockerCode::PromotionApprovalRequired,
             "promotion is promotable but still requires explicit execution",
-            promotion.mutation_preview.command.clone(),
         ));
-        next_commands.insert(
-            "promote".to_string(),
-            promotion.mutation_preview.command.clone(),
-        );
         return Ok(ProjectLifecycleState::Promotable);
     }
 
@@ -260,15 +218,10 @@ fn audited_state(
     ));
 
     let Some(replay) = request.replay.as_ref() else {
-        blockers.push(ProjectLifecycleBlocker::new(
+        blockers.push(ProjectLifecycleBlocker::without_next_command(
             ProjectLifecycleBlockerCode::ReplayMissing,
             "promoted registry has not been replay-verified",
-            "canon project apply --plan <PLAN> --registry <PROMOTED_REGISTRY>",
         ));
-        next_commands.insert(
-            "apply".to_string(),
-            "canon project apply --plan <PLAN> --registry <PROMOTED_REGISTRY>".to_string(),
-        );
         return Ok(ProjectLifecycleState::Promoted);
     };
 
@@ -277,15 +230,10 @@ fn audited_state(
         replay.receipt_id.clone(),
     ));
     if !replay.passed {
-        blockers.push(ProjectLifecycleBlocker::new(
+        blockers.push(ProjectLifecycleBlocker::without_next_command(
             ProjectLifecycleBlockerCode::ReplayFailed,
             "exact replay did not verify promoted registry descendants",
-            "canon project apply --plan <PLAN> --registry <PROMOTED_REGISTRY>",
         ));
-        next_commands.insert(
-            "apply".to_string(),
-            "canon project apply --plan <PLAN> --registry <PROMOTED_REGISTRY>".to_string(),
-        );
         return Ok(ProjectLifecycleState::Promoted);
     }
 
@@ -303,27 +251,17 @@ fn audited_state(
     }
 
     if !partial_exports.is_empty() {
-        blockers.push(ProjectLifecycleBlocker::new(
+        blockers.push(ProjectLifecycleBlocker::without_next_command(
             ProjectLifecycleBlockerCode::ExportPartial,
             "one or more exports are partial and must be regenerated",
-            "canon project export --plan <PLAN>",
         ));
-        next_commands.insert(
-            "export".to_string(),
-            "canon project export --plan <PLAN>".to_string(),
-        );
         return Ok(ProjectLifecycleState::ReplayVerified);
     }
     if !missing_exports.is_empty() {
-        blockers.push(ProjectLifecycleBlocker::new(
+        blockers.push(ProjectLifecycleBlocker::without_next_command(
             ProjectLifecycleBlockerCode::ExportMissing,
             format!("missing exports: {}", missing_exports.join(", ")),
-            "canon project export --plan <PLAN>",
         ));
-        next_commands.insert(
-            "export".to_string(),
-            "canon project export --plan <PLAN>".to_string(),
-        );
         return Ok(ProjectLifecycleState::ReplayVerified);
     }
 
@@ -343,10 +281,9 @@ fn validate_request_shape(
     if request.run_receipt.as_ref().is_some_and(|run| {
         run.project_id != request.plan.project_id || run.plan_graph_hash != request.plan.graph_hash
     }) {
-        return Err(ProjectStateError::with_next_command(
+        return Err(ProjectStateError::new(
             ProjectStateErrorCode::ArtifactContract,
             "run receipt is not for this project plan",
-            "canon project run --plan <PLAN>",
         ));
     }
     if let Some(review) = &request.review {
@@ -369,10 +306,9 @@ fn validate_request_shape(
             .as_ref()
             .is_some_and(|review| audit.reviewed_decision_hash != review.decision_hash)
         {
-            return Err(ProjectStateError::with_next_command(
+            return Err(ProjectStateError::new(
                 ProjectStateErrorCode::StaleAudit,
                 "audit receipt does not cover the imported review decisions",
-                "canon project audit --plan <PLAN> --review <REVIEW>",
             ));
         }
     }
@@ -384,10 +320,9 @@ fn validate_request_shape(
             "promotion receipt was produced from a different run, registry, policy, or strategy",
         )?;
         if promotion.before_registry_digest != expected.registry_digest {
-            return Err(ProjectStateError::with_next_command(
+            return Err(ProjectStateError::new(
                 ProjectStateErrorCode::RegistryRace,
                 "promotion before_registry_digest no longer matches the current registry snapshot",
-                "canon project status --plan <PLAN> --refresh-registry",
             ));
         }
         if request
@@ -395,10 +330,9 @@ fn validate_request_shape(
             .as_ref()
             .is_some_and(|review| promotion.review_decision_hash != review.decision_hash)
         {
-            return Err(ProjectStateError::with_next_command(
+            return Err(ProjectStateError::new(
                 ProjectStateErrorCode::StalePromotion,
                 "promotion receipt does not consume the imported review decisions",
-                "canon project promote --plan <PLAN> --dry-run",
             ));
         }
         if request
@@ -406,10 +340,9 @@ fn validate_request_shape(
             .as_ref()
             .is_some_and(|audit| promotion.audit_hash != audit.audit_hash)
         {
-            return Err(ProjectStateError::with_next_command(
+            return Err(ProjectStateError::new(
                 ProjectStateErrorCode::StalePromotion,
                 "promotion receipt does not consume the current audit receipt",
-                "canon project promote --plan <PLAN> --dry-run",
             ));
         }
     }
@@ -421,17 +354,15 @@ fn validate_request_shape(
             "replay receipt was produced from a different run, registry, policy, or strategy",
         )?;
         let promotion = request.promotion.as_ref().ok_or_else(|| {
-            ProjectStateError::with_next_command(
+            ProjectStateError::new(
                 ProjectStateErrorCode::StaleReplay,
                 "replay receipt cannot be accepted without a promotion receipt",
-                "canon project promote --plan <PLAN> --dry-run",
             )
         })?;
         if replay.promoted_registry_digest != promotion.after_registry_digest {
-            return Err(ProjectStateError::with_next_command(
+            return Err(ProjectStateError::new(
                 ProjectStateErrorCode::StaleReplay,
                 "replay receipt does not verify the promoted registry digest",
-                "canon project apply --plan <PLAN> --registry <PROMOTED_REGISTRY>",
             ));
         }
     }
@@ -443,19 +374,17 @@ fn validate_request_shape(
             "export receipt was produced from a different run, registry, policy, or strategy",
         )?;
         let replay = request.replay.as_ref().ok_or_else(|| {
-            ProjectStateError::with_next_command(
+            ProjectStateError::new(
                 ProjectStateErrorCode::StaleExport,
                 "export receipt cannot be accepted before replay verification",
-                "canon project apply --plan <PLAN> --registry <PROMOTED_REGISTRY>",
             )
         })?;
         if export.promoted_registry_digest != replay.promoted_registry_digest
             || export.replay_hash != replay.replay_hash
         {
-            return Err(ProjectStateError::with_next_command(
+            return Err(ProjectStateError::new(
                 ProjectStateErrorCode::StaleExport,
                 "export receipt is not a descendant of the replay-verified registry",
-                "canon project export --plan <PLAN>",
             ));
         }
     }
