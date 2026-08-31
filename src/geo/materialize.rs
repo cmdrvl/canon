@@ -770,9 +770,28 @@ pub fn materialize_h7_population_rows(
     )?;
 
     let primary_release_key = mappluto_pin_key(&rows.provenance.primary_candidate_release);
-    let mut population_cases = cases
+    let primary_release_cases = cases
         .iter()
         .filter(|case| mappluto_pin_key(&case.candidate_release) == primary_release_key)
+        .collect::<Vec<_>>();
+    if primary_release_cases.len() != accepted_loans.len() {
+        return Err(h7_invalid(
+            "Geo H.7 primary release must contain exactly one materialized row per accepted loan",
+            [
+                (
+                    "primary_release_rows",
+                    primary_release_cases.len().to_string(),
+                ),
+                ("accepted_loans", accepted_loans.len().to_string()),
+            ],
+        ));
+    }
+    // A zero-candidate row is an upstream reach result, not a valid empty
+    // universe for exact composition. Preserve it in `cases` and the reach
+    // summaries, but do not manufacture a solver case for it.
+    let mut population_cases = primary_release_cases
+        .into_iter()
+        .filter(|case| !case.candidate_parcels.is_empty())
         .map(|case| GeoLabeledCompositionCase {
             id: case.subject_id.clone(),
             evidence: GeoEvidenceCompilationRequest {
@@ -794,15 +813,6 @@ pub fn materialize_h7_population_rows(
         })
         .collect::<Vec<_>>();
     population_cases.sort_by(|left, right| left.id.cmp(&right.id));
-    if population_cases.len() != accepted_loans.len() {
-        return Err(h7_invalid(
-            "Geo H.7 primary-release solver population must contain exactly one subject per accepted loan",
-            [
-                ("solver_subjects", population_cases.len().to_string()),
-                ("accepted_loans", accepted_loans.len().to_string()),
-            ],
-        ));
-    }
     if population_cases.len() > rows.max_cases {
         return Err(h7_invalid(
             "Geo H.7 primary-release solver subjects exceed the declared case budget",
@@ -1623,7 +1633,7 @@ fn materialize_h7_case(
             ],
         ));
     }
-    let candidate_parcels = sorted_distinct_nonempty("candidate_parcels", &row.candidate_parcels)?;
+    let candidate_parcels = sorted_distinct("candidate_parcels", &row.candidate_parcels)?;
     let computed_reach = h7_reach_status(&truth_parcels, &candidate_parcels);
     if computed_reach != row.reach_status {
         return Err(h7_invalid(
@@ -1661,7 +1671,9 @@ fn materialize_h7_case(
         max_assignments,
         max_materialized_models,
     };
-    compile_evidence(&evidence_request).map_err(GeoMaterializationError::from)?;
+    if !candidate_parcels.is_empty() {
+        compile_evidence(&evidence_request).map_err(GeoMaterializationError::from)?;
+    }
 
     Ok(GeoH7PopulationCaseArtifact {
         subject_id,
@@ -2728,12 +2740,17 @@ fn sorted_distinct_nonempty(
     field: &str,
     values: &[String],
 ) -> Result<Vec<String>, GeoMaterializationError> {
-    if values.is_empty() {
+    let canonical = sorted_distinct(field, values)?;
+    if canonical.is_empty() {
         return Err(h7_invalid(
-            "Geo H.7 population rows require non-empty parcel sets",
+            "Geo H.7 truth fields require non-empty parcel sets",
             [("field", field.to_string())],
         ));
     }
+    Ok(canonical)
+}
+
+fn sorted_distinct(field: &str, values: &[String]) -> Result<Vec<String>, GeoMaterializationError> {
     let mut canonical = values.to_vec();
     for value in &canonical {
         validate_h7_string(field, value)?;
@@ -2892,7 +2909,7 @@ fn canonical_h7_source_records(
             .ok_or_else(|| h7_overflow("source_record_role_count"))?;
     }
 
-    let required_roles = required_h7_source_roles(row.truth_plane);
+    let required_roles = required_h7_source_roles(row.truth_plane, !candidate_parcels.is_empty());
     for required_role in required_roles {
         if role_counts.get(&required_role).copied().unwrap_or(0) == 0 {
             return Err(h7_invalid(
@@ -3044,15 +3061,20 @@ fn validate_h7_source_record(
     Ok(())
 }
 
-fn required_h7_source_roles(truth_plane: GeoTruthPlane) -> BTreeSet<GeoH7SourceRecordRole> {
+fn required_h7_source_roles(
+    truth_plane: GeoTruthPlane,
+    has_candidates: bool,
+) -> BTreeSet<GeoH7SourceRecordRole> {
     let mut roles = [
         GeoH7SourceRecordRole::BridgeLoan,
         GeoH7SourceRecordRole::AcrisMaster,
         GeoH7SourceRecordRole::AcrisLegal,
-        GeoH7SourceRecordRole::MapplutoCandidate,
     ]
     .into_iter()
     .collect::<BTreeSet<_>>();
+    if has_candidates {
+        roles.insert(GeoH7SourceRecordRole::MapplutoCandidate);
+    }
     if truth_plane == GeoTruthPlane::RoundExactLenderParty {
         roles.insert(GeoH7SourceRecordRole::AcrisParty);
     }

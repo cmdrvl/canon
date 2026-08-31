@@ -32,6 +32,8 @@ const H7_ACCEPTED_TRUTH_EXPORT_SQL: &str =
     include_str!("../scripts/geo_measurements/h7_staging_truth_export.sql");
 const H7_HALO_REACH_CONTROL_SQL: &str =
     include_str!("../scripts/geo_measurements/h7_staging_halo_reach_control.sql");
+const H7_PIP_BLOCK_REACH_CONTROL_SQL: &str =
+    include_str!("../scripts/geo_measurements/h7_staging_pip_block_reach_control.sql");
 const H7_INCIDENCE_SHARD_SQL: &str =
     include_str!("../scripts/geo_measurements/h7_staging_incidence_shard.sql");
 
@@ -392,6 +394,35 @@ fn h7_sql_uses_staging_columns_and_defers_borough_truth_to_legals() {
         "the bounded reach control must not recompute all parcel H3 keys"
     );
 
+    assert!(H7_PIP_BLOCK_REACH_CONTROL_SQL.contains("pip_edges"));
+    assert!(H7_PIP_BLOCK_REACH_CONTROL_SQL.contains("pip_blocks"));
+    assert!(H7_PIP_BLOCK_REACH_CONTROL_SQL.contains("SUBSTR(p.bbl_key, 1, 6)"));
+    assert!(H7_PIP_BLOCK_REACH_CONTROL_SQL.contains("ST_CONTAINS("));
+    assert!(H7_PIP_BLOCK_REACH_CONTROL_SQL.contains("full_reach_subjects"));
+    assert!(H7_PIP_BLOCK_REACH_CONTROL_SQL.contains("partial_reach_subjects"));
+    assert!(H7_PIP_BLOCK_REACH_CONTROL_SQL.contains("no_reach_subjects"));
+    assert!(H7_PIP_BLOCK_REACH_CONTROL_SQL.contains("reach_accounting_failures"));
+    assert!(
+        H7_PIP_BLOCK_REACH_CONTROL_SQL
+            .contains("COUNT(DISTINCT IFF(c.candidate_bbl IS NOT NULL, t.truth_bbl, NULL))")
+    );
+    assert!(H7_PIP_BLOCK_REACH_CONTROL_SQL.contains("accepted_truth_repeats_loan"));
+    assert!(
+        !H7_PIP_BLOCK_REACH_CONTROL_SQL.contains("propertyaddress"),
+        "candidate blocks must not be seeded through the address channel"
+    );
+    let truth_edges = H7_PIP_BLOCK_REACH_CONTROL_SQL
+        .find("truth_edges AS")
+        .expect("truth comparison CTE");
+    for candidate_cte in ["pip_edges AS", "pip_blocks AS", "candidate_edges AS"] {
+        assert!(
+            H7_PIP_BLOCK_REACH_CONTROL_SQL
+                .find(candidate_cte)
+                .is_some_and(|offset| offset < truth_edges),
+            "{candidate_cte} must be constructed before truth is flattened"
+        );
+    }
+
     assert!(H7_INCIDENCE_SHARD_SQL.contains("STG_GEO_GEOMETRY_HOT_KEYS"));
     assert!(H7_INCIDENCE_SHARD_SQL.contains("H3_GRID_DISK"));
     assert!(H7_INCIDENCE_SHARD_SQL.contains("parcel_components"));
@@ -452,6 +483,12 @@ fn h7_schemas_cover_real_row_and_artifact_instances() {
     );
     assert!(
         rows_schema
+            .pointer("/$defs/warehouse_row/properties/candidate_parcels/minItems")
+            .is_none(),
+        "warehouse rows must represent an honest zero-candidate reach result"
+    );
+    assert!(
+        rows_schema
             .pointer("/$defs/query_receipt/properties/truth_plane")
             .is_some(),
         "query receipt schema must expose truth_plane for legal residuals"
@@ -509,6 +546,12 @@ fn h7_schemas_cover_real_row_and_artifact_instances() {
             .and_then(Value::as_u64),
         Some(2)
     );
+    assert!(
+        artifact_schema
+            .pointer("/$defs/case/properties/candidate_parcels/minItems")
+            .is_none(),
+        "case artifacts must preserve zero-candidate upstream failures"
+    );
     assert_schema_declares_object_keys(
         &artifact_schema,
         "/$defs/source_evidence_record",
@@ -556,6 +599,60 @@ fn rejects_empty_truth_sets() {
 
     let error = materialize_h7_population_rows(&request).expect_err("empty truth rejected");
     assert!(error.message.contains("non-empty parcel sets"));
+}
+
+#[test]
+fn retains_zero_candidate_reach_without_manufacturing_a_solver_case() {
+    let mut request = base_request();
+    for row in request
+        .rows
+        .iter_mut()
+        .filter(|row| row.loan_key == "loan-nonround")
+    {
+        row.candidate_parcels.clear();
+        row.reach_status = GeoH7CandidateReachStatus::None;
+        row.reach_reason = "address_blind_pip_returned_no_candidate".to_string();
+        row.source_records
+            .retain(|record| record.role != GeoH7SourceRecordRole::MapplutoCandidate);
+    }
+
+    let artifact = materialize_h7_population_rows(&request).expect("zero reach is materialized");
+    let non_round = summary(
+        &artifact.summary.truth_planes,
+        GeoTruthPlane::NonRoundAmountDateLegalBorough,
+    );
+
+    assert_eq!(artifact.cases.len(), 4);
+    assert_eq!(non_round.candidate_reach_none_cases, 2);
+    assert_eq!(non_round.candidate_parcels, 0);
+    assert_eq!(artifact.summary.solver_population_subjects, 1);
+    assert_eq!(artifact.population.cases.len(), 1);
+    assert!(
+        artifact
+            .population
+            .cases
+            .iter()
+            .all(|case| case.id != artifact.cases[0].subject_id)
+    );
+}
+
+#[test]
+fn rejects_mappluto_provenance_when_candidate_set_is_empty() {
+    let mut request = base_request();
+    request.rows[0].candidate_parcels.clear();
+    request.rows[0].reach_status = GeoH7CandidateReachStatus::None;
+
+    let error = materialize_h7_population_rows(&request)
+        .expect_err("stale candidate provenance must not survive zero reach");
+    assert!(error.message.contains("parcel union must equal"));
+    assert_eq!(
+        error.detail.get("role").map(String::as_str),
+        Some("mappluto_candidate")
+    );
+    assert_eq!(
+        error.detail.get("mismatch").map(String::as_str),
+        Some("extra")
+    );
 }
 
 #[test]

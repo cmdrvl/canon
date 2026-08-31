@@ -2160,6 +2160,31 @@ borough. A geocoded point can therefore explain a reach miss but cannot negate
 the accepted legal truth. The source SHA-256 is
 `6eaec54140218e1ecb8154abb76fe770b26737d1abe6c0dada3a71a4a2368dee`.
 
+An address-independent alternative is now measured by
+`h7_staging_pip_block_reach_control.sql`. It finds every pinned MapPLUTO parcel
+containing a collateral point, expands only to parcels sharing that parcel's
+six-digit BBL block, and constructs the candidate relation before accepted
+truth is flattened. Query `01c6c11c-0821-a0dc-006c-c703088da762` completed in
+15.612 seconds with all eight release/plane/association guards `ok` and zero
+reach-accounting failures. The containing-parcel step reached 158/168 points.
+Both releases then produced 38 full / 15 partial / 18 none over the 71 accepted
+subjects. Candidate sets range from 0 to 755 BBLs, versus 1,192–27,120 for the
+diagnostic H3 loan unions, but full-truth reach is lower than H3 k1's 52/71.
+This is a real size/recall tradeoff: block expansion is a useful bounded
+candidate-strategy baseline, not evidence that a smaller candidate set is
+better or that it should replace tile ownership.
+
+One accepted subject has zero containing parcels and therefore zero block
+candidates. H.7 now keeps such a release row and its `reach=none` denominator
+instead of refusing the empirical result, but excludes it from the exact
+solver population; the composition kernel still requires a nonempty candidate
+universe. A precursor query
+`01c6c11b-0821-a6c8-006c-c703088db796` is discarded because candidate-row
+multiplication reported the impossible 75 reached truth edges out of 73. The
+corrected query uses distinct truth membership plus an explicit reached≤truth
+sanity check. Its source SHA-256 is
+`26d77c2eb78740c60d386c372d0e2c3fa8a7f049ff3c089ffc485a92e37a39b4`.
+
 The next bounded boundary is executable as
 `h7_staging_incidence_shard.sql`. All 16 deterministic shards completed in
 12.452–17.931 seconds each and returned 88 distinct r8+k1 center sections.

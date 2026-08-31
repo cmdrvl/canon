@@ -225,6 +225,42 @@ The source SHA-256 is
 Snowflake H3 is an empirical blocking calculation here; canonical home-cell
 artifacts still require h3o replay.
 
+`h7_staging_pip_block_reach_control.sql` measures an address-independent
+alternative candidate channel from the repaired parcel-vintage staging table.
+It first finds every 26v1/26v2 MapPLUTO parcel containing each collateral point,
+then expands to every parcel sharing the containing parcel's six-digit BBL
+block. Accepted ACRIS truth is flattened only after those candidate relations
+exist. Thus the query can measure reach but cannot seed candidates from either
+the filed address or the answer set.
+
+Query `01c6c11c-0821-a0dc-006c-c703088da762` completed in 15,612 ms. All
+eight release/plane/association rows had `guard_status=ok` and zero reach-
+accounting failures. The two pinned releases produced the same counts:
+
+| truth / association | subjects | full / partial / none | truth edges reached / total | candidate BBLs min / median / p90 / max |
+|---|---:|---:|---:|---:|
+| non-round / multi | 20 | 11 / 8 / 1 | 88 / 247 | 3 / 83.5 / 189.2 / 755 |
+| non-round / single | 15 | 4 / 2 / 9 | 13 / 62 | 0 / 19 / 48.6 / 58 |
+| round / multi | 17 | 13 / 3 / 1 | 41 / 73 | 10 / 63 / 119 / 154 |
+| round / single | 19 | 10 / 2 / 7 | 44 / 244 | 1 / 26 / 51.599 / 61 |
+
+The containing-parcel step reached 158/168 collateral points. Combined subject
+reach is 38 full / 15 partial / 18 none over 71 accepted loans. This channel is
+far narrower than the H3 loan unions (maximum 755 versus 27,120 candidates),
+but it also has lower full-truth reach (38 versus 52 subjects). It is therefore
+a bounded baseline for candidate strategy evaluation, not a replacement for
+controlled tile ownership or a solver input chosen on size alone. One accepted
+subject has no containing parcel and no block candidates; the typed H.7
+materializer preserves that row as `reach=none` while excluding it from the
+nonempty exact-solver population.
+
+Precursor query `01c6c11b-0821-a6c8-006c-c703088db796` is discarded: joining
+candidate rows before aggregating truth multiplied hit counts and produced the
+impossible result 75 reached truth edges from 73 truth edges. The checked-in
+query counts distinct truth membership and asserts reached edges never exceed
+truth edges. Its source SHA-256 is
+`26d77c2eb78740c60d386c372d0e2c3fa8a7f049ff3c089ffc485a92e37a39b4`.
+
 `h7_staging_incidence_shard.sql` performs the next bounded reduction. It owns
 work by r8 center cell, expands only the selected center+k1 sections, joins
 pinned MapPLUTO geometry, and measures raw NYC/Overture majority-overlap

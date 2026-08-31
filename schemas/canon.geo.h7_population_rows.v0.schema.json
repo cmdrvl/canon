@@ -436,7 +436,6 @@
         },
         "candidate_parcels": {
           "type": "array",
-          "minItems": 1,
           "items": { "type": "string" }
         },
         "reach_status": { "$ref": "#/$defs/reach_status" },
