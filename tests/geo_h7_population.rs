@@ -315,6 +315,17 @@ fn materializes_replay_population_without_pooling_truth_planes_or_candidate_rele
     let bytes = canonical_h7_population_bytes(&artifact).expect("canonical bytes");
     let replay = canonical_h7_population_bytes(&artifact).expect("canonical bytes replay");
     assert_eq!(bytes, replay);
+
+    let mut reordered_request = base_request();
+    reordered_request.provenance.external_receipts.reverse();
+    let reordered_artifact = materialize_h7_population_rows(&reordered_request)
+        .expect("external receipt input order must not change materialization");
+    assert_eq!(artifact.provenance, reordered_artifact.provenance);
+    assert_eq!(
+        bytes,
+        canonical_h7_population_bytes(&reordered_artifact)
+            .expect("reordered external receipts serialize canonically")
+    );
 }
 
 #[test]

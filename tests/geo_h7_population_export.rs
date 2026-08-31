@@ -131,6 +131,8 @@ fn fail_closed_guards_cover_denominators_uniqueness_caps_and_sources() {
         "accepted_truth_repeats_loan",
         "accepted_truth_contract_mismatch",
         "accepted_truth_bridge_build_mismatch",
+        "accepted_truth_acris_release_mismatch",
+        "accepted_truth_property_state_mismatch",
         "accepted_truth_non_multi_bbl_row",
         "accepted_truth_bbl_count_mismatch",
         "accepted_truth_missing_bridge_source_records",
@@ -147,6 +149,11 @@ fn fail_closed_guards_cover_denominators_uniqueness_caps_and_sources() {
     ] {
         assert_contains(guard);
     }
+
+    assert_contains("'2026-08-10'::DATE AS acris_release_dt");
+    assert_contains("'NY'::TEXT AS property_state");
+    assert_contains("acris_release_dt <> (SELECT acris_release_dt FROM params)");
+    assert_contains("property_state_mismatch_rows");
 
     assert_contains("guard_failure");
     assert_contains("guard_summary");

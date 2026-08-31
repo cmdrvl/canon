@@ -58,6 +58,7 @@ industry ontology, provider knowledge, or probabilistic runtime lookup.
 
 - **Spec:** [`docs/PLAN_CANON.md`](./docs/PLAN_CANON.md) — all behavior must follow this document
 - **Boundary:** [`docs/IDENTITY_ARCHITECTURE.md`](./docs/IDENTITY_ARCHITECTURE.md) — exact runtime vs build-time evidence, entity cluster/link modes, and extension firewall
+- **Geo system:** [`docs/CANON_GEO_AGENT_ARCHITECTURE.md`](./docs/CANON_GEO_AGENT_ARCHITECTURE.md) — agent operating model; [`docs/PLAN_CANON_GEO.md`](./docs/PLAN_CANON_GEO.md) remains authoritative for Geo mathematics, measurements, and E1–E5 gates
 - **Harness notes:** [`CODEX.md`](./CODEX.md), [`CLAUDE.md`](./CLAUDE.md), and [`GEMINI.md`](./GEMINI.md) — runner-specific caveats only
 - Do not invent behavior not present in the plan
 
@@ -78,6 +79,8 @@ industry ontology, provider knowledge, or probabilistic runtime lookup.
 | `src/witness/` | Witness append behavior (BLAKE3 hashing) |
 | `operator.json` | Machine-readable operator contract |
 | `docs/PLAN_CANON.md` | Full specification |
+| `docs/CANON_GEO_AGENT_ARCHITECTURE.md` | Geo abstraction tower, control loop, resumability, and agent API target |
+| `docs/PLAN_CANON_GEO.md` | Geo mathematics, empirical state, and E1–E5 gates |
 
 ---
 
@@ -115,6 +118,50 @@ resolve`, provider materialization, strategy selection, project workflows,
 packages, temporal snapshots, and extensions may create or validate registry
 knowledge before promotion. Once promoted, normal lookup still resolves only
 through exact registry entries.
+
+### Canon Geo agent mental model
+
+Read [`docs/CANON_GEO_AGENT_ARCHITECTURE.md`](./docs/CANON_GEO_AGENT_ARCHITECTURE.md)
+before changing Geo orchestration or contracts, and use
+[`docs/PLAN_CANON_GEO.md`](./docs/PLAN_CANON_GEO.md) for the governing mathematics,
+measurements, and E1–E5 gates.
+
+Operate Geo as one bounded, source-generic system:
+
+```text
+question + capabilities + regional inventory + resolution profile + budget
+  -> deterministic plan
+  -> tile + controlled halo
+  -> candidate-universe/reach state
+  -> rho admission
+  -> incidence components
+  -> small exact residuals
+  -> ownership reconciliation
+  -> separate coverage/reach/solver/truth/cost evaluation
+  -> explanation and next evidence
+  -> review-gated registry proposal -> exact replay
+```
+
+- Core dispatches typed evidence classes, entity levels, and relations—not vendor names.
+  Source-specific semantics stop at versioned adapters/profiles.
+- A region may have no parcel layer. Current composition v0 is honestly parcel/building
+  specific; do not present that implementation limit as the generic architecture.
+- H3 is blocking and ownership metadata, never geometric truth. Never describe national
+  evidence volume as one solve; exact work is local and component-wise.
+- More admitted hard evidence narrows the feasible set or makes it empty. Source count is
+  provenance, not independent information or confidence.
+- Report availability, candidate reach, rho soundness, solver exactness, reconciliation,
+  truth quality, and cost as different planes.
+- Distinguish structural candidate completeness relative to declared inputs from empirical
+  truth reach. Unverified reach can coexist with an exact representation-relative solve;
+  failed reach blocks the affected claim and exactness does not repair it.
+- Prefer resumable, content-addressed artifacts and recompute only affected sections and
+  components. Network acquisition remains outside Canon's deterministic offline build.
+- Geo planning/runs must extend the shared `src/project/` manifest/lock/plan/run/receipt
+  substrate. Do not create a second scheduler, cache, receipt store, or workspace policy.
+- The proposed `geo capabilities/plan/run/inspect` control plane is not implemented yet.
+  Until it is, use the leaf commands reported by `canon --describe` and do not advertise
+  planned commands as shipped.
 
 ### 3. Summary invariant
 

@@ -385,6 +385,7 @@ canon geo materialize-geometry --request <REQUEST.json>
 canon geo materialize-warehouse-geometry --rows <ROWS.json>
 canon geo materialize-evidence --rows <ROWS.json>
 canon geo materialize-h7-population --rows <ROWS.json>
+canon geo materialize-h7-staging-batch --batch <BATCH.json>
 canon geo compile-evidence --request <REQUEST.json>
 canon geo evaluate --population <POPULATION.json>
 canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]
@@ -517,6 +518,12 @@ rho observation. The command rejects duplicate grains and conflicting rows, sort
 collections, validates the result through the same compiler used by `compile-evidence`,
 and writes only to stdout. It performs no warehouse acquisition, and multiple source
 records remain provenance for one observation rather than independent constraint weight.
+
+`canon geo materialize-h7-staging-batch --batch` is the bounded NYC/H.7 profile adapter
+for the staging-derived source-record payload contract. It validates batch guards,
+denominators, release pins, source-record bytes, and profile truth planes before delegating
+to the generic H.7 population materializer. It is not the generic regional engine and does
+not turn derived payload rows or fixtures into live source proof.
 
 ### Arguments
 
@@ -1390,6 +1397,22 @@ Special reasons (`empty_value`, `null_value`, `missing_field`, `non_scalar_value
 ## Agent Integration
 
 For the full toolchain guide, see the [Agent Operator Guide](https://github.com/cmdrvl/.github/blob/main/profile/AGENT_PROMPT.md). Shared repo instructions live in [AGENTS.md](./AGENTS.md); harness-specific notes live in [CODEX.md](./CODEX.md), [CLAUDE.md](./CLAUDE.md), and [GEMINI.md](./GEMINI.md). Run `canon --describe` for this tool's machine-readable contract.
+
+For Geo work, read the [agent operating architecture](./docs/CANON_GEO_AGENT_ARCHITECTURE.md)
+and then the [mathematical and empirical plan](./docs/PLAN_CANON_GEO.md). The operating
+order is question/profile/inventory -> bounded tile+halo -> candidate reach -> rho
+admission -> incidence components -> exact residuals -> reconciliation -> separately
+reported coverage/reach/solver/truth/cost planes. Source instances belong in adapters and
+regional inventories; Canon core does not require a named vendor or, architecturally, a
+parcel layer.
+
+The target Geo planner and run view reuse Canon's shared project
+manifest/lock/plan/run/receipt substrate; they are not a second orchestration engine. The
+library substrate exists today, but its plan/run CLI and Geo integration remain open and
+must be hardened before being advertised.
+
+The proposed `canon geo capabilities`, `plan`, `run`, and `inspect` commands do not ship
+yet. Until they do, use only the implemented leaf commands reported by `canon --describe`.
 
 ---
 

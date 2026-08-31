@@ -42,7 +42,9 @@ reasoning, clustering, or probabilistic matching.
 Architecture note: this plan defines the core lookup kernel and registry
 substrate. Domain-specific resolution workbenches, such as `canon entity`, may
 create audited registry updates, but normal `canon` lookup remains exact
-registry lookup. See `docs/IDENTITY_ARCHITECTURE.md` for the boundary.
+registry lookup. See `docs/IDENTITY_ARCHITECTURE.md` for the boundary. Canon Geo
+is governed by `docs/PLAN_CANON_GEO.md`; its source-generic agent operating model
+is `docs/CANON_GEO_AGENT_ARCHITECTURE.md`. Neither changes the exact replay path.
 
 ---
 
@@ -96,6 +98,7 @@ canon geo materialize-geometry --request <REQUEST.json>
 canon geo materialize-warehouse-geometry --rows <ROWS.json>
 canon geo materialize-evidence --rows <ROWS.json>
 canon geo materialize-h7-population --rows <ROWS.json>
+canon geo materialize-h7-staging-batch --batch <BATCH.json>
 canon geo compile-evidence --request <REQUEST.json>
 canon geo evaluate --population <POPULATION.json>
 canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]
@@ -1179,10 +1182,10 @@ If any feature makes the mapping less inspectable or the pipeline less composabl
 
 ### Future workbench directions
 - Cross-source structural linkage lives under `canon entity link`; future work should extend that workbench namespace rather than reintroduce a sibling public command
-- Property identity may use multi-column matching (address + name + coordinates -> canonical ID)
-- Geospatial matching via `geo` + `rstar` (Haversine + R-tree) may be useful inside a property workbench
+- Property/location identity lives in the bounded `canon geo` workbench described by `PLAN_CANON_GEO.md`; it compiles typed evidence into local constraint components and exact residuals rather than adding heuristics to runtime lookup
+- Geo source instances and vendor semantics belong in versioned adapters, regional inventories, and resolution profiles; core dispatches evidence classes/entity levels and does not require a named parcel source
 - Phonetic blocking via `rphonetic` (Metaphone, Soundex) may be useful for candidate generation, not auto-accepted lookup
-- H3 hex blocking via `h3o` may be useful for property matching at scale (389K+ entries)
+- H3 blocking via `h3o` is implemented for Geo ownership/work units; it is an index only, never geometric truth, and exact solving remains tile + controlled halo -> incidence components -> small residuals
 - Address normalization (US abbreviations: ST->STREET, AVE->AVENUE, etc.) belongs in the workbench strategy, not the core lookup kernel
 
 ### ID validation

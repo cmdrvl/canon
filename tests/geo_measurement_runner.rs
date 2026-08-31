@@ -2,14 +2,14 @@
 
 use assert_cmd::Command;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
 };
-use tempfile::{tempdir, TempDir};
+use tempfile::{TempDir, tempdir};
 
 const MANIFEST: &str = include_str!("../scripts/geo_measurements/manifest.json");
 const RECEIPTS_VERSION: &str = "canon_geo_measurement_receipts.v0";
@@ -467,9 +467,10 @@ fn e5_denominators(rows: &[Value]) -> Value {
 
 fn shared_u64(rows: &[Value], field: &str) -> u64 {
     let first = rows[0][field].as_u64().expect("shared u64 field");
-    assert!(rows
-        .iter()
-        .all(|row| row[field].as_u64().expect("shared u64 field") == first));
+    assert!(
+        rows.iter()
+            .all(|row| row[field].as_u64().expect("shared u64 field") == first)
+    );
     first
 }
 
@@ -662,14 +663,18 @@ fn plan_is_ordered_offline_and_excludes_h7() {
         plan["execution"],
         "operator_fed_cmdrvl_data_receipts_only_no_snowflake_execution"
     );
-    assert!(plan["claim_boundary"]
-        .as_str()
-        .expect("claim boundary")
-        .contains("contract fixture"));
-    assert!(plan["claim_boundary"]
-        .as_str()
-        .expect("claim boundary")
-        .contains("unordered canonical result set"));
+    assert!(
+        plan["claim_boundary"]
+            .as_str()
+            .expect("claim boundary")
+            .contains("contract fixture")
+    );
+    assert!(
+        plan["claim_boundary"]
+            .as_str()
+            .expect("claim boundary")
+            .contains("unordered canonical result set")
+    );
     let ids = plan["measurements"]
         .as_array()
         .expect("measurements")
@@ -733,11 +738,13 @@ fn valid_receipts_verify_and_permutation_is_deterministic() {
         report["measurements"][0]["executed_query_text_path"],
         "queries/appendix_b_centroid_percolation.sql"
     );
-    assert!(report["measurements"][0]["details"]
-        .as_array()
-        .expect("details")
-        .iter()
-        .any(|detail| detail == LIVENESS_NOT_ATTESTED));
+    assert!(
+        report["measurements"][0]["details"]
+            .as_array()
+            .expect("details")
+            .iter()
+            .any(|detail| detail == LIVENESS_NOT_ATTESTED)
+    );
     assert_eq!(
         report["measurements"][0]["execution_transform"],
         EXECUTION_TRANSFORM
@@ -1033,11 +1040,13 @@ fn self_authored_fresh_live_bundle_is_not_live_attested() {
         report["measurements"][0]["declared_proof_class"],
         "fresh_live"
     );
-    assert!(report["measurements"][0]["details"]
-        .as_array()
-        .expect("details")
-        .iter()
-        .any(|detail| detail == LIVENESS_NOT_ATTESTED));
+    assert!(
+        report["measurements"][0]["details"]
+            .as_array()
+            .expect("details")
+            .iter()
+            .any(|detail| detail == LIVENESS_NOT_ATTESTED)
+    );
 }
 
 #[test]

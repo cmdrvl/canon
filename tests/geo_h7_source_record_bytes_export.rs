@@ -174,6 +174,23 @@ fn one_row_per_subject_release_and_closed_guards_are_declared() {
 }
 
 #[test]
+fn accepted_rows_preserve_plane_denominators_for_adapter_drift_checks() {
+    for field in [
+        "accepted_plane_eligible_loans",
+        "accepted_plane_legal_candidate_loans",
+        "accepted_plane_legal_confirmed_candidate_loans",
+        "accepted_plane_accepted_loans",
+        "accepted_plane_ambiguous_loans",
+        "accepted_plane_candidate_without_legal_loans",
+        "accepted_plane_no_candidate_loans",
+        "accepted_plane_selected_multi_parcel_loans",
+    ] {
+        assert_contains(&format!("r.{field}"));
+        assert_contains(&format!("AS {field}"));
+    }
+}
+
+#[test]
 fn legal_and_mappluto_wrappers_name_exactly_one_parcel() {
     assert_contains("'acris_legal'::TEXT AS role");
     assert_contains("'mappluto_candidate'::TEXT AS role");

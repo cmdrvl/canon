@@ -39,6 +39,36 @@ IDs were read back from Snowflake query history after execution.
 | Appendix D same-cell file | `01c6b1c0-0821-83a1-006c-c7030888b8de` | 3,527 ms | BX 287/4/0; BK 2,332/22/0 |
 | Appendix D complete-reach file | `01c6b1c0-0821-784b-006c-c7030888c3c6` | 2,332 ms | BX 290/1/0; BK 2,352/2/0 |
 
+## 2026-08-31 E5 Franklin County thin-tier preflight
+
+`e5_franklin_county_thin_tier_readiness.sql` is a file-exact, bounded
+availability measurement around collateral points in Franklin County, Ohio
+(`39049`). It is not E5 execution: no county parcel layer was present in the
+live warehouse inventory, so it does not measure parcel reach, parcel/building
+composition, precision, or an evidence-tier operating point. The other layers
+remain a legitimate future minimal-stack case; current composition v0 cannot
+yet execute it because it requires at least one parcel candidate. That is a
+named generic entity-universe gap, not evidence that parcel-free regions have
+no usable evidence.
+
+Query `01c6c151-0821-a0dc-006c-c703088daaba` completed in 3,354 ms and emitted
+four guard-`ok` rows over 151 distinct geocoded properties, 202 loans, 152
+multi-property loans, 114 r8 center cells, and 585 distinct center+k1 work
+cells:
+
+| Evidence class | Pinned release | Distinct features | Occupied work cells |
+|---|---|---:|---:|
+| FEMA structures | Ohio partition `2023-05-02` | 160,773 | 582 |
+| Microsoft GlobalML footprints | `2026-07-24` | 168,778 | 581 |
+| Overture addresses | `2026-07-22.0` / `2026-07-22` | 310,650 | 581 |
+| Overture buildings | `2026-07-22.0` / `2026-07-22` | 203,367 | 584 |
+
+The FEMA HOT table also contains an 85,090,164-row `2025-06-06` partition, but
+the only Ohio rows are pinned to `2023-05-02`. A global latest date therefore
+cannot be inherited as a geography's source vintage. The four source counts
+are availability/provenance, never four independent votes. SQL SHA-256:
+`25ddd0d29095c583ac0478d6d228162667b8be62a15218c5acd5ef29d3326aab`.
+
 The two historical D claim classes are deliberately separate. `same-cell`
 reproduces the legacy H3-home-cell candidate restriction. `complete bbox reach`
 scans the pinned parcel snapshot behind a complete bounding-box prefilter before
@@ -260,6 +290,68 @@ impossible result 75 reached truth edges from 73 truth edges. The checked-in
 query counts distinct truth membership and asserts reached edges never exceed
 truth edges. Its source SHA-256 is
 `26d77c2eb78740c60d386c372d0e2c3fa8a7f049ff3c089ffc485a92e37a39b4`.
+
+`h7_candidate_strategy_comparison.sql` evaluates H3 r8+k1, PIP-to-six-digit-
+block, and their union over exactly the same 71 accepted loans, two pinned
+MapPLUTO releases, and four truth/association strata. Query
+`01c6c14f-0821-aa0e-006c-c703088dc33a` returned 24 rows with every guard true.
+Per release, all selectors shared 626 truth edges: H3 reached 208 and classified
+52 full / 3 partial / 16 none; PIP-block reached 186 and classified 38 / 15 /
+18. The union matched H3 because PIP was a subset on this cohort. That union is
+reach accounting only, never a monolithic solve. SQL SHA-256:
+`4532e3635dcd1aa4655064489c0e248a3bd0c80b03dad7c4a789ce405ece4f2e`.
+
+`h7_staging_pip_block_population_export.sql` converts the successful accepted-
+truth result into one raw candidate row per subject/release. Query
+`01c6c174-0821-aa0e-006c-c703088dc742` completed in 43,370 ms and returned the
+expected 142 rows for 71 loans × two releases, with zero guard rows and two
+explicit zero-candidate rows. The superseding execution fails closed unless
+the accepted rows remain pinned to ACRIS `2026-08-10` and property state `NY`.
+It preserves available ACRIS and MapPLUTO
+locators/digests but is not the typed Canon population request and is not a
+solver receipt. A nested-object precursor
+`01c6c14b-0821-a0dc-006c-c703088da9fa` cancelled at the client boundary and is
+discarded. SQL SHA-256:
+`d3e287532a83da6b66d0250eb5c6e71d29a088c990b34a7a997eef0121f10e77`.
+
+`h7_staging_source_record_bytes_export.sql` re-joins those candidate locators
+and emits derived Canon key/value payload bytes for bridge, ACRIS, and MapPLUTO
+roles. These are intentionally compact derived evidence records, not full or
+original warehouse rows; each preserves its upstream locator and binds the
+role, vintage, and applicable parcel edge. Live role diagnostic query
+`01c6c180-0821-aa0e-006c-c703088dc906` covered 142 release rows / 71 loans and
+reported zero role, parcel-union, source-id uniqueness, hash, locator, or
+NY-scope failures. Payload aggregate query
+`01c6c189-0821-a0dc-006c-c703088de03e` reported 5–817 derived records per row,
+a 1,353-byte maximum record, a 1,804-character maximum base64 record, an
+876,919-byte maximum row payload, and two zero-candidate rows.
+
+The current file additionally projects all eight accepted-plane denominator
+columns needed for adapter drift checks. That projection-only change occurred
+after the live aggregate, so the current SHA-256
+`d806b0949cbcc2dd6a66817529de8efd72cf733cc87f5304d8b19e9e23f174c8`
+is covered by static SQL contract tests but is not described as file-exact live
+execution.
+
+`canon geo materialize-h7-staging-batch --batch <BATCH.json>` is the offline
+typed handoff for this H.7/NYC profile. It accepts lowercase Canon keys or the
+uppercase top-level keys returned by Snowflake, rejects guard rows, mixed query
+metadata, release/denominator/count drift, arbitrary base64, and payload/wrapper
+mismatches, then delegates to `materialize_h7_population_rows`. No live
+142-row batch artifact is committed and no solver evaluation has been run, so
+the H.7 population and frozen E4 gate remain open. This adapter does not make
+MapPLUTO or ACRIS part of the generic rho compiler.
+
+`h7_e4_consensus_truth_extension.sql` probes the honest five-case E4 deficit.
+It keeps the controlling amount/date/filed-borough/legal-borough and exact-
+lender planes, starts from document-ambiguous loans, and admits only complete
+candidate document sets whose legal multi-BBL arrays are byte-identical.
+Query `01c6c162-0821-aa0e-006c-c703088dc4c6` completed in 35,426 ms with two
+guard-`ok` summary rows and zero admitted subjects. This is a useful negative
+result: the deficit remains five; no release duplication or weakened truth
+gate is used to fill it. The described warehouse inventory exposed no Gate
+V2/H4 extension-key bridge, so that cross-gate dedupe remains explicitly
+unavailable rather than inferred.
 
 `h7_staging_incidence_shard.sql` performs the next bounded reduction. It owns
 work by r8 center cell, expands only the selected center+k1 sections, joins

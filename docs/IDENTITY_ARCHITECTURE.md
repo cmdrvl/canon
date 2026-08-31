@@ -20,10 +20,11 @@
      heuristic guessing at resolution time.
 
 2. **Evidence workbenches**
-   - Command family: `canon entity`. Cluster mode handles one profiled corpus;
-     link mode handles two row sets through the same artifact-backed workbench.
-     No long-lived compatibility alias is promised for superseded workbench
-     namespaces.
+   - Command families: `canon entity` and `canon geo`. Entity cluster mode
+     handles one profiled corpus; link mode handles multiple row sets through an
+     artifact-backed workbench. Geo handles bounded spatial sections, typed
+     source evidence, incidence components, and exact residuals. No long-lived
+     compatibility alias is promised for superseded workbench namespaces.
    - Contract: run a bounded deterministic strategy against frozen local inputs,
      emit candidates/evidence/solve/audit/review artifacts, then promote accepted
      registry updates.
@@ -146,7 +147,7 @@ So the precise product claim is:
 | Profiled entity workbench | `canon entity` | Current generic workbench namespace | Profile-scoped observations such as legal entities, funds, people, brands, properties, assets, or domain-extension observations | Native Rust normalization, bounded blocking, typed support evidence, anti-merge evidence, relation hints, deterministic solver, abstention | Alias entries, anchor sidecars, cannot-link sidecars, escrow sidecars, proofs |
 | Organization identity legacy plan | Legacy org plan only | Superseded by `canon entity`; no compatibility alias promised | Organization observation to `org_canon_id` in legacy BDC/issuer-like profiles | Blocking, typed evidence, deterministic solver, abstention | Alias entries, anchor sidecars, escrow sidecars, proofs |
 | Cross-source linkage | `canon entity link` | Implemented under the generic entity workbench namespace | Record in reference rows to record in target rows | Structural evidence under an explicit link strategy; deterministic abstention on unmatched/ambiguous records; shared entity artifacts plus decision projection; profile_source and observation/surface bindings are hash-bound; assignment alignment is nonidentity relation evidence | `canon_entity_link.v1` with `canon_entity_link_decisions.v1` and `canon_entity_link_observation_surface_bindings.v1`; `--write-back` refuses before mutation pending transactional registry publication |
-| Property/address identity | Future workbench | Planned | Property observation to property canonical ID | Address/geospatial/name evidence under deterministic strategy | Property registry entries and proofs |
+| Geospatial/location identity | `canon geo` | Partial leaf workbench implemented; agent control plane and generic entity universe planned | Profile-declared site/property/parcel/building/unit/POI observations and typed relations | Source-generic regional inventory, bounded tile+controlled halo, independent candidate-reach gate, versioned rho admission, incidence components, exact residuals, reconciliation, abstention | Content-addressed workbench artifacts and review-gated typed registry proposals; accepted aliases/relations only after audit/review |
 | Fuzzy suggestions | Future assistive workflow only | Deferred | Unresolved value to suggested candidate | Probabilistic candidate generation, never auto-accepted | Human-approved registry entries only |
 
 ## Extension Boundary
@@ -161,6 +162,9 @@ Core Canon may define the neutral contract for:
 - how observations become prepared surfaces
 - how candidates, evidence, solves, reviews, packages, project locks, temporal
   snapshots, and exports are represented
+- how Geo questions, regional inventories, entity levels, bounded sections,
+  candidate-reach gates, constraint residuals, and source-generic acquisition
+  receipts are represented
 - how refusals and witness records behave
 
 Extensions own:
@@ -222,6 +226,13 @@ local ID allocation, not a new matching mode.
   workbench to `canon entity`, adding native Rust namekit primitives,
   first-class anti-merge evidence, profile package support, performance
   hardening, and smoother operator ergonomics.
+- `docs/PLAN_CANON_GEO.md`: Geo mathematics, source-admission discipline,
+  empirical measurements, and E1–E5 gates. Exact work is bounded section plus
+  controlled halo, then incidence components, never a national monolith.
+- `docs/CANON_GEO_AGENT_ARCHITECTURE.md`: normative target operating model for
+  source-generic Geo question/profile/inventory planning, resumable run state,
+  incremental accretion, inspection, and next evidence. Its control-plane
+  commands are planned, not current CLI claims.
 - `docs/PLAN_ORG_IDENTITY_TOURNAMENT.md`: historical organization-identity plan
   retained for implementation archaeology. Do not present it as the active
   public namespace or current architecture; active docs should use

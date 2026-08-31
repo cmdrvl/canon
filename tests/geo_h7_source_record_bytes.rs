@@ -339,6 +339,12 @@ fn h7_source_record_bytes_reject_invalid_empty_and_missing_inputs() {
     let error = serde_json::from_value::<GeoH7PopulationRowsRequest>(missing_both)
         .expect_err("digest or source bytes are required");
     assert!(error.to_string().contains("requires record_blake3"));
+
+    let mut null_bytes = request_value_with_source_bytes();
+    first_source_record_mut(&mut null_bytes)["source_record_bytes_base64"] = Value::Null;
+    let error = serde_json::from_value::<GeoH7PopulationRowsRequest>(null_bytes)
+        .expect_err("explicit null source bytes must not be treated as an omitted field");
+    assert!(error.to_string().contains("expected a string"));
 }
 
 #[test]

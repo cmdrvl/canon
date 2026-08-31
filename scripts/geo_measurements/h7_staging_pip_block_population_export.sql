@@ -43,6 +43,8 @@ params AS (
     'h7_staging_pip_block_population_export_row.v0'::TEXT
       AS output_row_contract,
     '3aed6660-ce1c-46a9-aeb2-7296c134ce8f'::TEXT AS bridge_build_id,
+    '2026-08-10'::DATE AS acris_release_dt,
+    'NY'::TEXT AS property_state,
     'nyc_filed_collateral_slice'::TEXT AS collateral_scope,
     'ROUND(value * 100, 0)::NUMBER(38,0)'::TEXT
       AS amount_cents_quantization,
@@ -151,6 +153,12 @@ accepted_stats AS (
     COUNT_IF(COALESCE(bridge_build_id, '')
       <> (SELECT bridge_build_id FROM params))
       AS bridge_build_mismatch_rows,
+    COUNT_IF(acris_release_dt IS NULL
+      OR acris_release_dt <> (SELECT acris_release_dt FROM params))
+      AS acris_release_mismatch_rows,
+    COUNT_IF(COALESCE(property_state, '')
+      <> (SELECT property_state FROM params))
+      AS property_state_mismatch_rows,
     COUNT_IF(COALESCE(collateral_scope, '')
       <> (SELECT collateral_scope FROM params))
       AS collateral_scope_mismatch_rows,
@@ -609,6 +617,12 @@ guard_failures AS (
     UNION ALL
     SELECT 'accepted_truth_bridge_build_mismatch',
       (SELECT bridge_build_mismatch_rows FROM accepted_stats) <> 0
+    UNION ALL
+    SELECT 'accepted_truth_acris_release_mismatch',
+      (SELECT acris_release_mismatch_rows FROM accepted_stats) <> 0
+    UNION ALL
+    SELECT 'accepted_truth_property_state_mismatch',
+      (SELECT property_state_mismatch_rows FROM accepted_stats) <> 0
     UNION ALL
     SELECT 'accepted_truth_collateral_scope_mismatch',
       (SELECT collateral_scope_mismatch_rows FROM accepted_stats) <> 0
