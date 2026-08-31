@@ -138,7 +138,7 @@ fn demo0_case4_public_cli_journey_is_byte_deterministic_and_honest() {
     );
     assert_eq!(
         summary["capabilities"]["unavailable_control_plane"],
-        json!(["canon geo inspect", "canon geo plan", "canon geo run"])
+        json!(["canon geo inspect", "canon geo run"])
     );
 
     assert_eq!(summary["composition"]["status"], "resolved");

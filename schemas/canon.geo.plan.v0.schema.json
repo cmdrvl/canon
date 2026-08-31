@@ -1,0 +1,1104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.plan.v0.schema.json",
+  "title": "canon.geo.plan.v0",
+  "description": "Deterministic offline Canon Geo planning overlay. The artifact is protocol-neutral Geo metadata around exactly one canon.project.plan.v1 DAG and does not authorize Canon to acquire data or use credentials.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "plan_id",
+    "semantic_hash",
+    "status",
+    "question_ref",
+    "capabilities_ref",
+    "inventory_ref",
+    "profile_ref",
+    "budget_ref",
+    "project_plan",
+    "geo_nodes",
+    "grain_outcomes",
+    "external_requests",
+    "diagnostics"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon_geo_plan.v0"
+    },
+    "plan_id": {
+      "$ref": "#/$defs/plan_id"
+    },
+    "semantic_hash": {
+      "$ref": "#/$defs/blake3_digest"
+    },
+    "status": {
+      "$ref": "#/$defs/plan_status"
+    },
+    "question_ref": {
+      "$ref": "#/$defs/artifact_ref"
+    },
+    "capabilities_ref": {
+      "$ref": "#/$defs/artifact_ref"
+    },
+    "inventory_ref": {
+      "$ref": "#/$defs/inventory_ref"
+    },
+    "profile_ref": {
+      "$ref": "#/$defs/profile_ref"
+    },
+    "budget_ref": {
+      "$ref": "#/$defs/budget_ref"
+    },
+    "project_plan": {
+      "$ref": "canon.project.plan.v1.schema.json"
+    },
+    "geo_nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/geo_node_overlay"
+      }
+    },
+    "grain_outcomes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/grain_outcome"
+      }
+    },
+    "external_requests": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external_request"
+      },
+      "uniqueItems": true
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/non_empty_text"
+      },
+      "uniqueItems": true
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "planned"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "grain_outcomes": {
+            "items": {
+              "required": [
+                "status"
+              ],
+              "properties": {
+                "status": {
+                  "const": "planned_relative_to_declared_universe"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "partial"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "grain_outcomes": {
+            "allOf": [
+              {
+                "contains": {
+                  "$ref": "#/$defs/non_planned_grain_outcome_marker"
+                },
+                "minContains": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "unsupported"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "grain_outcomes": {
+            "not": {
+              "contains": {
+                "$ref": "#/$defs/planned_grain_outcome_marker"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "x-canon-contract": {
+    "offline": true,
+    "protocol_neutral": true,
+    "canonical_contract": "canon_geo_plan.v0",
+    "embedded_project_plan_contract": "canon.project.plan.v1",
+    "exactly_one_embedded_project_plan_dag": true,
+    "geo_overlay_over_project_dag": true,
+    "semantic_identity_excludes": [
+      "paths",
+      "clocks",
+      "worker_order",
+      "machine_identity",
+      "runtime_duration",
+      "cpu_time",
+      "peak_rss_bytes",
+      "currency_cost",
+      "telemetry"
+    ],
+    "deterministic_counters_control_fallback": true,
+    "solve_requires_bounded_section": true,
+    "solve_requires_incidence_factorization": true,
+    "candidate_reach_is_independent_of_solver": true,
+    "unsupported_grains_do_not_poison_supported_grains": true
+  },
+  "$defs": {
+    "blake3_digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "plan_id": {
+      "type": "string",
+      "pattern": "^canon_geo_plan\\.v0:[0-9a-f]{64}$"
+    },
+    "local_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$"
+    },
+    "project_node_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"
+    },
+    "non_empty_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "contract_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^canon(_|\\.)[A-Za-z0-9_.-]+\\.v[0-9]+$"
+    },
+    "entity_level": {
+      "type": "string",
+      "enum": [
+        "site",
+        "property",
+        "parcel",
+        "building",
+        "unit",
+        "address",
+        "poi"
+      ]
+    },
+    "profile_entity_level": {
+      "type": "string",
+      "enum": [
+        "poi_unit",
+        "building",
+        "parcel",
+        "property"
+      ]
+    },
+    "evidence_class": {
+      "type": "string",
+      "enum": [
+        "geocode_point",
+        "address_string",
+        "address_set",
+        "parcel_geometry",
+        "building_footprint",
+        "asserted_attribute",
+        "entity_relation",
+        "temporal_observation"
+      ]
+    },
+    "claim_class": {
+      "type": "string",
+      "enum": [
+        "candidate_reach",
+        "stable_identity",
+        "collateral_composition",
+        "temporal_occupancy",
+        "lifecycle_state",
+        "attribute_band"
+      ]
+    },
+    "plan_status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "partial",
+        "unsupported"
+      ]
+    },
+    "grain_status": {
+      "type": "string",
+      "enum": [
+        "planned_relative_to_declared_universe",
+        "waiting_for_acquisition",
+        "unsupported_by_profile",
+        "unsupported_by_inventory",
+        "missing_leaf_capability"
+      ]
+    },
+    "plan_stage": {
+      "type": "string",
+      "enum": [
+        "materialize_home_cells",
+        "build_bounded_section",
+        "materialize_evidence",
+        "compile_evidence",
+        "factor_and_solve_exact_residual"
+      ]
+    },
+    "gate_plane": {
+      "type": "string",
+      "enum": [
+        "availability",
+        "coverage",
+        "candidate_reach",
+        "admission",
+        "constraint_effect",
+        "solver_correctness",
+        "cost"
+      ]
+    },
+    "gate_status": {
+      "type": "string",
+      "enum": [
+        "satisfied_by_declared_input",
+        "pending_artifact",
+        "passed_against_reference",
+        "failed_against_reference",
+        "structurally_complete_relative_to_inputs",
+        "unverified_with_claim_limitation",
+        "unsupported"
+      ]
+    },
+    "claim_effect": {
+      "type": "string",
+      "enum": [
+        "can_change_requested_claim",
+        "blocks_requested_claim",
+        "named_audit_gate"
+      ]
+    },
+    "resource_counter": {
+      "type": "string",
+      "enum": [
+        "bytes",
+        "rows",
+        "cells",
+        "candidates",
+        "variables",
+        "states",
+        "models",
+        "operations",
+        "proof_bytes"
+      ]
+    },
+    "value_origin": {
+      "type": "string",
+      "enum": [
+        "caller_declared",
+        "binary_default",
+        "source_release",
+        "local_artifact",
+        "adapter_contract",
+        "operator_policy"
+      ]
+    },
+    "budget_action": {
+      "type": "string",
+      "enum": [
+        "refuse_before_work",
+        "refuse_before_output",
+        "truncate_presentation_only",
+        "report_budget_fallback"
+      ]
+    },
+    "telemetry_semantic_effect": {
+      "type": "string",
+      "enum": [
+        "none"
+      ]
+    },
+    "artifact_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_id",
+        "semantic_hash"
+      ],
+      "properties": {
+        "artifact_id": {
+          "$ref": "#/$defs/local_id"
+        },
+        "semantic_hash": {
+          "$ref": "#/$defs/blake3_digest"
+        }
+      }
+    },
+    "inventory_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inventory_id",
+        "semantic_hash",
+        "planning_hash"
+      ],
+      "properties": {
+        "inventory_id": {
+          "$ref": "#/$defs/local_id"
+        },
+        "semantic_hash": {
+          "$ref": "#/$defs/blake3_digest"
+        },
+        "planning_hash": {
+          "$ref": "#/$defs/blake3_digest"
+        }
+      }
+    },
+    "profile_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "selection_level",
+        "semantic_hash"
+      ],
+      "properties": {
+        "version": {
+          "const": "canon_geo_composition_profile.v0"
+        },
+        "selection_level": {
+          "$ref": "#/$defs/profile_entity_level"
+        },
+        "semantic_hash": {
+          "$ref": "#/$defs/blake3_digest"
+        }
+      }
+    },
+    "budget_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "budget_id",
+        "semantic_hash",
+        "planning_hash"
+      ],
+      "properties": {
+        "budget_id": {
+          "$ref": "#/$defs/local_id"
+        },
+        "semantic_hash": {
+          "$ref": "#/$defs/blake3_digest"
+        },
+        "planning_hash": {
+          "$ref": "#/$defs/blake3_digest"
+        }
+      }
+    },
+    "precondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plane",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "plane": {
+          "$ref": "#/$defs/gate_plane"
+        },
+        "status": {
+          "$ref": "#/$defs/gate_status"
+        },
+        "detail": {
+          "$ref": "#/$defs/non_empty_text"
+        }
+      }
+    },
+    "transition_set": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "success",
+        "abstention",
+        "contradiction",
+        "budget_fallback"
+      ],
+      "properties": {
+        "success": {
+          "$ref": "#/$defs/non_empty_text"
+        },
+        "abstention": {
+          "$ref": "#/$defs/non_empty_text"
+        },
+        "contradiction": {
+          "$ref": "#/$defs/non_empty_text"
+        },
+        "budget_fallback": {
+          "$ref": "#/$defs/non_empty_text"
+        }
+      }
+    },
+    "numeric_bound": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantic_id",
+        "counter",
+        "value",
+        "unit",
+        "origin",
+        "action"
+      ],
+      "properties": {
+        "semantic_id": {
+          "$ref": "#/$defs/local_id"
+        },
+        "counter": {
+          "$ref": "#/$defs/resource_counter"
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unit": {
+          "$ref": "#/$defs/non_empty_text"
+        },
+        "origin": {
+          "$ref": "#/$defs/value_origin"
+        },
+        "action": {
+          "$ref": "#/$defs/budget_action"
+        }
+      }
+    },
+    "produced_artifact_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "producer_node_id",
+        "output_id",
+        "output_contract"
+      ],
+      "properties": {
+        "producer_node_id": {
+          "$ref": "#/$defs/project_node_id"
+        },
+        "output_id": {
+          "$ref": "#/$defs/local_id"
+        },
+        "output_contract": {
+          "$ref": "#/$defs/contract_version"
+        }
+      }
+    },
+    "component_scope": {
+      "type": "string",
+      "enum": [
+        "actual_connected_components_of_compiled_constraint_incidence"
+      ]
+    },
+    "exact_solve_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bounded_section",
+        "evidence_compilation",
+        "component_scope",
+        "component_key_field"
+      ],
+      "properties": {
+        "bounded_section": {
+          "$ref": "#/$defs/produced_artifact_ref"
+        },
+        "evidence_compilation": {
+          "$ref": "#/$defs/produced_artifact_ref"
+        },
+        "component_scope": {
+          "$ref": "#/$defs/component_scope"
+        },
+        "component_key_field": {
+          "const": "canon_geo_composition.v0.factorization[].key"
+        }
+      }
+    },
+    "cost_estimate_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantic_id",
+        "counter",
+        "lower_bound",
+        "upper_bound",
+        "unit",
+        "basis",
+        "semantic_effect"
+      ],
+      "properties": {
+        "semantic_id": {
+          "$ref": "#/$defs/local_id"
+        },
+        "counter": {
+          "$ref": "#/$defs/resource_counter"
+        },
+        "lower_bound": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "upper_bound": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unit": {
+          "$ref": "#/$defs/non_empty_text"
+        },
+        "basis": {
+          "$ref": "#/$defs/non_empty_text"
+        },
+        "semantic_effect": {
+          "$ref": "#/$defs/telemetry_semantic_effect"
+        }
+      }
+    },
+    "solve_coverage_precondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plane",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "plane": {
+          "const": "coverage"
+        },
+        "status": {
+          "const": "structurally_complete_relative_to_inputs"
+        },
+        "detail": {
+          "$ref": "#/$defs/non_empty_text"
+        }
+      }
+    },
+    "solve_candidate_reach_precondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plane",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "plane": {
+          "const": "candidate_reach"
+        },
+        "status": {
+          "const": "unverified_with_claim_limitation"
+        },
+        "detail": {
+          "$ref": "#/$defs/non_empty_text"
+        }
+      }
+    },
+    "solve_correctness_precondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plane",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "plane": {
+          "const": "solver_correctness"
+        },
+        "status": {
+          "const": "pending_artifact"
+        },
+        "detail": {
+          "$ref": "#/$defs/non_empty_text"
+        }
+      }
+    },
+    "solve_cost_precondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plane",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "plane": {
+          "const": "cost"
+        },
+        "status": {
+          "const": "satisfied_by_declared_input"
+        },
+        "detail": {
+          "$ref": "#/$defs/non_empty_text"
+        }
+      }
+    },
+    "failed_solve_coverage_or_reach_precondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plane",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "plane": {
+          "enum": [
+            "coverage",
+            "candidate_reach"
+          ]
+        },
+        "status": {
+          "const": "failed_against_reference"
+        },
+        "detail": {
+          "$ref": "#/$defs/non_empty_text"
+        }
+      }
+    },
+    "geo_node_overlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "project_node_id",
+        "stage",
+        "expected_output_contract",
+        "preconditions",
+        "claim_effect",
+        "bounded_section_required",
+        "incidence_factorization_required",
+        "deterministic_bounds",
+        "cost_estimate_ranges",
+        "transitions"
+      ],
+      "properties": {
+        "project_node_id": {
+          "$ref": "#/$defs/project_node_id"
+        },
+        "stage": {
+          "$ref": "#/$defs/plan_stage"
+        },
+        "entity_level": {
+          "$ref": "#/$defs/entity_level"
+        },
+        "evidence_classes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence_class"
+          },
+          "uniqueItems": true
+        },
+        "claim_classes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/claim_class"
+          },
+          "uniqueItems": true
+        },
+        "expected_output_contract": {
+          "$ref": "#/$defs/contract_version"
+        },
+        "preconditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/precondition"
+          },
+          "uniqueItems": true
+        },
+        "claim_effect": {
+          "$ref": "#/$defs/claim_effect"
+        },
+        "bounded_section_required": {
+          "type": "boolean"
+        },
+        "incidence_factorization_required": {
+          "type": "boolean"
+        },
+        "exact_solve_scope": {
+          "$ref": "#/$defs/exact_solve_scope"
+        },
+        "deterministic_bounds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/numeric_bound"
+          },
+          "uniqueItems": true
+        },
+        "cost_estimate_ranges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cost_estimate_range"
+          },
+          "uniqueItems": true
+        },
+        "transitions": {
+          "$ref": "#/$defs/transition_set"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "stage"
+            ],
+            "properties": {
+              "stage": {
+                "const": "factor_and_solve_exact_residual"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "entity_level",
+              "bounded_section_required",
+              "incidence_factorization_required",
+              "exact_solve_scope"
+            ],
+            "properties": {
+              "claim_effect": {
+                "const": "can_change_requested_claim"
+              },
+              "bounded_section_required": {
+                "const": true
+              },
+              "incidence_factorization_required": {
+                "const": true
+              },
+              "preconditions": {
+                "allOf": [
+                  {
+                    "contains": {
+                      "$ref": "#/$defs/solve_coverage_precondition"
+                    },
+                    "minContains": 1
+                  },
+                  {
+                    "contains": {
+                      "$ref": "#/$defs/solve_candidate_reach_precondition"
+                    },
+                    "minContains": 1
+                  },
+                  {
+                    "contains": {
+                      "$ref": "#/$defs/solve_correctness_precondition"
+                    },
+                    "minContains": 1
+                  },
+                  {
+                    "contains": {
+                      "$ref": "#/$defs/solve_cost_precondition"
+                    },
+                    "minContains": 1
+                  },
+                  {
+                    "not": {
+                      "contains": {
+                        "$ref": "#/$defs/failed_solve_coverage_or_reach_precondition"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "stage"
+            ],
+            "properties": {
+              "stage": {
+                "not": {
+                  "const": "factor_and_solve_exact_residual"
+                }
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "exact_solve_scope"
+              ]
+            },
+            "properties": {
+              "bounded_section_required": {
+                "const": false
+              },
+              "incidence_factorization_required": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    "grain_outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_level",
+        "status",
+        "claim_limitation",
+        "next_action"
+      ],
+      "properties": {
+        "entity_level": {
+          "$ref": "#/$defs/entity_level"
+        },
+        "status": {
+          "$ref": "#/$defs/grain_status"
+        },
+        "missing_evidence_classes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence_class"
+          },
+          "uniqueItems": true
+        },
+        "project_node_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/project_node_id"
+          },
+          "uniqueItems": true
+        },
+        "claim_limitation": {
+          "$ref": "#/$defs/non_empty_text"
+        },
+        "next_action": {
+          "$ref": "#/$defs/non_empty_text"
+        }
+      }
+    },
+    "planned_grain_outcome_marker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "entity_level": {
+          "$ref": "#/$defs/entity_level"
+        },
+        "status": {
+          "const": "planned_relative_to_declared_universe"
+        },
+        "missing_evidence_classes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence_class"
+          },
+          "uniqueItems": true
+        },
+        "project_node_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/project_node_id"
+          },
+          "uniqueItems": true
+        },
+        "claim_limitation": {
+          "$ref": "#/$defs/non_empty_text"
+        },
+        "next_action": {
+          "$ref": "#/$defs/non_empty_text"
+        }
+      }
+    },
+    "non_planned_grain_outcome_marker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "entity_level": {
+          "$ref": "#/$defs/entity_level"
+        },
+        "status": {
+          "enum": [
+            "waiting_for_acquisition",
+            "unsupported_by_profile",
+            "unsupported_by_inventory",
+            "missing_leaf_capability"
+          ]
+        },
+        "missing_evidence_classes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence_class"
+          },
+          "uniqueItems": true
+        },
+        "project_node_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/project_node_id"
+          },
+          "uniqueItems": true
+        },
+        "claim_limitation": {
+          "$ref": "#/$defs/non_empty_text"
+        },
+        "next_action": {
+          "$ref": "#/$defs/non_empty_text"
+        }
+      }
+    },
+    "discovery_gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gap_id",
+        "requested_evidence_class",
+        "reason",
+        "next_command"
+      ],
+      "properties": {
+        "gap_id": {
+          "$ref": "#/$defs/local_id"
+        },
+        "requested_entity_level": {
+          "$ref": "#/$defs/entity_level"
+        },
+        "requested_evidence_class": {
+          "$ref": "#/$defs/evidence_class"
+        },
+        "reason": {
+          "$ref": "#/$defs/non_empty_text"
+        },
+        "next_command": {
+          "$ref": "#/$defs/non_empty_text"
+        }
+      }
+    },
+    "acquisition_handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expected_receipt_contract",
+        "required_result_digest_algorithm",
+        "continuation_command"
+      ],
+      "properties": {
+        "expected_receipt_contract": {
+          "const": "canon_geo_acquisition_receipt.v0"
+        },
+        "required_result_digest_algorithm": {
+          "const": "blake3"
+        },
+        "continuation_command": {
+          "const": "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>"
+        }
+      }
+    },
+    "external_request": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "request",
+            "handoff"
+          ],
+          "properties": {
+            "kind": {
+              "const": "acquisition"
+            },
+            "request": {
+              "$ref": "canon.geo.acquisition_request.v0.schema.json"
+            },
+            "handoff": {
+              "$ref": "#/$defs/acquisition_handoff"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "gap_id",
+            "request"
+          ],
+          "properties": {
+            "kind": {
+              "const": "discovery"
+            },
+            "gap_id": {
+              "$ref": "#/$defs/local_id"
+            },
+            "request": {
+              "$ref": "canon.geo.discovery_request.v0.schema.json"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "gap"
+          ],
+          "properties": {
+            "kind": {
+              "const": "discovery_gap"
+            },
+            "gap": {
+              "$ref": "#/$defs/discovery_gap"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

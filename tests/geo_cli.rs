@@ -259,6 +259,420 @@ fn tiny_tile_work_request(home_cell: CellIndex) -> Value {
     })
 }
 
+fn geo_plan_digest(label: &str) -> String {
+    format!("blake3:{}", blake3::hash(label.as_bytes()).to_hex())
+}
+
+fn geo_plan_region() -> Value {
+    json!({
+        "geography_id": "region.fixture.geo-plan",
+        "geography_kind": "bounded_fixture",
+        "description": "Geo plan CLI fixture region"
+    })
+}
+
+fn geo_plan_as_of(day: &str, semantic_id: &str) -> Value {
+    json!({
+        "utc_day": day,
+        "semantic_id": semantic_id,
+        "unit": "utc_day",
+        "origin": "caller_declared"
+    })
+}
+
+fn geo_plan_question(reordered: bool) -> Value {
+    let mut subject_bindings = vec![
+        json!({
+            "role": "target",
+            "binding_class": "operator_label",
+            "value": "fixture building"
+        }),
+        json!({
+            "role": "input_address",
+            "binding_class": "address_text",
+            "value": "10 Fixture Street"
+        }),
+    ];
+    let mut requested_grains = vec![
+        json!({
+            "entity_level": "building",
+            "required_evidence_classes": ["building_footprint"],
+            "optional_evidence_classes": ["address_set"]
+        }),
+        json!({
+            "entity_level": "unit",
+            "required_evidence_classes": ["asserted_attribute"],
+            "optional_evidence_classes": []
+        }),
+    ];
+    let mut requested_claim_classes = vec![json!("candidate_reach"), json!("stable_identity")];
+    let mut presentation_limits = vec![
+        geo_plan_bound("presentation.max_models", "models", 16, "model"),
+        geo_plan_bound("presentation.max_candidates", "candidates", 32, "candidate"),
+    ];
+    if reordered {
+        subject_bindings.reverse();
+        requested_grains.reverse();
+        requested_claim_classes.reverse();
+        presentation_limits.reverse();
+    }
+    json!({
+        "version": "canon_geo_question.v0",
+        "question_id": "question.fixture.geo-plan",
+        "subject_bindings": subject_bindings,
+        "bounded_geography": geo_plan_region(),
+        "requested_grains": requested_grains,
+        "query_as_of": geo_plan_as_of("2026-08-31", "question.query_as_of.utc_day"),
+        "requested_claim_classes": requested_claim_classes,
+        "presentation_limits": presentation_limits,
+        "abstention_policy": {
+            "unsupported_grain": "report_unsupported",
+            "unresolved_residual": "report_residual",
+            "budget_fallback": "report_residual"
+        },
+        "decision_policy": null,
+        "resource_budget_ref": "budget.fixture.geo-plan"
+    })
+}
+
+fn geo_plan_bound(id: &str, counter: &str, value: u64, unit: &str) -> Value {
+    json!({
+        "semantic_id": id,
+        "counter": counter,
+        "value": value,
+        "unit": unit,
+        "origin": "caller_declared",
+        "action": "report_budget_fallback"
+    })
+}
+
+fn geo_plan_budget(reordered: bool) -> Value {
+    let mut deterministic_bounds = vec![
+        geo_plan_bound("budget.max_bytes", "bytes", 1_000_000, "byte"),
+        geo_plan_bound("budget.max_rows", "rows", 10_000, "row"),
+        geo_plan_bound("budget.max_cells", "cells", 64, "cell"),
+        geo_plan_bound("budget.max_candidates", "candidates", 500, "candidate"),
+        geo_plan_bound("budget.max_variables", "variables", 128, "variable"),
+        geo_plan_bound("budget.max_states", "states", 100_000, "state"),
+        geo_plan_bound("budget.max_models", "models", 10_000, "model"),
+        geo_plan_bound(
+            "budget.max_operations",
+            "operations",
+            1_000_000,
+            "operation",
+        ),
+    ];
+    if reordered {
+        deterministic_bounds.reverse();
+    }
+    json!({
+        "version": "canon_geo_resource_budget.v0",
+        "budget_id": "budget.fixture.geo-plan",
+        "deterministic_bounds": deterministic_bounds,
+        "telemetry": [{
+            "metric": "wall_time",
+            "unit": "millisecond",
+            "origin": "operator_policy",
+            "semantic_effect": "none"
+        }]
+    })
+}
+
+fn geo_plan_source(
+    source_instance_id: &str,
+    evidence_classes: Vec<&str>,
+    temporal_scope: Value,
+    reordered: bool,
+) -> Value {
+    let mut lineage_ids = vec![json!("lineage.fixture.one"), json!("lineage.fixture.two")];
+    if reordered {
+        lineage_ids.reverse();
+    }
+    json!({
+        "source_instance_id": source_instance_id,
+        "release": {
+            "release_id": "release.fixture.geo-plan",
+            "release_digest": geo_plan_digest("release.fixture.geo-plan")
+        },
+        "temporal_scope": temporal_scope,
+        "lineage_ids": lineage_ids,
+        "native_scope": {
+            "kind": "native_entity",
+            "entity_level": "building"
+        },
+        "evidence_classes": evidence_classes,
+        "coverage": {
+            "coverage_id": format!("coverage.{source_instance_id}"),
+            "region": geo_plan_region(),
+            "predicate": "all declared fixture records"
+        },
+        "local_state": {
+            "state": "available",
+            "local_ref": {
+                "artifact_id": format!("artifact.{source_instance_id}"),
+                "content_hash": geo_plan_digest(&format!("local.{source_instance_id}")),
+                "media_type": "application/json"
+            }
+        },
+        "geometry": {
+            "geometry_contract_version": "geometry.fixture.v1",
+            "coordinate_reference_system": "EPSG:4326",
+            "transform_id": "identity.fixture",
+            "transform_digest": geo_plan_digest("identity.fixture"),
+            "numeric_error_bounds": [{
+                "semantic_id": "transform.error",
+                "value": 0,
+                "unit": "millimetre",
+                "origin": "adapter_contract"
+            }]
+        },
+        "license_class": "public_redistributable",
+        "egress_class": "shareable",
+        "estimates": [{
+            "semantic_id": "source.rows",
+            "value": 5,
+            "unit": "row",
+            "origin": "source_release"
+        }]
+    })
+}
+
+fn geo_plan_inventory(reordered: bool) -> Value {
+    let building_evidence = if reordered {
+        vec!["address_set", "building_footprint"]
+    } else {
+        vec!["building_footprint", "address_set"]
+    };
+    let address_evidence = if reordered {
+        vec!["asserted_attribute", "address_set"]
+    } else {
+        vec!["address_set", "asserted_attribute"]
+    };
+    let timed_scope = json!({
+        "valid_time": {
+            "start_utc_day": "2026-01-01",
+            "end_utc_day": "2026-12-31"
+        },
+        "release_time": geo_plan_as_of("2026-05-01", "source.release.utc_day")
+    });
+    let mut sources = vec![
+        geo_plan_source(
+            "source.fixture.building-footprints",
+            building_evidence,
+            timed_scope,
+            reordered,
+        ),
+        geo_plan_source(
+            "source.fixture.address-attributes",
+            address_evidence,
+            json!({}),
+            reordered,
+        ),
+    ];
+    if reordered {
+        sources.reverse();
+    }
+    json!({
+        "version": "canon_geo_regional_inventory.v0",
+        "inventory_id": "inventory.fixture.geo-plan",
+        "region": geo_plan_region(),
+        "sources": sources,
+        "discovery_gaps": []
+    })
+}
+
+fn geo_plan_profile(version: &str) -> Value {
+    json!({
+        "version": version,
+        "selection_level": "building"
+    })
+}
+
+struct GeoPlanInputPaths {
+    question: PathBuf,
+    capabilities: PathBuf,
+    inventory: PathBuf,
+    profile: PathBuf,
+    budget: PathBuf,
+}
+
+fn write_geo_plan_capabilities(dir: &std::path::Path) -> PathBuf {
+    let capabilities = canon_command()
+        .args(["geo", "capabilities", "--emit", "json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let path = dir.join("capabilities.json");
+    fs::write(&path, capabilities).expect("write capabilities file");
+    path
+}
+
+fn write_geo_plan_inputs(
+    dir: &std::path::Path,
+    reordered: bool,
+    profile_version: &str,
+) -> GeoPlanInputPaths {
+    GeoPlanInputPaths {
+        question: write_json(dir, "question.json", &geo_plan_question(reordered)),
+        capabilities: write_geo_plan_capabilities(dir),
+        inventory: write_json(dir, "inventory.json", &geo_plan_inventory(reordered)),
+        profile: write_json(dir, "profile.json", &geo_plan_profile(profile_version)),
+        budget: write_json(dir, "budget.json", &geo_plan_budget(reordered)),
+    }
+}
+
+fn geo_plan_command(paths: &GeoPlanInputPaths) -> Command {
+    let mut command = canon_command();
+    command
+        .arg("geo")
+        .arg("plan")
+        .arg("--question")
+        .arg(&paths.question)
+        .arg("--capabilities")
+        .arg(&paths.capabilities)
+        .arg("--inventory")
+        .arg(&paths.inventory)
+        .arg("--profile")
+        .arg(&paths.profile)
+        .arg("--budget")
+        .arg(&paths.budget);
+    command
+}
+
+#[test]
+fn geo_plan_emits_canonical_partial_plan_and_binds_capabilities() {
+    let temp = tempdir().expect("tempdir");
+    let paths = write_geo_plan_inputs(temp.path(), false, "canon_geo_composition_profile.v0");
+
+    let first = geo_plan_command(&paths).assert().success();
+    let second = geo_plan_command(&paths).assert().success();
+    assert_eq!(first.get_output().stdout, second.get_output().stdout);
+    assert!(first.get_output().stderr.is_empty());
+
+    let stdout = String::from_utf8(first.get_output().stdout.clone()).expect("utf-8 stdout");
+    assert!(stdout.ends_with('\n'));
+    let plan: Value = serde_json::from_str(stdout.trim_end()).expect("plan JSON parses");
+    let capabilities: Value =
+        serde_json::from_slice(&fs::read(&paths.capabilities).expect("read capabilities"))
+            .expect("capabilities JSON parses");
+
+    assert_eq!(plan["version"], "canon_geo_plan.v0");
+    assert_eq!(plan["status"], "partial");
+    assert_eq!(
+        plan["capabilities_ref"]["semantic_hash"], capabilities["semantic_hash"],
+        "--capabilities is a semantic input to the plan"
+    );
+    assert_eq!(
+        plan["profile_ref"]["version"],
+        "canon_geo_composition_profile.v0"
+    );
+    assert_eq!(plan["profile_ref"]["selection_level"], "building");
+    assert_eq!(
+        plan["project_plan"]["schema_version"],
+        "canon.project.plan.v1"
+    );
+    assert!(plan["external_requests"].as_array().unwrap().is_empty());
+
+    let outcomes = plan["grain_outcomes"].as_array().unwrap();
+    let building = outcomes
+        .iter()
+        .find(|outcome| outcome["entity_level"] == "building")
+        .expect("building grain outcome");
+    assert_eq!(building["status"], "planned_relative_to_declared_universe");
+    assert!(
+        building["claim_limitation"]
+            .as_str()
+            .unwrap()
+            .contains("truth reach is unverified")
+    );
+    let unit = outcomes
+        .iter()
+        .find(|outcome| outcome["entity_level"] == "unit")
+        .expect("unit grain outcome");
+    assert_eq!(unit["status"], "unsupported_by_profile");
+    assert!(
+        unit.get("project_node_ids")
+            .and_then(Value::as_array)
+            .is_none_or(Vec::is_empty)
+    );
+
+    let node_ids = plan["project_plan"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|node| node["node_id"].as_str().unwrap())
+        .collect::<BTreeSet<_>>();
+    for expected in [
+        "geo.building.home_cells",
+        "geo.building.section",
+        "geo.building.materialize_evidence",
+        "geo.building.compile_evidence",
+        "geo.building.solve",
+    ] {
+        assert!(
+            node_ids.contains(expected),
+            "supported building grain should schedule {expected}"
+        );
+    }
+    assert!(!node_ids.contains("geo.unit.solve"));
+}
+
+#[test]
+fn geo_plan_is_byte_identical_for_reordered_inputs() {
+    let temp = tempdir().expect("tempdir");
+    let paths_a = write_geo_plan_inputs(temp.path(), false, "canon_geo_composition_profile.v0");
+    let nested = temp.path().join("reordered");
+    fs::create_dir(&nested).expect("create reordered fixture dir");
+    let paths_b = write_geo_plan_inputs(&nested, true, "canon_geo_composition_profile.v0");
+
+    let first = geo_plan_command(&paths_a).assert().success();
+    let second = geo_plan_command(&paths_b).assert().success();
+    assert_eq!(first.get_output().stdout, second.get_output().stdout);
+}
+
+#[test]
+fn geo_plan_refuses_missing_capabilities_file() {
+    let temp = tempdir().expect("tempdir");
+    let mut paths = write_geo_plan_inputs(temp.path(), false, "canon_geo_composition_profile.v0");
+    paths.capabilities = temp.path().join("missing-capabilities.json");
+
+    let refusal = geo_plan_command(&paths).assert().code(2);
+    let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout)
+        .expect("missing capabilities refusal parses");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_IO");
+    assert_eq!(
+        refusal["refusal"]["detail"]["capabilities"],
+        paths.capabilities.to_string_lossy().as_ref()
+    );
+    assert_eq!(
+        refusal["refusal"]["next_command"],
+        "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>"
+    );
+}
+
+#[test]
+fn geo_plan_surfaces_profile_contract_mismatch_as_typed_refusal() {
+    let temp = tempdir().expect("tempdir");
+    let paths = write_geo_plan_inputs(temp.path(), false, "canon_geo_composition_profile.v9");
+
+    let refusal = geo_plan_command(&paths).assert().code(2);
+    let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout)
+        .expect("profile contract refusal parses");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        refusal["refusal"]["detail"]["geo_plan_error_code"],
+        "unsupported_version"
+    );
+    assert_eq!(
+        refusal["refusal"]["detail"]["detail"]["expected"],
+        "canon_geo_composition_profile.v0"
+    );
+}
+
 fn tiny_tile_reconciliation_request(second_payload: &str) -> Value {
     let (first, second, _) = tile_cells();
     let members = json!([

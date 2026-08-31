@@ -1,9 +1,9 @@
 # Canon Geo Agent Architecture
 
-> Status: **normative target architecture; partially implemented leaf capabilities**.
+> Status: **normative target architecture; partially implemented Geo control plane**.
 > This document defines how an agent should operate Canon Geo as one coherent system.
-> The only shipped control-plane command is `canon geo capabilities --emit json`;
-> `geo plan`, `geo run`, and `geo inspect` remain proposed/unavailable.
+> Shipped control-plane commands are `canon geo capabilities --emit json` and offline
+> `canon geo plan`; `geo run` and `geo inspect` remain proposed/unavailable.
 > The mathematical model and empirical gates remain governed by
 > [`PLAN_CANON_GEO.md`](./PLAN_CANON_GEO.md).
 
@@ -12,7 +12,8 @@
 > invalidation, lifecycle, and workspace policy. The public project CLI exposes lock
 > refresh and pure planning, while `project run` validates/reuses v2 receipts and executes
 > pending nodes only through registered internal offline executors. The first narrow
-> `copy-file-v1` executor proves positive dispatch; Geo overlay/delegation and
+> `copy-file-v1` executor proves positive dispatch; Geo plan now emits a semantic overlay
+> over one validated project DAG. Geo run delegation and
 > multi-artifact transactionality remain open. Geo must extend this substrate, not build
 > a parallel orchestrator.
 
@@ -254,8 +255,13 @@ claim effects. There must not be two independent schedulers or caches. Each node
 
 Planning is read-only and offline. It must stop before expensive work when the requested
 grain is unsupported, the coverage predicate cannot include the subject, or no downstream
-claim can change. Missing network inputs become typed acquisition requests; Canon does not
-hide network access inside a deterministic provider build.
+claim can change. Missing network inputs become typed external requests when their
+release/as-of selectors are sufficient, and otherwise remain explicit discovery gaps;
+Canon does not hide network access inside a deterministic provider build. The current shipped planner is
+limited to the parcel/building composition-profile semantics: omitted/default `parcel`
+requires a declared parcel universe, explicit `building` can plan against a parcel-free
+building universe, and site/address grains remain typed unsupported/external gaps until
+separate exact semantics land.
 
 ### 4.7 Source adapters and normalized observations
 
@@ -467,12 +473,12 @@ parallelism level may change elapsed time, never semantic output.
 ## 6. Minimal agent command surface
 
 Leaf commands remain independently callable and machine-described. The target control
-plane currently ships capability introspection and proposes three orchestration
-operations:
+plane currently ships capability introspection and offline planning, while execution and
+inspection remain target operations:
 
 ```text
 canon geo capabilities --emit json
-canon geo plan --question Q.json --inventory I.json --profile P.json --budget B.json
+canon geo plan --question Q.json --capabilities C.json --inventory I.json --profile P.json --budget B.json
 canon geo run --plan PLAN.json --work-dir DIR [--satisfy REQUEST_ID=RECEIPT.json]...
 canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-next]
 ```
@@ -480,7 +486,8 @@ canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-
 - `capabilities` is shipped offline/read-only and answers what this build can do without
   reading a project.
 - `plan` validates intent and emits the Geo overlay plus its generic project DAG without
-  mutation; it remains proposed/unavailable.
+  mutation. It does not acquire data, execute nodes, or turn unverified candidate reach into
+  truth reach.
 - `run` delegates scheduling, receipts, resume, and workspace safety to the shared project
   substrate; it orchestrates only offline leaf capabilities, accepts explicit responses
   to outstanding discovery/acquisition requests, and resumes by default; it remains
@@ -492,9 +499,9 @@ canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-
 expected output contract, deterministic cost ceiling, and the reason the action can change
 the answer. Human prose is a rendering of those fields, not the only representation.
 
-Until `geo plan`, `geo run`, and `geo inspect` exist, agents must use the implemented leaf
-commands listed by `canon --describe`; documentation must label those orchestration
-commands as planned rather than advertising them as shipped.
+Until `geo run` and `geo inspect` exist, agents must execute planned work through the
+implemented leaf commands listed by `canon --describe`; documentation must label execution
+and inspection commands as planned rather than advertising them as shipped.
 
 ## 7. Resource minimization
 

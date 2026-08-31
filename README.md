@@ -380,6 +380,7 @@ canon project lock refresh --manifest <MANIFEST> --out <LOCK> [--emit json|summa
 canon project plan --manifest <MANIFEST> --lock <LOCK> [--out <PLAN>] [--cache-hit <NODE>...] [--emit json|summary]
 canon project run [--plan <PLAN>] [--manifest <MANIFEST>] [--lock <LOCK>] [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json|summary]
 canon geo capabilities [--emit json]
+canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>
 canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>
 canon geo materialize-home-cells --rows <ROWS.json>
 canon geo tile-work --request <REQUEST.json>
@@ -547,6 +548,16 @@ for the staging-derived source-record payload contract. It validates batch guard
 denominators, release pins, source-record bytes, and profile truth planes before delegating
 to the generic H.7 population materializer. It is not the generic regional engine and does
 not turn derived payload rows or fixtures into live source proof.
+
+`canon geo plan --question --capabilities --inventory --profile --budget` is a
+deterministic offline planner. It emits `canon_geo_plan.v0`, a Geo semantic overlay over one
+validated `canon.project.plan.v1` DAG. It plans the current parcel/building composition
+profile only: omitted/default `parcel` still requires a parcel universe, explicit
+`building` can produce a parcel-free building plan, and unsupported grains stay separately
+typed instead of poisoning supported grains. Missing local source inputs become typed
+discovery/acquisition requests when the required release or as-of selector is present;
+otherwise they remain explicit discovery gaps. The command does not execute work, acquire
+data, prove candidate reach without an independent reference, or ship `geo run`/`geo inspect`.
 
 ### Arguments
 
@@ -1432,15 +1443,18 @@ reported coverage/reach/solver/truth/cost planes. Source instances belong in ada
 regional inventories; Canon core does not require a named vendor or, architecturally, a
 parcel layer.
 
-The target Geo planner and run view reuse Canon's shared project
-manifest/lock/plan/run/receipt substrate; they are not a second orchestration engine. The
-library substrate exists today, but its plan/run CLI and Geo integration remain open and
-must be hardened before being advertised.
+The Geo planner and target run view reuse Canon's shared project
+manifest/lock/plan/run/receipt substrate; they are not a second orchestration engine.
+`canon geo plan` now ships as an offline/read-only planner over one validated
+`canon.project.plan.v1` DAG, while `geo run` and `geo inspect` remain open.
 
 `canon geo capabilities --emit json` ships as a deterministic, offline description of the
-compiled Geo control contracts. The proposed `canon geo plan`, `run`, and `inspect`
-commands do not ship yet. Until they do, use only the implemented leaf commands reported
-by `canon --describe`.
+compiled Geo control contracts. Use `canon geo plan --question <QUESTION.json>
+--capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json>
+--budget <BUDGET.json>` to emit `canon_geo_plan.v0`. The current composition profile is
+parcel/building only; candidate reach remains independently unverified unless the inputs
+name a reference that proves it. Existing leaf commands remain independently callable via
+`canon --describe`, but there is no shipped Geo execution or live-proof surface yet.
 
 ---
 

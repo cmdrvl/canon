@@ -16,8 +16,12 @@
 > evidence—is specified in
 > [`CANON_GEO_AGENT_ARCHITECTURE.md`](./CANON_GEO_AGENT_ARCHITECTURE.md). Its typed
 > question/capability/inventory/budget layer and protocol-neutral discovery/acquisition
-> contracts are partially implemented; costed Geo planning, Geo run/inspect, and
-> residual-aware next-evidence control remain open. Geometry
+> contracts are partially implemented. Deterministic offline `canon geo plan` now emits
+> `canon_geo_plan.v0` as a Geo semantic overlay over one validated
+> `canon.project.plan.v1` DAG; it plans only the current parcel/building composition
+> profile, emits typed external requests for missing inputs, and never executes work or
+> proves live source truth. Geo run/inspect and residual-aware next-evidence control remain
+> open. Geometry
 > acquisition/ingest, temporal solving, knowledge compilation, and
 > the complete E4/E5 populations do not exist. This does not change canon core: runtime
 > lookup remains exact registry lookup.
@@ -52,8 +56,8 @@ The controlling state entering the main review is:
 | Topic | Current controlling state | Authority |
 |---|---|---|
 | Product boundary | Core Canon remains exact registry replay; GEO is a build-time workbench. | `AGENTS.md`, `README.md`; binding boundary |
-| Agent operating model | The target surface is question + regional inventory + resolution profile + deterministic budget -> plan -> immutable run revisions -> typed answer/explanation/next action. Leaf Geo commands remain the implemented surface today, `canon geo capabilities --emit json` is shipped as an offline/read-only capability artifact, and the protocol-neutral discovery/acquisition request/receipt types are public library contracts. `geo plan`, `geo run`, and `geo inspect` remain proposed/unavailable. Source instances belong in adapters/inventories, never core branches. | `CANON_GEO_AGENT_ARCHITECTURE.md`; normative target, typed control/discovery contracts `PARTIAL`, composite control plane `OPEN` |
-| Shared project substrate | Library-level `canon.project.plan.v1` and `canon.project.run.v2` provide manifest/lock DAGs, receipts, resume, invalidation, lifecycle, and workspace policy. The project CLI exposes lock refresh and pure planning; public project run validates/reuses v2 receipts and now executes pending nodes only through registered internal offline executors. The first narrow `copy-file-v1` executor proves positive dispatch with digest-checked inputs and one declared output. Output and receipt files publish atomically one at a time, but output-plus-receipt and multi-output transactionality, Geo overlay/delegation, immutable revisions, and concurrency remain open. Geo must extend this substrate rather than create a second scheduler. | `src/project/{manifest,lock,plan,run,receipt,lifecycle,workspace}.rs`; reusable positive executor seam `PARTIAL`, agent-safe Geo integration `OPEN` |
+| Agent operating model | The target surface is question + regional inventory + resolution profile + deterministic budget -> plan -> immutable run revisions -> typed answer/explanation/next action. Leaf Geo commands remain independently callable, `canon geo capabilities --emit json` is shipped as an offline/read-only capability artifact, and `canon geo plan` now ships as an offline/read-only planner that emits `canon_geo_plan.v0` over one shared `canon.project.plan.v1` DAG. The protocol-neutral discovery/acquisition request/receipt types are public library contracts. `geo run` and `geo inspect` remain proposed/unavailable. Source instances belong in adapters/inventories, never core branches. | `CANON_GEO_AGENT_ARCHITECTURE.md`; normative target, typed control/discovery/plan contracts `PARTIAL`, execution/inspection control plane `OPEN` |
+| Shared project substrate | Library-level `canon.project.plan.v1` and `canon.project.run.v2` provide manifest/lock DAGs, receipts, resume, invalidation, lifecycle, and workspace policy. The project CLI exposes lock refresh and pure planning; public project run validates/reuses v2 receipts and now executes pending nodes only through registered internal offline executors. The first narrow `copy-file-v1` executor proves positive dispatch with digest-checked inputs and one declared output. Geo plan now reuses the project DAG as a typed semantic overlay. Output and receipt files publish atomically one at a time, but output-plus-receipt and multi-output transactionality, Geo run delegation, immutable revisions, and concurrency remain open. Geo must extend this substrate rather than create a second scheduler. | `src/project/{manifest,lock,plan,run,receipt,lifecycle,workspace}.rs`; reusable positive executor seam and Geo planner overlay `PARTIAL`, agent-safe Geo execution `OPEN` |
 | N-source row composition | `canon geo link-sources` now materializes three or more named local CSV sources through the existing entity multisource kernel. Geo requires exactly one target, at least one bounded reference, permits peers, refuses a globally canonical vendor role, defaults to the complete comparison graph, enforces per-pair budgets, emits anchor-conflict abstentions, and content-hashes every input and the merged rows. The semantic artifact hash excludes publication paths and is compatible with `EntityArtifactReference`; source count remains provenance rather than evidence weight. This is row composition, not spatial candidate reach, constraint admission, or solving. | `src/geo/multisource.rs`, `src/entity/multisource.rs`, `canon_geo_multisource_request.v0`, `canon_entity_multisource_link.v1`; implemented build-time workbench contract |
 | Offline row bridge | `canon geo materialize-evidence` deterministically groups release-pinned profile-permitted parcel/building rows, parcel incidence where declared, rho-contract, and immutable source-record rows into `canon_geo_evidence_request.v0`; duplicate grains and conflicting observation rows refuse, and the production evidence compiler validates the result. The backward-compatible default parcel profile still requires parcel candidates; explicit building profile permits an empty parcel universe, rejects parcel rows/incidences, and preserves building-only evidence. It performs no acquisition, and source-record multiplicity remains provenance rather than constraint weight. | `src/geo/materialize.rs`, `canon_geo_warehouse_rows.v0`; implemented build-time workbench contract |
 | Measurement receipt integrity | The companion `canon_geo_measurements` binary emits a deterministic offline plan or checks supplied result artifacts and receipts against the pinned B/C/D/F manifest. It recomputes local source-SQL bytes, normalized executed-query-text bytes, artifact bytes, an unordered canonical result-set digest, row-derived denominators, and declared sanity fields. A successful row is only `receipt_consistent`: the operator-supplied proof class is reported separately, and the runner does not attest live execution, query-history provenance, or source authenticity. | `src/bin/canon_geo_measurements.rs`, `scripts/geo_measurements/manifest.json`; offline integrity contract `IMPLEMENTED`, live provenance `OPEN` |
@@ -125,22 +129,28 @@ The target control surface is deliberately small:
 
 ```text
 canon geo capabilities --emit json
-canon geo plan --question ... --inventory ... --profile ... --budget ...
+canon geo plan --question ... --capabilities ... --inventory ... --profile ... --budget ...
 canon geo run --plan ... --work-dir ... [--satisfy REQUEST_ID=RECEIPT.json]...
 canon geo inspect --run ... [--compare ...] [--recommend-next]
 ```
 
 The first command is shipped as an offline/read-only leaf that emits
-`canon_geo_capabilities.v0`; `geo plan`, `geo run`, and `geo inspect` remain **OPEN
-design targets**, not current CLI claims. Existing leaf commands remain independently
-callable and machine-described. The public library now implements and validates
+`canon_geo_capabilities.v0`; `geo plan` is now shipped as an offline/read-only compiler for
+`canon_geo_plan.v0` over one validated `canon.project.plan.v1` DAG. It currently plans only
+parcel/building composition-profile levels, with omitted/default `parcel` preserving the
+non-empty parcel universe requirement and explicit `building` permitting a parcel-free
+building universe. Unsupported grains remain separately typed. `geo run` and `geo inspect`
+remain **OPEN design targets**, not current CLI claims. Existing leaf commands remain
+independently callable and machine-described. The public library implements and validates
 `canon_geo_discovery_request.v0`, `canon_geo_acquisition_request.v0`, and
-`canon_geo_acquisition_receipt.v0`; they are not yet consumed by a shipped Geo planner or
-run manifest. Composite execution stays offline; missing network inputs become typed
-discovery/acquisition requests rather than hidden provider calls. External executors may
-use Reveal catalog discovery, Snowflake, S3, or future services, but Canon validates one
-protocol-neutral receipt carrying release, bounded subset, conditional geometry
-projection, pagination state, query/request id, denominators, digests, and proof class.
+`canon_geo_acquisition_receipt.v0`; the shipped planner may emit those typed requests for
+missing local inputs, but no shipped Geo run manifest executes or satisfies them. Composite
+execution stays offline; missing network inputs become typed discovery/acquisition requests
+when their release/as-of selectors are sufficient, and otherwise remain explicit gaps
+rather than hidden provider calls. External executors may use Reveal catalog discovery,
+Snowflake, S3, or future services, but Canon validates one protocol-neutral receipt carrying
+release, bounded subset, conditional geometry projection, pagination state, query/request id,
+denominators, digests, and proof class.
 
 ---
 
@@ -913,9 +923,9 @@ singleton, building doubleton, both stated. **The answer is the best-supported e
 each level; any ledger key (BBL, BIN) is an alias projection of that entity, and an
 unavailable ledger form never voids a resolved entity (L.5).** Refutation of the input
 itself ("the asserted address is nowhere in this tile") is an abstention that triggers
-reacquisition—re-geocode and retry—not a terminal failure. Other profiles project the same
-residual machinery into the entity grains they declare. An unsupported parcel grain must
-not erase a supported building/site result.
+reacquisition—re-geocode and retry—not a terminal failure. Other profiles are not yet given
+exact composition semantics by v0; unsupported parcel, site, or address grains must not
+erase a supported parcel/building result.
 
 ### 16.2 Candidate enumeration
 

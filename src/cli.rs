@@ -247,6 +247,8 @@ pub enum ProjectLockSubcommand {
 pub enum GeoSubcommand {
     /// Emit compiled offline Canon Geo capability contracts
     Capabilities(GeoCapabilitiesCli),
+    /// Compile a deterministic offline Geo plan from declared local inputs
+    Plan(GeoPlanCli),
     /// Materialize three or more named sources into one budgeted consistency artifact
     #[command(name = "link-sources")]
     LinkSources(GeoLinkSourcesCli),
@@ -291,6 +293,25 @@ pub struct GeoCapabilitiesCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
     pub emit: GeoCapabilitiesEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoPlanCli {
+    /// JSON file holding a canon_geo_question.v0 question
+    #[arg(long)]
+    pub question: PathBuf,
+    /// JSON file holding a canon_geo_capabilities.v0 capability artifact
+    #[arg(long)]
+    pub capabilities: PathBuf,
+    /// JSON file holding a canon_geo_regional_inventory.v0 inventory
+    #[arg(long)]
+    pub inventory: PathBuf,
+    /// JSON file holding a canon_geo_composition_profile.v0 profile
+    #[arg(long)]
+    pub profile: PathBuf,
+    /// JSON file holding a canon_geo_resource_budget.v0 budget
+    #[arg(long)]
+    pub budget: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]

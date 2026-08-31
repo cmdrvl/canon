@@ -13,8 +13,8 @@ use crate::{
         GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli,
         GeoLinkSourcesCli, GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli,
         GeoMaterializeGeometryCli, GeoMaterializeH7PopulationCli, GeoMaterializeH7StagingBatchCli,
-        GeoMaterializeHomeCellsCli, GeoMaterializeWarehouseGeometryCli, GeoReconcileTilesCli,
-        GeoSolveCli, GeoSubcommand, GeoTileWorkCli,
+        GeoMaterializeHomeCellsCli, GeoMaterializeWarehouseGeometryCli, GeoPlanCli,
+        GeoReconcileTilesCli, GeoSolveCli, GeoSubcommand, GeoTileWorkCli,
     },
     refusal,
 };
@@ -34,10 +34,16 @@ use super::{
         canonical_address_parcel_evidence_bundle_bytes,
     },
     composition::{
-        GeoCompositionError, GeoCompositionRequest, GeoEvidenceCompilationReference,
-        canonical_composition_bytes, solve_composition,
+        CANON_GEO_COMPOSITION_PROFILE_VERSION, GeoCompositionError, GeoCompositionProfile,
+        GeoCompositionRequest, GeoEvidenceCompilationReference, canonical_composition_bytes,
+        solve_composition,
     },
-    control::{GeoControlError, canonical_capabilities_bytes, default_geo_capabilities},
+    control::{
+        CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_QUESTION_VERSION,
+        CANON_GEO_REGIONAL_INVENTORY_VERSION, CANON_GEO_RESOURCE_BUDGET_VERSION, GeoCapabilities,
+        GeoControlError, GeoQuestion, GeoRegionalInventory, GeoResourceBudget,
+        canonical_capabilities_bytes, default_geo_capabilities,
+    },
     evaluation::{
         CANON_GEO_POPULATION_REQUEST_VERSION, GeoPopulationError, GeoPopulationEvaluationRequest,
         canonical_population_evaluation_bytes, evaluate_population,
@@ -67,6 +73,7 @@ use super::{
         CANON_GEO_MULTISOURCE_REQUEST_VERSION, GeoMultisourceRequest,
         canonical_multisource_artifact_bytes, materialize_geo_multisource,
     },
+    plan::{GeoPlanError, GeoPlanRequest, canonical_geo_plan_bytes, compile_geo_plan},
     tile::{
         CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_VERSION,
@@ -78,9 +85,12 @@ use super::{
     },
 };
 
+const GEO_PLAN_NEXT_COMMAND: &str = "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>";
+
 pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
     match &geo.command {
         GeoSubcommand::Capabilities(args) => run_capabilities(args),
+        GeoSubcommand::Plan(args) => run_plan(args),
         GeoSubcommand::LinkSources(args) => run_link_sources(args),
         GeoSubcommand::MaterializeHomeCells(args) => run_materialize_home_cells(args),
         GeoSubcommand::TileWork(args) => run_tile_work(args),
@@ -111,6 +121,69 @@ fn run_capabilities(args: &GeoCapabilitiesCli) -> Result<u8, Box<dyn Error>> {
                 Err(error) => emit_control_error(error),
             }
         }
+    }
+}
+
+fn run_plan(args: &GeoPlanCli) -> Result<u8, Box<dyn Error>> {
+    let question: GeoQuestion = match read_request(
+        &args.question,
+        "question",
+        CANON_GEO_QUESTION_VERSION,
+        GEO_PLAN_NEXT_COMMAND,
+    ) {
+        Ok(question) => question,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let capabilities: GeoCapabilities = match read_request(
+        &args.capabilities,
+        "capabilities",
+        CANON_GEO_CAPABILITIES_VERSION,
+        GEO_PLAN_NEXT_COMMAND,
+    ) {
+        Ok(capabilities) => capabilities,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let inventory: GeoRegionalInventory = match read_request(
+        &args.inventory,
+        "inventory",
+        CANON_GEO_REGIONAL_INVENTORY_VERSION,
+        GEO_PLAN_NEXT_COMMAND,
+    ) {
+        Ok(inventory) => inventory,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let profile: GeoCompositionProfile = match read_request(
+        &args.profile,
+        "profile",
+        CANON_GEO_COMPOSITION_PROFILE_VERSION,
+        GEO_PLAN_NEXT_COMMAND,
+    ) {
+        Ok(profile) => profile,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let budget: GeoResourceBudget = match read_request(
+        &args.budget,
+        "budget",
+        CANON_GEO_RESOURCE_BUDGET_VERSION,
+        GEO_PLAN_NEXT_COMMAND,
+    ) {
+        Ok(budget) => budget,
+        Err(exit_code) => return Ok(exit_code),
+    };
+
+    let plan = match compile_geo_plan(GeoPlanRequest {
+        question,
+        capabilities,
+        inventory,
+        profile,
+        budget,
+    }) {
+        Ok(plan) => plan,
+        Err(error) => return emit_plan_error(error),
+    };
+    match canonical_geo_plan_bytes(&plan) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_plan_error(error),
     }
 }
 
@@ -596,6 +669,22 @@ fn emit_population_error(error: GeoPopulationError) -> Result<u8, Box<dyn Error>
         }),
         Some(
             "repair the population request against canon_geo_population_request.v0, then rerun canon geo evaluate"
+                .to_string(),
+        ),
+    )
+}
+
+fn emit_plan_error(error: GeoPlanError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo plan request could not be compiled",
+        json!({
+            "geo_plan_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(
+            "repair the plan inputs against canon_geo_question.v0, canon_geo_capabilities.v0, canon_geo_regional_inventory.v0, canon_geo_composition_profile.v0, and canon_geo_resource_budget.v0, then rerun canon geo plan"
                 .to_string(),
         ),
     )

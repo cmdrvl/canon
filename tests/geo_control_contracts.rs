@@ -18,7 +18,7 @@ use canon::geo::{
     CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
     CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
     CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_MULTISOURCE_REQUEST_VERSION,
-    CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
+    CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION, CANON_GEO_PLAN_VERSION,
     CANON_GEO_POPULATION_EVALUATION_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
     CANON_GEO_QUESTION_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
     CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION,
@@ -118,6 +118,7 @@ fn expected_implemented_contracts() -> BTreeSet<&'static str> {
         CANON_GEO_CAPABILITIES_VERSION,
         CANON_GEO_REGIONAL_INVENTORY_VERSION,
         CANON_GEO_RESOURCE_BUDGET_VERSION,
+        CANON_GEO_PLAN_VERSION,
         CANON_GEO_DISCOVERY_REQUEST_VERSION,
         CANON_GEO_ACQUISITION_REQUEST_VERSION,
         CANON_GEO_ACQUISITION_RECEIPT_VERSION,
@@ -171,6 +172,10 @@ fn expected_implemented_commands() -> BTreeMap<&'static str, (&'static str, bool
         (
             "canon geo capabilities --emit json",
             (CANON_GEO_CAPABILITIES_VERSION, true, false),
+        ),
+        (
+            "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>",
+            (CANON_GEO_PLAN_VERSION, true, false),
         ),
         (
             "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
@@ -502,8 +507,10 @@ fn geo_capabilities_cli_emits_deterministic_offline_contract() {
     ] {
         assert!(implemented_contracts.contains(expected));
     }
-    assert!(artifact.commands.unavailable.iter().any(|command| {
-        command.command == "canon geo plan" && command.output_contract == "planned_not_implemented"
+    assert!(artifact.commands.implemented.iter().any(|command| {
+        command.command
+            == "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>"
+            && command.output_contract == CANON_GEO_PLAN_VERSION
     }));
     let confluence = artifact
         .properties
@@ -595,7 +602,6 @@ fn geo_capabilities_cover_compiled_leaf_commands_and_public_contracts() {
                 "canon geo inspect",
                 ("planned_not_implemented", true, false)
             ),
-            ("canon geo plan", ("planned_not_implemented", true, false)),
             ("canon geo run", ("planned_not_implemented", false, false)),
         ])
     );

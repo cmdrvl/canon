@@ -19,15 +19,17 @@ use manifest::{
     project_manifest_digest,
 };
 use plan::{
+    ProjectExtensionDagNode, ProjectExtensionDagOutput, ProjectExtensionDagRequest,
     ProjectExtensionNodePolicy, ProjectPlanCacheDecision, ProjectPlanErrorCode,
-    ProjectPlanNodeClass, ProjectPlanNodeKind, ProjectPlanRefusalCondition, ProjectPlanRequest,
-    ProjectPlanSideEffect, ProjectPlanSideEffectKind, canonical_project_plan_bytes,
+    ProjectPlanNodeClass, ProjectPlanNodeKind, ProjectPlanOutputMaterialization,
+    ProjectPlanRefusalCondition, ProjectPlanRequest, ProjectPlanSideEffect,
+    ProjectPlanSideEffectKind, canonical_project_plan_bytes, compile_extension_project_plan,
     compile_project_plan, project_plan_node_cache_key, project_plan_schema_version,
     render_project_plan_summary, validate_extension_node_effects, validate_project_plan,
 };
 use serde_json::Value;
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -276,7 +278,9 @@ fn planning_does_not_write_workspace_files() {
 fn source_scan_keeps_project_plan_contract_domain_neutral() {
     let lower_source = MODULE_SOURCE.to_ascii_lowercase();
     let lower_schema = SCHEMA_JSON.to_ascii_lowercase();
-    for banned in ["cmbs", "regab", "servicer", "tranche", "loan"] {
+    for banned in [
+        "cmbs", "regab", "servicer", "tranche", "loan", "geo", "vendor", "parcel",
+    ] {
         assert!(
             !lower_source.contains(banned),
             "project plan module should remain domain-neutral: {banned}"
@@ -407,6 +411,246 @@ fn extension_node_validation_rejects_undeclared_network_and_mutation_effects() {
     )
     .expect_err("ambient shell command refuses");
     assert_eq!(error.code, ProjectPlanErrorCode::ArtifactContract);
+}
+
+#[test]
+fn extension_dag_builder_emits_domain_neutral_project_plan_without_manifest_modes() {
+    let prepare = extension_node("extension.prepare", [], "work/extension/prepare.json");
+    let finish = extension_node(
+        "extension.finish",
+        ["extension.prepare"],
+        "work/extension/finish.json",
+    );
+    let mut first_request = extension_request(vec![finish.clone(), prepare.clone()]);
+    first_request.plan_artifact_path = Some("work/extension/project.plan.json".to_string());
+    let mut second_request = extension_request(vec![prepare.clone(), finish.clone()]);
+    second_request.plan_artifact_path = first_request.plan_artifact_path.clone();
+    let mut duplicate_dependency_request = extension_request(vec![
+        prepare.clone(),
+        extension_node(
+            "extension.finish",
+            ["extension.prepare", "extension.prepare"],
+            "work/extension/finish.json",
+        ),
+    ]);
+    duplicate_dependency_request.plan_artifact_path = first_request.plan_artifact_path.clone();
+
+    let first = compile_extension_project_plan(first_request).expect("extension DAG plan compiles");
+    let second =
+        compile_extension_project_plan(second_request).expect("reordered extension DAG compiles");
+    let duplicate_dependency = compile_extension_project_plan(duplicate_dependency_request)
+        .expect("duplicate dependencies canonicalize");
+
+    assert_eq!(first.schema_version, "canon.project.plan.v1");
+    assert_eq!(first.plan_kind, "dry_run");
+    assert_eq!(first.summary.total_nodes, 2);
+    assert_eq!(first.summary.edge_count, 1);
+    assert_eq!(first.summary.computation_nodes, 2);
+    assert_eq!(first.summary.runnable_nodes, 1);
+    assert!(first.next_commands.contains_key("extension.prepare"));
+    assert_eq!(first.graph_hash, second.graph_hash);
+    assert_eq!(
+        canonical_project_plan_bytes(&first).expect("first canonical bytes"),
+        canonical_project_plan_bytes(&second).expect("second canonical bytes")
+    );
+    assert_eq!(first.graph_hash, duplicate_dependency.graph_hash);
+    assert_eq!(
+        node(&duplicate_dependency, "extension.finish")
+            .dependencies
+            .as_slice(),
+        ["extension.prepare"]
+    );
+    assert_eq!(
+        node(&first, "extension.finish")
+            .content_hash_inputs
+            .iter()
+            .filter(|input| input.ref_id.starts_with("node.extension.prepare."))
+            .count(),
+        1
+    );
+    validate_project_plan(&first).expect("extension plan validates");
+
+    let mut cached_request = extension_request(vec![prepare, finish]);
+    cached_request
+        .cache_hits
+        .insert("extension.prepare".to_string());
+    let cached =
+        compile_extension_project_plan(cached_request).expect("cached extension DAG compiles");
+    assert_eq!(
+        node(&cached, "extension.prepare").cache.decision,
+        ProjectPlanCacheDecision::Hit
+    );
+    assert!(cached.next_commands.contains_key("extension.finish"));
+}
+
+#[test]
+fn extension_dag_builder_represents_a_valid_no_work_plan() {
+    let plan = compile_extension_project_plan(extension_request(Vec::new()))
+        .expect("an unsupported extension can truthfully produce an empty execution DAG");
+
+    assert!(plan.nodes.is_empty());
+    assert!(plan.next_commands.is_empty());
+    assert_eq!(plan.summary.total_nodes, 0);
+    assert_eq!(plan.summary.runnable_nodes, 0);
+    validate_project_plan(&plan).expect("empty project DAG remains a valid plan artifact");
+    let bytes = canonical_project_plan_bytes(&plan).expect("empty plan serializes");
+    let value: serde_json::Value = serde_json::from_slice(&bytes).expect("empty plan JSON");
+    assert_eq!(value["nodes"], serde_json::json!([]));
+}
+
+#[test]
+fn extension_dag_builder_rejects_ambient_shell_and_undeclared_network() {
+    let mut shell = extension_node("extension.shell", [], "work/extension/shell.json");
+    shell.command = "canon extension run package.entry; curl example.invalid".to_string();
+    let error = compile_extension_project_plan(extension_request(vec![shell]))
+        .expect_err("ambient shell command refuses");
+    assert_eq!(error.code, ProjectPlanErrorCode::ArtifactContract);
+    assert!(
+        error
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("shell control"))
+    );
+
+    let mut network = extension_node("extension.network", [], "work/extension/network.json");
+    network.side_effects.push(ProjectPlanSideEffect {
+        kind: ProjectPlanSideEffectKind::MayUseNetwork,
+        description: "declared external request".to_string(),
+    });
+    let error = compile_extension_project_plan(extension_request(vec![network]))
+        .expect_err("undeclared network refuses");
+    assert_eq!(error.code, ProjectPlanErrorCode::ManifestPolicy);
+    assert!(
+        error
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("network access"))
+    );
+}
+
+#[test]
+fn extension_dag_builder_preserves_collision_and_cycle_validation() {
+    let left = extension_node("extension.left", [], "work/extension/shared.json");
+    let right = extension_node("extension.right", [], "work/extension/shared.json");
+    let error = compile_extension_project_plan(extension_request(vec![left, right]))
+        .expect_err("output collision refuses");
+    assert_eq!(error.code, ProjectPlanErrorCode::OutputCollision);
+    assert!(
+        error
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("shared.json"))
+    );
+
+    let first = extension_node(
+        "extension.first",
+        ["extension.second"],
+        "work/extension/first.json",
+    );
+    let second = extension_node(
+        "extension.second",
+        ["extension.first"],
+        "work/extension/second.json",
+    );
+    let error = compile_extension_project_plan(extension_request(vec![first, second]))
+        .expect_err("cycle refuses");
+    assert_eq!(error.code, ProjectPlanErrorCode::Cycle);
+}
+
+#[test]
+fn extension_dag_builder_rejects_incomplete_node_contracts() {
+    let mut outputless = extension_node("extension.outputless", [], "work/extension/out.json");
+    outputless.outputs.clear();
+    let error = compile_extension_project_plan(extension_request(vec![outputless]))
+        .expect_err("outputless node refuses");
+    assert_eq!(error.code, ProjectPlanErrorCode::ArtifactContract);
+    assert!(
+        error
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("at least one output"))
+    );
+
+    let mut conflicting = extension_node("extension.conflict", [], "work/extension/out.json");
+    conflicting
+        .content_hash_inputs
+        .push(plan::ProjectPlanHashRef {
+            ref_id: "extension.input".to_string(),
+            content_hash: digest_bytes(b"different"),
+        });
+    let error = compile_extension_project_plan(extension_request(vec![conflicting]))
+        .expect_err("conflicting hash ref refuses");
+    assert_eq!(error.code, ProjectPlanErrorCode::ArtifactContract);
+    assert!(
+        error
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("conflicting content hashes"))
+    );
+
+    let mut uppercase = extension_node("extension.uppercase", [], "work/extension/out.json");
+    let digest = digest_bytes(b"uppercase");
+    uppercase.content_hash_inputs[0].content_hash = format!(
+        "blake3:{}",
+        digest.trim_start_matches("blake3:").to_ascii_uppercase()
+    );
+    let error = compile_extension_project_plan(extension_request(vec![uppercase]))
+        .expect_err("uppercase hex digest refuses");
+    assert_eq!(error.code, ProjectPlanErrorCode::ArtifactContract);
+    assert!(
+        error
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("blake3 content hash"))
+    );
+}
+
+fn extension_request(nodes: Vec<ProjectExtensionDagNode>) -> ProjectExtensionDagRequest {
+    ProjectExtensionDagRequest::offline_read_only(
+        "project.extension.test",
+        digest_bytes(b"manifest"),
+        digest_bytes(b"lock"),
+        nodes,
+    )
+}
+
+fn extension_node<const N: usize>(
+    node_id: &str,
+    dependencies: [&str; N],
+    output_path: &str,
+) -> ProjectExtensionDagNode {
+    ProjectExtensionDagNode {
+        node_id: node_id.to_string(),
+        kind: ProjectPlanNodeKind::Evidence,
+        class: ProjectPlanNodeClass::Computation,
+        command: format!("canon extension run package.entry --node {node_id}"),
+        dependencies: dependencies
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>(),
+        content_hash_inputs: vec![plan::ProjectPlanHashRef {
+            ref_id: "extension.input".to_string(),
+            content_hash: digest_bytes(format!("{node_id}:input").as_bytes()),
+        }],
+        outputs: vec![ProjectExtensionDagOutput {
+            output_id: node_id.to_string(),
+            path: output_path.to_string(),
+            materialization: ProjectPlanOutputMaterialization::PlannedArtifact,
+        }],
+        limits: BTreeMap::from([("max_rows".to_string(), 10)]),
+        cache_eligible: true,
+        side_effects: vec![ProjectPlanSideEffect {
+            kind: ProjectPlanSideEffectKind::WritesArtifact,
+            description: "writes a declared extension artifact".to_string(),
+        }],
+        refusal_conditions: vec![ProjectPlanRefusalCondition {
+            code: ProjectPlanErrorCode::ArtifactContract,
+            message: "extension artifact contract must validate".to_string(),
+            next_command: Some(
+                "canon project plan --manifest <MANIFEST> --lock <LOCK>".to_string(),
+            ),
+        }],
+    }
 }
 
 fn minimal_manifest() -> ProjectManifest {

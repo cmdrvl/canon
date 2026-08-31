@@ -291,17 +291,16 @@
             "output_contract": "canon_geo_capabilities.v0",
             "read_only": true,
             "uses_network": false
-          }
-        ],
-        "diagnostic_only": [],
-        "unavailable": [
+          },
           {
-            "command": "canon geo plan",
-            "output_contract": "planned_not_implemented",
+            "command": "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>",
+            "output_contract": "canon_geo_plan.v0",
             "read_only": true,
             "uses_network": false
           }
-        ]
+        ],
+        "diagnostic_only": [],
+        "unavailable": []
       },
       "vocabularies": {
         "entity_levels": ["building", "parcel"],

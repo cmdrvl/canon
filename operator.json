@@ -28,6 +28,7 @@
       "canon package push --archive <ARCHIVE> --registry <OCI_BASE_URL> --repository <REPOSITORY> [--tag <TAG>] [--emit json|summary]",
       "canon package pull --registry <OCI_BASE_URL> --repository <REPOSITORY> --cache <DIR> (--digest <sha256:...>|--tag <TAG>) [--emit json|summary]",
       "canon geo capabilities --emit json",
+      "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>",
       "canon registry build --source <SOURCE> --seed <SEED> --seed-column <COL> --output <DIR> --version <VER> [--incremental] [--max-rows <N>] [--max-bytes <N>] [--batch-size <N>] [--rate-limit-ms <MS>] [--provider-config <KEY=VALUE>]",
       "canon registry export --format dbt-seed|search-index --registry <DIR> --out <PATH> [--namespace <CONTEXT>] [--source-file <FILE>...] [--canonical-type <TYPE>...] [--rule-id-prefix <PREFIX>...] [--canonical-iri-prefix <PREFIX>] [--schema-out <schema.yml>] [--anti-collapse-test-out <test.sql>] [--emit json|summary]",
       "canon registry next-id [PREFIX] --registry <DIR> [--zero-pad <N>] [--emit plain|json]",
@@ -964,7 +965,7 @@
     {
       "name": "geo capabilities",
       "usage": "canon geo capabilities --emit json",
-      "description": "Emit the compiled offline Canon Geo control capability contract, including source-generic contract versions, vocabularies, deterministic ceilings, property scope, and planned unavailable control-plane commands",
+      "description": "Emit the compiled offline Canon Geo control capability contract, including source-generic contract versions, vocabularies, deterministic ceilings, property scope, implemented planning, and planned unavailable run/inspect commands",
       "output_mode": "json",
       "output_schema": "canon_geo_capabilities.v0",
       "status": "implemented",
@@ -1019,6 +1020,95 @@
           "type": "string",
           "default": "json",
           "description": "Output mode: json"
+        }
+      ]
+    },
+    {
+      "name": "geo plan",
+      "usage": "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>",
+      "description": "Compile declared Geo question, offline capabilities, regional inventory, parcel/building composition profile, and deterministic budget into canon_geo_plan.v0 without acquisition, catalog reads, execution, or truth claims; unsupported requested grains remain per-grain outcomes",
+      "output_mode": "json",
+      "output_schema": "canon_geo_plan.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads exactly the five declared local planning inputs and emits one canonical plan on stdout; no catalog, network, registry, project-workspace, or output-file mutation; the supplied capabilities artifact is a semantic input; the current implemented profile contract is canon_geo_composition_profile.v0 with parcel/building selection only",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "canonical Geo plan artifact emitted; the plan may contain per-grain unsupported or acquisition-waiting outcomes",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, input IO, parse, capability, profile, inventory, budget, or artifact contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "inspect project_plan.runnable and project_plan.next_commands; invoke a listed leaf only after materializing its declared local input artifact, because canon geo run remains planned/unavailable",
+      "recovery": {
+        "next_command": "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "question",
+          "flag": "--question",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_question.v0 question"
+        },
+        {
+          "name": "capabilities",
+          "flag": "--capabilities",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_capabilities.v0 artifact"
+        },
+        {
+          "name": "inventory",
+          "flag": "--inventory",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_regional_inventory.v0 inventory"
+        },
+        {
+          "name": "profile",
+          "flag": "--profile",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_composition_profile.v0 profile"
+        },
+        {
+          "name": "budget",
+          "flag": "--budget",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding a canon_geo_resource_budget.v0 budget"
         }
       ]
     },

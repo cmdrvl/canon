@@ -277,7 +277,7 @@ pub struct ProjectPlan {
     pub plan_artifact_path: Option<String>,
     pub graph_hash: String,
     pub summary: ProjectPlanSummary,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub nodes: Vec<ProjectPlanNode>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub next_commands: BTreeMap<String, String>,
@@ -439,6 +439,105 @@ pub fn validate_project_plan(plan: &ProjectPlan) -> ProjectPlanResult<ProjectPla
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectExtensionDagRequest {
+    pub project_id: String,
+    pub manifest_digest: String,
+    pub lock_digest: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_artifact_path: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub cache_hits: BTreeSet<String>,
+    pub policy: ProjectExtensionNodePolicy,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub nodes: Vec<ProjectExtensionDagNode>,
+}
+
+impl ProjectExtensionDagRequest {
+    pub fn offline_read_only(
+        project_id: impl Into<String>,
+        manifest_digest: impl Into<String>,
+        lock_digest: impl Into<String>,
+        nodes: Vec<ProjectExtensionDagNode>,
+    ) -> Self {
+        Self {
+            project_id: project_id.into(),
+            manifest_digest: manifest_digest.into(),
+            lock_digest: lock_digest.into(),
+            plan_artifact_path: None,
+            cache_hits: BTreeSet::new(),
+            policy: ProjectExtensionNodePolicy::offline_read_only(),
+            nodes,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectExtensionDagNode {
+    pub node_id: String,
+    pub kind: ProjectPlanNodeKind,
+    pub class: ProjectPlanNodeClass,
+    pub command: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub content_hash_inputs: Vec<ProjectPlanHashRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub outputs: Vec<ProjectExtensionDagOutput>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub limits: BTreeMap<String, u64>,
+    pub cache_eligible: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub side_effects: Vec<ProjectPlanSideEffect>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refusal_conditions: Vec<ProjectPlanRefusalCondition>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectExtensionDagOutput {
+    pub output_id: String,
+    pub path: String,
+    pub materialization: ProjectPlanOutputMaterialization,
+}
+
+pub fn compile_extension_project_plan(
+    request: ProjectExtensionDagRequest,
+) -> ProjectPlanResult<ProjectPlan> {
+    validate_extension_dag_request_shape(&request)?;
+    let plan_artifact_path = request.plan_artifact_path.as_deref().map(Path::new);
+    let nodes_by_id = extension_nodes_by_id(request.nodes)?;
+    let node_order = extension_node_order(&nodes_by_id)?;
+    let mut built_outputs = BTreeMap::<String, Vec<ProjectPlanOutput>>::new();
+    let mut nodes = Vec::new();
+
+    for node_id in node_order {
+        let node = nodes_by_id
+            .get(node_id.as_str())
+            .expect("ordered node exists");
+        let built_node =
+            build_extension_plan_node(node, &request.policy, &request.cache_hits, &built_outputs)?;
+        built_outputs.insert(built_node.node_id.clone(), built_node.outputs.clone());
+        nodes.push(built_node);
+    }
+
+    nodes.sort_by(|left, right| left.node_id.cmp(&right.node_id));
+    let mut plan = ProjectPlan {
+        schema_version: CANON_PROJECT_PLAN_VERSION.to_string(),
+        project_id: request.project_id,
+        plan_kind: "dry_run".to_string(),
+        manifest_digest: request.manifest_digest,
+        lock_digest: request.lock_digest,
+        plan_artifact_path: plan_artifact_path.map(normalized_display_path),
+        graph_hash: String::new(),
+        summary: empty_summary(),
+        nodes,
+        next_commands: BTreeMap::new(),
+        diagnostics: Vec::new(),
+    };
+    finalize_plan(&mut plan, request.cache_hits, plan_artifact_path)?;
+    Ok(plan)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectExtensionNodePolicy {
     pub allow_network: bool,
     pub allow_registry_mutation: bool,
@@ -517,6 +616,389 @@ pub fn validate_extension_node_effects(
             diagnostics,
         ))
     }
+}
+
+fn validate_extension_dag_request_shape(
+    request: &ProjectExtensionDagRequest,
+) -> ProjectPlanResult<()> {
+    let mut diagnostics = Vec::new();
+    if request.project_id.trim().is_empty() {
+        diagnostics.push(ProjectPlanDiagnostic {
+            code: ProjectPlanErrorCode::ArtifactContract,
+            node_id: None,
+            message: "project_id must be non-empty".to_string(),
+        });
+    }
+    if !is_blake3_digest(&request.manifest_digest) {
+        diagnostics.push(ProjectPlanDiagnostic {
+            code: ProjectPlanErrorCode::ArtifactContract,
+            node_id: None,
+            message: "manifest_digest must be a blake3 digest".to_string(),
+        });
+    }
+    if !is_blake3_digest(&request.lock_digest) {
+        diagnostics.push(ProjectPlanDiagnostic {
+            code: ProjectPlanErrorCode::ArtifactContract,
+            node_id: None,
+            message: "lock_digest must be a blake3 digest".to_string(),
+        });
+    }
+    if matches!(request.plan_artifact_path.as_deref(), Some(path) if path.trim().is_empty()) {
+        diagnostics.push(ProjectPlanDiagnostic {
+            code: ProjectPlanErrorCode::ArtifactContract,
+            node_id: None,
+            message: "plan_artifact_path must be non-empty when provided".to_string(),
+        });
+    }
+    if diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(ProjectPlanError::with_diagnostics(
+            ProjectPlanErrorCode::ArtifactContract,
+            "extension DAG request is not a valid project plan input",
+            diagnostics,
+        ))
+    }
+}
+
+fn extension_nodes_by_id(
+    nodes: Vec<ProjectExtensionDagNode>,
+) -> ProjectPlanResult<BTreeMap<String, ProjectExtensionDagNode>> {
+    let mut by_id = BTreeMap::new();
+    let mut diagnostics = Vec::new();
+    for node in nodes {
+        diagnostics.extend(extension_dag_node_shape_diagnostics(&node));
+        if !node.node_id.trim().is_empty()
+            && by_id.insert(node.node_id.clone(), node.clone()).is_some()
+        {
+            diagnostics.push(ProjectPlanDiagnostic {
+                code: ProjectPlanErrorCode::ArtifactContract,
+                node_id: Some(node.node_id),
+                message: "duplicate node_id".to_string(),
+            });
+        }
+    }
+    if diagnostics.is_empty() {
+        Ok(by_id)
+    } else {
+        Err(ProjectPlanError::with_diagnostics(
+            ProjectPlanErrorCode::ArtifactContract,
+            "extension DAG nodes are not valid project plan nodes",
+            diagnostics,
+        ))
+    }
+}
+
+fn extension_dag_node_shape_diagnostics(
+    node: &ProjectExtensionDagNode,
+) -> Vec<ProjectPlanDiagnostic> {
+    let mut diagnostics = Vec::new();
+    if node.node_id.trim().is_empty() {
+        diagnostics.push(ProjectPlanDiagnostic {
+            code: ProjectPlanErrorCode::ArtifactContract,
+            node_id: None,
+            message: "node_id must be non-empty".to_string(),
+        });
+    }
+    if node.outputs.is_empty() {
+        diagnostics.push(ProjectPlanDiagnostic {
+            code: ProjectPlanErrorCode::ArtifactContract,
+            node_id: Some(node.node_id.clone()),
+            message: "extension DAG nodes must declare at least one output".to_string(),
+        });
+    }
+    if node.side_effects.is_empty() {
+        diagnostics.push(ProjectPlanDiagnostic {
+            code: ProjectPlanErrorCode::ArtifactContract,
+            node_id: Some(node.node_id.clone()),
+            message: "extension DAG nodes must declare side effects".to_string(),
+        });
+    }
+
+    let mut output_ids = BTreeSet::new();
+    for output in &node.outputs {
+        if output.output_id.trim().is_empty() {
+            diagnostics.push(ProjectPlanDiagnostic {
+                code: ProjectPlanErrorCode::ArtifactContract,
+                node_id: Some(node.node_id.clone()),
+                message: "output_id must be non-empty".to_string(),
+            });
+        }
+        if output.path.trim().is_empty() {
+            diagnostics.push(ProjectPlanDiagnostic {
+                code: ProjectPlanErrorCode::ArtifactContract,
+                node_id: Some(node.node_id.clone()),
+                message: format!("output {} path must be non-empty", output.output_id),
+            });
+        }
+        if !output.output_id.trim().is_empty() && !output_ids.insert(output.output_id.as_str()) {
+            diagnostics.push(ProjectPlanDiagnostic {
+                code: ProjectPlanErrorCode::ArtifactContract,
+                node_id: Some(node.node_id.clone()),
+                message: format!("duplicate output_id {}", output.output_id),
+            });
+        }
+    }
+
+    let mut hash_refs = BTreeMap::<&str, &str>::new();
+    for input in &node.content_hash_inputs {
+        if input.ref_id.trim().is_empty() {
+            diagnostics.push(ProjectPlanDiagnostic {
+                code: ProjectPlanErrorCode::ArtifactContract,
+                node_id: Some(node.node_id.clone()),
+                message: "content_hash_inputs ref_id must be non-empty".to_string(),
+            });
+        }
+        if !is_blake3_digest(&input.content_hash) {
+            diagnostics.push(ProjectPlanDiagnostic {
+                code: ProjectPlanErrorCode::ArtifactContract,
+                node_id: Some(node.node_id.clone()),
+                message: format!("{} must use a blake3 content hash", input.ref_id),
+            });
+        }
+        if let Some(existing) = hash_refs.insert(input.ref_id.as_str(), input.content_hash.as_str())
+            && existing != input.content_hash
+        {
+            diagnostics.push(ProjectPlanDiagnostic {
+                code: ProjectPlanErrorCode::ArtifactContract,
+                node_id: Some(node.node_id.clone()),
+                message: format!("{} has conflicting content hashes", input.ref_id),
+            });
+        }
+    }
+
+    for dependency in &node.dependencies {
+        if dependency.trim().is_empty() {
+            diagnostics.push(ProjectPlanDiagnostic {
+                code: ProjectPlanErrorCode::ArtifactContract,
+                node_id: Some(node.node_id.clone()),
+                message: "dependencies must be non-empty node ids".to_string(),
+            });
+        }
+    }
+
+    diagnostics
+}
+
+fn extension_node_order(
+    nodes: &BTreeMap<String, ProjectExtensionDagNode>,
+) -> ProjectPlanResult<Vec<String>> {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Mark {
+        Visiting,
+        Done,
+    }
+
+    fn visit<'a>(
+        node_id: &'a str,
+        nodes: &'a BTreeMap<String, ProjectExtensionDagNode>,
+        marks: &mut BTreeMap<&'a str, Mark>,
+        stack: &mut Vec<&'a str>,
+        ordered: &mut Vec<String>,
+    ) -> ProjectPlanResult<()> {
+        if matches!(marks.get(node_id), Some(Mark::Done)) {
+            return Ok(());
+        }
+        if matches!(marks.get(node_id), Some(Mark::Visiting)) {
+            let start = stack
+                .iter()
+                .position(|existing| *existing == node_id)
+                .unwrap_or(0);
+            let cycle = stack[start..].join(" -> ");
+            return Err(ProjectPlanError::with_diagnostics(
+                ProjectPlanErrorCode::Cycle,
+                "extension DAG dependency graph contains a cycle",
+                vec![ProjectPlanDiagnostic {
+                    code: ProjectPlanErrorCode::Cycle,
+                    node_id: Some(node_id.to_string()),
+                    message: cycle,
+                }],
+            ));
+        }
+        let node = nodes.get(node_id).ok_or_else(|| {
+            ProjectPlanError::with_diagnostics(
+                ProjectPlanErrorCode::MissingProducer,
+                "extension DAG contains dependencies without producers",
+                vec![ProjectPlanDiagnostic {
+                    code: ProjectPlanErrorCode::MissingProducer,
+                    node_id: Some(node_id.to_string()),
+                    message: "dependency has no producer node".to_string(),
+                }],
+            )
+        })?;
+        marks.insert(node_id, Mark::Visiting);
+        stack.push(node_id);
+        let mut dependencies = node
+            .dependencies
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        dependencies.sort();
+        dependencies.dedup();
+        for dependency in dependencies {
+            if !nodes.contains_key(dependency) {
+                return Err(ProjectPlanError::with_diagnostics(
+                    ProjectPlanErrorCode::MissingProducer,
+                    "extension DAG contains dependencies without producers",
+                    vec![ProjectPlanDiagnostic {
+                        code: ProjectPlanErrorCode::MissingProducer,
+                        node_id: Some(node_id.to_string()),
+                        message: format!("dependency {dependency} has no producer node"),
+                    }],
+                ));
+            }
+            visit(dependency, nodes, marks, stack, ordered)?;
+        }
+        stack.pop();
+        marks.insert(node_id, Mark::Done);
+        ordered.push(node_id.to_string());
+        Ok(())
+    }
+
+    let mut marks = BTreeMap::new();
+    let mut ordered = Vec::new();
+    for node_id in nodes.keys() {
+        visit(node_id, nodes, &mut marks, &mut Vec::new(), &mut ordered)?;
+    }
+    ordered.dedup();
+    Ok(ordered)
+}
+
+fn build_extension_plan_node(
+    node: &ProjectExtensionDagNode,
+    policy: &ProjectExtensionNodePolicy,
+    cache_hits: &BTreeSet<String>,
+    built_outputs: &BTreeMap<String, Vec<ProjectPlanOutput>>,
+) -> ProjectPlanResult<ProjectPlanNode> {
+    let mut dependencies = node.dependencies.clone();
+    dependencies.sort();
+    dependencies.dedup();
+    let mut content_hash_inputs = node.content_hash_inputs.clone();
+    for dependency in &dependencies {
+        let outputs = built_outputs.get(dependency).ok_or_else(|| {
+            missing_producer_error(format!(
+                "dependency {dependency} has not been produced before {}",
+                node.node_id
+            ))
+        })?;
+        for output in outputs {
+            content_hash_inputs.push(hash_ref(
+                format!("node.{dependency}.{}", output.output_id),
+                output.content_hash.clone(),
+            ));
+        }
+    }
+    normalize_hash_refs(&mut content_hash_inputs, Some(&node.node_id))?;
+    let outputs = node
+        .outputs
+        .iter()
+        .map(|output| NodeCacheOutput {
+            output_id: output.output_id.clone(),
+            path: output.path.clone(),
+            materialization: output.materialization,
+        })
+        .collect::<Vec<_>>();
+    let cache_key = node_cache_key_from_parts(NodeCacheParts {
+        node_id: &node.node_id,
+        kind: node.kind,
+        class: node.class,
+        command: &node.command,
+        dependencies: dependencies.clone(),
+        content_hash_inputs: content_hash_inputs.clone(),
+        outputs,
+        limits: node.limits.clone(),
+        side_effects: node.side_effects.clone(),
+        refusal_conditions: node.refusal_conditions.clone(),
+    })?;
+    let outputs = node
+        .outputs
+        .iter()
+        .map(|output| ProjectPlanOutput {
+            output_id: output.output_id.clone(),
+            path: output.path.clone(),
+            content_hash: digest_string(format!(
+                "{}|{}|{}",
+                cache_key, output.output_id, output.path
+            )),
+            materialization: output.materialization,
+        })
+        .collect::<Vec<_>>();
+    let plan_node = ProjectPlanNode {
+        node_id: node.node_id.clone(),
+        kind: node.kind,
+        class: node.class,
+        command: node.command.clone(),
+        dependencies,
+        content_hash_inputs,
+        outputs,
+        limits: node.limits.clone(),
+        cache: ProjectPlanCache {
+            eligible: node.cache_eligible,
+            decision: if node.cache_eligible {
+                if cache_hits.contains(&node.node_id) {
+                    ProjectPlanCacheDecision::Hit
+                } else {
+                    ProjectPlanCacheDecision::Miss
+                }
+            } else {
+                ProjectPlanCacheDecision::NotEligible
+            },
+            cache_key,
+            reason: if node.cache_eligible {
+                "content-addressed extension artifact".to_string()
+            } else {
+                "operator-visible side effect is not cache-replayable".to_string()
+            },
+        },
+        side_effects: node.side_effects.clone(),
+        refusal_conditions: node.refusal_conditions.clone(),
+        runnable: false,
+        blocked_by: Vec::new(),
+    };
+    validate_extension_node_effects(&plan_node, policy)?;
+    Ok(plan_node)
+}
+
+fn normalize_hash_refs(
+    inputs: &mut Vec<ProjectPlanHashRef>,
+    node_id: Option<&str>,
+) -> ProjectPlanResult<()> {
+    inputs.sort_by(|left, right| {
+        left.ref_id
+            .cmp(&right.ref_id)
+            .then(left.content_hash.cmp(&right.content_hash))
+    });
+    let mut normalized: Vec<ProjectPlanHashRef> = Vec::new();
+    for input in inputs.drain(..) {
+        if let Some(existing) = normalized.last()
+            && existing.ref_id == input.ref_id
+        {
+            if existing.content_hash != input.content_hash {
+                return Err(ProjectPlanError::with_diagnostics(
+                    ProjectPlanErrorCode::ArtifactContract,
+                    "content hash inputs contain conflicting duplicate refs",
+                    vec![ProjectPlanDiagnostic {
+                        code: ProjectPlanErrorCode::ArtifactContract,
+                        node_id: node_id.map(str::to_string),
+                        message: format!("{} has conflicting content hashes", input.ref_id),
+                    }],
+                ));
+            }
+            continue;
+        }
+        normalized.push(input);
+    }
+    *inputs = normalized;
+    Ok(())
+}
+
+fn is_blake3_digest(value: &str) -> bool {
+    value.strip_prefix("blake3:").is_some_and(|digest| {
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
 }
 
 impl<'a> PlanBuilder<'a> {
