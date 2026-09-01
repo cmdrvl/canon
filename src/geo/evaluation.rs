@@ -9,8 +9,8 @@
 use super::{
     composition::{
         GeoCompositionBackbone, GeoCompositionError, GeoCompositionErrorCode, GeoCompositionModel,
-        GeoCompositionStatus, canonical_composition_bytes, model_satisfies_request,
-        solve_composition,
+        GeoCompositionRequest, GeoCompositionStatus, canonical_composition_bytes,
+        canonicalize_composition_request, model_satisfies_request, solve_composition,
     },
     evidence::{
         GeoEvidenceCompilationRequest, GeoEvidenceDisposition, GeoEvidenceError,
@@ -18,10 +18,19 @@ use super::{
     },
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, error::Error, fmt};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fmt,
+};
 
 pub const CANON_GEO_POPULATION_REQUEST_VERSION: &str = "canon_geo_population_request.v0";
 pub const CANON_GEO_POPULATION_EVALUATION_VERSION: &str = "canon_geo_population_evaluation.v0";
+pub const CANON_GEO_CANDIDATE_TRUTH_HANDOFF_REQUEST_VERSION: &str =
+    "canon_geo_candidate_truth_handoff_request.v0";
+pub const CANON_GEO_CANDIDATE_TRUTH_EVALUATION_VERSION: &str =
+    "canon_geo_candidate_truth_evaluation.v0";
+pub const CANON_GEO_FROZEN_E4_ACCEPTANCE_CASES: u64 = 79;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoLabeledCompositionCase {
@@ -38,6 +47,129 @@ pub struct GeoPopulationEvaluationRequest {
     pub version: String,
     pub cases: Vec<GeoLabeledCompositionCase>,
     pub max_cases: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoCandidateTruthEvaluationRequest {
+    pub version: String,
+    pub population_id: String,
+    /// Must equal `CANON_GEO_FROZEN_E4_ACCEPTANCE_CASES`. This request can
+    /// express the frozen E4 subject gate; caller-chosen release-row or smaller
+    /// thresholds are intentionally not modeled as the frozen gate.
+    pub required_subjects: u64,
+    pub max_release_rows: usize,
+    pub rows: Vec<GeoCandidateTruthHandoffRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoCandidateTruthHandoffRow {
+    pub row_id: String,
+    pub subject_id: String,
+    pub release_id: String,
+    pub truth_plane: GeoTruthPlane,
+    pub candidate_reach: GeoCandidateReachStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub composition_request: Option<GeoCompositionRequest>,
+    pub truth: GeoCompositionModel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoCandidateTruthRowStatus {
+    Resolved,
+    Ambiguous,
+    Conflict,
+    AssignmentBudgetExceeded,
+    ComponentBudgetFallback,
+    /// The upstream candidate handoff had no bounded candidate universe for
+    /// this release row, so no solver result is fabricated.
+    UpstreamNoCandidateRequest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoCandidateTruthCaseEvaluation {
+    pub row_id: String,
+    pub subject_id: String,
+    pub release_id: String,
+    pub truth_plane: GeoTruthPlane,
+    pub status: GeoCandidateTruthRowStatus,
+    pub candidate_reach: GeoCandidateReachStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub composition_request_digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub solver_digest: Option<String>,
+    pub candidate_members: u64,
+    pub truth_members: u64,
+    pub truth_parcel_members: u64,
+    pub truth_building_members: u64,
+    pub truth_members_in_universe: u64,
+    /// Exactness is only relative to the bounded, canonicalized candidate
+    /// request. It is not a candidate-reach or empirical truth claim.
+    pub representation_relative_exact: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub residual_model_count: Option<u64>,
+    pub residual_count_complete: bool,
+    pub residual_count_saturated: bool,
+    pub solver_truth_scored: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub truth_model_in_residual: Option<bool>,
+    pub abstained: bool,
+    pub false_merge: bool,
+    /// Full-reach rows where admitted hard evidence excludes the labeled truth.
+    /// This is a rho/admission finding, separate from candidate reach and from
+    /// false singleton merges.
+    pub rho_falsification: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoCandidateTruthPlaneSummary {
+    pub truth_plane: GeoTruthPlane,
+    pub subjects: u64,
+    pub genuine_multi_parcel_subjects: u64,
+    pub release_rows: u64,
+    pub candidate_reach_full_release_rows: u64,
+    pub candidate_reach_partial_release_rows: u64,
+    pub candidate_reach_none_release_rows: u64,
+    pub solver_truth_scored_release_rows: u64,
+    pub rho_falsification_release_rows: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoCandidateTruthEvaluationSummary {
+    pub subjects: u64,
+    pub genuine_multi_parcel_subjects: u64,
+    pub release_rows: u64,
+    pub required_subjects: u64,
+    /// Count gate only, fixed to 79 genuine multi-parcel H.7 subjects. It
+    /// does not claim E4 closure by itself.
+    pub frozen_population_subject_gate_passed: bool,
+    pub frozen_population_subject_deficit: u64,
+    pub truth_planes: Vec<GeoCandidateTruthPlaneSummary>,
+    pub candidate_reach_full_release_rows: u64,
+    pub candidate_reach_partial_release_rows: u64,
+    pub candidate_reach_none_release_rows: u64,
+    pub candidate_recall_failure_release_rows: u64,
+    pub solver_artifact_release_rows: u64,
+    pub representation_relative_exact_release_rows: u64,
+    pub solver_truth_scored_release_rows: u64,
+    pub solver_truth_retained_release_rows: u64,
+    pub rho_falsification_release_rows: u64,
+    pub false_merge_release_rows: u64,
+    pub resolved_release_rows: u64,
+    pub ambiguous_release_rows: u64,
+    pub conflict_release_rows: u64,
+    pub assignment_budget_exceeded_release_rows: u64,
+    pub component_budget_fallback_release_rows: u64,
+    pub upstream_no_candidate_request_release_rows: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoCandidateTruthEvaluationArtifact {
+    pub version: String,
+    pub request_version: String,
+    pub population_id: String,
+    pub summary: GeoCandidateTruthEvaluationSummary,
+    pub rows: Vec<GeoCandidateTruthCaseEvaluation>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -468,6 +600,128 @@ pub fn evaluate_population(
     })
 }
 
+pub fn evaluate_candidate_truth_handoff(
+    request: &GeoCandidateTruthEvaluationRequest,
+) -> Result<GeoCandidateTruthEvaluationArtifact, GeoPopulationError> {
+    if request.version != CANON_GEO_CANDIDATE_TRUTH_HANDOFF_REQUEST_VERSION {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::UnsupportedVersion,
+            "Unsupported Geo candidate/truth handoff request version",
+            [
+                ("actual", request.version.as_str()),
+                (
+                    "expected",
+                    CANON_GEO_CANDIDATE_TRUTH_HANDOFF_REQUEST_VERSION,
+                ),
+            ],
+        ));
+    }
+    validate_nonempty_canonical("population_id", &request.population_id)?;
+    if request.required_subjects != CANON_GEO_FROZEN_E4_ACCEPTANCE_CASES {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo candidate/truth handoff required_subjects must equal the frozen E4 subject gate",
+            [
+                ("actual", request.required_subjects.to_string()),
+                ("expected", CANON_GEO_FROZEN_E4_ACCEPTANCE_CASES.to_string()),
+            ],
+        ));
+    }
+    if request.max_release_rows == 0 || request.rows.len() > request.max_release_rows {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::PopulationBudgetExceeded,
+            "Geo candidate/truth handoff exceeds the declared release-row budget",
+            [
+                ("release_rows", request.rows.len().to_string()),
+                ("max_release_rows", request.max_release_rows.to_string()),
+            ],
+        ));
+    }
+    if request.rows.is_empty() {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo candidate/truth handoff must contain at least one release row",
+            [("field", "rows")],
+        ));
+    }
+
+    let mut rows = request.rows.clone();
+    for row in &mut rows {
+        validate_candidate_truth_handoff_row(row)?;
+    }
+    rows.sort_by(|left, right| {
+        left.subject_id
+            .cmp(&right.subject_id)
+            .then_with(|| left.release_id.cmp(&right.release_id))
+            .then_with(|| left.row_id.cmp(&right.row_id))
+    });
+    let mut row_ids = BTreeSet::new();
+    let mut subject_release_keys = BTreeSet::new();
+    let mut subject_truth_planes = BTreeMap::new();
+    let mut subject_truth_models = BTreeMap::new();
+    for row in &rows {
+        if !row_ids.insert(row.row_id.clone()) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo candidate/truth handoff contains a duplicate release row identifier",
+                [("row_id", row.row_id.as_str())],
+            ));
+        }
+        let key = (row.subject_id.clone(), row.release_id.clone());
+        if !subject_release_keys.insert(key) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo candidate/truth handoff repeats one subject/release measurement",
+                [
+                    ("subject_id", row.subject_id.as_str()),
+                    ("release_id", row.release_id.as_str()),
+                ],
+            ));
+        }
+        if let Some(previous) = subject_truth_planes.insert(row.subject_id.clone(), row.truth_plane)
+            && previous != row.truth_plane
+        {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo candidate/truth handoff assigns one subject to multiple truth planes",
+                [
+                    ("subject_id", row.subject_id.clone()),
+                    ("previous_truth_plane", format!("{previous:?}")),
+                    ("current_truth_plane", format!("{:?}", row.truth_plane)),
+                ],
+            ));
+        }
+        let truth_digest = composition_model_digest(&row.truth)?;
+        if let Some(previous) =
+            subject_truth_models.insert(row.subject_id.clone(), truth_digest.clone())
+            && previous != truth_digest
+        {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo candidate/truth handoff assigns one subject conflicting truth models across releases",
+                [
+                    ("subject_id", row.subject_id.clone()),
+                    ("previous_truth_digest", previous),
+                    ("current_truth_digest", truth_digest),
+                ],
+            ));
+        }
+    }
+
+    let mut evaluations = Vec::with_capacity(rows.len());
+    for row in rows {
+        evaluations.push(evaluate_candidate_truth_row(row)?);
+    }
+    let summary = summarize_candidate_truth_evaluations(request.required_subjects, &evaluations)?;
+    Ok(GeoCandidateTruthEvaluationArtifact {
+        version: CANON_GEO_CANDIDATE_TRUTH_EVALUATION_VERSION.to_string(),
+        request_version: request.version.clone(),
+        population_id: request.population_id.clone(),
+        summary,
+        rows: evaluations,
+    })
+}
+
 pub fn canonical_population_evaluation_bytes(
     artifact: &GeoPopulationEvaluationArtifact,
 ) -> Result<Vec<u8>, serde_json::Error> {
@@ -531,6 +785,252 @@ fn validate_case(case: &mut GeoLabeledCompositionCase) -> Result<(), GeoPopulati
     }
     reject_duplicates("truth.parcels", &case.truth.parcels)?;
     reject_duplicates("truth.buildings", &case.truth.buildings)
+}
+
+fn validate_candidate_truth_handoff_row(
+    row: &mut GeoCandidateTruthHandoffRow,
+) -> Result<(), GeoPopulationError> {
+    validate_nonempty_canonical("row_id", &row.row_id)?;
+    validate_nonempty_canonical("subject_id", &row.subject_id)?;
+    validate_nonempty_canonical("release_id", &row.release_id)?;
+    row.truth.parcels.sort();
+    row.truth.buildings.sort();
+    if row.truth.parcels.is_empty() && row.truth.buildings.is_empty() {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo candidate/truth handoff row truth must contain at least one member",
+            [("row_id", row.row_id.as_str())],
+        ));
+    }
+    reject_duplicates("truth.parcels", &row.truth.parcels)?;
+    reject_duplicates("truth.buildings", &row.truth.buildings)?;
+
+    if let Some(composition_request) = &mut row.composition_request {
+        let canonical_request =
+            canonicalize_composition_request(composition_request).map_err(map_composition_error)?;
+        let truth_members = checked_member_count(
+            row.truth.parcels.len(),
+            row.truth.buildings.len(),
+            "truth_members",
+        )?;
+        let truth_members_in_universe =
+            count_truth_in_universe(&row.truth, &canonical_request.universe)?;
+        let expected_reach = candidate_reach_status(truth_members, truth_members_in_universe)?;
+        if row.candidate_reach != expected_reach {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo candidate/truth handoff row declared candidate reach does not match the bounded candidate universe",
+                [
+                    ("row_id", row.row_id.as_str()),
+                    ("declared", candidate_reach_name(row.candidate_reach)),
+                    ("computed", candidate_reach_name(expected_reach)),
+                ],
+            ));
+        }
+        *composition_request = canonical_request;
+    } else if row.candidate_reach != GeoCandidateReachStatus::None {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo candidate/truth handoff row without a composition request must declare no candidate reach",
+            [
+                ("row_id", row.row_id.as_str()),
+                ("declared", candidate_reach_name(row.candidate_reach)),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn evaluate_candidate_truth_row(
+    row: GeoCandidateTruthHandoffRow,
+) -> Result<GeoCandidateTruthCaseEvaluation, GeoPopulationError> {
+    let truth_parcel_members = checked_len(row.truth.parcels.len(), "truth_parcel_members")?;
+    let truth_building_members = checked_len(row.truth.buildings.len(), "truth_building_members")?;
+    let truth_members = checked_member_count(
+        row.truth.parcels.len(),
+        row.truth.buildings.len(),
+        "truth_members",
+    )?;
+    let Some(composition_request) = row.composition_request else {
+        let evaluation = GeoCandidateTruthCaseEvaluation {
+            row_id: row.row_id,
+            subject_id: row.subject_id,
+            release_id: row.release_id,
+            truth_plane: row.truth_plane,
+            status: GeoCandidateTruthRowStatus::UpstreamNoCandidateRequest,
+            candidate_reach: GeoCandidateReachStatus::None,
+            composition_request_digest: None,
+            solver_digest: None,
+            candidate_members: 0,
+            truth_members,
+            truth_parcel_members,
+            truth_building_members,
+            truth_members_in_universe: 0,
+            representation_relative_exact: false,
+            residual_model_count: None,
+            residual_count_complete: false,
+            residual_count_saturated: false,
+            solver_truth_scored: false,
+            truth_model_in_residual: None,
+            abstained: true,
+            false_merge: false,
+            rho_falsification: false,
+        };
+        validate_candidate_truth_case_evaluation(&evaluation)?;
+        return Ok(evaluation);
+    };
+
+    let composition_request_digest = Some(composition_request_digest(&composition_request)?);
+    let candidate_members = checked_member_count(
+        composition_request.universe.parcels.len(),
+        composition_request.universe.buildings.len(),
+        "candidate_members",
+    )?;
+    let truth_members_in_universe =
+        count_truth_in_universe(&row.truth, &composition_request.universe)?;
+    let solved = solve_composition(&composition_request);
+
+    let evaluation = match solved {
+        Err(error) if error.code == GeoCompositionErrorCode::BudgetExceeded => {
+            GeoCandidateTruthCaseEvaluation {
+                row_id: row.row_id,
+                subject_id: row.subject_id,
+                release_id: row.release_id,
+                truth_plane: row.truth_plane,
+                status: GeoCandidateTruthRowStatus::AssignmentBudgetExceeded,
+                candidate_reach: row.candidate_reach,
+                composition_request_digest,
+                solver_digest: None,
+                candidate_members,
+                truth_members,
+                truth_parcel_members,
+                truth_building_members,
+                truth_members_in_universe,
+                representation_relative_exact: false,
+                residual_model_count: None,
+                residual_count_complete: false,
+                residual_count_saturated: false,
+                solver_truth_scored: false,
+                truth_model_in_residual: None,
+                abstained: true,
+                false_merge: false,
+                rho_falsification: false,
+            }
+        }
+        Err(error) => return Err(map_composition_error(error)),
+        Ok(artifact) => {
+            let solver_digest =
+                blake3::hash(&canonical_composition_bytes(&artifact).map_err(|error| {
+                    GeoPopulationError::new(
+                        GeoPopulationErrorCode::Composition,
+                        "Geo composition artifact could not be serialized",
+                        [("error", error.to_string())],
+                    )
+                })?)
+                .to_hex()
+                .to_string();
+            let status = match artifact.status {
+                GeoCompositionStatus::Resolved => GeoCandidateTruthRowStatus::Resolved,
+                GeoCompositionStatus::Ambiguous => GeoCandidateTruthRowStatus::Ambiguous,
+                GeoCompositionStatus::Conflict => GeoCandidateTruthRowStatus::Conflict,
+                GeoCompositionStatus::BudgetFallback => {
+                    GeoCandidateTruthRowStatus::ComponentBudgetFallback
+                }
+            };
+            let solver_truth_scored = row.candidate_reach == GeoCandidateReachStatus::Full;
+            let truth_model_in_residual = if solver_truth_scored {
+                Some(
+                    match model_satisfies_request(&composition_request, &row.truth) {
+                        Ok(satisfied) => satisfied,
+                        Err(error) => return Err(map_composition_error(error)),
+                    },
+                )
+            } else {
+                None
+            };
+            let residual_count_complete = artifact.summary.residual_model_count_complete;
+            let residual_count_saturated = artifact.summary.residual_model_count_saturated;
+            let false_merge = status == GeoCandidateTruthRowStatus::Resolved
+                && truth_model_in_residual == Some(false);
+            let rho_falsification = truth_model_in_residual == Some(false);
+            GeoCandidateTruthCaseEvaluation {
+                row_id: row.row_id,
+                subject_id: row.subject_id,
+                release_id: row.release_id,
+                truth_plane: row.truth_plane,
+                status,
+                candidate_reach: row.candidate_reach,
+                composition_request_digest,
+                solver_digest: Some(solver_digest),
+                candidate_members,
+                truth_members,
+                truth_parcel_members,
+                truth_building_members,
+                truth_members_in_universe,
+                representation_relative_exact: is_representation_relative_exact(
+                    status,
+                    residual_count_complete,
+                    residual_count_saturated,
+                ),
+                residual_model_count: residual_count_complete
+                    .then_some(artifact.summary.residual_model_count),
+                residual_count_complete,
+                residual_count_saturated,
+                solver_truth_scored,
+                truth_model_in_residual,
+                abstained: is_candidate_truth_abstention_status(status),
+                false_merge,
+                rho_falsification,
+            }
+        }
+    };
+    validate_candidate_truth_case_evaluation(&evaluation)?;
+    Ok(evaluation)
+}
+
+fn validate_nonempty_canonical(field: &'static str, value: &str) -> Result<(), GeoPopulationError> {
+    if value.is_empty() || value.trim() != value {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo candidate/truth handoff identifiers must be non-empty and canonical",
+            [(field, value)],
+        ));
+    }
+    Ok(())
+}
+
+fn composition_request_digest(
+    request: &GeoCompositionRequest,
+) -> Result<String, GeoPopulationError> {
+    serde_json::to_vec(request)
+        .map(|bytes| blake3::hash(&bytes).to_hex().to_string())
+        .map_err(|error| {
+            GeoPopulationError::new(
+                GeoPopulationErrorCode::Composition,
+                "Geo composition request could not be serialized",
+                [("error", error.to_string())],
+            )
+        })
+}
+
+fn composition_model_digest(model: &GeoCompositionModel) -> Result<String, GeoPopulationError> {
+    serde_json::to_vec(model)
+        .map(|bytes| blake3::hash(&bytes).to_hex().to_string())
+        .map_err(|error| {
+            GeoPopulationError::new(
+                GeoPopulationErrorCode::Composition,
+                "Geo composition truth model could not be serialized",
+                [("error", error.to_string())],
+            )
+        })
+}
+
+fn candidate_reach_name(status: GeoCandidateReachStatus) -> &'static str {
+    match status {
+        GeoCandidateReachStatus::Full => "full",
+        GeoCandidateReachStatus::Partial => "partial",
+        GeoCandidateReachStatus::None => "none",
+    }
 }
 
 fn reject_duplicates(field: &str, values: &[String]) -> Result<(), GeoPopulationError> {
@@ -697,6 +1197,198 @@ fn scored_false_merge(
     truth_model_in_residual: Option<bool>,
 ) -> bool {
     status == GeoPopulationCaseStatus::Resolved && truth_model_in_residual == Some(false)
+}
+
+fn is_candidate_truth_abstention_status(status: GeoCandidateTruthRowStatus) -> bool {
+    !matches!(status, GeoCandidateTruthRowStatus::Resolved)
+}
+
+fn is_representation_relative_exact(
+    status: GeoCandidateTruthRowStatus,
+    residual_count_complete: bool,
+    residual_count_saturated: bool,
+) -> bool {
+    matches!(
+        status,
+        GeoCandidateTruthRowStatus::Resolved
+            | GeoCandidateTruthRowStatus::Ambiguous
+            | GeoCandidateTruthRowStatus::Conflict
+    ) && residual_count_complete
+        && !residual_count_saturated
+}
+
+fn validate_candidate_truth_case_evaluation(
+    row: &GeoCandidateTruthCaseEvaluation,
+) -> Result<(), GeoPopulationError> {
+    validate_nonempty_canonical("row_id", &row.row_id)?;
+    validate_nonempty_canonical("subject_id", &row.subject_id)?;
+    validate_nonempty_canonical("release_id", &row.release_id)?;
+    let expected_truth_members = sum_u64(
+        [row.truth_parcel_members, row.truth_building_members],
+        "truth_members",
+    )?;
+    if row.truth_members != expected_truth_members {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo candidate/truth evaluation truth member fields are inconsistent",
+            [
+                ("row_id", row.row_id.as_str()),
+                ("truth_members", row.truth_members.to_string()),
+                ("computed", expected_truth_members.to_string()),
+            ],
+        ));
+    }
+    let expected_reach = candidate_reach_status(row.truth_members, row.truth_members_in_universe)?;
+    if row.candidate_reach != expected_reach {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo candidate/truth evaluation emitted reach inconsistent with truth counts",
+            [
+                ("row_id", row.row_id.as_str()),
+                ("declared", candidate_reach_name(row.candidate_reach)),
+                ("computed", candidate_reach_name(expected_reach)),
+            ],
+        ));
+    }
+    if row.candidate_reach != GeoCandidateReachStatus::Full
+        && (row.solver_truth_scored
+            || row.truth_model_in_residual.is_some()
+            || row.false_merge
+            || row.rho_falsification)
+    {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo candidate/truth evaluation scored unreachable truth",
+            [
+                ("row_id", row.row_id.as_str()),
+                ("candidate_reach", candidate_reach_name(row.candidate_reach)),
+            ],
+        ));
+    }
+    if row.solver_truth_scored != row.truth_model_in_residual.is_some() {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo candidate/truth evaluation truth scoring fields are inconsistent",
+            [("row_id", row.row_id.as_str())],
+        ));
+    }
+    if row.false_merge
+        != (row.status == GeoCandidateTruthRowStatus::Resolved
+            && row.truth_model_in_residual == Some(false))
+    {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo candidate/truth evaluation false merge field is inconsistent",
+            [("row_id", row.row_id.as_str())],
+        ));
+    }
+    if row.rho_falsification != (row.truth_model_in_residual == Some(false)) {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo candidate/truth evaluation rho falsification field is inconsistent",
+            [("row_id", row.row_id.as_str())],
+        ));
+    }
+    if row.abstained != is_candidate_truth_abstention_status(row.status) {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo candidate/truth evaluation abstention field is inconsistent",
+            [("row_id", row.row_id.as_str())],
+        ));
+    }
+    if row.residual_model_count.is_some() != row.residual_count_complete {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo candidate/truth evaluation residual count fields are inconsistent",
+            [("row_id", row.row_id.as_str())],
+        ));
+    }
+    if row.residual_count_saturated && !row.residual_count_complete {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo candidate/truth evaluation emitted saturated incomplete residual count",
+            [("row_id", row.row_id.as_str())],
+        ));
+    }
+    if row.representation_relative_exact
+        != is_representation_relative_exact(
+            row.status,
+            row.residual_count_complete,
+            row.residual_count_saturated,
+        )
+    {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::Composition,
+            "Geo candidate/truth evaluation exactness field is inconsistent",
+            [("row_id", row.row_id.as_str())],
+        ));
+    }
+    match row.status {
+        GeoCandidateTruthRowStatus::UpstreamNoCandidateRequest => {
+            if row.composition_request_digest.is_some()
+                || row.solver_digest.is_some()
+                || row.candidate_members != 0
+                || row.truth_members_in_universe != 0
+                || row.candidate_reach != GeoCandidateReachStatus::None
+                || row.residual_count_complete
+                || row.residual_model_count.is_some()
+            {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::Composition,
+                    "Geo candidate/truth evaluation fabricated solver state for an upstream no-reach row",
+                    [("row_id", row.row_id.as_str())],
+                ));
+            }
+        }
+        GeoCandidateTruthRowStatus::AssignmentBudgetExceeded => {
+            if row.solver_digest.is_some()
+                || row.residual_count_complete
+                || row.residual_model_count.is_some()
+                || row.solver_truth_scored
+            {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::Composition,
+                    "Geo candidate/truth evaluation emitted solver-derived truth state for an assignment budget handoff",
+                    [("row_id", row.row_id.as_str())],
+                ));
+            }
+        }
+        GeoCandidateTruthRowStatus::ComponentBudgetFallback => {
+            if row.solver_digest.is_none()
+                || row.residual_count_complete
+                || row.residual_model_count.is_some()
+            {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::Composition,
+                    "Geo candidate/truth evaluation emitted complete residual claims for a component budget fallback",
+                    [("row_id", row.row_id.as_str())],
+                ));
+            }
+        }
+        GeoCandidateTruthRowStatus::Resolved => {
+            if row.solver_digest.is_none()
+                || row.residual_model_count != Some(1)
+                || row.residual_count_saturated
+                || row.abstained
+            {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::Composition,
+                    "Geo candidate/truth evaluation emitted a resolved row without an exact singleton residual",
+                    [("row_id", row.row_id.as_str())],
+                ));
+            }
+        }
+        GeoCandidateTruthRowStatus::Ambiguous | GeoCandidateTruthRowStatus::Conflict => {
+            if row.solver_digest.is_none() {
+                return Err(GeoPopulationError::new(
+                    GeoPopulationErrorCode::Composition,
+                    "Geo candidate/truth evaluation emitted a solved row without a solver digest",
+                    [("row_id", row.row_id.as_str())],
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_case_evaluation(case: &GeoPopulationCaseEvaluation) -> Result<(), GeoPopulationError> {
@@ -1048,6 +1740,183 @@ fn summarize(
     Ok(summary)
 }
 
+fn summarize_candidate_truth_evaluations(
+    required_subjects: u64,
+    rows: &[GeoCandidateTruthCaseEvaluation],
+) -> Result<GeoCandidateTruthEvaluationSummary, GeoPopulationError> {
+    let mut subject_ids = BTreeSet::new();
+    let mut genuine_multi_parcel_subject_ids = BTreeSet::new();
+    let mut plane_summaries = BTreeMap::<
+        GeoTruthPlane,
+        (
+            BTreeSet<String>,
+            BTreeSet<String>,
+            GeoCandidateTruthPlaneSummary,
+        ),
+    >::new();
+    let mut summary = GeoCandidateTruthEvaluationSummary {
+        subjects: 0,
+        genuine_multi_parcel_subjects: 0,
+        release_rows: 0,
+        required_subjects,
+        frozen_population_subject_gate_passed: false,
+        frozen_population_subject_deficit: 0,
+        truth_planes: Vec::new(),
+        candidate_reach_full_release_rows: 0,
+        candidate_reach_partial_release_rows: 0,
+        candidate_reach_none_release_rows: 0,
+        candidate_recall_failure_release_rows: 0,
+        solver_artifact_release_rows: 0,
+        representation_relative_exact_release_rows: 0,
+        solver_truth_scored_release_rows: 0,
+        solver_truth_retained_release_rows: 0,
+        rho_falsification_release_rows: 0,
+        false_merge_release_rows: 0,
+        resolved_release_rows: 0,
+        ambiguous_release_rows: 0,
+        conflict_release_rows: 0,
+        assignment_budget_exceeded_release_rows: 0,
+        component_budget_fallback_release_rows: 0,
+        upstream_no_candidate_request_release_rows: 0,
+    };
+
+    for row in rows {
+        subject_ids.insert(row.subject_id.clone());
+        if row.truth_parcel_members >= 2 {
+            genuine_multi_parcel_subject_ids.insert(row.subject_id.clone());
+        }
+        checked_inc(&mut summary.release_rows, "release_rows")?;
+        match row.candidate_reach {
+            GeoCandidateReachStatus::Full => {
+                checked_inc(
+                    &mut summary.candidate_reach_full_release_rows,
+                    "candidate_reach_full_release_rows",
+                )?;
+            }
+            GeoCandidateReachStatus::Partial => {
+                checked_inc(
+                    &mut summary.candidate_reach_partial_release_rows,
+                    "candidate_reach_partial_release_rows",
+                )?;
+                checked_inc(
+                    &mut summary.candidate_recall_failure_release_rows,
+                    "candidate_recall_failure_release_rows",
+                )?;
+            }
+            GeoCandidateReachStatus::None => {
+                checked_inc(
+                    &mut summary.candidate_reach_none_release_rows,
+                    "candidate_reach_none_release_rows",
+                )?;
+                checked_inc(
+                    &mut summary.candidate_recall_failure_release_rows,
+                    "candidate_recall_failure_release_rows",
+                )?;
+            }
+        }
+        if row.solver_digest.is_some() {
+            checked_inc(
+                &mut summary.solver_artifact_release_rows,
+                "solver_artifact_release_rows",
+            )?;
+        }
+        if row.representation_relative_exact {
+            checked_inc(
+                &mut summary.representation_relative_exact_release_rows,
+                "representation_relative_exact_release_rows",
+            )?;
+        }
+        if row.solver_truth_scored {
+            checked_inc(
+                &mut summary.solver_truth_scored_release_rows,
+                "solver_truth_scored_release_rows",
+            )?;
+        }
+        if row.truth_model_in_residual == Some(true) {
+            checked_inc(
+                &mut summary.solver_truth_retained_release_rows,
+                "solver_truth_retained_release_rows",
+            )?;
+        }
+        if row.rho_falsification {
+            checked_inc(
+                &mut summary.rho_falsification_release_rows,
+                "rho_falsification_release_rows",
+            )?;
+        }
+        if row.false_merge {
+            checked_inc(
+                &mut summary.false_merge_release_rows,
+                "false_merge_release_rows",
+            )?;
+        }
+        match row.status {
+            GeoCandidateTruthRowStatus::Resolved => {
+                checked_inc(&mut summary.resolved_release_rows, "resolved_release_rows")?;
+            }
+            GeoCandidateTruthRowStatus::Ambiguous => {
+                checked_inc(
+                    &mut summary.ambiguous_release_rows,
+                    "ambiguous_release_rows",
+                )?;
+            }
+            GeoCandidateTruthRowStatus::Conflict => {
+                checked_inc(&mut summary.conflict_release_rows, "conflict_release_rows")?;
+            }
+            GeoCandidateTruthRowStatus::AssignmentBudgetExceeded => {
+                checked_inc(
+                    &mut summary.assignment_budget_exceeded_release_rows,
+                    "assignment_budget_exceeded_release_rows",
+                )?;
+            }
+            GeoCandidateTruthRowStatus::ComponentBudgetFallback => {
+                checked_inc(
+                    &mut summary.component_budget_fallback_release_rows,
+                    "component_budget_fallback_release_rows",
+                )?;
+            }
+            GeoCandidateTruthRowStatus::UpstreamNoCandidateRequest => {
+                checked_inc(
+                    &mut summary.upstream_no_candidate_request_release_rows,
+                    "upstream_no_candidate_request_release_rows",
+                )?;
+            }
+        }
+        let entry = plane_summaries.entry(row.truth_plane).or_insert_with(|| {
+            (
+                BTreeSet::new(),
+                BTreeSet::new(),
+                GeoCandidateTruthPlaneSummary::new(row.truth_plane),
+            )
+        });
+        entry.0.insert(row.subject_id.clone());
+        if row.truth_parcel_members >= 2 {
+            entry.1.insert(row.subject_id.clone());
+        }
+        entry.2.record(row)?;
+    }
+
+    summary.subjects = checked_len(subject_ids.len(), "subjects")?;
+    summary.genuine_multi_parcel_subjects = checked_len(
+        genuine_multi_parcel_subject_ids.len(),
+        "genuine_multi_parcel_subjects",
+    )?;
+    summary.frozen_population_subject_gate_passed =
+        summary.genuine_multi_parcel_subjects >= CANON_GEO_FROZEN_E4_ACCEPTANCE_CASES;
+    summary.frozen_population_subject_deficit =
+        CANON_GEO_FROZEN_E4_ACCEPTANCE_CASES.saturating_sub(summary.genuine_multi_parcel_subjects);
+    for (_, (subjects, genuine_multi_parcel_subjects, mut plane_summary)) in plane_summaries {
+        plane_summary.subjects = checked_len(subjects.len(), "truth_plane.subjects")?;
+        plane_summary.genuine_multi_parcel_subjects = checked_len(
+            genuine_multi_parcel_subjects.len(),
+            "truth_plane.genuine_multi_parcel_subjects",
+        )?;
+        summary.truth_planes.push(plane_summary);
+    }
+    validate_candidate_truth_summary(&summary)?;
+    Ok(summary)
+}
+
 fn validate_summary(summary: &GeoPopulationSummary) -> Result<(), GeoPopulationError> {
     validate_summary_denominators(
         "summary",
@@ -1075,6 +1944,213 @@ fn validate_summary(summary: &GeoPopulationSummary) -> Result<(), GeoPopulationE
             plane.empirical_falsification_eligible_cases,
             plane.solver_truth_exclusion_cases,
         )?;
+    }
+    Ok(())
+}
+
+fn validate_candidate_truth_summary(
+    summary: &GeoCandidateTruthEvaluationSummary,
+) -> Result<(), GeoPopulationError> {
+    let reach_rows = sum_u64(
+        [
+            summary.candidate_reach_full_release_rows,
+            summary.candidate_reach_partial_release_rows,
+            summary.candidate_reach_none_release_rows,
+        ],
+        "candidate_reach_release_rows",
+    )?;
+    if reach_rows != summary.release_rows {
+        return Err(summary_invariant_error(
+            "candidate_truth_summary",
+            "candidate_reach_release_rows",
+            summary.release_rows,
+            reach_rows,
+        ));
+    }
+    let reach_failure_rows = sum_u64(
+        [
+            summary.candidate_reach_partial_release_rows,
+            summary.candidate_reach_none_release_rows,
+        ],
+        "candidate_recall_failure_release_rows",
+    )?;
+    if reach_failure_rows != summary.candidate_recall_failure_release_rows {
+        return Err(summary_invariant_error(
+            "candidate_truth_summary",
+            "candidate_recall_failure_release_rows",
+            reach_failure_rows,
+            summary.candidate_recall_failure_release_rows,
+        ));
+    }
+    let scored_truth_rows = sum_u64(
+        [
+            summary.solver_truth_retained_release_rows,
+            summary.rho_falsification_release_rows,
+        ],
+        "solver_truth_scored_release_rows",
+    )?;
+    if scored_truth_rows != summary.solver_truth_scored_release_rows {
+        return Err(summary_invariant_error(
+            "candidate_truth_summary",
+            "solver_truth_scored_release_rows",
+            summary.solver_truth_scored_release_rows,
+            scored_truth_rows,
+        ));
+    }
+    if summary.solver_truth_scored_release_rows > summary.candidate_reach_full_release_rows {
+        return Err(summary_invariant_error(
+            "candidate_truth_summary",
+            "solver_truth_scored_release_rows",
+            summary.candidate_reach_full_release_rows,
+            summary.solver_truth_scored_release_rows,
+        ));
+    }
+    let status_rows = sum_u64(
+        [
+            summary.resolved_release_rows,
+            summary.ambiguous_release_rows,
+            summary.conflict_release_rows,
+            summary.assignment_budget_exceeded_release_rows,
+            summary.component_budget_fallback_release_rows,
+            summary.upstream_no_candidate_request_release_rows,
+        ],
+        "status_release_rows",
+    )?;
+    if status_rows != summary.release_rows {
+        return Err(summary_invariant_error(
+            "candidate_truth_summary",
+            "status_release_rows",
+            summary.release_rows,
+            status_rows,
+        ));
+    }
+    if summary.required_subjects != CANON_GEO_FROZEN_E4_ACCEPTANCE_CASES {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo candidate/truth summary required_subjects must equal the frozen E4 subject gate",
+            [
+                ("actual", summary.required_subjects.to_string()),
+                ("expected", CANON_GEO_FROZEN_E4_ACCEPTANCE_CASES.to_string()),
+            ],
+        ));
+    }
+    if summary.genuine_multi_parcel_subjects > summary.subjects {
+        return Err(summary_invariant_error(
+            "candidate_truth_summary",
+            "genuine_multi_parcel_subjects",
+            summary.subjects,
+            summary.genuine_multi_parcel_subjects,
+        ));
+    }
+    let expected_deficit =
+        CANON_GEO_FROZEN_E4_ACCEPTANCE_CASES.saturating_sub(summary.genuine_multi_parcel_subjects);
+    if summary.frozen_population_subject_deficit != expected_deficit {
+        return Err(summary_invariant_error(
+            "candidate_truth_summary",
+            "frozen_population_subject_deficit",
+            expected_deficit,
+            summary.frozen_population_subject_deficit,
+        ));
+    }
+    let expected_gate =
+        summary.genuine_multi_parcel_subjects >= CANON_GEO_FROZEN_E4_ACCEPTANCE_CASES;
+    if summary.frozen_population_subject_gate_passed != expected_gate {
+        return Err(GeoPopulationError::new(
+            GeoPopulationErrorCode::InvalidInput,
+            "Geo candidate/truth subject gate field is internally inconsistent",
+            [
+                ("subjects", summary.subjects.to_string()),
+                (
+                    "genuine_multi_parcel_subjects",
+                    summary.genuine_multi_parcel_subjects.to_string(),
+                ),
+                ("required_subjects", summary.required_subjects.to_string()),
+            ],
+        ));
+    }
+    for plane in &summary.truth_planes {
+        if plane.genuine_multi_parcel_subjects > plane.subjects {
+            return Err(summary_invariant_error(
+                "candidate_truth_plane",
+                "genuine_multi_parcel_subjects",
+                plane.subjects,
+                plane.genuine_multi_parcel_subjects,
+            ));
+        }
+    }
+    validate_candidate_truth_plane_sum(
+        "subjects",
+        summary.subjects,
+        summary.truth_planes.iter().map(|plane| plane.subjects),
+    )?;
+    validate_candidate_truth_plane_sum(
+        "genuine_multi_parcel_subjects",
+        summary.genuine_multi_parcel_subjects,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.genuine_multi_parcel_subjects),
+    )?;
+    validate_candidate_truth_plane_sum(
+        "release_rows",
+        summary.release_rows,
+        summary.truth_planes.iter().map(|plane| plane.release_rows),
+    )?;
+    validate_candidate_truth_plane_sum(
+        "candidate_reach_full_release_rows",
+        summary.candidate_reach_full_release_rows,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.candidate_reach_full_release_rows),
+    )?;
+    validate_candidate_truth_plane_sum(
+        "candidate_reach_partial_release_rows",
+        summary.candidate_reach_partial_release_rows,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.candidate_reach_partial_release_rows),
+    )?;
+    validate_candidate_truth_plane_sum(
+        "candidate_reach_none_release_rows",
+        summary.candidate_reach_none_release_rows,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.candidate_reach_none_release_rows),
+    )?;
+    validate_candidate_truth_plane_sum(
+        "solver_truth_scored_release_rows",
+        summary.solver_truth_scored_release_rows,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.solver_truth_scored_release_rows),
+    )?;
+    validate_candidate_truth_plane_sum(
+        "rho_falsification_release_rows",
+        summary.rho_falsification_release_rows,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.rho_falsification_release_rows),
+    )
+}
+
+fn validate_candidate_truth_plane_sum(
+    field: &'static str,
+    expected: u64,
+    values: impl IntoIterator<Item = u64>,
+) -> Result<(), GeoPopulationError> {
+    let actual = sum_u64(values, field)?;
+    if actual != expected {
+        return Err(summary_invariant_error(
+            "candidate_truth_planes_sum",
+            field,
+            expected,
+            actual,
+        ));
     }
     Ok(())
 }
@@ -1589,6 +2665,59 @@ impl GeoPopulationTruthPlaneSummary {
             case.backbone_false_positive_members,
             "backbone_false_positive_members",
         )
+    }
+}
+
+impl GeoCandidateTruthPlaneSummary {
+    fn new(truth_plane: GeoTruthPlane) -> Self {
+        Self {
+            truth_plane,
+            subjects: 0,
+            genuine_multi_parcel_subjects: 0,
+            release_rows: 0,
+            candidate_reach_full_release_rows: 0,
+            candidate_reach_partial_release_rows: 0,
+            candidate_reach_none_release_rows: 0,
+            solver_truth_scored_release_rows: 0,
+            rho_falsification_release_rows: 0,
+        }
+    }
+
+    fn record(&mut self, row: &GeoCandidateTruthCaseEvaluation) -> Result<(), GeoPopulationError> {
+        checked_inc(&mut self.release_rows, "truth_plane.release_rows")?;
+        match row.candidate_reach {
+            GeoCandidateReachStatus::Full => {
+                checked_inc(
+                    &mut self.candidate_reach_full_release_rows,
+                    "truth_plane.candidate_reach_full_release_rows",
+                )?;
+            }
+            GeoCandidateReachStatus::Partial => {
+                checked_inc(
+                    &mut self.candidate_reach_partial_release_rows,
+                    "truth_plane.candidate_reach_partial_release_rows",
+                )?;
+            }
+            GeoCandidateReachStatus::None => {
+                checked_inc(
+                    &mut self.candidate_reach_none_release_rows,
+                    "truth_plane.candidate_reach_none_release_rows",
+                )?;
+            }
+        }
+        if row.solver_truth_scored {
+            checked_inc(
+                &mut self.solver_truth_scored_release_rows,
+                "truth_plane.solver_truth_scored_release_rows",
+            )?;
+        }
+        if row.rho_falsification {
+            checked_inc(
+                &mut self.rho_falsification_release_rows,
+                "truth_plane.rho_falsification_release_rows",
+            )?;
+        }
+        Ok(())
     }
 }
 

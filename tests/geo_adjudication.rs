@@ -24,9 +24,12 @@
 //! not a tolerated failure.
 
 use canon::geo::{
-    CANON_GEO_COMPOSITION_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCompositionRequest,
-    GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef, GeoHardConstraint,
-    GeoHardConstraintKind, GeoTruthPlane, model_satisfies_request, solve_composition,
+    CANON_GEO_CANDIDATE_TRUTH_HANDOFF_REQUEST_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
+    CANON_GEO_FROZEN_E4_ACCEPTANCE_CASES, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCandidateReachStatus,
+    GeoCandidateTruthEvaluationRequest, GeoCandidateTruthHandoffRow, GeoCandidateTruthRowStatus,
+    GeoCompositionModel, GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse,
+    GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind, GeoTruthPlane,
+    evaluate_candidate_truth_handoff, model_satisfies_request, solve_composition,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -204,6 +207,66 @@ fn base_request(case: &PopulationCase) -> GeoCompositionRequest {
             .collect(),
         max_assignments: 2_097_152,
         max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    }
+}
+
+fn candidate_truth_request(
+    rows: Vec<GeoCandidateTruthHandoffRow>,
+) -> GeoCandidateTruthEvaluationRequest {
+    GeoCandidateTruthEvaluationRequest {
+        version: CANON_GEO_CANDIDATE_TRUTH_HANDOFF_REQUEST_VERSION.to_string(),
+        population_id: "source-generic-h7-shaped-population".to_string(),
+        required_subjects: CANON_GEO_FROZEN_E4_ACCEPTANCE_CASES,
+        max_release_rows: rows.len(),
+        rows,
+    }
+}
+
+fn candidate_truth_row(
+    row_id: &str,
+    subject_id: &str,
+    release_id: &str,
+    truth_plane: GeoTruthPlane,
+    candidate_reach: GeoCandidateReachStatus,
+    composition_request: Option<GeoCompositionRequest>,
+    truth_parcels: &[&str],
+) -> GeoCandidateTruthHandoffRow {
+    GeoCandidateTruthHandoffRow {
+        row_id: row_id.to_string(),
+        subject_id: subject_id.to_string(),
+        release_id: release_id.to_string(),
+        truth_plane,
+        candidate_reach,
+        composition_request,
+        truth: parcel_model(truth_parcels),
+    }
+}
+
+fn parcel_allowed_set_request(candidates: &[&str], allowed: &[&str]) -> GeoCompositionRequest {
+    GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: GeoCompositionUniverse {
+            parcels: candidates.iter().map(|id| (*id).to_string()).collect(),
+            buildings: Vec::new(),
+        },
+        hard_constraints: vec![GeoHardConstraint {
+            id: "declared-candidate-truth-test-set".to_string(),
+            constraint: GeoHardConstraintKind::AllowedSets {
+                level: GeoEntityLevel::Parcel,
+                sets: vec![allowed.iter().map(|id| (*id).to_string()).collect()],
+            },
+        }],
+        soft_preferences: Vec::new(),
+        max_assignments: 1_024,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    }
+}
+
+fn parcel_model(parcels: &[&str]) -> GeoCompositionModel {
+    GeoCompositionModel {
+        parcels: parcels.iter().map(|id| (*id).to_string()).collect(),
+        buildings: Vec::new(),
     }
 }
 
@@ -408,11 +471,12 @@ fn adjudicate_row(
     let mut sqft_band_truth_hits = 0_u64;
     for value in &sqft_values {
         let (low, high) = asserted_area_diagnostic_band(*value);
-        for parcel in population_case
+        let scored_parcels: BTreeSet<&String> = population_case
             .candidate_parcels
             .iter()
             .chain(&truth_sorted)
-        {
+            .collect();
+        for parcel in scored_parcels {
             let Some(area) = attributes.get(parcel).and_then(|entry| entry.bldg_area) else {
                 continue;
             };
@@ -582,6 +646,305 @@ fn asserted_area_diagnostic_band_uses_exact_integer_arithmetic_at_boundaries() {
 }
 
 #[test]
+fn sqft_diagnostic_counts_overlapping_candidate_and_truth_parcels_once() {
+    let population_case = PopulationCase {
+        case_id: "sqft-overlap".to_string(),
+        truth_parcels: vec!["p-overlap".to_string()],
+        pip_parcels: Vec::new(),
+        candidate_parcels: vec!["p-overlap".to_string()],
+    };
+    let enrichment_case = EnrichmentCase {
+        case_id: "sqft-overlap".to_string(),
+        properties: vec![PropertyEvidence {
+            address_strings: Vec::new(),
+            asserted_size_observations: vec![AssertedSize {
+                size: Some("100".to_string()),
+                size_measure: Some("sqft".to_string()),
+            }],
+        }],
+    };
+    let attributes = BTreeMap::from([(
+        "p-overlap".to_string(),
+        ParcelAttributes {
+            bldg_area: Some(100),
+            pad: None,
+        },
+    )]);
+
+    let row = adjudicate_row(&population_case, &enrichment_case, &attributes, &[]);
+
+    assert_eq!(row.sqft_band_truth_hits, 1);
+    assert_eq!(row.sqft_band_candidate_hits, 0);
+}
+
+#[test]
+fn candidate_truth_handoff_evaluates_full_reach_without_scoring_partial_or_none_reach() {
+    let request = candidate_truth_request(vec![
+        candidate_truth_row(
+            "subject-a-26v1",
+            "subject-a",
+            "26v1",
+            GeoTruthPlane::NonRoundAmountDateLegalBorough,
+            GeoCandidateReachStatus::Full,
+            Some(parcel_allowed_set_request(
+                &["p-3", "p-1", "p-2"],
+                &["p-2", "p-1"],
+            )),
+            &["p-2", "p-1"],
+        ),
+        candidate_truth_row(
+            "subject-a-26v2",
+            "subject-a",
+            "26v2",
+            GeoTruthPlane::NonRoundAmountDateLegalBorough,
+            GeoCandidateReachStatus::Partial,
+            Some(parcel_allowed_set_request(&["p-1", "p-4"], &["p-1"])),
+            &["p-1", "p-2"],
+        ),
+        candidate_truth_row(
+            "subject-b-26v1",
+            "subject-b",
+            "26v1",
+            GeoTruthPlane::RoundExactLenderParty,
+            GeoCandidateReachStatus::None,
+            None,
+            &["q-1", "q-2"],
+        ),
+        candidate_truth_row(
+            "subject-b-26v2",
+            "subject-b",
+            "26v2",
+            GeoTruthPlane::RoundExactLenderParty,
+            GeoCandidateReachStatus::None,
+            None,
+            &["q-2", "q-1"],
+        ),
+    ]);
+
+    let artifact = evaluate_candidate_truth_handoff(&request).expect("handoff evaluates");
+    assert_eq!(artifact.summary.subjects, 2);
+    assert_eq!(artifact.summary.genuine_multi_parcel_subjects, 2);
+    assert_eq!(artifact.summary.release_rows, 4);
+    assert_eq!(
+        artifact.summary.required_subjects,
+        CANON_GEO_FROZEN_E4_ACCEPTANCE_CASES
+    );
+    assert!(!artifact.summary.frozen_population_subject_gate_passed);
+    assert_eq!(artifact.summary.frozen_population_subject_deficit, 77);
+    assert_eq!(artifact.summary.candidate_reach_full_release_rows, 1);
+    assert_eq!(artifact.summary.candidate_reach_partial_release_rows, 1);
+    assert_eq!(artifact.summary.candidate_reach_none_release_rows, 2);
+    assert_eq!(artifact.summary.solver_artifact_release_rows, 2);
+    assert_eq!(
+        artifact.summary.representation_relative_exact_release_rows,
+        2
+    );
+    assert_eq!(artifact.summary.solver_truth_scored_release_rows, 1);
+    assert_eq!(artifact.summary.solver_truth_retained_release_rows, 1);
+    assert_eq!(artifact.summary.rho_falsification_release_rows, 0);
+    assert_eq!(
+        artifact
+            .summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.genuine_multi_parcel_subjects)
+            .sum::<u64>(),
+        artifact.summary.genuine_multi_parcel_subjects
+    );
+
+    let full = artifact
+        .rows
+        .iter()
+        .find(|row| row.row_id == "subject-a-26v1")
+        .expect("full row");
+    assert_eq!(full.status, GeoCandidateTruthRowStatus::Resolved);
+    assert_eq!(full.candidate_reach, GeoCandidateReachStatus::Full);
+    assert_eq!(full.truth_members, 2);
+    assert_eq!(full.truth_parcel_members, 2);
+    assert_eq!(full.truth_building_members, 0);
+    assert_eq!(full.truth_members_in_universe, 2);
+    assert_eq!(full.truth_model_in_residual, Some(true));
+    assert!(full.solver_truth_scored);
+
+    let partial = artifact
+        .rows
+        .iter()
+        .find(|row| row.row_id == "subject-a-26v2")
+        .expect("partial row");
+    assert_eq!(partial.status, GeoCandidateTruthRowStatus::Resolved);
+    assert_eq!(partial.candidate_reach, GeoCandidateReachStatus::Partial);
+    assert_eq!(partial.truth_members, 2);
+    assert_eq!(partial.truth_parcel_members, 2);
+    assert_eq!(partial.truth_building_members, 0);
+    assert_eq!(partial.truth_members_in_universe, 1);
+    assert_eq!(partial.truth_model_in_residual, None);
+    assert!(!partial.solver_truth_scored);
+    assert!(partial.representation_relative_exact);
+
+    let first = serde_json::to_vec(&artifact).expect("artifact json");
+    let second = serde_json::to_vec(
+        &evaluate_candidate_truth_handoff(&request).expect("handoff reevaluates"),
+    )
+    .expect("artifact json");
+    assert_eq!(first, second);
+}
+
+#[test]
+fn candidate_truth_handoff_rejects_caller_controlled_frozen_subject_gate() {
+    let mut request = candidate_truth_request(vec![candidate_truth_row(
+        "subject-a-26v1",
+        "subject-a",
+        "26v1",
+        GeoTruthPlane::NonRoundAmountDateLegalBorough,
+        GeoCandidateReachStatus::Full,
+        Some(parcel_allowed_set_request(&["p-1", "p-2"], &["p-1"])),
+        &["p-1"],
+    )]);
+    request.required_subjects = 1;
+
+    let error =
+        evaluate_candidate_truth_handoff(&request).expect_err("caller threshold must reject");
+    assert_eq!(error.code, canon::geo::GeoPopulationErrorCode::InvalidInput);
+    assert!(error.message.contains("frozen E4 subject gate"));
+}
+
+#[test]
+fn candidate_truth_handoff_rejects_truth_drift_across_releases_for_one_subject() {
+    let request = candidate_truth_request(vec![
+        candidate_truth_row(
+            "subject-a-26v1",
+            "subject-a",
+            "26v1",
+            GeoTruthPlane::NonRoundAmountDateLegalBorough,
+            GeoCandidateReachStatus::Full,
+            Some(parcel_allowed_set_request(&["p-1", "p-2"], &["p-1"])),
+            &["p-1"],
+        ),
+        candidate_truth_row(
+            "subject-a-26v2",
+            "subject-a",
+            "26v2",
+            GeoTruthPlane::NonRoundAmountDateLegalBorough,
+            GeoCandidateReachStatus::Full,
+            Some(parcel_allowed_set_request(&["p-1", "p-2"], &["p-2"])),
+            &["p-2"],
+        ),
+    ]);
+
+    let error = evaluate_candidate_truth_handoff(&request)
+        .expect_err("truth must be stable across releases for one subject");
+    assert_eq!(error.code, canon::geo::GeoPopulationErrorCode::InvalidInput);
+    assert!(error.message.contains("conflicting truth models"));
+}
+
+#[test]
+fn candidate_truth_handoff_rejects_truth_plane_drift_across_releases_for_one_subject() {
+    let request = candidate_truth_request(vec![
+        candidate_truth_row(
+            "subject-a-26v1",
+            "subject-a",
+            "26v1",
+            GeoTruthPlane::NonRoundAmountDateLegalBorough,
+            GeoCandidateReachStatus::Full,
+            Some(parcel_allowed_set_request(&["p-1", "p-2"], &["p-1"])),
+            &["p-1"],
+        ),
+        candidate_truth_row(
+            "subject-a-26v2",
+            "subject-a",
+            "26v2",
+            GeoTruthPlane::RoundExactLenderParty,
+            GeoCandidateReachStatus::Full,
+            Some(parcel_allowed_set_request(&["p-1", "p-2"], &["p-1"])),
+            &["p-1"],
+        ),
+    ]);
+
+    let error = evaluate_candidate_truth_handoff(&request)
+        .expect_err("truth plane must be stable across releases for one subject");
+    assert_eq!(error.code, canon::geo::GeoPopulationErrorCode::InvalidInput);
+    assert!(error.message.contains("multiple truth planes"));
+}
+
+#[test]
+fn frozen_gate_counts_subjects_not_release_rows() {
+    let mut rows = Vec::new();
+    for subject_index in 0..71 {
+        let subject_id = format!("h7-subject-{subject_index:02}");
+        let truth_a = format!("truth-{subject_index:02}-a");
+        let truth_b = format!("truth-{subject_index:02}-b");
+        for release_id in ["26v1", "26v2"] {
+            rows.push(candidate_truth_row(
+                &format!("{subject_id}-{release_id}"),
+                &subject_id,
+                release_id,
+                GeoTruthPlane::RoundExactLenderParty,
+                GeoCandidateReachStatus::None,
+                None,
+                &[truth_a.as_str(), truth_b.as_str()],
+            ));
+        }
+    }
+    let artifact = evaluate_candidate_truth_handoff(&candidate_truth_request(rows))
+        .expect("handoff evaluates");
+
+    assert_eq!(artifact.summary.subjects, 71);
+    assert_eq!(artifact.summary.genuine_multi_parcel_subjects, 71);
+    assert_eq!(artifact.summary.release_rows, 142);
+    assert!(!artifact.summary.frozen_population_subject_gate_passed);
+    assert_eq!(artifact.summary.frozen_population_subject_deficit, 8);
+    assert_eq!(artifact.summary.solver_truth_scored_release_rows, 0);
+    assert_eq!(
+        artifact.summary.upstream_no_candidate_request_release_rows,
+        142
+    );
+}
+
+#[test]
+fn frozen_gate_rejects_seventy_nine_single_parcel_subjects() {
+    let mut rows = Vec::new();
+    for subject_index in 0..79 {
+        let subject_id = format!("singleton-subject-{subject_index:02}");
+        let truth_id = format!("singleton-truth-{subject_index:02}");
+        rows.push(candidate_truth_row(
+            &format!("{subject_id}-26v1"),
+            &subject_id,
+            "26v1",
+            GeoTruthPlane::HumanAdjudication,
+            GeoCandidateReachStatus::None,
+            None,
+            &[truth_id.as_str()],
+        ));
+    }
+    let artifact = evaluate_candidate_truth_handoff(&candidate_truth_request(rows))
+        .expect("singleton handoff evaluates");
+
+    assert_eq!(artifact.summary.subjects, 79);
+    assert_eq!(artifact.summary.genuine_multi_parcel_subjects, 0);
+    assert_eq!(artifact.summary.release_rows, 79);
+    assert!(!artifact.summary.frozen_population_subject_gate_passed);
+    assert_eq!(artifact.summary.frozen_population_subject_deficit, 79);
+}
+
+#[test]
+fn candidate_truth_handoff_rejects_declared_full_reach_when_truth_is_unreachable() {
+    let request = candidate_truth_request(vec![candidate_truth_row(
+        "subject-a-26v1",
+        "subject-a",
+        "26v1",
+        GeoTruthPlane::NonRoundAmountDateLegalBorough,
+        GeoCandidateReachStatus::Full,
+        Some(parcel_allowed_set_request(&["p-1", "p-2"], &["p-1"])),
+        &["p-1", "p-missing"],
+    )]);
+
+    let error =
+        evaluate_candidate_truth_handoff(&request).expect_err("declared reach must be checked");
+    assert_eq!(error.code, canon::geo::GeoPopulationErrorCode::InvalidInput);
+    assert!(error.message.contains("declared candidate reach"));
+}
+
+#[test]
 fn adjudication_table_is_complete_and_sound_channels_never_prune_truth() {
     let rows = run_adjudication();
     let expected_population = 15 + extension_fixture().cases.len();
@@ -614,10 +977,22 @@ fn adjudication_table_is_complete_and_sound_channels_never_prune_truth() {
                 );
             }
         }
-        assert!(
-            row.after_residual_model_count <= row.base_residual_model_count,
-            "adding sound constraints may only shrink the residual"
-        );
+        if !row.after_counts_saturated && !row.base_counts_saturated {
+            assert!(
+                row.after_residual_model_count <= row.base_residual_model_count,
+                "adding sound constraints may only shrink an exact residual"
+            );
+        } else {
+            assert!(
+                row.after_counts_saturated || row.base_counts_saturated,
+                "non-exact residual comparisons must expose saturation"
+            );
+            assert!(
+                row.verdict != AdjudicationVerdict::CollapsedHonestAmbiguity
+                    || (!row.after_counts_saturated && row.base_counts_saturated),
+                "saturated residuals only prove shrinkage after an exact bounded count"
+            );
+        }
         if row.pad_disposition == PadDisposition::Applied {
             assert!(
                 row.pad_set_size < row.candidate_count,
