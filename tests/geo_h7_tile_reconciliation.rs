@@ -1,18 +1,14 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    canonical_composition_bytes, canonical_owned_tile_reach_bytes,
-    canonical_tile_reconciliation_bytes, materialize_owned_tile_reach, materialize_tile_work_unit,
+    canonical_composition_bytes, canonical_tile_reconciliation_bytes, materialize_tile_work_unit,
     reconcile_tile_decisions, solve_composition, GeoBuildingCandidate, GeoCompositionArtifact,
     GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse, GeoControlEntityLevel,
     GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind,
-    GeoIdentityParticipation, GeoNativeEntityScope, GeoOwnedTileReachRequest, GeoPlanInventoryRef,
-    GeoSourceRelease, GeoTileCandidateIdentityBinding, GeoTileComparisonKey, GeoTileDecisionBatch,
-    GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileErrorCode,
-    GeoTileFeatureRef, GeoTilePlacement, GeoTileReachState, GeoTileReconciliationRequest,
-    GeoTileSourceBinding, GeoTileTruthProvenance, GeoTileTruthReference,
-    GeoTileTruthReferenceMember, GeoTileWorkRequest, GeoTileWorkUnitArtifact,
-    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_OWNED_TILE_REACH_REQUEST_VERSION,
+    GeoIdentityParticipation, GeoNativeEntityScope, GeoPlanInventoryRef, GeoSourceRelease,
+    GeoTileDecisionBatch, GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics,
+    GeoTileErrorCode, GeoTileFeatureRef, GeoTilePlacement, GeoTileReconciliationRequest,
+    GeoTileSourceBinding, GeoTileWorkRequest, CANON_GEO_COMPOSITION_REQUEST_VERSION,
     CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
     DEFAULT_MAX_MATERIALIZED_MODELS,
 };
@@ -79,49 +75,6 @@ fn member(
     }
 }
 
-fn comparison_key(
-    entity_namespace: &str,
-    entity_level: GeoControlEntityLevel,
-    comparison_id: &str,
-) -> GeoTileComparisonKey {
-    GeoTileComparisonKey {
-        entity_namespace: entity_namespace.to_string(),
-        entity_level,
-        comparison_id: comparison_id.to_string(),
-    }
-}
-
-fn identity_binding(
-    candidate: GeoTileDecisionMember,
-    entity_namespace: &str,
-    comparison_id: &str,
-) -> GeoTileCandidateIdentityBinding {
-    GeoTileCandidateIdentityBinding {
-        identity_key: comparison_key(
-            entity_namespace,
-            candidate.candidate_entity_level,
-            comparison_id,
-        ),
-        candidate,
-    }
-}
-
-fn acris_truth_member(
-    entity_namespace: &str,
-    entity_level: GeoControlEntityLevel,
-    comparison_id: &str,
-    source_record_id: &str,
-) -> GeoTileTruthReferenceMember {
-    GeoTileTruthReferenceMember {
-        identity_key: comparison_key(entity_namespace, entity_level, comparison_id),
-        provenance: GeoTileTruthProvenance {
-            source_instance_id: "nyc_acris_legal_truth".to_string(),
-            release_id: "2026-08-10".to_string(),
-            source_record_id: source_record_id.to_string(),
-        },
-    }
-}
-
 fn work_request(center: CellIndex, members: &[GeoTileDecisionMember]) -> GeoTileWorkRequest {
     GeoTileWorkRequest {
         version: CANON_GEO_TILE_WORK_REQUEST_VERSION.to_string(),
@@ -183,29 +136,6 @@ fn reconciliation_request(batches: Vec<GeoTileDecisionBatch>) -> GeoTileReconcil
         max_members_per_decision: 8,
         max_features_per_batch: 8,
         max_work_cells_per_batch: 7,
-    }
-}
-
-fn owned_reach_request(
-    work_units: Vec<GeoTileWorkUnitArtifact>,
-    candidate_identity_bindings: Vec<GeoTileCandidateIdentityBinding>,
-    truth_members: Vec<GeoTileTruthReferenceMember>,
-) -> GeoOwnedTileReachRequest {
-    GeoOwnedTileReachRequest {
-        version: CANON_GEO_OWNED_TILE_REACH_REQUEST_VERSION.to_string(),
-        halo_k: 1,
-        work_units,
-        candidate_identity_bindings,
-        truth_reference: Some(GeoTileTruthReference {
-            reference_id: "reference.fixture.h7.accepted_truth".to_string(),
-            reference_kind: "synthetic_h7_bounded_reference".to_string(),
-            members: truth_members,
-        }),
-        claimed_truth_reach: GeoTileReachState::PassedAgainstReference,
-        max_work_units: 4,
-        max_reference_members: 8,
-        max_features_per_work_unit: 8,
-        max_work_cells_per_work_unit: 7,
     }
 }
 
@@ -294,62 +224,6 @@ fn adjacent_h7_work_units_reconcile_one_exact_composition_with_byte_confluence()
     assert!(owner_batch.work_unit.features.iter().any(|feature| {
         feature.feature_id == "h7_building_200" && feature.placement == GeoTilePlacement::Halo
     }));
-
-    let reach_request = owned_reach_request(
-        vec![
-            observer_batch.work_unit.clone(),
-            owner_batch.work_unit.clone(),
-        ],
-        vec![
-            identity_binding(members[0].clone(), "nyc_bbl", "1000000100"),
-            identity_binding(
-                members[1].clone(),
-                "synthetic_building_id",
-                "h7_building_200",
-            ),
-        ],
-        vec![acris_truth_member(
-            "nyc_bbl",
-            GeoControlEntityLevel::Parcel,
-            "1000000100",
-            "acris:2026-08-10:document:1000000100",
-        )],
-    );
-    let mut permuted_reach = reach_request.clone();
-    permuted_reach.work_units.reverse();
-    permuted_reach
-        .truth_reference
-        .as_mut()
-        .expect("truth reference exists")
-        .members
-        .reverse();
-    let reach = materialize_owned_tile_reach(&reach_request)
-        .expect("owned adjacent sections retain the complete synthetic truth");
-    let repeated_reach = materialize_owned_tile_reach(&permuted_reach)
-        .expect("reach remains canonical under work-unit and reference order");
-    assert_eq!(reach, repeated_reach);
-    assert_eq!(
-        reach.structural_reach,
-        GeoTileReachState::StructurallyCompleteRelativeToInputs
-    );
-    assert_eq!(reach.truth_reach, GeoTileReachState::PassedAgainstReference);
-    assert_eq!(reach.reference_member_count, 1);
-    assert_eq!(reach.reached_reference_member_count, 1);
-    assert_eq!(
-        reach.truth_reference_members[0]
-            .provenance
-            .source_instance_id,
-        "nyc_acris_legal_truth"
-    );
-    assert!(reach.owned_candidate_members.iter().any(|owned| {
-        owned.member.source.source_instance_id == "mappluto_parcel"
-            && owned.identity_key.entity_namespace == "nyc_bbl"
-            && owned.identity_key.comparison_id == "1000000100"
-    }));
-    assert_eq!(
-        canonical_owned_tile_reach_bytes(&reach).expect("reach artifact serializes"),
-        canonical_owned_tile_reach_bytes(&repeated_reach).expect("repeated reach serializes")
-    );
 
     let original = reconciliation_request(vec![owner_batch.clone(), observer_batch.clone()]);
     let mut permuted = reconciliation_request(vec![observer_batch, owner_batch]);
