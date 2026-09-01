@@ -686,9 +686,18 @@ fn changed_release_refuses_foreign_project_receipts_in_the_same_work_dir() {
     ))
     .expect_err("changed release must not consume foreign project receipts");
     assert_eq!(error.code, GeoRunErrorCode::ProjectRunFailed);
+    assert_eq!(
+        error
+            .detail
+            .get("project_run_error_code")
+            .map(String::as_str),
+        Some("ReceiptPoisoning")
+    );
     assert!(
-        error.message.contains("poisoned project receipts"),
-        "changed release must refuse rather than silently reuse old residuals"
+        error
+            .message
+            .contains("project run manifest head belongs to project_id="),
+        "changed release must refuse rather than silently reuse old residuals: {error:?}"
     );
 }
 

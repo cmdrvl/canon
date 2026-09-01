@@ -34,6 +34,7 @@ pub enum ConcurrencyClass {
 pub enum PlatformClass {
     PortablePathUtf8,
     SameFilesystemAtomicReplace,
+    SameFilesystemAtomicNoClobber,
     UnixPermissionBits,
     RejectLinks,
     AdvisoryFileLock,
@@ -58,6 +59,7 @@ pub const SAFETY_MATRIX_SCHEMA_VERSION: &str = "canon.operator.safety_matrix.v1"
 pub const CORE_PLATFORM_CLASSES: &[PlatformClass] = &[
     PlatformClass::PortablePathUtf8,
     PlatformClass::SameFilesystemAtomicReplace,
+    PlatformClass::SameFilesystemAtomicNoClobber,
     PlatformClass::UnixPermissionBits,
     PlatformClass::RejectLinks,
     PlatformClass::AdvisoryFileLock,
@@ -530,6 +532,21 @@ pub const COMMAND_SAFETY_DECLARATIONS: &[CommandSafetyDeclaration] = &[
         ],
         owned_temp_fixtures_only: true,
         notes: "reads only explicit local plan, input, and optional satisfaction-receipt files; publishes planned artifacts and receipts beneath the explicit workspace with atomic single-file replacement; cross-agent concurrency and multi-artifact transactionality remain open",
+    },
+    CommandSafetyDeclaration {
+        command: "geo replan-from-acquisition",
+        operator_contract_name: Some("geo replan-from-acquisition"),
+        usage: "canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>",
+        read_only: false,
+        mutation: MutationClass::OwnedOutput,
+        network: NetworkClass::Offline,
+        concurrency: ConcurrencyClass::AtomicOwnedOutput,
+        platforms: &[
+            PlatformClass::PortablePathUtf8,
+            PlatformClass::SameFilesystemAtomicNoClobber,
+        ],
+        owned_temp_fixtures_only: true,
+        notes: "reads explicit local planning artifacts, one live complete acquisition receipt, and its declared local bytes; publishes only the requested advancement sidecar with same-filesystem atomic no-clobber semantics, then emits the replanned artifact on stdout",
     },
     CommandSafetyDeclaration {
         command: "geo link-sources",
@@ -2012,6 +2029,7 @@ fn platform_class_contract_name(value: PlatformClass) -> &'static str {
     match value {
         PlatformClass::PortablePathUtf8 => "PortablePathUtf8",
         PlatformClass::SameFilesystemAtomicReplace => "SameFilesystemAtomicReplace",
+        PlatformClass::SameFilesystemAtomicNoClobber => "SameFilesystemAtomicNoClobber",
         PlatformClass::UnixPermissionBits => "UnixPermissionBits",
         PlatformClass::RejectLinks => "RejectLinks",
         PlatformClass::AdvisoryFileLock => "AdvisoryFileLock",

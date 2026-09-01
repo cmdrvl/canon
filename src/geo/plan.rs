@@ -10,7 +10,7 @@
 use super::satisfy::{
     CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION, GeoInventoryAdvancementEffect,
     GeoRegionalInventoryAdvancement, GeoRegionalInventorySourceAdvancement, GeoSatisfyError,
-    geo_regional_inventory_advancement_semantic_hash,
+    geo_regional_inventory_advancement_semantic_hash, validate_geo_regional_inventory_advancement,
 };
 use super::{
     CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
@@ -985,6 +985,7 @@ fn validate_inventory_advancement_for_replan(
     question: &GeoQuestion,
     advancement: &GeoRegionalInventoryAdvancement,
 ) -> Result<GeoRegionalInventory, GeoPlanError> {
+    validate_geo_regional_inventory_advancement(advancement).map_err(satisfy_error)?;
     if advancement.version != CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION {
         return Err(GeoPlanError::new(
             GeoPlanErrorCode::UnsupportedVersion,
@@ -1218,6 +1219,47 @@ fn validate_source_advancements(
         .iter()
         .map(release_pin_key)
         .collect::<Result<BTreeSet<_>, _>>()?;
+    let advanced_release_keys = advancement
+        .source_advancements
+        .iter()
+        .map(source_advancement_key)
+        .collect::<BTreeSet<_>>();
+    if advanced_release_keys != release_keys {
+        let missing_release_keys = release_keys
+            .difference(&advanced_release_keys)
+            .map(|key| format!("{}:{}:{}", key.0, key.1, key.2))
+            .collect::<Vec<_>>();
+        return Err(GeoPlanError::new(
+            GeoPlanErrorCode::ContractViolation,
+            "Geo replan source advancements must cover every pinned acquisition release",
+            [
+                (
+                    "expected_release_count".to_string(),
+                    release_keys.len().to_string(),
+                ),
+                (
+                    "advanced_release_count".to_string(),
+                    advanced_release_keys.len().to_string(),
+                ),
+                (
+                    "missing_release_keys".to_string(),
+                    missing_release_keys.join(","),
+                ),
+            ],
+        ));
+    }
+    for digest in &advancement.result_digests {
+        if digest.algorithm != GeoDigestAlgorithm::Blake3 {
+            return Err(GeoPlanError::new(
+                GeoPlanErrorCode::ContractViolation,
+                "Geo replan result digests must use the plan handoff's BLAKE3 algorithm",
+                [
+                    ("digest_id".to_string(), digest.digest_id.clone()),
+                    ("algorithm".to_string(), format!("{:?}", digest.algorithm)),
+                ],
+            ));
+        }
+    }
     for source_advancement in &advancement.source_advancements {
         let source_key = source_advancement_key(source_advancement);
         if !release_keys.contains(&source_key) {

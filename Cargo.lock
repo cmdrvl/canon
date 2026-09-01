@@ -196,6 +196,7 @@ dependencies = [
  "clap",
  "csv",
  "h3o",
+ "libc",
  "petgraph",
  "predicates",
  "rapidfuzz",

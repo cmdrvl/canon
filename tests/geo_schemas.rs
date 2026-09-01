@@ -1062,7 +1062,15 @@ fn regional_inventory_advancement_contract_artifact() -> GeoRegionalInventoryAdv
             algorithm: GeoDigestAlgorithm::Blake3,
             hex_digest: release_hex,
         }],
-        result_digests: vec![contract_blake3_digest("result.rows", b"result rows")],
+        result_digests: vec![GeoDigest {
+            digest_id: "result.rows".to_string(),
+            algorithm: GeoDigestAlgorithm::Blake3,
+            hex_digest: local_ref
+                .content_hash
+                .strip_prefix("blake3:")
+                .expect("local ref content hash is blake3")
+                .to_string(),
+        }],
         source_advancements: vec![GeoRegionalInventorySourceAdvancement {
             source_instance_id: source.source_instance_id,
             release: source.release,
@@ -1635,6 +1643,40 @@ fn regional_inventory_advancement_schema_rejects_unknown_fields_and_version_shap
     );
     assert!(prefixed_blake3_shape(advancement.semantic_hash.as_str()));
     assert!(!prefixed_blake3_shape("blake3:ABC"));
+}
+
+#[test]
+fn regional_inventory_advancement_serializer_rejects_forged_execution_and_digest_links() {
+    let mut forged_execution = regional_inventory_advancement_contract_artifact();
+    forged_execution.receipt_execution.proof_class = GeoAcquisitionProofClass::Retained;
+    forged_execution.receipt_execution.terminal_state = GeoAcquisitionTerminalState::ZeroRows;
+    forged_execution.receipt_execution.retained_receipt_id = Some("retained.forged".to_string());
+    forged_execution.receipt_execution.executor_request_id = None;
+    forged_execution.receipt_execution.executor_query_id = None;
+    let execution_error = canonical_geo_regional_inventory_advancement_bytes(&forged_execution)
+        .expect_err("nested receipt execution must agree with top-level live COMPLETE proof");
+    assert!(
+        execution_error.message.contains("receipt execution"),
+        "unexpected execution error: {execution_error:?}"
+    );
+
+    let mut missing_digest = regional_inventory_advancement_contract_artifact();
+    missing_digest.source_advancements[0].result_digest_ids = vec!["result.missing".to_string()];
+    let digest_error = canonical_geo_regional_inventory_advancement_bytes(&missing_digest)
+        .expect_err("every source result digest id must resolve inside the advancement");
+    assert!(
+        digest_error.message.contains("resolve exactly once"),
+        "unexpected digest error: {digest_error:?}"
+    );
+
+    let mut wrong_algorithm = regional_inventory_advancement_contract_artifact();
+    wrong_algorithm.result_digests[0].algorithm = GeoDigestAlgorithm::Sha256;
+    let algorithm_error = canonical_geo_regional_inventory_advancement_bytes(&wrong_algorithm)
+        .expect_err("advancement result digests must preserve the BLAKE3 handoff contract");
+    assert!(
+        algorithm_error.message.contains("BLAKE3"),
+        "unexpected algorithm error: {algorithm_error:?}"
+    );
 }
 
 #[test]

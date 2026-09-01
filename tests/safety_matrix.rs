@@ -132,6 +132,7 @@ fn safety_matrix_declarations_cover_required_classes_and_platforms() {
     for required in [
         PlatformClass::PortablePathUtf8,
         PlatformClass::SameFilesystemAtomicReplace,
+        PlatformClass::SameFilesystemAtomicNoClobber,
         PlatformClass::UnixPermissionBits,
         PlatformClass::RejectLinks,
         PlatformClass::AdvisoryFileLock,

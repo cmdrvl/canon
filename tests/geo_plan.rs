@@ -16,18 +16,18 @@ use canon::geo::{
     GeoNumericBound, GeoNumericMeasure, GeoPaginationReceipt, GeoPlanErrorCode,
     GeoPlanExternalRequest, GeoPlanGatePlane, GeoPlanGateStatus, GeoPlanGrainStatus,
     GeoPlanReplanRequest, GeoPlanRequest, GeoPlanStage, GeoPlanStatus, GeoRegionalInventory,
-    GeoRegionalInventoryAdvancement, GeoRegionalSourceInstance, GeoReleaseSelectionMode,
-    GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoSatisfactionAssignment,
-    GeoSatisfactionFileBinding, GeoSatisfactionInput, GeoSatisfactionStatus, GeoSourceAvailability,
-    GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass, GeoSubsetPredicate,
-    GeoSubsetPredicateKind, GeoTelemetryDeclaration, GeoTelemetryMetric,
-    GeoTelemetrySemanticEffect, GeoTemporalScope, GeoValueOrigin, GeoWarehouseBuildingParcelRow,
-    GeoWarehouseRowsRequest, canonical_geo_plan_bytes, capabilities_semantic_hash,
-    compile_geo_plan, default_geo_capabilities, geo_acquisition_request_id,
-    geo_acquisition_request_semantic_hash, geo_discovery_request_id, geo_plan_semantic_hash,
-    geo_regional_inventory_advancement_semantic_hash, regional_inventory_planning_hash,
-    regional_inventory_semantic_hash, replan_geo_plan_from_inventory_advancement,
-    satisfy_geo_acquisition, validate_geo_plan,
+    GeoRegionalInventoryAdvancement, GeoRegionalSourceInstance, GeoReleasePin,
+    GeoReleaseSelectionMode, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter,
+    GeoSatisfactionAssignment, GeoSatisfactionFileBinding, GeoSatisfactionInput,
+    GeoSatisfactionStatus, GeoSourceAvailability, GeoSourceRelease, GeoSubjectBinding,
+    GeoSubjectBindingClass, GeoSubsetPredicate, GeoSubsetPredicateKind, GeoTelemetryDeclaration,
+    GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope, GeoValueOrigin,
+    GeoWarehouseBuildingParcelRow, GeoWarehouseRowsRequest, canonical_geo_plan_bytes,
+    capabilities_semantic_hash, compile_geo_plan, default_geo_capabilities,
+    geo_acquisition_request_id, geo_acquisition_request_semantic_hash, geo_discovery_request_id,
+    geo_plan_semantic_hash, geo_regional_inventory_advancement_semantic_hash,
+    regional_inventory_planning_hash, regional_inventory_semantic_hash,
+    replan_geo_plan_from_inventory_advancement, satisfy_geo_acquisition, validate_geo_plan,
 };
 use tempfile::tempdir;
 
@@ -690,8 +690,13 @@ fn replan_rejects_noop_advanced_inventory() {
     })
     .expect_err("replan must reject no-op inventory advancement");
 
-    assert_eq!(error.code, GeoPlanErrorCode::InvalidInput);
-    assert!(error.message.contains("distinct from the base inventory"));
+    assert_eq!(error.code, GeoPlanErrorCode::ContractViolation);
+    assert!(
+        error
+            .message
+            .contains("inventory must carry each advanced local artifact exactly once"),
+        "a no-op inventory cannot carry the advancement's newly available source artifact"
+    );
 }
 
 #[test]
@@ -710,12 +715,16 @@ fn replan_rejects_tampered_advanced_inventory_artifact() {
     })
     .expect("base acquisition plan");
     let mut advancement = validated_inventory_advancement(&base_plan, &base_inventory);
-    advancement.advanced_inventory.sources[0]
-        .local_state
-        .local_ref
-        .as_mut()
-        .expect("advanced local ref")
-        .content_hash = digest("tampered-local-bytes");
+    advancement
+        .advanced_inventory
+        .discovery_gaps
+        .push(GeoDiscoveryGap {
+            gap_id: "gap.fixture.tampered".to_string(),
+            requested_entity_level: Some(GeoControlEntityLevel::Building),
+            requested_evidence_class: GeoEvidenceClass::AddressSet,
+            reason: "planted semantic-hash drift".to_string(),
+            next_command: "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>".to_string(),
+        });
 
     let error = replan_geo_plan_from_inventory_advancement(GeoPlanReplanRequest {
         base_plan,
@@ -915,6 +924,142 @@ fn replan_rejects_local_artifact_relabelled_away_from_receipt_result_digest() {
 
     assert_eq!(error.code, GeoPlanErrorCode::ContractViolation);
     assert!(error.message.contains("receipt result digest"));
+}
+
+#[test]
+fn replan_rejects_partial_release_coverage_in_a_multi_release_advancement() {
+    let question = question(false);
+    let mut base_inventory = inventory("remote-building-source", GeoSourceAvailability::Missing);
+    let capabilities = default_geo_capabilities().expect("capabilities");
+    let profile = GeoCompositionProfile::building();
+    let budget = budget();
+    let mut base_plan = compile_geo_plan(GeoPlanRequest {
+        question: question.clone(),
+        capabilities: capabilities.clone(),
+        inventory: base_inventory.clone(),
+        profile: profile.clone(),
+        budget: budget.clone(),
+    })
+    .expect("base acquisition plan");
+    let mut advancement = validated_inventory_advancement(&base_plan, &base_inventory);
+
+    let second_release_digest = geo_digest("release.second", b"release second");
+    let mut second_source = source(
+        "remote-building-source-second",
+        GeoControlEntityLevel::Building,
+        GeoEvidenceClass::BuildingFootprint,
+        GeoSourceAvailability::Missing,
+    );
+    second_source.release = GeoSourceRelease {
+        release_id: "release.fixture.second".to_string(),
+        release_digest: format!("blake3:{}", second_release_digest.hex_digest),
+    };
+    base_inventory.sources.push(second_source.clone());
+    base_inventory.sources.sort();
+    advancement.advanced_inventory.sources.push(second_source);
+    advancement.advanced_inventory.sources.sort();
+
+    let GeoPlanExternalRequest::Acquisition { request, .. } = &mut base_plan.external_requests[0]
+    else {
+        panic!("fixture plan must contain an acquisition request");
+    };
+    request.releases.push(GeoReleasePin {
+        source_instance_id: "remote-building-source-second".to_string(),
+        release_id: "release.fixture.second".to_string(),
+        release_digest: second_release_digest,
+    });
+    request.releases.sort();
+    request.request_id = geo_acquisition_request_id(request).expect("refresh request id");
+    let request_id = request.request_id.clone();
+    let request_semantic_hash =
+        geo_acquisition_request_semantic_hash(request).expect("request semantic hash");
+
+    base_plan.inventory_ref.semantic_hash =
+        regional_inventory_semantic_hash(&base_inventory).expect("base inventory semantic hash");
+    base_plan.inventory_ref.planning_hash =
+        regional_inventory_planning_hash(&base_inventory).expect("base inventory planning hash");
+    base_plan.semantic_hash = geo_plan_semantic_hash(&base_plan).expect("refresh plan hash");
+    base_plan.plan_id = format!(
+        "{}:{}",
+        CANON_GEO_PLAN_VERSION,
+        base_plan.semantic_hash.trim_start_matches("blake3:")
+    );
+
+    advancement.plan_id = base_plan.plan_id.clone();
+    advancement.plan_semantic_hash = base_plan.semantic_hash.clone();
+    advancement.request_id = request_id;
+    advancement.request_semantic_hash = request_semantic_hash;
+    advancement.base_inventory_semantic_hash = base_plan.inventory_ref.semantic_hash.clone();
+    refresh_advancement_identity(&mut advancement);
+
+    let error = replan_geo_plan_from_inventory_advancement(GeoPlanReplanRequest {
+        base_plan,
+        base_inventory,
+        question,
+        capabilities,
+        profile,
+        budget,
+        inventory_advancement: advancement,
+    })
+    .expect_err("a multi-release acquisition cannot advance only a strict subset of releases");
+
+    assert_eq!(error.code, GeoPlanErrorCode::ContractViolation);
+    assert!(
+        error
+            .message
+            .contains("cover every pinned acquisition release")
+    );
+    assert_eq!(
+        error
+            .detail
+            .get("expected_release_count")
+            .map(String::as_str),
+        Some("2")
+    );
+    assert_eq!(
+        error
+            .detail
+            .get("advanced_release_count")
+            .map(String::as_str),
+        Some("1")
+    );
+}
+
+#[test]
+fn replan_rejects_forged_nested_receipt_execution() {
+    let question = question(false);
+    let base_inventory = inventory("remote-building-source", GeoSourceAvailability::Missing);
+    let capabilities = default_geo_capabilities().expect("capabilities");
+    let profile = GeoCompositionProfile::building();
+    let budget = budget();
+    let base_plan = compile_geo_plan(GeoPlanRequest {
+        question: question.clone(),
+        capabilities: capabilities.clone(),
+        inventory: base_inventory.clone(),
+        profile: profile.clone(),
+        budget: budget.clone(),
+    })
+    .expect("base acquisition plan");
+    let mut advancement = validated_inventory_advancement(&base_plan, &base_inventory);
+    advancement.receipt_execution.proof_class = GeoAcquisitionProofClass::Retained;
+    advancement.receipt_execution.terminal_state = GeoAcquisitionTerminalState::ZeroRows;
+    advancement.receipt_execution.retained_receipt_id = Some("retained.forged".to_string());
+    advancement.receipt_execution.executor_request_id = None;
+    advancement.receipt_execution.executor_query_id = None;
+
+    let error = replan_geo_plan_from_inventory_advancement(GeoPlanReplanRequest {
+        base_plan,
+        base_inventory,
+        question,
+        capabilities,
+        profile,
+        budget,
+        inventory_advancement: advancement,
+    })
+    .expect_err("replan must validate nested receipt execution, not only top-level proof fields");
+
+    assert_eq!(error.code, GeoPlanErrorCode::ContractViolation);
+    assert!(error.message.contains("receipt execution"));
 }
 
 #[test]

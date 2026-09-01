@@ -359,7 +359,11 @@ pub struct GeoReplanFromAcquisitionCli {
     #[arg(long = "satisfy", value_name = "REQUEST_ID=RECEIPT.json")]
     pub satisfy: String,
     /// Local typed acquisition artifact as LOCAL_ARTIFACT_ID=PATH; repeatable
-    #[arg(long = "local-artifact", value_name = "LOCAL_ARTIFACT_ID=PATH")]
+    #[arg(
+        long = "local-artifact",
+        value_name = "LOCAL_ARTIFACT_ID=PATH",
+        required = true
+    )]
     pub local_artifact: Vec<String>,
     /// Local result digest artifact as DIGEST_ID=PATH; repeatable
     #[arg(long = "result", value_name = "DIGEST_ID=PATH")]

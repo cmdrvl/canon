@@ -1758,7 +1758,7 @@ pub fn canonical_geo_regional_inventory_advancement_bytes(
     })
 }
 
-fn validate_geo_regional_inventory_advancement(
+pub(super) fn validate_geo_regional_inventory_advancement(
     advancement: &GeoRegionalInventoryAdvancement,
 ) -> Result<(), GeoSatisfyError> {
     if advancement.version != CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION {
@@ -1793,6 +1793,7 @@ fn validate_geo_regional_inventory_advancement(
             ],
         ));
     }
+    validate_advancement_receipt_execution(advancement)?;
     validate_nonempty_trimmed("plan_id", &advancement.plan_id)?;
     validate_blake3_hash("plan_semantic_hash", &advancement.plan_semantic_hash)?;
     validate_identifier_like("request_id", &advancement.request_id)?;
@@ -1808,6 +1809,22 @@ fn validate_geo_regional_inventory_advancement(
         &advancement.advanced_inventory_semantic_hash,
     )?;
     validate_file_audit(&advancement.receipt_file, "receipt_file")?;
+    if advancement.bounded_subset.geography != advancement.bounded_geography {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement subset geography must match its bounded geography",
+            [
+                (
+                    "bounded_geography_id",
+                    advancement.bounded_geography.geography_id.as_str(),
+                ),
+                (
+                    "subset_geography_id",
+                    advancement.bounded_subset.geography.geography_id.as_str(),
+                ),
+            ],
+        ));
+    }
     let bounded_subset_hash = digest_json(&advancement.bounded_subset)?;
     validate_equal(
         "bounded_subset_hash",
@@ -1816,6 +1833,20 @@ fn validate_geo_regional_inventory_advancement(
     )?;
     validate_digest_list("source_digests", &advancement.source_digests, false)?;
     validate_digest_list("result_digests", &advancement.result_digests, false)?;
+    if let Some(digest) = advancement
+        .result_digests
+        .iter()
+        .find(|digest| digest.algorithm != GeoDigestAlgorithm::Blake3)
+    {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement result digests must use BLAKE3",
+            [
+                ("digest_id".to_string(), digest.digest_id.clone()),
+                ("algorithm".to_string(), format!("{:?}", digest.algorithm)),
+            ],
+        ));
+    }
     validate_denominators(&advancement.denominators)?;
     let mut sorted_source_advancements = advancement.source_advancements.clone();
     sorted_source_advancements.sort();
@@ -1832,8 +1863,21 @@ fn validate_geo_regional_inventory_advancement(
             )],
         ));
     }
+    let mut source_keys = BTreeSet::new();
     for source in &advancement.source_advancements {
-        validate_source_advancement(source)?;
+        validate_source_advancement(source, &advancement.result_digests)?;
+        let key = (
+            source.source_instance_id.clone(),
+            source.release.release_id.clone(),
+            source.release.release_digest.clone(),
+        );
+        if !source_keys.insert(key) {
+            return Err(GeoSatisfyError::new(
+                GeoSatisfyErrorCode::ContractMismatch,
+                "Geo regional inventory advancement must name each source release exactly once",
+                [("source_instance_id", source.source_instance_id.as_str())],
+            ));
+        }
     }
     let canonical_inventory =
         canonicalize_regional_inventory(&advancement.advanced_inventory).map_err(control_error)?;
@@ -1846,6 +1890,50 @@ fn validate_geo_regional_inventory_advancement(
                 advancement.advanced_inventory_id.as_str(),
             )],
         ));
+    }
+    if canonical_inventory.region != advancement.bounded_geography {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement inventory region must match its bounded geography",
+            [
+                (
+                    "inventory_region_id",
+                    canonical_inventory.region.geography_id.as_str(),
+                ),
+                (
+                    "bounded_geography_id",
+                    advancement.bounded_geography.geography_id.as_str(),
+                ),
+            ],
+        ));
+    }
+    for source_advancement in &advancement.source_advancements {
+        let matching_sources = canonical_inventory
+            .sources
+            .iter()
+            .filter(|source| {
+                source.source_instance_id == source_advancement.source_instance_id
+                    && source.release == source_advancement.release
+                    && source.coverage.region == advancement.bounded_geography
+            })
+            .collect::<Vec<_>>();
+        if matching_sources.len() != 1
+            || matching_sources[0].local_state.state != GeoSourceAvailability::Available
+            || matching_sources[0].local_state.local_ref.as_ref()
+                != Some(&source_advancement.local_ref)
+        {
+            return Err(GeoSatisfyError::new(
+                GeoSatisfyErrorCode::ContractMismatch,
+                "Geo regional inventory advancement inventory must carry each advanced local artifact exactly once",
+                [
+                    (
+                        "source_instance_id".to_string(),
+                        source_advancement.source_instance_id.clone(),
+                    ),
+                    ("matches".to_string(), matching_sources.len().to_string()),
+                ],
+            ));
+        }
     }
     validate_equal(
         "advanced_inventory_id",
@@ -1874,8 +1962,65 @@ fn validate_geo_regional_inventory_advancement(
     Ok(())
 }
 
+fn validate_advancement_receipt_execution(
+    advancement: &GeoRegionalInventoryAdvancement,
+) -> Result<(), GeoSatisfyError> {
+    let execution = &advancement.receipt_execution;
+    if execution.proof_class != advancement.proof_class
+        || execution.terminal_state != advancement.receipt_terminal_state
+        || execution.proof_class != GeoAcquisitionProofClass::Live
+        || execution.terminal_state != GeoAcquisitionTerminalState::Complete
+        || execution.fixture_id.is_some()
+        || execution.retained_receipt_id.is_some()
+    {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement receipt execution must agree with live COMPLETE proof",
+            [
+                (
+                    "top_level_proof_class".to_string(),
+                    format!("{:?}", advancement.proof_class),
+                ),
+                (
+                    "execution_proof_class".to_string(),
+                    format!("{:?}", execution.proof_class),
+                ),
+                (
+                    "top_level_terminal_state".to_string(),
+                    format!("{:?}", advancement.receipt_terminal_state),
+                ),
+                (
+                    "execution_terminal_state".to_string(),
+                    format!("{:?}", execution.terminal_state),
+                ),
+            ],
+        ));
+    }
+    let executor_request_id = execution.executor_request_id.as_deref().ok_or_else(|| {
+        GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement live receipt execution requires an executor request id",
+            Vec::<(String, String)>::new(),
+        )
+    })?;
+    validate_nonempty_trimmed("receipt_execution.executor_request_id", executor_request_id)?;
+    let executor_query_id = execution.executor_query_id.as_deref().ok_or_else(|| {
+        GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement live receipt execution requires an executor query id",
+            Vec::<(String, String)>::new(),
+        )
+    })?;
+    validate_nonempty_trimmed("receipt_execution.executor_query_id", executor_query_id)?;
+    if let Some(attempt_id) = execution.executor_attempt_id.as_deref() {
+        validate_nonempty_trimmed("receipt_execution.executor_attempt_id", attempt_id)?;
+    }
+    Ok(())
+}
+
 fn validate_source_advancement(
     advancement: &GeoRegionalInventorySourceAdvancement,
+    result_digests: &[GeoDigest],
 ) -> Result<(), GeoSatisfyError> {
     validate_nonempty_trimmed(
         "source_advancements[].source_instance_id",
@@ -1953,6 +2098,45 @@ fn validate_source_advancement(
                 advancement.source_instance_id.as_str(),
             )],
         ));
+    }
+    for digest_id in &advancement.result_digest_ids {
+        let matches = result_digests
+            .iter()
+            .filter(|digest| digest.digest_id == *digest_id)
+            .collect::<Vec<_>>();
+        if matches.len() != 1 {
+            return Err(GeoSatisfyError::new(
+                GeoSatisfyErrorCode::ContractMismatch,
+                "Geo regional inventory advancement result digest id must resolve exactly once",
+                [
+                    (
+                        "source_instance_id".to_string(),
+                        advancement.source_instance_id.clone(),
+                    ),
+                    ("result_digest_id".to_string(), digest_id.clone()),
+                    ("matches".to_string(), matches.len().to_string()),
+                ],
+            ));
+        }
+        let digest = release_digest_string(matches[0]);
+        if digest != advancement.local_ref.content_hash {
+            return Err(GeoSatisfyError::new(
+                GeoSatisfyErrorCode::ContractMismatch,
+                "Geo regional inventory advancement local artifact must match its receipt result digest",
+                [
+                    (
+                        "source_instance_id".to_string(),
+                        advancement.source_instance_id.clone(),
+                    ),
+                    ("result_digest_id".to_string(), digest_id.clone()),
+                    ("expected".to_string(), digest),
+                    (
+                        "actual".to_string(),
+                        advancement.local_ref.content_hash.clone(),
+                    ),
+                ],
+            ));
+        }
     }
     Ok(())
 }

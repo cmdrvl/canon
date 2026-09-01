@@ -26,7 +26,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
     fs,
-    io::{self, Write},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -887,20 +887,16 @@ fn publish_replan_advancement_sidecar(
     path: &Path,
     bytes: &[u8],
 ) -> Result<(), GeoSidecarPublishError> {
-    if path.exists() {
-        let existing = fs::read(path).map_err(|error| GeoSidecarPublishError {
-            target: path_string(path),
-            temp_path: None,
-            message: error.to_string(),
-        })?;
-        if existing == bytes {
-            return Ok(());
+    match existing_replan_sidecar_matches(path, bytes)? {
+        Some(true) => return Ok(()),
+        Some(false) => {
+            return Err(GeoSidecarPublishError {
+                target: path_string(path),
+                temp_path: None,
+                message: "target already exists with different bytes".to_string(),
+            });
         }
-        return Err(GeoSidecarPublishError {
-            target: path_string(path),
-            temp_path: None,
-            message: "target already exists with different bytes".to_string(),
-        });
+        None => {}
     }
 
     let parent = path
@@ -942,18 +938,38 @@ fn publish_replan_advancement_sidecar(
             }
         };
         if let Err(error) = file.write_all(bytes).and_then(|_| file.sync_all()) {
+            drop(file);
+            let _ = fs::remove_file(&temp_path);
             return Err(GeoSidecarPublishError {
                 target: path_string(path),
                 temp_path: Some(path_string(&temp_path)),
                 message: error.to_string(),
             });
         }
-        match fs::rename(&temp_path, path) {
-            Ok(()) => return Ok(()),
-            Err(error) => {
-                if path.exists() && fs::read(path).is_ok_and(|existing| existing == bytes) {
-                    return Ok(());
+        drop(file);
+        match fs::hard_link(&temp_path, path) {
+            Ok(()) => {
+                let _ = fs::remove_file(&temp_path);
+                return Ok(());
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                let existing = existing_replan_sidecar_matches(path, bytes);
+                let _ = fs::remove_file(&temp_path);
+                match existing? {
+                    Some(true) => return Ok(()),
+                    Some(false) => {
+                        return Err(GeoSidecarPublishError {
+                            target: path_string(path),
+                            temp_path: None,
+                            message: "target was concurrently created with different bytes"
+                                .to_string(),
+                        });
+                    }
+                    None => continue,
                 }
+            }
+            Err(error) => {
+                let _ = fs::remove_file(&temp_path);
                 return Err(GeoSidecarPublishError {
                     target: path_string(path),
                     temp_path: Some(path_string(&temp_path)),
@@ -967,6 +983,78 @@ fn publish_replan_advancement_sidecar(
         temp_path: None,
         message: "could not allocate a collision-free sibling temp path".to_string(),
     })
+}
+
+fn existing_replan_sidecar_matches(
+    path: &Path,
+    bytes: &[u8],
+) -> Result<Option<bool>, GeoSidecarPublishError> {
+    let mut file = match open_replan_sidecar_no_follow(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(GeoSidecarPublishError {
+                target: path_string(path),
+                temp_path: None,
+                message: error.to_string(),
+            });
+        }
+    };
+    let metadata = file.metadata().map_err(|error| GeoSidecarPublishError {
+        target: path_string(path),
+        temp_path: None,
+        message: error.to_string(),
+    })?;
+    if !metadata.file_type().is_file() {
+        return Err(GeoSidecarPublishError {
+            target: path_string(path),
+            temp_path: None,
+            message: "target already exists and is not a regular file".to_string(),
+        });
+    }
+    let mut existing = Vec::new();
+    file.read_to_end(&mut existing)
+        .map(|_| Some(existing == bytes))
+        .map_err(|error| GeoSidecarPublishError {
+            target: path_string(path),
+            temp_path: None,
+            message: error.to_string(),
+        })
+}
+
+#[cfg(unix)]
+fn open_replan_sidecar_no_follow(path: &Path) -> io::Result<fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+}
+
+#[cfg(windows)]
+fn open_replan_sidecar_no_follow(path: &Path) -> io::Result<fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    // FILE_FLAG_OPEN_REPARSE_POINT makes the handle refer to the link entry
+    // itself instead of following it to an arbitrary target.
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn open_replan_sidecar_no_follow(path: &Path) -> io::Result<fs::File> {
+    match fs::symlink_metadata(path) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Err(error),
+        Err(error) => Err(error),
+        Ok(_) => Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "idempotent sidecar comparison requires no-follow file handles",
+        )),
+    }
 }
 
 #[derive(Debug, Clone)]

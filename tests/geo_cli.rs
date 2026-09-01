@@ -1541,6 +1541,25 @@ fn geo_replan_from_acquisition_advances_inventory_and_emits_new_plan() {
         !sidecar_text.contains(temp.path().to_str().expect("temp path utf-8")),
         "published sidecar must not capture operational paths"
     );
+
+    let repeated = geo_replan_from_acquisition_command(
+        &fixture,
+        &receipt,
+        &[("artifact.synthetic-live.rows", artifact_path.as_path())],
+        &[],
+        &advancement_out,
+    )
+    .assert()
+    .success();
+    assert_eq!(
+        repeated.get_output().stdout,
+        assert.get_output().stdout,
+        "identical reruns must converge on the same sidecar and plan bytes"
+    );
+    assert_eq!(
+        fs::read(&advancement_out).expect("read idempotent sidecar"),
+        sidecar_text.as_bytes()
+    );
 }
 
 #[test]
@@ -1560,6 +1579,40 @@ fn geo_replan_from_acquisition_help_names_public_contract_flags() {
     ] {
         assert!(stdout.contains(needle), "help must contain {needle}");
     }
+    let usage = stdout
+        .split("\n\n")
+        .find(|section| section.starts_with("Usage:"))
+        .expect("help has a Usage section");
+    assert!(
+        usage.contains("--local-artifact <LOCAL_ARTIFACT_ID=PATH>"),
+        "the compiled usage must make at least one local artifact mandatory"
+    );
+}
+
+#[test]
+fn geo_replan_from_acquisition_requires_a_local_artifact_before_execution() {
+    let temp = tempdir().expect("tempdir");
+    let input_dir = temp.path().join("missing-local-artifact");
+    fs::create_dir(&input_dir).expect("create input dir");
+    let fixture = write_geo_replan_acquisition_fixture(&input_dir);
+    let (_, artifact_bytes) =
+        write_geo_replan_live_artifact(&input_dir, "live-warehouse-rows.json");
+    let receipt = write_geo_replan_acquisition_receipt(
+        &input_dir,
+        &fixture.request,
+        &artifact_bytes,
+        "COMPLETE",
+        "live",
+    );
+    let advancement_out = temp.path().join("must-not-exist.json");
+
+    geo_replan_from_acquisition_command(&fixture, &receipt, &[], &[], &advancement_out)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "--local-artifact <LOCAL_ARTIFACT_ID=PATH>",
+        ));
+    assert!(!advancement_out.exists());
 }
 
 #[test]
@@ -1900,6 +1953,141 @@ fn geo_replan_from_acquisition_refuses_sidecar_publication_failure_without_plan_
     );
     assert_ne!(refusal["version"], "canon_geo_plan.v0");
     assert!(!advancement_out.exists());
+}
+
+#[test]
+fn geo_replan_from_acquisition_preserves_a_different_existing_sidecar() {
+    let temp = tempdir().expect("tempdir");
+    let input_dir = temp.path().join("existing-sidecar");
+    fs::create_dir(&input_dir).expect("create input dir");
+    let fixture = write_geo_replan_acquisition_fixture(&input_dir);
+    let (artifact_path, artifact_bytes) =
+        write_geo_replan_live_artifact(&input_dir, "live-warehouse-rows.json");
+    let receipt = write_geo_replan_acquisition_receipt(
+        &input_dir,
+        &fixture.request,
+        &artifact_bytes,
+        "COMPLETE",
+        "live",
+    );
+    let advancement_out = temp.path().join("occupied-advancement.json");
+    let existing = b"operator-owned bytes";
+    fs::write(&advancement_out, existing).expect("write existing target");
+
+    let refusal = geo_replan_from_acquisition_command(
+        &fixture,
+        &receipt,
+        &[("artifact.synthetic-live.rows", artifact_path.as_path())],
+        &[],
+        &advancement_out,
+    )
+    .assert()
+    .code(2);
+    let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout)
+        .expect("existing-target refusal parses");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_IO");
+    assert_eq!(
+        fs::read(&advancement_out).expect("reread existing target"),
+        existing,
+        "publication must never overwrite different existing bytes"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn geo_replan_from_acquisition_preserves_a_dangling_symlink_sidecar() {
+    let temp = tempdir().expect("tempdir");
+    let input_dir = temp.path().join("dangling-sidecar");
+    fs::create_dir(&input_dir).expect("create input dir");
+    let fixture = write_geo_replan_acquisition_fixture(&input_dir);
+    let (artifact_path, artifact_bytes) =
+        write_geo_replan_live_artifact(&input_dir, "live-warehouse-rows.json");
+    let receipt = write_geo_replan_acquisition_receipt(
+        &input_dir,
+        &fixture.request,
+        &artifact_bytes,
+        "COMPLETE",
+        "live",
+    );
+    let advancement_out = temp.path().join("occupied-advancement.json");
+    std::os::unix::fs::symlink(temp.path().join("missing-target.json"), &advancement_out)
+        .expect("create dangling symlink");
+    assert!(!advancement_out.exists());
+
+    let refusal = geo_replan_from_acquisition_command(
+        &fixture,
+        &receipt,
+        &[("artifact.synthetic-live.rows", artifact_path.as_path())],
+        &[],
+        &advancement_out,
+    )
+    .assert()
+    .code(2);
+    let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout)
+        .expect("dangling-symlink refusal parses");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_IO");
+    assert!(
+        fs::symlink_metadata(&advancement_out)
+            .expect("symlink entry remains")
+            .file_type()
+            .is_symlink(),
+        "publication must not replace an occupied symlink entry"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn geo_replan_from_acquisition_refuses_a_matching_symlink_sidecar() {
+    let temp = tempdir().expect("tempdir");
+    let input_dir = temp.path().join("matching-symlink-sidecar");
+    fs::create_dir(&input_dir).expect("create input dir");
+    let fixture = write_geo_replan_acquisition_fixture(&input_dir);
+    let (artifact_path, artifact_bytes) =
+        write_geo_replan_live_artifact(&input_dir, "live-warehouse-rows.json");
+    let receipt = write_geo_replan_acquisition_receipt(
+        &input_dir,
+        &fixture.request,
+        &artifact_bytes,
+        "COMPLETE",
+        "live",
+    );
+    let advancement_out = temp.path().join("advancement.json");
+    geo_replan_from_acquisition_command(
+        &fixture,
+        &receipt,
+        &[("artifact.synthetic-live.rows", artifact_path.as_path())],
+        &[],
+        &advancement_out,
+    )
+    .assert()
+    .success();
+    let referent = temp.path().join("matching-sidecar-bytes.json");
+    fs::rename(&advancement_out, &referent).expect("move sidecar bytes to referent");
+    std::os::unix::fs::symlink(&referent, &advancement_out)
+        .expect("create symlink to matching bytes");
+
+    let refusal = geo_replan_from_acquisition_command(
+        &fixture,
+        &receipt,
+        &[("artifact.synthetic-live.rows", artifact_path.as_path())],
+        &[],
+        &advancement_out,
+    )
+    .assert()
+    .code(2);
+    let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout)
+        .expect("matching-symlink refusal parses");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_IO");
+    assert!(
+        fs::symlink_metadata(&advancement_out)
+            .expect("symlink entry remains")
+            .file_type()
+            .is_symlink(),
+        "publication must not accept or replace a symlink to matching bytes"
+    );
 }
 
 #[test]
