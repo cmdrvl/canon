@@ -1,16 +1,18 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
-    CANON_GEO_TILE_WORK_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate,
-    GeoCompositionArtifact, GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse,
-    GeoControlEntityLevel, GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind,
-    GeoIdentityParticipation, GeoNativeEntityScope, GeoPlanInventoryRef, GeoSourceRelease,
-    GeoTileDecisionBatch, GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics,
-    GeoTileErrorCode, GeoTileFeatureRef, GeoTilePlacement, GeoTileReconciliationRequest,
-    GeoTileSourceBinding, GeoTileWorkRequest, canonical_composition_bytes,
-    canonical_tile_reconciliation_bytes, materialize_tile_work_unit, reconcile_tile_decisions,
-    solve_composition,
+    canonical_composition_bytes, canonical_owned_tile_reach_bytes,
+    canonical_tile_reconciliation_bytes, materialize_owned_tile_reach, materialize_tile_work_unit,
+    reconcile_tile_decisions, solve_composition, GeoBuildingCandidate, GeoCompositionArtifact,
+    GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse, GeoControlEntityLevel,
+    GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind,
+    GeoIdentityParticipation, GeoNativeEntityScope, GeoOwnedTileReachRequest, GeoPlanInventoryRef,
+    GeoSourceRelease, GeoTileDecisionBatch, GeoTileDecisionMember, GeoTileDecisionProposal,
+    GeoTileDecisionSemantics, GeoTileErrorCode, GeoTileFeatureRef, GeoTilePlacement,
+    GeoTileReachState, GeoTileReconciliationRequest, GeoTileSourceBinding, GeoTileTruthReference,
+    GeoTileWorkRequest, GeoTileWorkUnitArtifact, CANON_GEO_COMPOSITION_REQUEST_VERSION,
+    CANON_GEO_OWNED_TILE_REACH_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
+    CANON_GEO_TILE_WORK_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS,
 };
 use h3o::CellIndex;
 use std::str::FromStr;
@@ -139,6 +141,27 @@ fn reconciliation_request(batches: Vec<GeoTileDecisionBatch>) -> GeoTileReconcil
     }
 }
 
+fn owned_reach_request(
+    work_units: Vec<GeoTileWorkUnitArtifact>,
+    truth_members: Vec<GeoTileDecisionMember>,
+) -> GeoOwnedTileReachRequest {
+    GeoOwnedTileReachRequest {
+        version: CANON_GEO_OWNED_TILE_REACH_REQUEST_VERSION.to_string(),
+        halo_k: 1,
+        work_units,
+        truth_reference: Some(GeoTileTruthReference {
+            reference_id: "reference.fixture.h7.accepted_truth".to_string(),
+            reference_kind: "synthetic_h7_bounded_reference".to_string(),
+            members: truth_members,
+        }),
+        claimed_truth_reach: GeoTileReachState::PassedAgainstReference,
+        max_work_units: 4,
+        max_reference_members: 8,
+        max_features_per_work_unit: 8,
+        max_work_cells_per_work_unit: 7,
+    }
+}
+
 fn section_local_composition_request(parcel_id: &str, building_id: &str) -> GeoCompositionRequest {
     GeoCompositionRequest {
         version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
@@ -171,12 +194,10 @@ fn exact_section_payload(parcel_id: &str, building_id: &str) -> (String, GeoComp
     assert!(artifact.summary.residual_model_count_complete);
     assert_eq!(artifact.summary.residual_model_count, 1);
     assert!(artifact.backbone_complete);
-    assert!(
-        artifact
-            .factorization
-            .iter()
-            .all(|component| component.exact)
-    );
+    assert!(artifact
+        .factorization
+        .iter()
+        .all(|component| component.exact));
     let bytes = canonical_composition_bytes(&artifact).expect("composition artifact serializes");
     (
         format!("blake3:{}", blake3::hash(&bytes).to_hex()),
@@ -226,6 +247,38 @@ fn adjacent_h7_work_units_reconcile_one_exact_composition_with_byte_confluence()
     assert!(owner_batch.work_unit.features.iter().any(|feature| {
         feature.feature_id == "h7_building_200" && feature.placement == GeoTilePlacement::Halo
     }));
+
+    let reach_request = owned_reach_request(
+        vec![
+            observer_batch.work_unit.clone(),
+            owner_batch.work_unit.clone(),
+        ],
+        sorted_members(&members),
+    );
+    let mut permuted_reach = reach_request.clone();
+    permuted_reach.work_units.reverse();
+    permuted_reach
+        .truth_reference
+        .as_mut()
+        .expect("truth reference exists")
+        .members
+        .reverse();
+    let reach = materialize_owned_tile_reach(&reach_request)
+        .expect("owned adjacent sections retain the complete synthetic truth");
+    let repeated_reach = materialize_owned_tile_reach(&permuted_reach)
+        .expect("reach remains canonical under work-unit and reference order");
+    assert_eq!(reach, repeated_reach);
+    assert_eq!(
+        reach.structural_reach,
+        GeoTileReachState::StructurallyCompleteRelativeToInputs
+    );
+    assert_eq!(reach.truth_reach, GeoTileReachState::PassedAgainstReference);
+    assert_eq!(reach.reference_member_count, 2);
+    assert_eq!(reach.reached_reference_member_count, 2);
+    assert_eq!(
+        canonical_owned_tile_reach_bytes(&reach).expect("reach artifact serializes"),
+        canonical_owned_tile_reach_bytes(&repeated_reach).expect("repeated reach serializes")
+    );
 
     let original = reconciliation_request(vec![owner_batch.clone(), observer_batch.clone()]);
     let mut permuted = reconciliation_request(vec![observer_batch, owner_batch]);
@@ -314,10 +367,8 @@ fn h7_reconciliation_refuses_conflicts_missing_owners_and_halo_only_decisions() 
     assert_eq!(error.code, GeoTileErrorCode::OrphanedDecision);
 
     let owner_cell = owner.to_string();
-    assert!(
-        halo_only
-            .batches
-            .iter()
-            .any(|batch| batch.work_unit.center_cell == owner_cell)
-    );
+    assert!(halo_only
+        .batches
+        .iter()
+        .any(|batch| batch.work_unit.center_cell == owner_cell));
 }
