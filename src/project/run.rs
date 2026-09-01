@@ -245,6 +245,7 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
 ) -> ProjectRunResult<ProjectRunReport> {
     validate_plan_shape(plan)?;
     let policy = finalize_policy(policy)?;
+    let _manifest_head = read_project_run_manifest_head_for_plan(plan, &policy)?;
     let plan_nodes = plan_node_ids(plan);
     let target_nodes = selected_node_closure(plan, &policy.selected_nodes)?;
     let mut existing = validate_existing_receipts(plan, &policy, &plan_nodes)?;
@@ -418,6 +419,7 @@ pub fn inspect_project_run_reuse_only(
 ) -> ProjectRunResult<ProjectRunReport> {
     validate_plan_shape(plan)?;
     let policy = finalize_policy(policy)?;
+    let _manifest_head = read_project_run_manifest_head_for_plan(plan, &policy)?;
     let plan_nodes = plan_node_ids(plan);
     let target_nodes = selected_node_closure(plan, &policy.selected_nodes)?;
     let existing = validate_existing_receipts(plan, &policy, &plan_nodes)?;
@@ -607,18 +609,11 @@ pub fn read_project_run_manifest_head(
         )
     })?;
     let revision = parse_project_run_manifest_revision(&bytes)?;
-    let revision_path = project_run_manifest_revision_path(policy, &revision.revision_hash)?;
-    let immutable_bytes = fs::read(&revision_path).map_err(|error| {
-        ProjectRunError::new(
-            ProjectRunErrorCode::ReceiptPoisoning,
-            None,
-            format!(
-                "project run manifest head {} points to missing immutable revision {}: {error}",
-                path.display(),
-                revision_path.display()
-            ),
-        )
-    })?;
+    let (_, immutable_bytes, revision_path) = read_immutable_project_run_manifest_revision(
+        policy,
+        &revision.revision_hash,
+        "project run manifest head revision",
+    )?;
     let canonical_bytes = canonical_project_run_manifest_revision_bytes(&revision)?;
     if immutable_bytes != canonical_bytes {
         return Err(ProjectRunError::new(
@@ -631,7 +626,117 @@ pub fn read_project_run_manifest_head(
             ),
         ));
     }
+    validate_project_run_manifest_history(policy, &revision)?;
     Ok(Some(revision))
+}
+
+fn read_project_run_manifest_head_for_plan(
+    plan: &ProjectPlan,
+    policy: &ProjectRunPolicy,
+) -> ProjectRunResult<Option<ProjectRunManifestRevision>> {
+    let head = read_project_run_manifest_head(policy)?;
+    if let Some(revision) = &head
+        && revision.project_id != plan.project_id
+    {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            None,
+            format!(
+                "project run manifest head belongs to project_id={}, expected {}",
+                revision.project_id, plan.project_id
+            ),
+        ));
+    }
+    Ok(head)
+}
+
+fn validate_project_run_manifest_history(
+    policy: &ProjectRunPolicy,
+    head: &ProjectRunManifestRevision,
+) -> ProjectRunResult<()> {
+    let mut seen = BTreeSet::new();
+    seen.insert(head.revision_hash.clone());
+    let mut previous_revision_hash = head.previous_revision_hash.clone();
+    while let Some(revision_hash) = previous_revision_hash {
+        if !seen.insert(revision_hash.clone()) {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ReceiptPoisoning,
+                None,
+                format!(
+                    "project run manifest revision history contains a cycle at {revision_hash}"
+                ),
+            ));
+        }
+        let (previous, _, _) = read_immutable_project_run_manifest_revision(
+            policy,
+            &revision_hash,
+            "previous project run manifest revision",
+        )?;
+        if previous.project_id != head.project_id {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ReceiptPoisoning,
+                None,
+                format!(
+                    "previous project run manifest revision {revision_hash} belongs to project_id={}, expected {}",
+                    previous.project_id, head.project_id
+                ),
+            ));
+        }
+        previous_revision_hash = previous.previous_revision_hash;
+    }
+    Ok(())
+}
+
+fn read_immutable_project_run_manifest_revision(
+    policy: &ProjectRunPolicy,
+    revision_hash: &str,
+    context: &str,
+) -> ProjectRunResult<(ProjectRunManifestRevision, Vec<u8>, PathBuf)> {
+    let revision_path = project_run_manifest_revision_path(policy, revision_hash)?;
+    let bytes = fs::read(&revision_path).map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            None,
+            format!(
+                "{context} {revision_hash} is missing or unreadable at {}: {error}",
+                revision_path.display()
+            ),
+        )
+    })?;
+    let revision = parse_project_run_manifest_revision(&bytes).map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            error.node_id,
+            format!(
+                "{context} {revision_hash} at {} is invalid: {}",
+                revision_path.display(),
+                error.message
+            ),
+        )
+    })?;
+    if revision.revision_hash != revision_hash {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            None,
+            format!(
+                "{context} path {} contains revision_hash {}, expected {revision_hash}",
+                revision_path.display(),
+                revision.revision_hash
+            ),
+        ));
+    }
+    let canonical_bytes = canonical_project_run_manifest_revision_bytes(&revision)?;
+    if bytes != canonical_bytes {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            None,
+            format!(
+                "{context} {revision_hash} at {} is not canonical",
+                revision_path.display()
+            ),
+        ));
+    }
+    Ok((revision, bytes, revision_path))
 }
 
 pub fn project_run_manifest_head_path(policy: &ProjectRunPolicy) -> ProjectRunResult<PathBuf> {
@@ -691,7 +796,7 @@ fn finish_and_publish_report(
         valid_receipts,
         failed_nodes,
     )?;
-    let previous_head = read_project_run_manifest_head(policy)?;
+    let previous_head = read_project_run_manifest_head_for_plan(plan, policy)?;
     let previous_revision_hash = previous_head
         .as_ref()
         .map(|revision| revision.revision_hash.clone());

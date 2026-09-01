@@ -360,6 +360,97 @@ fn manifest_head_rejects_unknown_fields() {
 }
 
 #[test]
+fn manifest_head_rejects_poisoned_previous_revision_before_execution() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan_a = chain_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor_a = DeterministicExecutor::default();
+    run_project_plan(&plan_a, &policy, &mut executor_a).expect("revision A runs");
+    let head_a = read_project_run_manifest_head(&policy)
+        .expect("manifest head A reads")
+        .expect("manifest head A exists");
+    let revision_a_path =
+        project_run_manifest_revision_path(&policy, &head_a.revision_hash).expect("A path");
+
+    let mut plan_b = plan_a.clone();
+    change_alpha_identity(&mut plan_b);
+    let mut executor_b = DeterministicExecutor::default();
+    run_project_plan(&plan_b, &policy, &mut executor_b).expect("revision B runs");
+    fs::write(&revision_a_path, b"{poisoned-previous-revision")
+        .expect("poison immutable previous revision");
+
+    let head_error =
+        read_project_run_manifest_head(&policy).expect_err("poisoned history refuses readback");
+    assert_eq!(head_error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(
+        head_error
+            .message
+            .contains("previous project run manifest revision")
+    );
+
+    let inspect_error = inspect_project_run_reuse_only(&plan_b, &policy)
+        .expect_err("reuse-only inspection refuses poisoned history");
+    assert_eq!(inspect_error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(
+        inspect_error
+            .message
+            .contains("previous project run manifest revision")
+    );
+
+    let mut plan_c = plan_b.clone();
+    let beta = plan_c
+        .nodes
+        .iter_mut()
+        .find(|node| node.node_id == "beta")
+        .expect("beta node");
+    beta.content_hash_inputs[0].content_hash = digest_bytes(b"changed-beta-input");
+    refresh_node_cache_key(beta);
+    plan_c.graph_hash = digest_bytes(b"changed-beta-plan");
+    let mut executor_c = DeterministicExecutor::default();
+    let run_error = run_project_plan(&plan_c, &policy, &mut executor_c)
+        .expect_err("poisoned history refuses before execution");
+
+    assert_eq!(run_error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(
+        run_error
+            .message
+            .contains("previous project run manifest revision")
+    );
+    assert!(executor_c.calls.is_empty());
+}
+
+#[test]
+fn project_run_refuses_cross_project_manifest_head_before_execution() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan_a = chain_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor_a = DeterministicExecutor::default();
+    run_project_plan(&plan_a, &policy, &mut executor_a).expect("project A runs");
+
+    let mut plan_b = plan_a.clone();
+    plan_b.project_id = "foreign-project".to_string();
+    let mut executor_b = DeterministicExecutor::default();
+    let error = run_project_plan(&plan_b, &policy, &mut executor_b)
+        .expect_err("foreign project head refuses before execution");
+    assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(
+        error
+            .message
+            .contains("project run manifest head belongs to project_id")
+    );
+    assert!(executor_b.calls.is_empty());
+
+    let inspect_error = inspect_project_run_reuse_only(&plan_b, &policy)
+        .expect_err("foreign project head refuses reuse-only inspection");
+    assert_eq!(inspect_error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(
+        inspect_error
+            .message
+            .contains("project run manifest head belongs to project_id")
+    );
+}
+
+#[test]
 fn immutable_revision_a_is_restored_after_b_without_execution() {
     let temp = tempfile::tempdir().expect("tempdir");
     let plan_a = chain_plan();
