@@ -41,15 +41,11 @@ IDs were read back from Snowflake query history after execution.
 
 ## 2026-08-31 E5 Franklin County thin-tier preflight
 
-`e5_franklin_county_thin_tier_readiness.sql` is a file-exact, bounded
+`e5_franklin_county_thin_tier_readiness.sql` is the content-bound 2026-08-31
 availability measurement around collateral points in Franklin County, Ohio
-(`39049`). It is not E5 execution: no county parcel layer was present in the
-live warehouse inventory, so it does not measure parcel reach, parcel/building
-composition, precision, or an evidence-tier operating point. The other layers
-remain a legitimate future minimal-stack case; current composition v0 cannot
-yet execute it because it requires at least one parcel candidate. That is a
-named generic entity-universe gap, not evidence that parcel-free regions have
-no usable evidence.
+(`39049`). At that time no county parcel layer was present in the warehouse.
+The file and its receipt remain immutable historical evidence; the 2026-09-01
+parcel-backed successor below does not rewrite them.
 
 Query `01c6c151-0821-a0dc-006c-c703088daaba` completed in 3,354 ms and emitted
 four guard-`ok` rows over 151 distinct geocoded properties, 202 loans, 152
@@ -68,6 +64,60 @@ the only Ohio rows are pinned to `2023-05-02`. A global latest date therefore
 cannot be inherited as a geography's source vintage. The four source counts
 are availability/provenance, never four independent votes. SQL SHA-256:
 `25ddd0d29095c583ac0478d6d228162667b8be62a15218c5acd5ef29d3326aab`.
+
+## 2026-09-01 E5 Franklin County parcel-backed successor
+
+The Franklin Auditor parcel landing is now live and queryable. The pinned
+release is
+`hub-de09f99cce0bcae7142d6d2e26582fd3-25` / `2026-09-01` under source CRS
+`EPSG:3735`. Its transform receipt declares one non-degraded execution over
+494,704 features and 5,498,794 source vertices. The asserted `STATEDAREA`
+plane is never used as a geometry denominator.
+
+`e5_franklin_county_parcel_candidate_reach.sql` is the file-exact successor.
+After list/describe-first discovery, it ran through cmdrvl-data with an `ok`
+guard; the MCP success envelope still omitted its Snowflake query id. Its
+SHA-256 is
+`65215b2f53b4e2a462bca91e4470ab5b56fc96d1f80b98437fb8aa9dfa20a273`.
+Results:
+
+| Quantity | Result |
+|---|---:|
+| Landed parcel rows | 494,704 |
+| Admitted source/derived geometry rows | 494,043 |
+| Geocoded property subjects / associated loans | 151 / 202 |
+| H3 r8 blocked candidate pairs | 54,344 |
+| Snowflake-oracle PIP reach | 147 / 151 |
+| Unique / two-parcel PIP subjects | 146 / 1 |
+| Unreached subjects | 4 |
+| PIP pairs | 148 |
+
+All four misses had nonempty H3 candidate blocks and were 3.006–22.221 m from
+the nearest blocked parcel. Invalid-retained source geometry rescued none.
+That is a candidate-reach result, not accuracy: there is not yet an admitted
+Franklin deed/truth score, and Snowflake GEOGRAPHY remains an empirical oracle
+rather than Canon's quantized exact-local predicate.
+
+`e5_franklin_county_live_geometry_probe.sql` closes one concrete transport
+seam without hard-coding a subject. A recorded selection seed ranks the 148
+live PIP rows, verifies the selected source-WKB digest in Snowflake, and emits
+a complete `canon_geo_warehouse_geometry_rows.v0` request. Its SHA-256 is
+`f247be631c0830a02c16bc477703949ebcfe37af20373ffd0e2b3d801fe6eb83`.
+The public command
+
+```bash
+canon geo materialize-warehouse-geometry --rows <GEOMETRY_REQUEST.json>
+```
+
+independently reverified the emitted 29-vertex EPSG:3735 WKB and produced 28
+canonical vertices after removing the closing duplicate. The receipt reported
+at most 1 micrometre of WKB-f64-to-decimal admission loss and 499 micrometres
+of local lattice snapping. Projection error is zero only for the exact
+source-plane affine; it says nothing about the separate pinned WGS84 transform
+disagreement. This is one seeded positive source-byte probe, not population
+scale, precision, or E5 closure. The omitted MCP query id prevents promotion
+to a durable live execution receipt but does not negate the successful data
+and Canon command paths.
 
 The two historical D claim classes are deliberately separate. `same-cell`
 reproduces the legacy H3-home-cell candidate restriction. `complete bbox reach`

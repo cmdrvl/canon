@@ -88,7 +88,7 @@ The controlling state entering the main review is:
 | Work-unit cost | The 200-feature, 0.5 s/tile, and 140 CPU-hour national figures are not supported. D.11 measures two-source r9+k1 work units of 378–4,670 nodes. F.6's raw three-plane work units are 596–7,015 nodes at r9, while predicate-incidence maxima are 5–118. This supports component-wise solving but also proves that raw source rows must not be mistaken for latent-building variables; compilation, source reconciliation, FEMA, and client-layer costs remain unbenchmarked. | Appendices B, C, D.11, F.6, G; original figures `FALSIFIED`, replacement runtime model `OPEN` |
 | Address evidence | PAD materially repairs address representation and restores street-absence refutation, but is evidence rather than an oracle. `canon geo materialize-address-evidence` now preserves the parse forest and PAD-membership audit, unions supported readings into one parcel existential observation, abstains on chimeras/no support, and binds each source-record association to Canon's hash of the normalized PAD-member payload. The hash prevents id-only payload substitution but does not authenticate upstream bytes or make the artifact live truth. Time-scoped observations remain diagnostic in composition v0. | `src/geo/address.rs`, `canon_geo_address_parcel_*.v0`; offline bridge `IMPLEMENTED`, full residual replay/tile compatibility `OPEN`, Appendix M `MEASURED` on NYC PAD 26B |
 | Evaluation ladder | E1–E3 are complete. E4 has an exact factorized residual solver over admitted evidence (bd-2kjx.1–.3); the E4 population numbers and the E5 non-NYC evidence-tier curve remain the decisive gates. | §17 and Appendix L; E4/E5 `OPEN` |
-| E5 geography preflight | Franklin County, Ohio (`39049`) is a measured candidate, not a completed E5 run. The pinned collateral build supplies 151 geocoded properties / 202 loans / 152 multi-property loans across 114 r8 centers. Their 585 distinct center+k1 work cells have nonzero pinned FEMA structures, Microsoft footprints, Overture addresses, and Overture buildings. No non-NYC county parcel layer was found in the live warehouse inventory, so parcel-grain candidate reach, E1–E4 replay, precision, and the evidence-tier curve remain unmeasured; no parcel-grain answer may be claimed without a parcel source. The other layers remain a valid future minimal-stack case, and explicit building composition/materialization now permits their parcel-free building universe without consulting the legacy parcel oracle. Franklin row-grain export/source reconciliation and actual E5 coverage/precision remain open. The applicable FEMA Ohio partition is dated 2023-05-02 even though a 2025-06-06 partition exists elsewhere; E5 must pin vintages per geography. | `e5_franklin_county_thin_tier_readiness.sql`, query `01c6c151-0821-a0dc-006c-c703088daaba`; bounded source availability `MEASURED`, parcel-free building solve `IMPLEMENTED`, E5 `OPEN` |
+| E5 geography preflight | Franklin County, Ohio (`39049`) now has a real parcel-backed successor to the immutable 2026-08-31 thin-tier preflight. Pinned current inputs are bridge build `ce3953ac-c2d4-4b48-bf02-29f0cf341389` and Franklin parcel release `hub-de09f99cce0bcae7142d6d2e26582fd3-25` / `2026-09-01`. Of 494,704 landed parcels, 494,043 pass the declared source/derived geometry admission. H3 feature coverage gives every one of 151 property subjects a nonempty block; Snowflake GEOGRAPHY PIP reaches 147, with 146 unique and one two-parcel case. The four misses are 3.006–22.221 m from the nearest blocked parcel and none is rescued by invalid-retained geometry. A seeded live row also traversed original EPSG:3735 WKB → independent digest verification → Canon fixed-point materialization: 29 decoded / 28 canonical vertices, ≤1 µm decimal admission loss and ≤499 µm lattice snapping. These are candidate-reach and source-byte transport results, not precision, exact-local parity, solver correctness, or an evidence-tier operating point. Successful MCP envelopes still omit query ids, so durable live receipt promotion remains open. The applicable FEMA Ohio partition remains `2023-05-02`; vintages are pinned per geography. | `e5_franklin_county_parcel_candidate_reach.sql`, `e5_franklin_county_live_geometry_probe.sql`; parcel candidate reach and one seeded source-byte path `MEASURED`, generic core isolation `TESTED`, E5 `OPEN` |
 | Time semantics | Evidence admissions preserve whole-day valid-time intervals, and v0 deliberately keeps every time-scoped observation diagnostic because composition has no query-as-of domain. Allen/STP inference is not implemented. | §§3, 7, 16.3; compiler contract implemented, temporal solver `OPEN` |
 | Current precision claim | The 96–98% entity-grain answered-point estimate is provisional and truth-instrument-limited; Appendix M indicates residual contamination. | Appendices L.6 and M.5; `MEASURED`, not a release claim |
 
@@ -1072,14 +1072,30 @@ coverage/precision plane:
   availability rows passed their guards: FEMA structures 160,773 features in
   582 cells, Microsoft footprints 168,778 in 581, Overture addresses 310,650 in
   581, and Overture buildings 203,367 in 584. These are H3 blocking counts, not
-  independent information, parcel incidence, or candidate recall. The inventory
-  still lacks a non-NYC county parcel layer, so the parcel-grain E1–E4 comparison
-  cannot yet be repeated and no coverage/precision point exists. Franklin remains
-  useful as the future minimal-stack case: missing parcels must suppress parcel
-  answers, not discard its building/address/observation evidence. That behavior now
-  ships for explicit building selection in composition/materialization, but Franklin
-  still needs row-grain export/source reconciliation before any actual E5 run, and
-  the coverage/precision curve remains unmeasured. FEMA is pinned to the
+  independent information, parcel incidence, or candidate recall. This preflight
+  is immutable: it accurately recorded that the parcel layer was absent on
+  2026-08-31 rather than being rewritten after the landing.
+
+  **2026-09-01 parcel-backed successor, still not gate execution.** The Franklin
+  Auditor source now exposes 494,704 release-pinned parcel rows, original EPSG:3735
+  WKB plus hashes, H3 feature coverage, and one non-degraded transform receipt.
+  Admission retains 494,043 rows. Over the current build's 151 geocoded property
+  subjects, the complete r8 feature-coverage block contains 54,344 candidate pairs;
+  the Snowflake reference predicate reaches 147 properties (146 unique, one
+  two-parcel) and misses four. Each miss had candidates and lay 3.006–22.221 m from
+  the nearest parcel, so it is a predicate/location residual rather than an H3 block
+  failure. One seeded selection from the 148 PIP edges then traversed the real
+  source-WKB-to-Canon materializer with independent digest verification and bounded
+  fixed-point errors. Franklin-specific names remain outside generic materializer,
+  composition, solver, and tile modules.
+
+  This materially starts the typical-county tier but does not complete E5. Candidate
+  reach is upstream of truth accuracy; the deed-grain truth plane, exact-local
+  predicate replay, multi-source incidence, actual solver evaluation, and the
+  coverage/precision curve remain unmeasured. Successful MCP calls also still lack
+  query ids, preventing durable live receipt promotion. The parcel-free case remains
+  relevant: missing parcels must suppress parcel answers, not discard useful
+  building/address observations. FEMA is pinned to the
   Ohio-applicable 2023-05-02 partition rather than silently inheriting the unrelated
   global 2025-06-06 date.
 
