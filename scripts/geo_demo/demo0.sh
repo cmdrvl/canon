@@ -77,14 +77,6 @@ solve_artifact="$work_dir/solve.json"
 population_request="$work_dir/population.json"
 evaluation_artifact="$work_dir/evaluation.json"
 capabilities_artifact="$work_dir/capabilities.json"
-plan_question="$work_dir/question.json"
-plan_inventory="$work_dir/inventory.json"
-plan_profile="$work_dir/profile.json"
-plan_budget="$work_dir/budget.json"
-plan_artifact="$work_dir/plan.json"
-run_home_cell_rows="$work_dir/run-home-cell-rows.json"
-run_tile_request="$work_dir/run-tile-request.json"
-run_artifact="$work_dir/run.json"
 tile_discovery_request="$work_dir/tile-discovery-request.json"
 tile_discovery_artifact="$work_dir/tile-discovery.json"
 tile_owner_request="$work_dir/tile-owner-request.json"
@@ -303,328 +295,10 @@ cat > "$negative_request" <<'JSON'
 }
 JSON
 
-run_output_path() {
-  local node_id="$1"
-  local output_id="$2"
-  local relative
-  relative="$(
-    jq -er \
-      --arg node "$node_id" \
-      --arg output "$output_id" \
-      '.project_run_report.receipt.node_receipts[]
-        | select(.node_id == $node)
-        | .outputs[]
-        | select(.output_id == $output)
-        | .path' \
-      "$run_artifact"
-  )"
-  printf '%s/%s\n' "$work_dir" "$relative"
-}
-
 run_json "$capabilities_artifact" geo capabilities --emit json
-fixture_digest="$(jq -r '.semantic_hash' "$capabilities_artifact")"
-run_center_cell="892a100d62bffff"
-
-jq -n \
-  '{
-    version: "canon_geo_question.v0",
-    question_id: "question.demo0.case4.fixture_replay",
-    subject_bindings: [
-      {
-        role: "target",
-        binding_class: "operator_label",
-        value: "Demo 0 retained case 4 chimera fixture"
-      },
-      {
-        role: "input_address",
-        binding_class: "address_text",
-        value: "199 EAST 12 STREET"
-      }
-    ],
-    bounded_geography: {
-      geography_id: "region.demo0.case4.fixture_tile",
-      geography_kind: "bounded_fixture",
-      description: "Demo 0 retained Case 4 bounded parcel fixture"
-    },
-    requested_grains: [{
-      entity_level: "parcel",
-      required_evidence_classes: ["address_set", "building_footprint"],
-      optional_evidence_classes: []
-    }],
-    query_as_of: {
-      utc_day: "2026-08-31",
-      semantic_id: "demo0.query_as_of.utc_day",
-      unit: "utc_day",
-      origin: "caller_declared"
-    },
-    requested_claim_classes: ["candidate_reach", "collateral_composition", "stable_identity"],
-    presentation_limits: [
-      {
-        semantic_id: "presentation.max_models",
-        counter: "models",
-        value: 16,
-        unit: "model",
-        origin: "caller_declared",
-        action: "report_budget_fallback"
-      },
-      {
-        semantic_id: "presentation.max_candidates",
-        counter: "candidates",
-        value: 32,
-        unit: "candidate",
-        origin: "caller_declared",
-        action: "report_budget_fallback"
-      }
-    ],
-    abstention_policy: {
-      unsupported_grain: "report_unsupported",
-      unresolved_residual: "report_residual",
-      budget_fallback: "report_residual"
-    },
-    decision_policy: null,
-    resource_budget_ref: "budget.demo0.case4.fixture_replay"
-  }' > "$plan_question"
-
-jq -n \
-  --arg digest "$fixture_digest" \
-  '{
-    version: "canon_geo_regional_inventory.v1",
-    inventory_id: "inventory.demo0.case4.fixture_replay",
-    region: {
-      geography_id: "region.demo0.case4.fixture_tile",
-      geography_kind: "bounded_fixture",
-      description: "Demo 0 retained Case 4 bounded parcel fixture"
-    },
-    sources: [{
-      source_instance_id: "demo0_bounded_parcel_evidence",
-      release: {
-        release_id: "demo0.case4.fixture_release",
-        release_digest: $digest
-      },
-      temporal_scope: {
-        valid_time: {
-          start_utc_day: "2026-01-01",
-          end_utc_day: "2026-12-31"
-        },
-        release_time: {
-          utc_day: "2026-08-31",
-          semantic_id: "demo0.fixture_release.utc_day",
-          unit: "utc_day",
-          origin: "caller_declared"
-        }
-      },
-      lineage_ids: ["demo0.retained.case4.fixture_replay"],
-      native_scope: {
-        kind: "native_entity",
-        entity_level: "parcel",
-        identity_participation: "stable_alias"
-      },
-      evidence_classes: ["address_set", "building_footprint"],
-      coverage: {
-        coverage_id: "coverage.demo0.case4.fixture_tile",
-        region: {
-          geography_id: "region.demo0.case4.fixture_tile",
-          geography_kind: "bounded_fixture",
-          description: "Demo 0 retained Case 4 bounded parcel fixture"
-        },
-        predicate: "declared retained Case 4 parcel fixture candidates"
-      },
-      local_state: {
-        state: "available",
-        local_ref: {
-          artifact_id: "artifact.demo0.case4.warehouse_rows",
-          contract_version: "canon_geo_warehouse_rows.v0",
-          content_hash: $digest,
-          media_type: "application/json"
-        }
-      },
-      geometry: {
-        geometry_contract_version: "demo0.fixture.geometry.v1",
-        coordinate_reference_system: "EPSG:4326",
-        transform_id: "demo0.fixture.identity_transform",
-        transform_digest: $digest,
-        numeric_error_bounds: [{
-          semantic_id: "demo0.fixture.transform_error",
-          value: 0,
-          unit: "millimetre",
-          origin: "adapter_contract"
-        }]
-      },
-      license_class: "public_redistributable",
-      egress_class: "shareable",
-      estimates: [{
-        semantic_id: "demo0.fixture.rows",
-        value: 7,
-        unit: "row",
-        origin: "caller_declared"
-      }]
-    }],
-    discovery_gaps: []
-  }' > "$plan_inventory"
-
-jq -n \
-  '{
-    version: "canon_geo_composition_profile.v0",
-    selection_level: "parcel"
-  }' > "$plan_profile"
-
-jq -n \
-  '{
-    version: "canon_geo_resource_budget.v0",
-    budget_id: "budget.demo0.case4.fixture_replay",
-    deterministic_bounds: [
-      {
-        semantic_id: "budget.max_bytes",
-        counter: "bytes",
-        value: 1000000,
-        unit: "byte",
-        origin: "caller_declared",
-        action: "report_budget_fallback"
-      },
-      {
-        semantic_id: "budget.max_rows",
-        counter: "rows",
-        value: 10000,
-        unit: "row",
-        origin: "caller_declared",
-        action: "report_budget_fallback"
-      },
-      {
-        semantic_id: "budget.max_cells",
-        counter: "cells",
-        value: 64,
-        unit: "cell",
-        origin: "caller_declared",
-        action: "report_budget_fallback"
-      },
-      {
-        semantic_id: "budget.max_candidates",
-        counter: "candidates",
-        value: 500,
-        unit: "candidate",
-        origin: "caller_declared",
-        action: "report_budget_fallback"
-      },
-      {
-        semantic_id: "budget.max_variables",
-        counter: "variables",
-        value: 128,
-        unit: "variable",
-        origin: "caller_declared",
-        action: "report_budget_fallback"
-      },
-      {
-        semantic_id: "budget.max_states",
-        counter: "states",
-        value: 100000,
-        unit: "state",
-        origin: "caller_declared",
-        action: "report_budget_fallback"
-      },
-      {
-        semantic_id: "budget.max_models",
-        counter: "models",
-        value: 10000,
-        unit: "model",
-        origin: "caller_declared",
-        action: "report_budget_fallback"
-      },
-      {
-        semantic_id: "budget.max_operations",
-        counter: "operations",
-        value: 1000000,
-        unit: "operation",
-        origin: "caller_declared",
-        action: "report_budget_fallback"
-      }
-    ],
-    telemetry: [{
-      metric: "wall_time",
-      unit: "millisecond",
-      origin: "operator_policy",
-      semantic_effect: "none"
-    }]
-  }' > "$plan_budget"
-
-run_json "$plan_artifact" geo plan \
-  --question "$plan_question" \
-  --capabilities "$capabilities_artifact" \
-  --inventory "$plan_inventory" \
-  --profile "$plan_profile" \
-  --budget "$plan_budget"
-
-jq -n \
-  --slurpfile rows "$case4_rows" \
-  --slurpfile plan "$plan_artifact" \
-  --arg digest "$fixture_digest" \
-  --arg center "$run_center_cell" \
-  'def source($plan; $digest): {
-      source_instance_id: "demo0_bounded_parcel_evidence",
-      release: {
-        release_id: "demo0.case4.fixture_release",
-        release_digest: $digest
-      },
-      native_scope: {
-        kind: "native_entity",
-        entity_level: "parcel",
-        identity_participation: "stable_alias"
-      },
-      inventory_ref: $plan.inventory_ref
-    };
-    {
-      version: "canon_geo_home_cell_rows.v1",
-      coordinate_crs: "EPSG:4326",
-      coordinate_decimal_places: 9,
-      h3_resolution: 9,
-      stability_radius_fixed: 1000,
-      rows: ($rows[0].parcel_rows
-        | sort_by(.parcel_id)
-        | map({
-          source: source($plan[0]; $digest),
-          feature_id: .parcel_id,
-          source_record_id: ("demo0.case4.parcel_candidate." + .parcel_id),
-          geometry_sha256: "5ed87d37d872789086452c35f658f5628ba870ca36072c495bb88519592403ed",
-          representative_point_method: "centroid_of_derived_wgs84_geometry",
-          longitude: "-73.977264000",
-          latitude: "40.753429000",
-          transform_execution_id: "demo0.fixture.transform_execution",
-          transform_definition_id: "demo0.fixture.transform_definition",
-          claimed_home_cell: $center
-        })),
-      max_rows: 32
-    }' > "$run_home_cell_rows"
-
-jq -n \
-  --slurpfile rows "$run_home_cell_rows" \
-  --arg center "$run_center_cell" \
-  '{
-    version: "canon_geo_tile_work_request.v1",
-    center_cell: $center,
-    halo_k: 1,
-    features: ($rows[0].rows
-      | map({
-        source,
-        feature_id,
-        home_cell: $center
-      })),
-    max_features: 32,
-    max_work_cells: 7
-  }' > "$run_tile_request"
-
-run_json "$run_artifact" geo run \
-  --plan "$plan_artifact" \
-  --work-dir "$work_dir" \
-  --input "geo.parcel.home_cells:rows=$run_home_cell_rows" \
-  --input "geo.parcel.section:request=$run_tile_request" \
-  --input "geo.parcel.materialize_evidence:rows=$case4_rows"
-
-evidence_request="$(run_output_path "geo.parcel.materialize_evidence" "materialize_evidence")"
-evidence_compilation="$(run_output_path "geo.parcel.compile_evidence" "compile_evidence")"
-solve_artifact="$(run_output_path "geo.parcel.solve" "solve")"
-
-jq -e . "$evidence_request" >/dev/null
-jq -e . "$evidence_compilation" >/dev/null
-jq -e . "$solve_artifact" >/dev/null
+run_json "$evidence_request" geo materialize-evidence --rows "$case4_rows"
+run_json "$evidence_compilation" geo compile-evidence --request "$evidence_request"
+run_json "$solve_artifact" geo solve --request "$evidence_compilation"
 
 jq -e '
   .status == "resolved"
@@ -998,8 +672,6 @@ jq -e '
 
 jq -S -c -n \
   --slurpfile capabilities "$capabilities_artifact" \
-  --slurpfile plan "$plan_artifact" \
-  --slurpfile run "$run_artifact" \
   --slurpfile evidence "$evidence_request" \
   --slurpfile compilation "$evidence_compilation" \
   --slurpfile solve "$solve_artifact" \
@@ -1011,8 +683,6 @@ jq -S -c -n \
   '{
     artifact_versions: {
       capabilities: $capabilities[0].version,
-      plan: $plan[0].version,
-      run: $run[0].version,
       evidence_request: $evidence[0].version,
       evidence_compilation: $compilation[0].version,
       composition: $solve[0].version,
@@ -1028,8 +698,9 @@ jq -S -c -n \
     },
     commands_exercised: [
       "canon geo capabilities --emit json",
-      "canon geo plan --question question.json --capabilities capabilities.json --inventory inventory.json --profile profile.json --budget budget.json",
-      "canon geo run --plan plan.json --work-dir DIR --input geo.parcel.home_cells:rows=run-home-cell-rows.json --input geo.parcel.section:request=run-tile-request.json --input geo.parcel.materialize_evidence:rows=case4-warehouse-rows.json",
+      "canon geo materialize-evidence --rows case4-warehouse-rows.json",
+      "canon geo compile-evidence --request evidence-request.json",
+      "canon geo solve --request evidence-compilation.json",
       "canon geo evaluate --population population.json",
       "canon geo solve --request negative-hard-chimera-composition.json",
       "canon geo tile-work --request tile-discovery-request.json",
@@ -1049,14 +720,6 @@ jq -S -c -n \
       residual_model_count: $solve[0].summary.residual_model_count,
       residual_model_count_complete: $solve[0].summary.residual_model_count_complete,
       status: $solve[0].status
-    },
-    shared_run: {
-      status: $run[0].status,
-      phase: $run[0].phase,
-      output_contracts: ($run[0].output_refs | map(.contract_version) | sort),
-      executed_nodes: $run[0].project_run_report.executed_nodes,
-      blocked_nodes: $run[0].project_run_report.blocked_nodes,
-      proof_boundary: "offline_contract_replay"
     },
     demo_id: "canon_geo_demo0_case4_chimera_fixture",
     evaluation: {

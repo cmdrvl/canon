@@ -13,8 +13,8 @@ use crate::{
         canonical_home_cell_assignment_bytes, canonical_materialized_evidence_request_bytes,
         canonical_tile_work_unit_bytes, compile_evidence, materialize_home_cells,
         materialize_tile_work_unit, materialize_warehouse_rows, solve_composition,
-        validate_evidence_compilation_artifact, GeoCompositionArtifact, GeoEntityLevel,
-        GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
+        validate_evidence_compilation_artifact, GeoCompositionArtifact, GeoControlEntityLevel,
+        GeoEntityLevel, GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
         GeoEvidenceCompilationRequest, GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest,
         GeoPlan, GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanProducedArtifactRef,
         GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoWarehouseRowsRequest,
@@ -241,6 +241,7 @@ impl GeoProjectNodeExecutor {
         validate_node_contract(node, context, command)?;
         self.ingest_context_dependency_outputs(node, context)?;
         validate_expected_dependency(node, command, &self.dependency_outputs)?;
+        self.validate_no_forbidden_direct_bindings(node, command)?;
 
         let leaf = match command {
             GeoExecutorCommand::MaterializeHomeCells => self.execute_home_cells(node)?,
@@ -440,15 +441,13 @@ impl GeoProjectNodeExecutor {
         &self,
         node: &ProjectPlanNode,
     ) -> ProjectRunResult<GeoLeafExecution> {
-        let input = self.binding_or_immediate_dependency(
+        let dependency = self.required_immediate_dependency_artifact(
             node,
-            GEO_REQUEST_BINDING_ID,
-            &[CANON_GEO_EVIDENCE_REQUEST_VERSION],
             "materialize_evidence",
             CANON_GEO_EVIDENCE_REQUEST_VERSION,
         )?;
         let request: GeoEvidenceCompilationRequest =
-            parse_json(node, &input.bytes, CANON_GEO_EVIDENCE_REQUEST_VERSION)?;
+            parse_json(node, &dependency.bytes, CANON_GEO_EVIDENCE_REQUEST_VERSION)?;
         let artifact = compile_evidence(&request)
             .map_err(|error| leaf_error(node, "compile-evidence", error))?;
         let bytes = canonical_evidence_compilation_bytes(&artifact).map_err(|error| {
@@ -582,33 +581,37 @@ impl GeoProjectNodeExecutor {
         Ok(binding)
     }
 
-    fn binding_or_immediate_dependency(
+    fn validate_no_forbidden_direct_bindings(
         &self,
         node: &ProjectPlanNode,
-        binding_id: &str,
-        accepted_contracts: &[&str],
-        dependency_output_id: &str,
-        dependency_contract: &str,
-    ) -> ProjectRunResult<VerifiedInput> {
-        if self
-            .input_bindings
-            .contains_key(&(node.node_id.clone(), binding_id.to_string()))
-        {
-            let binding = self.required_binding(node, binding_id, accepted_contracts)?;
-            return Ok(VerifiedInput {
-                contract: binding.contract.clone(),
-                bytes: binding.bytes.clone(),
-            });
+        command: GeoExecutorCommand,
+    ) -> ProjectRunResult<()> {
+        if !matches!(
+            command,
+            GeoExecutorCommand::CompileEvidence | GeoExecutorCommand::Solve
+        ) {
+            return Ok(());
         }
-        let dependency = self.required_immediate_dependency_artifact(
+
+        let binding_ids = self
+            .input_bindings
+            .keys()
+            .filter(|(node_id, _)| node_id == &node.node_id)
+            .map(|(_, binding_id)| binding_id.as_str())
+            .collect::<Vec<_>>();
+        if binding_ids.is_empty() {
+            return Ok(());
+        }
+
+        Err(error(
             node,
-            dependency_output_id,
-            dependency_contract,
-        )?;
-        Ok(VerifiedInput {
-            contract: dependency.contract.clone(),
-            bytes: dependency.bytes.clone(),
-        })
+            ProjectRunErrorCode::ArtifactContract,
+            format!(
+                "Geo {} consumes declared dependency outputs only; direct input bindings are forbidden: {}",
+                command.name(),
+                binding_ids.join(",")
+            ),
+        ))
     }
 
     fn validate_tile_request_against_home_cells(
@@ -649,6 +652,8 @@ impl GeoProjectNodeExecutor {
         section: &GeoTileWorkUnitArtifact,
         rows: &GeoWarehouseRowsRequest,
     ) -> ProjectRunResult<()> {
+        let selected_level = selected_control_level(node, rows.profile.selection_level)?;
+        validate_section_source_level(node, section, selected_level)?;
         let section_feature_ids = section
             .features
             .iter()
@@ -701,6 +706,7 @@ impl GeoProjectNodeExecutor {
                 ),
             ));
         }
+        validate_warehouse_auxiliary_variables(node, rows, &section_feature_ids)?;
         Ok(())
     }
 
@@ -831,6 +837,11 @@ fn validate_compilation_universe_against_section(
     section: &GeoTileWorkUnitArtifact,
     compilation: &GeoEvidenceCompilationArtifact,
 ) -> ProjectRunResult<()> {
+    let selected_level = selected_control_level(
+        node,
+        compilation.composition_request.profile.selection_level,
+    )?;
+    validate_section_source_level(node, section, selected_level)?;
     let section_ids = section
         .features
         .iter()
@@ -885,6 +896,185 @@ fn validate_compilation_universe_against_section(
             ),
         ));
     }
+    validate_compilation_auxiliary_variables(node, compilation, &selected_ids)?;
+    Ok(())
+}
+
+fn selected_control_level(
+    node: &ProjectPlanNode,
+    selection_level: GeoEntityLevel,
+) -> ProjectRunResult<GeoControlEntityLevel> {
+    match selection_level {
+        GeoEntityLevel::Parcel => Ok(GeoControlEntityLevel::Parcel),
+        GeoEntityLevel::Building => Ok(GeoControlEntityLevel::Building),
+        other => Err(error(
+            node,
+            ProjectRunErrorCode::ArtifactContract,
+            format!("Geo executor cannot bind selected-grain rows for unsupported profile level {other:?}"),
+        )),
+    }
+}
+
+fn validate_section_source_level(
+    node: &ProjectPlanNode,
+    section: &GeoTileWorkUnitArtifact,
+    selected_level: GeoControlEntityLevel,
+) -> ProjectRunResult<()> {
+    for feature in &section.features {
+        match feature.source.native_entity_level() {
+            Some(actual) if actual == selected_level => {}
+            Some(actual) => {
+                return Err(error(
+                    node,
+                    ProjectRunErrorCode::ArtifactContract,
+                    format!(
+                        "bounded tile section feature source native entity level must equal the profile selection_level before comparing feature_id values; source_instance_id={}; feature_id={}; expected={selected_level:?}; actual={actual:?}",
+                        feature.source.source_instance_id, feature.feature_id
+                    ),
+                ));
+            }
+            None => {
+                return Err(error(
+                    node,
+                    ProjectRunErrorCode::ArtifactContract,
+                    format!(
+                        "bounded tile section feature source must declare a native entity level for selected-grain equality; source_instance_id={}; feature_id={}",
+                        feature.source.source_instance_id, feature.feature_id
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_warehouse_auxiliary_variables(
+    node: &ProjectPlanNode,
+    rows: &GeoWarehouseRowsRequest,
+    selected_grain_ids: &BTreeSet<&str>,
+) -> ProjectRunResult<()> {
+    match rows.profile.selection_level {
+        GeoEntityLevel::Parcel => {
+            for row in &rows.building_parcel_rows {
+                match row.parcel_id.as_deref() {
+                    Some(parcel_id) if selected_grain_ids.contains(parcel_id) => {}
+                    Some(parcel_id) => {
+                        return Err(error(
+                            node,
+                            ProjectRunErrorCode::ArtifactContract,
+                            format!(
+                                "parcel-profile auxiliary building incidence must point into the selected bounded section parcels; building_id={}; parcel_id={parcel_id}",
+                                row.building_id
+                            ),
+                        ));
+                    }
+                    None => {
+                        return Err(error(
+                            node,
+                            ProjectRunErrorCode::ArtifactContract,
+                            format!(
+                                "parcel-profile auxiliary building must have source-member incidence into selected section parcels; building_id={}",
+                                row.building_id
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+        GeoEntityLevel::Building => {
+            if let Some(row) = rows.parcel_rows.first() {
+                return Err(error(
+                    node,
+                    ProjectRunErrorCode::ArtifactContract,
+                    format!(
+                        "building-profile warehouse rows cannot declare unbound auxiliary parcel candidates; parcel_id={}",
+                        row.parcel_id
+                    ),
+                ));
+            }
+            if let Some(row) = rows
+                .building_parcel_rows
+                .iter()
+                .find(|row| row.parcel_id.is_some())
+            {
+                return Err(error(
+                    node,
+                    ProjectRunErrorCode::ArtifactContract,
+                    format!(
+                        "building-profile warehouse rows cannot bind auxiliary parcel incidences outside selected-building structure; building_id={}; parcel_id={}",
+                        row.building_id,
+                        row.parcel_id.as_deref().unwrap_or("null")
+                    ),
+                ));
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn validate_compilation_auxiliary_variables(
+    node: &ProjectPlanNode,
+    compilation: &GeoEvidenceCompilationArtifact,
+    selected_ids: &BTreeSet<&str>,
+) -> ProjectRunResult<()> {
+    match compilation.composition_request.profile.selection_level {
+        GeoEntityLevel::Parcel => {
+            for building in &compilation.composition_request.universe.buildings {
+                if building.parcel_ids.is_empty() {
+                    return Err(error(
+                        node,
+                        ProjectRunErrorCode::ArtifactContract,
+                        format!(
+                            "compiled parcel-profile auxiliary building must have source-member incidence into selected section parcels; building_id={}",
+                            building.id
+                        ),
+                    ));
+                }
+                for parcel_id in &building.parcel_ids {
+                    if !selected_ids.contains(parcel_id.as_str()) {
+                        return Err(error(
+                            node,
+                            ProjectRunErrorCode::ArtifactContract,
+                            format!(
+                                "compiled parcel-profile auxiliary building incidence must point into the selected bounded section parcels; building_id={}; parcel_id={parcel_id}",
+                                building.id
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+        GeoEntityLevel::Building => {
+            if let Some(parcel_id) = compilation.composition_request.universe.parcels.first() {
+                return Err(error(
+                    node,
+                    ProjectRunErrorCode::ArtifactContract,
+                    format!(
+                        "compiled building-profile universe cannot carry unbound auxiliary parcel candidates; parcel_id={parcel_id}",
+                    ),
+                ));
+            }
+            if let Some(building) = compilation
+                .composition_request
+                .universe
+                .buildings
+                .iter()
+                .find(|building| !building.parcel_ids.is_empty())
+            {
+                return Err(error(
+                    node,
+                    ProjectRunErrorCode::ArtifactContract,
+                    format!(
+                        "compiled building-profile universe cannot carry auxiliary parcel incidences outside selected-building structure; building_id={}; parcel_ids={}",
+                        building.id,
+                        building.parcel_ids.join(",")
+                    ),
+                ));
+            }
+        }
+        _ => {}
+    }
     Ok(())
 }
 
@@ -902,12 +1092,6 @@ impl ProjectNodeExecutor for GeoProjectNodeExecutor {
     ) -> ProjectRunResult<ProjectNodeExecutionResult> {
         self.execute_typed(node, context)
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct VerifiedInput {
-    contract: String,
-    bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -971,6 +1155,16 @@ impl GeoExecutorCommand {
                 Some(("materialize_evidence", CANON_GEO_EVIDENCE_REQUEST_VERSION))
             }
             Self::Solve => Some(("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION)),
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::MaterializeHomeCells => "materialize-home-cells",
+            Self::TileWork => "tile-work",
+            Self::MaterializeEvidence => "materialize-evidence",
+            Self::CompileEvidence => "compile-evidence",
+            Self::Solve => "solve",
         }
     }
 }

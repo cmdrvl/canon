@@ -20,11 +20,11 @@ use canon::{
         GeoPlanExactSolveScope, GeoPlanInventoryRef, GeoPlanProducedArtifactRef, GeoRhoBasis,
         GeoRhoContract, GeoRhoObservationKind, GeoSourceRelease, GeoTileFeatureRef,
         GeoTileSourceBinding, GeoTileWorkRequest, GeoWarehouseBuildingParcelRow,
-        GeoWarehouseEvidenceRow, GeoWarehouseRowsRequest, CANON_GEO_COMPOSITION_VERSION,
-        CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
-        CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
-        CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
-        DEFAULT_MAX_MATERIALIZED_MODELS,
+        GeoWarehouseEvidenceRow, GeoWarehouseParcelRow, GeoWarehouseRowsRequest,
+        CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+        CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
+        CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
+        CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS,
     },
     project::{
         compile_extension_project_plan, digest_bytes, read_node_receipt, run_project_plan,
@@ -418,22 +418,235 @@ fn geo_executor_rejects_evidence_universe_that_omits_a_bounded_candidate() {
 }
 
 #[test]
-fn geo_executor_rejects_solve_when_compiled_evidence_escapes_bounded_section() {
+fn geo_executor_rejects_cross_level_same_text_ids_before_materializing_evidence() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let mut rows = warehouse_rows();
+    let plan = five_node_plan();
+    let parcel_source = source_at_level(GeoControlEntityLevel::Parcel);
+    let mut executor = executor_with_scope()
+        .with_input_binding(binding(
+            "geo.building.home_cells",
+            GEO_ROWS_BINDING_ID,
+            CANON_GEO_HOME_CELL_ROWS_VERSION,
+            &home_cell_rows_for(parcel_source.clone(), &["building-a", "building-b"]),
+        ))
+        .with_input_binding(binding(
+            "geo.building.section",
+            GEO_REQUEST_BINDING_ID,
+            CANON_GEO_TILE_WORK_REQUEST_VERSION,
+            &tile_work_request_for(parcel_source, &["building-a", "building-b"]),
+        ))
+        .with_input_binding(binding(
+            "geo.building.materialize_evidence",
+            GEO_ROWS_BINDING_ID,
+            CANON_GEO_WAREHOUSE_ROWS_VERSION,
+            &warehouse_rows(),
+        ));
+
+    let report =
+        run_project_plan(&plan, &policy(temp.path()), &mut executor).expect("failure report");
+
+    assert_eq!(
+        report.failed_nodes,
+        vec!["geo.building.materialize_evidence".to_string()]
+    );
+    assert!(
+        !temp
+            .path()
+            .join("geo/building/materialize_evidence.json")
+            .exists(),
+        "cross-level same-text ids must not publish evidence request bytes"
+    );
+    assert!(
+        node_report_reason(&report, "geo.building.materialize_evidence")
+            .contains("native entity level")
+    );
+}
+
+#[test]
+fn geo_executor_rejects_parcel_profile_auxiliary_building_without_section_incidence() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut rows = parcel_warehouse_rows();
+    rows.building_parcel_rows
+        .push(GeoWarehouseBuildingParcelRow {
+            building_id: "building-unbound".to_string(),
+            parcel_id: None,
+        });
+    let plan = five_node_plan();
+    let parcel_source = source_at_level(GeoControlEntityLevel::Parcel);
+    let mut executor = executor_with_scope()
+        .with_input_binding(binding(
+            "geo.building.home_cells",
+            GEO_ROWS_BINDING_ID,
+            CANON_GEO_HOME_CELL_ROWS_VERSION,
+            &home_cell_rows_for(parcel_source.clone(), &["parcel-a", "parcel-b"]),
+        ))
+        .with_input_binding(binding(
+            "geo.building.section",
+            GEO_REQUEST_BINDING_ID,
+            CANON_GEO_TILE_WORK_REQUEST_VERSION,
+            &tile_work_request_for(parcel_source, &["parcel-a", "parcel-b"]),
+        ))
+        .with_input_binding(binding(
+            "geo.building.materialize_evidence",
+            GEO_ROWS_BINDING_ID,
+            CANON_GEO_WAREHOUSE_ROWS_VERSION,
+            &rows,
+        ));
+
+    let report =
+        run_project_plan(&plan, &policy(temp.path()), &mut executor).expect("failure report");
+
+    assert_eq!(
+        report.failed_nodes,
+        vec!["geo.building.materialize_evidence".to_string()]
+    );
+    assert!(
+        node_report_reason(&report, "geo.building.materialize_evidence")
+            .contains("source-member incidence")
+    );
+}
+
+#[test]
+fn geo_executor_rejects_parcel_profile_auxiliary_incidence_outside_section() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut rows = parcel_warehouse_rows();
     rows.building_parcel_rows
         .push(GeoWarehouseBuildingParcelRow {
             building_id: "building-outside".to_string(),
-            parcel_id: None,
+            parcel_id: Some("parcel-outside".to_string()),
         });
-    let compile_request =
-        materialize_warehouse_rows(&rows).expect("out-of-section compile request is well typed");
+    let plan = five_node_plan();
+    let parcel_source = source_at_level(GeoControlEntityLevel::Parcel);
+    let mut executor = executor_with_scope()
+        .with_input_binding(binding(
+            "geo.building.home_cells",
+            GEO_ROWS_BINDING_ID,
+            CANON_GEO_HOME_CELL_ROWS_VERSION,
+            &home_cell_rows_for(parcel_source.clone(), &["parcel-a", "parcel-b"]),
+        ))
+        .with_input_binding(binding(
+            "geo.building.section",
+            GEO_REQUEST_BINDING_ID,
+            CANON_GEO_TILE_WORK_REQUEST_VERSION,
+            &tile_work_request_for(parcel_source, &["parcel-a", "parcel-b"]),
+        ))
+        .with_input_binding(binding(
+            "geo.building.materialize_evidence",
+            GEO_ROWS_BINDING_ID,
+            CANON_GEO_WAREHOUSE_ROWS_VERSION,
+            &rows,
+        ));
+
+    let report =
+        run_project_plan(&plan, &policy(temp.path()), &mut executor).expect("failure report");
+
+    assert_eq!(
+        report.failed_nodes,
+        vec!["geo.building.materialize_evidence".to_string()]
+    );
+    assert!(
+        node_report_reason(&report, "geo.building.materialize_evidence")
+            .contains("selected bounded section parcels")
+    );
+}
+
+#[test]
+fn geo_executor_rejects_building_profile_unbound_auxiliary_parcel_candidates() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut rows = warehouse_rows();
+    rows.parcel_rows.push(GeoWarehouseParcelRow {
+        parcel_id: "parcel-unbound".to_string(),
+    });
+    let plan = five_node_plan();
+    let mut executor = GeoProjectNodeExecutor::new()
+        .with_input_binding(binding(
+            "geo.building.home_cells",
+            GEO_ROWS_BINDING_ID,
+            CANON_GEO_HOME_CELL_ROWS_VERSION,
+            &home_cell_rows(),
+        ))
+        .with_input_binding(binding(
+            "geo.building.section",
+            GEO_REQUEST_BINDING_ID,
+            CANON_GEO_TILE_WORK_REQUEST_VERSION,
+            &tile_work_request(),
+        ))
+        .with_input_binding(binding(
+            "geo.building.materialize_evidence",
+            GEO_ROWS_BINDING_ID,
+            CANON_GEO_WAREHOUSE_ROWS_VERSION,
+            &rows,
+        ));
+
+    let report =
+        run_project_plan(&plan, &policy(temp.path()), &mut executor).expect("failure report");
+
+    assert_eq!(
+        report.failed_nodes,
+        vec!["geo.building.materialize_evidence".to_string()]
+    );
+    assert!(
+        node_report_reason(&report, "geo.building.materialize_evidence")
+            .contains("unbound auxiliary parcel candidates")
+    );
+}
+
+#[test]
+fn geo_executor_refuses_direct_compile_request_binding_before_stale_reuse() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let declared_request =
+        materialize_warehouse_rows(&warehouse_rows()).expect("declared compile request is typed");
+    let mut changed_rows = warehouse_rows();
+    changed_rows.max_assignments -= 1;
+    let changed_request =
+        materialize_warehouse_rows(&changed_rows).expect("changed compile request is typed");
+    assert_ne!(
+        serde_json::to_vec(&declared_request).expect("declared request serializes"),
+        serde_json::to_vec(&changed_request).expect("changed request serializes"),
+        "the planted direct binding must differ from the dependency output"
+    );
     let plan = five_node_plan();
     let mut executor = executor_with_fixture_inputs().with_input_binding(binding(
         "geo.building.compile_evidence",
         GEO_REQUEST_BINDING_ID,
         CANON_GEO_EVIDENCE_REQUEST_VERSION,
-        &compile_request,
+        &changed_request,
+    ));
+
+    let report =
+        run_project_plan(&plan, &policy(temp.path()), &mut executor).expect("failure report");
+
+    assert_eq!(
+        report.failed_nodes,
+        vec!["geo.building.compile_evidence".to_string()]
+    );
+    assert!(
+        !temp
+            .path()
+            .join("geo/building/compile_evidence.json")
+            .exists(),
+        "direct compile input must not publish compiled evidence"
+    );
+    assert!(
+        !temp.path().join("geo/building/solve.json").exists(),
+        "failed compile must not publish a solve artifact"
+    );
+    assert!(node_report_reason(&report, "geo.building.compile_evidence")
+        .contains("direct input bindings are forbidden"));
+}
+
+#[test]
+fn geo_executor_refuses_direct_solve_binding_before_publication() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = five_node_plan();
+    let mut executor = executor_with_fixture_inputs().with_input_binding(binding(
+        "geo.building.solve",
+        GEO_REQUEST_BINDING_ID,
+        CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+        &serde_json::json!({
+            "version": CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+            "tampered": true
+        }),
     ));
 
     let report =
@@ -444,18 +657,14 @@ fn geo_executor_rejects_solve_when_compiled_evidence_escapes_bounded_section() {
         temp.path()
             .join("geo/building/compile_evidence.json")
             .exists(),
-        "the planted negative must reach compile_evidence before the solve gate"
+        "the solve negative should reach a declared compiled-evidence dependency first"
     );
     assert!(
         !temp.path().join("geo/building/solve.json").exists(),
-        "out-of-section compiled evidence must not publish a solve artifact"
+        "direct solve input must not publish a solve artifact"
     );
     assert!(node_report_reason(&report, "geo.building.solve")
-        .contains("exact_solve_scope bounded section"));
-    assert!(
-        node_report_reason(&report, "geo.building.solve").contains("building-outside"),
-        "the refusal should expose the unsupported candidate id"
-    );
+        .contains("direct input bindings are forbidden"));
 }
 
 fn binding<T: serde::Serialize>(
@@ -699,8 +908,12 @@ fn center_cell() -> CellIndex {
 }
 
 fn building_source() -> GeoTileSourceBinding {
+    source_at_level(GeoControlEntityLevel::Building)
+}
+
+fn source_at_level(entity_level: GeoControlEntityLevel) -> GeoTileSourceBinding {
     GeoTileSourceBinding {
-        source_instance_id: "building".to_string(),
+        source_instance_id: format!("{entity_level:?}").to_ascii_lowercase(),
         release: GeoSourceRelease {
             release_id: "fixture-release-2026-08-31".to_string(),
             release_digest: format!(
@@ -709,7 +922,7 @@ fn building_source() -> GeoTileSourceBinding {
             ),
         },
         native_scope: GeoNativeEntityScope::NativeEntity {
-            entity_level: GeoControlEntityLevel::Building,
+            entity_level,
             identity_participation: GeoIdentityParticipation::StableAlias,
         },
         inventory_ref: GeoPlanInventoryRef {
@@ -721,19 +934,19 @@ fn building_source() -> GeoTileSourceBinding {
 }
 
 fn tile_features() -> Vec<GeoTileFeatureRef> {
+    tile_features_for(building_source(), &["building-a", "building-b"])
+}
+
+fn tile_features_for(source: GeoTileSourceBinding, feature_ids: &[&str]) -> Vec<GeoTileFeatureRef> {
     let center = center_cell().to_string();
-    vec![
-        GeoTileFeatureRef {
-            source: building_source(),
-            feature_id: "building-a".to_string(),
+    feature_ids
+        .iter()
+        .map(|feature_id| GeoTileFeatureRef {
+            source: source.clone(),
+            feature_id: (*feature_id).to_string(),
             home_cell: center.clone(),
-        },
-        GeoTileFeatureRef {
-            source: building_source(),
-            feature_id: "building-b".to_string(),
-            home_cell: center,
-        },
-    ]
+        })
+        .collect()
 }
 
 fn tile_work_request() -> GeoTileWorkRequest {
@@ -742,6 +955,17 @@ fn tile_work_request() -> GeoTileWorkRequest {
         center_cell: center_cell().to_string(),
         halo_k: 1,
         features: tile_features(),
+        max_features: 16,
+        max_work_cells: 7,
+    }
+}
+
+fn tile_work_request_for(source: GeoTileSourceBinding, feature_ids: &[&str]) -> GeoTileWorkRequest {
+    GeoTileWorkRequest {
+        version: CANON_GEO_TILE_WORK_REQUEST_VERSION.to_string(),
+        center_cell: center_cell().to_string(),
+        halo_k: 1,
+        features: tile_features_for(source, feature_ids),
         max_features: 16,
         max_work_cells: 7,
     }
@@ -762,9 +986,38 @@ fn home_cell_rows() -> GeoHomeCellRowsRequest {
     }
 }
 
+fn home_cell_rows_for(
+    source: GeoTileSourceBinding,
+    feature_ids: &[&str],
+) -> GeoHomeCellRowsRequest {
+    GeoHomeCellRowsRequest {
+        version: CANON_GEO_HOME_CELL_ROWS_VERSION.to_string(),
+        coordinate_crs: "EPSG:4326".to_string(),
+        coordinate_decimal_places: 9,
+        h3_resolution: 9,
+        stability_radius_fixed: 1_000,
+        rows: feature_ids
+            .iter()
+            .map(|feature_id| {
+                let feature_id = *feature_id;
+                home_cell_row_with_source(source.clone(), feature_id, &format!("rec-{feature_id}"))
+            })
+            .collect(),
+        max_rows: 16,
+    }
+}
+
 fn home_cell_row(feature_id: &str, source_record_id: &str) -> GeoHomeCellRow {
+    home_cell_row_with_source(building_source(), feature_id, source_record_id)
+}
+
+fn home_cell_row_with_source(
+    source: GeoTileSourceBinding,
+    feature_id: &str,
+    source_record_id: &str,
+) -> GeoHomeCellRow {
     GeoHomeCellRow {
-        source: building_source(),
+        source,
         feature_id: feature_id.to_string(),
         source_record_id: source_record_id.to_string(),
         geometry_sha256: "5ed87d37d872789086452c35f658f5628ba870ca36072c495bb88519592403ed"
@@ -775,6 +1028,45 @@ fn home_cell_row(feature_id: &str, source_record_id: &str) -> GeoHomeCellRow {
         transform_execution_id: Some("fixture-transform-execution".to_string()),
         transform_definition_id: Some("fixture-transform-definition".to_string()),
         claimed_home_cell: Some(center_cell().to_string()),
+    }
+}
+
+fn parcel_warehouse_rows() -> GeoWarehouseRowsRequest {
+    let observation = GeoRhoObservationKind::ExactSets {
+        level: GeoEntityLevel::Parcel,
+        sets: vec![vec!["parcel-a".to_string(), "parcel-b".to_string()]],
+    };
+    GeoWarehouseRowsRequest {
+        version: CANON_GEO_WAREHOUSE_ROWS_VERSION.to_string(),
+        profile: GeoCompositionProfile::parcel(),
+        parcel_rows: vec![
+            GeoWarehouseParcelRow {
+                parcel_id: "parcel-b".to_string(),
+            },
+            GeoWarehouseParcelRow {
+                parcel_id: "parcel-a".to_string(),
+            },
+        ],
+        building_parcel_rows: vec![
+            GeoWarehouseBuildingParcelRow {
+                building_id: "building-b".to_string(),
+                parcel_id: Some("parcel-b".to_string()),
+            },
+            GeoWarehouseBuildingParcelRow {
+                building_id: "building-a".to_string(),
+                parcel_id: Some("parcel-a".to_string()),
+            },
+        ],
+        contracts: vec![parcel_rho_contract()],
+        evidence_rows: vec![GeoWarehouseEvidenceRow {
+            observation_id: "obs.parcel-set".to_string(),
+            contract_id: "rho.parcel-set".to_string(),
+            source_record: record("parcel-row-a"),
+            valid_time: None,
+            observation,
+        }],
+        max_assignments: 128,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
     }
 }
 
@@ -827,6 +1119,22 @@ fn rho_contract() -> GeoRhoContract {
         source_release: "2026-08-31".to_string(),
         source_lineage_ids: vec!["fixture.buildings.release".to_string()],
         method_id: "fixture-building-candidate-set".to_string(),
+        method_version: "1.0.0".to_string(),
+        claim_role: GeoEvidenceClaimRole::StableIdentityAnchor,
+        basis: GeoRhoBasis::LogicalRelaxation {
+            invariant_id: "candidate-set-is-a-superset".to_string(),
+        },
+    }
+}
+
+fn parcel_rho_contract() -> GeoRhoContract {
+    GeoRhoContract {
+        id: "rho.parcel-set".to_string(),
+        version: "1.0.0".to_string(),
+        source_dataset: "fixture.parcels".to_string(),
+        source_release: "2026-08-31".to_string(),
+        source_lineage_ids: vec!["fixture.parcels.release".to_string()],
+        method_id: "fixture-parcel-candidate-set".to_string(),
         method_version: "1.0.0".to_string(),
         claim_role: GeoEvidenceClaimRole::StableIdentityAnchor,
         basis: GeoRhoBasis::LogicalRelaxation {

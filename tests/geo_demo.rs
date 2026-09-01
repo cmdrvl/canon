@@ -121,15 +121,13 @@ fn demo0_case4_public_cli_journey_is_byte_deterministic_and_honest() {
         summary["artifact_versions"]["evidence_compilation"],
         "canon_geo_evidence_compilation.v0"
     );
-    assert_eq!(summary["artifact_versions"]["plan"], "canon_geo_plan.v0");
-    assert_eq!(summary["artifact_versions"]["run"], "canon_geo_run.v0");
     assert_eq!(
         summary["artifact_versions"]["tile_reconciliation"],
         "canon_geo_tile_reconciliation.v1"
     );
     assert_eq!(
         summary["commands_exercised"].as_array().unwrap().len(),
-        9,
+        10,
         "summary should expose the exact public CLI journey"
     );
     assert!(
@@ -142,27 +140,25 @@ fn demo0_case4_public_cli_journey_is_byte_deterministic_and_honest() {
         summary["capabilities"]["unavailable_control_plane"],
         json!(["canon geo inspect"])
     );
-    assert_eq!(summary["shared_run"]["status"], "COMPLETED");
-    assert_eq!(summary["shared_run"]["phase"], "SOLVED");
-    assert_eq!(summary["shared_run"]["blocked_nodes"], json!([]));
     assert_eq!(
-        summary["shared_run"]["proof_boundary"],
-        "offline_contract_replay"
-    );
-    assert_eq!(
-        summary["shared_run"]["executed_nodes"],
+        summary["commands_exercised"],
         json!([
-            "geo.parcel.compile_evidence",
-            "geo.parcel.home_cells",
-            "geo.parcel.materialize_evidence",
-            "geo.parcel.section",
-            "geo.parcel.solve"
+            "canon geo capabilities --emit json",
+            "canon geo materialize-evidence --rows case4-warehouse-rows.json",
+            "canon geo compile-evidence --request evidence-request.json",
+            "canon geo solve --request evidence-compilation.json",
+            "canon geo evaluate --population population.json",
+            "canon geo solve --request negative-hard-chimera-composition.json",
+            "canon geo tile-work --request tile-discovery-request.json",
+            "canon geo tile-work --request tile-owner-request.json",
+            "canon geo tile-work --request tile-observer-request.json",
+            "canon geo reconcile-tiles --request tile-reconciliation-request.json"
         ])
     );
-    assert!(summary["shared_run"]["output_contracts"]
-        .as_array()
-        .unwrap()
-        .contains(&json!("canon_geo_composition.v0")));
+    assert!(
+        !summary.as_object().unwrap().contains_key("shared_run"),
+        "Demo 0 must not claim planned-run execution without fixture-byte BLAKE3 provenance"
+    );
 
     assert_eq!(summary["composition"]["status"], "resolved");
     assert_eq!(summary["composition"]["residual_model_count"], 1);
