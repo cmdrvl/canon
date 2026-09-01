@@ -1,9 +1,8 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    canonical_home_cell_assignment_bytes, canonical_tile_reconciliation_bytes,
-    canonical_tile_work_unit_bytes, materialize_home_cells, materialize_tile_work_unit,
-    reconcile_tile_decisions, regional_inventory_planning_hash, regional_inventory_semantic_hash,
+    CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
+    CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
     GeoBoundedGeography, GeoControlEntityLevel, GeoCoveragePredicate, GeoEgressClass,
     GeoEvidenceClass, GeoHomeCellParity, GeoHomeCellRow, GeoHomeCellRowsRequest,
     GeoIdentityParticipation, GeoLicenseClass, GeoLocalAcquisitionState, GeoNativeEntityScope,
@@ -11,8 +10,9 @@ use canon::geo::{
     GeoSourceRelease, GeoTemporalScope, GeoTileDecisionBatch, GeoTileDecisionMember,
     GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileErrorCode, GeoTileFeatureRef,
     GeoTileInventoryLineage, GeoTilePlacement, GeoTileReconciliationRequest, GeoTileSourceBinding,
-    GeoTileWorkRequest, CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
-    CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
+    GeoTileWorkRequest, canonical_home_cell_assignment_bytes, canonical_tile_reconciliation_bytes,
+    canonical_tile_work_unit_bytes, materialize_home_cells, materialize_tile_work_unit,
+    reconcile_tile_decisions, regional_inventory_planning_hash, regional_inventory_semantic_hash,
 };
 use h3o::{CellIndex, Resolution};
 use std::{collections::BTreeSet, str::FromStr};
@@ -378,10 +378,12 @@ fn tile_work_unit_is_center_plus_controlled_halo_and_byte_deterministic() {
     );
     assert_eq!(artifact.features[0].source.source_instance_id, "building");
     assert_eq!(artifact.features[0].placement, GeoTilePlacement::Center);
-    assert!(artifact
-        .features
-        .iter()
-        .any(|feature| feature.placement == GeoTilePlacement::Halo));
+    assert!(
+        artifact
+            .features
+            .iter()
+            .any(|feature| feature.placement == GeoTilePlacement::Halo)
+    );
 }
 
 #[test]
@@ -846,10 +848,12 @@ fn home_cells_bind_representative_points_and_report_parity_without_becoming_trut
     assert_eq!(artifact.summary.unclaimed, 1);
     assert_eq!(artifact.summary.max_minimum_stability_halo_k, 0);
     assert_eq!(artifact.tile_work_features.len(), 3);
-    assert!(artifact
-        .features
-        .iter()
-        .all(|feature| feature.home_cell == expected));
+    assert!(
+        artifact
+            .features
+            .iter()
+            .all(|feature| feature.home_cell == expected)
+    );
     assert!(artifact.features.iter().any(|feature| {
         feature.feature_id == "mismatch" && feature.parity == GeoHomeCellParity::Mismatch
     }));
@@ -1006,18 +1010,22 @@ fn adjacent_tiles_reconcile_one_owner_without_duplicate_minting() {
     assert_eq!(artifact.owned_decisions, 1);
     assert_eq!(artifact.discarded_halo_proposals, 1);
     assert_eq!(artifact.batch_receipts.len(), 2);
-    assert!(artifact
-        .batch_receipts
-        .iter()
-        .all(|receipt| receipt.work_unit_blake3.starts_with("blake3:")));
+    assert!(
+        artifact
+            .batch_receipts
+            .iter()
+            .all(|receipt| receipt.work_unit_blake3.starts_with("blake3:"))
+    );
     assert_eq!(artifact.decisions[0].proposal_copies, 2);
     assert_eq!(
         artifact.decisions[0].owner_cell,
         std::cmp::min(first, second).to_string()
     );
-    assert!(artifact.decisions[0]
-        .decision_id
-        .starts_with("geo-decision:"));
+    assert!(
+        artifact.decisions[0]
+            .decision_id
+            .starts_with("geo-decision:")
+    );
     assert_eq!(
         canonical_tile_reconciliation_bytes(&artifact).unwrap(),
         canonical_tile_reconciliation_bytes(&repeated).unwrap()

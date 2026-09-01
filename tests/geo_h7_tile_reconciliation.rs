@@ -1,16 +1,16 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    canonical_composition_bytes, canonical_tile_reconciliation_bytes, materialize_tile_work_unit,
-    reconcile_tile_decisions, solve_composition, GeoBuildingCandidate, GeoCompositionArtifact,
-    GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse, GeoControlEntityLevel,
-    GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind,
+    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
+    CANON_GEO_TILE_WORK_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate,
+    GeoCompositionArtifact, GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse,
+    GeoControlEntityLevel, GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind,
     GeoIdentityParticipation, GeoNativeEntityScope, GeoPlanInventoryRef, GeoSourceRelease,
     GeoTileDecisionBatch, GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics,
     GeoTileErrorCode, GeoTileFeatureRef, GeoTilePlacement, GeoTileReconciliationRequest,
-    GeoTileSourceBinding, GeoTileWorkRequest, CANON_GEO_COMPOSITION_REQUEST_VERSION,
-    CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
-    DEFAULT_MAX_MATERIALIZED_MODELS,
+    GeoTileSourceBinding, GeoTileWorkRequest, canonical_composition_bytes,
+    canonical_tile_reconciliation_bytes, materialize_tile_work_unit, reconcile_tile_decisions,
+    solve_composition,
 };
 use h3o::CellIndex;
 use std::str::FromStr;
@@ -171,10 +171,12 @@ fn exact_section_payload(parcel_id: &str, building_id: &str) -> (String, GeoComp
     assert!(artifact.summary.residual_model_count_complete);
     assert_eq!(artifact.summary.residual_model_count, 1);
     assert!(artifact.backbone_complete);
-    assert!(artifact
-        .factorization
-        .iter()
-        .all(|component| component.exact));
+    assert!(
+        artifact
+            .factorization
+            .iter()
+            .all(|component| component.exact)
+    );
     let bytes = canonical_composition_bytes(&artifact).expect("composition artifact serializes");
     (
         format!("blake3:{}", blake3::hash(&bytes).to_hex()),
@@ -312,8 +314,10 @@ fn h7_reconciliation_refuses_conflicts_missing_owners_and_halo_only_decisions() 
     assert_eq!(error.code, GeoTileErrorCode::OrphanedDecision);
 
     let owner_cell = owner.to_string();
-    assert!(halo_only
-        .batches
-        .iter()
-        .any(|batch| batch.work_unit.center_cell == owner_cell));
+    assert!(
+        halo_only
+            .batches
+            .iter()
+            .any(|batch| batch.work_unit.center_cell == owner_cell)
+    );
 }
