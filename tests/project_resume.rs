@@ -360,6 +360,36 @@ fn manifest_head_rejects_unknown_fields() {
 }
 
 #[test]
+fn manifest_head_rejects_noncanonical_bytes_before_execution() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan_a = chain_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor_a = DeterministicExecutor::default();
+    run_project_plan(&plan_a, &policy, &mut executor_a).expect("revision A runs");
+    let head_path = project_run_manifest_head_path(&policy).expect("head path");
+    let value: Value =
+        serde_json::from_slice(&fs::read(&head_path).expect("head bytes")).expect("head json");
+    fs::write(
+        &head_path,
+        serde_json::to_vec_pretty(&value).expect("noncanonical head bytes"),
+    )
+    .expect("rewrite noncanonical head");
+
+    let head_error =
+        read_project_run_manifest_head(&policy).expect_err("noncanonical head refuses readback");
+    assert_eq!(head_error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(head_error.message.contains("head") && head_error.message.contains("not canonical"));
+
+    let mut plan_b = plan_a;
+    change_alpha_identity(&mut plan_b);
+    let mut executor_b = DeterministicExecutor::default();
+    let run_error = run_project_plan(&plan_b, &policy, &mut executor_b)
+        .expect_err("noncanonical head refuses before execution");
+    assert_eq!(run_error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(executor_b.calls.is_empty());
+}
+
+#[test]
 fn manifest_head_rejects_poisoned_previous_revision_before_execution() {
     let temp = tempfile::tempdir().expect("tempdir");
     let plan_a = chain_plan();

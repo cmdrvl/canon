@@ -615,6 +615,16 @@ pub fn read_project_run_manifest_head(
         "project run manifest head revision",
     )?;
     let canonical_bytes = canonical_project_run_manifest_revision_bytes(&revision)?;
+    if bytes != canonical_bytes {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            None,
+            format!(
+                "project run manifest head {} is not canonical",
+                path.display()
+            ),
+        ));
+    }
     if immutable_bytes != canonical_bytes {
         return Err(ProjectRunError::new(
             ProjectRunErrorCode::ReceiptPoisoning,

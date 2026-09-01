@@ -1129,8 +1129,15 @@ fn validate_inventory_advancement_for_replan(
 
     let acquisition_request =
         validate_advancement_matches_base_acquisition(base_plan, advancement)?;
-    let request_subset_hash = digest_json(&acquisition_request.subset)?;
-    validate_replan_ref("bounded_subset", &request_subset_hash, &bounded_subset_hash)?;
+    if canonicalize_replan_subset(&advancement.bounded_subset)
+        != canonicalize_replan_subset(&acquisition_request.subset)
+    {
+        return Err(GeoPlanError::new(
+            GeoPlanErrorCode::ContractViolation,
+            "Geo replan bounded subset must match the base acquisition request",
+            [("field", "bounded_subset")],
+        ));
+    }
     validate_source_advancements(acquisition_request, &advanced_inventory, advancement)?;
     validate_advanced_inventory_transition(base_inventory, &advanced_inventory, advancement)?;
     Ok(advanced_inventory)
@@ -2514,6 +2521,15 @@ fn external_request_sort_key(request: &GeoPlanExternalRequest) -> String {
         }
         GeoPlanExternalRequest::DiscoveryGap { gap } => format!("2:{}", gap.gap_id),
     }
+}
+
+fn canonicalize_replan_subset(subset: &GeoBoundedSubset) -> GeoBoundedSubset {
+    let mut canonical = subset.clone();
+    canonical.h3_cells.sort();
+    canonical.h3_cells.dedup();
+    canonical.predicates.sort();
+    canonical.predicates.dedup();
+    canonical
 }
 
 fn evidence_class_field(class: GeoEvidenceClass) -> &'static str {

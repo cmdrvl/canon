@@ -19,10 +19,11 @@ use canon::geo::{
     GeoRegionalInventoryAdvancement, GeoRegionalSourceInstance, GeoReleaseSelectionMode,
     GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoSatisfactionAssignment,
     GeoSatisfactionFileBinding, GeoSatisfactionInput, GeoSatisfactionStatus, GeoSourceAvailability,
-    GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass, GeoTelemetryDeclaration,
-    GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope, GeoValueOrigin,
-    GeoWarehouseBuildingParcelRow, GeoWarehouseRowsRequest, canonical_geo_plan_bytes,
-    capabilities_semantic_hash, compile_geo_plan, default_geo_capabilities,
+    GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass, GeoSubsetPredicate,
+    GeoSubsetPredicateKind, GeoTelemetryDeclaration, GeoTelemetryMetric,
+    GeoTelemetrySemanticEffect, GeoTemporalScope, GeoValueOrigin, GeoWarehouseBuildingParcelRow,
+    GeoWarehouseRowsRequest, canonical_geo_plan_bytes, capabilities_semantic_hash,
+    compile_geo_plan, default_geo_capabilities, geo_acquisition_request_id,
     geo_acquisition_request_semantic_hash, geo_discovery_request_id, geo_plan_semantic_hash,
     geo_regional_inventory_advancement_semantic_hash, regional_inventory_planning_hash,
     regional_inventory_semantic_hash, replan_geo_plan_from_inventory_advancement,
@@ -813,6 +814,66 @@ fn replan_rejects_self_consistent_bounded_subset_drift_from_acquisition_request(
         error.detail.get("field").map(String::as_str),
         Some("bounded_subset")
     );
+}
+
+#[test]
+fn replan_accepts_nonsemantic_bounded_subset_order_from_validated_receipt() {
+    let question = question(false);
+    let base_inventory = inventory("remote-building-source", GeoSourceAvailability::Missing);
+    let capabilities = default_geo_capabilities().expect("capabilities");
+    let profile = GeoCompositionProfile::building();
+    let budget = budget();
+    let mut base_plan = compile_geo_plan(GeoPlanRequest {
+        question: question.clone(),
+        capabilities: capabilities.clone(),
+        inventory: base_inventory.clone(),
+        profile: profile.clone(),
+        budget: budget.clone(),
+    })
+    .expect("base acquisition plan");
+    let GeoPlanExternalRequest::Acquisition { request, .. } = &mut base_plan.external_requests[0]
+    else {
+        panic!("fixture plan must contain an acquisition request");
+    };
+    request.subset.predicates.push(GeoSubsetPredicate {
+        predicate_id: "question_bounded_geography.secondary".to_string(),
+        kind: GeoSubsetPredicateKind::AdministrativeBoundary,
+        expression: request.bounded_geography.geography_id.clone(),
+    });
+    request.subset.predicates.sort();
+    request.request_id = geo_acquisition_request_id(request).expect("refresh request id");
+    base_plan.semantic_hash = geo_plan_semantic_hash(&base_plan).expect("refresh plan hash");
+    base_plan.plan_id = format!(
+        "{}:{}",
+        CANON_GEO_PLAN_VERSION,
+        base_plan.semantic_hash.trim_start_matches("blake3:")
+    );
+    validate_geo_plan(&base_plan).expect("expanded acquisition plan validates");
+
+    let mut advancement = validated_inventory_advancement(&base_plan, &base_inventory);
+    advancement.bounded_subset.predicates.reverse();
+    advancement.bounded_subset_hash = format!(
+        "blake3:{}",
+        blake3::hash(
+            &serde_json::to_vec(&advancement.bounded_subset).expect("bounded subset serializes")
+        )
+        .to_hex()
+    );
+    refresh_advancement_identity(&mut advancement);
+
+    let replanned = replan_geo_plan_from_inventory_advancement(GeoPlanReplanRequest {
+        base_plan,
+        base_inventory,
+        question,
+        capabilities,
+        profile,
+        budget,
+        inventory_advancement: advancement,
+    })
+    .expect("nonsemantic subset order must remain admissible");
+
+    assert_eq!(replanned.status, GeoPlanStatus::Planned);
+    assert_eq!(replanned.project_plan.nodes.len(), 5);
 }
 
 #[test]
