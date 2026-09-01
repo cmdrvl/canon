@@ -249,6 +249,19 @@ fn plans_one_bounded_factorized_building_chain_over_the_shared_project_dag() {
         .exact_solve_scope
         .as_ref()
         .expect("solve names its bounded section and incidence-component scope");
+    let solve_project_node = plan
+        .project_plan
+        .nodes
+        .iter()
+        .find(|node| node.node_id == solve.project_node_id)
+        .expect("solve project node");
+    assert_eq!(
+        solve_project_node.dependencies,
+        vec![
+            "geo.building.compile_evidence".to_string(),
+            "geo.building.section".to_string()
+        ]
+    );
     assert_eq!(
         scope.bounded_section.producer_node_id,
         "geo.building.section"

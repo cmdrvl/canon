@@ -9,20 +9,20 @@
 
 use crate::{
     geo::{
-        canonical_composition_bytes, canonical_evidence_compilation_bytes,
-        canonical_home_cell_assignment_bytes, canonical_materialized_evidence_request_bytes,
-        canonical_tile_work_unit_bytes, compile_evidence, materialize_home_cells,
-        materialize_tile_work_unit, materialize_warehouse_rows, solve_composition,
-        validate_evidence_compilation_artifact, GeoCompositionArtifact, GeoControlEntityLevel,
-        GeoEntityLevel, GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
-        GeoEvidenceCompilationRequest, GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest,
-        GeoPlan, GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanProducedArtifactRef,
-        GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoWarehouseRowsRequest,
         CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
         CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
         CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
-        CANON_GEO_WAREHOUSE_ROWS_VERSION,
+        CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoCompositionArtifact, GeoControlEntityLevel,
+        GeoEntityLevel, GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
+        GeoEvidenceCompilationRequest, GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest,
+        GeoPlan, GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanProducedArtifactRef,
+        GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoWarehouseRowsRequest,
+        canonical_composition_bytes, canonical_evidence_compilation_bytes,
+        canonical_home_cell_assignment_bytes, canonical_materialized_evidence_request_bytes,
+        canonical_tile_work_unit_bytes, compile_evidence, materialize_home_cells,
+        materialize_tile_work_unit, materialize_warehouse_rows, solve_composition,
+        validate_evidence_compilation_artifact,
     },
     project::{
         ProjectDependencyOutput, ProjectNodeExecutionContext, ProjectNodeExecutionResult,
@@ -31,7 +31,7 @@ use crate::{
         ProjectRunErrorCode, ProjectRunResult,
     },
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
@@ -164,6 +164,7 @@ impl GeoProjectNodeExecutor {
     }
 
     pub fn bind_geo_plan(&mut self, plan: &GeoPlan) {
+        self.dependency_outputs.clear();
         self.exact_solve_scopes = plan
             .geo_nodes
             .iter()
@@ -800,6 +801,20 @@ impl GeoProjectNodeExecutor {
         node: &ProjectPlanNode,
         artifact: &GeoPlanProducedArtifactRef,
     ) -> ProjectRunResult<&VerifiedGeoArtifact> {
+        if !node
+            .dependencies
+            .iter()
+            .any(|dependency| dependency == &artifact.producer_node_id)
+        {
+            return Err(error(
+                node,
+                ProjectRunErrorCode::ArtifactContract,
+                format!(
+                    "exact_solve_scope artifact {}:{} must be declared as a direct dependency of the solve node",
+                    artifact.producer_node_id, artifact.output_id
+                ),
+            ));
+        }
         self.required_dependency_artifact(
             node,
             &artifact.producer_node_id,
@@ -910,7 +925,9 @@ fn selected_control_level(
         other => Err(error(
             node,
             ProjectRunErrorCode::ArtifactContract,
-            format!("Geo executor cannot bind selected-grain rows for unsupported profile level {other:?}"),
+            format!(
+                "Geo executor cannot bind selected-grain rows for unsupported profile level {other:?}"
+            ),
         )),
     }
 }
@@ -1146,16 +1163,20 @@ impl GeoExecutorCommand {
         }
     }
 
-    fn expected_dependency(self) -> Option<(&'static str, &'static str)> {
+    fn expected_dependencies(self) -> &'static [(&'static str, &'static str)] {
         match self {
-            Self::MaterializeHomeCells => None,
-            Self::TileWork => Some(("home_cells", CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION)),
-            Self::MaterializeEvidence => Some(("section", CANON_GEO_TILE_WORK_UNIT_VERSION)),
+            Self::MaterializeHomeCells => &[],
+            Self::TileWork => &[("home_cells", CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION)],
+            Self::MaterializeEvidence => &[("section", CANON_GEO_TILE_WORK_UNIT_VERSION)],
             Self::CompileEvidence => {
-                Some(("materialize_evidence", CANON_GEO_EVIDENCE_REQUEST_VERSION))
+                &[("materialize_evidence", CANON_GEO_EVIDENCE_REQUEST_VERSION)]
             }
-            Self::Solve => Some(("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION)),
+            Self::Solve => &[("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION)],
         }
+    }
+
+    fn requires_exact_dependency_count(self) -> bool {
+        !matches!(self, Self::Solve)
     }
 
     fn name(self) -> &'static str {
@@ -1319,47 +1340,60 @@ fn validate_expected_dependency(
     command: GeoExecutorCommand,
     outputs: &BTreeMap<(String, String), VerifiedGeoArtifact>,
 ) -> ProjectRunResult<()> {
-    match command.expected_dependency() {
-        None if node.dependencies.is_empty() => Ok(()),
-        None => Err(error(
+    let expected = command.expected_dependencies();
+    if expected.is_empty() {
+        if node.dependencies.is_empty() {
+            return Ok(());
+        }
+        return Err(error(
             node,
             ProjectRunErrorCode::ArtifactContract,
             "Geo materialize-home-cells must start from explicit bindings, not dependency outputs",
-        )),
-        Some((output_id, contract)) => {
-            let [producer] = node.dependencies.as_slice() else {
-                return Err(error(
-                    node,
-                    ProjectRunErrorCode::ArtifactContract,
-                    format!(
-                        "Geo command {} requires exactly one immediate dependency",
-                        node.command
-                    ),
-                ));
-            };
-            let Some(artifact) = outputs.get(&(producer.to_string(), output_id.to_string())) else {
-                return Err(error(
-                    node,
-                    ProjectRunErrorCode::ExecutionFailed,
-                    format!(
-                        "Geo command {} is missing dependency output {producer}:{output_id}",
-                        node.command
-                    ),
-                ));
-            };
-            if artifact.contract != contract {
-                return Err(error(
-                    node,
-                    ProjectRunErrorCode::ArtifactContract,
-                    format!(
-                        "Geo dependency output {producer}:{output_id} must have contract {contract}, got {}",
-                        artifact.contract
-                    ),
-                ));
-            }
-            Ok(())
+        ));
+    }
+    if command.requires_exact_dependency_count() && node.dependencies.len() != expected.len() {
+        return Err(error(
+            node,
+            ProjectRunErrorCode::ArtifactContract,
+            format!(
+                "Geo command {} requires exactly {} direct dependency outputs",
+                node.command,
+                expected.len()
+            ),
+        ));
+    }
+    for (output_id, contract) in expected {
+        let matching = node
+            .dependencies
+            .iter()
+            .filter_map(|producer| {
+                outputs
+                    .get(&(producer.to_string(), (*output_id).to_string()))
+                    .map(|artifact| (producer, artifact))
+            })
+            .collect::<Vec<_>>();
+        let [(producer, artifact)] = matching.as_slice() else {
+            return Err(error(
+                node,
+                ProjectRunErrorCode::ExecutionFailed,
+                format!(
+                    "Geo command {} requires exactly one direct dependency output {output_id}",
+                    node.command
+                ),
+            ));
+        };
+        if artifact.contract != *contract {
+            return Err(error(
+                node,
+                ProjectRunErrorCode::ArtifactContract,
+                format!(
+                    "Geo dependency output {}:{output_id} must have contract {contract}, got {}",
+                    producer, artifact.contract
+                ),
+            ));
         }
     }
+    Ok(())
 }
 
 fn parse_json<T: DeserializeOwned>(

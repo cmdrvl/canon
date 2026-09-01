@@ -2065,7 +2065,14 @@ fn grain_project_stages(
     let mut dependency = None;
     for (suffix, kind, command, contract, stage) in stages {
         let node_id = format!("{prefix}.{suffix}");
-        let dependencies = dependency.iter().cloned().collect();
+        let dependencies = if matches!(stage, GeoPlanStage::FactorAndSolveExactResidual) {
+            vec![
+                format!("{prefix}.compile_evidence"),
+                format!("{prefix}.section"),
+            ]
+        } else {
+            dependency.iter().cloned().collect()
+        };
         let content_hash_inputs = if dependency.is_none() {
             input_refs.clone()
         } else {
@@ -2110,7 +2117,7 @@ fn grain_project_stages(
                 precondition(
                     GeoPlanGatePlane::Coverage,
                     GeoPlanGateStatus::StructurallyCompleteRelativeToInputs,
-                    "the solve consumes only the bounded section artifact",
+                    "the solve consumes the declared bounded section and compiled evidence artifacts",
                 ),
                 precondition(
                     GeoPlanGatePlane::CandidateReach,
@@ -2452,6 +2459,20 @@ fn validate_solve_scope(
         &scope.bounded_section.producer_node_id,
         &scope.evidence_compilation.producer_node_id,
     ] {
+        if !solve_project_node
+            .dependencies
+            .iter()
+            .any(|dependency| dependency == producer)
+        {
+            return Err(GeoPlanError::new(
+                GeoPlanErrorCode::ContractViolation,
+                "exact solve scope artifacts must be declared direct dependencies of the solve node",
+                [
+                    ("project_node_id", solve.project_node_id.as_str()),
+                    ("producer_node_id", producer.as_str()),
+                ],
+            ));
+        }
         if !project_node_is_ancestor(&plan.project_plan, producer, &solve.project_node_id) {
             return Err(GeoPlanError::new(
                 GeoPlanErrorCode::ContractViolation,

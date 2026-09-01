@@ -14,33 +14,35 @@ mod executor;
 
 use canon::{
     geo::{
-        materialize_warehouse_rows, GeoCompositionProfile, GeoControlEntityLevel, GeoEntityLevel,
-        GeoEvidenceClaimRole, GeoEvidenceRecordRef, GeoHomeCellRow, GeoHomeCellRowsRequest,
-        GeoIdentityParticipation, GeoNativeEntityScope, GeoPlanComponentScope,
-        GeoPlanExactSolveScope, GeoPlanInventoryRef, GeoPlanProducedArtifactRef, GeoRhoBasis,
-        GeoRhoContract, GeoRhoObservationKind, GeoSourceRelease, GeoTileFeatureRef,
-        GeoTileSourceBinding, GeoTileWorkRequest, GeoWarehouseBuildingParcelRow,
-        GeoWarehouseEvidenceRow, GeoWarehouseParcelRow, GeoWarehouseRowsRequest,
         CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
         CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
-        CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS,
+        CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCompositionProfile,
+        GeoControlEntityLevel, GeoEntityLevel, GeoEvidenceClaimRole, GeoEvidenceRecordRef,
+        GeoHomeCellRow, GeoHomeCellRowsRequest, GeoIdentityParticipation, GeoNativeEntityScope,
+        GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanInventoryRef,
+        GeoPlanProducedArtifactRef, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
+        GeoSourceRelease, GeoTileFeatureRef, GeoTileSourceBinding, GeoTileWorkRequest,
+        GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow, GeoWarehouseParcelRow,
+        GeoWarehouseRowsRequest, canonical_evidence_compilation_bytes,
+        canonical_tile_work_unit_bytes, compile_evidence, materialize_tile_work_unit,
+        materialize_warehouse_rows,
     },
     project::{
-        compile_extension_project_plan, digest_bytes, read_node_receipt, run_project_plan,
-        ProjectExtensionDagNode, ProjectExtensionDagOutput, ProjectExtensionDagRequest,
-        ProjectNodeExecutionContext, ProjectNodeExecutor, ProjectPlan, ProjectPlanErrorCode,
-        ProjectPlanHashRef, ProjectPlanNodeClass, ProjectPlanNodeKind,
+        ProjectDependencyOutput, ProjectExtensionDagNode, ProjectExtensionDagOutput,
+        ProjectExtensionDagRequest, ProjectNodeExecutionContext, ProjectNodeExecutor, ProjectPlan,
+        ProjectPlanErrorCode, ProjectPlanHashRef, ProjectPlanNodeClass, ProjectPlanNodeKind,
         ProjectPlanOutputMaterialization, ProjectPlanRefusalCondition, ProjectPlanSideEffect,
         ProjectPlanSideEffectKind, ProjectRunFailurePolicy, ProjectRunNodeOutcome,
-        ProjectRunPolicy,
+        ProjectRunPolicy, compile_extension_project_plan, digest_bytes, read_node_receipt,
+        run_project_plan,
     },
 };
 use executor::{
-    GeoExecutorDependencyOutput, GeoExecutorInputBinding, GeoProjectNodeExecutor,
     GEO_COMPILE_EVIDENCE_COMMAND, GEO_MATERIALIZE_EVIDENCE_COMMAND,
     GEO_MATERIALIZE_HOME_CELLS_COMMAND, GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID,
-    GEO_SOLVE_COMMAND, GEO_TILE_WORK_COMMAND,
+    GEO_SOLVE_COMMAND, GEO_TILE_WORK_COMMAND, GeoExecutorDependencyOutput, GeoExecutorInputBinding,
+    GeoProjectNodeExecutor,
 };
 use h3o::CellIndex;
 use serde_json::Value;
@@ -90,7 +92,10 @@ fn geo_project_node_executor_runs_the_five_planner_leaf_chain() {
             .keys()
             .cloned()
             .collect::<Vec<_>>(),
-        vec!["geo.building.compile_evidence".to_string()]
+        vec![
+            "geo.building.compile_evidence".to_string(),
+            "geo.building.section".to_string()
+        ]
     );
     assert_eq!(
         solve_receipt.deterministic_usage["bounded_section_work_cells"],
@@ -141,14 +146,34 @@ fn geo_project_node_executor_resumes_with_verified_dependency_outputs() {
         vec!["geo.building.solve".to_string()]
     );
     assert!(resumed.failed_nodes.is_empty());
-    assert!(resumed
-        .resumed_nodes
-        .contains(&"geo.building.home_cells".to_string()));
-    assert!(resumed
-        .resumed_nodes
-        .contains(&"geo.building.compile_evidence".to_string()));
+    assert!(
+        resumed
+            .resumed_nodes
+            .contains(&"geo.building.home_cells".to_string())
+    );
+    assert!(
+        resumed
+            .resumed_nodes
+            .contains(&"geo.building.compile_evidence".to_string())
+    );
+    assert!(
+        resumed
+            .resumed_nodes
+            .contains(&"geo.building.section".to_string())
+    );
     let solve_receipt =
         read_node_receipt(&receipt_path(temp.path(), "geo.building.solve")).expect("receipt");
+    assert_eq!(
+        solve_receipt
+            .dependency_semantic_hashes
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec![
+            "geo.building.compile_evidence".to_string(),
+            "geo.building.section".to_string()
+        ]
+    );
     assert_eq!(solve_receipt.deterministic_usage["input_binding_count"], 0);
     assert_eq!(
         solve_receipt.deterministic_usage["bounded_section_work_cells"],
@@ -169,7 +194,9 @@ fn geo_executor_refuses_to_infer_a_section_outside_exact_solve_scope() {
         run_project_plan(&plan, &policy(temp.path()), &mut executor).expect("failure report");
 
     assert_eq!(report.failed_nodes, vec!["geo.building.solve".to_string()]);
-    assert!(node_report_reason(&report, "geo.building.solve").contains("geo.other.section:section"));
+    assert!(
+        node_report_reason(&report, "geo.building.solve").contains("geo.other.section:section")
+    );
     assert!(
         !temp.path().join("geo/building/solve.json").exists(),
         "scope mismatch must refuse before publishing a solve artifact"
@@ -631,8 +658,10 @@ fn geo_executor_refuses_direct_compile_request_binding_before_stale_reuse() {
         !temp.path().join("geo/building/solve.json").exists(),
         "failed compile must not publish a solve artifact"
     );
-    assert!(node_report_reason(&report, "geo.building.compile_evidence")
-        .contains("direct input bindings are forbidden"));
+    assert!(
+        node_report_reason(&report, "geo.building.compile_evidence")
+            .contains("direct input bindings are forbidden")
+    );
 }
 
 #[test]
@@ -663,8 +692,108 @@ fn geo_executor_refuses_direct_solve_binding_before_publication() {
         !temp.path().join("geo/building/solve.json").exists(),
         "direct solve input must not publish a solve artifact"
     );
-    assert!(node_report_reason(&report, "geo.building.solve")
-        .contains("direct input bindings are forbidden"));
+    assert!(
+        node_report_reason(&report, "geo.building.solve")
+            .contains("direct input bindings are forbidden")
+    );
+}
+
+#[test]
+fn geo_executor_refuses_stale_preloaded_section_without_current_direct_dependency() {
+    let plan = five_node_plan();
+    let mut solve_node = plan
+        .nodes
+        .iter()
+        .find(|node| node.node_id == "geo.building.solve")
+        .expect("solve node")
+        .clone();
+    solve_node.dependencies = vec!["geo.building.compile_evidence".to_string()];
+    let compile_bytes = compile_evidence_bytes();
+    let mut executor = executor_with_scope();
+    executor
+        .insert_dependency_output(executor_dependency_output(
+            "geo.building.section",
+            "section",
+            CANON_GEO_TILE_WORK_UNIT_VERSION,
+            stale_same_id_section_bytes(),
+        ))
+        .expect("stale preloaded section is typed");
+
+    let error = executor
+        .execute(
+            &solve_node,
+            &ProjectNodeExecutionContext {
+                node_id: solve_node.node_id.clone(),
+                dependency_semantic_hashes: BTreeMap::from([(
+                    "geo.building.compile_evidence".to_string(),
+                    digest_bytes(&compile_bytes),
+                )]),
+                dependency_outputs: BTreeMap::from([(
+                    "geo.building.compile_evidence".to_string(),
+                    vec![project_dependency_output("compile_evidence", compile_bytes)],
+                )]),
+            },
+        )
+        .expect_err("stale scoped section not declared as a direct dependency refuses");
+
+    assert!(error.message.contains("direct dependency"));
+    assert!(error.message.contains("geo.building.section:section"));
+}
+
+#[test]
+fn geo_executor_uses_fresh_direct_section_dependency_over_preloaded_stale_state() {
+    let plan = five_node_plan();
+    let solve_node = plan
+        .nodes
+        .iter()
+        .find(|node| node.node_id == "geo.building.solve")
+        .expect("solve node")
+        .clone();
+    let compile_bytes = compile_evidence_bytes();
+    let section_bytes = section_bytes(&tile_work_request());
+    let mut executor = executor_with_scope();
+    executor
+        .insert_dependency_output(executor_dependency_output(
+            "geo.building.section",
+            "section",
+            CANON_GEO_TILE_WORK_UNIT_VERSION,
+            stale_same_id_section_bytes(),
+        ))
+        .expect("stale preloaded section is typed");
+
+    let result = executor
+        .execute(
+            &solve_node,
+            &ProjectNodeExecutionContext {
+                node_id: solve_node.node_id.clone(),
+                dependency_semantic_hashes: BTreeMap::from([
+                    (
+                        "geo.building.compile_evidence".to_string(),
+                        digest_bytes(&compile_bytes),
+                    ),
+                    (
+                        "geo.building.section".to_string(),
+                        digest_bytes(&section_bytes),
+                    ),
+                ]),
+                dependency_outputs: BTreeMap::from([
+                    (
+                        "geo.building.compile_evidence".to_string(),
+                        vec![project_dependency_output("compile_evidence", compile_bytes)],
+                    ),
+                    (
+                        "geo.building.section".to_string(),
+                        vec![project_dependency_output("section", section_bytes)],
+                    ),
+                ]),
+            },
+        )
+        .expect("fresh direct section dependency overwrites stale preloaded state");
+
+    assert_eq!(result.deterministic_usage["bounded_section_work_cells"], 7);
+    let solve_bytes = result.outputs.get("solve").expect("solve output exists");
+    let solve: Value = serde_json::from_slice(solve_bytes).expect("solve output parses");
+    assert_eq!(solve["status"], "resolved");
 }
 
 fn binding<T: serde::Serialize>(
@@ -748,6 +877,55 @@ fn preload_dependency_output(
         .expect("dependency output validates before resume");
 }
 
+fn compile_evidence_bytes() -> Vec<u8> {
+    let request = materialize_warehouse_rows(&warehouse_rows()).expect("warehouse rows compile");
+    let artifact = compile_evidence(&request).expect("evidence compiles");
+    canonical_evidence_compilation_bytes(&artifact).expect("compile artifact serializes")
+}
+
+fn section_bytes(request: &GeoTileWorkRequest) -> Vec<u8> {
+    let artifact = materialize_tile_work_unit(request).expect("tile work materializes");
+    canonical_tile_work_unit_bytes(&artifact).expect("section artifact serializes")
+}
+
+fn stale_same_id_section_bytes() -> Vec<u8> {
+    let mut source = building_source();
+    source.release.release_id = "stale-fixture-release-2026-08-31".to_string();
+    source.release.release_digest = format!("blake3:{}", blake3::hash(b"stale-release").to_hex());
+    source.inventory_ref.semantic_hash =
+        format!("blake3:{}", blake3::hash(b"stale-semantic").to_hex());
+    source.inventory_ref.planning_hash =
+        format!("blake3:{}", blake3::hash(b"stale-planning").to_hex());
+    let mut request = tile_work_request_for(source, &["building-a", "building-b"]);
+    request.halo_k = 0;
+    request.max_work_cells = 1;
+    section_bytes(&request)
+}
+
+fn project_dependency_output(output_id: &str, bytes: Vec<u8>) -> ProjectDependencyOutput {
+    ProjectDependencyOutput {
+        output_id: output_id.to_string(),
+        content_digest: digest_bytes(&bytes),
+        byte_count: bytes.len() as u64,
+        bytes,
+    }
+}
+
+fn executor_dependency_output(
+    producer_node_id: &str,
+    output_id: &str,
+    contract: &str,
+    bytes: Vec<u8>,
+) -> GeoExecutorDependencyOutput {
+    GeoExecutorDependencyOutput {
+        producer_node_id: producer_node_id.to_string(),
+        output_id: output_id.to_string(),
+        contract: contract.to_string(),
+        content_hash: digest_bytes(&bytes),
+        bytes,
+    }
+}
+
 fn policy(workspace: &Path) -> ProjectRunPolicy {
     let mut policy = ProjectRunPolicy::new(workspace, "work");
     policy.failure_policy = ProjectRunFailurePolicy::FailFast;
@@ -799,7 +977,10 @@ fn five_node_plan() -> ProjectPlan {
             "geo.building.solve",
             ProjectPlanNodeKind::Solve,
             GEO_SOLVE_COMMAND,
-            vec!["geo.building.compile_evidence".to_string()],
+            vec![
+                "geo.building.compile_evidence".to_string(),
+                "geo.building.section".to_string(),
+            ],
             "solve",
             "geo/building/solve.json",
             Vec::new(),
