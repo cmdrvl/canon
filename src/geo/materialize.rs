@@ -25,7 +25,7 @@ use super::{
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
-use serde::{Deserializer, de};
+use serde::{Deserializer, de, de::DeserializeOwned};
 use serde_json::Value as JsonValue;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -36,6 +36,8 @@ use std::{
 pub const CANON_GEO_WAREHOUSE_ROWS_VERSION: &str = "canon_geo_warehouse_rows.v0";
 pub const CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION: &str =
     "canon_geo_h7_staging_source_record_bytes_batch.v0";
+pub const CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION: &str =
+    "canon_geo_h7_pip_block_population_batch.v0";
 pub const CANON_GEO_H7_POPULATION_ROWS_VERSION: &str = "canon_geo_h7_population_rows.v0";
 pub const CANON_GEO_H7_POPULATION_VERSION: &str = "canon_geo_h7_population.v0";
 pub const CANON_GEO_H7_ACRIS_RELEASE_DT: &str = "2026-08-10";
@@ -65,6 +67,9 @@ const CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_ROW_CONTRACT: &str =
     "h7_staging_source_record_bytes_export_row.v0";
 const CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_ROW_KIND: &str = "source_record_payload_release_row";
 const CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_GUARD_ROW_KIND: &str = "guard_failure";
+const CANON_GEO_H7_PIP_BLOCK_POPULATION_ROW_CONTRACT: &str =
+    "h7_staging_pip_block_population_export_row.v0";
+const CANON_GEO_H7_PIP_BLOCK_POPULATION_ROW_KIND: &str = "accepted_release_candidate_set";
 const CANON_GEO_H7_DERIVED_SOURCE_RECORD_PAYLOAD_VERSION: &str =
     "h7_derived_source_record_payload.v0";
 const CANON_GEO_H7_DERIVED_SOURCE_RECORD_CLASS: &str = "derived_immutable_evidence_record";
@@ -124,6 +129,7 @@ pub struct GeoWarehouseRowsRequest {
 #[serde(rename_all = "snake_case")]
 pub enum GeoH7ResultMode {
     Live,
+    Observed,
     Replay,
 }
 
@@ -155,6 +161,7 @@ pub enum GeoH7CandidateReachStatus {
 #[serde(rename_all = "snake_case")]
 pub enum GeoH7PopulationScope {
     FixtureSubset,
+    ObservedSnapshot,
     RetainedComplete,
     LiveComplete,
 }
@@ -255,6 +262,18 @@ where
     String::deserialize(deserializer).map(Some)
 }
 
+fn deserialize_h7_json_or_value<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    let value = JsonValue::deserialize(deserializer)?;
+    match value {
+        JsonValue::String(text) => serde_json::from_str(&text).map_err(de::Error::custom),
+        value => serde_json::from_value(value).map_err(de::Error::custom),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoH7StagingEvidenceRecordRef {
@@ -339,6 +358,11 @@ pub struct GeoH7PopulationProvenance {
     pub empirical_discrepancies: Vec<GeoH7EmpiricalDiscrepancy>,
     pub row_cap: u64,
     pub observed_rows: u64,
+    /// Content binding for a successful external result whose execution
+    /// channel did not return a durable query identifier. This never upgrades
+    /// an observed snapshot to a cited/live-complete result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_payload_blake3: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -421,6 +445,201 @@ pub struct GeoH7StagingSourceRecordBytesBatchRequest {
     pub max_cases: usize,
     pub max_assignments: u64,
     pub max_materialized_models: u64,
+}
+
+/// Offline adapter input for the bounded H.7 PIP-block population export.
+///
+/// The warehouse/MCP result already carries candidate locators, geometry
+/// hashes, ACRIS row locators, and the complete 71-subject denominators. Canon
+/// derives immutable source-record digests from those exported values locally,
+/// avoiding a second warehouse query whose only job is JSON/base64 assembly.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoH7PipBlockPopulationBatchRequest {
+    pub version: String,
+    pub population_scope: GeoH7PopulationScope,
+    pub provenance: GeoH7PopulationProvenance,
+    pub plane_denominators: Vec<GeoH7PlaneDenominator>,
+    pub staging_rows: Vec<GeoH7PipBlockPopulationRow>,
+    pub max_cases: usize,
+    pub max_assignments: u64,
+    pub max_materialized_models: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoH7PipBlockCountyBoroughEdge {
+    pub filed_county: String,
+    pub filed_borough: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoH7PipBlockLegalSourceRecord {
+    pub source_record_id: String,
+    pub raw_csv_sha256: String,
+    pub filename: String,
+    pub legal_bbl: String,
+    pub filed_borough: u8,
+}
+
+/// One accepted subject/release row from
+/// `h7_staging_pip_block_population_export.sql`.
+///
+/// Snowflake VARIANT values arrive either as JSON values or as JSON strings,
+/// depending on the MCP transport. The custom deserializer accepts both while
+/// all scalar fields remain strictly typed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoH7PipBlockPopulationRow {
+    #[serde(alias = "ROW_CONTRACT")]
+    pub row_contract: String,
+    #[serde(alias = "ROW_KIND")]
+    pub row_kind: String,
+    #[serde(alias = "GUARD_STATUS")]
+    pub guard_status: String,
+    #[serde(default, alias = "REFUSAL_REASON")]
+    pub refusal_reason: Option<String>,
+    #[serde(alias = "ACCEPTED_TRUTH_QUERY_ID")]
+    pub accepted_truth_binding: String,
+    #[serde(alias = "LOAN_KEY")]
+    pub loan_key: String,
+    #[serde(alias = "TRUTH_PLANE")]
+    pub truth_plane: GeoTruthPlane,
+    #[serde(alias = "ASSOCIATION_PLANE")]
+    pub association_plane: GeoH7AssociationPlane,
+    #[serde(alias = "MAPPLUTO_RELEASE")]
+    pub mappluto_release: String,
+    #[serde(alias = "MAPPLUTO_RELEASE_DT")]
+    pub mappluto_release_dt: String,
+    #[serde(alias = "MAPPLUTO_VARIANT")]
+    pub mappluto_variant: String,
+    #[serde(alias = "BRIDGE_BUILD_ID")]
+    pub bridge_build_id: String,
+    #[serde(alias = "ACRIS_RELEASE_DT")]
+    pub acris_release_dt: String,
+    #[serde(alias = "COLLATERAL_SCOPE")]
+    pub collateral_scope: String,
+    #[serde(alias = "ACCEPTED_PLANE_ELIGIBLE_LOANS")]
+    pub accepted_plane_eligible_loans: u64,
+    #[serde(alias = "ACCEPTED_PLANE_LEGAL_CANDIDATE_LOANS")]
+    pub accepted_plane_legal_candidate_loans: u64,
+    #[serde(alias = "ACCEPTED_PLANE_LEGAL_CONFIRMED_CANDIDATE_LOANS")]
+    pub accepted_plane_legal_confirmed_candidate_loans: u64,
+    #[serde(alias = "ACCEPTED_PLANE_ACCEPTED_LOANS")]
+    pub accepted_plane_accepted_loans: u64,
+    #[serde(alias = "ACCEPTED_PLANE_AMBIGUOUS_LOANS")]
+    pub accepted_plane_ambiguous_loans: u64,
+    #[serde(alias = "ACCEPTED_PLANE_CANDIDATE_WITHOUT_LEGAL_LOANS")]
+    pub accepted_plane_candidate_without_legal_loans: u64,
+    #[serde(alias = "ACCEPTED_PLANE_NO_CANDIDATE_LOANS")]
+    pub accepted_plane_no_candidate_loans: u64,
+    #[serde(alias = "ACCEPTED_PLANE_SELECTED_MULTI_PARCEL_LOANS")]
+    pub accepted_plane_selected_multi_parcel_loans: u64,
+    #[serde(alias = "WHOLE_ACCEPTED_LOANS")]
+    pub whole_accepted_loans: u64,
+    #[serde(alias = "WHOLE_RELEASE_ROWS")]
+    pub whole_release_rows: u64,
+    #[serde(alias = "WHOLE_ZERO_CANDIDATE_RELEASE_ROWS")]
+    pub whole_zero_candidate_release_rows: u64,
+    #[serde(alias = "CANDIDATE_BBL_COUNT")]
+    pub candidate_bbl_count: u64,
+    #[serde(alias = "TRUTH_BBL_COUNT")]
+    pub truth_bbl_count: u64,
+    #[serde(alias = "REACHED_TRUTH_BBLS")]
+    pub reached_truth_bbls: u64,
+    #[serde(alias = "REACH_STATUS")]
+    pub reach_status: GeoH7CandidateReachStatus,
+    #[serde(alias = "AMOUNT_CENTS")]
+    pub amount_cents: u64,
+    #[serde(alias = "ORIGINATIONDATE")]
+    pub originationdate: String,
+    #[serde(default, alias = "ORIGINATORNAME")]
+    pub originatorname: Option<String>,
+    #[serde(default, alias = "ORIGINATOR_MATCH_TEXT")]
+    pub originator_match_text: Option<String>,
+    #[serde(
+        alias = "FILED_COUNTIES",
+        deserialize_with = "deserialize_h7_json_or_value"
+    )]
+    pub filed_counties: Vec<String>,
+    #[serde(
+        alias = "FILED_BOROUGHS",
+        deserialize_with = "deserialize_h7_json_or_value"
+    )]
+    pub filed_boroughs: Vec<u8>,
+    #[serde(
+        alias = "FILED_COUNTY_BOROUGH_EDGES",
+        deserialize_with = "deserialize_h7_json_or_value"
+    )]
+    pub filed_county_borough_edges: Vec<GeoH7PipBlockCountyBoroughEdge>,
+    #[serde(
+        alias = "DISTINCT_COUNTS",
+        deserialize_with = "deserialize_h7_json_or_value"
+    )]
+    pub distinct_counts: GeoH7LoanFieldDistinctCounts,
+    #[serde(
+        alias = "DIAGNOSTIC_COUNTY_FIPS",
+        deserialize_with = "deserialize_h7_json_or_value"
+    )]
+    pub diagnostic_county_fips: Vec<String>,
+    #[serde(
+        alias = "POINT_SOURCE_RECORD_IDS",
+        deserialize_with = "deserialize_h7_json_or_value"
+    )]
+    pub point_source_record_ids: Vec<String>,
+    #[serde(alias = "DOCUMENT_ID")]
+    pub document_id: String,
+    #[serde(alias = "DIAGNOSTIC_RECORDED_BOROUGH")]
+    pub diagnostic_recorded_borough: u8,
+    #[serde(alias = "DOC_TYPE")]
+    pub doc_type: String,
+    #[serde(default, alias = "CRFN")]
+    pub crfn: Option<String>,
+    #[serde(default, alias = "DOCUMENT_DATE")]
+    pub document_date: Option<String>,
+    #[serde(default, alias = "RECORDED_DATE")]
+    pub recorded_date: Option<String>,
+    #[serde(default, alias = "RECORDING_OFFSET_DAYS")]
+    pub recording_offset_days: Option<i64>,
+    #[serde(default, alias = "LENDER_MATCH_TEXT")]
+    pub lender_match_text: Option<String>,
+    #[serde(default, alias = "LENDER_PARTY_TYPE")]
+    pub lender_party_type: Option<String>,
+    #[serde(alias = "ACRIS_MASTER_SOURCE_RECORD_ID")]
+    pub acris_master_source_record_id: String,
+    #[serde(alias = "ACRIS_MASTER_RAW_CSV_SHA256")]
+    pub acris_master_raw_csv_sha256: String,
+    #[serde(alias = "ACRIS_MASTER_FILENAME")]
+    pub acris_master_filename: String,
+    #[serde(default, alias = "ACRIS_PARTY_SOURCE_RECORD_ID")]
+    pub acris_party_source_record_id: Option<String>,
+    #[serde(default, alias = "ACRIS_PARTY_RAW_CSV_SHA256")]
+    pub acris_party_raw_csv_sha256: Option<String>,
+    #[serde(default, alias = "ACRIS_PARTY_FILENAME")]
+    pub acris_party_filename: Option<String>,
+    #[serde(
+        alias = "TRUTH_BBLS",
+        deserialize_with = "deserialize_h7_json_or_value"
+    )]
+    pub truth_bbls: Vec<String>,
+    #[serde(
+        alias = "ACRIS_LEGAL_SOURCE_RECORDS",
+        deserialize_with = "deserialize_h7_json_or_value"
+    )]
+    pub acris_legal_source_records: Vec<GeoH7PipBlockLegalSourceRecord>,
+    #[serde(
+        alias = "CANDIDATE_BBLS",
+        deserialize_with = "deserialize_h7_json_or_value"
+    )]
+    pub candidate_bbls: Vec<String>,
+    #[serde(
+        alias = "CANDIDATE_SOURCE_RECORD_IDS",
+        deserialize_with = "deserialize_h7_json_or_value"
+    )]
+    pub candidate_source_record_ids: Vec<String>,
+    #[serde(
+        alias = "CANDIDATE_GEOM_WKT_SHA256S",
+        deserialize_with = "deserialize_h7_json_or_value"
+    )]
+    pub candidate_geom_wkt_sha256s: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1246,6 +1465,178 @@ pub fn materialize_h7_staging_source_record_bytes_batch(
     materialize_h7_population_rows(&rows)
 }
 
+/// Convert a bounded PIP-block population export directly into the normal H.7
+/// population-row surface. The exported locators and upstream hashes are
+/// content-addressed locally; no warehouse-side JSON/base64 wrapper query is
+/// required.
+pub fn h7_population_rows_from_pip_block_population_batch(
+    batch: &GeoH7PipBlockPopulationBatchRequest,
+) -> Result<GeoH7PopulationRowsRequest, GeoMaterializationError> {
+    if batch.version != CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION {
+        return Err(GeoMaterializationError {
+            code: GeoMaterializationErrorCode::UnsupportedVersion,
+            message: "Unsupported Geo H.7 PIP-block population batch version".to_string(),
+            detail: [
+                ("actual".to_string(), batch.version.clone()),
+                (
+                    "expected".to_string(),
+                    CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION.to_string(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        });
+    }
+    if batch.staging_rows.is_empty() {
+        return Err(h7_invalid(
+            "Geo H.7 PIP-block population batches must be non-empty",
+            [("staging_rows", "0".to_string())],
+        ));
+    }
+    let payload_bytes = serde_json::to_vec(&batch.staging_rows).map_err(|error| {
+        h7_invalid(
+            "Geo H.7 PIP-block rows could not be serialized for content binding",
+            [("reason", error.to_string())],
+        )
+    })?;
+    let payload_blake3 = blake3::hash(&payload_bytes).to_hex().to_string();
+    let mut provenance = batch.provenance.clone();
+    if provenance.result_mode == GeoH7ResultMode::Observed {
+        match provenance.observed_payload_blake3.as_deref() {
+            Some(declared) if declared != payload_blake3 => {
+                return Err(h7_invalid(
+                    "Geo H.7 observed PIP-block payload digest does not match its typed rows",
+                    [
+                        ("computed_blake3", payload_blake3),
+                        ("observed_payload_blake3", declared.to_string()),
+                    ],
+                ));
+            }
+            Some(_) => {}
+            None => provenance.observed_payload_blake3 = Some(payload_blake3),
+        }
+    }
+
+    let denominators = validate_h7_denominators(&batch.plane_denominators)?;
+    let first = &batch.staging_rows[0];
+    let expected_metadata = (
+        first.accepted_truth_binding.clone(),
+        first.bridge_build_id.clone(),
+        first.acris_release_dt.clone(),
+        first.collateral_scope.clone(),
+        first.whole_accepted_loans,
+        first.whole_release_rows,
+        first.whole_zero_candidate_release_rows,
+    );
+    let mut release_keys = BTreeSet::new();
+    let mut loans = BTreeSet::new();
+    let mut zero_candidate_rows = 0_u64;
+    let mut population_rows = Vec::with_capacity(batch.staging_rows.len());
+    for (row_index, row) in batch.staging_rows.iter().enumerate() {
+        validate_h7_pip_block_row_envelope(row_index, row)?;
+        let metadata = (
+            row.accepted_truth_binding.clone(),
+            row.bridge_build_id.clone(),
+            row.acris_release_dt.clone(),
+            row.collateral_scope.clone(),
+            row.whole_accepted_loans,
+            row.whole_release_rows,
+            row.whole_zero_candidate_release_rows,
+        );
+        if metadata != expected_metadata {
+            return Err(h7_invalid(
+                "Geo H.7 PIP-block rows carry conflicting whole-population metadata",
+                [("row_index", row_index.to_string())],
+            ));
+        }
+        if row.bridge_build_id != provenance.bridge_build_id
+            || row.acris_release_dt != provenance.acris_release_dt
+            || row.collateral_scope != provenance.collateral_scope
+        {
+            return Err(h7_invalid(
+                "Geo H.7 PIP-block row snapshot binding disagrees with provenance",
+                [
+                    ("row_index", row_index.to_string()),
+                    ("bridge_build_id", row.bridge_build_id.clone()),
+                    ("acris_release_dt", row.acris_release_dt.clone()),
+                    ("collateral_scope", row.collateral_scope.clone()),
+                ],
+            ));
+        }
+        validate_h7_pip_block_denominator(row_index, row, &denominators)?;
+        let release_key = (
+            row.loan_key.clone(),
+            row.truth_plane,
+            row.association_plane,
+            row.mappluto_release.clone(),
+            row.mappluto_release_dt.clone(),
+            row.mappluto_variant.clone(),
+        );
+        if !release_keys.insert(release_key) {
+            return Err(h7_invalid(
+                "Geo H.7 PIP-block batch repeats a logical subject/release row",
+                [
+                    ("row_index", row_index.to_string()),
+                    ("loan_key", row.loan_key.clone()),
+                    ("mappluto_release", row.mappluto_release.clone()),
+                ],
+            ));
+        }
+        loans.insert((row.loan_key.clone(), row.truth_plane));
+        if row.candidate_bbl_count == 0 {
+            zero_candidate_rows = zero_candidate_rows
+                .checked_add(1)
+                .ok_or_else(|| h7_overflow("whole_zero_candidate_release_rows"))?;
+        }
+        population_rows.push(h7_population_row_from_pip_block_row(row_index, row)?);
+    }
+    let actual_rows = len_u64(&population_rows, "pip_block_release_rows")?;
+    let actual_loans = len_u64_set(&loans, "pip_block_accepted_loans")?;
+    if actual_rows != first.whole_release_rows
+        || actual_loans != first.whole_accepted_loans
+        || zero_candidate_rows != first.whole_zero_candidate_release_rows
+    {
+        return Err(h7_invalid(
+            "Geo H.7 PIP-block batch is incomplete relative to its whole-population counts",
+            [
+                ("actual_release_rows", actual_rows.to_string()),
+                ("whole_release_rows", first.whole_release_rows.to_string()),
+                ("actual_accepted_loans", actual_loans.to_string()),
+                (
+                    "whole_accepted_loans",
+                    first.whole_accepted_loans.to_string(),
+                ),
+                (
+                    "actual_zero_candidate_rows",
+                    zero_candidate_rows.to_string(),
+                ),
+                (
+                    "whole_zero_candidate_release_rows",
+                    first.whole_zero_candidate_release_rows.to_string(),
+                ),
+            ],
+        ));
+    }
+
+    Ok(GeoH7PopulationRowsRequest {
+        version: CANON_GEO_H7_POPULATION_ROWS_VERSION.to_string(),
+        population_scope: batch.population_scope,
+        provenance,
+        plane_denominators: batch.plane_denominators.clone(),
+        rows: population_rows,
+        max_cases: batch.max_cases,
+        max_assignments: batch.max_assignments,
+        max_materialized_models: batch.max_materialized_models,
+    })
+}
+
+pub fn materialize_h7_pip_block_population_batch(
+    batch: &GeoH7PipBlockPopulationBatchRequest,
+) -> Result<GeoH7PopulationArtifact, GeoMaterializationError> {
+    let rows = h7_population_rows_from_pip_block_population_batch(batch)?;
+    materialize_h7_population_rows(&rows)
+}
+
 /// Convert release-pinned Appendix H.7 warehouse rows into a typed population
 /// artifact with labels held outside solver evidence.
 ///
@@ -1823,6 +2214,37 @@ fn validate_h7_provenance(
             }
         }
     }
+    if provenance.result_mode == GeoH7ResultMode::Observed {
+        if provenance.observed_rows != input_rows || provenance.observed_rows == 0 {
+            return Err(h7_invalid(
+                "Geo H.7 observed snapshots must bind a nonempty payload row-for-row",
+                [
+                    ("observed_rows", provenance.observed_rows.to_string()),
+                    ("input_rows", input_rows.to_string()),
+                ],
+            ));
+        }
+        let payload_digest = provenance
+            .observed_payload_blake3
+            .as_deref()
+            .unwrap_or_default();
+        validate_blake3_hash("observed_payload_blake3", payload_digest)?;
+        let positive_diagnostics = provenance
+            .query_receipts
+            .iter()
+            .filter(|receipt| {
+                receipt.disposition == GeoH7QueryDisposition::DiagnosticOnly
+                    && receipt.result_rows == provenance.observed_rows
+                    && receipt.result_rows < receipt.row_cap
+            })
+            .count();
+        if positive_diagnostics == 0 {
+            return Err(h7_invalid(
+                "Geo H.7 observed snapshots require a nontruncated diagnostic receipt covering the complete typed payload",
+                [("positive_diagnostic_receipts", "0".to_string())],
+            ));
+        }
+    }
     if population_scope == GeoH7PopulationScope::RetainedComplete {
         if provenance.observed_rows != input_rows {
             return Err(h7_invalid(
@@ -2045,6 +2467,637 @@ fn validate_h7_query_receipt_binding(
         ));
     }
     Ok(())
+}
+
+fn validate_h7_pip_block_row_envelope(
+    row_index: usize,
+    row: &GeoH7PipBlockPopulationRow,
+) -> Result<(), GeoMaterializationError> {
+    if row.row_contract != CANON_GEO_H7_PIP_BLOCK_POPULATION_ROW_CONTRACT
+        || row.row_kind != CANON_GEO_H7_PIP_BLOCK_POPULATION_ROW_KIND
+        || row.guard_status != "ok"
+        || row
+            .refusal_reason
+            .as_deref()
+            .is_some_and(|reason| !reason.is_empty())
+    {
+        return Err(h7_invalid(
+            "Geo H.7 PIP-block adapter only accepts guard-ok accepted candidate rows",
+            [
+                ("row_index", row_index.to_string()),
+                ("row_contract", row.row_contract.clone()),
+                ("row_kind", row.row_kind.clone()),
+                ("guard_status", row.guard_status.clone()),
+                (
+                    "refusal_reason",
+                    row.refusal_reason.clone().unwrap_or_default(),
+                ),
+            ],
+        ));
+    }
+    validate_h7_string("accepted_truth_binding", &row.accepted_truth_binding)?;
+    validate_h7_string("loan_key", &row.loan_key)?;
+    validate_h7_string("bridge_build_id", &row.bridge_build_id)?;
+    validate_h7_string("document_id", &row.document_id)?;
+    if row.truth_bbl_count != len_u64(&row.truth_bbls, "truth_bbls")?
+        || row.candidate_bbl_count != len_u64(&row.candidate_bbls, "candidate_bbls")?
+        || row.candidate_bbl_count
+            != len_u64(
+                &row.candidate_source_record_ids,
+                "candidate_source_record_ids",
+            )?
+        || row.candidate_bbl_count
+            != len_u64(
+                &row.candidate_geom_wkt_sha256s,
+                "candidate_geom_wkt_sha256s",
+            )?
+    {
+        return Err(h7_invalid(
+            "Geo H.7 PIP-block candidate/truth vector counts disagree",
+            [
+                ("row_index", row_index.to_string()),
+                ("truth_bbl_count", row.truth_bbl_count.to_string()),
+                ("candidate_bbl_count", row.candidate_bbl_count.to_string()),
+                (
+                    "candidate_source_record_ids",
+                    row.candidate_source_record_ids.len().to_string(),
+                ),
+                (
+                    "candidate_geom_wkt_sha256s",
+                    row.candidate_geom_wkt_sha256s.len().to_string(),
+                ),
+            ],
+        ));
+    }
+    if row.reached_truth_bbls > row.truth_bbl_count {
+        return Err(h7_invalid(
+            "Geo H.7 PIP-block reached truth count exceeds truth cardinality",
+            [("row_index", row_index.to_string())],
+        ));
+    }
+    let expected_reach = if row.reached_truth_bbls == 0 {
+        GeoH7CandidateReachStatus::None
+    } else if row.reached_truth_bbls == row.truth_bbl_count {
+        GeoH7CandidateReachStatus::Full
+    } else {
+        GeoH7CandidateReachStatus::Partial
+    };
+    if row.reach_status != expected_reach {
+        return Err(h7_invalid(
+            "Geo H.7 PIP-block reach label disagrees with exact truth-edge accounting",
+            [
+                ("row_index", row_index.to_string()),
+                ("reach_status", h7_reach_name(row.reach_status).to_string()),
+                ("expected", h7_reach_name(expected_reach).to_string()),
+            ],
+        ));
+    }
+    if row.filed_counties.is_empty()
+        || row.filed_boroughs.is_empty()
+        || row.filed_county_borough_edges.is_empty()
+    {
+        return Err(h7_invalid(
+            "Geo H.7 PIP-block accepted rows require nonempty filed county/borough evidence",
+            [
+                ("row_index", row_index.to_string()),
+                ("filed_counties", row.filed_counties.len().to_string()),
+                ("filed_boroughs", row.filed_boroughs.len().to_string()),
+                (
+                    "filed_county_borough_edges",
+                    row.filed_county_borough_edges.len().to_string(),
+                ),
+            ],
+        ));
+    }
+    let filed_counties = row.filed_counties.iter().cloned().collect::<BTreeSet<_>>();
+    let filed_boroughs = row.filed_boroughs.iter().copied().collect::<BTreeSet<_>>();
+    let edge_counties = row
+        .filed_county_borough_edges
+        .iter()
+        .map(|edge| edge.filed_county.clone())
+        .collect::<BTreeSet<_>>();
+    let edge_boroughs = row
+        .filed_county_borough_edges
+        .iter()
+        .map(|edge| edge.filed_borough)
+        .collect::<BTreeSet<_>>();
+    if filed_counties != edge_counties || filed_boroughs != edge_boroughs {
+        return Err(h7_invalid(
+            "Geo H.7 PIP-block filed county/borough arrays disagree with their edge relation",
+            [("row_index", row_index.to_string())],
+        ));
+    }
+    if row
+        .acris_legal_source_records
+        .iter()
+        .any(|legal| !filed_boroughs.contains(&legal.filed_borough))
+    {
+        return Err(h7_invalid(
+            "Geo H.7 PIP-block legal source row uses a borough outside the accepted filed relation",
+            [("row_index", row_index.to_string())],
+        ));
+    }
+    for hash in &row.candidate_geom_wkt_sha256s {
+        validate_sha256("candidate_geom_wkt_sha256", hash)?;
+    }
+    validate_sha256(
+        "acris_master_raw_csv_sha256",
+        &row.acris_master_raw_csv_sha256,
+    )?;
+    for legal in &row.acris_legal_source_records {
+        validate_sha256("acris_legal_raw_csv_sha256", &legal.raw_csv_sha256)?;
+    }
+    match row.truth_plane {
+        GeoTruthPlane::RoundExactLenderParty => {
+            if row.lender_match_text.as_deref().is_none_or(str::is_empty)
+                || row.lender_party_type.as_deref().is_none_or(str::is_empty)
+                || row
+                    .acris_party_source_record_id
+                    .as_deref()
+                    .is_none_or(str::is_empty)
+                || row
+                    .acris_party_raw_csv_sha256
+                    .as_deref()
+                    .is_none_or(str::is_empty)
+                || row
+                    .acris_party_filename
+                    .as_deref()
+                    .is_none_or(str::is_empty)
+            {
+                return Err(h7_invalid(
+                    "Geo H.7 round-plane PIP-block rows require exact lender-party evidence",
+                    [("row_index", row_index.to_string())],
+                ));
+            }
+            validate_sha256(
+                "acris_party_raw_csv_sha256",
+                row.acris_party_raw_csv_sha256
+                    .as_deref()
+                    .unwrap_or_default(),
+            )?;
+        }
+        GeoTruthPlane::NonRoundAmountDateLegalBorough => {
+            if row.acris_party_source_record_id.is_some()
+                || row.acris_party_raw_csv_sha256.is_some()
+                || row.acris_party_filename.is_some()
+            {
+                return Err(h7_invalid(
+                    "Geo H.7 non-round PIP-block rows cannot import lender-party evidence",
+                    [("row_index", row_index.to_string())],
+                ));
+            }
+        }
+        _ => {
+            return Err(h7_invalid(
+                "Geo H.7 PIP-block row uses a non-controlling truth plane",
+                [("row_index", row_index.to_string())],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_h7_pip_block_denominator(
+    row_index: usize,
+    row: &GeoH7PipBlockPopulationRow,
+    denominators: &BTreeMap<GeoTruthPlane, GeoH7PlaneDenominator>,
+) -> Result<(), GeoMaterializationError> {
+    let row_denominator = GeoH7PlaneDenominator {
+        truth_plane: row.truth_plane,
+        eligible_loans: row.accepted_plane_eligible_loans,
+        candidate_loans: row.accepted_plane_legal_candidate_loans,
+        legal_confirmed_candidate_loans: row.accepted_plane_legal_confirmed_candidate_loans,
+        accepted_loans: row.accepted_plane_accepted_loans,
+        ambiguous_loans: row.accepted_plane_ambiguous_loans,
+        candidate_no_legal_confirmation_loans: row.accepted_plane_candidate_without_legal_loans,
+        no_candidate_loans: row.accepted_plane_no_candidate_loans,
+        selected_multi_parcel_loans: row.accepted_plane_selected_multi_parcel_loans,
+    };
+    if denominators.get(&row.truth_plane) != Some(&row_denominator) {
+        return Err(h7_invalid(
+            "Geo H.7 PIP-block row denominator fields disagree with the batch",
+            [
+                ("row_index", row_index.to_string()),
+                ("truth_plane", h7_plane_name(row.truth_plane).to_string()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn h7_population_row_from_pip_block_row(
+    row_index: usize,
+    row: &GeoH7PipBlockPopulationRow,
+) -> Result<GeoH7PopulationWarehouseRow, GeoMaterializationError> {
+    let mut accepted_borough_edges = row
+        .filed_county_borough_edges
+        .iter()
+        .map(|edge| GeoH7BoroughEdge {
+            filed_county: edge.filed_county.clone(),
+            filed_borough: edge.filed_borough,
+            legal_borough: edge.filed_borough,
+        })
+        .collect::<Vec<_>>();
+    accepted_borough_edges.sort();
+    accepted_borough_edges.dedup();
+    let representative_edge = accepted_borough_edges.first().ok_or_else(|| {
+        h7_invalid(
+            "Geo H.7 PIP-block accepted rows require an accepted borough edge",
+            [("row_index", row_index.to_string())],
+        )
+    })?;
+    let filed_county = representative_edge.filed_county.clone();
+    let filed_borough = representative_edge.filed_borough;
+    Ok(GeoH7PopulationWarehouseRow {
+        loan_key: row.loan_key.clone(),
+        document_id: row.document_id.clone(),
+        truth_plane: row.truth_plane,
+        association_plane: row.association_plane,
+        candidate_release: GeoH7MapplutoReleasePin {
+            release: row.mappluto_release.clone(),
+            release_dt: row.mappluto_release_dt.clone(),
+            variant: row.mappluto_variant.clone(),
+            geometry_contract_version: CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION.to_string(),
+        },
+        property_state: CANON_GEO_H7_PROPERTY_STATE.to_string(),
+        filed_county,
+        filed_borough,
+        legal_borough: filed_borough,
+        accepted_borough_edges,
+        geocoded_county_fips: (row.diagnostic_county_fips.len() == 1)
+            .then(|| row.diagnostic_county_fips[0].clone()),
+        doc_type: row.doc_type.clone(),
+        originationdate: row.originationdate.clone(),
+        amount_cents: row.amount_cents,
+        is_round_100k_lattice: row
+            .amount_cents
+            .is_multiple_of(CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS),
+        originatorname: row.originatorname.clone(),
+        originator_match_text: row.originator_match_text.clone(),
+        lender_match_text: row.lender_match_text.clone(),
+        lender_party_type: row.lender_party_type.clone(),
+        loan_field_distinct_counts: row.distinct_counts.clone(),
+        truth_parcels: row.truth_bbls.clone(),
+        candidate_parcels: row.candidate_bbls.clone(),
+        reach_status: row.reach_status,
+        reach_reason: "pip_block_candidate_release_scored_against_same_accepted_h7_truth"
+            .to_string(),
+        source_records: h7_source_records_from_pip_block_row(row_index, row)?,
+    })
+}
+
+fn h7_source_records_from_pip_block_row(
+    row_index: usize,
+    row: &GeoH7PipBlockPopulationRow,
+) -> Result<Vec<GeoH7SourceEvidenceRecord>, GeoMaterializationError> {
+    let mut records = Vec::new();
+    for source_record_id in &row.point_source_record_ids {
+        records.push(h7_pip_derived_source_record(
+            GeoH7SourceRecordRole::BridgeLoan,
+            Vec::new(),
+            source_record_id,
+            &row.bridge_build_id,
+            vec![
+                (
+                    "source_table",
+                    "EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY".to_string(),
+                ),
+                ("build_id", row.bridge_build_id.clone()),
+                ("loan_key", row.loan_key.clone()),
+                ("amount_cents", row.amount_cents.to_string()),
+                ("originationdate", row.originationdate.clone()),
+                (
+                    "originatorname",
+                    row.originatorname
+                        .clone()
+                        .unwrap_or_else(|| "<null>".to_string()),
+                ),
+                (
+                    "originator_match_text",
+                    row.originator_match_text
+                        .clone()
+                        .unwrap_or_else(|| "<null>".to_string()),
+                ),
+            ],
+        )?);
+    }
+    records.push(h7_pip_derived_source_record(
+        GeoH7SourceRecordRole::AcrisMaster,
+        Vec::new(),
+        &row.acris_master_source_record_id,
+        &row.acris_release_dt,
+        vec![
+            (
+                "source_table",
+                "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_MASTER".to_string(),
+            ),
+            ("raw_csv_sha256", row.acris_master_raw_csv_sha256.clone()),
+            ("filename", row.acris_master_filename.clone()),
+            ("document_id", row.document_id.clone()),
+            (
+                "crfn",
+                row.crfn.clone().unwrap_or_else(|| "<null>".to_string()),
+            ),
+            ("doc_type", row.doc_type.clone()),
+            (
+                "diagnostic_recorded_borough",
+                row.diagnostic_recorded_borough.to_string(),
+            ),
+            (
+                "document_date",
+                row.document_date
+                    .clone()
+                    .unwrap_or_else(|| "<null>".to_string()),
+            ),
+            (
+                "recorded_date",
+                row.recorded_date
+                    .clone()
+                    .unwrap_or_else(|| "<null>".to_string()),
+            ),
+            (
+                "recording_offset_days",
+                row.recording_offset_days
+                    .map_or_else(|| "<null>".to_string(), |days| days.to_string()),
+            ),
+            ("amount_cents", row.amount_cents.to_string()),
+            ("loan_key", row.loan_key.clone()),
+            ("truth_plane", h7_plane_name(row.truth_plane).to_string()),
+        ],
+    )?);
+    if row.truth_plane == GeoTruthPlane::RoundExactLenderParty {
+        records.push(h7_pip_derived_source_record(
+            GeoH7SourceRecordRole::AcrisParty,
+            Vec::new(),
+            row.acris_party_source_record_id
+                .as_deref()
+                .unwrap_or_default(),
+            &row.acris_release_dt,
+            vec![
+                (
+                    "source_table",
+                    "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_PARTIES".to_string(),
+                ),
+                (
+                    "raw_csv_sha256",
+                    row.acris_party_raw_csv_sha256.clone().unwrap_or_default(),
+                ),
+                (
+                    "filename",
+                    row.acris_party_filename.clone().unwrap_or_default(),
+                ),
+                ("document_id", row.document_id.clone()),
+                ("doc_type", row.doc_type.clone()),
+                (
+                    "lender_match_text",
+                    row.lender_match_text.clone().unwrap_or_default(),
+                ),
+                (
+                    "lender_party_type",
+                    row.lender_party_type.clone().unwrap_or_default(),
+                ),
+                (
+                    "originator_match_text",
+                    row.originator_match_text.clone().unwrap_or_default(),
+                ),
+                ("amount_cents", row.amount_cents.to_string()),
+                ("loan_key", row.loan_key.clone()),
+                ("truth_plane", h7_plane_name(row.truth_plane).to_string()),
+            ],
+        )?);
+    }
+    for legal in &row.acris_legal_source_records {
+        let source_record_id = format!(
+            "derived:canon:h7:acris_legal_edge:{}:legal_bbl:{}",
+            legal.source_record_id, legal.legal_bbl
+        );
+        records.push(h7_pip_derived_source_record(
+            GeoH7SourceRecordRole::AcrisLegal,
+            vec![legal.legal_bbl.clone()],
+            &source_record_id,
+            &row.acris_release_dt,
+            vec![
+                (
+                    "source_table",
+                    "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_ACRIS_LEGALS".to_string(),
+                ),
+                ("upstream_source_record_id", legal.source_record_id.clone()),
+                ("raw_csv_sha256", legal.raw_csv_sha256.clone()),
+                ("filename", legal.filename.clone()),
+                ("document_id", row.document_id.clone()),
+                (
+                    "crfn",
+                    row.crfn.clone().unwrap_or_else(|| "<null>".to_string()),
+                ),
+                ("doc_type", row.doc_type.clone()),
+                ("amount_cents", row.amount_cents.to_string()),
+                ("originationdate", row.originationdate.clone()),
+                (
+                    "document_date",
+                    row.document_date
+                        .clone()
+                        .unwrap_or_else(|| "<null>".to_string()),
+                ),
+                (
+                    "recorded_date",
+                    row.recorded_date
+                        .clone()
+                        .unwrap_or_else(|| "<null>".to_string()),
+                ),
+                (
+                    "lender_match_text",
+                    row.lender_match_text
+                        .clone()
+                        .unwrap_or_else(|| "<null>".to_string()),
+                ),
+                (
+                    "originator_match_text",
+                    row.originator_match_text
+                        .clone()
+                        .unwrap_or_else(|| "<null>".to_string()),
+                ),
+                ("legal_bbl", legal.legal_bbl.clone()),
+                ("filed_borough", legal.filed_borough.to_string()),
+                ("loan_key", row.loan_key.clone()),
+                ("truth_plane", h7_plane_name(row.truth_plane).to_string()),
+                (
+                    "association_plane",
+                    h7_association_plane_name(row.association_plane).to_string(),
+                ),
+            ],
+        )?);
+    }
+    let geometry_hash_set_blake3 = {
+        let mut hashes = row.candidate_geom_wkt_sha256s.clone();
+        hashes.sort();
+        hashes.dedup();
+        let bytes = serde_json::to_vec(&hashes).map_err(|error| {
+            h7_invalid(
+                "Geo H.7 candidate geometry-hash set could not be serialized",
+                [
+                    ("row_index", row_index.to_string()),
+                    ("reason", error.to_string()),
+                ],
+            )
+        })?;
+        blake3::hash(&bytes).to_hex().to_string()
+    };
+    let mut unmatched_locators = row
+        .candidate_source_record_ids
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    for bbl in &row.candidate_bbls {
+        let marker = format!(
+            ":{}:{}:{}:{}:",
+            row.mappluto_release, row.mappluto_release_dt, row.mappluto_variant, bbl
+        );
+        let matches = unmatched_locators
+            .iter()
+            .filter(|source_record_id| source_record_id.contains(&marker))
+            .cloned()
+            .collect::<Vec<_>>();
+        if matches.len() != 1 {
+            return Err(h7_invalid(
+                "Geo H.7 candidate BBL does not map to exactly one exported MapPLUTO locator",
+                [
+                    ("row_index", row_index.to_string()),
+                    ("candidate_bbl", bbl.clone()),
+                    ("locator_matches", matches.len().to_string()),
+                ],
+            ));
+        }
+        let source_record_id = &matches[0];
+        unmatched_locators.remove(source_record_id);
+        records.push(h7_pip_derived_source_record(
+            GeoH7SourceRecordRole::MapplutoCandidate,
+            vec![bbl.clone()],
+            source_record_id,
+            &row.mappluto_release_dt,
+            vec![
+                (
+                    "source_table",
+                    "EDGAR_DB.DBT_STAGING_GEO.STG_GEO_NYC_MAPPLUTO_PARCEL_VINTAGES".to_string(),
+                ),
+                ("release", row.mappluto_release.clone()),
+                ("release_dt", row.mappluto_release_dt.clone()),
+                ("variant", row.mappluto_variant.clone()),
+                ("bbl_key", bbl.clone()),
+                (
+                    "candidate_geometry_hash_set_blake3",
+                    geometry_hash_set_blake3.clone(),
+                ),
+                (
+                    "geometry_contract_version",
+                    CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION.to_string(),
+                ),
+                ("loan_key", row.loan_key.clone()),
+                ("truth_plane", h7_plane_name(row.truth_plane).to_string()),
+                (
+                    "association_plane",
+                    h7_association_plane_name(row.association_plane).to_string(),
+                ),
+            ],
+        )?);
+    }
+    if !unmatched_locators.is_empty() {
+        return Err(h7_invalid(
+            "Geo H.7 exported MapPLUTO locators include records outside the candidate BBL set",
+            [
+                ("row_index", row_index.to_string()),
+                ("unmatched_locators", unmatched_locators.len().to_string()),
+            ],
+        ));
+    }
+    let mut identities = BTreeSet::new();
+    for record in &records {
+        if !identities.insert(record.source_record.source_record_id.clone()) {
+            return Err(h7_invalid(
+                "Geo H.7 locally derived source records repeat a locator",
+                [
+                    ("row_index", row_index.to_string()),
+                    (
+                        "source_record_id",
+                        record.source_record.source_record_id.clone(),
+                    ),
+                ],
+            ));
+        }
+    }
+    records.sort_by(|left, right| {
+        (
+            h7_pip_source_role_order(left.role),
+            left.parcel_ids.first(),
+            &left.source_record.source_record_id,
+        )
+            .cmp(&(
+                h7_pip_source_role_order(right.role),
+                right.parcel_ids.first(),
+                &right.source_record.source_record_id,
+            ))
+    });
+    Ok(records)
+}
+
+fn h7_pip_derived_source_record(
+    role: GeoH7SourceRecordRole,
+    parcel_ids: Vec<String>,
+    source_record_id: &str,
+    source_vintage: &str,
+    extra_pairs: Vec<(&str, String)>,
+) -> Result<GeoH7SourceEvidenceRecord, GeoMaterializationError> {
+    validate_h7_string("source_record_id", source_record_id)?;
+    validate_h7_string("source_vintage", source_vintage)?;
+    let mut pairs = vec![
+        [
+            "payload_contract".to_string(),
+            CANON_GEO_H7_DERIVED_SOURCE_RECORD_PAYLOAD_VERSION.to_string(),
+        ],
+        [
+            "source_record_class".to_string(),
+            CANON_GEO_H7_DERIVED_SOURCE_RECORD_CLASS.to_string(),
+        ],
+        [
+            "role".to_string(),
+            h7_source_record_role_name(role).to_string(),
+        ],
+        ["source_record_id".to_string(), source_record_id.to_string()],
+        ["source_vintage".to_string(), source_vintage.to_string()],
+    ];
+    pairs.extend(
+        extra_pairs
+            .into_iter()
+            .map(|(key, value)| [key.to_string(), value]),
+    );
+    let bytes = serde_json::to_vec(&pairs).map_err(|error| {
+        h7_invalid(
+            "Geo H.7 locally derived source record could not be serialized",
+            [
+                ("source_record_id", source_record_id.to_string()),
+                ("reason", error.to_string()),
+            ],
+        )
+    })?;
+    Ok(GeoH7SourceEvidenceRecord {
+        role,
+        parcel_ids,
+        source_record: GeoEvidenceRecordRef {
+            source_record_id: source_record_id.to_string(),
+            source_vintage: source_vintage.to_string(),
+            record_blake3: blake3::hash(&bytes).to_hex().to_string(),
+        },
+    })
+}
+
+fn h7_pip_source_role_order(role: GeoH7SourceRecordRole) -> u8 {
+    match role {
+        GeoH7SourceRecordRole::BridgeLoan => 10,
+        GeoH7SourceRecordRole::AcrisMaster => 20,
+        GeoH7SourceRecordRole::AcrisParty => 30,
+        GeoH7SourceRecordRole::AcrisLegal => 40,
+        GeoH7SourceRecordRole::MapplutoCandidate => 50,
+        GeoH7SourceRecordRole::GeocodeDiagnostic => 60,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3623,6 +4676,7 @@ fn validate_h7_population_scope(
 ) -> Result<(), GeoMaterializationError> {
     match (scope, result_mode) {
         (GeoH7PopulationScope::FixtureSubset, GeoH7ResultMode::Replay)
+        | (GeoH7PopulationScope::ObservedSnapshot, GeoH7ResultMode::Observed)
         | (GeoH7PopulationScope::RetainedComplete, GeoH7ResultMode::Replay)
         | (GeoH7PopulationScope::LiveComplete, GeoH7ResultMode::Live) => {}
         _ => {
@@ -3717,6 +4771,19 @@ fn validate_h7_population_scope(
                             "complete_multi_parcel_loans",
                             CANON_GEO_H7_COMPLETE_MULTI_PARCEL_LOANS.to_string(),
                         ),
+                    ],
+                ));
+            }
+        }
+        GeoH7PopulationScope::ObservedSnapshot => {
+            if release_row_count != expected_release_rows {
+                return Err(h7_invalid(
+                    "Geo H.7 observed snapshot rows must equal selected subjects times pinned releases",
+                    [
+                        ("release_rows", release_row_count.to_string()),
+                        ("selected_multi_parcel_loans", total_selected.to_string()),
+                        ("pinned_release_count", pinned_release_count.to_string()),
+                        ("expected_release_rows", expected_release_rows.to_string()),
                     ],
                 ));
             }
@@ -4300,9 +5367,17 @@ fn h7_reach_name(status: GeoH7CandidateReachStatus) -> &'static str {
     }
 }
 
+fn h7_association_plane_name(plane: GeoH7AssociationPlane) -> &'static str {
+    match plane {
+        GeoH7AssociationPlane::SingleProperty => "single_property",
+        GeoH7AssociationPlane::MultiProperty => "multi_property",
+    }
+}
+
 fn h7_population_scope_name(scope: GeoH7PopulationScope) -> &'static str {
     match scope {
         GeoH7PopulationScope::FixtureSubset => "fixture_subset",
+        GeoH7PopulationScope::ObservedSnapshot => "observed_snapshot",
         GeoH7PopulationScope::RetainedComplete => "retained_complete",
         GeoH7PopulationScope::LiveComplete => "live_complete",
     }
@@ -4311,6 +5386,7 @@ fn h7_population_scope_name(scope: GeoH7PopulationScope) -> &'static str {
 fn h7_result_mode_name(mode: GeoH7ResultMode) -> &'static str {
     match mode {
         GeoH7ResultMode::Live => "live",
+        GeoH7ResultMode::Observed => "observed",
         GeoH7ResultMode::Replay => "replay",
     }
 }

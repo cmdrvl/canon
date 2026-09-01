@@ -2002,6 +2002,67 @@
       ]
     },
     {
+      "name": "geo materialize-h7-pip-block-batch",
+      "usage": "canon geo materialize-h7-pip-block-batch --batch <BATCH.json>",
+      "description": "Convert bounded H.7 PIP-block candidate rows into the typed H.7 population without a second warehouse JSON/base64 wrapper query",
+      "output_mode": "json",
+      "output_schema": "canon_geo_h7_population.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads canon_geo_h7_pip_block_population_batch.v0 offline. Canon binds the typed input rows with BLAKE3, derives immutable evidence-record digests from exported bridge/ACRIS/MapPLUTO locators and hashes, verifies whole-population and per-plane denominators, and delegates to the existing H.7 population validator. result_mode=observed pairs only with population_scope=observed_snapshot: it is useful positive computation when an MCP success envelope omits a durable query id, but it is diagnostic/non-gate evidence and can never satisfy LiveComplete or the frozen 79-subject E4 gate. The adapter does not acquire data, treat record count as independent evidence, or claim that derived payload bytes are original source bytes.",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "typed H.7 observed-snapshot population emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / batch IO, parse, content binding, denominator, locator, release, provenance, or evidence contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "extract emitted .population to <POPULATION.json>, then run canon geo evaluate --population <POPULATION.json>",
+      "recovery": {
+        "next_command": "canon geo materialize-h7-pip-block-batch --batch <BATCH.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "batch",
+          "flag": "--batch",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding canon_geo_h7_pip_block_population_batch.v0"
+        }
+      ]
+    },
+    {
       "name": "geo compile-evidence",
       "usage": "canon geo compile-evidence --request <REQUEST.json>",
       "description": "Admit versioned rho observations into a bounded composition request, recording each admission disposition, and emit the canonical artifact on stdout",

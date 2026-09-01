@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.h7_pip_block_population_batch.v0.schema.json",
+  "title": "canon.geo.h7_pip_block_population_batch.v0",
+  "description": "Offline adapter for guard-ok H.7 PIP-block candidate rows. Canon derives content-addressed evidence records from exported locators and hashes. observed_snapshot is non-gate evidence and is never equivalent to live_complete.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_h7_pip_block_population_batch.v0",
+      "type": "string"
+    },
+    "population_scope": {
+      "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/population_scope"
+    },
+    "provenance": {
+      "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/provenance"
+    },
+    "plane_denominators": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/plane_denominator"
+      }
+    },
+    "staging_rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/pip_block_row" }
+    },
+    "max_cases": { "type": "integer", "minimum": 1 },
+    "max_assignments": { "type": "integer", "minimum": 1 },
+    "max_materialized_models": { "type": "integer", "minimum": 1 }
+  },
+  "required": [
+    "version",
+    "population_scope",
+    "provenance",
+    "plane_denominators",
+    "staging_rows",
+    "max_cases",
+    "max_assignments",
+    "max_materialized_models"
+  ],
+  "$defs": {
+    "json_array_transport": {
+      "oneOf": [
+        { "type": "array" },
+        { "type": "string", "minLength": 2 }
+      ]
+    },
+    "json_object_transport": {
+      "oneOf": [
+        { "type": "object" },
+        { "type": "string", "minLength": 2 }
+      ]
+    },
+    "pip_block_row": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "row_contract": {
+          "const": "h7_staging_pip_block_population_export_row.v0",
+          "type": "string"
+        },
+        "row_kind": {
+          "const": "accepted_release_candidate_set",
+          "type": "string"
+        },
+        "guard_status": { "const": "ok", "type": "string" },
+        "refusal_reason": { "type": ["string", "null"] },
+        "accepted_truth_binding": { "type": "string", "minLength": 1 },
+        "loan_key": { "type": "string", "minLength": 1 },
+        "truth_plane": {
+          "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/truth_plane"
+        },
+        "association_plane": {
+          "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/association_plane"
+        },
+        "mappluto_release": { "type": "string", "minLength": 1 },
+        "mappluto_release_dt": { "type": "string", "minLength": 1 },
+        "mappluto_variant": { "type": "string", "minLength": 1 },
+        "bridge_build_id": { "type": "string", "minLength": 1 },
+        "acris_release_dt": { "type": "string", "minLength": 1 },
+        "collateral_scope": {
+          "const": "nyc_filed_collateral_slice",
+          "type": "string"
+        },
+        "accepted_plane_eligible_loans": { "type": "integer", "minimum": 0 },
+        "accepted_plane_legal_candidate_loans": { "type": "integer", "minimum": 0 },
+        "accepted_plane_legal_confirmed_candidate_loans": { "type": "integer", "minimum": 0 },
+        "accepted_plane_accepted_loans": { "type": "integer", "minimum": 0 },
+        "accepted_plane_ambiguous_loans": { "type": "integer", "minimum": 0 },
+        "accepted_plane_candidate_without_legal_loans": { "type": "integer", "minimum": 0 },
+        "accepted_plane_no_candidate_loans": { "type": "integer", "minimum": 0 },
+        "accepted_plane_selected_multi_parcel_loans": { "type": "integer", "minimum": 1 },
+        "whole_accepted_loans": { "type": "integer", "minimum": 1 },
+        "whole_release_rows": { "type": "integer", "minimum": 1 },
+        "whole_zero_candidate_release_rows": { "type": "integer", "minimum": 0 },
+        "candidate_bbl_count": { "type": "integer", "minimum": 0 },
+        "truth_bbl_count": { "type": "integer", "minimum": 2 },
+        "reached_truth_bbls": { "type": "integer", "minimum": 0 },
+        "reach_status": {
+          "$ref": "canon.geo.h7_population_rows.v0.schema.json#/$defs/reach_status"
+        },
+        "amount_cents": { "type": "integer", "minimum": 1 },
+        "originationdate": { "type": "string", "minLength": 1 },
+        "originatorname": { "type": ["string", "null"] },
+        "originator_match_text": { "type": ["string", "null"] },
+        "filed_counties": { "$ref": "#/$defs/json_array_transport" },
+        "filed_boroughs": { "$ref": "#/$defs/json_array_transport" },
+        "filed_county_borough_edges": { "$ref": "#/$defs/json_array_transport" },
+        "distinct_counts": { "$ref": "#/$defs/json_object_transport" },
+        "diagnostic_county_fips": { "$ref": "#/$defs/json_array_transport" },
+        "point_source_record_ids": { "$ref": "#/$defs/json_array_transport" },
+        "document_id": { "type": "string", "minLength": 1 },
+        "diagnostic_recorded_borough": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "doc_type": { "type": "string", "minLength": 1 },
+        "crfn": { "type": ["string", "null"] },
+        "document_date": { "type": ["string", "null"] },
+        "recorded_date": { "type": ["string", "null"] },
+        "recording_offset_days": { "type": ["integer", "null"] },
+        "lender_match_text": { "type": ["string", "null"] },
+        "lender_party_type": { "type": ["string", "null"] },
+        "acris_master_source_record_id": { "type": "string", "minLength": 1 },
+        "acris_master_raw_csv_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "acris_master_filename": { "type": "string", "minLength": 1 },
+        "acris_party_source_record_id": { "type": ["string", "null"] },
+        "acris_party_raw_csv_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "acris_party_filename": { "type": ["string", "null"] },
+        "truth_bbls": { "$ref": "#/$defs/json_array_transport" },
+        "acris_legal_source_records": { "$ref": "#/$defs/json_array_transport" },
+        "candidate_bbls": { "$ref": "#/$defs/json_array_transport" },
+        "candidate_source_record_ids": { "$ref": "#/$defs/json_array_transport" },
+        "candidate_geom_wkt_sha256s": { "$ref": "#/$defs/json_array_transport" }
+      },
+      "required": [
+        "row_contract",
+        "row_kind",
+        "guard_status",
+        "accepted_truth_binding",
+        "loan_key",
+        "truth_plane",
+        "association_plane",
+        "mappluto_release",
+        "mappluto_release_dt",
+        "mappluto_variant",
+        "bridge_build_id",
+        "acris_release_dt",
+        "collateral_scope",
+        "accepted_plane_eligible_loans",
+        "accepted_plane_legal_candidate_loans",
+        "accepted_plane_legal_confirmed_candidate_loans",
+        "accepted_plane_accepted_loans",
+        "accepted_plane_ambiguous_loans",
+        "accepted_plane_candidate_without_legal_loans",
+        "accepted_plane_no_candidate_loans",
+        "accepted_plane_selected_multi_parcel_loans",
+        "whole_accepted_loans",
+        "whole_release_rows",
+        "whole_zero_candidate_release_rows",
+        "candidate_bbl_count",
+        "truth_bbl_count",
+        "reached_truth_bbls",
+        "reach_status",
+        "amount_cents",
+        "originationdate",
+        "filed_counties",
+        "filed_boroughs",
+        "filed_county_borough_edges",
+        "distinct_counts",
+        "diagnostic_county_fips",
+        "point_source_record_ids",
+        "document_id",
+        "diagnostic_recorded_borough",
+        "doc_type",
+        "acris_master_source_record_id",
+        "acris_master_raw_csv_sha256",
+        "acris_master_filename",
+        "truth_bbls",
+        "acris_legal_source_records",
+        "candidate_bbls",
+        "candidate_source_record_ids",
+        "candidate_geom_wkt_sha256s"
+      ]
+    }
+  }
+}

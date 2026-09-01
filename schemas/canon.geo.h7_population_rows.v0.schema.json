@@ -53,11 +53,11 @@
     },
     "population_scope": {
       "type": "string",
-      "enum": ["fixture_subset", "retained_complete", "live_complete"]
+      "enum": ["fixture_subset", "observed_snapshot", "retained_complete", "live_complete"]
     },
     "result_mode": {
       "type": "string",
-      "enum": ["live", "replay"]
+      "enum": ["live", "observed", "replay"]
     },
     "query_disposition": {
       "type": "string",
@@ -269,7 +269,11 @@
           "items": { "$ref": "#/$defs/empirical_discrepancy" }
         },
         "row_cap": { "type": "integer", "minimum": 1 },
-        "observed_rows": { "type": "integer", "minimum": 0 }
+        "observed_rows": { "type": "integer", "minimum": 0 },
+        "observed_payload_blake3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
       },
       "required": [
         "result_mode",

@@ -286,6 +286,9 @@ pub enum GeoSubcommand {
     /// Materialize H.7 NYC staging-profile rows through the population adapter
     #[command(name = "materialize-h7-staging-batch")]
     MaterializeH7StagingBatch(GeoMaterializeH7StagingBatchCli),
+    /// Materialize an H.7 PIP-block export without a warehouse JSON-wrapper pass
+    #[command(name = "materialize-h7-pip-block-batch")]
+    MaterializeH7PipBlockBatch(GeoMaterializeH7PipBlockBatchCli),
     /// Admit versioned rho observations into a bounded composition request
     #[command(name = "compile-evidence")]
     CompileEvidence(GeoCompileEvidenceCli),
@@ -456,6 +459,13 @@ pub struct GeoMaterializeH7PopulationCli {
 #[derive(Args, Debug, Clone)]
 pub struct GeoMaterializeH7StagingBatchCli {
     /// JSON file holding an H.7 NYC staging-profile batch
+    #[arg(long)]
+    pub batch: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoMaterializeH7PipBlockBatchCli {
+    /// JSON file holding canon_geo_h7_pip_block_population_batch.v0
     #[arg(long)]
     pub batch: PathBuf,
 }

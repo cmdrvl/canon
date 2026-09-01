@@ -394,6 +394,7 @@ canon geo materialize-evidence --rows <ROWS.json>
 canon geo materialize-address-evidence --request <REQUEST.json>
 canon geo materialize-h7-population --rows <ROWS.json>
 canon geo materialize-h7-staging-batch --batch <BATCH.json>
+canon geo materialize-h7-pip-block-batch --batch <BATCH.json>
 canon geo compile-evidence --request <REQUEST.json>
 canon geo evaluate --population <POPULATION.json>
 canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]
@@ -550,6 +551,13 @@ for the staging-derived source-record payload contract. It validates batch guard
 denominators, release pins, source-record bytes, and profile truth planes before delegating
 to the generic H.7 population materializer. It is not the generic regional engine and does
 not turn derived payload rows or fixtures into live source proof.
+
+`canon geo materialize-h7-pip-block-batch --batch` is the bounded offline adapter for the
+warehouse H.7 candidate-block export. It validates the complete observed snapshot,
+release-row and source-plane denominators, exact MapPLUTO candidate locators, truth-plane
+separation, and a BLAKE3 digest over the typed rows before emitting the generic H.7
+population. Observed rows remain diagnostic evidence unless a separately cited live
+acquisition satisfies the stricter query-receipt contract.
 
 `canon geo plan --question --capabilities --inventory --profile --budget` is a
 deterministic offline planner. It emits `canon_geo_plan.v0`, a Geo semantic overlay over one

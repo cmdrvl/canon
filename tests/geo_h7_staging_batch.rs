@@ -414,6 +414,7 @@ fn staging_batch() -> GeoH7StagingSourceRecordBytesBatchRequest {
             empirical_discrepancies: Vec::new(),
             row_cap: 10,
             observed_rows: 0,
+            observed_payload_blake3: None,
         },
         plane_denominators: vec![
             plane_denominator(GeoTruthPlane::NonRoundAmountDateLegalBorough),

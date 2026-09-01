@@ -128,6 +128,7 @@ fn base_request() -> GeoH7PopulationRowsRequest {
             ],
             row_cap: 10,
             observed_rows: 0,
+            observed_payload_blake3: None,
         },
         plane_denominators: vec![
             GeoH7PlaneDenominator {

@@ -48,7 +48,7 @@
     },
     "population_scope": {
       "type": "string",
-      "enum": ["fixture_subset", "retained_complete", "live_complete"]
+      "enum": ["fixture_subset", "observed_snapshot", "retained_complete", "live_complete"]
     },
     "source_record_role": {
       "type": "string",

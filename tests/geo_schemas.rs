@@ -35,8 +35,9 @@ use canon::geo::{
     CANON_GEO_H7_ACRIS_RELEASE_DT, CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION,
     CANON_GEO_H7_BRIDGE_BUILD_ID, CANON_GEO_H7_COLLATERAL_SCOPE,
     CANON_GEO_H7_LENDER_MATCH_TRANSFORM, CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
-    CANON_GEO_H7_POPULATION_ROWS_VERSION, CANON_GEO_H7_POPULATION_VERSION,
-    CANON_GEO_H7_PRIMARY_MAPPLUTO_RELEASE, CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS,
+    CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
+    CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_PRIMARY_MAPPLUTO_RELEASE,
+    CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS,
     CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
     CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_MULTISOURCE_REQUEST_VERSION,
     CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
@@ -126,6 +127,8 @@ const H7_POPULATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.h7_population.v0.schema.json");
 const H7_STAGING_SOURCE_RECORD_BYTES_BATCH_SCHEMA: &str =
     include_str!("../schemas/canon.geo.h7_staging_source_record_bytes_batch.v0.schema.json");
+const H7_PIP_BLOCK_POPULATION_BATCH_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.h7_pip_block_population_batch.v0.schema.json");
 const ADDRESS_PARSE_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.address_parse_request.v0.schema.json");
 const ADDRESS_PARSE_FOREST_SCHEMA: &str =
@@ -2237,6 +2240,11 @@ fn h7_population_schemas_are_registered_with_version_constants() {
         "canon.geo.h7_staging_source_record_bytes_batch.v0",
         CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
     );
+    assert_schema_shape(
+        &parsed(H7_PIP_BLOCK_POPULATION_BATCH_SCHEMA),
+        "canon.geo.h7_pip_block_population_batch.v0",
+        CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION,
+    );
 }
 
 #[test]
@@ -2465,6 +2473,7 @@ fn h7_population_rows_request() -> GeoH7PopulationRowsRequest {
             empirical_discrepancies: Vec::new(),
             row_cap: 10,
             observed_rows: 0,
+            observed_payload_blake3: None,
         },
         plane_denominators: vec![
             GeoH7PlaneDenominator {

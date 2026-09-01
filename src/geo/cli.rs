@@ -12,10 +12,10 @@ use crate::{
     cli::{
         GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli,
         GeoLinkSourcesCli, GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli,
-        GeoMaterializeGeometryCli, GeoMaterializeH7PopulationCli, GeoMaterializeH7StagingBatchCli,
-        GeoMaterializeHomeCellsCli, GeoMaterializeWarehouseGeometryCli, GeoPlanCli,
-        GeoReconcileTilesCli, GeoReplanFromAcquisitionCli, GeoRunCli, GeoSolveCli, GeoSubcommand,
-        GeoTileWorkCli,
+        GeoMaterializeGeometryCli, GeoMaterializeH7PipBlockBatchCli, GeoMaterializeH7PopulationCli,
+        GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
+        GeoMaterializeWarehouseGeometryCli, GeoPlanCli, GeoReconcileTilesCli,
+        GeoReplanFromAcquisitionCli, GeoRunCli, GeoSolveCli, GeoSubcommand, GeoTileWorkCli,
     },
     project::ProjectRunPolicy,
     refusal,
@@ -66,12 +66,14 @@ use super::{
         materialize_geometry_tile, materialize_warehouse_geometry,
     },
     materialize::{
-        CANON_GEO_H7_POPULATION_ROWS_VERSION, CANON_GEO_H7_POPULATION_VERSION,
-        CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
+        CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
+        CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
+        CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoH7PipBlockPopulationBatchRequest,
         GeoH7PopulationRowsRequest, GeoH7StagingSourceRecordBytesBatchRequest,
         GeoMaterializationError, GeoWarehouseRowsRequest, canonical_h7_population_bytes,
-        canonical_materialized_evidence_request_bytes, materialize_h7_population_rows,
-        materialize_h7_staging_source_record_bytes_batch, materialize_warehouse_rows,
+        canonical_materialized_evidence_request_bytes, materialize_h7_pip_block_population_batch,
+        materialize_h7_population_rows, materialize_h7_staging_source_record_bytes_batch,
+        materialize_warehouse_rows,
     },
     multisource::{
         CANON_GEO_MULTISOURCE_REQUEST_VERSION, GeoMultisourceRequest,
@@ -127,6 +129,7 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
         GeoSubcommand::MaterializeAddressEvidence(args) => run_materialize_address_evidence(args),
         GeoSubcommand::MaterializeH7Population(args) => run_materialize_h7_population(args),
         GeoSubcommand::MaterializeH7StagingBatch(args) => run_materialize_h7_staging_batch(args),
+        GeoSubcommand::MaterializeH7PipBlockBatch(args) => run_materialize_h7_pip_block_batch(args),
         GeoSubcommand::CompileEvidence(args) => run_compile_evidence(args),
         GeoSubcommand::Evaluate(args) => run_evaluate(args),
     }
@@ -621,6 +624,28 @@ fn run_materialize_h7_staging_batch(
         Err(exit_code) => return Ok(exit_code),
     };
     let artifact = match materialize_h7_staging_source_record_bytes_batch(&batch) {
+        Ok(artifact) => artifact,
+        Err(error) => return emit_h7_population_materialization_error(error),
+    };
+    match canonical_h7_population_bytes(&artifact) {
+        Ok(bytes) => write_canonical(&bytes),
+        Err(error) => emit_serialization_refusal(CANON_GEO_H7_POPULATION_VERSION, &error),
+    }
+}
+
+fn run_materialize_h7_pip_block_batch(
+    args: &GeoMaterializeH7PipBlockBatchCli,
+) -> Result<u8, Box<dyn Error>> {
+    let batch: GeoH7PipBlockPopulationBatchRequest = match read_request(
+        &args.batch,
+        "batch",
+        CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION,
+        "canon geo materialize-h7-pip-block-batch --batch <BATCH.json>",
+    ) {
+        Ok(batch) => batch,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let artifact = match materialize_h7_pip_block_population_batch(&batch) {
         Ok(artifact) => artifact,
         Err(error) => return emit_h7_population_materialization_error(error),
     };

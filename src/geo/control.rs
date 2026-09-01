@@ -30,8 +30,9 @@ use super::{
         CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_VERSION,
     },
     materialize::{
-        CANON_GEO_H7_POPULATION_ROWS_VERSION, CANON_GEO_H7_POPULATION_VERSION,
-        CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
+        CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
+        CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
+        CANON_GEO_WAREHOUSE_ROWS_VERSION,
     },
     multisource::CANON_GEO_MULTISOURCE_REQUEST_VERSION,
     plan::CANON_GEO_PLAN_VERSION,
@@ -1234,6 +1235,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "H.7 NYC staging-profile source-record byte batch contract",
         ),
         contract(
+            CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION,
+            "schemas/canon.geo.h7_pip_block_population_batch.v0.schema.json",
+            "H.7 PIP-block observed population adapter contract",
+        ),
+        contract(
             CANON_GEO_H7_POPULATION_VERSION,
             "schemas/canon.geo.h7_population.v0.schema.json",
             "typed H.7 population artifact contract",
@@ -1354,6 +1360,12 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
         ),
         command(
             "canon geo materialize-h7-staging-batch --batch <BATCH.json>",
+            CANON_GEO_H7_POPULATION_VERSION,
+            true,
+            false,
+        ),
+        command(
+            "canon geo materialize-h7-pip-block-batch --batch <BATCH.json>",
             CANON_GEO_H7_POPULATION_VERSION,
             true,
             false,
