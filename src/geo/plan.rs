@@ -7,6 +7,11 @@
 //! catalog.  Missing local evidence becomes a typed external request or an
 //! explicit discovery gap.
 
+use super::satisfy::{
+    CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION, GeoInventoryAdvancementEffect,
+    GeoRegionalInventoryAdvancement, GeoSatisfyError,
+    geo_regional_inventory_advancement_semantic_hash,
+};
 use super::{
     CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
     CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_COMPOSITION_PROFILE_VERSION,
@@ -23,8 +28,8 @@ use super::{
     GeoRowByteCeilings, GeoSubsetPredicate, GeoSubsetPredicateKind, GeoTelemetrySemanticEffect,
     canonicalize_capabilities, canonicalize_question, canonicalize_regional_inventory,
     canonicalize_resource_budget, capabilities_semantic_hash, evaluate_inventory_support,
-    geo_acquisition_request_id, geo_discovery_request_id, question_semantic_hash,
-    regional_inventory_planning_hash, regional_inventory_semantic_hash,
+    geo_acquisition_request_id, geo_acquisition_request_semantic_hash, geo_discovery_request_id,
+    question_semantic_hash, regional_inventory_planning_hash, regional_inventory_semantic_hash,
     resource_budget_semantic_hash, validate_geo_acquisition_request,
     validate_geo_discovery_request,
 };
@@ -58,6 +63,16 @@ pub struct GeoPlanRequest {
     pub inventory: GeoRegionalInventory,
     pub profile: GeoCompositionProfile,
     pub budget: GeoResourceBudget,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeoPlanReplanRequest {
+    pub base_plan: GeoPlan,
+    pub question: GeoQuestion,
+    pub capabilities: GeoCapabilities,
+    pub profile: GeoCompositionProfile,
+    pub budget: GeoResourceBudget,
+    pub inventory_advancement: GeoRegionalInventoryAdvancement,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -694,6 +709,49 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
     Ok(plan)
 }
 
+pub fn replan_geo_plan_from_inventory_advancement(
+    request: GeoPlanReplanRequest,
+) -> Result<GeoPlan, GeoPlanError> {
+    validate_geo_plan(&request.base_plan)?;
+    validate_replan_artifact_inputs(
+        &request.base_plan,
+        &request.question,
+        &request.capabilities,
+        &request.profile,
+        &request.budget,
+    )?;
+    let advanced_inventory = validate_inventory_advancement_for_replan(
+        &request.base_plan,
+        &request.question,
+        &request.inventory_advancement,
+    )?;
+    let advanced_planning_hash =
+        regional_inventory_planning_hash(&advanced_inventory).map_err(control_error)?;
+    if advanced_planning_hash == request.base_plan.inventory_ref.planning_hash {
+        return Err(GeoPlanError::new(
+            GeoPlanErrorCode::InvalidInput,
+            "Geo replan requires an advanced regional inventory that changes planning identity",
+            [("inventory_planning_hash", advanced_planning_hash.as_str())],
+        ));
+    }
+
+    let replanned = compile_geo_plan(GeoPlanRequest {
+        question: request.question,
+        capabilities: request.capabilities,
+        inventory: advanced_inventory,
+        profile: request.profile,
+        budget: request.budget,
+    })?;
+    if replanned.plan_id == request.base_plan.plan_id {
+        return Err(GeoPlanError::new(
+            GeoPlanErrorCode::ContractViolation,
+            "Geo replan must publish a new immutable plan identity",
+            [("plan_id", replanned.plan_id.as_str())],
+        ));
+    }
+    Ok(replanned)
+}
+
 pub fn canonical_geo_plan_bytes(plan: &GeoPlan) -> Result<Vec<u8>, GeoPlanError> {
     validate_geo_plan(plan)?;
     serde_json::to_vec(plan).map_err(serialization_error)
@@ -808,6 +866,360 @@ pub fn validate_geo_plan(plan: &GeoPlan) -> Result<(), GeoPlanError> {
         ));
     }
     Ok(())
+}
+
+fn validate_replan_artifact_inputs(
+    base_plan: &GeoPlan,
+    question: &GeoQuestion,
+    capabilities: &GeoCapabilities,
+    profile: &GeoCompositionProfile,
+    budget: &GeoResourceBudget,
+) -> Result<(), GeoPlanError> {
+    let question = canonicalize_question(question).map_err(control_error)?;
+    let question_hash = question_semantic_hash(&question).map_err(control_error)?;
+    validate_replan_ref(
+        "question",
+        &base_plan.question_ref.artifact_id,
+        &question.question_id,
+    )?;
+    validate_replan_ref(
+        "question_semantic_hash",
+        &base_plan.question_ref.semantic_hash,
+        &question_hash,
+    )?;
+
+    let capabilities = canonicalize_capabilities(capabilities).map_err(control_error)?;
+    let capabilities_hash = capabilities_semantic_hash(&capabilities).map_err(control_error)?;
+    validate_replan_ref(
+        "capabilities",
+        &base_plan.capabilities_ref.artifact_id,
+        &capabilities.crate_version,
+    )?;
+    validate_replan_ref(
+        "capabilities_semantic_hash",
+        &base_plan.capabilities_ref.semantic_hash,
+        &capabilities_hash,
+    )?;
+
+    validate_profile(profile)?;
+    let profile_hash = digest_json(profile)?;
+    validate_replan_ref(
+        "profile_version",
+        &base_plan.profile_ref.version,
+        &profile.version,
+    )?;
+    if base_plan.profile_ref.selection_level != profile.selection_level {
+        return Err(GeoPlanError::new(
+            GeoPlanErrorCode::ContractViolation,
+            "Geo replan typed inputs must match the base plan profile",
+            [
+                ("field".to_string(), "profile_selection_level".to_string()),
+                (
+                    "expected".to_string(),
+                    format!("{:?}", base_plan.profile_ref.selection_level),
+                ),
+                (
+                    "actual".to_string(),
+                    format!("{:?}", profile.selection_level),
+                ),
+            ],
+        ));
+    }
+    validate_replan_ref(
+        "profile_semantic_hash",
+        &base_plan.profile_ref.semantic_hash,
+        &profile_hash,
+    )?;
+
+    let budget = canonicalize_resource_budget(budget).map_err(control_error)?;
+    let budget_hash = resource_budget_semantic_hash(&budget).map_err(control_error)?;
+    let budget_planning_hash = deterministic_budget_planning_hash(&budget)?;
+    validate_replan_ref("budget", &base_plan.budget_ref.budget_id, &budget.budget_id)?;
+    validate_replan_ref(
+        "budget_semantic_hash",
+        &base_plan.budget_ref.semantic_hash,
+        &budget_hash,
+    )?;
+    validate_replan_ref(
+        "budget_planning_hash",
+        &base_plan.budget_ref.planning_hash,
+        &budget_planning_hash,
+    )?;
+
+    Ok(())
+}
+
+fn validate_inventory_advancement_for_replan(
+    base_plan: &GeoPlan,
+    question: &GeoQuestion,
+    advancement: &GeoRegionalInventoryAdvancement,
+) -> Result<GeoRegionalInventory, GeoPlanError> {
+    if advancement.version != CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION {
+        return Err(GeoPlanError::new(
+            GeoPlanErrorCode::UnsupportedVersion,
+            "unsupported Geo regional inventory advancement version",
+            [
+                ("actual", advancement.version.as_str()),
+                ("expected", CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION),
+            ],
+        ));
+    }
+    if advancement.effect != GeoInventoryAdvancementEffect::LocalAvailabilityOnly {
+        return Err(GeoPlanError::new(
+            GeoPlanErrorCode::ContractViolation,
+            "Geo replan accepts only local-availability inventory advancements",
+            [("effect", format!("{:?}", advancement.effect))],
+        ));
+    }
+    if advancement.proof_class != super::GeoAcquisitionProofClass::Live
+        || advancement.receipt_terminal_state != super::GeoAcquisitionTerminalState::Complete
+    {
+        return Err(GeoPlanError::new(
+            GeoPlanErrorCode::ContractViolation,
+            "Geo replan requires a live complete acquisition advancement",
+            [
+                ("proof_class", format!("{:?}", advancement.proof_class)),
+                (
+                    "terminal_state",
+                    format!("{:?}", advancement.receipt_terminal_state),
+                ),
+            ],
+        ));
+    }
+    if advancement.source_advancements.is_empty() {
+        return Err(GeoPlanError::invalid(
+            "Geo replan requires at least one source advancement",
+        ));
+    }
+    let mut sorted_source_advancements = advancement.source_advancements.clone();
+    sorted_source_advancements.sort();
+    sorted_source_advancements.dedup();
+    if sorted_source_advancements != advancement.source_advancements {
+        return Err(GeoPlanError::invalid(
+            "Geo replan source advancements must be sorted and distinct",
+        ));
+    }
+
+    validate_replan_ref("plan_id", &base_plan.plan_id, &advancement.plan_id)?;
+    validate_replan_ref(
+        "plan_semantic_hash",
+        &base_plan.semantic_hash,
+        &advancement.plan_semantic_hash,
+    )?;
+    validate_replan_ref(
+        "base_inventory_id",
+        &base_plan.inventory_ref.inventory_id,
+        &advancement.base_inventory_id,
+    )?;
+    validate_replan_ref(
+        "base_inventory_semantic_hash",
+        &base_plan.inventory_ref.semantic_hash,
+        &advancement.base_inventory_semantic_hash,
+    )?;
+
+    let question = canonicalize_question(question).map_err(control_error)?;
+    if advancement.bounded_geography != question.bounded_geography {
+        return Err(GeoPlanError::new(
+            GeoPlanErrorCode::ContractViolation,
+            "Geo replan advancement geography must match the base question",
+            [
+                (
+                    "question_geography_id",
+                    question.bounded_geography.geography_id.as_str(),
+                ),
+                (
+                    "advancement_geography_id",
+                    advancement.bounded_geography.geography_id.as_str(),
+                ),
+            ],
+        ));
+    }
+
+    let advanced_inventory =
+        canonicalize_regional_inventory(&advancement.advanced_inventory).map_err(control_error)?;
+    if advanced_inventory.region != advancement.bounded_geography {
+        return Err(GeoPlanError::new(
+            GeoPlanErrorCode::ContractViolation,
+            "Geo replan advanced inventory region must match the advancement geography",
+            [
+                (
+                    "advanced_inventory_region",
+                    advanced_inventory.region.geography_id.as_str(),
+                ),
+                (
+                    "advancement_geography_id",
+                    advancement.bounded_geography.geography_id.as_str(),
+                ),
+            ],
+        ));
+    }
+    let advanced_inventory_semantic_hash =
+        regional_inventory_semantic_hash(&advanced_inventory).map_err(control_error)?;
+    validate_replan_ref(
+        "advanced_inventory_id",
+        &advanced_inventory.inventory_id,
+        &advancement.advanced_inventory_id,
+    )?;
+    validate_replan_ref(
+        "advanced_inventory_semantic_hash",
+        &advanced_inventory_semantic_hash,
+        &advancement.advanced_inventory_semantic_hash,
+    )?;
+    if advancement.advanced_inventory_semantic_hash == base_plan.inventory_ref.semantic_hash {
+        return Err(GeoPlanError::new(
+            GeoPlanErrorCode::InvalidInput,
+            "Geo replan requires an advanced inventory distinct from the base inventory",
+            [(
+                "inventory_semantic_hash",
+                advancement.advanced_inventory_semantic_hash.as_str(),
+            )],
+        ));
+    }
+
+    let expected_advancement_hash =
+        geo_regional_inventory_advancement_semantic_hash(advancement).map_err(satisfy_error)?;
+    validate_replan_ref(
+        "inventory_advancement_semantic_hash",
+        &expected_advancement_hash,
+        &advancement.semantic_hash,
+    )?;
+    let expected_advancement_id = format!(
+        "{CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION}:{}",
+        expected_advancement_hash.trim_start_matches("blake3:")
+    );
+    validate_replan_ref(
+        "inventory_advancement_id",
+        &expected_advancement_id,
+        &advancement.advancement_id,
+    )?;
+
+    validate_advancement_matches_base_acquisition(base_plan, advancement)?;
+    validate_source_advancements(&advanced_inventory, advancement)?;
+    Ok(advanced_inventory)
+}
+
+fn validate_advancement_matches_base_acquisition(
+    base_plan: &GeoPlan,
+    advancement: &GeoRegionalInventoryAdvancement,
+) -> Result<(), GeoPlanError> {
+    let mut matches = 0_usize;
+    for request in &base_plan.external_requests {
+        let GeoPlanExternalRequest::Acquisition { request, .. } = request else {
+            continue;
+        };
+        if request.request_id != advancement.request_id {
+            continue;
+        }
+        let request_hash =
+            geo_acquisition_request_semantic_hash(request).map_err(discovery_error)?;
+        validate_replan_ref(
+            "request_semantic_hash",
+            &request_hash,
+            &advancement.request_semantic_hash,
+        )?;
+        matches += 1;
+    }
+    if matches != 1 {
+        return Err(GeoPlanError::new(
+            GeoPlanErrorCode::ContractViolation,
+            "Geo replan advancement must match exactly one acquisition request in the base plan",
+            [
+                ("request_id".to_string(), advancement.request_id.clone()),
+                ("matches".to_string(), matches.to_string()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_source_advancements(
+    advanced_inventory: &GeoRegionalInventory,
+    advancement: &GeoRegionalInventoryAdvancement,
+) -> Result<(), GeoPlanError> {
+    for source_advancement in &advancement.source_advancements {
+        if source_advancement.advanced_state != super::GeoSourceAvailability::Available {
+            return Err(GeoPlanError::new(
+                GeoPlanErrorCode::ContractViolation,
+                "Geo replan source advancements must end in local availability",
+                [
+                    (
+                        "source_instance_id".to_string(),
+                        source_advancement.source_instance_id.clone(),
+                    ),
+                    (
+                        "advanced_state".to_string(),
+                        format!("{:?}", source_advancement.advanced_state),
+                    ),
+                ],
+            ));
+        }
+        if source_advancement.local_artifact_byte_count == 0 {
+            return Err(GeoPlanError::new(
+                GeoPlanErrorCode::ContractViolation,
+                "Geo replan source advancements must bind non-empty local artifacts",
+                [(
+                    "source_instance_id",
+                    source_advancement.source_instance_id.as_str(),
+                )],
+            ));
+        }
+        if source_advancement
+            .local_artifact_contract_version
+            .as_deref()
+            != Some(source_advancement.local_ref.contract_version.as_str())
+        {
+            return Err(GeoPlanError::new(
+                GeoPlanErrorCode::ContractViolation,
+                "Geo replan source advancement contract must match its local artifact ref",
+                [(
+                    "source_instance_id",
+                    source_advancement.source_instance_id.as_str(),
+                )],
+            ));
+        }
+        let Some(source) = advanced_inventory.sources.iter().find(|source| {
+            source.source_instance_id == source_advancement.source_instance_id
+                && source.release == source_advancement.release
+                && source.coverage.region == advancement.bounded_geography
+        }) else {
+            return Err(GeoPlanError::new(
+                GeoPlanErrorCode::ContractViolation,
+                "Geo replan source advancement is missing from the advanced inventory",
+                [(
+                    "source_instance_id",
+                    source_advancement.source_instance_id.as_str(),
+                )],
+            ));
+        };
+        if source.local_state.state != super::GeoSourceAvailability::Available
+            || source.local_state.local_ref.as_ref() != Some(&source_advancement.local_ref)
+        {
+            return Err(GeoPlanError::new(
+                GeoPlanErrorCode::ContractViolation,
+                "Geo replan advanced inventory must carry each validated local artifact ref",
+                [(
+                    "source_instance_id",
+                    source_advancement.source_instance_id.as_str(),
+                )],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_replan_ref(field: &str, expected: &str, actual: &str) -> Result<(), GeoPlanError> {
+    if expected == actual {
+        return Ok(());
+    }
+    Err(GeoPlanError::new(
+        GeoPlanErrorCode::ContractViolation,
+        "Geo replan input does not match the base plan or advancement",
+        [
+            ("field", field.to_string()),
+            ("expected", expected.to_string()),
+            ("actual", actual.to_string()),
+        ],
+    ))
 }
 
 pub fn geo_plan_semantic_hash(plan: &GeoPlan) -> Result<String, GeoPlanError> {
@@ -1839,6 +2251,14 @@ fn control_error(error: super::GeoControlError) -> GeoPlanError {
 }
 
 fn discovery_error(error: super::GeoDiscoveryError) -> GeoPlanError {
+    GeoPlanError::new(
+        GeoPlanErrorCode::ContractViolation,
+        error.message,
+        error.detail,
+    )
+}
+
+fn satisfy_error(error: GeoSatisfyError) -> GeoPlanError {
     GeoPlanError::new(
         GeoPlanErrorCode::ContractViolation,
         error.message,
