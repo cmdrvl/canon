@@ -10,7 +10,12 @@
 //! may observe the same decision, but reconciliation either produces one owned
 //! decision or refuses an orphan/non-confluent boundary result.
 
-use super::geometry_value::parse_fixed_decimal;
+use super::{
+    GeoControlEntityLevel, GeoNativeEntityScope, GeoPlanInventoryRef, GeoRegionalInventory,
+    GeoRegionalSourceInstance, GeoSourceRelease, canonicalize_regional_inventory,
+    geometry_value::parse_fixed_decimal, regional_inventory_planning_hash,
+    regional_inventory_semantic_hash,
+};
 use h3o::{CellIndex, LatLng, Resolution};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -20,13 +25,13 @@ use std::{
     str::FromStr,
 };
 
-pub const CANON_GEO_TILE_WORK_REQUEST_VERSION: &str = "canon_geo_tile_work_request.v0";
-pub const CANON_GEO_TILE_WORK_UNIT_VERSION: &str = "canon_geo_tile_work_unit.v0";
-pub const CANON_GEO_HOME_CELL_ROWS_VERSION: &str = "canon_geo_home_cell_rows.v0";
-pub const CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION: &str = "canon_geo_home_cell_assignment.v0";
+pub const CANON_GEO_TILE_WORK_REQUEST_VERSION: &str = "canon_geo_tile_work_request.v1";
+pub const CANON_GEO_TILE_WORK_UNIT_VERSION: &str = "canon_geo_tile_work_unit.v1";
+pub const CANON_GEO_HOME_CELL_ROWS_VERSION: &str = "canon_geo_home_cell_rows.v1";
+pub const CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION: &str = "canon_geo_home_cell_assignment.v1";
 pub const CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION: &str =
-    "canon_geo_tile_reconciliation_request.v0";
-pub const CANON_GEO_TILE_RECONCILIATION_VERSION: &str = "canon_geo_tile_reconciliation.v0";
+    "canon_geo_tile_reconciliation_request.v1";
+pub const CANON_GEO_TILE_RECONCILIATION_VERSION: &str = "canon_geo_tile_reconciliation.v1";
 
 const MAX_IDENTIFIER_BYTES: usize = 256;
 const MAX_FEATURES_PER_WORK_UNIT: u64 = 1_000_000;
@@ -40,8 +45,33 @@ const MAX_STABILITY_RADIUS_FIXED: u64 = 10_000_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct GeoTileSourceBinding {
+    pub source_instance_id: String,
+    pub release: GeoSourceRelease,
+    pub native_scope: GeoNativeEntityScope,
+    /// Declared regional-inventory reference in the same shape used by a Geo
+    /// plan. Reconciliation verifies this reference against supplied inventory
+    /// bytes before it grants any inventory-relative stable-identity authority.
+    pub inventory_ref: GeoPlanInventoryRef,
+}
+
+impl GeoTileSourceBinding {
+    pub const fn native_entity_level(&self) -> Option<GeoControlEntityLevel> {
+        match &self.native_scope {
+            GeoNativeEntityScope::NativeEntity { entity_level, .. } => Some(*entity_level),
+            GeoNativeEntityScope::ObservationOnly => None,
+        }
+    }
+
+    pub const fn may_contribute_stable_alias(&self) -> bool {
+        self.native_scope.may_contribute_stable_alias()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoTileFeatureRef {
-    pub source_name: String,
+    pub source: GeoTileSourceBinding,
     pub feature_id: String,
     /// Canonical H3 cell containing the feature's declared representative
     /// point. Cell computation belongs to ingest; this contract makes the
@@ -55,9 +85,8 @@ pub struct GeoTileFeatureRef {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoHomeCellRow {
-    pub source_name: String,
+    pub source: GeoTileSourceBinding,
     pub feature_id: String,
-    pub source_snapshot: String,
     pub source_record_id: String,
     pub geometry_sha256: String,
     pub representative_point_method: String,
@@ -108,9 +137,8 @@ pub struct GeoRepresentativePointFixed {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoHomeCellFeatureAssignment {
-    pub source_name: String,
+    pub source: GeoTileSourceBinding,
     pub feature_id: String,
-    pub source_snapshot: String,
     pub source_record_id: String,
     pub geometry_sha256: String,
     pub representative_point_method: String,
@@ -182,7 +210,7 @@ pub enum GeoTilePlacement {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoTileFeatureMembership {
-    pub source_name: String,
+    pub source: GeoTileSourceBinding,
     pub feature_id: String,
     pub home_cell: String,
     pub placement: GeoTilePlacement,
@@ -203,21 +231,54 @@ pub struct GeoTileWorkUnitArtifact {
     pub halo_feature_count: u64,
     pub max_features: u64,
     pub max_work_cells: u64,
+    /// Domain-separated BLAKE3 digest of every preceding semantic work-unit
+    /// field. This digest excludes itself and binds local proposals to the
+    /// precise bounded section they declare; it does not prove an external
+    /// solver actually consumed that section.
+    pub work_unit_blake3: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoTileDecisionMember {
-    pub source_name: String,
+    pub source: GeoTileSourceBinding,
     pub feature_id: String,
+    /// Candidate variable grain claimed by the local decision. This must equal
+    /// the source's native entity level. Cross-level relations belong in typed
+    /// relation artifacts, never in a retyped identity variable.
+    pub candidate_entity_level: GeoControlEntityLevel,
     pub home_cell: String,
+}
+
+impl GeoTileDecisionMember {
+    pub const fn may_contribute_stable_alias(&self) -> bool {
+        self.source.may_contribute_stable_alias()
+    }
+}
+
+/// Declared meaning of a locally solved decision payload.
+///
+/// Composition decisions may span entity levels and may consist entirely of
+/// evidence-only candidates; they carry no alias-mint authority. Stable
+/// identity decisions are same-level and require a stable-alias participant at
+/// that exact level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum GeoTileDecisionSemantics {
+    Composition,
+    StableIdentity { entity_level: GeoControlEntityLevel },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoTileDecisionProposal {
-    /// Digest of the complete decision payload produced by the local solver.
-    /// Reconciliation does not interpret or merge payloads.
+    pub semantics: GeoTileDecisionSemantics,
+    /// Must equal the canonical digest carried by this proposal's embedded
+    /// work unit. This is a deterministic association check, not an execution
+    /// receipt from an external solver.
+    pub work_unit_blake3: String,
+    /// Digest of the declared complete decision payload. Reconciliation does
+    /// not interpret or merge payloads, or prove who produced them.
     pub payload_blake3: String,
     pub members: Vec<GeoTileDecisionMember>,
 }
@@ -225,10 +286,25 @@ pub struct GeoTileDecisionProposal {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoTileDecisionBatch {
-    /// Exact bounded work unit supplied to the local solver that produced the
-    /// proposals below.
+    /// Exact bounded work unit the caller associates with the proposals below.
+    /// Each proposal repeats and is checked against its canonical digest; no
+    /// claim is made that an external solver actually consumed it.
     pub work_unit: GeoTileWorkUnitArtifact,
     pub proposals: Vec<GeoTileDecisionProposal>,
+}
+
+/// Complete inventory evidence used to validate StableAlias authority.
+///
+/// The inventory reference has the same shape as the reference embedded in a
+/// Geo plan.
+/// Reconciliation recomputes both inventory hashes and then matches every
+/// stable-identity member to an exact source instance, release, and native
+/// scope in the canonical inventory.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileInventoryLineage {
+    pub inventory_ref: GeoPlanInventoryRef,
+    pub inventory: GeoRegionalInventory,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -236,6 +312,8 @@ pub struct GeoTileDecisionBatch {
 pub struct GeoTileReconciliationRequest {
     pub version: String,
     pub halo_k: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inventory_lineage: Option<GeoTileInventoryLineage>,
     pub batches: Vec<GeoTileDecisionBatch>,
     pub max_batches: u64,
     pub max_proposals: u64,
@@ -258,10 +336,16 @@ pub struct GeoTileBatchReceipt {
 pub struct GeoReconciledTileDecision {
     pub decision_id: String,
     pub owner_cell: String,
+    pub semantics: GeoTileDecisionSemantics,
+    /// Inventory-relative authority boundary for a stable-identity decision.
+    /// Composition decisions omit this field because they mint no aliases.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inventory_ref: Option<GeoPlanInventoryRef>,
     pub payload_blake3: String,
     pub members: Vec<GeoTileDecisionMember>,
-    /// Number of independently executed center cells that observed the same
-    /// canonical member set and payload.
+    /// Number of center-cell batches that submitted the same declared
+    /// semantics, canonical member set, and payload. This is not proof of
+    /// independent solver execution.
     pub proposal_copies: u64,
 }
 
@@ -272,6 +356,11 @@ pub struct GeoTileReconciliationArtifact {
     pub request_version: String,
     pub h3_resolution: u8,
     pub halo_k: u32,
+    /// Validated regional-inventory reference used by stable-identity
+    /// decisions in this artifact, if any. This is inventory-relative
+    /// authority, not a claim of external or world truth.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inventory_ref: Option<GeoPlanInventoryRef>,
     pub batches: u64,
     pub input_proposals: u64,
     pub owned_decisions: u64,
@@ -287,7 +376,7 @@ pub enum GeoTileErrorCode {
     InvalidInput,
     InvalidCoordinate,
     InvalidSourceDigest,
-    MixedSourceSnapshot,
+    IncompatibleSourceBinding,
     InvalidH3Cell,
     ResolutionMismatch,
     HaloBudgetExceeded,
@@ -298,6 +387,8 @@ pub enum GeoTileErrorCode {
     DuplicateCenter,
     InvalidWorkUnit,
     InvalidDecision,
+    InvalidCandidateMember,
+    InvalidInventoryLineage,
     NonConfluentDecision,
     MissingOwnerWorkUnit,
     OrphanedDecision,
@@ -347,20 +438,44 @@ impl Error for GeoTileError {}
 
 #[derive(Debug)]
 struct DecisionAccumulator {
-    membership_blake3: String,
+    decision_scope_blake3: String,
+    semantics: GeoTileDecisionSemantics,
     payload_blake3: String,
     owner_cell: CellIndex,
     members: Vec<GeoTileDecisionMember>,
     proposal_centers: BTreeSet<CellIndex>,
 }
 
-type FeatureHomeCells = BTreeMap<(String, String), CellIndex>;
+type SourceFeatureKey = (GeoTileSourceBinding, String);
+type FeatureHomeCells = BTreeMap<SourceFeatureKey, CellIndex>;
+type SourceBindings = BTreeMap<String, GeoTileSourceBinding>;
 
 #[derive(Debug)]
 struct ValidatedWorkUnit {
     center: CellIndex,
     feature_home_cells: FeatureHomeCells,
+    source_bindings: SourceBindings,
     blake3: String,
+}
+
+struct ValidatedInventoryLineage {
+    inventory_ref: GeoPlanInventoryRef,
+    sources: BTreeMap<String, GeoRegionalSourceInstance>,
+}
+
+#[derive(Serialize)]
+struct GeoTileWorkUnitDigestProjection<'a> {
+    version: &'a str,
+    request_version: &'a str,
+    center_cell: &'a str,
+    h3_resolution: u8,
+    halo_k: u32,
+    work_cells: &'a [String],
+    features: &'a [GeoTileFeatureMembership],
+    center_feature_count: u64,
+    halo_feature_count: u64,
+    max_features: u64,
+    max_work_cells: u64,
 }
 
 /// Derive deterministic H3 home cells from release-bound representative points.
@@ -448,10 +563,9 @@ pub fn materialize_home_cells(
     let mut features = Vec::with_capacity(request.rows.len());
 
     for row in &request.rows {
+        validate_source_binding("rows[].source", &row.source)?;
         for (field, value) in [
-            ("rows[].source_name", row.source_name.as_str()),
             ("rows[].feature_id", row.feature_id.as_str()),
-            ("rows[].source_snapshot", row.source_snapshot.as_str()),
             ("rows[].source_record_id", row.source_record_id.as_str()),
             (
                 "rows[].representative_point_method",
@@ -463,24 +577,26 @@ pub fn materialize_home_cells(
         validate_sha256("rows[].geometry_sha256", &row.geometry_sha256)?;
         validate_transform_pair(row)?;
         validate_source_signature(&mut source_signatures, row)?;
-        let feature_key = (row.source_name.clone(), row.feature_id.clone());
+        let feature_key = source_feature_key(&row.source, &row.feature_id);
         if !seen_features.insert(feature_key) {
             return Err(GeoTileError::new(
                 GeoTileErrorCode::DuplicateFeature,
                 "Geo home-cell rows repeat a source feature",
                 [
-                    ("source_name", row.source_name.as_str()),
+                    ("source_instance_id", row.source.source_instance_id.as_str()),
+                    ("release_id", row.source.release.release_id.as_str()),
                     ("feature_id", row.feature_id.as_str()),
                 ],
             ));
         }
-        let record_key = (row.source_name.clone(), row.source_record_id.clone());
+        let record_key = source_feature_key(&row.source, &row.source_record_id);
         if !seen_records.insert(record_key) {
             return Err(GeoTileError::new(
                 GeoTileErrorCode::DuplicateFeature,
                 "Geo home-cell rows repeat a source record",
                 [
-                    ("source_name", row.source_name.as_str()),
+                    ("source_instance_id", row.source.source_instance_id.as_str()),
+                    ("release_id", row.source.release.release_id.as_str()),
                     ("source_record_id", row.source_record_id.as_str()),
                 ],
             ));
@@ -507,9 +623,8 @@ pub fn materialize_home_cells(
             Some(_) => GeoHomeCellParity::Mismatch,
         };
         features.push(GeoHomeCellFeatureAssignment {
-            source_name: row.source_name.clone(),
+            source: row.source.clone(),
             feature_id: row.feature_id.clone(),
-            source_snapshot: row.source_snapshot.clone(),
             source_record_id: row.source_record_id.clone(),
             geometry_sha256: row.geometry_sha256.clone(),
             representative_point_method: row.representative_point_method.clone(),
@@ -530,7 +645,7 @@ pub fn materialize_home_cells(
     let tile_work_features = features
         .iter()
         .map(|feature| GeoTileFeatureRef {
-            source_name: feature.source_name.clone(),
+            source: feature.source.clone(),
             feature_id: feature.feature_id.clone(),
             home_cell: feature.home_cell.clone(),
         })
@@ -628,17 +743,23 @@ pub fn materialize_tile_work_unit(
     let mut features = Vec::with_capacity(request.features.len());
     let mut center_feature_count = 0_u64;
     let mut halo_feature_count = 0_u64;
+    let mut source_bindings = BTreeMap::new();
 
     for feature in &request.features {
-        validate_identifier("source_name", &feature.source_name)?;
+        validate_source_binding("features[].source", &feature.source)?;
+        validate_source_binding_consistency(&mut source_bindings, &feature.source)?;
         validate_identifier("feature_id", &feature.feature_id)?;
-        let key = (feature.source_name.clone(), feature.feature_id.clone());
+        let key = source_feature_key(&feature.source, &feature.feature_id);
         if !seen.insert(key) {
             return Err(GeoTileError::new(
                 GeoTileErrorCode::DuplicateFeature,
                 "Geo tile work unit contains a duplicate source feature",
                 [
-                    ("source_name", feature.source_name.as_str()),
+                    (
+                        "source_instance_id",
+                        feature.source.source_instance_id.as_str(),
+                    ),
+                    ("release_id", feature.source.release.release_id.as_str()),
                     ("feature_id", feature.feature_id.as_str()),
                 ],
             ));
@@ -650,7 +771,11 @@ pub fn materialize_tile_work_unit(
                 GeoTileErrorCode::FeatureOutsideHalo,
                 "Geo feature lies outside the declared center-plus-halo work unit",
                 [
-                    ("source_name", feature.source_name.clone()),
+                    (
+                        "source_instance_id",
+                        feature.source.source_instance_id.clone(),
+                    ),
+                    ("release_id", feature.source.release.release_id.clone()),
                     ("feature_id", feature.feature_id.clone()),
                     ("home_cell", home.to_string()),
                     ("center_cell", center_cell.clone()),
@@ -666,7 +791,7 @@ pub fn materialize_tile_work_unit(
             GeoTilePlacement::Halo
         };
         features.push(GeoTileFeatureMembership {
-            source_name: feature.source_name.clone(),
+            source: feature.source.clone(),
             feature_id: feature.feature_id.clone(),
             home_cell: home.to_string(),
             placement,
@@ -674,7 +799,7 @@ pub fn materialize_tile_work_unit(
     }
     features.sort();
 
-    Ok(GeoTileWorkUnitArtifact {
+    let mut artifact = GeoTileWorkUnitArtifact {
         version: CANON_GEO_TILE_WORK_UNIT_VERSION.to_string(),
         request_version: request.version.clone(),
         center_cell,
@@ -686,11 +811,14 @@ pub fn materialize_tile_work_unit(
         halo_feature_count,
         max_features: request.max_features,
         max_work_cells: request.max_work_cells,
-    })
+        work_unit_blake3: String::new(),
+    };
+    artifact.work_unit_blake3 = canonical_work_unit_digest(&artifact)?;
+    Ok(artifact)
 }
 
-/// Reconcile independently executed tile decisions into one owned result per
-/// canonical member set.
+/// Reconcile caller-associated tile decisions into one owned result per
+/// declared decision semantics plus canonical member set.
 ///
 /// The owner is the numerically smallest H3 home cell among the decision's
 /// members. That rule is independent of source name, iteration order, and which
@@ -750,6 +878,12 @@ pub fn reconcile_tile_decisions(
     let mut input_proposals = 0_u64;
     let mut decisions: BTreeMap<String, DecisionAccumulator> = BTreeMap::new();
     let mut batch_receipts = Vec::with_capacity(request.batches.len());
+    let mut source_bindings = BTreeMap::new();
+    let inventory_sources = request
+        .inventory_lineage
+        .as_ref()
+        .map(validate_inventory_lineage)
+        .transpose()?;
 
     for batch in &request.batches {
         let feature_count = usize_to_u64(batch.work_unit.features.len(), "work_unit.features.len")?;
@@ -787,6 +921,9 @@ pub fn reconcile_tile_decisions(
             ));
         }
         let validated_work_unit = validate_work_unit_artifact(&batch.work_unit)?;
+        for binding in validated_work_unit.source_bindings.values() {
+            validate_source_binding_consistency(&mut source_bindings, binding)?;
+        }
         let center = validated_work_unit.center;
         if let Some(resolution) = expected_resolution {
             if center.resolution() != resolution {
@@ -806,10 +943,10 @@ pub fn reconcile_tile_decisions(
                 [("center_cell", center.to_string())],
             ));
         }
-        let mut batch_memberships = BTreeSet::new();
+        let mut batch_decision_scopes = BTreeSet::new();
         batch_receipts.push(GeoTileBatchReceipt {
             center_cell: center.to_string(),
-            work_unit_blake3: validated_work_unit.blake3,
+            work_unit_blake3: validated_work_unit.blake3.clone(),
             proposal_count: usize_to_u64(batch.proposals.len(), "batch.proposals.len")?,
         });
 
@@ -825,28 +962,46 @@ pub fn reconcile_tile_decisions(
                     ],
                 ));
             }
-            validate_blake3(&proposal.payload_blake3)?;
-            let members = normalize_members(
-                &proposal.members,
-                center,
-                &validated_work_unit.feature_home_cells,
-                request.max_members_per_decision,
-            )?;
-            let member_bytes = serde_json::to_vec(&members).map_err(|error| {
-                GeoTileError::new(
-                    GeoTileErrorCode::Serialization,
-                    "Geo tile decision members could not be serialized",
-                    [("error", error.to_string())],
-                )
-            })?;
-            let membership_blake3 = blake3::hash(&member_bytes).to_hex().to_string();
-            if !batch_memberships.insert(membership_blake3.clone()) {
+            validate_decision_blake3("payload_blake3", &proposal.payload_blake3)?;
+            validate_decision_blake3("work_unit_blake3", &proposal.work_unit_blake3)?;
+            if proposal.work_unit_blake3 != validated_work_unit.blake3 {
                 return Err(GeoTileError::new(
                     GeoTileErrorCode::InvalidDecision,
-                    "A center batch proposed the same decision membership more than once",
+                    "Geo tile proposal is not bound to its embedded canonical work unit",
                     [
                         ("center_cell", center.to_string()),
-                        ("membership_blake3", membership_blake3.clone()),
+                        (
+                            "expected_work_unit_blake3",
+                            validated_work_unit.blake3.clone(),
+                        ),
+                        ("actual_work_unit_blake3", proposal.work_unit_blake3.clone()),
+                    ],
+                ));
+            }
+            let members = normalize_members(
+                &proposal.members,
+                proposal.semantics,
+                center,
+                &validated_work_unit.feature_home_cells,
+                inventory_sources.as_ref(),
+                request.max_members_per_decision,
+            )?;
+            let decision_scope_bytes = serde_json::to_vec(&(proposal.semantics, &members))
+                .map_err(|error| {
+                    GeoTileError::new(
+                        GeoTileErrorCode::Serialization,
+                        "Geo tile decision semantics and members could not be serialized",
+                        [("error", error.to_string())],
+                    )
+                })?;
+            let decision_scope_blake3 = blake3::hash(&decision_scope_bytes).to_hex().to_string();
+            if !batch_decision_scopes.insert(decision_scope_blake3.clone()) {
+                return Err(GeoTileError::new(
+                    GeoTileErrorCode::InvalidDecision,
+                    "A center batch proposed the same decision semantics and membership more than once",
+                    [
+                        ("center_cell", center.to_string()),
+                        ("decision_scope_blake3", decision_scope_blake3.clone()),
                     ],
                 ));
             }
@@ -859,14 +1014,14 @@ pub fn reconcile_tile_decisions(
                 .min()
                 .expect("normalized members are non-empty");
 
-            match decisions.get_mut(&membership_blake3) {
+            match decisions.get_mut(&decision_scope_blake3) {
                 Some(existing) => {
                     if existing.payload_blake3 != proposal.payload_blake3 {
                         return Err(GeoTileError::new(
                             GeoTileErrorCode::NonConfluentDecision,
-                            "Adjacent tile work units produced different payloads for the same members",
+                            "Adjacent tile work units produced different payloads for the same decision semantics and members",
                             [
-                                ("membership_blake3", membership_blake3.clone()),
+                                ("decision_scope_blake3", decision_scope_blake3.clone()),
                                 ("first_payload", existing.payload_blake3.clone()),
                                 ("second_payload", proposal.payload_blake3.clone()),
                                 ("second_center", center.to_string()),
@@ -877,9 +1032,10 @@ pub fn reconcile_tile_decisions(
                 }
                 None => {
                     decisions.insert(
-                        membership_blake3.clone(),
+                        decision_scope_blake3.clone(),
                         DecisionAccumulator {
-                            membership_blake3,
+                            decision_scope_blake3,
+                            semantics: proposal.semantics,
                             payload_blake3: proposal.payload_blake3.clone(),
                             owner_cell,
                             members,
@@ -901,7 +1057,10 @@ pub fn reconcile_tile_decisions(
                 "Geo tile reconciliation is missing the decision owner work unit",
                 [
                     ("owner_cell", decision.owner_cell.to_string()),
-                    ("membership_blake3", decision.membership_blake3.clone()),
+                    (
+                        "decision_scope_blake3",
+                        decision.decision_scope_blake3.clone(),
+                    ),
                 ],
             ));
         }
@@ -911,7 +1070,10 @@ pub fn reconcile_tile_decisions(
                 "A boundary decision was observed only in halo work units",
                 [
                     ("owner_cell", decision.owner_cell.to_string()),
-                    ("membership_blake3", decision.membership_blake3.clone()),
+                    (
+                        "decision_scope_blake3",
+                        decision.decision_scope_blake3.clone(),
+                    ),
                 ],
             ));
         }
@@ -925,8 +1087,15 @@ pub fn reconcile_tile_decisions(
             "discarded_halo_proposals",
         )?;
         reconciled.push(GeoReconciledTileDecision {
-            decision_id: decision_id(&decision.membership_blake3, &decision.payload_blake3),
+            decision_id: decision_id(&decision.decision_scope_blake3, &decision.payload_blake3),
             owner_cell: decision.owner_cell.to_string(),
+            semantics: decision.semantics,
+            inventory_ref: match decision.semantics {
+                GeoTileDecisionSemantics::Composition => None,
+                GeoTileDecisionSemantics::StableIdentity { .. } => inventory_sources
+                    .as_ref()
+                    .map(|lineage| lineage.inventory_ref.clone()),
+            },
             payload_blake3: decision.payload_blake3,
             members: decision.members,
             proposal_copies,
@@ -941,6 +1110,9 @@ pub fn reconcile_tile_decisions(
         request_version: request.version.clone(),
         h3_resolution: u8::from(resolution),
         halo_k: request.halo_k,
+        inventory_ref: inventory_sources
+            .as_ref()
+            .map(|lineage| lineage.inventory_ref.clone()),
         batches: batch_count,
         input_proposals,
         owned_decisions,
@@ -954,6 +1126,33 @@ pub fn canonical_tile_work_unit_bytes(
     artifact: &GeoTileWorkUnitArtifact,
 ) -> Result<Vec<u8>, serde_json::Error> {
     serde_json::to_vec(artifact)
+}
+
+fn canonical_work_unit_digest(artifact: &GeoTileWorkUnitArtifact) -> Result<String, GeoTileError> {
+    let projection = GeoTileWorkUnitDigestProjection {
+        version: &artifact.version,
+        request_version: &artifact.request_version,
+        center_cell: &artifact.center_cell,
+        h3_resolution: artifact.h3_resolution,
+        halo_k: artifact.halo_k,
+        work_cells: &artifact.work_cells,
+        features: &artifact.features,
+        center_feature_count: artifact.center_feature_count,
+        halo_feature_count: artifact.halo_feature_count,
+        max_features: artifact.max_features,
+        max_work_cells: artifact.max_work_cells,
+    };
+    let bytes = serde_json::to_vec(&projection).map_err(|error| {
+        GeoTileError::new(
+            GeoTileErrorCode::Serialization,
+            "Geo tile work-unit digest projection could not be serialized",
+            [("error", error.to_string())],
+        )
+    })?;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"canon_geo_tile_work_unit.v1\0");
+    hasher.update(&bytes);
+    Ok(format!("blake3:{}", hasher.finalize().to_hex()))
 }
 
 pub fn canonical_home_cell_assignment_bytes(
@@ -970,8 +1169,10 @@ pub fn canonical_tile_reconciliation_bytes(
 
 fn normalize_members(
     members: &[GeoTileDecisionMember],
+    semantics: GeoTileDecisionSemantics,
     center: CellIndex,
     available_features: &FeatureHomeCells,
+    inventory_sources: Option<&ValidatedInventoryLineage>,
     max_members: u64,
 ) -> Result<Vec<GeoTileDecisionMember>, GeoTileError> {
     let count = usize_to_u64(members.len(), "proposal.members.len")?;
@@ -988,40 +1189,133 @@ fn normalize_members(
     let mut normalized = Vec::with_capacity(members.len());
     let mut seen = BTreeSet::new();
     for member in members {
-        validate_identifier("source_name", &member.source_name)?;
+        validate_source_binding("proposals.members[].source", &member.source)?;
         validate_identifier("feature_id", &member.feature_id)?;
-        let key = (member.source_name.clone(), member.feature_id.clone());
+        let key = source_feature_key(&member.source, &member.feature_id);
         if !seen.insert(key) {
             return Err(GeoTileError::new(
                 GeoTileErrorCode::InvalidDecision,
                 "Geo tile decision contains a duplicate source feature",
                 [
-                    ("source_name", member.source_name.as_str()),
+                    (
+                        "source_instance_id",
+                        member.source.source_instance_id.as_str(),
+                    ),
+                    ("release_id", member.source.release.release_id.as_str()),
                     ("feature_id", member.feature_id.as_str()),
                 ],
             ));
         }
+        match member.source.native_entity_level() {
+            Some(actual) if actual == member.candidate_entity_level => {}
+            Some(actual) => {
+                return Err(GeoTileError::new(
+                    GeoTileErrorCode::InvalidCandidateMember,
+                    "Geo tile decision cannot promote a cross-level feature into the selected entity level",
+                    [
+                        (
+                            "source_instance_id",
+                            member.source.source_instance_id.clone(),
+                        ),
+                        ("feature_id", member.feature_id.clone()),
+                        (
+                            "candidate_entity_level",
+                            entity_level_name(member.candidate_entity_level),
+                        ),
+                        ("native_entity_level", entity_level_name(actual)),
+                    ],
+                ));
+            }
+            None => {
+                return Err(GeoTileError::new(
+                    GeoTileErrorCode::InvalidCandidateMember,
+                    "Geo tile decision cannot promote an observation-only feature into an entity candidate",
+                    [
+                        (
+                            "source_instance_id",
+                            member.source.source_instance_id.clone(),
+                        ),
+                        ("feature_id", member.feature_id.clone()),
+                        (
+                            "candidate_entity_level",
+                            entity_level_name(member.candidate_entity_level),
+                        ),
+                    ],
+                ));
+            }
+        }
         let home = parse_cell(&member.home_cell, "proposals.members.home_cell")?;
         require_resolution(center, home, &member.home_cell)?;
         let expected_home =
-            available_features.get(&(member.source_name.clone(), member.feature_id.clone()));
+            available_features.get(&source_feature_key(&member.source, &member.feature_id));
         if expected_home != Some(&home) {
             return Err(GeoTileError::new(
                 GeoTileErrorCode::InvalidDecision,
                 "Geo tile decision references a member absent from its producing work unit",
                 [
                     ("center_cell", center.to_string()),
-                    ("source_name", member.source_name.clone()),
+                    (
+                        "source_instance_id",
+                        member.source.source_instance_id.clone(),
+                    ),
+                    ("release_id", member.source.release.release_id.clone()),
                     ("feature_id", member.feature_id.clone()),
                     ("home_cell", home.to_string()),
                 ],
             ));
         }
         normalized.push(GeoTileDecisionMember {
-            source_name: member.source_name.clone(),
+            source: member.source.clone(),
             feature_id: member.feature_id.clone(),
+            candidate_entity_level: member.candidate_entity_level,
             home_cell: home.to_string(),
         });
+    }
+    if let GeoTileDecisionSemantics::StableIdentity { entity_level } = semantics {
+        let inventory_sources = inventory_sources.ok_or_else(|| {
+            GeoTileError::new(
+                GeoTileErrorCode::InvalidInventoryLineage,
+                "Geo stable-identity decision requires validated regional-inventory lineage",
+                [("stable_identity_level", entity_level_name(entity_level))],
+            )
+        })?;
+        if let Some(member) = normalized
+            .iter()
+            .find(|member| member.candidate_entity_level != entity_level)
+        {
+            return Err(GeoTileError::new(
+                GeoTileErrorCode::InvalidCandidateMember,
+                "Geo stable-identity decision cannot contain a member from another entity level",
+                [
+                    ("stable_identity_level", entity_level_name(entity_level)),
+                    (
+                        "member_entity_level",
+                        entity_level_name(member.candidate_entity_level),
+                    ),
+                    (
+                        "source_instance_id",
+                        member.source.source_instance_id.clone(),
+                    ),
+                    ("feature_id", member.feature_id.clone()),
+                ],
+            ));
+        }
+        for member in &normalized {
+            validate_member_inventory_authority(member, inventory_sources)?;
+        }
+        if !normalized
+            .iter()
+            .any(GeoTileDecisionMember::may_contribute_stable_alias)
+        {
+            return Err(GeoTileError::new(
+                GeoTileErrorCode::InvalidCandidateMember,
+                "Geo stable-identity decision requires a same-level stable-alias participant",
+                [
+                    ("stable_identity_level", entity_level_name(entity_level)),
+                    ("member_count", normalized.len().to_string()),
+                ],
+            ));
+        }
     }
     normalized.sort();
     Ok(normalized)
@@ -1038,7 +1332,7 @@ fn validate_work_unit_artifact(
             .features
             .iter()
             .map(|feature| GeoTileFeatureRef {
-                source_name: feature.source_name.clone(),
+                source: feature.source.clone(),
                 feature_id: feature.feature_id.clone(),
                 home_cell: feature.home_cell.clone(),
             })
@@ -1064,27 +1358,22 @@ fn validate_work_unit_artifact(
             [("center_cell", artifact.center_cell.clone())],
         ));
     }
-    let bytes = canonical_tile_work_unit_bytes(artifact).map_err(|error| {
-        GeoTileError::new(
-            GeoTileErrorCode::Serialization,
-            "Geo tile work-unit receipt could not be serialized",
-            [("error", error.to_string())],
-        )
-    })?;
     let mut available_features = BTreeMap::new();
+    let mut source_bindings = BTreeMap::new();
     for feature in &artifact.features {
         let home = parse_cell(&feature.home_cell, "work_unit.features.home_cell")?;
+        validate_source_binding_consistency(&mut source_bindings, &feature.source)?;
         available_features.insert(
-            (feature.source_name.clone(), feature.feature_id.clone()),
+            source_feature_key(&feature.source, &feature.feature_id),
             home,
         );
     }
     let center = parse_cell(&artifact.center_cell, "work_unit.center_cell")?;
-    let digest = format!("blake3:{}", blake3::hash(&bytes).to_hex());
     Ok(ValidatedWorkUnit {
         center,
         feature_home_cells: available_features,
-        blake3: digest,
+        source_bindings,
+        blake3: artifact.work_unit_blake3.clone(),
     })
 }
 
@@ -1321,40 +1610,229 @@ fn validate_transform_pair(row: &GeoHomeCellRow) -> Result<(), GeoTileError> {
             GeoTileErrorCode::InvalidInput,
             "Geo home-cell transform execution and definition identifiers must be supplied together",
             [
-                ("source_name", row.source_name.as_str()),
+                ("source_instance_id", row.source.source_instance_id.as_str()),
                 ("feature_id", row.feature_id.as_str()),
             ],
         )),
     }
 }
 
-type SourceSignature = (String, String, Option<String>, Option<String>);
+type SourceSignature = (GeoTileSourceBinding, String, Option<String>, Option<String>);
 
 fn validate_source_signature(
     signatures: &mut BTreeMap<String, SourceSignature>,
     row: &GeoHomeCellRow,
 ) -> Result<(), GeoTileError> {
     let signature = (
-        row.source_snapshot.clone(),
+        row.source.clone(),
         row.representative_point_method.clone(),
         row.transform_execution_id.clone(),
         row.transform_definition_id.clone(),
     );
-    if let Some(expected) = signatures.get(&row.source_name) {
+    if let Some(expected) = signatures.get(&row.source.source_instance_id) {
         if expected != &signature {
             return Err(GeoTileError::new(
-                GeoTileErrorCode::MixedSourceSnapshot,
-                "One Geo home-cell source name cannot mix snapshots, point methods, or transform executions",
+                GeoTileErrorCode::IncompatibleSourceBinding,
+                "One Geo source instance cannot mix releases, native scope, inventory references, point methods, or transform executions",
                 [
-                    ("source_name", row.source_name.as_str()),
-                    ("source_snapshot", row.source_snapshot.as_str()),
+                    ("source_instance_id", row.source.source_instance_id.as_str()),
+                    ("release_id", row.source.release.release_id.as_str()),
                 ],
             ));
         }
     } else {
-        signatures.insert(row.source_name.clone(), signature);
+        signatures.insert(row.source.source_instance_id.clone(), signature);
     }
     Ok(())
+}
+
+fn validate_source_binding(
+    field: &str,
+    binding: &GeoTileSourceBinding,
+) -> Result<(), GeoTileError> {
+    validate_identifier(
+        &format!("{field}.source_instance_id"),
+        &binding.source_instance_id,
+    )?;
+    validate_identifier(
+        &format!("{field}.release.release_id"),
+        &binding.release.release_id,
+    )?;
+    validate_source_blake3(
+        &format!("{field}.release.release_digest"),
+        &binding.release.release_digest,
+    )?;
+    validate_identifier(
+        &format!("{field}.inventory_ref.inventory_id"),
+        &binding.inventory_ref.inventory_id,
+    )?;
+    validate_source_blake3(
+        &format!("{field}.inventory_ref.semantic_hash"),
+        &binding.inventory_ref.semantic_hash,
+    )?;
+    validate_source_blake3(
+        &format!("{field}.inventory_ref.planning_hash"),
+        &binding.inventory_ref.planning_hash,
+    )
+}
+
+fn validate_source_binding_consistency(
+    bindings: &mut SourceBindings,
+    binding: &GeoTileSourceBinding,
+) -> Result<(), GeoTileError> {
+    if let Some(expected) = bindings.get(&binding.source_instance_id) {
+        if expected != binding {
+            return Err(GeoTileError::new(
+                GeoTileErrorCode::IncompatibleSourceBinding,
+                "One Geo source instance cannot mix release identity, native entity scope, or inventory reference",
+                [
+                    ("source_instance_id", binding.source_instance_id.as_str()),
+                    ("release_id", binding.release.release_id.as_str()),
+                ],
+            ));
+        }
+    } else {
+        bindings.insert(binding.source_instance_id.clone(), binding.clone());
+    }
+    Ok(())
+}
+
+fn validate_inventory_lineage(
+    lineage: &GeoTileInventoryLineage,
+) -> Result<ValidatedInventoryLineage, GeoTileError> {
+    let canonical = canonicalize_regional_inventory(&lineage.inventory).map_err(|error| {
+        GeoTileError::new(
+            GeoTileErrorCode::InvalidInventoryLineage,
+            "Geo tile inventory lineage contains an invalid regional inventory",
+            [
+                ("cause", format!("{:?}", error.code)),
+                ("cause_message", error.message),
+            ],
+        )
+    })?;
+    let semantic_hash = regional_inventory_semantic_hash(&canonical).map_err(|error| {
+        GeoTileError::new(
+            GeoTileErrorCode::InvalidInventoryLineage,
+            "Geo tile inventory semantic hash could not be recomputed",
+            [("cause_message", error.message)],
+        )
+    })?;
+    let planning_hash = regional_inventory_planning_hash(&canonical).map_err(|error| {
+        GeoTileError::new(
+            GeoTileErrorCode::InvalidInventoryLineage,
+            "Geo tile inventory planning hash could not be recomputed",
+            [("cause_message", error.message)],
+        )
+    })?;
+    for (field, actual, expected) in [
+        (
+            "inventory_ref.inventory_id",
+            lineage.inventory_ref.inventory_id.as_str(),
+            canonical.inventory_id.as_str(),
+        ),
+        (
+            "inventory_ref.semantic_hash",
+            lineage.inventory_ref.semantic_hash.as_str(),
+            semantic_hash.as_str(),
+        ),
+        (
+            "inventory_ref.planning_hash",
+            lineage.inventory_ref.planning_hash.as_str(),
+            planning_hash.as_str(),
+        ),
+    ] {
+        if actual != expected {
+            return Err(GeoTileError::new(
+                GeoTileErrorCode::InvalidInventoryLineage,
+                "Geo tile inventory lineage does not match its recomputed plan reference",
+                [
+                    ("field", field.to_string()),
+                    ("expected", expected.to_string()),
+                    ("actual", actual.to_string()),
+                ],
+            ));
+        }
+    }
+    let sources = canonical
+        .sources
+        .into_iter()
+        .map(|source| (source.source_instance_id.clone(), source))
+        .collect();
+    Ok(ValidatedInventoryLineage {
+        inventory_ref: lineage.inventory_ref.clone(),
+        sources,
+    })
+}
+
+fn validate_member_inventory_authority(
+    member: &GeoTileDecisionMember,
+    lineage: &ValidatedInventoryLineage,
+) -> Result<(), GeoTileError> {
+    if member.source.inventory_ref != lineage.inventory_ref {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidInventoryLineage,
+            "Geo stable-identity member is not bound to the validated plan inventory reference",
+            [
+                (
+                    "source_instance_id",
+                    member.source.source_instance_id.clone(),
+                ),
+                (
+                    "member_inventory_id",
+                    member.source.inventory_ref.inventory_id.clone(),
+                ),
+                (
+                    "validated_inventory_id",
+                    lineage.inventory_ref.inventory_id.clone(),
+                ),
+            ],
+        ));
+    }
+    let Some(source) = lineage.sources.get(&member.source.source_instance_id) else {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidInventoryLineage,
+            "Geo stable-identity member source is absent from the validated regional inventory",
+            [
+                (
+                    "source_instance_id",
+                    member.source.source_instance_id.clone(),
+                ),
+                ("inventory_id", lineage.inventory_ref.inventory_id.clone()),
+            ],
+        ));
+    };
+    if source.release != member.source.release || source.native_scope != member.source.native_scope
+    {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidInventoryLineage,
+            "Geo stable-identity member release or native scope disagrees with the validated regional inventory",
+            [
+                (
+                    "source_instance_id",
+                    member.source.source_instance_id.clone(),
+                ),
+                ("release_id", member.source.release.release_id.clone()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn source_feature_key(source: &GeoTileSourceBinding, feature_id: &str) -> SourceFeatureKey {
+    (source.clone(), feature_id.to_string())
+}
+
+fn entity_level_name(level: GeoControlEntityLevel) -> String {
+    match level {
+        GeoControlEntityLevel::Site => "site",
+        GeoControlEntityLevel::Property => "property",
+        GeoControlEntityLevel::Parcel => "parcel",
+        GeoControlEntityLevel::Building => "building",
+        GeoControlEntityLevel::Unit => "unit",
+        GeoControlEntityLevel::Address => "address",
+        GeoControlEntityLevel::Poi => "poi",
+    }
+    .to_string()
 }
 
 fn require_resolution(
@@ -1440,32 +1918,54 @@ fn validate_identifier(field: &str, value: &str) -> Result<(), GeoTileError> {
     Ok(())
 }
 
-fn validate_blake3(value: &str) -> Result<(), GeoTileError> {
+fn validate_decision_blake3(field: &str, value: &str) -> Result<(), GeoTileError> {
     let Some(hex) = value.strip_prefix("blake3:") else {
-        return Err(invalid_digest(value));
+        return Err(invalid_decision_digest(field, value));
     };
     if hex.len() != 64
         || !hex
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
-        return Err(invalid_digest(value));
+        return Err(invalid_decision_digest(field, value));
     }
     Ok(())
 }
 
-fn invalid_digest(value: &str) -> GeoTileError {
+fn validate_source_blake3(field: &str, value: &str) -> Result<(), GeoTileError> {
+    let Some(hex) = value.strip_prefix("blake3:") else {
+        return Err(invalid_source_digest(field, value));
+    };
+    if hex.len() != 64
+        || !hex
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(invalid_source_digest(field, value));
+    }
+    Ok(())
+}
+
+fn invalid_source_digest(field: &str, value: &str) -> GeoTileError {
     GeoTileError::new(
-        GeoTileErrorCode::InvalidDecision,
-        "Geo tile decision payload digest must be canonical lowercase BLAKE3",
-        [("payload_blake3", value)],
+        GeoTileErrorCode::InvalidSourceDigest,
+        "Geo tile source-binding digest must be canonical lowercase BLAKE3",
+        [("field", field), ("value", value)],
     )
 }
 
-fn decision_id(membership_blake3: &str, payload_blake3: &str) -> String {
+fn invalid_decision_digest(field: &str, value: &str) -> GeoTileError {
+    GeoTileError::new(
+        GeoTileErrorCode::InvalidDecision,
+        "Geo tile decision digest must be canonical lowercase BLAKE3",
+        [("field", field), ("value", value)],
+    )
+}
+
+fn decision_id(decision_scope_blake3: &str, payload_blake3: &str) -> String {
     let mut hasher = blake3::Hasher::new();
-    hasher.update(b"canon_geo_tile_decision.v0\0");
-    hasher.update(membership_blake3.as_bytes());
+    hasher.update(b"canon_geo_tile_decision.v1\0");
+    hasher.update(decision_scope_blake3.as_bytes());
     hasher.update(b"\0");
     hasher.update(payload_blake3.as_bytes());
     format!("geo-decision:{}", hasher.finalize().to_hex())

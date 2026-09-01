@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.tile_work_request.v1.schema.json",
+  "title": "canon.geo.tile_work_request.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "center_cell", "halo_k", "features", "max_features", "max_work_cells"],
+  "properties": {
+    "version": { "const": "canon_geo_tile_work_request.v1" },
+    "center_cell": { "$ref": "#/$defs/h3_cell" },
+    "halo_k": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+    "features": { "type": "array", "items": { "$ref": "#/$defs/feature_ref" } },
+    "max_features": { "$ref": "#/$defs/uint64", "minimum": 1, "maximum": 1000000 },
+    "max_work_cells": { "$ref": "#/$defs/uint64", "minimum": 1, "maximum": 100000 }
+  },
+  "$defs": {
+    "int64": { "type": "integer", "minimum": -9223372036854775808, "maximum": 9223372036854775807 },
+    "uint64": { "type": "integer", "minimum": 0, "maximum": 18446744073709551615 },
+    "identifier": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "blake3": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
+    "h3_cell": { "type": "string", "pattern": "^[0-9a-f]{15}$" },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["release_id", "release_digest"],
+      "properties": {
+        "release_id": { "$ref": "#/$defs/identifier" },
+        "release_digest": { "$ref": "#/$defs/blake3" }
+      }
+    },
+    "inventory_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inventory_id", "semantic_hash", "planning_hash"],
+      "properties": {
+        "inventory_id": { "$ref": "#/$defs/identifier" },
+        "semantic_hash": { "$ref": "#/$defs/blake3" },
+        "planning_hash": { "$ref": "#/$defs/blake3" }
+      }
+    },
+    "native_scope": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "entity_level", "identity_participation"],
+          "properties": {
+            "kind": { "const": "native_entity" },
+            "entity_level": { "enum": ["site", "property", "parcel", "building", "unit", "address", "poi"] },
+            "identity_participation": { "enum": ["stable_alias", "evidence_only"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "observation_only" } }
+        }
+      ]
+    },
+    "source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_instance_id", "release", "native_scope", "inventory_ref"],
+      "properties": {
+        "source_instance_id": { "$ref": "#/$defs/identifier" },
+        "release": { "$ref": "#/$defs/release" },
+        "native_scope": { "$ref": "#/$defs/native_scope" },
+        "inventory_ref": { "$ref": "#/$defs/inventory_ref" }
+      }
+    },
+    "feature_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "feature_id", "home_cell"],
+      "properties": {
+        "source": { "$ref": "#/$defs/source_binding" },
+        "feature_id": { "$ref": "#/$defs/identifier" },
+        "home_cell": { "$ref": "#/$defs/h3_cell" }
+      }
+    }
+  },
+  "x-canon-contract": {
+    "canonical_contract": "canon_geo_tile_work_request.v1",
+    "runtime_only_invariants": [
+      "identifier limits are 256 UTF-8 bytes; JSON Schema maxLength counts Unicode characters",
+      "one source_instance_id has exactly one release identity, native scope, and inventory reference",
+      "inventory references are carried lineage and are not independently authenticated by tile-work materialization",
+      "duplicate feature identity includes the complete source binding, release identity, inventory reference, and feature_id",
+      "every supplied feature lies inside the bounded center-plus-controlled-halo section",
+      "work cells and feature memberships are emitted in canonical sorted order"
+    ]
+  }
+}

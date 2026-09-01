@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.tile_reconciliation.v1.schema.json",
+  "title": "canon.geo.tile_reconciliation.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "request_version", "h3_resolution", "halo_k", "batches", "input_proposals", "owned_decisions", "discarded_halo_proposals", "batch_receipts", "decisions"],
+  "properties": {
+    "version": { "const": "canon_geo_tile_reconciliation.v1" },
+    "request_version": { "const": "canon_geo_tile_reconciliation_request.v1" },
+    "h3_resolution": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "halo_k": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+    "inventory_ref": { "$ref": "#/$defs/inventory_ref" },
+    "batches": { "$ref": "#/$defs/uint64", "minimum": 1 },
+    "input_proposals": { "$ref": "#/$defs/uint64" },
+    "owned_decisions": { "$ref": "#/$defs/uint64" },
+    "discarded_halo_proposals": { "$ref": "#/$defs/uint64" },
+    "batch_receipts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/batch_receipt" } },
+    "decisions": { "type": "array", "items": { "$ref": "#/$defs/reconciled_decision" } }
+  },
+  "$defs": {
+    "int64": { "type": "integer", "minimum": -9223372036854775808, "maximum": 9223372036854775807 },
+    "uint64": { "type": "integer", "minimum": 0, "maximum": 18446744073709551615 },
+    "identifier": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "blake3": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
+    "h3_cell": { "type": "string", "pattern": "^[0-9a-f]{15}$" },
+    "entity_level": { "enum": ["site", "property", "parcel", "building", "unit", "address", "poi"] },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["release_id", "release_digest"],
+      "properties": {
+        "release_id": { "$ref": "#/$defs/identifier" },
+        "release_digest": { "$ref": "#/$defs/blake3" }
+      }
+    },
+    "inventory_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inventory_id", "semantic_hash", "planning_hash"],
+      "properties": {
+        "inventory_id": { "$ref": "#/$defs/identifier" },
+        "semantic_hash": { "$ref": "#/$defs/blake3" },
+        "planning_hash": { "$ref": "#/$defs/blake3" }
+      }
+    },
+    "native_scope": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "entity_level", "identity_participation"],
+          "properties": {
+            "kind": { "const": "native_entity" },
+            "entity_level": { "$ref": "#/$defs/entity_level" },
+            "identity_participation": { "enum": ["stable_alias", "evidence_only"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "observation_only" } }
+        }
+      ]
+    },
+    "source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_instance_id", "release", "native_scope", "inventory_ref"],
+      "properties": {
+        "source_instance_id": { "$ref": "#/$defs/identifier" },
+        "release": { "$ref": "#/$defs/release" },
+        "native_scope": { "$ref": "#/$defs/native_scope" },
+        "inventory_ref": { "$ref": "#/$defs/inventory_ref" }
+      }
+    },
+    "decision_semantics": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "composition" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "entity_level"],
+          "properties": {
+            "kind": { "const": "stable_identity" },
+            "entity_level": { "$ref": "#/$defs/entity_level" }
+          }
+        }
+      ]
+    },
+    "decision_member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "feature_id", "candidate_entity_level", "home_cell"],
+      "properties": {
+        "source": { "$ref": "#/$defs/source_binding" },
+        "feature_id": { "$ref": "#/$defs/identifier" },
+        "candidate_entity_level": { "$ref": "#/$defs/entity_level" },
+        "home_cell": { "$ref": "#/$defs/h3_cell" }
+      }
+    },
+    "batch_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["center_cell", "work_unit_blake3", "proposal_count"],
+      "properties": {
+        "center_cell": { "$ref": "#/$defs/h3_cell" },
+        "work_unit_blake3": { "$ref": "#/$defs/blake3" },
+        "proposal_count": { "$ref": "#/$defs/uint64" }
+      }
+    },
+    "reconciled_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision_id", "owner_cell", "semantics", "payload_blake3", "members", "proposal_copies"],
+      "properties": {
+        "decision_id": { "type": "string", "pattern": "^geo-decision:[0-9a-f]{64}$" },
+        "owner_cell": { "$ref": "#/$defs/h3_cell" },
+        "semantics": { "$ref": "#/$defs/decision_semantics" },
+        "inventory_ref": { "$ref": "#/$defs/inventory_ref" },
+        "payload_blake3": { "$ref": "#/$defs/blake3" },
+        "members": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/decision_member" } },
+        "proposal_copies": { "$ref": "#/$defs/uint64", "minimum": 1 }
+      }
+    }
+  },
+  "x-canon-contract": {
+    "canonical_contract": "canon_geo_tile_reconciliation.v1",
+    "runtime_only_invariants": [
+      "identifier limits are 256 UTF-8 bytes; JSON Schema maxLength counts Unicode characters",
+      "every decision member preserves an exact work-unit membership including source, release, native scope, feature_id, and home cell",
+      "candidate_entity_level equals the member source native entity level",
+      "ObservationOnly sources cannot be candidate members",
+      "Composition semantics may span levels and contain only EvidenceOnly members but carry no alias-mint authority",
+      "StableIdentity semantics require every member at the declared entity level, at least one exact same-level StableAlias member, and exact source/release/native-scope membership in the canonical inventory named by the emitted inventory semantic and planning hashes",
+      "emitted inventory references establish inventory-relative authority only, not external or world truth",
+      "one source_instance_id has exactly one release identity, native scope, and inventory reference across all batches",
+      "batch receipts retain canonical work-unit digests as deterministic associations; without an executor-issued receipt they do not prove an external solver consumed those work units",
+      "decision semantics and canonical members jointly determine confluence scope and decision identity",
+      "member, batch-receipt, and reconciled-decision collections are emitted in canonical sorted order"
+    ]
+  }
+}

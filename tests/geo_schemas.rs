@@ -54,24 +54,26 @@ use canon::geo::{
     GeoH7ResultMode, GeoH7SourceEvidenceRecord, GeoH7SourceRecordRole,
     GeoH7StagingEvidenceRecordRef, GeoH7StagingSourceEvidenceRecord,
     GeoH7StagingSourceRecordBytesBatchRequest, GeoH7StagingSourceRecordBytesRow, GeoHardConstraint,
-    GeoHardConstraintKind, GeoHomeCellRow, GeoHomeCellRowsRequest, GeoIdentityParticipation,
-    GeoLabeledCompositionCase, GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef,
-    GeoLocalFrameContract, GeoMultisourceRequest, GeoMultisourceSource, GeoNativeEntityScope,
-    GeoNumericBound, GeoNumericMeasure, GeoNycBorough, GeoPadAddressMember, GeoPadAddressSet,
-    GeoPopulationEvaluationRequest, GeoProjectionProvenance, GeoQuestion, GeoRegionalInventory,
-    GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter,
-    GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoSourceAvailability,
-    GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed,
-    GeoSourceRelease, GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding,
-    GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
-    GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileDecisionBatch, GeoTileDecisionMember,
-    GeoTileDecisionProposal, GeoTileFeatureRef, GeoTileReconciliationRequest, GeoTileWorkRequest,
-    GeoTruthPlane, GeoValueOrigin, GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow,
-    GeoWarehouseGeometryRowsRequest, GeoWarehouseParcelRow, GeoWarehouseRowsRequest,
-    compile_evidence, default_geo_capabilities, evaluate_pad_membership, evaluate_population,
-    materialize_geo_multisource, materialize_geometry_tile, materialize_h7_population_rows,
-    materialize_home_cells, materialize_tile_work_unit, materialize_warehouse_geometry,
-    parse_address_forest, reconcile_tile_decisions, solve_composition,
+    GeoHardConstraintKind, GeoHomeCellAssignmentArtifact, GeoHomeCellRow, GeoHomeCellRowsRequest,
+    GeoIdentityParticipation, GeoLabeledCompositionCase, GeoLicenseClass, GeoLocalAcquisitionState,
+    GeoLocalArtifactRef, GeoLocalFrameContract, GeoMultisourceRequest, GeoMultisourceSource,
+    GeoNativeEntityScope, GeoNumericBound, GeoNumericMeasure, GeoNycBorough, GeoPadAddressMember,
+    GeoPadAddressSet, GeoPlanInventoryRef, GeoPopulationEvaluationRequest, GeoProjectionProvenance,
+    GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance, GeoRequestedGrain,
+    GeoResourceBudget, GeoResourceCounter, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
+    GeoRhoObservationKind, GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry,
+    GeoSourcePointDecimal, GeoSourcePointFixed, GeoSourceRelease, GeoStreetDirection,
+    GeoStreetSuffix, GeoSubjectBinding, GeoSubjectBindingClass, GeoTelemetryDeclaration,
+    GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileDecisionBatch,
+    GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
+    GeoTileReconciliationArtifact, GeoTileReconciliationRequest, GeoTileSourceBinding,
+    GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValueOrigin,
+    GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
+    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, compile_evidence, default_geo_capabilities,
+    evaluate_pad_membership, evaluate_population, materialize_geo_multisource,
+    materialize_geometry_tile, materialize_h7_population_rows, materialize_home_cells,
+    materialize_tile_work_unit, materialize_warehouse_geometry, parse_address_forest,
+    reconcile_tile_decisions, solve_composition,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -99,17 +101,17 @@ const WAREHOUSE_GEOMETRY_ROWS_SCHEMA: &str =
 const WAREHOUSE_GEOMETRY_SCHEMA: &str =
     include_str!("../schemas/canon.geo.warehouse_geometry.v0.schema.json");
 const HOME_CELL_ROWS_SCHEMA: &str =
-    include_str!("../schemas/canon.geo.home_cell_rows.v0.schema.json");
+    include_str!("../schemas/canon.geo.home_cell_rows.v1.schema.json");
 const HOME_CELL_ASSIGNMENT_SCHEMA: &str =
-    include_str!("../schemas/canon.geo.home_cell_assignment.v0.schema.json");
+    include_str!("../schemas/canon.geo.home_cell_assignment.v1.schema.json");
 const TILE_WORK_REQUEST_SCHEMA: &str =
-    include_str!("../schemas/canon.geo.tile_work_request.v0.schema.json");
+    include_str!("../schemas/canon.geo.tile_work_request.v1.schema.json");
 const TILE_WORK_UNIT_SCHEMA: &str =
-    include_str!("../schemas/canon.geo.tile_work_unit.v0.schema.json");
+    include_str!("../schemas/canon.geo.tile_work_unit.v1.schema.json");
 const TILE_RECONCILIATION_REQUEST_SCHEMA: &str =
-    include_str!("../schemas/canon.geo.tile_reconciliation_request.v0.schema.json");
+    include_str!("../schemas/canon.geo.tile_reconciliation_request.v1.schema.json");
 const TILE_RECONCILIATION_SCHEMA: &str =
-    include_str!("../schemas/canon.geo.tile_reconciliation.v0.schema.json");
+    include_str!("../schemas/canon.geo.tile_reconciliation.v1.schema.json");
 const MULTISOURCE_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.multisource_request.v0.schema.json");
 const MULTISOURCE_ARTIFACT_SCHEMA: &str =
@@ -194,6 +196,7 @@ fn external_schema_source(schema_file: &str, reference: &str) -> &'static str {
         "canon.geo.geometry_tile.v0.schema.json" => GEOMETRY_TILE_SCHEMA,
         "canon.geo.h7_population_rows.v0.schema.json" => H7_POPULATION_ROWS_SCHEMA,
         "canon.geo.population_request.v0.schema.json" => POPULATION_REQUEST_SCHEMA,
+        "canon.geo.regional_inventory.v1.schema.json" => CONTROL_REGIONAL_INVENTORY_SCHEMA,
         _ => panic!("external $ref {reference} is not registered in the schema test"),
     }
 }
@@ -447,6 +450,60 @@ fn assert_drift_free(
     let schema = parsed(schema_source);
     assert_schema_shape(&schema, expected_title, expected_version);
     assert_instance_matches_schema(&schema, &schema, instance, "$");
+}
+
+fn json_integer(text: &str) -> Value {
+    serde_json::from_str(text).expect("integer JSON literal parses")
+}
+
+fn numeric_schema_errors(root: &Value, subschema: &Value, instance: &Value) -> Vec<String> {
+    fn validate(root: &Value, subschema: &Value, instance: &Value, errors: &mut Vec<String>) {
+        if let Some(reference) = subschema.get("$ref").and_then(Value::as_str) {
+            validate(root, resolve_ref(root, reference), instance, errors);
+        }
+
+        if subschema.get("type").and_then(Value::as_str) == Some("integer") {
+            let is_integer = instance
+                .as_number()
+                .is_some_and(|number| number.as_i64().is_some() || number.as_u64().is_some());
+            if !is_integer {
+                errors.push("expected type integer".to_string());
+                return;
+            }
+        }
+
+        if let Some(minimum) = subschema.get("minimum").and_then(Value::as_i64)
+            && instance.as_i64().is_some_and(|value| value < minimum)
+        {
+            errors.push(format!("value below minimum {minimum}"));
+        }
+        if let Some(maximum) = subschema.get("maximum").and_then(Value::as_u64)
+            && instance.as_u64().is_some_and(|value| value > maximum)
+        {
+            errors.push(format!("value greater than maximum {maximum}"));
+        }
+    }
+
+    let mut errors = Vec::new();
+    validate(root, subschema, instance, &mut errors);
+    errors
+}
+
+fn assert_numeric_schema_rejects(
+    schema_source: &str,
+    pointer: &str,
+    instance: Value,
+    expected: &str,
+) {
+    let schema = parsed(schema_source);
+    let subschema = schema
+        .pointer(pointer)
+        .unwrap_or_else(|| panic!("numeric schema pointer {pointer} resolves"));
+    let errors = numeric_schema_errors(&schema, subschema, &instance);
+    assert!(
+        errors.iter().any(|error| error.contains(expected)),
+        "expected numeric schema rejection containing {expected:?}, got {errors:#?}"
+    );
 }
 
 fn address_parse_request() -> GeoAddressParseRequest {
@@ -1066,13 +1123,43 @@ fn warehouse_geometry_request() -> GeoWarehouseGeometryRowsRequest {
     }
 }
 
+fn tile_source_binding(
+    source_instance_id: &str,
+    entity_level: GeoControlEntityLevel,
+    identity_participation: GeoIdentityParticipation,
+) -> GeoTileSourceBinding {
+    GeoTileSourceBinding {
+        source_instance_id: source_instance_id.to_string(),
+        release: GeoSourceRelease {
+            release_id: format!("{source_instance_id}.release"),
+            release_digest: format!(
+                "blake3:{}",
+                blake3::hash(source_instance_id.as_bytes()).to_hex()
+            ),
+        },
+        native_scope: GeoNativeEntityScope::NativeEntity {
+            entity_level,
+            identity_participation,
+        },
+        inventory_ref: GeoPlanInventoryRef {
+            inventory_id: "inventory.fixture.schemas".to_string(),
+            semantic_hash: format!("blake3:{}", blake3::hash(b"schema-semantic").to_hex()),
+            planning_hash: format!("blake3:{}", blake3::hash(b"schema-planning").to_hex()),
+        },
+    }
+}
+
 fn tile_work_request() -> GeoTileWorkRequest {
     GeoTileWorkRequest {
         version: CANON_GEO_TILE_WORK_REQUEST_VERSION.to_string(),
         center_cell: "892a100d26bffff".to_string(),
         halo_k: 1,
         features: vec![GeoTileFeatureRef {
-            source_name: "parcel".to_string(),
+            source: tile_source_binding(
+                "mappluto-parcel",
+                GeoControlEntityLevel::Parcel,
+                GeoIdentityParticipation::StableAlias,
+            ),
             feature_id: "parcel-a".to_string(),
             home_cell: "892a100d26bffff".to_string(),
         }],
@@ -1089,9 +1176,12 @@ fn home_cell_rows_request() -> GeoHomeCellRowsRequest {
         h3_resolution: 8,
         stability_radius_fixed: 1_000,
         rows: vec![GeoHomeCellRow {
-            source_name: "mappluto".to_string(),
+            source: tile_source_binding(
+                "mappluto-parcel",
+                GeoControlEntityLevel::Parcel,
+                GeoIdentityParticipation::StableAlias,
+            ),
             feature_id: "parcel-a".to_string(),
-            source_snapshot: "26v2/2026-08-01/geom-v3".to_string(),
             source_record_id: "mn/000000/1".to_string(),
             geometry_sha256: "5ed87d37d872789086452c35f658f5628ba870ca36072c495bb88519592403ed"
                 .to_string(),
@@ -1109,16 +1199,25 @@ fn home_cell_rows_request() -> GeoHomeCellRowsRequest {
 fn tile_reconciliation_request() -> GeoTileReconciliationRequest {
     let work_unit =
         materialize_tile_work_unit(&tile_work_request()).expect("tile work unit materializes");
+    let work_unit_blake3 = work_unit.work_unit_blake3.clone();
     GeoTileReconciliationRequest {
         version: CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION.to_string(),
         halo_k: 1,
+        inventory_lineage: None,
         batches: vec![GeoTileDecisionBatch {
             work_unit,
             proposals: vec![GeoTileDecisionProposal {
+                semantics: GeoTileDecisionSemantics::Composition,
+                work_unit_blake3,
                 payload_blake3: format!("blake3:{}", blake3::hash(b"fixture decision").to_hex()),
                 members: vec![GeoTileDecisionMember {
-                    source_name: "parcel".to_string(),
+                    source: tile_source_binding(
+                        "mappluto-parcel",
+                        GeoControlEntityLevel::Parcel,
+                        GeoIdentityParticipation::StableAlias,
+                    ),
                     feature_id: "parcel-a".to_string(),
+                    candidate_entity_level: GeoControlEntityLevel::Parcel,
                     home_cell: "892a100d26bffff".to_string(),
                 }],
             }],
@@ -1390,7 +1489,7 @@ fn home_cell_rows_schema_matches_a_real_instance() {
     let instance = serde_json::to_value(&request).expect("home-cell rows serialize");
     assert_drift_free(
         HOME_CELL_ROWS_SCHEMA,
-        "canon.geo.home_cell_rows.v0",
+        "canon.geo.home_cell_rows.v1",
         CANON_GEO_HOME_CELL_ROWS_VERSION,
         &instance,
     );
@@ -1403,8 +1502,8 @@ fn home_cell_assignment_schema_matches_a_real_instance() {
     let instance = serde_json::to_value(&artifact).expect("home-cell assignment serializes");
     assert_drift_free(
         HOME_CELL_ASSIGNMENT_SCHEMA,
-        "canon.geo.home_cell_assignment.v0",
-        "canon_geo_home_cell_assignment.v0",
+        "canon.geo.home_cell_assignment.v1",
+        "canon_geo_home_cell_assignment.v1",
         &instance,
     );
 }
@@ -1415,7 +1514,7 @@ fn tile_work_request_schema_matches_a_real_instance() {
     let instance = serde_json::to_value(&request).expect("tile-work request must serialize");
     assert_drift_free(
         TILE_WORK_REQUEST_SCHEMA,
-        "canon.geo.tile_work_request.v0",
+        "canon.geo.tile_work_request.v1",
         CANON_GEO_TILE_WORK_REQUEST_VERSION,
         &instance,
     );
@@ -1428,8 +1527,8 @@ fn tile_work_unit_schema_matches_a_real_instance() {
     let instance = serde_json::to_value(&artifact).expect("tile work unit must serialize");
     assert_drift_free(
         TILE_WORK_UNIT_SCHEMA,
-        "canon.geo.tile_work_unit.v0",
-        "canon_geo_tile_work_unit.v0",
+        "canon.geo.tile_work_unit.v1",
+        "canon_geo_tile_work_unit.v1",
         &instance,
     );
 }
@@ -1440,7 +1539,7 @@ fn tile_reconciliation_request_schema_matches_a_real_instance() {
     let instance = serde_json::to_value(&request).expect("tile reconciliation request serializes");
     assert_drift_free(
         TILE_RECONCILIATION_REQUEST_SCHEMA,
-        "canon.geo.tile_reconciliation_request.v0",
+        "canon.geo.tile_reconciliation_request.v1",
         CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
         &instance,
     );
@@ -1453,10 +1552,315 @@ fn tile_reconciliation_schema_matches_a_real_instance() {
     let instance = serde_json::to_value(&artifact).expect("tile reconciliation must serialize");
     assert_drift_free(
         TILE_RECONCILIATION_SCHEMA,
-        "canon.geo.tile_reconciliation.v0",
-        "canon_geo_tile_reconciliation.v0",
+        "canon.geo.tile_reconciliation.v1",
+        "canon_geo_tile_reconciliation.v1",
         &instance,
     );
+}
+
+#[test]
+fn v1_tile_schemas_pin_exact_rust_integer_envelopes() {
+    for schema_source in [
+        HOME_CELL_ROWS_SCHEMA,
+        HOME_CELL_ASSIGNMENT_SCHEMA,
+        TILE_WORK_REQUEST_SCHEMA,
+        TILE_WORK_UNIT_SCHEMA,
+        TILE_RECONCILIATION_REQUEST_SCHEMA,
+        TILE_RECONCILIATION_SCHEMA,
+    ] {
+        let schema = parsed(schema_source);
+        assert_eq!(
+            schema
+                .pointer("/$defs/int64/minimum")
+                .and_then(Value::as_i64),
+            Some(i64::MIN)
+        );
+        assert_eq!(
+            schema
+                .pointer("/$defs/int64/maximum")
+                .and_then(Value::as_i64),
+            Some(i64::MAX)
+        );
+        assert_eq!(
+            schema
+                .pointer("/$defs/uint64/minimum")
+                .and_then(Value::as_u64),
+            Some(0)
+        );
+        assert_eq!(
+            schema
+                .pointer("/$defs/uint64/maximum")
+                .and_then(Value::as_u64),
+            Some(u64::MAX)
+        );
+    }
+
+    let required_refs = [
+        (
+            HOME_CELL_ROWS_SCHEMA,
+            "/properties/stability_radius_fixed/$ref",
+            "#/$defs/uint64",
+        ),
+        (
+            HOME_CELL_ASSIGNMENT_SCHEMA,
+            "/$defs/fixed_point/properties/longitude/$ref",
+            "#/$defs/int64",
+        ),
+        (
+            HOME_CELL_ASSIGNMENT_SCHEMA,
+            "/$defs/summary/properties/total/$ref",
+            "#/$defs/uint64",
+        ),
+        (
+            TILE_WORK_REQUEST_SCHEMA,
+            "/properties/max_features/$ref",
+            "#/$defs/uint64",
+        ),
+        (
+            TILE_WORK_UNIT_SCHEMA,
+            "/properties/center_feature_count/$ref",
+            "#/$defs/uint64",
+        ),
+        (
+            TILE_RECONCILIATION_REQUEST_SCHEMA,
+            "/$defs/work_unit/properties/halo_feature_count/$ref",
+            "#/$defs/uint64",
+        ),
+        (
+            TILE_RECONCILIATION_SCHEMA,
+            "/$defs/reconciled_decision/properties/proposal_copies/$ref",
+            "#/$defs/uint64",
+        ),
+    ];
+    for (schema_source, pointer, expected) in required_refs {
+        let schema = parsed(schema_source);
+        assert_eq!(
+            schema.pointer(pointer).and_then(Value::as_str),
+            Some(expected)
+        );
+    }
+}
+
+#[test]
+fn v1_tile_schemas_reject_numbers_outside_rust_integer_bounds() {
+    let over_u64 = || json_integer("18446744073709551616");
+    let under_i64 = || json_integer("-9223372036854775809");
+    let over_i64 = || json_integer("9223372036854775808");
+
+    assert_numeric_schema_rejects(
+        HOME_CELL_ROWS_SCHEMA,
+        "/properties/stability_radius_fixed",
+        over_u64(),
+        "expected type integer",
+    );
+    assert_numeric_schema_rejects(
+        HOME_CELL_ASSIGNMENT_SCHEMA,
+        "/$defs/fixed_point/properties/longitude",
+        under_i64(),
+        "expected type integer",
+    );
+    assert_numeric_schema_rejects(
+        HOME_CELL_ASSIGNMENT_SCHEMA,
+        "/$defs/fixed_point/properties/latitude",
+        over_i64(),
+        "value greater than maximum 9223372036854775807",
+    );
+    assert_numeric_schema_rejects(
+        HOME_CELL_ASSIGNMENT_SCHEMA,
+        "/$defs/summary/properties/total",
+        over_u64(),
+        "expected type integer",
+    );
+    assert_numeric_schema_rejects(
+        TILE_WORK_REQUEST_SCHEMA,
+        "/properties/max_features",
+        over_u64(),
+        "expected type integer",
+    );
+    assert_numeric_schema_rejects(
+        TILE_WORK_UNIT_SCHEMA,
+        "/properties/center_feature_count",
+        over_u64(),
+        "expected type integer",
+    );
+    assert_numeric_schema_rejects(
+        TILE_RECONCILIATION_REQUEST_SCHEMA,
+        "/$defs/work_unit/properties/halo_feature_count",
+        over_u64(),
+        "expected type integer",
+    );
+    assert_numeric_schema_rejects(
+        TILE_RECONCILIATION_SCHEMA,
+        "/$defs/batch_receipt/properties/proposal_count",
+        over_u64(),
+        "expected type integer",
+    );
+
+    let mut home_rows = serde_json::to_value(home_cell_rows_request()).unwrap();
+    home_rows["stability_radius_fixed"] = over_u64();
+    assert!(
+        serde_json::from_value::<GeoHomeCellRowsRequest>(home_rows).is_err(),
+        "Rust u64 home-cell limits must reject values above u64::MAX"
+    );
+
+    let mut assignment = serde_json::to_value(
+        materialize_home_cells(&home_cell_rows_request()).expect("assignment fixture"),
+    )
+    .unwrap();
+    assignment["features"][0]["representative_point_fixed"]["longitude"] = under_i64();
+    assert!(
+        serde_json::from_value::<GeoHomeCellAssignmentArtifact>(assignment).is_err(),
+        "Rust i64 fixed coordinates must reject values below i64::MIN"
+    );
+
+    let mut work_unit = serde_json::to_value(
+        materialize_tile_work_unit(&tile_work_request()).expect("work-unit fixture"),
+    )
+    .unwrap();
+    work_unit["center_feature_count"] = over_u64();
+    assert!(
+        serde_json::from_value::<GeoTileWorkUnitArtifact>(work_unit).is_err(),
+        "Rust u64 work-unit counts must reject values above u64::MAX"
+    );
+
+    let mut reconciliation = serde_json::to_value(
+        reconcile_tile_decisions(&tile_reconciliation_request()).expect("reconciliation fixture"),
+    )
+    .unwrap();
+    reconciliation["batch_receipts"][0]["proposal_count"] = over_u64();
+    assert!(
+        serde_json::from_value::<GeoTileReconciliationArtifact>(reconciliation).is_err(),
+        "Rust u64 reconciliation counts must reject values above u64::MAX"
+    );
+}
+
+#[test]
+fn v1_tile_schemas_reject_negative_or_fractional_unsigned_fields() {
+    for (schema_source, pointer) in [
+        (
+            HOME_CELL_ASSIGNMENT_SCHEMA,
+            "/$defs/summary/properties/boundary_sensitive",
+        ),
+        (TILE_WORK_UNIT_SCHEMA, "/properties/halo_feature_count"),
+        (
+            TILE_RECONCILIATION_REQUEST_SCHEMA,
+            "/$defs/work_unit/properties/center_feature_count",
+        ),
+        (
+            TILE_RECONCILIATION_SCHEMA,
+            "/properties/discarded_halo_proposals",
+        ),
+        (
+            TILE_RECONCILIATION_SCHEMA,
+            "/$defs/reconciled_decision/properties/proposal_copies",
+        ),
+    ] {
+        assert_numeric_schema_rejects(
+            schema_source,
+            pointer,
+            serde_json::json!(-1),
+            "value below minimum 0",
+        );
+        assert_numeric_schema_rejects(
+            schema_source,
+            pointer,
+            serde_json::json!(1.5),
+            "expected type integer",
+        );
+    }
+
+    assert_numeric_schema_rejects(
+        HOME_CELL_ASSIGNMENT_SCHEMA,
+        "/$defs/fixed_point/properties/longitude",
+        serde_json::json!(1.5),
+        "expected type integer",
+    );
+
+    let mut work_request = serde_json::to_value(tile_work_request()).unwrap();
+    work_request["max_features"] = serde_json::json!(-1);
+    assert!(
+        serde_json::from_value::<GeoTileWorkRequest>(work_request).is_err(),
+        "Rust u64 work limits must reject negative JSON integers"
+    );
+
+    let mut reconciliation_request = serde_json::to_value(tile_reconciliation_request()).unwrap();
+    reconciliation_request["max_proposals"] = serde_json::json!(1.5);
+    assert!(
+        serde_json::from_value::<GeoTileReconciliationRequest>(reconciliation_request).is_err(),
+        "Rust u64 reconciliation limits must reject fractional JSON numbers"
+    );
+}
+
+#[test]
+fn v1_tile_schemas_disclose_runtime_only_identity_invariants() {
+    let schemas = [
+        HOME_CELL_ROWS_SCHEMA,
+        HOME_CELL_ASSIGNMENT_SCHEMA,
+        TILE_WORK_REQUEST_SCHEMA,
+        TILE_WORK_UNIT_SCHEMA,
+        TILE_RECONCILIATION_REQUEST_SCHEMA,
+        TILE_RECONCILIATION_SCHEMA,
+    ];
+    for schema in schemas {
+        let schema: Value = serde_json::from_str(schema).expect("v1 tile schema parses");
+        let invariants = schema["x-canon-contract"]["runtime_only_invariants"]
+            .as_array()
+            .expect("v1 tile schema declares runtime-only invariants");
+        assert!(
+            invariants.iter().any(|value| {
+                value
+                    .as_str()
+                    .is_some_and(|text| text.contains("UTF-8 bytes"))
+            }),
+            "schema must disclose the Rust byte cap that JSON maxLength cannot express"
+        );
+        assert!(
+            invariants.iter().any(|value| {
+                value.as_str().is_some_and(|text| {
+                    text.contains("canonical sorted order") || text.contains("canonicalized")
+                })
+            }),
+            "schema must disclose runtime canonical ordering"
+        );
+    }
+
+    let reconciliation: Value = serde_json::from_str(TILE_RECONCILIATION_REQUEST_SCHEMA)
+        .expect("reconciliation schema parses");
+    let joined = reconciliation["x-canon-contract"]["runtime_only_invariants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value.as_str().unwrap())
+        .collect::<Vec<_>>()
+        .join("\n");
+    for required in [
+        "exact work-unit membership",
+        "candidate_entity_level equals",
+        "ObservationOnly",
+        "Composition semantics",
+        "StableIdentity semantics",
+        "canonical bytes recompute",
+        "work_unit_blake3 equals",
+        "not proof that an external solver consumed",
+        "jointly determine confluence scope",
+        "one source_instance_id",
+    ] {
+        assert!(
+            joined.contains(required),
+            "missing runtime invariant: {required}"
+        );
+    }
+
+    let home_rows: Value =
+        serde_json::from_str(HOME_CELL_ROWS_SCHEMA).expect("home-cell rows schema parses");
+    let home_joined = home_rows["x-canon-contract"]["runtime_only_invariants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value.as_str().unwrap())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(home_joined.contains("both present or both absent"));
 }
 
 #[test]

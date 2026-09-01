@@ -1,13 +1,18 @@
 #![forbid(unsafe_code)]
 
 use canon::geo::{
-    CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
-    CANON_GEO_TILE_WORK_REQUEST_VERSION, GeoHomeCellParity, GeoHomeCellRow, GeoHomeCellRowsRequest,
-    GeoTileDecisionBatch, GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileErrorCode,
-    GeoTileFeatureRef, GeoTilePlacement, GeoTileReconciliationRequest, GeoTileWorkRequest,
-    canonical_home_cell_assignment_bytes, canonical_tile_reconciliation_bytes,
+    CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
+    CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
+    GeoBoundedGeography, GeoControlEntityLevel, GeoCoveragePredicate, GeoEgressClass,
+    GeoEvidenceClass, GeoHomeCellParity, GeoHomeCellRow, GeoHomeCellRowsRequest,
+    GeoIdentityParticipation, GeoLicenseClass, GeoLocalAcquisitionState, GeoNativeEntityScope,
+    GeoPlanInventoryRef, GeoRegionalInventory, GeoRegionalSourceInstance, GeoSourceAvailability,
+    GeoSourceRelease, GeoTemporalScope, GeoTileDecisionBatch, GeoTileDecisionMember,
+    GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileErrorCode, GeoTileFeatureRef,
+    GeoTileInventoryLineage, GeoTilePlacement, GeoTileReconciliationRequest, GeoTileSourceBinding,
+    GeoTileWorkRequest, canonical_home_cell_assignment_bytes, canonical_tile_reconciliation_bytes,
     canonical_tile_work_unit_bytes, materialize_home_cells, materialize_tile_work_unit,
-    reconcile_tile_decisions,
+    reconcile_tile_decisions, regional_inventory_planning_hash, regional_inventory_semantic_hash,
 };
 use h3o::{CellIndex, Resolution};
 use std::{collections::BTreeSet, str::FromStr};
@@ -29,9 +34,73 @@ fn outside_k1(center: CellIndex) -> CellIndex {
         .expect("k2 has a cell outside k1")
 }
 
-fn feature(source_name: &str, feature_id: &str, home_cell: CellIndex) -> GeoTileFeatureRef {
+fn release_digest(label: &str) -> String {
+    format!("blake3:{}", blake3::hash(label.as_bytes()).to_hex())
+}
+
+fn fixture_inventory_ref() -> GeoPlanInventoryRef {
+    GeoPlanInventoryRef {
+        inventory_id: "inventory.fixture.tile".to_string(),
+        semantic_hash: release_digest("fixture-inventory-semantic"),
+        planning_hash: release_digest("fixture-inventory-planning"),
+    }
+}
+
+fn native_source(
+    source_instance_id: &str,
+    entity_level: GeoControlEntityLevel,
+    identity_participation: GeoIdentityParticipation,
+) -> GeoTileSourceBinding {
+    GeoTileSourceBinding {
+        source_instance_id: source_instance_id.to_string(),
+        release: GeoSourceRelease {
+            release_id: format!("{source_instance_id}.release"),
+            release_digest: release_digest(source_instance_id),
+        },
+        native_scope: GeoNativeEntityScope::NativeEntity {
+            entity_level,
+            identity_participation,
+        },
+        inventory_ref: fixture_inventory_ref(),
+    }
+}
+
+fn observation_source(source_instance_id: &str) -> GeoTileSourceBinding {
+    GeoTileSourceBinding {
+        source_instance_id: source_instance_id.to_string(),
+        release: GeoSourceRelease {
+            release_id: format!("{source_instance_id}.release"),
+            release_digest: release_digest(source_instance_id),
+        },
+        native_scope: GeoNativeEntityScope::ObservationOnly,
+        inventory_ref: fixture_inventory_ref(),
+    }
+}
+
+fn fixture_source(source_instance_id: &str) -> GeoTileSourceBinding {
+    let level = if source_instance_id.contains("parcel") {
+        GeoControlEntityLevel::Parcel
+    } else {
+        GeoControlEntityLevel::Building
+    };
+    native_source(
+        source_instance_id,
+        level,
+        GeoIdentityParticipation::StableAlias,
+    )
+}
+
+fn feature(source_instance_id: &str, feature_id: &str, home_cell: CellIndex) -> GeoTileFeatureRef {
+    feature_from_source(fixture_source(source_instance_id), feature_id, home_cell)
+}
+
+fn feature_from_source(
+    source: GeoTileSourceBinding,
+    feature_id: &str,
+    home_cell: CellIndex,
+) -> GeoTileFeatureRef {
     GeoTileFeatureRef {
-        source_name: source_name.to_string(),
+        source,
         feature_id: feature_id.to_string(),
         home_cell: home_cell.to_string(),
     }
@@ -50,9 +119,12 @@ fn work_request(center: CellIndex, features: Vec<GeoTileFeatureRef>) -> GeoTileW
 
 fn home_cell_row(feature_id: &str, claimed_home_cell: Option<String>) -> GeoHomeCellRow {
     GeoHomeCellRow {
-        source_name: "mappluto".to_string(),
+        source: native_source(
+            "mappluto",
+            GeoControlEntityLevel::Parcel,
+            GeoIdentityParticipation::StableAlias,
+        ),
         feature_id: feature_id.to_string(),
-        source_snapshot: "26v2/2026-08-01/geom-v3".to_string(),
         source_record_id: format!("mn/000000/{feature_id}"),
         geometry_sha256: "5ed87d37d872789086452c35f658f5628ba870ca36072c495bb88519592403ed"
             .to_string(),
@@ -81,9 +153,31 @@ fn payload(label: &str) -> String {
     format!("blake3:{}", blake3::hash(label.as_bytes()).to_hex())
 }
 
-fn member(source_name: &str, feature_id: &str, home_cell: CellIndex) -> GeoTileDecisionMember {
+fn member(
+    source_instance_id: &str,
+    feature_id: &str,
+    home_cell: CellIndex,
+) -> GeoTileDecisionMember {
+    let source = fixture_source(source_instance_id);
+    member_from_source(
+        source.clone(),
+        source
+            .native_entity_level()
+            .expect("fixture member source is native"),
+        feature_id,
+        home_cell,
+    )
+}
+
+fn member_from_source(
+    source: GeoTileSourceBinding,
+    candidate_entity_level: GeoControlEntityLevel,
+    feature_id: &str,
+    home_cell: CellIndex,
+) -> GeoTileDecisionMember {
     GeoTileDecisionMember {
-        source_name: source_name.to_string(),
+        candidate_entity_level,
+        source,
         feature_id: feature_id.to_string(),
         home_cell: home_cell.to_string(),
     }
@@ -93,7 +187,21 @@ fn proposal(
     payload_blake3: String,
     members: Vec<GeoTileDecisionMember>,
 ) -> GeoTileDecisionProposal {
+    proposal_with_semantics(
+        GeoTileDecisionSemantics::Composition,
+        payload_blake3,
+        members,
+    )
+}
+
+fn proposal_with_semantics(
+    semantics: GeoTileDecisionSemantics,
+    payload_blake3: String,
+    members: Vec<GeoTileDecisionMember>,
+) -> GeoTileDecisionProposal {
     GeoTileDecisionProposal {
+        semantics,
+        work_unit_blake3: String::new(),
         payload_blake3,
         members,
     }
@@ -106,25 +214,36 @@ fn decision_batch(
 ) -> GeoTileDecisionBatch {
     let features = available_members
         .iter()
-        .map(|member| {
-            feature(
-                &member.source_name,
-                &member.feature_id,
-                CellIndex::from_str(&member.home_cell).unwrap(),
-            )
+        .map(|member| GeoTileFeatureRef {
+            source: member.source.clone(),
+            feature_id: member.feature_id.clone(),
+            home_cell: member.home_cell.clone(),
         })
         .collect();
+    let work_unit = materialize_tile_work_unit(&work_request(center, features))
+        .expect("decision work unit materializes");
+    let mut proposals = proposals;
+    for proposal in &mut proposals {
+        proposal.work_unit_blake3 = work_unit.work_unit_blake3.clone();
+    }
     GeoTileDecisionBatch {
-        work_unit: materialize_tile_work_unit(&work_request(center, features))
-            .expect("decision work unit materializes"),
+        work_unit,
         proposals,
     }
 }
 
-fn reconciliation_request(batches: Vec<GeoTileDecisionBatch>) -> GeoTileReconciliationRequest {
+fn reconciliation_request(mut batches: Vec<GeoTileDecisionBatch>) -> GeoTileReconciliationRequest {
+    for batch in &mut batches {
+        for proposal in &mut batch.proposals {
+            if proposal.work_unit_blake3.is_empty() {
+                proposal.work_unit_blake3 = batch.work_unit.work_unit_blake3.clone();
+            }
+        }
+    }
     GeoTileReconciliationRequest {
         version: CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION.to_string(),
         halo_k: 1,
+        inventory_lineage: None,
         batches,
         max_batches: 8,
         max_proposals: 32,
@@ -132,6 +251,103 @@ fn reconciliation_request(batches: Vec<GeoTileDecisionBatch>) -> GeoTileReconcil
         max_features_per_batch: 16,
         max_work_cells_per_batch: 7,
     }
+}
+
+fn inventory_for_sources(sources: Vec<GeoTileSourceBinding>) -> GeoRegionalInventory {
+    let region = GeoBoundedGeography {
+        geography_id: "region.fixture.tile".to_string(),
+        geography_kind: "h3_test_fixture".to_string(),
+        description: "bounded tile authority fixture".to_string(),
+    };
+    let mut sources = sources;
+    sources.sort();
+    sources.dedup_by(|left, right| left.source_instance_id == right.source_instance_id);
+    GeoRegionalInventory {
+        version: CANON_GEO_REGIONAL_INVENTORY_VERSION.to_string(),
+        inventory_id: "inventory.fixture.tile".to_string(),
+        region: region.clone(),
+        sources: sources
+            .into_iter()
+            .map(|source| GeoRegionalSourceInstance {
+                source_instance_id: source.source_instance_id,
+                release: source.release,
+                temporal_scope: GeoTemporalScope {
+                    valid_time: None,
+                    transaction_time: None,
+                    release_time: None,
+                },
+                lineage_ids: vec!["lineage.fixture.tile".to_string()],
+                native_scope: source.native_scope,
+                evidence_classes: vec![GeoEvidenceClass::AssertedAttribute],
+                coverage: GeoCoveragePredicate {
+                    coverage_id: "coverage.fixture.tile".to_string(),
+                    region: region.clone(),
+                    predicate: "all fixture rows".to_string(),
+                },
+                local_state: GeoLocalAcquisitionState {
+                    state: GeoSourceAvailability::Missing,
+                    local_ref: None,
+                },
+                geometry: None,
+                license_class: GeoLicenseClass::PublicRedistributable,
+                egress_class: GeoEgressClass::Shareable,
+                estimates: Vec::new(),
+            })
+            .collect(),
+        discovery_gaps: Vec::new(),
+    }
+}
+
+fn with_inventory_lineage(
+    mut request: GeoTileReconciliationRequest,
+) -> GeoTileReconciliationRequest {
+    let inventory = inventory_for_sources(
+        request
+            .batches
+            .iter()
+            .flat_map(|batch| batch.work_unit.features.iter())
+            .map(|feature| feature.source.clone())
+            .collect(),
+    );
+    let inventory_ref = GeoPlanInventoryRef {
+        inventory_id: inventory.inventory_id.clone(),
+        semantic_hash: regional_inventory_semantic_hash(&inventory).unwrap(),
+        planning_hash: regional_inventory_planning_hash(&inventory).unwrap(),
+    };
+    for batch in &mut request.batches {
+        for feature in &mut batch.work_unit.features {
+            feature.source.inventory_ref = inventory_ref.clone();
+        }
+        let work_request = GeoTileWorkRequest {
+            version: batch.work_unit.request_version.clone(),
+            center_cell: batch.work_unit.center_cell.clone(),
+            halo_k: batch.work_unit.halo_k,
+            features: batch
+                .work_unit
+                .features
+                .iter()
+                .map(|feature| GeoTileFeatureRef {
+                    source: feature.source.clone(),
+                    feature_id: feature.feature_id.clone(),
+                    home_cell: feature.home_cell.clone(),
+                })
+                .collect(),
+            max_features: batch.work_unit.max_features,
+            max_work_cells: batch.work_unit.max_work_cells,
+        };
+        batch.work_unit = materialize_tile_work_unit(&work_request).unwrap();
+        for proposal in &mut batch.proposals {
+            proposal.work_unit_blake3 = batch.work_unit.work_unit_blake3.clone();
+            for member in &mut proposal.members {
+                member.source.inventory_ref = inventory_ref.clone();
+            }
+        }
+    }
+    request.inventory_lineage = Some(GeoTileInventoryLineage {
+        inventory_ref,
+        inventory,
+    });
+    request
 }
 
 #[test]
@@ -160,13 +376,443 @@ fn tile_work_unit_is_center_plus_controlled_halo_and_byte_deterministic() {
         canonical_tile_work_unit_bytes(&artifact).unwrap(),
         canonical_tile_work_unit_bytes(&repeated).unwrap()
     );
-    assert_eq!(artifact.features[0].source_name, "building");
+    assert_eq!(artifact.features[0].source.source_instance_id, "building");
     assert_eq!(artifact.features[0].placement, GeoTilePlacement::Center);
     assert!(
         artifact
             .features
             .iter()
             .any(|feature| feature.placement == GeoTilePlacement::Halo)
+    );
+}
+
+#[test]
+fn v1_source_binding_is_required_and_source_release_scopes_duplicate_identity() {
+    let missing_binding = serde_json::json!({
+        "version": CANON_GEO_TILE_WORK_REQUEST_VERSION,
+        "center_cell": "892a100d26bffff",
+        "halo_k": 1,
+        "features": [{
+            "feature_id": "same-id",
+            "home_cell": "892a100d26bffff"
+        }],
+        "max_features": 8,
+        "max_work_cells": 7
+    });
+    serde_json::from_value::<GeoTileWorkRequest>(missing_binding)
+        .expect_err("a feature without its source/release/native-scope binding must refuse");
+
+    let center = CellIndex::from_str("892a100d26bffff").unwrap();
+    let mut missing_inventory_ref = serde_json::to_value(work_request(
+        center,
+        vec![feature("parcel", "missing-inventory", center)],
+    ))
+    .unwrap();
+    missing_inventory_ref["features"][0]["source"]
+        .as_object_mut()
+        .unwrap()
+        .remove("inventory_ref");
+    serde_json::from_value::<GeoTileWorkRequest>(missing_inventory_ref)
+        .expect_err("v1 source bindings require their plan-shaped inventory reference");
+
+    let (center, _) = center_and_neighbor();
+    let request = work_request(
+        center,
+        vec![
+            feature_from_source(
+                native_source(
+                    "overture-building",
+                    GeoControlEntityLevel::Building,
+                    GeoIdentityParticipation::StableAlias,
+                ),
+                "same-id",
+                center,
+            ),
+            feature_from_source(
+                native_source(
+                    "fema-building",
+                    GeoControlEntityLevel::Building,
+                    GeoIdentityParticipation::StableAlias,
+                ),
+                "same-id",
+                center,
+            ),
+        ],
+    );
+    let artifact = materialize_tile_work_unit(&request)
+        .expect("equal provider-local ids from distinct source releases remain distinct");
+    assert_eq!(artifact.features.len(), 2);
+    assert_ne!(artifact.features[0].source, artifact.features[1].source);
+}
+
+#[test]
+fn mixed_tile_preserves_aliasless_evidence_without_cross_level_candidate_promotion() {
+    let (center, _) = center_and_neighbor();
+    let stable_building = native_source(
+        "overture-building",
+        GeoControlEntityLevel::Building,
+        GeoIdentityParticipation::StableAlias,
+    );
+    let aliasless_building = native_source(
+        "microsoft-building",
+        GeoControlEntityLevel::Building,
+        GeoIdentityParticipation::EvidenceOnly,
+    );
+    let address = native_source(
+        "overture-address",
+        GeoControlEntityLevel::Address,
+        GeoIdentityParticipation::EvidenceOnly,
+    );
+    let poi = native_source(
+        "overture-place",
+        GeoControlEntityLevel::Poi,
+        GeoIdentityParticipation::StableAlias,
+    );
+    let observation = observation_source("geocode-observation");
+    let stable_parcel = native_source(
+        "mappluto-parcel",
+        GeoControlEntityLevel::Parcel,
+        GeoIdentityParticipation::StableAlias,
+    );
+    let sources = [
+        (stable_building.clone(), "building-stable"),
+        (aliasless_building.clone(), "building-aliasless"),
+        (address.clone(), "address-evidence"),
+        (poi.clone(), "poi-stable"),
+        (observation.clone(), "geocode-point"),
+        (stable_parcel.clone(), "parcel-stable"),
+    ];
+    let work_unit = materialize_tile_work_unit(&work_request(
+        center,
+        sources
+            .iter()
+            .map(|(source, feature_id)| feature_from_source(source.clone(), feature_id, center))
+            .collect(),
+    ))
+    .expect("one bounded section may retain every declared evidence level");
+
+    let valid_members = vec![
+        member_from_source(
+            stable_building,
+            GeoControlEntityLevel::Building,
+            "building-stable",
+            center,
+        ),
+        member_from_source(
+            aliasless_building,
+            GeoControlEntityLevel::Building,
+            "building-aliasless",
+            center,
+        ),
+    ];
+    let valid = with_inventory_lineage(reconciliation_request(vec![GeoTileDecisionBatch {
+        work_unit: work_unit.clone(),
+        proposals: vec![proposal_with_semantics(
+            GeoTileDecisionSemantics::StableIdentity {
+                entity_level: GeoControlEntityLevel::Building,
+            },
+            payload("building candidate"),
+            valid_members,
+        )],
+    }]));
+    let artifact = reconcile_tile_decisions(&valid)
+        .expect("same-level evidence-only building observations may support the candidate");
+    let expected_inventory_ref = valid
+        .inventory_lineage
+        .as_ref()
+        .expect("stable identity carries validated lineage")
+        .inventory_ref
+        .clone();
+    assert_eq!(artifact.inventory_ref, Some(expected_inventory_ref.clone()));
+    assert_eq!(
+        artifact.decisions[0].inventory_ref,
+        Some(expected_inventory_ref)
+    );
+    let aliasless = artifact.decisions[0]
+        .members
+        .iter()
+        .find(|member| member.feature_id == "building-aliasless")
+        .expect("alias-less evidence member is retained explicitly");
+    assert!(!aliasless.may_contribute_stable_alias());
+    assert_eq!(
+        aliasless.candidate_entity_level,
+        GeoControlEntityLevel::Building
+    );
+
+    let evidence_only_composition = reconciliation_request(vec![GeoTileDecisionBatch {
+        work_unit: work_unit.clone(),
+        proposals: vec![proposal(
+            payload("evidence-only composition"),
+            vec![member_from_source(
+                native_source(
+                    "microsoft-building",
+                    GeoControlEntityLevel::Building,
+                    GeoIdentityParticipation::EvidenceOnly,
+                ),
+                GeoControlEntityLevel::Building,
+                "building-aliasless",
+                center,
+            )],
+        )],
+    }]);
+    let composition = reconcile_tile_decisions(&evidence_only_composition)
+        .expect("evidence-only members may form a composition decision without alias authority");
+    assert_eq!(
+        composition.decisions[0].semantics,
+        GeoTileDecisionSemantics::Composition
+    );
+
+    let mixed_level_composition = reconciliation_request(vec![GeoTileDecisionBatch {
+        work_unit: work_unit.clone(),
+        proposals: vec![proposal(
+            payload("mixed-level composition"),
+            vec![
+                member_from_source(
+                    stable_parcel.clone(),
+                    GeoControlEntityLevel::Parcel,
+                    "parcel-stable",
+                    center,
+                ),
+                member_from_source(
+                    native_source(
+                        "microsoft-building",
+                        GeoControlEntityLevel::Building,
+                        GeoIdentityParticipation::EvidenceOnly,
+                    ),
+                    GeoControlEntityLevel::Building,
+                    "building-aliasless",
+                    center,
+                ),
+            ],
+        )],
+    }]);
+    let mixed = reconcile_tile_decisions(&mixed_level_composition)
+        .expect("composition may relate native candidates without asserting cross-level identity");
+    assert_eq!(mixed.decisions[0].members.len(), 2);
+    assert_eq!(
+        mixed.decisions[0].semantics,
+        GeoTileDecisionSemantics::Composition
+    );
+
+    let evidence_only_mint =
+        with_inventory_lineage(reconciliation_request(vec![GeoTileDecisionBatch {
+            work_unit: work_unit.clone(),
+            proposals: vec![proposal_with_semantics(
+                GeoTileDecisionSemantics::StableIdentity {
+                    entity_level: GeoControlEntityLevel::Building,
+                },
+                payload("evidence-only identity mint"),
+                vec![member_from_source(
+                    native_source(
+                        "microsoft-building",
+                        GeoControlEntityLevel::Building,
+                        GeoIdentityParticipation::EvidenceOnly,
+                    ),
+                    GeoControlEntityLevel::Building,
+                    "building-aliasless",
+                    center,
+                )],
+            )],
+        }]));
+    let error = reconcile_tile_decisions(&evidence_only_mint)
+        .expect_err("evidence-only composition cannot be relabeled as stable identity");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidCandidateMember);
+    assert!(error.message.contains("same-level stable-alias"));
+
+    let parcel_anchor_laundering =
+        with_inventory_lineage(reconciliation_request(vec![GeoTileDecisionBatch {
+            work_unit: work_unit.clone(),
+            proposals: vec![proposal_with_semantics(
+                GeoTileDecisionSemantics::StableIdentity {
+                    entity_level: GeoControlEntityLevel::Building,
+                },
+                payload("parcel anchor laundering"),
+                vec![
+                    member_from_source(
+                        stable_parcel,
+                        GeoControlEntityLevel::Parcel,
+                        "parcel-stable",
+                        center,
+                    ),
+                    member_from_source(
+                        native_source(
+                            "microsoft-building",
+                            GeoControlEntityLevel::Building,
+                            GeoIdentityParticipation::EvidenceOnly,
+                        ),
+                        GeoControlEntityLevel::Building,
+                        "building-aliasless",
+                        center,
+                    ),
+                ],
+            )],
+        }]));
+    let error = reconcile_tile_decisions(&parcel_anchor_laundering)
+        .expect_err("stable identity cannot launder a cross-level evidence-only member");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidCandidateMember);
+    assert!(error.message.contains("another entity level"));
+
+    let evidence_relabel = reconciliation_request(vec![GeoTileDecisionBatch {
+        work_unit: work_unit.clone(),
+        proposals: vec![proposal(
+            payload("evidence relabel attack"),
+            vec![member_from_source(
+                native_source(
+                    "microsoft-building",
+                    GeoControlEntityLevel::Building,
+                    GeoIdentityParticipation::StableAlias,
+                ),
+                GeoControlEntityLevel::Building,
+                "building-aliasless",
+                center,
+            )],
+        )],
+    }]);
+    let error = reconcile_tile_decisions(&evidence_relabel)
+        .expect_err("a proposal cannot relabel EvidenceOnly membership as StableAlias");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidDecision);
+
+    let observation_relabel = reconciliation_request(vec![GeoTileDecisionBatch {
+        work_unit: work_unit.clone(),
+        proposals: vec![proposal(
+            payload("observation relabel attack"),
+            vec![member_from_source(
+                native_source(
+                    "geocode-observation",
+                    GeoControlEntityLevel::Building,
+                    GeoIdentityParticipation::StableAlias,
+                ),
+                GeoControlEntityLevel::Building,
+                "geocode-point",
+                center,
+            )],
+        )],
+    }]);
+    let error = reconcile_tile_decisions(&observation_relabel)
+        .expect_err("a proposal cannot relabel ObservationOnly membership as NativeEntity");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidDecision);
+
+    for (source, feature_id) in [
+        (address, "address-evidence"),
+        (poi, "poi-stable"),
+        (observation, "geocode-point"),
+    ] {
+        let invalid = reconciliation_request(vec![GeoTileDecisionBatch {
+            work_unit: work_unit.clone(),
+            proposals: vec![proposal(
+                payload(feature_id),
+                vec![member_from_source(
+                    source,
+                    GeoControlEntityLevel::Building,
+                    feature_id,
+                    center,
+                )],
+            )],
+        }]);
+        let error = reconcile_tile_decisions(&invalid)
+            .expect_err("non-building evidence must not become a building candidate variable");
+        assert_eq!(error.code, GeoTileErrorCode::InvalidCandidateMember);
+    }
+}
+
+#[test]
+fn stable_identity_rejects_leaf_laundered_alias_authority_and_missing_lineage() {
+    let mut inventory_source = native_source(
+        "generic-building-evidence",
+        GeoControlEntityLevel::Building,
+        GeoIdentityParticipation::EvidenceOnly,
+    );
+    let inventory = inventory_for_sources(vec![inventory_source.clone()]);
+    let inventory_ref = GeoPlanInventoryRef {
+        inventory_id: inventory.inventory_id.clone(),
+        semantic_hash: regional_inventory_semantic_hash(&inventory).unwrap(),
+        planning_hash: regional_inventory_planning_hash(&inventory).unwrap(),
+    };
+    inventory_source.inventory_ref = inventory_ref.clone();
+
+    let mut laundered_source = inventory_source.clone();
+    laundered_source.native_scope = GeoNativeEntityScope::NativeEntity {
+        entity_level: GeoControlEntityLevel::Building,
+        identity_participation: GeoIdentityParticipation::StableAlias,
+    };
+    let mut row = home_cell_row("laundered-building", None);
+    row.source = laundered_source.clone();
+    let assignment = materialize_home_cells(&home_cell_request(vec![row]))
+        .expect("self-consistent laundered leaf bytes pass non-authoritative materialization");
+    let center = CellIndex::from_str(&assignment.tile_work_features[0].home_cell).unwrap();
+    let member = member_from_source(
+        laundered_source,
+        GeoControlEntityLevel::Building,
+        "laundered-building",
+        center,
+    );
+    let batch = decision_batch(
+        center,
+        std::slice::from_ref(&member),
+        vec![proposal_with_semantics(
+            GeoTileDecisionSemantics::StableIdentity {
+                entity_level: GeoControlEntityLevel::Building,
+            },
+            payload("laundered stable identity"),
+            vec![member.clone()],
+        )],
+    );
+
+    let missing_lineage = reconciliation_request(vec![batch.clone()]);
+    let error = reconcile_tile_decisions(&missing_lineage)
+        .expect_err("stable identity cannot rely on caller-declared alias authority alone");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidInventoryLineage);
+
+    let mut laundering = reconciliation_request(vec![batch]);
+    laundering.inventory_lineage = Some(GeoTileInventoryLineage {
+        inventory_ref,
+        inventory,
+    });
+    let error = reconcile_tile_decisions(&laundering)
+        .expect_err("leaf-to-proposal StableAlias laundering must disagree with inventory truth");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidInventoryLineage);
+    assert!(error.message.contains("native scope"));
+}
+
+#[test]
+fn decision_semantics_bind_confluence_scope_and_decision_identity() {
+    let (center, _) = center_and_neighbor();
+    let members = vec![member("building", "b-1", center)];
+    let digest = payload("same payload bytes");
+    let request = with_inventory_lineage(reconciliation_request(vec![decision_batch(
+        center,
+        &members,
+        vec![
+            proposal(digest.clone(), members.clone()),
+            proposal_with_semantics(
+                GeoTileDecisionSemantics::StableIdentity {
+                    entity_level: GeoControlEntityLevel::Building,
+                },
+                digest,
+                members.clone(),
+            ),
+        ],
+    )]));
+    let artifact = reconcile_tile_decisions(&request)
+        .expect("same members under distinct declared semantics are distinct decisions");
+    assert_eq!(artifact.owned_decisions, 2);
+    assert_ne!(
+        artifact.decisions[0].decision_id,
+        artifact.decisions[1].decision_id
+    );
+    let semantics = artifact
+        .decisions
+        .iter()
+        .map(|decision| decision.semantics)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        semantics,
+        BTreeSet::from([
+            GeoTileDecisionSemantics::Composition,
+            GeoTileDecisionSemantics::StableIdentity {
+                entity_level: GeoControlEntityLevel::Building,
+            },
+        ])
     );
 }
 
@@ -245,12 +891,14 @@ fn home_cells_refuse_bad_coordinates_digests_transforms_and_claimed_resolution()
 
     let mut first = home_cell_row("mixed-a", None);
     let mut second = home_cell_row("mixed-b", None);
-    first.source_snapshot = "26v1/2026-05-01/geom-v3".to_string();
-    second.source_snapshot = "26v2/2026-08-01/geom-v3".to_string();
+    first.source.release.release_id = "26v1".to_string();
+    first.source.release.release_digest = release_digest("26v1");
+    second.source.release.release_id = "26v2".to_string();
+    second.source.release.release_digest = release_digest("26v2");
     let request = home_cell_request(vec![first, second]);
     let error = materialize_home_cells(&request)
         .expect_err("one source name must not collapse two temporal snapshots");
-    assert_eq!(error.code, GeoTileErrorCode::MixedSourceSnapshot);
+    assert_eq!(error.code, GeoTileErrorCode::IncompatibleSourceBinding);
 
     let mut request = home_cell_request(vec![home_cell_row("wide-envelope", None)]);
     request.stability_radius_fixed = 100_001;
@@ -321,6 +969,12 @@ fn tile_work_unit_refuses_reach_resolution_duplicate_and_halo_budget_defects() {
         .expect_err("caller-declared budgets cannot exceed the kernel ceiling");
     assert_eq!(error.code, GeoTileErrorCode::InvalidInput);
     assert_eq!(error.detail["hard_max"], "100000");
+
+    let mut uppercase_release = feature("parcel", "uppercase-release", center);
+    uppercase_release.source.release.release_digest = format!("blake3:{}", "A".repeat(64));
+    let error = materialize_tile_work_unit(&work_request(center, vec![uppercase_release]))
+        .expect_err("uppercase source release digests are not canonical BLAKE3");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidSourceDigest);
 }
 
 #[test]
@@ -415,6 +1069,52 @@ fn reconciliation_refuses_orphaned_and_nonconfluent_boundary_decisions() {
     let error = reconcile_tile_decisions(&nonconfluent)
         .expect_err("different payloads for the same members must refuse");
     assert_eq!(error.code, GeoTileErrorCode::NonConfluentDecision);
+
+    let uppercase_payload = reconciliation_request(vec![decision_batch(
+        first,
+        &members,
+        vec![proposal(
+            format!("blake3:{}", "A".repeat(64)),
+            members.clone(),
+        )],
+    )]);
+    let error = reconcile_tile_decisions(&uppercase_payload)
+        .expect_err("uppercase decision payload digests are not canonical BLAKE3");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidDecision);
+}
+
+#[test]
+fn reconciliation_refuses_cross_batch_source_release_drift() {
+    let (first, second) = center_and_neighbor();
+    let mut first_source = native_source(
+        "building-source",
+        GeoControlEntityLevel::Building,
+        GeoIdentityParticipation::StableAlias,
+    );
+    first_source.release.release_id = "release-a".to_string();
+    first_source.release.release_digest = release_digest("release-a");
+    let mut second_source = first_source.clone();
+    second_source.release.release_id = "release-b".to_string();
+    second_source.release.release_digest = release_digest("release-b");
+    let first_member = member_from_source(
+        first_source,
+        GeoControlEntityLevel::Building,
+        "building-1",
+        first,
+    );
+    let second_member = member_from_source(
+        second_source,
+        GeoControlEntityLevel::Building,
+        "building-1",
+        second,
+    );
+    let request = reconciliation_request(vec![
+        decision_batch(first, std::slice::from_ref(&first_member), vec![]),
+        decision_batch(second, std::slice::from_ref(&second_member), vec![]),
+    ]);
+    let error = reconcile_tile_decisions(&request)
+        .expect_err("one source instance cannot drift across releases between tile batches");
+    assert_eq!(error.code, GeoTileErrorCode::IncompatibleSourceBinding);
 }
 
 #[test]
@@ -440,6 +1140,17 @@ fn reconciliation_requires_the_owner_batch_and_bounds_every_proposal() {
     let error = reconcile_tile_decisions(&reconciliation_request(vec![corrupted]))
         .expect_err("reconciliation must validate the exact work-unit artifact");
     assert_eq!(error.code, GeoTileErrorCode::InvalidWorkUnit);
+
+    let mut wrong_work_unit = decision_batch(
+        first,
+        &members,
+        vec![proposal(payload("wrong-work-unit"), members.clone())],
+    );
+    wrong_work_unit.proposals[0].work_unit_blake3 = payload("different work unit");
+    let error = reconcile_tile_decisions(&reconciliation_request(vec![wrong_work_unit]))
+        .expect_err("proposal cannot float free of its exact bounded work unit");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidDecision);
+    assert!(error.message.contains("embedded canonical work unit"));
 
     let unavailable = member("parcel", "not-in-work-unit", first);
     let bad_reach = reconciliation_request(vec![decision_batch(

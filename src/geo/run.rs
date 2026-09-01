@@ -25,9 +25,9 @@ use crate::{
         validate_geo_plan,
     },
     project::{
-        ProjectExtensionDagNode, ProjectExtensionDagOutput, ProjectExtensionDagRequest,
-        ProjectNodeExecutor, ProjectPlan, ProjectPlanCacheDecision, ProjectPlanHashRef,
-        ProjectPlanNode, ProjectPlanOutputMaterialization, ProjectRunError,
+        CANON_PROJECT_RUN_VERSION, ProjectExtensionDagNode, ProjectExtensionDagOutput,
+        ProjectExtensionDagRequest, ProjectNodeExecutor, ProjectPlan, ProjectPlanCacheDecision,
+        ProjectPlanHashRef, ProjectPlanNode, ProjectPlanOutputMaterialization, ProjectRunError,
         ProjectRunFailurePolicy, ProjectRunHashRef, ProjectRunNextAction, ProjectRunNodeOutcome,
         ProjectRunNodeReceipt, ProjectRunOutputReceipt, ProjectRunPolicy, ProjectRunReport,
         compile_extension_project_plan, digest_bytes, read_node_receipt, run_project_plan,
@@ -1317,6 +1317,9 @@ pub fn validate_geo_run(run: &GeoRun) -> GeoRunResult<()> {
                 [("artifact_id", output.artifact_id.as_str())],
             ));
         }
+    }
+    if let Some(report) = &run.project_run_report {
+        validate_project_run_report_schema_shape(report)?;
     }
     validate_run_state_shapes(run)?;
     validate_run_state_invariants(run)?;
@@ -3105,6 +3108,201 @@ fn validate_json_contract(
         ));
     }
     Ok(())
+}
+
+fn validate_project_run_report_schema_shape(report: &ProjectRunReport) -> GeoRunResult<()> {
+    if report.schema_version != CANON_PROJECT_RUN_VERSION {
+        return Err(project_report_contract_error(
+            "project_run_report.schema_version",
+            &report.schema_version,
+        ));
+    }
+    validate_project_non_empty_text("project_run_report.project_id", &report.project_id)?;
+    validate_project_digest(
+        "project_run_report.plan_graph_hash",
+        &report.plan_graph_hash,
+    )?;
+    validate_project_digest(
+        "project_run_report.run_receipt_hash",
+        &report.run_receipt_hash,
+    )?;
+    validate_portable_usize(
+        "project_run_report.max_parallelism",
+        report.max_parallelism,
+        true,
+    )?;
+    validate_portable_usize(
+        "project_run_report.max_ready_width",
+        report.max_ready_width,
+        false,
+    )?;
+    validate_project_unique_strings("project_run_report.executed_nodes", &report.executed_nodes)?;
+    validate_project_unique_strings("project_run_report.resumed_nodes", &report.resumed_nodes)?;
+    validate_project_unique_strings("project_run_report.failed_nodes", &report.failed_nodes)?;
+    validate_project_unique_strings(
+        "project_run_report.cancelled_nodes",
+        &report.cancelled_nodes,
+    )?;
+    validate_project_unique_strings(
+        "project_run_report.invalidated_nodes",
+        &report.invalidated_nodes,
+    )?;
+    validate_project_unique_strings("project_run_report.blocked_nodes", &report.blocked_nodes)?;
+    for command in report.next_actions.values() {
+        validate_project_non_empty_text("project_run_report.next_actions", command)?;
+    }
+    validate_project_run_receipt_schema_shape("project_run_report.receipt", &report.receipt)?;
+    for node_report in &report.node_reports {
+        validate_project_non_empty_text(
+            "project_run_report.node_reports.node_id",
+            &node_report.node_id,
+        )?;
+        if let Some(receipt_hash) = &node_report.receipt_hash {
+            validate_project_digest("project_run_report.node_reports.receipt_hash", receipt_hash)?;
+        }
+        if let Some(reason) = &node_report.reason {
+            validate_project_non_empty_text("project_run_report.node_reports.reason", reason)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_project_run_receipt_schema_shape(
+    field: &str,
+    receipt: &crate::project::ProjectRunReceipt,
+) -> GeoRunResult<()> {
+    if receipt.schema_version != CANON_PROJECT_RUN_VERSION {
+        return Err(project_report_contract_error(
+            &format!("{field}.schema_version"),
+            &receipt.schema_version,
+        ));
+    }
+    validate_project_non_empty_text(&format!("{field}.project_id"), &receipt.project_id)?;
+    validate_project_digest(
+        &format!("{field}.plan_graph_hash"),
+        &receipt.plan_graph_hash,
+    )?;
+    validate_project_digest(&format!("{field}.receipt_hash"), &receipt.receipt_hash)?;
+    validate_project_unique_strings(
+        &format!("{field}.completed_nodes"),
+        &receipt.completed_nodes,
+    )?;
+    validate_project_unique_strings(&format!("{field}.failed_nodes"), &receipt.failed_nodes)?;
+    validate_project_unique_strings(
+        &format!("{field}.cancelled_nodes"),
+        &receipt.cancelled_nodes,
+    )?;
+    validate_project_unique_strings(
+        &format!("{field}.invalidated_nodes"),
+        &receipt.invalidated_nodes,
+    )?;
+    validate_project_unique_strings(&format!("{field}.blocked_nodes"), &receipt.blocked_nodes)?;
+    for node_receipt in &receipt.node_receipts {
+        validate_project_node_receipt_schema_shape(
+            &format!("{field}.node_receipts"),
+            node_receipt,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_project_node_receipt_schema_shape(
+    field: &str,
+    receipt: &ProjectRunNodeReceipt,
+) -> GeoRunResult<()> {
+    if receipt.schema_version != CANON_PROJECT_RUN_VERSION {
+        return Err(project_report_contract_error(
+            &format!("{field}.schema_version"),
+            &receipt.schema_version,
+        ));
+    }
+    validate_project_non_empty_text(&format!("{field}.project_id"), &receipt.project_id)?;
+    validate_project_digest(
+        &format!("{field}.plan_graph_hash"),
+        &receipt.plan_graph_hash,
+    )?;
+    validate_project_non_empty_text(&format!("{field}.node_id"), &receipt.node_id)?;
+    validate_project_digest(&format!("{field}.node_cache_key"), &receipt.node_cache_key)?;
+    for input in &receipt.content_hash_inputs {
+        validate_project_non_empty_text(
+            &format!("{field}.content_hash_inputs.ref_id"),
+            &input.ref_id,
+        )?;
+        validate_project_digest(
+            &format!("{field}.content_hash_inputs.content_hash"),
+            &input.content_hash,
+        )?;
+    }
+    for digest in receipt.dependency_semantic_hashes.values() {
+        validate_project_digest(&format!("{field}.dependency_semantic_hashes"), digest)?;
+    }
+    for digest in receipt.dependency_receipt_hashes.values() {
+        validate_project_digest(&format!("{field}.dependency_receipt_hashes"), digest)?;
+    }
+    for output in &receipt.outputs {
+        validate_project_non_empty_text(&format!("{field}.outputs.output_id"), &output.output_id)?;
+        validate_project_non_empty_text(&format!("{field}.outputs.path"), &output.path)?;
+        validate_project_digest(
+            &format!("{field}.outputs.content_digest"),
+            &output.content_digest,
+        )?;
+    }
+    if let Some(failure_code) = &receipt.failure_code {
+        validate_project_non_empty_text(&format!("{field}.failure_code"), failure_code)?;
+    }
+    if let Some(failure_message) = &receipt.failure_message {
+        validate_project_non_empty_text(&format!("{field}.failure_message"), failure_message)?;
+    }
+    validate_project_digest(&format!("{field}.semantic_hash"), &receipt.semantic_hash)?;
+    validate_project_digest(&format!("{field}.telemetry_hash"), &receipt.telemetry_hash)?;
+    validate_project_digest(&format!("{field}.receipt_hash"), &receipt.receipt_hash)?;
+    Ok(())
+}
+
+fn validate_portable_usize(field: &str, value: usize, require_positive: bool) -> GeoRunResult<()> {
+    if require_positive && value == 0 {
+        return Err(project_report_contract_error(field, &value.to_string()));
+    }
+    if value > u32::MAX as usize {
+        return Err(project_report_contract_error(field, &value.to_string()));
+    }
+    Ok(())
+}
+
+fn validate_project_unique_strings(field: &str, values: &[String]) -> GeoRunResult<()> {
+    let mut seen = BTreeSet::new();
+    for value in values {
+        validate_project_non_empty_text(field, value)?;
+        if !seen.insert(value) {
+            return Err(project_report_contract_error(field, value));
+        }
+    }
+    Ok(())
+}
+
+fn validate_project_non_empty_text(field: &str, value: &str) -> GeoRunResult<()> {
+    if !value.is_empty() {
+        return Ok(());
+    }
+    Err(project_report_contract_error(field, value))
+}
+
+fn validate_project_digest(field: &str, value: &str) -> GeoRunResult<()> {
+    let Some(hex) = value.strip_prefix("blake3:") else {
+        return Err(project_report_contract_error(field, value));
+    };
+    if hex.len() == 64 && hex.bytes().all(is_lowercase_hex) {
+        return Ok(());
+    }
+    Err(project_report_contract_error(field, value))
+}
+
+fn project_report_contract_error(field: &str, value: &str) -> GeoRunError {
+    GeoRunError::new(
+        GeoRunErrorCode::ArtifactContract,
+        "Geo run embedded project_run_report does not match its schema vocabulary or bounds",
+        [("field", field), ("value", value)],
+    )
 }
 
 fn validate_run_state_invariants(run: &GeoRun) -> GeoRunResult<()> {

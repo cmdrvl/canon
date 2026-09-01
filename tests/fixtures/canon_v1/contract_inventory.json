@@ -219,8 +219,8 @@
       "clap_path": "geo materialize-home-cells",
       "operator_name": "geo materialize-home-cells",
       "primary_contracts": [
-        "canon_geo_home_cell_rows.v0",
-        "canon_geo_home_cell_assignment.v0"
+        "canon_geo_home_cell_rows.v1",
+        "canon_geo_home_cell_assignment.v1"
       ],
       "action": "preserve"
     },
@@ -230,8 +230,8 @@
       "clap_path": "geo tile-work",
       "operator_name": "geo tile-work",
       "primary_contracts": [
-        "canon_geo_tile_work_request.v0",
-        "canon_geo_tile_work_unit.v0"
+        "canon_geo_tile_work_request.v1",
+        "canon_geo_tile_work_unit.v1"
       ],
       "action": "preserve"
     },
@@ -241,8 +241,8 @@
       "clap_path": "geo reconcile-tiles",
       "operator_name": "geo reconcile-tiles",
       "primary_contracts": [
-        "canon_geo_tile_reconciliation_request.v0",
-        "canon_geo_tile_reconciliation.v0"
+        "canon_geo_tile_reconciliation_request.v1",
+        "canon_geo_tile_reconciliation.v1"
       ],
       "action": "preserve"
     },
@@ -1509,46 +1509,88 @@
       "id": "canon_geo_home_cell_rows.v0",
       "family": "geo",
       "action": "preserve",
-      "access_boundary": "public_crate_api",
-      "crate_module": "canon::geo"
+      "access_boundary": "public_schema",
+      "source_path": "schemas/canon.geo.home_cell_rows.v0.schema.json"
     },
     {
       "id": "canon_geo_home_cell_assignment.v0",
       "family": "geo",
       "action": "preserve",
-      "access_boundary": "public_crate_api",
-      "crate_module": "canon::geo"
+      "access_boundary": "public_schema",
+      "source_path": "schemas/canon.geo.home_cell_assignment.v0.schema.json"
     },
     {
       "id": "canon_geo_tile_work_request.v0",
       "family": "geo",
       "action": "preserve",
-      "access_boundary": "public_crate_api",
-      "crate_module": "canon::geo"
+      "access_boundary": "public_schema",
+      "source_path": "schemas/canon.geo.tile_work_request.v0.schema.json"
     },
     {
       "id": "canon_geo_tile_work_unit.v0",
       "family": "geo",
       "action": "preserve",
-      "access_boundary": "public_crate_api",
-      "crate_module": "canon::geo"
+      "access_boundary": "public_schema",
+      "source_path": "schemas/canon.geo.tile_work_unit.v0.schema.json"
     },
     {
       "id": "canon_geo_tile_reconciliation_request.v0",
       "family": "geo",
       "action": "preserve",
-      "access_boundary": "public_crate_api",
-      "crate_module": "canon::geo"
+      "access_boundary": "public_schema",
+      "source_path": "schemas/canon.geo.tile_reconciliation_request.v0.schema.json"
     },
     {
       "id": "canon_geo_tile_reconciliation.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_schema",
+      "source_path": "schemas/canon.geo.tile_reconciliation.v0.schema.json"
+    },
+    {
+      "id": "canon_geo_home_cell_rows.v1",
       "family": "geo",
       "action": "preserve",
       "access_boundary": "public_crate_api",
       "crate_module": "canon::geo"
     },
     {
-      "id": "canon_geo_tile_decision.v0",
+      "id": "canon_geo_home_cell_assignment.v1",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_tile_work_request.v1",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_tile_work_unit.v1",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_tile_reconciliation_request.v1",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_tile_reconciliation.v1",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_tile_decision.v1",
       "family": "geo",
       "action": "preserve",
       "access_boundary": "internal_source_only",

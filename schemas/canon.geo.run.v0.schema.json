@@ -128,6 +128,20 @@
     "no_network_acquisition": true,
     "content_validated_resume": true,
     "deterministic_order_required": true,
+    "json_schema_enforces": [
+      "closed object vocabulary",
+      "enum vocabulary",
+      "string identifier patterns",
+      "JSON integer bounds matching Rust u64/u32 fields",
+      "basic status-state shapes"
+    ],
+    "runtime_only_invariants": [
+      "semantic_hash derivation from the semantic projection",
+      "run_id derivation from semantic_hash",
+      "plan_ref.plan_id derivation from plan_ref.semantic_hash",
+      "artifact_id derivation from node/output or node/binding ids",
+      "canonical sorted ordering of repeated semantic collections"
+    ],
     "source_release_time_is_semantic_through_plan_ref": true,
     "declared_query_as_of_is_semantic_through_plan_ref": true,
     "deterministic_usage_controls_budget_fallback": true,
@@ -278,9 +292,19 @@
         "CONTRADICTED"
       ]
     },
+    "uint64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
+    "uint32": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
     "usage_map": {
       "type": "object",
-      "additionalProperties": { "type": "integer", "minimum": 0 }
+      "additionalProperties": { "$ref": "#/$defs/uint64" }
     },
     "run_plan_ref": {
       "type": "object",
@@ -327,7 +351,7 @@
         "content_digest": { "$ref": "#/$defs/blake3_digest" },
         "media_type": { "const": "application/json" },
         "contract_version": { "$ref": "#/$defs/contract_version" },
-        "byte_count": { "type": "integer", "minimum": 0 }
+        "byte_count": { "$ref": "#/$defs/uint64" }
       }
     },
     "run_output_ref": {
@@ -347,7 +371,7 @@
         "project_node_id": { "$ref": "#/$defs/project_node_id" },
         "output_id": { "$ref": "#/$defs/local_id" },
         "content_digest": { "$ref": "#/$defs/blake3_digest" },
-        "byte_count": { "type": "integer", "minimum": 0 },
+        "byte_count": { "$ref": "#/$defs/uint64" },
         "media_type": { "const": "application/json" },
         "contract_version": { "$ref": "#/$defs/contract_version" }
       }
@@ -390,7 +414,7 @@
         "workspace_path": { "$ref": "#/$defs/non_empty_text" },
         "observed_at_utc": { "$ref": "#/$defs/non_empty_text" },
         "host_id": { "$ref": "#/$defs/non_empty_text" },
-        "process_id": { "type": "integer", "minimum": 0 },
+        "process_id": { "$ref": "#/$defs/uint32" },
         "resource_observations": { "$ref": "#/$defs/usage_map" }
       }
     },

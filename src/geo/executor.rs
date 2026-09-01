@@ -634,7 +634,7 @@ impl GeoProjectNodeExecutor {
                     ProjectRunErrorCode::ArtifactContract,
                     format!(
                         "tile-work request feature {}:{}@{} was not produced by the home-cell dependency",
-                        feature.source_name, feature.feature_id, feature.home_cell
+                        feature.source.source_instance_id, feature.feature_id, feature.home_cell
                     ),
                 ));
             }

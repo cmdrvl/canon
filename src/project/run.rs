@@ -10,8 +10,10 @@ use super::{
     receipt::{
         CANON_PROJECT_RUN_VERSION, ProjectReceiptError, ProjectRunHashRef, ProjectRunNextAction,
         ProjectRunNodeOutcome, ProjectRunNodeReceipt, ProjectRunOutputReceipt, ProjectRunReceipt,
-        canonical_run_receipt_bytes, converge_node_receipt, digest_bytes, finalized_node_receipt,
-        finalized_run_receipt, read_node_receipt,
+        canonical_node_receipt_bytes, canonical_run_receipt_bytes, converge_node_receipt_in,
+        digest_bytes, finalized_node_receipt, finalized_run_receipt, node_receipt_cas_path,
+        preserve_node_receipt_cas_in, read_node_receipt, semantic_node_receipt_path,
+        semantic_node_result_cache_key,
     },
 };
 use crate::fs_safety::{PlannedAccess, resolve_workspace_path as resolve_fs_workspace_path};
@@ -212,7 +214,7 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
     validate_plan_shape(plan)?;
     let policy = finalize_policy(policy)?;
     let target_nodes = selected_node_closure(plan, &policy.selected_nodes)?;
-    let existing = load_existing_receipts(plan, &policy)?;
+    let mut existing = validate_existing_receipts(plan, &policy, &target_nodes)?;
     if !existing.poisoned_receipts.is_empty() {
         return Err(ProjectRunError::new(
             ProjectRunErrorCode::ReceiptPoisoning,
@@ -223,6 +225,7 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
             ),
         ));
     }
+    restore_existing_receipts(plan, &policy, &target_nodes, &mut existing)?;
 
     let mut valid_receipts = existing.valid_receipts;
     let completed_receipts = existing.completed_receipts;
@@ -303,11 +306,10 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
                 &policy,
                 &valid_receipts,
                 &completed_receipts,
+                &prior_receipts,
                 executor,
             ) {
                 Ok(receipt) => {
-                    let receipt =
-                        write_receipt(&policy, &receipt, prior_receipts.get(&node.node_id))?;
                     report.executed_nodes.push(node.node_id.clone());
                     report.node_reports.push(node_report(
                         node,
@@ -318,6 +320,9 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
                     valid_receipts.insert(node.node_id.clone(), receipt);
                 }
                 Err(error) => {
+                    if error.code == ProjectRunErrorCode::ReceiptPoisoning {
+                        return Err(error);
+                    }
                     let receipt = terminal_receipt(
                         plan,
                         node,
@@ -381,7 +386,7 @@ pub fn inspect_project_run_reuse_only(
     validate_plan_shape(plan)?;
     let policy = finalize_policy(policy)?;
     let target_nodes = selected_node_closure(plan, &policy.selected_nodes)?;
-    let existing = load_existing_receipts(plan, &policy)?;
+    let existing = validate_existing_receipts(plan, &policy, &target_nodes)?;
     if !existing.poisoned_receipts.is_empty() {
         return Err(ProjectRunError::new(
             ProjectRunErrorCode::ReceiptPoisoning,
@@ -399,6 +404,21 @@ pub fn inspect_project_run_reuse_only(
     for invalidated in &invalidated_nodes {
         valid_receipts.remove(invalidated);
     }
+    let reusable_node_reports = plan
+        .nodes
+        .iter()
+        .filter(|node| target_nodes.contains(&node.node_id))
+        .filter_map(|node| {
+            valid_receipts.get(&node.node_id).map(|receipt| {
+                node_report(
+                    node,
+                    ProjectRunNodeOutcome::Completed,
+                    Some(&receipt.receipt_hash),
+                    Some("reusable completed receipt validated; read-only inspection did not restore outputs"),
+                )
+            })
+        })
+        .collect();
 
     let report = ProjectRunReport {
         schema_version: CANON_PROJECT_RUN_VERSION.to_string(),
@@ -408,11 +428,7 @@ pub fn inspect_project_run_reuse_only(
         max_parallelism: policy.max_parallelism,
         max_ready_width: 0,
         executed_nodes: Vec::new(),
-        resumed_nodes: valid_receipts
-            .keys()
-            .filter(|node_id| target_nodes.contains(*node_id))
-            .cloned()
-            .collect(),
+        resumed_nodes: Vec::new(),
         failed_nodes: Vec::new(),
         cancelled_nodes: Vec::new(),
         invalidated_nodes: invalidated_nodes
@@ -423,7 +439,7 @@ pub fn inspect_project_run_reuse_only(
         blocked_nodes: Vec::new(),
         next_actions: BTreeMap::new(),
         receipt: empty_run_receipt(plan),
-        node_reports: Vec::new(),
+        node_reports: reusable_node_reports,
     };
 
     let completed = valid_receipts.keys().cloned().collect::<BTreeSet<_>>();
@@ -568,7 +584,7 @@ fn ensure_pending_nodes_have_registered_executors(
     validate_plan_shape(plan)?;
     let policy = finalize_policy(policy)?;
     let target_nodes = selected_node_closure(plan, &policy.selected_nodes)?;
-    let existing = load_existing_receipts(plan, &policy)?;
+    let existing = validate_existing_receipts(plan, &policy, &target_nodes)?;
     if !existing.poisoned_receipts.is_empty() {
         return Err(ProjectRunError::new(
             ProjectRunErrorCode::ReceiptPoisoning,
@@ -854,7 +870,11 @@ fn validate_blake3_arg(node: &ProjectPlanNode, key: &str, value: &str) -> Projec
     let Some(hex) = value.strip_prefix("blake3:") else {
         return Err(invalid_blake3_arg(node, key));
     };
-    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if hex.len() != 64
+        || !hex
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
         return Err(invalid_blake3_arg(node, key));
     }
     Ok(())
@@ -878,6 +898,7 @@ fn execute_node<E: ProjectNodeExecutor>(
     policy: &ProjectRunPolicy,
     valid_receipts: &BTreeMap<String, ProjectRunNodeReceipt>,
     completed_receipts: &BTreeMap<String, ProjectRunNodeReceipt>,
+    prior_receipts: &BTreeMap<String, ProjectRunNodeReceipt>,
     executor: &mut E,
 ) -> ProjectRunResult<ProjectRunNodeReceipt> {
     if node.class == ProjectPlanNodeClass::MutationGate && !policy.allow_mutation_gates {
@@ -899,14 +920,13 @@ fn execute_node<E: ProjectNodeExecutor>(
         dependency_outputs,
     };
     let result = executor.execute(node, &context)?;
-    let output_receipts = publish_outputs(
+    let output_receipts = prepare_outputs(
         node,
         &policy.workspace_root,
         &policy.work_dir,
-        stale_receipt,
-        result.outputs,
+        &result.outputs,
     )?;
-    finalized_node_receipt(ProjectRunNodeReceipt {
+    let receipt = finalized_node_receipt(ProjectRunNodeReceipt {
         schema_version: CANON_PROJECT_RUN_VERSION.to_string(),
         project_id: plan.project_id.clone(),
         plan_graph_hash: plan.graph_hash.clone(),
@@ -927,7 +947,14 @@ fn execute_node<E: ProjectNodeExecutor>(
         telemetry_hash: String::new(),
         receipt_hash: String::new(),
     })
-    .map_err(ProjectRunError::from)
+    .map_err(ProjectRunError::from)?;
+    commit_completed_receipt(
+        plan,
+        policy,
+        node,
+        &receipt,
+        prior_receipts.get(&node.node_id),
+    )
 }
 
 fn dependency_outputs(
@@ -1080,16 +1107,23 @@ struct ExistingReceipts {
     valid_receipts: BTreeMap<String, ProjectRunNodeReceipt>,
     completed_receipts: BTreeMap<String, ProjectRunNodeReceipt>,
     prior_receipts: BTreeMap<String, ProjectRunNodeReceipt>,
+    semantic_backfill_nodes: BTreeSet<String>,
     invalidated_nodes: BTreeSet<String>,
     poisoned_receipts: Vec<String>,
 }
 
-fn load_existing_receipts(
+fn validate_existing_receipts(
     plan: &ProjectPlan,
     policy: &ProjectRunPolicy,
+    target_nodes: &BTreeSet<String>,
 ) -> ProjectRunResult<ExistingReceipts> {
     let mut existing = ExistingReceipts::default();
-    for node in &plan.nodes {
+    for node in plan
+        .nodes
+        .iter()
+        .filter(|node| target_nodes.contains(&node.node_id))
+    {
+        validate_receipt_storage_paths(policy, &node.node_id)?;
         let path = receipt_path(policy, &node.node_id)?;
         if !path.exists() {
             continue;
@@ -1129,22 +1163,193 @@ fn load_existing_receipts(
     // necessarily dependency order. Reuse validation must therefore walk the
     // DAG topologically: validating a child before its completed parent has
     // been admitted would falsely invalidate the child and every descendant.
-    for node in dependency_ordered_nodes(plan)? {
-        let Some(receipt) = existing.completed_receipts.get(&node.node_id) else {
+    for node in dependency_ordered_nodes(plan)?
+        .into_iter()
+        .filter(|node| target_nodes.contains(&node.node_id))
+    {
+        if existing
+            .completed_receipts
+            .get(&node.node_id)
+            .is_some_and(|receipt| {
+                receipt.node_cache_key == node.cache.cache_key
+                    && !node_receipt_matches_current(plan, node, receipt)
+            })
+        {
+            existing.invalidated_nodes.insert(node.node_id.clone());
+            continue;
+        }
+        let Ok(expected_dependency_semantics) =
+            dependency_semantic_hashes(node, &existing.valid_receipts)
+        else {
+            if existing.completed_receipts.contains_key(&node.node_id) {
+                existing.invalidated_nodes.insert(node.node_id.clone());
+            }
             continue;
         };
-        if node_receipt_matches_current(plan, node, receipt)
-            && outputs_match_receipt(&policy.workspace_root, receipt)?
-            && dependencies_match_receipts(node, receipt, &existing.valid_receipts)
-        {
-            existing
-                .valid_receipts
-                .insert(node.node_id.clone(), receipt.clone());
+        let result_cache_key =
+            semantic_node_result_cache_key(&node.cache.cache_key, &expected_dependency_semantics)
+                .map_err(ProjectRunError::from)?;
+        let semantic_path = semantic_receipt_path(
+            policy,
+            &node.node_id,
+            &result_cache_key,
+            PlannedAccess::Write,
+        )?;
+        let semantic_receipt = if semantic_path.exists() {
+            match read_node_receipt(&semantic_path) {
+                Ok(receipt) => Some(receipt),
+                Err(error) => {
+                    existing.poisoned_receipts.push(format!(
+                        "{} ({})",
+                        semantic_path.display(),
+                        error.message
+                    ));
+                    continue;
+                }
+            }
         } else {
-            existing.invalidated_nodes.insert(node.node_id.clone());
+            None
+        };
+        let receipt = semantic_receipt
+            .as_ref()
+            .or_else(|| existing.completed_receipts.get(&node.node_id));
+        let Some(receipt) = receipt else {
+            continue;
+        };
+        if receipt.project_id != plan.project_id
+            || receipt.node_id != node.node_id
+            || receipt.node_cache_key != node.cache.cache_key
+        {
+            if semantic_receipt.is_some() {
+                existing.poisoned_receipts.push(format!(
+                    "{} (semantic receipt belongs to project_id={} node_id={} cache_key={}, expected project_id={} node_id={} cache_key={})",
+                    semantic_path.display(),
+                    receipt.project_id,
+                    receipt.node_id,
+                    receipt.node_cache_key,
+                    plan.project_id,
+                    node.node_id,
+                    node.cache.cache_key
+                ));
+            } else {
+                existing.invalidated_nodes.insert(node.node_id.clone());
+            }
+            continue;
         }
+        let dependencies_match =
+            dependencies_match_receipts(plan, policy, node, receipt, &existing.valid_receipts)?;
+        if !node_receipt_matches_current(plan, node, receipt) || !dependencies_match {
+            if semantic_receipt.is_some() {
+                existing.poisoned_receipts.push(format!(
+                    "{} (semantic receipt does not match the current node path/digest/count or dependency bindings)",
+                    semantic_path.display()
+                ));
+            } else {
+                existing.invalidated_nodes.insert(node.node_id.clone());
+            }
+            continue;
+        }
+
+        let canonical_relative = receipt_relative_path(policy, &node.node_id)?;
+        let semantic_relative =
+            semantic_receipt_relative_path(policy, &node.node_id, &result_cache_key)?;
+        validate_receipt_cas_leaf_if_present(
+            policy,
+            &canonical_relative,
+            receipt,
+            "canonical project receipt CAS",
+        )?;
+        validate_receipt_cas_leaf_if_present(
+            policy,
+            &semantic_relative,
+            receipt,
+            "semantic project receipt CAS",
+        )?;
+
+        if semantic_receipt.is_none() {
+            if !outputs_match_receipt(&policy.workspace_root, receipt)? {
+                existing.invalidated_nodes.insert(node.node_id.clone());
+                continue;
+            }
+            validate_existing_artifact_cas_if_present(policy, receipt)?;
+            existing
+                .semantic_backfill_nodes
+                .insert(node.node_id.clone());
+        } else {
+            validate_artifact_cas(policy, receipt)?;
+        }
+        validate_receipt_output_publication_preconditions(
+            policy,
+            node,
+            receipt,
+            existing.prior_receipts.get(&node.node_id),
+        )?;
+        existing
+            .valid_receipts
+            .insert(node.node_id.clone(), receipt.clone());
     }
     Ok(existing)
+}
+
+fn restore_existing_receipts(
+    plan: &ProjectPlan,
+    policy: &ProjectRunPolicy,
+    target_nodes: &BTreeSet<String>,
+    existing: &mut ExistingReceipts,
+) -> ProjectRunResult<()> {
+    for node in dependency_ordered_nodes(plan)?
+        .into_iter()
+        .filter(|node| target_nodes.contains(&node.node_id))
+    {
+        let Some(mut receipt) = existing.valid_receipts.get(&node.node_id).cloned() else {
+            continue;
+        };
+        let result_cache_key = semantic_node_result_cache_key(
+            &receipt.node_cache_key,
+            &receipt.dependency_semantic_hashes,
+        )
+        .map_err(ProjectRunError::from)?;
+        let semantic_relative =
+            semantic_receipt_relative_path(policy, &node.node_id, &result_cache_key)?;
+        if existing.semantic_backfill_nodes.contains(&node.node_id) {
+            if !backfill_artifact_cas(policy, &receipt)? {
+                return Err(ProjectRunError::new(
+                    ProjectRunErrorCode::StaleArtifact,
+                    Some(node.node_id.clone()),
+                    "legacy receipt outputs changed after reuse validation; refusing partial restoration",
+                ));
+            }
+            receipt = converge_workspace_receipt(
+                policy,
+                &semantic_relative,
+                &receipt,
+                None,
+                "semantic project receipt",
+            )?;
+        } else {
+            validate_artifact_cas(policy, &receipt)?;
+        }
+
+        materialize_receipt_outputs(
+            plan,
+            policy,
+            node,
+            &receipt,
+            existing.prior_receipts.get(&node.node_id),
+        )?;
+        let canonical_relative = receipt_relative_path(policy, &node.node_id)?;
+        receipt = converge_workspace_receipt(
+            policy,
+            &canonical_relative,
+            &receipt,
+            existing.prior_receipts.get(&node.node_id),
+            "project receipt",
+        )?;
+        existing
+            .valid_receipts
+            .insert(node.node_id.clone(), receipt);
+    }
+    Ok(())
 }
 
 fn dependency_ordered_nodes(plan: &ProjectPlan) -> ProjectRunResult<Vec<&ProjectPlanNode>> {
@@ -1283,14 +1488,13 @@ fn descendants(plan: &ProjectPlan, roots: &BTreeSet<String>) -> BTreeSet<String>
     out
 }
 
-fn publish_outputs(
+fn prepare_outputs(
     node: &ProjectPlanNode,
     workspace_root: &Path,
     work_dir: &Path,
-    stale_receipt: Option<&ProjectRunNodeReceipt>,
-    outputs: BTreeMap<String, Vec<u8>>,
+    outputs: &BTreeMap<String, Vec<u8>>,
 ) -> ProjectRunResult<Vec<ProjectRunOutputReceipt>> {
-    ensure_returned_outputs_match_declared(node, &outputs)?;
+    ensure_returned_outputs_match_declared(node, outputs)?;
     let mut receipts = Vec::new();
     for output in &node.outputs {
         let bytes = outputs.get(&output.output_id).ok_or_else(|| {
@@ -1303,16 +1507,77 @@ fn publish_outputs(
                 ),
             )
         })?;
-        let stale_output = stale_receipt.and_then(|receipt| {
-            receipt.outputs.iter().find(|candidate| {
+        let receipt = ProjectRunOutputReceipt {
+            output_id: output.output_id.clone(),
+            path: output.path.clone(),
+            content_digest: digest_bytes(bytes),
+            byte_count: bytes.len() as u64,
+        };
+        write_artifact_cas(workspace_root, work_dir, &receipt, bytes, &node.node_id)?;
+        receipts.push(receipt);
+    }
+    Ok(receipts)
+}
+
+fn commit_completed_receipt(
+    plan: &ProjectPlan,
+    policy: &ProjectRunPolicy,
+    node: &ProjectPlanNode,
+    receipt: &ProjectRunNodeReceipt,
+    expected_existing: Option<&ProjectRunNodeReceipt>,
+) -> ProjectRunResult<ProjectRunNodeReceipt> {
+    let canonical_relative = receipt_relative_path(policy, &receipt.node_id)?;
+    let result_cache_key = semantic_node_result_cache_key(
+        &receipt.node_cache_key,
+        &receipt.dependency_semantic_hashes,
+    )
+    .map_err(ProjectRunError::from)?;
+    let semantic_relative =
+        semantic_receipt_relative_path(policy, &receipt.node_id, &result_cache_key)?;
+    let winner = converge_workspace_receipt(
+        policy,
+        &semantic_relative,
+        receipt,
+        None,
+        "semantic project receipt",
+    )?;
+    preserve_workspace_receipt_cas(policy, &canonical_relative, receipt, "project receipt")?;
+    materialize_receipt_outputs(plan, policy, node, &winner, expected_existing)?;
+    converge_workspace_receipt(
+        policy,
+        &canonical_relative,
+        &winner,
+        expected_existing,
+        "project receipt",
+    )
+}
+
+fn materialize_receipt_outputs(
+    plan: &ProjectPlan,
+    policy: &ProjectRunPolicy,
+    node: &ProjectPlanNode,
+    receipt: &ProjectRunNodeReceipt,
+    expected_existing: Option<&ProjectRunNodeReceipt>,
+) -> ProjectRunResult<()> {
+    if !node_receipt_matches_current(plan, node, receipt) {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            Some(node.node_id.clone()),
+            "semantic cache receipt does not match the current node contract",
+        ));
+    }
+    for output in &receipt.outputs {
+        let bytes = read_artifact_cas(policy, output, &node.node_id)?;
+        let stale_output = expected_existing.and_then(|existing| {
+            existing.outputs.iter().find(|candidate| {
                 candidate.output_id == output.output_id && candidate.path == output.path
             })
         });
         publish_atomic_bytes(
-            workspace_root,
-            work_dir,
+            &policy.workspace_root,
+            &policy.work_dir,
             Path::new(&output.path),
-            bytes,
+            &bytes,
             stale_output,
         )
         .map_err(|error| {
@@ -1322,14 +1587,75 @@ fn publish_outputs(
                 error,
             )
         })?;
-        receipts.push(ProjectRunOutputReceipt {
-            output_id: output.output_id.clone(),
-            path: output.path.clone(),
-            content_digest: digest_bytes(bytes),
-            byte_count: bytes.len() as u64,
-        });
     }
-    Ok(receipts)
+    if outputs_match_receipt(&policy.workspace_root, receipt)? {
+        return Ok(());
+    }
+    Err(ProjectRunError::new(
+        ProjectRunErrorCode::StaleArtifact,
+        Some(node.node_id.clone()),
+        "published project outputs failed receipt digest/count revalidation",
+    ))
+}
+
+fn validate_receipt_output_publication_preconditions(
+    policy: &ProjectRunPolicy,
+    node: &ProjectPlanNode,
+    receipt: &ProjectRunNodeReceipt,
+    expected_existing: Option<&ProjectRunNodeReceipt>,
+) -> ProjectRunResult<()> {
+    for output in &receipt.outputs {
+        let path = resolve_fs_workspace_path(
+            &policy.workspace_root,
+            "project_run.output",
+            Path::new(&output.path),
+            PlannedAccess::Write,
+        )
+        .map(|resolution| resolution.absolute_path)
+        .map_err(|error| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::WorkspacePolicy,
+                Some(node.node_id.clone()),
+                format!("project output path failed workspace safety: {error}"),
+            )
+        })?;
+        if !path.exists() {
+            continue;
+        }
+        let bytes = fs::read(&path).map_err(|error| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::AtomicPublication,
+                Some(node.node_id.clone()),
+                format!(
+                    "failed to read existing artifact {} during restoration preflight: {error}",
+                    path.display()
+                ),
+            )
+        })?;
+        if digest_bytes(&bytes) == output.content_digest && bytes.len() as u64 == output.byte_count
+        {
+            continue;
+        }
+        let stale_output = expected_existing.and_then(|existing| {
+            existing.outputs.iter().find(|candidate| {
+                candidate.output_id == output.output_id && candidate.path == output.path
+            })
+        });
+        if stale_output.is_some_and(|stale| {
+            digest_bytes(&bytes) == stale.content_digest && bytes.len() as u64 == stale.byte_count
+        }) {
+            continue;
+        }
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::AtomicPublication,
+            Some(node.node_id.clone()),
+            format!(
+                "refusing restoration because artifact {} matches neither the intended receipt nor the recoverable prior receipt",
+                path.display()
+            ),
+        ));
+    }
+    Ok(())
 }
 
 fn ensure_returned_outputs_match_declared(
@@ -1407,6 +1733,239 @@ fn ensure_outputs_publishable(
         }
     }
     Ok(())
+}
+
+fn write_artifact_cas(
+    workspace_root: &Path,
+    work_dir: &Path,
+    output: &ProjectRunOutputReceipt,
+    bytes: &[u8],
+    node_id: &str,
+) -> ProjectRunResult<()> {
+    if digest_bytes(bytes) != output.content_digest || bytes.len() as u64 != output.byte_count {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            Some(node_id.to_string()),
+            format!(
+                "output {} bytes do not match their artifact CAS binding",
+                output.output_id
+            ),
+        ));
+    }
+    let cas_path =
+        artifact_cas_relative_path(work_dir, &output.content_digest).map_err(|message| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(node_id.to_string()),
+                message,
+            )
+        })?;
+    let absolute_cas_path = resolve_fs_workspace_path(
+        workspace_root,
+        "project_run.artifact_cas",
+        &cas_path,
+        PlannedAccess::Write,
+    )
+    .map(|resolution| resolution.absolute_path)
+    .map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::WorkspacePolicy,
+            Some(node_id.to_string()),
+            format!("artifact CAS path failed workspace safety: {error}"),
+        )
+    })?;
+    if absolute_cas_path.exists() {
+        let existing = fs::read(&absolute_cas_path).map_err(|error| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::ReceiptPoisoning,
+                Some(node_id.to_string()),
+                format!(
+                    "failed to read existing content-addressed artifact {}: {error}",
+                    absolute_cas_path.display()
+                ),
+            )
+        })?;
+        if digest_bytes(&existing) != output.content_digest
+            || existing.len() as u64 != output.byte_count
+        {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ReceiptPoisoning,
+                Some(node_id.to_string()),
+                format!(
+                    "refusing poisoned content-addressed artifact {} for output {}",
+                    absolute_cas_path.display(),
+                    output.output_id
+                ),
+            ));
+        }
+        return Ok(());
+    }
+    publish_atomic_bytes(workspace_root, work_dir, &cas_path, bytes, None).map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::AtomicPublication,
+            Some(node_id.to_string()),
+            format!(
+                "content-addressed artifact publication for {} failed: {error}",
+                output.output_id
+            ),
+        )
+    })
+}
+
+fn validate_artifact_cas(
+    policy: &ProjectRunPolicy,
+    receipt: &ProjectRunNodeReceipt,
+) -> ProjectRunResult<()> {
+    for output in &receipt.outputs {
+        read_artifact_cas(policy, output, &receipt.node_id)?;
+    }
+    Ok(())
+}
+
+fn validate_existing_artifact_cas_if_present(
+    policy: &ProjectRunPolicy,
+    receipt: &ProjectRunNodeReceipt,
+) -> ProjectRunResult<()> {
+    for output in &receipt.outputs {
+        let relative = artifact_cas_relative_path(&policy.work_dir, &output.content_digest)
+            .map_err(|message| {
+                ProjectRunError::new(
+                    ProjectRunErrorCode::ReceiptPoisoning,
+                    Some(receipt.node_id.clone()),
+                    message,
+                )
+            })?;
+        let path = resolve_fs_workspace_path(
+            &policy.workspace_root,
+            "project_run.artifact_cas",
+            &relative,
+            PlannedAccess::Read,
+        )
+        .map(|resolution| resolution.absolute_path)
+        .map_err(|error| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::WorkspacePolicy,
+                Some(receipt.node_id.clone()),
+                format!("artifact CAS path failed workspace safety: {error}"),
+            )
+        })?;
+        if path.exists() {
+            read_artifact_cas(policy, output, &receipt.node_id)?;
+        }
+    }
+    Ok(())
+}
+
+fn backfill_artifact_cas(
+    policy: &ProjectRunPolicy,
+    receipt: &ProjectRunNodeReceipt,
+) -> ProjectRunResult<bool> {
+    let mut outputs = Vec::with_capacity(receipt.outputs.len());
+    for output in &receipt.outputs {
+        let path = resolve_fs_workspace_path(
+            &policy.workspace_root,
+            "project_run.receipt_output",
+            Path::new(&output.path),
+            PlannedAccess::Read,
+        )
+        .map(|resolution| resolution.absolute_path)
+        .map_err(|error| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::WorkspacePolicy,
+                Some(receipt.node_id.clone()),
+                format!("receipt output path failed workspace safety: {error}"),
+            )
+        })?;
+        let Ok(bytes) = fs::read(path) else {
+            return Ok(false);
+        };
+        if digest_bytes(&bytes) != output.content_digest || bytes.len() as u64 != output.byte_count
+        {
+            return Ok(false);
+        }
+        outputs.push((output, bytes));
+    }
+    for (output, bytes) in outputs {
+        write_artifact_cas(
+            &policy.workspace_root,
+            &policy.work_dir,
+            output,
+            &bytes,
+            &receipt.node_id,
+        )?;
+    }
+    Ok(true)
+}
+
+fn read_artifact_cas(
+    policy: &ProjectRunPolicy,
+    output: &ProjectRunOutputReceipt,
+    node_id: &str,
+) -> ProjectRunResult<Vec<u8>> {
+    let relative = artifact_cas_relative_path(&policy.work_dir, &output.content_digest).map_err(
+        |message| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::ReceiptPoisoning,
+                Some(node_id.to_string()),
+                message,
+            )
+        },
+    )?;
+    let path = resolve_fs_workspace_path(
+        &policy.workspace_root,
+        "project_run.artifact_cas",
+        &relative,
+        PlannedAccess::Read,
+    )
+    .map(|resolution| resolution.absolute_path)
+    .map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::WorkspacePolicy,
+            Some(node_id.to_string()),
+            format!("artifact CAS path failed workspace safety: {error}"),
+        )
+    })?;
+    let bytes = fs::read(&path).map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            Some(node_id.to_string()),
+            format!(
+                "failed to read content-addressed artifact {} for output {}: {error}",
+                path.display(),
+                output.output_id
+            ),
+        )
+    })?;
+    if digest_bytes(&bytes) != output.content_digest || bytes.len() as u64 != output.byte_count {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            Some(node_id.to_string()),
+            format!(
+                "content-addressed artifact {} for output {} does not match its receipt digest/count",
+                path.display(),
+                output.output_id
+            ),
+        ));
+    }
+    Ok(bytes)
+}
+
+fn artifact_cas_relative_path(work_dir: &Path, content_digest: &str) -> Result<PathBuf, String> {
+    let digest_hex = content_digest
+        .strip_prefix("blake3:")
+        .filter(|hex| {
+            hex.len() == 64
+                && hex
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        })
+        .ok_or_else(|| {
+            "artifact CAS content digest must be a lowercase blake3 digest".to_string()
+        })?;
+    Ok(normalize_relative_path(work_dir)?
+        .join("artifacts")
+        .join("cas")
+        .join(format!("{digest_hex}.bin")))
 }
 
 fn publish_atomic_bytes(
@@ -1653,14 +2212,83 @@ fn receipt_outputs_match_node(node: &ProjectPlanNode, receipt: &ProjectRunNodeRe
 }
 
 fn dependencies_match_receipts(
+    plan: &ProjectPlan,
+    policy: &ProjectRunPolicy,
     node: &ProjectPlanNode,
     receipt: &ProjectRunNodeReceipt,
     valid_receipts: &BTreeMap<String, ProjectRunNodeReceipt>,
-) -> bool {
-    let Ok(expected) = dependency_semantic_hashes(node, valid_receipts) else {
-        return false;
+) -> ProjectRunResult<bool> {
+    let Ok(expected_semantic) = dependency_semantic_hashes(node, valid_receipts) else {
+        return Ok(false);
     };
-    receipt.dependency_semantic_hashes == expected
+    if receipt.dependency_semantic_hashes != expected_semantic
+        || receipt.dependency_receipt_hashes.len() != node.dependencies.len()
+    {
+        return Ok(false);
+    }
+    for dependency_id in &node.dependencies {
+        let current = valid_receipts
+            .get(dependency_id)
+            .expect("dependency semantic hashes require a valid dependency receipt");
+        let Some(historical_hash) = receipt.dependency_receipt_hashes.get(dependency_id) else {
+            return Ok(false);
+        };
+        if historical_hash == &current.receipt_hash {
+            continue;
+        }
+        let canonical_relative = receipt_relative_path(policy, dependency_id)?;
+        let historical_relative = node_receipt_cas_path(&canonical_relative, historical_hash);
+        let historical_path = resolve_fs_workspace_path(
+            &policy.workspace_root,
+            "project_run.historical_dependency_receipt",
+            &historical_relative,
+            PlannedAccess::Read,
+        )
+        .map(|resolution| resolution.absolute_path)
+        .map_err(|error| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::WorkspacePolicy,
+                Some(node.node_id.clone()),
+                format!("historical dependency receipt path failed workspace safety: {error}"),
+            )
+        })?;
+        let historical = read_node_receipt(&historical_path).map_err(|error| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::ReceiptPoisoning,
+                Some(node.node_id.clone()),
+                format!(
+                    "historical dependency receipt {} for {} -> {} could not be validated: {}",
+                    historical_path.display(),
+                    node.node_id,
+                    dependency_id,
+                    error.message
+                ),
+            )
+        })?;
+        let expected_semantic_hash = receipt
+            .dependency_semantic_hashes
+            .get(dependency_id)
+            .expect("dependency semantic map was validated above");
+        if historical.schema_version != CANON_PROJECT_RUN_VERSION
+            || historical.project_id != plan.project_id
+            || historical.node_id != dependency_id.as_str()
+            || historical.outcome != ProjectRunNodeOutcome::Completed
+            || historical.receipt_hash != historical_hash.as_str()
+            || historical.semantic_hash != expected_semantic_hash.as_str()
+        {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ReceiptPoisoning,
+                Some(node.node_id.clone()),
+                format!(
+                    "historical dependency receipt {} does not preserve the recorded project/node/semantic binding for {} -> {}",
+                    historical_path.display(),
+                    node.node_id,
+                    dependency_id
+                ),
+            ));
+        }
+    }
+    Ok(true)
 }
 
 fn dependency_semantic_hashes(
@@ -1739,19 +2367,182 @@ fn write_receipt(
     receipt: &ProjectRunNodeReceipt,
     expected_existing: Option<&ProjectRunNodeReceipt>,
 ) -> ProjectRunResult<ProjectRunNodeReceipt> {
-    let path = receipt_path(policy, &receipt.node_id)?;
-    converge_node_receipt(&path, receipt, expected_existing)
-        .map(|publication| publication.receipt)
-        .map_err(ProjectRunError::from)
+    let relative = receipt_relative_path(policy, &receipt.node_id)?;
+    converge_workspace_receipt(
+        policy,
+        &relative,
+        receipt,
+        expected_existing,
+        "project receipt",
+    )
+}
+
+fn converge_workspace_receipt(
+    policy: &ProjectRunPolicy,
+    relative: &Path,
+    receipt: &ProjectRunNodeReceipt,
+    expected_existing: Option<&ProjectRunNodeReceipt>,
+    logical_field: &str,
+) -> ProjectRunResult<ProjectRunNodeReceipt> {
+    let path = resolve_receipt_storage_path(
+        policy,
+        logical_field,
+        relative,
+        PlannedAccess::Write,
+        Some(&receipt.node_id),
+    )?;
+    converge_node_receipt_in(&path, receipt, expected_existing, |candidate| {
+        let cas_relative = node_receipt_cas_path(relative, &candidate.receipt_hash);
+        resolve_receipt_storage_path(
+            policy,
+            "project_run.receipt_cas",
+            &cas_relative,
+            PlannedAccess::Write,
+            Some(&candidate.node_id),
+        )
+    })
+    .map(|publication| publication.receipt)
+}
+
+fn preserve_workspace_receipt_cas(
+    policy: &ProjectRunPolicy,
+    relative: &Path,
+    receipt: &ProjectRunNodeReceipt,
+    logical_field: &str,
+) -> ProjectRunResult<()> {
+    let cas_relative = node_receipt_cas_path(relative, &receipt.receipt_hash);
+    let cas_path = resolve_receipt_storage_path(
+        policy,
+        logical_field,
+        &cas_relative,
+        PlannedAccess::Write,
+        Some(&receipt.node_id),
+    )?;
+    preserve_node_receipt_cas_in(&cas_path, receipt).map_err(ProjectRunError::from)
+}
+
+fn validate_receipt_cas_leaf_if_present(
+    policy: &ProjectRunPolicy,
+    receipt_relative: &Path,
+    receipt: &ProjectRunNodeReceipt,
+    logical_field: &str,
+) -> ProjectRunResult<()> {
+    let cas_relative = node_receipt_cas_path(receipt_relative, &receipt.receipt_hash);
+    let cas_path = resolve_receipt_storage_path(
+        policy,
+        logical_field,
+        &cas_relative,
+        PlannedAccess::Write,
+        Some(&receipt.node_id),
+    )?;
+    if !cas_path.exists() {
+        return Ok(());
+    }
+    let bytes = fs::read(&cas_path).map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            Some(receipt.node_id.clone()),
+            format!(
+                "failed to read content-addressed project receipt {}: {error}",
+                cas_path.display()
+            ),
+        )
+    })?;
+    let expected = canonical_node_receipt_bytes(receipt).map_err(ProjectRunError::from)?;
+    if bytes != expected {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            Some(receipt.node_id.clone()),
+            format!(
+                "content-addressed project receipt {} does not match receipt {}",
+                cas_path.display(),
+                receipt.receipt_hash
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_receipt_storage_paths(
+    policy: &ProjectRunPolicy,
+    node_id: &str,
+) -> ProjectRunResult<()> {
+    let canonical_relative = receipt_relative_path(policy, node_id)?;
+    resolve_receipt_storage_path(
+        policy,
+        "project receipt path",
+        &canonical_relative,
+        PlannedAccess::Write,
+        Some(node_id),
+    )?;
+    let canonical_cas = receipt_cas_relative_directory(&canonical_relative)?;
+    resolve_receipt_storage_path(
+        policy,
+        "project receipt CAS path",
+        &canonical_cas,
+        PlannedAccess::Write,
+        Some(node_id),
+    )?;
+
+    let receipt_parent = canonical_relative.parent().ok_or_else(|| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::WorkspacePolicy,
+            Some(node_id.to_string()),
+            "project receipt path must have a workspace-relative parent",
+        )
+    })?;
+    let semantic_directory = receipt_parent.join("by-cache-key");
+    resolve_receipt_storage_path(
+        policy,
+        "semantic project receipt path",
+        &semantic_directory,
+        PlannedAccess::Write,
+        Some(node_id),
+    )?;
+    let semantic_cas_directory = semantic_directory.join("cas");
+    resolve_receipt_storage_path(
+        policy,
+        "semantic project receipt CAS path",
+        &semantic_cas_directory,
+        PlannedAccess::Write,
+        Some(node_id),
+    )?;
+    Ok(())
+}
+
+fn receipt_cas_relative_directory(receipt_relative: &Path) -> ProjectRunResult<PathBuf> {
+    receipt_relative
+        .parent()
+        .map(|parent| parent.join("cas"))
+        .ok_or_else(|| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::WorkspacePolicy,
+                None,
+                "project receipt path must have a workspace-relative parent",
+            )
+        })
+}
+
+fn resolve_receipt_storage_path(
+    policy: &ProjectRunPolicy,
+    logical_field: &str,
+    relative: &Path,
+    access: PlannedAccess,
+    node_id: Option<&str>,
+) -> ProjectRunResult<PathBuf> {
+    resolve_fs_workspace_path(&policy.workspace_root, logical_field, relative, access)
+        .map(|resolution| resolution.absolute_path)
+        .map_err(|error| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::WorkspacePolicy,
+                node_id.map(str::to_string),
+                format!("{logical_field} failed workspace safety: {error}"),
+            )
+        })
 }
 
 fn receipt_path(policy: &ProjectRunPolicy, node_id: &str) -> ProjectRunResult<PathBuf> {
-    let work_dir = normalize_relative_path(&policy.work_dir).map_err(|message| {
-        ProjectRunError::new(ProjectRunErrorCode::WorkspacePolicy, None, message)
-    })?;
-    let relative = work_dir
-        .join("receipts")
-        .join(format!("{}.json", node_id_token(node_id)));
+    let relative = receipt_relative_path(policy, node_id)?;
     resolve_fs_workspace_path(
         &policy.workspace_root,
         "project_run.receipt",
@@ -1766,6 +2557,50 @@ fn receipt_path(policy: &ProjectRunPolicy, node_id: &str) -> ProjectRunResult<Pa
             format!("project receipt path failed workspace safety: {error}"),
         )
     })
+}
+
+fn semantic_receipt_path(
+    policy: &ProjectRunPolicy,
+    node_id: &str,
+    result_cache_key: &str,
+    access: PlannedAccess,
+) -> ProjectRunResult<PathBuf> {
+    let relative = semantic_receipt_relative_path(policy, node_id, result_cache_key)?;
+    resolve_fs_workspace_path(
+        &policy.workspace_root,
+        "project_run.semantic_receipt",
+        &relative,
+        access,
+    )
+    .map(|resolution| resolution.absolute_path)
+    .map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::WorkspacePolicy,
+            Some(node_id.to_string()),
+            format!("semantic project receipt path failed workspace safety: {error}"),
+        )
+    })
+}
+
+fn semantic_receipt_relative_path(
+    policy: &ProjectRunPolicy,
+    node_id: &str,
+    result_cache_key: &str,
+) -> ProjectRunResult<PathBuf> {
+    let canonical_relative = receipt_relative_path(policy, node_id)?;
+    Ok(semantic_node_receipt_path(
+        &canonical_relative,
+        result_cache_key,
+    ))
+}
+
+fn receipt_relative_path(policy: &ProjectRunPolicy, node_id: &str) -> ProjectRunResult<PathBuf> {
+    let work_dir = normalize_relative_path(&policy.work_dir).map_err(|message| {
+        ProjectRunError::new(ProjectRunErrorCode::WorkspacePolicy, None, message)
+    })?;
+    Ok(work_dir
+        .join("receipts")
+        .join(format!("{}.json", node_id_token(node_id))))
 }
 
 fn receipt_hash_inputs(inputs: &[ProjectPlanHashRef]) -> Vec<ProjectRunHashRef> {

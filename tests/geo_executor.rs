@@ -18,11 +18,12 @@ use canon::{
         CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
         CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCompositionProfile,
-        GeoEntityLevel, GeoEvidenceClaimRole, GeoEvidenceRecordRef, GeoHomeCellRow,
-        GeoHomeCellRowsRequest, GeoPlanComponentScope, GeoPlanExactSolveScope,
+        GeoControlEntityLevel, GeoEntityLevel, GeoEvidenceClaimRole, GeoEvidenceRecordRef,
+        GeoHomeCellRow, GeoHomeCellRowsRequest, GeoIdentityParticipation, GeoNativeEntityScope,
+        GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanInventoryRef,
         GeoPlanProducedArtifactRef, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
-        GeoTileFeatureRef, GeoTileWorkRequest, GeoWarehouseBuildingParcelRow,
-        GeoWarehouseEvidenceRow, GeoWarehouseRowsRequest,
+        GeoSourceRelease, GeoTileFeatureRef, GeoTileSourceBinding, GeoTileWorkRequest,
+        GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow, GeoWarehouseRowsRequest,
     },
     project::{
         ProjectExtensionDagNode, ProjectExtensionDagOutput, ProjectExtensionDagRequest,
@@ -298,7 +299,7 @@ fn geo_executor_refuses_tile_request_not_backed_by_home_cell_dependency() {
     let temp = tempfile::tempdir().expect("tempdir");
     let mut request = tile_work_request();
     request.features.push(GeoTileFeatureRef {
-        source_name: "building".to_string(),
+        source: building_source(),
         feature_id: "building-outside".to_string(),
         home_cell: center_cell().to_string(),
     });
@@ -661,16 +662,38 @@ fn center_cell() -> CellIndex {
     CellIndex::from_str("892a100d62bffff").expect("valid fixture cell")
 }
 
+fn building_source() -> GeoTileSourceBinding {
+    GeoTileSourceBinding {
+        source_instance_id: "building".to_string(),
+        release: GeoSourceRelease {
+            release_id: "fixture-release-2026-08-31".to_string(),
+            release_digest: format!(
+                "blake3:{}",
+                blake3::hash(b"fixture-release-2026-08-31").to_hex()
+            ),
+        },
+        native_scope: GeoNativeEntityScope::NativeEntity {
+            entity_level: GeoControlEntityLevel::Building,
+            identity_participation: GeoIdentityParticipation::StableAlias,
+        },
+        inventory_ref: GeoPlanInventoryRef {
+            inventory_id: "inventory.fixture.executor".to_string(),
+            semantic_hash: format!("blake3:{}", blake3::hash(b"executor-semantic").to_hex()),
+            planning_hash: format!("blake3:{}", blake3::hash(b"executor-planning").to_hex()),
+        },
+    }
+}
+
 fn tile_features() -> Vec<GeoTileFeatureRef> {
     let center = center_cell().to_string();
     vec![
         GeoTileFeatureRef {
-            source_name: "building".to_string(),
+            source: building_source(),
             feature_id: "building-a".to_string(),
             home_cell: center.clone(),
         },
         GeoTileFeatureRef {
-            source_name: "building".to_string(),
+            source: building_source(),
             feature_id: "building-b".to_string(),
             home_cell: center,
         },
@@ -705,9 +728,8 @@ fn home_cell_rows() -> GeoHomeCellRowsRequest {
 
 fn home_cell_row(feature_id: &str, source_record_id: &str) -> GeoHomeCellRow {
     GeoHomeCellRow {
-        source_name: "building".to_string(),
+        source: building_source(),
         feature_id: feature_id.to_string(),
-        source_snapshot: "fixture-release-2026-08-31".to_string(),
         source_record_id: source_record_id.to_string(),
         geometry_sha256: "5ed87d37d872789086452c35f658f5628ba870ca36072c495bb88519592403ed"
             .to_string(),

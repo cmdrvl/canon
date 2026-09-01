@@ -4,11 +4,13 @@ use canon::geo::{
     CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
     CANON_GEO_TILE_WORK_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate,
     GeoCompositionArtifact, GeoCompositionRequest, GeoCompositionStatus, GeoCompositionUniverse,
-    GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind, GeoTileDecisionBatch,
-    GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileErrorCode, GeoTileFeatureRef,
-    GeoTilePlacement, GeoTileReconciliationRequest, GeoTileWorkRequest,
-    canonical_composition_bytes, canonical_tile_reconciliation_bytes, materialize_tile_work_unit,
-    reconcile_tile_decisions, solve_composition,
+    GeoControlEntityLevel, GeoEntityLevel, GeoEntityRef, GeoHardConstraint, GeoHardConstraintKind,
+    GeoIdentityParticipation, GeoNativeEntityScope, GeoPlanInventoryRef, GeoSourceRelease,
+    GeoTileDecisionBatch, GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics,
+    GeoTileErrorCode, GeoTileFeatureRef, GeoTilePlacement, GeoTileReconciliationRequest,
+    GeoTileSourceBinding, GeoTileWorkRequest, canonical_composition_bytes,
+    canonical_tile_reconciliation_bytes, materialize_tile_work_unit, reconcile_tile_decisions,
+    solve_composition,
 };
 use h3o::CellIndex;
 use std::str::FromStr;
@@ -30,17 +32,44 @@ fn adjacent_owner_and_observer() -> (CellIndex, CellIndex) {
     )
 }
 
-fn feature(source_name: &str, feature_id: &str, home_cell: CellIndex) -> GeoTileFeatureRef {
-    GeoTileFeatureRef {
-        source_name: source_name.to_string(),
-        feature_id: feature_id.to_string(),
-        home_cell: home_cell.to_string(),
+fn source(source_instance_id: &str) -> GeoTileSourceBinding {
+    let entity_level = if source_instance_id.contains("parcel") {
+        GeoControlEntityLevel::Parcel
+    } else {
+        GeoControlEntityLevel::Building
+    };
+    GeoTileSourceBinding {
+        source_instance_id: source_instance_id.to_string(),
+        release: GeoSourceRelease {
+            release_id: format!("{source_instance_id}.release"),
+            release_digest: format!(
+                "blake3:{}",
+                blake3::hash(source_instance_id.as_bytes()).to_hex()
+            ),
+        },
+        native_scope: GeoNativeEntityScope::NativeEntity {
+            entity_level,
+            identity_participation: GeoIdentityParticipation::StableAlias,
+        },
+        inventory_ref: GeoPlanInventoryRef {
+            inventory_id: "inventory.fixture.h7".to_string(),
+            semantic_hash: format!("blake3:{}", blake3::hash(b"h7-semantic").to_hex()),
+            planning_hash: format!("blake3:{}", blake3::hash(b"h7-planning").to_hex()),
+        },
     }
 }
 
-fn member(source_name: &str, feature_id: &str, home_cell: CellIndex) -> GeoTileDecisionMember {
+fn member(
+    source_instance_id: &str,
+    feature_id: &str,
+    home_cell: CellIndex,
+) -> GeoTileDecisionMember {
+    let source = source(source_instance_id);
     GeoTileDecisionMember {
-        source_name: source_name.to_string(),
+        candidate_entity_level: source
+            .native_entity_level()
+            .expect("H7 fixture source is native"),
+        source,
         feature_id: feature_id.to_string(),
         home_cell: home_cell.to_string(),
     }
@@ -53,12 +82,10 @@ fn work_request(center: CellIndex, members: &[GeoTileDecisionMember]) -> GeoTile
         halo_k: 1,
         features: members
             .iter()
-            .map(|member| {
-                feature(
-                    &member.source_name,
-                    &member.feature_id,
-                    CellIndex::from_str(&member.home_cell).expect("fixture member cell parses"),
-                )
+            .map(|member| GeoTileFeatureRef {
+                source: member.source.clone(),
+                feature_id: member.feature_id.clone(),
+                home_cell: member.home_cell.clone(),
             })
             .collect(),
         max_features: 8,
@@ -71,6 +98,8 @@ fn proposal(
     members: Vec<GeoTileDecisionMember>,
 ) -> GeoTileDecisionProposal {
     GeoTileDecisionProposal {
+        semantics: GeoTileDecisionSemantics::Composition,
+        work_unit_blake3: String::new(),
         payload_blake3,
         members,
     }
@@ -81,9 +110,17 @@ fn decision_batch(
     available_members: &[GeoTileDecisionMember],
     proposals: Vec<GeoTileDecisionProposal>,
 ) -> GeoTileDecisionBatch {
+    let work_unit = materialize_tile_work_unit(&work_request(center, available_members))
+        .expect("bounded center-plus-halo work unit materializes");
+    let proposals = proposals
+        .into_iter()
+        .map(|mut proposal| {
+            proposal.work_unit_blake3 = work_unit.work_unit_blake3.clone();
+            proposal
+        })
+        .collect();
     GeoTileDecisionBatch {
-        work_unit: materialize_tile_work_unit(&work_request(center, available_members))
-            .expect("bounded center-plus-halo work unit materializes"),
+        work_unit,
         proposals,
     }
 }
@@ -92,6 +129,7 @@ fn reconciliation_request(batches: Vec<GeoTileDecisionBatch>) -> GeoTileReconcil
     GeoTileReconciliationRequest {
         version: CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION.to_string(),
         halo_k: 1,
+        inventory_lineage: None,
         batches,
         max_batches: 4,
         max_proposals: 8,

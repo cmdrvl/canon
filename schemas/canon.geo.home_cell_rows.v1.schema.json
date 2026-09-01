@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.home_cell_rows.v1.schema.json",
+  "title": "canon.geo.home_cell_rows.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "coordinate_crs",
+    "coordinate_decimal_places",
+    "h3_resolution",
+    "stability_radius_fixed",
+    "rows",
+    "max_rows"
+  ],
+  "properties": {
+    "version": { "const": "canon_geo_home_cell_rows.v1" },
+    "coordinate_crs": { "const": "EPSG:4326" },
+    "coordinate_decimal_places": { "type": "integer", "minimum": 0, "maximum": 9 },
+    "h3_resolution": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "stability_radius_fixed": { "$ref": "#/$defs/uint64", "maximum": 10000000 },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000000,
+      "items": { "$ref": "#/$defs/row" }
+    },
+    "max_rows": { "$ref": "#/$defs/uint64", "minimum": 1, "maximum": 1000000 }
+  },
+  "$defs": {
+    "int64": { "type": "integer", "minimum": -9223372036854775808, "maximum": 9223372036854775807 },
+    "uint64": { "type": "integer", "minimum": 0, "maximum": 18446744073709551615 },
+    "identifier": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "blake3": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "h3_cell": { "type": "string", "pattern": "^[0-9a-f]{15}$" },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["release_id", "release_digest"],
+      "properties": {
+        "release_id": { "$ref": "#/$defs/identifier" },
+        "release_digest": { "$ref": "#/$defs/blake3" }
+      }
+    },
+    "inventory_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inventory_id", "semantic_hash", "planning_hash"],
+      "properties": {
+        "inventory_id": { "$ref": "#/$defs/identifier" },
+        "semantic_hash": { "$ref": "#/$defs/blake3" },
+        "planning_hash": { "$ref": "#/$defs/blake3" }
+      }
+    },
+    "native_scope": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "entity_level", "identity_participation"],
+          "properties": {
+            "kind": { "const": "native_entity" },
+            "entity_level": { "enum": ["site", "property", "parcel", "building", "unit", "address", "poi"] },
+            "identity_participation": { "enum": ["stable_alias", "evidence_only"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "observation_only" } }
+        }
+      ]
+    },
+    "source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_instance_id", "release", "native_scope", "inventory_ref"],
+      "properties": {
+        "source_instance_id": { "$ref": "#/$defs/identifier" },
+        "release": { "$ref": "#/$defs/release" },
+        "native_scope": { "$ref": "#/$defs/native_scope" },
+        "inventory_ref": { "$ref": "#/$defs/inventory_ref" }
+      }
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "feature_id",
+        "source_record_id",
+        "geometry_sha256",
+        "representative_point_method",
+        "longitude",
+        "latitude"
+      ],
+      "properties": {
+        "source": { "$ref": "#/$defs/source_binding" },
+        "feature_id": { "$ref": "#/$defs/identifier" },
+        "source_record_id": { "$ref": "#/$defs/identifier" },
+        "geometry_sha256": { "$ref": "#/$defs/sha256" },
+        "representative_point_method": { "$ref": "#/$defs/identifier" },
+        "longitude": { "type": "string", "minLength": 1 },
+        "latitude": { "type": "string", "minLength": 1 },
+        "transform_execution_id": { "$ref": "#/$defs/identifier" },
+        "transform_definition_id": { "$ref": "#/$defs/identifier" },
+        "claimed_home_cell": { "$ref": "#/$defs/h3_cell" }
+      }
+    }
+  },
+  "x-canon-contract": {
+    "canonical_contract": "canon_geo_home_cell_rows.v1",
+    "json_schema_enforces": [
+      "closed object vocabulary",
+      "required source/release/native-scope/inventory binding",
+      "identifier character-count ceiling",
+      "digest syntax and JSON integer bounds"
+    ],
+    "runtime_only_invariants": [
+      "identifier limits are 256 UTF-8 bytes; JSON Schema maxLength counts Unicode characters",
+      "transform_execution_id and transform_definition_id are either both present or both absent",
+      "one source_instance_id has exactly one release, native scope, inventory reference, representative-point method, and transform pair",
+      "inventory references are carried lineage and are not independently authenticated by home-cell materialization",
+      "source-feature and source-record uniqueness includes the complete source, release, and inventory binding",
+      "features and tile-work references are emitted in canonical sorted order"
+    ]
+  }
+}

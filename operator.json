@@ -966,7 +966,7 @@
     {
       "name": "geo capabilities",
       "usage": "canon geo capabilities --emit json",
-      "description": "Emit the compiled offline Canon Geo control capability contract, including source-generic contract versions, vocabularies, deterministic ceilings, property scope, implemented planning, and planned unavailable run/inspect commands",
+      "description": "Emit the compiled offline Canon Geo control capability contract, including source-generic contract versions, vocabularies, deterministic ceilings, property scope, implemented planning/run, and the planned unavailable inspect command",
       "output_mode": "json",
       "output_schema": "canon_geo_capabilities.v0",
       "status": "implemented",
@@ -1270,12 +1270,12 @@
       "usage": "canon geo materialize-home-cells --rows <ROWS.json>",
       "description": "Derive deterministic H3 blocking and ownership cells from release-bound fixed-decimal EPSG:4326 representative points, retaining source geometry bindings, nine-point coordinate-envelope probes, minimum probe-covering halos, and claimed-cell parity",
       "output_mode": "json",
-      "output_schema": "canon_geo_home_cell_assignment.v0",
+      "output_schema": "canon_geo_home_cell_assignment.v1",
       "status": "implemented",
       "read_only": true,
       "safety": {
         "owned_temp_fixtures_only": true,
-        "notes": "reads an offline row artifact and writes only stdout; h3o cell assignments are blocking and ownership metadata, never geometric truth; claimed warehouse mismatches remain visible, and one source name cannot mix temporal snapshots or transform executions",
+        "notes": "reads an offline row artifact and writes only stdout; h3o cell assignments are blocking and ownership metadata, never geometric truth; claimed warehouse mismatches remain visible, and one source instance cannot mix release identity, native scope, representative-point methods, or transform executions",
         "mutation_class": "ReadOnly",
         "network_class": "Offline",
         "concurrency_class": "StatelessRead",
@@ -1322,16 +1322,16 @@
           "flag": "--rows",
           "type": "file_path",
           "required": true,
-          "description": "JSON file holding canon_geo_home_cell_rows.v0 rows"
+          "description": "JSON file holding canon_geo_home_cell_rows.v1 rows"
         }
       ]
     },
     {
       "name": "geo tile-work",
       "usage": "canon geo tile-work --request <REQUEST.json>",
-      "description": "Materialize a deterministic, budgeted H3 center-plus-halo feature work unit from explicit upstream home-cell assignments",
+      "description": "Materialize a deterministic, budgeted H3 center-plus-halo feature work unit from explicit source/release/entity-bound upstream home-cell assignments",
       "output_mode": "json",
-      "output_schema": "canon_geo_tile_work_unit.v0",
+      "output_schema": "canon_geo_tile_work_unit.v1",
       "status": "implemented",
       "read_only": true,
       "safety": {
@@ -1383,21 +1383,21 @@
           "flag": "--request",
           "type": "file_path",
           "required": true,
-          "description": "JSON file holding a canon_geo_tile_work_request.v0 request"
+          "description": "JSON file holding a canon_geo_tile_work_request.v1 request"
         }
       ]
     },
     {
       "name": "geo reconcile-tiles",
       "usage": "canon geo reconcile-tiles --request <REQUEST.json>",
-      "description": "Reconcile independently solved tile decisions under a deterministic H3 ownership rule and refuse orphaned or non-confluent boundary results",
+      "description": "Reconcile caller-associated source/release/entity-bound tile decisions under a deterministic H3 ownership rule; composition decisions may span levels without alias authority, while stable-identity decisions are same-level and anchored to StableAlias authority validated against canonical regional-inventory lineage",
       "output_mode": "json",
-      "output_schema": "canon_geo_tile_reconciliation.v0",
+      "output_schema": "canon_geo_tile_reconciliation.v1",
       "status": "implemented",
       "read_only": true,
       "safety": {
         "owned_temp_fixtures_only": true,
-        "notes": "reads offline decision batches and emits one owned decision per canonical member set on stdout; it does not merge conflicting solver payloads",
+        "notes": "reads offline decision batches and emits one owned decision per declared semantics plus canonical member set on stdout; each proposal must repeat its canonical work-unit digest, which proves deterministic association but not that an external solver consumed the work unit; stable-identity output retains the inventory semantic/planning hashes that bound its inventory-relative authority; it does not merge conflicting solver payloads, authenticate world truth, or convert composition membership into aliases",
         "mutation_class": "ReadOnly",
         "network_class": "Offline",
         "concurrency_class": "StatelessRead",
@@ -1444,7 +1444,7 @@
           "flag": "--request",
           "type": "file_path",
           "required": true,
-          "description": "JSON file holding a canon_geo_tile_reconciliation_request.v0 request"
+          "description": "JSON file holding a canon_geo_tile_reconciliation_request.v1 request"
         }
       ]
     },

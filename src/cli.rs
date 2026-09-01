@@ -344,21 +344,21 @@ pub struct GeoLinkSourcesCli {
 
 #[derive(Args, Debug, Clone)]
 pub struct GeoTileWorkCli {
-    /// JSON file holding a canon_geo_tile_work_request.v0 request
+    /// JSON file holding a canon_geo_tile_work_request.v1 request
     #[arg(long)]
     pub request: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]
 pub struct GeoMaterializeHomeCellsCli {
-    /// JSON file holding canon_geo_home_cell_rows.v0 rows
+    /// JSON file holding canon_geo_home_cell_rows.v1 rows
     #[arg(long)]
     pub rows: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]
 pub struct GeoReconcileTilesCli {
-    /// JSON file holding a canon_geo_tile_reconciliation_request.v0 request
+    /// JSON file holding a canon_geo_tile_reconciliation_request.v1 request
     #[arg(long)]
     pub request: PathBuf,
 }

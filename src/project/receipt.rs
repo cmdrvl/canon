@@ -210,11 +210,35 @@ pub fn write_node_receipt(
     replace_node_receipt(path, receipt, None)
 }
 
+pub(crate) fn preserve_node_receipt_cas_in(
+    cas_path: &Path,
+    receipt: &ProjectRunNodeReceipt,
+) -> ProjectReceiptResult<()> {
+    let receipt = validate_node_receipt(receipt.clone())?;
+    let bytes = canonical_node_receipt_bytes(&receipt)?;
+    write_node_receipt_cas(cas_path, &receipt, &bytes)
+}
+
 pub fn converge_node_receipt(
     path: &Path,
     receipt: &ProjectRunNodeReceipt,
     expected_existing: Option<&ProjectRunNodeReceipt>,
 ) -> ProjectReceiptResult<ProjectNodeReceiptPublication> {
+    converge_node_receipt_in(path, receipt, expected_existing, |candidate| {
+        Ok(node_receipt_cas_path(path, &candidate.receipt_hash))
+    })
+}
+
+pub(crate) fn converge_node_receipt_in<E, F>(
+    path: &Path,
+    receipt: &ProjectRunNodeReceipt,
+    expected_existing: Option<&ProjectRunNodeReceipt>,
+    mut resolve_cas_path: F,
+) -> Result<ProjectNodeReceiptPublication, E>
+where
+    E: From<ProjectReceiptError>,
+    F: FnMut(&ProjectRunNodeReceipt) -> Result<PathBuf, E>,
+{
     let receipt = validate_node_receipt(receipt.clone())?;
     let bytes = canonical_node_receipt_bytes(&receipt)?;
     let expected_existing_bytes = expected_existing
@@ -223,7 +247,8 @@ pub fn converge_node_receipt(
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| io_error(parent, error))?;
     }
-    write_node_receipt_cas(path, &receipt, &bytes)?;
+    let intended_cas_path = resolve_cas_path(&receipt)?;
+    write_node_receipt_cas(&intended_cas_path, &receipt, &bytes)?;
     match write_atomic_replace(path, &bytes, expected_existing_bytes.as_deref())? {
         ReceiptSlotWrite::Intended => Ok(ProjectNodeReceiptPublication {
             receipt,
@@ -231,7 +256,8 @@ pub fn converge_node_receipt(
         }),
         ReceiptSlotWrite::Existing(existing_bytes) => {
             let existing = parse_node_receipt(&existing_bytes)?;
-            write_node_receipt_cas(path, &existing, &existing_bytes)?;
+            let existing_cas_path = resolve_cas_path(&existing)?;
+            write_node_receipt_cas(&existing_cas_path, &existing, &existing_bytes)?;
             if node_receipts_can_deduplicate(&receipt, &existing) {
                 return Ok(ProjectNodeReceiptPublication {
                     receipt: existing,
@@ -244,9 +270,10 @@ pub fn converge_node_receipt(
                     "refusing to replace existing project receipt {} because it records a different semantic result or operational binding for node {}; intended receipt was preserved at {} and the canonical receipt was preserved",
                     path.display(),
                     receipt.node_id,
-                    node_receipt_cas_path(path, &receipt.receipt_hash).display()
+                    intended_cas_path.display()
                 ),
-            ))
+            )
+            .into())
         }
     }
 }
@@ -256,6 +283,7 @@ pub fn replace_node_receipt(
     receipt: &ProjectRunNodeReceipt,
     expected_existing: Option<&ProjectRunNodeReceipt>,
 ) -> ProjectReceiptResult<()> {
+    let cas_path = node_receipt_cas_path(path, &receipt.receipt_hash);
     let bytes = canonical_node_receipt_bytes(receipt)?;
     let expected_existing_bytes = expected_existing
         .map(canonical_node_receipt_bytes)
@@ -263,7 +291,7 @@ pub fn replace_node_receipt(
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| io_error(parent, error))?;
     }
-    write_node_receipt_cas(path, receipt, &bytes)?;
+    write_node_receipt_cas(cas_path.as_path(), receipt, &bytes)?;
     match write_atomic_replace(path, &bytes, expected_existing_bytes.as_deref())? {
         ReceiptSlotWrite::Intended => Ok(()),
         ReceiptSlotWrite::Existing(_) => Err(ProjectReceiptError::new(
@@ -307,10 +335,45 @@ pub fn canonical_run_receipt_bytes(receipt: &ProjectRunReceipt) -> ProjectReceip
 }
 
 pub fn node_receipt_cas_path(canonical_path: &Path, receipt_hash: &str) -> PathBuf {
+    node_receipt_cas_directory(canonical_path)
+        .join(format!("{}.json", receipt_hash_token(receipt_hash)))
+}
+
+fn node_receipt_cas_directory(canonical_path: &Path) -> PathBuf {
+    canonical_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("cas")
+}
+
+pub fn semantic_node_receipt_path(canonical_path: &Path, node_cache_key: &str) -> PathBuf {
     let parent = canonical_path.parent().unwrap_or_else(|| Path::new("."));
     parent
-        .join("cas")
-        .join(format!("{}.json", receipt_hash_token(receipt_hash)))
+        .join("by-cache-key")
+        .join(format!("{}.json", receipt_hash_token(node_cache_key)))
+}
+
+pub fn semantic_node_result_cache_key(
+    node_cache_key: &str,
+    dependency_semantic_hashes: &BTreeMap<String, String>,
+) -> ProjectReceiptResult<String> {
+    #[derive(Serialize)]
+    struct ResultCacheMaterial<'a> {
+        node_cache_key: &'a str,
+        dependency_semantic_hashes: &'a BTreeMap<String, String>,
+    }
+
+    serde_json::to_vec(&ResultCacheMaterial {
+        node_cache_key,
+        dependency_semantic_hashes,
+    })
+    .map(|bytes| digest_bytes(&bytes))
+    .map_err(|error| {
+        ProjectReceiptError::new(
+            ProjectReceiptErrorCode::ArtifactContract,
+            format!("failed to hash semantic node-result cache key: {error}"),
+        )
+    })
 }
 
 pub fn validate_node_receipt(
@@ -534,15 +597,34 @@ impl Drop for ReceiptSlotLock {
 }
 
 fn write_node_receipt_cas(
-    canonical_path: &Path,
+    cas_path: &Path,
     receipt: &ProjectRunNodeReceipt,
     bytes: &[u8],
 ) -> ProjectReceiptResult<()> {
-    let cas_path = node_receipt_cas_path(canonical_path, &receipt.receipt_hash);
+    let expected_file_name = format!("{}.json", receipt_hash_token(&receipt.receipt_hash));
+    if cas_path.file_name().and_then(|name| name.to_str()) != Some(expected_file_name.as_str()) {
+        return Err(ProjectReceiptError::new(
+            ProjectReceiptErrorCode::ArtifactContract,
+            format!(
+                "receipt CAS path {} does not match receipt hash {}",
+                cas_path.display(),
+                receipt.receipt_hash
+            ),
+        ));
+    }
+    if fs::symlink_metadata(cas_path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        return Err(ProjectReceiptError::new(
+            ProjectReceiptErrorCode::Io,
+            format!(
+                "refusing content-addressed project receipt symlink {}",
+                cas_path.display()
+            ),
+        ));
+    }
     if let Some(parent) = cas_path.parent() {
         fs::create_dir_all(parent).map_err(|error| io_error(parent, error))?;
     }
-    match write_atomic_replace(&cas_path, bytes, None)? {
+    match write_atomic_replace(cas_path, bytes, None)? {
         ReceiptSlotWrite::Intended => Ok(()),
         ReceiptSlotWrite::Existing(_) => Err(ProjectReceiptError::new(
             ProjectReceiptErrorCode::Io,

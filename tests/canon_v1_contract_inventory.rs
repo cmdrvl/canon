@@ -31,6 +31,32 @@ const RETIRED_INCOMPATIBILITIES: &[&str] = &[
     "docs-and-plan-omit-prepare-profile-and-run-workdir-options",
     "operator-json-status-null-on-implemented-rows",
 ];
+const HISTORICAL_GEO_SCHEMA_ONLY_CONTRACTS: &[(&str, &str)] = &[
+    (
+        "canon_geo_home_cell_rows.v0",
+        "schemas/canon.geo.home_cell_rows.v0.schema.json",
+    ),
+    (
+        "canon_geo_home_cell_assignment.v0",
+        "schemas/canon.geo.home_cell_assignment.v0.schema.json",
+    ),
+    (
+        "canon_geo_tile_work_request.v0",
+        "schemas/canon.geo.tile_work_request.v0.schema.json",
+    ),
+    (
+        "canon_geo_tile_work_unit.v0",
+        "schemas/canon.geo.tile_work_unit.v0.schema.json",
+    ),
+    (
+        "canon_geo_tile_reconciliation_request.v0",
+        "schemas/canon.geo.tile_reconciliation_request.v0.schema.json",
+    ),
+    (
+        "canon_geo_tile_reconciliation.v0",
+        "schemas/canon.geo.tile_reconciliation.v0.schema.json",
+    ),
+];
 
 #[derive(Debug, Deserialize)]
 struct Inventory {
@@ -49,6 +75,7 @@ struct CommandRow {
     id: String,
     clap_path: Option<String>,
     operator_name: Option<String>,
+    primary_contracts: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -161,6 +188,11 @@ fn canon_v1_contract_inventory_covers_shipped_commands_and_contract_ids() {
     let inventory_contract_ids = inventory
         .contract_rows
         .iter()
+        .filter(|row| {
+            !HISTORICAL_GEO_SCHEMA_ONLY_CONTRACTS
+                .iter()
+                .any(|(id, _)| row.id == *id)
+        })
         .map(|row| row.id.clone())
         .collect::<BTreeSet<_>>();
     assert!(
@@ -450,6 +482,80 @@ fn canon_v1_contract_inventory_marks_reviewed_public_contract_boundaries() {
         legacy_resolve.crate_module.is_none(),
         "canon_resolve.v0 should not claim a public crate module"
     );
+}
+
+#[test]
+fn canon_v1_contract_inventory_tracks_the_breaking_geo_tile_contracts() {
+    let inventory = inventory();
+    let expected = [
+        (
+            "canon geo materialize-home-cells",
+            [
+                "canon_geo_home_cell_rows.v1",
+                "canon_geo_home_cell_assignment.v1",
+            ],
+        ),
+        (
+            "canon geo tile-work",
+            [
+                "canon_geo_tile_work_request.v1",
+                "canon_geo_tile_work_unit.v1",
+            ],
+        ),
+        (
+            "canon geo reconcile-tiles",
+            [
+                "canon_geo_tile_reconciliation_request.v1",
+                "canon_geo_tile_reconciliation.v1",
+            ],
+        ),
+    ];
+    for (command_id, contracts) in expected {
+        let command = inventory
+            .command_rows
+            .iter()
+            .find(|row| row.id == command_id)
+            .unwrap_or_else(|| panic!("missing {command_id} inventory row"));
+        assert_eq!(
+            command.primary_contracts,
+            contracts.map(str::to_string),
+            "{command_id} must advertise only the source/release/entity-bound v1 contracts"
+        );
+    }
+
+    let contract_ids = inventory
+        .contract_rows
+        .iter()
+        .map(|row| row.id.as_str())
+        .collect::<BTreeSet<_>>();
+    for id in [
+        "canon_geo_home_cell_rows.v1",
+        "canon_geo_home_cell_assignment.v1",
+        "canon_geo_tile_work_request.v1",
+        "canon_geo_tile_work_unit.v1",
+        "canon_geo_tile_reconciliation_request.v1",
+        "canon_geo_tile_reconciliation.v1",
+        "canon_geo_tile_decision.v1",
+    ] {
+        assert!(
+            contract_ids.contains(id),
+            "missing breaking Geo contract {id}"
+        );
+    }
+
+    for (id, source_path) in HISTORICAL_GEO_SCHEMA_ONLY_CONTRACTS {
+        let historical = inventory
+            .contract_rows
+            .iter()
+            .find(|row| row.id == *id)
+            .unwrap_or_else(|| panic!("missing historical Geo schema {id}"));
+        assert_eq!(historical.access_boundary.as_deref(), Some("public_schema"));
+        assert_eq!(historical.source_path.as_deref(), Some(*source_path));
+        assert!(
+            historical.crate_module.is_none(),
+            "historical v0 tile schemas are published files, not the current Rust API"
+        );
+    }
 }
 
 fn inventory() -> Inventory {

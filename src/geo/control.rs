@@ -1164,32 +1164,32 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
         ),
         contract(
             CANON_GEO_HOME_CELL_ROWS_VERSION,
-            "schemas/canon.geo.home_cell_rows.v0.schema.json",
+            "schemas/canon.geo.home_cell_rows.v1.schema.json",
             "representative-point home-cell row contract",
         ),
         contract(
             CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
-            "schemas/canon.geo.home_cell_assignment.v0.schema.json",
+            "schemas/canon.geo.home_cell_assignment.v1.schema.json",
             "H3 blocking/ownership assignment artifact contract",
         ),
         contract(
             CANON_GEO_TILE_WORK_REQUEST_VERSION,
-            "schemas/canon.geo.tile_work_request.v0.schema.json",
+            "schemas/canon.geo.tile_work_request.v1.schema.json",
             "bounded tile-work request contract",
         ),
         contract(
             CANON_GEO_TILE_WORK_UNIT_VERSION,
-            "schemas/canon.geo.tile_work_unit.v0.schema.json",
+            "schemas/canon.geo.tile_work_unit.v1.schema.json",
             "center-plus-halo tile work-unit artifact contract",
         ),
         contract(
             CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
-            "schemas/canon.geo.tile_reconciliation_request.v0.schema.json",
+            "schemas/canon.geo.tile_reconciliation_request.v1.schema.json",
             "cross-tile reconciliation request contract",
         ),
         contract(
             CANON_GEO_TILE_RECONCILIATION_VERSION,
-            "schemas/canon.geo.tile_reconciliation.v0.schema.json",
+            "schemas/canon.geo.tile_reconciliation.v1.schema.json",
             "owned tile-decision reconciliation artifact contract",
         ),
         contract(

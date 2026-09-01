@@ -1247,14 +1247,14 @@ fn grain_project_stages(
             "home_cells",
             ProjectPlanNodeKind::Normalize,
             HOME_CELLS_COMMAND,
-            "canon_geo_home_cell_assignment.v0",
+            "canon_geo_home_cell_assignment.v1",
             GeoPlanStage::MaterializeHomeCells,
         ),
         (
             "section",
             ProjectPlanNodeKind::Block,
             TILE_WORK_COMMAND,
-            "canon_geo_tile_work_unit.v0",
+            "canon_geo_tile_work_unit.v1",
             GeoPlanStage::BuildBoundedSection,
         ),
         (

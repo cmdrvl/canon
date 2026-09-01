@@ -35,14 +35,15 @@ use canon::{
         GeoControlEntityLevel, GeoCoveragePredicate, GeoDateInterval, GeoEgressClass,
         GeoEvidenceClaimRole, GeoEvidenceClass, GeoEvidenceRecordRef, GeoGeometryTransformContract,
         GeoIdentityParticipation, GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef,
-        GeoNativeEntityScope, GeoNumericBound, GeoNumericMeasure, GeoPlan, GeoPlanRequest,
-        GeoPlanStatus, GeoRegionalInventory, GeoRegionalSourceInstance, GeoRequestedGrain,
-        GeoResourceBudget, GeoResourceCounter, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
-        GeoSourceAvailability, GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass,
-        GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
-        GeoTileFeatureRef, GeoTileWorkRequest, GeoValueOrigin, GeoWarehouseBuildingParcelRow,
-        GeoWarehouseEvidenceRow, GeoWarehouseRowsRequest, compile_geo_plan,
-        default_geo_capabilities, geo_plan_semantic_hash, materialize_warehouse_rows,
+        GeoNativeEntityScope, GeoNumericBound, GeoNumericMeasure, GeoPlan, GeoPlanInventoryRef,
+        GeoPlanRequest, GeoPlanStatus, GeoRegionalInventory, GeoRegionalSourceInstance,
+        GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoRhoBasis, GeoRhoContract,
+        GeoRhoObservationKind, GeoSourceAvailability, GeoSourceRelease, GeoSubjectBinding,
+        GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
+        GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileFeatureRef, GeoTileSourceBinding,
+        GeoTileWorkRequest, GeoValueOrigin, GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow,
+        GeoWarehouseRowsRequest, compile_geo_plan, default_geo_capabilities,
+        geo_plan_semantic_hash, materialize_warehouse_rows,
     },
     project::{
         ProjectExtensionDagNode, ProjectExtensionDagOutput, ProjectExtensionDagRequest,
@@ -1019,7 +1020,7 @@ impl ProjectNodeExecutor for ContractWeakProjectExecutor {
         outputs.insert(
             node.outputs[0].output_id.clone(),
             serde_json::to_vec(&serde_json::json!({
-                "version": "canon_geo_home_cell_assignment.v0"
+                "version": "canon_geo_home_cell_assignment.v1"
             }))
             .expect("fixture serializes"),
         );
@@ -1434,16 +1435,38 @@ fn center_cell() -> CellIndex {
     CellIndex::from_str("892a100d62bffff").expect("valid fixture cell")
 }
 
+fn building_tile_source() -> GeoTileSourceBinding {
+    GeoTileSourceBinding {
+        source_instance_id: "building".to_string(),
+        release: GeoSourceRelease {
+            release_id: "fixture-release-2026-08-31".to_string(),
+            release_digest: format!(
+                "blake3:{}",
+                blake3::hash(b"fixture-release-2026-08-31").to_hex()
+            ),
+        },
+        native_scope: GeoNativeEntityScope::NativeEntity {
+            entity_level: GeoControlEntityLevel::Building,
+            identity_participation: GeoIdentityParticipation::StableAlias,
+        },
+        inventory_ref: GeoPlanInventoryRef {
+            inventory_id: "inventory.fixture.run".to_string(),
+            semantic_hash: digest("tile-inventory-semantic"),
+            planning_hash: digest("tile-inventory-planning"),
+        },
+    }
+}
+
 fn tile_features() -> Vec<GeoTileFeatureRef> {
     let center = center_cell().to_string();
     vec![
         GeoTileFeatureRef {
-            source_name: "building".to_string(),
+            source: building_tile_source(),
             feature_id: "building-a".to_string(),
             home_cell: center.clone(),
         },
         GeoTileFeatureRef {
-            source_name: "building".to_string(),
+            source: building_tile_source(),
             feature_id: "building-b".to_string(),
             home_cell: center,
         },
@@ -1478,9 +1501,8 @@ fn home_cell_rows() -> canon::geo::GeoHomeCellRowsRequest {
 
 fn home_cell_row(feature_id: &str, source_record_id: &str) -> canon::geo::GeoHomeCellRow {
     canon::geo::GeoHomeCellRow {
-        source_name: "building".to_string(),
+        source: building_tile_source(),
         feature_id: feature_id.to_string(),
-        source_snapshot: "fixture-release-2026-08-31".to_string(),
         source_record_id: source_record_id.to_string(),
         geometry_sha256: "5ed87d37d872789086452c35f658f5628ba870ca36072c495bb88519592403ed"
             .to_string(),

@@ -123,7 +123,7 @@ fn demo0_case4_public_cli_journey_is_byte_deterministic_and_honest() {
     );
     assert_eq!(
         summary["artifact_versions"]["tile_reconciliation"],
-        "canon_geo_tile_reconciliation.v0"
+        "canon_geo_tile_reconciliation.v1"
     );
     assert_eq!(
         summary["commands_exercised"].as_array().unwrap().len(),
@@ -148,6 +148,10 @@ fn demo0_case4_public_cli_journey_is_byte_deterministic_and_honest() {
         true
     );
     assert_eq!(summary["composition"]["backbone_complete"], true);
+    assert_eq!(
+        summary["tile_ownership"]["decision_semantics"],
+        "composition"
+    );
     assert_eq!(
         summary["composition"]["bounded_universe"],
         json!({

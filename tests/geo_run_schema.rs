@@ -4,8 +4,9 @@ use canon::{
     geo::{
         CANON_GEO_COMPOSITION_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_RUN_VERSION,
         GeoPlanGrainStatus, GeoRun, GeoRunArtifactRef, GeoRunBlocker, GeoRunBlockerKind,
-        GeoRunGrainState, GeoRunNextAction, GeoRunNextActionKind, GeoRunObservation,
-        GeoRunOutputRef, GeoRunPhase, GeoRunPlanRef, GeoRunStatus, geo_run_semantic_hash,
+        GeoRunErrorCode, GeoRunGrainState, GeoRunNextAction, GeoRunNextActionKind,
+        GeoRunObservation, GeoRunOutputRef, GeoRunPhase, GeoRunPlanRef, GeoRunStatus,
+        canonical_geo_run_bytes, geo_run_semantic_hash,
     },
     project::{
         CANON_PROJECT_RUN_VERSION, ProjectRunHashRef, ProjectRunNextAction as ProjectNextAction,
@@ -75,6 +76,30 @@ fn schema_declares_strict_geo_run_contract() {
             .pointer("/$defs/run_id/pattern")
             .and_then(Value::as_str),
         Some("^canon_geo_run\\.v0:[0-9a-f]{64}$")
+    );
+    assert_eq!(
+        schema
+            .pointer("/$defs/uint64/maximum")
+            .and_then(Value::as_u64),
+        Some(u64::MAX)
+    );
+    assert_eq!(
+        schema
+            .pointer("/$defs/uint32/maximum")
+            .and_then(Value::as_u64),
+        Some(u32::MAX as u64)
+    );
+    assert_eq!(
+        schema
+            .pointer("/$defs/usage_map/additionalProperties/$ref")
+            .and_then(Value::as_str),
+        Some("#/$defs/uint64")
+    );
+    assert_eq!(
+        schema
+            .pointer("/$defs/run_observation/properties/process_id/$ref")
+            .and_then(Value::as_str),
+        Some("#/$defs/uint32")
     );
     let excluded_values =
         schema_string_values(&schema, "/x-canon-contract/semantic_identity_excludes");
@@ -151,6 +176,20 @@ fn schema_declares_strict_geo_run_contract() {
             "byte_count",
         ])
     );
+    let runtime_only_values =
+        schema_string_values(&schema, "/x-canon-contract/runtime_only_invariants");
+    for runtime_only in [
+        "semantic_hash derivation from the semantic projection",
+        "run_id derivation from semantic_hash",
+        "plan_ref.plan_id derivation from plan_ref.semantic_hash",
+        "artifact_id derivation from node/output or node/binding ids",
+        "canonical sorted ordering of repeated semantic collections",
+    ] {
+        assert!(
+            runtime_only_values.contains(runtime_only),
+            "schema metadata must leave {runtime_only} to runtime validation"
+        );
+    }
     assert_eq!(
         schema
             .pointer("/$defs/run_status/enum")
@@ -177,6 +216,120 @@ fn schema_declares_strict_geo_run_contract() {
         required_values(&schema, "/$defs/run_plan_ref/required").contains("budget_planning_hash")
     );
     assert_struct_object_schemas_are_closed(&schema, "$");
+}
+
+#[test]
+fn project_run_schema_declares_rust_numeric_bounds() {
+    let schema = project_run_schema();
+    assert_eq!(
+        schema.get("title").and_then(Value::as_str),
+        Some("canon.project.run.v2")
+    );
+    assert_eq!(
+        schema
+            .pointer("/$defs/uint64/maximum")
+            .and_then(Value::as_u64),
+        Some(u64::MAX)
+    );
+    assert_eq!(
+        schema
+            .pointer("/$defs/portable_usize/maximum")
+            .and_then(Value::as_u64),
+        Some(u32::MAX as u64)
+    );
+    assert_eq!(
+        schema
+            .pointer("/$defs/positive_portable_usize/minimum")
+            .and_then(Value::as_u64),
+        Some(1)
+    );
+    assert_eq!(
+        schema
+            .pointer("/properties/max_parallelism/$ref")
+            .and_then(Value::as_str),
+        Some("#/$defs/positive_portable_usize")
+    );
+    assert_eq!(
+        schema
+            .pointer("/properties/max_ready_width/$ref")
+            .and_then(Value::as_str),
+        Some("#/$defs/portable_usize")
+    );
+    assert_eq!(
+        schema
+            .pointer("/$defs/output_receipt/properties/byte_count/$ref")
+            .and_then(Value::as_str),
+        Some("#/$defs/uint64")
+    );
+    assert_eq!(
+        schema
+            .pointer("/$defs/node_receipt/properties/deterministic_usage/additionalProperties/$ref")
+            .and_then(Value::as_str),
+        Some("#/$defs/uint64")
+    );
+    assert_eq!(
+        schema
+            .pointer("/$defs/node_receipt/properties/duration_millis/$ref")
+            .and_then(Value::as_str),
+        Some("#/$defs/uint64")
+    );
+    assert_eq!(
+        schema
+            .pointer(
+                "/$defs/node_receipt/properties/resource_observations/additionalProperties/$ref"
+            )
+            .and_then(Value::as_str),
+        Some("#/$defs/uint64")
+    );
+    assert_eq!(
+        schema
+            .pointer("/x-canon-contract/usize_portability_contract")
+            .and_then(Value::as_str),
+        Some(
+            "ProjectRunReport.max_parallelism and max_ready_width are Rust usize values. JSON Schema deliberately caps them at 4294967295, the 32-bit portable envelope, rather than claiming a single host-specific usize maximum."
+        )
+    );
+    assert_struct_object_schemas_are_closed(&schema, "$");
+}
+
+#[test]
+fn schema_accepts_serialized_rust_unsigned_numeric_boundaries() {
+    let mut run = complete_run_manifest();
+    run.artifact_inputs[0].byte_count = u64::MAX;
+    run.output_refs[0].byte_count = u64::MAX;
+    run.deterministic_usage
+        .insert("geo.max_u64".to_string(), u64::MAX);
+    run.observation.process_id = Some(u32::MAX);
+    run.observation
+        .resource_observations
+        .insert("rss_bytes".to_string(), u64::MAX);
+    let report = run
+        .project_run_report
+        .as_mut()
+        .expect("positive fixture has a project report");
+    report.max_parallelism = u32::MAX as usize;
+    report.max_ready_width = u32::MAX as usize;
+    let node_receipt = report
+        .receipt
+        .node_receipts
+        .first_mut()
+        .expect("positive fixture has a node receipt");
+    node_receipt.outputs[0].byte_count = u64::MAX;
+    node_receipt
+        .deterministic_usage
+        .insert("project.max_u64".to_string(), u64::MAX);
+    node_receipt.duration_millis = u64::MAX;
+    node_receipt
+        .resource_observations
+        .insert("rss_bytes".to_string(), u64::MAX);
+    stamp_run_identity(&mut run);
+
+    let manifest = serde_json::to_value(&run).expect("GeoRun serializes at numeric boundaries");
+    assert_schema_accepts(&manifest);
+    assert_project_run_schema_accepts(&manifest["project_run_report"]);
+    canonical_geo_run_bytes(&run)
+        .expect("GeoRun runtime validation accepts schema-valid unsigned boundaries");
+    serde_json::from_value::<GeoRun>(manifest).expect("Rust accepts its unsigned boundaries");
 }
 
 #[test]
@@ -276,6 +429,239 @@ fn schema_rejects_mixed_success_and_non_success_state() {
     assert_schema_rejects(
         &waiting_without_blocker_or_action,
         "anyOf matched 0 alternatives",
+    );
+}
+
+#[test]
+fn schema_rejects_numbers_outside_rust_unsigned_bounds() {
+    let mut oversized_usage = serialized_complete_run_manifest();
+    oversized_usage["deterministic_usage"]["geo.bound_input_bytes"] =
+        json_integer("18446744073709551616");
+    assert_schema_rejects(&oversized_usage, "expected type integer");
+    assert!(
+        serde_json::from_value::<GeoRun>(oversized_usage).is_err(),
+        "Rust u64 usage fields must reject values above u64::MAX"
+    );
+
+    let mut negative_byte_count = serialized_complete_run_manifest();
+    negative_byte_count["artifact_inputs"][0]["byte_count"] = json!(-1);
+    assert_schema_rejects(&negative_byte_count, "value below minimum 0");
+    assert!(
+        serde_json::from_value::<GeoRun>(negative_byte_count).is_err(),
+        "Rust u64 byte counts must reject negative JSON integers"
+    );
+
+    let mut oversized_process = serialized_complete_run_manifest();
+    oversized_process["observation"]["process_id"] = json!(u32::MAX as u64 + 1);
+    assert_schema_rejects(&oversized_process, "value greater than maximum 4294967295");
+    assert!(
+        serde_json::from_value::<GeoRun>(oversized_process).is_err(),
+        "Rust u32 process_id must reject values above u32::MAX"
+    );
+}
+
+#[test]
+fn rust_validation_rejects_embedded_project_report_schema_vocabulary_and_bounds() {
+    let good = complete_run_manifest();
+    canonical_geo_run_bytes(&good).expect("baseline fixture is runtime-valid");
+
+    let mut bad_report_version = complete_run_manifest();
+    bad_report_version
+        .project_run_report
+        .as_mut()
+        .expect("fixture has report")
+        .schema_version = "canon.project.run.v1".to_string();
+    stamp_run_identity(&mut bad_report_version);
+    assert_geo_run_contract_rejects(&bad_report_version, "project_run_report.schema_version");
+
+    let mut zero_parallelism = complete_run_manifest();
+    zero_parallelism
+        .project_run_report
+        .as_mut()
+        .expect("fixture has report")
+        .max_parallelism = 0;
+    stamp_run_identity(&mut zero_parallelism);
+    assert_geo_run_contract_rejects(&zero_parallelism, "project_run_report.max_parallelism");
+
+    let mut bad_project_digest = complete_run_manifest();
+    bad_project_digest
+        .project_run_report
+        .as_mut()
+        .expect("fixture has report")
+        .receipt
+        .node_receipts[0]
+        .content_hash_inputs[0]
+        .content_hash = "blake3:short".to_string();
+    stamp_run_identity(&mut bad_project_digest);
+    assert_geo_run_contract_rejects(
+        &bad_project_digest,
+        "project_run_report.receipt.node_receipts.content_hash_inputs.content_hash",
+    );
+
+    let mut uppercase_project_digest = complete_run_manifest();
+    uppercase_project_digest
+        .project_run_report
+        .as_mut()
+        .expect("fixture has report")
+        .receipt
+        .node_receipts[0]
+        .semantic_hash = digest_text('A', 64);
+    stamp_run_identity(&mut uppercase_project_digest);
+    assert_geo_run_contract_rejects(
+        &uppercase_project_digest,
+        "project_run_report.receipt.node_receipts.semantic_hash",
+    );
+
+    let mut duplicate_project_list_item = complete_run_manifest();
+    duplicate_project_list_item
+        .project_run_report
+        .as_mut()
+        .expect("fixture has report")
+        .executed_nodes
+        .push("geo.building.solve".to_string());
+    stamp_run_identity(&mut duplicate_project_list_item);
+    assert_geo_run_contract_rejects(
+        &duplicate_project_list_item,
+        "project_run_report.executed_nodes",
+    );
+
+    if usize::BITS > 32 {
+        let mut oversized_ready_width = complete_run_manifest();
+        oversized_ready_width
+            .project_run_report
+            .as_mut()
+            .expect("fixture has report")
+            .max_ready_width = u32::MAX as usize + 1;
+        stamp_run_identity(&mut oversized_ready_width);
+        assert_geo_run_contract_rejects(
+            &oversized_ready_width,
+            "project_run_report.max_ready_width",
+        );
+    }
+}
+
+#[test]
+fn schema_rejects_nested_project_run_numbers_outside_rust_unsigned_bounds() {
+    let mut oversized_duration = serialized_complete_run_manifest();
+    oversized_duration["project_run_report"]["receipt"]["node_receipts"][0]["duration_millis"] =
+        json_integer("18446744073709551616");
+    assert_schema_rejects(&oversized_duration, "expected type integer");
+    assert_project_run_schema_rejects(
+        &oversized_duration["project_run_report"],
+        "expected type integer",
+    );
+    assert!(
+        serde_json::from_value::<GeoRun>(oversized_duration.clone()).is_err(),
+        "embedded ProjectRunReport duration_millis must reject values above u64::MAX"
+    );
+    assert!(
+        serde_json::from_value::<ProjectRunReport>(
+            oversized_duration["project_run_report"].clone()
+        )
+        .is_err(),
+        "ProjectRunReport duration_millis must reject values above u64::MAX"
+    );
+
+    let mut negative_output_bytes = serialized_complete_run_manifest();
+    negative_output_bytes["project_run_report"]["receipt"]["node_receipts"][0]["outputs"][0]["byte_count"] =
+        json!(-1);
+    assert_schema_rejects(&negative_output_bytes, "value below minimum 0");
+    assert_project_run_schema_rejects(
+        &negative_output_bytes["project_run_report"],
+        "value below minimum 0",
+    );
+    assert!(
+        serde_json::from_value::<GeoRun>(negative_output_bytes).is_err(),
+        "embedded ProjectRunReport output byte_count must reject negative JSON integers"
+    );
+}
+
+#[test]
+fn schema_rejects_project_run_usize_outside_portable_contract() {
+    let mut oversized_parallelism = serialized_complete_run_manifest();
+    oversized_parallelism["project_run_report"]["max_parallelism"] = json!(u32::MAX as u64 + 1);
+    assert_schema_rejects(
+        &oversized_parallelism,
+        "value greater than maximum 4294967295",
+    );
+    assert_project_run_schema_rejects(
+        &oversized_parallelism["project_run_report"],
+        "value greater than maximum 4294967295",
+    );
+    let rust_result = serde_json::from_value::<ProjectRunReport>(
+        oversized_parallelism["project_run_report"].clone(),
+    );
+    assert_eq!(
+        rust_result.is_ok(),
+        usize::BITS > 32,
+        "Rust usize acceptance above the portable schema envelope is target-width dependent"
+    );
+}
+
+#[test]
+fn schema_rejects_fractional_project_run_integer_fields_without_rounding() {
+    let mut fractional_ready_width = serialized_complete_run_manifest();
+    fractional_ready_width["project_run_report"]["max_ready_width"] = json!(1.0);
+    assert_schema_rejects(&fractional_ready_width, "expected type integer");
+    assert_project_run_schema_rejects(
+        &fractional_ready_width["project_run_report"],
+        "expected type integer",
+    );
+    assert!(
+        serde_json::from_value::<GeoRun>(fractional_ready_width).is_err(),
+        "embedded ProjectRunReport max_ready_width must reject fractional JSON numbers"
+    );
+
+    let mut fractional_resource = serialized_complete_run_manifest();
+    fractional_resource["project_run_report"]["receipt"]["node_receipts"][0]["resource_observations"]
+        ["wall_time_millis"] = json!(7.0);
+    assert_schema_rejects(&fractional_resource, "expected type integer");
+    assert_project_run_schema_rejects(
+        &fractional_resource["project_run_report"],
+        "expected type integer",
+    );
+    assert!(
+        serde_json::from_value::<ProjectRunReport>(
+            fractional_resource["project_run_report"].clone()
+        )
+        .is_err(),
+        "ProjectRunReport resource observations must reject fractional JSON numbers"
+    );
+}
+
+#[test]
+fn schema_leaves_derived_ids_and_canonical_order_to_runtime_validation() {
+    let mut mismatched_input_artifact = complete_run_manifest();
+    mismatched_input_artifact.artifact_inputs[0].artifact_id =
+        "not-derived-from-node-and-binding".to_string();
+    stamp_run_identity(&mut mismatched_input_artifact);
+    let mismatched_input_manifest =
+        serde_json::to_value(&mismatched_input_artifact).expect("GeoRun serializes");
+    assert_schema_accepts(&mismatched_input_manifest);
+    assert_eq!(
+        canonical_geo_run_bytes(&mismatched_input_artifact)
+            .expect_err("runtime rejects artifact id derivation drift")
+            .code,
+        GeoRunErrorCode::ArtifactContract
+    );
+
+    let mut non_canonical_order = complete_run_manifest();
+    non_canonical_order.artifact_inputs.push(artifact_ref(
+        "geo.aaa.home_cells",
+        "rows",
+        CANON_GEO_HOME_CELL_ROWS_VERSION,
+        '8',
+        7,
+    ));
+    stamp_run_identity(&mut non_canonical_order);
+    let non_canonical_manifest =
+        serde_json::to_value(&non_canonical_order).expect("GeoRun serializes");
+    assert_schema_accepts(&non_canonical_manifest);
+    assert_eq!(
+        canonical_geo_run_bytes(&non_canonical_order)
+            .expect_err("runtime rejects non-canonical repeated collection order")
+            .code,
+        GeoRunErrorCode::ArtifactContract
     );
 }
 
@@ -410,7 +796,7 @@ fn waiting_for_input_manifest() -> Value {
 
 fn plan_ref() -> GeoRunPlanRef {
     GeoRunPlanRef {
-        plan_id: format!("canon_geo_plan.v0:{}", hex('9')),
+        plan_id: format!("canon_geo_plan.v0:{}", hex('a')),
         semantic_hash: digest('a'),
         project_id: "geo-run-fixture".to_string(),
         project_graph_hash: digest('b'),
@@ -556,6 +942,10 @@ fn hex(marker: char) -> String {
     marker.to_string().repeat(64)
 }
 
+fn json_integer(text: &str) -> Value {
+    serde_json::from_str(text).expect("integer JSON literal parses")
+}
+
 fn schema() -> Value {
     serde_json::from_str(GEO_RUN_SCHEMA_JSON).expect("geo run schema parses")
 }
@@ -594,6 +984,33 @@ fn assert_schema_rejects(instance: &Value, expected: &str) {
     );
 }
 
+fn assert_project_run_schema_accepts(instance: &Value) {
+    let errors = project_run_schema_errors(instance);
+    assert!(
+        errors.is_empty(),
+        "expected project-run schema acceptance, got {errors:#?}\n{}",
+        serde_json::to_string_pretty(instance).expect("pretty instance")
+    );
+}
+
+fn assert_project_run_schema_rejects(instance: &Value, expected: &str) {
+    let errors = project_run_schema_errors(instance);
+    assert!(
+        errors.iter().any(|error| error.contains(expected)),
+        "expected project-run schema rejection containing {expected:?}, got {errors:#?}\n{}",
+        serde_json::to_string_pretty(instance).expect("pretty instance")
+    );
+}
+
+fn assert_geo_run_contract_rejects(run: &GeoRun, expected_field: &str) {
+    let error = canonical_geo_run_bytes(run).expect_err("GeoRun validation must reject fixture");
+    assert_eq!(error.code, GeoRunErrorCode::ArtifactContract);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some(expected_field)
+    );
+}
+
 fn schema_errors(instance: &Value) -> Vec<String> {
     let schemas = schema_documents();
     let mut errors = Vec::new();
@@ -601,6 +1018,20 @@ fn schema_errors(instance: &Value) -> Vec<String> {
         &schemas,
         &schemas.geo_run,
         &schemas.geo_run,
+        instance,
+        "$",
+        &mut errors,
+    );
+    errors
+}
+
+fn project_run_schema_errors(instance: &Value) -> Vec<String> {
+    let schemas = schema_documents();
+    let mut errors = Vec::new();
+    validate_schema_node(
+        &schemas,
+        &schemas.project_run,
+        &schemas.project_run,
         instance,
         "$",
         &mut errors,
@@ -729,7 +1160,7 @@ fn validate_type(subschema: &Value, instance: &Value, path: &str, errors: &mut V
         "object" => instance.is_object(),
         "array" => instance.is_array(),
         "string" => instance.is_string(),
-        "integer" => instance.as_i64().is_some() || instance.as_u64().is_some(),
+        "integer" => json_integer_text(instance).is_some(),
         "boolean" => instance.is_boolean(),
         other => panic!("unsupported schema type {other} at {path}"),
     };
@@ -760,18 +1191,50 @@ fn validate_string(subschema: &Value, instance: &Value, path: &str, errors: &mut
 }
 
 fn validate_number(subschema: &Value, instance: &Value, path: &str, errors: &mut Vec<String>) {
-    let Some(minimum) = subschema.get("minimum").and_then(Value::as_i64) else {
+    let Some(value) = json_integer_text(instance) else {
         return;
     };
-    let Some(value) = instance
-        .as_i64()
-        .or_else(|| instance.as_u64().map(|value| value as i64))
-    else {
-        return;
-    };
-    if value < minimum {
+    if let Some(minimum) = subschema.get("minimum").and_then(Value::as_i64)
+        && integer_less_than(&value, minimum)
+    {
         errors.push(format!("{path}: value below minimum {minimum}"));
     }
+    if let Some(maximum) = subschema.get("maximum").and_then(Value::as_u64)
+        && unsigned_integer_greater_than(&value, maximum)
+    {
+        errors.push(format!("{path}: value greater than maximum {maximum}"));
+    }
+}
+
+fn json_integer_text(instance: &Value) -> Option<String> {
+    let number = match instance {
+        Value::Number(number) => number,
+        _ => return None,
+    };
+    if let Some(value) = number.as_i64() {
+        return Some(value.to_string());
+    }
+    if let Some(value) = number.as_u64() {
+        return Some(value.to_string());
+    }
+    None
+}
+
+fn integer_less_than(value: &str, minimum: i64) -> bool {
+    value.parse::<i128>().map_or_else(
+        |_| value.starts_with('-'),
+        |parsed| parsed < minimum as i128,
+    )
+}
+
+fn unsigned_integer_greater_than(value: &str, maximum: u64) -> bool {
+    if value.starts_with('-') {
+        return false;
+    }
+    let digits = value.trim_start_matches('0');
+    let digits = if digits.is_empty() { "0" } else { digits };
+    let maximum = maximum.to_string();
+    digits.len() > maximum.len() || digits.len() == maximum.len() && digits > maximum.as_str()
 }
 
 fn validate_object(

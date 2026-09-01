@@ -1189,7 +1189,7 @@ fn emit_home_cell_error(error: GeoTileError) -> Result<u8, Box<dyn Error>> {
             "detail": error.detail,
         }),
         Some(
-            "repair the rows against canon_geo_home_cell_rows.v0, then rerun canon geo materialize-home-cells"
+            "repair the rows against canon_geo_home_cell_rows.v1, then rerun canon geo materialize-home-cells"
                 .to_string(),
         ),
     )

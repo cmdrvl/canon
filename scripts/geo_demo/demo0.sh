@@ -379,12 +379,28 @@ jq -e '
 center_cell="892a100d26bffff"
 cat > "$tile_discovery_request" <<JSON
 {
-  "version": "canon_geo_tile_work_request.v0",
+  "version": "canon_geo_tile_work_request.v1",
   "center_cell": "$center_cell",
   "halo_k": 1,
   "features": [
     {
-      "source_name": "demo0_case4",
+      "source": {
+        "source_instance_id": "demo0_case4",
+        "release": {
+          "release_id": "demo0_case4.release",
+          "release_digest": "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "native_scope": {
+          "kind": "native_entity",
+          "entity_level": "parcel",
+          "identity_participation": "stable_alias"
+        },
+        "inventory_ref": {
+          "inventory_id": "inventory.demo0",
+          "semantic_hash": "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "planning_hash": "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      },
       "feature_id": "owner_probe",
       "home_cell": "$center_cell"
     }
@@ -404,17 +420,49 @@ jq -n \
   --arg center "$center_cell" \
   --arg neighbor "$neighbor_cell" \
   '{
-    version: "canon_geo_tile_work_request.v0",
+    version: "canon_geo_tile_work_request.v1",
     center_cell: $center,
     halo_k: 1,
     features: [
       {
-        source_name: "mappluto_parcel",
+        source: {
+          source_instance_id: "mappluto_parcel",
+          release: {
+            release_id: "mappluto_parcel.release",
+            release_digest: "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          native_scope: {
+            kind: "native_entity",
+            entity_level: "parcel",
+            identity_participation: "stable_alias"
+          },
+          inventory_ref: {
+            inventory_id: "inventory.demo0",
+            semantic_hash: "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            planning_hash: "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          }
+        },
         feature_id: "case4_core_six_parcels",
         home_cell: $center
       },
       {
-        source_name: "nyc_building_footprints",
+        source: {
+          source_instance_id: "nyc_building_footprints",
+          release: {
+            release_id: "nyc_building_footprints.release",
+            release_digest: "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          native_scope: {
+            kind: "native_entity",
+            entity_level: "building",
+            identity_participation: "evidence_only"
+          },
+          inventory_ref: {
+            inventory_id: "inventory.demo0",
+            semantic_hash: "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            planning_hash: "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          }
+        },
         feature_id: "case4_six_majority_footprints",
         home_cell: $neighbor
       }
@@ -427,17 +475,49 @@ jq -n \
   --arg center "$center_cell" \
   --arg neighbor "$neighbor_cell" \
   '{
-    version: "canon_geo_tile_work_request.v0",
+    version: "canon_geo_tile_work_request.v1",
     center_cell: $neighbor,
     halo_k: 1,
     features: [
       {
-        source_name: "mappluto_parcel",
+        source: {
+          source_instance_id: "mappluto_parcel",
+          release: {
+            release_id: "mappluto_parcel.release",
+            release_digest: "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          native_scope: {
+            kind: "native_entity",
+            entity_level: "parcel",
+            identity_participation: "stable_alias"
+          },
+          inventory_ref: {
+            inventory_id: "inventory.demo0",
+            semantic_hash: "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            planning_hash: "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          }
+        },
         feature_id: "case4_core_six_parcels",
         home_cell: $center
       },
       {
-        source_name: "nyc_building_footprints",
+        source: {
+          source_instance_id: "nyc_building_footprints",
+          release: {
+            release_id: "nyc_building_footprints.release",
+            release_digest: "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          native_scope: {
+            kind: "native_entity",
+            entity_level: "building",
+            identity_participation: "evidence_only"
+          },
+          inventory_ref: {
+            inventory_id: "inventory.demo0",
+            semantic_hash: "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            planning_hash: "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          }
+        },
         feature_id: "case4_six_majority_footprints",
         home_cell: $neighbor
       }
@@ -462,22 +542,58 @@ jq -n \
   --arg neighbor "$neighbor_cell" \
   --arg payload "blake3:$payload_blake3" \
   '{
-    version: "canon_geo_tile_reconciliation_request.v0",
+    version: "canon_geo_tile_reconciliation_request.v1",
     halo_k: 1,
     batches: [
       {
         work_unit: $owner[0],
         proposals: [{
+          semantics: { kind: "composition" },
+          work_unit_blake3: $owner[0].work_unit_blake3,
           payload_blake3: $payload,
           members: [
             {
-              source_name: "mappluto_parcel",
+              source: {
+                source_instance_id: "mappluto_parcel",
+                release: {
+                  release_id: "mappluto_parcel.release",
+                  release_digest: "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                },
+                native_scope: {
+                  kind: "native_entity",
+                  entity_level: "parcel",
+                  identity_participation: "stable_alias"
+                },
+                inventory_ref: {
+                  inventory_id: "inventory.demo0",
+                  semantic_hash: "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  planning_hash: "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                }
+              },
               feature_id: "case4_core_six_parcels",
+              candidate_entity_level: "parcel",
               home_cell: $center
             },
             {
-              source_name: "nyc_building_footprints",
+              source: {
+                source_instance_id: "nyc_building_footprints",
+                release: {
+                  release_id: "nyc_building_footprints.release",
+                  release_digest: "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                },
+                native_scope: {
+                  kind: "native_entity",
+                  entity_level: "building",
+                  identity_participation: "evidence_only"
+                },
+                inventory_ref: {
+                  inventory_id: "inventory.demo0",
+                  semantic_hash: "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  planning_hash: "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                }
+              },
               feature_id: "case4_six_majority_footprints",
+              candidate_entity_level: "building",
               home_cell: $neighbor
             }
           ]
@@ -486,16 +602,52 @@ jq -n \
       {
         work_unit: $observer[0],
         proposals: [{
+          semantics: { kind: "composition" },
+          work_unit_blake3: $observer[0].work_unit_blake3,
           payload_blake3: $payload,
           members: [
             {
-              source_name: "nyc_building_footprints",
+              source: {
+                source_instance_id: "nyc_building_footprints",
+                release: {
+                  release_id: "nyc_building_footprints.release",
+                  release_digest: "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                },
+                native_scope: {
+                  kind: "native_entity",
+                  entity_level: "building",
+                  identity_participation: "evidence_only"
+                },
+                inventory_ref: {
+                  inventory_id: "inventory.demo0",
+                  semantic_hash: "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  planning_hash: "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                }
+              },
               feature_id: "case4_six_majority_footprints",
+              candidate_entity_level: "building",
               home_cell: $neighbor
             },
             {
-              source_name: "mappluto_parcel",
+              source: {
+                source_instance_id: "mappluto_parcel",
+                release: {
+                  release_id: "mappluto_parcel.release",
+                  release_digest: "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                },
+                native_scope: {
+                  kind: "native_entity",
+                  entity_level: "parcel",
+                  identity_participation: "stable_alias"
+                },
+                inventory_ref: {
+                  inventory_id: "inventory.demo0",
+                  semantic_hash: "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  planning_hash: "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                }
+              },
               feature_id: "case4_core_six_parcels",
+              candidate_entity_level: "parcel",
               home_cell: $center
             }
           ]
@@ -514,6 +666,7 @@ jq -e '
   .owned_decisions == 1
   and .discarded_halo_proposals == 1
   and .input_proposals == 2
+  and .decisions[0].semantics.kind == "composition"
   and .decisions[0].proposal_copies == 2
 ' "$reconciliation_artifact" >/dev/null
 
@@ -622,6 +775,7 @@ jq -S -c -n \
       input_proposals: $reconciliation[0].input_proposals,
       owned_decisions: $reconciliation[0].owned_decisions,
       owner_cell: $reconciliation[0].decisions[0].owner_cell,
+      decision_semantics: $reconciliation[0].decisions[0].semantics.kind,
       owner_tile_center_features: $owner_tile[0].center_feature_count,
       owner_tile_halo_features: $owner_tile[0].halo_feature_count,
       payload_blake3_source: "solve.evidence_compilation.blake3",

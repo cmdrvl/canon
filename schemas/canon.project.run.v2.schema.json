@@ -27,8 +27,8 @@
     "project_id": { "type": "string", "minLength": 1 },
     "plan_graph_hash": { "$ref": "#/$defs/blake3_digest" },
     "run_receipt_hash": { "$ref": "#/$defs/blake3_digest" },
-    "max_parallelism": { "type": "integer", "minimum": 1 },
-    "max_ready_width": { "type": "integer", "minimum": 0 },
+    "max_parallelism": { "$ref": "#/$defs/positive_portable_usize" },
+    "max_ready_width": { "$ref": "#/$defs/portable_usize" },
     "executed_nodes": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 },
@@ -79,7 +79,15 @@
     "deterministic_usage_hash_bound": true,
     "runtime_telemetry_not_dependency_identity": true,
     "v1_receipts_refused_for_execution_reuse": true,
-    "pending_nodes_require_registered_real_executor": true
+    "pending_nodes_require_registered_real_executor": true,
+    "json_schema_enforces": [
+      "closed object vocabulary",
+      "enum vocabulary",
+      "hash string patterns",
+      "JSON integer bounds matching Rust u64 fields",
+      "portable 32-bit envelope for serialized Rust usize fields"
+    ],
+    "usize_portability_contract": "ProjectRunReport.max_parallelism and max_ready_width are Rust usize values. JSON Schema deliberately caps them at 4294967295, the 32-bit portable envelope, rather than claiming a single host-specific usize maximum."
   },
   "$defs": {
     "blake3_digest": {
@@ -100,6 +108,23 @@
         "resume"
       ]
     },
+    "uint64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
+    "portable_usize": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295,
+      "description": "Portable serialized envelope for Rust usize fields. Runtime usize may be wider on 64-bit hosts; schema-valid artifacts stay valid for 32-bit and 64-bit Rust."
+    },
+    "positive_portable_usize": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295,
+      "description": "Nonzero portable serialized envelope for Rust usize fields."
+    },
     "hash_ref": {
       "type": "object",
       "additionalProperties": false,
@@ -117,7 +142,7 @@
         "output_id": { "type": "string", "minLength": 1 },
         "path": { "type": "string", "minLength": 1 },
         "content_digest": { "$ref": "#/$defs/blake3_digest" },
-        "byte_count": { "type": "integer", "minimum": 0 }
+        "byte_count": { "$ref": "#/$defs/uint64" }
       }
     },
     "node_receipt": {
@@ -161,12 +186,12 @@
         "outcome": { "$ref": "#/$defs/outcome" },
         "deterministic_usage": {
           "type": "object",
-          "additionalProperties": { "type": "integer", "minimum": 0 }
+          "additionalProperties": { "$ref": "#/$defs/uint64" }
         },
-        "duration_millis": { "type": "integer", "minimum": 0 },
+        "duration_millis": { "$ref": "#/$defs/uint64" },
         "resource_observations": {
           "type": "object",
-          "additionalProperties": { "type": "integer", "minimum": 0 }
+          "additionalProperties": { "$ref": "#/$defs/uint64" }
         },
         "next_action": { "$ref": "#/$defs/next_action" },
         "failure_code": { "type": "string", "minLength": 1 },

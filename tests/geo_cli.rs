@@ -205,17 +205,39 @@ fn tiny_warehouse_geometry_request(declared_sha256: Option<&str>) -> Value {
     })
 }
 
+fn tile_source_json(source_instance_id: &str, entity_level: &str, participation: &str) -> Value {
+    json!({
+        "source_instance_id": source_instance_id,
+        "release": {
+            "release_id": format!("{source_instance_id}.release"),
+            "release_digest": format!(
+                "blake3:{}",
+                blake3::hash(source_instance_id.as_bytes()).to_hex()
+            )
+        },
+        "native_scope": {
+            "kind": "native_entity",
+            "entity_level": entity_level,
+            "identity_participation": participation
+        },
+        "inventory_ref": {
+            "inventory_id": "inventory.fixture.cli",
+            "semantic_hash": format!("blake3:{}", blake3::hash(b"cli-semantic").to_hex()),
+            "planning_hash": format!("blake3:{}", blake3::hash(b"cli-planning").to_hex())
+        }
+    })
+}
+
 fn tiny_home_cell_rows(coordinate_crs: &str) -> Value {
     json!({
-        "version": "canon_geo_home_cell_rows.v0",
+        "version": "canon_geo_home_cell_rows.v1",
         "coordinate_crs": coordinate_crs,
         "coordinate_decimal_places": 9,
         "h3_resolution": 9,
         "stability_radius_fixed": 1000,
         "rows": [{
-            "source_name": "mappluto",
+            "source": tile_source_json("mappluto", "parcel", "stable_alias"),
             "feature_id": "parcel-a",
-            "source_snapshot": "26v2/2026-08-01/geom-v3",
             "source_record_id": "mn/000000/1",
             "geometry_sha256": "5ed87d37d872789086452c35f658f5628ba870ca36072c495bb88519592403ed",
             "representative_point_method": "centroid_of_derived_wgs84_geometry",
@@ -246,11 +268,11 @@ fn tile_cells() -> (CellIndex, CellIndex, CellIndex) {
 fn tiny_tile_work_request(home_cell: CellIndex) -> Value {
     let (center, _, _) = tile_cells();
     json!({
-        "version": "canon_geo_tile_work_request.v0",
+        "version": "canon_geo_tile_work_request.v1",
         "center_cell": center.to_string(),
         "halo_k": 1,
         "features": [{
-            "source_name": "parcel",
+            "source": tile_source_json("parcel", "parcel", "stable_alias"),
             "feature_id": "parcel-a",
             "home_cell": home_cell.to_string()
         }],
@@ -266,7 +288,7 @@ fn synthetic_building_center_cell() -> &'static str {
 fn synthetic_building_home_cell_rows() -> Value {
     let center = synthetic_building_center_cell();
     json!({
-        "version": "canon_geo_home_cell_rows.v0",
+        "version": "canon_geo_home_cell_rows.v1",
         "coordinate_crs": "EPSG:4326",
         "coordinate_decimal_places": 9,
         "h3_resolution": 9,
@@ -285,9 +307,12 @@ fn synthetic_building_home_cell_row(
     center: &str,
 ) -> Value {
     json!({
-        "source_name": "synthetic_building_fixture_not_live",
+        "source": tile_source_json(
+            "synthetic_building_fixture_not_live",
+            "building",
+            "stable_alias"
+        ),
         "feature_id": feature_id,
-        "source_snapshot": "synthetic-fixture-not-live/2026-08-31",
         "source_record_id": source_record_id,
         "geometry_sha256": "5ed87d37d872789086452c35f658f5628ba870ca36072c495bb88519592403ed",
         "representative_point_method": "synthetic_centroid_of_fixture_geometry",
@@ -302,17 +327,25 @@ fn synthetic_building_home_cell_row(
 fn synthetic_building_tile_work_request() -> Value {
     let center = synthetic_building_center_cell();
     json!({
-        "version": "canon_geo_tile_work_request.v0",
+        "version": "canon_geo_tile_work_request.v1",
         "center_cell": center,
         "halo_k": 1,
         "features": [
             {
-                "source_name": "synthetic_building_fixture_not_live",
+                "source": tile_source_json(
+                    "synthetic_building_fixture_not_live",
+                    "building",
+                    "stable_alias"
+                ),
                 "feature_id": "building-a",
                 "home_cell": center
             },
             {
-                "source_name": "synthetic_building_fixture_not_live",
+                "source": tile_source_json(
+                    "synthetic_building_fixture_not_live",
+                    "building",
+                    "stable_alias"
+                ),
                 "feature_id": "building-b",
                 "home_cell": center
             }
@@ -1263,29 +1296,31 @@ fn tiny_tile_reconciliation_request(second_payload: &str) -> Value {
     let (first, second, _) = tile_cells();
     let members = json!([
         {
-            "source_name": "parcel",
+            "source": tile_source_json("parcel", "parcel", "stable_alias"),
             "feature_id": "parcel-a",
+            "candidate_entity_level": "parcel",
             "home_cell": first.to_string()
         },
         {
-            "source_name": "building",
+            "source": tile_source_json("building", "building", "stable_alias"),
             "feature_id": "building-a",
+            "candidate_entity_level": "building",
             "home_cell": second.to_string()
         }
     ]);
     let work_unit = |center: CellIndex| {
         let request: GeoTileWorkRequest = serde_json::from_value(json!({
-            "version": "canon_geo_tile_work_request.v0",
+            "version": "canon_geo_tile_work_request.v1",
             "center_cell": center.to_string(),
             "halo_k": 1,
             "features": [
                 {
-                    "source_name": "parcel",
+                    "source": tile_source_json("parcel", "parcel", "stable_alias"),
                     "feature_id": "parcel-a",
                     "home_cell": first.to_string()
                 },
                 {
-                    "source_name": "building",
+                    "source": tile_source_json("building", "building", "stable_alias"),
                     "feature_id": "building-a",
                     "home_cell": second.to_string()
                 }
@@ -1300,20 +1335,34 @@ fn tiny_tile_reconciliation_request(second_payload: &str) -> Value {
         .expect("tile work unit serializes")
     };
     let first_payload = format!("blake3:{}", blake3::hash(b"tile payload").to_hex());
+    let first_work_unit = work_unit(first);
+    let first_work_unit_blake3 = first_work_unit["work_unit_blake3"]
+        .as_str()
+        .expect("work-unit digest")
+        .to_string();
+    let second_work_unit = work_unit(second);
+    let second_work_unit_blake3 = second_work_unit["work_unit_blake3"]
+        .as_str()
+        .expect("work-unit digest")
+        .to_string();
     json!({
-        "version": "canon_geo_tile_reconciliation_request.v0",
+        "version": "canon_geo_tile_reconciliation_request.v1",
         "halo_k": 1,
         "batches": [
             {
-                "work_unit": work_unit(first),
+                "work_unit": first_work_unit,
                 "proposals": [{
+                    "semantics": { "kind": "composition" },
+                    "work_unit_blake3": first_work_unit_blake3,
                     "payload_blake3": first_payload,
                     "members": members.clone()
                 }]
             },
             {
-                "work_unit": work_unit(second),
+                "work_unit": second_work_unit,
                 "proposals": [{
+                    "semantics": { "kind": "composition" },
+                    "work_unit_blake3": second_work_unit_blake3,
                     "payload_blake3": second_payload,
                     "members": members
                 }]
@@ -1473,7 +1522,7 @@ fn geo_tile_work_emits_a_bounded_work_unit_and_refuses_outside_reach() {
         .success();
     assert_eq!(first.get_output().stdout, second.get_output().stdout);
     let artifact: Value = serde_json::from_slice(&first.get_output().stdout).unwrap();
-    assert_eq!(artifact["version"], "canon_geo_tile_work_unit.v0");
+    assert_eq!(artifact["version"], "canon_geo_tile_work_unit.v1");
     assert_eq!(artifact["work_cells"].as_array().unwrap().len(), 7);
     assert_eq!(artifact["center_feature_count"], 1);
     assert_eq!(artifact["halo_feature_count"], 0);
@@ -1528,7 +1577,7 @@ fn geo_materialize_home_cells_emits_h3o_assignment_and_reports_claimed_mismatch(
         .success();
     assert_eq!(first.get_output().stdout, second.get_output().stdout);
     let artifact: Value = serde_json::from_slice(&first.get_output().stdout).unwrap();
-    assert_eq!(artifact["version"], "canon_geo_home_cell_assignment.v0");
+    assert_eq!(artifact["version"], "canon_geo_home_cell_assignment.v1");
     assert_eq!(artifact["features"][0]["home_cell"], "892a100d62bffff");
     assert_eq!(artifact["features"][0]["parity"], "mismatch");
     assert_eq!(artifact["summary"]["mismatches"], 1);
@@ -1575,7 +1624,7 @@ fn geo_reconcile_tiles_emits_one_owner_and_refuses_nonconfluence() {
         .assert()
         .success();
     let artifact: Value = serde_json::from_slice(&success.get_output().stdout).unwrap();
-    assert_eq!(artifact["version"], "canon_geo_tile_reconciliation.v0");
+    assert_eq!(artifact["version"], "canon_geo_tile_reconciliation.v1");
     assert_eq!(artifact["input_proposals"], 2);
     assert_eq!(artifact["owned_decisions"], 1);
     assert_eq!(artifact["discarded_halo_proposals"], 1);

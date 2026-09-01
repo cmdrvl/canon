@@ -34,13 +34,14 @@ use plan::{
 use receipt::{
     ProjectReceiptErrorCode, ProjectRunNodeOutcome, canonical_node_receipt_bytes,
     finalized_node_receipt, node_receipt_cas_path, parse_node_receipt, project_run_schema_version,
-    read_node_receipt, write_node_receipt,
+    read_node_receipt, replace_node_receipt, semantic_node_receipt_path,
+    semantic_node_result_cache_key, write_node_receipt,
 };
 use run::{
     PROJECT_INTERNAL_COPY_FILE_EXECUTOR, ProjectNodeExecutionContext, ProjectNodeExecutionResult,
     ProjectNodeExecutor, ProjectRunError, ProjectRunErrorCode, ProjectRunFailurePolicy,
-    ProjectRunPolicy, canonical_project_run_report_bytes, run_project_plan,
-    run_project_plan_with_registered_executors,
+    ProjectRunPolicy, canonical_project_run_report_bytes, inspect_project_run_reuse_only,
+    run_project_plan, run_project_plan_with_registered_executors,
 };
 use serde_json::Value;
 use std::{
@@ -134,6 +135,303 @@ fn completed_nodes_resume_without_repeating_execution() {
         canonical_project_run_report_bytes(&second).expect("report bytes"),
         canonical_project_run_report_bytes(&second).expect("report bytes stable")
     );
+}
+
+#[test]
+fn immutable_revision_a_is_restored_after_b_without_execution() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan_a = chain_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor_a = DeterministicExecutor::default();
+    run_project_plan(&plan_a, &policy, &mut executor_a).expect("revision A runs");
+    let a_bytes = ["alpha", "beta"]
+        .into_iter()
+        .map(|node_id| {
+            (
+                node_id,
+                fs::read(artifact_path(temp.path(), &plan_a, node_id)).expect("A output"),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let a_receipt_hashes = ["alpha", "beta"]
+        .into_iter()
+        .map(|node_id| {
+            (
+                node_id,
+                read_node_receipt(&receipt_path(temp.path(), node_id))
+                    .expect("A receipt")
+                    .receipt_hash,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    let mut plan_b = plan_a.clone();
+    change_alpha_identity(&mut plan_b);
+    let mut executor_b = DeterministicExecutor::default();
+    run_project_plan(&plan_b, &policy, &mut executor_b).expect("revision B runs");
+    assert_eq!(
+        executor_b.calls,
+        vec!["alpha".to_string(), "beta".to_string()]
+    );
+    assert_ne!(
+        a_bytes["beta"],
+        fs::read(artifact_path(temp.path(), &plan_b, "beta")).expect("B output")
+    );
+
+    let mut resume_a_executor = DeterministicExecutor::default();
+    let resumed = run_project_plan(&plan_a, &policy, &mut resume_a_executor)
+        .expect("revision A restores from immutable artifacts");
+
+    assert!(resume_a_executor.calls.is_empty());
+    assert!(resumed.executed_nodes.is_empty());
+    assert_eq!(
+        resumed.resumed_nodes,
+        vec!["alpha".to_string(), "beta".to_string()]
+    );
+    assert!(resumed.invalidated_nodes.is_empty());
+    for node_id in ["alpha", "beta"] {
+        assert_eq!(
+            fs::read(artifact_path(temp.path(), &plan_a, node_id)).expect("restored A output"),
+            a_bytes[node_id]
+        );
+        assert_eq!(
+            read_node_receipt(&receipt_path(temp.path(), node_id))
+                .expect("restored A receipt")
+                .receipt_hash,
+            a_receipt_hashes[node_id]
+        );
+    }
+}
+
+#[test]
+fn poisoned_artifact_cas_refuses_revision_restore_without_execution() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = single_node_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial run");
+    let receipt = read_node_receipt(&receipt_path(temp.path(), "alpha")).expect("receipt");
+    let cas_path = artifact_cas_path_for_test(temp.path(), &receipt.outputs[0]);
+    fs::write(&cas_path, b"poisoned-cas-bytes").expect("poison artifact CAS");
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let error = run_project_plan(&plan, &policy, &mut resume_executor)
+        .expect_err("poisoned artifact CAS refuses");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(
+        error
+            .message
+            .contains("does not match its receipt digest/count")
+    );
+    assert!(resume_executor.calls.is_empty());
+}
+
+#[test]
+fn later_poison_refuses_before_any_earlier_revision_is_restored() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan_a = independent_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor_a = DeterministicExecutor::default();
+    run_project_plan(&plan_a, &policy, &mut executor_a).expect("revision A runs");
+    let beta_a = read_node_receipt(&receipt_path(temp.path(), "beta")).expect("beta A receipt");
+    let beta_semantic = semantic_receipt_path_for_test(&receipt_path(temp.path(), "beta"), &beta_a);
+
+    let mut plan_b = plan_a.clone();
+    change_alpha_identity(&mut plan_b);
+    let mut executor_b = DeterministicExecutor::default();
+    run_project_plan(&plan_b, &policy, &mut executor_b).expect("revision B runs");
+    fs::write(&beta_semantic, b"{poisoned-semantic-receipt")
+        .expect("poison later semantic receipt");
+    let before = tree_bytes(temp.path());
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let error = run_project_plan(&plan_a, &policy, &mut resume_executor)
+        .expect_err("later poison refuses before restoring alpha A");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(resume_executor.calls.is_empty());
+    assert_eq!(tree_bytes(temp.path()), before);
+}
+
+#[test]
+fn reuse_only_inspection_does_not_restore_mutable_revision_heads() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan_a = chain_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor_a = DeterministicExecutor::default();
+    run_project_plan(&plan_a, &policy, &mut executor_a).expect("revision A runs");
+
+    let mut plan_b = plan_a.clone();
+    change_alpha_identity(&mut plan_b);
+    let mut executor_b = DeterministicExecutor::default();
+    run_project_plan(&plan_b, &policy, &mut executor_b).expect("revision B runs");
+    let before = tree_bytes(temp.path());
+
+    let inspected = inspect_project_run_reuse_only(&plan_a, &policy)
+        .expect("inspection validates reusable A without restoring it");
+
+    assert!(inspected.resumed_nodes.is_empty());
+    assert_eq!(inspected.node_reports.len(), 2);
+    assert!(inspected.node_reports.iter().all(|report| {
+        report
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("read-only inspection did not restore outputs"))
+    }));
+    assert_eq!(
+        inspected.receipt.completed_nodes,
+        vec!["alpha".to_string(), "beta".to_string()]
+    );
+    assert_eq!(tree_bytes(temp.path()), before);
+}
+
+#[test]
+fn poisoned_canonical_receipt_cas_refuses_before_mutable_head_restoration() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan_a = single_node_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor_a = DeterministicExecutor::default();
+    run_project_plan(&plan_a, &policy, &mut executor_a).expect("revision A runs");
+    let alpha_a = read_node_receipt(&receipt_path(temp.path(), "alpha")).expect("alpha A receipt");
+    let alpha_a_cas =
+        node_receipt_cas_path(&receipt_path(temp.path(), "alpha"), &alpha_a.receipt_hash);
+
+    let mut plan_b = plan_a.clone();
+    change_alpha_identity(&mut plan_b);
+    let mut executor_b = DeterministicExecutor::default();
+    run_project_plan(&plan_b, &policy, &mut executor_b).expect("revision B runs");
+    fs::write(&alpha_a_cas, b"poisoned-canonical-receipt-cas")
+        .expect("poison canonical receipt CAS");
+    let before = tree_bytes(temp.path());
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let error = run_project_plan(&plan_a, &policy, &mut resume_executor)
+        .expect_err("canonical receipt CAS poison refuses before restoring A");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(error.message.contains("content-addressed project receipt"));
+    assert!(resume_executor.calls.is_empty());
+    assert_eq!(tree_bytes(temp.path()), before);
+}
+
+#[test]
+fn later_unreceipted_head_refuses_before_any_earlier_revision_is_restored() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan_a = independent_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor_a = DeterministicExecutor::default();
+    run_project_plan(&plan_a, &policy, &mut executor_a).expect("revision A runs");
+
+    let mut plan_b = plan_a.clone();
+    change_alpha_identity(&mut plan_b);
+    let mut executor_b = DeterministicExecutor::default();
+    run_project_plan(&plan_b, &policy, &mut executor_b).expect("revision B runs");
+    fs::write(
+        artifact_path(temp.path(), &plan_b, "beta"),
+        b"unreceipted-beta-head",
+    )
+    .expect("plant unreceipted later head");
+    let before = tree_bytes(temp.path());
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let error = run_project_plan(&plan_a, &policy, &mut resume_executor)
+        .expect_err("later unreceipted head refuses before restoring alpha");
+
+    assert_eq!(error.code, ProjectRunErrorCode::AtomicPublication);
+    assert!(error.message.contains("matches neither"));
+    assert!(resume_executor.calls.is_empty());
+    assert_eq!(tree_bytes(temp.path()), before);
+}
+
+#[test]
+fn unexpected_mutable_head_refuses_atomic_revision_restore() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan_a = single_node_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor_a = DeterministicExecutor::default();
+    run_project_plan(&plan_a, &policy, &mut executor_a).expect("revision A runs");
+    let mut plan_b = plan_a.clone();
+    change_alpha_identity(&mut plan_b);
+    let mut executor_b = DeterministicExecutor::default();
+    run_project_plan(&plan_b, &policy, &mut executor_b).expect("revision B runs");
+    let output_path = artifact_path(temp.path(), &plan_a, "alpha");
+    fs::write(&output_path, b"unreceipted-concurrent-head").expect("replace mutable head");
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let error = run_project_plan(&plan_a, &policy, &mut resume_executor)
+        .expect_err("unexpected mutable head refuses restoration");
+
+    assert_eq!(error.code, ProjectRunErrorCode::AtomicPublication);
+    assert!(error.message.contains("recoverable prior receipt"));
+    assert_eq!(
+        fs::read(output_path).expect("unexpected head preserved"),
+        b"unreceipted-concurrent-head"
+    );
+    assert!(resume_executor.calls.is_empty());
+}
+
+#[test]
+fn semantic_cache_output_path_binding_is_revalidated_before_restore() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = single_node_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial run");
+    let canonical = receipt_path(temp.path(), "alpha");
+    let canonical_receipt = read_node_receipt(&canonical).expect("canonical receipt");
+    let semantic = semantic_receipt_path_for_test(&canonical, &canonical_receipt);
+    let mut poisoned = read_node_receipt(&semantic).expect("semantic receipt");
+    poisoned.outputs[0].path = "work/not-the-declared-output.json".to_string();
+    let poisoned = finalized_node_receipt(poisoned).expect("path-poisoned receipt finalizes");
+    fs::write(
+        &semantic,
+        canonical_node_receipt_bytes(&poisoned).expect("poisoned receipt bytes"),
+    )
+    .expect("poison semantic cache path binding");
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let error = run_project_plan(&plan, &policy, &mut resume_executor)
+        .expect_err("path-poisoned semantic cache refuses");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(
+        error
+            .message
+            .contains("path/digest/count or dependency bindings")
+    );
+    assert!(resume_executor.calls.is_empty());
+}
+
+#[test]
+fn semantic_cache_dependency_receipt_binding_is_revalidated_before_restore() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = chain_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial chain run");
+    let canonical = receipt_path(temp.path(), "beta");
+    let canonical_receipt = read_node_receipt(&canonical).expect("canonical beta receipt");
+    let semantic = semantic_receipt_path_for_test(&canonical, &canonical_receipt);
+    let mut poisoned = read_node_receipt(&semantic).expect("beta semantic receipt");
+    poisoned.dependency_receipt_hashes.insert(
+        "alpha".to_string(),
+        digest_bytes(b"not-the-restored-alpha-receipt"),
+    );
+    let poisoned = finalized_node_receipt(poisoned).expect("dependency-poisoned receipt finalizes");
+    fs::write(
+        &semantic,
+        canonical_node_receipt_bytes(&poisoned).expect("poisoned receipt bytes"),
+    )
+    .expect("poison dependency binding");
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let error = run_project_plan(&plan, &policy, &mut resume_executor)
+        .expect_err("dependency-poisoned semantic cache refuses");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(error.message.contains("historical dependency receipt"));
+    assert!(resume_executor.calls.is_empty());
 }
 
 #[test]
@@ -295,6 +593,69 @@ fn telemetry_variation_preserves_semantic_hashes_and_downstream_artifacts() {
         fs::read(artifact_path(first_dir.path(), &plan, "beta")).expect("first beta output"),
         fs::read(artifact_path(second_dir.path(), &plan, "beta")).expect("second beta output")
     );
+}
+
+#[test]
+fn child_reuse_accepts_parent_telemetry_change_with_verified_historical_lineage() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = chain_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = TelemetryExecutor::new(10, 100, 7);
+    run_project_plan(&plan, &policy, &mut executor).expect("initial telemetry run");
+    let beta_before = read_node_receipt(&receipt_path(temp.path(), "beta")).expect("beta receipt");
+    let (alpha_before, alpha_after) = install_parent_telemetry_variant(temp.path(), &plan);
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let resumed = run_project_plan(&plan, &policy, &mut resume_executor)
+        .expect("verified historical dependency lineage permits child reuse");
+
+    assert!(resume_executor.calls.is_empty());
+    assert_eq!(
+        resumed.resumed_nodes,
+        vec!["alpha".to_string(), "beta".to_string()]
+    );
+    assert_eq!(alpha_before.semantic_hash, alpha_after.semantic_hash);
+    assert_ne!(alpha_before.receipt_hash, alpha_after.receipt_hash);
+    assert_eq!(
+        read_node_receipt(&receipt_path(temp.path(), "alpha"))
+            .expect("current alpha receipt")
+            .receipt_hash,
+        alpha_after.receipt_hash
+    );
+    assert_eq!(
+        read_node_receipt(&receipt_path(temp.path(), "beta"))
+            .expect("reused beta receipt")
+            .dependency_receipt_hashes["alpha"],
+        alpha_before.receipt_hash
+    );
+    assert_eq!(
+        beta_before.dependency_receipt_hashes["alpha"],
+        alpha_before.receipt_hash
+    );
+}
+
+#[test]
+fn child_reuse_refuses_parent_telemetry_change_when_historical_lineage_is_poisoned() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = chain_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = TelemetryExecutor::new(10, 100, 7);
+    run_project_plan(&plan, &policy, &mut executor).expect("initial telemetry run");
+    let (alpha_before, _) = install_parent_telemetry_variant(temp.path(), &plan);
+    let historical_path = node_receipt_cas_path(
+        &receipt_path(temp.path(), "alpha"),
+        &alpha_before.receipt_hash,
+    );
+    fs::write(&historical_path, b"poisoned historical receipt")
+        .expect("poison historical dependency receipt CAS");
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let error = run_project_plan(&plan, &policy, &mut resume_executor)
+        .expect_err("poisoned historical dependency lineage refuses child reuse");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(error.message.contains("historical dependency receipt"));
+    assert!(resume_executor.calls.is_empty());
 }
 
 #[test]
@@ -765,6 +1126,205 @@ fn project_run_refuses_symlink_escape_work_directory() {
 }
 
 #[test]
+#[cfg(unix)]
+fn project_run_refuses_semantic_receipt_symlink_escape() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let outside = tempfile::tempdir().expect("outside tempdir");
+    fs::create_dir_all(temp.path().join("work/receipts")).expect("receipt directory");
+    symlink(
+        outside.path(),
+        temp.path().join("work/receipts/by-cache-key"),
+    )
+    .expect("semantic receipt directory symlink");
+    let plan = single_node_plan();
+    let mut executor = DeterministicExecutor::default();
+
+    let error = run_project_plan(&plan, &approving_policy(temp.path()), &mut executor)
+        .expect_err("semantic receipt symlink escape refuses before execution");
+
+    assert_eq!(error.code, ProjectRunErrorCode::WorkspacePolicy);
+    assert!(error.message.contains("semantic project receipt path"));
+    assert!(error.message.contains("outside the workspace"));
+    assert!(executor.calls.is_empty());
+    assert!(
+        fs::read_dir(outside.path())
+            .expect("outside directory")
+            .next()
+            .is_none(),
+        "semantic receipt resolution must not write through an escaping symlink"
+    );
+    assert!(!artifact_path(temp.path(), &plan, "alpha").exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn project_run_refuses_canonical_receipt_cas_symlink_escape() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let outside = tempfile::tempdir().expect("outside tempdir");
+    fs::create_dir_all(temp.path().join("work/receipts")).expect("receipt directory");
+    symlink(outside.path(), temp.path().join("work/receipts/cas"))
+        .expect("canonical receipt CAS symlink");
+    let plan = single_node_plan();
+    let mut executor = DeterministicExecutor::default();
+
+    let error = run_project_plan(&plan, &approving_policy(temp.path()), &mut executor)
+        .expect_err("canonical receipt CAS symlink escape refuses before execution");
+
+    assert_eq!(error.code, ProjectRunErrorCode::WorkspacePolicy);
+    assert!(error.message.contains("project receipt CAS path"));
+    assert!(error.message.contains("outside the workspace"));
+    assert!(executor.calls.is_empty());
+    assert!(
+        fs::read_dir(outside.path())
+            .expect("outside directory")
+            .next()
+            .is_none(),
+        "canonical receipt CAS resolution must not write through an escaping symlink"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn project_run_refuses_semantic_receipt_cas_symlink_escape() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let outside = tempfile::tempdir().expect("outside tempdir");
+    fs::create_dir_all(temp.path().join("work/receipts/by-cache-key"))
+        .expect("semantic receipt directory");
+    symlink(
+        outside.path(),
+        temp.path().join("work/receipts/by-cache-key/cas"),
+    )
+    .expect("semantic receipt CAS symlink");
+    let plan = single_node_plan();
+    let mut executor = DeterministicExecutor::default();
+
+    let error = run_project_plan(&plan, &approving_policy(temp.path()), &mut executor)
+        .expect_err("semantic receipt CAS symlink escape refuses before execution");
+
+    assert_eq!(error.code, ProjectRunErrorCode::WorkspacePolicy);
+    assert!(error.message.contains("semantic project receipt CAS path"));
+    assert!(error.message.contains("outside the workspace"));
+    assert!(executor.calls.is_empty());
+    assert!(
+        fs::read_dir(outside.path())
+            .expect("outside directory")
+            .next()
+            .is_none(),
+        "semantic receipt CAS resolution must not write through an escaping symlink"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn project_run_refuses_canonical_receipt_cas_leaf_symlink_escape() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let outside = tempfile::tempdir().expect("outside tempdir");
+    let plan = single_node_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial run");
+    let receipt = read_node_receipt(&receipt_path(temp.path(), "alpha")).expect("alpha receipt");
+    let cas_path =
+        node_receipt_cas_path(&receipt_path(temp.path(), "alpha"), &receipt.receipt_hash);
+    fs::rename(&cas_path, cas_path.with_extension("saved")).expect("preserve original CAS leaf");
+    let outside_path = outside.path().join("receipt.json");
+    fs::write(&outside_path, b"outside-receipt-bytes").expect("outside receipt");
+    symlink(&outside_path, &cas_path).expect("canonical CAS leaf symlink");
+    let head_before = fs::read(artifact_path(temp.path(), &plan, "alpha")).expect("alpha head");
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let error = run_project_plan(&plan, &policy, &mut resume_executor)
+        .expect_err("canonical receipt CAS leaf symlink refuses");
+
+    assert_eq!(error.code, ProjectRunErrorCode::WorkspacePolicy);
+    assert!(error.message.contains("canonical project receipt CAS"));
+    assert!(resume_executor.calls.is_empty());
+    assert_eq!(
+        fs::read(&outside_path).expect("outside receipt unchanged"),
+        b"outside-receipt-bytes"
+    );
+    assert_eq!(
+        fs::read(artifact_path(temp.path(), &plan, "alpha")).expect("alpha head unchanged"),
+        head_before
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn project_run_refuses_semantic_receipt_cas_leaf_symlink_escape() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let outside = tempfile::tempdir().expect("outside tempdir");
+    let plan = single_node_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial run");
+    let canonical = receipt_path(temp.path(), "alpha");
+    let receipt = read_node_receipt(&canonical).expect("alpha receipt");
+    let semantic = semantic_receipt_path_for_test(&canonical, &receipt);
+    let cas_path = node_receipt_cas_path(&semantic, &receipt.receipt_hash);
+    fs::rename(&cas_path, cas_path.with_extension("saved")).expect("preserve semantic CAS leaf");
+    let outside_path = outside.path().join("receipt.json");
+    fs::write(&outside_path, b"outside-semantic-receipt").expect("outside receipt");
+    symlink(&outside_path, &cas_path).expect("semantic CAS leaf symlink");
+    let head_before = fs::read(artifact_path(temp.path(), &plan, "alpha")).expect("alpha head");
+
+    let mut resume_executor = DeterministicExecutor::default();
+    let error = run_project_plan(&plan, &policy, &mut resume_executor)
+        .expect_err("semantic receipt CAS leaf symlink refuses");
+
+    assert_eq!(error.code, ProjectRunErrorCode::WorkspacePolicy);
+    assert!(error.message.contains("semantic project receipt CAS"));
+    assert!(resume_executor.calls.is_empty());
+    assert_eq!(
+        fs::read(&outside_path).expect("outside receipt unchanged"),
+        b"outside-semantic-receipt"
+    );
+    assert_eq!(
+        fs::read(artifact_path(temp.path(), &plan, "alpha")).expect("alpha head unchanged"),
+        head_before
+    );
+}
+
+#[test]
+fn registered_executor_refuses_uppercase_blake3_arguments() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let input_bytes = b"id,name\n1,Alice\n";
+    write_workspace_file(temp.path(), "input/source.csv", input_bytes);
+    let mut plan = single_node_plan();
+    configure_internal_copy_node(&mut plan, "alpha", "input/source.csv", input_bytes);
+    let uppercase_digest = digest_bytes(input_bytes).to_ascii_uppercase();
+    plan.nodes[0].command = internal_copy_command(
+        "input/source.csv",
+        &uppercase_digest,
+        &plan.nodes[0].outputs[0].output_id,
+        &uppercase_digest,
+    );
+    refresh_node_cache_key(&mut plan.nodes[0]);
+    plan.graph_hash = digest_bytes(b"uppercase-command-digest");
+
+    let error = run_project_plan_with_registered_executors(
+        &plan,
+        &ProjectRunPolicy::new(temp.path(), "work"),
+    )
+    .expect_err("uppercase digest refuses before execution");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ExecutionFailed);
+    assert!(error.message.contains("must be a blake3 digest"));
+    assert!(!artifact_path(temp.path(), &plan, "alpha").exists());
+    assert!(!receipt_path(temp.path(), "alpha").exists());
+}
+
+#[test]
 fn registered_executor_content_digest_mismatch_writes_failure_receipt_without_artifact() {
     let temp = tempfile::tempdir().expect("tempdir");
     let input_bytes = b"id,name\n1,Alice\n";
@@ -798,7 +1358,7 @@ fn registered_executor_content_digest_mismatch_writes_failure_receipt_without_ar
 }
 
 #[test]
-fn output_publishes_before_v2_receipt_for_registered_executor_recovery() {
+fn receipt_failure_preserves_artifact_cas_without_publishing_mutable_head() {
     let temp = tempfile::tempdir().expect("tempdir");
     let input_bytes = b"id,name\n1,Alice\n";
     write_workspace_file(temp.path(), "input/source.csv", input_bytes);
@@ -815,11 +1375,22 @@ fn output_publishes_before_v2_receipt_for_registered_executor_recovery() {
         &plan,
         &ProjectRunPolicy::new(temp.path(), "work"),
     )
-    .expect_err("receipt publication fails after artifact publication");
+    .expect_err("semantic receipt publication fails after artifact CAS preservation");
 
     assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(
+        !artifact_path(temp.path(), &plan, "alpha").exists(),
+        "mutable head is not published before semantic receipt convergence"
+    );
+    let output_receipt = receipt::ProjectRunOutputReceipt {
+        output_id: plan.nodes[0].outputs[0].output_id.clone(),
+        path: plan.nodes[0].outputs[0].path.clone(),
+        content_digest: digest_bytes(input_bytes),
+        byte_count: input_bytes.len() as u64,
+    };
     assert_eq!(
-        fs::read(artifact_path(temp.path(), &plan, "alpha")).expect("artifact published"),
+        fs::read(artifact_cas_path_for_test(temp.path(), &output_receipt))
+            .expect("artifact CAS preserved"),
         input_bytes
     );
     assert!(!receipt_path(temp.path(), "alpha").exists());
@@ -853,6 +1424,81 @@ fn registered_executor_target_scope_reuses_only_selected_closure() {
     assert_eq!(second.resumed_nodes, vec!["alpha".to_string()]);
     assert_eq!(second.receipt.completed_nodes, vec!["alpha".to_string()]);
     assert!(!artifact_path(temp.path(), &plan, "beta").exists());
+}
+
+#[test]
+fn selected_reuse_does_not_restore_populated_unselected_cache() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan_a = independent_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor_a = DeterministicExecutor::default();
+    run_project_plan(&plan_a, &policy, &mut executor_a).expect("revision A runs");
+
+    let mut plan_b = plan_a.clone();
+    change_alpha_identity(&mut plan_b);
+    let mut executor_b = DeterministicExecutor::default();
+    run_project_plan(&plan_b, &policy, &mut executor_b).expect("revision B runs");
+    let alpha_b_bytes =
+        fs::read(artifact_path(temp.path(), &plan_b, "alpha")).expect("revision B alpha output");
+    let alpha_b_receipt =
+        read_node_receipt(&receipt_path(temp.path(), "alpha")).expect("revision B alpha receipt");
+
+    let mut selected_policy = policy.clone();
+    selected_policy.selected_nodes.insert("beta".to_string());
+    let mut selected_executor = DeterministicExecutor::default();
+    let selected = run_project_plan(&plan_a, &selected_policy, &mut selected_executor)
+        .expect("selected beta reuses without touching alpha");
+
+    assert!(selected_executor.calls.is_empty());
+    assert_eq!(selected.resumed_nodes, vec!["beta".to_string()]);
+    assert_eq!(
+        fs::read(artifact_path(temp.path(), &plan_b, "alpha")).expect("alpha head remains B"),
+        alpha_b_bytes
+    );
+    assert_eq!(
+        read_node_receipt(&receipt_path(temp.path(), "alpha"))
+            .expect("alpha receipt remains B")
+            .receipt_hash,
+        alpha_b_receipt.receipt_hash
+    );
+}
+
+#[test]
+fn registered_executor_preflight_does_not_restore_before_pending_executor_refusal() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan_a = independent_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor_a = DeterministicExecutor::default();
+    run_project_plan(&plan_a, &policy, &mut executor_a).expect("revision A runs");
+
+    let mut plan_b = plan_a.clone();
+    change_alpha_identity(&mut plan_b);
+    let mut executor_b = DeterministicExecutor::default();
+    run_project_plan(&plan_b, &policy, &mut executor_b).expect("revision B runs");
+    let alpha_b_bytes =
+        fs::read(artifact_path(temp.path(), &plan_b, "alpha")).expect("revision B alpha output");
+
+    let mut plan_with_pending_beta = plan_a.clone();
+    let beta = plan_with_pending_beta
+        .nodes
+        .iter_mut()
+        .find(|node| node.node_id == "beta")
+        .expect("beta node");
+    beta.content_hash_inputs[0].content_hash = digest_bytes(b"changed-beta-input");
+    refresh_node_cache_key(beta);
+    plan_with_pending_beta.graph_hash = digest_bytes(b"pending-beta-preflight");
+
+    let error = run_project_plan_with_registered_executors(
+        &plan_with_pending_beta,
+        &ProjectRunPolicy::new(temp.path(), "work"),
+    )
+    .expect_err("unregistered beta refuses during read-only preflight");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ExecutionFailed);
+    assert_eq!(
+        fs::read(artifact_path(temp.path(), &plan_b, "alpha")).expect("alpha head remains B"),
+        alpha_b_bytes
+    );
 }
 
 #[test]
@@ -1205,6 +1851,29 @@ fn semantically_conflicting_concurrent_receipt_refuses_without_losing_receipts()
     );
     assert!(node_receipt_cas_path(&slot, prewritten_hash).exists());
     assert!(node_receipt_cas_path(&slot, intended_hash).exists());
+}
+
+#[test]
+fn divergent_output_for_same_semantic_cache_key_refuses_before_head_publication() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = single_node_plan();
+    let mut executor = PrewritingSemanticCacheExecutor::new(
+        temp.path(),
+        &plan,
+        b"intended-output".to_vec(),
+        b"divergent-output".to_vec(),
+    );
+
+    let error = run_project_plan(&plan, &approving_policy(temp.path()), &mut executor)
+        .expect_err("same semantic cache key with divergent output refuses");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(error.message.contains("different semantic result"));
+    assert!(executor.called);
+    assert!(
+        !artifact_path(temp.path(), &plan, "alpha").exists(),
+        "a divergent semantic result must be refused before mutable head publication"
+    );
 }
 
 #[test]
@@ -1845,6 +2514,63 @@ impl ProjectNodeExecutor for PrewritingReceiptExecutor {
     }
 }
 
+struct PrewritingSemanticCacheExecutor {
+    workspace_root: PathBuf,
+    project_id: String,
+    plan_graph_hash: String,
+    intended_bytes: Vec<u8>,
+    divergent_bytes: Vec<u8>,
+    called: bool,
+}
+
+impl PrewritingSemanticCacheExecutor {
+    fn new(
+        root: &Path,
+        plan: &ProjectPlan,
+        intended_bytes: Vec<u8>,
+        divergent_bytes: Vec<u8>,
+    ) -> Self {
+        Self {
+            workspace_root: root.to_path_buf(),
+            project_id: plan.project_id.clone(),
+            plan_graph_hash: plan.graph_hash.clone(),
+            intended_bytes,
+            divergent_bytes,
+            called: false,
+        }
+    }
+}
+
+impl ProjectNodeExecutor for PrewritingSemanticCacheExecutor {
+    fn execute(
+        &mut self,
+        node: &ProjectPlanNode,
+        context: &ProjectNodeExecutionContext,
+    ) -> Result<ProjectNodeExecutionResult, ProjectRunError> {
+        self.called = true;
+        let mut usage = BTreeMap::new();
+        usage.insert("fixed_bytes".to_string(), self.divergent_bytes.len() as u64);
+        let divergent = completed_test_receipt(
+            &self.project_id,
+            &self.plan_graph_hash,
+            node,
+            context,
+            &self.divergent_bytes,
+            usage,
+            1,
+        );
+        let canonical = receipt_path(&self.workspace_root, &node.node_id);
+        let result_cache_key = semantic_node_result_cache_key(
+            &node.cache.cache_key,
+            &context.dependency_semantic_hashes,
+        )
+        .expect("semantic result cache key");
+        let semantic = semantic_node_receipt_path(&canonical, &result_cache_key);
+        write_node_receipt(&semantic, &divergent).expect("prewrite divergent semantic receipt");
+        Ok(fixed_output_result(node, &self.intended_bytes))
+    }
+}
+
 fn fixed_output_result(node: &ProjectPlanNode, bytes: &[u8]) -> ProjectNodeExecutionResult {
     let mut outputs = BTreeMap::new();
     for output in &node.outputs {
@@ -2011,6 +2737,53 @@ fn artifact_path(root: &Path, plan: &ProjectPlan, node_id: &str) -> PathBuf {
         .find(|node| node.node_id == node_id)
         .expect("node exists");
     root.join(&node.outputs[0].path)
+}
+
+fn artifact_cas_path_for_test(root: &Path, output: &receipt::ProjectRunOutputReceipt) -> PathBuf {
+    let digest_hex = output
+        .content_digest
+        .strip_prefix("blake3:")
+        .expect("blake3 output digest");
+    root.join("work")
+        .join("artifacts")
+        .join("cas")
+        .join(format!("{digest_hex}.bin"))
+}
+
+fn semantic_receipt_path_for_test(
+    canonical_path: &Path,
+    receipt: &receipt::ProjectRunNodeReceipt,
+) -> PathBuf {
+    let result_cache_key = semantic_node_result_cache_key(
+        &receipt.node_cache_key,
+        &receipt.dependency_semantic_hashes,
+    )
+    .expect("semantic node-result cache key");
+    semantic_node_receipt_path(canonical_path, &result_cache_key)
+}
+
+fn install_parent_telemetry_variant(
+    root: &Path,
+    plan: &ProjectPlan,
+) -> (
+    receipt::ProjectRunNodeReceipt,
+    receipt::ProjectRunNodeReceipt,
+) {
+    let canonical = receipt_path(root, "alpha");
+    let before = read_node_receipt(&canonical).expect("alpha receipt before telemetry variant");
+    let semantic = semantic_receipt_path_for_test(&canonical, &before);
+    let mut after = before.clone();
+    after.duration_millis += 1_000;
+    after
+        .resource_observations
+        .insert("telemetry_variant".to_string(), 1);
+    after.plan_graph_hash = plan.graph_hash.clone();
+    let after = finalized_node_receipt(after).expect("alpha telemetry variant finalizes");
+    replace_node_receipt(&canonical, &after, Some(&before))
+        .expect("replace canonical alpha telemetry receipt");
+    replace_node_receipt(&semantic, &after, Some(&before))
+        .expect("replace semantic alpha telemetry receipt");
+    (before, after)
 }
 
 fn cas_contains_receipt_matching<F>(slot: &Path, predicate: F) -> bool
