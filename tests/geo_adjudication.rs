@@ -1331,7 +1331,7 @@ fn e4_acceptance_gate_requires_the_full_population_to_be_reachable() {
         .filter(|row| row.truth_representable && !row.geodisc_truth_survives_counterfactual)
         .count();
 
-    let passed = rows.len() >= REQUIRED_GENUINE_MULTI_PARCEL_CASES
+    let passed = rows.len() == REQUIRED_GENUINE_MULTI_PARCEL_CASES
         && representable == rows.len()
         && rho_violations == 0
         && budget_fallbacks == 0;
