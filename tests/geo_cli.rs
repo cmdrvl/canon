@@ -777,7 +777,8 @@ fn geo_plan_source(
         "lineage_ids": lineage_ids,
         "native_scope": {
             "kind": "native_entity",
-            "entity_level": "building"
+            "entity_level": "building",
+            "identity_participation": "stable_alias"
         },
         "evidence_classes": evidence_classes,
         "coverage": {
@@ -789,6 +790,7 @@ fn geo_plan_source(
             "state": "available",
             "local_ref": {
                 "artifact_id": format!("artifact.{source_instance_id}"),
+                "contract_version": "canon_geo_warehouse_rows.v0",
                 "content_hash": geo_plan_digest(&format!("local.{source_instance_id}")),
                 "media_type": "application/json"
             }
@@ -852,7 +854,7 @@ fn geo_plan_inventory(reordered: bool) -> Value {
         sources.reverse();
     }
     json!({
-        "version": "canon_geo_regional_inventory.v0",
+        "version": "canon_geo_regional_inventory.v1",
         "inventory_id": "inventory.fixture.geo-plan",
         "region": geo_plan_region(),
         "sources": sources,

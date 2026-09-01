@@ -39,10 +39,12 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
     fmt, fs,
+    io::Write,
     path::{Component, Path, PathBuf},
 };
 
 pub const CANON_GEO_RUN_VERSION: &str = "canon_geo_run.v0";
+pub const CANON_GEO_RUN_PROGRESS_VERSION: &str = "canon_geo_run_progress.v0";
 pub const GEO_RUN_JSON_MEDIA_TYPE: &str = "application/json";
 
 pub type GeoRunResult<T> = Result<T, GeoRunError>;
@@ -57,6 +59,7 @@ pub enum GeoRunErrorCode {
     MissingInput,
     OutputContractViolation,
     ProjectRunFailed,
+    ProgressOutput,
     Serialization,
 }
 
@@ -120,6 +123,66 @@ pub enum GeoRunPhase {
     Solved,
     Reconciled,
     Evaluated,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum GeoRunProgressEventKind {
+    RunStarted,
+    StageStarted,
+    ArtifactCommitted,
+    ArtifactResumed,
+    WaitingForInput,
+    RunCancelled,
+    RunFailed,
+    RunFinished,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRunProgressCounters {
+    pub started_nodes: u64,
+    pub completed_nodes: u64,
+    pub executed_nodes: u64,
+    pub resumed_nodes: u64,
+    pub cancelled_nodes: u64,
+    pub blocked_nodes: u64,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub deterministic_usage: BTreeMap<String, u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRunProgressArtifactRef {
+    pub artifact_id: String,
+    pub content_digest: String,
+    pub byte_count: u64,
+}
+
+/// Non-semantic, deterministic progress emitted only by an opt-in run API.
+///
+/// Events intentionally omit clocks, paths, worker identity, and telemetry. They are
+/// operational observations and never enter `canon_geo_run.v0` or its semantic hash.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRunProgressEvent {
+    pub version: String,
+    pub sequence: u64,
+    pub kind: GeoRunProgressEventKind,
+    pub plan_id: String,
+    pub project_graph_hash: String,
+    pub phase: GeoRunPhase,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<GeoRunStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_node_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<GeoPlanStage>,
+    pub counters: GeoRunProgressCounters,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_committed_artifact: Option<GeoRunProgressArtifactRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wait_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -349,14 +412,366 @@ pub struct GeoRun {
     pub observation: GeoRunObservation,
 }
 
+struct GeoRunProgressWriter<'a> {
+    writer: Option<&'a mut dyn Write>,
+    plan_id: String,
+    project_graph_hash: String,
+    sequence: u64,
+    current_phase: GeoRunPhase,
+    counters: GeoRunProgressCounters,
+    last_committed_artifact: Option<GeoRunProgressArtifactRef>,
+    committed_nodes: BTreeSet<String>,
+    delivery_error: Option<String>,
+}
+
+impl<'a> GeoRunProgressWriter<'a> {
+    fn new(plan: &GeoPlan, project_graph_hash: &str, writer: Option<&'a mut dyn Write>) -> Self {
+        Self {
+            writer,
+            plan_id: plan.plan_id.clone(),
+            project_graph_hash: project_graph_hash.to_string(),
+            sequence: 0,
+            current_phase: GeoRunPhase::Preflighted,
+            counters: GeoRunProgressCounters::default(),
+            last_committed_artifact: None,
+            committed_nodes: BTreeSet::new(),
+            delivery_error: None,
+        }
+    }
+
+    fn run_started(&mut self) {
+        self.emit(
+            GeoRunProgressEventKind::RunStarted,
+            GeoRunPhase::Preflighted,
+            None,
+            None,
+            None,
+            None,
+        );
+    }
+
+    fn stage_started(&mut self, node_id: &str, stage: GeoPlanStage) {
+        self.counters.started_nodes += 1;
+        self.emit(
+            GeoRunProgressEventKind::StageStarted,
+            phase_for_stage(stage),
+            None,
+            Some(node_id),
+            Some(stage),
+            None,
+        );
+    }
+
+    fn artifact_committed(
+        &mut self,
+        node_id: &str,
+        stage: GeoPlanStage,
+        artifact: GeoRunProgressArtifactRef,
+        deterministic_usage: &BTreeMap<String, u64>,
+        resumed: bool,
+    ) {
+        if !self.committed_nodes.insert(node_id.to_string()) {
+            return;
+        }
+        self.counters.completed_nodes += 1;
+        if resumed {
+            self.counters.resumed_nodes += 1;
+        } else {
+            self.counters.executed_nodes += 1;
+        }
+        for (counter, value) in deterministic_usage {
+            *self
+                .counters
+                .deterministic_usage
+                .entry(counter.clone())
+                .or_insert(0) += value;
+        }
+        self.last_committed_artifact = Some(artifact);
+        self.emit(
+            if resumed {
+                GeoRunProgressEventKind::ArtifactResumed
+            } else {
+                GeoRunProgressEventKind::ArtifactCommitted
+            },
+            phase_for_stage(stage),
+            None,
+            Some(node_id),
+            Some(stage),
+            None,
+        );
+    }
+
+    fn resumed_receipts(
+        &mut self,
+        project_plan: &ProjectPlan,
+        selected_nodes: &BTreeSet<String>,
+        receipts: &BTreeMap<String, ProjectRunNodeReceipt>,
+        geo_plan: &GeoPlan,
+    ) {
+        let Some(target_nodes) = project_target_node_ids(project_plan, selected_nodes) else {
+            return;
+        };
+        let stages = geo_plan
+            .geo_nodes
+            .iter()
+            .map(|node| (node.project_node_id.as_str(), node.stage))
+            .collect::<BTreeMap<_, _>>();
+        for node_id in project_node_ids_in_dependency_order(project_plan) {
+            if !target_nodes.contains(&node_id) {
+                continue;
+            }
+            let (Some(receipt), Some(stage)) = (
+                receipts.get(&node_id),
+                stages.get(node_id.as_str()).copied(),
+            ) else {
+                continue;
+            };
+            let Some(output) = receipt.outputs.first() else {
+                continue;
+            };
+            self.artifact_committed(
+                &node_id,
+                stage,
+                GeoRunProgressArtifactRef {
+                    artifact_id: geo_run_declared_artifact_id(&node_id, &output.output_id),
+                    content_digest: output.content_digest.clone(),
+                    byte_count: output.byte_count,
+                },
+                &receipt.deterministic_usage,
+                true,
+            );
+        }
+    }
+
+    fn terminal(
+        &mut self,
+        kind: GeoRunProgressEventKind,
+        run: &GeoRun,
+        project_node_id: Option<&str>,
+        stage: Option<GeoPlanStage>,
+        wait_reason: Option<String>,
+    ) {
+        if let Some(report) = &run.project_run_report {
+            self.counters.cancelled_nodes = report.cancelled_nodes.len() as u64;
+            self.counters.blocked_nodes = report.blocked_nodes.len() as u64;
+        } else if run.status == GeoRunStatus::WaitingForInput {
+            self.counters.blocked_nodes = run
+                .blockers
+                .iter()
+                .filter(|blocker| blocker.kind == GeoRunBlockerKind::WaitingForInput)
+                .count() as u64;
+        }
+        self.emit(
+            kind,
+            run.phase,
+            Some(run.status),
+            project_node_id,
+            stage,
+            wait_reason,
+        );
+    }
+
+    fn emit(
+        &mut self,
+        kind: GeoRunProgressEventKind,
+        phase: GeoRunPhase,
+        status: Option<GeoRunStatus>,
+        project_node_id: Option<&str>,
+        stage: Option<GeoPlanStage>,
+        wait_reason: Option<String>,
+    ) {
+        if self.writer.is_none() || self.delivery_error.is_some() {
+            return;
+        }
+        self.current_phase = self.current_phase.max(phase);
+        let event = GeoRunProgressEvent {
+            version: CANON_GEO_RUN_PROGRESS_VERSION.to_string(),
+            sequence: self.sequence,
+            kind,
+            plan_id: self.plan_id.clone(),
+            project_graph_hash: self.project_graph_hash.clone(),
+            phase: self.current_phase,
+            status,
+            project_node_id: project_node_id.map(str::to_string),
+            stage,
+            counters: self.counters.clone(),
+            last_committed_artifact: self.last_committed_artifact.clone(),
+            wait_reason,
+        };
+        self.sequence += 1;
+        let writer = self.writer.as_mut().expect("checked progress writer");
+        let delivery = serde_json::to_writer(&mut **writer, &event)
+            .map_err(|error| error.to_string())
+            .and_then(|()| writer.write_all(b"\n").map_err(|error| error.to_string()))
+            .and_then(|()| writer.flush().map_err(|error| error.to_string()));
+        if let Err(error) = delivery {
+            self.delivery_error = Some(error);
+        }
+    }
+
+    fn finish_delivery(&self) -> GeoRunResult<()> {
+        if let Some(error) = &self.delivery_error {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ProgressOutput,
+                "Geo run completed its semantic work but could not deliver the requested progress stream",
+                [("error", error.as_str())],
+            ));
+        }
+        Ok(())
+    }
+}
+
+struct PendingGeoProgressCommit {
+    node_id: String,
+    stage: GeoPlanStage,
+    artifact: GeoRunProgressArtifactRef,
+    deterministic_usage: BTreeMap<String, u64>,
+}
+
+struct GeoProgressProjectExecutor<'executor, 'progress, 'writer, E> {
+    inner: &'executor mut E,
+    progress: &'progress mut GeoRunProgressWriter<'writer>,
+    stages: BTreeMap<String, GeoPlanStage>,
+    pending_commit: Option<PendingGeoProgressCommit>,
+}
+
+impl<'executor, 'progress, 'writer, E>
+    GeoProgressProjectExecutor<'executor, 'progress, 'writer, E>
+{
+    fn new(
+        inner: &'executor mut E,
+        plan: &GeoPlan,
+        progress: &'progress mut GeoRunProgressWriter<'writer>,
+    ) -> Self {
+        Self {
+            inner,
+            progress,
+            stages: plan
+                .geo_nodes
+                .iter()
+                .map(|node| (node.project_node_id.clone(), node.stage))
+                .collect(),
+            pending_commit: None,
+        }
+    }
+
+    fn confirm_pending_commit(&mut self) {
+        if let Some(pending) = self.pending_commit.take() {
+            self.progress.artifact_committed(
+                &pending.node_id,
+                pending.stage,
+                pending.artifact,
+                &pending.deterministic_usage,
+                false,
+            );
+        }
+    }
+
+    fn reconcile_report(&mut self, plan: &ProjectPlan, report: &ProjectRunReport) {
+        let receipts = report
+            .receipt
+            .node_receipts
+            .iter()
+            .map(|receipt| (receipt.node_id.as_str(), receipt))
+            .collect::<BTreeMap<_, _>>();
+        let resumed = report.resumed_nodes.iter().collect::<BTreeSet<_>>();
+        for node_id in project_node_ids_in_dependency_order(plan) {
+            if self.progress.committed_nodes.contains(&node_id) {
+                continue;
+            }
+            let Some(receipt) = receipts.get(node_id.as_str()) else {
+                continue;
+            };
+            let Some(stage) = self.stages.get(&node_id).copied() else {
+                continue;
+            };
+            let Some(output) = receipt.outputs.first() else {
+                continue;
+            };
+            self.progress.artifact_committed(
+                &node_id,
+                stage,
+                GeoRunProgressArtifactRef {
+                    artifact_id: geo_run_declared_artifact_id(&node_id, &output.output_id),
+                    content_digest: output.content_digest.clone(),
+                    byte_count: output.byte_count,
+                },
+                &receipt.deterministic_usage,
+                resumed.contains(&node_id),
+            );
+        }
+        self.pending_commit = None;
+    }
+}
+
+impl<E: ProjectNodeExecutor> ProjectNodeExecutor for GeoProgressProjectExecutor<'_, '_, '_, E> {
+    fn execute(
+        &mut self,
+        node: &ProjectPlanNode,
+        context: &crate::project::ProjectNodeExecutionContext,
+    ) -> Result<crate::project::ProjectNodeExecutionResult, ProjectRunError> {
+        self.confirm_pending_commit();
+        let stage = self.stages.get(&node.node_id).copied().ok_or_else(|| {
+            ProjectRunError::new(
+                crate::project::ProjectRunErrorCode::ArtifactContract,
+                Some(node.node_id.clone()),
+                "Geo progress could not map a project node to its Geo stage",
+            )
+        })?;
+        self.progress.stage_started(&node.node_id, stage);
+        let result = self.inner.execute(node, context)?;
+        let output_id = output_id_for_command(&node.command).ok_or_else(|| {
+            ProjectRunError::new(
+                crate::project::ProjectRunErrorCode::ArtifactContract,
+                Some(node.node_id.clone()),
+                "Geo progress reached a command without a declared output",
+            )
+        })?;
+        let output = result.outputs.get(output_id).ok_or_else(|| {
+            ProjectRunError::new(
+                crate::project::ProjectRunErrorCode::ArtifactContract,
+                Some(node.node_id.clone()),
+                "Geo progress reached an execution result without its declared output",
+            )
+        })?;
+        self.pending_commit = Some(PendingGeoProgressCommit {
+            node_id: node.node_id.clone(),
+            stage,
+            artifact: GeoRunProgressArtifactRef {
+                artifact_id: geo_run_declared_artifact_id(&node.node_id, output_id),
+                content_digest: digest_bytes(output),
+                byte_count: output.len() as u64,
+            },
+            deterministic_usage: result.deterministic_usage.clone(),
+        });
+        Ok(result)
+    }
+}
+
 pub fn run_geo_plan(request: GeoRunRequest) -> GeoRunResult<GeoRun> {
     let mut executor = GeoProjectNodeExecutor::new();
     run_geo_plan_with_executor(request, &mut executor)
 }
 
+pub fn run_geo_plan_with_progress_writer(
+    request: GeoRunRequest,
+    writer: &mut dyn Write,
+) -> GeoRunResult<GeoRun> {
+    let mut executor = GeoProjectNodeExecutor::new();
+    run_geo_plan_with_geo_executor(request, &mut executor, Some(writer))
+}
+
 pub fn run_geo_plan_with_executor(
     request: GeoRunRequest,
     executor: &mut GeoProjectNodeExecutor,
+) -> GeoRunResult<GeoRun> {
+    run_geo_plan_with_geo_executor(request, executor, None)
+}
+
+fn run_geo_plan_with_geo_executor(
+    request: GeoRunRequest,
+    executor: &mut GeoProjectNodeExecutor,
+    writer: Option<&mut dyn Write>,
 ) -> GeoRunResult<GeoRun> {
     let prepared = prepare_geo_run(
         &request.plan,
@@ -367,14 +782,27 @@ pub fn run_geo_plan_with_executor(
     for binding in prepared.input_bindings.values() {
         executor.insert_input_binding(geo_executor_input_binding(binding));
     }
-    if prepared.missing_inputs.is_empty() {
+    let reusable_receipts = if prepared.missing_inputs.is_empty() {
         seed_geo_project_executor_from_valid_receipts(
             &prepared.effective_project_plan,
             &request.policy,
             executor,
-        )?;
-    }
-    execute_prepared_geo_run(request, prepared, executor)
+        )?
+    } else {
+        BTreeMap::new()
+    };
+    let mut progress = GeoRunProgressWriter::new(
+        &request.plan,
+        &prepared.effective_project_plan.graph_hash,
+        writer,
+    );
+    execute_prepared_geo_run(
+        request,
+        prepared,
+        reusable_receipts,
+        executor,
+        &mut progress,
+    )
 }
 
 pub fn run_geo_plan_with_project_executor<E: ProjectNodeExecutor>(
@@ -387,7 +815,18 @@ pub fn run_geo_plan_with_project_executor<E: ProjectNodeExecutor>(
         request.input_bindings.clone(),
     )?;
     let mut validating_executor = GeoContractValidatingExecutor { inner: executor };
-    execute_prepared_geo_run(request, prepared, &mut validating_executor)
+    let mut progress = GeoRunProgressWriter::new(
+        &request.plan,
+        &prepared.effective_project_plan.graph_hash,
+        None,
+    );
+    execute_prepared_geo_run(
+        request,
+        prepared,
+        BTreeMap::new(),
+        &mut validating_executor,
+        &mut progress,
+    )
 }
 
 struct GeoContractValidatingExecutor<'a, E> {
@@ -437,7 +876,108 @@ impl<E: ProjectNodeExecutor> ProjectNodeExecutor for GeoContractValidatingExecut
 fn execute_prepared_geo_run<E: ProjectNodeExecutor>(
     request: GeoRunRequest,
     prepared: PreparedGeoRun,
+    reusable_receipts: BTreeMap<String, ProjectRunNodeReceipt>,
     executor: &mut E,
+    progress: &mut GeoRunProgressWriter<'_>,
+) -> GeoRunResult<GeoRun> {
+    progress.run_started();
+    progress.resumed_receipts(
+        &prepared.effective_project_plan,
+        &request.policy.selected_nodes,
+        &reusable_receipts,
+        &request.plan,
+    );
+    let stages = request
+        .plan
+        .geo_nodes
+        .iter()
+        .map(|node| (node.project_node_id.clone(), node.stage))
+        .collect::<BTreeMap<_, _>>();
+    let result = execute_prepared_geo_run_after_start(request, prepared, executor, progress);
+    match result {
+        Ok(run) => {
+            let terminal_node = run
+                .project_run_report
+                .as_ref()
+                .and_then(|report| {
+                    report
+                        .cancelled_nodes
+                        .first()
+                        .or_else(|| report.failed_nodes.first())
+                })
+                .map(String::as_str)
+                .or_else(|| {
+                    run.blockers
+                        .iter()
+                        .find_map(|blocker| blocker.project_node_id.as_deref())
+                });
+            let terminal_stage = terminal_node.and_then(|node_id| stages.get(node_id).copied());
+            let (terminal_kind, wait_reason) = match run.status {
+                GeoRunStatus::WaitingForInput => (
+                    GeoRunProgressEventKind::WaitingForInput,
+                    Some(
+                        run.blockers
+                            .iter()
+                            .filter(|blocker| blocker.kind == GeoRunBlockerKind::WaitingForInput)
+                            .map(|blocker| blocker.reason.as_str())
+                            .collect::<Vec<_>>()
+                            .join("; "),
+                    ),
+                ),
+                GeoRunStatus::Cancelled => (
+                    GeoRunProgressEventKind::RunCancelled,
+                    Some("cancelled before project node execution".to_string()),
+                ),
+                GeoRunStatus::Failed => (
+                    GeoRunProgressEventKind::RunFailed,
+                    run.project_run_report.as_ref().and_then(|report| {
+                        report
+                            .node_reports
+                            .iter()
+                            .find(|node| node.outcome == ProjectRunNodeOutcome::Failed)
+                            .and_then(|node| node.reason.clone())
+                    }),
+                ),
+                _ => (GeoRunProgressEventKind::RunFinished, None),
+            };
+            progress.terminal(
+                terminal_kind,
+                &run,
+                terminal_node,
+                terminal_stage,
+                wait_reason,
+            );
+            progress.finish_delivery()?;
+            Ok(run)
+        }
+        Err(error) => {
+            let terminal_node = error
+                .detail
+                .get("project_node_id")
+                .or_else(|| error.detail.get("node_id"))
+                .filter(|node_id| node_id.as_str() != "<none>")
+                .map(String::as_str);
+            let terminal_stage = terminal_node.and_then(|node_id| stages.get(node_id).copied());
+            let terminal_phase = progress.current_phase;
+            progress.emit(
+                GeoRunProgressEventKind::RunFailed,
+                terminal_phase,
+                Some(GeoRunStatus::Failed),
+                terminal_node,
+                terminal_stage,
+                Some(error.message.clone()),
+            );
+            let _ = progress.finish_delivery();
+            Err(error)
+        }
+    }
+}
+
+fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
+    request: GeoRunRequest,
+    prepared: PreparedGeoRun,
+    executor: &mut E,
+    progress: &mut GeoRunProgressWriter<'_>,
 ) -> GeoRunResult<GeoRun> {
     let artifact_inputs = artifact_refs_from_bindings(&prepared.input_bindings);
     let mut preflight_blockers = Vec::new();
@@ -478,9 +1018,18 @@ fn execute_prepared_geo_run<E: ProjectNodeExecutor>(
     }
 
     validate_effective_geo_project_nodes(&request.plan, &prepared.effective_project_plan)?;
-    let project_report =
-        run_project_plan(&prepared.effective_project_plan, &request.policy, executor)
-            .map_err(project_run_error)?;
+    let project_report = {
+        let mut reporting_executor =
+            GeoProgressProjectExecutor::new(executor, &request.plan, progress);
+        let report = run_project_plan(
+            &prepared.effective_project_plan,
+            &request.policy,
+            &mut reporting_executor,
+        )
+        .map_err(project_run_error)?;
+        reporting_executor.reconcile_report(&prepared.effective_project_plan, &report);
+        report
+    };
     validate_geo_project_report_outputs(
         &request.plan,
         &prepared.effective_project_plan,
@@ -1501,7 +2050,7 @@ fn seed_geo_project_executor_from_valid_receipts(
     plan: &ProjectPlan,
     policy: &ProjectRunPolicy,
     executor: &mut GeoProjectNodeExecutor,
-) -> GeoRunResult<()> {
+) -> GeoRunResult<BTreeMap<String, ProjectRunNodeReceipt>> {
     let mut candidate_receipts = BTreeMap::new();
     for node in &plan.nodes {
         let receipt_path = project_receipt_path(policy, &node.node_id)?;
@@ -1547,7 +2096,7 @@ fn seed_geo_project_executor_from_valid_receipts(
             break;
         }
     }
-    Ok(())
+    Ok(valid_receipts)
 }
 
 fn completed_receipt_matches_effective_node(
@@ -2247,6 +2796,60 @@ fn phase_for_stage(stage: GeoPlanStage) -> GeoRunPhase {
         GeoPlanStage::CompileEvidence => GeoRunPhase::Compiled,
         GeoPlanStage::FactorAndSolveExactResidual => GeoRunPhase::Solved,
     }
+}
+
+fn project_node_ids_in_dependency_order(plan: &ProjectPlan) -> Vec<String> {
+    let mut remaining = plan
+        .nodes
+        .iter()
+        .map(|node| (node.node_id.as_str(), node))
+        .collect::<BTreeMap<_, _>>();
+    let mut admitted = BTreeSet::new();
+    let mut ordered = Vec::with_capacity(plan.nodes.len());
+    while !remaining.is_empty() {
+        let ready = remaining
+            .iter()
+            .filter(|(_, node)| {
+                node.dependencies
+                    .iter()
+                    .all(|dependency| admitted.contains(dependency))
+            })
+            .map(|(node_id, _)| *node_id)
+            .collect::<Vec<_>>();
+        if ready.is_empty() {
+            break;
+        }
+        for node_id in ready {
+            remaining.remove(node_id);
+            admitted.insert(node_id.to_string());
+            ordered.push(node_id.to_string());
+        }
+    }
+    ordered
+}
+
+fn project_target_node_ids(
+    plan: &ProjectPlan,
+    selected_nodes: &BTreeSet<String>,
+) -> Option<BTreeSet<String>> {
+    if selected_nodes.is_empty() {
+        return Some(plan.nodes.iter().map(|node| node.node_id.clone()).collect());
+    }
+    let nodes = plan
+        .nodes
+        .iter()
+        .map(|node| (node.node_id.as_str(), node))
+        .collect::<BTreeMap<_, _>>();
+    let mut targets = BTreeSet::new();
+    let mut pending = selected_nodes.iter().cloned().collect::<Vec<_>>();
+    while let Some(node_id) = pending.pop() {
+        let node = nodes.get(node_id.as_str())?;
+        if !targets.insert(node_id) {
+            continue;
+        }
+        pending.extend(node.dependencies.iter().cloned());
+    }
+    Some(targets)
 }
 
 fn aggregate_deterministic_usage(report: Option<&ProjectRunReport>) -> BTreeMap<String, u64> {

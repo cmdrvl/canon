@@ -15,11 +15,16 @@
 > pending nodes only through registered internal offline executors. The first narrow
 > `copy-file-v1` executor proves positive dispatch; Geo plan now emits a semantic overlay
 > over one validated project DAG, and bounded Geo run delegates the current five Geo stages
-> through that runner. Its `--satisfy` path validates an explicit receipt against explicit
-> local bytes only; it does not mutate the immutable plan, clear acquisition blockers,
-> update inventory, or replan. Multi-artifact transactionality, immutable Geo run revision
-> lineage, cross-agent concurrency, and inspect remain open. Geo must extend this substrate,
-> not build a parallel orchestrator.
+> through that runner. Its CLI `--satisfy` path validates an explicit receipt against
+> explicit local bytes only; it does not mutate the immutable plan, clear acquisition
+> blockers, update inventory, or replan. A library caller can materialize a separate,
+> plan-bound inventory advancement only for the currently provable one-live-artifact,
+> one-release, full-region case when that artifact is valid `application/json` under
+> `canon_geo_warehouse_rows.v0`, then explicitly compile a new plan from that snapshot.
+> Project receipts now retain immutable content-addressed copies and cooperating publishers
+> protect canonical receipt/output slots, but multi-artifact transactionality, immutable Geo
+> run revision lineage, ready-node claims, crash-stale lock recovery, and inspect remain
+> open. Geo must extend this substrate, not build a parallel orchestrator.
 
 ## 1. Purpose
 
@@ -172,14 +177,16 @@ It contains no credentials, live catalog claims, or vendor-specific default auth
 
 ### 4.3 Regional evidence inventory
 
-`canon_geo_regional_inventory.v0` says what evidence is actually available for this
+`canon_geo_regional_inventory.v1` says what evidence is actually available for this
 geography and time. Each source instance declares:
 
 - source and release identity, content digest, valid/transaction time, and lineage;
-- native entity level or observation-only status;
+- native entity level plus `stable_alias` or `evidence_only` identity participation, or
+  observation-only status;
 - evidence classes it can emit;
 - coverage/subset predicate and known gaps;
-- acquisition recipe reference and local artifact state;
+- acquisition recipe reference and local artifact state, including the artifact contract
+  version required for a typed next-run binding;
 - coordinate/geometry contract and pinned transform where applicable;
 - license and egress restrictions;
 - declared record and byte estimates.
@@ -187,6 +194,11 @@ geography and time. Each source instance declares:
 Availability belongs here, not in core branches. `MapPLUTO`, a county assessor parcel
 file, and a licensed client parcel layer are different instances of a parcel evidence
 class. A region may declare no parcel instance at all.
+
+Identity participation and evidence support are separate. An evidence-only building source
+may support footprint, height, or incidence reasoning at building grain, but it cannot
+satisfy a stable-identity claim or contribute a registry alias. Canon never converts a
+derived geometry hash into a durable source identifier.
 
 ### 4.4 Resolution profile
 
@@ -227,9 +239,16 @@ inherit a fake CRS requirement. Planner consumption is implemented for the curre
 parcel/building profile, and run consumption is implemented only for explicit local input
 bindings plus `--satisfy` validation of explicit acquisition receipts against those local
 bytes. The satisfy check does not mutate the immutable plan, clear acquisition blockers,
-update inventory, or replan; genuine advancement requires a new plan whose inventory and
-inputs reflect the acquired evidence. Live acquisition and proof remain
-outside Canon.
+update inventory, or replan. The library advancement path additionally requires exact
+agreement with the plan's inventory id and semantic/planning hashes, one `live` receipt,
+one full-region artifact valid as `application/json` under
+`canon_geo_warehouse_rows.v0`, and one pinned release. A valid untyped CSV/JSONL artifact
+can satisfy the acquisition receipt but cannot advance ordinary regional availability.
+It intentionally refuses to infer a
+multi-release artifact partition from a caller-supplied relation, and it does not promote a
+narrow subset or fixture/retained proof to ordinary regional availability. The advancement
+is a new immutable inventory snapshot; using it requires an explicit new plan. Live
+acquisition and proof attestation remain outside Canon.
 
 Discovery proceeds from cheap metadata to bounded evidence:
 
@@ -436,11 +455,13 @@ The current shipped v0 contains:
 - an optional `canon.project.run.v2` report;
 - operational observation fields kept outside semantic identity.
 
-`--satisfy REQUEST_ID=RECEIPT.json` is not a state transition for the immutable plan. It is
-only a guard that checks the explicit receipt against explicit local bytes bound with
+CLI `--satisfy REQUEST_ID=RECEIPT.json` is not a state transition for the immutable plan.
+It is only a guard that checks the explicit receipt against explicit local bytes bound with
 `--input NODE_ID:BINDING_ID=PATH`; it does not update the inventory, mark discovery or
-acquisition blockers resolved, or replan. Once evidence is actually acquired, the genuine
-advancement path is to create a new plan whose inventory and inputs include that evidence.
+acquisition blockers resolved, or replan. A library caller may separately create the
+restricted, plan-bound inventory advancement described in §4.5. Once evidence is actually
+acquired, the genuine advancement path is still an explicit new plan whose inventory and
+inputs include that evidence.
 
 It does not yet contain the full target answer projection, generic source-release receipt
 index, separate abstention/contradiction/fallback collections, registry proposal refs,
@@ -454,18 +475,25 @@ invalidate downstream semantic work. Paths, ambient clocks, observed
 execution timestamps, worker order, and machine identity
 are operational metadata and do not enter semantic hashes. Declared query-as-of, source
 valid-time, transaction-time, and release-time values remain semantic inputs. A phase
-commits only after its output validates and hashes. Publication
-uses atomic same-filesystem replacement. The current run path reuses verified
+commits only after its output validates and hashes. Publication uses same-filesystem
+temporary files plus per-slot cooperating-writer locks. Node receipts are retained under
+their content hashes before a canonical slot is selected; semantic duplicates converge
+only when operational output and dependency bindings also agree. This prevents silent
+cooperating-writer overwrite, but it is not a lease/claim protocol and a process crash can
+leave a stale lock requiring operational repair. The current run path reuses verified
 `canon.project.run.v2` receipts within one work directory and resumes completed node
 outputs when their effective project input hashes still match. Generic immutable revision
 reuse, external-acquisition deduplication, and multi-agent concurrency remain target
 behavior rather than shipped Geo semantics.
 
-Long phases emit bounded progress events on stderr or an explicitly requested JSONL
-progress stream. Events name the current plan node, last committed artifact, deterministic
-counters, and any lock/input wait reason. They never enter the primary stdout artifact or
-semantic hash. Cancellation leaves the last validated phase resumable. Capability/help and
-read-only run inspection must not wait on unrelated build or work-directory locks.
+The Rust run API now has an opt-in deterministic JSONL progress writer. Its monotone events
+name the current plan node, last committed or resumed artifact, deterministic counters, and
+input/cancellation/failure state; they never enter the primary run artifact or semantic
+hash. Validated reusable receipts are reported before pending work begins, and cancellation
+leaves the last validated phase resumable. This is not yet a public CLI/operator capability
+or a schema-published protocol, and it does not yet report cooperative publication-lock wait
+state. Capability/help and future read-only run inspection must not wait on unrelated build
+or work-directory locks.
 
 The run state is a state machine, not a single success flag:
 
@@ -527,9 +555,10 @@ canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-
   acquisition receipts against those explicit bytes, emits `canon_geo_run.v0`, and resumes
   from verified project receipts in one work directory. The `--satisfy` validation path
   does not mutate the immutable plan, clear acquisition blockers, update inventory, or
-  replan; evidence that changes the run requires a new plan whose inventory and inputs
-  include that evidence. It does not perform live acquisition, provide live proof, or
-  implement generic immutable revision/concurrency semantics.
+  replan. The restricted inventory-advancement builder is a library surface, not an
+  implicit CLI state transition; evidence that changes the run requires a new plan whose
+  inventory and inputs include that evidence. It does not perform live acquisition,
+  provide live proof, or implement generic immutable revision/concurrency semantics.
 - `inspect` is the one-call situation report, explanation, diff, and next-action surface;
   it remains proposed/unavailable.
 

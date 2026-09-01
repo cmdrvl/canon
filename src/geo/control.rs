@@ -53,7 +53,7 @@ use std::{
 
 pub const CANON_GEO_QUESTION_VERSION: &str = "canon_geo_question.v0";
 pub const CANON_GEO_CAPABILITIES_VERSION: &str = "canon_geo_capabilities.v0";
-pub const CANON_GEO_REGIONAL_INVENTORY_VERSION: &str = "canon_geo_regional_inventory.v0";
+pub const CANON_GEO_REGIONAL_INVENTORY_VERSION: &str = "canon_geo_regional_inventory.v1";
 pub const CANON_GEO_RESOURCE_BUDGET_VERSION: &str = "canon_geo_resource_budget.v0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -279,10 +279,84 @@ pub struct GeoTemporalScope {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoIdentityParticipation {
+    StableAlias,
+    EvidenceOnly,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GeoNativeEntityScope {
-    NativeEntity { entity_level: GeoControlEntityLevel },
+    NativeEntity {
+        entity_level: GeoControlEntityLevel,
+        identity_participation: GeoIdentityParticipation,
+    },
     ObservationOnly,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum GeoNativeEntityScopeWire {
+    NativeEntity {
+        entity_level: GeoControlEntityLevel,
+        identity_participation: GeoIdentityParticipation,
+        #[serde(flatten)]
+        unknown_fields: BTreeMap<String, serde_json::Value>,
+    },
+    ObservationOnly {
+        #[serde(flatten)]
+        unknown_fields: BTreeMap<String, serde_json::Value>,
+    },
+}
+
+impl<'de> Deserialize<'de> for GeoNativeEntityScope {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = GeoNativeEntityScopeWire::deserialize(deserializer)?;
+        let (scope, unknown_fields) = match wire {
+            GeoNativeEntityScopeWire::NativeEntity {
+                entity_level,
+                identity_participation,
+                unknown_fields,
+            } => (
+                Self::NativeEntity {
+                    entity_level,
+                    identity_participation,
+                },
+                unknown_fields,
+            ),
+            GeoNativeEntityScopeWire::ObservationOnly { unknown_fields } => {
+                (Self::ObservationOnly, unknown_fields)
+            }
+        };
+        if unknown_fields.is_empty() {
+            Ok(scope)
+        } else {
+            Err(serde::de::Error::custom(format!(
+                "unknown native_scope field(s): {}",
+                unknown_fields
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )))
+        }
+    }
+}
+
+impl GeoNativeEntityScope {
+    pub const fn may_contribute_stable_alias(&self) -> bool {
+        matches!(
+            self,
+            Self::NativeEntity {
+                identity_participation: GeoIdentityParticipation::StableAlias,
+                ..
+            }
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -307,6 +381,7 @@ pub enum GeoSourceAvailability {
 #[serde(deny_unknown_fields)]
 pub struct GeoLocalArtifactRef {
     pub artifact_id: String,
+    pub contract_version: String,
     pub content_hash: String,
     pub media_type: String,
 }
@@ -764,6 +839,11 @@ pub fn regional_inventory_planning_hash(
                 .local_ref
                 .as_ref()
                 .map(|reference| reference.content_hash.clone()),
+            local_contract_version: source
+                .local_state
+                .local_ref
+                .as_ref()
+                .map(|reference| reference.contract_version.clone()),
             local_media_type: source
                 .local_state
                 .local_ref
@@ -954,7 +1034,7 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
         ),
         contract(
             CANON_GEO_REGIONAL_INVENTORY_VERSION,
-            "schemas/canon.geo.regional_inventory.v0.schema.json",
+            "schemas/canon.geo.regional_inventory.v1.schema.json",
             "regional source availability and discovery gap contract",
         ),
         contract(
@@ -1341,6 +1421,10 @@ pub fn evaluate_inventory_support(
         .map(|as_of| parse_utc_day("query_as_of.utc_day", &as_of.utc_day))
         .transpose()?;
     let inventory_region_matches = inventory.region == question.bounded_geography;
+    let stable_identity_requested = question
+        .requested_claim_classes
+        .binary_search(&GeoClaimClass::StableIdentity)
+        .is_ok();
 
     let mut grain_support = Vec::new();
     let mut discovery_gaps = Vec::new();
@@ -1358,6 +1442,7 @@ pub fn evaluate_inventory_support(
                         grain.entity_level,
                         *evidence_class,
                         &question.bounded_geography,
+                        stable_identity_requested,
                     ) {
                         continue;
                     }
@@ -1402,11 +1487,13 @@ pub fn evaluate_inventory_support(
                         "regional inventory region does not match the question bounded_geography"
                     } else if outside_valid_interval {
                         "available regional source exists, but query_as_of is outside its declared valid_time interval"
+                    } else if stable_identity_requested {
+                        "no available native source with stable-alias participation declares the requested evidence class at the requested entity level"
                     } else {
                         "no available regional source declares the requested evidence class at the requested entity level"
                     }
                     .to_string(),
-                    next_command: "supply a local source instance in canon_geo_regional_inventory.v0".to_string(),
+                    next_command: "supply a local source instance in canon_geo_regional_inventory.v1".to_string(),
                 });
             }
         }
@@ -1453,6 +1540,7 @@ struct GeoRegionalSourcePlanningProjection {
     coverage: GeoCoveragePredicate,
     availability: GeoSourceAvailability,
     local_content_hash: Option<String>,
+    local_contract_version: Option<String>,
     local_media_type: Option<String>,
     geometry: Option<GeoGeometryTransformContract>,
     license_class: GeoLicenseClass,
@@ -1648,7 +1736,7 @@ fn reject_cross_status_command_names(
 
 fn source_supports_level(source: &GeoRegionalSourceInstance, level: GeoControlEntityLevel) -> bool {
     match source.native_scope {
-        GeoNativeEntityScope::NativeEntity { entity_level } => entity_level == level,
+        GeoNativeEntityScope::NativeEntity { entity_level, .. } => entity_level == level,
         GeoNativeEntityScope::ObservationOnly => false,
     }
 }
@@ -1658,14 +1746,30 @@ fn source_matches_requested_grain(
     entity_level: GeoControlEntityLevel,
     evidence_class: GeoEvidenceClass,
     geography: &GeoBoundedGeography,
+    stable_identity_requested: bool,
 ) -> bool {
     source.local_state.state == GeoSourceAvailability::Available
+        && regional_source_has_usable_local_evidence(source)
         && source
             .evidence_classes
             .binary_search(&evidence_class)
             .is_ok()
         && source_supports_level(source, entity_level)
+        && (!stable_identity_requested || source.native_scope.may_contribute_stable_alias())
         && source.coverage.region == *geography
+}
+
+pub(crate) fn regional_source_has_usable_local_evidence(
+    source: &GeoRegionalSourceInstance,
+) -> bool {
+    source
+        .local_state
+        .local_ref
+        .as_ref()
+        .is_some_and(|reference| {
+            reference.media_type == "application/json"
+                && reference.contract_version == CANON_GEO_WAREHOUSE_ROWS_VERSION
+        })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1842,6 +1946,22 @@ fn validate_local_state(state: &GeoLocalAcquisitionState) -> Result<(), GeoContr
                 ));
             };
             validate_identifier("local_state.local_ref.artifact_id", &reference.artifact_id)?;
+            validate_identifier(
+                "local_state.local_ref.contract_version",
+                &reference.contract_version,
+            )?;
+            if !is_contract_version(&reference.contract_version) {
+                return Err(GeoControlError::invalid(
+                    "Geo local artifact contract versions must be canonical versioned Canon identifiers",
+                    [
+                        (
+                            String::from("field"),
+                            String::from("local_state.local_ref.contract_version"),
+                        ),
+                        (String::from("value"), reference.contract_version.clone()),
+                    ],
+                ));
+            }
             validate_blake3_hash(
                 "local_state.local_ref.content_hash",
                 &reference.content_hash,
@@ -1892,6 +2012,27 @@ fn validate_identifier(field: &str, value: &str) -> Result<(), GeoControlError> 
         ));
     }
     Ok(())
+}
+
+fn is_contract_version(value: &str) -> bool {
+    if value.len() > 128 {
+        return false;
+    }
+    let Some(rest) = value
+        .strip_prefix("canon_")
+        .or_else(|| value.strip_prefix("canon."))
+    else {
+        return false;
+    };
+    let Some((name, version)) = rest.rsplit_once(".v") else {
+        return false;
+    };
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'-'))
+        && !version.is_empty()
+        && version.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 fn validate_text(field: &str, value: &str) -> Result<(), GeoControlError> {

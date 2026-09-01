@@ -1327,11 +1327,28 @@
       "source_path": "schemas/canon.geo.run.v0.schema.json"
     },
     {
-      "id": "canon_geo_regional_inventory.v0",
+      "id": "canon_geo_run_progress.v0",
       "family": "geo",
       "action": "preserve",
       "access_boundary": "public_crate_api",
-      "crate_module": "canon::geo"
+      "crate_module": "canon::geo",
+      "source_path": "src/geo/run.rs"
+    },
+    {
+      "id": "canon_geo_regional_inventory.v1",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "schemas/canon.geo.regional_inventory.v1.schema.json"
+    },
+    {
+      "id": "canon_geo_regional_inventory_advancement.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo",
+      "source_path": "src/geo/satisfy.rs"
     },
     {
       "id": "canon_geo_resource_budget.v0",

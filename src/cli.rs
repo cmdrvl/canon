@@ -305,7 +305,7 @@ pub struct GeoPlanCli {
     /// JSON file holding a canon_geo_capabilities.v0 capability artifact
     #[arg(long)]
     pub capabilities: PathBuf,
-    /// JSON file holding a canon_geo_regional_inventory.v0 inventory
+    /// JSON file holding a canon_geo_regional_inventory.v1 inventory
     #[arg(long)]
     pub inventory: PathBuf,
     /// JSON file holding a canon_geo_composition_profile.v0 profile

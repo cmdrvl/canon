@@ -25,11 +25,16 @@
 > receipt checks, then delegates the five implemented Geo stages to the shared
 > `canon.project.run.v2` runner and emits `canon_geo_run.v0`. It does not perform live
 > acquisition, prove live source truth, mutate the immutable plan, clear acquisition
-> blockers, update inventory, replan, implement generic immutable revision/concurrency
-> control, or provide an inspection/next-evidence surface. A `--satisfy` check only
-> validates an explicit acquisition receipt against explicit local input bytes. Genuine
-> advancement after acquiring evidence requires a new plan whose inventory and inputs
-> reflect that acquired evidence. Geo inspect and
+> blockers, automatically replan, implement generic immutable revision/concurrency
+> control, or provide an inspection/next-evidence surface. The public CLI `--satisfy`
+> check only validates an explicit acquisition receipt against explicit local input bytes.
+> The library can additionally materialize an immutable, plan-bound regional-inventory
+> advancement for the currently provable one-live-artifact/one-release/full-region case
+> when the artifact is valid `application/json` under `canon_geo_warehouse_rows.v0`;
+> caller-supplied multi-release attribution, retained/fixture proof, and narrower subsets
+> stay non-advancing. That artifact still does not mutate the plan or clear its blockers:
+> the agent must explicitly compile a new plan from the advanced inventory and bind its
+> typed, contract-versioned local input. Geo inspect and
 > residual-aware next-evidence control remain open. Geometry
 > acquisition/ingest, temporal solving, knowledge compilation, and
 > the complete E4/E5 populations do not exist. This does not change canon core: runtime
@@ -65,8 +70,8 @@ The controlling state entering the main review is:
 | Topic | Current controlling state | Authority |
 |---|---|---|
 | Product boundary | Core Canon remains exact registry replay; GEO is a build-time workbench. | `AGENTS.md`, `README.md`; binding boundary |
-| Agent operating model | The target surface is question + regional inventory + resolution profile + deterministic budget -> plan -> immutable run revisions -> typed answer/explanation/next action. Leaf Geo commands remain independently callable, `canon geo capabilities --emit json` is shipped as an offline/read-only capability artifact, `canon geo plan` now ships as an offline/read-only planner that emits `canon_geo_plan.v0` over one shared `canon.project.plan.v1` DAG, and `canon geo run` now ships as a bounded offline executor for that current five-stage parcel/building composition plan. The run path emits `canon_geo_run.v0`, accepts explicit local input bindings, and treats optional `--satisfy` arguments only as receipt-vs-local-bytes validation guards. It preserves unsupported grains as typed blockers/actions; a satisfy check does not clear acquisition blockers, update inventory, mutate the immutable plan, or replan. Genuine advancement requires a new plan whose inventory and inputs reflect the acquired evidence. It does not acquire live data, prove live source truth, expose the inspect surface, or complete generic immutable run revisions/concurrency. Source instances belong in adapters/inventories, never core branches. | `CANON_GEO_AGENT_ARCHITECTURE.md`; typed control/discovery/plan/run contracts `PARTIAL`, inspection/revision/concurrency/next-evidence control `OPEN` |
-| Shared project substrate | Library-level `canon.project.plan.v1` and `canon.project.run.v2` provide manifest/lock DAGs, receipts, resume, invalidation, lifecycle, and workspace policy. The project CLI exposes lock refresh and pure planning; public project run validates/reuses v2 receipts and now executes pending nodes only through registered internal offline executors. The first narrow `copy-file-v1` executor proves positive dispatch with digest-checked inputs and one declared output. Geo plan reuses the project DAG as a typed semantic overlay, and bounded `geo run` delegates the five current Geo stages to that shared runner with typed local input bindings. Output and receipt files publish atomically one at a time, but output-plus-receipt and multi-output transactionality, immutable Geo run revisions, cross-agent concurrency, and inspect remain open. Geo must extend this substrate rather than create a second scheduler. | `src/project/{manifest,lock,plan,run,receipt,lifecycle,workspace}.rs`, `src/geo/run.rs`; reusable positive executor seam and bounded Geo execution `PARTIAL`, revision/concurrency/inspect `OPEN` |
+| Agent operating model | The target surface is question + regional inventory + resolution profile + deterministic budget -> plan -> immutable run revisions -> typed answer/explanation/next action. Leaf Geo commands remain independently callable, `canon geo capabilities --emit json` is shipped as an offline/read-only capability artifact, `canon geo plan` now ships as an offline/read-only planner that emits `canon_geo_plan.v0` over one shared `canon.project.plan.v1` DAG, and `canon geo run` now ships as a bounded offline executor for that current five-stage parcel/building composition plan. The run path emits `canon_geo_run.v0`, accepts explicit local input bindings, and treats optional CLI `--satisfy` arguments only as receipt-vs-local-bytes validation guards. The library can emit a separate plan-bound inventory advancement only for one live, full-region `canon_geo_warehouse_rows.v0` JSON artifact bound unambiguously to one release; the agent must explicitly feed that immutable snapshot to a new plan. Valid but untyped CSV/JSONL receipt artifacts remain satisfactions, not inventory advancements. It preserves unsupported grains as typed blockers/actions and never mutates the old plan or clears its blockers. Native sources also declare whether they can contribute a stable alias or evidence only; evidence-only sources can support their declared evidence class but cannot satisfy a stable-identity claim. It does not acquire live data, attest live source truth, expose the inspect surface, or complete generic immutable run revisions/concurrency. Source instances belong in adapters/inventories, never core branches. | `CANON_GEO_AGENT_ARCHITECTURE.md`; typed control/discovery/plan/run contracts `PARTIAL`, inspection/revision/concurrency/next-evidence control `OPEN` |
+| Shared project substrate | Library-level `canon.project.plan.v1` and `canon.project.run.v2` provide manifest/lock DAGs, receipts, resume, invalidation, lifecycle, and workspace policy. The project CLI exposes lock refresh and pure planning; public project run validates/reuses v2 receipts and executes pending nodes only through registered internal offline executors. The first narrow `copy-file-v1` executor proves positive dispatch with digest-checked inputs and one declared output. Geo plan reuses the project DAG as a typed semantic overlay, and bounded `geo run` delegates the five current Geo stages to that shared runner with typed local input bindings. Node receipts are retained in content-addressed storage, and cooperating writers use per-slot publication locks before selecting one canonical receipt/output; semantically equivalent receipts deduplicate only when their operational bindings agree. This is convergence substrate, not the parallel work protocol: output-plus-receipt and multi-output transactionality, crash-stale lock recovery, immutable Geo run revisions, ready-node claims, and inspect remain open. Geo must extend this substrate rather than create a second scheduler. | `src/project/{manifest,lock,plan,run,receipt,lifecycle,workspace}.rs`, `src/geo/run.rs`; reusable positive executor seam and bounded Geo execution `PARTIAL`, revision/claims/inspect `OPEN` |
 | N-source row composition | `canon geo link-sources` now materializes three or more named local CSV sources through the existing entity multisource kernel. Geo requires exactly one target, at least one bounded reference, permits peers, refuses a globally canonical vendor role, defaults to the complete comparison graph, enforces per-pair budgets, emits anchor-conflict abstentions, and content-hashes every input and the merged rows. The semantic artifact hash excludes publication paths and is compatible with `EntityArtifactReference`; source count remains provenance rather than evidence weight. This is row composition, not spatial candidate reach, constraint admission, or solving. | `src/geo/multisource.rs`, `src/entity/multisource.rs`, `canon_geo_multisource_request.v0`, `canon_entity_multisource_link.v1`; implemented build-time workbench contract |
 | Offline row bridge | `canon geo materialize-evidence` deterministically groups release-pinned profile-permitted parcel/building rows, parcel incidence where declared, rho-contract, and immutable source-record rows into `canon_geo_evidence_request.v0`; duplicate grains and conflicting observation rows refuse, and the production evidence compiler validates the result. The backward-compatible default parcel profile still requires parcel candidates; explicit building profile permits an empty parcel universe, rejects parcel rows/incidences, and preserves building-only evidence. It performs no acquisition, and source-record multiplicity remains provenance rather than constraint weight. | `src/geo/materialize.rs`, `canon_geo_warehouse_rows.v0`; implemented build-time workbench contract |
 | Measurement receipt integrity | The companion `canon_geo_measurements` binary emits a deterministic offline plan or checks supplied result artifacts and receipts against the pinned B/C/D/F manifest. It recomputes local source-SQL bytes, normalized executed-query-text bytes, artifact bytes, an unordered canonical result-set digest, row-derived denominators, and declared sanity fields. A successful row is only `receipt_consistent`: the operator-supplied proof class is reported separately, and the runner does not attest live execution, query-history provenance, or source authenticity. | `src/bin/canon_geo_measurements.rs`, `scripts/geo_measurements/manifest.json`; offline integrity contract `IMPLEMENTED`, live provenance `OPEN` |
@@ -127,8 +132,12 @@ next commands. The current shipped run artifact is narrower: it records the boun
 five-stage run, typed local input refs, output refs, grain states, blockers, next actions,
 deterministic usage, optional `canon.project.run.v2` report, and operational observations.
 It reuses verified project receipts inside one work directory when effective input hashes
-match, but generic immutable revision lineage, cross-agent concurrency, and inspection are
-still open. Paths, clocks, worker order, and machine identity do not enter semantic hashes.
+match. Its Rust API also offers an opt-in deterministic JSONL progress writer that reports
+validated reuse before pending execution, monotone phases, committed artifacts, counters,
+wait/cancellation/failure state, and leaves the semantic run bytes unchanged. That stream
+is not yet a public CLI/schema capability. Generic immutable revision lineage, ready-node
+claims, cross-agent scheduling, and inspection are still open. Paths, clocks, worker order,
+and machine identity do not enter semantic hashes.
 
 This operating model adds no new epistemic shortcut. More admitted hard evidence narrows
 the model set or makes it empty. Source count is provenance, not independent information.
@@ -153,11 +162,17 @@ shipped as a bounded offline executor for that current five-stage plan. It deleg
 `materialize-home-cells`, `tile-work`, `materialize-evidence`, `compile-evidence`, and
 `solve` to the shared `canon.project.run.v2` runner, hashes explicit local
 `--input NODE_ID:BINDING_ID=PATH` bytes into the effective project DAG, and emits
-`canon_geo_run.v0`. Optional `--satisfy REQUEST_ID=RECEIPT.json` arguments are
+`canon_geo_run.v0`. Optional CLI `--satisfy REQUEST_ID=RECEIPT.json` arguments are
 validation guards only: they check an explicit acquisition receipt against explicit local
 input bytes. They do not mutate the immutable plan, clear acquisition blockers, update the
-inventory, or replan. Genuine advancement after acquiring evidence requires a new
-`canon geo plan` whose inventory and inputs reflect that acquired evidence. `geo run`
+inventory, or replan. A library caller may materialize a separate inventory-advancement
+artifact only when the plan inventory hashes match exactly and one live, full-region local
+`canon_geo_warehouse_rows.v0` JSON artifact validates as usable and is unambiguously bound
+to one pinned release. A valid untyped CSV/JSONL receipt can satisfy its acquisition request
+but cannot make a source planning-ready. Multi-release attribution without a
+receipt-bound partition manifest, retained/fixture proof, and narrower subsets remain
+non-advancing. Genuine advancement still requires an explicit new `canon geo plan` whose
+inventory snapshot and inputs reflect that acquired evidence. `geo run`
 currently operates only within the
 parcel/building composition-profile limit: omitted/default `parcel` preserves the
 non-empty parcel universe requirement, explicit `building` permits a parcel-free building

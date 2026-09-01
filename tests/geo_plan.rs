@@ -5,15 +5,16 @@ use canon::geo::{
     CANON_GEO_RESOURCE_BUDGET_VERSION, GeoAbstentionDisposition, GeoAbstentionPolicy, GeoAsOf,
     GeoBoundedGeography, GeoBudgetAction, GeoClaimClass, GeoCompositionProfile,
     GeoControlEntityLevel, GeoCoveragePredicate, GeoDateInterval, GeoDiscoveryGap, GeoEgressClass,
-    GeoEvidenceClass, GeoGeometryTransformContract, GeoLicenseClass, GeoLocalAcquisitionState,
-    GeoLocalArtifactRef, GeoNativeEntityScope, GeoNumericBound, GeoNumericMeasure,
-    GeoPlanExternalRequest, GeoPlanGatePlane, GeoPlanGateStatus, GeoPlanGrainStatus,
-    GeoPlanRequest, GeoPlanStage, GeoPlanStatus, GeoRegionalInventory, GeoRegionalSourceInstance,
-    GeoReleaseSelectionMode, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter,
-    GeoSourceAvailability, GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass,
-    GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
-    GeoValueOrigin, canonical_geo_plan_bytes, capabilities_semantic_hash, compile_geo_plan,
-    default_geo_capabilities, geo_discovery_request_id, geo_plan_semantic_hash, validate_geo_plan,
+    GeoEvidenceClass, GeoGeometryTransformContract, GeoIdentityParticipation, GeoLicenseClass,
+    GeoLocalAcquisitionState, GeoLocalArtifactRef, GeoNativeEntityScope, GeoNumericBound,
+    GeoNumericMeasure, GeoPlanExternalRequest, GeoPlanGatePlane, GeoPlanGateStatus,
+    GeoPlanGrainStatus, GeoPlanRequest, GeoPlanStage, GeoPlanStatus, GeoRegionalInventory,
+    GeoRegionalSourceInstance, GeoReleaseSelectionMode, GeoRequestedGrain, GeoResourceBudget,
+    GeoResourceCounter, GeoSourceAvailability, GeoSourceRelease, GeoSubjectBinding,
+    GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
+    GeoTelemetrySemanticEffect, GeoTemporalScope, GeoValueOrigin, canonical_geo_plan_bytes,
+    capabilities_semantic_hash, compile_geo_plan, default_geo_capabilities,
+    geo_discovery_request_id, geo_plan_semantic_hash, validate_geo_plan,
 };
 
 fn digest(label: &str) -> String {
@@ -129,6 +130,7 @@ fn source(
         lineage_ids: vec!["lineage.fixture.one".to_string()],
         native_scope: GeoNativeEntityScope::NativeEntity {
             entity_level: level,
+            identity_participation: GeoIdentityParticipation::StableAlias,
         },
         evidence_classes: vec![evidence_class],
         coverage: GeoCoveragePredicate {
@@ -141,6 +143,7 @@ fn source(
             local_ref: if availability == GeoSourceAvailability::Available {
                 Some(GeoLocalArtifactRef {
                     artifact_id: format!("artifact.{source_instance_id}"),
+                    contract_version: "canon_geo_warehouse_rows.v0".to_string(),
                     content_hash: digest("local.fixture.one"),
                     media_type: "application/json".to_string(),
                 })
@@ -295,6 +298,71 @@ fn plans_one_bounded_factorized_building_chain_over_the_shared_project_dag() {
 }
 
 #[test]
+fn evidence_only_source_cannot_plan_stable_identity_but_can_plan_other_claims() {
+    let mut evidence_only_inventory = inventory(
+        "arbitrary-evidence-only-buildings",
+        GeoSourceAvailability::Available,
+    );
+    evidence_only_inventory.sources[0].native_scope = GeoNativeEntityScope::NativeEntity {
+        entity_level: GeoControlEntityLevel::Building,
+        identity_participation: GeoIdentityParticipation::EvidenceOnly,
+    };
+
+    let non_identity_plan = compile_geo_plan(request(
+        question(false),
+        evidence_only_inventory.clone(),
+        budget(),
+    ))
+    .expect("evidence-only source plans non-identity composition");
+    assert_eq!(non_identity_plan.status, GeoPlanStatus::Planned);
+    assert!(
+        non_identity_plan
+            .geo_nodes
+            .iter()
+            .all(|node| !node.claim_classes.contains(&GeoClaimClass::StableIdentity))
+    );
+
+    let mut stable_identity_question = question(false);
+    stable_identity_question
+        .requested_claim_classes
+        .push(GeoClaimClass::StableIdentity);
+    let stable_identity_plan = compile_geo_plan(request(
+        stable_identity_question.clone(),
+        evidence_only_inventory,
+        budget(),
+    ))
+    .expect("unsupported stable identity remains a typed plan outcome");
+    assert_eq!(stable_identity_plan.status, GeoPlanStatus::Unsupported);
+    assert!(stable_identity_plan.geo_nodes.is_empty());
+    assert_eq!(
+        stable_identity_plan.grain_outcomes[0].status,
+        GeoPlanGrainStatus::UnsupportedByInventory
+    );
+    assert!(
+        stable_identity_plan.grain_outcomes[0]
+            .claim_limitation
+            .contains("cannot begin")
+    );
+
+    let stable_identity_plan = compile_geo_plan(request(
+        stable_identity_question,
+        inventory(
+            "arbitrary-stable-building-source",
+            GeoSourceAvailability::Available,
+        ),
+        budget(),
+    ))
+    .expect("stable-alias source plans stable identity");
+    assert_eq!(stable_identity_plan.status, GeoPlanStatus::Planned);
+    assert!(
+        stable_identity_plan
+            .geo_nodes
+            .iter()
+            .all(|node| node.claim_classes.contains(&GeoClaimClass::StableIdentity))
+    );
+}
+
+#[test]
 fn parcel_free_inventory_preserves_building_plan_and_marks_parcel_unsupported() {
     let plan = compile_geo_plan(request(
         question(true),
@@ -365,6 +433,34 @@ fn missing_local_geometry_emits_typed_acquisition_and_no_solve() {
             .iter()
             .any(|node| node.node_id.ends_with(".solve"))
     );
+}
+
+#[test]
+fn available_but_unusable_local_contract_reenters_acquisition() {
+    let mut inventory = inventory(
+        "wrong-contract-building-source",
+        GeoSourceAvailability::Available,
+    );
+    inventory.sources[0]
+        .local_state
+        .local_ref
+        .as_mut()
+        .expect("available fixture source has local ref")
+        .contract_version = "canon_geo_unknown_rows.v9".to_string();
+
+    let plan = compile_geo_plan(request(question(false), inventory, budget()))
+        .expect("an unusable local representation gets an explicit repair plan");
+
+    assert_eq!(plan.status, GeoPlanStatus::Partial);
+    assert_eq!(
+        plan.grain_outcomes[0].status,
+        GeoPlanGrainStatus::WaitingForAcquisition
+    );
+    assert!(matches!(
+        plan.external_requests.as_slice(),
+        [GeoPlanExternalRequest::Acquisition { .. }]
+    ));
+    assert!(plan.project_plan.nodes.is_empty());
 }
 
 #[test]

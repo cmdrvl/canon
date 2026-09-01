@@ -5,13 +5,14 @@ use canon::geo::{
     CANON_GEO_RESOURCE_BUDGET_VERSION, GeoAbstentionDisposition, GeoAbstentionPolicy,
     GeoBoundedGeography, GeoBudgetAction, GeoClaimClass, GeoCompositionProfile,
     GeoControlEntityLevel, GeoCoveragePredicate, GeoDigestAlgorithm, GeoEgressClass,
-    GeoEvidenceClass, GeoGeometryTransformContract, GeoLicenseClass, GeoLocalAcquisitionState,
-    GeoLocalArtifactRef, GeoNativeEntityScope, GeoNumericBound, GeoNumericMeasure, GeoPlan,
-    GeoPlanExternalRequest, GeoPlanRequest, GeoQuestion, GeoRegionalInventory,
-    GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter,
-    GeoSourceAvailability, GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass,
-    GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
-    GeoValueOrigin, compile_geo_plan, default_geo_capabilities, validate_geo_plan,
+    GeoEvidenceClass, GeoGeometryTransformContract, GeoIdentityParticipation, GeoLicenseClass,
+    GeoLocalAcquisitionState, GeoLocalArtifactRef, GeoNativeEntityScope, GeoNumericBound,
+    GeoNumericMeasure, GeoPlan, GeoPlanExternalRequest, GeoPlanRequest, GeoQuestion,
+    GeoRegionalInventory, GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget,
+    GeoResourceCounter, GeoSourceAvailability, GeoSourceRelease, GeoSubjectBinding,
+    GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
+    GeoTelemetrySemanticEffect, GeoTemporalScope, GeoValueOrigin, compile_geo_plan,
+    default_geo_capabilities, validate_geo_plan,
 };
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -458,6 +459,7 @@ fn building_inventory() -> GeoRegionalInventory {
             lineage_ids: vec!["lineage.fixture.buildings".to_string()],
             native_scope: GeoNativeEntityScope::NativeEntity {
                 entity_level: GeoControlEntityLevel::Building,
+                identity_participation: GeoIdentityParticipation::StableAlias,
             },
             evidence_classes: vec![GeoEvidenceClass::BuildingFootprint],
             coverage: GeoCoveragePredicate {
@@ -469,6 +471,7 @@ fn building_inventory() -> GeoRegionalInventory {
                 state: GeoSourceAvailability::Available,
                 local_ref: Some(GeoLocalArtifactRef {
                     artifact_id: "local.fixture.buildings".to_string(),
+                    contract_version: "canon_geo_warehouse_rows.v0".to_string(),
                     content_hash: digest("local.fixture.buildings"),
                     media_type: "application/json".to_string(),
                 }),

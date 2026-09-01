@@ -133,6 +133,12 @@ pub struct ProjectRunReceipt {
     pub node_receipts: Vec<ProjectRunNodeReceipt>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectNodeReceiptPublication {
+    pub receipt: ProjectRunNodeReceipt,
+    pub deduplicated_existing: bool,
+}
+
 pub fn finalized_node_receipt(
     mut receipt: ProjectRunNodeReceipt,
 ) -> ProjectReceiptResult<ProjectRunNodeReceipt> {
@@ -204,6 +210,47 @@ pub fn write_node_receipt(
     replace_node_receipt(path, receipt, None)
 }
 
+pub fn converge_node_receipt(
+    path: &Path,
+    receipt: &ProjectRunNodeReceipt,
+    expected_existing: Option<&ProjectRunNodeReceipt>,
+) -> ProjectReceiptResult<ProjectNodeReceiptPublication> {
+    let receipt = validate_node_receipt(receipt.clone())?;
+    let bytes = canonical_node_receipt_bytes(&receipt)?;
+    let expected_existing_bytes = expected_existing
+        .map(canonical_node_receipt_bytes)
+        .transpose()?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| io_error(parent, error))?;
+    }
+    write_node_receipt_cas(path, &receipt, &bytes)?;
+    match write_atomic_replace(path, &bytes, expected_existing_bytes.as_deref())? {
+        ReceiptSlotWrite::Intended => Ok(ProjectNodeReceiptPublication {
+            receipt,
+            deduplicated_existing: false,
+        }),
+        ReceiptSlotWrite::Existing(existing_bytes) => {
+            let existing = parse_node_receipt(&existing_bytes)?;
+            write_node_receipt_cas(path, &existing, &existing_bytes)?;
+            if node_receipts_can_deduplicate(&receipt, &existing) {
+                return Ok(ProjectNodeReceiptPublication {
+                    receipt: existing,
+                    deduplicated_existing: true,
+                });
+            }
+            Err(ProjectReceiptError::new(
+                ProjectReceiptErrorCode::Io,
+                format!(
+                    "refusing to replace existing project receipt {} because it records a different semantic result or operational binding for node {}; intended receipt was preserved at {} and the canonical receipt was preserved",
+                    path.display(),
+                    receipt.node_id,
+                    node_receipt_cas_path(path, &receipt.receipt_hash).display()
+                ),
+            ))
+        }
+    }
+}
+
 pub fn replace_node_receipt(
     path: &Path,
     receipt: &ProjectRunNodeReceipt,
@@ -216,7 +263,17 @@ pub fn replace_node_receipt(
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| io_error(parent, error))?;
     }
-    write_atomic_replace(path, &bytes, expected_existing_bytes.as_deref())
+    write_node_receipt_cas(path, receipt, &bytes)?;
+    match write_atomic_replace(path, &bytes, expected_existing_bytes.as_deref())? {
+        ReceiptSlotWrite::Intended => Ok(()),
+        ReceiptSlotWrite::Existing(_) => Err(ProjectReceiptError::new(
+            ProjectReceiptErrorCode::Io,
+            format!(
+                "refusing to replace existing project receipt {} because its bytes differ from the intended receipt",
+                path.display()
+            ),
+        )),
+    }
 }
 
 pub fn finalized_run_receipt(
@@ -247,6 +304,13 @@ pub fn canonical_run_receipt_bytes(receipt: &ProjectRunReceipt) -> ProjectReceip
             format!("failed to serialize run receipt: {error}"),
         )
     })
+}
+
+pub fn node_receipt_cas_path(canonical_path: &Path, receipt_hash: &str) -> PathBuf {
+    let parent = canonical_path.parent().unwrap_or_else(|| Path::new("."));
+    parent
+        .join("cas")
+        .join(format!("{}.json", receipt_hash_token(receipt_hash)))
 }
 
 pub fn validate_node_receipt(
@@ -454,11 +518,84 @@ fn canonicalize_run_receipt(receipt: &mut ProjectRunReceipt) {
         .sort_by(|left, right| left.node_id.cmp(&right.node_id));
 }
 
+enum ReceiptSlotWrite {
+    Intended,
+    Existing(Vec<u8>),
+}
+
+struct ReceiptSlotLock {
+    path: PathBuf,
+}
+
+impl Drop for ReceiptSlotLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+fn write_node_receipt_cas(
+    canonical_path: &Path,
+    receipt: &ProjectRunNodeReceipt,
+    bytes: &[u8],
+) -> ProjectReceiptResult<()> {
+    let cas_path = node_receipt_cas_path(canonical_path, &receipt.receipt_hash);
+    if let Some(parent) = cas_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| io_error(parent, error))?;
+    }
+    match write_atomic_replace(&cas_path, bytes, None)? {
+        ReceiptSlotWrite::Intended => Ok(()),
+        ReceiptSlotWrite::Existing(_) => Err(ProjectReceiptError::new(
+            ProjectReceiptErrorCode::Io,
+            format!(
+                "refusing to replace content-addressed project receipt {} because its bytes differ from the intended receipt",
+                cas_path.display()
+            ),
+        )),
+    }
+}
+
+fn node_receipts_can_deduplicate(
+    intended: &ProjectRunNodeReceipt,
+    existing: &ProjectRunNodeReceipt,
+) -> bool {
+    intended.semantic_hash == existing.semantic_hash
+        && intended.schema_version == existing.schema_version
+        && intended.project_id == existing.project_id
+        && intended.node_id == existing.node_id
+        && intended.node_cache_key == existing.node_cache_key
+        && intended.content_hash_inputs == existing.content_hash_inputs
+        && intended.dependency_semantic_hashes == existing.dependency_semantic_hashes
+        && intended.dependency_receipt_hashes == existing.dependency_receipt_hashes
+        && operational_output_receipts(intended) == operational_output_receipts(existing)
+        && intended.outcome == existing.outcome
+        && intended.deterministic_usage == existing.deterministic_usage
+        && intended.next_action == existing.next_action
+        && intended.failure_code == existing.failure_code
+}
+
+fn operational_output_receipts(receipt: &ProjectRunNodeReceipt) -> Vec<(&str, &str, &str, u64)> {
+    let mut outputs = receipt
+        .outputs
+        .iter()
+        .map(|output| {
+            (
+                output.output_id.as_str(),
+                output.path.as_str(),
+                output.content_digest.as_str(),
+                output.byte_count,
+            )
+        })
+        .collect::<Vec<_>>();
+    outputs.sort();
+    outputs
+}
+
 fn write_atomic_replace(
     path: &Path,
     bytes: &[u8],
     expected_existing: Option<&[u8]>,
-) -> ProjectReceiptResult<()> {
+) -> ProjectReceiptResult<ReceiptSlotWrite> {
+    let _slot_lock = acquire_receipt_slot_lock(path)?;
     let temp_path = atomic_receipt_temp_path(path, bytes);
     match OpenOptions::new()
         .write(true)
@@ -480,12 +617,44 @@ fn write_atomic_replace(
     }
 }
 
+fn acquire_receipt_slot_lock(path: &Path) -> ProjectReceiptResult<ReceiptSlotLock> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("receipt");
+    let lock_path = path.with_file_name(format!(".{file_name}.publish.lock"));
+    match OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock_path)
+    {
+        Ok(file) => {
+            file.sync_all().map_err(|error| {
+                let _ = fs::remove_file(&lock_path);
+                io_error(&lock_path, error)
+            })?;
+            Ok(ReceiptSlotLock { path: lock_path })
+        }
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            Err(ProjectReceiptError::new(
+                ProjectReceiptErrorCode::Io,
+                format!(
+                    "refusing concurrent publication of project receipt {} while lock {} is active; retry after the current publisher completes",
+                    path.display(),
+                    lock_path.display()
+                ),
+            ))
+        }
+        Err(error) => Err(io_error(&lock_path, error)),
+    }
+}
+
 fn recover_atomic_receipt_temp(
     path: &Path,
     temp_path: &Path,
     bytes: &[u8],
     expected_existing: Option<&[u8]>,
-) -> ProjectReceiptResult<()> {
+) -> ProjectReceiptResult<ReceiptSlotWrite> {
     let existing = fs::read(temp_path).map_err(|error| io_error(temp_path, error))?;
     if existing != bytes {
         return Err(ProjectReceiptError::new(
@@ -504,27 +673,23 @@ fn finish_atomic_receipt_replace(
     temp_path: &Path,
     bytes: &[u8],
     expected_existing: Option<&[u8]>,
-) -> ProjectReceiptResult<()> {
+) -> ProjectReceiptResult<ReceiptSlotWrite> {
     match fs::read(path) {
         Ok(existing) if existing == bytes => {
             let _ = fs::remove_file(temp_path);
-            Ok(())
+            Ok(ReceiptSlotWrite::Intended)
         }
         Ok(existing) if expected_existing.is_some_and(|expected| expected == existing) => {
-            fs::rename(temp_path, path).map_err(|error| io_error(temp_path, error))
+            fs::rename(temp_path, path).map_err(|error| io_error(temp_path, error))?;
+            Ok(ReceiptSlotWrite::Intended)
         }
-        Ok(_) => {
+        Ok(existing) => {
             let _ = fs::remove_file(temp_path);
-            Err(ProjectReceiptError::new(
-                ProjectReceiptErrorCode::Io,
-                format!(
-                    "refusing to replace existing project receipt {} because its bytes differ from the intended receipt",
-                    path.display()
-                ),
-            ))
+            Ok(ReceiptSlotWrite::Existing(existing))
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            fs::rename(temp_path, path).map_err(|error| io_error(temp_path, error))
+            fs::rename(temp_path, path).map_err(|error| io_error(temp_path, error))?;
+            Ok(ReceiptSlotWrite::Intended)
         }
         Err(error) => Err(io_error(path, error)),
     }
@@ -537,6 +702,19 @@ fn atomic_receipt_temp_path(path: &Path, bytes: &[u8]) -> PathBuf {
         .unwrap_or("receipt");
     let token = digest_bytes(bytes).replace(':', "_");
     path.with_file_name(format!("{file_name}.{token}.tmp"))
+}
+
+fn receipt_hash_token(receipt_hash: &str) -> String {
+    receipt_hash
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 fn cleanup_io_error(path: &Path, error: io::Error) -> ProjectReceiptError {

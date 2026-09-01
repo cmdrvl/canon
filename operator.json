@@ -1095,7 +1095,7 @@
           "flag": "--inventory",
           "type": "file_path",
           "required": true,
-          "description": "JSON file holding a canon_geo_regional_inventory.v0 inventory"
+          "description": "JSON file holding a canon_geo_regional_inventory.v1 inventory"
         },
         {
           "name": "profile",

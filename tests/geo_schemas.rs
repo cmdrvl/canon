@@ -54,10 +54,10 @@ use canon::geo::{
     GeoH7ResultMode, GeoH7SourceEvidenceRecord, GeoH7SourceRecordRole,
     GeoH7StagingEvidenceRecordRef, GeoH7StagingSourceEvidenceRecord,
     GeoH7StagingSourceRecordBytesBatchRequest, GeoH7StagingSourceRecordBytesRow, GeoHardConstraint,
-    GeoHardConstraintKind, GeoHomeCellRow, GeoHomeCellRowsRequest, GeoLabeledCompositionCase,
-    GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef, GeoLocalFrameContract,
-    GeoMultisourceRequest, GeoMultisourceSource, GeoNativeEntityScope, GeoNumericBound,
-    GeoNumericMeasure, GeoNycBorough, GeoPadAddressMember, GeoPadAddressSet,
+    GeoHardConstraintKind, GeoHomeCellRow, GeoHomeCellRowsRequest, GeoIdentityParticipation,
+    GeoLabeledCompositionCase, GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef,
+    GeoLocalFrameContract, GeoMultisourceRequest, GeoMultisourceSource, GeoNativeEntityScope,
+    GeoNumericBound, GeoNumericMeasure, GeoNycBorough, GeoPadAddressMember, GeoPadAddressSet,
     GeoPopulationEvaluationRequest, GeoProjectionProvenance, GeoQuestion, GeoRegionalInventory,
     GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter,
     GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoSourceAvailability,
@@ -132,7 +132,7 @@ const CONTROL_QUESTION_SCHEMA: &str = include_str!("../schemas/canon.geo.questio
 const CONTROL_CAPABILITIES_SCHEMA: &str =
     include_str!("../schemas/canon.geo.capabilities.v0.schema.json");
 const CONTROL_REGIONAL_INVENTORY_SCHEMA: &str =
-    include_str!("../schemas/canon.geo.regional_inventory.v0.schema.json");
+    include_str!("../schemas/canon.geo.regional_inventory.v1.schema.json");
 const CONTROL_RESOURCE_BUDGET_SCHEMA: &str =
     include_str!("../schemas/canon.geo.resource_budget.v0.schema.json");
 const DISCOVERY_REQUEST_SCHEMA: &str =
@@ -830,6 +830,7 @@ fn control_inventory() -> GeoRegionalInventory {
             lineage_ids: vec!["lineage.fixture.building-footprints".to_string()],
             native_scope: GeoNativeEntityScope::NativeEntity {
                 entity_level: GeoControlEntityLevel::Building,
+                identity_participation: GeoIdentityParticipation::EvidenceOnly,
             },
             evidence_classes: vec![GeoEvidenceClass::BuildingFootprint],
             coverage: GeoCoveragePredicate {
@@ -841,6 +842,7 @@ fn control_inventory() -> GeoRegionalInventory {
                 state: GeoSourceAvailability::Available,
                 local_ref: Some(GeoLocalArtifactRef {
                     artifact_id: "local.fixture.building-footprints".to_string(),
+                    contract_version: "canon_geo_warehouse_rows.v0".to_string(),
                     content_hash: control_digest("local.fixture.building-footprints"),
                     media_type: "application/json".to_string(),
                 }),
@@ -1243,7 +1245,7 @@ fn control_regional_inventory_schema_matches_a_real_instance() {
     let instance = serde_json::to_value(control_inventory()).expect("inventory serializes");
     assert_drift_free(
         CONTROL_REGIONAL_INVENTORY_SCHEMA,
-        "canon.geo.regional_inventory.v0",
+        "canon.geo.regional_inventory.v1",
         CANON_GEO_REGIONAL_INVENTORY_VERSION,
         &instance,
     );

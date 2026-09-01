@@ -20,11 +20,11 @@ use super::{
     GeoNumericBound, GeoOrderDirection, GeoOrderingTerm, GeoPaginationRequest,
     GeoProjectionOperation, GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance,
     GeoReleaseSelectionMode, GeoRequestedField, GeoResourceBudget, GeoResourceCounter,
-    GeoRowByteCeilings, GeoSourceAvailability, GeoSubsetPredicate, GeoSubsetPredicateKind,
-    GeoTelemetrySemanticEffect, canonicalize_capabilities, canonicalize_question,
-    canonicalize_regional_inventory, canonicalize_resource_budget, capabilities_semantic_hash,
-    evaluate_inventory_support, geo_acquisition_request_id, geo_discovery_request_id,
-    question_semantic_hash, regional_inventory_planning_hash, regional_inventory_semantic_hash,
+    GeoRowByteCeilings, GeoSubsetPredicate, GeoSubsetPredicateKind, GeoTelemetrySemanticEffect,
+    canonicalize_capabilities, canonicalize_question, canonicalize_regional_inventory,
+    canonicalize_resource_budget, capabilities_semantic_hash, evaluate_inventory_support,
+    geo_acquisition_request_id, geo_discovery_request_id, question_semantic_hash,
+    regional_inventory_planning_hash, regional_inventory_semantic_hash,
     resource_budget_semantic_hash, validate_geo_acquisition_request,
     validate_geo_discovery_request,
 };
@@ -460,6 +460,10 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
     let mut outcomes = Vec::new();
     let mut external_requests = Vec::new();
     let mut diagnostics = Vec::new();
+    let stable_identity_requested = question
+        .requested_claim_classes
+        .binary_search(&super::GeoClaimClass::StableIdentity)
+        .is_ok();
 
     for grain in &question.requested_grains {
         let support_row = support
@@ -483,10 +487,13 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
         if support_row.status == GeoInventorySupportStatus::Unsupported {
             let mut actionable_request_count = 0_usize;
             for evidence_class in &support_row.missing_evidence_classes {
-                if let Some(source) =
-                    acquisition_source(&inventory, grain.entity_level, *evidence_class)
-                    && let Some(acquisition) =
-                        build_acquisition_request(&question, &budget, source, *evidence_class)?
+                if let Some(source) = acquisition_source(
+                    &inventory,
+                    grain.entity_level,
+                    *evidence_class,
+                    stable_identity_requested,
+                ) && let Some(acquisition) =
+                    build_acquisition_request(&question, &budget, source, *evidence_class)?
                 {
                     external_requests.push(GeoPlanExternalRequest::Acquisition {
                         request: acquisition,
@@ -997,16 +1004,18 @@ fn acquisition_source(
     inventory: &GeoRegionalInventory,
     level: GeoControlEntityLevel,
     evidence_class: GeoEvidenceClass,
+    stable_identity_requested: bool,
 ) -> Option<&GeoRegionalSourceInstance> {
     inventory.sources.iter().find(|source| {
         matches!(
             source.native_scope,
-            GeoNativeEntityScope::NativeEntity { entity_level } if entity_level == level
+            GeoNativeEntityScope::NativeEntity { entity_level, .. } if entity_level == level
         ) && source
             .evidence_classes
             .binary_search(&evidence_class)
             .is_ok()
-            && source.local_state.state != GeoSourceAvailability::Available
+            && (!stable_identity_requested || source.native_scope.may_contribute_stable_alias())
+            && !super::regional_source_has_usable_local_evidence(source)
             && source.coverage.region == inventory.region
     })
 }

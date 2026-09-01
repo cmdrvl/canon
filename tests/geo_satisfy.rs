@@ -11,30 +11,33 @@ mod satisfy_subject {
 use canon::{
     geo::*,
     project::{
-        ProjectPlan, ProjectPlanCache, ProjectPlanCacheDecision, ProjectPlanNode,
-        ProjectPlanNodeClass, ProjectPlanNodeKind, ProjectPlanOutput,
+        ProjectExtensionDagRequest, ProjectPlan, ProjectPlanCache, ProjectPlanCacheDecision,
+        ProjectPlanNode, ProjectPlanNodeClass, ProjectPlanNodeKind, ProjectPlanOutput,
         ProjectPlanOutputMaterialization, ProjectPlanSideEffect, ProjectPlanSideEffectKind,
-        ProjectPlanSummary,
+        compile_extension_project_plan,
     },
 };
 use satisfy_subject::satisfy::{
+    GeoInventoryAdvancementEffect, GeoSatisfactionArtifactReleaseRelation,
     GeoSatisfactionAssignment, GeoSatisfactionFileBinding, GeoSatisfactionFindingCode,
     GeoSatisfactionInput, GeoSatisfactionRunInput, GeoSatisfactionRunInputFileBinding,
     GeoSatisfactionStatus, GeoSatisfyErrorCode, parse_geo_satisfaction_assignment,
     satisfy_geo_acquisition, satisfy_geo_acquisition_for_run,
+    satisfy_geo_acquisition_with_relations,
 };
 use tempfile::tempdir;
 
 #[test]
 fn complete_receipt_satisfies_request_and_updates_inventory_without_paths() {
     let dir = tempdir().expect("tempdir");
-    let data_path = dir.path().join("rows.jsonl");
+    let data_path = dir.path().join("warehouse-rows.json");
     let receipt_path = dir.path().join("receipt.json");
-    let data = b"{\"native_id\":\"b-1\",\"building_footprint\":\"POLYGON EMPTY\"}\n";
-    std::fs::write(&data_path, data).expect("write data");
+    let data = warehouse_rows_artifact();
+    std::fs::write(&data_path, &data).expect("write data");
 
-    let request = acquisition_request(data);
-    let receipt = acquisition_receipt(&request, data, GeoAcquisitionTerminalState::Complete);
+    let request = acquisition_request(&data);
+    let mut receipt = acquisition_receipt(&request, &data, GeoAcquisitionTerminalState::Complete);
+    receipt.local_artifacts[0].media_type = GEO_RUN_JSON_MEDIA_TYPE.to_string();
     write_json(&receipt_path, &receipt);
     let inventory = inventory_for_request(&request);
     let assignment = GeoSatisfactionAssignment {
@@ -53,7 +56,10 @@ fn complete_receipt_satisfies_request_and_updates_inventory_without_paths() {
 
     assert_eq!(satisfaction.status, GeoSatisfactionStatus::Satisfied);
     assert_eq!(satisfaction.bindings.len(), 1);
-    assert_eq!(satisfaction.bindings[0].content_hash, blake3_prefixed(data));
+    assert_eq!(
+        satisfaction.bindings[0].content_hash,
+        blake3_prefixed(&data)
+    );
     assert_eq!(
         satisfaction.findings[0].code,
         GeoSatisfactionFindingCode::Satisfied
@@ -73,7 +79,45 @@ fn complete_receipt_satisfies_request_and_updates_inventory_without_paths() {
             .as_ref()
             .expect("local ref")
             .content_hash,
-        blake3_prefixed(data)
+        blake3_prefixed(&data)
+    );
+    let advancement = satisfaction
+        .inventory_advancement
+        .as_ref()
+        .expect("inventory advancement");
+    assert_eq!(
+        advancement.effect,
+        GeoInventoryAdvancementEffect::LocalAvailabilityOnly
+    );
+    assert_eq!(advancement.base_inventory_id, inventory.inventory_id);
+    assert_eq!(advancement.advanced_inventory_id, updated.inventory_id);
+    assert_eq!(
+        advancement.advanced_inventory_semantic_hash,
+        regional_inventory_semantic_hash(updated).expect("advanced inventory hash")
+    );
+    assert_eq!(advancement.bounded_subset, request.subset);
+    assert_eq!(advancement.denominators, receipt.denominators);
+    assert_eq!(
+        advancement.receipt_execution.executor_request_id.as_deref(),
+        Some("http-request-1")
+    );
+    assert_eq!(
+        inventory.sources[0].local_state.state,
+        GeoSourceAvailability::Missing,
+        "advancement must not mutate the base inventory"
+    );
+    let base_planning_hash =
+        regional_inventory_planning_hash(&inventory).expect("base planning hash");
+    let advanced_planning_hash =
+        regional_inventory_planning_hash(updated).expect("advanced planning hash");
+    assert_ne!(
+        base_planning_hash, advanced_planning_hash,
+        "local availability and content identity must deterministically invalidate planning"
+    );
+    assert_eq!(
+        advanced_planning_hash,
+        regional_inventory_planning_hash(&advancement.advanced_inventory)
+            .expect("repeat advanced planning hash")
     );
 
     let serialized = serde_json::to_string(&satisfaction).expect("serialize satisfaction");
@@ -81,17 +125,257 @@ fn complete_receipt_satisfies_request_and_updates_inventory_without_paths() {
 }
 
 #[test]
-fn equivalent_executor_protocol_receipts_have_same_semantic_satisfaction_hash() {
+fn live_untyped_jsonl_satisfies_receipt_but_cannot_advance_inventory() {
     let dir = tempdir().expect("tempdir");
     let data_path = dir.path().join("rows.jsonl");
-    let http_receipt_path = dir.path().join("http.json");
-    let object_receipt_path = dir.path().join("object.json");
-    let data = b"{\"native_id\":\"b-1\",\"building_footprint\":\"POINT (0 0)\"}\n";
+    let receipt_path = dir.path().join("receipt.json");
+    let data = b"{\"native_id\":\"b-1\",\"building_footprint\":\"POLYGON EMPTY\"}\n";
     std::fs::write(&data_path, data).expect("write data");
 
     let request = acquisition_request(data);
+    let receipt = acquisition_receipt(&request, data, GeoAcquisitionTerminalState::Complete);
+    write_json(&receipt_path, &receipt);
+    let inventory = inventory_for_request(&request);
+
+    let satisfaction = satisfy_geo_acquisition(GeoSatisfactionInput {
+        plan: &plan_with_acquisition(request.clone()),
+        inventory: Some(&inventory),
+        assignment: GeoSatisfactionAssignment {
+            request_id: request.request_id.clone(),
+            receipt_path,
+        },
+        local_artifact_files: vec![file_binding("artifact.rows", &data_path)],
+        result_digest_files: Vec::new(),
+    })
+    .expect("receipt validation remains independent from inventory advancement");
+
+    assert_eq!(satisfaction.status, GeoSatisfactionStatus::Satisfied);
+    assert!(satisfaction.inventory_advancement.is_none());
+    assert!(satisfaction.updated_inventory.is_none());
+    assert!(satisfaction.findings.iter().any(|finding| {
+        finding.code == GeoSatisfactionFindingCode::InventoryAdvancementUnsupportedArtifact
+    }));
+    assert_eq!(
+        inventory.sources[0].local_state.state,
+        GeoSourceAvailability::Missing
+    );
+}
+
+#[test]
+fn version_label_alone_cannot_advance_an_invalid_warehouse_artifact() {
+    let dir = tempdir().expect("tempdir");
+    let data_path = dir.path().join("invalid-warehouse-rows.json");
+    let receipt_path = dir.path().join("receipt.json");
+    let data = br#"{"version":"canon_geo_warehouse_rows.v0"}"#;
+    std::fs::write(&data_path, data).expect("write data");
+
+    let request = acquisition_request(data);
+    let mut receipt = acquisition_receipt(&request, data, GeoAcquisitionTerminalState::Complete);
+    receipt.local_artifacts[0].media_type = GEO_RUN_JSON_MEDIA_TYPE.to_string();
+    write_json(&receipt_path, &receipt);
+    let inventory = inventory_for_request(&request);
+
+    let error = satisfy_geo_acquisition(GeoSatisfactionInput {
+        plan: &plan_with_acquisition(request.clone()),
+        inventory: Some(&inventory),
+        assignment: GeoSatisfactionAssignment {
+            request_id: request.request_id.clone(),
+            receipt_path,
+        },
+        local_artifact_files: vec![file_binding("artifact.rows", &data_path)],
+        result_digest_files: Vec::new(),
+    })
+    .expect_err("a version label cannot replace validation of the typed warehouse rows");
+
+    assert_eq!(error.code, GeoSatisfyErrorCode::ContractMismatch);
+    assert_eq!(
+        error.detail.get("local_artifact_id").map(String::as_str),
+        Some("artifact.rows")
+    );
+}
+
+#[test]
+fn inventory_advancement_requires_each_exact_plan_inventory_identity() {
+    let dir = tempdir().expect("tempdir");
+    let data_path = dir.path().join("warehouse-rows.json");
+    let receipt_path = dir.path().join("receipt.json");
+    let data = warehouse_rows_artifact();
+    std::fs::write(&data_path, &data).expect("write data");
+
+    let request = acquisition_request(&data);
+    let mut receipt = acquisition_receipt(&request, &data, GeoAcquisitionTerminalState::Complete);
+    receipt.local_artifacts[0].media_type = GEO_RUN_JSON_MEDIA_TYPE.to_string();
+    write_json(&receipt_path, &receipt);
+    let inventory = inventory_for_request(&request);
+    let base_plan = plan_with_acquisition(request.clone());
+
+    for field in ["inventory_id", "semantic_hash", "planning_hash"] {
+        let mut plan = base_plan.clone();
+        match field {
+            "inventory_id" => plan.inventory_ref.inventory_id = "inventory.other".to_string(),
+            "semantic_hash" => {
+                plan.inventory_ref.semantic_hash = blake3_prefixed(b"other inventory semantic hash")
+            }
+            "planning_hash" => {
+                plan.inventory_ref.planning_hash = blake3_prefixed(b"other inventory planning hash")
+            }
+            _ => unreachable!("fixed mismatch field"),
+        }
+        refresh_plan_identity(&mut plan);
+        validate_geo_plan(&plan).expect("mismatched reference remains a structurally valid plan");
+
+        let error = satisfy_geo_acquisition(GeoSatisfactionInput {
+            plan: &plan,
+            inventory: Some(&inventory),
+            assignment: GeoSatisfactionAssignment {
+                request_id: request.request_id.clone(),
+                receipt_path: receipt_path.clone(),
+            },
+            local_artifact_files: vec![file_binding("artifact.rows", &data_path)],
+            result_digest_files: Vec::new(),
+        })
+        .expect_err("inventory reference mismatch must fail closed");
+
+        assert_eq!(error.code, GeoSatisfyErrorCode::ContractMismatch);
+        assert_eq!(error.detail.get("field").map(String::as_str), Some(field));
+    }
+}
+
+#[test]
+fn inventory_advancement_rejects_an_invalid_geo_plan() {
+    let dir = tempdir().expect("tempdir");
+    let data_path = dir.path().join("warehouse-rows.json");
+    let receipt_path = dir.path().join("receipt.json");
+    let data = warehouse_rows_artifact();
+    std::fs::write(&data_path, &data).expect("write data");
+
+    let request = acquisition_request(&data);
+    let mut receipt = acquisition_receipt(&request, &data, GeoAcquisitionTerminalState::Complete);
+    receipt.local_artifacts[0].media_type = GEO_RUN_JSON_MEDIA_TYPE.to_string();
+    write_json(&receipt_path, &receipt);
+    let inventory = inventory_for_request(&request);
+    let mut plan = plan_with_acquisition(request.clone());
+    plan.semantic_hash = blake3_prefixed(b"tampered plan");
+
+    let error = satisfy_geo_acquisition(GeoSatisfactionInput {
+        plan: &plan,
+        inventory: Some(&inventory),
+        assignment: GeoSatisfactionAssignment {
+            request_id: request.request_id.clone(),
+            receipt_path,
+        },
+        local_artifact_files: vec![file_binding("artifact.rows", &data_path)],
+        result_digest_files: Vec::new(),
+    })
+    .expect_err("invalid plan must not advance inventory");
+
+    assert_eq!(error.code, GeoSatisfyErrorCode::ContractMismatch);
+    assert_eq!(
+        error.detail.get("plan_error_code").map(String::as_str),
+        Some("ContractViolation")
+    );
+}
+
+#[test]
+fn non_live_proof_validates_bytes_but_never_advances_available_inventory() {
+    for proof_class in [
+        GeoAcquisitionProofClass::Fixture,
+        GeoAcquisitionProofClass::Retained,
+    ] {
+        let dir = tempdir().expect("tempdir");
+        let data_path = dir.path().join("rows.jsonl");
+        let receipt_path = dir.path().join("receipt.json");
+        let data = b"{\"native_id\":\"b-1\"}\n";
+        std::fs::write(&data_path, data).expect("write data");
+
+        let request = acquisition_request(data);
+        let mut receipt =
+            acquisition_receipt(&request, data, GeoAcquisitionTerminalState::Complete);
+        receipt.proof_class = proof_class;
+        match proof_class {
+            GeoAcquisitionProofClass::Fixture => {
+                receipt.executor = None;
+                receipt.fixture_id = Some("fixture:geo-satisfy".to_string());
+            }
+            GeoAcquisitionProofClass::Retained => {
+                receipt.retained_receipt_id = Some("retained:geo-satisfy".to_string());
+            }
+            GeoAcquisitionProofClass::Live => unreachable!(),
+        }
+        write_json(&receipt_path, &receipt);
+        let inventory = inventory_for_request(&request);
+
+        let satisfaction = satisfy_geo_acquisition(GeoSatisfactionInput {
+            plan: &plan_with_acquisition(request.clone()),
+            inventory: Some(&inventory),
+            assignment: GeoSatisfactionAssignment {
+                request_id: request.request_id.clone(),
+                receipt_path,
+            },
+            local_artifact_files: vec![file_binding("artifact.rows", &data_path)],
+            result_digest_files: Vec::new(),
+        })
+        .expect("non-live receipt bytes remain valid evidence");
+
+        assert_eq!(satisfaction.status, GeoSatisfactionStatus::Satisfied);
+        assert_eq!(satisfaction.bindings.len(), 1);
+        assert!(satisfaction.inventory_advancement.is_none());
+        assert!(satisfaction.updated_inventory.is_none());
+        assert_eq!(
+            inventory.sources[0].local_state.state,
+            GeoSourceAvailability::Missing
+        );
+    }
+}
+
+#[test]
+fn narrower_h3_subset_cannot_advance_region_wide_inventory() {
+    let dir = tempdir().expect("tempdir");
+    let data_path = dir.path().join("warehouse-rows.json");
+    let receipt_path = dir.path().join("receipt.json");
+    let data = warehouse_rows_artifact();
+    std::fs::write(&data_path, &data).expect("write data");
+
+    let mut request = acquisition_request(&data);
+    request.subset.h3_cells = vec!["872830828ffffff".to_string()];
+    request.request_id = geo_acquisition_request_id(&request).expect("request id");
+    let mut receipt = acquisition_receipt(&request, &data, GeoAcquisitionTerminalState::Complete);
+    receipt.local_artifacts[0].media_type = GEO_RUN_JSON_MEDIA_TYPE.to_string();
+    write_json(&receipt_path, &receipt);
+    let inventory = inventory_for_request(&request);
+
+    let error = satisfy_geo_acquisition(GeoSatisfactionInput {
+        plan: &plan_with_acquisition(request.clone()),
+        inventory: Some(&inventory),
+        assignment: GeoSatisfactionAssignment {
+            request_id: request.request_id.clone(),
+            receipt_path,
+        },
+        local_artifact_files: vec![file_binding("artifact.rows", &data_path)],
+        result_digest_files: Vec::new(),
+    })
+    .expect_err("narrow H3 subset must not become region-wide availability");
+
+    assert_eq!(error.code, GeoSatisfyErrorCode::ContractMismatch);
+    assert_eq!(
+        error.detail.get("h3_cell_count").map(String::as_str),
+        Some("1")
+    );
+}
+
+#[test]
+fn equivalent_executor_protocol_receipts_have_same_semantic_satisfaction_hash() {
+    let dir = tempdir().expect("tempdir");
+    let data_path = dir.path().join("warehouse-rows.json");
+    let http_receipt_path = dir.path().join("http.json");
+    let object_receipt_path = dir.path().join("object.json");
+    let data = warehouse_rows_artifact();
+    std::fs::write(&data_path, &data).expect("write data");
+
+    let request = acquisition_request(&data);
     let mut http_receipt =
-        acquisition_receipt(&request, data, GeoAcquisitionTerminalState::Complete);
+        acquisition_receipt(&request, &data, GeoAcquisitionTerminalState::Complete);
+    http_receipt.local_artifacts[0].media_type = GEO_RUN_JSON_MEDIA_TYPE.to_string();
     let mut object_receipt = http_receipt.clone();
     object_receipt.executor = Some(GeoExecutorTrace {
         executor_kind: GeoExecutorKind::ObjectStore,
@@ -139,6 +423,30 @@ fn equivalent_executor_protocol_receipts_have_same_semantic_satisfaction_hash() 
     assert_ne!(http.receipt_file.digest, object.receipt_file.digest);
     assert_eq!(http.semantic_hash, object.semantic_hash);
     assert_eq!(http.satisfaction_id, object.satisfaction_id);
+    assert_ne!(
+        http.inventory_advancement
+            .as_ref()
+            .expect("http advancement")
+            .receipt_file
+            .digest,
+        object
+            .inventory_advancement
+            .as_ref()
+            .expect("object advancement")
+            .receipt_file
+            .digest
+    );
+    assert_eq!(
+        http.inventory_advancement
+            .as_ref()
+            .expect("http advancement")
+            .semantic_hash,
+        object
+            .inventory_advancement
+            .as_ref()
+            .expect("object advancement")
+            .semantic_hash
+    );
 }
 
 #[test]
@@ -424,11 +732,9 @@ fn multi_release_receipt_does_not_cross_product_release_artifact_bindings() {
     assert_eq!(satisfaction.status, GeoSatisfactionStatus::NotSatisfied);
     assert!(satisfaction.bindings.is_empty());
     assert!(satisfaction.updated_inventory.is_none());
-    assert!(
-        satisfaction.findings.iter().any(
-            |finding| finding.code == GeoSatisfactionFindingCode::ArtifactReleaseRelationAbsent
-        )
-    );
+    assert!(satisfaction.findings.iter().any(
+        |finding| finding.code == GeoSatisfactionFindingCode::ArtifactReleaseRelationAmbiguous
+    ));
 
     let handoff = satisfy_geo_acquisition_for_run(GeoSatisfactionRunInput {
         plan: &plan_with_acquisition_and_run_node(request.clone()),
@@ -454,6 +760,178 @@ fn multi_release_receipt_does_not_cross_product_release_artifact_bindings() {
     );
     assert!(handoff.run_input_bindings.is_empty());
     assert!(handoff.satisfaction.run_input_refs.is_empty());
+}
+
+#[test]
+fn one_release_with_multiple_artifacts_remains_ambiguous() {
+    let dir = tempdir().expect("tempdir");
+    let first_path = dir.path().join("first.jsonl");
+    let second_path = dir.path().join("second.jsonl");
+    let receipt_path = dir.path().join("receipt.json");
+    let first = b"{\"native_id\":\"b-1\"}\n";
+    let second = b"{\"native_id\":\"b-2\"}\n";
+    std::fs::write(&first_path, first).expect("write first");
+    std::fs::write(&second_path, second).expect("write second");
+
+    let request = acquisition_request(first);
+    let mut receipt = acquisition_receipt(&request, first, GeoAcquisitionTerminalState::Complete);
+    receipt.counts.bytes = (first.len() + second.len()) as u64;
+    receipt.result_digests = vec![
+        digest("result.first", first),
+        digest("result.second", second),
+    ];
+    receipt.local_artifacts = vec![
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.first".to_string(),
+            media_type: "application/jsonl".to_string(),
+            byte_count: first.len() as u64,
+            digest: digest("artifact.first", first),
+        },
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.second".to_string(),
+            media_type: "application/jsonl".to_string(),
+            byte_count: second.len() as u64,
+            digest: digest("artifact.second", second),
+        },
+    ];
+    write_json(&receipt_path, &receipt);
+
+    let satisfaction = satisfy_geo_acquisition(GeoSatisfactionInput {
+        plan: &plan_with_acquisition(request.clone()),
+        inventory: Some(&inventory_for_request(&request)),
+        assignment: GeoSatisfactionAssignment {
+            request_id: request.request_id.clone(),
+            receipt_path,
+        },
+        local_artifact_files: vec![
+            file_binding("artifact.first", &first_path),
+            file_binding("artifact.second", &second_path),
+        ],
+        result_digest_files: Vec::new(),
+    })
+    .expect("ambiguous receipt remains diagnostic");
+
+    assert_eq!(satisfaction.status, GeoSatisfactionStatus::NotSatisfied);
+    assert!(satisfaction.bindings.is_empty());
+    assert!(satisfaction.inventory_advancement.is_none());
+    assert!(satisfaction.findings.iter().any(|finding| {
+        finding.code == GeoSatisfactionFindingCode::ArtifactReleaseRelationAmbiguous
+    }));
+}
+
+#[test]
+fn caller_relations_cannot_disambiguate_or_reuse_multi_release_artifacts() {
+    let dir = tempdir().expect("tempdir");
+    let first_path = dir.path().join("first.jsonl");
+    let second_path = dir.path().join("second.jsonl");
+    let receipt_path = dir.path().join("receipt.json");
+    let first = b"{\"native_id\":\"b-1\"}\n";
+    let second = b"{\"native_id\":\"b-2\"}\n";
+    std::fs::write(&first_path, first).expect("write first");
+    std::fs::write(&second_path, second).expect("write second");
+
+    let mut request = acquisition_request(first);
+    request.releases.push(GeoReleasePin {
+        source_instance_id: "source.building.second".to_string(),
+        release_id: "release.fixture.second".to_string(),
+        release_digest: digest("release-second", b"release second"),
+    });
+    request.request_id = geo_acquisition_request_id(&request).expect("request id");
+    let mut receipt = acquisition_receipt(&request, first, GeoAcquisitionTerminalState::Complete);
+    receipt.counts.bytes = (first.len() + second.len()) as u64;
+    receipt.result_digests = vec![
+        digest("result.first", first),
+        digest("result.second", second),
+    ];
+    receipt.local_artifacts = vec![
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.first".to_string(),
+            media_type: "application/jsonl".to_string(),
+            byte_count: first.len() as u64,
+            digest: digest("artifact.first", first),
+        },
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.second".to_string(),
+            media_type: "application/jsonl".to_string(),
+            byte_count: second.len() as u64,
+            digest: digest("artifact.second", second),
+        },
+    ];
+    write_json(&receipt_path, &receipt);
+
+    let plan = plan_with_acquisition(request.clone());
+    let inventory = inventory_for_request(&request);
+    let swapped = vec![
+        artifact_release_relation("artifact.second", &request.releases[0]),
+        artifact_release_relation("artifact.first", &request.releases[1]),
+    ];
+    let reused = vec![
+        artifact_release_relation("artifact.first", &request.releases[0]),
+        artifact_release_relation("artifact.first", &request.releases[1]),
+    ];
+
+    for relations in [swapped, reused] {
+        let satisfaction = satisfy_geo_acquisition_with_relations(
+            GeoSatisfactionInput {
+                plan: &plan,
+                inventory: Some(&inventory),
+                assignment: GeoSatisfactionAssignment {
+                    request_id: request.request_id.clone(),
+                    receipt_path: receipt_path.clone(),
+                },
+                local_artifact_files: vec![
+                    file_binding("artifact.first", &first_path),
+                    file_binding("artifact.second", &second_path),
+                ],
+                result_digest_files: Vec::new(),
+            },
+            relations,
+        )
+        .expect("multi-release relation remains diagnostic");
+
+        assert_eq!(satisfaction.status, GeoSatisfactionStatus::NotSatisfied);
+        assert!(satisfaction.bindings.is_empty());
+        assert!(satisfaction.inventory_advancement.is_none());
+        assert!(satisfaction.updated_inventory.is_none());
+        assert!(satisfaction.findings.iter().any(|finding| {
+            finding.code == GeoSatisfactionFindingCode::ArtifactReleaseRelationAmbiguous
+        }));
+    }
+}
+
+#[test]
+fn explicit_artifact_release_relation_must_match_release_pin() {
+    let dir = tempdir().expect("tempdir");
+    let data_path = dir.path().join("rows.jsonl");
+    let receipt_path = dir.path().join("receipt.json");
+    let data = b"{\"native_id\":\"b-1\"}\n";
+    std::fs::write(&data_path, data).expect("write data");
+
+    let request = acquisition_request(data);
+    let receipt = acquisition_receipt(&request, data, GeoAcquisitionTerminalState::Complete);
+    write_json(&receipt_path, &receipt);
+
+    let error = satisfy_geo_acquisition_with_relations(
+        GeoSatisfactionInput {
+            plan: &plan_with_acquisition(request.clone()),
+            inventory: Some(&inventory_for_request(&request)),
+            assignment: GeoSatisfactionAssignment {
+                request_id: request.request_id.clone(),
+                receipt_path,
+            },
+            local_artifact_files: vec![file_binding("artifact.rows", &data_path)],
+            result_digest_files: Vec::new(),
+        },
+        vec![GeoSatisfactionArtifactReleaseRelation {
+            local_artifact_id: "artifact.rows".to_string(),
+            source_instance_id: request.releases[0].source_instance_id.clone(),
+            release_id: request.releases[0].release_id.clone(),
+            release_digest: format!("blake3:{}", "0".repeat(64)),
+        }],
+    )
+    .expect_err("wrong relation digest must fail");
+
+    assert_eq!(error.code, GeoSatisfyErrorCode::ReceiptMismatch);
 }
 
 #[test]
@@ -675,10 +1153,11 @@ fn acquisition_receipt(
 }
 
 fn plan_with_acquisition(request: GeoAcquisitionRequest) -> GeoPlan {
-    GeoPlan {
+    let inventory = inventory_for_request(&request);
+    let mut plan = GeoPlan {
         version: CANON_GEO_PLAN_VERSION.to_string(),
-        plan_id: "fixture-plan".to_string(),
-        semantic_hash: blake3_prefixed(b"fixture plan"),
+        plan_id: String::new(),
+        semantic_hash: String::new(),
         status: GeoPlanStatus::Partial,
         question_ref: GeoPlanArtifactRef {
             artifact_id: "question.fixture".to_string(),
@@ -689,9 +1168,11 @@ fn plan_with_acquisition(request: GeoAcquisitionRequest) -> GeoPlan {
             semantic_hash: blake3_prefixed(b"capabilities"),
         },
         inventory_ref: GeoPlanInventoryRef {
-            inventory_id: "inventory.fixture".to_string(),
-            semantic_hash: blake3_prefixed(b"inventory"),
-            planning_hash: blake3_prefixed(b"inventory planning"),
+            inventory_id: inventory.inventory_id.clone(),
+            semantic_hash: regional_inventory_semantic_hash(&inventory)
+                .expect("inventory semantic hash"),
+            planning_hash: regional_inventory_planning_hash(&inventory)
+                .expect("inventory planning hash"),
         },
         profile_ref: GeoPlanProfileRef {
             version: CANON_GEO_COMPOSITION_PROFILE_VERSION.to_string(),
@@ -715,73 +1196,71 @@ fn plan_with_acquisition(request: GeoAcquisitionRequest) -> GeoPlan {
             },
         }],
         diagnostics: Vec::new(),
-    }
+    };
+    refresh_plan_identity(&mut plan);
+    validate_geo_plan(&plan).expect("Geo satisfaction fixture plan validates");
+    plan
+}
+
+fn refresh_plan_identity(plan: &mut GeoPlan) {
+    plan.semantic_hash = geo_plan_semantic_hash(plan).expect("Geo plan semantic hash");
+    plan.plan_id = format!(
+        "{CANON_GEO_PLAN_VERSION}:{}",
+        plan.semantic_hash.trim_start_matches("blake3:")
+    );
 }
 
 fn empty_project_plan() -> ProjectPlan {
-    ProjectPlan {
-        schema_version: "canon.project.plan.v1".to_string(),
-        project_id: "fixture-project".to_string(),
-        plan_kind: "fixture".to_string(),
-        manifest_digest: blake3_prefixed(b"manifest"),
-        lock_digest: blake3_prefixed(b"lock"),
-        plan_artifact_path: None,
-        graph_hash: blake3_prefixed(b"graph"),
-        summary: ProjectPlanSummary {
-            total_nodes: 0,
-            edge_count: 0,
-            computation_nodes: 0,
-            external_materialization_nodes: 0,
-            review_pause_nodes: 0,
-            mutation_gate_nodes: 0,
-            export_nodes: 0,
-            cache_hits: 0,
-            cache_misses: 0,
-            runnable_nodes: 0,
-            blocked_nodes: 0,
-        },
-        nodes: Vec::new(),
-        next_commands: Default::default(),
-        diagnostics: Vec::new(),
-    }
+    compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
+        "fixture-project",
+        blake3_prefixed(b"manifest"),
+        blake3_prefixed(b"lock"),
+        Vec::new(),
+    ))
+    .expect("empty project plan")
 }
 
 fn inventory_for_request(request: &GeoAcquisitionRequest) -> GeoRegionalInventory {
-    let release = &request.releases[0];
     GeoRegionalInventory {
         version: CANON_GEO_REGIONAL_INVENTORY_VERSION.to_string(),
         inventory_id: "inventory.fixture".to_string(),
         region: request.bounded_geography.clone(),
-        sources: vec![GeoRegionalSourceInstance {
-            source_instance_id: release.source_instance_id.clone(),
-            release: GeoSourceRelease {
-                release_id: release.release_id.clone(),
-                release_digest: format!("blake3:{}", release.release_digest.hex_digest),
-            },
-            temporal_scope: GeoTemporalScope {
-                valid_time: None,
-                transaction_time: None,
-                release_time: None,
-            },
-            lineage_ids: vec!["lineage.fixture".to_string()],
-            native_scope: GeoNativeEntityScope::NativeEntity {
-                entity_level: GeoControlEntityLevel::Building,
-            },
-            evidence_classes: vec![GeoEvidenceClass::BuildingFootprint],
-            coverage: GeoCoveragePredicate {
-                coverage_id: "coverage.fixture".to_string(),
-                region: request.bounded_geography.clone(),
-                predicate: "demo-region".to_string(),
-            },
-            local_state: GeoLocalAcquisitionState {
-                state: GeoSourceAvailability::Missing,
-                local_ref: None,
-            },
-            geometry: None,
-            license_class: GeoLicenseClass::PublicRedistributable,
-            egress_class: GeoEgressClass::Shareable,
-            estimates: Vec::new(),
-        }],
+        sources: request
+            .releases
+            .iter()
+            .enumerate()
+            .map(|(index, release)| GeoRegionalSourceInstance {
+                source_instance_id: release.source_instance_id.clone(),
+                release: GeoSourceRelease {
+                    release_id: release.release_id.clone(),
+                    release_digest: format!("blake3:{}", release.release_digest.hex_digest),
+                },
+                temporal_scope: GeoTemporalScope {
+                    valid_time: None,
+                    transaction_time: None,
+                    release_time: None,
+                },
+                lineage_ids: vec![format!("lineage.fixture.{index}")],
+                native_scope: GeoNativeEntityScope::NativeEntity {
+                    entity_level: GeoControlEntityLevel::Building,
+                    identity_participation: GeoIdentityParticipation::EvidenceOnly,
+                },
+                evidence_classes: vec![GeoEvidenceClass::BuildingFootprint],
+                coverage: GeoCoveragePredicate {
+                    coverage_id: format!("coverage.fixture.{index}"),
+                    region: request.bounded_geography.clone(),
+                    predicate: "demo-region".to_string(),
+                },
+                local_state: GeoLocalAcquisitionState {
+                    state: GeoSourceAvailability::Missing,
+                    local_ref: None,
+                },
+                geometry: None,
+                license_class: GeoLicenseClass::PublicRedistributable,
+                egress_class: GeoEgressClass::Shareable,
+                estimates: Vec::new(),
+            })
+            .collect(),
         discovery_gaps: Vec::new(),
     }
 }
@@ -863,6 +1342,18 @@ fn file_binding(id: &str, path: &std::path::Path) -> GeoSatisfactionFileBinding 
     GeoSatisfactionFileBinding {
         binding_id: id.to_string(),
         path: path.to_path_buf(),
+    }
+}
+
+fn artifact_release_relation(
+    local_artifact_id: &str,
+    release: &GeoReleasePin,
+) -> GeoSatisfactionArtifactReleaseRelation {
+    GeoSatisfactionArtifactReleaseRelation {
+        local_artifact_id: local_artifact_id.to_string(),
+        source_instance_id: release.source_instance_id.clone(),
+        release_id: release.release_id.clone(),
+        release_digest: format!("blake3:{}", release.release_digest.hex_digest),
     }
 }
 

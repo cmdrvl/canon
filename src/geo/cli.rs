@@ -1221,7 +1221,7 @@ fn emit_plan_error(error: GeoPlanError) -> Result<u8, Box<dyn Error>> {
             "detail": error.detail,
         }),
         Some(
-            "repair the plan inputs against canon_geo_question.v0, canon_geo_capabilities.v0, canon_geo_regional_inventory.v0, canon_geo_composition_profile.v0, and canon_geo_resource_budget.v0, then rerun canon geo plan"
+            "repair the plan inputs against canon_geo_question.v0, canon_geo_capabilities.v0, canon_geo_regional_inventory.v1, canon_geo_composition_profile.v0, and canon_geo_resource_budget.v0, then rerun canon geo plan"
                 .to_string(),
         ),
     )

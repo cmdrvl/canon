@@ -10,8 +10,8 @@ use super::{
     receipt::{
         CANON_PROJECT_RUN_VERSION, ProjectReceiptError, ProjectRunHashRef, ProjectRunNextAction,
         ProjectRunNodeOutcome, ProjectRunNodeReceipt, ProjectRunOutputReceipt, ProjectRunReceipt,
-        canonical_run_receipt_bytes, digest_bytes, finalized_node_receipt, finalized_run_receipt,
-        read_node_receipt, replace_node_receipt,
+        canonical_run_receipt_bytes, converge_node_receipt, digest_bytes, finalized_node_receipt,
+        finalized_run_receipt, read_node_receipt,
     },
 };
 use crate::fs_safety::{PlannedAccess, resolve_workspace_path as resolve_fs_workspace_path};
@@ -285,7 +285,7 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
                     "E_PROJECT_CANCELLED",
                     "project run cancelled before node execution",
                 )?;
-                write_receipt(&policy, &receipt, prior_receipts.get(&node.node_id))?;
+                let receipt = write_receipt(&policy, &receipt, prior_receipts.get(&node.node_id))?;
                 report.cancelled_nodes.push(node.node_id.clone());
                 report.node_reports.push(node_report(
                     node,
@@ -306,7 +306,8 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
                 executor,
             ) {
                 Ok(receipt) => {
-                    write_receipt(&policy, &receipt, prior_receipts.get(&node.node_id))?;
+                    let receipt =
+                        write_receipt(&policy, &receipt, prior_receipts.get(&node.node_id))?;
                     report.executed_nodes.push(node.node_id.clone());
                     report.node_reports.push(node_report(
                         node,
@@ -326,7 +327,8 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
                         &format!("{:?}", error.code),
                         &error.message,
                     )?;
-                    write_receipt(&policy, &receipt, prior_receipts.get(&node.node_id))?;
+                    let receipt =
+                        write_receipt(&policy, &receipt, prior_receipts.get(&node.node_id))?;
                     failed_nodes.insert(node.node_id.clone());
                     report.failed_nodes.push(node.node_id.clone());
                     report.node_reports.push(node_report(
@@ -1457,8 +1459,52 @@ fn publish_atomic_bytes(
             )
         })?;
     }
+    let _publication_lock = acquire_output_publication_lock(&final_path)?;
     prepare_atomic_output_temp(&temp_path, bytes)?;
     finish_atomic_output_publish(&temp_path, &final_path, bytes, expected_existing)
+}
+
+struct OutputPublicationLock {
+    path: PathBuf,
+}
+
+impl Drop for OutputPublicationLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+fn acquire_output_publication_lock(final_path: &Path) -> Result<OutputPublicationLock, String> {
+    let file_name = final_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("artifact");
+    let lock_path = final_path.with_file_name(format!(".{file_name}.publish.lock"));
+    match OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock_path)
+    {
+        Ok(file) => {
+            file.sync_all().map_err(|error| {
+                let _ = fs::remove_file(&lock_path);
+                format!(
+                    "failed to sync project artifact publication lock {}: {error}",
+                    lock_path.display()
+                )
+            })?;
+            Ok(OutputPublicationLock { path: lock_path })
+        }
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Err(format!(
+            "refusing concurrent publication of project artifact {} while lock {} is active; retry after the current publisher completes",
+            final_path.display(),
+            lock_path.display()
+        )),
+        Err(error) => Err(format!(
+            "failed to create project artifact publication lock {}: {error}",
+            lock_path.display()
+        )),
+    }
 }
 
 fn prepare_atomic_output_temp(temp_path: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -1692,9 +1738,11 @@ fn write_receipt(
     policy: &ProjectRunPolicy,
     receipt: &ProjectRunNodeReceipt,
     expected_existing: Option<&ProjectRunNodeReceipt>,
-) -> ProjectRunResult<()> {
+) -> ProjectRunResult<ProjectRunNodeReceipt> {
     let path = receipt_path(policy, &receipt.node_id)?;
-    replace_node_receipt(&path, receipt, expected_existing).map_err(ProjectRunError::from)
+    converge_node_receipt(&path, receipt, expected_existing)
+        .map(|publication| publication.receipt)
+        .map_err(ProjectRunError::from)
 }
 
 fn receipt_path(policy: &ProjectRunPolicy, node_id: &str) -> ProjectRunResult<PathBuf> {

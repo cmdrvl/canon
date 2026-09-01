@@ -34,10 +34,10 @@ use canon::{
         GeoBoundedGeography, GeoBudgetAction, GeoClaimClass, GeoCompositionProfile,
         GeoControlEntityLevel, GeoCoveragePredicate, GeoDateInterval, GeoEgressClass,
         GeoEvidenceClaimRole, GeoEvidenceClass, GeoEvidenceRecordRef, GeoGeometryTransformContract,
-        GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef, GeoNativeEntityScope,
-        GeoNumericBound, GeoNumericMeasure, GeoPlan, GeoPlanRequest, GeoPlanStatus,
-        GeoRegionalInventory, GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget,
-        GeoResourceCounter, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
+        GeoIdentityParticipation, GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef,
+        GeoNativeEntityScope, GeoNumericBound, GeoNumericMeasure, GeoPlan, GeoPlanRequest,
+        GeoPlanStatus, GeoRegionalInventory, GeoRegionalSourceInstance, GeoRequestedGrain,
+        GeoResourceBudget, GeoResourceCounter, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
         GeoSourceAvailability, GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass,
         GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
         GeoTileFeatureRef, GeoTileWorkRequest, GeoValueOrigin, GeoWarehouseBuildingParcelRow,
@@ -55,10 +55,11 @@ use canon::{
 use executor::{GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID};
 use h3o::CellIndex;
 use run::{
-    GeoRun, GeoRunArtifactBinding, GeoRunErrorCode, GeoRunNextActionKind, GeoRunObservation,
+    CANON_GEO_RUN_PROGRESS_VERSION, GeoRun, GeoRunArtifactBinding, GeoRunErrorCode,
+    GeoRunNextActionKind, GeoRunObservation, GeoRunProgressEvent, GeoRunProgressEventKind,
     GeoRunRequest, GeoRunStatus, canonical_geo_run_bytes, canonical_geo_run_semantic_bytes,
     geo_run_input_hash_ref_id, geo_run_semantic_hash, run_geo_plan,
-    run_geo_plan_with_project_executor,
+    run_geo_plan_with_progress_writer, run_geo_plan_with_project_executor,
 };
 use serde_json::Value;
 use std::{collections::BTreeMap, fs, path::Path, str::FromStr};
@@ -158,6 +159,227 @@ fn fresh_geo_run_resume_preloads_bounded_section_for_solve() {
         assert!(report.resumed_nodes.contains(&node_id.to_string()));
     }
     assert_eq!(solve_output(temp.path())["status"], "resolved");
+}
+
+#[test]
+fn opt_in_progress_is_deterministic_and_non_semantic() {
+    let baseline_temp = tempfile::tempdir().expect("baseline tempdir");
+    let observed_temp = tempfile::tempdir().expect("observed tempdir");
+    let repeated_temp = tempfile::tempdir().expect("repeated tempdir");
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let bindings = run_bindings(warehouse_rows());
+    let baseline = run_geo_plan(GeoRunRequest::new(
+        plan.clone(),
+        policy(baseline_temp.path()),
+        bindings.clone(),
+    ))
+    .expect("baseline run");
+    let mut progress_bytes = Vec::new();
+    let observed = run_geo_plan_with_progress_writer(
+        GeoRunRequest::new(plan.clone(), policy(observed_temp.path()), bindings.clone()),
+        &mut progress_bytes,
+    )
+    .expect("run with progress");
+    let mut repeated_progress_bytes = Vec::new();
+    let repeated = run_geo_plan_with_progress_writer(
+        GeoRunRequest::new(plan, policy(repeated_temp.path()), bindings),
+        &mut repeated_progress_bytes,
+    )
+    .expect("repeated run with progress");
+
+    assert_eq!(
+        canonical_geo_run_semantic_bytes(&baseline).expect("baseline semantic bytes"),
+        canonical_geo_run_semantic_bytes(&observed).expect("observed semantic bytes")
+    );
+    assert_eq!(baseline.semantic_hash, observed.semantic_hash);
+    assert_eq!(observed.semantic_hash, repeated.semantic_hash);
+    assert_eq!(progress_bytes, repeated_progress_bytes);
+
+    let events = progress_events(&progress_bytes);
+    assert_eq!(
+        events.first().unwrap().kind,
+        GeoRunProgressEventKind::RunStarted
+    );
+    assert_eq!(
+        events.last().unwrap().kind,
+        GeoRunProgressEventKind::RunFinished
+    );
+    assert_eq!(events.last().unwrap().status, Some(GeoRunStatus::Completed));
+    assert_eq!(events.last().unwrap().counters.completed_nodes, 5);
+    assert_eq!(events.last().unwrap().counters.executed_nodes, 5);
+    assert_eq!(events.last().unwrap().counters.resumed_nodes, 0);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.kind == GeoRunProgressEventKind::StageStarted)
+            .count(),
+        5
+    );
+    for (sequence, event) in events.iter().enumerate() {
+        assert_eq!(event.version, CANON_GEO_RUN_PROGRESS_VERSION);
+        assert_eq!(event.sequence, sequence as u64);
+    }
+    assert!(
+        events
+            .windows(2)
+            .all(|window| window[0].phase <= window[1].phase),
+        "progress phase must never regress even when DAG stages reuse an earlier phase label"
+    );
+    assert_eq!(
+        events
+            .iter()
+            .find(|event| {
+                event.kind == GeoRunProgressEventKind::StageStarted
+                    && event.project_node_id.as_deref() == Some("geo.building.materialize_evidence")
+            })
+            .expect("materialize-evidence stage")
+            .phase,
+        run::GeoRunPhase::ReachChecked,
+        "materialize evidence follows bounded-section reach checking and must not regress phase"
+    );
+    let rendered = String::from_utf8(progress_bytes).expect("progress utf8");
+    for forbidden in ["observed_at", "workspace_path", "host_id", "process_id"] {
+        assert!(!rendered.contains(forbidden));
+    }
+}
+
+#[test]
+fn progress_writer_failure_is_operational_and_leaves_semantic_work_resumable() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let bindings = run_bindings(warehouse_rows());
+    let mut writer = AlwaysFailProgressWriter;
+    let error = run_geo_plan_with_progress_writer(
+        GeoRunRequest::new(plan.clone(), policy(temp.path()), bindings.clone()),
+        &mut writer,
+    )
+    .expect_err("progress delivery failure");
+    assert_eq!(error.code, GeoRunErrorCode::ProgressOutput);
+    assert!(error.message.contains("completed its semantic work"));
+
+    let resumed = run_geo_plan(GeoRunRequest::new(plan, policy(temp.path()), bindings))
+        .expect("semantic work remains resumable");
+    assert_eq!(resumed.status, GeoRunStatus::Completed);
+    let report = resumed.project_run_report.expect("project report");
+    assert!(report.executed_nodes.is_empty());
+    assert_eq!(report.resumed_nodes.len(), 5);
+}
+
+#[test]
+fn progress_cancellation_names_last_commit_and_resume_reports_reuse() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let bindings = run_bindings(warehouse_rows());
+    let mut cancelled_policy = policy(temp.path());
+    cancelled_policy
+        .cancel_before_nodes
+        .insert("geo.building.solve".to_string());
+    let mut cancelled_progress = Vec::new();
+    let cancelled = run_geo_plan_with_progress_writer(
+        GeoRunRequest::new(plan.clone(), cancelled_policy, bindings.clone()),
+        &mut cancelled_progress,
+    )
+    .expect("cancelled run");
+    assert_eq!(cancelled.status, GeoRunStatus::Cancelled);
+    let cancelled_events = progress_events(&cancelled_progress);
+    let terminal = cancelled_events
+        .last()
+        .expect("cancellation terminal event");
+    assert_eq!(terminal.kind, GeoRunProgressEventKind::RunCancelled);
+    assert_eq!(terminal.status, Some(GeoRunStatus::Cancelled));
+    assert_eq!(
+        terminal.project_node_id.as_deref(),
+        Some("geo.building.solve")
+    );
+    assert_eq!(
+        terminal.stage,
+        Some(canon::geo::GeoPlanStage::FactorAndSolveExactResidual)
+    );
+    assert!(
+        terminal
+            .wait_reason
+            .as_deref()
+            .is_some_and(|reason| !reason.is_empty())
+    );
+    assert_eq!(terminal.counters.completed_nodes, 4);
+    assert_eq!(terminal.counters.executed_nodes, 4);
+    assert_eq!(terminal.counters.cancelled_nodes, 1);
+    assert_eq!(
+        terminal
+            .last_committed_artifact
+            .as_ref()
+            .expect("last committed artifact")
+            .artifact_id,
+        "geo.building.compile_evidence/compile_evidence"
+    );
+
+    let mut resumed_progress = Vec::new();
+    let resumed = run_geo_plan_with_progress_writer(
+        GeoRunRequest::new(plan, policy(temp.path()), bindings),
+        &mut resumed_progress,
+    )
+    .expect("resumed run");
+    assert_eq!(resumed.status, GeoRunStatus::Completed);
+    let resumed_events = progress_events(&resumed_progress);
+    assert_eq!(
+        resumed_events
+            .iter()
+            .filter(|event| event.kind == GeoRunProgressEventKind::ArtifactResumed)
+            .count(),
+        4
+    );
+    assert_eq!(
+        resumed_events
+            .iter()
+            .filter(|event| event.kind == GeoRunProgressEventKind::StageStarted)
+            .map(|event| event.project_node_id.as_deref())
+            .collect::<Vec<_>>(),
+        vec![Some("geo.building.solve")]
+    );
+    let solve_start_index = resumed_events
+        .iter()
+        .position(|event| {
+            event.kind == GeoRunProgressEventKind::StageStarted
+                && event.project_node_id.as_deref() == Some("geo.building.solve")
+        })
+        .expect("solve start event");
+    assert_eq!(
+        resumed_events[..solve_start_index]
+            .iter()
+            .filter(|event| event.kind == GeoRunProgressEventKind::ArtifactResumed)
+            .count(),
+        4,
+        "all validated reusable receipts must be visible before pending execution begins"
+    );
+    let solve_start = &resumed_events[solve_start_index];
+    assert_eq!(solve_start.counters.completed_nodes, 4);
+    assert_eq!(solve_start.counters.resumed_nodes, 4);
+    assert_eq!(
+        solve_start
+            .last_committed_artifact
+            .as_ref()
+            .expect("last resumed artifact before solve")
+            .artifact_id,
+        "geo.building.compile_evidence/compile_evidence"
+    );
+    let terminal = resumed_events.last().expect("resume terminal event");
+    assert_eq!(terminal.kind, GeoRunProgressEventKind::RunFinished);
+    assert_eq!(terminal.status, Some(GeoRunStatus::Completed));
+    assert_eq!(terminal.counters.completed_nodes, 5);
+    assert_eq!(terminal.counters.executed_nodes, 1);
+    assert_eq!(terminal.counters.resumed_nodes, 4);
 }
 
 #[test]
@@ -526,6 +748,39 @@ fn blocked_plans_project_waiting_or_unsupported_next_actions() {
                 .as_deref()
                 .is_some_and(|contract| contract == "canon_geo_acquisition_receipt.v0")
     }));
+    let local_wait_temp = tempfile::tempdir().expect("local wait tempdir");
+    let mut local_wait_progress = Vec::new();
+    let local_wait = run_geo_plan_with_progress_writer(
+        GeoRunRequest::new(
+            building_plan(
+                "release.fixture.one",
+                GeoSourceAvailability::Available,
+                None,
+            ),
+            policy(local_wait_temp.path()),
+            Vec::new(),
+        ),
+        &mut local_wait_progress,
+    )
+    .expect("local input wait");
+    assert_eq!(local_wait.status, GeoRunStatus::WaitingForInput);
+    let terminal = progress_events(&local_wait_progress)
+        .into_iter()
+        .last()
+        .expect("waiting terminal event");
+    assert_eq!(terminal.kind, GeoRunProgressEventKind::WaitingForInput);
+    assert_eq!(terminal.status, Some(GeoRunStatus::WaitingForInput));
+    assert!(terminal.project_node_id.is_some());
+    assert!(
+        terminal.stage.is_some(),
+        "known blocker node must name its Geo stage"
+    );
+    assert!(
+        terminal
+            .wait_reason
+            .as_deref()
+            .is_some_and(|reason| !reason.is_empty())
+    );
 
     let unsupported = parcel_only_with_building_profile_plan();
     assert_eq!(unsupported.status, GeoPlanStatus::Unsupported);
@@ -559,6 +814,52 @@ fn unknown_geo_command_refuses_before_publication() {
 
     assert_eq!(error.code, GeoRunErrorCode::OutputContractViolation);
     assert!(!temp.path().join("geo/building/home_cells.json").exists());
+}
+
+#[test]
+fn post_start_failure_emits_terminal_event_even_when_stage_is_unknown() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let mut invalid_selection_policy = policy(temp.path());
+    invalid_selection_policy
+        .selected_nodes
+        .insert("geo.building.unknown".to_string());
+    let mut progress = Vec::new();
+
+    let error = run_geo_plan_with_progress_writer(
+        GeoRunRequest::new(
+            plan,
+            invalid_selection_policy,
+            run_bindings(warehouse_rows()),
+        ),
+        &mut progress,
+    )
+    .expect_err("unknown selected node refuses after run start");
+
+    assert_eq!(error.code, GeoRunErrorCode::ProjectRunFailed);
+    let events = progress_events(&progress);
+    assert_eq!(
+        events.first().unwrap().kind,
+        GeoRunProgressEventKind::RunStarted
+    );
+    let terminal = events.last().expect("failure terminal event");
+    assert_eq!(terminal.kind, GeoRunProgressEventKind::RunFailed);
+    assert_eq!(terminal.status, Some(GeoRunStatus::Failed));
+    assert_eq!(
+        terminal.project_node_id.as_deref(),
+        Some("geo.building.unknown")
+    );
+    assert_eq!(terminal.stage, None, "the unknown node has no Geo overlay");
+    assert!(
+        terminal
+            .wait_reason
+            .as_deref()
+            .is_some_and(|reason| !reason.is_empty())
+    );
 }
 
 #[test]
@@ -696,6 +997,18 @@ struct FailingProjectExecutor {
 
 struct ContractWeakProjectExecutor;
 
+struct AlwaysFailProgressWriter;
+
+impl std::io::Write for AlwaysFailProgressWriter {
+    fn write(&mut self, _buffer: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("progress sink unavailable"))
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 impl ProjectNodeExecutor for ContractWeakProjectExecutor {
     fn execute(
         &mut self,
@@ -781,6 +1094,14 @@ fn node_id_token(node_id: &str) -> String {
                 '_'
             }
         })
+        .collect()
+}
+
+fn progress_events(bytes: &[u8]) -> Vec<GeoRunProgressEvent> {
+    std::str::from_utf8(bytes)
+        .expect("progress utf8")
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("progress event"))
         .collect()
 }
 
@@ -1063,6 +1384,7 @@ fn inventory(release_label: &str, availability: GeoSourceAvailability) -> GeoReg
             lineage_ids: vec!["lineage.fixture.one".to_string()],
             native_scope: GeoNativeEntityScope::NativeEntity {
                 entity_level: GeoControlEntityLevel::Building,
+                identity_participation: GeoIdentityParticipation::StableAlias,
             },
             evidence_classes: vec![GeoEvidenceClass::BuildingFootprint],
             coverage: GeoCoveragePredicate {
@@ -1075,6 +1397,7 @@ fn inventory(release_label: &str, availability: GeoSourceAvailability) -> GeoReg
                 local_ref: if availability == GeoSourceAvailability::Available {
                     Some(GeoLocalArtifactRef {
                         artifact_id: "artifact.building.fixture".to_string(),
+                        contract_version: "canon_geo_warehouse_rows.v0".to_string(),
                         content_hash: digest("local.fixture.one"),
                         media_type: "application/json".to_string(),
                     })

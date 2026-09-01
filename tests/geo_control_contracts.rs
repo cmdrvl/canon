@@ -30,16 +30,16 @@ use canon::geo::{
     GeoBoundedGeography, GeoBudgetAction, GeoCapabilities, GeoCapabilityStatus,
     GeoCapabilityStatusSets, GeoClaimClass, GeoCommandCapability, GeoContractCapability,
     GeoControlEntityLevel, GeoControlErrorCode, GeoControlProperty, GeoEgressClass,
-    GeoEvidenceClass, GeoGeometryTransformContract, GeoInventorySupportStatus, GeoLicenseClass,
-    GeoLocalAcquisitionState, GeoLocalArtifactRef, GeoNativeEntityScope, GeoNumericBound,
-    GeoNumericMeasure, GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance,
-    GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoSourceAvailability,
-    GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass, GeoTelemetryDeclaration,
-    GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope, GeoValueOrigin,
-    canonical_capabilities_bytes, canonical_question_bytes, canonical_regional_inventory_bytes,
-    canonical_resource_budget_bytes, capabilities_semantic_hash, default_geo_capabilities,
-    evaluate_inventory_support, question_semantic_hash, regional_inventory_planning_hash,
-    resource_budget_semantic_hash,
+    GeoEvidenceClass, GeoGeometryTransformContract, GeoIdentityParticipation,
+    GeoInventorySupportStatus, GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef,
+    GeoNativeEntityScope, GeoNumericBound, GeoNumericMeasure, GeoQuestion, GeoRegionalInventory,
+    GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter,
+    GeoSourceAvailability, GeoSourceRelease, GeoSubjectBinding, GeoSubjectBindingClass,
+    GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
+    GeoValueOrigin, canonical_capabilities_bytes, canonical_question_bytes,
+    canonical_regional_inventory_bytes, canonical_resource_budget_bytes,
+    capabilities_semantic_hash, default_geo_capabilities, evaluate_inventory_support,
+    question_semantic_hash, regional_inventory_planning_hash, resource_budget_semantic_hash,
 };
 use clap::CommandFactory;
 use serde_json::{Value, json};
@@ -48,7 +48,7 @@ use std::collections::{BTreeMap, BTreeSet};
 const QUESTION_SCHEMA: &str = include_str!("../schemas/canon.geo.question.v0.schema.json");
 const CAPABILITIES_SCHEMA: &str = include_str!("../schemas/canon.geo.capabilities.v0.schema.json");
 const INVENTORY_SCHEMA: &str =
-    include_str!("../schemas/canon.geo.regional_inventory.v0.schema.json");
+    include_str!("../schemas/canon.geo.regional_inventory.v1.schema.json");
 const BUDGET_SCHEMA: &str = include_str!("../schemas/canon.geo.resource_budget.v0.schema.json");
 
 fn canon_command() -> Command {
@@ -425,7 +425,10 @@ fn source(
             release_time: None,
         },
         lineage_ids: vec!["lineage.fixture.shared".to_string()],
-        native_scope: GeoNativeEntityScope::NativeEntity { entity_level },
+        native_scope: GeoNativeEntityScope::NativeEntity {
+            entity_level,
+            identity_participation: GeoIdentityParticipation::StableAlias,
+        },
         evidence_classes,
         coverage: canon::geo::GeoCoveragePredicate {
             coverage_id: "coverage.fixture.no-parcel".to_string(),
@@ -436,6 +439,7 @@ fn source(
             state: GeoSourceAvailability::Available,
             local_ref: Some(GeoLocalArtifactRef {
                 artifact_id: format!("local.{source_instance_id}"),
+                contract_version: "canon_geo_warehouse_rows.v0".to_string(),
                 content_hash: digest("local.fixture.shared"),
                 media_type: "application/json".to_string(),
             }),
@@ -697,6 +701,53 @@ fn arbitrary_source_names_do_not_change_planning_signature() {
 }
 
 #[test]
+fn local_artifact_contract_version_changes_inventory_planning_identity() {
+    let inventory_a = no_parcel_inventory("arbitrary-building-source-a");
+    let mut inventory_b = inventory_a.clone();
+    inventory_b.sources[0]
+        .local_state
+        .local_ref
+        .as_mut()
+        .expect("available source has a local ref")
+        .contract_version = "canon_geo_warehouse_rows.v1".to_string();
+
+    assert_ne!(
+        regional_inventory_planning_hash(&inventory_a).expect("inventory a planning hash"),
+        regional_inventory_planning_hash(&inventory_b).expect("inventory b planning hash"),
+        "artifact contract changes must invalidate plans that bind those local bytes"
+    );
+}
+
+#[test]
+fn local_artifact_contract_must_be_canonical_and_currently_usable() {
+    let mut malformed = no_parcel_inventory("malformed-contract-source");
+    malformed.sources[0]
+        .local_state
+        .local_ref
+        .as_mut()
+        .expect("available source has a local ref")
+        .contract_version = "warehouse rows latest".to_string();
+    let error = canonical_regional_inventory_bytes(&malformed)
+        .expect_err("non-versioned local contracts must fail closed");
+    assert_eq!(error.code, GeoControlErrorCode::InvalidInput);
+
+    let mut unsupported = no_parcel_inventory("unsupported-contract-source");
+    unsupported.sources[0]
+        .local_state
+        .local_ref
+        .as_mut()
+        .expect("available source has a local ref")
+        .contract_version = "canon_geo_unknown_rows.v9".to_string();
+    let report = evaluate_inventory_support(&building_question(), &unsupported, &budget())
+        .expect("canonical but unusable contract remains an unsupported inventory finding");
+    assert_eq!(report.status, GeoInventorySupportStatus::Unsupported);
+    assert_eq!(
+        report.grain_support[0].missing_evidence_classes,
+        vec![GeoEvidenceClass::BuildingFootprint]
+    );
+}
+
+#[test]
 fn no_parcel_inventory_reports_supported_and_unsupported_grains_separately() {
     let report = evaluate_inventory_support(
         &building_and_parcel_question(),
@@ -814,6 +865,76 @@ fn observation_only_source_does_not_satisfy_native_grain_support() {
         vec![GeoEvidenceClass::BuildingFootprint]
     );
     assert_eq!(report.discovery_gaps.len(), 1);
+}
+
+#[test]
+fn evidence_only_native_source_supports_non_identity_evidence_but_not_stable_identity() {
+    let mut inventory = no_parcel_inventory("evidence-only-building-source");
+    inventory.sources[0].native_scope = GeoNativeEntityScope::NativeEntity {
+        entity_level: GeoControlEntityLevel::Building,
+        identity_participation: GeoIdentityParticipation::EvidenceOnly,
+    };
+
+    let stable_identity_report =
+        evaluate_inventory_support(&building_question(), &inventory, &budget())
+            .expect("stable identity support report");
+    assert_eq!(
+        stable_identity_report.status,
+        GeoInventorySupportStatus::Unsupported
+    );
+    assert_eq!(
+        stable_identity_report.grain_support[0].missing_evidence_classes,
+        vec![GeoEvidenceClass::BuildingFootprint]
+    );
+    assert!(
+        stable_identity_report.discovery_gaps[0]
+            .reason
+            .contains("stable-alias participation")
+    );
+
+    let mut non_identity_question = building_question();
+    non_identity_question
+        .requested_claim_classes
+        .retain(|claim| *claim != GeoClaimClass::StableIdentity);
+    let non_identity_report =
+        evaluate_inventory_support(&non_identity_question, &inventory, &budget())
+            .expect("evidence-only native source remains eligible non-identity evidence");
+    assert_eq!(
+        non_identity_report.status,
+        GeoInventorySupportStatus::Supported
+    );
+    assert!(
+        !inventory.sources[0]
+            .native_scope
+            .may_contribute_stable_alias(),
+        "a geometry-derived source locator must never become a registry alias"
+    );
+
+    inventory.sources[0].native_scope = GeoNativeEntityScope::ObservationOnly;
+    assert!(
+        !inventory.sources[0]
+            .native_scope
+            .may_contribute_stable_alias(),
+        "an observation-only source is non-native and cannot contribute an alias"
+    );
+
+    let stable_source = source(
+        "stable-id-building-source",
+        GeoControlEntityLevel::Building,
+        vec![GeoEvidenceClass::BuildingFootprint],
+    );
+    assert!(
+        stable_source.native_scope.may_contribute_stable_alias(),
+        "stable alias participation must remain an explicit, separate declaration"
+    );
+    inventory.sources[0] = stable_source;
+    let stable_identity_report =
+        evaluate_inventory_support(&building_question(), &inventory, &budget())
+            .expect("stable alias source supports stable identity evidence");
+    assert_eq!(
+        stable_identity_report.status,
+        GeoInventorySupportStatus::Supported
+    );
 }
 
 #[test]
@@ -970,6 +1091,66 @@ fn regional_inventory_schema_declares_runtime_local_state_requirements() {
         Some(&json!("null")),
         "missing/discovery/unreadable sources must not carry a local artifact object"
     );
+    assert_eq!(
+        schema.pointer("/$defs/local_artifact_ref/required"),
+        Some(&json!([
+            "artifact_id",
+            "contract_version",
+            "content_hash",
+            "media_type"
+        ])),
+        "reusable local refs must preserve the typed artifact contract"
+    );
+    assert_eq!(
+        schema.pointer("/$defs/local_artifact_ref/properties/contract_version/maxLength"),
+        Some(&json!(128)),
+        "local artifact contracts use the same bounded canonical identifier surface as run inputs"
+    );
+    assert_eq!(
+        schema.pointer("/$defs/local_artifact_ref/properties/contract_version/pattern"),
+        Some(&json!("^(canon_|canon\\.)[A-Za-z0-9_.-]+\\.v[0-9]+$")),
+        "inventory availability cannot be asserted with an unversioned contract label"
+    );
+}
+
+#[test]
+fn regional_inventory_schema_requires_explicit_native_identity_participation() {
+    let schema: Value = serde_json::from_str(INVENTORY_SCHEMA).expect("inventory schema parses");
+    assert_eq!(
+        schema.pointer("/$defs/identity_participation/enum"),
+        Some(&json!(["stable_alias", "evidence_only"])),
+        "native sources must distinguish stable aliases from evidence-only participation"
+    );
+    assert_eq!(
+        schema.pointer("/$defs/native_scope/oneOf/0/required"),
+        Some(&json!(["kind", "entity_level", "identity_participation"])),
+        "native sources cannot omit their identity participation"
+    );
+    assert_eq!(
+        schema.pointer("/$defs/native_scope/oneOf/1/additionalProperties"),
+        Some(&json!(false)),
+        "observation-only sources cannot smuggle native identity participation"
+    );
+
+    let mut missing_declaration =
+        serde_json::to_value(no_parcel_inventory("missing-identity-declaration"))
+            .expect("inventory serializes");
+    missing_declaration["sources"][0]["native_scope"]
+        .as_object_mut()
+        .expect("native scope object")
+        .remove("identity_participation");
+    serde_json::from_value::<GeoRegionalInventory>(missing_declaration)
+        .expect_err("native sources must explicitly declare identity participation");
+
+    let mut observation_with_alias =
+        serde_json::to_value(no_parcel_inventory("observation-with-alias"))
+            .expect("inventory serializes");
+    observation_with_alias["sources"][0]["native_scope"] = json!({
+        "kind": "observation_only",
+        "identity_participation": "stable_alias"
+    });
+    serde_json::from_value::<GeoRegionalInventory>(observation_with_alias)
+        .expect_err("observation-only sources cannot declare stable alias participation");
 }
 
 #[test]
@@ -997,7 +1178,7 @@ fn schema_examples_parse_and_canonicalize() {
     );
     assert_schema_examples(
         INVENTORY_SCHEMA,
-        "canon.geo.regional_inventory.v0",
+        "canon.geo.regional_inventory.v1",
         CANON_GEO_REGIONAL_INVENTORY_VERSION,
         |example| {
             let inventory: GeoRegionalInventory =

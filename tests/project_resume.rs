@@ -33,8 +33,8 @@ use plan::{
 };
 use receipt::{
     ProjectReceiptErrorCode, ProjectRunNodeOutcome, canonical_node_receipt_bytes,
-    finalized_node_receipt, parse_node_receipt, project_run_schema_version, read_node_receipt,
-    write_node_receipt,
+    finalized_node_receipt, node_receipt_cas_path, parse_node_receipt, project_run_schema_version,
+    read_node_receipt, write_node_receipt,
 };
 use run::{
     PROJECT_INTERNAL_COPY_FILE_EXECUTOR, ProjectNodeExecutionContext, ProjectNodeExecutionResult,
@@ -1100,6 +1100,268 @@ fn mismatched_existing_final_receipt_is_not_overwritten() {
 }
 
 #[test]
+fn active_publication_lock_refuses_without_exposing_or_overwriting_canonical_receipt() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let receipt = standalone_receipt(temp.path(), "manual");
+    let path = temp
+        .path()
+        .join("work")
+        .join("receipts")
+        .join("manual.json");
+    let lock_path = path.with_file_name(".manual.json.publish.lock");
+    fs::create_dir_all(path.parent().expect("receipt parent")).expect("receipt parent dir");
+    fs::write(&lock_path, b"").expect("active publication lock");
+
+    let error = write_node_receipt(&path, &receipt).expect_err("active writer must win");
+
+    assert_eq!(error.code, ProjectReceiptErrorCode::Io);
+    assert!(error.message.contains("concurrent publication"));
+    assert!(
+        !path.exists(),
+        "no partial canonical receipt may be exposed"
+    );
+    assert!(
+        node_receipt_cas_path(&path, &receipt.receipt_hash).exists(),
+        "the intended immutable receipt remains recoverable even when the canonical slot is busy"
+    );
+}
+
+#[test]
+fn semantically_equivalent_concurrent_completed_receipt_dedupes_without_overwrite() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = single_node_plan();
+    let mut executor =
+        PrewritingReceiptExecutor::semantic_duplicate(temp.path(), &plan, b"same-output".to_vec());
+
+    let report = run_project_plan(&plan, &approving_policy(temp.path()), &mut executor)
+        .expect("semantic duplicate receipt converges");
+
+    let slot = receipt_path(temp.path(), "alpha");
+    let disk = read_node_receipt(&slot).expect("canonical receipt");
+    let prewritten_hash = executor
+        .prewritten_receipt_hash
+        .as_deref()
+        .expect("prewritten hash");
+    let intended_hash = executor
+        .intended_receipt_hash
+        .as_deref()
+        .expect("intended hash");
+    assert_eq!(report.executed_nodes, vec!["alpha".to_string()]);
+    assert!(report.failed_nodes.is_empty());
+    assert_eq!(disk.receipt_hash, prewritten_hash);
+    assert_ne!(disk.receipt_hash, intended_hash);
+    assert_eq!(
+        disk.semantic_hash,
+        executor
+            .intended_semantic_hash
+            .as_deref()
+            .expect("intended semantic")
+    );
+    assert_eq!(
+        report.receipt.node_receipts[0].receipt_hash,
+        disk.receipt_hash
+    );
+    assert_eq!(
+        fs::read(artifact_path(temp.path(), &plan, "alpha")).expect("artifact"),
+        b"same-output"
+    );
+    assert!(node_receipt_cas_path(&slot, prewritten_hash).exists());
+    assert!(node_receipt_cas_path(&slot, intended_hash).exists());
+}
+
+#[test]
+fn semantically_conflicting_concurrent_receipt_refuses_without_losing_receipts() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = single_node_plan();
+    let mut executor =
+        PrewritingReceiptExecutor::semantic_conflict(temp.path(), &plan, b"same-output".to_vec());
+
+    let error = run_project_plan(&plan, &approving_policy(temp.path()), &mut executor)
+        .expect_err("semantic conflict refuses");
+
+    let slot = receipt_path(temp.path(), "alpha");
+    let disk = read_node_receipt(&slot).expect("canonical receipt");
+    let prewritten_hash = executor
+        .prewritten_receipt_hash
+        .as_deref()
+        .expect("prewritten hash");
+    let intended_hash = executor
+        .intended_receipt_hash
+        .as_deref()
+        .expect("intended hash");
+    assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(error.message.contains("different semantic result"));
+    assert_eq!(disk.receipt_hash, prewritten_hash);
+    assert_ne!(
+        disk.semantic_hash,
+        executor
+            .intended_semantic_hash
+            .as_deref()
+            .expect("intended semantic")
+    );
+    assert_eq!(
+        fs::read(artifact_path(temp.path(), &plan, "alpha")).expect("artifact"),
+        b"same-output"
+    );
+    assert!(node_receipt_cas_path(&slot, prewritten_hash).exists());
+    assert!(node_receipt_cas_path(&slot, intended_hash).exists());
+}
+
+#[test]
+fn semantic_duplicate_with_different_output_path_refuses_without_false_binding_reuse() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = single_node_plan();
+    let mut executor = PrewritingReceiptExecutor::output_path_binding_mismatch(
+        temp.path(),
+        &plan,
+        b"same-output".to_vec(),
+    );
+
+    let error = run_project_plan(&plan, &approving_policy(temp.path()), &mut executor)
+        .expect_err("output path binding mismatch refuses");
+
+    let slot = receipt_path(temp.path(), "alpha");
+    let disk = read_node_receipt(&slot).expect("canonical receipt");
+    let prewritten_hash = executor
+        .prewritten_receipt_hash
+        .as_deref()
+        .expect("prewritten hash");
+    let intended_hash = executor
+        .intended_receipt_hash
+        .as_deref()
+        .expect("intended hash");
+    assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(error.message.contains("operational binding"));
+    assert_eq!(disk.receipt_hash, prewritten_hash);
+    assert_ne!(disk.receipt_hash, intended_hash);
+    assert_eq!(
+        disk.semantic_hash,
+        executor
+            .intended_semantic_hash
+            .as_deref()
+            .expect("intended semantic")
+    );
+    assert_ne!(disk.outputs[0].path, plan.nodes[0].outputs[0].path);
+    assert_eq!(
+        fs::read(artifact_path(temp.path(), &plan, "alpha")).expect("intended artifact"),
+        b"same-output"
+    );
+    assert!(node_receipt_cas_path(&slot, prewritten_hash).exists());
+    assert!(node_receipt_cas_path(&slot, intended_hash).exists());
+}
+
+#[test]
+fn semantic_duplicate_with_different_dependency_receipt_hash_refuses_without_false_binding_reuse() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = chain_plan();
+    let mut executor = PrewritingReceiptExecutor::dependency_receipt_binding_mismatch(
+        temp.path(),
+        &plan,
+        "beta",
+        b"same-output".to_vec(),
+    );
+
+    let error = run_project_plan(&plan, &approving_policy(temp.path()), &mut executor)
+        .expect_err("dependency receipt binding mismatch refuses");
+
+    let alpha = read_node_receipt(&receipt_path(temp.path(), "alpha")).expect("alpha receipt");
+    let beta_slot = receipt_path(temp.path(), "beta");
+    let beta = read_node_receipt(&beta_slot).expect("canonical beta receipt");
+    let prewritten_hash = executor
+        .prewritten_receipt_hash
+        .as_deref()
+        .expect("prewritten hash");
+    assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(error.message.contains("operational binding"));
+    assert_eq!(beta.receipt_hash, prewritten_hash);
+    assert_eq!(
+        beta.semantic_hash,
+        executor
+            .intended_semantic_hash
+            .as_deref()
+            .expect("intended semantic")
+    );
+    assert_ne!(
+        beta.dependency_receipt_hashes.get("alpha"),
+        Some(&alpha.receipt_hash)
+    );
+    assert!(node_receipt_cas_path(&beta_slot, prewritten_hash).exists());
+    assert!(
+        cas_contains_receipt_matching(&beta_slot, |receipt| {
+            receipt.node_id == "beta"
+                && receipt.semantic_hash == beta.semantic_hash
+                && receipt.dependency_receipt_hashes.get("alpha") == Some(&alpha.receipt_hash)
+        }),
+        "the intended beta receipt with the executed dependency receipt binding remains in CAS"
+    );
+}
+
+#[test]
+fn concurrently_created_conflicting_output_bytes_refuse_without_overwrite() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = single_node_plan();
+    let mut executor = ConcurrentArtifactWriterExecutor::new(
+        temp.path(),
+        b"intended-output".to_vec(),
+        b"winner-output".to_vec(),
+    );
+
+    let report = run_project_plan(&plan, &approving_policy(temp.path()), &mut executor)
+        .expect("artifact race records failed node");
+
+    let artifact = artifact_path(temp.path(), &plan, "alpha");
+    assert_eq!(report.failed_nodes, vec!["alpha".to_string()]);
+    assert!(report.executed_nodes.is_empty());
+    assert_eq!(fs::read(&artifact).expect("artifact"), b"winner-output");
+    let receipt = read_node_receipt(&receipt_path(temp.path(), "alpha")).expect("failure receipt");
+    assert_eq!(receipt.outcome, ProjectRunNodeOutcome::Failed);
+    assert!(receipt.outputs.is_empty());
+    assert!(
+        report.node_reports[0]
+            .reason
+            .as_deref()
+            .expect("failure reason")
+            .contains("concurrently created artifact")
+    );
+}
+
+#[test]
+fn active_output_publication_lock_refuses_without_exposing_artifact_or_completed_receipt() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = single_node_plan();
+    let artifact = artifact_path(temp.path(), &plan, "alpha");
+    fs::create_dir_all(artifact.parent().expect("artifact parent")).expect("artifact parent");
+    let artifact_name = artifact
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("artifact file name");
+    let lock_path = artifact.with_file_name(format!(".{artifact_name}.publish.lock"));
+    fs::write(&lock_path, b"active publisher").expect("active output publication lock");
+    let mut executor = FixedOutputExecutor::new(b"intended-output".to_vec());
+
+    let report = run_project_plan(&plan, &approving_policy(temp.path()), &mut executor)
+        .expect("active artifact publisher records failed node");
+
+    assert_eq!(executor.calls, vec!["alpha".to_string()]);
+    assert_eq!(report.failed_nodes, vec!["alpha".to_string()]);
+    assert!(report.executed_nodes.is_empty());
+    assert!(
+        !artifact.exists(),
+        "the active publisher's slot is not overwritten"
+    );
+    let receipt = read_node_receipt(&receipt_path(temp.path(), "alpha")).expect("failure receipt");
+    assert_eq!(receipt.outcome, ProjectRunNodeOutcome::Failed);
+    assert!(receipt.outputs.is_empty());
+    assert!(
+        report.node_reports[0]
+            .reason
+            .as_deref()
+            .expect("failure reason")
+            .contains("concurrent publication")
+    );
+}
+
+#[test]
 fn declared_network_effect_refuses_before_executor_invocation() {
     let temp = tempfile::tempdir().expect("tempdir");
     let mut plan = single_node_plan();
@@ -1428,6 +1690,258 @@ impl ProjectNodeExecutor for FixedOutputExecutor {
     }
 }
 
+#[derive(Clone, Copy)]
+enum PrewriteReceiptMode {
+    SemanticDuplicate,
+    SemanticConflict,
+    OutputPathBindingMismatch,
+    DependencyReceiptBindingMismatch,
+}
+
+struct PrewritingReceiptExecutor {
+    workspace_root: PathBuf,
+    project_id: String,
+    plan_graph_hash: String,
+    bytes: Vec<u8>,
+    mode: PrewriteReceiptMode,
+    target_node_id: Option<String>,
+    prewritten_receipt_hash: Option<String>,
+    intended_receipt_hash: Option<String>,
+    intended_semantic_hash: Option<String>,
+}
+
+impl PrewritingReceiptExecutor {
+    fn semantic_duplicate(root: &Path, plan: &ProjectPlan, bytes: Vec<u8>) -> Self {
+        Self::new(root, plan, bytes, PrewriteReceiptMode::SemanticDuplicate)
+    }
+
+    fn semantic_conflict(root: &Path, plan: &ProjectPlan, bytes: Vec<u8>) -> Self {
+        Self::new(root, plan, bytes, PrewriteReceiptMode::SemanticConflict)
+    }
+
+    fn output_path_binding_mismatch(root: &Path, plan: &ProjectPlan, bytes: Vec<u8>) -> Self {
+        Self::new(
+            root,
+            plan,
+            bytes,
+            PrewriteReceiptMode::OutputPathBindingMismatch,
+        )
+    }
+
+    fn dependency_receipt_binding_mismatch(
+        root: &Path,
+        plan: &ProjectPlan,
+        target_node_id: &str,
+        bytes: Vec<u8>,
+    ) -> Self {
+        let mut executor = Self::new(
+            root,
+            plan,
+            bytes,
+            PrewriteReceiptMode::DependencyReceiptBindingMismatch,
+        );
+        executor.target_node_id = Some(target_node_id.to_string());
+        executor
+    }
+
+    fn new(root: &Path, plan: &ProjectPlan, bytes: Vec<u8>, mode: PrewriteReceiptMode) -> Self {
+        Self {
+            workspace_root: root.to_path_buf(),
+            project_id: plan.project_id.clone(),
+            plan_graph_hash: plan.graph_hash.clone(),
+            bytes,
+            mode,
+            target_node_id: None,
+            prewritten_receipt_hash: None,
+            intended_receipt_hash: None,
+            intended_semantic_hash: None,
+        }
+    }
+}
+
+impl ProjectNodeExecutor for PrewritingReceiptExecutor {
+    fn execute(
+        &mut self,
+        node: &ProjectPlanNode,
+        context: &ProjectNodeExecutionContext,
+    ) -> Result<ProjectNodeExecutionResult, ProjectRunError> {
+        if let Some(target_node_id) = &self.target_node_id
+            && target_node_id != &node.node_id
+        {
+            return Ok(fixed_output_result(node, &self.bytes));
+        }
+
+        let mut intended_usage = BTreeMap::new();
+        intended_usage.insert("fixed_bytes".to_string(), self.bytes.len() as u64);
+        let mut prewritten_usage = intended_usage.clone();
+        if matches!(self.mode, PrewriteReceiptMode::SemanticConflict) {
+            prewritten_usage.insert("fixed_bytes".to_string(), self.bytes.len() as u64 + 1);
+        }
+
+        let mut prewritten = completed_test_receipt(
+            &self.project_id,
+            &self.plan_graph_hash,
+            node,
+            context,
+            &self.bytes,
+            prewritten_usage,
+            999,
+        );
+        let intended = completed_test_receipt(
+            &self.project_id,
+            &self.plan_graph_hash,
+            node,
+            context,
+            &self.bytes,
+            intended_usage.clone(),
+            1,
+        );
+        self.prewritten_receipt_hash = Some(prewritten.receipt_hash.clone());
+        if !matches!(
+            self.mode,
+            PrewriteReceiptMode::DependencyReceiptBindingMismatch
+        ) {
+            self.intended_receipt_hash = Some(intended.receipt_hash.clone());
+        }
+        self.intended_semantic_hash = Some(intended.semantic_hash.clone());
+
+        match self.mode {
+            PrewriteReceiptMode::SemanticDuplicate | PrewriteReceiptMode::SemanticConflict => {}
+            PrewriteReceiptMode::OutputPathBindingMismatch => {
+                for output in &mut prewritten.outputs {
+                    output.path =
+                        format!("work/prewritten-{}-{}.json", node.node_id, output.output_id);
+                }
+                prewritten =
+                    finalized_node_receipt(prewritten).expect("path-mismatched receipt finalizes");
+                self.prewritten_receipt_hash = Some(prewritten.receipt_hash.clone());
+            }
+            PrewriteReceiptMode::DependencyReceiptBindingMismatch => {
+                let dependency_id = node
+                    .dependencies
+                    .first()
+                    .expect("dependency mismatch target has a dependency");
+                prewritten.dependency_receipt_hashes.insert(
+                    dependency_id.clone(),
+                    digest_bytes(format!("competing-{dependency_id}-receipt").as_bytes()),
+                );
+                prewritten = finalized_node_receipt(prewritten)
+                    .expect("dependency-mismatched receipt finalizes");
+                self.prewritten_receipt_hash = Some(prewritten.receipt_hash.clone());
+            }
+        }
+
+        let slot = receipt_path(&self.workspace_root, &node.node_id);
+        fs::create_dir_all(slot.parent().expect("receipt parent")).expect("receipt parent");
+        fs::write(
+            &slot,
+            canonical_node_receipt_bytes(&prewritten).expect("prewritten bytes"),
+        )
+        .expect("prewrite concurrent receipt");
+
+        let mut result = fixed_output_result(node, &self.bytes);
+        result.duration_millis = 1;
+        Ok(result)
+    }
+}
+
+fn fixed_output_result(node: &ProjectPlanNode, bytes: &[u8]) -> ProjectNodeExecutionResult {
+    let mut outputs = BTreeMap::new();
+    for output in &node.outputs {
+        outputs.insert(output.output_id.clone(), bytes.to_vec());
+    }
+    let mut result = ProjectNodeExecutionResult::with_outputs(outputs);
+    result
+        .deterministic_usage
+        .insert("fixed_bytes".to_string(), bytes.len() as u64);
+    result
+}
+
+struct ConcurrentArtifactWriterExecutor {
+    workspace_root: PathBuf,
+    intended_bytes: Vec<u8>,
+    concurrent_bytes: Vec<u8>,
+}
+
+impl ConcurrentArtifactWriterExecutor {
+    fn new(root: &Path, intended_bytes: Vec<u8>, concurrent_bytes: Vec<u8>) -> Self {
+        Self {
+            workspace_root: root.to_path_buf(),
+            intended_bytes,
+            concurrent_bytes,
+        }
+    }
+}
+
+impl ProjectNodeExecutor for ConcurrentArtifactWriterExecutor {
+    fn execute(
+        &mut self,
+        node: &ProjectPlanNode,
+        _context: &ProjectNodeExecutionContext,
+    ) -> Result<ProjectNodeExecutionResult, ProjectRunError> {
+        let output = node.outputs.first().expect("single test output");
+        let artifact = self.workspace_root.join(&output.path);
+        fs::create_dir_all(artifact.parent().expect("artifact parent")).expect("artifact parent");
+        fs::write(&artifact, &self.concurrent_bytes).expect("concurrent artifact");
+
+        let mut outputs = BTreeMap::new();
+        outputs.insert(output.output_id.clone(), self.intended_bytes.clone());
+        Ok(ProjectNodeExecutionResult::with_outputs(outputs))
+    }
+}
+
+fn completed_test_receipt(
+    project_id: &str,
+    plan_graph_hash: &str,
+    node: &ProjectPlanNode,
+    context: &ProjectNodeExecutionContext,
+    bytes: &[u8],
+    deterministic_usage: BTreeMap<String, u64>,
+    duration_millis: u64,
+) -> receipt::ProjectRunNodeReceipt {
+    let mut content_hash_inputs = node
+        .content_hash_inputs
+        .iter()
+        .map(|input| receipt::ProjectRunHashRef {
+            ref_id: input.ref_id.clone(),
+            content_hash: input.content_hash.clone(),
+        })
+        .collect::<Vec<_>>();
+    content_hash_inputs.sort_by(|left, right| left.ref_id.cmp(&right.ref_id));
+    let outputs = node
+        .outputs
+        .iter()
+        .map(|output| receipt::ProjectRunOutputReceipt {
+            output_id: output.output_id.clone(),
+            path: output.path.clone(),
+            content_digest: digest_bytes(bytes),
+            byte_count: bytes.len() as u64,
+        })
+        .collect();
+    finalized_node_receipt(receipt::ProjectRunNodeReceipt {
+        schema_version: project_run_schema_version().to_string(),
+        project_id: project_id.to_string(),
+        plan_graph_hash: plan_graph_hash.to_string(),
+        node_id: node.node_id.clone(),
+        node_cache_key: node.cache.cache_key.clone(),
+        content_hash_inputs,
+        dependency_semantic_hashes: context.dependency_semantic_hashes.clone(),
+        dependency_receipt_hashes: BTreeMap::new(),
+        outputs,
+        outcome: ProjectRunNodeOutcome::Completed,
+        deterministic_usage,
+        duration_millis,
+        resource_observations: BTreeMap::new(),
+        next_action: receipt::ProjectRunNextAction::ExecuteDependents,
+        failure_code: None,
+        failure_message: None,
+        semantic_hash: String::new(),
+        telemetry_hash: String::new(),
+        receipt_hash: String::new(),
+    })
+    .expect("completed test receipt finalizes")
+}
+
 fn minimal_plan() -> ProjectPlan {
     let manifest = minimal_manifest();
     let lock = lock_for_manifest(&manifest);
@@ -1499,6 +2013,19 @@ fn artifact_path(root: &Path, plan: &ProjectPlan, node_id: &str) -> PathBuf {
     root.join(&node.outputs[0].path)
 }
 
+fn cas_contains_receipt_matching<F>(slot: &Path, predicate: F) -> bool
+where
+    F: Fn(&receipt::ProjectRunNodeReceipt) -> bool,
+{
+    let cas_dir = slot.parent().expect("receipt parent").join("cas");
+    fs::read_dir(cas_dir)
+        .expect("receipt CAS directory")
+        .filter_map(Result::ok)
+        .filter_map(|entry| fs::read(entry.path()).ok())
+        .filter_map(|bytes| parse_node_receipt(&bytes).ok())
+        .any(|receipt| predicate(&receipt))
+}
+
 fn tree_bytes(root: &Path) -> BTreeMap<String, Vec<u8>> {
     fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<String, Vec<u8>>) {
         for entry in fs::read_dir(dir).expect("read dir") {
@@ -1525,7 +2052,7 @@ fn tree_bytes(root: &Path) -> BTreeMap<String, Vec<u8>> {
 fn without_cancel_receipts(tree: BTreeMap<String, Vec<u8>>) -> BTreeMap<String, Vec<u8>> {
     tree.into_iter()
         .filter(|(path, bytes)| {
-            if path != "work/receipts/block_cluster_default.json" {
+            if !path.starts_with("work/receipts/") || !path.ends_with(".json") {
                 return true;
             }
             let value: Value = serde_json::from_slice(bytes).expect("receipt json");
