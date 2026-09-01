@@ -168,6 +168,8 @@ pub trait ProjectNodeExecutor {
 }
 
 pub const PROJECT_INTERNAL_COPY_FILE_EXECUTOR: &str = "copy-file-v1";
+pub const CANON_PROJECT_RUN_MANIFEST_REVISION_VERSION: &str =
+    "canon.project.run.manifest_revision.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectRunNodeReport {
@@ -206,6 +208,36 @@ pub struct ProjectRunReport {
     pub node_reports: Vec<ProjectRunNodeReport>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectRunManifestRevision {
+    pub schema_version: String,
+    pub project_id: String,
+    pub plan_graph_hash: String,
+    pub run_receipt_hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_revision_hash: Option<String>,
+    #[serde(default)]
+    pub validated_nodes: Vec<String>,
+    #[serde(default)]
+    pub completed_nodes: Vec<String>,
+    #[serde(default)]
+    pub failed_nodes: Vec<String>,
+    #[serde(default)]
+    pub cancelled_nodes: Vec<String>,
+    #[serde(default)]
+    pub invalidated_nodes: Vec<String>,
+    #[serde(default)]
+    pub blocked_nodes: Vec<String>,
+    #[serde(default)]
+    pub node_receipt_hashes: BTreeMap<String, String>,
+    #[serde(default)]
+    pub node_semantic_hashes: BTreeMap<String, String>,
+    #[serde(default)]
+    pub deterministic_usage: BTreeMap<String, u64>,
+    pub revision_hash: String,
+}
+
 pub fn run_project_plan<E: ProjectNodeExecutor>(
     plan: &ProjectPlan,
     policy: &ProjectRunPolicy,
@@ -213,8 +245,9 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
 ) -> ProjectRunResult<ProjectRunReport> {
     validate_plan_shape(plan)?;
     let policy = finalize_policy(policy)?;
+    let plan_nodes = plan_node_ids(plan);
     let target_nodes = selected_node_closure(plan, &policy.selected_nodes)?;
-    let mut existing = validate_existing_receipts(plan, &policy, &target_nodes)?;
+    let mut existing = validate_existing_receipts(plan, &policy, &plan_nodes)?;
     if !existing.poisoned_receipts.is_empty() {
         return Err(ProjectRunError::new(
             ProjectRunErrorCode::ReceiptPoisoning,
@@ -343,7 +376,7 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
                         Some(&error.message),
                     ));
                     if policy.failure_policy == ProjectRunFailurePolicy::FailFast {
-                        return finish_report(
+                        return finish_and_publish_report(
                             plan,
                             &policy,
                             &target_nodes,
@@ -360,7 +393,7 @@ pub fn run_project_plan<E: ProjectNodeExecutor>(
         }
     }
 
-    finish_report(
+    finish_and_publish_report(
         plan,
         &policy,
         &target_nodes,
@@ -385,8 +418,9 @@ pub fn inspect_project_run_reuse_only(
 ) -> ProjectRunResult<ProjectRunReport> {
     validate_plan_shape(plan)?;
     let policy = finalize_policy(policy)?;
+    let plan_nodes = plan_node_ids(plan);
     let target_nodes = selected_node_closure(plan, &policy.selected_nodes)?;
-    let existing = validate_existing_receipts(plan, &policy, &target_nodes)?;
+    let existing = validate_existing_receipts(plan, &policy, &plan_nodes)?;
     if !existing.poisoned_receipts.is_empty() {
         return Err(ProjectRunError::new(
             ProjectRunErrorCode::ReceiptPoisoning,
@@ -482,6 +516,925 @@ pub fn canonical_project_run_report_bytes(report: &ProjectRunReport) -> ProjectR
             format!("failed to serialize project run report: {error}"),
         )
     })
+}
+
+pub fn project_run_manifest_revision_for_report(
+    plan: &ProjectPlan,
+    report: &ProjectRunReport,
+    previous_revision_hash: Option<String>,
+) -> ProjectRunResult<ProjectRunManifestRevision> {
+    validate_plan_shape(plan)?;
+    validate_report_receipt_binding(plan, report)?;
+    let mut node_receipt_hashes = BTreeMap::new();
+    let mut node_semantic_hashes = BTreeMap::new();
+    let mut deterministic_usage = BTreeMap::new();
+    for receipt in &report.receipt.node_receipts {
+        node_receipt_hashes.insert(receipt.node_id.clone(), receipt.receipt_hash.clone());
+        node_semantic_hashes.insert(receipt.node_id.clone(), receipt.semantic_hash.clone());
+        for (key, value) in &receipt.deterministic_usage {
+            let entry = deterministic_usage.entry(key.clone()).or_insert(0_u64);
+            *entry = entry.checked_add(*value).ok_or_else(|| {
+                ProjectRunError::new(
+                    ProjectRunErrorCode::ArtifactContract,
+                    Some(receipt.node_id.clone()),
+                    format!("deterministic usage counter {key} overflowed u64"),
+                )
+            })?;
+        }
+    }
+    for node_report in &report.node_reports {
+        let Some(receipt_hash) = &node_report.receipt_hash else {
+            continue;
+        };
+        match node_receipt_hashes.insert(node_report.node_id.clone(), receipt_hash.clone()) {
+            Some(existing) if existing != *receipt_hash => {
+                return Err(ProjectRunError::new(
+                    ProjectRunErrorCode::ArtifactContract,
+                    Some(node_report.node_id.clone()),
+                    "project run report contains conflicting receipt hashes for the same node",
+                ));
+            }
+            _ => {}
+        }
+    }
+    finalized_project_run_manifest_revision(ProjectRunManifestRevision {
+        schema_version: CANON_PROJECT_RUN_MANIFEST_REVISION_VERSION.to_string(),
+        project_id: report.project_id.clone(),
+        plan_graph_hash: report.plan_graph_hash.clone(),
+        run_receipt_hash: report.run_receipt_hash.clone(),
+        previous_revision_hash,
+        validated_nodes: plan_node_ids(plan).into_iter().collect(),
+        completed_nodes: report.receipt.completed_nodes.clone(),
+        failed_nodes: report.receipt.failed_nodes.clone(),
+        cancelled_nodes: report.receipt.cancelled_nodes.clone(),
+        invalidated_nodes: report.receipt.invalidated_nodes.clone(),
+        blocked_nodes: report.receipt.blocked_nodes.clone(),
+        node_receipt_hashes,
+        node_semantic_hashes,
+        deterministic_usage,
+        revision_hash: String::new(),
+    })
+}
+
+pub fn canonical_project_run_manifest_revision_bytes(
+    revision: &ProjectRunManifestRevision,
+) -> ProjectRunResult<Vec<u8>> {
+    let canonical = validate_project_run_manifest_revision(revision.clone())?;
+    serde_json::to_vec(&canonical).map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            None,
+            format!("failed to serialize project run manifest revision: {error}"),
+        )
+    })
+}
+
+pub fn read_project_run_manifest_head(
+    policy: &ProjectRunPolicy,
+) -> ProjectRunResult<Option<ProjectRunManifestRevision>> {
+    let path = project_run_manifest_head_path(policy)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let bytes = fs::read(&path).map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            None,
+            format!(
+                "failed to read project run manifest head {}: {error}",
+                path.display()
+            ),
+        )
+    })?;
+    let revision = parse_project_run_manifest_revision(&bytes)?;
+    let revision_path = project_run_manifest_revision_path(policy, &revision.revision_hash)?;
+    let immutable_bytes = fs::read(&revision_path).map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            None,
+            format!(
+                "project run manifest head {} points to missing immutable revision {}: {error}",
+                path.display(),
+                revision_path.display()
+            ),
+        )
+    })?;
+    let canonical_bytes = canonical_project_run_manifest_revision_bytes(&revision)?;
+    if immutable_bytes != canonical_bytes {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            None,
+            format!(
+                "project run manifest head {} does not match immutable revision {}",
+                path.display(),
+                revision_path.display()
+            ),
+        ));
+    }
+    Ok(Some(revision))
+}
+
+pub fn project_run_manifest_head_path(policy: &ProjectRunPolicy) -> ProjectRunResult<PathBuf> {
+    let policy = finalize_policy(policy)?;
+    let relative = run_manifest_head_relative_path(&policy.work_dir)?;
+    resolve_fs_workspace_path(
+        &policy.workspace_root,
+        "project_run.manifest_head",
+        &relative,
+        PlannedAccess::Write,
+    )
+    .map(|resolution| resolution.absolute_path)
+    .map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::WorkspacePolicy,
+            None,
+            format!("project run manifest head path failed workspace safety: {error}"),
+        )
+    })
+}
+
+pub fn project_run_manifest_revision_path(
+    policy: &ProjectRunPolicy,
+    revision_hash: &str,
+) -> ProjectRunResult<PathBuf> {
+    let policy = finalize_policy(policy)?;
+    let relative = run_manifest_revision_relative_path(&policy.work_dir, revision_hash)?;
+    resolve_fs_workspace_path(
+        &policy.workspace_root,
+        "project_run.manifest_revision",
+        &relative,
+        PlannedAccess::Write,
+    )
+    .map(|resolution| resolution.absolute_path)
+    .map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::WorkspacePolicy,
+            None,
+            format!("project run manifest revision path failed workspace safety: {error}"),
+        )
+    })
+}
+
+fn finish_and_publish_report(
+    plan: &ProjectPlan,
+    policy: &ProjectRunPolicy,
+    target_nodes: &BTreeSet<String>,
+    report: ProjectRunReport,
+    valid_receipts: BTreeMap<String, ProjectRunNodeReceipt>,
+    failed_nodes: BTreeSet<String>,
+) -> ProjectRunResult<ProjectRunReport> {
+    let report = finish_report(
+        plan,
+        policy,
+        target_nodes,
+        report,
+        valid_receipts,
+        failed_nodes,
+    )?;
+    let previous_head = read_project_run_manifest_head(policy)?;
+    let previous_revision_hash = previous_head
+        .as_ref()
+        .map(|revision| revision.revision_hash.clone());
+    let revision = project_run_manifest_revision_for_report(plan, &report, previous_revision_hash)?;
+    publish_project_run_manifest_revision(policy, &revision, previous_head.as_ref())?;
+    Ok(report)
+}
+
+fn publish_project_run_manifest_revision(
+    policy: &ProjectRunPolicy,
+    revision: &ProjectRunManifestRevision,
+    expected_existing_head: Option<&ProjectRunManifestRevision>,
+) -> ProjectRunResult<()> {
+    let revision = validate_project_run_manifest_revision(revision.clone())?;
+    let revision_bytes = canonical_project_run_manifest_revision_bytes(&revision)?;
+    let revision_path = project_run_manifest_revision_path(policy, &revision.revision_hash)?;
+    write_project_run_manifest_revision_cas(&revision_path, &revision, &revision_bytes)?;
+
+    let expected_head_bytes = expected_existing_head
+        .map(canonical_project_run_manifest_revision_bytes)
+        .transpose()?;
+    let head_path = project_run_manifest_head_path(policy)?;
+    match write_manifest_atomic_replace(
+        &head_path,
+        &revision_bytes,
+        expected_head_bytes.as_deref(),
+    )? {
+        ManifestSlotWrite::Intended => Ok(()),
+        ManifestSlotWrite::Existing => Err(ProjectRunError::new(
+            ProjectRunErrorCode::AtomicPublication,
+            None,
+            format!(
+                "refusing to replace project run manifest head {} because it no longer matches the expected previous revision",
+                head_path.display()
+            ),
+        )),
+    }
+}
+
+fn write_project_run_manifest_revision_cas(
+    revision_path: &Path,
+    revision: &ProjectRunManifestRevision,
+    revision_bytes: &[u8],
+) -> ProjectRunResult<()> {
+    let expected_file_name = format!("{}.json", digest_leaf_token(&revision.revision_hash)?);
+    if revision_path.file_name().and_then(|name| name.to_str()) != Some(expected_file_name.as_str())
+    {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            None,
+            format!(
+                "project run manifest revision path {} does not match revision hash {}",
+                revision_path.display(),
+                revision.revision_hash
+            ),
+        ));
+    }
+    if fs::symlink_metadata(revision_path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::WorkspacePolicy,
+            None,
+            format!(
+                "refusing content-addressed project run manifest revision symlink {}",
+                revision_path.display()
+            ),
+        ));
+    }
+    if let Some(parent) = revision_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::AtomicPublication,
+                None,
+                format!(
+                    "failed to create project run manifest revision directory {}: {error}",
+                    parent.display()
+                ),
+            )
+        })?;
+    }
+    match write_manifest_atomic_replace(revision_path, revision_bytes, None)? {
+        ManifestSlotWrite::Intended => Ok(()),
+        ManifestSlotWrite::Existing => Err(ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            None,
+            format!(
+                "refusing to replace immutable project run manifest revision {} because its bytes differ from {}",
+                revision_path.display(),
+                revision.revision_hash
+            ),
+        )),
+    }
+}
+
+fn parse_project_run_manifest_revision(
+    bytes: &[u8],
+) -> ProjectRunResult<ProjectRunManifestRevision> {
+    let revision: ProjectRunManifestRevision = serde_json::from_slice(bytes).map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            None,
+            format!("failed to parse project run manifest revision JSON: {error}"),
+        )
+    })?;
+    validate_project_run_manifest_revision(revision).map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::ReceiptPoisoning,
+            error.node_id,
+            error.message,
+        )
+    })
+}
+
+fn finalized_project_run_manifest_revision(
+    mut revision: ProjectRunManifestRevision,
+) -> ProjectRunResult<ProjectRunManifestRevision> {
+    canonicalize_project_run_manifest_revision(&mut revision);
+    revision.revision_hash.clear();
+    revision.revision_hash = compute_project_run_manifest_revision_hash(&revision)?;
+    validate_project_run_manifest_revision(revision)
+}
+
+fn validate_project_run_manifest_revision(
+    mut revision: ProjectRunManifestRevision,
+) -> ProjectRunResult<ProjectRunManifestRevision> {
+    canonicalize_project_run_manifest_revision(&mut revision);
+    if revision.schema_version != CANON_PROJECT_RUN_MANIFEST_REVISION_VERSION {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            None,
+            format!(
+                "project run manifest revision schema_version must equal {CANON_PROJECT_RUN_MANIFEST_REVISION_VERSION}"
+            ),
+        ));
+    }
+    if revision.project_id.trim().is_empty() {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            None,
+            "project run manifest revision project_id must be non-empty",
+        ));
+    }
+    validate_blake3_digest_field("plan_graph_hash", &revision.plan_graph_hash)?;
+    validate_blake3_digest_field("run_receipt_hash", &revision.run_receipt_hash)?;
+    validate_blake3_digest_field("revision_hash", &revision.revision_hash)?;
+    if let Some(previous) = &revision.previous_revision_hash {
+        validate_blake3_digest_field("previous_revision_hash", previous)?;
+        if previous == &revision.revision_hash {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                None,
+                "project run manifest revision cannot point to itself as previous_revision_hash",
+            ));
+        }
+    }
+
+    validate_node_list("validated_nodes", &revision.validated_nodes)?;
+    validate_node_list("completed_nodes", &revision.completed_nodes)?;
+    validate_node_list("failed_nodes", &revision.failed_nodes)?;
+    validate_node_list("cancelled_nodes", &revision.cancelled_nodes)?;
+    validate_node_list("invalidated_nodes", &revision.invalidated_nodes)?;
+    validate_node_list("blocked_nodes", &revision.blocked_nodes)?;
+
+    let validated = revision
+        .validated_nodes
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    for (field, values) in [
+        ("completed_nodes", &revision.completed_nodes),
+        ("failed_nodes", &revision.failed_nodes),
+        ("cancelled_nodes", &revision.cancelled_nodes),
+        ("invalidated_nodes", &revision.invalidated_nodes),
+        ("blocked_nodes", &revision.blocked_nodes),
+    ] {
+        for node_id in values {
+            if !validated.contains(node_id) {
+                return Err(ProjectRunError::new(
+                    ProjectRunErrorCode::ArtifactContract,
+                    Some(node_id.clone()),
+                    format!("{field} contains node not present in validated_nodes"),
+                ));
+            }
+        }
+    }
+    validate_disjoint_manifest_status_nodes(&revision)?;
+    validate_manifest_digest_map(
+        "node_receipt_hashes",
+        &revision.node_receipt_hashes,
+        &validated,
+    )?;
+    validate_manifest_digest_map(
+        "node_semantic_hashes",
+        &revision.node_semantic_hashes,
+        &validated,
+    )?;
+    for node_id in &revision.completed_nodes {
+        if !revision.node_receipt_hashes.contains_key(node_id)
+            || !revision.node_semantic_hashes.contains_key(node_id)
+        {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(node_id.clone()),
+                "completed project run manifest node must carry receipt and semantic hashes",
+            ));
+        }
+    }
+    for node_id in revision.node_semantic_hashes.keys() {
+        if !revision.node_receipt_hashes.contains_key(node_id) {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(node_id.clone()),
+                "project run manifest semantic hash cannot appear without a receipt hash",
+            ));
+        }
+    }
+    for key in revision.deterministic_usage.keys() {
+        if key.trim().is_empty() {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                None,
+                "project run manifest deterministic usage keys must be non-empty",
+            ));
+        }
+    }
+
+    let expected = compute_project_run_manifest_revision_hash(&revision)?;
+    if revision.revision_hash != expected {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            None,
+            format!(
+                "project run manifest revision hash mismatch: expected {expected}, got {}",
+                revision.revision_hash
+            ),
+        ));
+    }
+    Ok(revision)
+}
+
+fn validate_report_receipt_binding(
+    plan: &ProjectPlan,
+    report: &ProjectRunReport,
+) -> ProjectRunResult<()> {
+    if report.schema_version != CANON_PROJECT_RUN_VERSION
+        || report.receipt.schema_version != CANON_PROJECT_RUN_VERSION
+    {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            None,
+            format!("project run report schema_version must equal {CANON_PROJECT_RUN_VERSION}"),
+        ));
+    }
+    if report.project_id != plan.project_id || report.receipt.project_id != plan.project_id {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            None,
+            "project run report project_id must match the project plan",
+        ));
+    }
+    if report.plan_graph_hash != plan.graph_hash
+        || report.receipt.plan_graph_hash != plan.graph_hash
+    {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            None,
+            "project run report plan_graph_hash must match the project plan",
+        ));
+    }
+    canonical_run_receipt_bytes(&report.receipt).map_err(ProjectRunError::from)?;
+    if report.run_receipt_hash != report.receipt.receipt_hash {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            None,
+            "project run report run_receipt_hash must match its embedded run receipt",
+        ));
+    }
+    let known_nodes = plan_node_ids(plan);
+    validate_report_node_set("executed_nodes", &report.executed_nodes, &known_nodes)?;
+    validate_report_node_set("resumed_nodes", &report.resumed_nodes, &known_nodes)?;
+    validate_report_node_set("failed_nodes", &report.failed_nodes, &known_nodes)?;
+    validate_report_node_set("cancelled_nodes", &report.cancelled_nodes, &known_nodes)?;
+    validate_report_node_set("invalidated_nodes", &report.invalidated_nodes, &known_nodes)?;
+    validate_report_node_set("blocked_nodes", &report.blocked_nodes, &known_nodes)?;
+    validate_report_node_set(
+        "receipt.completed_nodes",
+        &report.receipt.completed_nodes,
+        &known_nodes,
+    )?;
+    if report.receipt.completed_nodes
+        != report
+            .receipt
+            .node_receipts
+            .iter()
+            .map(|receipt| receipt.node_id.clone())
+            .collect::<Vec<_>>()
+    {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            None,
+            "project run receipt completed_nodes must match embedded completed node receipts",
+        ));
+    }
+    if report.failed_nodes != report.receipt.failed_nodes
+        || report.cancelled_nodes != report.receipt.cancelled_nodes
+        || report.invalidated_nodes != report.receipt.invalidated_nodes
+        || report.blocked_nodes != report.receipt.blocked_nodes
+    {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            None,
+            "project run report node status lists must match the embedded run receipt",
+        ));
+    }
+    let mut completed_receipts = BTreeMap::new();
+    for receipt in &report.receipt.node_receipts {
+        canonical_node_receipt_bytes(receipt).map_err(ProjectRunError::from)?;
+        if receipt.project_id != plan.project_id
+            || receipt.outcome != ProjectRunNodeOutcome::Completed
+        {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(receipt.node_id.clone()),
+                "project run receipt can embed only completed node receipts for this project",
+            ));
+        }
+        if !known_nodes.contains(&receipt.node_id) {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(receipt.node_id.clone()),
+                "project run receipt embeds a node not present in the project plan",
+            ));
+        }
+        completed_receipts.insert(receipt.node_id.clone(), receipt.receipt_hash.clone());
+    }
+    let mut report_nodes = BTreeSet::new();
+    for node_report in &report.node_reports {
+        if !report_nodes.insert(node_report.node_id.clone()) {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(node_report.node_id.clone()),
+                "project run report contains duplicate node_reports entries",
+            ));
+        }
+        if !known_nodes.contains(&node_report.node_id) {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(node_report.node_id.clone()),
+                "project run report references a node not present in the project plan",
+            ));
+        }
+        if let Some(receipt_hash) = &node_report.receipt_hash {
+            validate_blake3_digest_field("node_report.receipt_hash", receipt_hash)?;
+        }
+        match node_report.outcome {
+            ProjectRunNodeOutcome::Completed => {
+                let expected = completed_receipts
+                    .get(&node_report.node_id)
+                    .ok_or_else(|| {
+                        ProjectRunError::new(
+                            ProjectRunErrorCode::ArtifactContract,
+                            Some(node_report.node_id.clone()),
+                            "completed node_report has no embedded completed node receipt",
+                        )
+                    })?;
+                if node_report.receipt_hash.as_ref() != Some(expected) {
+                    return Err(ProjectRunError::new(
+                        ProjectRunErrorCode::ArtifactContract,
+                        Some(node_report.node_id.clone()),
+                        "completed node_report receipt hash must match embedded node receipt",
+                    ));
+                }
+            }
+            ProjectRunNodeOutcome::Failed => {
+                if !report.failed_nodes.contains(&node_report.node_id) {
+                    return Err(ProjectRunError::new(
+                        ProjectRunErrorCode::ArtifactContract,
+                        Some(node_report.node_id.clone()),
+                        "failed node_report must be listed in failed_nodes",
+                    ));
+                }
+            }
+            ProjectRunNodeOutcome::Cancelled => {
+                if !report.cancelled_nodes.contains(&node_report.node_id) {
+                    return Err(ProjectRunError::new(
+                        ProjectRunErrorCode::ArtifactContract,
+                        Some(node_report.node_id.clone()),
+                        "cancelled node_report must be listed in cancelled_nodes",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn canonicalize_project_run_manifest_revision(revision: &mut ProjectRunManifestRevision) {
+    revision.validated_nodes.sort();
+    revision.completed_nodes.sort();
+    revision.failed_nodes.sort();
+    revision.cancelled_nodes.sort();
+    revision.invalidated_nodes.sort();
+    revision.blocked_nodes.sort();
+}
+
+fn compute_project_run_manifest_revision_hash(
+    revision: &ProjectRunManifestRevision,
+) -> ProjectRunResult<String> {
+    let mut hashable = revision.clone();
+    canonicalize_project_run_manifest_revision(&mut hashable);
+    hashable.revision_hash.clear();
+    serde_json::to_vec(&hashable)
+        .map(|bytes| digest_bytes(&bytes))
+        .map_err(|error| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                None,
+                format!("failed to hash project run manifest revision: {error}"),
+            )
+        })
+}
+
+fn validate_node_list(field: &str, values: &[String]) -> ProjectRunResult<()> {
+    let mut seen = BTreeSet::new();
+    for value in values {
+        if value.trim().is_empty() {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                None,
+                format!("{field} cannot contain an empty node id"),
+            ));
+        }
+        if !seen.insert(value.as_str()) {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(value.clone()),
+                format!("{field} cannot contain duplicate node ids"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_report_node_set(
+    field: &str,
+    values: &[String],
+    known_nodes: &BTreeSet<String>,
+) -> ProjectRunResult<()> {
+    validate_node_list(field, values)?;
+    for node_id in values {
+        if !known_nodes.contains(node_id) {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(node_id.clone()),
+                format!("{field} contains node not present in the project plan"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_disjoint_manifest_status_nodes(
+    revision: &ProjectRunManifestRevision,
+) -> ProjectRunResult<()> {
+    let mut statuses = BTreeMap::<&str, &str>::new();
+    for (field, values) in [
+        ("completed_nodes", &revision.completed_nodes),
+        ("failed_nodes", &revision.failed_nodes),
+        ("cancelled_nodes", &revision.cancelled_nodes),
+        ("blocked_nodes", &revision.blocked_nodes),
+    ] {
+        for node_id in values {
+            if let Some(existing) = statuses.insert(node_id.as_str(), field) {
+                return Err(ProjectRunError::new(
+                    ProjectRunErrorCode::ArtifactContract,
+                    Some(node_id.clone()),
+                    format!("project run manifest node appears in both {existing} and {field}"),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_manifest_digest_map(
+    field: &str,
+    values: &BTreeMap<String, String>,
+    validated_nodes: &BTreeSet<String>,
+) -> ProjectRunResult<()> {
+    for (node_id, digest) in values {
+        if node_id.trim().is_empty() {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                None,
+                format!("{field} cannot contain an empty node id"),
+            ));
+        }
+        if !validated_nodes.contains(node_id) {
+            return Err(ProjectRunError::new(
+                ProjectRunErrorCode::ArtifactContract,
+                Some(node_id.clone()),
+                format!("{field} contains node not present in validated_nodes"),
+            ));
+        }
+        validate_blake3_digest_field(field, digest)?;
+    }
+    Ok(())
+}
+
+fn validate_blake3_digest_field(field: &str, value: &str) -> ProjectRunResult<()> {
+    if is_lowercase_blake3_digest(value) {
+        return Ok(());
+    }
+    Err(ProjectRunError::new(
+        ProjectRunErrorCode::ArtifactContract,
+        None,
+        format!("{field} must be a lowercase blake3 digest"),
+    ))
+}
+
+fn is_lowercase_blake3_digest(value: &str) -> bool {
+    value.strip_prefix("blake3:").is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    })
+}
+
+fn digest_leaf_token(value: &str) -> ProjectRunResult<&str> {
+    validate_blake3_digest_field("digest path token", value)?;
+    Ok(value
+        .strip_prefix("blake3:")
+        .expect("validated blake3 digest has prefix"))
+}
+
+enum ManifestSlotWrite {
+    Intended,
+    Existing,
+}
+
+struct ManifestPublicationLock {
+    path: PathBuf,
+}
+
+impl Drop for ManifestPublicationLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+fn write_manifest_atomic_replace(
+    path: &Path,
+    bytes: &[u8],
+    expected_existing: Option<&[u8]>,
+) -> ProjectRunResult<ManifestSlotWrite> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            ProjectRunError::new(
+                ProjectRunErrorCode::AtomicPublication,
+                None,
+                format!(
+                    "failed to create project run manifest directory {}: {error}",
+                    parent.display()
+                ),
+            )
+        })?;
+    }
+    let temp_path = atomic_manifest_temp_path(path, bytes);
+    let _slot_lock = acquire_manifest_publication_lock(path, &temp_path, bytes)?;
+    match OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_path)
+    {
+        Ok(mut file) => {
+            file.write_all(bytes).map_err(|error| {
+                let _ = fs::remove_file(&temp_path);
+                manifest_io_error(&temp_path, error)
+            })?;
+            file.sync_all().map_err(|error| {
+                let _ = fs::remove_file(&temp_path);
+                manifest_io_error(&temp_path, error)
+            })?;
+            drop(file);
+            finish_manifest_atomic_replace(path, &temp_path, bytes, expected_existing)
+        }
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            recover_manifest_atomic_temp(path, &temp_path, bytes, expected_existing)
+        }
+        Err(error) => Err(manifest_io_error(&temp_path, error)),
+    }
+}
+
+fn acquire_manifest_publication_lock(
+    path: &Path,
+    temp_path: &Path,
+    bytes: &[u8],
+) -> ProjectRunResult<ManifestPublicationLock> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("run-manifest");
+    let lock_path = path.with_file_name(format!(".{file_name}.publish.lock"));
+    loop {
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+        {
+            Ok(file) => {
+                file.sync_all().map_err(|error| {
+                    let _ = fs::remove_file(&lock_path);
+                    manifest_io_error(&lock_path, error)
+                })?;
+                return Ok(ManifestPublicationLock { path: lock_path });
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                if recoverable_manifest_publication_lock(path, temp_path, bytes)? {
+                    fs::remove_file(&lock_path)
+                        .map_err(|error| manifest_io_error(&lock_path, error))?;
+                    continue;
+                }
+                return Err(ProjectRunError::new(
+                    ProjectRunErrorCode::AtomicPublication,
+                    None,
+                    format!(
+                        "refusing concurrent publication of project run manifest {} while lock {} is active; retry after the current publisher completes",
+                        path.display(),
+                        lock_path.display()
+                    ),
+                ));
+            }
+            Err(error) => return Err(manifest_io_error(&lock_path, error)),
+        }
+    }
+}
+
+fn recoverable_manifest_publication_lock(
+    path: &Path,
+    temp_path: &Path,
+    bytes: &[u8],
+) -> ProjectRunResult<bool> {
+    match fs::read(path) {
+        Ok(existing) if existing == bytes => return Ok(true),
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(manifest_io_error(path, error)),
+    }
+    match fs::read(temp_path) {
+        Ok(existing) => Ok(existing == bytes),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(manifest_io_error(temp_path, error)),
+    }
+}
+
+fn recover_manifest_atomic_temp(
+    path: &Path,
+    temp_path: &Path,
+    bytes: &[u8],
+    expected_existing: Option<&[u8]>,
+) -> ProjectRunResult<ManifestSlotWrite> {
+    let existing = fs::read(temp_path).map_err(|error| manifest_io_error(temp_path, error))?;
+    if existing != bytes {
+        return Err(ProjectRunError::new(
+            ProjectRunErrorCode::AtomicPublication,
+            None,
+            format!(
+                "refusing to reuse atomic project run manifest temp {} because its contents do not match the intended revision bytes",
+                temp_path.display()
+            ),
+        ));
+    }
+    finish_manifest_atomic_replace(path, temp_path, bytes, expected_existing)
+}
+
+fn finish_manifest_atomic_replace(
+    path: &Path,
+    temp_path: &Path,
+    bytes: &[u8],
+    expected_existing: Option<&[u8]>,
+) -> ProjectRunResult<ManifestSlotWrite> {
+    match fs::read(path) {
+        Ok(existing) if existing == bytes => {
+            let _ = fs::remove_file(temp_path);
+            Ok(ManifestSlotWrite::Intended)
+        }
+        Ok(existing) if expected_existing.is_some_and(|expected| expected == existing) => {
+            fs::rename(temp_path, path).map_err(|error| manifest_io_error(temp_path, error))?;
+            Ok(ManifestSlotWrite::Intended)
+        }
+        Ok(_) => {
+            let _ = fs::remove_file(temp_path);
+            Ok(ManifestSlotWrite::Existing)
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            fs::rename(temp_path, path).map_err(|error| manifest_io_error(temp_path, error))?;
+            Ok(ManifestSlotWrite::Intended)
+        }
+        Err(error) => Err(manifest_io_error(path, error)),
+    }
+}
+
+fn atomic_manifest_temp_path(path: &Path, bytes: &[u8]) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("run-manifest");
+    path.with_file_name(format!(
+        "{}.{}.tmp",
+        file_name,
+        digest_bytes(bytes).replace(':', "_")
+    ))
+}
+
+fn run_manifest_head_relative_path(work_dir: &Path) -> ProjectRunResult<PathBuf> {
+    let work_dir = normalize_relative_path(work_dir).map_err(|message| {
+        ProjectRunError::new(ProjectRunErrorCode::WorkspacePolicy, None, message)
+    })?;
+    Ok(work_dir.join("run-manifest").join("head.json"))
+}
+
+fn run_manifest_revision_relative_path(
+    work_dir: &Path,
+    revision_hash: &str,
+) -> ProjectRunResult<PathBuf> {
+    let work_dir = normalize_relative_path(work_dir).map_err(|message| {
+        ProjectRunError::new(ProjectRunErrorCode::WorkspacePolicy, None, message)
+    })?;
+    Ok(work_dir
+        .join("run-manifest")
+        .join("revisions")
+        .join(format!("{}.json", digest_leaf_token(revision_hash)?)))
+}
+
+fn manifest_io_error(path: &Path, error: io::Error) -> ProjectRunError {
+    ProjectRunError::new(
+        ProjectRunErrorCode::AtomicPublication,
+        None,
+        format!(
+            "failed to write project run manifest {}: {error}",
+            path.display()
+        ),
+    )
 }
 
 type ProjectInternalExecutorFn =
@@ -583,8 +1536,9 @@ fn ensure_pending_nodes_have_registered_executors(
 ) -> ProjectRunResult<()> {
     validate_plan_shape(plan)?;
     let policy = finalize_policy(policy)?;
+    let plan_nodes = plan_node_ids(plan);
     let target_nodes = selected_node_closure(plan, &policy.selected_nodes)?;
-    let existing = validate_existing_receipts(plan, &policy, &target_nodes)?;
+    let existing = validate_existing_receipts(plan, &policy, &plan_nodes)?;
     if !existing.poisoned_receipts.is_empty() {
         return Err(ProjectRunError::new(
             ProjectRunErrorCode::ReceiptPoisoning,
@@ -1420,6 +2374,10 @@ fn ready_nodes<'a>(
                 .all(|dependency| valid_receipts.contains_key(dependency))
         })
         .collect()
+}
+
+fn plan_node_ids(plan: &ProjectPlan) -> BTreeSet<String> {
+    plan.nodes.iter().map(|node| node.node_id.clone()).collect()
 }
 
 fn selected_node_closure(

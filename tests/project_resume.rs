@@ -38,10 +38,13 @@ use receipt::{
     semantic_node_result_cache_key, write_node_receipt,
 };
 use run::{
-    PROJECT_INTERNAL_COPY_FILE_EXECUTOR, ProjectNodeExecutionContext, ProjectNodeExecutionResult,
-    ProjectNodeExecutor, ProjectRunError, ProjectRunErrorCode, ProjectRunFailurePolicy,
-    ProjectRunPolicy, canonical_project_run_report_bytes, inspect_project_run_reuse_only,
-    run_project_plan, run_project_plan_with_registered_executors,
+    CANON_PROJECT_RUN_MANIFEST_REVISION_VERSION, PROJECT_INTERNAL_COPY_FILE_EXECUTOR,
+    ProjectNodeExecutionContext, ProjectNodeExecutionResult, ProjectNodeExecutor, ProjectRunError,
+    ProjectRunErrorCode, ProjectRunFailurePolicy, ProjectRunPolicy,
+    canonical_project_run_manifest_revision_bytes, canonical_project_run_report_bytes,
+    inspect_project_run_reuse_only, project_run_manifest_head_path,
+    project_run_manifest_revision_for_report, project_run_manifest_revision_path,
+    read_project_run_manifest_head, run_project_plan, run_project_plan_with_registered_executors,
 };
 use serde_json::Value;
 use std::{
@@ -130,11 +133,230 @@ fn completed_nodes_resume_without_repeating_execution() {
     assert_eq!(second.executed_nodes.len(), 0);
     assert_eq!(second.resumed_nodes.len(), plan.nodes.len());
     assert!(second_executor.calls.is_empty());
-    assert_eq!(first_tree, tree_bytes(temp.path()));
+    assert_eq!(
+        without_run_manifest(first_tree),
+        without_run_manifest(tree_bytes(temp.path()))
+    );
     assert_eq!(
         canonical_project_run_report_bytes(&second).expect("report bytes"),
         canonical_project_run_report_bytes(&second).expect("report bytes stable")
     );
+}
+
+#[test]
+fn project_run_publishes_immutable_manifest_revision_lineage() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan_a = chain_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor_a = DeterministicExecutor::default();
+
+    let report_a = run_project_plan(&plan_a, &policy, &mut executor_a).expect("revision A runs");
+    let head_a = read_project_run_manifest_head(&policy)
+        .expect("manifest head reads")
+        .expect("manifest head exists");
+    let head_a_bytes =
+        canonical_project_run_manifest_revision_bytes(&head_a).expect("revision A bytes");
+    let head_a_path = project_run_manifest_head_path(&policy).expect("head path");
+    let revision_a_path =
+        project_run_manifest_revision_path(&policy, &head_a.revision_hash).expect("A path");
+
+    assert_eq!(
+        head_a.schema_version,
+        CANON_PROJECT_RUN_MANIFEST_REVISION_VERSION
+    );
+    assert_eq!(head_a.previous_revision_hash, None);
+    assert_eq!(head_a.project_id, plan_a.project_id);
+    assert_eq!(head_a.plan_graph_hash, plan_a.graph_hash);
+    assert_eq!(head_a.run_receipt_hash, report_a.run_receipt_hash);
+    assert_eq!(
+        head_a.validated_nodes,
+        vec!["alpha".to_string(), "beta".to_string()]
+    );
+    assert_eq!(
+        head_a.completed_nodes,
+        vec!["alpha".to_string(), "beta".to_string()]
+    );
+    assert_eq!(fs::read(&head_a_path).expect("head bytes"), head_a_bytes);
+    assert_eq!(
+        fs::read(&revision_a_path).expect("immutable A bytes"),
+        head_a_bytes
+    );
+    for receipt in &report_a.receipt.node_receipts {
+        assert_eq!(
+            head_a.node_receipt_hashes.get(&receipt.node_id),
+            Some(&receipt.receipt_hash)
+        );
+        assert_eq!(
+            head_a.node_semantic_hashes.get(&receipt.node_id),
+            Some(&receipt.semantic_hash)
+        );
+    }
+
+    let mut plan_b = plan_a.clone();
+    change_alpha_identity(&mut plan_b);
+    let mut executor_b = DeterministicExecutor::default();
+    let report_b = run_project_plan(&plan_b, &policy, &mut executor_b).expect("revision B runs");
+    let head_b = read_project_run_manifest_head(&policy)
+        .expect("manifest head B reads")
+        .expect("manifest head B exists");
+
+    assert_ne!(head_b.revision_hash, head_a.revision_hash);
+    assert_eq!(
+        head_b.previous_revision_hash,
+        Some(head_a.revision_hash.clone())
+    );
+    assert_eq!(head_b.plan_graph_hash, plan_b.graph_hash);
+    assert_eq!(head_b.run_receipt_hash, report_b.run_receipt_hash);
+    assert_eq!(
+        fs::read(&revision_a_path).expect("immutable A still present"),
+        head_a_bytes
+    );
+    assert_eq!(
+        fs::read(
+            project_run_manifest_revision_path(&policy, &head_b.revision_hash).expect("B path")
+        )
+        .expect("immutable B bytes"),
+        canonical_project_run_manifest_revision_bytes(&head_b).expect("revision B bytes")
+    );
+}
+
+#[test]
+fn selected_run_validates_poisoned_unselected_receipt_before_execution() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = independent_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial run");
+    fs::write(receipt_path(temp.path(), "beta"), b"{poisoned-beta-receipt")
+        .expect("poison unselected beta receipt");
+    let alpha_before = fs::read(artifact_path(temp.path(), &plan, "alpha")).expect("alpha before");
+
+    let mut selected_policy = policy.clone();
+    selected_policy.selected_nodes.insert("alpha".to_string());
+    let mut selected_executor = DeterministicExecutor::default();
+    let error = run_project_plan(&plan, &selected_policy, &mut selected_executor)
+        .expect_err("full-plan receipt validation refuses poisoned beta");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(error.message.contains("poisoned project receipts"));
+    assert!(selected_executor.calls.is_empty());
+    assert_eq!(
+        fs::read(artifact_path(temp.path(), &plan, "alpha")).expect("alpha after"),
+        alpha_before
+    );
+}
+
+#[test]
+fn manifest_matching_temp_and_lock_are_recovered_on_retry() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = single_node_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial run");
+    let previous_head = read_project_run_manifest_head(&policy)
+        .expect("previous head reads")
+        .expect("previous head exists");
+    let inspected =
+        inspect_project_run_reuse_only(&plan, &policy).expect("reuse-only report builds");
+    let expected_revision = project_run_manifest_revision_for_report(
+        &plan,
+        &inspected,
+        Some(previous_head.revision_hash.clone()),
+    )
+    .expect("expected retry revision");
+    let expected_bytes = canonical_project_run_manifest_revision_bytes(&expected_revision)
+        .expect("expected revision bytes");
+    let head_path = project_run_manifest_head_path(&policy).expect("head path");
+    let temp_path = manifest_temp_path_for_test(&head_path, &expected_bytes);
+    fs::write(&temp_path, &expected_bytes).expect("stale matching manifest temp");
+    let lock_path = publication_lock_path_for_test(&head_path);
+    fs::write(&lock_path, b"stale matching manifest publication").expect("stale manifest lock");
+
+    let mut retry_executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut retry_executor).expect("retry recovers manifest temp");
+
+    assert!(retry_executor.calls.is_empty());
+    assert_eq!(fs::read(&head_path).expect("manifest head"), expected_bytes);
+    assert_eq!(
+        read_project_run_manifest_head(&policy)
+            .expect("head reads after recovery")
+            .expect("head exists after recovery")
+            .revision_hash,
+        expected_revision.revision_hash
+    );
+    assert!(!temp_path.exists());
+    assert!(!lock_path.exists());
+}
+
+#[test]
+fn manifest_mismatched_temp_refuses_without_replacing_head() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = single_node_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial run");
+    let previous_head = read_project_run_manifest_head(&policy)
+        .expect("previous head reads")
+        .expect("previous head exists");
+    let previous_bytes =
+        canonical_project_run_manifest_revision_bytes(&previous_head).expect("previous bytes");
+    let inspected =
+        inspect_project_run_reuse_only(&plan, &policy).expect("reuse-only report builds");
+    let expected_revision = project_run_manifest_revision_for_report(
+        &plan,
+        &inspected,
+        Some(previous_head.revision_hash.clone()),
+    )
+    .expect("expected retry revision");
+    let expected_bytes = canonical_project_run_manifest_revision_bytes(&expected_revision)
+        .expect("expected revision bytes");
+    let head_path = project_run_manifest_head_path(&policy).expect("head path");
+    let temp_path = manifest_temp_path_for_test(&head_path, &expected_bytes);
+    fs::write(&temp_path, b"wrong-manifest-revision").expect("stale mismatched temp");
+
+    let mut retry_executor = DeterministicExecutor::default();
+    let error = run_project_plan(&plan, &policy, &mut retry_executor)
+        .expect_err("mismatched manifest temp refuses");
+
+    assert_eq!(error.code, ProjectRunErrorCode::AtomicPublication);
+    assert!(
+        error
+            .message
+            .contains("refusing to reuse atomic project run manifest temp")
+    );
+    assert!(retry_executor.calls.is_empty());
+    assert_eq!(
+        fs::read(&head_path).expect("head unchanged"),
+        previous_bytes
+    );
+    assert_eq!(
+        fs::read(&temp_path).expect("mismatched temp preserved"),
+        b"wrong-manifest-revision"
+    );
+}
+
+#[test]
+fn manifest_head_rejects_unknown_fields() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = single_node_plan();
+    let policy = approving_policy(temp.path());
+    let mut executor = DeterministicExecutor::default();
+    run_project_plan(&plan, &policy, &mut executor).expect("initial run");
+    let head_path = project_run_manifest_head_path(&policy).expect("head path");
+    let mut value: Value =
+        serde_json::from_slice(&fs::read(&head_path).expect("head bytes")).expect("head json");
+    value["unexpected"] = Value::from(true);
+    fs::write(
+        &head_path,
+        serde_json::to_vec(&value).expect("bad head bytes"),
+    )
+    .expect("write bad head");
+
+    let error =
+        read_project_run_manifest_head(&policy).expect_err("unknown manifest field refuses");
+
+    assert_eq!(error.code, ProjectRunErrorCode::ReceiptPoisoning);
+    assert!(error.message.contains("unknown field"));
 }
 
 #[test]
@@ -483,8 +705,8 @@ fn interrupted_run_resumes_to_same_bytes_as_uninterrupted_run() {
             .contains(&"intake.source_alpha".to_string())
     );
     assert_eq!(
-        without_cancel_receipts(tree_bytes(resumed_dir.path())),
-        tree_bytes(uninterrupted_dir.path())
+        without_run_manifest(without_cancel_receipts(tree_bytes(resumed_dir.path()))),
+        without_run_manifest(tree_bytes(uninterrupted_dir.path()))
     );
 }
 
@@ -2834,6 +3056,12 @@ fn without_cancel_receipts(tree: BTreeMap<String, Vec<u8>>) -> BTreeMap<String, 
         .collect()
 }
 
+fn without_run_manifest(tree: BTreeMap<String, Vec<u8>>) -> BTreeMap<String, Vec<u8>> {
+    tree.into_iter()
+        .filter(|(path, _)| !path.starts_with("work/run-manifest/"))
+        .collect()
+}
+
 fn independent_plan() -> ProjectPlan {
     let mut plan = minimal_plan();
     let alpha = plan.nodes[0].clone();
@@ -3035,6 +3263,26 @@ fn receipt_temp_path_for_test(path: &Path, bytes: &[u8]) -> PathBuf {
         file_name,
         digest_bytes(bytes).replace(':', "_")
     ))
+}
+
+fn manifest_temp_path_for_test(path: &Path, bytes: &[u8]) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("run-manifest");
+    path.with_file_name(format!(
+        "{}.{}.tmp",
+        file_name,
+        digest_bytes(bytes).replace(':', "_")
+    ))
+}
+
+fn publication_lock_path_for_test(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("artifact");
+    path.with_file_name(format!(".{file_name}.publish.lock"))
 }
 
 fn path_token_for_test(path: &str) -> String {
