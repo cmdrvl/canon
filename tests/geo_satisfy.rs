@@ -21,8 +21,8 @@ use satisfy_subject::satisfy::{
     GeoInventoryAdvancementEffect, GeoSatisfactionArtifactReleaseRelation,
     GeoSatisfactionAssignment, GeoSatisfactionFileBinding, GeoSatisfactionFindingCode,
     GeoSatisfactionInput, GeoSatisfactionRunInput, GeoSatisfactionRunInputFileBinding,
-    GeoSatisfactionStatus, GeoSatisfyErrorCode, parse_geo_satisfaction_assignment,
-    satisfy_geo_acquisition, satisfy_geo_acquisition_for_run,
+    GeoSatisfactionStatus, GeoSatisfyErrorCode, geo_regional_inventory_advancement_semantic_hash,
+    parse_geo_satisfaction_assignment, satisfy_geo_acquisition, satisfy_geo_acquisition_for_run,
     satisfy_geo_acquisition_with_relations,
 };
 use tempfile::tempdir;
@@ -235,6 +235,85 @@ fn receipt_native_multi_release_artifacts_advance_inventory_and_read_back() {
         geo_regional_inventory_advancement_semantic_hash(advancement)
             .expect("advancement semantic hash"),
         advancement.semantic_hash
+    );
+}
+
+#[test]
+fn receipt_native_relations_reject_unmapped_extra_local_artifact_before_advancement() {
+    let dir = tempdir().expect("tempdir");
+    let first_path = dir.path().join("warehouse-release-a.json");
+    let second_path = dir.path().join("warehouse-release-b.json");
+    let extra_path = dir.path().join("warehouse-unmapped.json");
+    let receipt_path = dir.path().join("receipt.json");
+    let first = warehouse_rows_artifact_for("building-a");
+    let second = warehouse_rows_artifact_for("building-b");
+    let extra = warehouse_rows_artifact_for("building-unmapped");
+    std::fs::write(&first_path, &first).expect("write first data");
+    std::fs::write(&second_path, &second).expect("write second data");
+    std::fs::write(&extra_path, &extra).expect("write extra data");
+
+    let mut request = acquisition_request(&first);
+    request.releases.push(GeoReleasePin {
+        source_instance_id: "source.building.second".to_string(),
+        release_id: "release.fixture.second".to_string(),
+        release_digest: digest("release-second", b"release second"),
+    });
+    request.request_id = geo_acquisition_request_id(&request).expect("request id");
+    let mut receipt = acquisition_receipt(&request, &first, GeoAcquisitionTerminalState::Complete);
+    receipt.counts.rows = 3;
+    receipt.counts.bytes = (first.len() + second.len() + extra.len()) as u64;
+    receipt.result_digests = vec![
+        digest("result.first", &first),
+        digest("result.second", &second),
+        digest("result.unmapped", &extra),
+    ];
+    receipt.local_artifacts = vec![
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.first".to_string(),
+            media_type: GEO_RUN_JSON_MEDIA_TYPE.to_string(),
+            byte_count: first.len() as u64,
+            digest: digest("artifact.first", &first),
+        },
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.second".to_string(),
+            media_type: GEO_RUN_JSON_MEDIA_TYPE.to_string(),
+            byte_count: second.len() as u64,
+            digest: digest("artifact.second", &second),
+        },
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.unmapped".to_string(),
+            media_type: GEO_RUN_JSON_MEDIA_TYPE.to_string(),
+            byte_count: extra.len() as u64,
+            digest: digest("artifact.unmapped", &extra),
+        },
+    ];
+    receipt.artifact_release_relations = vec![
+        artifact_release_relation("artifact.first", &request.releases[0]),
+        artifact_release_relation("artifact.second", &request.releases[1]),
+    ];
+    write_json(&receipt_path, &receipt);
+
+    let error = satisfy_geo_acquisition(GeoSatisfactionInput {
+        plan: &plan_with_acquisition(request.clone()),
+        inventory: Some(&inventory_for_request(&request)),
+        assignment: GeoSatisfactionAssignment {
+            request_id: request.request_id.clone(),
+            receipt_path,
+        },
+        local_artifact_files: vec![
+            file_binding("artifact.first", &first_path),
+            file_binding("artifact.second", &second_path),
+            file_binding("artifact.unmapped", &extra_path),
+        ],
+        result_digest_files: Vec::new(),
+    })
+    .expect_err("unmapped local artifact relation must refuse before advancement");
+
+    assert_eq!(error.code, GeoSatisfyErrorCode::ReceiptMismatch);
+    assert!(error.message.contains("cover every local artifact"));
+    assert_eq!(
+        error.detail.get("local_artifact_id").map(String::as_str),
+        Some("artifact.unmapped")
     );
 }
 

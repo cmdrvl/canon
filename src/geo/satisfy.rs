@@ -1336,6 +1336,15 @@ fn validate_artifact_release_relations(
             ));
         }
     }
+    for artifact_id in artifact_ids {
+        if !artifact_to_release.contains_key(&artifact_id) {
+            return Err(GeoSatisfyError::new(
+                GeoSatisfyErrorCode::ContractMismatch,
+                "Geo artifact-release relations must cover every local artifact",
+                [("local_artifact_id", artifact_id.as_str())],
+            ));
+        }
+    }
 
     normalized.sort();
     Ok(normalized)

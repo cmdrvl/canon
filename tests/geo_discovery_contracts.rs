@@ -569,6 +569,56 @@ fn receipt_native_artifact_release_relations_validate_multi_release_lineage() {
 }
 
 #[test]
+fn artifact_release_relations_must_cover_every_local_artifact() {
+    let request = acquisition_request();
+    let mut receipt = live_receipt(&request, GeoAcquisitionTerminalState::Complete, 3);
+    receipt.counts.bytes = 768;
+    receipt.source_digests = request
+        .releases
+        .iter()
+        .map(|release| release.release_digest.clone())
+        .collect();
+    receipt.result_digests = vec![
+        blake3_digest("result.buildings", b"building release rows"),
+        blake3_digest("result.addresses", b"address release rows"),
+        blake3_digest("result.orphan", b"orphan release rows"),
+    ];
+    receipt.local_artifacts = vec![
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.fixture.buildings".to_string(),
+            media_type: "application/jsonl".to_string(),
+            byte_count: 256,
+            digest: blake3_digest("artifact.buildings", b"building release rows"),
+        },
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.fixture.addresses".to_string(),
+            media_type: "application/jsonl".to_string(),
+            byte_count: 256,
+            digest: blake3_digest("artifact.addresses", b"address release rows"),
+        },
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.fixture.unmapped".to_string(),
+            media_type: "application/jsonl".to_string(),
+            byte_count: 256,
+            digest: blake3_digest("artifact.unmapped", b"orphan release rows"),
+        },
+    ];
+    receipt.artifact_release_relations = vec![
+        artifact_release_relation("artifact.fixture.buildings", &request.releases[0]),
+        artifact_release_relation("artifact.fixture.addresses", &request.releases[1]),
+    ];
+
+    let error = validate_geo_acquisition_receipt(&request, &receipt)
+        .expect_err("every local artifact needs one release relation");
+    assert_eq!(error.code, GeoDiscoveryErrorCode::ReceiptMismatch);
+    assert!(error.message.contains("cover every local artifact"));
+    assert_eq!(
+        error.detail.get("local_artifact_id").map(String::as_str),
+        Some("artifact.fixture.unmapped")
+    );
+}
+
+#[test]
 fn artifact_release_relations_reject_ambiguous_or_drifted_lineage() {
     let request = acquisition_request();
     let mut missing = live_receipt(&request, GeoAcquisitionTerminalState::Complete, 2);
