@@ -240,6 +240,7 @@ impl GeoProjectNodeExecutor {
         }
         let command = GeoExecutorCommand::from_command(node)?;
         validate_node_contract(node, context, command)?;
+        self.clear_dependency_outputs_for_declared_producers(node);
         self.ingest_context_dependency_outputs(node, context)?;
         validate_expected_dependency(node, command, &self.dependency_outputs)?;
         self.validate_no_forbidden_direct_bindings(node, command)?;
@@ -308,6 +309,15 @@ impl GeoProjectNodeExecutor {
             output_bytes: bytes,
             deterministic_usage: usage,
         })
+    }
+
+    fn clear_dependency_outputs_for_declared_producers(&mut self, node: &ProjectPlanNode) {
+        if node.dependencies.is_empty() {
+            return;
+        }
+        let declared = node.dependencies.iter().collect::<BTreeSet<_>>();
+        self.dependency_outputs
+            .retain(|(producer_node_id, _), _| !declared.contains(producer_node_id));
     }
 
     fn ingest_context_dependency_outputs(

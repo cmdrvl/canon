@@ -741,6 +741,62 @@ fn geo_executor_refuses_stale_preloaded_section_without_current_direct_dependenc
 }
 
 #[test]
+fn geo_executor_refuses_empty_current_section_output_vector_over_stale_preload() {
+    let plan = five_node_plan();
+    let solve_node = plan
+        .nodes
+        .iter()
+        .find(|node| node.node_id == "geo.building.solve")
+        .expect("solve node")
+        .clone();
+    let compile_bytes = compile_evidence_bytes();
+    let section_bytes = section_bytes(&tile_work_request());
+    let mut executor = executor_with_scope();
+    executor
+        .insert_dependency_output(executor_dependency_output(
+            "geo.building.section",
+            "section",
+            CANON_GEO_TILE_WORK_UNIT_VERSION,
+            stale_same_id_section_bytes(),
+        ))
+        .expect("stale preloaded section is typed");
+
+    let error = executor
+        .execute(
+            &solve_node,
+            &ProjectNodeExecutionContext {
+                node_id: solve_node.node_id.clone(),
+                dependency_semantic_hashes: BTreeMap::from([
+                    (
+                        "geo.building.compile_evidence".to_string(),
+                        digest_bytes(&compile_bytes),
+                    ),
+                    (
+                        "geo.building.section".to_string(),
+                        digest_bytes(&section_bytes),
+                    ),
+                ]),
+                dependency_outputs: BTreeMap::from([
+                    (
+                        "geo.building.compile_evidence".to_string(),
+                        vec![project_dependency_output("compile_evidence", compile_bytes)],
+                    ),
+                    ("geo.building.section".to_string(), Vec::new()),
+                ]),
+            },
+        )
+        .expect_err("empty current section output vector must fail closed");
+
+    assert!(
+        error
+            .message
+            .contains("requires dependency output geo.building.section:section"),
+        "{}",
+        error.message
+    );
+}
+
+#[test]
 fn geo_executor_uses_fresh_direct_section_dependency_over_preloaded_stale_state() {
     let plan = five_node_plan();
     let solve_node = plan
