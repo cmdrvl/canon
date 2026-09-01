@@ -14,7 +14,8 @@ use crate::{
         GeoLinkSourcesCli, GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli,
         GeoMaterializeGeometryCli, GeoMaterializeH7PopulationCli, GeoMaterializeH7StagingBatchCli,
         GeoMaterializeHomeCellsCli, GeoMaterializeWarehouseGeometryCli, GeoPlanCli,
-        GeoReconcileTilesCli, GeoRunCli, GeoSolveCli, GeoSubcommand, GeoTileWorkCli,
+        GeoReconcileTilesCli, GeoReplanFromAcquisitionCli, GeoRunCli, GeoSolveCli, GeoSubcommand,
+        GeoTileWorkCli,
     },
     project::ProjectRunPolicy,
     refusal,
@@ -77,17 +78,19 @@ use super::{
         canonical_multisource_artifact_bytes, materialize_geo_multisource,
     },
     plan::{
-        CANON_GEO_PLAN_VERSION, GeoPlan, GeoPlanError, GeoPlanRequest, canonical_geo_plan_bytes,
-        compile_geo_plan,
+        CANON_GEO_PLAN_VERSION, GeoPlan, GeoPlanError, GeoPlanReplanRequest, GeoPlanRequest,
+        canonical_geo_plan_bytes, compile_geo_plan, replan_geo_plan_from_inventory_advancement,
     },
     run::{
         CANON_GEO_RUN_VERSION, GeoRunError, GeoRunInputBinding, GeoRunRequest,
         canonical_geo_run_bytes, run_geo_plan,
     },
     satisfy::{
-        GeoSatisfactionAssignment, GeoSatisfactionFileBinding, GeoSatisfactionRunInput,
-        GeoSatisfactionRunInputFileBinding, GeoSatisfactionStatus, GeoSatisfyError,
-        parse_geo_satisfaction_assignment, satisfy_geo_acquisition_for_run,
+        GeoSatisfactionAssignment, GeoSatisfactionFileBinding, GeoSatisfactionInput,
+        GeoSatisfactionRunInput, GeoSatisfactionRunInputFileBinding, GeoSatisfactionStatus,
+        GeoSatisfyError, canonical_geo_regional_inventory_advancement_bytes,
+        parse_geo_satisfaction_assignment, satisfy_geo_acquisition,
+        satisfy_geo_acquisition_for_run,
     },
     tile::{
         CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
@@ -103,12 +106,14 @@ use super::{
 const GEO_PLAN_NEXT_COMMAND: &str = "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>";
 const GEO_RUN_NEXT_COMMAND: &str =
     "canon geo run --plan <PLAN.json> --work-dir <DIR> --input <NODE_ID:BINDING_ID=PATH>";
+const GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND: &str = "canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH> --advancement-out <ADVANCEMENT.json>";
 
 pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
     match &geo.command {
         GeoSubcommand::Capabilities(args) => run_capabilities(args),
         GeoSubcommand::Plan(args) => run_plan(args),
         GeoSubcommand::Run(args) => run_geo_run(args),
+        GeoSubcommand::ReplanFromAcquisition(args) => run_replan_from_acquisition(args),
         GeoSubcommand::LinkSources(args) => run_link_sources(args),
         GeoSubcommand::MaterializeHomeCells(args) => run_materialize_home_cells(args),
         GeoSubcommand::TileWork(args) => run_tile_work(args),
@@ -281,6 +286,140 @@ fn run_geo_run(args: &GeoRunCli) -> Result<u8, Box<dyn Error>> {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_run_error(error),
     }
+}
+
+fn run_replan_from_acquisition(args: &GeoReplanFromAcquisitionCli) -> Result<u8, Box<dyn Error>> {
+    let base_plan: GeoPlan = match read_request(
+        &args.base_plan,
+        "base_plan",
+        CANON_GEO_PLAN_VERSION,
+        GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND,
+    ) {
+        Ok(plan) => plan,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let base_inventory: GeoRegionalInventory = match read_request(
+        &args.base_inventory,
+        "base_inventory",
+        CANON_GEO_REGIONAL_INVENTORY_VERSION,
+        GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND,
+    ) {
+        Ok(inventory) => inventory,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let question: GeoQuestion = match read_request(
+        &args.question,
+        "question",
+        CANON_GEO_QUESTION_VERSION,
+        GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND,
+    ) {
+        Ok(question) => question,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let capabilities: GeoCapabilities = match read_request(
+        &args.capabilities,
+        "capabilities",
+        CANON_GEO_CAPABILITIES_VERSION,
+        GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND,
+    ) {
+        Ok(capabilities) => capabilities,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let profile: GeoCompositionProfile = match read_request(
+        &args.profile,
+        "profile",
+        CANON_GEO_COMPOSITION_PROFILE_VERSION,
+        GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND,
+    ) {
+        Ok(profile) => profile,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let budget: GeoResourceBudget = match read_request(
+        &args.budget,
+        "budget",
+        CANON_GEO_RESOURCE_BUDGET_VERSION,
+        GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND,
+    ) {
+        Ok(budget) => budget,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let assignment = match parse_geo_satisfaction_assignment(&args.satisfy) {
+        Ok(assignment) => assignment,
+        Err(error) => return emit_replan_satisfy_error(error),
+    };
+    let local_artifact_files = match read_geo_satisfaction_file_bindings(
+        &args.local_artifact,
+        "local-artifact",
+        "LOCAL_ARTIFACT_ID=PATH",
+    ) {
+        Ok(bindings) => bindings,
+        Err(exit_code) => return Ok(exit_code),
+    };
+    let result_digest_files =
+        match read_geo_satisfaction_file_bindings(&args.result, "result", "DIGEST_ID=PATH") {
+            Ok(bindings) => bindings,
+            Err(exit_code) => return Ok(exit_code),
+        };
+
+    let satisfaction = match satisfy_geo_acquisition(GeoSatisfactionInput {
+        plan: &base_plan,
+        inventory: Some(&base_inventory),
+        assignment,
+        local_artifact_files,
+        result_digest_files,
+    }) {
+        Ok(satisfaction) => satisfaction,
+        Err(error) => return emit_replan_satisfy_error(error),
+    };
+    let Some(advancement) = satisfaction.inventory_advancement.clone() else {
+        return emit_refusal(
+            RefusalCode::EEntityArtifactContract,
+            "Geo replan acquisition receipt did not produce a live complete inventory advancement",
+            json!({
+                "request_id": satisfaction.request_id,
+                "status": code_name(&satisfaction.status),
+                "proof_class": code_name(&satisfaction.receipt_execution.proof_class),
+                "receipt_terminal_state": code_name(&satisfaction.receipt_execution.terminal_state),
+                "findings": satisfaction.findings,
+            }),
+            Some(GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND.to_string()),
+        );
+    };
+    let advancement_bytes = match canonical_geo_regional_inventory_advancement_bytes(&advancement) {
+        Ok(bytes) => bytes,
+        Err(error) => return emit_replan_satisfy_error(error),
+    };
+    let replanned = match replan_geo_plan_from_inventory_advancement(GeoPlanReplanRequest {
+        base_plan,
+        base_inventory,
+        question,
+        capabilities,
+        profile,
+        budget,
+        inventory_advancement: advancement,
+    }) {
+        Ok(plan) => plan,
+        Err(error) => return emit_replan_plan_error(error),
+    };
+    let plan_bytes = match canonical_geo_plan_bytes(&replanned) {
+        Ok(bytes) => bytes,
+        Err(error) => return emit_replan_plan_error(error),
+    };
+    if let Err(error) =
+        publish_replan_advancement_sidecar(&args.advancement_out, &advancement_bytes)
+    {
+        return emit_refusal(
+            RefusalCode::EIo,
+            "Geo replan could not publish the inventory advancement sidecar",
+            json!({
+                "advancement_out": error.target,
+                "temp_path": error.temp_path,
+                "error": error.message,
+            }),
+            Some(GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND.to_string()),
+        );
+    }
+    write_canonical(&plan_bytes)
 }
 
 fn run_materialize_home_cells(args: &GeoMaterializeHomeCellsCli) -> Result<u8, Box<dyn Error>> {
@@ -674,6 +813,160 @@ fn read_geo_run_inputs(values: &[String]) -> Result<Vec<GeoRunInputFile>, u8> {
         ))
     });
     Ok(inputs)
+}
+
+fn read_geo_satisfaction_file_bindings(
+    values: &[String],
+    flag: &str,
+    expected_shape: &str,
+) -> Result<Vec<GeoSatisfactionFileBinding>, u8> {
+    let mut seen = BTreeSet::new();
+    let mut bindings = Vec::with_capacity(values.len());
+    for value in values {
+        let (binding_id, path) = match value.split_once('=') {
+            Some(parts) => parts,
+            None => {
+                return Err(emit_refusal(
+                    RefusalCode::EParse,
+                    format!("Geo replan --{flag} must be {expected_shape}"),
+                    json!({
+                        "input": value,
+                        "error": "missing '=' separator",
+                    }),
+                    Some(GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND.to_string()),
+                )
+                .unwrap_or(2));
+            }
+        };
+        if binding_id.is_empty()
+            || path.is_empty()
+            || binding_id.trim() != binding_id
+            || path.trim() != path
+        {
+            return Err(emit_refusal(
+                RefusalCode::EParse,
+                format!("Geo replan --{flag} must contain a trimmed id and path"),
+                json!({
+                    "input": value,
+                    "expected": expected_shape,
+                }),
+                Some(GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND.to_string()),
+            )
+            .unwrap_or(2));
+        }
+        if !seen.insert(binding_id.to_string()) {
+            return Err(emit_refusal(
+                RefusalCode::EParse,
+                format!("Geo replan --{flag} declares the same id more than once"),
+                json!({
+                    "binding_id": binding_id,
+                }),
+                Some(GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND.to_string()),
+            )
+            .unwrap_or(2));
+        }
+        bindings.push(GeoSatisfactionFileBinding {
+            binding_id: binding_id.to_string(),
+            path: PathBuf::from(path),
+        });
+    }
+    bindings.sort_by(|left, right| {
+        (&left.binding_id, &left.path).cmp(&(&right.binding_id, &right.path))
+    });
+    Ok(bindings)
+}
+
+#[derive(Debug)]
+struct GeoSidecarPublishError {
+    target: String,
+    temp_path: Option<String>,
+    message: String,
+}
+
+fn publish_replan_advancement_sidecar(
+    path: &Path,
+    bytes: &[u8],
+) -> Result<(), GeoSidecarPublishError> {
+    if path.exists() {
+        let existing = fs::read(path).map_err(|error| GeoSidecarPublishError {
+            target: path_string(path),
+            temp_path: None,
+            message: error.to_string(),
+        })?;
+        if existing == bytes {
+            return Ok(());
+        }
+        return Err(GeoSidecarPublishError {
+            target: path_string(path),
+            temp_path: None,
+            message: "target already exists with different bytes".to_string(),
+        });
+    }
+
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    if !parent.is_dir() {
+        return Err(GeoSidecarPublishError {
+            target: path_string(path),
+            temp_path: None,
+            message: "parent directory does not exist".to_string(),
+        });
+    }
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| GeoSidecarPublishError {
+            target: path_string(path),
+            temp_path: None,
+            message: "advancement output path must name a file".to_string(),
+        })?;
+    let digest = blake3::hash(bytes).to_hex().to_string();
+    for attempt in 0_u8..64 {
+        let temp_path = parent.join(format!(".{file_name}.tmp.{}.{}", &digest[..16], attempt));
+        let mut file = match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(GeoSidecarPublishError {
+                    target: path_string(path),
+                    temp_path: Some(path_string(&temp_path)),
+                    message: error.to_string(),
+                });
+            }
+        };
+        if let Err(error) = file.write_all(bytes).and_then(|_| file.sync_all()) {
+            return Err(GeoSidecarPublishError {
+                target: path_string(path),
+                temp_path: Some(path_string(&temp_path)),
+                message: error.to_string(),
+            });
+        }
+        match fs::rename(&temp_path, path) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                if path.exists() && fs::read(path).is_ok_and(|existing| existing == bytes) {
+                    return Ok(());
+                }
+                return Err(GeoSidecarPublishError {
+                    target: path_string(path),
+                    temp_path: Some(path_string(&temp_path)),
+                    message: error.to_string(),
+                });
+            }
+        }
+    }
+    Err(GeoSidecarPublishError {
+        target: path_string(path),
+        temp_path: None,
+        message: "could not allocate a collision-free sibling temp path".to_string(),
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -1242,6 +1535,19 @@ fn emit_run_error(error: GeoRunError) -> Result<u8, Box<dyn Error>> {
     )
 }
 
+fn emit_replan_plan_error(error: GeoPlanError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo acquisition replan could not be compiled",
+        json!({
+            "geo_plan_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND.to_string()),
+    )
+}
+
 fn emit_satisfy_error(error: GeoSatisfyError) -> Result<u8, Box<dyn Error>> {
     emit_refusal(
         RefusalCode::EEntityArtifactContract,
@@ -1255,6 +1561,19 @@ fn emit_satisfy_error(error: GeoSatisfyError) -> Result<u8, Box<dyn Error>> {
             "repair the REQUEST_ID=RECEIPT.json handoff and explicit --input bytes, then rerun canon geo run"
                 .to_string(),
         ),
+    )
+}
+
+fn emit_replan_satisfy_error(error: GeoSatisfyError) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo acquisition satisfaction could not be validated for replan",
+        json!({
+            "geo_satisfy_error_code": code_name(&error.code),
+            "message": error.message,
+            "detail": error.detail,
+        }),
+        Some(GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND.to_string()),
     )
 }
 

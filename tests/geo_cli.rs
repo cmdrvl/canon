@@ -10,7 +10,12 @@ use canon::geo::{GeoTileWorkRequest, materialize_tile_work_unit};
 use h3o::CellIndex;
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
-use std::{collections::BTreeSet, fs, path::PathBuf, str::FromStr};
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 use tempfile::tempdir;
 
 fn canon_command() -> Command {
@@ -525,7 +530,17 @@ fn geo_run_acquisition_inventory() -> Value {
     inventory
 }
 
-fn write_geo_run_acquisition_plan(dir: &std::path::Path) -> (PathBuf, Value) {
+struct GeoReplanAcquisitionFixture {
+    base_plan: PathBuf,
+    base_inventory: PathBuf,
+    question: PathBuf,
+    capabilities: PathBuf,
+    profile: PathBuf,
+    budget: PathBuf,
+    request: Value,
+}
+
+fn write_geo_replan_acquisition_fixture(dir: &std::path::Path) -> GeoReplanAcquisitionFixture {
     let paths = GeoPlanInputPaths {
         question: write_json(
             dir,
@@ -576,7 +591,20 @@ fn write_geo_run_acquisition_plan(dir: &std::path::Path) -> (PathBuf, Value) {
     );
     let path = dir.join("synthetic-not-live-acquisition-plan.json");
     fs::write(&path, plan_bytes).expect("write synthetic acquisition Geo plan");
-    (path, acquisition["request"].clone())
+    GeoReplanAcquisitionFixture {
+        base_plan: path,
+        base_inventory: paths.inventory,
+        question: paths.question,
+        capabilities: paths.capabilities,
+        profile: paths.profile,
+        budget: paths.budget,
+        request: acquisition["request"].clone(),
+    }
+}
+
+fn write_geo_run_acquisition_plan(dir: &std::path::Path) -> (PathBuf, Value) {
+    let fixture = write_geo_replan_acquisition_fixture(dir);
+    (fixture.base_plan, fixture.request)
 }
 
 fn synthetic_not_live_empty_acquisition_artifact() -> Value {
@@ -593,6 +621,160 @@ fn synthetic_not_live_empty_acquisition_artifact() -> Value {
         "max_assignments": 16,
         "max_materialized_models": 16
     })
+}
+
+fn write_geo_replan_live_artifact(dir: &std::path::Path, name: &str) -> (PathBuf, Vec<u8>) {
+    let path = write_json(dir, name, &synthetic_building_warehouse_rows());
+    let bytes = fs::read(&path).expect("read live artifact bytes");
+    (path, bytes)
+}
+
+fn write_geo_replan_acquisition_receipt(
+    dir: &std::path::Path,
+    request: &Value,
+    artifact_bytes: &[u8],
+    terminal_state: &str,
+    proof_class: &str,
+) -> PathBuf {
+    let typed_request: canon::geo::GeoAcquisitionRequest =
+        serde_json::from_value(request.clone()).expect("acquisition request parses");
+    let request_semantic_hash = canon::geo::geo_acquisition_request_semantic_hash(&typed_request)
+        .expect("acquisition request semantic hash computes");
+    let rows = match terminal_state {
+        "ZERO_ROWS" | "TIMEOUT" | "CANCELED" | "UNREADABLE_COLUMNS" => 0_u64,
+        "COMPLETE" | "PARTIAL" => 2_u64,
+        other => panic!("unsupported fixture terminal state {other}"),
+    };
+    let mut receipt = json!({
+        "version": "canon_geo_acquisition_receipt.v0",
+        "request_id": request["request_id"].clone(),
+        "request_semantic_hash": request_semantic_hash,
+        "terminal_state": terminal_state,
+        "proof_class": proof_class,
+        "bounded_geography": request["bounded_geography"].clone(),
+        "subset": request["subset"].clone(),
+        "releases": request["releases"].clone(),
+        "fields": request["fields"].clone(),
+        "projection": request["projection"].clone(),
+        "normalized_executed_request_digest": geo_cli_blake3_digest(
+            "normalized.synthetic-live.complete",
+            b"synthetic-live-complete-executed-request"
+        ),
+        "pagination": {
+            "requested_page": request["pagination"].clone(),
+            "rows_truncated": terminal_state == "PARTIAL",
+            "bytes_truncated": false
+        },
+        "counts": {
+            "rows": rows,
+            "bytes": artifact_bytes.len() as u64
+        },
+        "denominators": [{
+            "denominator_id": "requested_subset.synthetic-live",
+            "source": "requested_subset",
+            "count": rows,
+            "unit": "row",
+            "description": "synthetic live bounded-subset denominator"
+        }],
+        "source_digests": [
+            request["releases"][0]["release_digest"].clone()
+        ],
+        "result_digests": [
+            geo_cli_blake3_digest("result.synthetic-live.rows", artifact_bytes)
+        ],
+        "local_artifacts": [{
+            "artifact_id": "artifact.synthetic-live.rows",
+            "media_type": "application/json",
+            "byte_count": artifact_bytes.len() as u64,
+            "digest": geo_cli_blake3_digest("artifact.synthetic-live.rows", artifact_bytes)
+        }],
+        "unreadable_columns": [],
+        "resumability": {
+            "resumable": false,
+            "retry_guidance": "terminal receipt requires no resume action"
+        }
+    });
+    if terminal_state == "PARTIAL" {
+        receipt["pagination"]["next_page_token"] = json!("page-2");
+        receipt["terminal_detail"] = json!("pagination incomplete");
+    }
+    match proof_class {
+        "live" => {
+            receipt["executor"] = json!({
+                "executor_kind": "query_engine",
+                "executor_id": "synthetic-live-query",
+                "executor_version": "2026.08.31",
+                "tool_id": "synthetic-live-tool",
+                "tool_version": "1.0.0",
+                "executor_request_id": "synthetic-live-request-1",
+                "executor_query_id": "synthetic-live-query-1"
+            });
+        }
+        "fixture" => {
+            receipt["fixture_id"] = json!("fixture.synthetic-live.rows");
+        }
+        "retained" => {
+            receipt["executor"] = json!({
+                "executor_kind": "query_engine",
+                "executor_id": "retained-query",
+                "executor_version": "2026.08.31",
+                "tool_id": "retained-tool",
+                "tool_version": "1.0.0",
+                "executor_request_id": "retained-request-1",
+                "executor_query_id": "retained-query-1"
+            });
+            receipt["retained_receipt_id"] = json!("retained.synthetic-live.rows");
+        }
+        other => panic!("unsupported fixture proof class {other}"),
+    }
+    write_json(
+        dir,
+        &format!("synthetic-live-{proof_class}-{terminal_state}-receipt.json"),
+        &receipt,
+    )
+}
+
+fn geo_replan_from_acquisition_command(
+    fixture: &GeoReplanAcquisitionFixture,
+    receipt: &Path,
+    local_artifacts: &[(&str, &Path)],
+    result_files: &[(&str, &Path)],
+    advancement_out: &Path,
+) -> Command {
+    let request_id = fixture.request["request_id"]
+        .as_str()
+        .expect("acquisition request id");
+    let satisfy = format!("{request_id}={}", receipt.display());
+    let mut command = canon_command();
+    command
+        .arg("geo")
+        .arg("replan-from-acquisition")
+        .arg("--base-plan")
+        .arg(&fixture.base_plan)
+        .arg("--base-inventory")
+        .arg(&fixture.base_inventory)
+        .arg("--question")
+        .arg(&fixture.question)
+        .arg("--capabilities")
+        .arg(&fixture.capabilities)
+        .arg("--profile")
+        .arg(&fixture.profile)
+        .arg("--budget")
+        .arg(&fixture.budget)
+        .arg("--satisfy")
+        .arg(satisfy);
+    for (artifact_id, path) in local_artifacts {
+        command
+            .arg("--local-artifact")
+            .arg(format!("{artifact_id}={}", path.display()));
+    }
+    for (digest_id, path) in result_files {
+        command
+            .arg("--result")
+            .arg(format!("{digest_id}={}", path.display()));
+    }
+    command.arg("--advancement-out").arg(advancement_out);
+    command
 }
 
 fn geo_cli_blake3_digest(digest_id: &str, bytes: &[u8]) -> Value {
@@ -1249,6 +1431,475 @@ fn geo_run_cli_refuses_synthetic_not_live_non_positive_acquisition_satisfaction(
         !work_dir.join("geo/building/solve.json").exists(),
         "non-positive satisfaction must refuse before an ordinary run publishes solve output"
     );
+}
+
+#[test]
+fn geo_replan_from_acquisition_advances_inventory_and_emits_new_plan() {
+    let temp = tempdir().expect("tempdir");
+    let input_dir = temp.path().join("geo-replan-positive-inputs");
+    fs::create_dir(&input_dir).expect("create input dir");
+    let fixture = write_geo_replan_acquisition_fixture(&input_dir);
+    let base_plan_before: Value =
+        serde_json::from_slice(&fs::read(&fixture.base_plan).expect("read base plan"))
+            .expect("base plan parses");
+    assert_eq!(base_plan_before["status"], "partial");
+    let (artifact_path, artifact_bytes) =
+        write_geo_replan_live_artifact(&input_dir, "live-warehouse-rows.json");
+    let receipt = write_geo_replan_acquisition_receipt(
+        &input_dir,
+        &fixture.request,
+        &artifact_bytes,
+        "COMPLETE",
+        "live",
+    );
+    let advancement_out = temp.path().join("inventory-advancement.json");
+
+    let assert = geo_replan_from_acquisition_command(
+        &fixture,
+        &receipt,
+        &[("artifact.synthetic-live.rows", artifact_path.as_path())],
+        &[],
+        &advancement_out,
+    )
+    .assert()
+    .success();
+    assert!(assert.get_output().stderr.is_empty());
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf-8 stdout");
+    assert!(stdout.ends_with('\n'));
+    let replanned: Value = serde_json::from_str(stdout.trim_end()).expect("new plan parses");
+    let advancement: Value =
+        serde_json::from_slice(&fs::read(&advancement_out).expect("advancement sidecar exists"))
+            .expect("advancement parses");
+
+    assert_eq!(
+        advancement["version"],
+        "canon_geo_regional_inventory_advancement.v0"
+    );
+    assert_eq!(advancement["effect"], "local_availability_only");
+    assert_eq!(advancement["proof_class"], "live");
+    assert_eq!(advancement["receipt_terminal_state"], "COMPLETE");
+    assert_eq!(
+        advancement["base_inventory_id"],
+        "inventory.fixture.geo-plan"
+    );
+    assert_ne!(
+        advancement["base_inventory_semantic_hash"],
+        advancement["advanced_inventory_semantic_hash"]
+    );
+    assert_eq!(
+        advancement["source_advancements"][0]["previous_state"],
+        "missing"
+    );
+    assert_eq!(
+        advancement["source_advancements"][0]["advanced_state"],
+        "available"
+    );
+    assert_eq!(
+        advancement["source_advancements"][0]["local_ref"]["content_hash"],
+        format!("blake3:{}", blake3::hash(&artifact_bytes).to_hex())
+    );
+    assert_eq!(
+        replanned["inventory_ref"]["semantic_hash"],
+        advancement["advanced_inventory_semantic_hash"]
+    );
+    assert_eq!(replanned["version"], "canon_geo_plan.v0");
+    assert_eq!(replanned["status"], "planned");
+    assert_eq!(replanned["external_requests"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        replanned["project_plan"]["nodes"].as_array().unwrap().len(),
+        5
+    );
+    assert_ne!(replanned["plan_id"], base_plan_before["plan_id"]);
+
+    let solve_node = replanned["geo_nodes"]
+        .as_array()
+        .expect("geo nodes")
+        .iter()
+        .find(|node| node["stage"] == "factor_and_solve_exact_residual")
+        .expect("solve node exists after replan");
+    assert_eq!(solve_node["bounded_section_required"], true);
+    assert_eq!(solve_node["incidence_factorization_required"], true);
+    assert_eq!(
+        solve_node["exact_solve_scope"]["component_scope"],
+        "actual_connected_components_of_compiled_constraint_incidence"
+    );
+
+    let base_plan_after: Value =
+        serde_json::from_slice(&fs::read(&fixture.base_plan).expect("reread base plan"))
+            .expect("base plan still parses");
+    assert_eq!(base_plan_after, base_plan_before);
+    let base_inventory_after: Value =
+        serde_json::from_slice(&fs::read(&fixture.base_inventory).expect("reread base inventory"))
+            .expect("base inventory still parses");
+    assert_eq!(
+        base_inventory_after["sources"][0]["local_state"]["state"],
+        "missing"
+    );
+    let sidecar_text = String::from_utf8(fs::read(&advancement_out).expect("read sidecar"))
+        .expect("sidecar utf-8");
+    assert!(
+        !sidecar_text.contains(temp.path().to_str().expect("temp path utf-8")),
+        "published sidecar must not capture operational paths"
+    );
+}
+
+#[test]
+fn geo_replan_from_acquisition_help_names_public_contract_flags() {
+    let assert = canon_command()
+        .args(["geo", "replan-from-acquisition", "--help"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("help utf-8");
+    for needle in [
+        "--base-plan",
+        "--base-inventory",
+        "--satisfy <REQUEST_ID=RECEIPT.json>",
+        "--local-artifact <LOCAL_ARTIFACT_ID=PATH>",
+        "--result <DIGEST_ID=PATH>",
+        "--advancement-out",
+    ] {
+        assert!(stdout.contains(needle), "help must contain {needle}");
+    }
+}
+
+#[test]
+fn geo_replan_from_acquisition_refuses_fixture_and_retained_proof_without_sidecar() {
+    for proof_class in ["fixture", "retained"] {
+        let temp = tempdir().expect("tempdir");
+        let input_dir = temp.path().join(proof_class);
+        fs::create_dir(&input_dir).expect("create input dir");
+        let fixture = write_geo_replan_acquisition_fixture(&input_dir);
+        let (artifact_path, artifact_bytes) =
+            write_geo_replan_live_artifact(&input_dir, "live-warehouse-rows.json");
+        let receipt = write_geo_replan_acquisition_receipt(
+            &input_dir,
+            &fixture.request,
+            &artifact_bytes,
+            "COMPLETE",
+            proof_class,
+        );
+        let advancement_out = temp.path().join("must-not-exist.json");
+
+        let refusal = geo_replan_from_acquisition_command(
+            &fixture,
+            &receipt,
+            &[("artifact.synthetic-live.rows", artifact_path.as_path())],
+            &[],
+            &advancement_out,
+        )
+        .assert()
+        .code(2);
+        assert!(refusal.get_output().stderr.is_empty());
+        let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout)
+            .expect("proof-class refusal parses");
+        assert_eq!(refusal["outcome"], "REFUSAL");
+        assert_eq!(
+            refusal["refusal"]["message"],
+            "Geo replan acquisition receipt did not produce a live complete inventory advancement"
+        );
+        assert_eq!(refusal["refusal"]["detail"]["proof_class"], proof_class);
+        assert!(
+            !advancement_out.exists(),
+            "fixture/retained proof must not publish a sidecar"
+        );
+    }
+}
+
+#[test]
+fn geo_replan_from_acquisition_refuses_zero_and_partial_without_sidecar() {
+    for terminal_state in ["ZERO_ROWS", "PARTIAL"] {
+        let temp = tempdir().expect("tempdir");
+        let input_dir = temp.path().join(terminal_state);
+        fs::create_dir(&input_dir).expect("create input dir");
+        let fixture = write_geo_replan_acquisition_fixture(&input_dir);
+        let (artifact_path, artifact_bytes) =
+            write_geo_replan_live_artifact(&input_dir, "live-warehouse-rows.json");
+        let receipt = write_geo_replan_acquisition_receipt(
+            &input_dir,
+            &fixture.request,
+            &artifact_bytes,
+            terminal_state,
+            "live",
+        );
+        let advancement_out = temp.path().join("must-not-exist.json");
+
+        let refusal = geo_replan_from_acquisition_command(
+            &fixture,
+            &receipt,
+            &[("artifact.synthetic-live.rows", artifact_path.as_path())],
+            &[],
+            &advancement_out,
+        )
+        .assert()
+        .code(2);
+        let refusal: Value = serde_json::from_slice(&refusal.get_output().stdout)
+            .expect("terminal-state refusal parses");
+        assert_eq!(
+            refusal["refusal"]["message"],
+            "Geo replan acquisition receipt did not produce a live complete inventory advancement"
+        );
+        assert_eq!(
+            refusal["refusal"]["detail"]["receipt_terminal_state"],
+            terminal_state
+        );
+        assert!(
+            !advancement_out.exists(),
+            "zero/partial receipts must not publish a sidecar"
+        );
+    }
+}
+
+#[test]
+fn geo_replan_from_acquisition_refuses_byte_tamper_without_sidecar() {
+    let temp = tempdir().expect("tempdir");
+    let input_dir = temp.path().join("byte-tamper");
+    fs::create_dir(&input_dir).expect("create input dir");
+    let fixture = write_geo_replan_acquisition_fixture(&input_dir);
+    let (artifact_path, artifact_bytes) =
+        write_geo_replan_live_artifact(&input_dir, "live-warehouse-rows.json");
+    let receipt = write_geo_replan_acquisition_receipt(
+        &input_dir,
+        &fixture.request,
+        &artifact_bytes,
+        "COMPLETE",
+        "live",
+    );
+    write_json(
+        &input_dir,
+        "live-warehouse-rows.json",
+        &synthetic_not_live_empty_acquisition_artifact(),
+    );
+    let advancement_out = temp.path().join("must-not-exist.json");
+
+    let refusal = geo_replan_from_acquisition_command(
+        &fixture,
+        &receipt,
+        &[("artifact.synthetic-live.rows", artifact_path.as_path())],
+        &[],
+        &advancement_out,
+    )
+    .assert()
+    .code(2);
+    let refusal: Value =
+        serde_json::from_slice(&refusal.get_output().stdout).expect("tamper refusal parses");
+    assert_eq!(
+        refusal["refusal"]["detail"]["geo_satisfy_error_code"],
+        "file_digest_mismatch"
+    );
+    assert!(!advancement_out.exists());
+}
+
+#[test]
+fn geo_replan_from_acquisition_refuses_subset_and_release_ambiguity_without_sidecar() {
+    let temp = tempdir().expect("tempdir");
+    let narrowed_dir = temp.path().join("narrowed-subset");
+    fs::create_dir(&narrowed_dir).expect("create narrowed dir");
+    let fixture = write_geo_replan_acquisition_fixture(&narrowed_dir);
+    let (artifact_path, artifact_bytes) =
+        write_geo_replan_live_artifact(&narrowed_dir, "live-warehouse-rows.json");
+    let receipt = write_geo_replan_acquisition_receipt(
+        &narrowed_dir,
+        &fixture.request,
+        &artifact_bytes,
+        "COMPLETE",
+        "live",
+    );
+    let mut receipt_value: Value =
+        serde_json::from_slice(&fs::read(&receipt).expect("read receipt")).expect("receipt parses");
+    receipt_value["subset"]["h3_cells"] = json!(["892a100d62bffff"]);
+    let narrowed_receipt = write_json(&narrowed_dir, "narrowed-receipt.json", &receipt_value);
+    let narrowed_out = temp.path().join("narrowed-must-not-exist.json");
+    let narrowed_refusal = geo_replan_from_acquisition_command(
+        &fixture,
+        &narrowed_receipt,
+        &[("artifact.synthetic-live.rows", artifact_path.as_path())],
+        &[],
+        &narrowed_out,
+    )
+    .assert()
+    .code(2);
+    let narrowed_refusal: Value = serde_json::from_slice(&narrowed_refusal.get_output().stdout)
+        .expect("narrowed refusal parses");
+    assert_eq!(
+        narrowed_refusal["refusal"]["detail"]["geo_satisfy_error_code"],
+        "receipt_mismatch"
+    );
+    assert!(!narrowed_out.exists());
+
+    let ambiguous_dir = temp.path().join("ambiguous-release");
+    fs::create_dir(&ambiguous_dir).expect("create ambiguous dir");
+    let fixture = write_geo_replan_acquisition_fixture(&ambiguous_dir);
+    let (first_path, first_bytes) =
+        write_geo_replan_live_artifact(&ambiguous_dir, "first-warehouse-rows.json");
+    let (second_path, second_bytes) =
+        write_geo_replan_live_artifact(&ambiguous_dir, "second-warehouse-rows.json");
+    let receipt = write_geo_replan_acquisition_receipt(
+        &ambiguous_dir,
+        &fixture.request,
+        &first_bytes,
+        "COMPLETE",
+        "live",
+    );
+    let mut receipt_value: Value =
+        serde_json::from_slice(&fs::read(&receipt).expect("read receipt")).expect("receipt parses");
+    receipt_value["counts"]["bytes"] = json!((first_bytes.len() + second_bytes.len()) as u64);
+    receipt_value["local_artifacts"] = json!([
+        {
+            "artifact_id": "artifact.synthetic-live.first",
+            "media_type": "application/json",
+            "byte_count": first_bytes.len() as u64,
+            "digest": geo_cli_blake3_digest("artifact.synthetic-live.first", &first_bytes)
+        },
+        {
+            "artifact_id": "artifact.synthetic-live.second",
+            "media_type": "application/json",
+            "byte_count": second_bytes.len() as u64,
+            "digest": geo_cli_blake3_digest("artifact.synthetic-live.second", &second_bytes)
+        }
+    ]);
+    receipt_value["result_digests"] = json!([geo_cli_blake3_digest(
+        "result.synthetic-live.first",
+        &first_bytes
+    )]);
+    let ambiguous_receipt = write_json(&ambiguous_dir, "ambiguous-receipt.json", &receipt_value);
+    let ambiguous_out = temp.path().join("ambiguous-must-not-exist.json");
+    let ambiguous_refusal = geo_replan_from_acquisition_command(
+        &fixture,
+        &ambiguous_receipt,
+        &[
+            ("artifact.synthetic-live.first", first_path.as_path()),
+            ("artifact.synthetic-live.second", second_path.as_path()),
+        ],
+        &[],
+        &ambiguous_out,
+    )
+    .assert()
+    .code(2);
+    let ambiguous_refusal: Value = serde_json::from_slice(&ambiguous_refusal.get_output().stdout)
+        .expect("ambiguity refusal parses");
+    assert_eq!(
+        ambiguous_refusal["refusal"]["message"],
+        "Geo replan acquisition receipt did not produce a live complete inventory advancement"
+    );
+    assert!(
+        ambiguous_refusal["refusal"]["detail"]["findings"]
+            .as_array()
+            .expect("findings")
+            .iter()
+            .any(|finding| finding["code"] == "artifact_release_relation_ambiguous")
+    );
+    assert!(!ambiguous_out.exists());
+}
+
+#[test]
+fn geo_replan_from_acquisition_refuses_wrong_base_inventory_and_typed_inputs_without_sidecar() {
+    let temp = tempdir().expect("tempdir");
+    let input_dir = temp.path().join("wrong-base");
+    fs::create_dir(&input_dir).expect("create input dir");
+    let mut fixture = write_geo_replan_acquisition_fixture(&input_dir);
+    let (artifact_path, artifact_bytes) =
+        write_geo_replan_live_artifact(&input_dir, "live-warehouse-rows.json");
+    let receipt = write_geo_replan_acquisition_receipt(
+        &input_dir,
+        &fixture.request,
+        &artifact_bytes,
+        "COMPLETE",
+        "live",
+    );
+
+    let mut wrong_inventory = geo_run_acquisition_inventory();
+    wrong_inventory["inventory_id"] = json!("inventory.fixture.wrong");
+    fixture.base_inventory = write_json(&input_dir, "wrong-inventory.json", &wrong_inventory);
+    let wrong_inventory_out = temp.path().join("wrong-inventory-must-not-exist.json");
+    let wrong_inventory_refusal = geo_replan_from_acquisition_command(
+        &fixture,
+        &receipt,
+        &[("artifact.synthetic-live.rows", artifact_path.as_path())],
+        &[],
+        &wrong_inventory_out,
+    )
+    .assert()
+    .code(2);
+    let wrong_inventory_refusal: Value =
+        serde_json::from_slice(&wrong_inventory_refusal.get_output().stdout)
+            .expect("wrong inventory refusal parses");
+    assert_eq!(
+        wrong_inventory_refusal["refusal"]["detail"]["geo_satisfy_error_code"],
+        "contract_mismatch"
+    );
+    assert!(!wrong_inventory_out.exists());
+
+    let typed_input_dir = temp.path().join("wrong-typed-input");
+    fs::create_dir(&typed_input_dir).expect("create typed input dir");
+    let mut fixture = write_geo_replan_acquisition_fixture(&typed_input_dir);
+    let (artifact_path, artifact_bytes) =
+        write_geo_replan_live_artifact(&typed_input_dir, "live-warehouse-rows.json");
+    let receipt = write_geo_replan_acquisition_receipt(
+        &typed_input_dir,
+        &fixture.request,
+        &artifact_bytes,
+        "COMPLETE",
+        "live",
+    );
+    let mut wrong_question = geo_run_building_question();
+    wrong_question["question_id"] = json!("question.synthetic-live.wrong");
+    fixture.question = write_json(&typed_input_dir, "wrong-question.json", &wrong_question);
+    let wrong_question_out = temp.path().join("wrong-question-must-not-exist.json");
+    let wrong_question_refusal = geo_replan_from_acquisition_command(
+        &fixture,
+        &receipt,
+        &[("artifact.synthetic-live.rows", artifact_path.as_path())],
+        &[],
+        &wrong_question_out,
+    )
+    .assert()
+    .code(2);
+    let wrong_question_refusal: Value =
+        serde_json::from_slice(&wrong_question_refusal.get_output().stdout)
+            .expect("wrong question refusal parses");
+    assert_eq!(
+        wrong_question_refusal["refusal"]["detail"]["geo_plan_error_code"],
+        "contract_violation"
+    );
+    assert!(!wrong_question_out.exists());
+}
+
+#[test]
+fn geo_replan_from_acquisition_refuses_sidecar_publication_failure_without_plan_stdout() {
+    let temp = tempdir().expect("tempdir");
+    let input_dir = temp.path().join("sidecar-failure");
+    fs::create_dir(&input_dir).expect("create input dir");
+    let fixture = write_geo_replan_acquisition_fixture(&input_dir);
+    let (artifact_path, artifact_bytes) =
+        write_geo_replan_live_artifact(&input_dir, "live-warehouse-rows.json");
+    let receipt = write_geo_replan_acquisition_receipt(
+        &input_dir,
+        &fixture.request,
+        &artifact_bytes,
+        "COMPLETE",
+        "live",
+    );
+    let advancement_out = temp.path().join("missing-parent").join("advancement.json");
+
+    let refusal = geo_replan_from_acquisition_command(
+        &fixture,
+        &receipt,
+        &[("artifact.synthetic-live.rows", artifact_path.as_path())],
+        &[],
+        &advancement_out,
+    )
+    .assert()
+    .code(2);
+    let stdout = String::from_utf8(refusal.get_output().stdout.clone()).expect("utf-8 refusal");
+    let refusal: Value = serde_json::from_str(stdout.trim_end()).expect("sidecar refusal parses");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_IO");
+    assert_eq!(
+        refusal["refusal"]["message"],
+        "Geo replan could not publish the inventory advancement sidecar"
+    );
+    assert_ne!(refusal["version"], "canon_geo_plan.v0");
+    assert!(!advancement_out.exists());
 }
 
 #[test]

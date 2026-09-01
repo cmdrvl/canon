@@ -37,6 +37,7 @@ use super::{
     plan::CANON_GEO_PLAN_VERSION,
     residual_benchmark::{CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION},
     run::CANON_GEO_RUN_VERSION,
+    satisfy::CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION,
     tile::{
         CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_VERSION,
@@ -1068,6 +1069,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "verified external acquisition receipt contract",
         ),
         contract(
+            CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION,
+            "schemas/canon.geo.regional_inventory_advancement.v0.schema.json",
+            "immutable plan-bound regional inventory advancement contract",
+        ),
+        contract(
             CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION,
             "schemas/canon.geo.address_parse_request.v0.schema.json",
             "regular-address parse request contract",
@@ -1277,6 +1283,12 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
         command(
             "canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]",
             CANON_GEO_RUN_VERSION,
+            false,
+            false,
+        ),
+        command(
+            "canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>",
+            CANON_GEO_PLAN_VERSION,
             false,
             false,
         ),

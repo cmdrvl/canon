@@ -251,6 +251,9 @@ pub enum GeoSubcommand {
     Plan(GeoPlanCli),
     /// Run a Geo plan offline with explicit local input bindings
     Run(GeoRunCli),
+    /// Satisfy one acquisition request, publish an inventory advancement, and replan
+    #[command(name = "replan-from-acquisition")]
+    ReplanFromAcquisition(GeoReplanFromAcquisitionCli),
     /// Materialize three or more named sources into one budgeted consistency artifact
     #[command(name = "link-sources")]
     LinkSources(GeoLinkSourcesCli),
@@ -330,6 +333,40 @@ pub struct GeoRunCli {
     /// Acquisition satisfaction as REQUEST_ID=RECEIPT.json; repeatable
     #[arg(long = "satisfy", value_name = "REQUEST_ID=RECEIPT.json")]
     pub satisfy: Vec<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoReplanFromAcquisitionCli {
+    /// JSON file holding the base canon_geo_plan.v0 plan
+    #[arg(long = "base-plan")]
+    pub base_plan: PathBuf,
+    /// JSON file holding the base canon_geo_regional_inventory.v1 inventory
+    #[arg(long = "base-inventory")]
+    pub base_inventory: PathBuf,
+    /// JSON file holding the original canon_geo_question.v0 question
+    #[arg(long)]
+    pub question: PathBuf,
+    /// JSON file holding the original canon_geo_capabilities.v0 capabilities
+    #[arg(long)]
+    pub capabilities: PathBuf,
+    /// JSON file holding the original canon_geo_composition_profile.v0 profile
+    #[arg(long)]
+    pub profile: PathBuf,
+    /// JSON file holding the original canon_geo_resource_budget.v0 budget
+    #[arg(long)]
+    pub budget: PathBuf,
+    /// Acquisition satisfaction as REQUEST_ID=RECEIPT.json
+    #[arg(long = "satisfy", value_name = "REQUEST_ID=RECEIPT.json")]
+    pub satisfy: String,
+    /// Local typed acquisition artifact as LOCAL_ARTIFACT_ID=PATH; repeatable
+    #[arg(long = "local-artifact", value_name = "LOCAL_ARTIFACT_ID=PATH")]
+    pub local_artifact: Vec<String>,
+    /// Local result digest artifact as DIGEST_ID=PATH; repeatable
+    #[arg(long = "result", value_name = "DIGEST_ID=PATH")]
+    pub result: Vec<String>,
+    /// Owned output path for canon_geo_regional_inventory_advancement.v0
+    #[arg(long = "advancement-out")]
+    pub advancement_out: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]

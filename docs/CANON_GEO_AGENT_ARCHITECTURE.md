@@ -19,12 +19,13 @@
 > explicit local bytes only; it does not mutate the immutable plan, clear acquisition
 > blockers, update inventory, or replan. A library caller can materialize a separate,
 > plan-bound inventory advancement for `live`, `COMPLETE`, full-region
-> `canon_geo_warehouse_rows.v0` JSON artifacts. The legacy unambiguous case can infer the
+> `canon_geo_warehouse_rows.v0` JSON artifacts through the public
+> `canon geo replan-from-acquisition` command. The legacy unambiguous case can infer the
 > binding from one pinned release and one local artifact when receipt-native relations are
 > absent; the new multi-release or multi-artifact path requires receipt-native
 > artifact-release relations mapping every local artifact to exactly one pinned release and
-> every release to exactly one artifact. The caller then explicitly replans from that
-> base-inventory-bound snapshot.
+> every release to exactly one artifact. The command atomically publishes that separate
+> advancement sidecar and emits a new base-inventory-bound plan.
 > The shared project runner now publishes immutable content-addressed manifest revisions
 > with full-plan receipt prevalidation, and project receipts retain immutable
 > content-addressed copies while cooperating publishers protect canonical receipt/output
@@ -555,6 +556,7 @@ for the current five-stage parcel/building plan; inspection remains a target ope
 canon geo capabilities --emit json
 canon geo plan --question Q.json --capabilities C.json --inventory I.json --profile P.json --budget B.json
 canon geo run --plan PLAN.json --work-dir DIR [--input NODE_ID:BINDING_ID=PATH]... [--satisfy REQUEST_ID=RECEIPT.json]...
+canon geo replan-from-acquisition --base-plan PLAN.json --base-inventory INVENTORY.json --question QUESTION.json --capabilities CAPABILITIES.json --profile PROFILE.json --budget BUDGET.json --satisfy REQUEST_ID=RECEIPT.json --local-artifact LOCAL_ARTIFACT_ID=PATH... [--result DIGEST_ID=PATH...] --advancement-out ADVANCEMENT.json
 canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-next]
 ```
 
@@ -569,9 +571,11 @@ canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-
   acquisition receipts against those explicit bytes, emits `canon_geo_run.v0`, and resumes
   from verified project receipts in one work directory. The `--satisfy` validation path
   does not mutate the immutable plan, clear acquisition blockers, update inventory, or
-  replan. The restricted inventory-advancement builder is a library surface, not an
-  implicit CLI state transition; evidence that changes the run requires a new plan whose
-  inventory and inputs include that evidence. The shared runner publishes immutable
+  replan. `replan-from-acquisition` is the explicit CLI transition for evidence that
+  changes planning: it validates one live, complete, positive, nontruncated, full-region
+  receipt against exact local artifact bytes, writes a separate inventory-advancement
+  sidecar, and emits a new plan whose inventory and inputs include that evidence. The
+  shared runner publishes immutable
   content-addressed manifest revisions with full-plan receipt prevalidation, but `geo run`
   does not perform live acquisition, provide live proof, expose ready-node claims or
   inspect, recover crash-stale locks, schedule concurrently across agents, or make

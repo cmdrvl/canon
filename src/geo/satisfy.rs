@@ -1895,11 +1895,11 @@ fn validate_source_advancement(
             "Geo regional inventory advancement source must end in local availability",
             [
                 (
-                    "source_instance_id",
-                    advancement.source_instance_id.as_str(),
+                    "source_instance_id".to_string(),
+                    advancement.source_instance_id.clone(),
                 ),
                 (
-                    "advanced_state",
+                    "advanced_state".to_string(),
                     format!("{:?}", advancement.advanced_state),
                 ),
             ],

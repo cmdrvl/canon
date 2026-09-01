@@ -1197,6 +1197,131 @@
       ]
     },
     {
+      "name": "geo replan-from-acquisition",
+      "usage": "canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>",
+      "description": "Validate one external acquisition receipt against explicit local artifact bytes, atomically publish a separate canon_geo_regional_inventory_advancement.v0 sidecar, and emit a new base-inventory-bound canon_geo_plan.v0 on stdout",
+      "output_mode": "json",
+      "output_schema": "canon_geo_plan.v0",
+      "status": "implemented",
+      "read_only": false,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "reads the immutable base plan, base inventory, original question, capabilities, profile, budget, one REQUEST_ID=RECEIPT.json acquisition satisfaction, explicit local artifacts keyed by receipt local_artifacts[].artifact_id, and optional explicit result digest files. It writes only the requested advancement sidecar by sibling-temp atomic rename after a successful replan, then emits the new plan on stdout. It refuses unless the receipt is live, COMPLETE, positive, nontruncated, full-region, and backed by usable application/json canon_geo_warehouse_rows.v0 artifacts. It does not acquire data, use the network, mutate the base plan or inventory, infer multi-artifact relations without receipt-native mappings, or treat candidate reach as solver truth.",
+        "mutation_class": "OwnedOutput",
+        "network_class": "Offline",
+        "concurrency_class": "AtomicOwnedOutput",
+        "platform_classes": [
+          "PortablePathUtf8",
+          "SameFilesystemAtomicReplace"
+        ],
+        "declaration_command": "geo replan-from-acquisition"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": true,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "canonical replanned Geo plan emitted on stdout and the separate inventory-advancement sidecar atomically published",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, input IO, receipt IO, parse, satisfaction, advancement, typed-input identity, replan, or sidecar publication error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon geo run --plan <NEW_PLAN.json> --work-dir <DIR> --input <NODE_ID:BINDING_ID=PATH>",
+      "recovery": {
+        "next_command": "canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH> --advancement-out <ADVANCEMENT.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "base_plan",
+          "flag": "--base-plan",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding the immutable base canon_geo_plan.v0"
+        },
+        {
+          "name": "base_inventory",
+          "flag": "--base-inventory",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding the base canon_geo_regional_inventory.v1 referenced by the plan"
+        },
+        {
+          "name": "question",
+          "flag": "--question",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding the original canon_geo_question.v0"
+        },
+        {
+          "name": "capabilities",
+          "flag": "--capabilities",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding the original canon_geo_capabilities.v0"
+        },
+        {
+          "name": "profile",
+          "flag": "--profile",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding the original canon_geo_composition_profile.v0"
+        },
+        {
+          "name": "budget",
+          "flag": "--budget",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding the original canon_geo_resource_budget.v0"
+        },
+        {
+          "name": "satisfy",
+          "flag": "--satisfy",
+          "type": "string",
+          "required": true,
+          "description": "Exactly one acquisition satisfaction as REQUEST_ID=RECEIPT.json"
+        },
+        {
+          "name": "local_artifact",
+          "flag": "--local-artifact",
+          "type": "repeatable_string",
+          "required": true,
+          "description": "Local acquisition artifact binding as LOCAL_ARTIFACT_ID=PATH; ids must match receipt local_artifacts[].artifact_id"
+        },
+        {
+          "name": "result",
+          "flag": "--result",
+          "type": "repeatable_string",
+          "required": false,
+          "description": "Optional local result digest binding as DIGEST_ID=PATH for receipt result_digests not represented by local artifacts"
+        },
+        {
+          "name": "advancement_out",
+          "flag": "--advancement-out",
+          "type": "file_path",
+          "required": true,
+          "description": "Owned output path for the canonical canon_geo_regional_inventory_advancement.v0 sidecar"
+        }
+      ]
+    },
+    {
       "name": "geo link-sources",
       "usage": "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
       "description": "Materialize three or more named local source files into one deterministic N-source consistency artifact with explicit roles, pair budgets, source hashes, and anchor-conflict abstentions",

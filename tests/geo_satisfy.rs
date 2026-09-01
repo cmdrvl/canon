@@ -21,8 +21,9 @@ use satisfy_subject::satisfy::{
     GeoInventoryAdvancementEffect, GeoSatisfactionArtifactReleaseRelation,
     GeoSatisfactionAssignment, GeoSatisfactionFileBinding, GeoSatisfactionFindingCode,
     GeoSatisfactionInput, GeoSatisfactionRunInput, GeoSatisfactionRunInputFileBinding,
-    GeoSatisfactionStatus, GeoSatisfyErrorCode, geo_regional_inventory_advancement_semantic_hash,
-    parse_geo_satisfaction_assignment, satisfy_geo_acquisition, satisfy_geo_acquisition_for_run,
+    GeoSatisfactionStatus, GeoSatisfyErrorCode, canonical_geo_regional_inventory_advancement_bytes,
+    geo_regional_inventory_advancement_semantic_hash, parse_geo_satisfaction_assignment,
+    satisfy_geo_acquisition, satisfy_geo_acquisition_for_run,
     satisfy_geo_acquisition_with_relations,
 };
 use tempfile::tempdir;
@@ -101,6 +102,11 @@ fn complete_receipt_satisfies_request_and_updates_inventory_without_paths() {
         advancement.receipt_execution.executor_request_id.as_deref(),
         Some("http-request-1")
     );
+    let advancement_bytes = canonical_geo_regional_inventory_advancement_bytes(advancement)
+        .expect("inventory advancement canonicalizes");
+    let advancement_readback: satisfy_subject::satisfy::GeoRegionalInventoryAdvancement =
+        serde_json::from_slice(&advancement_bytes).expect("read back advancement");
+    assert_eq!(&advancement_readback, advancement);
     assert_eq!(
         inventory.sources[0].local_state.state,
         GeoSourceAvailability::Missing,

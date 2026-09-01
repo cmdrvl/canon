@@ -26,20 +26,20 @@
 > `canon.project.run.v2` runner and emits `canon_geo_run.v0`. The shared runner publishes
 > immutable content-addressed manifest revisions with full-plan receipt prevalidation, but
 > Geo run does not perform live acquisition, prove live source truth, mutate the immutable
-> plan, clear acquisition blockers, automatically replan at the CLI/operator level,
+> plan, clear acquisition blockers, or automatically replan during `geo run`,
 > schedule concurrently across agents, recover crash-stale locks, or provide an
 > inspection/next-evidence surface. The public CLI `--satisfy`
 > check only validates an explicit acquisition receipt against explicit local input bytes.
-> The library can additionally materialize an immutable, plan-bound regional-inventory
+> `canon geo replan-from-acquisition` can additionally materialize an immutable, plan-bound regional-inventory
 > advancement for `live`, `COMPLETE`, full-region `canon_geo_warehouse_rows.v0` JSON artifacts
 > with either the legacy unambiguous one-release/one-artifact binding inferred when
 > receipt-native relations are absent, or the new multi-release/multi-artifact
 > receipt-native relations mapping every local artifact to exactly one pinned release and
 > every pinned release to exactly one artifact. Zero/partial/truncated execution,
 > retained/fixture proof, untyped artifacts, and narrower subsets stay non-advancing. That
-> artifact still does not mutate the plan or clear its blockers: the agent must explicitly
-> run the base-inventory-bound replan path and bind its typed, contract-versioned local
-> input. Geo inspect and
+> artifact still does not mutate the base plan or clear its blockers in place: the command
+> atomically writes the separate advancement sidecar and emits a new base-inventory-bound
+> `canon_geo_plan.v0`. Geo inspect and
 > residual-aware next-evidence control remain open. Geometry
 > acquisition/ingest, temporal solving, knowledge compilation, and
 > the complete E4/E5 populations do not exist. This does not change canon core: runtime
@@ -159,6 +159,7 @@ The target control surface is deliberately small:
 canon geo capabilities --emit json
 canon geo plan --question ... --capabilities ... --inventory ... --profile ... --budget ...
 canon geo run --plan ... --work-dir ... [--input NODE_ID:BINDING_ID=PATH]... [--satisfy REQUEST_ID=RECEIPT.json]...
+canon geo replan-from-acquisition --base-plan ... --base-inventory ... --question ... --capabilities ... --profile ... --budget ... --satisfy REQUEST_ID=RECEIPT.json --local-artifact LOCAL_ARTIFACT_ID=PATH... [--result DIGEST_ID=PATH...] --advancement-out ...
 canon geo inspect --run ... [--compare ...] [--recommend-next]
 ```
 
@@ -172,18 +173,19 @@ shipped as a bounded offline executor for that current five-stage plan. It deleg
 `canon_geo_run.v0`. Optional CLI `--satisfy REQUEST_ID=RECEIPT.json` arguments are
 validation guards only: they check an explicit acquisition receipt against explicit local
 input bytes. They do not mutate the immutable plan, clear acquisition blockers, update the
-inventory, or replan. A library caller may materialize a separate inventory-advancement
-artifact only when the plan inventory hashes match exactly, the receipt is `live`
-`COMPLETE`, the acquisition subset is full-region, and every local artifact is usable
-`application/json` under `canon_geo_warehouse_rows.v0`. The legacy unambiguous case can
+inventory, or replan. The public `geo replan-from-acquisition` command materializes a
+separate inventory-advancement artifact only when the plan inventory hashes match exactly,
+the receipt is `live` `COMPLETE`, the acquisition subset is full-region, and every local
+artifact is usable `application/json` under `canon_geo_warehouse_rows.v0`. The legacy unambiguous case can
 infer the binding from one pinned release and one local artifact when receipt-native
 relations are absent; multi-release or multi-artifact advancement requires receipt-native
 artifact-release relations that cover every pinned release and every local artifact
 without duplicate or cross-product ambiguity. A valid untyped CSV/JSONL receipt can
 satisfy its acquisition request but cannot make a source planning-ready. Retained/fixture
 proof, zero/partial/truncated execution, and narrower subsets remain non-advancing.
-Genuine advancement still requires an explicit base-inventory-bound replan whose
-inventory snapshot and inputs reflect that acquired evidence. `geo run`
+The command writes the advancement as an explicit sidecar and emits a new
+base-inventory-bound plan whose inventory snapshot and inputs reflect that acquired
+evidence. `geo run`
 currently operates only within the
 parcel/building composition-profile limit: omitted/default `parcel` preserves the
 non-empty parcel universe requirement, explicit `building` permits a parcel-free building

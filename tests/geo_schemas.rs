@@ -13,16 +13,20 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use canon::entity::run::link::multisource::EntitySourceRole;
 use canon::geo::{
     CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
-    CANON_GEO_DISCOVERY_REQUEST_VERSION, GeoAcquisitionArtifactReleaseRelation,
-    GeoAcquisitionCounts, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
-    GeoAcquisitionReceipt, GeoAcquisitionRequest, GeoAcquisitionResumability,
-    GeoAcquisitionTerminalState, GeoBoundedSubset, GeoColumnReadabilityProbe, GeoDenominatorSource,
-    GeoDigest, GeoDigestAlgorithm, GeoDiscoveryReleaseSelectionPolicy, GeoDiscoveryRequest,
-    GeoDiscoveryStep, GeoExecutorKind, GeoExecutorTrace, GeoFieldRole, GeoLocalArtifactDigest,
+    CANON_GEO_DISCOVERY_REQUEST_VERSION, CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION,
+    GeoAcquisitionArtifactReleaseRelation, GeoAcquisitionCounts, GeoAcquisitionDenominator,
+    GeoAcquisitionProofClass, GeoAcquisitionReceipt, GeoAcquisitionRequest,
+    GeoAcquisitionResumability, GeoAcquisitionTerminalState, GeoBoundedSubset,
+    GeoColumnReadabilityProbe, GeoDenominatorSource, GeoDigest, GeoDigestAlgorithm,
+    GeoDiscoveryReleaseSelectionPolicy, GeoDiscoveryRequest, GeoDiscoveryStep, GeoExecutorKind,
+    GeoExecutorTrace, GeoFieldRole, GeoInventoryAdvancementEffect, GeoLocalArtifactDigest,
     GeoNullOrdering, GeoOrderDirection, GeoOrderingTerm, GeoPaginationReceipt,
-    GeoPaginationRequest, GeoProjectionOperation, GeoReleasePin, GeoReleaseSelectionMode,
-    GeoRequestedField, GeoRowByteCeilings, GeoSubsetPredicate, GeoSubsetPredicateKind,
+    GeoPaginationRequest, GeoProjectionOperation, GeoRegionalInventoryAdvancement,
+    GeoRegionalInventorySourceAdvancement, GeoReleasePin, GeoReleaseSelectionMode,
+    GeoRequestedField, GeoRowByteCeilings, GeoSatisfactionExecutionRef, GeoSatisfactionFileAudit,
+    GeoSubsetPredicate, GeoSubsetPredicateKind, canonical_geo_regional_inventory_advancement_bytes,
     geo_acquisition_request_id, geo_acquisition_request_semantic_hash, geo_discovery_request_id,
+    geo_regional_inventory_advancement_semantic_hash,
 };
 use canon::geo::{
     CANON_GEO_ADDRESS_PARSE_FOREST_VERSION, CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION,
@@ -73,7 +77,7 @@ use canon::geo::{
     evaluate_pad_membership, evaluate_population, materialize_geo_multisource,
     materialize_geometry_tile, materialize_h7_population_rows, materialize_home_cells,
     materialize_tile_work_unit, materialize_warehouse_geometry, parse_address_forest,
-    reconcile_tile_decisions, solve_composition,
+    reconcile_tile_decisions, regional_inventory_semantic_hash, solve_composition,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -135,6 +139,8 @@ const CONTROL_CAPABILITIES_SCHEMA: &str =
     include_str!("../schemas/canon.geo.capabilities.v0.schema.json");
 const CONTROL_REGIONAL_INVENTORY_SCHEMA: &str =
     include_str!("../schemas/canon.geo.regional_inventory.v1.schema.json");
+const REGIONAL_INVENTORY_ADVANCEMENT_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.regional_inventory_advancement.v0.schema.json");
 const CONTROL_RESOURCE_BUDGET_SCHEMA: &str =
     include_str!("../schemas/canon.geo.resource_budget.v0.schema.json");
 const DISCOVERY_REQUEST_SCHEMA: &str =
@@ -450,6 +456,42 @@ fn assert_drift_free(
     let schema = parsed(schema_source);
     assert_schema_shape(&schema, expected_title, expected_version);
     assert_instance_matches_schema(&schema, &schema, instance, "$");
+}
+
+fn assert_schema_walk_rejects(schema_source: &str, instance: &Value, expected: &str) {
+    let schema = parsed(schema_source);
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        assert_instance_matches_schema(&schema, &schema, instance, "$");
+    }))
+    .expect_err("schema declaration walk must reject the instance");
+    let message = panic
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| panic.downcast_ref::<&str>().copied())
+        .unwrap_or("<non-string panic>");
+    assert!(
+        message.contains(expected),
+        "expected schema rejection containing {expected:?}, got {message:?}"
+    );
+}
+
+fn lowercase_hex_with_len(value: &str, expected_len: usize) -> bool {
+    value.len() == expected_len
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn prefixed_blake3_shape(value: &str) -> bool {
+    value
+        .strip_prefix("blake3:")
+        .is_some_and(|hex| lowercase_hex_with_len(hex, 64))
+}
+
+fn regional_inventory_advancement_id_shape(value: &str) -> bool {
+    value
+        .strip_prefix("canon_geo_regional_inventory_advancement.v0:")
+        .is_some_and(|hex| lowercase_hex_with_len(hex, 64))
 }
 
 fn json_integer(text: &str) -> Value {
@@ -946,6 +988,107 @@ fn control_inventory() -> GeoRegionalInventory {
     }
 }
 
+fn regional_inventory_advancement_contract_artifact() -> GeoRegionalInventoryAdvancement {
+    let advanced_inventory = control_inventory();
+    let source = advanced_inventory.sources[0].clone();
+    let local_ref = source
+        .local_state
+        .local_ref
+        .clone()
+        .expect("advanced fixture source is locally available");
+    let subset = GeoBoundedSubset {
+        subset_id: "subset.fixture.inventory-advancement".to_string(),
+        geography: control_region(),
+        h3_cells: vec!["882a107707fffff".to_string()],
+        predicates: vec![GeoSubsetPredicate {
+            predicate_id: "predicate.fixture.inventory-advancement.h3".to_string(),
+            kind: GeoSubsetPredicateKind::H3Cells,
+            expression: "declared h3 r8 cell for the advancement contract fixture".to_string(),
+        }],
+    };
+    let bounded_subset_hash = format!(
+        "blake3:{}",
+        blake3::hash(&serde_json::to_vec(&subset).expect("subset serializes")).to_hex()
+    );
+    let release_hex = source
+        .release
+        .release_digest
+        .strip_prefix("blake3:")
+        .expect("fixture release digest is blake3")
+        .to_string();
+    let advanced_inventory_semantic_hash =
+        regional_inventory_semantic_hash(&advanced_inventory).expect("advanced inventory hash");
+    let mut advancement = GeoRegionalInventoryAdvancement {
+        version: CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION.to_string(),
+        advancement_id: String::new(),
+        semantic_hash: String::new(),
+        effect: GeoInventoryAdvancementEffect::LocalAvailabilityOnly,
+        plan_id: format!("canon_geo_plan.v0:{}", "a".repeat(64)),
+        plan_semantic_hash: control_digest("plan.fixture.inventory-advancement"),
+        request_id: format!("canon_geo_acquisition_request.v0:{}", "b".repeat(64)),
+        request_semantic_hash: control_digest("request.fixture.inventory-advancement"),
+        base_inventory_id: "inventory.fixture.base".to_string(),
+        base_inventory_semantic_hash: control_digest("inventory.fixture.base"),
+        advanced_inventory_id: advanced_inventory.inventory_id.clone(),
+        advanced_inventory_semantic_hash,
+        bounded_geography: control_region(),
+        bounded_subset: subset,
+        bounded_subset_hash,
+        receipt_file: GeoSatisfactionFileAudit {
+            file_id: "receipt.fixture.inventory-advancement".to_string(),
+            byte_count: 512,
+            digest: control_digest("receipt.fixture.inventory-advancement"),
+        },
+        receipt_execution: GeoSatisfactionExecutionRef {
+            proof_class: GeoAcquisitionProofClass::Live,
+            terminal_state: GeoAcquisitionTerminalState::Complete,
+            fixture_id: None,
+            retained_receipt_id: None,
+            executor_request_id: Some("request-123".to_string()),
+            executor_query_id: Some("query-123".to_string()),
+            executor_attempt_id: Some("attempt-1".to_string()),
+        },
+        receipt_terminal_state: GeoAcquisitionTerminalState::Complete,
+        proof_class: GeoAcquisitionProofClass::Live,
+        denominators: vec![GeoAcquisitionDenominator {
+            denominator_id: "denominator.result.rows".to_string(),
+            source: GeoDenominatorSource::ResultArtifact,
+            count: 2,
+            unit: "row".to_string(),
+            description: "Rows in the bounded acquisition result".to_string(),
+        }],
+        source_digests: vec![GeoDigest {
+            digest_id: "source.release.fixture".to_string(),
+            algorithm: GeoDigestAlgorithm::Blake3,
+            hex_digest: release_hex,
+        }],
+        result_digests: vec![contract_blake3_digest("result.rows", b"result rows")],
+        source_advancements: vec![GeoRegionalInventorySourceAdvancement {
+            source_instance_id: source.source_instance_id,
+            release: source.release,
+            previous_state: GeoSourceAvailability::Missing,
+            advanced_state: GeoSourceAvailability::Available,
+            local_ref: local_ref.clone(),
+            local_artifact_byte_count: 512,
+            local_artifact_contract_version: Some(local_ref.contract_version.clone()),
+            result_digest_ids: vec!["result.rows".to_string()],
+        }],
+        advanced_inventory,
+    };
+    advancement.semantic_hash = geo_regional_inventory_advancement_semantic_hash(&advancement)
+        .expect("advancement hash computes");
+    advancement.advancement_id = format!(
+        "{CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION}:{}",
+        advancement
+            .semantic_hash
+            .strip_prefix("blake3:")
+            .expect("advancement semantic hash is blake3")
+    );
+    canonical_geo_regional_inventory_advancement_bytes(&advancement)
+        .expect("advancement fixture passes canonical validation");
+    advancement
+}
+
 fn small_universe() -> GeoCompositionUniverse {
     GeoCompositionUniverse {
         parcels: vec!["parcel-a".to_string(), "parcel-b".to_string()],
@@ -1376,6 +1519,122 @@ fn control_regional_inventory_schema_matches_a_real_instance() {
         CANON_GEO_REGIONAL_INVENTORY_VERSION,
         &instance,
     );
+}
+
+#[test]
+fn regional_inventory_advancement_schema_matches_a_real_instance() {
+    let advancement = regional_inventory_advancement_contract_artifact();
+    let canonical_bytes = canonical_geo_regional_inventory_advancement_bytes(&advancement)
+        .expect("advancement canonical bytes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("advancement canonical JSON parses");
+    assert_drift_free(
+        REGIONAL_INVENTORY_ADVANCEMENT_SCHEMA,
+        "canon.geo.regional_inventory_advancement.v0",
+        CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION,
+        &instance,
+    );
+
+    let schema = parsed(REGIONAL_INVENTORY_ADVANCEMENT_SCHEMA);
+    assert!(
+        required_contains(&schema, "/required", "advanced_inventory"),
+        "advancement schema must embed the advanced inventory bytes it binds"
+    );
+    assert_eq!(
+        schema
+            .pointer("/properties/effect/const")
+            .and_then(Value::as_str),
+        Some("local_availability_only")
+    );
+    assert_eq!(
+        schema
+            .pointer("/properties/proof_class/const")
+            .and_then(Value::as_str),
+        Some("live")
+    );
+    assert_eq!(
+        schema
+            .pointer("/properties/receipt_terminal_state/const")
+            .and_then(Value::as_str),
+        Some("COMPLETE")
+    );
+}
+
+#[test]
+fn regional_inventory_advancement_schema_rejects_unknown_fields_and_version_shape() {
+    let advancement = regional_inventory_advancement_contract_artifact();
+    let canonical_bytes = canonical_geo_regional_inventory_advancement_bytes(&advancement)
+        .expect("advancement canonical bytes");
+    let mut instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("advancement canonical JSON parses");
+
+    let mut top_unknown = instance.clone();
+    top_unknown["path"] = serde_json::json!("/tmp/receipt.json");
+    assert_schema_walk_rejects(
+        REGIONAL_INVENTORY_ADVANCEMENT_SCHEMA,
+        &top_unknown,
+        "$.path: key not declared",
+    );
+    let top_unknown_error = serde_json::from_value::<GeoRegionalInventoryAdvancement>(top_unknown)
+        .expect_err("serde must reject top-level unknown fields")
+        .to_string();
+    assert!(
+        top_unknown_error.contains("unknown field"),
+        "unexpected serde error: {top_unknown_error}"
+    );
+
+    let mut nested_unknown = instance.clone();
+    nested_unknown["source_advancements"][0]["path"] =
+        serde_json::json!("/tmp/local-warehouse-rows.json");
+    assert_schema_walk_rejects(
+        REGIONAL_INVENTORY_ADVANCEMENT_SCHEMA,
+        &nested_unknown,
+        "$.source_advancements[0].path: key not declared",
+    );
+    let nested_unknown_error =
+        serde_json::from_value::<GeoRegionalInventoryAdvancement>(nested_unknown)
+            .expect_err("serde must reject nested unknown fields")
+            .to_string();
+    assert!(
+        nested_unknown_error.contains("unknown field"),
+        "unexpected serde error: {nested_unknown_error}"
+    );
+
+    let schema = parsed(REGIONAL_INVENTORY_ADVANCEMENT_SCHEMA);
+    assert_eq!(
+        schema
+            .pointer("/properties/version/const")
+            .and_then(Value::as_str),
+        Some(CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION)
+    );
+    instance["version"] = serde_json::json!("canon_geo_regional_inventory_advancement.v1");
+    let wrong_version: GeoRegionalInventoryAdvancement =
+        serde_json::from_value(instance.clone()).expect("version is semantically validated");
+    assert!(
+        canonical_geo_regional_inventory_advancement_bytes(&wrong_version).is_err(),
+        "wrong version must not canonicalize even though serde can parse the string"
+    );
+
+    assert_eq!(
+        schema
+            .pointer("/properties/advancement_id/pattern")
+            .and_then(Value::as_str),
+        Some("^canon_geo_regional_inventory_advancement\\.v0:[0-9a-f]{64}$")
+    );
+    assert!(regional_inventory_advancement_id_shape(
+        advancement.advancement_id.as_str()
+    ));
+    assert!(!regional_inventory_advancement_id_shape(
+        "canon_geo_regional_inventory_advancement.v0:ABC"
+    ));
+    assert_eq!(
+        schema
+            .pointer("/$defs/blake3_digest/pattern")
+            .and_then(Value::as_str),
+        Some("^blake3:[0-9a-f]{64}$")
+    );
+    assert!(prefixed_blake3_shape(advancement.semantic_hash.as_str()));
+    assert!(!prefixed_blake3_shape("blake3:ABC"));
 }
 
 #[test]
