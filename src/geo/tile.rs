@@ -340,7 +340,37 @@ pub enum GeoTileReachState {
 pub struct GeoTileTruthReference {
     pub reference_id: String,
     pub reference_kind: String,
-    pub members: Vec<GeoTileDecisionMember>,
+    pub members: Vec<GeoTileTruthReferenceMember>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileComparisonKey {
+    pub entity_namespace: String,
+    pub entity_level: GeoControlEntityLevel,
+    pub comparison_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileCandidateIdentityBinding {
+    pub candidate: GeoTileDecisionMember,
+    pub identity_key: GeoTileComparisonKey,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileTruthProvenance {
+    pub source_instance_id: String,
+    pub release_id: String,
+    pub source_record_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileTruthReferenceMember {
+    pub identity_key: GeoTileComparisonKey,
+    pub provenance: GeoTileTruthProvenance,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -349,6 +379,7 @@ pub struct GeoOwnedTileReachRequest {
     pub version: String,
     pub halo_k: u32,
     pub work_units: Vec<GeoTileWorkUnitArtifact>,
+    pub candidate_identity_bindings: Vec<GeoTileCandidateIdentityBinding>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub truth_reference: Option<GeoTileTruthReference>,
     pub claimed_truth_reach: GeoTileReachState,
@@ -363,6 +394,7 @@ pub struct GeoOwnedTileReachRequest {
 pub struct GeoOwnedTileCandidateMember {
     pub member: GeoTileDecisionMember,
     pub owner_cell: String,
+    pub identity_key: GeoTileComparisonKey,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -384,7 +416,8 @@ pub struct GeoOwnedTileReachArtifact {
     pub reached_reference_member_count: u64,
     pub missing_reference_member_count: u64,
     pub owned_candidate_members: Vec<GeoOwnedTileCandidateMember>,
-    pub missing_reference_members: Vec<GeoTileDecisionMember>,
+    pub truth_reference_members: Vec<GeoTileTruthReferenceMember>,
+    pub missing_reference_members: Vec<GeoTileTruthReferenceMember>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -1426,25 +1459,27 @@ pub fn materialize_owned_tile_reach(
         }
     }
 
-    let owned_candidate_members = candidate_members
-        .values()
-        .cloned()
-        .map(|member| GeoOwnedTileCandidateMember {
-            owner_cell: member.home_cell.clone(),
-            member,
-        })
-        .collect::<Vec<_>>();
+    let (owned_candidate_members, candidate_identity_keys) = validate_candidate_identity_bindings(
+        &request.candidate_identity_bindings,
+        resolution,
+        &mut source_bindings,
+        &candidate_members,
+    )?;
     let candidate_member_count =
         usize_to_u64(owned_candidate_members.len(), "owned_candidate_members.len")?;
-    let (truth_reach, truth_reference_id, reference_member_count, reached_count, missing) =
-        validate_truth_reach(
-            request.truth_reference.as_ref(),
-            request.claimed_truth_reach,
-            resolution,
-            &mut source_bindings,
-            &candidate_members,
-            request.max_reference_members,
-        )?;
+    let (
+        truth_reach,
+        truth_reference_id,
+        reference_member_count,
+        reached_count,
+        reference_members,
+        missing,
+    ) = validate_truth_reach(
+        request.truth_reference.as_ref(),
+        request.claimed_truth_reach,
+        &candidate_identity_keys,
+        request.max_reference_members,
+    )?;
     let missing_reference_member_count =
         usize_to_u64(missing.len(), "missing_reference_members.len")?;
 
@@ -1464,6 +1499,7 @@ pub fn materialize_owned_tile_reach(
         reached_reference_member_count: reached_count,
         missing_reference_member_count,
         owned_candidate_members,
+        truth_reference_members: reference_members,
         missing_reference_members: missing,
     })
 }
@@ -1474,12 +1510,121 @@ pub fn canonical_owned_tile_reach_bytes(
     serde_json::to_vec(artifact)
 }
 
-fn validate_truth_reach(
-    reference: Option<&GeoTileTruthReference>,
-    claimed: GeoTileReachState,
+fn validate_candidate_identity_bindings(
+    bindings: &[GeoTileCandidateIdentityBinding],
     resolution: Resolution,
     source_bindings: &mut SourceBindings,
     candidate_members: &BTreeMap<SourceFeatureKey, GeoTileDecisionMember>,
+) -> Result<
+    (
+        Vec<GeoOwnedTileCandidateMember>,
+        BTreeSet<GeoTileComparisonKey>,
+    ),
+    GeoTileError,
+> {
+    let mut seen_candidates = BTreeSet::new();
+    let mut owned = Vec::with_capacity(bindings.len());
+    let mut identity_keys = BTreeSet::new();
+    for binding in bindings {
+        validate_comparison_key(&binding.identity_key)?;
+        let candidate =
+            normalize_reach_candidate_member(&binding.candidate, resolution, source_bindings)?;
+        if candidate.candidate_entity_level != binding.identity_key.entity_level {
+            return Err(GeoTileError::new(
+                GeoTileErrorCode::InvalidReachClaim,
+                "Geo owned tile candidate identity key must use the candidate entity level",
+                [
+                    (
+                        "candidate_entity_level",
+                        entity_level_name(candidate.candidate_entity_level),
+                    ),
+                    (
+                        "identity_entity_level",
+                        entity_level_name(binding.identity_key.entity_level),
+                    ),
+                    ("comparison_id", binding.identity_key.comparison_id.clone()),
+                ],
+            ));
+        }
+        let key = source_feature_key(&candidate.source, &candidate.feature_id);
+        let Some(expected) = candidate_members.get(&key) else {
+            return Err(GeoTileError::new(
+                GeoTileErrorCode::InvalidReachClaim,
+                "Geo owned tile candidate identity binding names a member absent from the owned sections",
+                [
+                    (
+                        "source_instance_id",
+                        candidate.source.source_instance_id.clone(),
+                    ),
+                    ("release_id", candidate.source.release.release_id.clone()),
+                    ("feature_id", candidate.feature_id.clone()),
+                ],
+            ));
+        };
+        if expected != &candidate {
+            return Err(GeoTileError::new(
+                GeoTileErrorCode::InvalidReachClaim,
+                "Geo owned tile candidate identity binding disagrees with structural ownership",
+                [
+                    (
+                        "source_instance_id",
+                        candidate.source.source_instance_id.clone(),
+                    ),
+                    ("release_id", candidate.source.release.release_id.clone()),
+                    ("feature_id", candidate.feature_id.clone()),
+                    ("expected_home_cell", expected.home_cell.clone()),
+                    ("actual_home_cell", candidate.home_cell.clone()),
+                ],
+            ));
+        }
+        if !seen_candidates.insert(key) {
+            return Err(GeoTileError::new(
+                GeoTileErrorCode::InvalidReachClaim,
+                "Geo owned tile candidate identity bindings repeat a structural member",
+                [
+                    (
+                        "source_instance_id",
+                        candidate.source.source_instance_id.clone(),
+                    ),
+                    ("release_id", candidate.source.release.release_id.clone()),
+                    ("feature_id", candidate.feature_id.clone()),
+                ],
+            ));
+        }
+        identity_keys.insert(binding.identity_key.clone());
+        owned.push(GeoOwnedTileCandidateMember {
+            owner_cell: candidate.home_cell.clone(),
+            member: candidate,
+            identity_key: binding.identity_key.clone(),
+        });
+    }
+    if seen_candidates.len() != candidate_members.len() {
+        let missing = candidate_members
+            .iter()
+            .find(|(key, _)| !seen_candidates.contains(*key))
+            .expect("length mismatch means at least one candidate is missing")
+            .1;
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidReachClaim,
+            "Geo owned tile reach requires one explicit identity key for every structural candidate member",
+            [
+                (
+                    "source_instance_id",
+                    missing.source.source_instance_id.clone(),
+                ),
+                ("release_id", missing.source.release.release_id.clone()),
+                ("feature_id", missing.feature_id.clone()),
+            ],
+        ));
+    }
+    owned.sort();
+    Ok((owned, identity_keys))
+}
+
+fn validate_truth_reach(
+    reference: Option<&GeoTileTruthReference>,
+    claimed: GeoTileReachState,
+    candidate_identity_keys: &BTreeSet<GeoTileComparisonKey>,
     max_reference_members: u64,
 ) -> Result<
     (
@@ -1487,7 +1632,8 @@ fn validate_truth_reach(
         Option<String>,
         u64,
         u64,
-        Vec<GeoTileDecisionMember>,
+        Vec<GeoTileTruthReferenceMember>,
+        Vec<GeoTileTruthReferenceMember>,
     ),
     GeoTileError,
 > {
@@ -1499,7 +1645,14 @@ fn validate_truth_reach(
                 [("claimed_truth_reach", reach_state_name(claimed))],
             ));
         }
-        return Ok((GeoTileReachState::Unverified, None, 0, 0, Vec::new()));
+        return Ok((
+            GeoTileReachState::Unverified,
+            None,
+            0,
+            0,
+            Vec::new(),
+            Vec::new(),
+        ));
     };
     validate_identifier("truth_reference.reference_id", &reference.reference_id)?;
     validate_identifier("truth_reference.reference_kind", &reference.reference_kind)?;
@@ -1516,32 +1669,39 @@ fn validate_truth_reach(
         ));
     }
     let mut seen = BTreeSet::new();
+    let mut reference_members = Vec::with_capacity(reference.members.len());
     let mut reached_count = 0_u64;
     let mut missing = Vec::new();
     for member in &reference.members {
-        let normalized = normalize_reach_reference_member(member, resolution, source_bindings)?;
-        let key = source_feature_key(&normalized.source, &normalized.feature_id);
-        if !seen.insert(key.clone()) {
+        let normalized = normalize_truth_reference_member(member)?;
+        if !seen.insert(normalized.identity_key.clone()) {
             return Err(GeoTileError::new(
                 GeoTileErrorCode::InvalidReachClaim,
-                "Geo owned tile truth reference repeats a candidate member",
+                "Geo owned tile truth reference repeats a comparison identity",
                 [
                     (
-                        "source_instance_id",
-                        normalized.source.source_instance_id.clone(),
+                        "entity_namespace",
+                        normalized.identity_key.entity_namespace.clone(),
                     ),
-                    ("release_id", normalized.source.release.release_id.clone()),
-                    ("feature_id", normalized.feature_id.clone()),
+                    (
+                        "entity_level",
+                        entity_level_name(normalized.identity_key.entity_level),
+                    ),
+                    (
+                        "comparison_id",
+                        normalized.identity_key.comparison_id.clone(),
+                    ),
                 ],
             ));
         }
-        match candidate_members.get(&key) {
-            Some(candidate) if candidate == &normalized => {
-                reached_count = checked_add(reached_count, 1, "reached_reference_member_count")?;
-            }
-            _ => missing.push(normalized),
+        if candidate_identity_keys.contains(&normalized.identity_key) {
+            reached_count = checked_add(reached_count, 1, "reached_reference_member_count")?;
+        } else {
+            missing.push(normalized.clone());
         }
+        reference_members.push(normalized);
     }
+    reference_members.sort();
     missing.sort();
     let computed = if missing.is_empty() {
         GeoTileReachState::PassedAgainstReference
@@ -1564,24 +1724,31 @@ fn validate_truth_reach(
         Some(reference.reference_id.clone()),
         reference_member_count,
         reached_count,
+        reference_members,
         missing,
     ))
 }
 
-fn normalize_reach_reference_member(
+fn normalize_reach_candidate_member(
     member: &GeoTileDecisionMember,
     resolution: Resolution,
     source_bindings: &mut SourceBindings,
 ) -> Result<GeoTileDecisionMember, GeoTileError> {
-    validate_source_binding("truth_reference.members[].source", &member.source)?;
+    validate_source_binding(
+        "candidate_identity_bindings[].candidate.source",
+        &member.source,
+    )?;
     validate_source_binding_consistency(source_bindings, &member.source)?;
-    validate_identifier("truth_reference.members[].feature_id", &member.feature_id)?;
+    validate_identifier(
+        "candidate_identity_bindings[].candidate.feature_id",
+        &member.feature_id,
+    )?;
     match member.source.native_entity_level() {
         Some(actual) if actual == member.candidate_entity_level => {}
         Some(actual) => {
             return Err(GeoTileError::new(
                 GeoTileErrorCode::InvalidCandidateMember,
-                "Geo owned tile truth reference cannot promote a cross-level feature",
+                "Geo owned tile candidate identity binding cannot promote a cross-level feature",
                 [
                     (
                         "source_instance_id",
@@ -1599,7 +1766,7 @@ fn normalize_reach_reference_member(
         None => {
             return Err(GeoTileError::new(
                 GeoTileErrorCode::InvalidCandidateMember,
-                "Geo owned tile truth reference cannot promote an observation-only feature",
+                "Geo owned tile candidate identity binding cannot promote an observation-only feature",
                 [
                     (
                         "source_instance_id",
@@ -1614,7 +1781,10 @@ fn normalize_reach_reference_member(
             ));
         }
     }
-    let home = parse_cell(&member.home_cell, "truth_reference.members[].home_cell")?;
+    let home = parse_cell(
+        &member.home_cell,
+        "candidate_identity_bindings[].candidate.home_cell",
+    )?;
     if home.resolution() != resolution {
         return Err(resolution_error(resolution, home, &member.home_cell));
     }
@@ -1624,6 +1794,30 @@ fn normalize_reach_reference_member(
         candidate_entity_level: member.candidate_entity_level,
         home_cell: home.to_string(),
     })
+}
+
+fn normalize_truth_reference_member(
+    member: &GeoTileTruthReferenceMember,
+) -> Result<GeoTileTruthReferenceMember, GeoTileError> {
+    validate_comparison_key(&member.identity_key)?;
+    validate_identifier(
+        "truth_reference.members[].provenance.source_instance_id",
+        &member.provenance.source_instance_id,
+    )?;
+    validate_identifier(
+        "truth_reference.members[].provenance.release_id",
+        &member.provenance.release_id,
+    )?;
+    validate_identifier(
+        "truth_reference.members[].provenance.source_record_id",
+        &member.provenance.source_record_id,
+    )?;
+    Ok(member.clone())
+}
+
+fn validate_comparison_key(key: &GeoTileComparisonKey) -> Result<(), GeoTileError> {
+    validate_identifier("comparison_key.entity_namespace", &key.entity_namespace)?;
+    validate_identifier("comparison_key.comparison_id", &key.comparison_id)
 }
 
 fn reach_state_name(state: GeoTileReachState) -> String {
