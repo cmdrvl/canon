@@ -353,6 +353,45 @@ gate is used to fill it. The described warehouse inventory exposed no Gate
 V2/H4 extension-key bridge, so that cross-gate dedupe remains explicitly
 unavailable rather than inferred.
 
+2026-09-01 bd-179b retention-control rerun: root pinned the 2026-08-10
+ACRIS staging aggregate at 17,065,090 master rows / 17,049,742 distinct
+documents / 17,049,742 derived-usable rows, 46,540,137 party rows /
+17,049,584 distinct documents / 46,537,120 derived-usable rows, and
+22,727,180 legal rows / 17,005,665 distinct documents / 22,727,180
+derived-usable rows. These are raw staging denominators only, not H.7 accepted
+subjects; successful MCP responses did not expose Snowflake query IDs for
+these checks.
+
+The historical bridge pin
+`3aed6660-ce1c-46a9-aeb2-7296c134ce8f` now reads as 0 bridge rows / 0
+distinct loans in current `PROPERTY_MART.LOAN_ISSUANCE_PROPERTY`. That is a
+snapshot-retention finding, not permission to replace the pin. The SQL now
+emits `historical_bridge_build_not_retained_in_current_snapshot` plus
+fail-closed truth-plane and population mismatch guards, preserving the two
+expected planes and their retained counts instead of silently returning an
+empty result. A compact live guard check emitted two truth-plane rows and the
+guard failures `accepted_71_population_count_mismatch`,
+`eligible_plane_population_count_mismatch`, and
+`historical_bridge_build_not_retained_in_current_snapshot`; that successful
+MCP response also omitted a Snowflake query ID.
+
+The current observed `PROPERTY_MART` build
+`ce3953ac-c2d4-4b48-bf02-29f0cf341389` is a separate live observation:
+51,778 rows / 17,372 distinct loans, built at 2026-09-01 07:33:41.258 -0700.
+Under the same H.7-shaped aggregation it produced non-round
+652 eligible / 262 candidate / 221 legal-confirmed / 172 accepted / 49
+ambiguous / 35 multi-BBL loans and round 2,323 eligible / 312 candidate / 307
+legal-confirmed / 271 accepted / 36 ambiguous / 36 multi-BBL loans. Because no
+immutable retained artifact containing the accepted 71 H.7 loan keys is checked
+in locally, this current-build cohort cannot be compared key-for-key and cannot
+extend H.7 truth. Zero new bd-179b subjects are admitted from this pass.
+
+Discarded attempts are retained for audit: the first current-build discovery
+query used `rows` as an alias and failed with Snowflake query ID
+`01c6c882-0821-b531-006c-c7030893ca92`; earlier exact document-date/lender
+probes against the historical bridge pin returned zero rows due to the same
+bridge retention loss and were not used as positive discriminator evidence.
+
 `h7_staging_incidence_shard.sql` performs the next bounded reduction. It owns
 work by r8 center cell, expands only the selected center+k1 sections, joins
 pinned MapPLUTO geometry, and measures raw NYC/Overture majority-overlap

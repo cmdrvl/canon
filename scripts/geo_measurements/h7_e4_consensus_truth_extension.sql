@@ -15,6 +15,12 @@
 -- Positive result requirement: a live run must return nonzero rows, preserve
 -- the query id, and report admitted subject counts separately by truth plane.
 -- Fewer than five genuinely new subjects is a valid negative finding.
+--
+-- Retention guard: the historical bridge build id below is intentionally not
+-- replaced by a newer PROPERTY_MART build. If that build is no longer retained
+-- in the current warehouse snapshot, this query must emit explicit guard
+-- failures rather than treating a current build as equivalent or silently
+-- returning zero rows.
 
 WITH
 params AS (
@@ -30,6 +36,7 @@ params AS (
       AS amount_cents_quantization,
     10000000::NUMBER(38,0) AS round_amount_lattice_cents,
     45::NUMBER(9,0) AS max_recording_offset_days,
+    2974::NUMBER(38,0) AS expected_h7_eligible_loans,
     71::NUMBER(38,0) AS expected_h7_accepted_multi_bbl_loans,
     100::NUMBER(38,0) AS consensus_subject_row_cap
 ),
@@ -65,6 +72,23 @@ known_gate_v2_h4_extension_keys AS (
 known_extension_key_stats AS (
   SELECT COUNT(*) AS known_extension_key_rows
   FROM known_gate_v2_h4_extension_keys
+),
+expected_truth_planes AS (
+  SELECT * FROM VALUES
+    ('non_round_amount_date_legal_borough', 653, 35),
+    ('round_exact_lender_party', 2321, 36)
+  AS p(
+    truth_plane,
+    expected_eligible_loans,
+    expected_accepted_h7_multi_bbl_loans
+  )
+),
+bridge_pin_stats AS (
+  SELECT
+    COUNT(*) AS bridge_rows,
+    COUNT(DISTINCT loan_key) AS bridge_distinct_loans
+  FROM EDGAR_DB.PROPERTY_MART.LOAN_ISSUANCE_PROPERTY lip
+  WHERE lip.build_id = (SELECT bridge_build_id FROM params)
 ),
 bridge_rows AS (
   SELECT
@@ -581,8 +605,8 @@ consensus_summary AS (
 ),
 plane_denominators AS (
   SELECT
-    e.truth_plane,
-    e.eligible_loans,
+    ep.truth_plane,
+    COALESCE(e.eligible_loans, 0) AS eligible_loans,
     COALESCE(c.candidate_loans, 0) AS candidate_loans,
     COALESCE(c.candidate_loan_documents, 0) AS candidate_loan_documents,
     COALESCE(l.legal_confirmed_candidate_loans, 0)
@@ -595,7 +619,8 @@ plane_denominators AS (
     COALESCE(c.candidate_loans, 0)
       - COALESCE(l.legal_confirmed_candidate_loans, 0)
       AS candidate_without_legal_loans,
-    e.eligible_loans - COALESCE(c.candidate_loans, 0) AS no_candidate_loans,
+    COALESCE(e.eligible_loans, 0) - COALESCE(c.candidate_loans, 0)
+      AS no_candidate_loans,
     COALESCE(a.accepted_h7_multi_bbl_loans, 0)
       AS accepted_h7_multi_bbl_loans,
     COALESCE(x.admitted_consensus_subjects, 0)
@@ -612,8 +637,8 @@ plane_denominators AS (
       AS rejected_document_bbl_set_not_multi_bbl_loans,
     COALESCE(x.rejected_document_bbl_set_disagreement_loans, 0)
       AS rejected_document_bbl_set_disagreement_loans,
-    e.eligible_loans = COALESCE(c.candidate_loans, 0)
-      + (e.eligible_loans - COALESCE(c.candidate_loans, 0))
+    COALESCE(e.eligible_loans, 0) = COALESCE(c.candidate_loans, 0)
+      + (COALESCE(e.eligible_loans, 0) - COALESCE(c.candidate_loans, 0))
       AS eligible_denominator_reconciles,
     COALESCE(c.candidate_loans, 0)
       = COALESCE(l.legal_confirmed_candidate_loans, 0)
@@ -633,7 +658,8 @@ plane_denominators AS (
         + COALESCE(x.rejected_document_bbl_set_not_multi_bbl_loans, 0)
         + COALESCE(x.rejected_document_bbl_set_disagreement_loans, 0)
       AS ambiguous_consensus_denominator_reconciles
-  FROM eligible_summary e
+  FROM expected_truth_planes ep
+  LEFT JOIN eligible_summary e USING (truth_plane)
   LEFT JOIN candidate_summary c USING (truth_plane)
   LEFT JOIN legal_summary l USING (truth_plane)
   LEFT JOIN accepted_summary a USING (truth_plane)
@@ -671,7 +697,36 @@ output_stats AS (
 guard_failures AS (
   SELECT failure_reason
   FROM (
-    SELECT 'eligible_denominator_accounting_failure' AS failure_reason,
+    SELECT 'historical_bridge_build_not_retained_in_current_snapshot'
+      AS failure_reason,
+      (SELECT bridge_rows FROM bridge_pin_stats) = 0 AS failed
+    UNION ALL
+    SELECT 'truth_plane_summary_missing',
+      (SELECT COUNT(*) FROM plane_denominators)
+        <> (SELECT COUNT(*) FROM expected_truth_planes)
+    UNION ALL
+    SELECT 'eligible_plane_population_count_mismatch',
+      COALESCE((SELECT SUM(eligible_loans) FROM plane_denominators), 0)
+        <> (SELECT expected_h7_eligible_loans FROM params)
+    UNION ALL
+    SELECT 'truth_plane_eligible_count_mismatch',
+      EXISTS (
+        SELECT 1
+        FROM plane_denominators p
+        JOIN expected_truth_planes e USING (truth_plane)
+        WHERE p.eligible_loans <> e.expected_eligible_loans
+      )
+    UNION ALL
+    SELECT 'truth_plane_multi_bbl_count_mismatch',
+      EXISTS (
+        SELECT 1
+        FROM plane_denominators p
+        JOIN expected_truth_planes e USING (truth_plane)
+        WHERE p.accepted_h7_multi_bbl_loans
+          <> e.expected_accepted_h7_multi_bbl_loans
+      )
+    UNION ALL
+    SELECT 'eligible_denominator_accounting_failure',
       EXISTS (
         SELECT 1 FROM plane_denominators
         WHERE NOT eligible_denominator_reconciles
@@ -696,7 +751,9 @@ guard_failures AS (
       )
     UNION ALL
     SELECT 'accepted_71_population_count_mismatch',
-      (SELECT SUM(accepted_h7_multi_bbl_loans) FROM plane_denominators)
+      COALESCE((
+        SELECT SUM(accepted_h7_multi_bbl_loans) FROM plane_denominators
+      ), 0)
         <> (SELECT expected_h7_accepted_multi_bbl_loans FROM params)
     UNION ALL
     SELECT 'consensus_subject_row_cap_exceeded',

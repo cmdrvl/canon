@@ -117,8 +117,14 @@ fn consensus_admission_requires_complete_identical_multi_bbl_document_sets() {
 #[test]
 fn guards_prevent_duplicate_inflation_and_accepted_population_contamination() {
     for guard in [
+        "historical_bridge_build_not_retained_in_current_snapshot",
+        "2974::NUMBER(38,0) AS expected_h7_eligible_loans",
         "71::NUMBER(38,0) AS expected_h7_accepted_multi_bbl_loans",
         "accepted_h7_multi_bbl_keys AS",
+        "truth_plane_summary_missing",
+        "eligible_plane_population_count_mismatch",
+        "truth_plane_eligible_count_mismatch",
+        "truth_plane_multi_bbl_count_mismatch",
         "accepted_71_population_count_mismatch",
         "consensus_subject_row_cap_exceeded",
         "consensus_duplicate_subject",
@@ -139,13 +145,34 @@ fn guards_prevent_duplicate_inflation_and_accepted_population_contamination() {
 }
 
 #[test]
+fn retention_guard_keeps_historical_pin_and_expected_truth_planes() {
+    for required in [
+        "expected_truth_planes AS",
+        "('non_round_amount_date_legal_borough', 653, 35)",
+        "('round_exact_lender_party', 2321, 36)",
+        "bridge_pin_stats AS",
+        "COUNT(DISTINCT loan_key) AS bridge_distinct_loans",
+        "(SELECT bridge_rows FROM bridge_pin_stats) = 0",
+        "FROM expected_truth_planes ep",
+        "LEFT JOIN eligible_summary e USING (truth_plane)",
+    ] {
+        assert_contains(required);
+    }
+
+    assert_not_contains("ce3953ac-c2d4-4b48-bf02-29f0cf341389");
+}
+
+#[test]
 fn denominators_are_plane_local_and_accounted() {
     for denominator in [
         "eligible_denominator_reconciles",
         "candidate_denominator_reconciles",
         "legal_denominator_reconciles",
         "ambiguous_consensus_denominator_reconciles",
-        "eligible_loans = COALESCE(c.candidate_loans, 0)",
+        "COALESCE(e.eligible_loans, 0) AS eligible_loans",
+        "COALESCE(e.eligible_loans, 0) = COALESCE(c.candidate_loans, 0)",
+        "SELECT SUM(accepted_h7_multi_bbl_loans) FROM plane_denominators",
+        "COALESCE((SELECT SUM(eligible_loans) FROM plane_denominators), 0)",
         "legal_confirmed_candidate_loans",
         "ambiguous_document_identity_loans",
         "candidate_without_legal_loans",
