@@ -3,7 +3,11 @@
 use canon::geo::{
     CANON_GEO_H7_ACRIS_RELEASE_DT, CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION,
     CANON_GEO_H7_BRIDGE_BUILD_ID, CANON_GEO_H7_COLLATERAL_SCOPE,
-    CANON_GEO_H7_LENDER_MATCH_TRANSFORM, CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
+    CANON_GEO_H7_FROZEN_E4_ACCEPTANCE_CASES, CANON_GEO_H7_LENDER_MATCH_TRANSFORM,
+    CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS,
+    CANON_GEO_H7_LIVE_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS,
+    CANON_GEO_H7_LIVE_COMPLETE_RELEASE_ROWS, CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS,
+    CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
     CANON_GEO_H7_NON_ROUND_LEGAL_RESIDUAL_RECEIPT_PURPOSE, CANON_GEO_H7_POPULATION_ROWS_VERSION,
     CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_PRIMARY_MAPPLUTO_RELEASE,
     CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS, CANON_GEO_H7_ROUND_LEGAL_RESIDUAL_RECEIPT_PURPOSE,
@@ -171,6 +175,84 @@ fn synthetic_complete_shape_request() -> GeoH7PopulationRowsRequest {
     request
 }
 
+fn synthetic_not_live_71_subject_142_release_row_request() -> GeoH7PopulationRowsRequest {
+    let mut request = base_request();
+    request.population_scope = GeoH7PopulationScope::LiveComplete;
+    request.provenance.result_mode = GeoH7ResultMode::Live;
+    request.provenance.as_of = "2026-09-01T00:00:00Z".to_string();
+    request.provenance.source_hashes = vec![
+        GeoH7SourceHash {
+            source: "synthetic_not_live.loan_property_bridge".to_string(),
+            hash_kind: "test_sha256".to_string(),
+            sha256: "1".repeat(64),
+        },
+        GeoH7SourceHash {
+            source: "synthetic_not_live.acris_master".to_string(),
+            hash_kind: "test_sha256".to_string(),
+            sha256: "2".repeat(64),
+        },
+        GeoH7SourceHash {
+            source: "synthetic_not_live.acris_legal".to_string(),
+            hash_kind: "test_sha256".to_string(),
+            sha256: "3".repeat(64),
+        },
+        GeoH7SourceHash {
+            source: "synthetic_not_live.acris_party".to_string(),
+            hash_kind: "test_sha256".to_string(),
+            sha256: "4".repeat(64),
+        },
+        GeoH7SourceHash {
+            source: "synthetic_not_live.mappluto_pins".to_string(),
+            hash_kind: "test_sha256".to_string(),
+            sha256: "5".repeat(64),
+        },
+    ];
+    install_live_query_receipts(&mut request);
+    request
+        .provenance
+        .query_receipts
+        .push(legal_residual_receipt(
+            GeoTruthPlane::NonRoundAmountDateLegalBorough,
+            1,
+        ));
+    request
+        .provenance
+        .query_receipts
+        .push(legal_residual_receipt(
+            GeoTruthPlane::RoundExactLenderParty,
+            1,
+        ));
+    request.plane_denominators[0].selected_multi_parcel_loans =
+        CANON_GEO_H7_LIVE_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS;
+    request.plane_denominators[1].selected_multi_parcel_loans =
+        CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS;
+    request.rows.clear();
+    for index in 0..CANON_GEO_H7_LIVE_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS {
+        let loan_key = format!("synthetic-not-live-nonround-{index:02}");
+        let document_id = format!("synthetic-not-live-doc-nonround-{index:02}");
+        request
+            .rows
+            .push(non_round_row(&loan_key, &document_id, "26v1"));
+        request
+            .rows
+            .push(non_round_row(&loan_key, &document_id, "26v2"));
+    }
+    for index in 0..CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS {
+        let loan_key = format!("synthetic-not-live-round-{index:02}");
+        let document_id = format!("synthetic-not-live-doc-round-{index:02}");
+        request
+            .rows
+            .push(round_row(&loan_key, &document_id, "26v1"));
+        request
+            .rows
+            .push(round_row(&loan_key, &document_id, "26v2"));
+    }
+    request.provenance.observed_rows = request.rows.len() as u64;
+    request.provenance.row_cap = 200;
+    request.max_cases = 100;
+    request
+}
+
 #[test]
 fn materializes_replay_population_without_pooling_truth_planes_or_candidate_releases() {
     let request = base_request();
@@ -325,6 +407,97 @@ fn materializes_replay_population_without_pooling_truth_planes_or_candidate_rele
         bytes,
         canonical_h7_population_bytes(&reordered_artifact)
             .expect("reordered external receipts serialize canonically")
+    );
+}
+
+#[test]
+fn synthetic_not_live_71_subject_shape_materializes_and_evaluates_below_frozen_e4_gate() {
+    let request = synthetic_not_live_71_subject_142_release_row_request();
+    assert!(
+        request
+            .provenance
+            .source_hashes
+            .iter()
+            .all(|hash| hash.source.starts_with("synthetic_not_live.")),
+        "this fixture is contract coverage, not live H.7 proof"
+    );
+
+    let artifact =
+        materialize_h7_population_rows(&request).expect("synthetic 71/142 shape materializes");
+
+    assert_eq!(
+        artifact.summary.source_rows,
+        CANON_GEO_H7_LIVE_COMPLETE_RELEASE_ROWS
+    );
+    assert_eq!(
+        artifact.summary.materialized_unique_accepted_loans,
+        CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS
+    );
+    assert_eq!(
+        artifact.summary.solver_population_subjects,
+        CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS
+    );
+    assert_eq!(
+        summary(
+            &artifact.summary.truth_planes,
+            GeoTruthPlane::NonRoundAmountDateLegalBorough
+        )
+        .selected_multi_parcel_loans,
+        CANON_GEO_H7_LIVE_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS
+    );
+    assert_eq!(
+        summary(
+            &artifact.summary.truth_planes,
+            GeoTruthPlane::RoundExactLenderParty
+        )
+        .selected_multi_parcel_loans,
+        CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS
+    );
+    assert!(
+        CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS < CANON_GEO_H7_FROZEN_E4_ACCEPTANCE_CASES,
+        "the synthetic 71-subject handoff must not satisfy the frozen 79-case E4 gate"
+    );
+
+    let evaluation =
+        evaluate_population(&artifact.population).expect("synthetic solver population evaluates");
+    assert_eq!(
+        evaluation.summary.population_eligible_cases,
+        CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS
+    );
+    assert_eq!(
+        evaluation.summary.candidate_reach_evaluated_cases,
+        CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS
+    );
+    assert_eq!(
+        evaluation.summary.candidate_reach_partial_cases,
+        CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS
+    );
+    assert_eq!(
+        evaluation.summary.solver_truth_scored_cases, 0,
+        "solver truth stays unscored until candidate reach is full"
+    );
+}
+
+#[test]
+fn synthetic_not_live_live_complete_rejects_70_subject_drift() {
+    let mut request = synthetic_not_live_71_subject_142_release_row_request();
+    request
+        .rows
+        .retain(|row| row.loan_key != "synthetic-not-live-round-35");
+    request.provenance.observed_rows = request.rows.len() as u64;
+    request.plane_denominators[1].selected_multi_parcel_loans =
+        CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS - 1;
+
+    let error = materialize_h7_population_rows(&request)
+        .expect_err("synthetic 70-subject LiveComplete drift rejected");
+    assert!(
+        error
+            .message
+            .contains("LiveComplete selected multi-parcel count drifted")
+    );
+    assert_eq!(
+        error.detail.get("truth_plane").map(String::as_str),
+        Some("round_exact_lender_party")
     );
 }
 

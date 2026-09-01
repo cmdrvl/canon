@@ -59,6 +59,11 @@ pub const CANON_GEO_H7_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS: u64 = 35;
 pub const CANON_GEO_H7_COMPLETE_ROUND_MULTI_PARCEL_LOANS: u64 = 14;
 pub const CANON_GEO_H7_COMPLETE_MULTI_PARCEL_LOANS: u64 = 49;
 pub const CANON_GEO_H7_COMPLETE_RELEASE_ROWS: u64 = 98;
+pub const CANON_GEO_H7_LIVE_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS: u64 = 35;
+pub const CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS: u64 = 36;
+pub const CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS: u64 = 71;
+pub const CANON_GEO_H7_LIVE_COMPLETE_RELEASE_ROWS: u64 = 142;
+pub const CANON_GEO_H7_FROZEN_E4_ACCEPTANCE_CASES: u64 = 79;
 
 const CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_ROW_CONTRACT: &str =
     "h7_staging_source_record_bytes_export_row.v0";
@@ -1301,7 +1306,6 @@ pub fn materialize_h7_population_rows(
     let mut releases_by_loan: BTreeMap<String, BTreeSet<(String, String, String, String)>> =
         BTreeMap::new();
     let mut cases = Vec::with_capacity(rows.rows.len());
-
     for row in &rows.rows {
         let materialized =
             materialize_h7_case(row, rows.max_assignments, rows.max_materialized_models)?;
@@ -3746,6 +3750,40 @@ fn validate_h7_population_scope(
             }
         }
         GeoH7PopulationScope::LiveComplete => {
+            require_live_h7_plane_count(
+                denominators,
+                GeoTruthPlane::NonRoundAmountDateLegalBorough,
+                CANON_GEO_H7_LIVE_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS,
+            )?;
+            require_live_h7_plane_count(
+                denominators,
+                GeoTruthPlane::RoundExactLenderParty,
+                CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS,
+            )?;
+            if total_selected != CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS {
+                return Err(h7_invalid(
+                    "Geo H.7 LiveComplete claim must preserve the current 71-subject H.7 handoff",
+                    [
+                        ("selected_multi_parcel_loans", total_selected.to_string()),
+                        (
+                            "expected",
+                            CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS.to_string(),
+                        ),
+                    ],
+                ));
+            }
+            if release_row_count != CANON_GEO_H7_LIVE_COMPLETE_RELEASE_ROWS {
+                return Err(h7_invalid(
+                    "Geo H.7 LiveComplete claim must preserve exactly 142 release-run rows",
+                    [
+                        ("release_rows", release_row_count.to_string()),
+                        (
+                            "expected",
+                            CANON_GEO_H7_LIVE_COMPLETE_RELEASE_ROWS.to_string(),
+                        ),
+                    ],
+                ));
+            }
             if release_row_count != expected_release_rows {
                 return Err(h7_invalid(
                     "Geo H.7 live complete population rows must equal selected subjects times pinned releases",
@@ -3758,6 +3796,28 @@ fn validate_h7_population_scope(
                 ));
             }
         }
+    }
+    Ok(())
+}
+
+fn require_live_h7_plane_count(
+    denominators: &BTreeMap<GeoTruthPlane, GeoH7PlaneDenominator>,
+    plane: GeoTruthPlane,
+    expected: u64,
+) -> Result<(), GeoMaterializationError> {
+    let actual = denominators
+        .get(&plane)
+        .map(|denominator| denominator.selected_multi_parcel_loans)
+        .unwrap_or(0);
+    if actual != expected {
+        return Err(h7_invalid(
+            "Geo H.7 LiveComplete selected multi-parcel count drifted",
+            [
+                ("truth_plane", h7_plane_name(plane).to_string()),
+                ("actual", actual.to_string()),
+                ("expected", expected.to_string()),
+            ],
+        ));
     }
     Ok(())
 }
