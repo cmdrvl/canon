@@ -9,20 +9,20 @@
 
 use crate::{
     geo::{
-        CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
-        CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
-        CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
-        CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
-        CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoCompositionArtifact, GeoEntityLevel,
-        GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
-        GeoEvidenceCompilationRequest, GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest,
-        GeoPlan, GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanProducedArtifactRef,
-        GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoWarehouseRowsRequest,
         canonical_composition_bytes, canonical_evidence_compilation_bytes,
         canonical_home_cell_assignment_bytes, canonical_materialized_evidence_request_bytes,
         canonical_tile_work_unit_bytes, compile_evidence, materialize_home_cells,
         materialize_tile_work_unit, materialize_warehouse_rows, solve_composition,
-        validate_evidence_compilation_artifact,
+        validate_evidence_compilation_artifact, GeoCompositionArtifact, GeoEntityLevel,
+        GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
+        GeoEvidenceCompilationRequest, GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest,
+        GeoPlan, GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanProducedArtifactRef,
+        GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoWarehouseRowsRequest,
+        CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
+        CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
+        CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
+        CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
+        CANON_GEO_WAREHOUSE_ROWS_VERSION,
     },
     project::{
         ProjectDependencyOutput, ProjectNodeExecutionContext, ProjectNodeExecutionResult,
@@ -31,7 +31,7 @@ use crate::{
         ProjectRunErrorCode, ProjectRunResult,
     },
 };
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
@@ -489,6 +489,7 @@ impl GeoProjectNodeExecutor {
             parse_json(node, &input.bytes, CANON_GEO_EVIDENCE_COMPILATION_VERSION)?;
         validate_evidence_compilation_artifact(&compilation)
             .map_err(|error| leaf_error(node, "solve.evidence_compilation", error))?;
+        validate_compilation_universe_against_section(node, &section_artifact, &compilation)?;
         let canonical = canonical_evidence_compilation_bytes(&compilation).map_err(|error| {
             serialization_error(node, CANON_GEO_EVIDENCE_COMPILATION_VERSION, error)
         })?;
@@ -823,6 +824,68 @@ impl GeoProjectNodeExecutor {
             artifact,
         );
     }
+}
+
+fn validate_compilation_universe_against_section(
+    node: &ProjectPlanNode,
+    section: &GeoTileWorkUnitArtifact,
+    compilation: &GeoEvidenceCompilationArtifact,
+) -> ProjectRunResult<()> {
+    let section_ids = section
+        .features
+        .iter()
+        .map(|feature| feature.feature_id.as_str())
+        .collect::<BTreeSet<_>>();
+    if section_ids.len() != section.features.len() {
+        return Err(error(
+            node,
+            ProjectRunErrorCode::ArtifactContract,
+            "bounded tile section feature_id values must be unique before exact solving",
+        ));
+    }
+    let selected_ids = match compilation.composition_request.profile.selection_level {
+        GeoEntityLevel::Parcel => compilation
+            .composition_request
+            .universe
+            .parcels
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        GeoEntityLevel::Building => compilation
+            .composition_request
+            .universe
+            .buildings
+            .iter()
+            .map(|building| building.id.as_str())
+            .collect::<BTreeSet<_>>(),
+        other => {
+            return Err(error(
+                node,
+                ProjectRunErrorCode::ArtifactContract,
+                format!("Geo executor cannot exact-solve unsupported profile level {other:?}"),
+            ));
+        }
+    };
+    if selected_ids != section_ids {
+        let missing = section_ids
+            .difference(&selected_ids)
+            .copied()
+            .collect::<Vec<_>>()
+            .join(",");
+        let outside = selected_ids
+            .difference(&section_ids)
+            .copied()
+            .collect::<Vec<_>>()
+            .join(",");
+        return Err(error(
+            node,
+            ProjectRunErrorCode::ArtifactContract,
+            format!(
+                "compiled evidence candidate universe must equal the exact_solve_scope bounded section; missing_from_compilation={missing}; outside_section={outside}"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 impl Default for GeoProjectNodeExecutor {

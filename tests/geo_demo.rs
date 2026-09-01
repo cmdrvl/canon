@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use assert_cmd::Command;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{fs, path::Path};
 use tempfile::tempdir;
 
@@ -121,6 +121,8 @@ fn demo0_case4_public_cli_journey_is_byte_deterministic_and_honest() {
         summary["artifact_versions"]["evidence_compilation"],
         "canon_geo_evidence_compilation.v0"
     );
+    assert_eq!(summary["artifact_versions"]["plan"], "canon_geo_plan.v0");
+    assert_eq!(summary["artifact_versions"]["run"], "canon_geo_run.v0");
     assert_eq!(
         summary["artifact_versions"]["tile_reconciliation"],
         "canon_geo_tile_reconciliation.v1"
@@ -140,6 +142,27 @@ fn demo0_case4_public_cli_journey_is_byte_deterministic_and_honest() {
         summary["capabilities"]["unavailable_control_plane"],
         json!(["canon geo inspect"])
     );
+    assert_eq!(summary["shared_run"]["status"], "COMPLETED");
+    assert_eq!(summary["shared_run"]["phase"], "SOLVED");
+    assert_eq!(summary["shared_run"]["blocked_nodes"], json!([]));
+    assert_eq!(
+        summary["shared_run"]["proof_boundary"],
+        "offline_contract_replay"
+    );
+    assert_eq!(
+        summary["shared_run"]["executed_nodes"],
+        json!([
+            "geo.parcel.compile_evidence",
+            "geo.parcel.home_cells",
+            "geo.parcel.materialize_evidence",
+            "geo.parcel.section",
+            "geo.parcel.solve"
+        ])
+    );
+    assert!(summary["shared_run"]["output_contracts"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("canon_geo_composition.v0")));
 
     assert_eq!(summary["composition"]["status"], "resolved");
     assert_eq!(summary["composition"]["residual_model_count"], 1);
@@ -174,9 +197,7 @@ fn demo0_case4_public_cli_journey_is_byte_deterministic_and_honest() {
     );
     assert_eq!(
         summary["composition"]["hard_forced"]["buildings"],
-        json!([
-            "1006494", "1006495", "1006496", "1006497", "1006498", "1006499"
-        ])
+        json!(["1006494", "1006495", "1006496", "1006497", "1006498", "1006499"])
     );
 
     assert_eq!(summary["evidence"]["admissions_total"], 3);

@@ -14,32 +14,33 @@ mod executor;
 
 use canon::{
     geo::{
-        CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
-        CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
-        CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
-        CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCompositionProfile,
-        GeoControlEntityLevel, GeoEntityLevel, GeoEvidenceClaimRole, GeoEvidenceRecordRef,
-        GeoHomeCellRow, GeoHomeCellRowsRequest, GeoIdentityParticipation, GeoNativeEntityScope,
-        GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanInventoryRef,
-        GeoPlanProducedArtifactRef, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
-        GeoSourceRelease, GeoTileFeatureRef, GeoTileSourceBinding, GeoTileWorkRequest,
-        GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow, GeoWarehouseRowsRequest,
+        materialize_warehouse_rows, GeoCompositionProfile, GeoControlEntityLevel, GeoEntityLevel,
+        GeoEvidenceClaimRole, GeoEvidenceRecordRef, GeoHomeCellRow, GeoHomeCellRowsRequest,
+        GeoIdentityParticipation, GeoNativeEntityScope, GeoPlanComponentScope,
+        GeoPlanExactSolveScope, GeoPlanInventoryRef, GeoPlanProducedArtifactRef, GeoRhoBasis,
+        GeoRhoContract, GeoRhoObservationKind, GeoSourceRelease, GeoTileFeatureRef,
+        GeoTileSourceBinding, GeoTileWorkRequest, GeoWarehouseBuildingParcelRow,
+        GeoWarehouseEvidenceRow, GeoWarehouseRowsRequest, CANON_GEO_COMPOSITION_VERSION,
+        CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
+        CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
+        CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
+        DEFAULT_MAX_MATERIALIZED_MODELS,
     },
     project::{
+        compile_extension_project_plan, digest_bytes, read_node_receipt, run_project_plan,
         ProjectExtensionDagNode, ProjectExtensionDagOutput, ProjectExtensionDagRequest,
         ProjectNodeExecutionContext, ProjectNodeExecutor, ProjectPlan, ProjectPlanErrorCode,
         ProjectPlanHashRef, ProjectPlanNodeClass, ProjectPlanNodeKind,
         ProjectPlanOutputMaterialization, ProjectPlanRefusalCondition, ProjectPlanSideEffect,
         ProjectPlanSideEffectKind, ProjectRunFailurePolicy, ProjectRunNodeOutcome,
-        ProjectRunPolicy, compile_extension_project_plan, digest_bytes, read_node_receipt,
-        run_project_plan,
+        ProjectRunPolicy,
     },
 };
 use executor::{
+    GeoExecutorDependencyOutput, GeoExecutorInputBinding, GeoProjectNodeExecutor,
     GEO_COMPILE_EVIDENCE_COMMAND, GEO_MATERIALIZE_EVIDENCE_COMMAND,
     GEO_MATERIALIZE_HOME_CELLS_COMMAND, GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID,
-    GEO_SOLVE_COMMAND, GEO_TILE_WORK_COMMAND, GeoExecutorDependencyOutput, GeoExecutorInputBinding,
-    GeoProjectNodeExecutor,
+    GEO_SOLVE_COMMAND, GEO_TILE_WORK_COMMAND,
 };
 use h3o::CellIndex;
 use serde_json::Value;
@@ -140,16 +141,12 @@ fn geo_project_node_executor_resumes_with_verified_dependency_outputs() {
         vec!["geo.building.solve".to_string()]
     );
     assert!(resumed.failed_nodes.is_empty());
-    assert!(
-        resumed
-            .resumed_nodes
-            .contains(&"geo.building.home_cells".to_string())
-    );
-    assert!(
-        resumed
-            .resumed_nodes
-            .contains(&"geo.building.compile_evidence".to_string())
-    );
+    assert!(resumed
+        .resumed_nodes
+        .contains(&"geo.building.home_cells".to_string()));
+    assert!(resumed
+        .resumed_nodes
+        .contains(&"geo.building.compile_evidence".to_string()));
     let solve_receipt =
         read_node_receipt(&receipt_path(temp.path(), "geo.building.solve")).expect("receipt");
     assert_eq!(solve_receipt.deterministic_usage["input_binding_count"], 0);
@@ -172,9 +169,7 @@ fn geo_executor_refuses_to_infer_a_section_outside_exact_solve_scope() {
         run_project_plan(&plan, &policy(temp.path()), &mut executor).expect("failure report");
 
     assert_eq!(report.failed_nodes, vec!["geo.building.solve".to_string()]);
-    assert!(
-        node_report_reason(&report, "geo.building.solve").contains("geo.other.section:section")
-    );
+    assert!(node_report_reason(&report, "geo.building.solve").contains("geo.other.section:section"));
     assert!(
         !temp.path().join("geo/building/solve.json").exists(),
         "scope mismatch must refuse before publishing a solve artifact"
@@ -419,6 +414,47 @@ fn geo_executor_rejects_evidence_universe_that_omits_a_bounded_candidate() {
     assert!(
         node_report_reason(&report, "geo.building.materialize_evidence")
             .contains("candidate universe must equal")
+    );
+}
+
+#[test]
+fn geo_executor_rejects_solve_when_compiled_evidence_escapes_bounded_section() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut rows = warehouse_rows();
+    rows.building_parcel_rows
+        .push(GeoWarehouseBuildingParcelRow {
+            building_id: "building-outside".to_string(),
+            parcel_id: None,
+        });
+    let compile_request =
+        materialize_warehouse_rows(&rows).expect("out-of-section compile request is well typed");
+    let plan = five_node_plan();
+    let mut executor = executor_with_fixture_inputs().with_input_binding(binding(
+        "geo.building.compile_evidence",
+        GEO_REQUEST_BINDING_ID,
+        CANON_GEO_EVIDENCE_REQUEST_VERSION,
+        &compile_request,
+    ));
+
+    let report =
+        run_project_plan(&plan, &policy(temp.path()), &mut executor).expect("failure report");
+
+    assert_eq!(report.failed_nodes, vec!["geo.building.solve".to_string()]);
+    assert!(
+        temp.path()
+            .join("geo/building/compile_evidence.json")
+            .exists(),
+        "the planted negative must reach compile_evidence before the solve gate"
+    );
+    assert!(
+        !temp.path().join("geo/building/solve.json").exists(),
+        "out-of-section compiled evidence must not publish a solve artifact"
+    );
+    assert!(node_report_reason(&report, "geo.building.solve")
+        .contains("exact_solve_scope bounded section"));
+    assert!(
+        node_report_reason(&report, "geo.building.solve").contains("building-outside"),
+        "the refusal should expose the unsupported candidate id"
     );
 }
 
