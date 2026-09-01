@@ -166,9 +166,9 @@ pub struct GeoCandidateTruthEvaluationSummary {
     pub release_validated_logical_subjects: u64,
     pub frozen_e4_h7_genuine_multi_parcel_subjects: u64,
     pub release_rows: u64,
-    /// Count gate only, fixed to 79 genuine multi-parcel H.7 subjects across
-    /// the pinned 26v1/26v2 release pair. It does not claim E4 closure by
-    /// itself.
+    /// Count gate only, fixed to exactly 79 genuine multi-parcel H.7 subjects
+    /// across the pinned 26v1/26v2 release pair. It does not claim E4 closure
+    /// by itself.
     pub frozen_e4_h7_population_subject_gate_passed: bool,
     pub frozen_e4_h7_population_subject_deficit: u64,
     pub truth_planes: Vec<GeoCandidateTruthPlaneSummary>,
@@ -841,9 +841,19 @@ pub fn validate_candidate_truth_evaluation_artifact(
         ));
     }
     validate_nonempty_canonical("population_id", &artifact.population_id)?;
+    validate_candidate_truth_gate(&artifact.summary.gate)?;
+    let mut row_ids = BTreeSet::new();
     for row in &artifact.rows {
         validate_candidate_truth_case_evaluation(row)?;
+        if !row_ids.insert(row.row_id.clone()) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo candidate/truth evaluation artifact contains a duplicate release row identifier",
+                [("row_id", row.row_id.as_str())],
+            ));
+        }
     }
+    validate_candidate_truth_evaluation_row_release_ids(&artifact.summary.gate, &artifact.rows)?;
     validate_candidate_truth_summary(&artifact.summary)?;
     let expected_summary =
         summarize_candidate_truth_evaluations(&artifact.summary.gate, &artifact.rows)?;
@@ -952,8 +962,33 @@ fn validate_candidate_truth_row_release_ids(
                 GeoPopulationErrorCode::InvalidInput,
                 "Geo candidate/truth handoff row release_id is outside the pinned H7 release pair",
                 [
-                    ("row_id", row.row_id.as_str()),
-                    ("release_id", row.release_id.as_str()),
+                    ("row_id", row.row_id.clone()),
+                    ("release_id", row.release_id.clone()),
+                    ("expected", gate.required_release_ids.join(",")),
+                ],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_candidate_truth_evaluation_row_release_ids(
+    gate: &GeoCandidateTruthGate,
+    rows: &[GeoCandidateTruthCaseEvaluation],
+) -> Result<(), GeoPopulationError> {
+    let required_release_ids = gate
+        .required_release_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    for row in rows {
+        if !required_release_ids.contains(row.release_id.as_str()) {
+            return Err(GeoPopulationError::new(
+                GeoPopulationErrorCode::InvalidInput,
+                "Geo candidate/truth evaluation row release_id is outside the pinned H7 release pair",
+                [
+                    ("row_id", row.row_id.clone()),
+                    ("release_id", row.release_id.clone()),
                     ("expected", gate.required_release_ids.join(",")),
                 ],
             ));
@@ -2284,7 +2319,7 @@ fn summarize_candidate_truth_evaluations(
         "frozen_e4_h7_genuine_multi_parcel_subjects",
     )?;
     summary.frozen_e4_h7_population_subject_gate_passed =
-        summary.frozen_e4_h7_genuine_multi_parcel_subjects >= gate.required_subjects;
+        summary.frozen_e4_h7_genuine_multi_parcel_subjects == gate.required_subjects;
     summary.frozen_e4_h7_population_subject_deficit = gate
         .required_subjects
         .saturating_sub(summary.frozen_e4_h7_genuine_multi_parcel_subjects);
@@ -2453,7 +2488,7 @@ fn validate_candidate_truth_summary(
         ));
     }
     let expected_gate =
-        summary.frozen_e4_h7_genuine_multi_parcel_subjects >= summary.gate.required_subjects;
+        summary.frozen_e4_h7_genuine_multi_parcel_subjects == summary.gate.required_subjects;
     if summary.frozen_e4_h7_population_subject_gate_passed != expected_gate {
         return Err(GeoPopulationError::new(
             GeoPopulationErrorCode::InvalidInput,
