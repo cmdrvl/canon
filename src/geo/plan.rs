@@ -26,7 +26,8 @@ use super::{
     GeoProjectionOperation, GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance,
     GeoReleaseSelectionMode, GeoRequestedField, GeoResourceBudget, GeoResourceCounter,
     GeoRowByteCeilings, GeoSubsetPredicate, GeoSubsetPredicateKind, GeoTelemetrySemanticEffect,
-    canonicalize_capabilities, canonicalize_question, canonicalize_regional_inventory,
+    canonicalize_capabilities, canonicalize_geo_acquisition_request,
+    canonicalize_geo_discovery_request, canonicalize_question, canonicalize_regional_inventory,
     canonicalize_resource_budget, capabilities_semantic_hash, evaluate_inventory_support,
     geo_acquisition_request_id, geo_acquisition_request_semantic_hash, geo_discovery_request_id,
     question_semantic_hash, regional_inventory_planning_hash, regional_inventory_semantic_hash,
@@ -775,6 +776,9 @@ pub fn replan_geo_plan_from_inventory_advancement(
 pub fn canonical_geo_plan_bytes(plan: &GeoPlan) -> Result<Vec<u8>, GeoPlanError> {
     validate_geo_plan(plan)?;
     let mut canonical = plan.clone();
+    for external_request in &mut canonical.external_requests {
+        canonicalize_plan_external_request(external_request);
+    }
     canonical
         .external_requests
         .sort_by_key(external_request_sort_key);
@@ -1584,7 +1588,8 @@ fn external_request_planning_hash(
 ) -> Result<String, GeoPlanError> {
     match request {
         GeoPlanExternalRequest::Acquisition { request, handoff } => {
-            let releases = request
+            let canonical = canonicalize_geo_acquisition_request(request);
+            let releases = canonical
                 .releases
                 .iter()
                 .map(|release| GeoAcquisitionReleasePlanningRef {
@@ -1593,22 +1598,23 @@ fn external_request_planning_hash(
                 })
                 .collect();
             digest_json(&GeoAcquisitionPlanningProjection {
-                version: &request.version,
-                bounded_geography: &request.bounded_geography,
-                subset: &request.subset,
+                version: &canonical.version,
+                bounded_geography: &canonical.bounded_geography,
+                subset: &canonical.subset,
                 releases,
-                fields: &request.fields,
-                projection: &request.projection,
-                ordering: &request.ordering,
-                pagination: &request.pagination,
-                ceilings: &request.ceilings,
-                positive_path_min_rows: request.positive_path_min_rows,
+                fields: &canonical.fields,
+                projection: &canonical.projection,
+                ordering: &canonical.ordering,
+                pagination: &canonical.pagination,
+                ceilings: &canonical.ceilings,
+                positive_path_min_rows: canonical.positive_path_min_rows,
                 expected_receipt_contract: &handoff.expected_receipt_contract,
                 required_result_digest_algorithm: handoff.required_result_digest_algorithm,
             })
         }
         GeoPlanExternalRequest::Discovery { request, .. } => {
-            let releases = request
+            let canonical = canonicalize_geo_discovery_request(request);
+            let releases = canonical
                 .releases
                 .iter()
                 .map(|release| GeoAcquisitionReleasePlanningRef {
@@ -1617,19 +1623,19 @@ fn external_request_planning_hash(
                 })
                 .collect();
             digest_json(&GeoDiscoveryPlanningProjection {
-                version: &request.version,
-                bounded_geography: &request.bounded_geography,
-                subset: &request.subset,
-                requested_entity_levels: &request.requested_entity_levels,
-                requested_evidence_classes: &request.requested_evidence_classes,
-                release_selection: &request.release_selection,
+                version: &canonical.version,
+                bounded_geography: &canonical.bounded_geography,
+                subset: &canonical.subset,
+                requested_entity_levels: &canonical.requested_entity_levels,
+                requested_evidence_classes: &canonical.requested_evidence_classes,
+                release_selection: &canonical.release_selection,
                 releases,
-                fields: &request.fields,
-                required_steps: &request.required_steps,
-                readability_fields: &request.column_readability_probe.fields,
-                readability_subset: &request.column_readability_probe.subset,
-                readability_ceilings: &request.column_readability_probe.ceilings,
-                ceilings: &request.ceilings,
+                fields: &canonical.fields,
+                required_steps: &canonical.required_steps,
+                readability_fields: &canonical.column_readability_probe.fields,
+                readability_subset: &canonical.column_readability_probe.subset,
+                readability_ceilings: &canonical.column_readability_probe.ceilings,
+                ceilings: &canonical.ceilings,
             })
         }
         GeoPlanExternalRequest::DiscoveryGap { gap } => digest_json(&(
@@ -2520,6 +2526,22 @@ fn external_request_sort_key(request: &GeoPlanExternalRequest) -> String {
             format!("1:{gap_id}:{}", request.request_id)
         }
         GeoPlanExternalRequest::DiscoveryGap { gap } => format!("2:{}", gap.gap_id),
+    }
+}
+
+fn canonicalize_plan_external_request(request: &mut GeoPlanExternalRequest) {
+    match request {
+        GeoPlanExternalRequest::Acquisition { request, .. } => {
+            let request_id = request.request_id.clone();
+            *request = canonicalize_geo_acquisition_request(request);
+            request.request_id = request_id;
+        }
+        GeoPlanExternalRequest::Discovery { request, .. } => {
+            let request_id = request.request_id.clone();
+            *request = canonicalize_geo_discovery_request(request);
+            request.request_id = request_id;
+        }
+        GeoPlanExternalRequest::DiscoveryGap { .. } => {}
     }
 }
 

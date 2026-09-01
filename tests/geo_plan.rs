@@ -1094,6 +1094,21 @@ fn discovery_handoff_ids_and_prose_do_not_change_planning_identity() {
         geo_plan_semantic_hash(&relabelled).expect("relabelled hash")
     );
     validate_geo_plan(&relabelled).expect("relabelled discovery provenance remains valid");
+
+    let canonical = canonical_geo_plan_bytes(&plan).expect("canonical discovery plan");
+    let mut reordered = plan.clone();
+    let GeoPlanExternalRequest::Discovery { request, .. } = &mut reordered.external_requests[0]
+    else {
+        panic!("expected discovery request");
+    };
+    request.fields.reverse();
+    request.required_steps.reverse();
+    request.column_readability_probe.fields.reverse();
+    validate_geo_plan(&reordered).expect("nested discovery order is not semantic identity");
+    assert_eq!(
+        canonical_geo_plan_bytes(&reordered).expect("canonical reordered discovery bytes"),
+        canonical
+    );
 }
 
 #[test]
@@ -1172,6 +1187,13 @@ fn canonical_plan_bytes_normalize_semantically_unordered_external_requests() {
 
     let mut reordered = plan.clone();
     reordered.external_requests.reverse();
+    for external_request in &mut reordered.external_requests {
+        let GeoPlanExternalRequest::Acquisition { request, .. } = external_request else {
+            panic!("expected acquisition request");
+        };
+        request.fields.reverse();
+        request.ordering.reverse();
+    }
     validate_geo_plan(&reordered).expect("request order is not semantic identity");
     assert_eq!(
         canonical_geo_plan_bytes(&reordered).expect("canonical reordered bytes"),

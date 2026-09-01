@@ -16,10 +16,10 @@ use super::{
     GeoLocalArtifactDigest, GeoLocalArtifactRef, GeoNativeEntityScope, GeoPlan,
     GeoPlanAcquisitionHandoff, GeoPlanExternalRequest, GeoRegionalInventory,
     GeoRegionalSourceInstance, GeoRunInputBinding, GeoSourceAvailability, GeoSourceRelease,
-    GeoSubsetPredicateKind, GeoWarehouseRowsRequest, canonicalize_regional_inventory,
-    geo_acquisition_receipt_satisfies_positive_gate, geo_acquisition_request_id,
-    geo_acquisition_request_semantic_hash, geo_run_input_artifact_id, materialize_warehouse_rows,
-    regional_inventory_planning_hash, regional_inventory_semantic_hash,
+    GeoSubsetPredicateKind, GeoWarehouseRowsRequest, canonicalize_geo_acquisition_request,
+    canonicalize_regional_inventory, geo_acquisition_receipt_satisfies_positive_gate,
+    geo_acquisition_request_id, geo_acquisition_request_semantic_hash, geo_run_input_artifact_id,
+    materialize_warehouse_rows, regional_inventory_planning_hash, regional_inventory_semantic_hash,
     validate_geo_acquisition_receipt, validate_geo_plan,
 };
 use serde::{Deserialize, Serialize};
@@ -1548,7 +1548,8 @@ fn build_inventory_advancement(
         advanced_inventory(inventory, request, bindings)?;
     let advanced_inventory_semantic_hash =
         regional_inventory_semantic_hash(&advanced_inventory).map_err(control_error)?;
-    let bounded_subset_hash = digest_json(&receipt.subset)?;
+    let bounded_subset = canonicalize_geo_acquisition_request(request).subset;
+    let bounded_subset_hash = digest_json(&bounded_subset)?;
     let mut advancement = GeoRegionalInventoryAdvancement {
         version: CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION.to_string(),
         advancement_id: String::new(),
@@ -1563,7 +1564,7 @@ fn build_inventory_advancement(
         advanced_inventory_id: advanced_inventory.inventory_id.clone(),
         advanced_inventory_semantic_hash,
         bounded_geography: request.bounded_geography.clone(),
-        bounded_subset: receipt.subset.clone(),
+        bounded_subset,
         bounded_subset_hash,
         receipt_file: receipt_file.clone(),
         receipt_execution: receipt_execution_ref(receipt),
@@ -1742,6 +1743,382 @@ pub fn geo_regional_inventory_advancement_semantic_hash(
         result_digests: &advancement.result_digests,
         source_advancements: &advancement.source_advancements,
     })
+}
+
+pub fn canonical_geo_regional_inventory_advancement_bytes(
+    advancement: &GeoRegionalInventoryAdvancement,
+) -> Result<Vec<u8>, GeoSatisfyError> {
+    validate_geo_regional_inventory_advancement(advancement)?;
+    serde_json::to_vec(advancement).map_err(|error| {
+        GeoSatisfyError::new(
+            GeoSatisfyErrorCode::Serialization,
+            "Geo regional inventory advancement could not be serialized",
+            [("error", error.to_string())],
+        )
+    })
+}
+
+fn validate_geo_regional_inventory_advancement(
+    advancement: &GeoRegionalInventoryAdvancement,
+) -> Result<(), GeoSatisfyError> {
+    if advancement.version != CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::UnsupportedVersion,
+            "unsupported Geo regional inventory advancement version",
+            [
+                ("actual", advancement.version.as_str()),
+                ("expected", CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION),
+            ],
+        ));
+    }
+    if advancement.effect != GeoInventoryAdvancementEffect::LocalAvailabilityOnly {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement must be local-availability-only",
+            [("effect", format!("{:?}", advancement.effect))],
+        ));
+    }
+    if advancement.proof_class != GeoAcquisitionProofClass::Live
+        || advancement.receipt_terminal_state != GeoAcquisitionTerminalState::Complete
+    {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement requires live COMPLETE acquisition proof",
+            [
+                ("proof_class", format!("{:?}", advancement.proof_class)),
+                (
+                    "receipt_terminal_state",
+                    format!("{:?}", advancement.receipt_terminal_state),
+                ),
+            ],
+        ));
+    }
+    validate_nonempty_trimmed("plan_id", &advancement.plan_id)?;
+    validate_blake3_hash("plan_semantic_hash", &advancement.plan_semantic_hash)?;
+    validate_identifier_like("request_id", &advancement.request_id)?;
+    validate_blake3_hash("request_semantic_hash", &advancement.request_semantic_hash)?;
+    validate_nonempty_trimmed("base_inventory_id", &advancement.base_inventory_id)?;
+    validate_blake3_hash(
+        "base_inventory_semantic_hash",
+        &advancement.base_inventory_semantic_hash,
+    )?;
+    validate_nonempty_trimmed("advanced_inventory_id", &advancement.advanced_inventory_id)?;
+    validate_blake3_hash(
+        "advanced_inventory_semantic_hash",
+        &advancement.advanced_inventory_semantic_hash,
+    )?;
+    validate_file_audit(&advancement.receipt_file, "receipt_file")?;
+    let bounded_subset_hash = digest_json(&advancement.bounded_subset)?;
+    validate_equal(
+        "bounded_subset_hash",
+        &bounded_subset_hash,
+        &advancement.bounded_subset_hash,
+    )?;
+    validate_digest_list("source_digests", &advancement.source_digests, false)?;
+    validate_digest_list("result_digests", &advancement.result_digests, false)?;
+    validate_denominators(&advancement.denominators)?;
+    let mut sorted_source_advancements = advancement.source_advancements.clone();
+    sorted_source_advancements.sort();
+    sorted_source_advancements.dedup();
+    if sorted_source_advancements.is_empty()
+        || sorted_source_advancements != advancement.source_advancements
+    {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement source_advancements must be sorted, distinct, and non-empty",
+            [(
+                "source_advancement_count",
+                advancement.source_advancements.len().to_string(),
+            )],
+        ));
+    }
+    for source in &advancement.source_advancements {
+        validate_source_advancement(source)?;
+    }
+    let canonical_inventory =
+        canonicalize_regional_inventory(&advancement.advanced_inventory).map_err(control_error)?;
+    if canonical_inventory != advancement.advanced_inventory {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement advanced_inventory must be canonical",
+            [(
+                "advanced_inventory_id",
+                advancement.advanced_inventory_id.as_str(),
+            )],
+        ));
+    }
+    validate_equal(
+        "advanced_inventory_id",
+        &canonical_inventory.inventory_id,
+        &advancement.advanced_inventory_id,
+    )?;
+    let advanced_inventory_semantic_hash =
+        regional_inventory_semantic_hash(&canonical_inventory).map_err(control_error)?;
+    validate_equal(
+        "advanced_inventory_semantic_hash",
+        &advanced_inventory_semantic_hash,
+        &advancement.advanced_inventory_semantic_hash,
+    )?;
+    let expected_semantic_hash = geo_regional_inventory_advancement_semantic_hash(advancement)?;
+    validate_equal(
+        "semantic_hash",
+        &expected_semantic_hash,
+        &advancement.semantic_hash,
+    )?;
+    let expected_advancement_id = inventory_advancement_id(&expected_semantic_hash);
+    validate_equal(
+        "advancement_id",
+        &expected_advancement_id,
+        &advancement.advancement_id,
+    )?;
+    Ok(())
+}
+
+fn validate_source_advancement(
+    advancement: &GeoRegionalInventorySourceAdvancement,
+) -> Result<(), GeoSatisfyError> {
+    validate_nonempty_trimmed(
+        "source_advancements[].source_instance_id",
+        &advancement.source_instance_id,
+    )?;
+    validate_nonempty_trimmed(
+        "source_advancements[].release.release_id",
+        &advancement.release.release_id,
+    )?;
+    validate_blake3_hash(
+        "source_advancements[].release.release_digest",
+        &advancement.release.release_digest,
+    )?;
+    if advancement.advanced_state != GeoSourceAvailability::Available {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement source must end in local availability",
+            [
+                (
+                    "source_instance_id",
+                    advancement.source_instance_id.as_str(),
+                ),
+                (
+                    "advanced_state",
+                    format!("{:?}", advancement.advanced_state),
+                ),
+            ],
+        ));
+    }
+    if advancement.local_artifact_byte_count == 0 {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::FileByteCountMismatch,
+            "Geo regional inventory advancement local artifact byte count must be positive",
+            [(
+                "source_instance_id",
+                advancement.source_instance_id.as_str(),
+            )],
+        ));
+    }
+    validate_nonempty_trimmed(
+        "source_advancements[].local_ref.artifact_id",
+        &advancement.local_ref.artifact_id,
+    )?;
+    validate_nonempty_trimmed(
+        "source_advancements[].local_ref.contract_version",
+        &advancement.local_ref.contract_version,
+    )?;
+    validate_blake3_hash(
+        "source_advancements[].local_ref.content_hash",
+        &advancement.local_ref.content_hash,
+    )?;
+    validate_nonempty_trimmed(
+        "source_advancements[].local_ref.media_type",
+        &advancement.local_ref.media_type,
+    )?;
+    validate_equal(
+        "source_advancements[].local_artifact_contract_version",
+        advancement
+            .local_artifact_contract_version
+            .as_deref()
+            .unwrap_or(""),
+        &advancement.local_ref.contract_version,
+    )?;
+    let mut sorted_result_digest_ids = advancement.result_digest_ids.clone();
+    sorted_result_digest_ids.sort();
+    sorted_result_digest_ids.dedup();
+    if sorted_result_digest_ids.is_empty()
+        || sorted_result_digest_ids != advancement.result_digest_ids
+    {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement result digest ids must be sorted, distinct, and non-empty",
+            [(
+                "source_instance_id",
+                advancement.source_instance_id.as_str(),
+            )],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_file_audit(
+    audit: &GeoSatisfactionFileAudit,
+    field: &str,
+) -> Result<(), GeoSatisfyError> {
+    validate_nonempty_trimmed(&format!("{field}.file_id"), &audit.file_id)?;
+    validate_blake3_hash(&format!("{field}.digest"), &audit.digest)?;
+    if audit.byte_count == 0 {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::FileByteCountMismatch,
+            "Geo regional inventory advancement file audit byte count must be positive",
+            [(format!("{field}.byte_count"), audit.byte_count.to_string())],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_digest_list(
+    field: &str,
+    digests: &[GeoDigest],
+    allow_empty: bool,
+) -> Result<(), GeoSatisfyError> {
+    if !allow_empty && digests.is_empty() {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement digest lists must be non-empty",
+            [("field", field)],
+        ));
+    }
+    let mut sorted = digests.to_vec();
+    sorted.sort();
+    sorted.dedup();
+    if sorted != digests {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement digest lists must be sorted and distinct",
+            [("field", field)],
+        ));
+    }
+    for digest in digests {
+        validate_nonempty_trimmed(&format!("{field}[].digest_id"), &digest.digest_id)?;
+        validate_digest_hex(field, digest.algorithm, &digest.hex_digest)?;
+    }
+    Ok(())
+}
+
+fn validate_denominators(
+    denominators: &[GeoAcquisitionDenominator],
+) -> Result<(), GeoSatisfyError> {
+    if denominators.is_empty() {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement denominators must be non-empty",
+            Vec::<(String, String)>::new(),
+        ));
+    }
+    let mut sorted = denominators.to_vec();
+    sorted.sort();
+    sorted.dedup();
+    if sorted != denominators {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement denominators must be sorted and distinct",
+            Vec::<(String, String)>::new(),
+        ));
+    }
+    for denominator in denominators {
+        validate_nonempty_trimmed("denominators[].denominator_id", &denominator.denominator_id)?;
+        validate_nonempty_trimmed("denominators[].unit", &denominator.unit)?;
+        validate_nonempty_trimmed("denominators[].description", &denominator.description)?;
+    }
+    Ok(())
+}
+
+fn validate_equal(field: &str, expected: &str, actual: &str) -> Result<(), GeoSatisfyError> {
+    if expected == actual {
+        Ok(())
+    } else {
+        Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement field does not match its derived value",
+            [
+                ("field".to_string(), field.to_string()),
+                ("expected".to_string(), expected.to_string()),
+                ("actual".to_string(), actual.to_string()),
+            ],
+        ))
+    }
+}
+
+fn validate_identifier_like(field: &str, value: &str) -> Result<(), GeoSatisfyError> {
+    validate_nonempty_trimmed(field, value)?;
+    if value.contains(':') {
+        Ok(())
+    } else {
+        Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::InvalidInput,
+            "Geo regional inventory advancement identifier must carry a contract prefix",
+            [("field", field), ("value", value)],
+        ))
+    }
+}
+
+fn validate_nonempty_trimmed(field: &str, value: &str) -> Result<(), GeoSatisfyError> {
+    if value.is_empty() || value.trim() != value {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::InvalidInput,
+            "Geo regional inventory advancement string fields must be non-empty and trimmed",
+            [("field", field), ("value", value)],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_blake3_hash(field: &str, value: &str) -> Result<(), GeoSatisfyError> {
+    let Some(hex) = value.strip_prefix("blake3:") else {
+        return Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement hash fields must be lowercase BLAKE3",
+            [("field", field), ("value", value)],
+        ));
+    };
+    if hex.len() == 64
+        && hex
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        Ok(())
+    } else {
+        Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement hash fields must be lowercase BLAKE3",
+            [("field", field), ("value", value)],
+        ))
+    }
+}
+
+fn validate_digest_hex(
+    field: &str,
+    algorithm: GeoDigestAlgorithm,
+    hex_digest: &str,
+) -> Result<(), GeoSatisfyError> {
+    let expected_len = match algorithm {
+        GeoDigestAlgorithm::Blake3 | GeoDigestAlgorithm::Sha256 => 64,
+        GeoDigestAlgorithm::Sha512 => 128,
+    };
+    if hex_digest.len() == expected_len
+        && hex_digest
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        Ok(())
+    } else {
+        Err(GeoSatisfyError::new(
+            GeoSatisfyErrorCode::ContractMismatch,
+            "Geo regional inventory advancement digest hex fields must match their algorithm width",
+            [
+                ("field", field),
+                ("algorithm", digest_algorithm_name(algorithm)),
+                ("hex_digest", hex_digest),
+            ],
+        ))
+    }
 }
 
 fn inventory_advancement_id(semantic_hash: &str) -> String {
