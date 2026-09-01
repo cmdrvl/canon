@@ -373,7 +373,13 @@ empty result. A compact live guard check emitted two truth-plane rows and the
 guard failures `accepted_71_population_count_mismatch`,
 `eligible_plane_population_count_mismatch`, and
 `historical_bridge_build_not_retained_in_current_snapshot`; that successful
-MCP response also omitted a Snowflake query ID.
+MCP response also omitted a Snowflake query ID. The compact check did not run
+the full checked-in SQL and is not a file-equivalent execution receipt. Given
+the zero historical bridge rows, the full SQL's per-plane guards would also
+emit `truth_plane_eligible_count_mismatch` and
+`truth_plane_multi_bbl_count_mismatch`. A fresh file-equivalent run remains
+blocked on restoration or immutable retention of the historical bridge
+snapshot.
 
 The current observed `PROPERTY_MART` build
 `ce3953ac-c2d4-4b48-bf02-29f0cf341389` is a separate live observation:

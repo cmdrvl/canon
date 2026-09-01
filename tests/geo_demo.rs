@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use assert_cmd::Command;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{fs, path::Path};
 use tempfile::tempdir;
 
@@ -193,7 +193,9 @@ fn demo0_case4_public_cli_journey_is_byte_deterministic_and_honest() {
     );
     assert_eq!(
         summary["composition"]["hard_forced"]["buildings"],
-        json!(["1006494", "1006495", "1006496", "1006497", "1006498", "1006499"])
+        json!([
+            "1006494", "1006495", "1006496", "1006497", "1006498", "1006499"
+        ])
     );
 
     assert_eq!(summary["evidence"]["admissions_total"], 3);
