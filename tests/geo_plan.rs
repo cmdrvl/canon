@@ -449,7 +449,7 @@ fn missing_local_geometry_emits_typed_acquisition_and_no_solve() {
 }
 
 #[test]
-fn available_but_unusable_local_contract_reenters_acquisition() {
+fn available_but_unusable_local_contract_requires_non_overwriting_repair() {
     let mut inventory = inventory(
         "wrong-contract-building-source",
         GeoSourceAvailability::Available,
@@ -462,18 +462,25 @@ fn available_but_unusable_local_contract_reenters_acquisition() {
         .contract_version = "canon_geo_unknown_rows.v9".to_string();
 
     let plan = compile_geo_plan(request(question(false), inventory, budget()))
-        .expect("an unusable local representation gets an explicit repair plan");
+        .expect("an unusable local representation gets an explicit repair finding");
 
-    assert_eq!(plan.status, GeoPlanStatus::Partial);
+    assert_eq!(plan.status, GeoPlanStatus::Unsupported);
     assert_eq!(
         plan.grain_outcomes[0].status,
-        GeoPlanGrainStatus::WaitingForAcquisition
+        GeoPlanGrainStatus::UnsupportedByInventory
     );
-    assert!(matches!(
-        plan.external_requests.as_slice(),
-        [GeoPlanExternalRequest::Acquisition { .. }]
-    ));
+    assert!(plan.external_requests.is_empty());
     assert!(plan.project_plan.nodes.is_empty());
+    assert!(
+        plan.grain_outcomes[0]
+            .next_action
+            .contains("distinct versioned source instance")
+    );
+    assert!(
+        plan.diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.contains("cannot overwrite"))
+    );
 }
 
 #[test]
@@ -728,6 +735,128 @@ fn replan_rejects_tampered_advanced_inventory_artifact() {
 }
 
 #[test]
+fn replan_rejects_bounded_subset_drift_from_its_declared_hash() {
+    let question = question(false);
+    let base_inventory = inventory("remote-building-source", GeoSourceAvailability::Missing);
+    let capabilities = default_geo_capabilities().expect("capabilities");
+    let profile = GeoCompositionProfile::building();
+    let budget = budget();
+    let base_plan = compile_geo_plan(GeoPlanRequest {
+        question: question.clone(),
+        capabilities: capabilities.clone(),
+        inventory: base_inventory.clone(),
+        profile: profile.clone(),
+        budget: budget.clone(),
+    })
+    .expect("base acquisition plan");
+    let mut advancement = validated_inventory_advancement(&base_plan, &base_inventory);
+    advancement.bounded_subset.predicates[0].expression = "region.fixture.other".to_string();
+    refresh_advancement_identity(&mut advancement);
+
+    let error = replan_geo_plan_from_inventory_advancement(GeoPlanReplanRequest {
+        base_plan,
+        base_inventory,
+        question,
+        capabilities,
+        profile,
+        budget,
+        inventory_advancement: advancement,
+    })
+    .expect_err("replan must bind bounded subset bytes to their declared hash");
+
+    assert_eq!(error.code, GeoPlanErrorCode::ContractViolation);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("bounded_subset_hash")
+    );
+}
+
+#[test]
+fn replan_rejects_self_consistent_bounded_subset_drift_from_acquisition_request() {
+    let question = question(false);
+    let base_inventory = inventory("remote-building-source", GeoSourceAvailability::Missing);
+    let capabilities = default_geo_capabilities().expect("capabilities");
+    let profile = GeoCompositionProfile::building();
+    let budget = budget();
+    let base_plan = compile_geo_plan(GeoPlanRequest {
+        question: question.clone(),
+        capabilities: capabilities.clone(),
+        inventory: base_inventory.clone(),
+        profile: profile.clone(),
+        budget: budget.clone(),
+    })
+    .expect("base acquisition plan");
+    let mut advancement = validated_inventory_advancement(&base_plan, &base_inventory);
+    advancement.bounded_subset.predicates[0].expression = "region.fixture.other".to_string();
+    advancement.bounded_subset_hash = format!(
+        "blake3:{}",
+        blake3::hash(
+            &serde_json::to_vec(&advancement.bounded_subset).expect("bounded subset serializes")
+        )
+        .to_hex()
+    );
+    refresh_advancement_identity(&mut advancement);
+
+    let error = replan_geo_plan_from_inventory_advancement(GeoPlanReplanRequest {
+        base_plan,
+        base_inventory,
+        question,
+        capabilities,
+        profile,
+        budget,
+        inventory_advancement: advancement,
+    })
+    .expect_err("replan must bind bounded subset bytes to the base acquisition request");
+
+    assert_eq!(error.code, GeoPlanErrorCode::ContractViolation);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("bounded_subset")
+    );
+}
+
+#[test]
+fn replan_rejects_local_artifact_relabelled_away_from_receipt_result_digest() {
+    let question = question(false);
+    let base_inventory = inventory("remote-building-source", GeoSourceAvailability::Missing);
+    let capabilities = default_geo_capabilities().expect("capabilities");
+    let profile = GeoCompositionProfile::building();
+    let budget = budget();
+    let base_plan = compile_geo_plan(GeoPlanRequest {
+        question: question.clone(),
+        capabilities: capabilities.clone(),
+        inventory: base_inventory.clone(),
+        profile: profile.clone(),
+        budget: budget.clone(),
+    })
+    .expect("base acquisition plan");
+    let mut advancement = validated_inventory_advancement(&base_plan, &base_inventory);
+    let relabelled_hash = digest("not-the-receipt-result");
+    advancement.source_advancements[0].local_ref.content_hash = relabelled_hash.clone();
+    advancement.advanced_inventory.sources[0]
+        .local_state
+        .local_ref
+        .as_mut()
+        .expect("advanced local ref")
+        .content_hash = relabelled_hash;
+    refresh_advancement_identity(&mut advancement);
+
+    let error = replan_geo_plan_from_inventory_advancement(GeoPlanReplanRequest {
+        base_plan,
+        base_inventory,
+        question,
+        capabilities,
+        profile,
+        budget,
+        inventory_advancement: advancement,
+    })
+    .expect_err("replan must retain the receipt result-digest binding");
+
+    assert_eq!(error.code, GeoPlanErrorCode::ContractViolation);
+    assert!(error.message.contains("receipt result digest"));
+}
+
+#[test]
 fn replan_rejects_self_consistent_undeclared_extra_source() {
     let question = question(false);
     let base_inventory = inventory("remote-building-source", GeoSourceAvailability::Missing);
@@ -950,6 +1079,43 @@ fn source_names_and_telemetry_do_not_change_planning_identity() {
     );
     assert_eq!(first.semantic_hash, second.semantic_hash);
     assert_eq!(first.plan_id, second.plan_id);
+}
+
+#[test]
+fn canonical_plan_bytes_normalize_semantically_unordered_external_requests() {
+    let mut multi_request_question = question(false);
+    multi_request_question.requested_grains[0]
+        .required_evidence_classes
+        .push(GeoEvidenceClass::AddressSet);
+    multi_request_question.requested_grains[0]
+        .required_evidence_classes
+        .sort();
+    let mut multi_source_inventory =
+        inventory("remote-building-source", GeoSourceAvailability::Missing);
+    multi_source_inventory.sources.push(source(
+        "remote-address-source",
+        GeoControlEntityLevel::Building,
+        GeoEvidenceClass::AddressSet,
+        GeoSourceAvailability::Missing,
+    ));
+    multi_source_inventory.sources.sort();
+
+    let plan = compile_geo_plan(request(
+        multi_request_question,
+        multi_source_inventory,
+        budget(),
+    ))
+    .expect("two-source acquisition plan");
+    assert_eq!(plan.external_requests.len(), 2);
+    let canonical = canonical_geo_plan_bytes(&plan).expect("canonical original bytes");
+
+    let mut reordered = plan.clone();
+    reordered.external_requests.reverse();
+    validate_geo_plan(&reordered).expect("request order is not semantic identity");
+    assert_eq!(
+        canonical_geo_plan_bytes(&reordered).expect("canonical reordered bytes"),
+        canonical
+    );
 }
 
 #[test]

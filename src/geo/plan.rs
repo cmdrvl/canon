@@ -502,6 +502,7 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
 
         if support_row.status == GeoInventorySupportStatus::Unsupported {
             let mut actionable_request_count = 0_usize;
+            let mut non_overwriting_repair_required = false;
             for evidence_class in &support_row.missing_evidence_classes {
                 if let Some(source) = acquisition_source(
                     &inventory,
@@ -521,6 +522,19 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
                         },
                     });
                     actionable_request_count += 1;
+                    continue;
+                }
+                if let Some(source) = unusable_local_source(
+                    &inventory,
+                    grain.entity_level,
+                    *evidence_class,
+                    stable_identity_requested,
+                ) {
+                    diagnostics.push(format!(
+                        "source instance {} has local evidence under an unusable contract; no acquisition request was emitted because inventory advancement cannot overwrite an existing artifact reference",
+                        source.source_instance_id
+                    ));
+                    non_overwriting_repair_required = true;
                     continue;
                 }
                 for gap in support.discovery_gaps.iter().filter(|gap| {
@@ -553,6 +567,8 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
                 claim_limitation: "candidate construction cannot begin until every required evidence class is locally available for the bounded geography".to_string(),
                 next_action: if actionable_request_count > 0 {
                     "satisfy the emitted typed discovery or acquisition request and add its verified local artifact to the regional inventory".to_string()
+                } else if non_overwriting_repair_required {
+                    "register the usable local artifact as a distinct versioned source instance or use an explicit artifact-migration workflow; Canon will not overwrite the existing artifact reference".to_string()
                 } else {
                     "supply an as-of domain and satisfy the emitted discovery gap without assuming that a parcel or other named source exists".to_string()
                 },
@@ -758,7 +774,13 @@ pub fn replan_geo_plan_from_inventory_advancement(
 
 pub fn canonical_geo_plan_bytes(plan: &GeoPlan) -> Result<Vec<u8>, GeoPlanError> {
     validate_geo_plan(plan)?;
-    serde_json::to_vec(plan).map_err(serialization_error)
+    let mut canonical = plan.clone();
+    canonical
+        .external_requests
+        .sort_by_key(external_request_sort_key);
+    canonical.diagnostics.sort();
+    canonical.diagnostics.dedup();
+    serde_json::to_vec(&canonical).map_err(serialization_error)
 }
 
 pub fn validate_geo_plan(plan: &GeoPlan) -> Result<(), GeoPlanError> {
@@ -1081,6 +1103,13 @@ fn validate_inventory_advancement_for_replan(
         ));
     }
 
+    let bounded_subset_hash = digest_json(&advancement.bounded_subset)?;
+    validate_replan_ref(
+        "bounded_subset_hash",
+        &bounded_subset_hash,
+        &advancement.bounded_subset_hash,
+    )?;
+
     let expected_advancement_hash =
         geo_regional_inventory_advancement_semantic_hash(advancement).map_err(satisfy_error)?;
     validate_replan_ref(
@@ -1100,6 +1129,8 @@ fn validate_inventory_advancement_for_replan(
 
     let acquisition_request =
         validate_advancement_matches_base_acquisition(base_plan, advancement)?;
+    let request_subset_hash = digest_json(&acquisition_request.subset)?;
+    validate_replan_ref("bounded_subset", &request_subset_hash, &bounded_subset_hash)?;
     validate_source_advancements(acquisition_request, &advanced_inventory, advancement)?;
     validate_advanced_inventory_transition(base_inventory, &advanced_inventory, advancement)?;
     Ok(advanced_inventory)
@@ -1237,6 +1268,61 @@ fn validate_source_advancements(
                     source_advancement.source_instance_id.as_str(),
                 )],
             ));
+        }
+        let mut sorted_result_digest_ids = source_advancement.result_digest_ids.clone();
+        sorted_result_digest_ids.sort();
+        sorted_result_digest_ids.dedup();
+        if sorted_result_digest_ids.is_empty()
+            || sorted_result_digest_ids != source_advancement.result_digest_ids
+        {
+            return Err(GeoPlanError::new(
+                GeoPlanErrorCode::ContractViolation,
+                "Geo replan source advancements require sorted distinct result digest ids",
+                [(
+                    "source_instance_id",
+                    source_advancement.source_instance_id.as_str(),
+                )],
+            ));
+        }
+        for digest_id in &source_advancement.result_digest_ids {
+            let matches = advancement
+                .result_digests
+                .iter()
+                .filter(|digest| digest.digest_id == *digest_id)
+                .collect::<Vec<_>>();
+            if matches.len() != 1 {
+                return Err(GeoPlanError::new(
+                    GeoPlanErrorCode::ContractViolation,
+                    "Geo replan source advancement result digest id must resolve exactly once",
+                    [
+                        (
+                            "source_instance_id".to_string(),
+                            source_advancement.source_instance_id.clone(),
+                        ),
+                        ("result_digest_id".to_string(), digest_id.clone()),
+                        ("matches".to_string(), matches.len().to_string()),
+                    ],
+                ));
+            }
+            let result_digest = geo_digest_string(matches[0])?;
+            if result_digest != source_advancement.local_ref.content_hash {
+                return Err(GeoPlanError::new(
+                    GeoPlanErrorCode::ContractViolation,
+                    "Geo replan source advancement local artifact must match its receipt result digest",
+                    [
+                        (
+                            "source_instance_id".to_string(),
+                            source_advancement.source_instance_id.clone(),
+                        ),
+                        ("result_digest_id".to_string(), digest_id.clone()),
+                        ("expected".to_string(), result_digest),
+                        (
+                            "actual".to_string(),
+                            source_advancement.local_ref.content_hash.clone(),
+                        ),
+                    ],
+                ));
+            }
         }
         let Some(source) = advanced_inventory.sources.iter().find(|source| {
             source.source_instance_id == source_advancement.source_instance_id
@@ -1635,6 +1721,28 @@ fn acquisition_source(
             .is_ok()
             && (!stable_identity_requested || source.native_scope.may_contribute_stable_alias())
             && !super::regional_source_has_usable_local_evidence(source)
+            && source.local_state.local_ref.is_none()
+            && source.coverage.region == inventory.region
+    })
+}
+
+fn unusable_local_source(
+    inventory: &GeoRegionalInventory,
+    level: GeoControlEntityLevel,
+    evidence_class: GeoEvidenceClass,
+    stable_identity_requested: bool,
+) -> Option<&GeoRegionalSourceInstance> {
+    inventory.sources.iter().find(|source| {
+        matches!(
+            source.native_scope,
+            GeoNativeEntityScope::NativeEntity { entity_level, .. } if entity_level == level
+        ) && source
+            .evidence_classes
+            .binary_search(&evidence_class)
+            .is_ok()
+            && (!stable_identity_requested || source.native_scope.may_contribute_stable_alias())
+            && !super::regional_source_has_usable_local_evidence(source)
+            && source.local_state.local_ref.is_some()
             && source.coverage.region == inventory.region
     })
 }

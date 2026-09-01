@@ -453,10 +453,12 @@ fn synthetic_not_live_71_subject_shape_materializes_and_evaluates_below_frozen_e
         .selected_multi_parcel_loans,
         CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS
     );
-    assert!(
-        CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS < CANON_GEO_H7_FROZEN_E4_ACCEPTANCE_CASES,
-        "the synthetic 71-subject handoff must not satisfy the frozen 79-case E4 gate"
-    );
+    const {
+        assert!(
+            CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS < CANON_GEO_H7_FROZEN_E4_ACCEPTANCE_CASES,
+            "the synthetic 71-subject handoff must not satisfy the frozen 79-case E4 gate"
+        );
+    }
 
     let evaluation =
         evaluate_population(&artifact.population).expect("synthetic solver population evaluates");
