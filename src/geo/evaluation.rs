@@ -1558,7 +1558,7 @@ fn validate_candidate_truth_case_evaluation(
             GeoPopulationErrorCode::Composition,
             "Geo candidate/truth evaluation truth member fields are inconsistent",
             [
-                ("row_id", row.row_id.as_str()),
+                ("row_id", row.row_id.clone()),
                 ("truth_members", row.truth_members.to_string()),
                 ("computed", expected_truth_members.to_string()),
             ],
