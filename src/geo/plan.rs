@@ -9,7 +9,7 @@
 
 use super::satisfy::{
     CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION, GeoInventoryAdvancementEffect,
-    GeoRegionalInventoryAdvancement, GeoSatisfyError,
+    GeoRegionalInventoryAdvancement, GeoRegionalInventorySourceAdvancement, GeoSatisfyError,
     geo_regional_inventory_advancement_semantic_hash,
 };
 use super::{
@@ -68,6 +68,7 @@ pub struct GeoPlanRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeoPlanReplanRequest {
     pub base_plan: GeoPlan,
+    pub base_inventory: GeoRegionalInventory,
     pub question: GeoQuestion,
     pub capabilities: GeoCapabilities,
     pub profile: GeoCompositionProfile,
@@ -713,6 +714,8 @@ pub fn replan_geo_plan_from_inventory_advancement(
     request: GeoPlanReplanRequest,
 ) -> Result<GeoPlan, GeoPlanError> {
     validate_geo_plan(&request.base_plan)?;
+    let base_inventory =
+        validate_replan_base_inventory(&request.base_plan, &request.base_inventory)?;
     validate_replan_artifact_inputs(
         &request.base_plan,
         &request.question,
@@ -722,6 +725,7 @@ pub fn replan_geo_plan_from_inventory_advancement(
     )?;
     let advanced_inventory = validate_inventory_advancement_for_replan(
         &request.base_plan,
+        &base_inventory,
         &request.question,
         &request.inventory_advancement,
     )?;
@@ -951,6 +955,7 @@ fn validate_replan_artifact_inputs(
 
 fn validate_inventory_advancement_for_replan(
     base_plan: &GeoPlan,
+    base_inventory: &GeoRegionalInventory,
     question: &GeoQuestion,
     advancement: &GeoRegionalInventoryAdvancement,
 ) -> Result<GeoRegionalInventory, GeoPlanError> {
@@ -1093,16 +1098,44 @@ fn validate_inventory_advancement_for_replan(
         &advancement.advancement_id,
     )?;
 
-    validate_advancement_matches_base_acquisition(base_plan, advancement)?;
-    validate_source_advancements(&advanced_inventory, advancement)?;
+    let acquisition_request =
+        validate_advancement_matches_base_acquisition(base_plan, advancement)?;
+    validate_source_advancements(acquisition_request, &advanced_inventory, advancement)?;
+    validate_advanced_inventory_transition(base_inventory, &advanced_inventory, advancement)?;
     Ok(advanced_inventory)
 }
 
-fn validate_advancement_matches_base_acquisition(
+fn validate_replan_base_inventory(
     base_plan: &GeoPlan,
+    inventory: &GeoRegionalInventory,
+) -> Result<GeoRegionalInventory, GeoPlanError> {
+    let inventory = canonicalize_regional_inventory(inventory).map_err(control_error)?;
+    let semantic_hash = regional_inventory_semantic_hash(&inventory).map_err(control_error)?;
+    let planning_hash = regional_inventory_planning_hash(&inventory).map_err(control_error)?;
+    validate_replan_ref(
+        "base_inventory_id",
+        &base_plan.inventory_ref.inventory_id,
+        &inventory.inventory_id,
+    )?;
+    validate_replan_ref(
+        "base_inventory_semantic_hash",
+        &base_plan.inventory_ref.semantic_hash,
+        &semantic_hash,
+    )?;
+    validate_replan_ref(
+        "base_inventory_planning_hash",
+        &base_plan.inventory_ref.planning_hash,
+        &planning_hash,
+    )?;
+    Ok(inventory)
+}
+
+fn validate_advancement_matches_base_acquisition<'a>(
+    base_plan: &'a GeoPlan,
     advancement: &GeoRegionalInventoryAdvancement,
-) -> Result<(), GeoPlanError> {
+) -> Result<&'a GeoAcquisitionRequest, GeoPlanError> {
     let mut matches = 0_usize;
+    let mut matched_request = None;
     for request in &base_plan.external_requests {
         let GeoPlanExternalRequest::Acquisition { request, .. } = request else {
             continue;
@@ -1118,6 +1151,7 @@ fn validate_advancement_matches_base_acquisition(
             &advancement.request_semantic_hash,
         )?;
         matches += 1;
+        matched_request = Some(request);
     }
     if matches != 1 {
         return Err(GeoPlanError::new(
@@ -1129,14 +1163,41 @@ fn validate_advancement_matches_base_acquisition(
             ],
         ));
     }
-    Ok(())
+    Ok(matched_request.expect("matches == 1"))
 }
 
 fn validate_source_advancements(
+    request: &GeoAcquisitionRequest,
     advanced_inventory: &GeoRegionalInventory,
     advancement: &GeoRegionalInventoryAdvancement,
 ) -> Result<(), GeoPlanError> {
+    let release_keys = request
+        .releases
+        .iter()
+        .map(release_pin_key)
+        .collect::<Result<BTreeSet<_>, _>>()?;
     for source_advancement in &advancement.source_advancements {
+        let source_key = source_advancement_key(source_advancement);
+        if !release_keys.contains(&source_key) {
+            return Err(GeoPlanError::new(
+                GeoPlanErrorCode::ContractViolation,
+                "Geo replan source advancement does not match the base acquisition release pin",
+                [
+                    (
+                        "source_instance_id".to_string(),
+                        source_advancement.source_instance_id.clone(),
+                    ),
+                    (
+                        "release_id".to_string(),
+                        source_advancement.release.release_id.clone(),
+                    ),
+                    (
+                        "release_digest".to_string(),
+                        source_advancement.release.release_digest.clone(),
+                    ),
+                ],
+            ));
+        }
         if source_advancement.advanced_state != super::GeoSourceAvailability::Available {
             return Err(GeoPlanError::new(
                 GeoPlanErrorCode::ContractViolation,
@@ -1205,6 +1266,152 @@ fn validate_source_advancements(
         }
     }
     Ok(())
+}
+
+fn validate_advanced_inventory_transition(
+    base_inventory: &GeoRegionalInventory,
+    advanced_inventory: &GeoRegionalInventory,
+    advancement: &GeoRegionalInventoryAdvancement,
+) -> Result<(), GeoPlanError> {
+    let mut expected = base_inventory.clone();
+    let mut seen = BTreeSet::new();
+    for source_advancement in &advancement.source_advancements {
+        let key = source_advancement_key(source_advancement);
+        if !seen.insert(key.clone()) {
+            return Err(GeoPlanError::new(
+                GeoPlanErrorCode::ContractViolation,
+                "Geo replan source advancements must name each source release at most once",
+                [
+                    ("source_instance_id".to_string(), key.0),
+                    ("release_id".to_string(), key.1),
+                    ("release_digest".to_string(), key.2),
+                ],
+            ));
+        }
+        let Some(source) = expected.sources.iter_mut().find(|source| {
+            source.source_instance_id == source_advancement.source_instance_id
+                && source.release == source_advancement.release
+                && source.coverage.region == advancement.bounded_geography
+        }) else {
+            return Err(GeoPlanError::new(
+                GeoPlanErrorCode::ContractViolation,
+                "Geo replan source advancement is missing from the base inventory",
+                [
+                    (
+                        "source_instance_id".to_string(),
+                        source_advancement.source_instance_id.clone(),
+                    ),
+                    (
+                        "release_id".to_string(),
+                        source_advancement.release.release_id.clone(),
+                    ),
+                ],
+            ));
+        };
+        if source.local_state.state != source_advancement.previous_state {
+            return Err(GeoPlanError::new(
+                GeoPlanErrorCode::ContractViolation,
+                "Geo replan source advancement previous state does not match the base inventory",
+                [
+                    (
+                        "source_instance_id".to_string(),
+                        source_advancement.source_instance_id.clone(),
+                    ),
+                    (
+                        "expected".to_string(),
+                        format!("{:?}", source.local_state.state),
+                    ),
+                    (
+                        "actual".to_string(),
+                        format!("{:?}", source_advancement.previous_state),
+                    ),
+                ],
+            ));
+        }
+        if let Some(existing_ref) = &source.local_state.local_ref
+            && existing_ref != &source_advancement.local_ref
+        {
+            return Err(GeoPlanError::new(
+                GeoPlanErrorCode::ContractViolation,
+                "Geo replan source advancement would overwrite an existing local artifact ref",
+                [
+                    (
+                        "source_instance_id".to_string(),
+                        source_advancement.source_instance_id.clone(),
+                    ),
+                    (
+                        "existing_artifact_id".to_string(),
+                        existing_ref.artifact_id.clone(),
+                    ),
+                    (
+                        "advanced_artifact_id".to_string(),
+                        source_advancement.local_ref.artifact_id.clone(),
+                    ),
+                ],
+            ));
+        }
+        source.local_state.state = super::GeoSourceAvailability::Available;
+        source.local_state.local_ref = Some(source_advancement.local_ref.clone());
+    }
+
+    let expected = canonicalize_regional_inventory(&expected).map_err(control_error)?;
+    if &expected == advanced_inventory {
+        return Ok(());
+    }
+
+    let expected_semantic_hash =
+        regional_inventory_semantic_hash(&expected).map_err(control_error)?;
+    let actual_semantic_hash =
+        regional_inventory_semantic_hash(advanced_inventory).map_err(control_error)?;
+    let expected_planning_hash =
+        regional_inventory_planning_hash(&expected).map_err(control_error)?;
+    let actual_planning_hash =
+        regional_inventory_planning_hash(advanced_inventory).map_err(control_error)?;
+    Err(GeoPlanError::new(
+        GeoPlanErrorCode::ContractViolation,
+        "Geo replan advanced inventory must equal the base inventory plus declared source advancements",
+        [
+            (
+                "field".to_string(),
+                "advanced_inventory_transition".to_string(),
+            ),
+            ("expected_semantic_hash".to_string(), expected_semantic_hash),
+            ("actual_semantic_hash".to_string(), actual_semantic_hash),
+            ("expected_planning_hash".to_string(), expected_planning_hash),
+            ("actual_planning_hash".to_string(), actual_planning_hash),
+        ],
+    ))
+}
+
+fn release_pin_key(
+    release: &super::GeoReleasePin,
+) -> Result<(String, String, String), GeoPlanError> {
+    Ok((
+        release.source_instance_id.clone(),
+        release.release_id.clone(),
+        geo_digest_string(&release.release_digest)?,
+    ))
+}
+
+fn source_advancement_key(
+    source_advancement: &GeoRegionalInventorySourceAdvancement,
+) -> (String, String, String) {
+    (
+        source_advancement.source_instance_id.clone(),
+        source_advancement.release.release_id.clone(),
+        source_advancement.release.release_digest.clone(),
+    )
+}
+
+fn geo_digest_string(digest: &GeoDigest) -> Result<String, GeoPlanError> {
+    if digest.algorithm != GeoDigestAlgorithm::Blake3 {
+        return Err(GeoPlanError::new(
+            GeoPlanErrorCode::ContractViolation,
+            "Geo planning expected a BLAKE3 digest",
+            [("digest_id", digest.digest_id.as_str())],
+        ));
+    }
+    Ok(format!("blake3:{}", digest.hex_digest))
 }
 
 fn validate_replan_ref(field: &str, expected: &str, actual: &str) -> Result<(), GeoPlanError> {
