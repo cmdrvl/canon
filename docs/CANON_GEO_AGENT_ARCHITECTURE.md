@@ -18,12 +18,18 @@
 > through that runner. Its CLI `--satisfy` path validates an explicit receipt against
 > explicit local bytes only; it does not mutate the immutable plan, clear acquisition
 > blockers, update inventory, or replan. A library caller can materialize a separate,
-> plan-bound inventory advancement only for the currently provable one-live-artifact,
-> one-release, full-region case when that artifact is valid `application/json` under
-> `canon_geo_warehouse_rows.v0`, then explicitly compile a new plan from that snapshot.
-> Project receipts now retain immutable content-addressed copies and cooperating publishers
-> protect canonical receipt/output slots, but multi-artifact transactionality, immutable Geo
-> run revision lineage, ready-node claims, crash-stale lock recovery, and inspect remain
+> plan-bound inventory advancement for `live`, `COMPLETE`, full-region
+> `canon_geo_warehouse_rows.v0` JSON artifacts. The legacy unambiguous case can infer the
+> binding from one pinned release and one local artifact when receipt-native relations are
+> absent; the new multi-release or multi-artifact path requires receipt-native
+> artifact-release relations mapping every local artifact to exactly one pinned release and
+> every release to exactly one artifact. The caller then explicitly replans from that
+> base-inventory-bound snapshot.
+> The shared project runner now publishes immutable content-addressed manifest revisions
+> with full-plan receipt prevalidation, and project receipts retain immutable
+> content-addressed copies while cooperating publishers protect canonical receipt/output
+> slots. Output-plus-receipt and multi-output transactionality, Geo inspect, ready-node
+> claims, crash-stale lock recovery, live acquisition, and concurrent scheduling remain
 > open. Geo must extend this substrate, not build a parallel orchestrator.
 
 ## 1. Purpose
@@ -240,15 +246,19 @@ parcel/building profile, and run consumption is implemented only for explicit lo
 bindings plus `--satisfy` validation of explicit acquisition receipts against those local
 bytes. The satisfy check does not mutate the immutable plan, clear acquisition blockers,
 update inventory, or replan. The library advancement path additionally requires exact
-agreement with the plan's inventory id and semantic/planning hashes, one `live` receipt,
-one full-region artifact valid as `application/json` under
-`canon_geo_warehouse_rows.v0`, and one pinned release. A valid untyped CSV/JSONL artifact
-can satisfy the acquisition receipt but cannot advance ordinary regional availability.
-It intentionally refuses to infer a
-multi-release artifact partition from a caller-supplied relation, and it does not promote a
-narrow subset or fixture/retained proof to ordinary regional availability. The advancement
-is a new immutable inventory snapshot; using it requires an explicit new plan. Live
-acquisition and proof attestation remain outside Canon.
+agreement with the plan's inventory id and semantic/planning hashes, a `live` `COMPLETE`
+receipt, a full-region acquisition subset, and usable `application/json`
+`canon_geo_warehouse_rows.v0` local artifacts. The legacy unambiguous case can infer the
+artifact-to-release binding from one pinned release and one local artifact when
+receipt-native relations are absent. Multi-release or multi-artifact advancement requires
+receipt-native artifact-release relations that cover every pinned release and every local
+artifact without duplicate or cross-product ambiguity. A valid untyped CSV/JSONL artifact
+can satisfy the acquisition receipt but cannot advance ordinary regional availability. It
+does not promote a narrow subset, zero/partial/truncated execution, or fixture/retained
+proof to ordinary regional availability. The advancement is a new immutable inventory
+snapshot; using it requires an explicit base-inventory-bound replan that revalidates the
+question, capability, profile, budget, and inventory identities. Live acquisition and
+proof attestation remain outside Canon.
 
 Discovery proceeds from cheap metadata to bounded evidence:
 
@@ -463,9 +473,9 @@ restricted, plan-bound inventory advancement described in §4.5. Once evidence i
 acquired, the genuine advancement path is still an explicit new plan whose inventory and
 inputs include that evidence.
 
-It does not yet contain the full target answer projection, generic source-release receipt
-index, separate abstention/contradiction/fallback collections, registry proposal refs,
-immutable run revision lineage, or cross-agent concurrency protocol.
+It does not yet contain the full target answer projection, a Geo inspect/readiness view
+over receipt lineage, separate abstention/contradiction/fallback collections, registry
+proposal refs, ready-node claims, or a cross-agent concurrency protocol.
 
 Semantic dependency hashes include declared inputs, policy, node contract, dependency
 semantic hashes, output content digests, and deterministic usage counters that control
@@ -479,12 +489,15 @@ commits only after its output validates and hashes. Publication uses same-filesy
 temporary files plus per-slot cooperating-writer locks. Node receipts are retained under
 their content hashes before a canonical slot is selected; semantic duplicates converge
 only when operational output and dependency bindings also agree. This prevents silent
-cooperating-writer overwrite, but it is not a lease/claim protocol and a process crash can
-leave a stale lock requiring operational repair. The current run path reuses verified
-`canon.project.run.v2` receipts within one work directory and resumes completed node
-outputs when their effective project input hashes still match. Generic immutable revision
-reuse, external-acquisition deduplication, and multi-agent concurrency remain target
-behavior rather than shipped Geo semantics.
+cooperating-writer overwrite, but it is not output-plus-receipt or multi-output
+transactionality, not a lease/claim protocol, and a process crash can leave a stale lock
+requiring operational repair. The shared runner now publishes immutable content-addressed
+manifest revisions after full-plan receipt prevalidation; the current Geo run path reuses
+verified `canon.project.run.v2` receipts within one work directory and resumes completed
+node outputs when their effective project input hashes still match. External-acquisition
+deduplication, Geo inspect over those revisions, ready-node claims, crash-stale lock
+recovery, and multi-agent concurrent scheduling remain target behavior rather than shipped
+Geo semantics.
 
 The Rust run API now has an opt-in deterministic JSONL progress writer. Its monotone events
 name the current plan node, last committed or resumed artifact, deterministic counters, and
@@ -510,9 +523,10 @@ Those states retain every completed reusable artifact and an exact recovery acti
 
 ### 5.1 Parallel agents and deterministic convergence
 
-This subsection remains target architecture. The current bounded `geo run` preserves
+This subsection remains target architecture. The shared project runner publishes immutable
+content-addressed manifest revisions, and the current bounded `geo run` preserves
 deterministic semantic identity and project receipt reuse, but it does not implement the
-immutable revision proposal flow, ready-node claims, or cross-agent concurrency protocol
+multi-agent revision proposal flow, ready-node claims, or cross-agent concurrency protocol
 described below.
 
 Plan nodes have stable semantic ids and explicit dependencies, so multiple agents may
@@ -557,8 +571,11 @@ canon geo inspect --run DIR [--component ID] [--compare OTHER_RUN] [--recommend-
   does not mutate the immutable plan, clear acquisition blockers, update inventory, or
   replan. The restricted inventory-advancement builder is a library surface, not an
   implicit CLI state transition; evidence that changes the run requires a new plan whose
-  inventory and inputs include that evidence. It does not perform live acquisition,
-  provide live proof, or implement generic immutable revision/concurrency semantics.
+  inventory and inputs include that evidence. The shared runner publishes immutable
+  content-addressed manifest revisions with full-plan receipt prevalidation, but `geo run`
+  does not perform live acquisition, provide live proof, expose ready-node claims or
+  inspect, recover crash-stale locks, schedule concurrently across agents, or make
+  multi-output publication transactional.
 - `inspect` is the one-call situation report, explanation, diff, and next-action surface;
   it remains proposed/unavailable.
 
@@ -705,9 +722,11 @@ It changes the build order in five ways:
 2. Capability discovery and the question/profile/inventory contracts precede composite
    orchestration.
 3. Candidate reach is a first-class plan gate, never inferred from solver evaluation.
-4. The bounded run manifest now reuses verified project receipts for unchanged current-plan
-   nodes; fuller immutable-revision invalidation still has to land before repeated
-   warehouse pulls and exact solves are generically avoided.
+4. The shared project runner now publishes immutable content-addressed manifest revisions
+   and the bounded run manifest reuses verified project receipts for unchanged current-plan
+   nodes; ready-node claims, concurrent scheduling, live acquisition deduplication,
+   crash-stale lock recovery, and inspect still have to land before repeated warehouse
+   pulls and exact solves are generically avoided.
 5. Next-evidence selection operates on the current residual and declared costs, making
    evidence stacking deliberate rather than indiscriminate.
 
