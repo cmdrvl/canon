@@ -61,6 +61,11 @@
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/local_artifact_digest" }
     },
+    "artifact_release_relations": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/artifact_release_relation" }
+    },
     "unreadable_columns": {
       "type": "array",
       "uniqueItems": true,
@@ -537,6 +542,25 @@
       },
       "required": ["artifact_id", "media_type", "byte_count", "digest"]
     },
+    "artifact_release_relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "local_artifact_id": { "type": "string", "minLength": 1 },
+        "source_instance_id": { "type": "string", "minLength": 1 },
+        "release_id": { "type": "string", "minLength": 1 },
+        "release_digest": {
+          "type": "string",
+          "pattern": "^(blake3|sha256):[0-9a-f]{64}$|^sha512:[0-9a-f]{128}$"
+        }
+      },
+      "required": [
+        "local_artifact_id",
+        "source_instance_id",
+        "release_id",
+        "release_digest"
+      ]
+    },
     "resumability": {
       "type": "object",
       "additionalProperties": false,
@@ -648,6 +672,14 @@
             "algorithm": "blake3",
             "hex_digest": "2222222222222222222222222222222222222222222222222222222222222222"
           }
+        }
+      ],
+      "artifact_release_relations": [
+        {
+          "local_artifact_id": "artifact.fixture.rows",
+          "source_instance_id": "source.fixture.building-footprints",
+          "release_id": "release.fixture.2026-08-31",
+          "release_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
         }
       ],
       "unreadable_columns": [],

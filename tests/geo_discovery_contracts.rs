@@ -2,13 +2,14 @@
 
 use canon::geo::{
     CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
-    CANON_GEO_DISCOVERY_REQUEST_VERSION, GeoAcquisitionCounts, GeoAcquisitionDenominator,
-    GeoAcquisitionProofClass, GeoAcquisitionReceipt, GeoAcquisitionRequest,
-    GeoAcquisitionResumability, GeoAcquisitionTerminalState, GeoBoundedGeography, GeoBoundedSubset,
-    GeoColumnReadabilityProbe, GeoControlEntityLevel, GeoDenominatorSource, GeoDigest,
-    GeoDigestAlgorithm, GeoDiscoveryErrorCode, GeoDiscoveryReleaseSelectionPolicy,
-    GeoDiscoveryRequest, GeoDiscoveryStep, GeoEvidenceClass, GeoExecutorKind, GeoExecutorTrace,
-    GeoFieldRole, GeoLocalArtifactDigest, GeoNullOrdering, GeoOrderDirection, GeoOrderingTerm,
+    CANON_GEO_DISCOVERY_REQUEST_VERSION, GeoAcquisitionArtifactReleaseRelation,
+    GeoAcquisitionCounts, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
+    GeoAcquisitionReceipt, GeoAcquisitionRequest, GeoAcquisitionResumability,
+    GeoAcquisitionTerminalState, GeoBoundedGeography, GeoBoundedSubset, GeoColumnReadabilityProbe,
+    GeoControlEntityLevel, GeoDenominatorSource, GeoDigest, GeoDigestAlgorithm,
+    GeoDiscoveryErrorCode, GeoDiscoveryReleaseSelectionPolicy, GeoDiscoveryRequest,
+    GeoDiscoveryStep, GeoEvidenceClass, GeoExecutorKind, GeoExecutorTrace, GeoFieldRole,
+    GeoLocalArtifactDigest, GeoNullOrdering, GeoOrderDirection, GeoOrderingTerm,
     GeoPaginationReceipt, GeoPaginationRequest, GeoProjectionOperation, GeoReleasePin,
     GeoReleaseSelectionMode, GeoRequestedField, GeoRowByteCeilings, GeoSubsetPredicate,
     GeoSubsetPredicateKind, canonical_geo_acquisition_request_bytes,
@@ -121,6 +122,30 @@ fn release_pins() -> Vec<GeoReleasePin> {
             blake3_digest("release.fixture.address-points", b"release-b"),
         ),
     ]
+}
+
+fn artifact_release_relation(
+    local_artifact_id: &str,
+    release: &GeoReleasePin,
+) -> GeoAcquisitionArtifactReleaseRelation {
+    GeoAcquisitionArtifactReleaseRelation {
+        local_artifact_id: local_artifact_id.to_string(),
+        source_instance_id: release.source_instance_id.clone(),
+        release_id: release.release_id.clone(),
+        release_digest: format!(
+            "{}:{}",
+            digest_algorithm_name(release.release_digest.algorithm),
+            release.release_digest.hex_digest
+        ),
+    }
+}
+
+fn digest_algorithm_name(algorithm: GeoDigestAlgorithm) -> &'static str {
+    match algorithm {
+        GeoDigestAlgorithm::Blake3 => "blake3",
+        GeoDigestAlgorithm::Sha256 => "sha256",
+        GeoDigestAlgorithm::Sha512 => "sha512",
+    }
 }
 
 fn ceilings(max_rows: u64, max_bytes: u64) -> GeoRowByteCeilings {
@@ -292,6 +317,7 @@ fn live_receipt(
             byte_count: rows * 256,
             digest: blake3_digest("artifact.rows", format!("artifact:{rows}").as_bytes()),
         }],
+        artifact_release_relations: Vec::new(),
         unreadable_columns: Vec::new(),
         resumability: GeoAcquisitionResumability {
             resumable: false,
@@ -504,6 +530,95 @@ fn release_pins_are_unique_by_source_instance_and_release_id() {
     let error = validate_geo_discovery_request(&discovery)
         .expect_err("discovery release pins use the same key uniqueness rule");
     assert_eq!(error.code, GeoDiscoveryErrorCode::InvalidInput);
+}
+
+#[test]
+fn receipt_native_artifact_release_relations_validate_multi_release_lineage() {
+    let request = acquisition_request();
+    let mut receipt = live_receipt(&request, GeoAcquisitionTerminalState::Complete, 2);
+    receipt.source_digests = request
+        .releases
+        .iter()
+        .map(|release| release.release_digest.clone())
+        .collect();
+    receipt.result_digests = vec![
+        blake3_digest("result.buildings", b"building release rows"),
+        blake3_digest("result.addresses", b"address release rows"),
+    ];
+    receipt.local_artifacts = vec![
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.fixture.buildings".to_string(),
+            media_type: "application/jsonl".to_string(),
+            byte_count: 256,
+            digest: blake3_digest("artifact.buildings", b"building release rows"),
+        },
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.fixture.addresses".to_string(),
+            media_type: "application/jsonl".to_string(),
+            byte_count: 256,
+            digest: blake3_digest("artifact.addresses", b"address release rows"),
+        },
+    ];
+    receipt.artifact_release_relations = vec![
+        artifact_release_relation("artifact.fixture.buildings", &request.releases[0]),
+        artifact_release_relation("artifact.fixture.addresses", &request.releases[1]),
+    ];
+
+    validate_geo_acquisition_receipt(&request, &receipt)
+        .expect("receipt-native relations disambiguate multi-release artifacts");
+}
+
+#[test]
+fn artifact_release_relations_reject_ambiguous_or_drifted_lineage() {
+    let request = acquisition_request();
+    let mut missing = live_receipt(&request, GeoAcquisitionTerminalState::Complete, 2);
+    missing.artifact_release_relations = vec![artifact_release_relation(
+        "artifact.fixture.rows",
+        &request.releases[0],
+    )];
+    let error = validate_geo_acquisition_receipt(&request, &missing)
+        .expect_err("lineage must cover every release pin");
+    assert_eq!(error.code, GeoDiscoveryErrorCode::ReceiptMismatch);
+    assert!(
+        error
+            .message
+            .contains("cover every acquisition release pin")
+    );
+
+    let mut digest_drift = live_receipt(&request, GeoAcquisitionTerminalState::Complete, 2);
+    digest_drift.local_artifacts = vec![
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.fixture.buildings".to_string(),
+            media_type: "application/jsonl".to_string(),
+            byte_count: 256,
+            digest: blake3_digest("artifact.buildings", b"building release rows"),
+        },
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.fixture.addresses".to_string(),
+            media_type: "application/jsonl".to_string(),
+            byte_count: 256,
+            digest: blake3_digest("artifact.addresses", b"address release rows"),
+        },
+    ];
+    digest_drift.artifact_release_relations = vec![
+        artifact_release_relation("artifact.fixture.buildings", &request.releases[0]),
+        artifact_release_relation("artifact.fixture.addresses", &request.releases[1]),
+    ];
+    digest_drift.artifact_release_relations[1].release_digest =
+        format!("blake3:{}", "0".repeat(64));
+    let error = validate_geo_acquisition_receipt(&request, &digest_drift)
+        .expect_err("relation digest drift must reject");
+    assert_eq!(error.code, GeoDiscoveryErrorCode::ReceiptMismatch);
+
+    let mut reused = live_receipt(&request, GeoAcquisitionTerminalState::Complete, 2);
+    reused.artifact_release_relations = vec![
+        artifact_release_relation("artifact.fixture.rows", &request.releases[0]),
+        artifact_release_relation("artifact.fixture.rows", &request.releases[1]),
+    ];
+    let error = validate_geo_acquisition_receipt(&request, &reused)
+        .expect_err("one artifact cannot stand for two release pins");
+    assert_eq!(error.code, GeoDiscoveryErrorCode::ReceiptMismatch);
+    assert!(error.message.contains("must not reuse one local artifact"));
 }
 
 #[test]
@@ -794,6 +909,18 @@ fn secrets_and_protocol_endpoints_are_rejected_from_requests() {
     embedded_endpoint = with_acquisition_id(embedded_endpoint);
     let error = validate_geo_acquisition_request(&embedded_endpoint)
         .expect_err("embedded protocol endpoint leaks reject");
+    assert_eq!(error.code, GeoDiscoveryErrorCode::SecretMaterial);
+
+    let request = acquisition_request();
+    let mut receipt = live_receipt(&request, GeoAcquisitionTerminalState::Complete, 2);
+    receipt.artifact_release_relations = vec![
+        artifact_release_relation("artifact.fixture.rows", &request.releases[0]),
+        artifact_release_relation("artifact.fixture.rows", &request.releases[1]),
+    ];
+    receipt.artifact_release_relations[0].release_id =
+        "release.fixture token=executor-secret".to_string();
+    let error = validate_geo_acquisition_receipt(&request, &receipt)
+        .expect_err("receipt-native relation secret leaks reject");
     assert_eq!(error.code, GeoDiscoveryErrorCode::SecretMaterial);
 }
 

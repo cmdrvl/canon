@@ -13,16 +13,16 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use canon::entity::run::link::multisource::EntitySourceRole;
 use canon::geo::{
     CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
-    CANON_GEO_DISCOVERY_REQUEST_VERSION, GeoAcquisitionCounts, GeoAcquisitionDenominator,
-    GeoAcquisitionProofClass, GeoAcquisitionReceipt, GeoAcquisitionRequest,
-    GeoAcquisitionResumability, GeoAcquisitionTerminalState, GeoBoundedSubset,
-    GeoColumnReadabilityProbe, GeoDenominatorSource, GeoDigest, GeoDigestAlgorithm,
-    GeoDiscoveryReleaseSelectionPolicy, GeoDiscoveryRequest, GeoDiscoveryStep, GeoExecutorKind,
-    GeoExecutorTrace, GeoFieldRole, GeoLocalArtifactDigest, GeoNullOrdering, GeoOrderDirection,
-    GeoOrderingTerm, GeoPaginationReceipt, GeoPaginationRequest, GeoProjectionOperation,
-    GeoReleasePin, GeoReleaseSelectionMode, GeoRequestedField, GeoRowByteCeilings,
-    GeoSubsetPredicate, GeoSubsetPredicateKind, geo_acquisition_request_id,
-    geo_acquisition_request_semantic_hash, geo_discovery_request_id,
+    CANON_GEO_DISCOVERY_REQUEST_VERSION, GeoAcquisitionArtifactReleaseRelation,
+    GeoAcquisitionCounts, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
+    GeoAcquisitionReceipt, GeoAcquisitionRequest, GeoAcquisitionResumability,
+    GeoAcquisitionTerminalState, GeoBoundedSubset, GeoColumnReadabilityProbe, GeoDenominatorSource,
+    GeoDigest, GeoDigestAlgorithm, GeoDiscoveryReleaseSelectionPolicy, GeoDiscoveryRequest,
+    GeoDiscoveryStep, GeoExecutorKind, GeoExecutorTrace, GeoFieldRole, GeoLocalArtifactDigest,
+    GeoNullOrdering, GeoOrderDirection, GeoOrderingTerm, GeoPaginationReceipt,
+    GeoPaginationRequest, GeoProjectionOperation, GeoReleasePin, GeoReleaseSelectionMode,
+    GeoRequestedField, GeoRowByteCeilings, GeoSubsetPredicate, GeoSubsetPredicateKind,
+    geo_acquisition_request_id, geo_acquisition_request_semantic_hash, geo_discovery_request_id,
 };
 use canon::geo::{
     CANON_GEO_ADDRESS_PARSE_FOREST_VERSION, CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION,
@@ -574,6 +574,30 @@ fn contract_sha256_digest(digest_id: &str, bytes: &[u8]) -> GeoDigest {
     }
 }
 
+fn artifact_release_relation(
+    local_artifact_id: &str,
+    release: &GeoReleasePin,
+) -> GeoAcquisitionArtifactReleaseRelation {
+    GeoAcquisitionArtifactReleaseRelation {
+        local_artifact_id: local_artifact_id.to_string(),
+        source_instance_id: release.source_instance_id.clone(),
+        release_id: release.release_id.clone(),
+        release_digest: format!(
+            "{}:{}",
+            digest_algorithm_name(release.release_digest.algorithm),
+            release.release_digest.hex_digest
+        ),
+    }
+}
+
+fn digest_algorithm_name(algorithm: GeoDigestAlgorithm) -> &'static str {
+    match algorithm {
+        GeoDigestAlgorithm::Blake3 => "blake3",
+        GeoDigestAlgorithm::Sha256 => "sha256",
+        GeoDigestAlgorithm::Sha512 => "sha512",
+    }
+}
+
 fn control_region() -> GeoBoundedGeography {
     GeoBoundedGeography {
         geography_id: "region.fixture.control".to_string(),
@@ -782,6 +806,10 @@ fn acquisition_contract_receipt_for(request: GeoAcquisitionRequest) -> GeoAcquis
             byte_count: 512,
             digest: contract_blake3_digest("artifact.rows", b"artifact rows"),
         }],
+        artifact_release_relations: vec![artifact_release_relation(
+            "artifact.fixture.rows",
+            &request.releases[0],
+        )],
         unreadable_columns: Vec::new(),
         resumability: GeoAcquisitionResumability {
             resumable: false,

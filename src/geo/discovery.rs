@@ -312,6 +312,15 @@ pub struct GeoLocalArtifactDigest {
     pub digest: GeoDigest,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoAcquisitionArtifactReleaseRelation {
+    pub local_artifact_id: String,
+    pub source_instance_id: String,
+    pub release_id: String,
+    pub release_digest: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoAcquisitionReceipt {
@@ -339,6 +348,8 @@ pub struct GeoAcquisitionReceipt {
     pub source_digests: Vec<GeoDigest>,
     pub result_digests: Vec<GeoDigest>,
     pub local_artifacts: Vec<GeoLocalArtifactDigest>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artifact_release_relations: Vec<GeoAcquisitionArtifactReleaseRelation>,
     pub unreadable_columns: Vec<String>,
     pub resumability: GeoAcquisitionResumability,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -695,6 +706,7 @@ pub fn validate_geo_acquisition_receipt(
     validate_digests("source_digests", &receipt.source_digests)?;
     validate_digests("result_digests", &receipt.result_digests)?;
     validate_local_artifacts(&receipt.local_artifacts)?;
+    validate_artifact_release_relations(request, receipt)?;
     validate_resumability(receipt)?;
     validate_terminal_state(request, receipt)?;
     Ok(())
@@ -1321,6 +1333,164 @@ fn validate_local_artifacts(artifacts: &[GeoLocalArtifactDigest]) -> Result<(), 
         validate_digest("local_artifact.digest", &artifact.digest)?;
     }
     Ok(())
+}
+
+fn validate_artifact_release_relations(
+    request: &GeoAcquisitionRequest,
+    receipt: &GeoAcquisitionReceipt,
+) -> Result<(), GeoDiscoveryError> {
+    if receipt.artifact_release_relations.is_empty() {
+        return Ok(());
+    }
+
+    let artifact_ids = receipt
+        .local_artifacts
+        .iter()
+        .map(|artifact| artifact.artifact_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let release_keys = request
+        .releases
+        .iter()
+        .map(release_key)
+        .collect::<BTreeSet<_>>();
+    let mut seen_relations = BTreeSet::new();
+    let mut release_to_artifact = BTreeMap::<(String, String, String), String>::new();
+    let mut artifact_to_release = BTreeMap::<String, (String, String, String)>::new();
+
+    for relation in &receipt.artifact_release_relations {
+        validate_artifact_release_relation(relation)?;
+        if !artifact_ids.contains(relation.local_artifact_id.as_str()) {
+            return Err(GeoDiscoveryError::new(
+                GeoDiscoveryErrorCode::ReceiptMismatch,
+                "receipt artifact-release relation references an unknown local artifact",
+                [("local_artifact_id", relation.local_artifact_id.clone())],
+            ));
+        }
+
+        let release_key = (
+            relation.source_instance_id.clone(),
+            relation.release_id.clone(),
+            relation.release_digest.clone(),
+        );
+        if !release_keys.contains(&release_key) {
+            return Err(GeoDiscoveryError::new(
+                GeoDiscoveryErrorCode::ReceiptMismatch,
+                "receipt artifact-release relation does not match an acquisition release pin",
+                [
+                    ("source_instance_id", relation.source_instance_id.clone()),
+                    ("release_id", relation.release_id.clone()),
+                    ("release_digest", relation.release_digest.clone()),
+                ],
+            ));
+        }
+        if !seen_relations.insert((relation.local_artifact_id.clone(), release_key.clone())) {
+            return Err(GeoDiscoveryError::invalid(
+                "receipt artifact-release relations must be unique",
+                [
+                    ("local_artifact_id", relation.local_artifact_id.clone()),
+                    ("release_id", relation.release_id.clone()),
+                ],
+            ));
+        }
+        if let Some(existing_artifact) =
+            release_to_artifact.insert(release_key.clone(), relation.local_artifact_id.clone())
+            && existing_artifact != relation.local_artifact_id
+        {
+            return Err(GeoDiscoveryError::new(
+                GeoDiscoveryErrorCode::ReceiptMismatch,
+                "receipt artifact-release relations must bind each release to exactly one local artifact",
+                [
+                    ("release_id", relation.release_id.clone()),
+                    ("first_artifact_id", existing_artifact),
+                    ("second_artifact_id", relation.local_artifact_id.clone()),
+                ],
+            ));
+        }
+        if let Some(existing_release) =
+            artifact_to_release.insert(relation.local_artifact_id.clone(), release_key.clone())
+            && existing_release != release_key
+        {
+            return Err(GeoDiscoveryError::new(
+                GeoDiscoveryErrorCode::ReceiptMismatch,
+                "receipt artifact-release relations must not reuse one local artifact across releases",
+                [
+                    ("local_artifact_id", relation.local_artifact_id.clone()),
+                    ("first_release_id", existing_release.1),
+                    ("second_release_id", relation.release_id.clone()),
+                ],
+            ));
+        }
+    }
+
+    for (source_instance_id, release_id, release_digest) in release_keys {
+        if !release_to_artifact.contains_key(&(
+            source_instance_id.clone(),
+            release_id.clone(),
+            release_digest.clone(),
+        )) {
+            return Err(GeoDiscoveryError::new(
+                GeoDiscoveryErrorCode::ReceiptMismatch,
+                "receipt artifact-release relations must cover every acquisition release pin",
+                [
+                    ("source_instance_id", source_instance_id),
+                    ("release_id", release_id),
+                    ("release_digest", release_digest),
+                ],
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_artifact_release_relation(
+    relation: &GeoAcquisitionArtifactReleaseRelation,
+) -> Result<(), GeoDiscoveryError> {
+    for (field, value) in [
+        (
+            "artifact_release_relations.local_artifact_id",
+            relation.local_artifact_id.as_str(),
+        ),
+        (
+            "artifact_release_relations.source_instance_id",
+            relation.source_instance_id.as_str(),
+        ),
+        (
+            "artifact_release_relations.release_id",
+            relation.release_id.as_str(),
+        ),
+        (
+            "artifact_release_relations.release_digest",
+            relation.release_digest.as_str(),
+        ),
+    ] {
+        validate_nonempty_trimmed(field, value)?;
+    }
+    Ok(())
+}
+
+fn release_key(release: &GeoReleasePin) -> (String, String, String) {
+    (
+        release.source_instance_id.clone(),
+        release.release_id.clone(),
+        release_digest_string(&release.release_digest),
+    )
+}
+
+fn release_digest_string(digest: &GeoDigest) -> String {
+    format!(
+        "{}:{}",
+        digest_algorithm_name(digest.algorithm),
+        digest.hex_digest
+    )
+}
+
+fn digest_algorithm_name(algorithm: GeoDigestAlgorithm) -> &'static str {
+    match algorithm {
+        GeoDigestAlgorithm::Blake3 => "blake3",
+        GeoDigestAlgorithm::Sha256 => "sha256",
+        GeoDigestAlgorithm::Sha512 => "sha512",
+    }
 }
 
 fn validate_matching_geography(

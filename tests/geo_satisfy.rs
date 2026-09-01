@@ -125,6 +125,232 @@ fn complete_receipt_satisfies_request_and_updates_inventory_without_paths() {
 }
 
 #[test]
+fn receipt_native_multi_release_artifacts_advance_inventory_and_read_back() {
+    let dir = tempdir().expect("tempdir");
+    let first_path = dir.path().join("warehouse-release-a.json");
+    let second_path = dir.path().join("warehouse-release-b.json");
+    let receipt_path = dir.path().join("receipt.json");
+    let first = warehouse_rows_artifact_for("building-a");
+    let second = warehouse_rows_artifact_for("building-b");
+    std::fs::write(&first_path, &first).expect("write first data");
+    std::fs::write(&second_path, &second).expect("write second data");
+
+    let mut request = acquisition_request(&first);
+    request.releases.push(GeoReleasePin {
+        source_instance_id: "source.building.second".to_string(),
+        release_id: "release.fixture.second".to_string(),
+        release_digest: digest("release-second", b"release second"),
+    });
+    request.request_id = geo_acquisition_request_id(&request).expect("request id");
+    let mut receipt = acquisition_receipt(&request, &first, GeoAcquisitionTerminalState::Complete);
+    receipt.counts.rows = 2;
+    receipt.counts.bytes = (first.len() + second.len()) as u64;
+    receipt.source_digests = request
+        .releases
+        .iter()
+        .enumerate()
+        .map(|(index, release)| GeoDigest {
+            digest_id: format!("source.release.{index}"),
+            algorithm: release.release_digest.algorithm,
+            hex_digest: release.release_digest.hex_digest.clone(),
+        })
+        .collect();
+    receipt.result_digests = vec![
+        digest("result.first", &first),
+        digest("result.second", &second),
+    ];
+    receipt.local_artifacts = vec![
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.first".to_string(),
+            media_type: GEO_RUN_JSON_MEDIA_TYPE.to_string(),
+            byte_count: first.len() as u64,
+            digest: digest("artifact.first", &first),
+        },
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.second".to_string(),
+            media_type: GEO_RUN_JSON_MEDIA_TYPE.to_string(),
+            byte_count: second.len() as u64,
+            digest: digest("artifact.second", &second),
+        },
+    ];
+    receipt.artifact_release_relations = vec![
+        artifact_release_relation("artifact.first", &request.releases[0]),
+        artifact_release_relation("artifact.second", &request.releases[1]),
+    ];
+    write_json(&receipt_path, &receipt);
+
+    let inventory = inventory_for_request(&request);
+    let satisfaction = satisfy_geo_acquisition(GeoSatisfactionInput {
+        plan: &plan_with_acquisition(request.clone()),
+        inventory: Some(&inventory),
+        assignment: GeoSatisfactionAssignment {
+            request_id: request.request_id.clone(),
+            receipt_path,
+        },
+        local_artifact_files: vec![
+            file_binding("artifact.first", &first_path),
+            file_binding("artifact.second", &second_path),
+        ],
+        result_digest_files: Vec::new(),
+    })
+    .expect("receipt-native multi-release satisfaction");
+
+    assert_eq!(satisfaction.status, GeoSatisfactionStatus::Satisfied);
+    assert_eq!(satisfaction.bindings.len(), 2);
+    assert!(satisfaction.bindings.iter().any(|binding| {
+        binding.release_id == request.releases[0].release_id
+            && binding.content_hash == blake3_prefixed(&first)
+    }));
+    assert!(satisfaction.bindings.iter().any(|binding| {
+        binding.release_id == request.releases[1].release_id
+            && binding.content_hash == blake3_prefixed(&second)
+    }));
+
+    let advancement = satisfaction
+        .inventory_advancement
+        .as_ref()
+        .expect("multi-release advancement");
+    assert_eq!(advancement.source_advancements.len(), 2);
+    assert_eq!(advancement.denominators, receipt.denominators);
+    assert_eq!(advancement.source_digests, receipt.source_digests);
+    assert_eq!(advancement.result_digests, receipt.result_digests);
+
+    let updated = satisfaction
+        .updated_inventory
+        .as_ref()
+        .expect("updated inventory");
+    assert!(updated.sources.iter().all(|source| {
+        source.local_state.state == GeoSourceAvailability::Available
+            && source.local_state.local_ref.is_some()
+    }));
+    let readback_bytes = serde_json::to_vec(updated).expect("serialize updated inventory");
+    let readback: GeoRegionalInventory =
+        serde_json::from_slice(&readback_bytes).expect("read back updated inventory");
+    assert_eq!(&readback, updated);
+    assert_eq!(
+        regional_inventory_semantic_hash(&readback).expect("readback semantic hash"),
+        advancement.advanced_inventory_semantic_hash
+    );
+    assert_eq!(
+        geo_regional_inventory_advancement_semantic_hash(advancement)
+            .expect("advancement semantic hash"),
+        advancement.semantic_hash
+    );
+}
+
+#[test]
+fn receipt_native_relations_do_not_advance_truncated_multi_release_results() {
+    let dir = tempdir().expect("tempdir");
+    let first_path = dir.path().join("partial-release-a.json");
+    let second_path = dir.path().join("partial-release-b.json");
+    let receipt_path = dir.path().join("receipt.json");
+    let first = warehouse_rows_artifact_for("partial-building-a");
+    let second = warehouse_rows_artifact_for("partial-building-b");
+    std::fs::write(&first_path, &first).expect("write first partial data");
+    std::fs::write(&second_path, &second).expect("write second partial data");
+
+    let mut request = acquisition_request(&first);
+    request.releases.push(GeoReleasePin {
+        source_instance_id: "source.building.second".to_string(),
+        release_id: "release.fixture.second".to_string(),
+        release_digest: digest("release-second", b"release second"),
+    });
+    request.request_id = geo_acquisition_request_id(&request).expect("request id");
+    let mut receipt = acquisition_receipt(&request, &first, GeoAcquisitionTerminalState::Partial);
+    receipt.counts.bytes = (first.len() + second.len()) as u64;
+    receipt.result_digests = vec![
+        digest("result.first", &first),
+        digest("result.second", &second),
+    ];
+    receipt.local_artifacts = vec![
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.first".to_string(),
+            media_type: GEO_RUN_JSON_MEDIA_TYPE.to_string(),
+            byte_count: first.len() as u64,
+            digest: digest("artifact.first", &first),
+        },
+        GeoLocalArtifactDigest {
+            artifact_id: "artifact.second".to_string(),
+            media_type: GEO_RUN_JSON_MEDIA_TYPE.to_string(),
+            byte_count: second.len() as u64,
+            digest: digest("artifact.second", &second),
+        },
+    ];
+    receipt.artifact_release_relations = vec![
+        artifact_release_relation("artifact.first", &request.releases[0]),
+        artifact_release_relation("artifact.second", &request.releases[1]),
+    ];
+    write_json(&receipt_path, &receipt);
+
+    let satisfaction = satisfy_geo_acquisition(GeoSatisfactionInput {
+        plan: &plan_with_acquisition(request.clone()),
+        inventory: Some(&inventory_for_request(&request)),
+        assignment: GeoSatisfactionAssignment {
+            request_id: request.request_id.clone(),
+            receipt_path,
+        },
+        local_artifact_files: vec![
+            file_binding("artifact.first", &first_path),
+            file_binding("artifact.second", &second_path),
+        ],
+        result_digest_files: Vec::new(),
+    })
+    .expect("truncated receipt remains a typed diagnostic");
+
+    assert_eq!(satisfaction.status, GeoSatisfactionStatus::NotSatisfied);
+    assert!(satisfaction.bindings.is_empty());
+    assert!(satisfaction.inventory_advancement.is_none());
+    assert!(satisfaction.updated_inventory.is_none());
+    assert!(satisfaction.findings.iter().any(|finding| {
+        finding.code == GeoSatisfactionFindingCode::Partial
+            && finding.detail.get("rows_truncated").map(String::as_str) == Some("true")
+    }));
+}
+
+#[test]
+fn retained_zero_row_receipt_is_typed_proof_not_inventory_advancement() {
+    let dir = tempdir().expect("tempdir");
+    let data_path = dir.path().join("zero-rows.jsonl");
+    let receipt_path = dir.path().join("receipt.json");
+    let data = b"";
+    std::fs::write(&data_path, data).expect("write retained zero-row data");
+
+    let request = acquisition_request(data);
+    let mut receipt = acquisition_receipt(&request, data, GeoAcquisitionTerminalState::ZeroRows);
+    receipt.proof_class = GeoAcquisitionProofClass::Retained;
+    receipt.retained_receipt_id = Some("retained:zero-row-proof".to_string());
+    write_json(&receipt_path, &receipt);
+
+    let satisfaction = satisfy_geo_acquisition(GeoSatisfactionInput {
+        plan: &plan_with_acquisition(request.clone()),
+        inventory: Some(&inventory_for_request(&request)),
+        assignment: GeoSatisfactionAssignment {
+            request_id: request.request_id.clone(),
+            receipt_path,
+        },
+        local_artifact_files: vec![file_binding("artifact.rows", &data_path)],
+        result_digest_files: Vec::new(),
+    })
+    .expect("retained zero rows remain a valid receipt finding");
+
+    assert_eq!(satisfaction.status, GeoSatisfactionStatus::NotSatisfied);
+    assert_eq!(
+        satisfaction
+            .receipt_execution
+            .retained_receipt_id
+            .as_deref(),
+        Some("retained:zero-row-proof")
+    );
+    assert!(satisfaction.bindings.is_empty());
+    assert!(satisfaction.inventory_advancement.is_none());
+    assert!(satisfaction.updated_inventory.is_none());
+    assert!(satisfaction.findings.iter().any(|finding| {
+        finding.code == GeoSatisfactionFindingCode::ZeroRows
+            && finding.detail.get("rows").map(String::as_str) == Some("0")
+    }));
+}
+
+#[test]
 fn live_untyped_jsonl_satisfies_receipt_but_cannot_advance_inventory() {
     let dir = tempdir().expect("tempdir");
     let data_path = dir.path().join("rows.jsonl");
@@ -1130,6 +1356,7 @@ fn acquisition_receipt(
             byte_count: bytes.len() as u64,
             digest: digest("artifact.rows", bytes),
         }],
+        artifact_release_relations: Vec::new(),
         unreadable_columns: if terminal_state == GeoAcquisitionTerminalState::UnreadableColumns {
             vec!["building_footprint".to_string()]
         } else {
@@ -1302,12 +1529,16 @@ fn plan_with_acquisition_and_run_node(request: GeoAcquisitionRequest) -> GeoPlan
 }
 
 fn warehouse_rows_artifact() -> Vec<u8> {
+    warehouse_rows_artifact_for("building-a")
+}
+
+fn warehouse_rows_artifact_for(building_id: &str) -> Vec<u8> {
     serde_json::to_vec(&GeoWarehouseRowsRequest {
         version: CANON_GEO_WAREHOUSE_ROWS_VERSION.to_string(),
         profile: GeoCompositionProfile::building(),
         parcel_rows: Vec::new(),
         building_parcel_rows: vec![GeoWarehouseBuildingParcelRow {
-            building_id: "building-a".to_string(),
+            building_id: building_id.to_string(),
             parcel_id: None,
         }],
         contracts: Vec::new(),

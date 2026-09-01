@@ -9,16 +9,17 @@ use super::{
     CANON_GEO_PLAN_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
     GEO_COMPILE_EVIDENCE_COMMAND, GEO_MATERIALIZE_EVIDENCE_COMMAND,
     GEO_MATERIALIZE_HOME_CELLS_COMMAND, GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID,
-    GEO_RUN_JSON_MEDIA_TYPE, GEO_SOLVE_COMMAND, GEO_TILE_WORK_COMMAND, GeoAcquisitionDenominator,
-    GeoAcquisitionProofClass, GeoAcquisitionReceipt, GeoAcquisitionRequest,
-    GeoAcquisitionTerminalState, GeoBoundedGeography, GeoBoundedSubset, GeoDigest,
-    GeoDigestAlgorithm, GeoDiscoveryError, GeoDiscoveryErrorCode, GeoLocalArtifactDigest,
-    GeoLocalArtifactRef, GeoNativeEntityScope, GeoPlan, GeoPlanAcquisitionHandoff,
-    GeoPlanExternalRequest, GeoRegionalInventory, GeoRegionalSourceInstance, GeoRunInputBinding,
-    GeoSourceAvailability, GeoSourceRelease, GeoSubsetPredicateKind, GeoWarehouseRowsRequest,
-    canonicalize_regional_inventory, geo_acquisition_receipt_satisfies_positive_gate,
-    geo_acquisition_request_id, geo_acquisition_request_semantic_hash, geo_run_input_artifact_id,
-    materialize_warehouse_rows, regional_inventory_planning_hash, regional_inventory_semantic_hash,
+    GEO_RUN_JSON_MEDIA_TYPE, GEO_SOLVE_COMMAND, GEO_TILE_WORK_COMMAND,
+    GeoAcquisitionArtifactReleaseRelation, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
+    GeoAcquisitionReceipt, GeoAcquisitionRequest, GeoAcquisitionTerminalState, GeoBoundedGeography,
+    GeoBoundedSubset, GeoDigest, GeoDigestAlgorithm, GeoDiscoveryError, GeoDiscoveryErrorCode,
+    GeoLocalArtifactDigest, GeoLocalArtifactRef, GeoNativeEntityScope, GeoPlan,
+    GeoPlanAcquisitionHandoff, GeoPlanExternalRequest, GeoRegionalInventory,
+    GeoRegionalSourceInstance, GeoRunInputBinding, GeoSourceAvailability, GeoSourceRelease,
+    GeoSubsetPredicateKind, GeoWarehouseRowsRequest, canonicalize_regional_inventory,
+    geo_acquisition_receipt_satisfies_positive_gate, geo_acquisition_request_id,
+    geo_acquisition_request_semantic_hash, geo_run_input_artifact_id, materialize_warehouse_rows,
+    regional_inventory_planning_hash, regional_inventory_semantic_hash,
     validate_geo_acquisition_receipt, validate_geo_plan,
 };
 use serde::{Deserialize, Serialize};
@@ -46,14 +47,7 @@ pub struct GeoSatisfactionFileBinding {
     pub path: PathBuf,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct GeoSatisfactionArtifactReleaseRelation {
-    pub local_artifact_id: String,
-    pub source_instance_id: String,
-    pub release_id: String,
-    pub release_digest: String,
-}
+pub type GeoSatisfactionArtifactReleaseRelation = GeoAcquisitionArtifactReleaseRelation;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeoSatisfactionInput<'a> {
@@ -1187,6 +1181,26 @@ fn artifact_release_relations(
     local_artifacts: &BTreeMap<String, (GeoLocalArtifactDigest, FileFingerprint)>,
     explicit_relations: &[GeoSatisfactionArtifactReleaseRelation],
 ) -> Result<Option<Vec<GeoSatisfactionArtifactReleaseRelation>>, GeoSatisfyError> {
+    if !receipt.artifact_release_relations.is_empty() {
+        let receipt_relations = validate_artifact_release_relations(
+            request,
+            local_artifacts,
+            &receipt.artifact_release_relations,
+        )?;
+        if !explicit_relations.is_empty() {
+            let supplied =
+                validate_artifact_release_relations(request, local_artifacts, explicit_relations)?;
+            if supplied != receipt_relations {
+                return Err(GeoSatisfyError::new(
+                    GeoSatisfyErrorCode::ReceiptMismatch,
+                    "Geo caller-supplied artifact-release relations do not match the receipt-native relations",
+                    Vec::<(String, String)>::new(),
+                ));
+            }
+        }
+        return Ok(Some(receipt_relations));
+    }
+
     let [release] = receipt.releases.as_slice() else {
         return Ok(None);
     };
@@ -1241,6 +1255,7 @@ fn validate_artifact_release_relations(
         .collect::<BTreeSet<_>>();
     let mut seen_relations = BTreeSet::new();
     let mut release_to_artifact = BTreeMap::<(String, String, String), String>::new();
+    let mut artifact_to_release = BTreeMap::<String, (String, String, String)>::new();
     let mut normalized = Vec::with_capacity(relations.len());
     for relation in relations {
         validate_artifact_release_relation(relation)?;
@@ -1278,7 +1293,7 @@ fn validate_artifact_release_relations(
             ));
         }
         if let Some(existing_artifact_id) =
-            release_to_artifact.insert(key, relation.local_artifact_id.clone())
+            release_to_artifact.insert(key.clone(), relation.local_artifact_id.clone())
             && existing_artifact_id != relation.local_artifact_id
         {
             return Err(GeoSatisfyError::new(
@@ -1288,6 +1303,20 @@ fn validate_artifact_release_relations(
                     ("release_id", relation.release_id.as_str()),
                     ("first_artifact_id", existing_artifact_id.as_str()),
                     ("second_artifact_id", relation.local_artifact_id.as_str()),
+                ],
+            ));
+        }
+        if let Some(existing_release) =
+            artifact_to_release.insert(relation.local_artifact_id.clone(), key.clone())
+            && existing_release != key
+        {
+            return Err(GeoSatisfyError::new(
+                GeoSatisfyErrorCode::ContractMismatch,
+                "Geo artifact-release relations must not reuse one local artifact across releases",
+                [
+                    ("local_artifact_id", relation.local_artifact_id.as_str()),
+                    ("first_release_id", existing_release.1.as_str()),
+                    ("second_release_id", relation.release_id.as_str()),
                 ],
             ));
         }
@@ -1546,51 +1575,55 @@ fn inventory_advancement_artifact_is_usable(
     bindings: &[GeoSatisfactionLocalInputBinding],
     local_artifacts: &BTreeMap<String, (GeoLocalArtifactDigest, FileFingerprint)>,
 ) -> Result<bool, GeoSatisfyError> {
-    let [binding] = bindings else {
-        return Ok(false);
-    };
-    if binding.media_type != GEO_RUN_JSON_MEDIA_TYPE
-        || binding.artifact_contract_version.as_deref() != Some(CANON_GEO_WAREHOUSE_ROWS_VERSION)
-    {
+    if bindings.is_empty() {
         return Ok(false);
     }
-    let Some((_, fingerprint)) = local_artifacts.get(&binding.local_artifact_id) else {
-        return Err(GeoSatisfyError::new(
-            GeoSatisfyErrorCode::MissingFileBinding,
-            "Geo inventory advancement lost its validated local artifact binding",
-            [("local_artifact_id", binding.local_artifact_id.as_str())],
-        ));
-    };
-    let rows: GeoWarehouseRowsRequest =
-        serde_json::from_slice(&fingerprint.bytes).map_err(|error| {
+
+    for binding in bindings {
+        if binding.media_type != GEO_RUN_JSON_MEDIA_TYPE
+            || binding.artifact_contract_version.as_deref()
+                != Some(CANON_GEO_WAREHOUSE_ROWS_VERSION)
+        {
+            return Ok(false);
+        }
+        let Some((_, fingerprint)) = local_artifacts.get(&binding.local_artifact_id) else {
+            return Err(GeoSatisfyError::new(
+                GeoSatisfyErrorCode::MissingFileBinding,
+                "Geo inventory advancement lost its validated local artifact binding",
+                [("local_artifact_id", binding.local_artifact_id.as_str())],
+            ));
+        };
+        let rows: GeoWarehouseRowsRequest =
+            serde_json::from_slice(&fingerprint.bytes).map_err(|error| {
+                GeoSatisfyError::new(
+                    GeoSatisfyErrorCode::ContractMismatch,
+                    "Geo inventory advancement requires a parseable warehouse-row artifact",
+                    [
+                        ("local_artifact_id", binding.local_artifact_id.clone()),
+                        ("error", error.to_string()),
+                    ],
+                )
+            })?;
+        materialize_warehouse_rows(&rows).map_err(|error| {
+            let mut detail = error.detail;
+            detail.insert(
+                "local_artifact_id".to_string(),
+                binding.local_artifact_id.clone(),
+            );
+            detail.insert(
+                "materialization_error_code".to_string(),
+                format!("{:?}", error.code),
+            );
             GeoSatisfyError::new(
                 GeoSatisfyErrorCode::ContractMismatch,
-                "Geo inventory advancement requires a parseable warehouse-row artifact",
-                [
-                    ("local_artifact_id", binding.local_artifact_id.clone()),
-                    ("error", error.to_string()),
-                ],
+                format!(
+                    "Geo inventory advancement requires a usable warehouse-row artifact: {}",
+                    error.message
+                ),
+                detail,
             )
         })?;
-    materialize_warehouse_rows(&rows).map_err(|error| {
-        let mut detail = error.detail;
-        detail.insert(
-            "local_artifact_id".to_string(),
-            binding.local_artifact_id.clone(),
-        );
-        detail.insert(
-            "materialization_error_code".to_string(),
-            format!("{:?}", error.code),
-        );
-        GeoSatisfyError::new(
-            GeoSatisfyErrorCode::ContractMismatch,
-            format!(
-                "Geo inventory advancement requires a usable warehouse-row artifact: {}",
-                error.message
-            ),
-            detail,
-        )
-    })?;
+    }
     Ok(true)
 }
 
