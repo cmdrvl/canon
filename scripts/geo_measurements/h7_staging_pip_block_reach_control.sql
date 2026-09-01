@@ -12,6 +12,7 @@
 --
 -- Byte-substitute only:
 --   '__BD7BCP_H7_ACCEPTED_TRUTH_QUERY_ID__'
+--   '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'
 
 WITH
 params AS (
@@ -20,8 +21,15 @@ params AS (
       AS accepted_truth_query_id,
     'h7_staging_accepted_truth_row.v0'::TEXT
       AS expected_accepted_truth_contract,
-    '3aed6660-ce1c-46a9-aeb2-7296c134ce8f'::TEXT AS bridge_build_id,
+    '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'::TEXT AS bridge_build_id,
     200::NUMBER(38,0) AS accepted_truth_row_cap
+),
+sentinel_markers AS (
+  SELECT
+    ('__BD7BCP_H7_' || 'ACCEPTED_TRUTH_QUERY_ID__')::TEXT
+      AS accepted_truth_query_id_unbound_marker,
+    ('__BD7BCP_H7_' || 'CURRENT_BRIDGE_BUILD_ID__')::TEXT
+      AS bridge_build_id_unbound_marker
 ),
 release_pins AS (
   SELECT * FROM VALUES
@@ -50,7 +58,16 @@ accepted_stats AS (
 guard_failures AS (
   SELECT failure_reason
   FROM (
-    SELECT 'accepted_truth_result_empty' AS failure_reason,
+    SELECT 'accepted_truth_query_id_sentinel_unsubstituted' AS failure_reason,
+      (SELECT accepted_truth_query_id FROM params)
+        = (SELECT accepted_truth_query_id_unbound_marker
+           FROM sentinel_markers) AS failed
+    UNION ALL
+    SELECT 'bridge_build_id_sentinel_unsubstituted',
+      (SELECT bridge_build_id FROM params)
+        = (SELECT bridge_build_id_unbound_marker FROM sentinel_markers)
+    UNION ALL
+    SELECT 'accepted_truth_result_empty',
       (SELECT accepted_rows FROM accepted_stats) = 0 AS failed
     UNION ALL
     SELECT 'accepted_truth_result_exceeds_bound',
@@ -78,7 +95,8 @@ guard_failures AS (
 guard_summary AS (
   SELECT
     IFF(COUNT(*) = 0, 'ok', 'refused') AS guard_status,
-    MIN(failure_reason) AS refusal_reason
+    LISTAGG(failure_reason, '|') WITHIN GROUP (ORDER BY failure_reason)
+      AS refusal_reason
   FROM guard_failures
 ),
 points AS (
@@ -296,6 +314,7 @@ SELECT
   SUM(r.candidate_bbls) AS candidate_bbl_edges
 FROM subject_reach r
 CROSS JOIN guard_summary g
+WHERE g.guard_status = 'ok'
 GROUP BY
   g.guard_status,
   g.refusal_reason,
@@ -304,4 +323,35 @@ GROUP BY
   r.release,
   r.release_dt,
   r.variant
-ORDER BY r.truth_plane, r.association_plane, r.release;
+
+UNION ALL
+
+SELECT
+  (SELECT guard_status FROM guard_summary) AS guard_status,
+  (SELECT refusal_reason FROM guard_summary) AS refusal_reason,
+  (SELECT accepted_truth_query_id FROM params) AS accepted_truth_query_id,
+  'all_release_parcels_sharing_six_digit_block_with_address_blind_pip'
+    AS candidate_selector,
+  'guard_failure'::TEXT AS truth_plane,
+  NULL::TEXT AS association_plane,
+  NULL::TEXT AS release,
+  NULL::DATE AS release_dt,
+  NULL::TEXT AS variant,
+  0::NUMBER(38,0) AS accepted_subjects,
+  0::NUMBER(38,0) AS property_points,
+  0::NUMBER(38,0) AS pip_reached_points,
+  0::NUMBER(38,0) AS pip_block_edges,
+  0::NUMBER(38,0) AS no_pip_subjects,
+  0::NUMBER(38,0) AS full_reach_subjects,
+  0::NUMBER(38,0) AS partial_reach_subjects,
+  0::NUMBER(38,0) AS no_reach_subjects,
+  0::NUMBER(38,0) AS reach_accounting_failures,
+  0::NUMBER(38,0) AS truth_bbl_edges,
+  0::NUMBER(38,0) AS reached_truth_bbl_edges,
+  0::NUMBER(38,0) AS min_candidate_bbls,
+  0::NUMBER(38,0) AS median_candidate_bbls,
+  0::NUMBER(38,0) AS p90_candidate_bbls,
+  0::NUMBER(38,0) AS max_candidate_bbls,
+  0::NUMBER(38,0) AS candidate_bbl_edges
+WHERE (SELECT guard_status FROM guard_summary) <> 'ok'
+ORDER BY 5, 6, 7;

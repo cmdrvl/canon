@@ -22,8 +22,13 @@
 --
 -- Byte-substitute only:
 --   '__BD7BCP_H7_PIP_BLOCK_POPULATION_QUERY_ID__'
+--   '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'
 --
--- Positive input control:
+-- Current forward runs derive expected subject and release-row counts from the
+-- upstream PIP-block population RESULT_SCAN. The historical 71-subject /
+-- 142-release-row denominator is retained below only as an archived receipt.
+--
+-- Archived positive input control:
 -- * 01c6c174-0821-aa0e-006c-c703088dc742 produced 142 successful
 --   h7_staging_pip_block_population_export_row.v0 release rows from 71
 --   accepted H7 subjects.
@@ -39,7 +44,7 @@ params AS (
       AS output_row_contract,
     'h7_derived_source_record_payload.v0'::TEXT AS payload_contract,
     'derived_immutable_evidence_record'::TEXT AS source_record_class,
-    '3aed6660-ce1c-46a9-aeb2-7296c134ce8f'::TEXT AS bridge_build_id,
+    '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'::TEXT AS bridge_build_id,
     '2026-08-10'::DATE AS expected_acris_release_dt,
     'NY'::TEXT AS expected_property_state,
     'nyc_filed_collateral_slice'::TEXT AS collateral_scope,
@@ -47,9 +52,6 @@ params AS (
       AS amount_cents_quantization,
     'nyc_dcp_mappluto_geometry_evidence.v3'::TEXT
       AS mappluto_geometry_contract_version,
-    71::NUMBER(38,0) AS expected_accepted_loans,
-    2::NUMBER(38,0) AS expected_release_count,
-    142::NUMBER(38,0) AS expected_release_rows,
     200::NUMBER(38,0) AS input_row_cap,
     200::NUMBER(38,0) AS output_row_cap,
     2000::NUMBER(38,0) AS candidate_bbl_cap_per_release_row,
@@ -60,7 +62,9 @@ params AS (
 sentinel_markers AS (
   SELECT
     ('__BD7BCP_H7_' || 'PIP_BLOCK_POPULATION_QUERY_ID__')::TEXT
-      AS pip_block_population_query_id_unbound_marker
+      AS pip_block_population_query_id_unbound_marker,
+    ('__BD7BCP_H7_' || 'CURRENT_BRIDGE_BUILD_ID__')::TEXT
+      AS bridge_build_id_unbound_marker
 ),
 population_scan AS (
   SELECT *
@@ -207,6 +211,27 @@ input_stats AS (
         OR lender_party_type IS NULL))
       AS missing_round_party_rows
   FROM accepted
+),
+input_subject_release_coverage AS (
+  SELECT
+    MIN(release_rows_per_subject) AS min_release_rows_per_subject,
+    MAX(release_rows_per_subject) AS max_release_rows_per_subject,
+    MIN(distinct_release_pins_per_subject)
+      AS min_distinct_release_pins_per_subject,
+    MAX(distinct_release_pins_per_subject)
+      AS max_distinct_release_pins_per_subject
+  FROM (
+    SELECT
+      loan_key,
+      truth_plane,
+      association_plane,
+      COUNT(*) AS release_rows_per_subject,
+      COUNT(DISTINCT mappluto_release || '|'
+        || TO_VARCHAR(mappluto_release_dt) || '|' || mappluto_variant)
+        AS distinct_release_pins_per_subject
+    FROM accepted
+    GROUP BY loan_key, truth_plane, association_plane
+  )
 ),
 point_source_ids AS (
   SELECT DISTINCT
@@ -978,6 +1003,27 @@ output_stats AS (
       AS nonzero_candidate_missing_mappluto_rows
   FROM row_outputs
 ),
+output_subject_release_coverage AS (
+  SELECT
+    MIN(release_rows_per_subject) AS min_release_rows_per_subject,
+    MAX(release_rows_per_subject) AS max_release_rows_per_subject,
+    MIN(distinct_release_pins_per_subject)
+      AS min_distinct_release_pins_per_subject,
+    MAX(distinct_release_pins_per_subject)
+      AS max_distinct_release_pins_per_subject
+  FROM (
+    SELECT
+      loan_key,
+      truth_plane,
+      association_plane,
+      COUNT(*) AS release_rows_per_subject,
+      COUNT(DISTINCT mappluto_release || '|'
+        || TO_VARCHAR(mappluto_release_dt) || '|' || mappluto_variant)
+        AS distinct_release_pins_per_subject
+    FROM row_outputs
+    GROUP BY loan_key, truth_plane, association_plane
+  )
+),
 guard_failures AS (
   SELECT failure_reason
   FROM (
@@ -987,6 +1033,10 @@ guard_failures AS (
         = (SELECT pip_block_population_query_id_unbound_marker
            FROM sentinel_markers) AS failed
     UNION ALL
+    SELECT 'bridge_build_id_sentinel_unsubstituted',
+      (SELECT bridge_build_id FROM params)
+        = (SELECT bridge_build_id_unbound_marker FROM sentinel_markers)
+    UNION ALL
     SELECT 'input_result_empty',
       (SELECT input_release_rows FROM input_stats) = 0
     UNION ALL
@@ -994,21 +1044,31 @@ guard_failures AS (
       (SELECT input_release_rows FROM input_stats)
         > (SELECT input_row_cap FROM params)
     UNION ALL
-    SELECT 'input_release_row_count_not_142',
+    SELECT 'input_subject_release_row_count_mismatch',
       (SELECT input_release_rows FROM input_stats)
-        <> (SELECT expected_release_rows FROM params)
-    UNION ALL
-    SELECT 'input_accepted_loan_count_not_71',
-      (SELECT accepted_loans FROM input_stats)
-        <> (SELECT expected_accepted_loans FROM params)
+        <> (SELECT accepted_loans FROM input_stats)
+          * (SELECT distinct_release_pins FROM input_stats)
     UNION ALL
     SELECT 'input_duplicate_subject_release',
       (SELECT input_release_rows FROM input_stats)
         <> (SELECT distinct_release_rows FROM input_stats)
     UNION ALL
-    SELECT 'input_release_pin_count_mismatch',
-      (SELECT distinct_release_pins FROM input_stats)
-        <> (SELECT expected_release_count FROM params)
+    SELECT 'input_release_pin_count_empty',
+      (SELECT distinct_release_pins FROM input_stats) = 0
+    UNION ALL
+    SELECT 'input_subject_release_coverage_mismatch',
+      (SELECT min_release_rows_per_subject
+       FROM input_subject_release_coverage)
+        <> (SELECT distinct_release_pins FROM input_stats)
+        OR (SELECT max_release_rows_per_subject
+            FROM input_subject_release_coverage)
+          <> (SELECT distinct_release_pins FROM input_stats)
+        OR (SELECT min_distinct_release_pins_per_subject
+            FROM input_subject_release_coverage)
+          <> (SELECT distinct_release_pins FROM input_stats)
+        OR (SELECT max_distinct_release_pins_per_subject
+            FROM input_subject_release_coverage)
+          <> (SELECT distinct_release_pins FROM input_stats)
     UNION ALL
     SELECT 'input_contract_mismatch',
       (SELECT input_contract_mismatch_rows FROM input_stats) <> 0
@@ -1049,17 +1109,31 @@ guard_failures AS (
     SELECT 'input_missing_round_party_source',
       (SELECT missing_round_party_rows FROM input_stats) <> 0
     UNION ALL
-    SELECT 'output_row_count_not_142',
+    SELECT 'output_row_count_mismatch',
       (SELECT output_release_rows FROM output_stats)
-        <> (SELECT expected_release_rows FROM params)
+        <> (SELECT input_release_rows FROM input_stats)
     UNION ALL
     SELECT 'output_row_count_exceeds_bound',
       (SELECT output_release_rows FROM output_stats)
         > (SELECT output_row_cap FROM params)
     UNION ALL
-    SELECT 'output_accepted_loan_count_not_71',
+    SELECT 'output_accepted_loan_count_mismatch',
       (SELECT output_accepted_loans FROM output_stats)
-        <> (SELECT expected_accepted_loans FROM params)
+        <> (SELECT accepted_loans FROM input_stats)
+    UNION ALL
+    SELECT 'output_subject_release_coverage_mismatch',
+      (SELECT min_release_rows_per_subject
+       FROM output_subject_release_coverage)
+        <> (SELECT distinct_release_pins FROM input_stats)
+        OR (SELECT max_release_rows_per_subject
+            FROM output_subject_release_coverage)
+          <> (SELECT distinct_release_pins FROM input_stats)
+        OR (SELECT min_distinct_release_pins_per_subject
+            FROM output_subject_release_coverage)
+          <> (SELECT distinct_release_pins FROM input_stats)
+        OR (SELECT max_distinct_release_pins_per_subject
+            FROM output_subject_release_coverage)
+          <> (SELECT distinct_release_pins FROM input_stats)
     UNION ALL
     SELECT 'output_duplicate_subject_release',
       (SELECT output_release_rows FROM output_stats)
@@ -1106,7 +1180,8 @@ guard_failures AS (
 guard_summary AS (
   SELECT
     IFF(COUNT(*) = 0, 'ok', 'refused') AS guard_status,
-    MIN(failure_reason) AS refusal_reason
+    LISTAGG(failure_reason, '|') WITHIN GROUP (ORDER BY failure_reason)
+      AS refusal_reason
   FROM guard_failures
 ),
 guard_output AS (

@@ -15,11 +15,12 @@
 --
 -- Byte-substitute only:
 --   '__BD7BCP_H7_ACCEPTED_TRUTH_QUERY_ID__'
+--   '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'
 --
--- Expected positive control: accepted truth query 01c6bfda-0821-a0dc-006c-c703088d161e
--- exported 71 accepted multi-BBL loan rows, so this query should emit 142
--- release rows when the RESULT_SCAN is still available and the warehouse
--- snapshots remain unchanged.
+-- Current forward runs derive expected subject and release-row counts from the
+-- accepted truth RESULT_SCAN and the explicit release_pins CTE. The historical
+-- 71-subject / 142-release-row denominator is retained below only as an
+-- archived receipt for that specific prior query.
 --
 -- Positive compact export receipt:
 -- * 01c6c150-0821-a0dc-006c-c703088daab2, 39.975s, 142 rows
@@ -42,7 +43,7 @@ params AS (
       AS expected_accepted_truth_contract,
     'h7_staging_pip_block_population_export_row.v0'::TEXT
       AS output_row_contract,
-    '3aed6660-ce1c-46a9-aeb2-7296c134ce8f'::TEXT AS bridge_build_id,
+    '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'::TEXT AS bridge_build_id,
     '2026-08-10'::DATE AS acris_release_dt,
     'NY'::TEXT AS property_state,
     'nyc_filed_collateral_slice'::TEXT AS collateral_scope,
@@ -50,9 +51,6 @@ params AS (
       AS amount_cents_quantization,
     10000000::NUMBER(38,0) AS round_amount_lattice_cents,
     45::NUMBER(9,0) AS max_recording_offset_days,
-    71::NUMBER(38,0) AS expected_accepted_loans,
-    2::NUMBER(38,0) AS expected_release_count,
-    142::NUMBER(38,0) AS expected_export_rows,
     200::NUMBER(38,0) AS accepted_truth_row_cap,
     200::NUMBER(38,0) AS export_row_cap,
     2000::NUMBER(38,0) AS candidate_bbl_cap_per_release_row
@@ -60,7 +58,9 @@ params AS (
 sentinel_markers AS (
   SELECT
     ('__BD7BCP_H7_' || 'ACCEPTED_TRUTH_QUERY_ID__')::TEXT
-      AS accepted_truth_query_id_unbound_marker
+      AS accepted_truth_query_id_unbound_marker,
+    ('__BD7BCP_H7_' || 'CURRENT_BRIDGE_BUILD_ID__')::TEXT
+      AS bridge_build_id_unbound_marker
 ),
 release_pins AS (
   SELECT
@@ -537,6 +537,27 @@ export_stats AS (
       AS invalid_26v2_release_dt_rows
   FROM export_rows
 ),
+export_subject_release_coverage AS (
+  SELECT
+    MIN(release_rows_per_subject) AS min_release_rows_per_subject,
+    MAX(release_rows_per_subject) AS max_release_rows_per_subject,
+    MIN(distinct_release_pins_per_subject)
+      AS min_distinct_release_pins_per_subject,
+    MAX(distinct_release_pins_per_subject)
+      AS max_distinct_release_pins_per_subject
+  FROM (
+    SELECT
+      loan_key,
+      truth_plane,
+      association_plane,
+      COUNT(*) AS release_rows_per_subject,
+      COUNT(DISTINCT mappluto_release || '|'
+        || TO_VARCHAR(mappluto_release_dt) || '|' || mappluto_variant)
+        AS distinct_release_pins_per_subject
+    FROM export_rows
+    GROUP BY loan_key, truth_plane, association_plane
+  )
+),
 reach_denominators AS (
   SELECT
     truth_plane,
@@ -589,9 +610,13 @@ guard_failures AS (
         = (SELECT accepted_truth_query_id_unbound_marker
            FROM sentinel_markers) AS failed
     UNION ALL
-    SELECT 'release_pin_count_mismatch',
+    SELECT 'bridge_build_id_sentinel_unsubstituted',
+      (SELECT bridge_build_id FROM params)
+        = (SELECT bridge_build_id_unbound_marker FROM sentinel_markers)
+    UNION ALL
+    SELECT 'release_pin_count_empty',
       (SELECT release_pin_rows FROM release_pin_stats)
-        <> (SELECT expected_release_count FROM params)
+        = 0
     UNION ALL
     SELECT 'duplicate_release_pin',
       (SELECT release_pin_rows FROM release_pin_stats)
@@ -603,10 +628,6 @@ guard_failures AS (
     SELECT 'accepted_truth_result_exceeds_bound',
       (SELECT accepted_rows FROM accepted_stats)
         > (SELECT accepted_truth_row_cap FROM params)
-    UNION ALL
-    SELECT 'accepted_truth_result_not_expected_71',
-      (SELECT accepted_rows FROM accepted_stats)
-        <> (SELECT expected_accepted_loans FROM params)
     UNION ALL
     SELECT 'accepted_truth_repeats_loan',
       (SELECT accepted_rows FROM accepted_stats)
@@ -653,7 +674,8 @@ guard_failures AS (
     UNION ALL
     SELECT 'export_row_count_mismatch',
       (SELECT export_rows FROM export_stats)
-        <> (SELECT expected_export_rows FROM params)
+        <> (SELECT accepted_loans FROM accepted_stats)
+          * (SELECT release_pin_rows FROM release_pin_stats)
     UNION ALL
     SELECT 'export_row_count_exceeds_bound',
       (SELECT export_rows FROM export_stats)
@@ -665,7 +687,21 @@ guard_failures AS (
     UNION ALL
     SELECT 'export_accepted_loan_count_mismatch',
       (SELECT export_accepted_loans FROM export_stats)
-        <> (SELECT expected_accepted_loans FROM params)
+        <> (SELECT accepted_loans FROM accepted_stats)
+    UNION ALL
+    SELECT 'export_subject_release_coverage_mismatch',
+      (SELECT min_release_rows_per_subject
+       FROM export_subject_release_coverage)
+        <> (SELECT release_pin_rows FROM release_pin_stats)
+        OR (SELECT max_release_rows_per_subject
+            FROM export_subject_release_coverage)
+          <> (SELECT release_pin_rows FROM release_pin_stats)
+        OR (SELECT min_distinct_release_pins_per_subject
+            FROM export_subject_release_coverage)
+          <> (SELECT release_pin_rows FROM release_pin_stats)
+        OR (SELECT max_distinct_release_pins_per_subject
+            FROM export_subject_release_coverage)
+          <> (SELECT release_pin_rows FROM release_pin_stats)
     UNION ALL
     SELECT 'candidate_bbl_count_mismatch',
       (SELECT candidate_bbl_count_mismatch_rows FROM export_stats) <> 0
@@ -715,13 +751,23 @@ guard_failures AS (
             + no_reach_release_rows FROM whole_denominator)
         OR (SELECT reached_truth_bbl_edges FROM whole_denominator)
           > (SELECT truth_bbl_edges FROM whole_denominator)
+    UNION ALL
+    SELECT 'whole_subject_release_row_count_mismatch',
+      (SELECT release_rows FROM whole_denominator)
+        <> (SELECT accepted_loans FROM accepted_stats)
+          * (SELECT release_pin_rows FROM release_pin_stats)
+    UNION ALL
+    SELECT 'whole_accepted_loan_count_mismatch',
+      (SELECT accepted_loans FROM whole_denominator)
+        <> (SELECT accepted_loans FROM accepted_stats)
   )
   WHERE failed
 ),
 guard_summary AS (
   SELECT
     IFF(COUNT(*) = 0, 'ok', 'refused') AS guard_status,
-    MIN(failure_reason) AS refusal_reason
+    LISTAGG(failure_reason, '|') WITHIN GROUP (ORDER BY failure_reason)
+      AS refusal_reason
   FROM guard_failures
 ),
 guard_output AS (

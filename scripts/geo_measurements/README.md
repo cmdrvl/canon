@@ -194,6 +194,20 @@ bypass used by this measurement.
 
 ## 2026-08-30 H.7 staging-table truth control
 
+Forward H.7 SQL now has an explicit current-build boundary. Before fresh
+execution, substitute every `__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__` placeholder
+with the current `PROPERTY_MART.LOAN_ISSUANCE_PROPERTY` build id selected by
+upstream discovery/control, and preserve the resulting Snowflake query ids at
+each handoff. The historical `3aed...` bridge id and the 71-subject /
+142-release-row counts below are archived receipts for prior runs, not forward
+defaults. Current population exports derive their expected release-row counts
+from the accepted truth/input batch and the pinned release set, then guard the
+subject×release grid directly.
+
+Unless explicitly refreshed, SQL SHA-256 values in this section are historical
+file-state receipts. The bd-7bcp current-build parameterization changes the
+current SQL bytes and is not a file-equivalent live execution receipt.
+
 `h7_staging_denominator_control.sql` uses the release-pinned ACRIS staging
 MASTER/PARTIES/LEGALS tables and keeps the H.7 ordering explicit: candidate
 documents are formed before filed-borough equality is tested against LEGALS.
@@ -304,9 +318,11 @@ reach accounting only, never a monolithic solve. SQL SHA-256:
 `h7_staging_pip_block_population_export.sql` converts the successful accepted-
 truth result into one raw candidate row per subject/release. Query
 `01c6c174-0821-aa0e-006c-c703088dc742` completed in 43,370 ms and returned the
-expected 142 rows for 71 loans × two releases, with zero guard rows and two
-explicit zero-candidate rows. The superseding execution fails closed unless
-the accepted rows remain pinned to ACRIS `2026-08-10` and property state `NY`.
+historical 142 rows for 71 loans × two releases, with zero guard rows and two
+explicit zero-candidate rows. The superseding execution derives that count from
+the accepted truth batch and fails closed unless the accepted rows remain pinned
+to ACRIS `2026-08-10`, property state `NY`, the operator-supplied current
+bridge build id, and a complete subject×release grid.
 It preserves available ACRIS and MapPLUTO
 locators/digests but is not the typed Canon population request and is not a
 solver receipt. A nested-object precursor
@@ -327,11 +343,10 @@ a 1,353-byte maximum record, a 1,804-character maximum base64 record, an
 876,919-byte maximum row payload, and two zero-candidate rows.
 
 The current file additionally projects all eight accepted-plane denominator
-columns needed for adapter drift checks. That projection-only change occurred
-after the live aggregate, so the current SHA-256
-`d806b0949cbcc2dd6a66817529de8efd72cf733cc87f5304d8b19e9e23f174c8`
-is covered by static SQL contract tests but is not described as file-exact live
-execution.
+columns needed for adapter drift checks and now derives expected subject and
+release-row counts from its input batch instead of historical constants. These
+changes occurred after the live aggregate above, so they are covered here only
+by static SQL review and are not described as file-exact live execution.
 
 `canon geo materialize-h7-staging-batch --batch <BATCH.json>` is the offline
 typed handoff for this H.7/NYC profile. It accepts lowercase Canon keys or the
@@ -365,21 +380,12 @@ these checks.
 The historical bridge pin
 `3aed6660-ce1c-46a9-aeb2-7296c134ce8f` now reads as 0 bridge rows / 0
 distinct loans in current `PROPERTY_MART.LOAN_ISSUANCE_PROPERTY`. That is a
-snapshot-retention finding, not permission to replace the pin. The SQL now
-emits `historical_bridge_build_not_retained_in_current_snapshot` plus
-fail-closed truth-plane and population mismatch guards, preserving the two
-expected planes and their retained counts instead of silently returning an
-empty result. A compact live guard check emitted two truth-plane rows and the
-guard failures `accepted_71_population_count_mismatch`,
-`eligible_plane_population_count_mismatch`, and
-`historical_bridge_build_not_retained_in_current_snapshot`; that successful
-MCP response also omitted a Snowflake query ID. The compact check did not run
-the full checked-in SQL and is not a file-equivalent execution receipt. Given
-the zero historical bridge rows, the full SQL's per-plane guards would also
-emit `truth_plane_eligible_count_mismatch` and
-`truth_plane_multi_bbl_count_mismatch`. A fresh file-equivalent run remains
-blocked on restoration or immutable retention of the historical bridge
-snapshot.
+snapshot-retention finding for the prior receipts. The forward
+`h7_e4_consensus_truth_extension.sql` file is now parameterized by
+`__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__`; it fails visibly on an unbound/empty
+bridge build and derives current H.7 denominators instead of preserving the old
+71-subject count as a gate. A fresh file-equivalent run remains required before
+using the edited file as live proof.
 
 The current observed `PROPERTY_MART` build
 `ce3953ac-c2d4-4b48-bf02-29f0cf341389` is a separate live observation:

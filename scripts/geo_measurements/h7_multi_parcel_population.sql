@@ -8,7 +8,10 @@
 --
 -- Coordinator sequence:
 --   1. Before submitting this file, byte-substitute the quoted
---      '__BD7BCP_H7_TRUTH_PLANE__' literal with exactly one selected plane:
+--      '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__' literal with the current
+--      LOAN_ISSUANCE_PROPERTY build id selected by upstream discovery/control,
+--      and byte-substitute '__BD7BCP_H7_TRUTH_PLANE__' with exactly one
+--      selected plane:
 --   'non_round_amount_date_legal_borough'
 --   'round_exact_lender_party'
 --      Run this file separately for each plane and preserve separate query
@@ -30,7 +33,9 @@
 -- warehouse query and the receipt carries that section's content hash.
 --
 -- Load-bearing controls:
--- * Bridge build: 3aed6660-ce1c-46a9-aeb2-7296c134ce8f.
+-- * Bridge build: operator-supplied current build id. Historical receipts may
+--   cite 3aed6660-ce1c-46a9-aeb2-7296c134ce8f; fresh forward runs must not
+--   inherit it silently.
 -- * ACRIS release: RELEASE_DT = 2026-08-10.
 -- * Filed scope is raw PROPERTYSTATE = 'NY' plus raw PROPERTYCOUNTY mapping.
 --   Geocoded COUNTY_FIPS is projected as diagnostic-only metadata.
@@ -82,7 +87,7 @@
 WITH
 params AS (
   SELECT
-    '3aed6660-ce1c-46a9-aeb2-7296c134ce8f'::TEXT AS bridge_build_id,
+    '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'::TEXT AS bridge_build_id,
     '2026-08-10'::DATE AS acris_release_dt,
     'NY'::TEXT AS property_state,
     'nyc_filed_collateral_slice'::TEXT AS collateral_scope,
@@ -93,6 +98,13 @@ params AS (
       AS lender_match_transform,
     '__BD7BCP_H7_TRUTH_PLANE__'::TEXT AS selected_truth_plane,
     3000::NUMBER(38,0) AS max_selected_loan_parameter_rows
+),
+param_sentinel_markers AS (
+  SELECT
+    ('__BD7BCP_H7_' || 'CURRENT_BRIDGE_BUILD_ID__')::TEXT
+      AS bridge_build_id_unbound_marker,
+    ('__BD7BCP_H7_' || 'TRUTH_PLANE__')::TEXT
+      AS truth_plane_unbound_marker
 ),
 filed_county_map AS (
   SELECT * FROM VALUES
@@ -316,6 +328,17 @@ loan_parameter_array_export AS (
 loan_parameter_guard_failures AS (
   SELECT failure_reason
   FROM (
+    SELECT
+      'bridge_build_id_sentinel_unsubstituted' AS failure_reason,
+      (SELECT bridge_build_id FROM params)
+        = (SELECT bridge_build_id_unbound_marker
+           FROM param_sentinel_markers) AS failed
+    UNION ALL
+    SELECT
+      'truth_plane_sentinel_unsubstituted',
+      (SELECT selected_truth_plane FROM params)
+        = (SELECT truth_plane_unbound_marker FROM param_sentinel_markers)
+    UNION ALL
     SELECT
       'invalid_selected_truth_plane' AS failure_reason,
       (SELECT selected_truth_plane FROM params) NOT IN (

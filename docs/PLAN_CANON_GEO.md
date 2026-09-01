@@ -2114,7 +2114,7 @@ strong. Retain its measurements for sensitivity only; H.7 controls truth admissi
 ## H.7 Filed-county lender/party rebuild — controlling ACRIS measurement
 
 Measured 2026-08-28 through the repaired live MCP path, after catalog discovery and table
-description. The bridge snapshot is pinned to build
+description. The retained measurement used bridge build
 `3aed6660-ce1c-46a9-aeb2-7296c134ce8f`; ACRIS is pinned to `RELEASE_DT = 2026-08-10`;
 MapPLUTO is scored separately at `26v1 / 2026-05-01 / shoreline_clipped` and
 `26v2 / 2026-08-01 / shoreline_clipped`. The truth gate maps the latest raw filed
@@ -2122,6 +2122,14 @@ MapPLUTO is scored separately at `26v1 / 2026-05-01 / shoreline_clipped` and
 `PROPERTYSTATE = 'NY'` from the same source. Missing or unrecognized filed counties
 abstain, and same-named counties outside New York do not enter H.7. Geocoder-derived
 county is not admitted to truth selection.
+
+The bridge build identifies the source snapshot used by that measurement; it is not a
+permanent Canon runtime dependency and does not require retention of the entire historical
+loan universe. A forward live run explicitly selects an available build and immediately
+materializes the bounded accepted cohort, source rows, release pins, selection rule, and
+denominators into a content-bound artifact. Replaying a retained measurement uses that
+bounded artifact. Selecting a newer build creates a new cohort and cannot be described as
+a reproduction of the older one without key-for-key retained evidence.
 
 Fresh control `01c6bd17-0821-a0dc-006c-c703088c2796` (197 ms, 7 rows) reproduced
 the 2,974-loan filed-state/county universe exactly: 653 non-round plus 2,321
@@ -2195,16 +2203,40 @@ bytes in this offline materializer. The checked in-repo fixture remains
 separate property-key stratum; neither the 49 retained subjects nor the 98
 release-run rows satisfy the frozen E4 target of 79 genuine cases.
 
-The fresh denominator control finds 35 non-round plus 36 round uniquely
-accepted multi-BBL subjects, or 71. The accepted-truth handoff now materializes
-all 71 with row-level source records and hashes, but this becomes a
-`live_complete` population only after candidate reach and both MapPLUTO
-releases are added. Fourteen of the 15 existing Gate V2 loans are inside those
+The 2026-08-30 denominator control found 35 non-round plus 36 round uniquely
+accepted multi-BBL subjects, or 71. That count is an observation about its declared
+snapshot, not the definition of `live_complete`. `live_complete` means the supplied
+nonempty cohort completely reconciles its own build-bound plane denominators and contains
+exactly one row for every selected subject and pinned candidate release, with live receipts
+and immutable supporting records. The accepted-truth handoff materialized the observed 71
+with row-level source records and hashes, but that historical execution becomes a
+`live_complete` artifact only after candidate reach and both MapPLUTO releases are added.
+Fourteen of the 15 existing Gate V2 loans are inside those
 71; one is outside, and the two H.4 extension cases carry no H.7 loan key.
 Their maximum currently demonstrated union is therefore 74, not 88. The
 frozen 79-case gate remains short by five genuine, non-duplicate cases; it must
 not be passed by counting release rows, duplicate truth planes, or
 retained/live replays twice.
+
+A fresh 2026-09-01 control against available bridge build
+`ce3953ac-c2d4-4b48-bf02-29f0cf341389` read 51,778 bridge rows and again selected
+35 non-round plus 36 round multi-BBL subjects. Its plane denominators were independently
+reconciled: non-round 652 eligible / 262 candidate / 221 legal-confirmed / 172 accepted /
+49 ambiguous / 41 candidate-without-legal / 390 no-candidate; round 2,323 / 312 / 307 /
+271 / 36 / 5 / 2,011. The MCP success envelope still omitted a Snowflake query id, so this
+is a fresh snapshot-relative denominator control, not a durable source-record export or a
+completed `live_complete` artifact. The unavailable historical bridge build is therefore
+not a forward blocker; immediate bounded materialization and retrievable execution identity
+remain the missing handoff.
+
+The parameterized checked-in `h7_staging_truth_export.sql` then returned 71 non-guard
+`h7_staging_accepted_truth_row.v0` rows for that same current build: the first and last rows
+carried the declared build id, the separate 35/36 plane denominators, and
+`whole_export_rows = 71`. This proves the current build can produce the bounded row-level
+accepted-truth cohort without historical warehouse retention. The MCP envelope again
+returned `query_id = null`; the export does not yet include the two MapPLUTO candidate
+releases or the final immutable source-record byte wrappers, so it is not presented as a
+typed `live_complete` population or E4 proof.
 
 The following point-grain PIP table remains the archived 35+14 scored cohort;
 the 22 newly admitted round multi-BBL subjects have not been scored and are not

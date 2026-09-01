@@ -16,11 +16,13 @@
 -- the query id, and report admitted subject counts separately by truth plane.
 -- Fewer than five genuinely new subjects is a valid negative finding.
 --
--- Retention guard: the historical bridge build id below is intentionally not
--- replaced by a newer PROPERTY_MART build. If that build is no longer retained
--- in the current warehouse snapshot, this query must emit explicit guard
--- failures rather than treating a current build as equivalent or silently
--- returning zero rows.
+-- Byte-substitute only:
+--   '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'
+--
+-- Current-build boundary: before fresh forward execution, byte-substitute the
+-- placeholder with the current LOAN_ISSUANCE_PROPERTY build id selected by
+-- upstream discovery/control. Historical receipt denominators are not forward
+-- gates for this deficit probe.
 
 WITH
 params AS (
@@ -28,7 +30,7 @@ params AS (
     'h7_e4_consensus_truth_extension_row.v0'::TEXT AS row_contract,
     'h7_e4_consensus_document_ambiguous_truth_extension'::TEXT
       AS query_purpose,
-    '3aed6660-ce1c-46a9-aeb2-7296c134ce8f'::TEXT AS bridge_build_id,
+    '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'::TEXT AS bridge_build_id,
     '2026-08-10'::DATE AS acris_release_dt,
     'NY'::TEXT AS property_state,
     'nyc_filed_collateral_slice'::TEXT AS collateral_scope,
@@ -36,9 +38,12 @@ params AS (
       AS amount_cents_quantization,
     10000000::NUMBER(38,0) AS round_amount_lattice_cents,
     45::NUMBER(9,0) AS max_recording_offset_days,
-    2974::NUMBER(38,0) AS expected_h7_eligible_loans,
-    71::NUMBER(38,0) AS expected_h7_accepted_multi_bbl_loans,
     100::NUMBER(38,0) AS consensus_subject_row_cap
+),
+param_sentinel_markers AS (
+  SELECT
+    ('__BD7BCP_H7_' || 'CURRENT_BRIDGE_BUILD_ID__')::TEXT
+      AS bridge_build_id_unbound_marker
 ),
 filed_county_map AS (
   SELECT * FROM VALUES
@@ -75,13 +80,9 @@ known_extension_key_stats AS (
 ),
 expected_truth_planes AS (
   SELECT * FROM VALUES
-    ('non_round_amount_date_legal_borough', 653, 35),
-    ('round_exact_lender_party', 2321, 36)
-  AS p(
-    truth_plane,
-    expected_eligible_loans,
-    expected_accepted_h7_multi_bbl_loans
-  )
+    ('non_round_amount_date_legal_borough'),
+    ('round_exact_lender_party')
+  AS p(truth_plane)
 ),
 bridge_pin_stats AS (
   SELECT
@@ -538,7 +539,7 @@ ambiguous_consensus_classification AS (
     IFF(k.loan_key IS NOT NULL, TRUE, FALSE)
       AS overlaps_known_gate_v2_h4_extension_key,
     CASE
-      WHEN a.loan_key IS NOT NULL THEN 'accepted_71_contamination'
+      WHEN a.loan_key IS NOT NULL THEN 'accepted_h7_contamination'
       WHEN k.loan_key IS NOT NULL THEN 'known_gate_v2_h4_extension_duplicate'
       WHEN l.candidate_without_legal_document_count <> 0 THEN 'missing_legal_rows'
       WHEN l.legal_document_count < 2 THEN 'not_document_ambiguous'
@@ -588,8 +589,8 @@ consensus_summary AS (
     truth_plane,
     COUNT_IF(consensus_disposition = 'admitted_consensus_document_ambiguous')
       AS admitted_consensus_subjects,
-    COUNT_IF(consensus_disposition = 'accepted_71_contamination')
-      AS rejected_accepted_71_contamination_loans,
+    COUNT_IF(consensus_disposition = 'accepted_h7_contamination')
+      AS rejected_accepted_h7_contamination_loans,
     COUNT_IF(consensus_disposition = 'known_gate_v2_h4_extension_duplicate')
       AS rejected_known_extension_duplicate_loans,
     COUNT_IF(consensus_disposition = 'missing_legal_rows')
@@ -625,8 +626,8 @@ plane_denominators AS (
       AS accepted_h7_multi_bbl_loans,
     COALESCE(x.admitted_consensus_subjects, 0)
       AS admitted_consensus_subjects,
-    COALESCE(x.rejected_accepted_71_contamination_loans, 0)
-      AS rejected_accepted_71_contamination_loans,
+    COALESCE(x.rejected_accepted_h7_contamination_loans, 0)
+      AS rejected_accepted_h7_contamination_loans,
     COALESCE(x.rejected_known_extension_duplicate_loans, 0)
       AS rejected_known_extension_duplicate_loans,
     COALESCE(x.rejected_missing_legal_rows_loans, 0)
@@ -651,7 +652,7 @@ plane_denominators AS (
       AS legal_denominator_reconciles,
     COALESCE(a.ambiguous_document_identity_loans, 0)
       = COALESCE(x.admitted_consensus_subjects, 0)
-        + COALESCE(x.rejected_accepted_71_contamination_loans, 0)
+        + COALESCE(x.rejected_accepted_h7_contamination_loans, 0)
         + COALESCE(x.rejected_known_extension_duplicate_loans, 0)
         + COALESCE(x.rejected_missing_legal_rows_loans, 0)
         + COALESCE(x.rejected_not_document_ambiguous_loans, 0)
@@ -670,7 +671,7 @@ output_stats AS (
     COUNT(*) AS consensus_subject_rows,
     COUNT(DISTINCT loan_key) AS distinct_consensus_loans,
     COUNT(DISTINCT loan_key || '|' || truth_plane) AS distinct_consensus_subjects,
-    COUNT_IF(overlaps_accepted_h7_multi_bbl) AS accepted_71_overlap_rows,
+    COUNT_IF(overlaps_accepted_h7_multi_bbl) AS accepted_h7_overlap_rows,
     COUNT_IF(overlaps_known_gate_v2_h4_extension_key) AS known_extension_overlap_rows,
     COUNT_IF(candidate_without_legal_document_count <> 0) AS missing_legal_rows,
     COUNT_IF(legal_document_count < 2) AS under_minimum_document_rows,
@@ -697,7 +698,13 @@ output_stats AS (
 guard_failures AS (
   SELECT failure_reason
   FROM (
-    SELECT 'historical_bridge_build_not_retained_in_current_snapshot'
+    SELECT 'bridge_build_id_sentinel_unsubstituted'
+      AS failure_reason,
+      (SELECT bridge_build_id FROM params)
+        = (SELECT bridge_build_id_unbound_marker
+           FROM param_sentinel_markers) AS failed
+    UNION ALL
+    SELECT 'bridge_build_rows_empty'
       AS failure_reason,
       (SELECT bridge_rows FROM bridge_pin_stats) = 0 AS failed
     UNION ALL
@@ -705,25 +712,21 @@ guard_failures AS (
       (SELECT COUNT(*) FROM plane_denominators)
         <> (SELECT COUNT(*) FROM expected_truth_planes)
     UNION ALL
-    SELECT 'eligible_plane_population_count_mismatch',
-      COALESCE((SELECT SUM(eligible_loans) FROM plane_denominators), 0)
-        <> (SELECT expected_h7_eligible_loans FROM params)
+    SELECT 'eligible_plane_population_empty',
+      COALESCE((SELECT SUM(eligible_loans) FROM plane_denominators), 0) = 0
     UNION ALL
-    SELECT 'truth_plane_eligible_count_mismatch',
+    SELECT 'truth_plane_eligible_empty',
       EXISTS (
         SELECT 1
-        FROM plane_denominators p
-        JOIN expected_truth_planes e USING (truth_plane)
-        WHERE p.eligible_loans <> e.expected_eligible_loans
+        FROM plane_denominators
+        WHERE eligible_loans = 0
       )
     UNION ALL
-    SELECT 'truth_plane_multi_bbl_count_mismatch',
+    SELECT 'truth_plane_accepted_h7_multi_bbl_empty',
       EXISTS (
         SELECT 1
-        FROM plane_denominators p
-        JOIN expected_truth_planes e USING (truth_plane)
-        WHERE p.accepted_h7_multi_bbl_loans
-          <> e.expected_accepted_h7_multi_bbl_loans
+        FROM plane_denominators
+        WHERE accepted_h7_multi_bbl_loans = 0
       )
     UNION ALL
     SELECT 'eligible_denominator_accounting_failure',
@@ -750,11 +753,10 @@ guard_failures AS (
         WHERE NOT ambiguous_consensus_denominator_reconciles
       )
     UNION ALL
-    SELECT 'accepted_71_population_count_mismatch',
+    SELECT 'accepted_h7_multi_bbl_population_empty',
       COALESCE((
         SELECT SUM(accepted_h7_multi_bbl_loans) FROM plane_denominators
-      ), 0)
-        <> (SELECT expected_h7_accepted_multi_bbl_loans FROM params)
+      ), 0) = 0
     UNION ALL
     SELECT 'consensus_subject_row_cap_exceeded',
       (SELECT consensus_subject_rows FROM output_stats)
@@ -768,8 +770,8 @@ guard_failures AS (
       (SELECT distinct_consensus_loans FROM output_stats)
         <> (SELECT distinct_consensus_subjects FROM output_stats)
     UNION ALL
-    SELECT 'accepted_71_contamination',
-      (SELECT accepted_71_overlap_rows FROM output_stats) <> 0
+    SELECT 'accepted_h7_contamination',
+      (SELECT accepted_h7_overlap_rows FROM output_stats) <> 0
     UNION ALL
     SELECT 'known_gate_v2_h4_extension_duplicate',
       (SELECT known_extension_overlap_rows FROM output_stats) <> 0
@@ -843,7 +845,7 @@ summary_output AS (
     p.no_candidate_loans,
     p.accepted_h7_multi_bbl_loans,
     p.admitted_consensus_subjects,
-    p.rejected_accepted_71_contamination_loans,
+    p.rejected_accepted_h7_contamination_loans,
     p.rejected_known_extension_duplicate_loans,
     p.rejected_missing_legal_rows_loans,
     p.rejected_not_document_ambiguous_loans,
@@ -919,7 +921,7 @@ consensus_output AS (
     p.no_candidate_loans,
     p.accepted_h7_multi_bbl_loans,
     p.admitted_consensus_subjects,
-    p.rejected_accepted_71_contamination_loans,
+    p.rejected_accepted_h7_contamination_loans,
     p.rejected_known_extension_duplicate_loans,
     p.rejected_missing_legal_rows_loans,
     p.rejected_not_document_ambiguous_loans,
@@ -997,7 +999,7 @@ guard_output AS (
     NULL::NUMBER(38,0) AS no_candidate_loans,
     NULL::NUMBER(38,0) AS accepted_h7_multi_bbl_loans,
     NULL::NUMBER(38,0) AS admitted_consensus_subjects,
-    NULL::NUMBER(38,0) AS rejected_accepted_71_contamination_loans,
+    NULL::NUMBER(38,0) AS rejected_accepted_h7_contamination_loans,
     NULL::NUMBER(38,0) AS rejected_known_extension_duplicate_loans,
     NULL::NUMBER(38,0) AS rejected_missing_legal_rows_loans,
     NULL::NUMBER(38,0) AS rejected_not_document_ambiguous_loans,

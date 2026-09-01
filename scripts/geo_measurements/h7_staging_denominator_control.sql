@@ -19,15 +19,25 @@
 -- and their precision must never be pooled. Duplicate ACRIS rows are collapsed
 -- at their declared document/party/legal grains and never counted as
 -- independent information.
+--
+-- Current-build boundary: before fresh forward execution, byte-substitute
+-- '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__' with the current
+-- LOAN_ISSUANCE_PROPERTY build id selected by upstream discovery/control.
+-- Retained receipts that cite the old 3aed... build remain historical only.
 
 WITH
 params AS (
   SELECT
-    '3aed6660-ce1c-46a9-aeb2-7296c134ce8f'::TEXT AS bridge_build_id,
+    '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'::TEXT AS bridge_build_id,
     '2026-08-10'::DATE AS acris_release_dt,
     'NY'::TEXT AS property_state,
     10000000::NUMBER(38,0) AS round_amount_lattice_cents,
     45::NUMBER(9,0) AS max_recording_offset_days
+),
+param_sentinel_markers AS (
+  SELECT
+    ('__BD7BCP_H7_' || 'CURRENT_BRIDGE_BUILD_ID__')::TEXT
+      AS bridge_build_id_unbound_marker
 ),
 filed_county_map AS (
   SELECT * FROM VALUES
@@ -68,10 +78,36 @@ bridge_rows AS (
   LEFT JOIN filed_county_map m
     ON UPPER(TRIM(lip.propertycounty)) = m.propertycounty
 ),
+bridge_build_stats AS (
+  SELECT COUNT(*) AS bridge_rows
+  FROM bridge_rows
+),
+guard_failures AS (
+  SELECT failure_reason
+  FROM (
+    SELECT
+      'bridge_build_id_sentinel_unsubstituted' AS failure_reason,
+      (SELECT bridge_build_id FROM params)
+        = (SELECT bridge_build_id_unbound_marker
+           FROM param_sentinel_markers) AS failed
+    UNION ALL
+    SELECT
+      'bridge_build_rows_empty',
+      (SELECT bridge_rows FROM bridge_build_stats) = 0
+  )
+  WHERE failed
+),
+guard_summary AS (
+  SELECT
+    IFF(COUNT(*) = 0, 'ok', 'refused') AS guard_status,
+    MIN(failure_reason) AS refusal_reason
+  FROM guard_failures
+),
 ny_filed_bridge_rows AS (
   SELECT *
   FROM bridge_rows
-  WHERE property_state = (SELECT property_state FROM params)
+  WHERE (SELECT guard_status FROM guard_summary) = 'ok'
+    AND property_state = (SELECT property_state FROM params)
     AND filed_borough IS NOT NULL
 ),
 loan_counts AS (
@@ -268,6 +304,32 @@ accepted_multi_bbl_export AS (
       AS accepted_multi_bbl_subjects
   FROM accepted_multi_bbl_subjects
   GROUP BY truth_plane
+),
+accepted_multi_bbl_total AS (
+  SELECT COUNT(*) AS accepted_multi_bbl_subjects
+  FROM accepted_multi_bbl_subjects
+),
+denominator_guard_failures AS (
+  SELECT failure_reason
+  FROM guard_failures
+
+  UNION ALL
+
+  SELECT failure_reason
+  FROM (
+    SELECT
+      'accepted_multi_bbl_subjects_empty' AS failure_reason,
+      (SELECT accepted_multi_bbl_subjects FROM accepted_multi_bbl_total) = 0
+        AS failed
+  )
+  WHERE failed
+),
+denominator_guard_summary AS (
+  SELECT
+    IFF(COUNT(*) = 0, 'ok', 'refused') AS guard_status,
+    LISTAGG(failure_reason, '|') WITHIN GROUP (ORDER BY failure_reason)
+      AS refusal_reason
+  FROM denominator_guard_failures
 )
 SELECT
   e.truth_plane,
@@ -305,4 +367,30 @@ LEFT JOIN candidate_counts c USING (truth_plane)
 LEFT JOIN legal_counts l USING (truth_plane)
 LEFT JOIN acceptance_counts a USING (truth_plane)
 LEFT JOIN accepted_multi_bbl_export x USING (truth_plane)
-ORDER BY e.truth_plane;
+WHERE (SELECT guard_status FROM denominator_guard_summary) = 'ok'
+
+UNION ALL
+
+SELECT
+  'guard_failure:' || COALESCE(
+    (SELECT refusal_reason FROM denominator_guard_summary),
+    'unknown'
+  ) AS truth_plane,
+  0::NUMBER(38,0) AS eligible_loans,
+  0::NUMBER(38,0) AS originator_text_loans,
+  0::NUMBER(38,0) AS candidate_loans,
+  0::NUMBER(38,0) AS candidate_loan_documents,
+  0::NUMBER(38,0) AS legal_confirmed_candidate_loans,
+  0::NUMBER(38,0) AS legal_confirmed_loan_documents,
+  0::NUMBER(38,0) AS accepted_loans,
+  0::NUMBER(38,0) AS ambiguous_loans,
+  0::NUMBER(38,0) AS candidate_without_legal_loans,
+  0::NUMBER(38,0) AS no_candidate_loans,
+  0::NUMBER(38,0) AS accepted_multi_bbl_loans,
+  0::NUMBER(38,0) AS accepted_bbl_edges,
+  ARRAY_CONSTRUCT() AS accepted_multi_bbl_subjects,
+  FALSE AS eligible_denominator_reconciles,
+  FALSE AS candidate_denominator_reconciles,
+  FALSE AS legal_denominator_reconciles
+WHERE (SELECT guard_status FROM denominator_guard_summary) <> 'ok'
+ORDER BY 1;

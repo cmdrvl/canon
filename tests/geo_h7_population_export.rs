@@ -53,15 +53,17 @@ fn pip_block_export_has_raw_staging_contract_not_canon_population_contract() {
 fn pip_block_export_is_release_pinned_and_one_row_per_subject_release() {
     assert_contains("('26v1', '2026-05-01', 'shoreline_clipped')");
     assert_contains("('26v2', '2026-08-01', 'shoreline_clipped')");
-    assert_contains("71::NUMBER(38,0) AS expected_accepted_loans");
-    assert_contains("2::NUMBER(38,0) AS expected_release_count");
-    assert_contains("142::NUMBER(38,0) AS expected_export_rows");
     assert_contains("200::NUMBER(38,0) AS export_row_cap");
+    assert_contains("COUNT(DISTINCT loan_key) AS accepted_loans");
+    assert_contains("COUNT(*) AS release_pin_rows");
     assert_contains("CROSS JOIN release_pins pin");
     assert_contains("export_duplicate_subject_release");
     assert_contains("export_row_count_mismatch");
+    assert_contains("export_subject_release_coverage_mismatch");
     assert_contains("release_pin_mismatch");
     assert_contains("duplicate_release_pin");
+    assert_not_contains("71::NUMBER(38,0) AS expected_accepted_loans");
+    assert_not_contains("142::NUMBER(38,0) AS expected_export_rows");
 }
 
 #[test]
@@ -127,7 +129,6 @@ fn fail_closed_guards_cover_denominators_uniqueness_caps_and_sources() {
     for guard in [
         "accepted_truth_result_empty",
         "accepted_truth_result_exceeds_bound",
-        "accepted_truth_result_not_expected_71",
         "accepted_truth_repeats_loan",
         "accepted_truth_contract_mismatch",
         "accepted_truth_bridge_build_mismatch",
@@ -140,6 +141,8 @@ fn fail_closed_guards_cover_denominators_uniqueness_caps_and_sources() {
         "export_row_count_mismatch",
         "export_row_count_exceeds_bound",
         "export_duplicate_subject_release",
+        "export_accepted_loan_count_mismatch",
+        "export_subject_release_coverage_mismatch",
         "candidate_bbl_count_mismatch",
         "candidate_source_count_mismatch",
         "candidate_bbl_cap_exceeded",

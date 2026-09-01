@@ -271,6 +271,15 @@ Discovery proceeds from cheap metadata to bounded evidence:
 6. return a typed receipt with query/request id, pagination state, row count, denominator,
    bytes, source/result digests, and proof class.
 
+A source build or release is a semantic selector for one acquisition, not a requirement
+that the warehouse retain every historical universe forever. When a benchmark or answer
+must be replayable, the acquisition boundary must immediately materialize the bounded
+selected cohort and its supporting rows into an immutable, content-bound artifact. Later
+runs may select a newer source build and produce a new artifact. They must not silently
+substitute that build while claiming to reproduce the older run, but forward operation
+must not depend on re-querying an obsolete mutable universe after its bounded artifact has
+been retained.
+
 `ZERO_ROWS`, `TIMEOUT`, `CANCELED`, `PARTIAL`, and `UNREADABLE_COLUMNS` are different
 terminal states. A zero result can be a valid coverage finding; inability to execute is
 not. A gate that needs positive capability may explicitly require a nonzero result.
@@ -616,6 +625,13 @@ different answer.
 
 New evidence creates a new immutable run revision. It never mutates the meaning of a prior
 answer in place.
+
+The same rule applies to evaluation populations. A population-selection query records the
+selected source build, releases, selection rule, denominators, and subject identities, then
+materializes the bounded evaluation cohort. The source build explains that cohort; it does
+not freeze the global source universe or make historical warehouse retention part of
+Canon's runtime. A later build is a new cohort unless key-for-key equivalence is established
+from retained artifacts.
 
 | Change | Minimum invalidation |
 |---|---|

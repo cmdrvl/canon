@@ -93,15 +93,20 @@ fn candidate_ctes_do_not_seed_membership_from_truth_bbls() {
 #[test]
 fn selectors_share_the_same_subject_release_denominator() {
     let sql = lower_sql();
-    assert!(sql.contains("71::number(38,0) as expected_accepted_subjects"));
-    assert!(sql.contains("2::number(38,0) as expected_release_count"));
+    assert!(sql.contains("count(*) as accepted_subjects"));
+    assert!(sql.contains("count(*) as release_pin_rows"));
+    assert!(sql.contains("select 'accepted_subject_count_empty'"));
+    assert!(sql.contains("select 'duplicate_release_pin'"));
     assert!(sql.contains("from subject_releases sr"));
     assert!(sql.contains("cross join candidate_selectors cs"));
     assert!(
-        sql.contains("selector_release_subjects = (select expected_accepted_subjects from params)")
+        sql.contains(
+            "selector_release_subjects = (select accepted_subjects\n                                  from accepted_subject_stats)"
+        )
     );
     assert!(sql.contains("as selector_denominator_guard"));
     assert!(sql.contains("as complete_denominator_guard"));
+    assert!(!sql.contains("71::number(38,0) as expected_accepted_subjects"));
 }
 
 #[test]

@@ -19,6 +19,7 @@
 --        '__BD7BCP_H7_TRUTH_PLANE__'
 --        '__BD7BCP_H7_SHARD_COUNT__'
 --        '__BD7BCP_H7_SHARD_INDEX__'
+--        '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'
 --      Do not rewrite candidate_sentinel_markers; those split marker
 --      expressions are the immutable unbound guards.
 --   3. The release-pinned staging tables precompute amount/date/name fields and
@@ -69,7 +70,7 @@ candidate_params AS (
     TRY_TO_NUMBER('__BD7BCP_H7_SHARD_INDEX__')::NUMBER(38,0) AS shard_index,
     'h7_bridge_loan_parameters.v0'::TEXT AS expected_payload_kind,
     'h7_bridge_loan_parameters.v0'::TEXT AS expected_payload_contract,
-    '3aed6660-ce1c-46a9-aeb2-7296c134ce8f'::TEXT AS bridge_build_id,
+    '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'::TEXT AS bridge_build_id,
     '2026-08-10'::DATE AS acris_release_dt,
     'NY'::TEXT AS property_state,
     'nyc_filed_collateral_slice'::TEXT AS collateral_scope,
@@ -92,7 +93,9 @@ candidate_sentinel_markers AS (
     ('__BD7BCP_H7_' || 'SHARD_COUNT__')::TEXT
       AS shard_count_unbound_marker,
     ('__BD7BCP_H7_' || 'SHARD_INDEX__')::TEXT
-      AS shard_index_unbound_marker
+      AS shard_index_unbound_marker,
+    ('__BD7BCP_H7_' || 'CURRENT_BRIDGE_BUILD_ID__')::TEXT
+      AS bridge_build_id_unbound_marker
 ),
 mortgage_doc_types AS (
   SELECT column1::TEXT AS doc_type
@@ -388,6 +391,12 @@ denominator AS (
 guard_failures AS (
   SELECT failure_reason
   FROM (
+    SELECT
+      'bridge_build_id_sentinel_unsubstituted' AS failure_reason,
+      (SELECT bridge_build_id FROM candidate_params)
+        = (SELECT bridge_build_id_unbound_marker
+           FROM candidate_sentinel_markers) AS failed
+    UNION ALL
     SELECT
       'result_scan_row_count_not_one' AS failure_reason,
       (SELECT result_scan_rows FROM section_stats) <> 1 AS failed

@@ -9,12 +9,19 @@
 -- It intentionally has no MapPLUTO candidate release or candidate parcels;
 -- candidate reach remains a later, independently measured plane. Source rows
 -- are provenance for assertions and are never counted as independent votes.
+--
+-- Current-build boundary: before fresh forward execution, byte-substitute
+-- '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__' with the current
+-- LOAN_ISSUANCE_PROPERTY build id selected by upstream discovery/control.
+-- Retained receipts that cite the old 3aed... build remain historical only.
 
 WITH
 params AS (
   SELECT
     'h7_staging_accepted_truth_row.v0'::TEXT AS row_contract,
-    '3aed6660-ce1c-46a9-aeb2-7296c134ce8f'::TEXT AS bridge_build_id,
+    'h7_staging_accepted_truth_guard_failure.v0'::TEXT
+      AS guard_failure_row_contract,
+    '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'::TEXT AS bridge_build_id,
     '2026-08-10'::DATE AS acris_release_dt,
     'NY'::TEXT AS property_state,
     'nyc_filed_collateral_slice'::TEXT AS collateral_scope,
@@ -23,6 +30,11 @@ params AS (
     10000000::NUMBER(38,0) AS round_amount_lattice_cents,
     45::NUMBER(9,0) AS max_recording_offset_days,
     200::NUMBER(38,0) AS export_row_cap
+),
+param_sentinel_markers AS (
+  SELECT
+    ('__BD7BCP_H7_' || 'CURRENT_BRIDGE_BUILD_ID__')::TEXT
+      AS bridge_build_id_unbound_marker
 ),
 filed_county_map AS (
   SELECT * FROM VALUES
@@ -65,10 +77,36 @@ bridge_rows AS (
   LEFT JOIN filed_county_map m
     ON UPPER(TRIM(lip.propertycounty)) = m.propertycounty
 ),
+bridge_build_stats AS (
+  SELECT COUNT(*) AS bridge_rows
+  FROM bridge_rows
+),
+root_guard_failures AS (
+  SELECT failure_reason
+  FROM (
+    SELECT
+      'bridge_build_id_sentinel_unsubstituted' AS failure_reason,
+      (SELECT bridge_build_id FROM params)
+        = (SELECT bridge_build_id_unbound_marker
+           FROM param_sentinel_markers) AS failed
+    UNION ALL
+    SELECT
+      'bridge_build_rows_empty',
+      (SELECT bridge_rows FROM bridge_build_stats) = 0
+  )
+  WHERE failed
+),
+root_guard_summary AS (
+  SELECT
+    IFF(COUNT(*) = 0, 'ok', 'refused') AS guard_status,
+    MIN(failure_reason) AS refusal_reason
+  FROM root_guard_failures
+),
 ny_filed_bridge_rows AS (
   SELECT *
   FROM bridge_rows
-  WHERE property_state = (SELECT property_state FROM params)
+  WHERE (SELECT guard_status FROM root_guard_summary) = 'ok'
+    AND property_state = (SELECT property_state FROM params)
     AND filed_borough IS NOT NULL
 ),
 loan_counts AS (
@@ -412,6 +450,32 @@ accepted_multi_bbl AS (
 export_stats AS (
   SELECT COUNT(*) AS export_rows
   FROM accepted_multi_bbl
+),
+export_guard_failures AS (
+  SELECT failure_reason
+  FROM root_guard_failures
+
+  UNION ALL
+
+  SELECT failure_reason
+  FROM (
+    SELECT
+      'accepted_subjects_empty' AS failure_reason,
+      (SELECT export_rows FROM export_stats) = 0 AS failed
+    UNION ALL
+    SELECT
+      'accepted_subject_export_exceeds_bound',
+      (SELECT export_rows FROM export_stats)
+        > (SELECT export_row_cap FROM params)
+  )
+  WHERE failed
+),
+export_guard_summary AS (
+  SELECT
+    IFF(COUNT(*) = 0, 'ok', 'refused') AS guard_status,
+    LISTAGG(failure_reason, '|') WITHIN GROUP (ORDER BY failure_reason)
+      AS refusal_reason
+  FROM export_guard_failures
 )
 SELECT
   (SELECT row_contract FROM params) AS row_contract,
@@ -471,4 +535,67 @@ SELECT
   a.acris_legal_source_records
 FROM accepted_multi_bbl a
 JOIN plane_denominators p USING (truth_plane)
-ORDER BY a.truth_plane, a.loan_key, a.document_id;
+WHERE (SELECT guard_status FROM export_guard_summary) = 'ok'
+
+UNION ALL
+
+SELECT
+  (SELECT guard_failure_row_contract FROM params) AS row_contract,
+  (SELECT bridge_build_id FROM params) AS bridge_build_id,
+  (SELECT acris_release_dt FROM params) AS acris_release_dt,
+  (SELECT property_state FROM params) AS property_state,
+  (SELECT collateral_scope FROM params) AS collateral_scope,
+  (SELECT amount_cents_quantization FROM params)
+    AS amount_cents_quantization,
+  (SELECT round_amount_lattice_cents FROM params)
+    AS round_amount_lattice_cents,
+  (SELECT max_recording_offset_days FROM params)
+    AS max_recording_offset_days,
+  0::NUMBER(38,0) AS eligible_loans,
+  0::NUMBER(38,0) AS candidate_loans,
+  0::NUMBER(38,0) AS legal_confirmed_candidate_loans,
+  0::NUMBER(38,0) AS accepted_loans,
+  0::NUMBER(38,0) AS ambiguous_loans,
+  0::NUMBER(38,0) AS candidate_without_legal_loans,
+  0::NUMBER(38,0) AS no_candidate_loans,
+  0::NUMBER(38,0) AS selected_multi_parcel_loans,
+  0::NUMBER(38,0) AS whole_export_rows,
+  (SELECT export_row_cap FROM params) AS export_row_cap,
+  FALSE AS export_row_cap_reconciles,
+  'guard_failure:' || COALESCE(
+    (SELECT refusal_reason FROM export_guard_summary),
+    'unknown'
+  ) AS truth_plane,
+  NULL::TEXT AS loan_key,
+  NULL::NUMBER(38,0) AS property_keys,
+  NULL::TEXT AS association_plane,
+  NULL::NUMBER(38,0) AS amount_cents,
+  NULL::DATE AS originationdate,
+  NULL::TEXT AS originatorname,
+  NULL::TEXT AS originator_match_text,
+  ARRAY_CONSTRUCT() AS filed_counties,
+  ARRAY_CONSTRUCT() AS filed_boroughs,
+  ARRAY_CONSTRUCT() AS filed_county_borough_edges,
+  OBJECT_CONSTRUCT() AS distinct_counts,
+  ARRAY_CONSTRUCT() AS diagnostic_county_fips,
+  ARRAY_CONSTRUCT() AS bridge_source_record_ids,
+  NULL::TEXT AS document_id,
+  NULL::NUMBER(38,0) AS diagnostic_recorded_borough,
+  NULL::TEXT AS doc_type,
+  NULL::TEXT AS crfn,
+  NULL::DATE AS document_date,
+  NULL::DATE AS recorded_date,
+  NULL::NUMBER(38,0) AS recording_offset_days,
+  NULL::TEXT AS lender_match_text,
+  NULL::TEXT AS lender_party_type,
+  NULL::TEXT AS acris_master_source_record_id,
+  NULL::TEXT AS acris_master_raw_csv_sha256,
+  NULL::TEXT AS acris_master_filename,
+  NULL::TEXT AS acris_party_source_record_id,
+  NULL::TEXT AS acris_party_raw_csv_sha256,
+  NULL::TEXT AS acris_party_filename,
+  NULL::NUMBER(38,0) AS truth_bbl_count,
+  ARRAY_CONSTRUCT() AS truth_bbls,
+  ARRAY_CONSTRUCT() AS acris_legal_source_records
+WHERE (SELECT guard_status FROM export_guard_summary) <> 'ok'
+ORDER BY 20, 21, 34;

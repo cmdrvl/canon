@@ -1,6 +1,6 @@
 -- Appendix H.7 candidate-strategy comparison over accepted multi-BBL truth.
 --
--- This file reconstructs the release-pinned 71 accepted H7 subjects, then
+-- This file reconstructs the release-pinned accepted H7 subjects, then
 -- compares two upstream candidate selectors over the identical subject/release
 -- denominator:
 --   * H3 r8 home cell plus k1 parcel membership.
@@ -9,12 +9,15 @@
 -- Candidate membership is constructed before the accepted legal BBL array is
 -- flattened for reach scoring. The union cascade row is reach accounting only;
 -- it is not a loan-level monolithic solve input.
+--
+-- Byte-substitute only:
+--   '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'
 
 WITH
 params AS (
   SELECT
     'h7_candidate_strategy_comparison_row.v0'::TEXT AS row_contract,
-    '3aed6660-ce1c-46a9-aeb2-7296c134ce8f'::TEXT AS bridge_build_id,
+    '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'::TEXT AS bridge_build_id,
     '2026-08-10'::DATE AS acris_release_dt,
     'NY'::TEXT AS property_state,
     'nyc_filed_collateral_slice'::TEXT AS collateral_scope,
@@ -23,15 +26,25 @@ params AS (
     10000000::NUMBER(38,0) AS round_amount_lattice_cents,
     45::NUMBER(9,0) AS max_recording_offset_days,
     8::NUMBER(9,0) AS h3_resolution,
-    1::NUMBER(9,0) AS halo_k,
-    71::NUMBER(38,0) AS expected_accepted_subjects,
-    2::NUMBER(38,0) AS expected_release_count
+    1::NUMBER(9,0) AS halo_k
+),
+sentinel_markers AS (
+  SELECT
+    ('__BD7BCP_H7_' || 'CURRENT_BRIDGE_BUILD_ID__')::TEXT
+      AS bridge_build_id_unbound_marker
 ),
 release_pins AS (
   SELECT * FROM VALUES
     ('26v1', '2026-05-01'::DATE, 'shoreline_clipped'),
     ('26v2', '2026-08-01'::DATE, 'shoreline_clipped')
   AS p(release, release_dt, variant)
+),
+release_pin_stats AS (
+  SELECT
+    COUNT(*) AS release_pin_rows,
+    COUNT(DISTINCT release || '|' || TO_VARCHAR(release_dt) || '|' || variant)
+      AS distinct_release_pins
+  FROM release_pins
 ),
 candidate_selectors AS (
   SELECT * FROM VALUES
@@ -344,9 +357,15 @@ subject_release_stats AS (
 guard_failures AS (
   SELECT failure_reason
   FROM (
-    SELECT 'accepted_subject_count_not_71' AS failure_reason,
+    SELECT
+      'bridge_build_id_sentinel_unsubstituted' AS failure_reason,
+      (SELECT bridge_build_id FROM params)
+        = (SELECT bridge_build_id_unbound_marker
+           FROM sentinel_markers) AS failed
+    UNION ALL
+    SELECT 'accepted_subject_count_empty',
       (SELECT accepted_subjects FROM accepted_subject_stats)
-        <> (SELECT expected_accepted_subjects FROM params) AS failed
+        = 0
     UNION ALL
     SELECT 'accepted_subject_repeats',
       (SELECT accepted_subjects FROM accepted_subject_stats)
@@ -361,21 +380,26 @@ guard_failures AS (
     SELECT 'truth_bbl_count_mismatch',
       (SELECT truth_bbl_count_mismatch_subjects FROM accepted_subject_stats) <> 0
     UNION ALL
+    SELECT 'duplicate_release_pin',
+      (SELECT release_pin_rows FROM release_pin_stats)
+        <> (SELECT distinct_release_pins FROM release_pin_stats)
+    UNION ALL
     SELECT 'release_count_mismatch',
       (SELECT release_count FROM subject_release_stats)
-        <> (SELECT expected_release_count FROM params)
+        <> (SELECT release_pin_rows FROM release_pin_stats)
     UNION ALL
     SELECT 'subject_release_denominator_mismatch',
       (SELECT subject_release_rows FROM subject_release_stats)
-        <> (SELECT expected_accepted_subjects FROM params)
-          * (SELECT expected_release_count FROM params)
+        <> (SELECT accepted_subjects FROM accepted_subject_stats)
+          * (SELECT release_pin_rows FROM release_pin_stats)
   )
   WHERE failed
 ),
 guard_summary AS (
   SELECT
     IFF(COUNT(*) = 0, 'ok', 'refused') AS guard_status,
-    MIN(failure_reason) AS refusal_reason
+    LISTAGG(failure_reason, '|') WITHIN GROUP (ORDER BY failure_reason)
+      AS refusal_reason
   FROM guard_failures
 ),
 points AS (
@@ -775,7 +799,8 @@ SELECT
   COUNT_IF(r.h3_pip_overlap_bbl_count > r.h3_candidate_bbl_count
     OR r.h3_pip_overlap_bbl_count > r.pip_candidate_bbl_count)
     AS overlap_accounting_failures,
-  sc.selector_release_subjects = (SELECT expected_accepted_subjects FROM params)
+  sc.selector_release_subjects = (SELECT accepted_subjects
+                                  FROM accepted_subject_stats)
     AS selector_denominator_guard,
   COUNT(*) = COUNT(DISTINCT r.subject_id)
     AS distinct_membership_guard,
@@ -806,6 +831,7 @@ JOIN selector_release_counts sc
   ON sc.candidate_selector = r.candidate_selector
  AND sc.release = r.release
 CROSS JOIN guard_summary g
+WHERE g.guard_status = 'ok'
 GROUP BY
   g.guard_status,
   g.refusal_reason,
@@ -819,8 +845,57 @@ GROUP BY
   r.release_dt,
   r.variant,
   sc.selector_release_subjects
-ORDER BY
-  r.selector_order,
-  r.truth_plane,
-  r.association_plane,
-  r.release;
+UNION ALL
+
+SELECT
+  (SELECT row_contract FROM params) AS row_contract,
+  (SELECT guard_status FROM guard_summary) AS guard_status,
+  (SELECT refusal_reason FROM guard_summary) AS refusal_reason,
+  (SELECT bridge_build_id FROM params) AS bridge_build_id,
+  (SELECT acris_release_dt FROM params) AS acris_release_dt,
+  (SELECT property_state FROM params) AS property_state,
+  (SELECT collateral_scope FROM params) AS collateral_scope,
+  (SELECT h3_resolution FROM params) AS h3_resolution,
+  (SELECT halo_k FROM params) AS halo_k,
+  NULL::TEXT AS candidate_selector,
+  NULL::TEXT AS candidate_strategy,
+  NULL::TEXT AS selector_role,
+  'guard_failure'::TEXT AS truth_plane,
+  NULL::TEXT AS association_plane,
+  NULL::TEXT AS release,
+  NULL::DATE AS release_dt,
+  NULL::TEXT AS variant,
+  0::NUMBER(38,0) AS global_accepted_subjects,
+  0::NUMBER(38,0) AS selector_release_subjects,
+  0::NUMBER(38,0) AS accepted_subjects,
+  0::NUMBER(38,0) AS distinct_subjects,
+  0::NUMBER(38,0) AS candidate_reached_subjects,
+  0::NUMBER(38,0) AS no_candidate_subjects,
+  0::NUMBER(38,0) AS full_reach_subjects,
+  0::NUMBER(38,0) AS partial_reach_subjects,
+  0::NUMBER(38,0) AS no_reach_subjects,
+  0::NUMBER(38,0) AS truth_bbl_edges,
+  0::NUMBER(38,0) AS reached_truth_bbl_edges,
+  0::NUMBER(38,0) AS min_candidate_bbls,
+  0::NUMBER(38,0) AS median_candidate_bbls,
+  0::NUMBER(38,0) AS p90_candidate_bbls,
+  0::NUMBER(38,0) AS max_candidate_bbls,
+  0::NUMBER(38,0) AS candidate_bbl_edges,
+  0::NUMBER(38,0) AS h3_candidate_bbl_edges,
+  0::NUMBER(38,0) AS pip_candidate_bbl_edges,
+  0::NUMBER(38,0) AS h3_pip_overlap_bbl_edges,
+  0::NUMBER(38,0) AS overlap_candidate_bbl_edges,
+  0::NUMBER(38,0) AS reach_accounting_failures,
+  0::NUMBER(38,0) AS reached_exceeds_candidate_failures,
+  0::NUMBER(38,0) AS truth_count_mismatch_subjects,
+  0::NUMBER(38,0) AS union_cardinality_failures,
+  0::NUMBER(38,0) AS overlap_accounting_failures,
+  FALSE AS selector_denominator_guard,
+  FALSE AS distinct_membership_guard,
+  FALSE AS reach_partition_guard,
+  FALSE AS reached_lte_truth_guard,
+  FALSE AS reached_lte_candidate_guard,
+  FALSE AS selector_cardinality_guard,
+  FALSE AS complete_denominator_guard
+WHERE (SELECT guard_status FROM guard_summary) <> 'ok'
+ORDER BY 10, 13, 14, 15;

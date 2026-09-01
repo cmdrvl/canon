@@ -151,12 +151,15 @@ fn candidate_rejoin_is_before_truth_flattening_and_does_not_seed_from_truth() {
 #[test]
 fn one_row_per_subject_release_and_closed_guards_are_declared() {
     for required in [
-        "71::NUMBER(38,0) AS expected_accepted_loans",
-        "2::NUMBER(38,0) AS expected_release_count",
-        "142::NUMBER(38,0) AS expected_release_rows",
-        "output_row_count_not_142",
-        "input_accepted_loan_count_not_71",
+        "COUNT(DISTINCT loan_key) AS accepted_loans",
+        "AS distinct_release_pins",
+        "input_result_empty",
+        "input_subject_release_row_count_mismatch",
+        "input_subject_release_coverage_mismatch",
         "input_duplicate_subject_release",
+        "output_row_count_mismatch",
+        "output_accepted_loan_count_mismatch",
+        "output_subject_release_coverage_mismatch",
         "output_duplicate_subject_release",
         "source_record_id_uniqueness_failures",
         "source_role_coverage_failures",
@@ -171,6 +174,8 @@ fn one_row_per_subject_release_and_closed_guards_are_declared() {
     }
     assert_contains("OR acris_legal_source_record_count = 0");
     assert_lower_not_contains("acris_legal_source_record_count < truth_bbl_count");
+    assert_lower_not_contains("71::number(38,0) as expected_accepted_loans");
+    assert_lower_not_contains("142::number(38,0) as expected_release_rows");
 }
 
 #[test]

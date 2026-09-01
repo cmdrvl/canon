@@ -14,6 +14,7 @@
 --
 -- Byte-substitute only:
 --   '__BD7BCP_H7_ACCEPTED_TRUTH_QUERY_ID__'
+--   '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'
 --   __BD2B9D_H7_HALO_K__
 
 WITH
@@ -23,10 +24,17 @@ params AS (
       AS accepted_truth_query_id,
     'h7_staging_accepted_truth_row.v0'::TEXT
       AS expected_accepted_truth_contract,
-    '3aed6660-ce1c-46a9-aeb2-7296c134ce8f'::TEXT AS bridge_build_id,
+    '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'::TEXT AS bridge_build_id,
     8::NUMBER(9,0) AS h3_resolution,
     __BD2B9D_H7_HALO_K__::NUMBER(9,0) AS halo_k,
     200::NUMBER(38,0) AS accepted_truth_row_cap
+),
+sentinel_markers AS (
+  SELECT
+    ('__BD7BCP_H7_' || 'ACCEPTED_TRUTH_QUERY_ID__')::TEXT
+      AS accepted_truth_query_id_unbound_marker,
+    ('__BD7BCP_H7_' || 'CURRENT_BRIDGE_BUILD_ID__')::TEXT
+      AS bridge_build_id_unbound_marker
 ),
 release_pins AS (
   SELECT * FROM VALUES
@@ -64,7 +72,16 @@ accepted_stats AS (
 guard_failures AS (
   SELECT failure_reason
   FROM (
-    SELECT 'accepted_truth_result_empty' AS failure_reason,
+    SELECT 'accepted_truth_query_id_sentinel_unsubstituted' AS failure_reason,
+      (SELECT accepted_truth_query_id FROM params)
+        = (SELECT accepted_truth_query_id_unbound_marker
+           FROM sentinel_markers) AS failed
+    UNION ALL
+    SELECT 'bridge_build_id_sentinel_unsubstituted',
+      (SELECT bridge_build_id FROM params)
+        = (SELECT bridge_build_id_unbound_marker FROM sentinel_markers)
+    UNION ALL
+    SELECT 'accepted_truth_result_empty',
       (SELECT accepted_rows FROM accepted_stats) = 0 AS failed
     UNION ALL
     SELECT 'accepted_truth_result_exceeds_bound',
@@ -92,7 +109,8 @@ guard_failures AS (
 guard_summary AS (
   SELECT
     IFF(COUNT(*) = 0, 'ok', 'refused') AS guard_status,
-    MIN(failure_reason) AS refusal_reason
+    LISTAGG(failure_reason, '|') WITHIN GROUP (ORDER BY failure_reason)
+      AS refusal_reason
   FROM guard_failures
 ),
 points AS (
@@ -330,18 +348,19 @@ SELECT
   r.release_dt,
   r.variant,
   COUNT(*) AS accepted_subjects,
-  p.property_points,
-  p.distinct_home_cells,
+  COALESCE(p.property_points, 0) AS property_points,
+  COALESCE(p.distinct_home_cells, 0) AS distinct_home_cells,
   p.min_latitude,
   p.max_latitude,
   p.min_longitude,
   p.max_longitude,
-  ss.work_sections,
-  ss.empty_work_sections,
-  ss.min_section_candidate_bbls,
-  ss.median_section_candidate_bbls,
-  ss.p90_section_candidate_bbls,
-  ss.max_section_candidate_bbls,
+  COALESCE(ss.work_sections, 0) AS work_sections,
+  COALESCE(ss.empty_work_sections, 0) AS empty_work_sections,
+  COALESCE(ss.min_section_candidate_bbls, 0) AS min_section_candidate_bbls,
+  COALESCE(ss.median_section_candidate_bbls, 0)
+    AS median_section_candidate_bbls,
+  COALESCE(ss.p90_section_candidate_bbls, 0) AS p90_section_candidate_bbls,
+  COALESCE(ss.max_section_candidate_bbls, 0) AS max_section_candidate_bbls,
   COUNT_IF(r.reach_status = 'full') AS full_reach_subjects,
   COUNT_IF(r.reach_status = 'partial') AS partial_reach_subjects,
   COUNT_IF(r.reach_status = 'none') AS no_reach_subjects,
@@ -354,11 +373,12 @@ SELECT
   MAX(r.candidate_bbl_count) AS max_union_candidate_bbls,
   SUM(r.candidate_bbl_count) AS union_candidate_bbl_edges
 FROM subject_reach r
-JOIN point_counts p USING (truth_plane)
-JOIN section_summary ss
+LEFT JOIN point_counts p USING (truth_plane)
+LEFT JOIN section_summary ss
   ON ss.truth_plane = r.truth_plane
  AND ss.release = r.release
 CROSS JOIN guard_summary g
+WHERE g.guard_status = 'ok'
 GROUP BY
   g.guard_status,
   g.refusal_reason,
@@ -378,4 +398,43 @@ GROUP BY
   ss.median_section_candidate_bbls,
   ss.p90_section_candidate_bbls,
   ss.max_section_candidate_bbls
-ORDER BY r.truth_plane, r.release;
+
+UNION ALL
+
+SELECT
+  (SELECT guard_status FROM guard_summary) AS guard_status,
+  (SELECT refusal_reason FROM guard_summary) AS refusal_reason,
+  (SELECT accepted_truth_query_id FROM params) AS accepted_truth_query_id,
+  (SELECT h3_resolution FROM params) AS h3_resolution,
+  (SELECT halo_k FROM params) AS halo_k,
+  'centroid_home_cell_in_point_k' || (SELECT halo_k FROM params)::TEXT
+    AS candidate_selector,
+  'guard_failure'::TEXT AS truth_plane,
+  NULL::TEXT AS release,
+  NULL::DATE AS release_dt,
+  NULL::TEXT AS variant,
+  0::NUMBER(38,0) AS accepted_subjects,
+  0::NUMBER(38,0) AS property_points,
+  0::NUMBER(38,0) AS distinct_home_cells,
+  NULL::FLOAT AS min_latitude,
+  NULL::FLOAT AS max_latitude,
+  NULL::FLOAT AS min_longitude,
+  NULL::FLOAT AS max_longitude,
+  0::NUMBER(38,0) AS work_sections,
+  0::NUMBER(38,0) AS empty_work_sections,
+  0::NUMBER(38,0) AS min_section_candidate_bbls,
+  0::NUMBER(38,0) AS median_section_candidate_bbls,
+  0::NUMBER(38,0) AS p90_section_candidate_bbls,
+  0::NUMBER(38,0) AS max_section_candidate_bbls,
+  0::NUMBER(38,0) AS full_reach_subjects,
+  0::NUMBER(38,0) AS partial_reach_subjects,
+  0::NUMBER(38,0) AS no_reach_subjects,
+  0::NUMBER(38,0) AS truth_bbl_edges,
+  0::NUMBER(38,0) AS reached_truth_bbl_edges,
+  0::NUMBER(38,0) AS min_union_candidate_bbls,
+  0::NUMBER(38,0) AS median_union_candidate_bbls,
+  0::NUMBER(38,0) AS p90_union_candidate_bbls,
+  0::NUMBER(38,0) AS max_union_candidate_bbls,
+  0::NUMBER(38,0) AS union_candidate_bbl_edges
+WHERE (SELECT guard_status FROM guard_summary) <> 'ok'
+ORDER BY 7, 8;

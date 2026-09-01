@@ -59,10 +59,6 @@ pub const CANON_GEO_H7_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS: u64 = 35;
 pub const CANON_GEO_H7_COMPLETE_ROUND_MULTI_PARCEL_LOANS: u64 = 14;
 pub const CANON_GEO_H7_COMPLETE_MULTI_PARCEL_LOANS: u64 = 49;
 pub const CANON_GEO_H7_COMPLETE_RELEASE_ROWS: u64 = 98;
-pub const CANON_GEO_H7_LIVE_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS: u64 = 35;
-pub const CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS: u64 = 36;
-pub const CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS: u64 = 71;
-pub const CANON_GEO_H7_LIVE_COMPLETE_RELEASE_ROWS: u64 = 142;
 pub const CANON_GEO_H7_FROZEN_E4_ACCEPTANCE_CASES: u64 = 79;
 
 const CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_ROW_CONTRACT: &str =
@@ -1307,8 +1303,12 @@ pub fn materialize_h7_population_rows(
         BTreeMap::new();
     let mut cases = Vec::with_capacity(rows.rows.len());
     for row in &rows.rows {
-        let materialized =
-            materialize_h7_case(row, rows.max_assignments, rows.max_materialized_models)?;
+        let materialized = materialize_h7_case(
+            row,
+            rows.max_assignments,
+            rows.max_materialized_models,
+            &rows.provenance.bridge_build_id,
+        )?;
         let truth_key = accepted_truth_key(&materialized);
         if let Some(prior_truth_key) =
             accepted_loans.insert(materialized.loan_key.clone(), truth_key.clone())
@@ -1508,6 +1508,7 @@ fn validate_h7_provenance(
     input_rows: usize,
 ) -> Result<(), GeoMaterializationError> {
     validate_h7_string("provenance.as_of", &provenance.as_of)?;
+    validate_h7_bridge_build_id(&provenance.bridge_build_id)?;
     let input_rows = u64::try_from(input_rows).map_err(|_| h7_overflow("input_rows"))?;
     if provenance.row_cap == 0 {
         return Err(h7_invalid(
@@ -1542,9 +1543,11 @@ fn validate_h7_provenance(
             ],
         ));
     }
-    if provenance.bridge_build_id != CANON_GEO_H7_BRIDGE_BUILD_ID {
+    if population_scope == GeoH7PopulationScope::RetainedComplete
+        && provenance.bridge_build_id != CANON_GEO_H7_BRIDGE_BUILD_ID
+    {
         return Err(h7_invalid(
-            "Geo H.7 population rows drifted from the pinned loan-property bridge build",
+            "Geo H.7 retained-complete replay rows drifted from the pinned loan-property bridge build",
             [
                 ("actual", provenance.bridge_build_id.clone()),
                 ("expected", CANON_GEO_H7_BRIDGE_BUILD_ID.to_string()),
@@ -3158,6 +3161,7 @@ fn materialize_h7_case(
     row: &GeoH7PopulationWarehouseRow,
     max_assignments: u64,
     max_materialized_models: u64,
+    bridge_build_id: &str,
 ) -> Result<GeoH7PopulationCaseArtifact, GeoMaterializationError> {
     validate_h7_string("loan_key", &row.loan_key)?;
     validate_h7_string("document_id", &row.document_id)?;
@@ -3230,7 +3234,8 @@ fn materialize_h7_case(
             ],
         ));
     }
-    let source_records = canonical_h7_source_records(row, &truth_parcels, &candidate_parcels)?;
+    let source_records =
+        canonical_h7_source_records(row, &truth_parcels, &candidate_parcels, bridge_build_id)?;
 
     let case_id = h7_case_id(
         row.truth_plane,
@@ -3750,40 +3755,6 @@ fn validate_h7_population_scope(
             }
         }
         GeoH7PopulationScope::LiveComplete => {
-            require_live_h7_plane_count(
-                denominators,
-                GeoTruthPlane::NonRoundAmountDateLegalBorough,
-                CANON_GEO_H7_LIVE_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS,
-            )?;
-            require_live_h7_plane_count(
-                denominators,
-                GeoTruthPlane::RoundExactLenderParty,
-                CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS,
-            )?;
-            if total_selected != CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS {
-                return Err(h7_invalid(
-                    "Geo H.7 LiveComplete claim must preserve the current 71-subject H.7 handoff",
-                    [
-                        ("selected_multi_parcel_loans", total_selected.to_string()),
-                        (
-                            "expected",
-                            CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS.to_string(),
-                        ),
-                    ],
-                ));
-            }
-            if release_row_count != CANON_GEO_H7_LIVE_COMPLETE_RELEASE_ROWS {
-                return Err(h7_invalid(
-                    "Geo H.7 LiveComplete claim must preserve exactly 142 release-run rows",
-                    [
-                        ("release_rows", release_row_count.to_string()),
-                        (
-                            "expected",
-                            CANON_GEO_H7_LIVE_COMPLETE_RELEASE_ROWS.to_string(),
-                        ),
-                    ],
-                ));
-            }
             if release_row_count != expected_release_rows {
                 return Err(h7_invalid(
                     "Geo H.7 live complete population rows must equal selected subjects times pinned releases",
@@ -3796,28 +3767,6 @@ fn validate_h7_population_scope(
                 ));
             }
         }
-    }
-    Ok(())
-}
-
-fn require_live_h7_plane_count(
-    denominators: &BTreeMap<GeoTruthPlane, GeoH7PlaneDenominator>,
-    plane: GeoTruthPlane,
-    expected: u64,
-) -> Result<(), GeoMaterializationError> {
-    let actual = denominators
-        .get(&plane)
-        .map(|denominator| denominator.selected_multi_parcel_loans)
-        .unwrap_or(0);
-    if actual != expected {
-        return Err(h7_invalid(
-            "Geo H.7 LiveComplete selected multi-parcel count drifted",
-            [
-                ("truth_plane", h7_plane_name(plane).to_string()),
-                ("actual", actual.to_string()),
-                ("expected", expected.to_string()),
-            ],
-        ));
     }
     Ok(())
 }
@@ -4489,6 +4438,7 @@ fn canonical_h7_source_records(
     row: &GeoH7PopulationWarehouseRow,
     truth_parcels: &[String],
     candidate_parcels: &[String],
+    bridge_build_id: &str,
 ) -> Result<Vec<GeoH7SourceEvidenceRecord>, GeoMaterializationError> {
     if row.source_records.is_empty() {
         return Err(h7_invalid(
@@ -4504,7 +4454,7 @@ fn canonical_h7_source_records(
     let mut seen_wrappers = BTreeSet::new();
     let mut seen_record_ids = BTreeSet::new();
     for record in &records {
-        validate_h7_source_record(row, record)?;
+        validate_h7_source_record(row, record, bridge_build_id)?;
         let canonical_parcels = canonical_h7_source_record_parcels(record)?;
         match record.role {
             GeoH7SourceRecordRole::AcrisLegal => {
@@ -4729,6 +4679,7 @@ fn is_lowercase_blake3_hex(value: &str) -> bool {
 fn validate_h7_source_record(
     row: &GeoH7PopulationWarehouseRow,
     record: &GeoH7SourceEvidenceRecord,
+    bridge_build_id: &str,
 ) -> Result<(), GeoMaterializationError> {
     validate_h7_string(
         "source_record.source_record_id",
@@ -4743,7 +4694,7 @@ fn validate_h7_source_record(
         &record.source_record.record_blake3,
     )?;
     let expected_vintage = match record.role {
-        GeoH7SourceRecordRole::BridgeLoan => CANON_GEO_H7_BRIDGE_BUILD_ID,
+        GeoH7SourceRecordRole::BridgeLoan => bridge_build_id,
         GeoH7SourceRecordRole::AcrisMaster
         | GeoH7SourceRecordRole::AcrisLegal
         | GeoH7SourceRecordRole::AcrisParty => CANON_GEO_H7_ACRIS_RELEASE_DT,
@@ -4803,6 +4754,10 @@ fn validate_h7_string(field: &str, value: &str) -> Result<(), GeoMaterialization
         ));
     }
     Ok(())
+}
+
+fn validate_h7_bridge_build_id(value: &str) -> Result<(), GeoMaterializationError> {
+    validate_h7_string("provenance.bridge_build_id", value)
 }
 
 fn validate_blake3_hash(field: &str, value: &str) -> Result<(), GeoMaterializationError> {

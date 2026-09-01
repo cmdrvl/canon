@@ -15,20 +15,31 @@
 --
 -- Byte-substitute only:
 --   '__BD7BCP_H7_ACCEPTED_TRUTH_QUERY_ID__'
+--   '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'
 --   __BD2B9D_H7_SHARD_COUNT__
 --   __BD2B9D_H7_SHARD_INDEX__
 
 WITH
 params AS (
   SELECT
+    '__BD7BCP_H7_ACCEPTED_TRUTH_QUERY_ID__'::TEXT
+      AS accepted_truth_query_id,
     'h7_staging_accepted_truth_row.v0'::TEXT
       AS expected_accepted_truth_contract,
-    '3aed6660-ce1c-46a9-aeb2-7296c134ce8f'::TEXT AS bridge_build_id,
+    '__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'::TEXT AS bridge_build_id,
     8::NUMBER(9,0) AS h3_resolution,
     1::NUMBER(9,0) AS halo_k,
     __BD2B9D_H7_SHARD_COUNT__::NUMBER(9,0) AS shard_count,
     __BD2B9D_H7_SHARD_INDEX__::NUMBER(9,0) AS shard_index,
-    200::NUMBER(38,0) AS accepted_truth_row_cap
+    200::NUMBER(38,0) AS accepted_truth_row_cap,
+    200::NUMBER(38,0) AS output_row_cap
+),
+sentinel_markers AS (
+  SELECT
+    ('__BD7BCP_H7_' || 'ACCEPTED_TRUTH_QUERY_ID__')::TEXT
+      AS accepted_truth_query_id_unbound_marker,
+    ('__BD7BCP_H7_' || 'CURRENT_BRIDGE_BUILD_ID__')::TEXT
+      AS bridge_build_id_unbound_marker
 ),
 filed_county_map AS (
   SELECT * FROM VALUES
@@ -57,10 +68,19 @@ accepted_stats AS (
       AS truth_bbl_count_mismatch_rows
   FROM accepted
 ),
-guard_failures AS (
+root_guard_failures AS (
   SELECT failure_reason
   FROM (
-    SELECT 'accepted_truth_result_empty' AS failure_reason,
+    SELECT 'accepted_truth_query_id_sentinel_unsubstituted' AS failure_reason,
+      (SELECT accepted_truth_query_id FROM params)
+        = (SELECT accepted_truth_query_id_unbound_marker
+           FROM sentinel_markers) AS failed
+    UNION ALL
+    SELECT 'bridge_build_id_sentinel_unsubstituted',
+      (SELECT bridge_build_id FROM params)
+        = (SELECT bridge_build_id_unbound_marker FROM sentinel_markers)
+    UNION ALL
+    SELECT 'accepted_truth_result_empty',
       (SELECT accepted_rows FROM accepted_stats) = 0 AS failed
     UNION ALL
     SELECT 'accepted_truth_result_exceeds_bound',
@@ -92,11 +112,12 @@ guard_failures AS (
   )
   WHERE failed
 ),
-guard_summary AS (
+root_guard_summary AS (
   SELECT
     IFF(COUNT(*) = 0, 'ok', 'refused') AS guard_status,
-    MIN(failure_reason) AS refusal_reason
-  FROM guard_failures
+    LISTAGG(failure_reason, '|') WITHIN GROUP (ORDER BY failure_reason)
+      AS refusal_reason
+  FROM root_guard_failures
 ),
 points AS (
   SELECT DISTINCT
@@ -112,7 +133,7 @@ points AS (
    AND lip.loan_key = a.loan_key
   JOIN filed_county_map m
     ON UPPER(TRIM(lip.propertycounty)) = m.propertycounty
-  WHERE (SELECT guard_status FROM guard_summary) = 'ok'
+  WHERE (SELECT guard_status FROM root_guard_summary) = 'ok'
     AND lip.propertystate = 'NY'
     AND lip.latitude IS NOT NULL
     AND lip.longitude IS NOT NULL
@@ -326,6 +347,36 @@ observation_counts AS (
     COUNT_IF(k1_majority_count > 1) AS k1_multi
   FROM per_observation
   GROUP BY center_cell
+),
+center_cell_stats AS (
+  SELECT COUNT(*) AS center_cells
+  FROM center_cells
+),
+output_guard_failures AS (
+  SELECT failure_reason
+  FROM root_guard_failures
+
+  UNION ALL
+
+  SELECT failure_reason
+  FROM (
+    SELECT
+      'incidence_center_cells_empty' AS failure_reason,
+      (SELECT center_cells FROM center_cell_stats) = 0 AS failed
+    UNION ALL
+    SELECT
+      'incidence_center_cells_exceed_output_limit',
+      (SELECT center_cells FROM center_cell_stats)
+        > (SELECT output_row_cap FROM params)
+  )
+  WHERE failed
+),
+guard_summary AS (
+  SELECT
+    IFF(COUNT(*) = 0, 'ok', 'refused') AS guard_status,
+    LISTAGG(failure_reason, '|') WITHIN GROUP (ORDER BY failure_reason)
+      AS refusal_reason
+  FROM output_guard_failures
 )
 SELECT
   (SELECT guard_status FROM guard_summary) AS guard_status,
@@ -364,5 +415,32 @@ FROM center_cells c
 LEFT JOIN parcel_counts p USING (center_cell)
 LEFT JOIN observation_counts o USING (center_cell)
 LEFT JOIN component_stats s USING (center_cell)
-ORDER BY c.center_cell
+WHERE (SELECT guard_status FROM guard_summary) = 'ok'
+
+UNION ALL
+
+SELECT
+  (SELECT guard_status FROM guard_summary) AS guard_status,
+  (SELECT refusal_reason FROM guard_summary) AS refusal_reason,
+  (SELECT shard_count FROM params) AS shard_count,
+  (SELECT shard_index FROM params) AS shard_index,
+  NULL::TEXT AS center_cell,
+  0::NUMBER(38,0) AS linked_loans,
+  0::NUMBER(38,0) AS linked_properties,
+  0::NUMBER(38,0) AS work_parcels,
+  0::NUMBER(38,0) AS target_observations,
+  0::NUMBER(38,0) AS nyc_footprints,
+  0::NUMBER(38,0) AS overture_buildings,
+  0::NUMBER(38,0) AS truth_outside_k1,
+  0::NUMBER(38,0) AS k1_multi,
+  0::NUMBER(38,0) AS component_count,
+  0::NUMBER(38,0) AS component_nodes,
+  0::NUMBER(38,0) AS median_component_size,
+  0::NUMBER(38,0) AS p90_component_size,
+  0::NUMBER(38,0) AS max_component_size,
+  'FAIL'::TEXT AS nonzero_work_unit_sanity,
+  'REFUSED'::TEXT AS component_shape_sanity,
+  'FAIL'::TEXT AS component_accounting_sanity
+WHERE (SELECT guard_status FROM guard_summary) <> 'ok'
+ORDER BY 5
 LIMIT 200

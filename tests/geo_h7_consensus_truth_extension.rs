@@ -39,7 +39,8 @@ fn consensus_extension_is_raw_measurement_not_population_or_solver_claim() {
 #[test]
 fn controlling_h7_gates_are_preserved_and_planes_are_disjoint() {
     for required in [
-        "'3aed6660-ce1c-46a9-aeb2-7296c134ce8f'::TEXT AS bridge_build_id",
+        "'__BD7BCP_H7_CURRENT_BRIDGE_BUILD_ID__'::TEXT AS bridge_build_id",
+        "bridge_build_id_sentinel_unsubstituted",
         "'2026-08-10'::DATE AS acris_release_dt",
         "'NY'::TEXT AS property_state",
         "'nyc_filed_collateral_slice'::TEXT AS collateral_scope",
@@ -117,19 +118,21 @@ fn consensus_admission_requires_complete_identical_multi_bbl_document_sets() {
 #[test]
 fn guards_prevent_duplicate_inflation_and_accepted_population_contamination() {
     for guard in [
-        "historical_bridge_build_not_retained_in_current_snapshot",
-        "2974::NUMBER(38,0) AS expected_h7_eligible_loans",
-        "71::NUMBER(38,0) AS expected_h7_accepted_multi_bbl_loans",
+        "bridge_build_rows_empty",
+        "eligible_plane_population_empty",
+        "truth_plane_eligible_empty",
+        "truth_plane_accepted_h7_multi_bbl_empty",
         "accepted_h7_multi_bbl_keys AS",
         "truth_plane_summary_missing",
-        "eligible_plane_population_count_mismatch",
-        "truth_plane_eligible_count_mismatch",
-        "truth_plane_multi_bbl_count_mismatch",
-        "accepted_71_population_count_mismatch",
+        "eligible_denominator_accounting_failure",
+        "candidate_denominator_accounting_failure",
+        "legal_denominator_accounting_failure",
+        "ambiguous_consensus_denominator_accounting_failure",
+        "accepted_h7_multi_bbl_population_empty",
         "consensus_subject_row_cap_exceeded",
         "consensus_duplicate_subject",
         "consensus_duplicate_loan_cross_plane",
-        "accepted_71_contamination",
+        "accepted_h7_contamination",
         "known_gate_v2_h4_extension_duplicate",
         "admitted_consensus_missing_legal_rows",
         "admitted_consensus_under_document_floor",
@@ -145,11 +148,11 @@ fn guards_prevent_duplicate_inflation_and_accepted_population_contamination() {
 }
 
 #[test]
-fn retention_guard_keeps_historical_pin_and_expected_truth_planes() {
+fn forward_guard_uses_current_snapshot_and_expected_truth_planes() {
     for required in [
         "expected_truth_planes AS",
-        "('non_round_amount_date_legal_borough', 653, 35)",
-        "('round_exact_lender_party', 2321, 36)",
+        "('non_round_amount_date_legal_borough')",
+        "('round_exact_lender_party')",
         "bridge_pin_stats AS",
         "COUNT(DISTINCT loan_key) AS bridge_distinct_loans",
         "(SELECT bridge_rows FROM bridge_pin_stats) = 0",
@@ -159,6 +162,7 @@ fn retention_guard_keeps_historical_pin_and_expected_truth_planes() {
         assert_contains(required);
     }
 
+    assert_not_contains("3aed6660-ce1c-46a9-aeb2-7296c134ce8f");
     assert_not_contains("ce3953ac-c2d4-4b48-bf02-29f0cf341389");
 }
 

@@ -4,9 +4,6 @@ use canon::geo::{
     CANON_GEO_H7_ACRIS_RELEASE_DT, CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION,
     CANON_GEO_H7_BRIDGE_BUILD_ID, CANON_GEO_H7_COLLATERAL_SCOPE,
     CANON_GEO_H7_FROZEN_E4_ACCEPTANCE_CASES, CANON_GEO_H7_LENDER_MATCH_TRANSFORM,
-    CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS,
-    CANON_GEO_H7_LIVE_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS,
-    CANON_GEO_H7_LIVE_COMPLETE_RELEASE_ROWS, CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS,
     CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
     CANON_GEO_H7_NON_ROUND_LEGAL_RESIDUAL_RECEIPT_PURPOSE, CANON_GEO_H7_POPULATION_ROWS_VERSION,
     CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_PRIMARY_MAPPLUTO_RELEASE,
@@ -40,6 +37,7 @@ const H7_PIP_BLOCK_REACH_CONTROL_SQL: &str =
     include_str!("../scripts/geo_measurements/h7_staging_pip_block_reach_control.sql");
 const H7_INCIDENCE_SHARD_SQL: &str =
     include_str!("../scripts/geo_measurements/h7_staging_incidence_shard.sql");
+const SYNTHETIC_CURRENT_BRIDGE_BUILD_ID: &str = "bridge_build_current_snapshot_20260901_a";
 
 fn base_request() -> GeoH7PopulationRowsRequest {
     GeoH7PopulationRowsRequest {
@@ -175,34 +173,35 @@ fn synthetic_complete_shape_request() -> GeoH7PopulationRowsRequest {
     request
 }
 
-fn synthetic_not_live_71_subject_142_release_row_request() -> GeoH7PopulationRowsRequest {
+fn synthetic_current_build_live_complete_request() -> GeoH7PopulationRowsRequest {
     let mut request = base_request();
     request.population_scope = GeoH7PopulationScope::LiveComplete;
     request.provenance.result_mode = GeoH7ResultMode::Live;
     request.provenance.as_of = "2026-09-01T00:00:00Z".to_string();
+    request.provenance.bridge_build_id = SYNTHETIC_CURRENT_BRIDGE_BUILD_ID.to_string();
     request.provenance.source_hashes = vec![
         GeoH7SourceHash {
-            source: "synthetic_not_live.loan_property_bridge".to_string(),
+            source: "synthetic_current.loan_property_bridge".to_string(),
             hash_kind: "test_sha256".to_string(),
             sha256: "1".repeat(64),
         },
         GeoH7SourceHash {
-            source: "synthetic_not_live.acris_master".to_string(),
+            source: "synthetic_current.acris_master".to_string(),
             hash_kind: "test_sha256".to_string(),
             sha256: "2".repeat(64),
         },
         GeoH7SourceHash {
-            source: "synthetic_not_live.acris_legal".to_string(),
+            source: "synthetic_current.acris_legal".to_string(),
             hash_kind: "test_sha256".to_string(),
             sha256: "3".repeat(64),
         },
         GeoH7SourceHash {
-            source: "synthetic_not_live.acris_party".to_string(),
+            source: "synthetic_current.acris_party".to_string(),
             hash_kind: "test_sha256".to_string(),
             sha256: "4".repeat(64),
         },
         GeoH7SourceHash {
-            source: "synthetic_not_live.mappluto_pins".to_string(),
+            source: "synthetic_current.mappluto_pins".to_string(),
             hash_kind: "test_sha256".to_string(),
             sha256: "5".repeat(64),
         },
@@ -222,34 +221,9 @@ fn synthetic_not_live_71_subject_142_release_row_request() -> GeoH7PopulationRow
             GeoTruthPlane::RoundExactLenderParty,
             1,
         ));
-    request.plane_denominators[0].selected_multi_parcel_loans =
-        CANON_GEO_H7_LIVE_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS;
-    request.plane_denominators[1].selected_multi_parcel_loans =
-        CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS;
-    request.rows.clear();
-    for index in 0..CANON_GEO_H7_LIVE_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS {
-        let loan_key = format!("synthetic-not-live-nonround-{index:02}");
-        let document_id = format!("synthetic-not-live-doc-nonround-{index:02}");
-        request
-            .rows
-            .push(non_round_row(&loan_key, &document_id, "26v1"));
-        request
-            .rows
-            .push(non_round_row(&loan_key, &document_id, "26v2"));
-    }
-    for index in 0..CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS {
-        let loan_key = format!("synthetic-not-live-round-{index:02}");
-        let document_id = format!("synthetic-not-live-doc-round-{index:02}");
-        request
-            .rows
-            .push(round_row(&loan_key, &document_id, "26v1"));
-        request
-            .rows
-            .push(round_row(&loan_key, &document_id, "26v2"));
-    }
+    retag_bridge_source_records(&mut request, SYNTHETIC_CURRENT_BRIDGE_BUILD_ID);
     request.provenance.observed_rows = request.rows.len() as u64;
-    request.provenance.row_cap = 200;
-    request.max_cases = 100;
+    request.provenance.row_cap = 100;
     request
 }
 
@@ -411,39 +385,51 @@ fn materializes_replay_population_without_pooling_truth_planes_or_candidate_rele
 }
 
 #[test]
-fn synthetic_not_live_71_subject_shape_materializes_and_evaluates_below_frozen_e4_gate() {
-    let request = synthetic_not_live_71_subject_142_release_row_request();
+fn fixture_subset_accepts_nonhistorical_declared_bridge_snapshot() {
+    let mut request = base_request();
+    let fixture_build_id = "fixture_subset_snapshot_20260901_a";
+    request.provenance.bridge_build_id = fixture_build_id.to_string();
+    retag_bridge_source_records(&mut request, fixture_build_id);
+
+    let artifact = materialize_h7_population_rows(&request)
+        .expect("fixture subset may replay a declared nonhistorical bridge snapshot");
+
+    assert_eq!(
+        artifact.provenance.bridge_build_id,
+        "fixture_subset_snapshot_20260901_a"
+    );
+    assert_eq!(artifact.summary.materialized_unique_accepted_loans, 2);
+}
+
+#[test]
+fn synthetic_current_build_live_complete_materializes_relative_to_declared_snapshot() {
+    let request = synthetic_current_build_live_complete_request();
+    assert_ne!(
+        request.provenance.bridge_build_id, CANON_GEO_H7_BRIDGE_BUILD_ID,
+        "LiveComplete must not be pinned to the historical retained bridge build"
+    );
     assert!(
         request
             .provenance
             .source_hashes
             .iter()
-            .all(|hash| hash.source.starts_with("synthetic_not_live.")),
-        "this fixture is contract coverage, not live H.7 proof"
+            .all(|hash| hash.source.starts_with("synthetic_current.")),
+        "this fixture covers the live typed contract without claiming external proof"
     );
 
-    let artifact =
-        materialize_h7_population_rows(&request).expect("synthetic 71/142 shape materializes");
+    let artifact = materialize_h7_population_rows(&request)
+        .expect("synthetic current-build live shape materializes");
 
-    assert_eq!(
-        artifact.summary.source_rows,
-        CANON_GEO_H7_LIVE_COMPLETE_RELEASE_ROWS
-    );
-    assert_eq!(
-        artifact.summary.materialized_unique_accepted_loans,
-        CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS
-    );
-    assert_eq!(
-        artifact.summary.solver_population_subjects,
-        CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS
-    );
+    assert_eq!(artifact.summary.source_rows, request.rows.len() as u64);
+    assert_eq!(artifact.summary.materialized_unique_accepted_loans, 2);
+    assert_eq!(artifact.summary.solver_population_subjects, 2);
     assert_eq!(
         summary(
             &artifact.summary.truth_planes,
             GeoTruthPlane::NonRoundAmountDateLegalBorough
         )
         .selected_multi_parcel_loans,
-        CANON_GEO_H7_LIVE_COMPLETE_NON_ROUND_MULTI_PARCEL_LOANS
+        1
     );
     assert_eq!(
         summary(
@@ -451,29 +437,25 @@ fn synthetic_not_live_71_subject_shape_materializes_and_evaluates_below_frozen_e
             GeoTruthPlane::RoundExactLenderParty
         )
         .selected_multi_parcel_loans,
-        CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS
+        1
     );
     const {
         assert!(
-            CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS < CANON_GEO_H7_FROZEN_E4_ACCEPTANCE_CASES,
-            "the synthetic 71-subject handoff must not satisfy the frozen 79-case E4 gate"
+            CANON_GEO_H7_FROZEN_E4_ACCEPTANCE_CASES == 79,
+            "the frozen E4 gate remains a separate exact gate"
         );
     }
+    assert!(
+        artifact.summary.materialized_unique_accepted_loans
+            < CANON_GEO_H7_FROZEN_E4_ACCEPTANCE_CASES,
+        "LiveComplete typed-shape validation must not imply E4 gate success"
+    );
 
     let evaluation =
         evaluate_population(&artifact.population).expect("synthetic solver population evaluates");
-    assert_eq!(
-        evaluation.summary.population_eligible_cases,
-        CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS
-    );
-    assert_eq!(
-        evaluation.summary.candidate_reach_evaluated_cases,
-        CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS
-    );
-    assert_eq!(
-        evaluation.summary.candidate_reach_partial_cases,
-        CANON_GEO_H7_LIVE_COMPLETE_MULTI_PARCEL_LOANS
-    );
+    assert_eq!(evaluation.summary.population_eligible_cases, 2);
+    assert_eq!(evaluation.summary.candidate_reach_evaluated_cases, 2);
+    assert_eq!(evaluation.summary.candidate_reach_partial_cases, 2);
     assert_eq!(
         evaluation.summary.solver_truth_scored_cases, 0,
         "solver truth stays unscored until candidate reach is full"
@@ -481,25 +463,112 @@ fn synthetic_not_live_71_subject_shape_materializes_and_evaluates_below_frozen_e
 }
 
 #[test]
-fn synthetic_not_live_live_complete_rejects_70_subject_drift() {
-    let mut request = synthetic_not_live_71_subject_142_release_row_request();
-    request
-        .rows
-        .retain(|row| row.loan_key != "synthetic-not-live-round-35");
-    request.provenance.observed_rows = request.rows.len() as u64;
-    request.plane_denominators[1].selected_multi_parcel_loans =
-        CANON_GEO_H7_LIVE_COMPLETE_ROUND_MULTI_PARCEL_LOANS - 1;
+fn rejects_live_complete_denominator_inflation_over_materialized_subjects() {
+    let mut request = synthetic_current_build_live_complete_request();
+    request.plane_denominators[1].selected_multi_parcel_loans += 1;
 
-    let error = materialize_h7_population_rows(&request)
-        .expect_err("synthetic 70-subject LiveComplete drift rejected");
+    let error =
+        materialize_h7_population_rows(&request).expect_err("inflated denominator rejected");
     assert!(
         error
             .message
-            .contains("LiveComplete selected multi-parcel count drifted")
+            .contains("selected multi-parcel denominator must match materialized loan subjects")
     );
     assert_eq!(
         error.detail.get("truth_plane").map(String::as_str),
         Some("round_exact_lender_party")
+    );
+}
+
+#[test]
+fn rejects_empty_live_complete_population() {
+    let mut request = synthetic_current_build_live_complete_request();
+    request.rows.clear();
+    request.provenance.observed_rows = 0;
+
+    let error = materialize_h7_population_rows(&request)
+        .expect_err("empty LiveComplete population rejected");
+    assert!(
+        error
+            .message
+            .contains("live population rows require nonzero fresh result rows"),
+        "{}",
+        error.message
+    );
+}
+
+#[test]
+fn rejects_live_complete_duplicate_loan_release_rows() {
+    let mut request = synthetic_current_build_live_complete_request();
+    request.rows.push(request.rows[0].clone());
+    request.provenance.observed_rows = request.rows.len() as u64;
+
+    let error =
+        materialize_h7_population_rows(&request).expect_err("duplicate loan/release rejected");
+    assert!(
+        error
+            .message
+            .contains("repeat one loan/candidate-release measurement"),
+        "{}",
+        error.message
+    );
+}
+
+#[test]
+fn rejects_live_complete_empty_or_whitespace_bridge_build_identity() {
+    for bridge_build_id in ["", " bridge_build_current_snapshot_20260901_a "] {
+        let mut request = synthetic_current_build_live_complete_request();
+        request.provenance.bridge_build_id = bridge_build_id.to_string();
+
+        let error = materialize_h7_population_rows(&request)
+            .expect_err("empty or whitespace build id rejected");
+        assert!(
+            error
+                .message
+                .contains("string fields must be non-empty and canonical-trimmed"),
+            "{}",
+            error.message
+        );
+        assert_eq!(
+            error.detail.get("field").map(String::as_str),
+            Some("provenance.bridge_build_id")
+        );
+    }
+}
+
+#[test]
+fn rejects_live_complete_mixed_bridge_source_record_vintage() {
+    let mut request = synthetic_current_build_live_complete_request();
+    let stale_build = "1f4c62a1-5e78-409f-9f0d-111111111111";
+    let bridge_record = request.rows[0]
+        .source_records
+        .iter_mut()
+        .find(|record| record.role == GeoH7SourceRecordRole::BridgeLoan)
+        .expect("bridge source record");
+    bridge_record.source_record.source_vintage = stale_build.to_string();
+    bridge_record.source_record.record_blake3 = blake3::hash(
+        format!(
+            "fixture-h7-source\0bridge_loan\0{}\0{stale_build}",
+            bridge_record.source_record.source_record_id
+        )
+        .as_bytes(),
+    )
+    .to_hex()
+    .to_string();
+
+    let error = materialize_h7_population_rows(&request).expect_err("mixed build vintage rejected");
+    assert!(
+        error
+            .message
+            .contains("source evidence vintage does not match its required release")
+    );
+    assert_eq!(
+        error.detail.get("role").map(String::as_str),
+        Some("bridge_loan")
+    );
+    assert_eq!(
+        error.detail.get("expected").map(String::as_str),
+        Some(SYNTHETIC_CURRENT_BRIDGE_BUILD_ID)
     );
 }
 
@@ -1679,6 +1748,25 @@ fn source_record(
             .to_hex()
             .to_string(),
         },
+    }
+}
+
+fn retag_bridge_source_records(request: &mut GeoH7PopulationRowsRequest, bridge_build_id: &str) {
+    for row in &mut request.rows {
+        for record in &mut row.source_records {
+            if record.role == GeoH7SourceRecordRole::BridgeLoan {
+                record.source_record.source_vintage = bridge_build_id.to_string();
+                record.source_record.record_blake3 = blake3::hash(
+                    format!(
+                        "fixture-h7-source\0bridge_loan\0{}\0{bridge_build_id}",
+                        record.source_record.source_record_id
+                    )
+                    .as_bytes(),
+                )
+                .to_hex()
+                .to_string();
+            }
+        }
     }
 }
 
