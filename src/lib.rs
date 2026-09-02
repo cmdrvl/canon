@@ -5046,7 +5046,8 @@ fn validate_entity_link_review_export_decision_derivation(
 ) -> Result<(), CanonOutput> {
     let work_dir = entity_link_review_export_work_dir(link_path, stage)?;
     let run = read_hash_bound_entity_link_review_run_artifact(&work_dir, link, stage)?;
-    let strategy = load_entity_link_review_export_strategy(&run, link, stage)?;
+    let strategy =
+        load_entity_link_review_export_strategy(&run, link, link_path, &work_dir, stage)?;
     let solve = load_entity_link_v1_solve_artifact(&work_dir, &run)?;
     validate_entity_link_review_export_solve_binding(link, &solve, stage)?;
     let bindings =
@@ -5202,6 +5203,8 @@ fn validate_entity_link_review_export_solve_binding(
 fn load_entity_link_review_export_strategy(
     run: &entity::run::EntityRunArtifact,
     link: &entity::run::link::EntityLinkArtifact,
+    link_path: &Path,
+    work_dir: &Path,
     stage: &str,
 ) -> Result<resolve::ResolveStrategy, CanonOutput> {
     let strategy_source = run
@@ -5219,8 +5222,13 @@ fn load_entity_link_review_export_strategy(
                 }),
             )
         })?;
-    let strategy_path = Path::new(strategy_source);
-    let strategy = resolve::load_strategy(strategy_path).map_err(create_resolve_refusal)?;
+    let strategy = load_entity_link_review_export_strategy_from_context(
+        strategy_source,
+        link_path,
+        work_dir,
+        &run.metadata.strategy.content_hash,
+        stage,
+    )?;
     if strategy.id.as_str() != run.metadata.strategy.id.as_str()
         || strategy.version.as_str() != run.metadata.strategy.version.as_str()
         || strategy.content_hash.as_str() != run.metadata.strategy.content_hash.as_str()
@@ -5270,6 +5278,151 @@ fn load_entity_link_review_export_strategy(
         ));
     }
     Ok(strategy)
+}
+
+fn load_entity_link_review_export_strategy_from_context(
+    strategy_source: &str,
+    link_path: &Path,
+    work_dir: &Path,
+    expected_content_hash: &str,
+    stage: &str,
+) -> Result<resolve::ResolveStrategy, CanonOutput> {
+    let source = Path::new(strategy_source);
+    if source.is_absolute() {
+        return resolve::load_strategy(source).map_err(create_resolve_refusal);
+    }
+
+    let candidates = entity_link_review_export_strategy_candidates(source, link_path, work_dir);
+    let candidate_labels = candidates
+        .iter()
+        .map(|candidate| candidate.display().to_string())
+        .collect::<Vec<_>>();
+    let mut matching = Vec::new();
+    let mut mismatches = Vec::new();
+    let mut load_failures = Vec::new();
+
+    for candidate in &candidates {
+        let bytes = match fs::read(candidate) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                load_failures.push(serde_json::json!({
+                    "resolved_source": candidate.display().to_string(),
+                    "error": error.to_string()
+                }));
+                continue;
+            }
+        };
+        let actual_hash = witness::hash_bytes(&bytes);
+        if actual_hash.as_str() != expected_content_hash {
+            mismatches.push(serde_json::json!({
+                "resolved_source": candidate.display().to_string(),
+                "actual": actual_hash
+            }));
+            continue;
+        }
+        let strategy = resolve::parse_strategy_bytes(&bytes).map_err(|error| {
+            native_entity_artifact_contract_refusal(
+                "Entity link review export failed to parse the hash-bound strategy source",
+                serde_json::json!({
+                    "stage": stage,
+                    "field": "run.summary.labels.strategy_source",
+                    "source": strategy_source,
+                    "resolved_source": candidate.display().to_string(),
+                    "error_code": format!("{:?}", error.code),
+                    "error": error.message,
+                    "writes_performed": false
+                }),
+            )
+        })?;
+        matching.push((candidate.display().to_string(), strategy));
+    }
+
+    match matching.len() {
+        1 => Ok(matching.remove(0).1),
+        count if count > 1 => Err(native_entity_artifact_contract_refusal(
+            "Entity link review export found multiple hash-bound strategy sources in artifact context",
+            serde_json::json!({
+                "stage": stage,
+                "field": "run.summary.labels.strategy_source",
+                "source": strategy_source,
+                "expected": expected_content_hash,
+                "attempted_sources": candidate_labels,
+                "matching_sources": matching
+                    .iter()
+                    .map(|(source, _)| source.clone())
+                    .collect::<Vec<_>>(),
+                "writes_performed": false
+            }),
+        )),
+        _ if !mismatches.is_empty() => Err(native_entity_artifact_contract_refusal(
+            "Entity link review export strategy hash does not match artifact context source",
+            serde_json::json!({
+                "stage": stage,
+                "field": "run.metadata.strategy.content_hash",
+                "source": strategy_source,
+                "expected": expected_content_hash,
+                "attempted_sources": candidate_labels,
+                "mismatches": mismatches,
+                "load_failures": load_failures,
+                "writes_performed": false
+            }),
+        )),
+        _ => Err(native_entity_artifact_contract_refusal(
+            "Entity link review export could not read a strategy source from artifact context",
+            serde_json::json!({
+                "stage": stage,
+                "field": "run.summary.labels.strategy_source",
+                "source": strategy_source,
+                "attempted_sources": candidate_labels,
+                "load_failures": load_failures,
+                "writes_performed": false
+            }),
+        )),
+    }
+}
+
+fn entity_link_review_export_strategy_candidates(
+    strategy_source: &Path,
+    link_path: &Path,
+    work_dir: &Path,
+) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    for dir in entity_link_review_export_strategy_context_dirs(link_path, work_dir) {
+        let candidate = dir.join(strategy_source);
+        if !candidates.contains(&candidate) {
+            candidates.push(candidate);
+        }
+    }
+    candidates
+}
+
+fn entity_link_review_export_strategy_context_dirs(
+    link_path: &Path,
+    work_dir: &Path,
+) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(link_dir) = link_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+    {
+        push_unique_path(&mut dirs, link_dir);
+    }
+    push_unique_path(&mut dirs, work_dir);
+    let mut current = work_dir
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty());
+    while let Some(dir) = current {
+        push_unique_path(&mut dirs, dir);
+        current = dir.parent().filter(|parent| !parent.as_os_str().is_empty());
+    }
+    dirs
+}
+
+fn push_unique_path(paths: &mut Vec<PathBuf>, path: &Path) {
+    let candidate = path.to_path_buf();
+    if !paths.contains(&candidate) {
+        paths.push(candidate);
+    }
 }
 
 fn validate_entity_link_review_export_decision_parity(

@@ -454,6 +454,101 @@ fn public_subprocess_link_stale_profile_source_mirror_uses_committed_link() {
     assert_review_export_uses_committed_link(output, &original_link_hash);
 }
 
+#[test]
+fn public_subprocess_link_review_export_replays_relative_strategy_from_artifact_context() {
+    let fixture = RecordLinkFixture::new();
+    let link_work_dir = fixture.root.join("link-relative-strategy-work");
+    let link = link_command_from_cwd(
+        &fixture,
+        &link_work_dir,
+        Path::new("strategy.yaml"),
+        &fixture.root,
+    );
+    assert_not_refusal(&link, "entity link with relative strategy");
+
+    let run_artifact: Value = read_json(&link_work_dir.join("run/run.json"));
+    assert_eq!(
+        run_artifact["summary"]["labels"]["strategy_source"].as_str(),
+        Some("strategy.yaml")
+    );
+    let link_path = link_work_dir.join("link/link.json");
+    let link_artifact: EntityLinkArtifact = read_json(&link_path);
+    let original_link_hash = link_artifact.artifact_content_hash.clone();
+
+    let unrelated_cwd = fixture.root.join("unrelated-cwd");
+    fs::create_dir_all(&unrelated_cwd).expect("unrelated cwd");
+    fs::write(
+        unrelated_cwd.join("strategy.yaml"),
+        b"strategy_id: unrelated\nstrategy_version: 9.9.9\n",
+    )
+    .expect("unrelated cwd strategy");
+
+    let from_unrelated_cwd = review_export_command_from_cwd(&link_path, &unrelated_cwd);
+    let unrelated_stdout = from_unrelated_cwd.stdout.clone();
+    assert_review_export_uses_committed_link(from_unrelated_cwd, &original_link_hash);
+
+    let from_source_cwd = review_export_command_from_cwd(&link_path, &fixture.root);
+    let source_stdout = from_source_cwd.stdout.clone();
+    assert_review_export_uses_committed_link(from_source_cwd, &original_link_hash);
+    assert_eq!(
+        unrelated_stdout, source_stdout,
+        "review export bytes must not depend on ambient cwd"
+    );
+}
+
+#[test]
+fn public_subprocess_link_review_export_rejects_unrelated_cwd_strategy_when_context_stale() {
+    let fixture = RecordLinkFixture::new();
+    let original_strategy_bytes = fs::read(&fixture.strategy).expect("strategy bytes");
+    let link_work_dir = fixture.root.join("link-stale-relative-strategy-work");
+    let link = link_command_from_cwd(
+        &fixture,
+        &link_work_dir,
+        Path::new("strategy.yaml"),
+        &fixture.root,
+    );
+    assert_not_refusal(&link, "entity link with relative strategy");
+
+    fs::write(
+        &fixture.strategy,
+        b"strategy_id: stale-context\nstrategy_version: 0.0.0\n",
+    )
+    .expect("tamper artifact-context strategy");
+    let unrelated_cwd = fixture.root.join("unrelated-cwd-with-original");
+    fs::create_dir_all(&unrelated_cwd).expect("unrelated cwd");
+    let unrelated_strategy = unrelated_cwd.join("strategy.yaml");
+    fs::write(&unrelated_strategy, original_strategy_bytes).expect("unrelated cwd strategy");
+
+    let output =
+        review_export_command_from_cwd(&link_work_dir.join("link/link.json"), &unrelated_cwd);
+    assert_refusal(
+        &output,
+        RefusalCode::EEntityArtifactContract,
+        "review_export",
+    );
+    let envelope = parse_refusal_envelope(&output);
+    let refusal = envelope.get("refusal").unwrap_or(&envelope);
+    assert_eq!(
+        refusal["detail"]["field"].as_str(),
+        Some("run.metadata.strategy.content_hash")
+    );
+    let attempted = refusal["detail"]["attempted_sources"]
+        .as_array()
+        .expect("attempted sources");
+    assert!(
+        attempted
+            .iter()
+            .any(|source| source.as_str() == Some(fixture.strategy.to_string_lossy().as_ref())),
+        "artifact-context source should be attempted"
+    );
+    assert!(
+        attempted
+            .iter()
+            .all(|source| source.as_str() != Some(unrelated_strategy.to_string_lossy().as_ref())),
+        "unrelated cwd source must not be used as replay authority"
+    );
+}
+
 struct RecordLinkFixture {
     _temp: tempfile::TempDir,
     root: PathBuf,
@@ -1253,40 +1348,64 @@ fn run_command(fixture: &RecordLinkFixture, work_dir: &Path) -> Output {
 }
 
 fn link_command(fixture: &RecordLinkFixture, work_dir: &Path) -> Output {
-    canon([
-        OsString::from("entity"),
-        OsString::from("link"),
-        fixture.reference_rows.as_os_str().to_owned(),
-        fixture.target_rows.as_os_str().to_owned(),
-        OsString::from("--profile"),
-        fixture.profile.as_os_str().to_owned(),
-        OsString::from("--strategy"),
-        fixture.strategy.as_os_str().to_owned(),
-        OsString::from("--registry"),
-        fixture.registry.as_os_str().to_owned(),
-        OsString::from("--work-dir"),
-        work_dir.as_os_str().to_owned(),
-        OsString::from("--emit"),
-        OsString::from("json"),
-        OsString::from("--no-witness"),
-    ])
+    link_command_from_cwd(fixture, work_dir, &fixture.strategy, Path::new("."))
+}
+
+fn link_command_from_cwd(
+    fixture: &RecordLinkFixture,
+    work_dir: &Path,
+    strategy: &Path,
+    cwd: &Path,
+) -> Output {
+    canon_from_cwd(
+        cwd,
+        [
+            OsString::from("entity"),
+            OsString::from("link"),
+            fixture.reference_rows.as_os_str().to_owned(),
+            fixture.target_rows.as_os_str().to_owned(),
+            OsString::from("--profile"),
+            fixture.profile.as_os_str().to_owned(),
+            OsString::from("--strategy"),
+            strategy.as_os_str().to_owned(),
+            OsString::from("--registry"),
+            fixture.registry.as_os_str().to_owned(),
+            OsString::from("--work-dir"),
+            work_dir.as_os_str().to_owned(),
+            OsString::from("--emit"),
+            OsString::from("json"),
+            OsString::from("--no-witness"),
+        ],
+    )
 }
 
 fn review_export_command(link_artifact: &Path) -> Output {
-    canon([
-        OsString::from("entity"),
-        OsString::from("review"),
-        OsString::from("export"),
-        link_artifact.as_os_str().to_owned(),
-        OsString::from("--include"),
-        OsString::from("escrow"),
-        OsString::from("--emit"),
-        OsString::from("json"),
-    ])
+    review_export_command_from_cwd(link_artifact, Path::new("."))
+}
+
+fn review_export_command_from_cwd(link_artifact: &Path, cwd: &Path) -> Output {
+    canon_from_cwd(
+        cwd,
+        [
+            OsString::from("entity"),
+            OsString::from("review"),
+            OsString::from("export"),
+            link_artifact.as_os_str().to_owned(),
+            OsString::from("--include"),
+            OsString::from("escrow"),
+            OsString::from("--emit"),
+            OsString::from("json"),
+        ],
+    )
 }
 
 fn canon<const N: usize>(args: [OsString; N]) -> Output {
+    canon_from_cwd(Path::new("."), args)
+}
+
+fn canon_from_cwd<const N: usize>(cwd: &Path, args: [OsString; N]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_canon"))
+        .current_dir(cwd)
         .args(args)
         .output()
         .expect("canon subprocess runs")
