@@ -25,8 +25,8 @@ use crate::{
 use serde_json::json;
 use std::{collections::BTreeSet, fmt};
 use value_frequency::{
-    EntityValueFrequencyAdjustment, EntityValueFrequencyError, EntityValueFrequencyTable,
-    scale_score_units_by_frequency,
+    EntityValueFrequencyAdjustment, EntityValueFrequencyError, EntityValueFrequencyStrategyConfig,
+    EntityValueFrequencyTable, scale_score_units_by_frequency,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -283,6 +283,16 @@ pub fn validate_value_frequency_table_for_scoring(
 ) -> Result<(), Refusal> {
     table
         .validate_for_posting_index(posting_index)
+        .map_err(value_frequency_refusal)
+}
+
+pub fn validate_value_frequency_strategy_for_scoring(
+    config: &EntityValueFrequencyStrategyConfig,
+    table: &EntityValueFrequencyTable,
+    posting_index: &EntityPostingIndex,
+) -> Result<(), Refusal> {
+    config
+        .validate_table(table, posting_index)
         .map_err(value_frequency_refusal)
 }
 

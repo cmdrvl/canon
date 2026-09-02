@@ -19,6 +19,7 @@ use canon::{
             apply_value_frequency_adjustment, exact_view_support_hit,
             frequency_weighted_exact_view_support_hit,
             frequency_weighted_string_similarity_support_hit, string_similarity_support_hit,
+            validate_value_frequency_strategy_for_scoring,
             validate_value_frequency_table_for_scoring,
         },
         postings::{EntityPostingBuildConfig, EntityPostingIndex, EntityPostingSurface},
@@ -326,11 +327,17 @@ fn strategy_declared_frequency_table_hash_mismatch_refuses_before_scoring() {
             .expect("strategy config parses")
             .expect("frequency strategy config present");
 
-    let error = config
-        .validate_table(&table, &index)
+    let refusal = validate_value_frequency_strategy_for_scoring(&config, &table, &index)
         .expect_err("stale strategy-declared frequency table hash refuses");
-    assert_eq!(error.reason(), "strategy_frequency_table_hash_mismatch");
-    assert_eq!(error.field(), FREQUENCY_TABLE_HASH_PARAM);
+    assert_eq!(refusal.code, RefusalCode::EEntityArtifactContract);
+    assert_eq!(refusal.detail["stage"], "evidence");
+    assert_eq!(refusal.detail["artifact"], "value_frequency_table");
+    assert_eq!(
+        refusal.detail["reason"],
+        "strategy_frequency_table_hash_mismatch"
+    );
+    assert_eq!(refusal.detail["field"], FREQUENCY_TABLE_HASH_PARAM);
+    assert_eq!(refusal.detail["writes_performed"], false);
 }
 
 #[test]
