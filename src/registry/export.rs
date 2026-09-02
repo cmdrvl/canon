@@ -675,7 +675,6 @@ fn insert_search_metadata(
     plan: &RegistryExportExecutionPlan,
     path: &Path,
 ) -> Result<(), Refusal> {
-    let generated_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let normalization_spec = json!({
         "id": NORMALIZATION_SPEC_ID,
         "description": "ASCII uppercase, then remove every non A-Z/0-9 character",
@@ -724,7 +723,11 @@ fn insert_search_metadata(
         ("format", plan.request.format.as_str().to_string()),
         ("content_hash", plan.content_hash.clone()),
         ("snapshot_hash", plan.snapshot.snapshot_hash.clone()),
-        ("generated_at", generated_at),
+        ("generated_at", "1970-01-01T00:00:00Z".to_string()),
+        (
+            "generation_time_policy",
+            "deterministic_export_no_wall_clock".to_string(),
+        ),
         (
             "source_entry_count",
             plan.snapshot.source_entry_count.to_string(),
