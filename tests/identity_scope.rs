@@ -1,9 +1,6 @@
 #![forbid(unsafe_code)]
 
-#[path = "../src/identity_scope.rs"]
-mod identity_scope;
-
-use identity_scope::{
+use canon::identity_scope::{
     CANON_IDENTITY_SCOPE_VERSION, CanonicalTypeRef, CoreCanonicalTypeClass,
     CoreIdentifierNamespaceClass, CoreScopeDimension, CrossScopeAliasPolicy,
     ExactLookupQualification, IdentifierNamespaceRef, IdentityCompatibility, IdentityFactHeader,

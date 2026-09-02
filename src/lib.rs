@@ -15,6 +15,7 @@ pub mod evaluation;
 pub mod extensions;
 mod fs_safety;
 pub mod geo;
+pub mod identity_scope;
 pub mod inbox;
 pub mod input;
 pub mod lookup;
