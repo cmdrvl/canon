@@ -1,6 +1,10 @@
 # PLAN_CANON_GEO — The Tile as a Compiled Constraint Object
 
 > Status: **proposed full architecture with a partial E4 walking skeleton implemented**.
+> **Course correction 2026-09-01:** §18 restates the product as collateral composition,
+> evidence-dated existence, and named conflicts, and places every proposal in `IN`,
+> `DEFERRED`, or `CUT`; §19 is the staged execution plan with frozen gates. Where §18
+> defers or cuts something proposed below, §18 controls.
 > The typed evidence compiler, exact parcel/building residual kernel, explicit
 > parcel-default/building selection profiles, incidence factorization, bounded fallback,
 > population evaluator, and profile-aware offline warehouse-row materializer exist.
@@ -91,6 +95,9 @@ The controlling state entering the main review is:
 | E5 geography preflight | Franklin County, Ohio (`39049`) now has a real parcel-backed successor to the immutable 2026-08-31 thin-tier preflight. Pinned current inputs are bridge build `ce3953ac-c2d4-4b48-bf02-29f0cf341389` and Franklin parcel release `hub-de09f99cce0bcae7142d6d2e26582fd3-25` / `2026-09-01`. Of 494,704 landed parcels, 494,043 pass the declared source/derived geometry admission. H3 feature coverage gives every one of 151 property subjects a nonempty block; Snowflake GEOGRAPHY PIP reaches 147, with 146 unique and one two-parcel case. The four misses are 3.006–22.221 m from the nearest blocked parcel and none is rescued by invalid-retained geometry. A seeded live row also traversed original EPSG:3735 WKB → independent digest verification → Canon fixed-point materialization: 29 decoded / 28 canonical vertices, ≤1 µm decimal admission loss and ≤499 µm lattice snapping. These are candidate-reach and source-byte transport results, not precision, exact-local parity, solver correctness, or an evidence-tier operating point. Successful MCP envelopes still omit query ids, so durable live receipt promotion remains open. The applicable FEMA Ohio partition remains `2023-05-02`; vintages are pinned per geography. | `e5_franklin_county_parcel_candidate_reach.sql`, `e5_franklin_county_live_geometry_probe.sql`; parcel candidate reach and one seeded source-byte path `MEASURED`, generic core isolation `TESTED`, E5 `OPEN` |
 | Time semantics | Evidence admissions preserve whole-day valid-time intervals, and v0 deliberately keeps every time-scoped observation diagnostic because composition has no query-as-of domain. Allen/STP inference is not implemented. | §§3, 7, 16.3; compiler contract implemented, temporal solver `OPEN` |
 | Current precision claim | The 96–98% entity-grain answered-point estimate is provisional and truth-instrument-limited; Appendix M indicates residual contamination. | Appendices L.6 and M.5; `MEASURED`, not a release claim |
+| Product thesis | Collateral composition at parcel and building grain, evidence-dated physical existence, and named source conflicts (§18.2). Point re-ranking is `CUT`. Honest abstention is required but not differentiating. | §18; binding scope |
+| Solver scope | Extensional exact kernel retained as backend. Propagators (additive band, cardinality, exclusivity) and explanation artifacts (minimal core, correction sets, counterfactual separation) are `IN`; compiled representations, latent-slot symmetry breaking, Allen/STP, and VeriPB are `DEFERRED` with named triggers (§18.3). | §18.3, §18.5; `IN` items owned by beads, `DEFERRED` items hold P4 placeholders |
+| Imagery and map evidence | Licensed orthos, 3DEP, NAIP, NOAA ERI as pinned observer inputs; observers emit typed observations with characterized error through `rho`; first uses are truth adjudication and the evidence card, solver input third. Commercial basemaps and location-proposing models are `CUT`. | §18.4, Appendix J; `PROPOSED`, beads created 2026-09-01 |
 
 The 2026-08-29 and 2026-08-30 live home-cell receipts are preserved in
 `scripts/geo_measurements/README.md`. It includes complete v3 null-H3 controls,
@@ -152,6 +159,18 @@ Model-count reduction is counterfactual separation, not expected value of inform
 without calibrated outcome probabilities. Exactness remains relative to the admitted,
 quantized representation. Candidate reach, constraint soundness, solver correctness,
 reconciliation confluence, and truth quality remain different gates.
+
+The shipped `canon geo stack-evidence` seam makes that accretion operational without
+making a provider or parcel layer mandatory. Its base is any bounded labeled population;
+its overlay names cases and carries only versioned rho contracts and observations. It
+cannot change truth, candidate universe, composition profile, or solver budgets. Every
+artifact content-binds and retains the canonical base, overlay, and result, and is
+replay-validated before it can be stacked again or evaluated. Exact reuse is idempotent;
+contract/observation redefinition and semantic duplicate observations under alternate IDs
+refuse. Hard, soft, and diagnostic admissions are counted separately, while source-record
+volume is explicitly provenance rather than confidence. This is the generic evidence
+tower between regional materializers and exact bounded solving: address, footprint, deed,
+area, imagery, or future sources may all target it by emitting the same typed overlay.
 
 The target control surface is deliberately small:
 
@@ -834,6 +853,8 @@ coverage is fine — imperfect coverage produces honest abstentions.**
 
 ## 13. Cost model and the commercial thesis
 
+> **2026-09-01:** the commercial thesis is restated in §18.2 as three deliverables with named buyers; the cost figures below are `CUT` (§18.3).
+>
 > **CURRENT STATUS — FALSIFIED / OPEN.** The numerical model in this section is retained as
 > the original commercial hypothesis. Appendices C and G falsify its work-unit sizing, and
 > Appendix F changes the computational unit from the whole tile to geometric components.
@@ -896,6 +917,9 @@ partially answered are narrowed here rather than silently removed.
 10. **Citation and theorem audit.** Independently verify every load-bearing theorem,
     complexity, attribution, and claimed proof-system capability before it appears in an
     external argument or implementation acceptance criterion.
+11. **Scope discipline.** Every item above is now `IN`, `DEFERRED`, or `CUT` under §18.3;
+    items 6 and 7 are `DEFERRED` with triggers, item 4 is re-aimed at component costs
+    measured with evidence admitted (§19.5, D1), and item 3 is stage D0.
 
 ---
 
@@ -1129,6 +1153,349 @@ product. That is the falsifiable form of "could this possibly work."
 > GeoDISC hard contract also has one empirical falsification and therefore
 > remains diagnostic. The explicit 79-case acceptance test remains open, as
 > do truth-instrument cleanup and the E5 evidence-tier curve.
+
+---
+
+## 18. Course correction (2026-09-01): the product is collateral composition, evidence-dated existence, and named conflicts
+
+Added 2026-09-01 after the reality check of the implemented workbench against this plan.
+This section is normative for scope. Where an earlier section proposes machinery this
+section defers or cuts, this section controls. Nothing here weakens a gate, a denominator,
+or a measurement; it changes what the gates are for.
+
+### 18.1 What the measurements already decided
+
+1. **Point re-ranking is not the product.** E1 found 72/79 labeled failures unreachable by
+   any tile-local solver (40 gross-location inputs, 32 condo ledger residues). E3 ranked
+   the true lot first 0/7 times on the reachable remainder. L.6 reached the high nineties
+   on answered points with geometry, the entity-grain rule, and abstention, with no solver.
+   M.5 showed PAD confirms the PIP lot 20/21 times on "gross" points, so much of that class
+   is truth contamination. The constraint machinery has nothing to fix at point grain.
+2. **The unsolved question is composition.** Which parcels and buildings constitute the
+   collateral of one loan, at each entity level, with the ambiguity counted. Cases 3, 4,
+   and 6 are the shape. The H.7 multi-BBL cohort is the population. As of this date the
+   forward cohort has 71 genuine subjects, all 70 nonempty candidate universes solve
+   exactly, and every one reports `evidence_no_observation`. The solver has never been
+   given evidence on real multi-parcel collateral. That experiment is the whole question.
+3. **The shipped solver is an extensional kernel.** `src/geo/composition.rs` factorizes
+   the incidence graph, enumerates components exhaustively under a mask budget, falls back
+   to pruned depth-first search, and reports exact counts and backbones. Its constraint
+   vocabulary is Require, Forbid, Cardinality, AllowedSets, AnyOf, IntegerSumBand,
+   AllOrNone, and Requires. None of §7's global propagators, none of §8's explanation
+   artifacts, and none of §8.1's certificates exist in code, and until this section none
+   had a bead.
+4. **The cost thesis is not admissible.** §13's figures were falsified by Appendices C
+   and G. Component maxima of 109 raw predicate-incidence nodes at r8 and 118 to 128 with
+   Overture are observation stress bounds, not latent-variable widths. Nothing in the
+   commercial argument may cite a per-tile time or a national cost until E4 records
+   component costs with evidence admitted.
+5. **Honest abstention is table stakes, not differentiation.** Commercial property APIs
+   already return explicit nulls and separate "no coverage" from "no match." Abstention
+   alone does not sell. Composition, counted ambiguity, named conflicts, building grain,
+   dated physical existence, and deed-anchored truth are the capabilities no
+   address-to-parcel API offers.
+
+### 18.2 The product, restated
+
+Three deliverables, in the order they can exist:
+
+| # | Deliverable | What it is | First buyer |
+|---|---|---|---|
+| P1 | **Physical collateral ledger** | For every loan in every public CMBS deal: the exact parcel set, building set, deed-confirmed BBL or county parcel ids, the dated image vintage at which each structure was last observed present, the residual model count, the claim class, and the SEC accession the loan came from. Rows are receipts, not scores. | B-piece buyers and special servicers running workouts; issuer counsel attaching it to a Reg AB tape |
+| P2 | **Explanation artifacts** | Backbone plus exact count; minimal blame set when admitted sources conflict (MUS); minimal repair set (MCS); counterfactual separation per prospective observation. | Data vendors and trustees; the same B-piece buyers for contested loans |
+| P3 | **Evidence-tier curve per geography** | Coverage, precision, and abstention reported per evidence tier, with the cheapest decision-changing acquisition named per abstention. | Anyone pricing a non-NYC pool; the operator deciding which dataset to buy next |
+
+CMBS capabilities that fall out of P1 and P2 and that no current vendor shows:
+
+| Capability | Built from | Gate it waits on |
+|---|---|---|
+| Event exposure at loan grain within hours (storm wind radii against exact building sets, not address centroids) | P1 building sets plus the existing `geo_storm_exposure` advisory geometry | G3 |
+| Dated collateral existence proof ("the structure described in the 2019 offering document is not present in the 2024 ortho") | P1 plus the imagery observer lane (§18.4) | G6 |
+| Cross-deal collateral collision and adjacency concentration (one parcel in two trusts; one block across four deals) | P1 parcel sets across deals | G3 |
+| Conflict proofs sent upstream to Overture, FEMA, assessors | P2 MUS | G5 |
+| Ambiguity as a diligence signal (doubleton collateral means the offering document is ambiguous about what secures the debt) | P1 model count | G4 |
+
+The moat is P2 plus the corpus P1 accumulates. A competitor with a probabilistic model can
+approximate a backbone. Nobody can approximate a minimal repair set, and the blame sets
+improve the public sources they are sent to.
+
+### 18.3 Scope decisions
+
+Everything in this plan is now in exactly one of three states. `IN` items have or must
+receive a bead. `DEFERRED` items have a named trigger and a placeholder bead at P4 so they
+cannot be silently lost. `CUT` items may be cited only as history.
+
+**IN (v1 scope):**
+
+- Truth plane rebuild with lender/party evidence and stratified adjudication (bd-179b).
+- Evidence stacking onto the H.7 cohort without importing held-out ACRIS truth; E4 read on
+  real evidence (bd-1g4x, bd-7bcp, bd-1l4r).
+- Propagators over the existing extensional kernel, as domain filters that run before
+  search and emit typed prunings: additive integer band feasibility (subset-sum bounds
+  over `IntegerSumBand`), cardinality bounds (`gcc`-style lower/upper counts per level and
+  per source), within-source exclusivity with a Hall-set check on small components. Search
+  remains the exact backend. (new bead)
+- Explanation artifacts: deletion-based minimal unsatisfiable core with the declared
+  source-reliability order (QuickXplain semantics), minimal correction sets by hitting
+  sets over enumerated cores, both bounded by deterministic counters with a typed
+  "oversized core" fallback. (new bead)
+- Imagery and elevation observer lane per §18.4. (new beads)
+- Condo ledger bridge: unit BBL to billing BBL to BIN with block/geometry confirmation
+  (bd-2fed).
+- Abstain, re-geocode, retry loop as a bounded acquisition step (new bead).
+- `canon geo inspect` and residual-aware next evidence (bd-1g18, bd-vojr).
+- E5 in Franklin County with deed-grain truth and the tier curve (bd-s07o).
+- Physical collateral ledger output surface and the cross-deal and event-exposure joins
+  (new beads; bd-kwmc owns the client-facing shape).
+- Incremental accretion and the parallel work protocol (bd-2rf9, bd-3oj1).
+
+**DEFERRED (trigger named):**
+
+- Compiled residual representation (reduced OBDD, SDD, d-DNNF). Trigger: a measured
+  component on real evidence reaches `BudgetFallback` under pruned search, or an
+  explanation query needs polytime entailment. bd-19wp's benchmark stands: no order or
+  vtree is frozen.
+- Latent-slot symmetry breaking (§5.1). Trigger: latent buildings become solver
+  variables. Today observations are the variables and the canonical order already breaks
+  observation symmetry.
+- Allen/STP temporal solver (§7.1). Trigger: the observer lane supplies dated existence
+  observations for a population. Interval admission stays implemented and diagnostic.
+- VeriPB proof logs (§8.1). Trigger: a trustee, rating agency, or regulator asks for a
+  third-party-checkable certificate in writing.
+- National cost model (§13). Trigger: E4 and E5 component costs recorded with evidence.
+- POI and tenant evidence (§16.3 row 10). Trigger: a source lands.
+
+**CUT:**
+
+- Point re-ranking as a product premise (Appendix L).
+- The 0.5 s per tile, 140 CPU-hour, and "few hundred dollars" claims.
+- Rendered basemap screenshots (Google, Mapbox, Esri, Apple) as evidence of any kind;
+  Appendix J quotes the governing clauses.
+- Any vision model output used as a proposer of location.
+
+### 18.4 The imagery and map evidence lane
+
+Appendix A stated the rule: a model is a source, not a solver. Appendix J verified the
+sources. This section makes the lane buildable.
+
+**Sources, in order of first use.** NYS and NYC 6-inch orthoimagery (CC BY, even years
+2006 to 2024, byte-range capable with ETags) for the proving ground. 3DEP lidar for measured
+height. NAIP through the Planetary Computer mirror as the national fallback. NOAA
+emergency response imagery for event-scoped change. Overture or OSM data for street
+context, never a rendered commercial tile. Every image tile is pinned by URL, byte range,
+ETag or SHA-256, vintage, and license text hash.
+
+**Observer contract.** An observer is a deterministic function from pinned image bytes
+and a pinned geometry window to typed observations. It declares: model identity and
+weight hash (or "rule-based"), input tile digests, output observation kinds, the
+population on which its regional error was characterized, the characterization digest, and
+the `rho` band each observation kind induces. A vision model with frozen hashed weights in
+controlled arithmetic qualifies. A hosted model whose output cannot be reproduced
+byte-for-byte also qualifies, but only as a **recorded observation with provenance**:
+Canon stores the label, the crop digest, the model version, and the prompt digest, and
+replay never re-runs the model. In both cases the observation enters the solver only
+through `rho`.
+
+**Observation kinds** (each with its sound reading):
+
+| Kind | Sound `rho` reading | Feeds |
+|---|---|---|
+| `structure_count_in_window` with error band | `gcc` lower/upper bound on latent structures inside the parcel or window | cardinality propagator |
+| `footprint_outline` at vintage | one more footprint plane with its own within-source exclusivity; majority-parcel predicate applies | candidate universe, incidence |
+| `height_or_floors` from 3DEP with density-derived error | integer band on floors; never a decider | additive band |
+| `present_at_vintage` / `absent_at_vintage` | closed valid-time interval observation; diagnostic until the temporal solver lands, hard only as "absent at v implies not the 2019 structure" once dated | interval admission; later Allen/STP |
+| `change_event` between two vintages | diagnostic flag that raises the next-evidence priority; never a constraint alone | next-evidence controller |
+
+**Three uses, in order.** First, adjudication: ortho crops with candidate parcel lines
+drawn on them are the cheapest stratified truth instrument for bd-179b's second source;
+the crop and the label are the receipt. Second, the visual evidence card (bd-101v): ortho,
+candidate parcels, forced set, ambiguous set, conflicting source records, all overlaid,
+which is both the reviewer surface and the sales artifact. Third, solver input through the
+kinds above, only after the observer's error is characterized on a named population.
+
+**What stays forbidden.** A screenshot of a commercial basemap; a model answering "the
+property is here"; any observer whose output is re-generated at replay; any imagery
+observation admitted without a characterized error population.
+
+### 18.5 The solver middle layer
+
+The extensional kernel is kept as the exact backend. Three additions make it the product:
+
+1. **Propagators as pre-search filters.** Each runs to a fixpoint over the component's
+   domains before enumeration, prunes values with a typed reason naming the constraint and
+   the evidence ids, and never changes the model set (soundness is checked in tests by
+   comparing enumeration with and without propagation on every fixture). They shrink the
+   search space and produce the explanation skeleton for free.
+2. **Minimal cores and repairs.** On an empty model set, compute one minimal
+   unsatisfiable subset of admitted constraints by deletion under the declared reliability
+   order, then enumerate correction sets as minimal hitting sets while the core count stays
+   under a deterministic ceiling. The artifact names source records, not constraint
+   indices. Oversized cases return a typed superset with `explanation_complete=false`.
+3. **Counterfactual separation.** For a declared prospective observation with an
+   exhaustive outcome domain, report the exact model count under each outcome. Never call
+   it expected value without calibrated probabilities (architecture §9).
+
+### 18.6 What this changes in the build order
+
+Truth plane first, evidence onto the cohort second, propagators and explanations third,
+observer lane fourth, ledger and CMBS joins fifth, E5 throughout. §19 states the sequence
+with gates.
+
+---
+
+## 19. Execution plan: stages, gates, invariants, and bead ownership
+
+Added 2026-09-01. This section exists so that an agent can pick up any stage without
+re-deriving design decisions. Beads carry the full text of their stage; this section is
+the index and the frozen gate definitions.
+
+### 19.1 Non-negotiables
+
+- N01 Runtime lookup stays exact registry replay. Geo is a build-time workbench.
+- N02 Same input plus same pinned sources reproduce byte-identical artifacts on every
+  platform. No wall clock, locale, hash-map order, or float comparison in a decision path.
+- N03 Every source value enters the solver only through a declared, versioned `rho`.
+- N04 Adding admitted hard evidence may only narrow the model set or make it empty.
+- N05 Source count is provenance, never evidence weight or confidence.
+- N06 Candidate reach, admission, solver exactness, reconciliation, truth quality, and
+  cost are reported as separate planes and never pooled.
+- N07 Fixtures, retained evidence, and mocked providers are never presented as live proof.
+- N08 Abstention is a legitimate output; an abstention-only module is not a delivered
+  feature.
+- N09 No vision or statistical model proposes a location. Models are observers with
+  characterized error.
+- N10 No commercial basemap imagery or tiles enter any artifact.
+- N11 Gates are frozen in tests. A gate is passed by meeting it, never by editing it.
+- N12 Every feature bead ships its code and its tests together, including at least one
+  negative case a naive implementation fails.
+
+### 19.2 Invariants for the new artifacts
+
+- I01 A propagator prunes a value only with a typed reason naming constraint id and
+  evidence ids; pruning is sound: enumeration with propagation equals enumeration without.
+- I02 Propagator fixpoint is order-independent; tests run every permutation of propagator
+  order on each fixture and compare bytes.
+- I03 A minimal core is minimal: removing any one member restores satisfiability; tests
+  verify by re-solving each deletion.
+- I04 A correction set hits every enumerated core; when core enumeration hits its ceiling
+  the artifact says `cores_complete=false` and no minimality claim is made.
+- I05 Explanation artifacts name source record ids and rho contract ids, never internal
+  indices.
+- I06 An observer observation carries image tile digest, vintage, license hash, model or
+  rule identity, weight or prompt digest, and the error-population digest; missing any
+  field refuses.
+- I07 Observer output is stored, never regenerated at replay; replay verifies the stored
+  digest chain only.
+- I08 A ledger row binds accession, loan id, parcel set, building set, truth plane,
+  claim class, model count, exactness flags, and every source release pin; rows with
+  candidate reach `none` carry the reason and no sets.
+- I09 A ledger row never pools truth planes; non-round and round exact-lender evidence
+  stay labeled.
+- I10 The retry loop is bounded by a declared pass count; each pass is a normal pinned
+  run and the loop artifact lists every pass with its abstention reason.
+- I11 Event exposure joins building geometry, not centroids; advisory source hashes travel
+  with the result.
+- I12 Cross-deal collision reports a parcel or building shared by more than one trust
+  with both accessions; pari passu participation is a labeled explanation, not a suppressed
+  row.
+- I13 `geo inspect` reads only emitted artifacts and receipts; it computes nothing that
+  changes an answer.
+- I14 Next-evidence recommendations expose the nondominated frontier and never manufacture
+  a total ranking without a declared loss model.
+
+### 19.3 Module skeleton
+
+| Module | Responsibility | Contract ids |
+|---|---|---|
+| `src/geo/propagate.rs` | additive-band, cardinality, exclusivity propagators; fixpoint driver; typed prunings | `canon_geo_propagation.v0` |
+| `src/geo/explain.rs` | minimal core, correction sets, counterfactual separation | `canon_geo_explanation.v0`, `canon_geo_separation_request.v0` |
+| `src/geo/observer.rs` | observer contract, observation admission, image tile pinning, license gate | `canon_geo_observer.v0`, `canon_geo_observation_rows.v0`, `canon_geo_image_tile_pin.v0` |
+| `src/geo/adjudicate.rs` | adjudication crop requests and label receipts for the truth plane | `canon_geo_adjudication_request.v0`, `canon_geo_adjudication_receipt.v0` |
+| `src/geo/card.rs` | visual evidence card artifact (data, not rendering) | `canon_geo_evidence_card.v0` |
+| `src/geo/ledger.rs` | physical collateral ledger rows and deal-level rollups | `canon_geo_collateral_ledger.v0` |
+| `src/geo/exposure.rs` | event exposure join over ledger building sets | `canon_geo_event_exposure.v0` |
+| `src/geo/collision.rs` | cross-deal parcel and building collision, adjacency concentration | `canon_geo_cross_deal.v0` |
+| `src/geo/retry.rs` | abstain, re-geocode request, retry loop artifact | `canon_geo_retry_loop.v0` |
+| `src/geo/inspect.rs` | one-call run state, compare, next actions | `canon_geo_inspection.v0` |
+| `src/geo/condo.rs` | unit to billing lot to building crosswalk with confirmation | `canon_geo_ledger_bridge.v0` |
+
+Each module ships a JSON schema under `schemas/`, a `--describe` entry, a public
+`canon geo` subcommand, and an integration test file `tests/geo_<module>.rs`.
+
+### 19.4 Error taxonomy additions
+
+Reason codes follow the existing `GeoEvidenceErrorCode` style. New codes:
+
+`propagation_unsound_detected`, `propagation_budget_exhausted`, `core_not_minimal`,
+`core_enumeration_ceiling`, `observer_missing_provenance`, `observer_error_uncharacterized`,
+`observer_license_forbidden`, `image_tile_digest_mismatch`, `observation_regenerated_at_replay`,
+`ledger_truth_plane_pooled`, `ledger_reach_none`, `retry_pass_ceiling`,
+`exposure_advisory_stale`, `collision_pari_passu_labeled`, `inspect_artifact_missing`,
+`next_evidence_no_loss_model`.
+
+### 19.5 Staged sequence and gates
+
+Each stage names its owner bead. A gate is a frozen test or a recorded measurement with a
+declared denominator. Stages may run in parallel where dependencies allow.
+
+| Stage | Work | Gate | Owner |
+|---|---|---|---|
+| D0 | Truth plane rebuild: lender/party discrimination, adjudication crops as second source, 79 genuine cases or a recorded shortfall | G0: E4 denominator reaches 79 genuine subjects or the shortfall is documented with the exhausted admission rules | bd-179b, bd-7bcp |
+| D1 | Evidence stacking onto the H.7 cohort: PAD address sets, asserted size bands, footprints, deed-independent observations | G1: the ignored E4 gate reports `evidence_no_observation` on zero cases; residual sizes, backbone accuracy, false merges, and abstentions recorded per truth plane | bd-1g4x, bd-1l4r |
+| D2 | Propagators and explanation artifacts | G2: I01 to I05 hold on every E4 fixture; at least one real cohort conflict yields a minimal core naming source records | new beads |
+| D3 | Ledger output surface, event exposure join, cross-deal collision | G3: one full public deal materializes as ledger rows with claim classes; exposure runs against one archived advisory; collision runs across two deals | new beads, bd-kwmc, bd-67wx |
+| D4 | Retry loop, condo bridge, `geo inspect` | G4: recovery rate of the retry loop measured on the 40 gross-class points with fresh geocodes; condo flips independently confirmed on the 31 points; inspect answers the eight questions in architecture §1 from artifacts alone | new bead, bd-2fed, bd-1g18 |
+| D5 | Next evidence controller | G5: on the D1 residuals, the controller names a nondominated action per unresolved case and a stop for every forced case | bd-vojr |
+| D6 | Observer lane: NYC ortho pinning, one rule-based observer (footprint outline from a landed footprint plane as the null observer), one frozen-weight count observer, adjudication crops, evidence card | G6: observer error characterized on a named NYC population; observations admitted through rho on the D1 cohort change at least one residual or are shown redundant; card artifact validates | new beads, bd-101v |
+| D7 | E5 Franklin County: deed-grain truth, typical-county tier, minimal tier | G7: tier curve recorded with abstention per tier; no Franklin-specific name in generic modules | bd-s07o, bd-3mo1 |
+| D8 | Accretion and parallel protocol | G8: a new source release invalidates only the rows in architecture §8; two agents converge on one manifest | bd-2rf9, bd-3oj1 |
+| D9 | Deferred-trigger review | G9: each DEFERRED item's trigger checked against D1 to D7 measurements and recorded | new P4 placeholder beads |
+
+### 19.6 Test matrix
+
+| ID | Stage | Kind | Assertion | Negative case |
+|---|---|---|---|---|
+| T01 | D2 | unit | additive-band propagator prunes a parcel whose max contribution cannot reach the band minimum | band satisfiable by an excluded member must not prune it |
+| T02 | D2 | unit | cardinality propagator enforces per-level min/max | naive count that ignores `parcel_ids` incidence over-prunes |
+| T03 | D2 | property | enumeration with propagation equals enumeration without, all fixtures | a deliberately unsound propagator variant is caught |
+| T04 | D2 | property | propagator order permutation yields identical bytes | |
+| T05 | D2 | unit | minimal core on the chimera fixture names `asserted_address_core` and `chimera_wrongly_admitted` only | a superset core fails minimality |
+| T06 | D2 | unit | correction sets hit every core; ceiling produces `cores_complete=false` | |
+| T07 | D3 | e2e | one public deal to ledger rows; truth planes unpooled; reach-none rows carry reasons | pooled planes refuse |
+| T08 | D3 | e2e | exposure over an archived advisory returns buildings inside the 64-knot radius with advisory hashes | centroid-only input refuses |
+| T09 | D3 | e2e | collision across two deals labels pari passu and flags the rest | |
+| T10 | D4 | e2e | retry loop bounded; each pass pinned; recovery rate recorded | unbounded loop refuses |
+| T11 | D4 | unit | condo bridge requires block/geometry confirmation, not key equality | billing BBL equal to PIP lot alone does not confirm |
+| T12 | D4 | e2e | inspect answers the eight questions from artifacts only | inspect on a missing artifact refuses with `inspect_artifact_missing` |
+| T13 | D6 | unit | observer admission refuses missing provenance, uncharacterized error, forbidden license | |
+| T14 | D6 | e2e | replay verifies stored observation digests without invoking the observer | regenerated observation refuses |
+| T15 | D6 | unit | present/absent-at-vintage stays diagnostic until dated composition exists | |
+| T16 | D7 | e2e | Franklin tier curve records abstention per tier; generic modules contain no Franklin names | |
+| T17 | D1 | gate | ignored E4 gate reports zero `evidence_no_observation` cases | |
+| T18 | D5 | unit | controller emits nondominated frontier, refuses total ranking without loss model | |
+
+### 19.7 Commands
+
+```bash
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+cargo test --test geo_adjudication -- --ignored   # frozen E4 gate, expected red until G1
+bash scripts/geo_demo/demo0.sh --work-dir /tmp/demo0
+cargo run --bin canon -- geo capabilities --emit json
+cargo run --bin canon_geo_measurements -- --emit plan
+br ready --json && br dep cycles --json
+```
+
+### 19.8 Bead map
+
+Existing beads retained with their stage: bd-179b (D0), bd-7bcp (D0), bd-1g4x (D1),
+bd-1l4r (D1), bd-kwmc and bd-67wx (D3), bd-2fed and bd-1g18 (D4), bd-vojr (D5), bd-101v
+(D6), bd-s07o and bd-3mo1 (D7), bd-2rf9 and bd-3oj1 (D8), bd-2b9d and bd-2cbs and bd-1wpv
+(candidate reach and levels, feeding D1), bd-29cf (citation audit, chore lane).
+
+New beads created 2026-09-01 for D2, D3, D4, D6, and D9 carry the full design text from
+§18 and §19 so that no implementer needs to return to this document.
 
 ---
 
@@ -2487,6 +2854,16 @@ accuracy success because its truth is unreachable. This is positive solver and
 typed-handoff operation, not evidence-driven resolution: the next E4 step is
 to compile independently admissible address/size/footprint/deed observations
 onto these candidate universes without importing the held-out ACRIS truth.
+
+That formerly manual boundary is now a compiled, source-neutral path:
+`canon geo stack-evidence` accepts truth-blind overlays, emits a replay-validatable
+population stack, supports exact idempotent restacking, and feeds `canon geo evaluate`
+directly. Its adversarial contract tests prove that overlays cannot carry truth, renamed
+semantic duplicates cannot inflate evidence, stale base-evidence bindings refuse, and
+contradictory hard overlays produce an honestly empty feasible set. This establishes the
+mechanism for accretive evidence-driven resolution; it does not supply or validate the
+missing live address/size/footprint/deed observations, improve the measured H.7 reach
+denominator, or make the frozen E4 gate green.
 
 The five-case E4 deficit was also tested rather than papered over. The
 address-independent consensus-document probe admits an otherwise ambiguous
