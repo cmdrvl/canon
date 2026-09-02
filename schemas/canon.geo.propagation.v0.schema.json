@@ -1,0 +1,172 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.propagation.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.propagation.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_propagation.v0",
+      "type": "string"
+    },
+    "request_blake3": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "prunings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/pruning"
+      }
+    },
+    "rounds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "fixpoint_reached": {
+      "type": "boolean"
+    },
+    "budget_fallback": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/fallback"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "counters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  },
+  "required": [
+    "version",
+    "request_blake3",
+    "prunings",
+    "rounds",
+    "fixpoint_reached",
+    "counters"
+  ],
+  "$defs": {
+    "entity_level": {
+      "type": "string",
+      "enum": [
+        "poi_unit",
+        "building",
+        "parcel",
+        "property"
+      ]
+    },
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/entity_level"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "level",
+        "id"
+      ]
+    },
+    "pruned_value": {
+      "type": "string",
+      "enum": [
+        "excluded",
+        "forced"
+      ]
+    },
+    "propagator_kind": {
+      "type": "string",
+      "enum": [
+        "additive_band",
+        "cardinality",
+        "source_exclusivity"
+      ]
+    },
+    "pruning": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "member": {
+          "$ref": "#/$defs/entity_ref"
+        },
+        "value": {
+          "$ref": "#/$defs/pruned_value"
+        },
+        "propagator": {
+          "$ref": "#/$defs/propagator_kind"
+        },
+        "constraint_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "member",
+        "value",
+        "propagator",
+        "constraint_ids",
+        "evidence_ids"
+      ]
+    },
+    "fallback": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "propagator": {
+          "$ref": "#/$defs/propagator_kind"
+        },
+        "counter": {
+          "type": "string",
+          "enum": [
+            "max_fixpoint_rounds",
+            "max_hall_subset_size",
+            "max_subset_sum_states"
+          ]
+        },
+        "configured": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "guidance": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "propagator",
+        "counter",
+        "configured",
+        "guidance"
+      ]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "request_blake3 is recomputed from the canonical canon_geo_composition_request.v0 before applying prunings",
+      "prunings are strictly sorted by member, value, propagator, constraint_ids, and evidence_ids",
+      "constraint_ids and evidence_ids are strictly sorted and distinct",
+      "constraint_ids name stable constraint ids and must not be numeric-only constraint indexes",
+      "one member cannot be both forced and excluded in the same artifact",
+      "non-fixpoint artifacts require a declared budget_fallback"
+    ]
+  }
+}
