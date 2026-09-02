@@ -7,11 +7,12 @@ use canon::geo::{
     GeoEgressClass, GeoEvidenceClass, GeoHomeCellParity, GeoHomeCellRow, GeoHomeCellRowsRequest,
     GeoIdentityParticipation, GeoLicenseClass, GeoLocalAcquisitionState, GeoNativeEntityScope,
     GeoPlanInventoryRef, GeoRegionalInventory, GeoRegionalSourceInstance, GeoSourceAvailability,
-    GeoSourceRelease, GeoTemporalScope, GeoTileDecisionBatch, GeoTileDecisionMember,
-    GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileErrorCode, GeoTileFeatureRef,
-    GeoTileInventoryLineage, GeoTilePlacement, GeoTileReconciliationRequest,
-    GeoTileRelationshipAnchorSide, GeoTileSourceBinding, GeoTileWorkRequest,
-    canonical_home_cell_assignment_bytes, canonical_tile_reconciliation_bytes,
+    GeoSourceRelease, GeoTemporalScope, GeoTileCandidateReachReference,
+    GeoTileCandidateReachReferenceKind, GeoTileCandidateReachStatus, GeoTileDecisionBatch,
+    GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileErrorCode,
+    GeoTileFeatureRef, GeoTileInventoryLineage, GeoTilePlacement, GeoTileReconciliationRequest,
+    GeoTileRelationshipAnchorSide, GeoTileSourceBinding, GeoTileTruthReachStatus,
+    GeoTileWorkRequest, canonical_home_cell_assignment_bytes, canonical_tile_reconciliation_bytes,
     canonical_tile_work_unit_bytes, materialize_home_cells, materialize_tile_work_unit,
     reconcile_tile_decisions, regional_inventory_planning_hash, regional_inventory_semantic_hash,
 };
@@ -113,8 +114,21 @@ fn work_request(center: CellIndex, features: Vec<GeoTileFeatureRef>) -> GeoTileW
         center_cell: center.to_string(),
         halo_k: 1,
         features,
+        candidate_reach_reference: None,
         max_features: 16,
         max_work_cells: 7,
+    }
+}
+
+fn reach_reference(
+    reference_id: &str,
+    members: Vec<GeoTileFeatureRef>,
+) -> GeoTileCandidateReachReference {
+    GeoTileCandidateReachReference {
+        reference_id: reference_id.to_string(),
+        reference_kind: GeoTileCandidateReachReferenceKind::CompleteBoundedReference,
+        members,
+        max_members: 16,
     }
 }
 
@@ -333,6 +347,7 @@ fn with_inventory_lineage(
                     home_cell: feature.home_cell.clone(),
                 })
                 .collect(),
+            candidate_reach_reference: batch.work_unit.candidate_reach.reference.clone(),
             max_features: batch.work_unit.max_features,
             max_work_cells: batch.work_unit.max_work_cells,
         };
@@ -372,6 +387,28 @@ fn tile_work_unit_is_center_plus_controlled_halo_and_byte_deterministic() {
     assert!(artifact.work_cells.contains(&center.to_string()));
     assert_eq!(artifact.center_feature_count, 2);
     assert_eq!(artifact.halo_feature_count, 1);
+    assert_eq!(
+        artifact.candidate_reach.status,
+        GeoTileCandidateReachStatus::StructurallyCompleteRelativeToInputs
+    );
+    assert_eq!(
+        artifact.candidate_reach.truth_reach_status,
+        GeoTileTruthReachStatus::Unverified
+    );
+    assert_eq!(artifact.candidate_reach.candidate_count, 3);
+    assert_eq!(artifact.candidate_reach.center_candidate_count, 2);
+    assert_eq!(artifact.candidate_reach.halo_candidate_count, 1);
+    assert_eq!(artifact.candidate_reach.work_cell_count, 7);
+    assert_eq!(artifact.candidate_reach.reference_count, 0);
+    assert_eq!(artifact.candidate_reach.reached_reference_count, 0);
+    assert_eq!(artifact.candidate_reach.missing_reference_count, 0);
+    assert!(artifact.candidate_reach.reference.is_none());
+    assert!(
+        artifact
+            .candidate_reach
+            .missing_reference_members
+            .is_empty()
+    );
     assert_eq!(artifact, repeated);
     assert_eq!(
         canonical_tile_work_unit_bytes(&artifact).unwrap(),
@@ -385,6 +422,146 @@ fn tile_work_unit_is_center_plus_controlled_halo_and_byte_deterministic() {
             .iter()
             .any(|feature| feature.placement == GeoTilePlacement::Halo)
     );
+}
+
+#[test]
+fn tile_work_candidate_reach_is_public_exact_and_blocks_relabel_attacks() {
+    let (center, neighbor) = center_and_neighbor();
+    let outside = outside_k1(center);
+    let base = work_request(
+        center,
+        vec![
+            feature("building", "b-center", center),
+            feature("parcel", "p-halo", neighbor),
+        ],
+    );
+
+    let mut reached_request = base.clone();
+    reached_request.candidate_reach_reference = Some(reach_reference(
+        "reference.fixture.reached",
+        vec![
+            feature("parcel", "p-halo", neighbor),
+            feature("building", "b-center", center),
+        ],
+    ));
+    let reached =
+        materialize_tile_work_unit(&reached_request).expect("reference members are reached");
+    assert_eq!(
+        reached.candidate_reach.status,
+        GeoTileCandidateReachStatus::PassedAgainstReference
+    );
+    assert_eq!(
+        reached.candidate_reach.truth_reach_status,
+        GeoTileTruthReachStatus::PassedAgainstReference
+    );
+    assert_eq!(reached.candidate_reach.reference_count, 2);
+    assert_eq!(reached.candidate_reach.reached_reference_count, 2);
+    assert_eq!(reached.candidate_reach.missing_reference_count, 0);
+    assert!(reached.candidate_reach.missing_reference_members.is_empty());
+    assert_eq!(
+        reached
+            .candidate_reach
+            .reference
+            .as_ref()
+            .expect("reference retained")
+            .members[0]
+            .feature_id,
+        "b-center",
+        "reference members are retained in canonical order"
+    );
+
+    let mut reached_permuted = reached_request.clone();
+    reached_permuted
+        .candidate_reach_reference
+        .as_mut()
+        .expect("reference")
+        .members
+        .reverse();
+    let reached_again =
+        materialize_tile_work_unit(&reached_permuted).expect("permuted reference materializes");
+    assert_eq!(reached, reached_again);
+
+    let mut missing_request = base.clone();
+    missing_request.candidate_reach_reference = Some(reach_reference(
+        "reference.fixture.missing",
+        vec![
+            feature("building", "b-center", center),
+            feature("building", "b-outside", outside),
+        ],
+    ));
+    let missing =
+        materialize_tile_work_unit(&missing_request).expect("missing reference is reported");
+    assert_eq!(
+        missing.candidate_reach.status,
+        GeoTileCandidateReachStatus::FailedAgainstReference
+    );
+    assert_eq!(
+        missing.candidate_reach.truth_reach_status,
+        GeoTileTruthReachStatus::FailedAgainstReference
+    );
+    assert_eq!(missing.candidate_reach.reference_count, 2);
+    assert_eq!(missing.candidate_reach.reached_reference_count, 1);
+    assert_eq!(missing.candidate_reach.missing_reference_count, 1);
+    assert_eq!(
+        missing.candidate_reach.missing_reference_members[0].feature_id,
+        "b-outside"
+    );
+    assert_eq!(
+        missing.candidate_reach.missing_reference_members[0].home_cell,
+        outside.to_string()
+    );
+
+    let mut relabeled = feature("building", "b-center", center);
+    relabeled.source.release.release_id = "building.relabelled.release".to_string();
+    relabeled.source.release.release_digest = release_digest("building.relabelled.release");
+    let mut relabel_request = base.clone();
+    relabel_request.candidate_reach_reference = Some(reach_reference(
+        "reference.fixture.relabel",
+        vec![relabeled.clone()],
+    ));
+    let relabelled =
+        materialize_tile_work_unit(&relabel_request).expect("relabel mismatch is reported");
+    assert_eq!(
+        relabelled.candidate_reach.status,
+        GeoTileCandidateReachStatus::FailedAgainstReference
+    );
+    assert_eq!(
+        relabelled.candidate_reach.missing_reference_members,
+        vec![relabeled],
+        "same feature id and home cell with a different source binding is not counted as reached"
+    );
+
+    let mut duplicate_request = base.clone();
+    duplicate_request.candidate_reach_reference = Some(reach_reference(
+        "reference.fixture.duplicate",
+        vec![
+            feature("building", "b-center", center),
+            feature("building", "b-center", center),
+        ],
+    ));
+    let error = materialize_tile_work_unit(&duplicate_request)
+        .expect_err("duplicate reference member must refuse");
+    assert_eq!(error.code, GeoTileErrorCode::DuplicateFeature);
+
+    let mut changed_reference = reached_request;
+    changed_reference
+        .candidate_reach_reference
+        .as_mut()
+        .expect("reference")
+        .reference_id = "reference.fixture.changed".to_string();
+    let changed =
+        materialize_tile_work_unit(&changed_reference).expect("changed reference materializes");
+    assert_ne!(
+        reached.work_unit_blake3, changed.work_unit_blake3,
+        "reference bytes are part of the canonical section digest"
+    );
+
+    let error = reconcile_tile_decisions(&reconciliation_request(vec![GeoTileDecisionBatch {
+        work_unit: missing,
+        proposals: Vec::new(),
+    }]))
+    .expect_err("failed candidate reach must not enter direct downstream reconciliation");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidWorkUnit);
 }
 
 #[test]

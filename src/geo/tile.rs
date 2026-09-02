@@ -79,6 +79,55 @@ pub struct GeoTileFeatureRef {
     pub home_cell: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTileCandidateReachReferenceKind {
+    CompleteBoundedReference,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileCandidateReachReference {
+    pub reference_id: String,
+    pub reference_kind: GeoTileCandidateReachReferenceKind,
+    pub members: Vec<GeoTileFeatureRef>,
+    pub max_members: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTileCandidateReachStatus {
+    PassedAgainstReference,
+    FailedAgainstReference,
+    StructurallyCompleteRelativeToInputs,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTileTruthReachStatus {
+    PassedAgainstReference,
+    FailedAgainstReference,
+    Unverified,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileCandidateReachReport {
+    pub status: GeoTileCandidateReachStatus,
+    pub truth_reach_status: GeoTileTruthReachStatus,
+    pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<GeoTileCandidateReachReference>,
+    pub candidate_count: u64,
+    pub center_candidate_count: u64,
+    pub halo_candidate_count: u64,
+    pub work_cell_count: u64,
+    pub reference_count: u64,
+    pub reached_reference_count: u64,
+    pub missing_reference_count: u64,
+    pub missing_reference_members: Vec<GeoTileFeatureRef>,
+}
+
 /// One offline representative-point row used to derive an H3 blocking and
 /// ownership cell. The geometry digest and optional transform identifiers bind
 /// the point to evidence; H3 itself is never admitted as geometric truth.
@@ -195,6 +244,8 @@ pub struct GeoTileWorkRequest {
     pub center_cell: String,
     pub halo_k: u32,
     pub features: Vec<GeoTileFeatureRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_reach_reference: Option<GeoTileCandidateReachReference>,
     pub max_features: u64,
     /// Maximum total cells in the center-plus-halo disk, including the center.
     pub max_work_cells: u64,
@@ -229,6 +280,7 @@ pub struct GeoTileWorkUnitArtifact {
     pub features: Vec<GeoTileFeatureMembership>,
     pub center_feature_count: u64,
     pub halo_feature_count: u64,
+    pub candidate_reach: GeoTileCandidateReachReport,
     pub max_features: u64,
     pub max_work_cells: u64,
     /// Domain-separated BLAKE3 digest of every preceding semantic work-unit
@@ -552,6 +604,7 @@ struct GeoTileWorkUnitDigestProjection<'a> {
     features: &'a [GeoTileFeatureMembership],
     center_feature_count: u64,
     halo_feature_count: u64,
+    candidate_reach: &'a GeoTileCandidateReachReport,
     max_features: u64,
     max_work_cells: u64,
 }
@@ -896,6 +949,20 @@ pub fn materialize_tile_work_unit(
         });
     }
     features.sort();
+    let work_cells = disk
+        .into_iter()
+        .map(|cell| cell.to_string())
+        .collect::<Vec<_>>();
+    let work_cell_count = usize_to_u64(work_cells.len(), "work_cells.len")?;
+    let candidate_reach = candidate_reach_report(
+        center,
+        &features,
+        request.candidate_reach_reference.as_ref(),
+        feature_count,
+        center_feature_count,
+        halo_feature_count,
+        work_cell_count,
+    )?;
 
     let mut artifact = GeoTileWorkUnitArtifact {
         version: CANON_GEO_TILE_WORK_UNIT_VERSION.to_string(),
@@ -903,10 +970,11 @@ pub fn materialize_tile_work_unit(
         center_cell,
         h3_resolution: u8::from(resolution),
         halo_k: request.halo_k,
-        work_cells: disk.into_iter().map(|cell| cell.to_string()).collect(),
+        work_cells,
         features,
         center_feature_count,
         halo_feature_count,
+        candidate_reach,
         max_features: request.max_features,
         max_work_cells: request.max_work_cells,
         work_unit_blake3: String::new(),
@@ -1242,6 +1310,7 @@ fn canonical_work_unit_digest(artifact: &GeoTileWorkUnitArtifact) -> Result<Stri
         features: &artifact.features,
         center_feature_count: artifact.center_feature_count,
         halo_feature_count: artifact.halo_feature_count,
+        candidate_reach: &artifact.candidate_reach,
         max_features: artifact.max_features,
         max_work_cells: artifact.max_work_cells,
     };
@@ -1256,6 +1325,160 @@ fn canonical_work_unit_digest(artifact: &GeoTileWorkUnitArtifact) -> Result<Stri
     hasher.update(b"canon_geo_tile_work_unit.v1\0");
     hasher.update(&bytes);
     Ok(format!("blake3:{}", hasher.finalize().to_hex()))
+}
+
+fn candidate_reach_report(
+    center: CellIndex,
+    features: &[GeoTileFeatureMembership],
+    reference: Option<&GeoTileCandidateReachReference>,
+    candidate_count: u64,
+    center_candidate_count: u64,
+    halo_candidate_count: u64,
+    work_cell_count: u64,
+) -> Result<GeoTileCandidateReachReport, GeoTileError> {
+    let Some(reference) = reference else {
+        return Ok(GeoTileCandidateReachReport {
+            status: GeoTileCandidateReachStatus::StructurallyCompleteRelativeToInputs,
+            truth_reach_status: GeoTileTruthReachStatus::Unverified,
+            reason: "structurally_complete_relative_to_declared_inputs".to_string(),
+            reference: None,
+            candidate_count,
+            center_candidate_count,
+            halo_candidate_count,
+            work_cell_count,
+            reference_count: 0,
+            reached_reference_count: 0,
+            missing_reference_count: 0,
+            missing_reference_members: Vec::new(),
+        });
+    };
+
+    let reference = normalize_candidate_reach_reference(center, reference)?;
+    let candidates = features
+        .iter()
+        .map(|feature| GeoTileFeatureRef {
+            source: feature.source.clone(),
+            feature_id: feature.feature_id.clone(),
+            home_cell: feature.home_cell.clone(),
+        })
+        .collect::<BTreeSet<_>>();
+    let missing_reference_members = reference
+        .members
+        .iter()
+        .filter(|member| !candidates.contains(*member))
+        .cloned()
+        .collect::<Vec<_>>();
+    let reference_count = usize_to_u64(
+        reference.members.len(),
+        "candidate_reach_reference.members.len",
+    )?;
+    let missing_reference_count = usize_to_u64(
+        missing_reference_members.len(),
+        "candidate_reach.missing_reference_members.len",
+    )?;
+    let reached_reference_count = reference_count - missing_reference_count;
+    let (status, truth_reach_status, reason) = if missing_reference_count == 0 {
+        (
+            GeoTileCandidateReachStatus::PassedAgainstReference,
+            GeoTileTruthReachStatus::PassedAgainstReference,
+            "complete_bounded_reference_reached",
+        )
+    } else {
+        (
+            GeoTileCandidateReachStatus::FailedAgainstReference,
+            GeoTileTruthReachStatus::FailedAgainstReference,
+            "complete_bounded_reference_missing_members",
+        )
+    };
+
+    Ok(GeoTileCandidateReachReport {
+        status,
+        truth_reach_status,
+        reason: reason.to_string(),
+        reference: Some(reference),
+        candidate_count,
+        center_candidate_count,
+        halo_candidate_count,
+        work_cell_count,
+        reference_count,
+        reached_reference_count,
+        missing_reference_count,
+        missing_reference_members,
+    })
+}
+
+fn normalize_candidate_reach_reference(
+    center: CellIndex,
+    reference: &GeoTileCandidateReachReference,
+) -> Result<GeoTileCandidateReachReference, GeoTileError> {
+    validate_identifier(
+        "candidate_reach_reference.reference_id",
+        &reference.reference_id,
+    )?;
+    validate_budget(
+        "candidate_reach_reference.max_members",
+        reference.max_members,
+        MAX_FEATURES_PER_WORK_UNIT,
+    )?;
+    let count = usize_to_u64(
+        reference.members.len(),
+        "candidate_reach_reference.members.len",
+    )?;
+    if count == 0 || count > reference.max_members {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::FeatureBudgetExceeded,
+            "Geo tile candidate-reach reference member count is empty or exceeds the declared budget",
+            [
+                ("observed", count.to_string()),
+                ("configured", reference.max_members.to_string()),
+            ],
+        ));
+    }
+
+    let mut members = Vec::with_capacity(reference.members.len());
+    let mut seen = BTreeSet::new();
+    let mut source_bindings = BTreeMap::new();
+    for member in &reference.members {
+        validate_source_binding("candidate_reach_reference.members[].source", &member.source)?;
+        validate_source_binding_consistency(&mut source_bindings, &member.source)?;
+        validate_identifier(
+            "candidate_reach_reference.members[].feature_id",
+            &member.feature_id,
+        )?;
+        let home = parse_cell(
+            &member.home_cell,
+            "candidate_reach_reference.members[].home_cell",
+        )?;
+        require_resolution(center, home, &member.home_cell)?;
+        let key = source_feature_key(&member.source, &member.feature_id);
+        if !seen.insert(key) {
+            return Err(GeoTileError::new(
+                GeoTileErrorCode::DuplicateFeature,
+                "Geo tile candidate-reach reference repeats a source feature",
+                [
+                    (
+                        "source_instance_id",
+                        member.source.source_instance_id.as_str(),
+                    ),
+                    ("release_id", member.source.release.release_id.as_str()),
+                    ("feature_id", member.feature_id.as_str()),
+                ],
+            ));
+        }
+        members.push(GeoTileFeatureRef {
+            source: member.source.clone(),
+            feature_id: member.feature_id.clone(),
+            home_cell: home.to_string(),
+        });
+    }
+    members.sort();
+
+    Ok(GeoTileCandidateReachReference {
+        reference_id: reference.reference_id.clone(),
+        reference_kind: reference.reference_kind,
+        members,
+        max_members: reference.max_members,
+    })
 }
 
 pub fn canonical_home_cell_assignment_bytes(
@@ -1748,6 +1971,7 @@ fn validate_work_unit_artifact(
                 home_cell: feature.home_cell.clone(),
             })
             .collect(),
+        candidate_reach_reference: artifact.candidate_reach.reference.clone(),
         max_features: artifact.max_features,
         max_work_cells: artifact.max_work_cells,
     };
@@ -1767,6 +1991,19 @@ fn validate_work_unit_artifact(
             GeoTileErrorCode::InvalidWorkUnit,
             "Geo tile reconciliation work-unit artifact is not canonical",
             [("center_cell", artifact.center_cell.clone())],
+        ));
+    }
+    if artifact.candidate_reach.status == GeoTileCandidateReachStatus::FailedAgainstReference {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidWorkUnit,
+            "Geo tile reconciliation cannot consume a work unit whose candidate reach failed against its reference",
+            [
+                ("center_cell", artifact.center_cell.clone()),
+                (
+                    "missing_reference_count",
+                    artifact.candidate_reach.missing_reference_count.to_string(),
+                ),
+            ],
         ));
     }
     let mut available_features = BTreeMap::new();

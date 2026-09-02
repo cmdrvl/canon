@@ -69,7 +69,12 @@ use run::{
     run_geo_plan_with_project_executor,
 };
 use serde_json::Value;
-use std::{collections::BTreeMap, fs, path::Path, str::FromStr};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+    str::FromStr,
+};
 
 #[test]
 fn geo_run_executes_real_kernels_and_folds_input_hashes() {
@@ -833,6 +838,84 @@ fn changed_warehouse_rows_reuse_only_the_unaffected_bounded_section_prefix() {
 }
 
 #[test]
+fn failed_candidate_reach_reference_blocks_downstream_and_refreshes_section() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    run_geo_plan(GeoRunRequest::new(
+        plan.clone(),
+        policy(temp.path()),
+        run_bindings(warehouse_rows()),
+    ))
+    .expect("baseline run");
+    let baseline_section_digest =
+        read_node_receipt(&receipt_path(temp.path(), "geo.building.section"))
+            .expect("baseline section receipt")
+            .outputs[0]
+            .content_digest
+            .clone();
+
+    let mut bindings = run_bindings(warehouse_rows());
+    replace_section_binding(
+        &mut bindings,
+        tile_work_request_value_with_reference(
+            "reference.fixture.missing",
+            vec![tile_feature_ref("building-c", outside_k1_cell())],
+        ),
+    );
+
+    let failed = run_geo_plan(GeoRunRequest::new(plan, policy(temp.path()), bindings))
+        .expect("reach failure is represented as a failed Geo run");
+    assert_eq!(failed.status, GeoRunStatus::Failed);
+    let report = failed.project_run_report.as_ref().expect("project report");
+    assert_eq!(
+        report.failed_nodes,
+        vec!["geo.building.materialize_evidence".to_string()]
+    );
+    assert!(
+        report
+            .executed_nodes
+            .contains(&"geo.building.section".to_string()),
+        "changed reference bytes must re-execute the bounded-section node"
+    );
+    assert!(
+        !report
+            .resumed_nodes
+            .contains(&"geo.building.section".to_string()),
+        "changed reference bytes must not reuse stale section reach"
+    );
+    let changed_section_digest =
+        read_node_receipt(&receipt_path(temp.path(), "geo.building.section"))
+            .expect("changed section receipt")
+            .outputs[0]
+            .content_digest
+            .clone();
+    assert_ne!(changed_section_digest, baseline_section_digest);
+
+    let section = section_output(temp.path());
+    assert_eq!(
+        section["candidate_reach"]["status"],
+        "failed_against_reference"
+    );
+    assert_eq!(
+        section["candidate_reach"]["truth_reach_status"],
+        "failed_against_reference"
+    );
+    assert_eq!(section["candidate_reach"]["missing_reference_count"], 1);
+    assert_eq!(
+        section["candidate_reach"]["missing_reference_members"][0]["source"]["source_instance_id"],
+        "building"
+    );
+    assert_eq!(
+        section["candidate_reach"]["missing_reference_members"][0]["feature_id"],
+        "building-c"
+    );
+}
+
+#[test]
 fn blocked_plans_project_waiting_or_unsupported_next_actions() {
     let waiting = building_plan("release.fixture.one", GeoSourceAvailability::Missing, None);
     let temp = tempfile::tempdir().expect("waiting tempdir");
@@ -1165,6 +1248,37 @@ fn run_bindings(rows: GeoWarehouseRowsRequest) -> Vec<GeoRunArtifactBinding> {
     ]
 }
 
+fn replace_section_binding(bindings: &mut [GeoRunArtifactBinding], request: Value) {
+    let binding = bindings
+        .iter_mut()
+        .find(|binding| binding.node_id == "geo.building.section")
+        .expect("section binding");
+    *binding = GeoRunArtifactBinding::from_json(
+        "geo.building.section",
+        GEO_REQUEST_BINDING_ID,
+        CANON_GEO_TILE_WORK_REQUEST_VERSION,
+        &request,
+    )
+    .expect("tile work binding");
+}
+
+fn tile_work_request_value_with_reference(
+    reference_id: &str,
+    members: Vec<GeoTileFeatureRef>,
+) -> Value {
+    let mut value = serde_json::to_value(tile_work_request()).expect("tile request json");
+    value.as_object_mut().expect("tile request object").insert(
+        "candidate_reach_reference".to_string(),
+        serde_json::json!({
+            "reference_id": reference_id,
+            "reference_kind": "complete_bounded_reference",
+            "members": members,
+            "max_members": 16
+        }),
+    );
+    value
+}
+
 fn policy(workspace: &Path) -> ProjectRunPolicy {
     let mut policy = ProjectRunPolicy::new(workspace, "work");
     policy.failure_policy = ProjectRunFailurePolicy::FailFast;
@@ -1174,6 +1288,11 @@ fn policy(workspace: &Path) -> ProjectRunPolicy {
 fn solve_output(workspace: &Path) -> Value {
     serde_json::from_slice(&fs::read(workspace.join("geo/building/solve.json")).expect("solve"))
         .expect("solve json")
+}
+
+fn section_output(workspace: &Path) -> Value {
+    serde_json::from_slice(&fs::read(workspace.join("geo/building/section.json")).expect("section"))
+        .expect("section json")
 }
 
 fn receipt_path(workspace: &Path, node_id: &str) -> std::path::PathBuf {
@@ -1636,6 +1755,15 @@ fn center_cell() -> CellIndex {
     CellIndex::from_str("892a100d62bffff").expect("valid fixture cell")
 }
 
+fn outside_k1_cell() -> CellIndex {
+    let center = center_cell();
+    let k1 = center.grid_disk_safe(1).collect::<BTreeSet<_>>();
+    center
+        .grid_disk_safe(2)
+        .find(|cell| !k1.contains(cell))
+        .expect("k2 contains a cell outside k1")
+}
+
 fn building_tile_source() -> GeoTileSourceBinding {
     GeoTileSourceBinding {
         source_instance_id: "building".to_string(),
@@ -1655,6 +1783,14 @@ fn building_tile_source() -> GeoTileSourceBinding {
             semantic_hash: digest("tile-inventory-semantic"),
             planning_hash: digest("tile-inventory-planning"),
         },
+    }
+}
+
+fn tile_feature_ref(feature_id: &str, home_cell: CellIndex) -> GeoTileFeatureRef {
+    GeoTileFeatureRef {
+        source: building_tile_source(),
+        feature_id: feature_id.to_string(),
+        home_cell: home_cell.to_string(),
     }
 }
 
@@ -1680,6 +1816,7 @@ fn tile_work_request() -> GeoTileWorkRequest {
         center_cell: center_cell().to_string(),
         halo_k: 1,
         features: tile_features(),
+        candidate_reach_reference: None,
         max_features: 16,
         max_work_cells: 7,
     }

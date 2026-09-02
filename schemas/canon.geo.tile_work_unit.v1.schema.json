@@ -4,7 +4,7 @@
   "title": "canon.geo.tile_work_unit.v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "request_version", "center_cell", "h3_resolution", "halo_k", "work_cells", "features", "center_feature_count", "halo_feature_count", "max_features", "max_work_cells", "work_unit_blake3"],
+  "required": ["version", "request_version", "center_cell", "h3_resolution", "halo_k", "work_cells", "features", "center_feature_count", "halo_feature_count", "candidate_reach", "max_features", "max_work_cells", "work_unit_blake3"],
   "properties": {
     "version": { "const": "canon_geo_tile_work_unit.v1" },
     "request_version": { "const": "canon_geo_tile_work_request.v1" },
@@ -15,6 +15,7 @@
     "features": { "type": "array", "items": { "$ref": "#/$defs/feature_membership" } },
     "center_feature_count": { "$ref": "#/$defs/uint64" },
     "halo_feature_count": { "$ref": "#/$defs/uint64" },
+    "candidate_reach": { "$ref": "#/$defs/candidate_reach_report" },
     "max_features": { "$ref": "#/$defs/uint64", "minimum": 1, "maximum": 1000000 },
     "max_work_cells": { "$ref": "#/$defs/uint64", "minimum": 1, "maximum": 100000 },
     "work_unit_blake3": { "$ref": "#/$defs/blake3" }
@@ -85,6 +86,55 @@
         "home_cell": { "$ref": "#/$defs/h3_cell" },
         "placement": { "enum": ["center", "halo"] }
       }
+    },
+    "feature_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "feature_id", "home_cell"],
+      "properties": {
+        "source": { "$ref": "#/$defs/source_binding" },
+        "feature_id": { "$ref": "#/$defs/identifier" },
+        "home_cell": { "$ref": "#/$defs/h3_cell" }
+      }
+    },
+    "candidate_reach_reference_kind": {
+      "enum": ["complete_bounded_reference"]
+    },
+    "candidate_reach_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference_id", "reference_kind", "members", "max_members"],
+      "properties": {
+        "reference_id": { "$ref": "#/$defs/identifier" },
+        "reference_kind": { "$ref": "#/$defs/candidate_reach_reference_kind" },
+        "members": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/feature_ref" } },
+        "max_members": { "$ref": "#/$defs/uint64", "minimum": 1, "maximum": 1000000 }
+      }
+    },
+    "candidate_reach_status": {
+      "enum": ["passed_against_reference", "failed_against_reference", "structurally_complete_relative_to_inputs"]
+    },
+    "truth_reach_status": {
+      "enum": ["passed_against_reference", "failed_against_reference", "unverified"]
+    },
+    "candidate_reach_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "truth_reach_status", "reason", "candidate_count", "center_candidate_count", "halo_candidate_count", "work_cell_count", "reference_count", "reached_reference_count", "missing_reference_count", "missing_reference_members"],
+      "properties": {
+        "status": { "$ref": "#/$defs/candidate_reach_status" },
+        "truth_reach_status": { "$ref": "#/$defs/truth_reach_status" },
+        "reason": { "$ref": "#/$defs/identifier" },
+        "reference": { "$ref": "#/$defs/candidate_reach_reference" },
+        "candidate_count": { "$ref": "#/$defs/uint64" },
+        "center_candidate_count": { "$ref": "#/$defs/uint64" },
+        "halo_candidate_count": { "$ref": "#/$defs/uint64" },
+        "work_cell_count": { "$ref": "#/$defs/uint64" },
+        "reference_count": { "$ref": "#/$defs/uint64" },
+        "reached_reference_count": { "$ref": "#/$defs/uint64" },
+        "missing_reference_count": { "$ref": "#/$defs/uint64" },
+        "missing_reference_members": { "type": "array", "items": { "$ref": "#/$defs/feature_ref" } }
+      }
     }
   },
   "x-canon-contract": {
@@ -94,6 +144,8 @@
       "every membership preserves the exact request source binding, release identity, native scope, feature_id, and home cell",
       "one source_instance_id has exactly one release identity, native scope, and inventory reference",
       "the domain-separated work_unit_blake3 covers every semantic work-unit field except itself; it binds association but does not prove external solver execution",
+      "candidate_reach reports exact membership reach against a declared complete bounded reference when present; without one, truth reach remains unverified",
+      "failed_against_reference blocks downstream claim-solving in geo run; the section artifact remains published as the reach evidence",
       "the section is exactly one center plus its declared controlled halo within budget",
       "work cells and feature memberships are emitted in canonical sorted order"
     ]

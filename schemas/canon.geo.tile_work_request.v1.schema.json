@@ -10,6 +10,7 @@
     "center_cell": { "$ref": "#/$defs/h3_cell" },
     "halo_k": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
     "features": { "type": "array", "items": { "$ref": "#/$defs/feature_ref" } },
+    "candidate_reach_reference": { "$ref": "#/$defs/candidate_reach_reference" },
     "max_features": { "$ref": "#/$defs/uint64", "minimum": 1, "maximum": 1000000 },
     "max_work_cells": { "$ref": "#/$defs/uint64", "minimum": 1, "maximum": 100000 }
   },
@@ -78,6 +79,20 @@
         "feature_id": { "$ref": "#/$defs/identifier" },
         "home_cell": { "$ref": "#/$defs/h3_cell" }
       }
+    },
+    "candidate_reach_reference_kind": {
+      "enum": ["complete_bounded_reference"]
+    },
+    "candidate_reach_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference_id", "reference_kind", "members", "max_members"],
+      "properties": {
+        "reference_id": { "$ref": "#/$defs/identifier" },
+        "reference_kind": { "$ref": "#/$defs/candidate_reach_reference_kind" },
+        "members": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/feature_ref" } },
+        "max_members": { "$ref": "#/$defs/uint64", "minimum": 1, "maximum": 1000000 }
+      }
     }
   },
   "x-canon-contract": {
@@ -88,6 +103,7 @@
       "inventory references are carried lineage and are not independently authenticated by tile-work materialization",
       "duplicate feature identity includes the complete source binding, release identity, inventory reference, and feature_id",
       "every supplied feature lies inside the bounded center-plus-controlled-halo section",
+      "candidate_reach_reference members are a declared complete bounded reference; tile-work measures exact source-binding and home-cell membership reach but never treats H3 as geometric truth",
       "work cells and feature memberships are emitted in canonical sorted order"
     ]
   }

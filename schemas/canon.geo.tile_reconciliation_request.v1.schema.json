@@ -150,7 +150,7 @@
     "work_unit": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "request_version", "center_cell", "h3_resolution", "halo_k", "work_cells", "features", "center_feature_count", "halo_feature_count", "max_features", "max_work_cells", "work_unit_blake3"],
+      "required": ["version", "request_version", "center_cell", "h3_resolution", "halo_k", "work_cells", "features", "center_feature_count", "halo_feature_count", "candidate_reach", "max_features", "max_work_cells", "work_unit_blake3"],
       "properties": {
         "version": { "const": "canon_geo_tile_work_unit.v1" },
         "request_version": { "const": "canon_geo_tile_work_request.v1" },
@@ -161,6 +161,7 @@
         "features": { "type": "array", "items": { "$ref": "#/$defs/feature_membership" } },
         "center_feature_count": { "$ref": "#/$defs/uint64" },
         "halo_feature_count": { "$ref": "#/$defs/uint64" },
+        "candidate_reach": { "$ref": "#/$defs/candidate_reach_report" },
         "max_features": { "$ref": "#/$defs/uint64", "minimum": 1, "maximum": 1000000 },
         "max_work_cells": { "$ref": "#/$defs/uint64", "minimum": 1, "maximum": 100000 },
         "work_unit_blake3": { "$ref": "#/$defs/blake3" }
@@ -173,6 +174,55 @@
       "properties": {
         "work_unit": { "$ref": "#/$defs/work_unit" },
         "proposals": { "type": "array", "items": { "$ref": "#/$defs/decision_proposal" } }
+      }
+    },
+    "feature_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "feature_id", "home_cell"],
+      "properties": {
+        "source": { "$ref": "#/$defs/source_binding" },
+        "feature_id": { "$ref": "#/$defs/identifier" },
+        "home_cell": { "$ref": "#/$defs/h3_cell" }
+      }
+    },
+    "candidate_reach_reference_kind": {
+      "enum": ["complete_bounded_reference"]
+    },
+    "candidate_reach_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference_id", "reference_kind", "members", "max_members"],
+      "properties": {
+        "reference_id": { "$ref": "#/$defs/identifier" },
+        "reference_kind": { "$ref": "#/$defs/candidate_reach_reference_kind" },
+        "members": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/feature_ref" } },
+        "max_members": { "$ref": "#/$defs/uint64", "minimum": 1, "maximum": 1000000 }
+      }
+    },
+    "candidate_reach_status": {
+      "enum": ["passed_against_reference", "failed_against_reference", "structurally_complete_relative_to_inputs"]
+    },
+    "truth_reach_status": {
+      "enum": ["passed_against_reference", "failed_against_reference", "unverified"]
+    },
+    "candidate_reach_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "truth_reach_status", "reason", "candidate_count", "center_candidate_count", "halo_candidate_count", "work_cell_count", "reference_count", "reached_reference_count", "missing_reference_count", "missing_reference_members"],
+      "properties": {
+        "status": { "$ref": "#/$defs/candidate_reach_status" },
+        "truth_reach_status": { "$ref": "#/$defs/truth_reach_status" },
+        "reason": { "$ref": "#/$defs/identifier" },
+        "reference": { "$ref": "#/$defs/candidate_reach_reference" },
+        "candidate_count": { "$ref": "#/$defs/uint64" },
+        "center_candidate_count": { "$ref": "#/$defs/uint64" },
+        "halo_candidate_count": { "$ref": "#/$defs/uint64" },
+        "work_cell_count": { "$ref": "#/$defs/uint64" },
+        "reference_count": { "$ref": "#/$defs/uint64" },
+        "reached_reference_count": { "$ref": "#/$defs/uint64" },
+        "missing_reference_count": { "$ref": "#/$defs/uint64" },
+        "missing_reference_members": { "type": "array", "items": { "$ref": "#/$defs/feature_ref" } }
       }
     }
   },
@@ -189,6 +239,7 @@
       "Composition may omit inventory lineage and carries no stable-alias authority",
       "one source_instance_id has exactly one release identity, native scope, and inventory reference across all batches",
       "each proposal work_unit_blake3 equals its embedded canonical work-unit digest; this deterministic association is not proof that an external solver consumed the work unit",
+      "failed candidate_reach reports cannot be consumed as downstream reconciliation input",
       "decision semantics and canonical members jointly determine confluence scope and decision identity",
       "member, batch-receipt, and reconciled-decision collections are canonicalized before hashing or emission"
     ]

@@ -17,8 +17,8 @@ use crate::{
         GeoEntityLevel, GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
         GeoEvidenceCompilationRequest, GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest,
         GeoPlan, GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanProducedArtifactRef,
-        GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoWarehouseRowsRequest,
-        canonical_composition_bytes, canonical_evidence_compilation_bytes,
+        GeoTileCandidateReachStatus, GeoTileWorkRequest, GeoTileWorkUnitArtifact,
+        GeoWarehouseRowsRequest, canonical_composition_bytes, canonical_evidence_compilation_bytes,
         canonical_home_cell_assignment_bytes, canonical_materialized_evidence_request_bytes,
         canonical_tile_work_unit_bytes, compile_evidence, materialize_home_cells,
         materialize_tile_work_unit, materialize_warehouse_rows, solve_composition,
@@ -412,7 +412,7 @@ impl GeoProjectNodeExecutor {
         )?;
         let section_artifact: GeoTileWorkUnitArtifact =
             parse_json(node, &section.bytes, CANON_GEO_TILE_WORK_UNIT_VERSION)?;
-        validate_section_candidate_reach_allows_downstream(node, &section.bytes)?;
+        validate_section_candidate_reach_allows_downstream(node, &section_artifact)?;
         let rows: GeoWarehouseRowsRequest = self.required_binding_json(
             node,
             GEO_ROWS_BINDING_ID,
@@ -495,7 +495,7 @@ impl GeoProjectNodeExecutor {
         let section = self.required_scoped_dependency_artifact(node, &scope.bounded_section)?;
         let section_artifact: GeoTileWorkUnitArtifact =
             parse_json(node, &section.bytes, CANON_GEO_TILE_WORK_UNIT_VERSION)?;
-        validate_section_candidate_reach_allows_downstream(node, &section.bytes)?;
+        validate_section_candidate_reach_allows_downstream(node, &section_artifact)?;
         let input = self.required_scoped_dependency_artifact(node, &scope.evidence_compilation)?;
         let compilation: GeoEvidenceCompilationArtifact =
             parse_json(node, &input.bytes, CANON_GEO_EVIDENCE_COMPILATION_VERSION)?;
@@ -929,37 +929,18 @@ fn validate_compilation_universe_against_section(
 
 fn validate_section_candidate_reach_allows_downstream(
     node: &ProjectPlanNode,
-    section_bytes: &[u8],
+    section: &GeoTileWorkUnitArtifact,
 ) -> ProjectRunResult<()> {
-    let section: serde_json::Value = serde_json::from_slice(section_bytes).map_err(|error| {
-        ProjectRunError::new(
-            ProjectRunErrorCode::ArtifactContract,
-            Some(node.node_id.clone()),
-            format!("Geo executor could not inspect bounded-section candidate reach: {error}"),
-        )
-    })?;
-    let Some(reach) = section.get("candidate_reach") else {
-        return Ok(());
-    };
-    let Some(status) = reach.get("status").and_then(serde_json::Value::as_str) else {
-        return Err(error(
-            node,
-            ProjectRunErrorCode::ArtifactContract,
-            "bounded tile section candidate_reach report must declare a status",
-        ));
-    };
-    if status != "failed_against_reference" {
+    if section.candidate_reach.status != GeoTileCandidateReachStatus::FailedAgainstReference {
         return Ok(());
     }
-    let reference_id = reach
-        .get("reference")
-        .and_then(|reference| reference.get("reference_id"))
-        .and_then(serde_json::Value::as_str)
+    let reference_id = section
+        .candidate_reach
+        .reference
+        .as_ref()
+        .map(|reference| reference.reference_id.as_str())
         .unwrap_or("<unknown>");
-    let missing = reach
-        .get("missing_reference_count")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
+    let missing = section.candidate_reach.missing_reference_count;
     Err(error(
         node,
         ProjectRunErrorCode::ArtifactContract,

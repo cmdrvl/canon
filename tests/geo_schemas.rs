@@ -71,7 +71,8 @@ use canon::geo::{
     GeoRhoObservationKind, GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry,
     GeoSourcePointDecimal, GeoSourcePointFixed, GeoSourceRelease, GeoStreetDirection,
     GeoStreetSuffix, GeoSubjectBinding, GeoSubjectBindingClass, GeoTelemetryDeclaration,
-    GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileDecisionBatch,
+    GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
+    GeoTileCandidateReachReference, GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch,
     GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
     GeoTileReconciliationArtifact, GeoTileReconciliationRequest, GeoTileSourceBinding,
     GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValueOrigin,
@@ -1343,19 +1344,26 @@ fn tile_source_binding(
 }
 
 fn tile_work_request() -> GeoTileWorkRequest {
+    let feature = GeoTileFeatureRef {
+        source: tile_source_binding(
+            "mappluto-parcel",
+            GeoControlEntityLevel::Parcel,
+            GeoIdentityParticipation::StableAlias,
+        ),
+        feature_id: "parcel-a".to_string(),
+        home_cell: "892a100d26bffff".to_string(),
+    };
     GeoTileWorkRequest {
         version: CANON_GEO_TILE_WORK_REQUEST_VERSION.to_string(),
         center_cell: "892a100d26bffff".to_string(),
         halo_k: 1,
-        features: vec![GeoTileFeatureRef {
-            source: tile_source_binding(
-                "mappluto-parcel",
-                GeoControlEntityLevel::Parcel,
-                GeoIdentityParticipation::StableAlias,
-            ),
-            feature_id: "parcel-a".to_string(),
-            home_cell: "892a100d26bffff".to_string(),
-        }],
+        features: vec![feature.clone()],
+        candidate_reach_reference: Some(GeoTileCandidateReachReference {
+            reference_id: "reference.fixture.schemas".to_string(),
+            reference_kind: GeoTileCandidateReachReferenceKind::CompleteBoundedReference,
+            members: vec![feature],
+            max_members: 8,
+        }),
         max_features: 8,
         max_work_cells: 7,
     }
@@ -2021,6 +2029,16 @@ fn v1_tile_schemas_pin_exact_rust_integer_envelopes() {
             TILE_WORK_UNIT_SCHEMA,
             "/properties/center_feature_count/$ref",
             "#/$defs/uint64",
+        ),
+        (
+            TILE_WORK_UNIT_SCHEMA,
+            "/properties/candidate_reach/$ref",
+            "#/$defs/candidate_reach_report",
+        ),
+        (
+            TILE_RECONCILIATION_REQUEST_SCHEMA,
+            "/$defs/work_unit/properties/candidate_reach/$ref",
+            "#/$defs/candidate_reach_report",
         ),
         (
             TILE_RECONCILIATION_REQUEST_SCHEMA,

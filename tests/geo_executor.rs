@@ -1192,6 +1192,7 @@ fn tile_work_request() -> GeoTileWorkRequest {
         center_cell: center_cell().to_string(),
         halo_k: 1,
         features: tile_features(),
+        candidate_reach_reference: None,
         max_features: 16,
         max_work_cells: 7,
     }
@@ -1203,6 +1204,7 @@ fn tile_work_request_for(source: GeoTileSourceBinding, feature_ids: &[&str]) -> 
         center_cell: center_cell().to_string(),
         halo_k: 1,
         features: tile_features_for(source, feature_ids),
+        candidate_reach_reference: None,
         max_features: 16,
         max_work_cells: 7,
     }

@@ -88,6 +88,7 @@ fn work_request(center: CellIndex, members: &[GeoTileDecisionMember]) -> GeoTile
                 home_cell: member.home_cell.clone(),
             })
             .collect(),
+        candidate_reach_reference: None,
         max_features: 8,
         max_work_cells: 7,
     }
