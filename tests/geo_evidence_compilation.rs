@@ -1037,13 +1037,32 @@ fn bd_3qs3_singleton_without_hard_evidence_is_labeled_structurally_forced() {
             buildings: Vec::new(),
         },
     };
-    let evidence_supported = hard_population_case(
-        "evidence-supported-full-reach",
-        GeoTruthPlane::NonRoundAmountDateLegalBorough,
-        &["p1", "p2"],
-        "p2",
-        &["p2"],
-    );
+    let evidence_supported = GeoLabeledCompositionCase {
+        id: "evidence-supported-full-reach".to_string(),
+        evidence: GeoEvidenceCompilationRequest {
+            version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+            profile: Default::default(),
+            universe: universe(&["p1", "p2"]),
+            contracts: vec![contract("exact-supported", GeoRhoSoundness::LogicallySound)],
+            observations: vec![GeoRhoObservation {
+                id: "exactly-p2".to_string(),
+                contract_id: "exact-supported".to_string(),
+                source_records: vec![source_record("exactly-p2-row")],
+                valid_time: None,
+                observation: GeoRhoObservationKind::ExactSets {
+                    level: GeoEntityLevel::Parcel,
+                    sets: vec![parcels(&["p2"])],
+                },
+            }],
+            max_assignments: 4,
+            max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+        },
+        truth_plane: GeoTruthPlane::NonRoundAmountDateLegalBorough,
+        truth: GeoCompositionModel {
+            parcels: parcels(&["p2"]),
+            buildings: Vec::new(),
+        },
+    };
     let artifact = evaluate_population(&GeoPopulationEvaluationRequest {
         version: CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
         cases: vec![structurally_forced, evidence_supported],
