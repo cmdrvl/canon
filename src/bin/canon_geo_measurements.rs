@@ -70,11 +70,11 @@ enum EmitMode {
 #[derive(Debug, Subcommand)]
 enum MeasurementCommand {
     #[command(name = "materialize-h7-population")]
-    MaterializeH7Population(H7PopulationArgs),
+    Population(H7PopulationArgs),
     #[command(name = "materialize-h7-staging-batch")]
-    MaterializeH7StagingBatch(H7BatchArgs),
+    StagingBatch(H7BatchArgs),
     #[command(name = "materialize-h7-pip-block-batch")]
-    MaterializeH7PipBlockBatch(H7BatchArgs),
+    PipBlockBatch(H7BatchArgs),
 }
 
 #[derive(Debug, ClapArgs)]
@@ -338,7 +338,7 @@ fn run() -> Result<ExitCode, AppError> {
 
 fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppError> {
     match command {
-        MeasurementCommand::MaterializeH7Population(args) => {
+        MeasurementCommand::Population(args) => {
             let rows: GeoH7PopulationRowsRequest = load_json(
                 &args.rows,
                 CANON_GEO_H7_POPULATION_ROWS_VERSION,
@@ -354,7 +354,7 @@ fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppE
             })?;
             write_canonical(&bytes)?;
         }
-        MeasurementCommand::MaterializeH7StagingBatch(args) => {
+        MeasurementCommand::StagingBatch(args) => {
             let batch: GeoH7StagingSourceRecordBytesBatchRequest = load_json(
                 &args.batch,
                 CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
@@ -370,7 +370,7 @@ fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppE
             })?;
             write_canonical(&bytes)?;
         }
-        MeasurementCommand::MaterializeH7PipBlockBatch(args) => {
+        MeasurementCommand::PipBlockBatch(args) => {
             let batch: GeoH7PipBlockPopulationBatchRequest = load_json(
                 &args.batch,
                 CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION,
