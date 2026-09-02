@@ -19,6 +19,8 @@ const RESULT_SET_VERSION: &str = "canon_geo_measurement_result_set.v0";
 const EXECUTION_CHANNEL: &str = "cmdrvl_data_mcp";
 const EXECUTION_TRANSFORM: &str = "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit";
 const LIVENESS_NOT_ATTESTED: &str = "receipt is internally consistent, but this offline runner does not attest liveness, authenticity, or query-history provenance";
+const QUERY_HISTORY_BOUND_PREFIX: &str =
+    "cmdrvl_data_live receipt query_id is bound to local query history statement text";
 
 fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_canon_geo_measurements"))
@@ -575,16 +577,57 @@ fn write_fixture_receipts(fixture: &MeasurementFixture) {
     write_json(&fixture.receipts_path, &fixture.receipts);
 }
 
+fn write_valid_query_history(fixture: &MeasurementFixture) -> PathBuf {
+    let rows = fixture.receipts["receipts"]
+        .as_array()
+        .expect("receipts")
+        .iter()
+        .enumerate()
+        .map(|(index, receipt)| {
+            json!({
+                "QUERY_ID": receipt["query_id"],
+                "QUERY_TEXT": fs::read_to_string(&fixture.executed_query_text_paths[index])
+                    .expect("query text"),
+                "QUERY_TAG": format!(
+                    "canon_geo_measurements:{}",
+                    receipt["measurement_id"].as_str().expect("measurement id")
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    write_query_history_rows(fixture, rows)
+}
+
+fn write_query_history_rows(fixture: &MeasurementFixture, rows: Vec<Value>) -> PathBuf {
+    let path = fixture
+        .receipts_path
+        .parent()
+        .expect("fixture root")
+        .join("query_history.json");
+    write_json(&path, &json!({ "rows": rows }));
+    path
+}
+
 fn run_report_raw_path(receipts_path: &Path) -> std::process::Output {
-    bin()
+    run_report_raw_path_with_query_history(receipts_path, None)
+}
+
+fn run_report_raw_path_with_query_history(
+    receipts_path: &Path,
+    query_history_path: Option<&Path>,
+) -> std::process::Output {
+    let mut command = bin();
+    command
         .arg("--manifest")
         .arg("scripts/geo_measurements/manifest.json")
         .arg("--receipts")
         .arg(receipts_path)
         .arg("--emit")
-        .arg("report")
-        .output()
-        .expect("run measurement validator")
+        .arg("report");
+    if let Some(query_history_path) = query_history_path {
+        command.arg("--query-history").arg(query_history_path);
+    }
+    command.output().expect("run measurement validator")
 }
 
 fn run_report_raw_value(receipts: &Value) -> std::process::Output {
@@ -611,6 +654,16 @@ fn run_measurement_script_with_paths(args: Vec<String>) -> Output {
 
 fn run_report(fixture: &MeasurementFixture) -> (bool, Value) {
     let output = run_report_raw_path(&fixture.receipts_path);
+    let stdout: Value = serde_json::from_slice(&output.stdout).expect("stdout json");
+    (output.status.success(), stdout)
+}
+
+fn run_report_with_query_history(
+    fixture: &MeasurementFixture,
+    query_history_path: &Path,
+) -> (bool, Value) {
+    let output =
+        run_report_raw_path_with_query_history(&fixture.receipts_path, Some(query_history_path));
     let stdout: Value = serde_json::from_slice(&output.stdout).expect("stdout json");
     (output.status.success(), stdout)
 }
@@ -1305,17 +1358,100 @@ fn t59_runner_classifies_snapshot_moved_and_measurement_diverged_exit_codes() {
 }
 
 #[test]
-fn t60_receipt_attestation_requires_query_ids_for_live_complete() {
+fn t60_receipt_attestation_binds_cmdrvl_data_live_query_ids_to_history() {
     let mut live = valid_fixture();
     for receipt in live.receipts["receipts"].as_array_mut().expect("receipts") {
         receipt["proof_class"] = json!("cmdrvl_data_live");
     }
+    let live_query_history = write_valid_query_history(&live);
     write_fixture_receipts(&live);
-    let (ok, report) = run_report(&live);
+    let (ok, report) = run_report_with_query_history(&live, &live_query_history);
     assert!(ok, "{report}");
+    assert_eq!(report["summary"]["query_history_unattested"], 0);
     assert_eq!(
         report["measurements"][0]["proof_attestation"],
         "LiveComplete"
+    );
+    assert_eq!(report["measurements"][0]["status"], "receipt_consistent");
+    assert!(
+        report["measurements"][0]["details"]
+            .as_array()
+            .expect("details")
+            .iter()
+            .any(|detail| detail
+                .as_str()
+                .is_some_and(|value| value.contains(QUERY_HISTORY_BOUND_PREFIX))),
+        "{}",
+        report["measurements"][0]["details"]
+    );
+
+    let mut wrong_query = valid_fixture();
+    for receipt in wrong_query.receipts["receipts"]
+        .as_array_mut()
+        .expect("receipts")
+    {
+        receipt["proof_class"] = json!("cmdrvl_data_live");
+    }
+    let wrong_query_history = write_valid_query_history(&wrong_query);
+    let expected_hash = wrong_query.receipts["receipts"][0]["executed_query_text_sha256"]
+        .as_str()
+        .expect("expected hash")
+        .to_string();
+    let actual_hash = sha256_hex(
+        fs::read_to_string(&wrong_query.executed_query_text_paths[1])
+            .expect("second query text")
+            .as_bytes(),
+    );
+    let first_query_id = wrong_query.receipts["receipts"][0]["query_id"].clone();
+    let second_query_id = wrong_query.receipts["receipts"][1]["query_id"].clone();
+    rewrite_artifact_query_id(&mut wrong_query, 0, second_query_id.clone());
+    rewrite_artifact_query_id(&mut wrong_query, 1, first_query_id);
+    write_fixture_receipts(&wrong_query);
+    let (ok, report) = run_report_with_query_history(&wrong_query, &wrong_query_history);
+    assert!(!ok, "{report}");
+    assert_eq!(
+        status_for(&report, "appendix_b_centroid_percolation"),
+        "malformed"
+    );
+    assert_eq!(
+        report["measurements"][0]["proof_attestation"],
+        "invalid_input"
+    );
+    let details = details_for(&report, "appendix_b_centroid_percolation");
+    assert!(
+        details
+            .iter()
+            .any(|detail| detail.as_str().is_some_and(|value| {
+                value.contains("query_id correspondence mismatch")
+                    && value.contains("appendix_b_centroid_percolation")
+                    && value.contains(second_query_id.as_str().expect("second query id"))
+                    && value.contains(&expected_hash)
+                    && value.contains(&actual_hash)
+            })),
+        "{details:?}"
+    );
+
+    let mut missing_history = valid_fixture();
+    for receipt in missing_history.receipts["receipts"]
+        .as_array_mut()
+        .expect("receipts")
+    {
+        receipt["proof_class"] = json!("cmdrvl_data_live");
+    }
+    write_fixture_receipts(&missing_history);
+    let (ok, report) = run_report(&missing_history);
+    assert!(!ok, "{report}");
+    assert_eq!(
+        status_for(&report, "appendix_b_centroid_percolation"),
+        "query_history_unattested"
+    );
+    assert_eq!(
+        report["measurements"][0]["proof_attestation"],
+        "query_history_unattested"
+    );
+    assert_eq!(
+        report["summary"]["query_history_unattested"],
+        json!(manifest_measurement_count())
     );
 
     let mut observed = valid_fixture();
@@ -1346,6 +1482,10 @@ fn t60_receipt_attestation_requires_query_ids_for_live_complete() {
     assert_eq!(
         status_for(&report, "appendix_b_centroid_percolation"),
         "malformed"
+    );
+    assert_eq!(
+        report["measurements"][0]["proof_attestation"],
+        "invalid_input"
     );
     let details = details_for(&report, "appendix_b_centroid_percolation");
     assert!(

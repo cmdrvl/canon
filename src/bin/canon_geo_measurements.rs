@@ -32,7 +32,8 @@ const RESULT_SET_VERSION: &str = "canon_geo_measurement_result_set.v0";
 const EXECUTION_CHANNEL: &str = "cmdrvl_data_mcp";
 const EXECUTION_TRANSFORM: &str = "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit";
 const LIVENESS_NOT_ATTESTED: &str = "receipt is internally consistent, but this offline runner does not attest liveness, authenticity, or query-history provenance";
-const CLAIM_BOUNDARY: &str = "Offline receipt consistency validation only. A receipt_consistent row means the receipt is bound to result artifact bytes and executed query text bytes, and matches the manifest's declared offline checks. source_sql_sha256 is the local file byte digest; executed_query_text_sha256 is recomputed from the supplied normalized query text artifact after the declared cmdrvl-data/Snowflake transform. This proves byte integrity, not authenticity or liveness. result_set_sha256 is over an unordered canonical result set sorted deterministically by compact JSON row encoding. Integration-test positive JSON is a contract fixture, not live proof of cmdrvl-data execution.";
+const QUERY_HISTORY_BOUND: &str = "cmdrvl_data_live receipt query_id is bound to local query history statement text by executed_query_text_sha256; this attests query correspondence only, not warehouse liveness or authenticity";
+const CLAIM_BOUNDARY: &str = "Offline receipt consistency validation only. A receipt_consistent row means the receipt is bound to result artifact bytes and executed query text bytes, and matches the manifest's declared offline checks. source_sql_sha256 is the local file byte digest; executed_query_text_sha256 is recomputed from the supplied normalized query text artifact after the declared cmdrvl-data/Snowflake transform. result_set_sha256 is over an unordered canonical result set sorted deterministically by compact JSON row encoding. cmdrvl_data_live receipts require --query-history correspondence before LiveComplete attestation; missing history stays query_history_unattested and mismatched query text is malformed. This proves byte integrity and query correspondence, not authenticity or liveness. Integration-test positive JSON is a contract fixture, not live proof of cmdrvl-data execution.";
 const REQUIRED_CORE_MEASUREMENT_IDS: &[&str] = &[
     "appendix_b_centroid_percolation",
     "appendix_c_r8_density",
@@ -55,6 +56,8 @@ struct Args {
     repo_root: PathBuf,
     #[arg(long)]
     receipts: Option<PathBuf>,
+    #[arg(long)]
+    query_history: Option<PathBuf>,
     #[arg(long, value_enum)]
     emit: Option<EmitMode>,
     #[command(subcommand)]
@@ -171,6 +174,32 @@ struct ResultArtifact {
     rows: Vec<BTreeMap<String, Value>>,
 }
 
+#[derive(Debug)]
+struct QueryHistoryLookup {
+    unavailable: Option<String>,
+    entries: BTreeMap<String, QueryHistoryEntry>,
+    duplicate_query_ids: BTreeSet<String>,
+}
+
+#[derive(Debug)]
+struct QueryHistoryEntry {
+    statement_text_sha256: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum QueryHistoryAttestation {
+    NotRequired,
+    Bound,
+    Unattested,
+    Refused,
+}
+
+enum QueryHistoryBinding {
+    Bound,
+    Unattested(String),
+    Refused(String),
+}
+
 #[derive(Serialize)]
 struct CanonicalResultSet<'a> {
     version: &'static str,
@@ -226,6 +255,7 @@ struct MeasurementReport {
 struct ReportSummary {
     total: usize,
     receipt_consistent: usize,
+    query_history_unattested: usize,
     snapshot_moved: usize,
     result_mismatch: usize,
     malformed: usize,
@@ -259,6 +289,7 @@ struct MeasurementStatusRow {
 #[serde(rename_all = "snake_case")]
 enum MeasurementStatus {
     ReceiptConsistent,
+    QueryHistoryUnattested,
     SnapshotMoved,
     ResultMismatch,
     Malformed,
@@ -320,10 +351,12 @@ fn run() -> Result<ExitCode, AppError> {
                 AppError::new("--receipts is required when --emit report is selected")
             })?;
             let receipts = load_receipts(receipts_path)?;
+            let query_history = load_query_history(args.query_history.as_deref());
             let receipt_base = receipts_path.parent().unwrap_or_else(|| Path::new("."));
-            let report = report_for(&manifest, &receipts, receipt_base);
+            let report = report_for(&manifest, &receipts, receipt_base, &query_history);
             let ok = report.summary.snapshot_moved == 0
                 && report.summary.result_mismatch == 0
+                && report.summary.query_history_unattested == 0
                 && report.summary.malformed == 0
                 && report.summary.missing == 0;
             print_json(&report)?;
@@ -754,13 +787,28 @@ fn validate_measurement_claim_boundary(measurement: &ManifestMeasurement) -> Res
     Ok(())
 }
 
-fn proof_attestation(receipt: &Receipt) -> String {
+fn proof_attestation(receipt: &Receipt, query_history: QueryHistoryAttestation) -> String {
     let proof_class = receipt.proof_class.to_ascii_lowercase();
     match (proof_class.as_str(), receipt.query_id.as_ref()) {
         ("observed", None) => "observed".to_string(),
-        ("cmdrvl_data_live", Some(_)) => "LiveComplete".to_string(),
+        ("observed", Some(_)) => "invalid_input".to_string(),
+        ("cmdrvl_data_live", Some(_)) if query_history == QueryHistoryAttestation::Bound => {
+            "LiveComplete".to_string()
+        }
+        ("cmdrvl_data_live", Some(_)) if query_history == QueryHistoryAttestation::Unattested => {
+            "query_history_unattested".to_string()
+        }
+        ("cmdrvl_data_live", Some(_)) => "invalid_input".to_string(),
         (_, None) => "invalid_input".to_string(),
         _ => "receipt_consistent".to_string(),
+    }
+}
+
+fn unevaluated_query_history_attestation(receipt: &Receipt) -> QueryHistoryAttestation {
+    if receipt.proof_class.eq_ignore_ascii_case("cmdrvl_data_live") && receipt.query_id.is_some() {
+        QueryHistoryAttestation::Unattested
+    } else {
+        QueryHistoryAttestation::NotRequired
     }
 }
 
@@ -838,6 +886,123 @@ fn load_receipts(path: &Path) -> Result<Vec<Receipt>, AppError> {
     Ok(bundle.receipts)
 }
 
+fn load_query_history(path: Option<&Path>) -> QueryHistoryLookup {
+    let Some(path) = path else {
+        return QueryHistoryLookup::unavailable(
+            "--query-history was not supplied for cmdrvl_data_live attestation",
+        );
+    };
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return QueryHistoryLookup::unavailable(format!(
+                "failed to read query history {}: {error}",
+                path.display()
+            ));
+        }
+    };
+    let value: Value = match serde_json::from_slice(&bytes) {
+        Ok(value) => value,
+        Err(error) => {
+            return QueryHistoryLookup::unavailable(format!(
+                "failed to parse query history {}: {error}",
+                path.display()
+            ));
+        }
+    };
+    match QueryHistoryLookup::from_value(&value) {
+        Ok(history) => history,
+        Err(detail) => QueryHistoryLookup::unavailable(format!(
+            "failed to decode query history {}: {detail}",
+            path.display()
+        )),
+    }
+}
+
+impl QueryHistoryLookup {
+    fn unavailable(reason: impl Into<String>) -> Self {
+        Self {
+            unavailable: Some(reason.into()),
+            entries: BTreeMap::new(),
+            duplicate_query_ids: BTreeSet::new(),
+        }
+    }
+
+    fn from_value(value: &Value) -> Result<Self, String> {
+        let rows = query_history_rows(value)?;
+        let mut entries = BTreeMap::new();
+        let mut duplicate_query_ids = BTreeSet::new();
+        for (index, row) in rows.iter().enumerate() {
+            let object = row
+                .as_object()
+                .ok_or_else(|| format!("query history row {index} must be an object"))?;
+            let query_id =
+                required_history_string(object, index, &["query_id", "QUERY_ID"], "query_id")?;
+            if !valid_query_id(query_id) {
+                return Err(format!(
+                    "query history row {index} query_id is empty or noncanonical"
+                ));
+            }
+            let statement_text = required_history_string(
+                object,
+                index,
+                &[
+                    "statement_text",
+                    "query_text",
+                    "QUERY_TEXT",
+                    "sql_text",
+                    "SQL_TEXT",
+                    "query",
+                ],
+                "statement text",
+            )?;
+            if statement_text.is_empty() {
+                return Err(format!(
+                    "query history row {index} statement text must be nonempty"
+                ));
+            }
+            let entry = QueryHistoryEntry {
+                statement_text_sha256: sha256_hex(statement_text.as_bytes()),
+            };
+            if entries.insert(query_id.to_string(), entry).is_some() {
+                duplicate_query_ids.insert(query_id.to_string());
+            }
+        }
+        Ok(Self {
+            unavailable: None,
+            entries,
+            duplicate_query_ids,
+        })
+    }
+}
+
+fn query_history_rows(value: &Value) -> Result<&[Value], String> {
+    if let Some(rows) = value.as_array() {
+        return Ok(rows);
+    }
+    let object = value
+        .as_object()
+        .ok_or_else(|| "query history must be an array or object".to_string())?;
+    for key in ["queries", "rows", "query_history"] {
+        if let Some(rows) = object.get(key).and_then(Value::as_array) {
+            return Ok(rows);
+        }
+    }
+    Err("query history object must contain queries, rows, or query_history array".to_string())
+}
+
+fn required_history_string<'a>(
+    object: &'a serde_json::Map<String, Value>,
+    index: usize,
+    aliases: &[&str],
+    field_name: &str,
+) -> Result<&'a str, String> {
+    aliases
+        .iter()
+        .find_map(|alias| object.get(*alias).and_then(Value::as_str))
+        .ok_or_else(|| format!("query history row {index} requires string {field_name}"))
+}
+
 fn plan_for(manifest: &Manifest) -> MeasurementPlan {
     MeasurementPlan {
         version: PLAN_VERSION.to_string(),
@@ -872,7 +1037,12 @@ fn plan_for(manifest: &Manifest) -> MeasurementPlan {
     }
 }
 
-fn report_for(manifest: &Manifest, receipts: &[Receipt], receipt_base: &Path) -> MeasurementReport {
+fn report_for(
+    manifest: &Manifest,
+    receipts: &[Receipt],
+    receipt_base: &Path,
+    query_history: &QueryHistoryLookup,
+) -> MeasurementReport {
     let mut by_id: BTreeMap<String, Vec<&Receipt>> = BTreeMap::new();
     let mut by_query_id: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for receipt in receipts {
@@ -907,6 +1077,7 @@ fn report_for(manifest: &Manifest, receipts: &[Receipt], receipt_base: &Path) ->
             &receipts,
             &duplicate_query_ids,
             receipt_base,
+            query_history,
         ));
     }
     for (id, receipts) in by_id {
@@ -926,7 +1097,10 @@ fn report_for(manifest: &Manifest, receipts: &[Receipt], receipt_base: &Path) ->
                 as_of: Some(receipt.as_of.clone()),
                 release_pins: Some(receipt.release_pins.clone()),
                 declared_proof_class: Some(receipt.proof_class.clone()),
-                proof_attestation: Some(proof_attestation(receipt)),
+                proof_attestation: Some(proof_attestation(
+                    receipt,
+                    unevaluated_query_history_attestation(receipt),
+                )),
                 source_sql_sha256: Some(receipt.source_sql_sha256.clone()),
                 executed_query_text_sha256: Some(receipt.executed_query_text_sha256.clone()),
                 result_artifact_sha256: receipt.result_artifact_sha256.clone(),
@@ -943,6 +1117,10 @@ fn report_for(manifest: &Manifest, receipts: &[Receipt], receipt_base: &Path) ->
         receipt_consistent: rows
             .iter()
             .filter(|row| row.status == MeasurementStatus::ReceiptConsistent)
+            .count(),
+        query_history_unattested: rows
+            .iter()
+            .filter(|row| row.status == MeasurementStatus::QueryHistoryUnattested)
             .count(),
         snapshot_moved: rows
             .iter()
@@ -978,6 +1156,7 @@ fn validate_receipt_row(
     receipts: &[&Receipt],
     duplicate_query_ids: &BTreeSet<String>,
     receipt_base: &Path,
+    query_history: &QueryHistoryLookup,
 ) -> MeasurementStatusRow {
     if receipts.is_empty() {
         return MeasurementStatusRow {
@@ -1029,8 +1208,10 @@ fn validate_receipt_row(
     let receipt = receipts[0];
     let mut malformed = Vec::new();
     let mut mismatches = Vec::new();
+    let mut unattested = Vec::new();
     let mut artifact_rows = Vec::new();
     let mut artifact_loaded = false;
+    let mut query_id_is_bindable = false;
 
     if receipt.source_sql_sha256 != measurement.source_sql_sha256 {
         malformed.push(format!(
@@ -1088,9 +1269,26 @@ fn validate_receipt_row(
             }
             if !valid_query_id(query_id) {
                 malformed.push("query_id is empty or noncanonical".to_string());
+            } else if !duplicate_query_ids.contains(query_id) {
+                query_id_is_bindable = true;
             }
         }
     }
+    let query_history_attestation = if proof_class == "cmdrvl_data_live" && query_id_is_bindable {
+        match bind_query_history(measurement, receipt, query_history) {
+            QueryHistoryBinding::Bound => QueryHistoryAttestation::Bound,
+            QueryHistoryBinding::Unattested(detail) => {
+                unattested.push(detail);
+                QueryHistoryAttestation::Unattested
+            }
+            QueryHistoryBinding::Refused(detail) => {
+                malformed.push(detail);
+                QueryHistoryAttestation::Refused
+            }
+        }
+    } else {
+        QueryHistoryAttestation::NotRequired
+    };
     match load_result_artifact(receipt_base, measurement, receipt) {
         Ok(artifact) => {
             artifact_loaded = true;
@@ -1161,8 +1359,14 @@ fn validate_receipt_row(
         )
     } else if !mismatches.is_empty() {
         (MeasurementStatus::ResultMismatch, mismatches)
+    } else if !unattested.is_empty() {
+        (MeasurementStatus::QueryHistoryUnattested, unattested)
     } else {
-        let mut details = vec![LIVENESS_NOT_ATTESTED.to_string()];
+        let mut details = if query_history_attestation == QueryHistoryAttestation::Bound {
+            vec![QUERY_HISTORY_BOUND.to_string()]
+        } else {
+            vec![LIVENESS_NOT_ATTESTED.to_string()]
+        };
         if measurement.result_row_validation != "exact_manifest_rows" {
             details.extend(measurement.limitations.clone());
         }
@@ -1181,7 +1385,7 @@ fn validate_receipt_row(
         as_of: Some(receipt.as_of.clone()),
         release_pins: Some(receipt.release_pins.clone()),
         declared_proof_class: Some(receipt.proof_class.clone()),
-        proof_attestation: Some(proof_attestation(receipt)),
+        proof_attestation: Some(proof_attestation(receipt, query_history_attestation)),
         source_sql_sha256: Some(receipt.source_sql_sha256.clone()),
         executed_query_text_sha256: Some(receipt.executed_query_text_sha256.clone()),
         result_artifact_sha256: receipt.result_artifact_sha256.clone(),
@@ -1189,6 +1393,46 @@ fn validate_receipt_row(
         result_validation: Some(measurement.result_row_validation.clone()),
         row_count: Some(receipt.row_count),
         details,
+    }
+}
+
+fn bind_query_history(
+    measurement: &ManifestMeasurement,
+    receipt: &Receipt,
+    query_history: &QueryHistoryLookup,
+) -> QueryHistoryBinding {
+    let query_id = receipt
+        .query_id
+        .as_deref()
+        .expect("caller checks query_id exists before binding");
+    if let Some(reason) = &query_history.unavailable {
+        return QueryHistoryBinding::Unattested(format!(
+            "query history unavailable for measurement_id {} query_id {}: {reason}",
+            measurement.id, query_id
+        ));
+    }
+    if query_history.duplicate_query_ids.contains(query_id) {
+        return QueryHistoryBinding::Unattested(format!(
+            "query history has duplicate query_id {} for measurement_id {}; cannot bind exactly one statement",
+            query_id, measurement.id
+        ));
+    }
+    let Some(entry) = query_history.entries.get(query_id) else {
+        return QueryHistoryBinding::Unattested(format!(
+            "query history has no row for measurement_id {} query_id {}; history may be expired or incomplete",
+            measurement.id, query_id
+        ));
+    };
+    if entry.statement_text_sha256 == receipt.executed_query_text_sha256 {
+        QueryHistoryBinding::Bound
+    } else {
+        QueryHistoryBinding::Refused(format!(
+            "query_id correspondence mismatch for measurement_id {} query_id {}: expected executed_query_text_sha256 {}, actual query_history statement_text_sha256 {}",
+            measurement.id,
+            query_id,
+            receipt.executed_query_text_sha256,
+            entry.statement_text_sha256
+        ))
     }
 }
 
