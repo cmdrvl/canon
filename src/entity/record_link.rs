@@ -2420,6 +2420,21 @@ fn feature_value_kind(value: &RecordLinkFeatureValue) -> RecordLinkFeatureKind {
     }
 }
 
+pub fn record_link_self_support_feature(
+    feature_id: &str,
+    value: &RecordLinkFeatureValue,
+    feature_policies: &BTreeMap<String, RecordLinkFeaturePolicy>,
+) -> RecordLinkResult<Option<RecordLinkFeatureComparison>> {
+    match compare_feature_values(feature_id, value, value, feature_policies)? {
+        FeatureDecision::Support(feature) => Ok(Some(feature)),
+        FeatureDecision::Conflict(_)
+        | FeatureDecision::Unconfigured
+        | FeatureDecision::Mismatch
+        | FeatureDecision::ScaleMismatch
+        | FeatureDecision::Incomparable => Ok(None),
+    }
+}
+
 fn checked_support_score(features: &[RecordLinkFeatureComparison]) -> RecordLinkResult<u64> {
     features.iter().try_fold(0_u64, |total, feature| {
         total.checked_add(feature.score_units).ok_or_else(|| {

@@ -11109,6 +11109,7 @@ mod leakage_provenance_tests {
                 gold_score: None,
                 write_back: None,
             },
+            unlinkables: None,
             next_commands: crate::entity::run::link::EntityLinkNextCommands {
                 review_export: "canon entity review export link.json --include escrow --emit csv"
                     .to_string(),

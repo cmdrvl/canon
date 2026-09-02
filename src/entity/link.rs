@@ -13,6 +13,11 @@ use super::{
 };
 use crate::{
     InputFormat, Refusal,
+    entity::diagnostics::{
+        EntityUnlinkablesReport, EntityUnlinkablesReportRequest, EntityUnlinkablesSurfaceInput,
+        EntityUnlinkablesSurfaceSide, EntityUnlinkablesThresholds, build_entity_unlinkables_report,
+        validate_entity_unlinkables_report,
+    },
     entity::evidence_ir::{
         EvidenceBundle, canonical_bundle_bytes as canonical_evidence_bundle_bytes,
     },
@@ -20,8 +25,13 @@ use crate::{
     entity::publication::{CANON_ENTITY_STAGE_PUBLICATION_VERSION, EntityPublicationFileInput},
     entity::record_link::{
         ASSIGNMENT_ALIGNMENT_PATH, ASSIGNMENT_ALIGNMENT_VERSION, AssignmentAlignmentSidecar,
-        RECORD_LINK_EVIDENCE_PATH, canonical_assignment_alignment_bytes,
-        validate_assignment_alignment_sidecar,
+        RECORD_LINK_EVIDENCE_PATH, RecordLinkFeaturePolicy, RecordLinkFeatureValue,
+        RecordLinkInputSet, RecordLinkLoadRequest, canonical_assignment_alignment_bytes,
+        load_record_link_inputs, validate_assignment_alignment_sidecar,
+    },
+    entity::source_mapping::{
+        RecordLinkComparisonView, RecordLinkFieldDispositionReason, RecordLinkInputRecord,
+        RecordLinkQuarantinedField,
     },
     entity::{
         CANON_ENTITY_SOLVE_VERSION_V1, EntityArtifactReference,
@@ -108,6 +118,8 @@ pub struct EntityLinkArtifact {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub assignment_alignment_artifacts: Vec<EntityLinkAssignmentAlignmentArtifact>,
     pub decision_artifact: EntityLinkDecisionArtifact,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unlinkables: Option<EntityUnlinkablesReport>,
     pub next_commands: EntityLinkNextCommands,
 }
 
@@ -265,6 +277,7 @@ pub fn run_entity_link_with_cache_mode(
         shared_solve_artifact,
         assignment_alignment_artifacts: Vec::new(),
         decision_artifact: empty_link_decision_artifact(),
+        unlinkables: None,
         next_commands: EntityLinkNextCommands {
             review_export: format!(
                 "canon entity review export {} --include escrow --emit csv",
@@ -342,7 +355,7 @@ pub fn finalize_entity_link_artifact(
     artifact.decision_artifact = decision_artifact;
     let profile_context_dirs =
         link_profile_source_context_dirs(&link_artifact_path(request.work_dir));
-    validate_link_profile_source_against_run(
+    let loaded_profile = validate_link_profile_source_against_run(
         &artifact.profile_source,
         &profile_context_dirs,
         request.run_artifact,
@@ -357,6 +370,15 @@ pub fn finalize_entity_link_artifact(
     validate_entity_link_observation_surface_bindings(&artifact, &bindings)?;
     let bindings_bytes = jsonl_bytes(&bindings, "observation/surface bindings")?;
     artifact.observation_surface_bindings_content_hash = witness::hash_bytes(&bindings_bytes);
+    let surfaces = read_link_run_surfaces(request.work_dir, request.run_artifact, &loaded_profile)?;
+    artifact.unlinkables = Some(build_link_unlinkables_report(
+        request.work_dir,
+        request.run_artifact,
+        &loaded_profile,
+        &profile_context_dirs,
+        &bindings,
+        &surfaces,
+    )?);
     artifact.next_commands = EntityLinkNextCommands {
         review_export: format!(
             "canon entity review export {} --include escrow --emit csv",
@@ -402,6 +424,576 @@ pub fn finalize_entity_link_artifact(
         publication_files,
     )?;
     Ok(artifact)
+}
+
+fn build_link_unlinkables_report(
+    _work_dir: &Path,
+    run_artifact: &EntityRunArtifact,
+    loaded_profile: &LoadedPrepareProfile,
+    profile_context_dirs: &[PathBuf],
+    bindings: &[EntityLinkObservationSurfaceBinding],
+    surfaces: &[PreparedSurfaceRecord],
+) -> Result<EntityUnlinkablesReport, Refusal> {
+    let strategy = load_link_unlinkables_strategy_config(
+        run_artifact,
+        profile_context_dirs,
+        entity_link_run_strategy_hash(run_artifact),
+        "run_artifact.metadata.strategy.content_hash",
+    )?;
+    let record_link_input_set = if strategy.record_link_input_paths.is_empty() {
+        None
+    } else {
+        Some(
+            load_record_link_inputs(RecordLinkLoadRequest {
+                workspace_root: &strategy.strategy_workspace_root,
+                sidecar_paths: strategy.record_link_input_paths.clone(),
+                expected_profile_id: Some(loaded_profile.document.profile.clone()),
+                expected_profile_digest: Some(loaded_profile.content_hash.clone()),
+                expected_scope_id: None,
+            })
+            .map_err(|error| link_record_link_refusal(error, "link"))?,
+        )
+    };
+    let surface_inputs =
+        link_unlinkables_surface_inputs(bindings, surfaces, record_link_input_set.as_ref());
+    build_entity_unlinkables_report(EntityUnlinkablesReportRequest {
+        profile: &loaded_profile.document,
+        support_namespace: &loaded_profile.document.patch_namespaces.aliases,
+        thresholds: strategy.thresholds,
+        surfaces: surface_inputs,
+        record_link_feature_policies: strategy.record_link_feature_policies,
+    })
+}
+
+#[derive(Debug)]
+struct LinkUnlinkablesStrategyConfig {
+    strategy_workspace_root: PathBuf,
+    thresholds: EntityUnlinkablesThresholds,
+    record_link_input_paths: Vec<PathBuf>,
+    record_link_feature_policies: BTreeMap<String, RecordLinkFeaturePolicy>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LinkUnlinkablesStrategyDocument {
+    #[serde(default)]
+    solver: LinkUnlinkablesSolverConfig,
+    #[serde(default)]
+    match_threshold: Option<f64>,
+    #[serde(default)]
+    record_link: Option<LinkUnlinkablesRecordLinkSection>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct LinkUnlinkablesSolverConfig {
+    #[serde(default)]
+    backbone_score_min: Option<u32>,
+    #[serde(default)]
+    attach_score_min: Option<u32>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct LinkUnlinkablesRecordLinkSection {
+    #[serde(default)]
+    inputs: Vec<LinkUnlinkablesRecordLinkInput>,
+    #[serde(default)]
+    feature_policies: Vec<RecordLinkFeaturePolicy>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LinkUnlinkablesRecordLinkInput {
+    path: PathBuf,
+}
+
+fn load_link_unlinkables_strategy_config(
+    run_artifact: &EntityRunArtifact,
+    context_dirs: &[PathBuf],
+    expected_strategy_hash: Option<&str>,
+    expected_strategy_hash_field: &'static str,
+) -> Result<LinkUnlinkablesStrategyConfig, Refusal> {
+    let (strategy_path, bytes) = load_link_strategy_bytes(
+        run_artifact,
+        context_dirs,
+        expected_strategy_hash,
+        expected_strategy_hash_field,
+        "unlinkables diagnostics",
+    )?;
+    let document: LinkUnlinkablesStrategyDocument =
+        serde_yaml::from_slice(&bytes).map_err(|error| {
+            link_artifact_refusal(
+                "Failed to parse entity link strategy for unlinkables diagnostics",
+                json!({
+                    "stage": "link",
+                    "path": strategy_path.display().to_string(),
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    let thresholds = link_unlinkables_thresholds(&document)?;
+    let (record_link_input_paths, record_link_feature_policies) =
+        link_unlinkables_record_link_config(document.record_link)?;
+    Ok(LinkUnlinkablesStrategyConfig {
+        strategy_workspace_root: strategy_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf(),
+        thresholds,
+        record_link_input_paths,
+        record_link_feature_policies,
+    })
+}
+
+fn load_link_strategy_bytes(
+    run_artifact: &EntityRunArtifact,
+    context_dirs: &[PathBuf],
+    expected_strategy_hash: Option<&str>,
+    expected_strategy_hash_field: &'static str,
+    purpose: &'static str,
+) -> Result<(PathBuf, Vec<u8>), Refusal> {
+    let strategy_source = run_artifact
+        .summary
+        .labels
+        .get("strategy_source")
+        .ok_or_else(|| {
+            link_artifact_refusal(
+                format!("Entity link run artifact does not record a strategy source for {purpose}"),
+                json!({
+                    "stage": "link",
+                    "field": "run.summary.labels.strategy_source",
+                    "writes_performed": false
+                }),
+            )
+        })?;
+    let Some(expected_strategy_hash) =
+        expected_strategy_hash.filter(|strategy_hash| !strategy_hash.trim().is_empty())
+    else {
+        return Err(link_artifact_refusal(
+            format!("Entity link run artifact does not bind a strategy hash for {purpose}"),
+            json!({
+                "stage": "link",
+                "field": expected_strategy_hash_field,
+                "writes_performed": false
+            }),
+        ));
+    };
+    let candidates = link_context_source_candidates(strategy_source, context_dirs);
+    let mut mismatches = Vec::new();
+    let mut load_failures = Vec::new();
+    for candidate in &candidates {
+        let bytes = match fs::read(candidate) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                load_failures.push(json!({
+                    "resolved_source": candidate,
+                    "error": error.to_string()
+                }));
+                continue;
+            }
+        };
+        let actual_hash = witness::hash_bytes(&bytes);
+        if actual_hash.as_str() != expected_strategy_hash {
+            mismatches.push(json!({
+                "resolved_source": candidate,
+                "actual": actual_hash
+            }));
+            continue;
+        }
+        return Ok((PathBuf::from(candidate), bytes));
+    }
+    if !mismatches.is_empty() {
+        return Err(link_artifact_refusal(
+            format!("Entity link strategy hash does not match {purpose} source"),
+            json!({
+                "stage": "link",
+                "field": expected_strategy_hash_field,
+                "source": strategy_source,
+                "expected": expected_strategy_hash,
+                "attempted_sources": candidates,
+                "mismatches": mismatches,
+                "load_failures": load_failures,
+                "writes_performed": false
+            }),
+        ));
+    }
+    Err(link_artifact_refusal(
+        format!("Failed to read entity link strategy for {purpose}"),
+        json!({
+            "stage": "link",
+            "field": "run.summary.labels.strategy_source",
+            "source": strategy_source,
+            "attempted_sources": candidates,
+            "load_failures": load_failures,
+            "writes_performed": false
+        }),
+    ))
+}
+
+fn link_unlinkables_thresholds(
+    document: &LinkUnlinkablesStrategyDocument,
+) -> Result<EntityUnlinkablesThresholds, Refusal> {
+    if let (Some(attach), Some(backbone)) = (
+        document.solver.attach_score_min,
+        document.solver.backbone_score_min,
+    ) {
+        validate_link_unlinkables_threshold_units(attach, "strategy.solver.attach_score_min")?;
+        validate_link_unlinkables_threshold_units(backbone, "strategy.solver.backbone_score_min")?;
+        return Ok(EntityUnlinkablesThresholds {
+            threshold_source: "strategy.solver".to_string(),
+            attach_score_min_units: attach,
+            backbone_score_min_units: backbone,
+        });
+    }
+    let Some(match_threshold) = document.match_threshold else {
+        return Err(link_artifact_refusal(
+            "Entity link strategy must declare thresholds for unlinkables diagnostics",
+            json!({
+                "stage": "link",
+                "field": "strategy.solver|strategy.match_threshold",
+                "writes_performed": false
+            }),
+        ));
+    };
+    if !match_threshold.is_finite() {
+        return Err(link_artifact_refusal(
+            "Entity link match threshold must be finite for unlinkables diagnostics",
+            json!({
+                "stage": "link",
+                "field": "strategy.match_threshold",
+                "actual": match_threshold,
+                "writes_performed": false
+            }),
+        ));
+    }
+    let units = crate::entity::score::ScoreUnits::from_f64_ratio(match_threshold).as_u32();
+    Ok(EntityUnlinkablesThresholds {
+        threshold_source: "strategy.match_threshold".to_string(),
+        attach_score_min_units: units,
+        backbone_score_min_units: units,
+    })
+}
+
+fn validate_link_unlinkables_threshold_units(
+    value: u32,
+    field: &'static str,
+) -> Result<(), Refusal> {
+    if value > crate::entity::score::ENTITY_SCORE_SCALE {
+        return Err(link_artifact_refusal(
+            "Entity link unlinkables threshold exceeds the score scale",
+            json!({
+                "stage": "link",
+                "field": field,
+                "actual": value,
+                "max": crate::entity::score::ENTITY_SCORE_SCALE,
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn link_unlinkables_record_link_config(
+    section: Option<LinkUnlinkablesRecordLinkSection>,
+) -> Result<(Vec<PathBuf>, BTreeMap<String, RecordLinkFeaturePolicy>), Refusal> {
+    let Some(section) = section else {
+        return Ok((Vec::new(), BTreeMap::new()));
+    };
+    let mut input_paths = Vec::with_capacity(section.inputs.len());
+    for input in section.inputs {
+        input_paths.push(validate_link_unlinkables_record_link_path(input.path)?);
+    }
+    let mut feature_policies = BTreeMap::new();
+    for policy in section.feature_policies {
+        if feature_policies
+            .insert(policy.feature_id.clone(), policy)
+            .is_some()
+        {
+            return Err(link_artifact_refusal(
+                "Record-link feature policies must be unique for unlinkables diagnostics",
+                json!({
+                    "stage": "link",
+                    "field": "record_link.feature_policies",
+                    "writes_performed": false
+                }),
+            ));
+        }
+    }
+    Ok((input_paths, feature_policies))
+}
+
+fn validate_link_unlinkables_record_link_path(path: PathBuf) -> Result<PathBuf, Refusal> {
+    if path.as_os_str().is_empty()
+        || path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(link_artifact_refusal(
+            "Record-link sidecar paths must be strategy-relative safe paths for unlinkables diagnostics",
+            json!({
+                "stage": "link",
+                "field": "record_link.inputs.path",
+                "path": path.display().to_string(),
+                "writes_performed": false
+            }),
+        ));
+    }
+    Ok(path)
+}
+
+fn link_unlinkables_surface_inputs(
+    bindings: &[EntityLinkObservationSurfaceBinding],
+    surfaces: &[PreparedSurfaceRecord],
+    record_link_input_set: Option<&RecordLinkInputSet>,
+) -> Vec<EntityUnlinkablesSurfaceInput> {
+    let surface_by_id = surfaces
+        .iter()
+        .map(|surface| (surface.surface_id.as_str(), surface))
+        .collect::<BTreeMap<_, _>>();
+    let mut binding_keys =
+        BTreeMap::<(EntityUnlinkablesSurfaceSide, String), LinkSurfaceBinding>::new();
+    for binding in bindings {
+        let key = (
+            unlinkables_surface_side(binding.side),
+            binding.surface_id.clone(),
+        );
+        let entry = binding_keys.entry(key).or_default();
+        entry.link_ids.insert(binding.link_id.clone());
+        if let Some(source_row_id) = binding
+            .source_row_id
+            .as_ref()
+            .filter(|source_row_id| !source_row_id.trim().is_empty())
+        {
+            entry.source_row_ids.insert(source_row_id.clone());
+        }
+    }
+    let feature_bags_by_row_id = record_link_input_set
+        .map(record_link_feature_bags_by_row_id)
+        .unwrap_or_default();
+
+    let mut inputs = Vec::new();
+    let mut assigned_surface_ids = BTreeSet::<String>::new();
+    for ((side, surface_id), binding) in binding_keys {
+        let Some(surface) = surface_by_id.get(surface_id.as_str()) else {
+            continue;
+        };
+        assigned_surface_ids.insert(surface_id.clone());
+        let feature_bag =
+            merged_record_link_feature_bag(&binding.source_row_ids, &feature_bags_by_row_id);
+        inputs.push(EntityUnlinkablesSurfaceInput {
+            side,
+            surface: (*surface).clone(),
+            link_ids: binding.link_ids.into_iter().collect(),
+            record_link_features: feature_bag.values,
+            quarantined_record_link_features: feature_bag.quarantined,
+        });
+    }
+    for surface in surfaces {
+        if assigned_surface_ids.contains(&surface.surface_id) {
+            continue;
+        }
+        inputs.push(EntityUnlinkablesSurfaceInput {
+            side: EntityUnlinkablesSurfaceSide::Unassigned,
+            surface: surface.clone(),
+            link_ids: Vec::new(),
+            record_link_features: BTreeMap::new(),
+            quarantined_record_link_features: BTreeMap::new(),
+        });
+    }
+    inputs.sort_by(|left, right| {
+        left.side
+            .cmp(&right.side)
+            .then_with(|| left.surface.surface_id.cmp(&right.surface.surface_id))
+            .then_with(|| left.link_ids.cmp(&right.link_ids))
+    });
+    inputs
+}
+
+#[derive(Debug, Default)]
+struct LinkSurfaceBinding {
+    link_ids: BTreeSet<String>,
+    source_row_ids: BTreeSet<String>,
+}
+
+#[derive(Debug, Default, Clone)]
+struct LinkRecordFeatureBag {
+    values: BTreeMap<String, RecordLinkFeatureValue>,
+    quarantined: BTreeMap<String, String>,
+}
+
+fn record_link_feature_bags_by_row_id(
+    input_set: &RecordLinkInputSet,
+) -> BTreeMap<String, LinkRecordFeatureBag> {
+    let mut by_row_id = BTreeMap::<String, LinkRecordFeatureBag>::new();
+    for input in &input_set.inputs {
+        for record in &input.sidecar.records {
+            let bag = record_link_feature_bag(record);
+            for row_key in record_link_row_keys(record) {
+                merge_record_link_feature_bag(by_row_id.entry(row_key).or_default(), &bag);
+            }
+        }
+    }
+    by_row_id
+}
+
+fn record_link_feature_bag(record: &RecordLinkInputRecord) -> LinkRecordFeatureBag {
+    let mut bag = LinkRecordFeatureBag::default();
+    for view in &record.comparison_views {
+        let (feature_id, value) = record_link_feature_value(view);
+        insert_record_link_feature_value(&mut bag, feature_id, value);
+    }
+    for field in &record.quarantined_fields {
+        insert_record_link_quarantine(&mut bag, field);
+    }
+    bag
+}
+
+fn merged_record_link_feature_bag(
+    row_ids: &BTreeSet<String>,
+    by_row_id: &BTreeMap<String, LinkRecordFeatureBag>,
+) -> LinkRecordFeatureBag {
+    let mut merged = LinkRecordFeatureBag::default();
+    for row_id in row_ids {
+        if let Some(bag) = by_row_id.get(row_id) {
+            merge_record_link_feature_bag(&mut merged, bag);
+        }
+    }
+    merged
+}
+
+fn merge_record_link_feature_bag(target: &mut LinkRecordFeatureBag, source: &LinkRecordFeatureBag) {
+    for (feature_id, value) in &source.values {
+        insert_record_link_feature_value(target, feature_id.clone(), value.clone());
+    }
+    for (feature_id, reason) in &source.quarantined {
+        target
+            .quarantined
+            .entry(feature_id.clone())
+            .or_insert_with(|| reason.clone());
+    }
+}
+
+fn insert_record_link_feature_value(
+    bag: &mut LinkRecordFeatureBag,
+    feature_id: String,
+    value: RecordLinkFeatureValue,
+) {
+    if let Some(existing) = bag.values.get(&feature_id) {
+        if existing != &value {
+            bag.values.remove(&feature_id);
+            bag.quarantined
+                .insert(feature_id, "record_link_feature_conflict".to_string());
+        }
+        return;
+    }
+    if !bag.quarantined.contains_key(&feature_id) {
+        bag.values.insert(feature_id, value);
+    }
+}
+
+fn insert_record_link_quarantine(
+    bag: &mut LinkRecordFeatureBag,
+    field: &RecordLinkQuarantinedField,
+) {
+    bag.values.remove(&field.feature_id);
+    bag.quarantined.insert(
+        field.feature_id.clone(),
+        record_link_field_disposition_reason(field.reason).to_string(),
+    );
+}
+
+fn record_link_feature_value(view: &RecordLinkComparisonView) -> (String, RecordLinkFeatureValue) {
+    match view {
+        RecordLinkComparisonView::Numeric {
+            feature_id,
+            units,
+            scaled_value,
+            scale,
+            ..
+        } => (
+            feature_id.clone(),
+            RecordLinkFeatureValue::Numeric {
+                units: units.clone(),
+                scaled_value: *scaled_value,
+                scale: *scale,
+            },
+        ),
+        RecordLinkComparisonView::Date {
+            feature_id, value, ..
+        } => (
+            feature_id.clone(),
+            RecordLinkFeatureValue::Date {
+                value: value.clone(),
+            },
+        ),
+        RecordLinkComparisonView::Categorical {
+            feature_id, value, ..
+        } => (
+            feature_id.clone(),
+            RecordLinkFeatureValue::Categorical {
+                value: value.clone(),
+            },
+        ),
+    }
+}
+
+fn record_link_row_keys(record: &RecordLinkInputRecord) -> BTreeSet<String> {
+    [
+        record.source_ref.source_object_id.as_str(),
+        record.source_ref.source_locator.locator.as_str(),
+        record.record_id.as_str(),
+        record.subject_observation_ref.observation_id.as_str(),
+    ]
+    .into_iter()
+    .map(str::trim)
+    .filter(|value| !value.is_empty())
+    .map(ToOwned::to_owned)
+    .collect()
+}
+
+fn record_link_field_disposition_reason(reason: RecordLinkFieldDispositionReason) -> &'static str {
+    match reason {
+        RecordLinkFieldDispositionReason::MissingField => "missing_field",
+        RecordLinkFieldDispositionReason::MalformedField => "malformed_field",
+        RecordLinkFieldDispositionReason::Overflow => "overflow",
+        RecordLinkFieldDispositionReason::IncomparableField => "incomparable_field",
+        RecordLinkFieldDispositionReason::DuplicateRecordId => "duplicate_record_id",
+    }
+}
+
+fn unlinkables_surface_side(role: EntityLinkRole) -> EntityUnlinkablesSurfaceSide {
+    match role {
+        EntityLinkRole::Reference => EntityUnlinkablesSurfaceSide::Reference,
+        EntityLinkRole::Target => EntityUnlinkablesSurfaceSide::Target,
+    }
+}
+
+fn link_record_link_refusal(
+    error: crate::entity::record_link::RecordLinkCoreError,
+    stage: &'static str,
+) -> Refusal {
+    let kind = match error.code {
+        crate::entity::record_link::RecordLinkCoreErrorCode::Io => EntityRefusalKind::IoBudget,
+        crate::entity::record_link::RecordLinkCoreErrorCode::Budget => {
+            EntityRefusalKind::CandidateBudget
+        }
+        crate::entity::record_link::RecordLinkCoreErrorCode::ArtifactContract
+        | crate::entity::record_link::RecordLinkCoreErrorCode::Path => {
+            EntityRefusalKind::ArtifactContract
+        }
+    };
+    kind.to_refusal(
+        error.message,
+        json!({
+            "stage": stage,
+            "record_link_stage": error.stage,
+            "reason": error.reason,
+            "writes_performed": false
+        }),
+        Some("Use canon entity link to regenerate link/link.json".to_string()),
+    )
 }
 
 fn link_publication_parent_generation_id(artifact: &EntityLinkArtifact) -> Result<String, Refusal> {
@@ -507,6 +1099,9 @@ pub fn validate_entity_link_artifact_contract(
     }
     validate_link_summary(artifact)?;
     validate_link_decision_artifact(&artifact.decision_artifact)?;
+    if let Some(unlinkables) = &artifact.unlinkables {
+        validate_entity_unlinkables_report(unlinkables)?;
+    }
     if artifact.decision_artifact.summary != artifact.summary {
         return Err(link_artifact_refusal(
             "Entity link summary must match the nested decision summary",
@@ -553,6 +1148,7 @@ pub fn validate_entity_link_artifact_raw_shape(value: &Value) -> Result<(), Refu
             "shared_solve_artifact",
             "assignment_alignment_artifacts",
             "decision_artifact",
+            "unlinkables",
             "next_commands",
         ],
         "",
