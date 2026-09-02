@@ -501,6 +501,10 @@ pub struct GeoEvaluateCli {
     /// JSON file holding a population request or validated evidence-stack artifact
     #[arg(long)]
     pub population: PathBuf,
+
+    /// Optional directory for per-case evidence and solve artifacts
+    #[arg(long)]
+    pub artifact_dir: Option<PathBuf>,
 }
 
 #[derive(Args, Debug, Clone)]

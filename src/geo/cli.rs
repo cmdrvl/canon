@@ -50,8 +50,9 @@ use super::{
     },
     discovery::{CANON_GEO_ACQUISITION_RECEIPT_VERSION, GeoAcquisitionReceipt, GeoDigestAlgorithm},
     evaluation::{
-        CANON_GEO_POPULATION_REQUEST_VERSION, GeoPopulationError, GeoPopulationEvaluationRequest,
-        canonical_population_evaluation_bytes, evaluate_population,
+        CANON_GEO_POPULATION_REQUEST_VERSION, GeoPopulationCaseArtifacts, GeoPopulationError,
+        GeoPopulationEvaluationRequest, canonical_population_evaluation_bytes,
+        evaluate_population_with_artifacts,
     },
     evidence::{
         CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
@@ -764,14 +765,245 @@ fn run_evaluate(args: &GeoEvaluateCli) -> Result<u8, Box<dyn Error>> {
         Ok(request) => request,
         Err(exit_code) => return Ok(exit_code),
     };
-    let artifact = match evaluate_population(&request) {
-        Ok(artifact) => artifact,
+    let evaluated = match evaluate_population_with_artifacts(&request) {
+        Ok(evaluated) => evaluated,
         Err(error) => return emit_population_error(error),
     };
-    match canonical_population_evaluation_bytes(&artifact) {
+    if let Some(artifact_dir) = &args.artifact_dir
+        && let Err(exit_code) = write_evaluate_artifact_dir(artifact_dir, &evaluated.case_artifacts)
+    {
+        return Ok(exit_code);
+    }
+    match canonical_population_evaluation_bytes(&evaluated.evaluation) {
         Ok(bytes) => write_canonical(&bytes),
         Err(error) => emit_serialization_refusal("canon_geo_population_evaluation.v0", &error),
     }
+}
+
+#[derive(Debug, Serialize)]
+struct GeoEvaluateArtifactIndex {
+    cases: Vec<GeoEvaluateArtifactIndexEntry>,
+}
+
+#[derive(Debug, Serialize)]
+struct GeoEvaluateArtifactIndexEntry {
+    case_id: String,
+    truth_plane: super::evaluation::GeoTruthPlane,
+    solve_file: String,
+    evidence_file: String,
+    solver_digest: String,
+    compilation_digest: String,
+}
+
+fn write_evaluate_artifact_dir(
+    artifact_dir: &Path,
+    cases: &[GeoPopulationCaseArtifacts],
+) -> Result<(), u8> {
+    if let Err(error) = fs::create_dir_all(artifact_dir) {
+        return Err(emit_refusal(
+            RefusalCode::EIo,
+            "Could not create the Geo evaluate artifact directory",
+            json!({
+                "artifact_dir": path_string(artifact_dir),
+                "error": error.to_string(),
+            }),
+            Some("choose a writable --artifact-dir and rerun canon geo evaluate".to_string()),
+        )
+        .unwrap_or(2));
+    }
+
+    let mut index = GeoEvaluateArtifactIndex { cases: Vec::new() };
+    for case in cases {
+        let stem = match safe_case_artifact_stem(&case.case_id) {
+            Ok(stem) => stem,
+            Err(error) => return Err(emit_population_error(error).unwrap_or(2)),
+        };
+        let evidence_file = format!("{stem}.evidence.json");
+        let solve_file = format!("{stem}.solve.json");
+        let evidence_bytes = match canonical_evidence_compilation_bytes(&case.evidence) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                return Err(emit_serialization_refusal(
+                    CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+                    &error,
+                )
+                .unwrap_or(2));
+            }
+        };
+        let evidence_digest = blake3::hash(&evidence_bytes).to_hex().to_string();
+        if evidence_digest != case.compilation_digest {
+            return Err(emit_population_error(GeoPopulationError::invalid_input(
+                "Geo evaluate artifact-dir evidence bytes do not match the case digest",
+                [
+                    ("case_id", case.case_id.clone()),
+                    ("expected_blake3", case.compilation_digest.clone()),
+                    ("actual_blake3", evidence_digest),
+                ],
+            ))
+            .unwrap_or(2));
+        }
+        write_artifact_file(
+            artifact_dir,
+            &evidence_file,
+            &evidence_bytes,
+            &case.case_id,
+            "evidence",
+        )?;
+
+        let solve = match &case.solve {
+            Some(solve) => solve,
+            None => {
+                return Err(emit_population_error(GeoPopulationError::invalid_input(
+                    "Geo evaluate artifact-dir requires a solve artifact for every case",
+                    [
+                        ("case_id", case.case_id.clone()),
+                        ("artifact_kind", "solve".to_string()),
+                    ],
+                ))
+                .unwrap_or(2));
+            }
+        };
+        let solve_bytes = match canonical_composition_bytes(solve) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                return Err(
+                    emit_serialization_refusal("canon_geo_composition.v0", &error).unwrap_or(2),
+                );
+            }
+        };
+        let solve_digest = blake3::hash(&solve_bytes).to_hex().to_string();
+        let expected_solver_digest = match &case.solver_digest {
+            Some(digest) => digest,
+            None => {
+                return Err(emit_population_error(GeoPopulationError::invalid_input(
+                    "Geo evaluate artifact-dir case is missing a solver digest",
+                    [
+                        ("case_id", case.case_id.clone()),
+                        ("artifact_kind", "solve".to_string()),
+                    ],
+                ))
+                .unwrap_or(2));
+            }
+        };
+        if solve_digest != *expected_solver_digest {
+            return Err(emit_population_error(GeoPopulationError::invalid_input(
+                "Geo evaluate artifact-dir solve bytes do not match the case digest",
+                [
+                    ("case_id", case.case_id.clone()),
+                    ("expected_blake3", expected_solver_digest.clone()),
+                    ("actual_blake3", solve_digest.clone()),
+                ],
+            ))
+            .unwrap_or(2));
+        }
+        write_artifact_file(
+            artifact_dir,
+            &solve_file,
+            &solve_bytes,
+            &case.case_id,
+            "solve",
+        )?;
+
+        index.cases.push(GeoEvaluateArtifactIndexEntry {
+            case_id: case.case_id.clone(),
+            truth_plane: case.truth_plane,
+            solve_file,
+            evidence_file,
+            solver_digest: solve_digest,
+            compilation_digest: case.compilation_digest.clone(),
+        });
+    }
+
+    let index_bytes = match serde_json::to_vec(&index) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return Err(emit_refusal(
+                RefusalCode::EEntityArtifactContract,
+                "Geo evaluate artifact index could not be serialized",
+                json!({
+                    "artifact_dir": path_string(artifact_dir),
+                    "error": error.to_string(),
+                }),
+                Some("rerun canon geo evaluate with a smaller population".to_string()),
+            )
+            .unwrap_or(2));
+        }
+    };
+    write_artifact_file(artifact_dir, "index.json", &index_bytes, "index", "index")
+}
+
+fn safe_case_artifact_stem(case_id: &str) -> Result<&str, GeoPopulationError> {
+    if case_id.is_empty()
+        || case_id == "."
+        || case_id == ".."
+        || case_id.contains('/')
+        || case_id.contains('\\')
+    {
+        return Err(GeoPopulationError::invalid_input(
+            "Geo evaluate artifact-dir case identifiers must be safe file stems",
+            [("case_id", case_id.to_string())],
+        ));
+    }
+    Ok(case_id)
+}
+
+fn write_artifact_file(
+    artifact_dir: &Path,
+    relative_file: &str,
+    bytes: &[u8],
+    case_id: &str,
+    artifact_kind: &str,
+) -> Result<(), u8> {
+    let path = artifact_dir.join(relative_file);
+    match fs::read(&path) {
+        Ok(existing) if existing == bytes => return Ok(()),
+        Ok(existing) => {
+            return Err(emit_population_error(GeoPopulationError::invalid_input(
+                "Geo evaluate artifact-dir target already exists with different bytes",
+                [
+                    ("case_id", case_id.to_string()),
+                    ("artifact_kind", artifact_kind.to_string()),
+                    ("path", path_string(&path)),
+                    ("expected_blake3", blake3::hash(bytes).to_hex().to_string()),
+                    (
+                        "actual_blake3",
+                        blake3::hash(&existing).to_hex().to_string(),
+                    ),
+                ],
+            ))
+            .unwrap_or(2));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(emit_refusal(
+                RefusalCode::EIo,
+                "Could not read an existing Geo evaluate artifact-dir target",
+                json!({
+                    "case_id": case_id,
+                    "artifact_kind": artifact_kind,
+                    "path": path_string(&path),
+                    "error": error.to_string(),
+                }),
+                Some("choose a readable --artifact-dir and rerun canon geo evaluate".to_string()),
+            )
+            .unwrap_or(2));
+        }
+    }
+    if let Err(error) = fs::write(&path, bytes) {
+        return Err(emit_refusal(
+            RefusalCode::EIo,
+            "Could not write a Geo evaluate artifact-dir target",
+            json!({
+                "case_id": case_id,
+                "artifact_kind": artifact_kind,
+                "path": path_string(&path),
+                "error": error.to_string(),
+            }),
+            Some("choose a writable --artifact-dir and rerun canon geo evaluate".to_string()),
+        )
+        .unwrap_or(2));
+    }
+    Ok(())
 }
 
 fn run_stack_evidence(args: &GeoStackEvidenceCli) -> Result<u8, Box<dyn Error>> {

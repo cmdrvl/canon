@@ -1719,3 +1719,184 @@ fn d0_adjudication_rejects_noncanonical_digest_text() {
         "error should name the digest field, got {error}"
     );
 }
+
+fn gate_v2_population_request_fixture() -> canon::geo::GeoPopulationEvaluationRequest {
+    let mut cases = population_fixture().cases;
+    cases.sort_by(|left, right| left.case_id.cmp(&right.case_id));
+    canon::geo::GeoPopulationEvaluationRequest {
+        version: canon::geo::CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        max_cases: 15,
+        cases: cases
+            .into_iter()
+            .map(|case| {
+                let base = base_request(&case);
+                let mut truth_parcels = case.truth_parcels;
+                truth_parcels.sort();
+                truth_parcels.dedup();
+                canon::geo::GeoLabeledCompositionCase {
+                    id: case.case_id,
+                    evidence: canon::geo::GeoEvidenceCompilationRequest {
+                        version: canon::geo::CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+                        profile: base.profile,
+                        universe: base.universe,
+                        contracts: Vec::new(),
+                        observations: Vec::new(),
+                        max_assignments: base.max_assignments,
+                        max_materialized_models: base.max_materialized_models,
+                    },
+                    truth_plane: GeoTruthPlane::GateV2Historical,
+                    truth: GeoCompositionModel {
+                        parcels: truth_parcels,
+                        buildings: Vec::new(),
+                    },
+                }
+            })
+            .collect(),
+    }
+}
+
+fn gate_v2_population_request_fixture_bytes() -> Vec<u8> {
+    let mut bytes = serde_json::to_vec_pretty(&gate_v2_population_request_fixture())
+        .expect("population request serializes");
+    bytes.push(b'\n');
+    bytes
+}
+
+fn first_different_byte(left: &[u8], right: &[u8]) -> Option<usize> {
+    left.iter()
+        .zip(right)
+        .position(|(left, right)| left != right)
+        .or_else(|| (left.len() != right.len()).then_some(left.len().min(right.len())))
+}
+
+fn population_request_case_ids(bytes: &[u8]) -> Vec<String> {
+    serde_json::from_slice::<serde_json::Value>(bytes)
+        .expect("population request JSON parses")
+        .get("cases")
+        .and_then(serde_json::Value::as_array)
+        .expect("population request cases array")
+        .iter()
+        .map(|case| {
+            case.get("id")
+                .and_then(serde_json::Value::as_str)
+                .expect("case id")
+                .to_string()
+        })
+        .collect()
+}
+
+#[test]
+fn e4_gate_v2_population_request_fixture_matches_test_constructor() {
+    let expected = gate_v2_population_request_fixture_bytes();
+    let actual = include_bytes!("fixtures/geo/e4_gate_v2_population_request.json");
+
+    assert_eq!(
+        population_request_case_ids(actual).len(),
+        15,
+        "the single producer fixture excludes H4 extension rows"
+    );
+    assert_eq!(
+        actual,
+        expected.as_slice(),
+        "population request fixture mismatch: first_diff={:?} actual_case_ids={:?} expected_case_ids={:?}",
+        first_different_byte(actual, &expected),
+        population_request_case_ids(actual),
+        population_request_case_ids(&expected),
+    );
+}
+
+#[test]
+fn evaluate_artifact_dir_files_match_case_digests() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let artifact_dir = temp.path().join("artifacts");
+    let population_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/geo/e4_gate_v2_population_request.json");
+
+    let stdout = assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["geo", "evaluate", "--population"])
+        .arg(&population_path)
+        .arg("--artifact-dir")
+        .arg(&artifact_dir)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let evaluation: serde_json::Value =
+        serde_json::from_slice(&stdout).expect("evaluation JSON parses");
+    let index_path = artifact_dir.join("index.json");
+    let index: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&index_path).expect("index bytes"))
+            .expect("index JSON parses");
+    let cases_by_id = evaluation["cases"]
+        .as_array()
+        .expect("evaluation cases")
+        .iter()
+        .map(|case| (case["case_id"].as_str().expect("case id").to_string(), case))
+        .collect::<BTreeMap<_, _>>();
+    let index_cases = index["cases"].as_array().expect("index cases");
+    assert_eq!(index_cases.len(), cases_by_id.len());
+
+    for entry in index_cases {
+        let case_id = entry["case_id"].as_str().expect("index case id");
+        let evaluation_case = cases_by_id.get(case_id).expect("case exists");
+        assert_eq!(entry["truth_plane"], evaluation_case["truth_plane"]);
+
+        let evidence_file = entry["evidence_file"].as_str().expect("evidence file");
+        let evidence_bytes = std::fs::read(artifact_dir.join(evidence_file))
+            .unwrap_or_else(|error| panic!("{case_id} evidence file missing: {error}"));
+        let evidence_digest = blake3::hash(&evidence_bytes).to_hex().to_string();
+        assert_eq!(evidence_digest, entry["compilation_digest"]);
+        assert_eq!(evidence_digest, evaluation_case["compilation_digest"]);
+        let evidence_artifact: serde_json::Value =
+            serde_json::from_slice(&evidence_bytes).expect("evidence artifact JSON");
+        assert_eq!(
+            evidence_artifact["version"],
+            "canon_geo_evidence_compilation.v0"
+        );
+
+        let solve_file = entry["solve_file"].as_str().expect("solve file");
+        let solve_bytes = std::fs::read(artifact_dir.join(solve_file))
+            .unwrap_or_else(|error| panic!("{case_id} solve file missing: {error}"));
+        let solve_digest = blake3::hash(&solve_bytes).to_hex().to_string();
+        assert_eq!(solve_digest, entry["solver_digest"]);
+        assert_eq!(solve_digest, evaluation_case["solver_digest"]);
+        let solve_artifact: serde_json::Value =
+            serde_json::from_slice(&solve_bytes).expect("solve artifact JSON");
+        assert_eq!(solve_artifact["version"], "canon_geo_composition.v0");
+    }
+
+    let first = index_cases.first().expect("first index entry");
+    let first_case_id = first["case_id"].as_str().expect("first case id");
+    let first_evidence_file = first["evidence_file"]
+        .as_str()
+        .expect("first evidence file");
+    std::fs::write(
+        artifact_dir.join(first_evidence_file),
+        br#"{"tampered":true}"#,
+    )
+    .expect("tamper evidence file");
+
+    let refusal_stdout = assert_cmd::Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["geo", "evaluate", "--population"])
+        .arg(&population_path)
+        .arg("--artifact-dir")
+        .arg(&artifact_dir)
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+    let refusal: serde_json::Value =
+        serde_json::from_slice(&refusal_stdout).expect("refusal JSON parses");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_ENTITY_ARTIFACT_CONTRACT");
+    assert_eq!(
+        refusal["refusal"]["detail"]["geo_population_error_code"],
+        "invalid_input"
+    );
+    assert_eq!(
+        refusal["refusal"]["detail"]["detail"]["case_id"],
+        first_case_id
+    );
+}

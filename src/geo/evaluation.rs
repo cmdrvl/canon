@@ -8,13 +8,14 @@
 
 use super::{
     composition::{
-        GeoCompositionBackbone, GeoCompositionError, GeoCompositionErrorCode, GeoCompositionModel,
-        GeoCompositionRequest, GeoCompositionStatus, canonical_composition_bytes,
-        canonicalize_composition_request, model_satisfies_request, solve_composition,
+        GeoCompositionArtifact, GeoCompositionBackbone, GeoCompositionError,
+        GeoCompositionErrorCode, GeoCompositionModel, GeoCompositionRequest, GeoCompositionStatus,
+        canonical_composition_bytes, canonicalize_composition_request, model_satisfies_request,
+        solve_composition,
     },
     evidence::{
-        GeoEvidenceCompilationRequest, GeoEvidenceDisposition, GeoEvidenceError,
-        canonical_evidence_compilation_bytes, compile_evidence,
+        GeoEvidenceCompilationArtifact, GeoEvidenceCompilationRequest, GeoEvidenceDisposition,
+        GeoEvidenceError, canonical_evidence_compilation_bytes, compile_evidence,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -385,6 +386,22 @@ pub struct GeoPopulationEvaluationArtifact {
     pub cases: Vec<GeoPopulationCaseEvaluation>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeoPopulationCaseArtifacts {
+    pub case_id: String,
+    pub truth_plane: GeoTruthPlane,
+    pub evidence: GeoEvidenceCompilationArtifact,
+    pub solve: Option<GeoCompositionArtifact>,
+    pub compilation_digest: String,
+    pub solver_digest: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeoPopulationEvaluationWithArtifacts {
+    pub evaluation: GeoPopulationEvaluationArtifact,
+    pub case_artifacts: Vec<GeoPopulationCaseArtifacts>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GeoPopulationErrorCode {
@@ -419,6 +436,13 @@ impl GeoPopulationError {
         }
     }
 
+    pub fn invalid_input(
+        message: impl Into<String>,
+        detail: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+    ) -> Self {
+        Self::new(GeoPopulationErrorCode::InvalidInput, message, detail)
+    }
+
     fn overflow(field: &str) -> Self {
         Self::new(
             GeoPopulationErrorCode::ArithmeticOverflow,
@@ -439,6 +463,12 @@ impl Error for GeoPopulationError {}
 pub fn evaluate_population(
     request: &GeoPopulationEvaluationRequest,
 ) -> Result<GeoPopulationEvaluationArtifact, GeoPopulationError> {
+    Ok(evaluate_population_with_artifacts(request)?.evaluation)
+}
+
+pub fn evaluate_population_with_artifacts(
+    request: &GeoPopulationEvaluationRequest,
+) -> Result<GeoPopulationEvaluationWithArtifacts, GeoPopulationError> {
     if request.version != CANON_GEO_POPULATION_REQUEST_VERSION {
         return Err(GeoPopulationError::new(
             GeoPopulationErrorCode::UnsupportedVersion,
@@ -476,8 +506,11 @@ pub fn evaluate_population(
     }
 
     let mut evaluations = Vec::with_capacity(cases.len());
+    let mut case_artifacts = Vec::with_capacity(cases.len());
     for case in cases {
         // Deliberately compile and solve before reading `case.truth`.
+        let case_id = case.id.clone();
+        let truth_plane = case.truth_plane;
         let compilation = compile_evidence(&case.evidence).map_err(map_evidence_error)?;
         let compilation_digest = blake3::hash(
             &canonical_evidence_compilation_bytes(&compilation).map_err(|error| {
@@ -508,13 +541,13 @@ pub fn evaluate_population(
         let candidate_reach = candidate_reach_status(truth_members, truth_members_in_universe)?;
         let evidence_metrics = evidence_metrics(&compilation.admissions)?;
 
-        let evaluation = match solved {
-            Err(error) if error.code == GeoCompositionErrorCode::BudgetExceeded => {
+        let (evaluation, solve_artifact) = match solved {
+            Err(error) if error.code == GeoCompositionErrorCode::BudgetExceeded => (
                 GeoPopulationCaseEvaluation {
                     case_id: case.id,
                     truth_plane: case.truth_plane,
                     status: GeoPopulationCaseStatus::AssignmentBudgetExceeded,
-                    compilation_digest,
+                    compilation_digest: compilation_digest.clone(),
                     solver_digest: None,
                     candidate_members,
                     truth_members,
@@ -538,8 +571,9 @@ pub fn evaluate_population(
                     backbone_false_positive_members: 0,
                     abstained: true,
                     false_merge: false,
-                }
-            }
+                },
+                None,
+            ),
             Err(error) => return Err(map_composition_error(error)),
             Ok(artifact) => {
                 let solver_digest =
@@ -580,13 +614,13 @@ pub fn evaluate_population(
                 };
                 let residual_count_complete = artifact.summary.residual_model_count_complete;
                 let false_merge = scored_false_merge(status, truth_model_in_residual);
-                GeoPopulationCaseEvaluation {
+                let evaluation = GeoPopulationCaseEvaluation {
                     case_id: case.id,
                     truth_plane: case.truth_plane,
                     status,
                     residual_count_saturated: artifact.summary.residual_model_count_saturated,
-                    compilation_digest,
-                    solver_digest: Some(solver_digest),
+                    compilation_digest: compilation_digest.clone(),
+                    solver_digest: Some(solver_digest.clone()),
                     candidate_members,
                     truth_members,
                     truth_members_in_universe,
@@ -605,25 +639,37 @@ pub fn evaluate_population(
                     residual_count_complete,
                     truth_model_in_residual,
                     solver_truth_scored,
-                    hard_forced: artifact.hard_forced,
+                    hard_forced: artifact.hard_forced.clone(),
                     backbone_complete: artifact.backbone_complete,
                     backbone_true_positive_members: backbone_true,
                     backbone_false_positive_members: backbone_false,
                     abstained: is_abstention_status(status),
                     false_merge,
-                }
+                };
+                (evaluation, Some(artifact))
             }
         };
         validate_case_evaluation(&evaluation)?;
+        case_artifacts.push(GeoPopulationCaseArtifacts {
+            case_id,
+            truth_plane,
+            evidence: compilation,
+            solve: solve_artifact,
+            compilation_digest,
+            solver_digest: evaluation.solver_digest.clone(),
+        });
         evaluations.push(evaluation);
     }
 
     let summary = summarize(&evaluations)?;
-    Ok(GeoPopulationEvaluationArtifact {
-        version: CANON_GEO_POPULATION_EVALUATION_VERSION.to_string(),
-        request_version: request.version.clone(),
-        summary,
-        cases: evaluations,
+    Ok(GeoPopulationEvaluationWithArtifacts {
+        evaluation: GeoPopulationEvaluationArtifact {
+            version: CANON_GEO_POPULATION_EVALUATION_VERSION.to_string(),
+            request_version: request.version.clone(),
+            summary,
+            cases: evaluations,
+        },
+        case_artifacts,
     })
 }
 
