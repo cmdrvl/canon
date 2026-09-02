@@ -88,6 +88,8 @@ pub const CANON_GENERALIZATION_SOLVE_POLICY_VERSION: &str =
     "canon.evaluation.generalization.solve_policy.v0";
 pub const CANON_GENERALIZATION_CACHE_EXECUTION_VERSION: &str =
     "canon.evaluation.generalization.cache_execution.v0";
+const SAFE_ISSUER_REFERENCE_AMBIGUITY_REASON: &str =
+    "multiple_reference_surfaces_in_solve_component";
 
 pub type GeneralizationResult<T> = Result<T, GeneralizationError>;
 
@@ -230,6 +232,41 @@ impl DiscoveryDecision {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneralizationSeedGrain {
+    IssuerPseudoLabel,
+    #[default]
+    RecordAssignment,
+}
+
+impl GeneralizationSeedGrain {
+    const fn is_record_assignment(value: &Self) -> bool {
+        matches!(*value, Self::RecordAssignment)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneralizationSeedMetricGrain {
+    IssuerPseudoLabel,
+    RecordAssignment,
+    HardNegativeControl,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneralizationSeedReason {
+    ExactRecordMatch,
+    SafeIssuerReferenceAmbiguity,
+    RecordAssignmentAmbiguityBlocked,
+    MissingCandidateSolveOrSupport,
+    UnexpectedDecision,
+    HardNegativeClean,
+    NonCriticalFalseMerge,
+    CriticalFalseMerge,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReviewAction {
@@ -315,6 +352,13 @@ pub struct DiscoveryResultRecord {
     pub actual_decision: DiscoveryDecision,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub candidate_rank: Option<u32>,
+    #[serde(
+        default,
+        skip_serializing_if = "GeneralizationSeedGrain::is_record_assignment"
+    )]
+    pub seed_grain: GeneralizationSeedGrain,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed_reason: Option<GeneralizationSeedReason>,
     pub evidence_lanes: Vec<EvidenceLaneSummary>,
     pub review_action: ReviewAction,
 }
@@ -340,6 +384,8 @@ pub struct DirectionalCrossSourceLink {
     pub actual_decision: DiscoveryDecision,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub candidate_rank: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed_reason: Option<GeneralizationSeedReason>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -517,8 +563,33 @@ pub struct GeneralizationDerivationReceipt {
     pub self_attested_outcomes_used: bool,
     pub manifest_hash: String,
     pub benchmark_hash: String,
+    #[serde(default)]
+    pub seed_metrics: GeneralizationSeedMetrics,
     pub artifact_hashes: Vec<GeneralizationDerivationArtifactHash>,
     pub leak_source_hashes: Vec<GeneralizationDerivationLeakSourceHash>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct GeneralizationSeedMetrics {
+    pub issuer_pseudo_label_total: u64,
+    pub issuer_pseudo_label_coverage_hits: u64,
+    pub issuer_pseudo_label_exact_record_matches: u64,
+    pub issuer_pseudo_label_safe_reference_ambiguities: u64,
+    pub issuer_pseudo_label_misses: u64,
+    pub record_assignment_total: u64,
+    pub record_assignment_exact_matches: u64,
+    pub record_assignment_ambiguity_blockers: u64,
+    pub record_assignment_misses: u64,
+    pub hard_negative_total: u64,
+    pub critical_false_merges: u64,
+    pub reason_counts: Vec<GeneralizationSeedReasonCount>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeneralizationSeedReasonCount {
+    pub grain: GeneralizationSeedMetricGrain,
+    pub reason: GeneralizationSeedReason,
+    pub count: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1267,7 +1338,7 @@ pub fn compile_loaded_generalization_execution_envelope(
     }
 
     recompute_strict_leakage(&loaded, &benchmark)?;
-    let receipt = strict_derivation_receipt(&loaded)?;
+    let receipt = strict_derivation_receipt(&loaded, &benchmark)?;
     let mut report = compile_generalization_benchmark_internal(benchmark)?;
     report.derivation = Some(receipt);
     report.report_digest = generalization_report_digest(&report)?;
@@ -5679,6 +5750,41 @@ fn loaded_observation_surface_bindings(
         })
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct SeedNativeEvidence {
+    ambiguity_reason: Option<String>,
+    expected_reference_member: bool,
+}
+
+fn classify_positive_seed_reason(
+    grain: GeneralizationSeedGrain,
+    expected_decision: DiscoveryDecision,
+    actual_decision: DiscoveryDecision,
+    native: &SeedNativeEvidence,
+) -> Option<GeneralizationSeedReason> {
+    if !is_quality_must_link(expected_decision) {
+        return None;
+    }
+    if actual_decision == expected_decision {
+        return Some(GeneralizationSeedReason::ExactRecordMatch);
+    }
+    if actual_decision.is_abstention() {
+        return if native.ambiguity_reason.as_deref() == Some(SAFE_ISSUER_REFERENCE_AMBIGUITY_REASON)
+        {
+            if grain == GeneralizationSeedGrain::IssuerPseudoLabel
+                && native.expected_reference_member
+            {
+                Some(GeneralizationSeedReason::SafeIssuerReferenceAmbiguity)
+            } else {
+                Some(GeneralizationSeedReason::RecordAssignmentAmbiguityBlocked)
+            }
+        } else {
+            Some(GeneralizationSeedReason::MissingCandidateSolveOrSupport)
+        };
+    }
+    Some(GeneralizationSeedReason::UnexpectedDecision)
+}
+
 struct StrictDerivationContext<'a> {
     trial_id: &'a str,
     candidate_recall: &'a LoadedGeneralizationCandidateRecall,
@@ -5797,6 +5903,13 @@ impl<'a> StrictDerivationContext<'a> {
             expected_decision: result.expected_decision,
             actual_decision,
             candidate_rank,
+            seed_grain: result.seed_grain,
+            seed_reason: self.seed_reason_for_discovery_result(
+                result.seed_grain,
+                result.expected_decision,
+                actual_decision,
+                &result.observation_ids,
+            )?,
             evidence_lanes: evidence_lanes_from_component(component),
             review_action: review_action_for_decision(actual_decision),
         })
@@ -5971,6 +6084,15 @@ impl<'a> StrictDerivationContext<'a> {
             expected_decision: link.expected_decision,
             actual_decision,
             candidate_rank,
+            seed_reason: classify_positive_seed_reason(
+                GeneralizationSeedGrain::RecordAssignment,
+                link.expected_decision,
+                actual_decision,
+                &self.seed_native_evidence_for_reference_target(
+                    &link.reference_observation_id,
+                    &link.target_observation_id,
+                )?,
+            ),
         })
     }
 
@@ -6353,6 +6475,112 @@ impl<'a> StrictDerivationContext<'a> {
             GeneralizationErrorCode::ArtifactContract,
             format!("candidate recall record for {gold_pair_id} is missing from recomputed report"),
         ))
+    }
+
+    fn seed_reason_for_discovery_result(
+        &self,
+        grain: GeneralizationSeedGrain,
+        expected_decision: DiscoveryDecision,
+        actual_decision: DiscoveryDecision,
+        observation_ids: &[String],
+    ) -> GeneralizationResult<Option<GeneralizationSeedReason>> {
+        let native = self.seed_native_evidence_for_result(observation_ids)?;
+        Ok(classify_positive_seed_reason(
+            grain,
+            expected_decision,
+            actual_decision,
+            &native,
+        ))
+    }
+
+    fn seed_native_evidence_for_result(
+        &self,
+        observation_ids: &[String],
+    ) -> GeneralizationResult<SeedNativeEvidence> {
+        let Some((reference_observation_id, target_observation_id)) =
+            self.reference_target_observation_pair(observation_ids)?
+        else {
+            return Ok(SeedNativeEvidence::default());
+        };
+        self.seed_native_evidence_for_reference_target(
+            &reference_observation_id,
+            &target_observation_id,
+        )
+    }
+
+    fn reference_target_observation_pair(
+        &self,
+        observation_ids: &[String],
+    ) -> GeneralizationResult<Option<(String, String)>> {
+        if observation_ids.len() != 2 {
+            return Ok(None);
+        }
+        let mut reference = None;
+        let mut target = None;
+        for observation_id in observation_ids {
+            let sidecar = self.sidecar_for_observation(observation_id)?;
+            match sidecar.side {
+                EntityLinkRole::Reference => {
+                    if reference.replace(observation_id.clone()).is_some() {
+                        return Ok(None);
+                    }
+                }
+                EntityLinkRole::Target => {
+                    if target.replace(observation_id.clone()).is_some() {
+                        return Ok(None);
+                    }
+                }
+            }
+        }
+        Ok(match (reference, target) {
+            (Some(reference), Some(target)) => Some((reference, target)),
+            _ => None,
+        })
+    }
+
+    fn sidecar_for_observation(
+        &self,
+        observation_id: &str,
+    ) -> GeneralizationResult<&'a EntityLinkObservationSurfaceBinding> {
+        let surface_id = self.surface_for_observation(observation_id)?;
+        self.sidecar_by_surface.get(&surface_id).copied().ok_or_else(|| {
+            error(
+                GeneralizationErrorCode::MissingReference,
+                format!("observation {observation_id} surface {surface_id} is missing from native sidecar"),
+            )
+        })
+    }
+
+    fn seed_native_evidence_for_reference_target(
+        &self,
+        reference_observation_id: &str,
+        target_observation_id: &str,
+    ) -> GeneralizationResult<SeedNativeEvidence> {
+        let reference_ids = self.decision_ids_for_observation(reference_observation_id)?;
+        let target_ids = self.decision_ids_for_observation(target_observation_id)?;
+        let records = self
+            .link
+            .decision_artifact
+            .ambiguous
+            .iter()
+            .filter(|record| target_ids.contains(&record.target_id))
+            .collect::<Vec<_>>();
+        match records.as_slice() {
+            [] => Ok(SeedNativeEvidence::default()),
+            [record] => Ok(SeedNativeEvidence {
+                ambiguity_reason: Some(record.reason.clone()),
+                expected_reference_member: record
+                    .candidates
+                    .iter()
+                    .any(|candidate| reference_ids.contains(&candidate.reference_id)),
+            }),
+            _ => Err(error(
+                GeneralizationErrorCode::ArtifactContract,
+                format!(
+                    "target observation {target_observation_id} has multiple native ambiguous records"
+                ),
+            )),
+        }
     }
 
     fn link_decision_for_observations(
@@ -7097,6 +7325,7 @@ fn collect_json_scalar_strings(value: &Value, strings: &mut BTreeSet<String>) {
 
 fn strict_derivation_receipt(
     loaded: &LoadedGeneralizationExecutionEnvelope,
+    benchmark: &GeneralizationBenchmark,
 ) -> GeneralizationResult<GeneralizationDerivationReceipt> {
     let semantic_artifact_hashes = strict_semantic_artifact_hashes(loaded)?;
     let mut artifact_hashes = Vec::new();
@@ -7166,6 +7395,7 @@ fn strict_derivation_receipt(
         self_attested_outcomes_used: false,
         manifest_hash: strict_semantic_manifest_hash(loaded, &semantic_artifact_hashes)?,
         benchmark_hash: loaded.benchmark_content_hash.clone(),
+        seed_metrics: seed_metrics_for_benchmark(benchmark),
         artifact_hashes,
         leak_source_hashes,
     })
@@ -8461,6 +8691,168 @@ pub fn compile_time_forward_trial(
 }
 
 #[derive(Debug, Default)]
+struct GeneralizationSeedMetricsAccumulator {
+    metrics: GeneralizationSeedMetrics,
+    reason_counts: BTreeMap<(GeneralizationSeedMetricGrain, GeneralizationSeedReason), u64>,
+}
+
+impl GeneralizationSeedMetricsAccumulator {
+    fn record_positive(
+        &mut self,
+        grain: GeneralizationSeedGrain,
+        reason: GeneralizationSeedReason,
+    ) {
+        let record_reason = record_assignment_reason(reason);
+        self.metrics.record_assignment_total += 1;
+        self.add_reason(
+            GeneralizationSeedMetricGrain::RecordAssignment,
+            record_reason,
+        );
+        match record_reason {
+            GeneralizationSeedReason::ExactRecordMatch => {
+                self.metrics.record_assignment_exact_matches += 1;
+            }
+            GeneralizationSeedReason::RecordAssignmentAmbiguityBlocked => {
+                self.metrics.record_assignment_ambiguity_blockers += 1;
+            }
+            _ => {
+                self.metrics.record_assignment_misses += 1;
+            }
+        }
+
+        if grain == GeneralizationSeedGrain::IssuerPseudoLabel {
+            self.metrics.issuer_pseudo_label_total += 1;
+            self.add_reason(GeneralizationSeedMetricGrain::IssuerPseudoLabel, reason);
+            match reason {
+                GeneralizationSeedReason::ExactRecordMatch => {
+                    self.metrics.issuer_pseudo_label_coverage_hits += 1;
+                    self.metrics.issuer_pseudo_label_exact_record_matches += 1;
+                }
+                GeneralizationSeedReason::SafeIssuerReferenceAmbiguity => {
+                    self.metrics.issuer_pseudo_label_coverage_hits += 1;
+                    self.metrics.issuer_pseudo_label_safe_reference_ambiguities += 1;
+                }
+                _ => {
+                    self.metrics.issuer_pseudo_label_misses += 1;
+                }
+            }
+        }
+    }
+
+    fn record_hard_negative(&mut self, control: &HardNegativeControl) {
+        self.metrics.hard_negative_total += 1;
+        let reason = if control.false_merge {
+            if control.severity == Severity::Critical {
+                self.metrics.critical_false_merges += 1;
+                GeneralizationSeedReason::CriticalFalseMerge
+            } else {
+                GeneralizationSeedReason::NonCriticalFalseMerge
+            }
+        } else {
+            GeneralizationSeedReason::HardNegativeClean
+        };
+        self.add_reason(GeneralizationSeedMetricGrain::HardNegativeControl, reason);
+    }
+
+    fn add_reason(
+        &mut self,
+        grain: GeneralizationSeedMetricGrain,
+        reason: GeneralizationSeedReason,
+    ) {
+        *self.reason_counts.entry((grain, reason)).or_default() += 1;
+    }
+
+    fn finish(mut self) -> GeneralizationSeedMetrics {
+        self.metrics.reason_counts = self
+            .reason_counts
+            .into_iter()
+            .map(|((grain, reason), count)| GeneralizationSeedReasonCount {
+                grain,
+                reason,
+                count,
+            })
+            .collect();
+        self.metrics.reason_counts.sort();
+        self.metrics
+    }
+}
+
+fn seed_metrics_for_benchmark(benchmark: &GeneralizationBenchmark) -> GeneralizationSeedMetrics {
+    let mut counts = GeneralizationSeedMetricsAccumulator::default();
+    for trial in &benchmark.entity_disjoint_trials {
+        accumulate_seed_result_metrics(&mut counts, &trial.discovery_results);
+        accumulate_seed_directional_link_metrics(&mut counts, &trial.directional_links);
+        accumulate_seed_hard_negative_metrics(&mut counts, &trial.hard_negatives);
+    }
+    for trial in &benchmark.time_forward_trials {
+        accumulate_seed_result_metrics(&mut counts, &trial.event_results);
+        accumulate_seed_directional_link_metrics(&mut counts, &trial.directional_links);
+        accumulate_seed_hard_negative_metrics(&mut counts, &trial.hard_negatives);
+    }
+    counts.finish()
+}
+
+fn accumulate_seed_result_metrics(
+    counts: &mut GeneralizationSeedMetricsAccumulator,
+    results: &[DiscoveryResultRecord],
+) {
+    for result in results {
+        if !is_quality_must_link(result.expected_decision) {
+            continue;
+        }
+        let reason = result.seed_reason.unwrap_or_else(|| {
+            classify_positive_seed_reason(
+                result.seed_grain,
+                result.expected_decision,
+                result.actual_decision,
+                &SeedNativeEvidence::default(),
+            )
+            .unwrap_or(GeneralizationSeedReason::UnexpectedDecision)
+        });
+        counts.record_positive(result.seed_grain, reason);
+    }
+}
+
+fn accumulate_seed_directional_link_metrics(
+    counts: &mut GeneralizationSeedMetricsAccumulator,
+    links: &[DirectionalCrossSourceLink],
+) {
+    for link in links {
+        if !is_quality_must_link(link.expected_decision) {
+            continue;
+        }
+        let reason = link.seed_reason.unwrap_or_else(|| {
+            classify_positive_seed_reason(
+                GeneralizationSeedGrain::RecordAssignment,
+                link.expected_decision,
+                link.actual_decision,
+                &SeedNativeEvidence::default(),
+            )
+            .unwrap_or(GeneralizationSeedReason::UnexpectedDecision)
+        });
+        counts.record_positive(GeneralizationSeedGrain::RecordAssignment, reason);
+    }
+}
+
+fn accumulate_seed_hard_negative_metrics(
+    counts: &mut GeneralizationSeedMetricsAccumulator,
+    controls: &[HardNegativeControl],
+) {
+    for control in controls {
+        counts.record_hard_negative(control);
+    }
+}
+
+fn record_assignment_reason(reason: GeneralizationSeedReason) -> GeneralizationSeedReason {
+    match reason {
+        GeneralizationSeedReason::SafeIssuerReferenceAmbiguity => {
+            GeneralizationSeedReason::RecordAssignmentAmbiguityBlocked
+        }
+        other => other,
+    }
+}
+
+#[derive(Debug, Default)]
 struct GeneralizationQualityCounts {
     candidate_recall_hits: u64,
     candidate_recall_total: u64,
@@ -8726,6 +9118,7 @@ pub fn canonical_report_bytes(report: &GeneralizationReport) -> GeneralizationRe
         .gates
         .sort_by(|left, right| left.gate_id.cmp(&right.gate_id));
     if let Some(derivation) = &mut report.derivation {
+        derivation.seed_metrics.reason_counts.sort();
         derivation.artifact_hashes.sort();
         derivation.leak_source_hashes.sort();
         for source in &mut derivation.leak_source_hashes {
@@ -10568,6 +10961,487 @@ mod leakage_provenance_tests {
             .expect("quality gate exists")
     }
 
+    fn seed_result(
+        result_id: &str,
+        grain: GeneralizationSeedGrain,
+        expected_decision: DiscoveryDecision,
+        actual_decision: DiscoveryDecision,
+        seed_reason: GeneralizationSeedReason,
+    ) -> DiscoveryResultRecord {
+        DiscoveryResultRecord {
+            result_id: result_id.to_string(),
+            observation_ids: vec!["obs.a".to_string(), "obs.b".to_string()],
+            expected_decision,
+            actual_decision,
+            candidate_rank: (expected_decision == actual_decision).then_some(1),
+            seed_grain: grain,
+            seed_reason: Some(seed_reason),
+            evidence_lanes: Vec::new(),
+            review_action: review_action_for_decision(actual_decision),
+        }
+    }
+
+    fn seed_link(
+        link_id: &str,
+        actual_decision: DiscoveryDecision,
+        seed_reason: GeneralizationSeedReason,
+    ) -> DirectionalCrossSourceLink {
+        DirectionalCrossSourceLink {
+            link_id: link_id.to_string(),
+            reference_observation_id: "obs.a".to_string(),
+            target_observation_id: "obs.b".to_string(),
+            reference_dataset_id: "dataset.reference".to_string(),
+            target_dataset_id: "dataset.target".to_string(),
+            expected_decision: DiscoveryDecision::AttachExisting,
+            actual_decision,
+            candidate_rank: (actual_decision == DiscoveryDecision::AttachExisting).then_some(1),
+            seed_reason: Some(seed_reason),
+        }
+    }
+
+    fn seed_reason_count(
+        metrics: &GeneralizationSeedMetrics,
+        grain: GeneralizationSeedMetricGrain,
+        reason: GeneralizationSeedReason,
+    ) -> u64 {
+        metrics
+            .reason_counts
+            .iter()
+            .find(|count| count.grain == grain && count.reason == reason)
+            .map(|count| count.count)
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn seed_metrics_strict_hard_negative_forced_merge_conflict_refuses() {
+        let run = baseline_run();
+        let fixture = replacement_artifacts(&run);
+        let candidate_recall = loaded_candidate_recall_for_rebuild(&fixture);
+        let reference_sidecar = EntityLinkObservationSurfaceBinding {
+            version: ENTITY_LINK_OBSERVATION_SURFACE_BINDINGS_VERSION.to_string(),
+            side: EntityLinkRole::Reference,
+            link_id: "reference.link".to_string(),
+            source_row_id: None,
+            source_ordinal: 0,
+            surface_id: "surface.reference".to_string(),
+            profile_id: "profile".to_string(),
+            surface_binding_hash: hash_bytes(b"surface.reference"),
+        };
+        let target_sidecar = EntityLinkObservationSurfaceBinding {
+            version: ENTITY_LINK_OBSERVATION_SURFACE_BINDINGS_VERSION.to_string(),
+            side: EntityLinkRole::Target,
+            link_id: "target.link".to_string(),
+            source_row_id: None,
+            source_ordinal: 1,
+            surface_id: "surface.target".to_string(),
+            profile_id: "profile".to_string(),
+            surface_binding_hash: hash_bytes(b"surface.target"),
+        };
+        let sidecars = [reference_sidecar, target_sidecar];
+        let sidecar_by_surface = sidecars
+            .iter()
+            .map(|binding| (binding.surface_id.clone(), binding))
+            .collect::<BTreeMap<_, _>>();
+        let merged_component = SolveEntityRecord {
+            component_id: "component.forced".to_string(),
+            state: SolveReconciliationState::ResolvedExisting,
+            reason: "fixture forced merge".to_string(),
+            surface_ids: vec![
+                "surface.reference".to_string(),
+                "surface.target".to_string(),
+            ],
+            incumbent_canonical_ids: vec!["ORG-001".to_string()],
+            canonical_id: Some("ORG-001".to_string()),
+            candidate_id: None,
+            support_score_units: crate::entity::score::ScoreUnits::MAX,
+            adjusted_support_score_units: crate::entity::score::ScoreUnits::MAX,
+            hard_cannot_link_count: 0,
+            soft_anti_merge_warning_count: 0,
+            review_priority_reasons: Vec::new(),
+        };
+        let component_by_surface = BTreeMap::from([
+            ("surface.reference".to_string(), &merged_component),
+            ("surface.target".to_string(), &merged_component),
+        ]);
+        let link_artifact = EntityLinkArtifact {
+            version: CANON_ENTITY_LINK_VERSION.to_string(),
+            artifact_content_hash: hash_bytes(b"link"),
+            metadata: run.metadata.clone(),
+            summary: crate::resolve::ResolveSummary::default(),
+            mode: crate::entity::run::link::EntityLinkMode::DirectionalTwoTape,
+            reference: crate::entity::run::link::EntityLinkInput {
+                role: EntityLinkRole::Reference,
+                rows_path: "reference.csv".to_string(),
+                row_count: 1,
+            },
+            target: crate::entity::run::link::EntityLinkInput {
+                role: EntityLinkRole::Target,
+                rows_path: "target.csv".to_string(),
+                row_count: 1,
+            },
+            materialized_rows_path: "link/materialized.csv".to_string(),
+            materialized_rows_content_hash: hash_bytes(b"materialized"),
+            profile_source: crate::entity::run::link::EntityLinkProfileSource {
+                source: "profile.json".to_string(),
+                content_hash: hash_bytes(b"profile"),
+            },
+            observation_surface_bindings_path: "link/observation_surface_bindings.jsonl"
+                .to_string(),
+            observation_surface_bindings_content_hash: hash_bytes(b"bindings"),
+            shared_run_artifact: artifact_ref(CANON_ENTITY_RUN_VERSION_V1, &hash_bytes(b"run")),
+            shared_solve_artifact: artifact_ref(
+                CANON_ENTITY_SOLVE_VERSION_V1,
+                &hash_bytes(b"solve"),
+            ),
+            assignment_alignment_artifacts: Vec::new(),
+            decision_artifact: crate::entity::run::link::EntityLinkDecisionArtifact {
+                version: crate::entity::run::link::ENTITY_LINK_DECISIONS_VERSION.to_string(),
+                artifact_content_hash: hash_bytes(b"decisions"),
+                strategy: crate::resolve::StrategyReference::default(),
+                registry: crate::resolve::ResolveRegistrySnapshot::default(),
+                reference_tape: crate::resolve::TapeSummary::default(),
+                target_tape: crate::resolve::TapeSummary::default(),
+                summary: crate::resolve::ResolveSummary::default(),
+                matches: Vec::new(),
+                unmatched: Vec::new(),
+                ambiguous: Vec::new(),
+                conflict_warnings: Vec::new(),
+                gold_score: None,
+                write_back: None,
+            },
+            next_commands: crate::entity::run::link::EntityLinkNextCommands {
+                review_export: "canon entity review export link.json --include escrow --emit csv"
+                    .to_string(),
+            },
+        };
+        let binding = GeneralizationHardNegativeBinding {
+            trial_id: "trial".to_string(),
+            control_id: "hard.force".to_string(),
+            left_observation_id: "obs.reference".to_string(),
+            right_observation_id: "obs.target".to_string(),
+            left_surface_id: "surface.reference".to_string(),
+            right_surface_id: "surface.target".to_string(),
+            left_solve_disposition: GeneralizationSolveDisposition::Present {
+                component_id: "component.forced".to_string(),
+                state: SolveReconciliationState::ResolvedExisting,
+            },
+            right_solve_disposition: GeneralizationSolveDisposition::Present {
+                component_id: "component.forced".to_string(),
+                state: SolveReconciliationState::ResolvedExisting,
+            },
+            expected_false_merge: false,
+            link_disposition: None,
+        };
+        let hard_negative_bindings = BTreeMap::from([("hard.force".to_string(), &binding)]);
+        let context = StrictDerivationContext {
+            trial_id: "trial",
+            candidate_recall: &candidate_recall,
+            link: &link_artifact,
+            sidecar_by_surface,
+            surface_by_observation: BTreeMap::from([
+                ("obs.reference".to_string(), "surface.reference".to_string()),
+                ("obs.target".to_string(), "surface.target".to_string()),
+            ]),
+            decision_ids_by_observation: BTreeMap::from([
+                (
+                    "obs.reference".to_string(),
+                    BTreeSet::from(["reference.link".to_string()]),
+                ),
+                (
+                    "obs.target".to_string(),
+                    BTreeSet::from(["target.link".to_string()]),
+                ),
+            ]),
+            component_by_surface,
+            result_bindings: BTreeMap::new(),
+            directional_link_bindings: BTreeMap::new(),
+            hard_negative_bindings,
+        };
+        let control = HardNegativeControl {
+            control_id: "hard.force".to_string(),
+            left_observation_id: "obs.reference".to_string(),
+            right_observation_id: "obs.target".to_string(),
+            relation_class: RelationClass::Lookalike,
+            severity: Severity::Critical,
+            false_merge: false,
+        };
+
+        let refusal = context
+            .derive_hard_negative(&control)
+            .expect_err("forced merge conflict refuses");
+
+        assert_eq!(refusal.code, GeneralizationErrorCode::ArtifactContract);
+        assert!(refusal.message.contains("expected_false_merge conflicts"));
+    }
+
+    #[test]
+    fn seed_metrics_split_issuer_safe_ambiguity_from_record_assignment() {
+        let benchmark = quality_benchmark(
+            vec![
+                seed_result(
+                    "result.issuer.exact",
+                    GeneralizationSeedGrain::IssuerPseudoLabel,
+                    DiscoveryDecision::ClusterNew,
+                    DiscoveryDecision::ClusterNew,
+                    GeneralizationSeedReason::ExactRecordMatch,
+                ),
+                seed_result(
+                    "result.issuer.safe",
+                    GeneralizationSeedGrain::IssuerPseudoLabel,
+                    DiscoveryDecision::AttachExisting,
+                    DiscoveryDecision::Abstain,
+                    GeneralizationSeedReason::SafeIssuerReferenceAmbiguity,
+                ),
+                seed_result(
+                    "result.record.blocked",
+                    GeneralizationSeedGrain::RecordAssignment,
+                    DiscoveryDecision::AttachExisting,
+                    DiscoveryDecision::Abstain,
+                    GeneralizationSeedReason::RecordAssignmentAmbiguityBlocked,
+                ),
+                seed_result(
+                    "result.issuer.missing",
+                    GeneralizationSeedGrain::IssuerPseudoLabel,
+                    DiscoveryDecision::ClusterNew,
+                    DiscoveryDecision::Abstain,
+                    GeneralizationSeedReason::MissingCandidateSolveOrSupport,
+                ),
+            ],
+            Vec::new(),
+        );
+
+        let metrics = seed_metrics_for_benchmark(&benchmark);
+
+        assert_eq!(metrics.issuer_pseudo_label_total, 3);
+        assert_eq!(metrics.issuer_pseudo_label_coverage_hits, 2);
+        assert_eq!(metrics.issuer_pseudo_label_exact_record_matches, 1);
+        assert_eq!(metrics.issuer_pseudo_label_safe_reference_ambiguities, 1);
+        assert_eq!(metrics.issuer_pseudo_label_misses, 1);
+        assert_eq!(metrics.record_assignment_total, 4);
+        assert_eq!(metrics.record_assignment_exact_matches, 1);
+        assert_eq!(metrics.record_assignment_ambiguity_blockers, 2);
+        assert_eq!(metrics.record_assignment_misses, 1);
+        assert_eq!(
+            seed_reason_count(
+                &metrics,
+                GeneralizationSeedMetricGrain::IssuerPseudoLabel,
+                GeneralizationSeedReason::SafeIssuerReferenceAmbiguity
+            ),
+            1
+        );
+        assert_eq!(
+            seed_reason_count(
+                &metrics,
+                GeneralizationSeedMetricGrain::RecordAssignment,
+                GeneralizationSeedReason::RecordAssignmentAmbiguityBlocked
+            ),
+            2
+        );
+    }
+
+    #[test]
+    fn seed_metrics_keep_directional_assignment_ambiguity_out_of_issuer_coverage() {
+        let mut benchmark = quality_benchmark(Vec::new(), Vec::new());
+        benchmark.entity_disjoint_trials[0]
+            .directional_links
+            .push(seed_link(
+                "link.record.blocked",
+                DiscoveryDecision::Abstain,
+                GeneralizationSeedReason::RecordAssignmentAmbiguityBlocked,
+            ));
+
+        let metrics = seed_metrics_for_benchmark(&benchmark);
+
+        assert_eq!(metrics.issuer_pseudo_label_total, 0);
+        assert_eq!(metrics.issuer_pseudo_label_coverage_hits, 0);
+        assert_eq!(metrics.record_assignment_total, 1);
+        assert_eq!(metrics.record_assignment_exact_matches, 0);
+        assert_eq!(metrics.record_assignment_ambiguity_blockers, 1);
+        assert_eq!(metrics.record_assignment_misses, 0);
+    }
+
+    #[test]
+    fn seed_metrics_require_expected_reference_membership_for_safe_issuer_coverage() {
+        let native_without_expected_reference = SeedNativeEvidence {
+            ambiguity_reason: Some(SAFE_ISSUER_REFERENCE_AMBIGUITY_REASON.to_string()),
+            expected_reference_member: false,
+        };
+        let reason = classify_positive_seed_reason(
+            GeneralizationSeedGrain::IssuerPseudoLabel,
+            DiscoveryDecision::AttachExisting,
+            DiscoveryDecision::Abstain,
+            &native_without_expected_reference,
+        )
+        .expect("must-link seed classifies");
+        assert_eq!(
+            reason,
+            GeneralizationSeedReason::RecordAssignmentAmbiguityBlocked
+        );
+        let native_with_other_reason = SeedNativeEvidence {
+            ambiguity_reason: Some("solve_hard_cannot_link_or_conflict".to_string()),
+            expected_reference_member: true,
+        };
+        let other_reason = classify_positive_seed_reason(
+            GeneralizationSeedGrain::IssuerPseudoLabel,
+            DiscoveryDecision::AttachExisting,
+            DiscoveryDecision::Abstain,
+            &native_with_other_reason,
+        )
+        .expect("must-link seed classifies");
+        assert_eq!(
+            other_reason,
+            GeneralizationSeedReason::MissingCandidateSolveOrSupport
+        );
+
+        let benchmark = quality_benchmark(
+            vec![seed_result(
+                "result.issuer.nonmember",
+                GeneralizationSeedGrain::IssuerPseudoLabel,
+                DiscoveryDecision::AttachExisting,
+                DiscoveryDecision::Abstain,
+                reason,
+            )],
+            Vec::new(),
+        );
+        let metrics = seed_metrics_for_benchmark(&benchmark);
+
+        assert_eq!(metrics.issuer_pseudo_label_coverage_hits, 0);
+        assert_eq!(metrics.issuer_pseudo_label_misses, 1);
+        assert_eq!(metrics.record_assignment_ambiguity_blockers, 1);
+    }
+
+    #[test]
+    fn seed_metrics_count_positive_false_merge_as_miss_not_promotion_credit() {
+        let benchmark = quality_benchmark(
+            vec![seed_result(
+                "result.issuer.false_merge",
+                GeneralizationSeedGrain::IssuerPseudoLabel,
+                DiscoveryDecision::AttachExisting,
+                DiscoveryDecision::FalseMerge,
+                GeneralizationSeedReason::UnexpectedDecision,
+            )],
+            Vec::new(),
+        );
+
+        let metrics = seed_metrics_for_benchmark(&benchmark);
+
+        assert_eq!(metrics.issuer_pseudo_label_total, 1);
+        assert_eq!(metrics.issuer_pseudo_label_coverage_hits, 0);
+        assert_eq!(metrics.issuer_pseudo_label_misses, 1);
+        assert_eq!(metrics.record_assignment_exact_matches, 0);
+        assert_eq!(metrics.record_assignment_misses, 1);
+    }
+
+    #[test]
+    fn seed_metrics_keep_hard_negative_false_merges_critical() {
+        let benchmark = quality_benchmark(
+            Vec::new(),
+            vec![
+                HardNegativeControl {
+                    control_id: "hard.critical".to_string(),
+                    left_observation_id: "obs.a".to_string(),
+                    right_observation_id: "obs.c".to_string(),
+                    relation_class: RelationClass::Hierarchy,
+                    severity: Severity::Critical,
+                    false_merge: true,
+                },
+                HardNegativeControl {
+                    control_id: "hard.clean".to_string(),
+                    left_observation_id: "obs.b".to_string(),
+                    right_observation_id: "obs.c".to_string(),
+                    relation_class: RelationClass::Lookalike,
+                    severity: Severity::Low,
+                    false_merge: false,
+                },
+            ],
+        );
+
+        let metrics = seed_metrics_for_benchmark(&benchmark);
+
+        assert_eq!(metrics.hard_negative_total, 2);
+        assert_eq!(metrics.critical_false_merges, 1);
+        assert_eq!(
+            seed_reason_count(
+                &metrics,
+                GeneralizationSeedMetricGrain::HardNegativeControl,
+                GeneralizationSeedReason::CriticalFalseMerge
+            ),
+            1
+        );
+        assert_eq!(
+            seed_reason_count(
+                &metrics,
+                GeneralizationSeedMetricGrain::HardNegativeControl,
+                GeneralizationSeedReason::HardNegativeClean
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn seed_metrics_omit_raw_seed_ids_material_and_paths() {
+        let mut benchmark = quality_benchmark(
+            vec![DiscoveryResultRecord {
+                result_id: "/private/raw/result.seed".to_string(),
+                observation_ids: vec![
+                    "obs.secret.left".to_string(),
+                    "obs.secret.right".to_string(),
+                ],
+                expected_decision: DiscoveryDecision::AttachExisting,
+                actual_decision: DiscoveryDecision::Abstain,
+                candidate_rank: None,
+                seed_grain: GeneralizationSeedGrain::IssuerPseudoLabel,
+                seed_reason: Some(GeneralizationSeedReason::SafeIssuerReferenceAmbiguity),
+                evidence_lanes: vec![EvidenceLaneSummary {
+                    lane_id: "/private/raw/lane".to_string(),
+                    available: true,
+                    support_basis_points: 9000,
+                    contradiction_basis_points: 0,
+                }],
+                review_action: ReviewAction::DeferReview,
+            }],
+            vec![HardNegativeControl {
+                control_id: "/private/raw/control".to_string(),
+                left_observation_id: "obs.secret.left".to_string(),
+                right_observation_id: "obs.secret.other".to_string(),
+                relation_class: RelationClass::Hierarchy,
+                severity: Severity::Critical,
+                false_merge: true,
+            }],
+        );
+        benchmark.entity_disjoint_trials[0]
+            .directional_links
+            .push(DirectionalCrossSourceLink {
+                link_id: "/private/raw/link.seed".to_string(),
+                reference_observation_id: "obs.secret.left".to_string(),
+                target_observation_id: "obs.secret.right".to_string(),
+                reference_dataset_id: "dataset.secret.reference".to_string(),
+                target_dataset_id: "dataset.secret.target".to_string(),
+                expected_decision: DiscoveryDecision::AttachExisting,
+                actual_decision: DiscoveryDecision::Abstain,
+                candidate_rank: None,
+                seed_reason: Some(GeneralizationSeedReason::RecordAssignmentAmbiguityBlocked),
+            });
+
+        let metrics = seed_metrics_for_benchmark(&benchmark);
+        let encoded = serde_json::to_string(&metrics).expect("metrics serialize");
+
+        for prohibited in [
+            "/private",
+            "raw",
+            "secret",
+            "result.seed",
+            "obs.secret",
+            "dataset.secret",
+            "link.seed",
+        ] {
+            assert!(
+                !encoded.contains(prohibited),
+                "seed metrics leaked {prohibited}: {encoded}"
+            );
+        }
+    }
+
     #[test]
     fn low_quality_benchmark_emits_blocking_quality_report() {
         let benchmark = quality_benchmark(
@@ -10577,6 +11451,8 @@ mod leakage_provenance_tests {
                 expected_decision: DiscoveryDecision::ClusterNew,
                 actual_decision: DiscoveryDecision::Abstain,
                 candidate_rank: None,
+                seed_grain: GeneralizationSeedGrain::RecordAssignment,
+                seed_reason: None,
                 evidence_lanes: Vec::new(),
                 review_action: ReviewAction::DeferReview,
             }],
@@ -10626,6 +11502,8 @@ mod leakage_provenance_tests {
                 expected_decision: DiscoveryDecision::ClusterNew,
                 actual_decision: DiscoveryDecision::ClusterNew,
                 candidate_rank: Some(1),
+                seed_grain: GeneralizationSeedGrain::RecordAssignment,
+                seed_reason: None,
                 evidence_lanes: Vec::new(),
                 review_action: ReviewAction::PromoteCluster,
             }],
