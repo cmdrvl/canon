@@ -8,23 +8,30 @@
 //! consumes only canonical integers. This makes replay exact relative to the
 //! admitted artifact; it does not make the source survey or projection exact.
 
-use super::geometry::{
-    GeoLinearRingMm, GeoPointLocation, GeoPointMm, GeoPredicateError, GeoPredicateErrorCode,
-    GeoSegmentIntersection, exact_segment_intersection,
+use super::{
+    control::GeoLicenseClass,
+    geometry::{
+        GeoLinearRingMm, GeoPointLocation, GeoPointMm, GeoPredicateError, GeoPredicateErrorCode,
+        GeoSegmentIntersection, exact_segment_intersection,
+    },
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use h3o::{CellIndex, Resolution};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
     fmt,
+    str::FromStr,
 };
 
 pub const CANON_GEO_GEOMETRY_REQUEST_VERSION: &str = "canon_geo_geometry_request.v0";
 pub const CANON_GEO_GEOMETRY_VALUE_VERSION: &str = "canon_geo_geometry_value.v0";
 pub const CANON_GEO_GEOMETRY_TILE_VERSION: &str = "canon_geo_geometry_tile.v0";
 pub const CANON_GEO_LOCAL_FRAME_VERSION: &str = "canon_geo_local_frame.v0";
+pub const CANON_GEO_PROVIDER_TILE_BUILD_VERSION: &str = "canon_geo_provider_tile_build.v0";
+pub const CANON_GEO_PROVIDER_TILE_CONTRACT_VERSION: &str = "canon_geo_provider_tile_contract.v0";
 pub const CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION: &str = "canon_geo_warehouse_geometry_rows.v0";
 pub const CANON_GEO_WAREHOUSE_GEOMETRY_VERSION: &str = "canon_geo_warehouse_geometry.v0";
 
@@ -34,6 +41,7 @@ const ISO_WKB_2D_BASE64_ENCODING: &str = "iso-wkb-2d-base64";
 
 const MAX_SOURCE_DECIMAL_PLACES: u32 = 9;
 const MAX_IDENTIFIER_BYTES: usize = 256;
+const MAX_PROVIDER_TILE_WORK_CELLS: usize = 10_000;
 
 /// Source-axis semantics used only for admission checks. Geographic frames
 /// reject longitude wrapping rather than guessing how to unwrap a ring.
@@ -259,6 +267,165 @@ pub struct GeoGeometryTileArtifact {
     pub geometry_bytes: u64,
     pub max_vertices_per_geometry: u64,
     pub max_geometry_bytes_per_tile: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_tile: Option<GeoProviderTileContract>,
+}
+
+/// Provenance mode for a source inside an offline provider tile. Canon-owned
+/// source tiles carry verifiable source bytes; client layers carry explicit
+/// declarations rather than inferred defaults.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum GeoProviderTileSourceProvenance {
+    CanonFullProvenance {
+        source_path: String,
+        source_digest: String,
+        source_record_count: u64,
+    },
+    ClientDeclared {
+        vendor: String,
+        vintage: String,
+        source_crs: String,
+        coverage_extent: String,
+        mutual_exclusivity_declared: bool,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoProviderTileSource {
+    pub source_instance_id: String,
+    pub release_id: String,
+    pub release_digest: String,
+    pub license_class: GeoLicenseClass,
+    pub license_expression: String,
+    pub attribution_required: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution_text: Option<String>,
+    pub provenance: GeoProviderTileSourceProvenance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoProviderTileSubsetKind {
+    H3CellSetAndSourceCoverageIntersection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoProviderTileCoverageState {
+    Complete,
+    Partial,
+    Absent,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoProviderTileSourceCoverage {
+    pub source_instance_id: String,
+    pub h3_cell: String,
+    pub coverage_state: GeoProviderTileCoverageState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoProviderTileSubsetPredicate {
+    pub kind: GeoProviderTileSubsetKind,
+    pub predicate_id: String,
+    pub h3_resolution: u8,
+    pub center_cell: String,
+    pub halo_k: u32,
+    pub work_cells: Vec<String>,
+    pub source_coverages: Vec<GeoProviderTileSourceCoverage>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoProviderTileLicensePosture {
+    pub posture_id: String,
+    pub output_license_expression: String,
+    pub redistribution_notice: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attribution_requirements: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub client_restricted_source_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoProviderGeometryFidelity {
+    SourceFidelity,
+    VendorSimplified,
+    DisplaySimplified,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoProviderTileRedactionClass {
+    Shareable,
+    ShareableAttributionRequired,
+    LocalOnly,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoProviderTileFieldLocator {
+    pub field_path: String,
+    pub source_path: String,
+    pub record_ordinal: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoProviderTileFeatureProvenance {
+    pub source_instance_id: String,
+    pub source_path: String,
+    pub source_digest: String,
+    pub source_record_id: String,
+    pub record_ordinal: u64,
+    pub field_locators: Vec<GeoProviderTileFieldLocator>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoProviderTileFeatureContract {
+    pub feature_id: String,
+    pub source_instance_id: String,
+    pub source_feature_id: String,
+    pub decision_geometry_fidelity: GeoProviderGeometryFidelity,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_geometry_fidelity: Option<GeoProviderGeometryFidelity>,
+    pub license_class: GeoLicenseClass,
+    pub redaction_class: GeoProviderTileRedactionClass,
+    pub provenance: GeoProviderTileFeatureProvenance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoProviderTileDataBookDecision {
+    DatabookLikeSelfContainedTileNoNewDependency,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoProviderTileContract {
+    pub version: String,
+    pub tile_id: String,
+    pub databook_decision: GeoProviderTileDataBookDecision,
+    pub subset: GeoProviderTileSubsetPredicate,
+    pub sources: Vec<GeoProviderTileSource>,
+    pub license_posture: GeoProviderTileLicensePosture,
+    pub features: Vec<GeoProviderTileFeatureContract>,
+    pub tile_content_blake3: String,
+}
+
+/// Offline provider-tile build request. The downloaded tile/local client
+/// layer is already present in memory here; this function does not acquire or
+/// fetch anything and refuses if the local source declarations cannot explain
+/// every emitted decision geometry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoProviderGeometryTileBuildRequest {
+    pub version: String,
+    pub tile_id: String,
+    pub geometry_request: GeoGeometryTileRequest,
+    pub subset: GeoProviderTileSubsetPredicate,
+    pub sources: Vec<GeoProviderTileSource>,
+    pub license_posture: GeoProviderTileLicensePosture,
+    pub feature_contracts: Vec<GeoProviderTileFeatureContract>,
+    pub allow_vendor_simplified_decision_geometry: bool,
 }
 
 /// Exact conversion from one source coordinate unit to millimetres. For
@@ -396,6 +563,9 @@ pub enum GeoGeometryErrorCode {
     InvalidCoordinate,
     InvalidSourceDigest,
     InvalidSourceEncoding,
+    InvalidSourceProvenance,
+    InvalidTileContract,
+    InvalidLicensePosture,
     MalformedWkb,
     UnsupportedGeometryType,
     MixedSourceExecution,
@@ -606,7 +776,736 @@ pub fn materialize_geometry_tile(
         geometry_bytes,
         max_vertices_per_geometry: request.max_vertices_per_geometry,
         max_geometry_bytes_per_tile: request.max_geometry_bytes_per_tile,
+        provider_tile: None,
     })
+}
+
+pub fn materialize_provider_geometry_tile(
+    request: &GeoProviderGeometryTileBuildRequest,
+) -> Result<GeoGeometryTileArtifact, GeoGeometryError> {
+    if request.version != CANON_GEO_PROVIDER_TILE_BUILD_VERSION {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::UnsupportedVersion,
+            "Unsupported Geo provider tile build version",
+            [
+                ("actual", request.version.as_str()),
+                ("expected", CANON_GEO_PROVIDER_TILE_BUILD_VERSION),
+            ],
+        ));
+    }
+    validate_provider_contract_identifier("tile_id", &request.tile_id)?;
+
+    let mut geometry_tile = materialize_geometry_tile(&request.geometry_request)?;
+    if geometry_tile.frame.tile_id != request.tile_id {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Provider tile id must match the materialized geometry frame tile id",
+            [
+                ("tile_id", request.tile_id.as_str()),
+                ("frame_tile_id", geometry_tile.frame.tile_id.as_str()),
+            ],
+        ));
+    }
+
+    let mut sources = request.sources.clone();
+    let source_ids = canonicalize_provider_sources(&mut sources)?;
+
+    let mut subset = request.subset.clone();
+    canonicalize_provider_subset(&mut subset, &request.tile_id, &source_ids)?;
+
+    let mut license_posture = request.license_posture.clone();
+    canonicalize_provider_license_posture(&mut license_posture, &sources)?;
+
+    let mut feature_contracts = request.feature_contracts.clone();
+    canonicalize_provider_feature_contracts(
+        &mut feature_contracts,
+        &geometry_tile.features,
+        &sources,
+        request.allow_vendor_simplified_decision_geometry,
+    )?;
+
+    let mut provider_tile = GeoProviderTileContract {
+        version: CANON_GEO_PROVIDER_TILE_CONTRACT_VERSION.to_string(),
+        tile_id: request.tile_id.clone(),
+        databook_decision:
+            GeoProviderTileDataBookDecision::DatabookLikeSelfContainedTileNoNewDependency,
+        subset,
+        sources,
+        license_posture,
+        features: feature_contracts,
+        tile_content_blake3: String::new(),
+    };
+    provider_tile.tile_content_blake3 =
+        provider_geometry_tile_content_blake3(&geometry_tile, &provider_tile)?;
+    geometry_tile.provider_tile = Some(provider_tile);
+    Ok(geometry_tile)
+}
+
+fn canonicalize_provider_sources(
+    sources: &mut [GeoProviderTileSource],
+) -> Result<BTreeSet<String>, GeoGeometryError> {
+    if sources.is_empty() {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceProvenance,
+            "Provider tile build must declare at least one source",
+            std::iter::empty::<(&str, &str)>(),
+        ));
+    }
+    sources.sort_by(|left, right| left.source_instance_id.cmp(&right.source_instance_id));
+
+    let mut source_ids = BTreeSet::new();
+    for source in sources {
+        validate_provider_contract_identifier(
+            "sources[].source_instance_id",
+            &source.source_instance_id,
+        )?;
+        validate_provider_contract_identifier("sources[].release_id", &source.release_id)?;
+        validate_provider_text("sources[].license_expression", &source.license_expression)?;
+        validate_provider_blake3("sources[].release_digest", &source.release_digest)?;
+        if !source_ids.insert(source.source_instance_id.clone()) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidSourceProvenance,
+                "Provider tile sources repeat a source_instance_id",
+                [("source_instance_id", source.source_instance_id.as_str())],
+            ));
+        }
+        if source.attribution_required {
+            let Some(text) = &source.attribution_text else {
+                return Err(GeoGeometryError::new(
+                    GeoGeometryErrorCode::InvalidLicensePosture,
+                    "Attribution-required provider sources must carry attribution text",
+                    [("source_instance_id", source.source_instance_id.as_str())],
+                ));
+            };
+            validate_provider_text("sources[].attribution_text", text)?;
+        }
+        validate_provider_source_provenance(source)?;
+    }
+    Ok(source_ids)
+}
+
+fn validate_provider_source_provenance(
+    source: &GeoProviderTileSource,
+) -> Result<(), GeoGeometryError> {
+    match &source.provenance {
+        GeoProviderTileSourceProvenance::CanonFullProvenance {
+            source_path,
+            source_digest,
+            source_record_count,
+        } => {
+            validate_provider_text("sources[].provenance.source_path", source_path)?;
+            validate_provider_blake3("sources[].provenance.source_digest", source_digest)?;
+            if *source_record_count == 0 {
+                return Err(GeoGeometryError::new(
+                    GeoGeometryErrorCode::InvalidSourceProvenance,
+                    "Canon-full provider source provenance must declare a positive record count",
+                    [("source_instance_id", source.source_instance_id.as_str())],
+                ));
+            }
+        }
+        GeoProviderTileSourceProvenance::ClientDeclared {
+            vendor,
+            vintage,
+            source_crs,
+            coverage_extent,
+            mutual_exclusivity_declared: _,
+        } => {
+            validate_provider_text("sources[].provenance.vendor", vendor)?;
+            validate_provider_text("sources[].provenance.vintage", vintage)?;
+            validate_provider_text("sources[].provenance.source_crs", source_crs)?;
+            validate_provider_text("sources[].provenance.coverage_extent", coverage_extent)?;
+        }
+    }
+    Ok(())
+}
+
+fn canonicalize_provider_subset(
+    subset: &mut GeoProviderTileSubsetPredicate,
+    tile_id: &str,
+    source_ids: &BTreeSet<String>,
+) -> Result<(), GeoGeometryError> {
+    validate_provider_contract_identifier("subset.predicate_id", &subset.predicate_id)?;
+    validate_provider_contract_identifier("subset.center_cell", &subset.center_cell)?;
+    if subset.center_cell != tile_id {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Provider tile subset center cell must match the tile id",
+            [
+                ("tile_id", tile_id),
+                ("center_cell", subset.center_cell.as_str()),
+            ],
+        ));
+    }
+    let _resolution = Resolution::try_from(subset.h3_resolution).map_err(|error| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Provider tile subset declares an unsupported H3 resolution",
+            [
+                (
+                    "h3_resolution".to_string(),
+                    subset.h3_resolution.to_string(),
+                ),
+                ("error".to_string(), error.to_string()),
+            ],
+        )
+    })?;
+    let _center = parse_provider_h3_cell(
+        "subset.center_cell",
+        &subset.center_cell,
+        subset.h3_resolution,
+    )?;
+    if subset.work_cells.is_empty() || subset.work_cells.len() > MAX_PROVIDER_TILE_WORK_CELLS {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Provider tile subset must declare a bounded nonempty H3 work-cell set",
+            [
+                (
+                    "work_cells".to_string(),
+                    subset.work_cells.len().to_string(),
+                ),
+                (
+                    "maximum".to_string(),
+                    MAX_PROVIDER_TILE_WORK_CELLS.to_string(),
+                ),
+            ],
+        ));
+    }
+
+    subset.work_cells.sort();
+    let mut work_cells = BTreeSet::new();
+    for cell in &subset.work_cells {
+        validate_provider_contract_identifier("subset.work_cells[]", cell)?;
+        parse_provider_h3_cell("subset.work_cells[]", cell, subset.h3_resolution)?;
+        if !work_cells.insert(cell.clone()) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidTileContract,
+                "Provider tile subset repeats an H3 work cell",
+                [("h3_cell", cell.as_str())],
+            ));
+        }
+    }
+    if !work_cells.contains(&subset.center_cell) {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Provider tile subset work cells must include the center cell",
+            [("center_cell", subset.center_cell.as_str())],
+        ));
+    }
+
+    subset.source_coverages.sort_by(|left, right| {
+        left.source_instance_id
+            .cmp(&right.source_instance_id)
+            .then_with(|| left.h3_cell.cmp(&right.h3_cell))
+    });
+    let mut coverage_pairs = BTreeSet::new();
+    for coverage in &subset.source_coverages {
+        validate_provider_contract_identifier(
+            "subset.source_coverages[].source_instance_id",
+            &coverage.source_instance_id,
+        )?;
+        validate_provider_contract_identifier(
+            "subset.source_coverages[].h3_cell",
+            &coverage.h3_cell,
+        )?;
+        if !source_ids.contains(&coverage.source_instance_id) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidTileContract,
+                "Provider tile coverage references an undeclared source",
+                [("source_instance_id", coverage.source_instance_id.as_str())],
+            ));
+        }
+        if !work_cells.contains(&coverage.h3_cell) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidTileContract,
+                "Provider tile coverage references a cell outside the declared work set",
+                [("h3_cell", coverage.h3_cell.as_str())],
+            ));
+        }
+        parse_provider_h3_cell(
+            "subset.source_coverages[].h3_cell",
+            &coverage.h3_cell,
+            subset.h3_resolution,
+        )?;
+        if !coverage_pairs.insert((
+            coverage.source_instance_id.clone(),
+            coverage.h3_cell.clone(),
+        )) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidTileContract,
+                "Provider tile subset repeats coverage for a source/cell pair",
+                [
+                    ("source_instance_id", coverage.source_instance_id.as_str()),
+                    ("h3_cell", coverage.h3_cell.as_str()),
+                ],
+            ));
+        }
+    }
+
+    for source_id in source_ids {
+        for cell in &work_cells {
+            if !coverage_pairs.contains(&(source_id.clone(), cell.clone())) {
+                return Err(GeoGeometryError::new(
+                    GeoGeometryErrorCode::InvalidTileContract,
+                    "Provider tile subset must declare coverage for every source/cell intersection",
+                    [
+                        ("source_instance_id", source_id.as_str()),
+                        ("h3_cell", cell.as_str()),
+                    ],
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn canonicalize_provider_license_posture(
+    posture: &mut GeoProviderTileLicensePosture,
+    sources: &[GeoProviderTileSource],
+) -> Result<(), GeoGeometryError> {
+    validate_provider_contract_identifier("license_posture.posture_id", &posture.posture_id)?;
+    validate_provider_text(
+        "license_posture.output_license_expression",
+        &posture.output_license_expression,
+    )?;
+    validate_provider_text(
+        "license_posture.redistribution_notice",
+        &posture.redistribution_notice,
+    )?;
+
+    sort_and_reject_duplicate_strings(
+        "license_posture.attribution_requirements",
+        &mut posture.attribution_requirements,
+    )?;
+    sort_and_reject_duplicate_strings(
+        "license_posture.client_restricted_source_ids",
+        &mut posture.client_restricted_source_ids,
+    )?;
+
+    let source_ids = sources
+        .iter()
+        .map(|source| source.source_instance_id.as_str())
+        .collect::<BTreeSet<_>>();
+    for source_id in &posture.client_restricted_source_ids {
+        if !source_ids.contains(source_id.as_str()) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidLicensePosture,
+                "Provider tile license posture references an undeclared restricted source",
+                [("source_instance_id", source_id.as_str())],
+            ));
+        }
+    }
+    for source in sources {
+        if source.attribution_required {
+            let attribution_text = source.attribution_text.as_ref().ok_or_else(|| {
+                GeoGeometryError::new(
+                    GeoGeometryErrorCode::InvalidLicensePosture,
+                    "Attribution-required provider source is missing attribution text",
+                    [("source_instance_id", source.source_instance_id.as_str())],
+                )
+            })?;
+            if !posture
+                .attribution_requirements
+                .iter()
+                .any(|requirement| requirement == attribution_text)
+            {
+                return Err(GeoGeometryError::new(
+                    GeoGeometryErrorCode::InvalidLicensePosture,
+                    "Provider tile license posture must carry every required attribution",
+                    [("source_instance_id", source.source_instance_id.as_str())],
+                ));
+            }
+        }
+        let client_declared = matches!(
+            source.provenance,
+            GeoProviderTileSourceProvenance::ClientDeclared { .. }
+        );
+        if client_declared
+            && !posture
+                .client_restricted_source_ids
+                .iter()
+                .any(|restricted| restricted == &source.source_instance_id)
+        {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidLicensePosture,
+                "Client-declared provider sources must remain inside the restricted-source boundary",
+                [("source_instance_id", source.source_instance_id.as_str())],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn canonicalize_provider_feature_contracts(
+    feature_contracts: &mut [GeoProviderTileFeatureContract],
+    geometry_features: &[GeoGeometryFeature],
+    sources: &[GeoProviderTileSource],
+    allow_vendor_simplified_decision_geometry: bool,
+) -> Result<(), GeoGeometryError> {
+    if feature_contracts.len() != geometry_features.len() {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Provider tile feature contracts must cover every materialized geometry feature",
+            [
+                ("contracts".to_string(), feature_contracts.len().to_string()),
+                ("geometry".to_string(), geometry_features.len().to_string()),
+            ],
+        ));
+    }
+    feature_contracts.sort_by(|left, right| left.feature_id.cmp(&right.feature_id));
+
+    let source_by_id = sources
+        .iter()
+        .map(|source| (source.source_instance_id.as_str(), source))
+        .collect::<BTreeMap<_, _>>();
+    let geometry_ids = geometry_features
+        .iter()
+        .map(|feature| feature.feature_id.as_str())
+        .collect::<Vec<_>>();
+    let mut contract_ids = BTreeSet::new();
+    for (index, contract) in feature_contracts.iter_mut().enumerate() {
+        validate_provider_contract_identifier("features[].feature_id", &contract.feature_id)?;
+        validate_provider_contract_identifier(
+            "features[].source_instance_id",
+            &contract.source_instance_id,
+        )?;
+        validate_provider_contract_identifier(
+            "features[].source_feature_id",
+            &contract.source_feature_id,
+        )?;
+        if !contract_ids.insert(contract.feature_id.clone()) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidTileContract,
+                "Provider tile feature contracts repeat a feature id",
+                [("feature_id", contract.feature_id.as_str())],
+            ));
+        }
+        let Some(expected_feature_id) = geometry_ids.get(index) else {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidTileContract,
+                "Provider tile feature contract index exceeded geometry features",
+                [("feature_id", contract.feature_id.as_str())],
+            ));
+        };
+        if contract.feature_id != *expected_feature_id {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidTileContract,
+                "Provider tile feature contracts must match the materialized geometry feature set",
+                [
+                    ("contract_feature_id", contract.feature_id.as_str()),
+                    ("geometry_feature_id", *expected_feature_id),
+                ],
+            ));
+        }
+        let Some(source) = source_by_id.get(contract.source_instance_id.as_str()) else {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidSourceProvenance,
+                "Provider tile feature references an undeclared source",
+                [("source_instance_id", contract.source_instance_id.as_str())],
+            ));
+        };
+        validate_provider_feature_fidelity(contract, allow_vendor_simplified_decision_geometry)?;
+        validate_provider_feature_license(contract, source)?;
+        canonicalize_provider_feature_provenance(contract, source)?;
+    }
+    Ok(())
+}
+
+fn validate_provider_feature_fidelity(
+    contract: &GeoProviderTileFeatureContract,
+    allow_vendor_simplified_decision_geometry: bool,
+) -> Result<(), GeoGeometryError> {
+    match contract.decision_geometry_fidelity {
+        GeoProviderGeometryFidelity::SourceFidelity => Ok(()),
+        GeoProviderGeometryFidelity::VendorSimplified => {
+            if allow_vendor_simplified_decision_geometry {
+                Ok(())
+            } else {
+                Err(GeoGeometryError::new(
+                    GeoGeometryErrorCode::InvalidTileContract,
+                    "Vendor-simplified geometry cannot be used as decision geometry without explicit acknowledgement",
+                    [("feature_id", contract.feature_id.as_str())],
+                ))
+            }
+        }
+        GeoProviderGeometryFidelity::DisplaySimplified => Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Display-simplified geometry cannot be used as decision geometry",
+            [("feature_id", contract.feature_id.as_str())],
+        )),
+    }
+}
+
+fn validate_provider_feature_license(
+    contract: &GeoProviderTileFeatureContract,
+    source: &GeoProviderTileSource,
+) -> Result<(), GeoGeometryError> {
+    if source.attribution_required
+        && contract.redaction_class == GeoProviderTileRedactionClass::Shareable
+    {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidLicensePosture,
+            "Attribution-required provider features must be marked shareable_attribution_required or local_only",
+            [
+                ("feature_id", contract.feature_id.as_str()),
+                ("source_instance_id", source.source_instance_id.as_str()),
+            ],
+        ));
+    }
+    if contract.license_class == GeoLicenseClass::Unknown
+        && contract.redaction_class != GeoProviderTileRedactionClass::LocalOnly
+    {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidLicensePosture,
+            "Unknown-license provider features must remain local_only",
+            [
+                ("feature_id", contract.feature_id.as_str()),
+                ("source_instance_id", source.source_instance_id.as_str()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn canonicalize_provider_feature_provenance(
+    contract: &mut GeoProviderTileFeatureContract,
+    source: &GeoProviderTileSource,
+) -> Result<(), GeoGeometryError> {
+    let provenance = &mut contract.provenance;
+    validate_provider_contract_identifier(
+        "features[].provenance.source_instance_id",
+        &provenance.source_instance_id,
+    )?;
+    if provenance.source_instance_id != contract.source_instance_id {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceProvenance,
+            "Provider tile feature provenance must agree with the feature source binding",
+            [
+                ("feature_id", contract.feature_id.as_str()),
+                (
+                    "provenance_source_instance_id",
+                    provenance.source_instance_id.as_str(),
+                ),
+                ("source_instance_id", contract.source_instance_id.as_str()),
+            ],
+        ));
+    }
+    validate_provider_text("features[].provenance.source_path", &provenance.source_path)?;
+    validate_provider_blake3(
+        "features[].provenance.source_digest",
+        &provenance.source_digest,
+    )?;
+    validate_provider_contract_identifier(
+        "features[].provenance.source_record_id",
+        &provenance.source_record_id,
+    )?;
+    if let GeoProviderTileSourceProvenance::CanonFullProvenance {
+        source_path,
+        source_digest,
+        source_record_count: _,
+    } = &source.provenance
+    {
+        if provenance.source_path != *source_path || provenance.source_digest != *source_digest {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidSourceProvenance,
+                "Canon-full feature provenance must point at the declared source artifact",
+                [
+                    ("feature_id", contract.feature_id.as_str()),
+                    ("source_instance_id", source.source_instance_id.as_str()),
+                ],
+            ));
+        }
+    }
+    if provenance.field_locators.is_empty() {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceProvenance,
+            "Provider tile feature provenance must carry field-level locators",
+            [("feature_id", contract.feature_id.as_str())],
+        ));
+    }
+    provenance.field_locators.sort();
+    let mut fields = BTreeSet::new();
+    for locator in &provenance.field_locators {
+        validate_provider_text(
+            "features[].provenance.field_locators[].field_path",
+            &locator.field_path,
+        )?;
+        validate_provider_text(
+            "features[].provenance.field_locators[].source_path",
+            &locator.source_path,
+        )?;
+        if locator.record_ordinal != provenance.record_ordinal {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidSourceProvenance,
+                "Provider tile field locators must bind the same record ordinal as the feature provenance",
+                [
+                    ("feature_id".to_string(), contract.feature_id.clone()),
+                    (
+                        "record_ordinal".to_string(),
+                        provenance.record_ordinal.to_string(),
+                    ),
+                    (
+                        "locator_record_ordinal".to_string(),
+                        locator.record_ordinal.to_string(),
+                    ),
+                ],
+            ));
+        }
+        if !fields.insert(locator.field_path.clone()) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidSourceProvenance,
+                "Provider tile feature provenance repeats a field locator",
+                [
+                    ("feature_id", contract.feature_id.as_str()),
+                    ("field_path", locator.field_path.as_str()),
+                ],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn provider_geometry_tile_content_blake3(
+    geometry_tile: &GeoGeometryTileArtifact,
+    provider_tile: &GeoProviderTileContract,
+) -> Result<String, GeoGeometryError> {
+    #[derive(Serialize)]
+    struct DigestProjection<'a> {
+        tile_version: &'a str,
+        frame: &'a GeoLocalFrameContract,
+        features: &'a [GeoGeometryFeature],
+        total_canonical_vertices: u64,
+        geometry_bytes: u64,
+        max_vertices_per_geometry: u64,
+        max_geometry_bytes_per_tile: u64,
+        provider_tile_version: &'a str,
+        tile_id: &'a str,
+        databook_decision: GeoProviderTileDataBookDecision,
+        subset: &'a GeoProviderTileSubsetPredicate,
+        sources: &'a [GeoProviderTileSource],
+        license_posture: &'a GeoProviderTileLicensePosture,
+        feature_contracts: &'a [GeoProviderTileFeatureContract],
+    }
+
+    let projection = DigestProjection {
+        tile_version: &geometry_tile.version,
+        frame: &geometry_tile.frame,
+        features: &geometry_tile.features,
+        total_canonical_vertices: geometry_tile.total_canonical_vertices,
+        geometry_bytes: geometry_tile.geometry_bytes,
+        max_vertices_per_geometry: geometry_tile.max_vertices_per_geometry,
+        max_geometry_bytes_per_tile: geometry_tile.max_geometry_bytes_per_tile,
+        provider_tile_version: &provider_tile.version,
+        tile_id: &provider_tile.tile_id,
+        databook_decision: provider_tile.databook_decision,
+        subset: &provider_tile.subset,
+        sources: &provider_tile.sources,
+        license_posture: &provider_tile.license_posture,
+        feature_contracts: &provider_tile.features,
+    };
+    let bytes = serde_json::to_vec(&projection).map_err(|error| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::Serialization,
+            "Provider tile digest serialization failed",
+            [("error", error.to_string())],
+        )
+    })?;
+    Ok(blake3::hash(&bytes).to_hex().to_string())
+}
+
+fn sort_and_reject_duplicate_strings(
+    field: &str,
+    values: &mut [String],
+) -> Result<(), GeoGeometryError> {
+    values.sort();
+    let mut seen = BTreeSet::new();
+    for value in values.iter() {
+        validate_provider_text(field, value)?;
+        if !seen.insert(value.clone()) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidLicensePosture,
+                "Provider tile contract contains a duplicate string value",
+                [("field", field), ("value", value.as_str())],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn parse_provider_h3_cell(
+    field: &str,
+    value: &str,
+    expected_resolution: u8,
+) -> Result<CellIndex, GeoGeometryError> {
+    let cell = CellIndex::from_str(value).map_err(|error| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Provider tile subset declares an invalid H3 cell",
+            [
+                ("field".to_string(), field.to_string()),
+                ("value".to_string(), value.to_string()),
+                ("error".to_string(), error.to_string()),
+            ],
+        )
+    })?;
+    if u8::from(cell.resolution()) != expected_resolution {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Provider tile subset cell resolution does not match the declared resolution",
+            [
+                ("field".to_string(), field.to_string()),
+                ("value".to_string(), value.to_string()),
+                (
+                    "actual_resolution".to_string(),
+                    u8::from(cell.resolution()).to_string(),
+                ),
+                (
+                    "expected_resolution".to_string(),
+                    expected_resolution.to_string(),
+                ),
+            ],
+        ));
+    }
+    Ok(cell)
+}
+
+fn validate_provider_contract_identifier(field: &str, value: &str) -> Result<(), GeoGeometryError> {
+    if value.is_empty() || value.trim() != value || value.len() > MAX_IDENTIFIER_BYTES {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Provider tile identifiers must be nonempty, unpadded UTF-8 within the byte limit",
+            [
+                ("field".to_string(), field.to_string()),
+                ("length".to_string(), value.len().to_string()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_provider_text(field: &str, value: &str) -> Result<(), GeoGeometryError> {
+    if value.is_empty() || value.trim() != value {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Provider tile text fields must be nonempty and unpadded",
+            [("field", field), ("value", value)],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_provider_blake3(field: &str, value: &str) -> Result<(), GeoGeometryError> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceDigest,
+            "Provider tile digests must be lowercase BLAKE3 hex",
+            [("field", field), ("value", value)],
+        ));
+    }
+    Ok(())
 }
 
 pub fn canonical_geometry_bytes(value: &GeoTypedGeometry) -> Result<Vec<u8>, serde_json::Error> {

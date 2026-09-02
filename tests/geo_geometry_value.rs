@@ -3,13 +3,19 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use canon::geo::{
     CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
+    CANON_GEO_PROVIDER_TILE_BUILD_VERSION, CANON_GEO_PROVIDER_TILE_CONTRACT_VERSION,
     CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, GeoAffineProjectionMm, GeoCanonicalGeometryMm,
     GeoExactSourceUnitMm, GeoFeatureValue, GeoGeometryBudgetEnforcement, GeoGeometryErrorCode,
-    GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoLocalFrameContract,
-    GeoProjectionProvenance, GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal,
-    GeoSourcePointFixed, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
-    canonical_geometry_tile_bytes, canonical_warehouse_geometry_bytes, materialize_geometry_tile,
-    materialize_warehouse_geometry,
+    GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoLicenseClass, GeoLocalFrameContract,
+    GeoProjectionProvenance, GeoProviderGeometryFidelity, GeoProviderGeometryTileBuildRequest,
+    GeoProviderTileCoverageState, GeoProviderTileDataBookDecision, GeoProviderTileFeatureContract,
+    GeoProviderTileFeatureProvenance, GeoProviderTileFieldLocator, GeoProviderTileLicensePosture,
+    GeoProviderTileRedactionClass, GeoProviderTileSource, GeoProviderTileSourceCoverage,
+    GeoProviderTileSourceProvenance, GeoProviderTileSubsetKind, GeoProviderTileSubsetPredicate,
+    GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed,
+    GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest, canonical_geometry_tile_bytes,
+    canonical_warehouse_geometry_bytes, materialize_geometry_tile,
+    materialize_provider_geometry_tile, materialize_warehouse_geometry,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -409,6 +415,252 @@ fn warehouse_wkb_refuses_digest_drift_mixed_execution_and_unsupported_type() {
     assert_eq!(error.code, GeoGeometryErrorCode::VertexBudgetExceeded);
 }
 
+#[test]
+fn provider_tile_contract_preserves_subset_license_provenance_and_losing_geometry() {
+    let request = provider_tile_build_request(GeoProviderGeometryFidelity::SourceFidelity, false);
+    let mut reordered = request.clone();
+    reordered.geometry_request.features.reverse();
+    reordered.sources.reverse();
+    reordered.subset.work_cells.reverse();
+    reordered.subset.source_coverages.reverse();
+    reordered.feature_contracts.reverse();
+    reordered.license_posture.attribution_requirements.reverse();
+    reordered
+        .license_posture
+        .client_restricted_source_ids
+        .reverse();
+
+    let artifact = materialize_provider_geometry_tile(&request)
+        .expect("offline provider geometry tile materializes");
+    let reordered = materialize_provider_geometry_tile(&reordered)
+        .expect("reordered provider geometry tile materializes");
+
+    assert_eq!(
+        canonical_geometry_tile_bytes(&artifact).unwrap(),
+        canonical_geometry_tile_bytes(&reordered).unwrap()
+    );
+    assert_eq!(artifact.features.len(), 2);
+    assert_eq!(
+        artifact
+            .features
+            .iter()
+            .map(|feature| feature.feature_id.as_str())
+            .collect::<Vec<_>>(),
+        ["building-1", "parcel-1"]
+    );
+
+    let provider = artifact
+        .provider_tile
+        .as_ref()
+        .expect("provider tile contract is attached");
+    assert_eq!(provider.version, CANON_GEO_PROVIDER_TILE_CONTRACT_VERSION);
+    assert_eq!(
+        provider.databook_decision,
+        GeoProviderTileDataBookDecision::DatabookLikeSelfContainedTileNoNewDependency
+    );
+    assert_eq!(
+        provider.subset.kind,
+        GeoProviderTileSubsetKind::H3CellSetAndSourceCoverageIntersection
+    );
+    assert_eq!(provider.subset.work_cells, ["892a100d26bffff"]);
+    assert_eq!(provider.subset.source_coverages.len(), 2);
+    assert_eq!(provider.features.len(), artifact.features.len());
+    assert_eq!(provider.tile_content_blake3.len(), 64);
+    assert!(
+        provider
+            .license_posture
+            .attribution_requirements
+            .iter()
+            .any(|requirement| requirement == "ORNL and FEMA Geospatial Response Office")
+    );
+    assert_eq!(
+        provider.license_posture.client_restricted_source_ids,
+        ["source.client.parcels"]
+    );
+
+    let building = provider
+        .features
+        .iter()
+        .find(|feature| feature.feature_id == "building-1")
+        .expect("building feature contract");
+    assert_eq!(
+        building.decision_geometry_fidelity,
+        GeoProviderGeometryFidelity::SourceFidelity
+    );
+    assert_eq!(
+        building.display_geometry_fidelity,
+        Some(GeoProviderGeometryFidelity::DisplaySimplified)
+    );
+    assert_eq!(
+        building.redaction_class,
+        GeoProviderTileRedactionClass::ShareableAttributionRequired
+    );
+    assert_eq!(
+        building.provenance.source_path,
+        "tiles/fema/892a100d26bffff.jsonl"
+    );
+    assert_eq!(building.provenance.record_ordinal, 7);
+    assert_eq!(
+        building.provenance.field_locators[0].field_path,
+        "$.geometry"
+    );
+
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../schemas/canon.geo.geometry_tile.v0.schema.json"
+    ))
+    .expect("geometry tile schema parses");
+    assert!(schema["properties"]["provider_tile"].is_object());
+    assert!(schema["$defs"]["provider_feature_contract"].is_object());
+}
+
+#[test]
+fn provider_tile_refuses_unacknowledged_vendor_simplified_decision_geometry() {
+    let request = provider_tile_build_request(GeoProviderGeometryFidelity::VendorSimplified, false);
+    let error = materialize_provider_geometry_tile(&request)
+        .expect_err("silent vendor-simplified decision geometry must refuse");
+
+    assert_eq!(error.code, GeoGeometryErrorCode::InvalidTileContract);
+    assert_eq!(
+        error.detail.get("feature_id").map(String::as_str),
+        Some("parcel-1")
+    );
+
+    let acknowledged =
+        provider_tile_build_request(GeoProviderGeometryFidelity::VendorSimplified, true);
+    materialize_provider_geometry_tile(&acknowledged)
+        .expect("explicit acknowledgement admits labelled vendor-simplified decision geometry");
+}
+
+fn provider_tile_build_request(
+    parcel_decision_fidelity: GeoProviderGeometryFidelity,
+    allow_vendor_simplified_decision_geometry: bool,
+) -> GeoProviderGeometryTileBuildRequest {
+    let fema_tile_digest = blake3_hex(b"fema-source-tile");
+    let client_source_digest = blake3_hex(b"client-parcel-layer");
+    let mut geometry_request = request(
+        frame(3, 1, 0),
+        polygon(rectangle("0", "0", "10", "10", false)),
+        100,
+        100_000,
+    );
+    geometry_request.features.push(GeoGeometryFeatureInput {
+        feature_id: "building-1".to_string(),
+        source_crs: CRS.to_string(),
+        geometry: polygon(rectangle("2", "2", "4", "4", false)),
+    });
+
+    GeoProviderGeometryTileBuildRequest {
+        version: CANON_GEO_PROVIDER_TILE_BUILD_VERSION.to_string(),
+        tile_id: "892a100d26bffff".to_string(),
+        geometry_request,
+        subset: GeoProviderTileSubsetPredicate {
+            kind: GeoProviderTileSubsetKind::H3CellSetAndSourceCoverageIntersection,
+            predicate_id: "tile-892a100d26bffff-k0-byop".to_string(),
+            h3_resolution: 9,
+            center_cell: "892a100d26bffff".to_string(),
+            halo_k: 0,
+            work_cells: vec!["892a100d26bffff".to_string()],
+            source_coverages: vec![
+                GeoProviderTileSourceCoverage {
+                    source_instance_id: "source.client.parcels".to_string(),
+                    h3_cell: "892a100d26bffff".to_string(),
+                    coverage_state: GeoProviderTileCoverageState::Partial,
+                },
+                GeoProviderTileSourceCoverage {
+                    source_instance_id: "source.fema.structures".to_string(),
+                    h3_cell: "892a100d26bffff".to_string(),
+                    coverage_state: GeoProviderTileCoverageState::Complete,
+                },
+            ],
+        },
+        sources: vec![
+            GeoProviderTileSource {
+                source_instance_id: "source.client.parcels".to_string(),
+                release_id: "client-parcels-2026-q2".to_string(),
+                release_digest: blake3_hex(b"client-parcels-release"),
+                license_class: GeoLicenseClass::RestrictedLocalOnly,
+                license_expression: "LicenseRef-Client-Parcel-Local".to_string(),
+                attribution_required: false,
+                attribution_text: None,
+                provenance: GeoProviderTileSourceProvenance::ClientDeclared {
+                    vendor: "client-declared-parcel-vendor".to_string(),
+                    vintage: "2026-Q2".to_string(),
+                    source_crs: CRS.to_string(),
+                    coverage_extent: "h3:892a100d26bffff".to_string(),
+                    mutual_exclusivity_declared: false,
+                },
+            },
+            GeoProviderTileSource {
+                source_instance_id: "source.fema.structures".to_string(),
+                release_id: "fema-usa-structures-2026-fixture".to_string(),
+                release_digest: blake3_hex(b"fema-release"),
+                license_class: GeoLicenseClass::PublicAttributionRequired,
+                license_expression: "CC-BY-4.0".to_string(),
+                attribution_required: true,
+                attribution_text: Some("ORNL and FEMA Geospatial Response Office".to_string()),
+                provenance: GeoProviderTileSourceProvenance::CanonFullProvenance {
+                    source_path: "tiles/fema/892a100d26bffff.jsonl".to_string(),
+                    source_digest: fema_tile_digest.clone(),
+                    source_record_count: 1,
+                },
+            },
+        ],
+        license_posture: GeoProviderTileLicensePosture {
+            posture_id: "mixed-byop-local-v0".to_string(),
+            output_license_expression: "LicenseRef-Mixed-BYOP-Local".to_string(),
+            redistribution_notice:
+                "Contains client-declared parcel geometry; raw tile stays local.".to_string(),
+            attribution_requirements: vec!["ORNL and FEMA Geospatial Response Office".to_string()],
+            client_restricted_source_ids: vec!["source.client.parcels".to_string()],
+        },
+        feature_contracts: vec![
+            GeoProviderTileFeatureContract {
+                feature_id: "parcel-1".to_string(),
+                source_instance_id: "source.client.parcels".to_string(),
+                source_feature_id: "client-parcel-1".to_string(),
+                decision_geometry_fidelity: parcel_decision_fidelity,
+                display_geometry_fidelity: Some(GeoProviderGeometryFidelity::DisplaySimplified),
+                license_class: GeoLicenseClass::RestrictedLocalOnly,
+                redaction_class: GeoProviderTileRedactionClass::LocalOnly,
+                provenance: GeoProviderTileFeatureProvenance {
+                    source_instance_id: "source.client.parcels".to_string(),
+                    source_path: "client/parcels.gpkg".to_string(),
+                    source_digest: client_source_digest,
+                    source_record_id: "client-parcel-row-1".to_string(),
+                    record_ordinal: 3,
+                    field_locators: vec![GeoProviderTileFieldLocator {
+                        field_path: "$.geometry".to_string(),
+                        source_path: "client/parcels.gpkg".to_string(),
+                        record_ordinal: 3,
+                    }],
+                },
+            },
+            GeoProviderTileFeatureContract {
+                feature_id: "building-1".to_string(),
+                source_instance_id: "source.fema.structures".to_string(),
+                source_feature_id: "fema-building-1".to_string(),
+                decision_geometry_fidelity: GeoProviderGeometryFidelity::SourceFidelity,
+                display_geometry_fidelity: Some(GeoProviderGeometryFidelity::DisplaySimplified),
+                license_class: GeoLicenseClass::PublicAttributionRequired,
+                redaction_class: GeoProviderTileRedactionClass::ShareableAttributionRequired,
+                provenance: GeoProviderTileFeatureProvenance {
+                    source_instance_id: "source.fema.structures".to_string(),
+                    source_path: "tiles/fema/892a100d26bffff.jsonl".to_string(),
+                    source_digest: fema_tile_digest,
+                    source_record_id: "fema-row-1".to_string(),
+                    record_ordinal: 7,
+                    field_locators: vec![GeoProviderTileFieldLocator {
+                        field_path: "$.geometry".to_string(),
+                        source_path: "tiles/fema/892a100d26bffff.jsonl".to_string(),
+                        record_ordinal: 7,
+                    }],
+                },
+            },
+        ],
+        allow_vendor_simplified_decision_geometry,
+    }
+}
+
 fn request(
     frame: GeoLocalFrameContract,
     geometry: GeoSourceGeometry,
@@ -426,6 +678,10 @@ fn request(
         max_vertices_per_geometry,
         max_geometry_bytes_per_tile,
     }
+}
+
+fn blake3_hex(bytes: &[u8]) -> String {
+    blake3::hash(bytes).to_hex().to_string()
 }
 
 fn frame(

@@ -23,7 +23,8 @@
     "total_canonical_vertices": { "type": "integer", "minimum": 0 },
     "geometry_bytes": { "type": "integer", "minimum": 0 },
     "max_vertices_per_geometry": { "type": "integer", "minimum": 1 },
-    "max_geometry_bytes_per_tile": { "type": "integer", "minimum": 1 }
+    "max_geometry_bytes_per_tile": { "type": "integer", "minimum": 1 },
+    "provider_tile": { "$ref": "#/$defs/provider_tile" }
   },
   "$defs": {
     "source_point_fixed": {
@@ -242,6 +243,232 @@
       "properties": {
         "feature_id": { "type": "string", "minLength": 1, "maxLength": 256 },
         "value": { "$ref": "#/$defs/feature_value" }
+      }
+    },
+    "license_class": {
+      "enum": [
+        "public_redistributable",
+        "public_attribution_required",
+        "restricted_local_only",
+        "unknown"
+      ]
+    },
+    "provider_source_provenance": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "source_path", "source_digest", "source_record_count"],
+          "properties": {
+            "kind": { "const": "canon_full_provenance" },
+            "source_path": { "type": "string", "minLength": 1 },
+            "source_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "source_record_count": { "type": "integer", "minimum": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "vendor",
+            "vintage",
+            "source_crs",
+            "coverage_extent",
+            "mutual_exclusivity_declared"
+          ],
+          "properties": {
+            "kind": { "const": "client_declared" },
+            "vendor": { "type": "string", "minLength": 1 },
+            "vintage": { "type": "string", "minLength": 1 },
+            "source_crs": { "type": "string", "minLength": 1 },
+            "coverage_extent": { "type": "string", "minLength": 1 },
+            "mutual_exclusivity_declared": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "provider_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_instance_id",
+        "release_id",
+        "release_digest",
+        "license_class",
+        "license_expression",
+        "attribution_required",
+        "provenance"
+      ],
+      "properties": {
+        "source_instance_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "release_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "release_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "license_class": { "$ref": "#/$defs/license_class" },
+        "license_expression": { "type": "string", "minLength": 1 },
+        "attribution_required": { "type": "boolean" },
+        "attribution_text": { "type": "string", "minLength": 1 },
+        "provenance": { "$ref": "#/$defs/provider_source_provenance" }
+      }
+    },
+    "provider_subset_kind": {
+      "enum": ["h3_cell_set_and_source_coverage_intersection"]
+    },
+    "provider_coverage_state": {
+      "enum": ["complete", "partial", "absent", "unknown"]
+    },
+    "provider_source_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_instance_id", "h3_cell", "coverage_state"],
+      "properties": {
+        "source_instance_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "h3_cell": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "coverage_state": { "$ref": "#/$defs/provider_coverage_state" }
+      }
+    },
+    "provider_subset_predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "predicate_id",
+        "h3_resolution",
+        "center_cell",
+        "halo_k",
+        "work_cells",
+        "source_coverages"
+      ],
+      "properties": {
+        "kind": { "$ref": "#/$defs/provider_subset_kind" },
+        "predicate_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "h3_resolution": { "type": "integer", "minimum": 0, "maximum": 15 },
+        "center_cell": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "halo_k": { "type": "integer", "minimum": 0 },
+        "work_cells": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+        },
+        "source_coverages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/provider_source_coverage" }
+        }
+      }
+    },
+    "provider_license_posture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["posture_id", "output_license_expression", "redistribution_notice"],
+      "properties": {
+        "posture_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "output_license_expression": { "type": "string", "minLength": 1 },
+        "redistribution_notice": { "type": "string", "minLength": 1 },
+        "attribution_requirements": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "client_restricted_source_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+        }
+      }
+    },
+    "provider_geometry_fidelity": {
+      "enum": ["source_fidelity", "vendor_simplified", "display_simplified"]
+    },
+    "provider_redaction_class": {
+      "enum": ["shareable", "shareable_attribution_required", "local_only"]
+    },
+    "provider_field_locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field_path", "source_path", "record_ordinal"],
+      "properties": {
+        "field_path": { "type": "string", "minLength": 1 },
+        "source_path": { "type": "string", "minLength": 1 },
+        "record_ordinal": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "provider_feature_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_instance_id",
+        "source_path",
+        "source_digest",
+        "source_record_id",
+        "record_ordinal",
+        "field_locators"
+      ],
+      "properties": {
+        "source_instance_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_path": { "type": "string", "minLength": 1 },
+        "source_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "source_record_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "record_ordinal": { "type": "integer", "minimum": 0 },
+        "field_locators": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/provider_field_locator" }
+        }
+      }
+    },
+    "provider_feature_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "feature_id",
+        "source_instance_id",
+        "source_feature_id",
+        "decision_geometry_fidelity",
+        "license_class",
+        "redaction_class",
+        "provenance"
+      ],
+      "properties": {
+        "feature_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_instance_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_feature_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "decision_geometry_fidelity": { "$ref": "#/$defs/provider_geometry_fidelity" },
+        "display_geometry_fidelity": { "$ref": "#/$defs/provider_geometry_fidelity" },
+        "license_class": { "$ref": "#/$defs/license_class" },
+        "redaction_class": { "$ref": "#/$defs/provider_redaction_class" },
+        "provenance": { "$ref": "#/$defs/provider_feature_provenance" }
+      }
+    },
+    "provider_tile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "tile_id",
+        "databook_decision",
+        "subset",
+        "sources",
+        "license_posture",
+        "features",
+        "tile_content_blake3"
+      ],
+      "properties": {
+        "version": { "const": "canon_geo_provider_tile_contract.v0" },
+        "tile_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "databook_decision": {
+          "const": "databook_like_self_contained_tile_no_new_dependency"
+        },
+        "subset": { "$ref": "#/$defs/provider_subset_predicate" },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/provider_source" }
+        },
+        "license_posture": { "$ref": "#/$defs/provider_license_posture" },
+        "features": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/provider_feature_contract" }
+        },
+        "tile_content_blake3": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     }
   }
