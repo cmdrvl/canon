@@ -34,6 +34,8 @@ pub struct NativeReviewArtifact {
     pub summary: EntityDeterministicSummary,
     pub binding: NativeReviewBinding,
     pub decision_schema: NativeReviewDecisionSchema,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub review_groups: Vec<NativeReviewEvidenceSignatureGroup>,
     pub review_items: Vec<NativeReviewItem>,
 }
 
@@ -56,6 +58,10 @@ pub struct NativeReviewBinding {
 pub struct NativeReviewDecisionSchema {
     pub required_actions: Vec<NativeReviewDecisionAction>,
     pub required_decision_fields: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_group_decision_fields: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_signature_fields: Vec<String>,
     pub context_binding_fields: Vec<String>,
 }
 
@@ -64,6 +70,11 @@ pub struct NativeReviewItem {
     pub review_id: String,
     pub mode: NativeReviewMode,
     pub mode_context: NativeReviewModeContext,
+    #[serde(
+        default,
+        skip_serializing_if = "NativeReviewEvidenceSignature::is_empty"
+    )]
+    pub evidence_signature: NativeReviewEvidenceSignature,
     pub decision_binding_hash: String,
     pub recommended_action: NativeReviewDecisionAction,
     pub allowed_actions: Vec<NativeReviewDecisionAction>,
@@ -75,6 +86,60 @@ pub struct NativeReviewItem {
     pub related_distinct_cues: Vec<NativeRelatedDistinctCue>,
     pub impact: NativeReviewImpact,
     pub provenance: Vec<NativeReviewProvenance>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct NativeReviewEvidenceSignature {
+    pub signature_id: String,
+    pub mode: Option<NativeReviewMode>,
+    pub recommended_action: Option<NativeReviewDecisionAction>,
+    pub allowed_actions: Vec<NativeReviewDecisionAction>,
+    pub score_band: String,
+    pub contradiction_class: String,
+    pub mode_context_class: String,
+    pub hit_vector: Vec<NativeReviewEvidenceSignatureHit>,
+}
+
+impl NativeReviewEvidenceSignature {
+    fn is_empty(&self) -> bool {
+        self.signature_id.is_empty()
+            && self.mode.is_none()
+            && self.recommended_action.is_none()
+            && self.allowed_actions.is_empty()
+            && self.score_band.is_empty()
+            && self.contradiction_class.is_empty()
+            && self.mode_context_class.is_empty()
+            && self.hit_vector.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeReviewEvidenceSignatureHit {
+    pub lane: String,
+    pub operator: String,
+    pub view_field: String,
+    pub score_band: String,
+    pub evidence_count: u64,
+    pub reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeReviewEvidenceSignatureGroup {
+    pub signature_id: String,
+    pub signature: NativeReviewEvidenceSignature,
+    pub member_count: u64,
+    pub sample_review_ids: Vec<String>,
+    pub score_stats: NativeReviewEvidenceSignatureScoreStats,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeReviewEvidenceSignatureScoreStats {
+    pub min_review_priority_units: u32,
+    pub max_review_priority_units: u32,
+    pub total_review_priority_units: u64,
+    pub min_evidence_score_units: u32,
+    pub max_evidence_score_units: u32,
+    pub total_evidence_score_units: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -246,7 +311,8 @@ pub fn build_native_review_artifact(
         .collect::<Result<Vec<_>, _>>()?;
     review_items.sort_by(|left, right| left.review_id.cmp(&right.review_id));
 
-    let summary = native_review_summary(&review_items);
+    let review_groups = build_native_review_signature_groups(&review_items);
+    let summary = native_review_summary(&review_items, &review_groups);
     let mut artifact = NativeReviewArtifact {
         version: CANON_ENTITY_NATIVE_REVIEW_VERSION.to_string(),
         artifact_content_hash: String::new(),
@@ -254,6 +320,7 @@ pub fn build_native_review_artifact(
         summary,
         binding,
         decision_schema: native_decision_schema(),
+        review_groups,
         review_items,
     };
     artifact.artifact_content_hash = hash_native_review_artifact(&artifact)?;
@@ -270,6 +337,8 @@ pub fn render_native_review_csv(artifact: &NativeReviewArtifact) -> Result<Strin
     writer
         .write_record([
             "review_id",
+            "evidence_signature_id",
+            "evidence_signature_json",
             "mode",
             "recommended_action",
             "allowed_actions_json",
@@ -295,6 +364,8 @@ pub fn render_native_review_csv(artifact: &NativeReviewArtifact) -> Result<Strin
         writer
             .write_record([
                 item.review_id.clone(),
+                item.evidence_signature.signature_id.clone(),
+                serde_json::to_string(&item.evidence_signature).map_err(json_refusal)?,
                 mode_string(item.mode),
                 item.recommended_action.as_str().to_string(),
                 serde_json::to_string(&item.allowed_actions).map_err(json_refusal)?,
@@ -398,6 +469,7 @@ fn native_review_item(
         review_id: item.review_id.clone(),
         mode,
         mode_context,
+        evidence_signature: NativeReviewEvidenceSignature::default(),
         decision_binding_hash: String::new(),
         recommended_action,
         allowed_actions,
@@ -410,6 +482,7 @@ fn native_review_item(
         impact,
         provenance,
     };
+    native.evidence_signature = native_evidence_signature_for_item(&native)?;
     native.decision_binding_hash = hash_decision_binding(&native, binding)?;
     Ok(native)
 }
@@ -670,7 +743,70 @@ fn native_related_distinct_cues(item: &ReviewQueueItem) -> Vec<NativeRelatedDist
     cues
 }
 
-fn native_review_summary(review_items: &[NativeReviewItem]) -> EntityDeterministicSummary {
+pub fn build_native_review_signature_groups(
+    review_items: &[NativeReviewItem],
+) -> Vec<NativeReviewEvidenceSignatureGroup> {
+    const SAMPLE_LIMIT: usize = 5;
+
+    let mut members_by_signature = BTreeMap::<String, Vec<&NativeReviewItem>>::new();
+    for item in review_items {
+        if !item.evidence_signature.signature_id.is_empty() {
+            members_by_signature
+                .entry(item.evidence_signature.signature_id.clone())
+                .or_default()
+                .push(item);
+        }
+    }
+
+    members_by_signature
+        .into_iter()
+        .map(|(signature_id, mut members)| {
+            members.sort_by(|left, right| left.review_id.cmp(&right.review_id));
+            let sample_review_ids = members
+                .iter()
+                .take(SAMPLE_LIMIT)
+                .map(|item| item.review_id.clone())
+                .collect::<Vec<_>>();
+            let score_stats = native_signature_group_score_stats(&members);
+            NativeReviewEvidenceSignatureGroup {
+                signature_id,
+                signature: members[0].evidence_signature.clone(),
+                member_count: members.len() as u64,
+                sample_review_ids,
+                score_stats,
+            }
+        })
+        .collect()
+}
+
+pub fn native_evidence_signature_for_item(
+    item: &NativeReviewItem,
+) -> Result<NativeReviewEvidenceSignature, Refusal> {
+    let mut allowed_actions = item.allowed_actions.clone();
+    allowed_actions.sort();
+    allowed_actions.dedup();
+    let mut signature = NativeReviewEvidenceSignature {
+        signature_id: String::new(),
+        mode: Some(item.mode),
+        recommended_action: Some(item.recommended_action),
+        allowed_actions,
+        score_band: score_band(item_signature_score_units(item)),
+        contradiction_class: native_contradiction_class(item),
+        mode_context_class: native_mode_context_class(item),
+        hit_vector: native_signature_hit_vector(item),
+    };
+    let value = serde_json::to_value(&signature).map_err(json_refusal)?;
+    signature.signature_id = format!(
+        "signature:blake3:{}",
+        blake3::hash(canonical_json(&value).as_bytes()).to_hex()
+    );
+    Ok(signature)
+}
+
+fn native_review_summary(
+    review_items: &[NativeReviewItem],
+    review_groups: &[NativeReviewEvidenceSignatureGroup],
+) -> EntityDeterministicSummary {
     let cluster_count = review_items
         .iter()
         .filter(|item| item.mode == NativeReviewMode::Cluster)
@@ -682,6 +818,11 @@ fn native_review_summary(review_items: &[NativeReviewItem]) -> EntityDeterminist
     EntityDeterministicSummary {
         counts: BTreeMap::from([
             ("review_items".to_string(), review_items.len() as u64),
+            ("review_group_count".to_string(), review_groups.len() as u64),
+            (
+                "evidence_signature_groups".to_string(),
+                review_groups.len() as u64,
+            ),
             ("candidate_clusters".to_string(), cluster_count),
             ("candidate_links".to_string(), link_count),
             (
@@ -701,6 +842,7 @@ fn native_review_summary(review_items: &[NativeReviewItem]) -> EntityDeterminist
         ]),
         labels: BTreeMap::from([
             ("stage".to_string(), "native_review".to_string()),
+            ("grouping".to_string(), "evidence_signature".to_string()),
             ("projection".to_string(), "offline_static_html".to_string()),
         ]),
     }
@@ -728,6 +870,26 @@ fn native_decision_schema() -> NativeReviewDecisionSchema {
             "registry_snapshot_hash".to_string(),
             "mode_context".to_string(),
         ],
+        required_group_decision_fields: vec![
+            "evidence_signature_id".to_string(),
+            "action".to_string(),
+            "operator_id".to_string(),
+            "reason_code".to_string(),
+            "source_review_artifact_hash".to_string(),
+            "run_content_hash".to_string(),
+            "policy_content_hash".to_string(),
+            "registry_snapshot_hash".to_string(),
+        ],
+        evidence_signature_fields: vec![
+            "signature_id".to_string(),
+            "mode".to_string(),
+            "recommended_action".to_string(),
+            "allowed_actions".to_string(),
+            "score_band".to_string(),
+            "contradiction_class".to_string(),
+            "mode_context_class".to_string(),
+            "hit_vector".to_string(),
+        ],
         context_binding_fields: vec![
             "source_review_queue_hash".to_string(),
             "run_content_hash".to_string(),
@@ -737,6 +899,144 @@ fn native_decision_schema() -> NativeReviewDecisionSchema {
             "strategy_hash".to_string(),
         ],
     }
+}
+
+fn native_signature_group_score_stats(
+    members: &[&NativeReviewItem],
+) -> NativeReviewEvidenceSignatureScoreStats {
+    let review_scores = members
+        .iter()
+        .map(|item| item.impact.review_priority_units)
+        .collect::<Vec<_>>();
+    let evidence_scores = members
+        .iter()
+        .map(|item| item_signature_score_units(item))
+        .collect::<Vec<_>>();
+    NativeReviewEvidenceSignatureScoreStats {
+        min_review_priority_units: review_scores.iter().copied().min().unwrap_or(0),
+        max_review_priority_units: review_scores.iter().copied().max().unwrap_or(0),
+        total_review_priority_units: review_scores.iter().map(|score| u64::from(*score)).sum(),
+        min_evidence_score_units: evidence_scores.iter().copied().min().unwrap_or(0),
+        max_evidence_score_units: evidence_scores.iter().copied().max().unwrap_or(0),
+        total_evidence_score_units: evidence_scores.iter().map(|score| u64::from(*score)).sum(),
+    }
+}
+
+fn item_signature_score_units(item: &NativeReviewItem) -> u32 {
+    item.evidence_waterfall_refs
+        .iter()
+        .map(|evidence| evidence.score_units)
+        .max()
+        .unwrap_or(item.impact.review_priority_units)
+}
+
+fn native_contradiction_class(item: &NativeReviewItem) -> String {
+    if item
+        .conflicts
+        .iter()
+        .any(|conflict| conflict.reason_code == "support_and_cannot_link")
+    {
+        "support_and_cannot_link".to_string()
+    } else if !item.conflicts.is_empty() {
+        "conflict".to_string()
+    } else if item
+        .evidence_waterfall_refs
+        .iter()
+        .any(|evidence| evidence.lane == "anti_merge")
+    {
+        "cannot_link_evidence".to_string()
+    } else {
+        "none".to_string()
+    }
+}
+
+fn native_mode_context_class(item: &NativeReviewItem) -> String {
+    match &item.mode_context {
+        NativeReviewModeContext::Cluster { surface_ids, .. } if surface_ids.len() <= 1 => {
+            "cluster_singleton".to_string()
+        }
+        NativeReviewModeContext::Cluster { .. } => "cluster_multi_surface".to_string(),
+        NativeReviewModeContext::Link {
+            right_surface_id, ..
+        } if right_surface_id.is_some() => "link_candidate_backed".to_string(),
+        NativeReviewModeContext::Link { .. } => "link_candidate_free".to_string(),
+    }
+}
+
+fn native_signature_hit_vector(item: &NativeReviewItem) -> Vec<NativeReviewEvidenceSignatureHit> {
+    let mut hits = Vec::new();
+    for evidence in &item.evidence_waterfall_refs {
+        let reason_codes = sorted_unique(evidence.reason_codes.clone());
+        if reason_codes.is_empty() {
+            hits.push(NativeReviewEvidenceSignatureHit {
+                lane: evidence.lane.clone(),
+                operator: "unattributed".to_string(),
+                view_field: "unspecified".to_string(),
+                score_band: score_band(evidence.score_units),
+                evidence_count: evidence.evidence_count,
+                reason_codes: Vec::new(),
+            });
+            continue;
+        }
+        for reason_code in reason_codes {
+            let (operator, view_field) = signature_operator_view_field(&reason_code);
+            hits.push(NativeReviewEvidenceSignatureHit {
+                lane: evidence.lane.clone(),
+                operator,
+                view_field,
+                score_band: score_band(evidence.score_units),
+                evidence_count: evidence.evidence_count,
+                reason_codes: vec![reason_code],
+            });
+        }
+    }
+    hits.sort_by(|left, right| {
+        left.lane
+            .cmp(&right.lane)
+            .then_with(|| left.operator.cmp(&right.operator))
+            .then_with(|| left.view_field.cmp(&right.view_field))
+            .then_with(|| left.score_band.cmp(&right.score_band))
+            .then_with(|| left.reason_codes.cmp(&right.reason_codes))
+    });
+    hits
+}
+
+fn signature_operator_view_field(reason_code: &str) -> (String, String) {
+    if let Some((operator, view_field)) = reason_code.split_once(':') {
+        (
+            normalized_signature_part(operator, "unattributed", "operator"),
+            normalized_signature_part(view_field, "unspecified", "view_field"),
+        )
+    } else if let Some((operator, view_field)) = reason_code.split_once('.') {
+        (
+            normalized_signature_part(operator, "unattributed", "operator"),
+            normalized_signature_part(view_field, "unspecified", "view_field"),
+        )
+    } else if let Some((operator, view_field)) = reason_code.split_once('/') {
+        (
+            normalized_signature_part(operator, "unattributed", "operator"),
+            normalized_signature_part(view_field, "unspecified", "view_field"),
+        )
+    } else {
+        (
+            "unattributed".to_string(),
+            normalized_signature_part(reason_code, "unspecified", "view_field"),
+        )
+    }
+}
+
+fn normalized_signature_part(value: &str, empty_value: &str, kind: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return empty_value.to_string();
+    }
+    format!("{kind}:{trimmed}")
+}
+
+fn score_band(score_units: u32) -> String {
+    let floor = (score_units / 1_000) * 1_000;
+    let upper = floor.saturating_add(999).min(10_000);
+    format!("{floor:05}-{upper:05}")
 }
 
 fn hash_decision_binding(

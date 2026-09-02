@@ -16,10 +16,14 @@ use crate::{
             required_value_string, validate_review_v1_artifact, value_string_or, value_u64_or,
         },
         review_export::{
+            CANON_ENTITY_NATIVE_REVIEW_DECISION_ENVELOPE_VERSION,
             CANON_ENTITY_NATIVE_REVIEW_VERSION, NativeReviewArtifact as ExportNativeReviewArtifact,
             NativeReviewDecisionAction as ExportNativeReviewDecisionAction,
-            NativeReviewMode as ExportNativeReviewMode,
-            NativeReviewModeContext as ExportNativeReviewModeContext, native_review_artifact_hash,
+            NativeReviewEvidenceSignatureGroup as ExportNativeReviewEvidenceSignatureGroup,
+            NativeReviewItem as ExportNativeReviewItem, NativeReviewMode as ExportNativeReviewMode,
+            NativeReviewModeContext as ExportNativeReviewModeContext,
+            build_native_review_signature_groups, native_evidence_signature_for_item,
+            native_review_artifact_hash,
         },
         schema::{
             CANON_ENTITY_REVIEW_IMPORT_VERSION, CANON_ENTITY_REVIEW_QUEUE_VERSION,
@@ -614,6 +618,33 @@ pub struct NativeReviewDecision {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeReviewGroupDecision {
+    pub evidence_signature_id: String,
+    pub action: NativeReviewDecisionAction,
+    pub operator_id: String,
+    pub reason_code: String,
+    #[serde(default)]
+    pub note: String,
+    pub source_review_artifact_hash: String,
+    pub run_content_hash: String,
+    pub policy_content_hash: String,
+    pub registry_snapshot_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_canonical_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relation: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeReviewDecisionEnvelope {
+    pub version: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub group_decisions: Vec<NativeReviewGroupDecision>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decisions: Vec<NativeReviewDecision>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum NativeReviewDecisionContext {
     Cluster {
@@ -770,6 +801,31 @@ pub fn parse_native_review_import_json(input: &str) -> Result<Vec<NativeReviewDe
     if value.is_array() {
         serde_json::from_value(value).map_err(native_json_shape_refusal)
     } else {
+        if let Some(group_decisions) = value.get("group_decisions") {
+            let empty_group_decisions = group_decisions
+                .as_array()
+                .is_some_and(|decisions| decisions.is_empty());
+            if empty_group_decisions {
+                let decisions = value.get("decisions").cloned().ok_or_else(|| {
+                    review_import_refusal(
+                        EntityRefusalKind::ReviewImport,
+                        "Native review JSON must be an array or an object with decisions",
+                        json!({
+                            "stage": "native_review_import",
+                            "field": "decisions",
+                            "writes_performed": false
+                        }),
+                    )
+                })?;
+                return serde_json::from_value(decisions).map_err(native_json_shape_refusal);
+            }
+            return Err(native_import_refusal(
+                "Native review group decisions require the source review artifact for expansion",
+                json!({
+                    "field": "group_decisions"
+                }),
+            ));
+        }
         let decisions = value.get("decisions").cloned().ok_or_else(|| {
             review_import_refusal(
                 EntityRefusalKind::ReviewImport,
@@ -783,6 +839,127 @@ pub fn parse_native_review_import_json(input: &str) -> Result<Vec<NativeReviewDe
         })?;
         serde_json::from_value(decisions).map_err(native_json_shape_refusal)
     }
+}
+
+pub fn parse_native_review_import_json_with_source(
+    input: &str,
+    source_review_artifact: &Value,
+) -> Result<Vec<NativeReviewDecision>, Refusal> {
+    let value = serde_json::from_str::<Value>(input).map_err(|error| {
+        review_import_refusal(
+            EntityRefusalKind::ReviewImport,
+            "Native review decision JSON is malformed",
+            json!({
+                "stage": "native_review_import",
+                "field": "review_json",
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+        )
+    })?;
+    if value.is_array() {
+        return serde_json::from_value(value).map_err(native_json_shape_refusal);
+    }
+    if let Some(version) = value.get("version").and_then(Value::as_str)
+        && version != CANON_ENTITY_NATIVE_REVIEW_DECISION_ENVELOPE_VERSION
+    {
+        return Err(native_import_refusal(
+            "Native review decision envelope has an unsupported version",
+            json!({
+                "field": "version",
+                "expected": CANON_ENTITY_NATIVE_REVIEW_DECISION_ENVELOPE_VERSION,
+                "actual": version
+            }),
+        ));
+    }
+    let decisions = value
+        .get("decisions")
+        .cloned()
+        .map(serde_json::from_value::<Vec<NativeReviewDecision>>)
+        .transpose()
+        .map_err(native_json_shape_refusal)?
+        .unwrap_or_default();
+    let group_decisions = value
+        .get("group_decisions")
+        .cloned()
+        .map(serde_json::from_value::<Vec<NativeReviewGroupDecision>>)
+        .transpose()
+        .map_err(native_group_json_shape_refusal)?
+        .unwrap_or_default();
+    if decisions.is_empty() && group_decisions.is_empty() {
+        return Err(native_import_refusal(
+            "Native review import contains no decisions",
+            json!({
+                "field": "decisions"
+            }),
+        ));
+    }
+    expand_native_review_group_decisions(source_review_artifact, group_decisions, decisions)
+}
+
+pub fn expand_native_review_group_decisions(
+    source_review_artifact: &Value,
+    group_decisions: Vec<NativeReviewGroupDecision>,
+    per_member_decisions: Vec<NativeReviewDecision>,
+) -> Result<Vec<NativeReviewDecision>, Refusal> {
+    if group_decisions.is_empty() {
+        return Ok(per_member_decisions);
+    }
+    let artifact = validate_native_review_artifact(source_review_artifact)?;
+    let members_by_signature = native_members_by_signature(&artifact.review_items);
+    let mut group_decisions_by_signature = BTreeMap::new();
+    for group_decision in group_decisions {
+        validate_native_group_decision_context(&artifact, &group_decision)?;
+        if group_decisions_by_signature
+            .insert(group_decision.evidence_signature_id.clone(), group_decision)
+            .is_some()
+        {
+            return Err(native_import_refusal(
+                "Native review import contains duplicate group decisions",
+                json!({
+                    "field": "evidence_signature_id"
+                }),
+            ));
+        }
+    }
+
+    let mut explicit_decisions_by_review_id = BTreeMap::new();
+    for decision in per_member_decisions {
+        if explicit_decisions_by_review_id
+            .insert(decision.review_id.clone(), decision)
+            .is_some()
+        {
+            return Err(native_import_refusal(
+                "Native review import contains duplicate decisions",
+                json!({
+                    "field": "review_id"
+                }),
+            ));
+        }
+    }
+
+    let mut expanded_decisions = BTreeMap::new();
+    for (signature_id, group_decision) in group_decisions_by_signature {
+        let members = members_by_signature.get(&signature_id).ok_or_else(|| {
+            native_import_refusal(
+                "Native review group decision references an unknown evidence signature",
+                json!({
+                    "field": "evidence_signature_id",
+                    "evidence_signature_id": signature_id
+                }),
+            )
+        })?;
+        for member in members {
+            if explicit_decisions_by_review_id.contains_key(&member.review_id) {
+                continue;
+            }
+            let decision = native_decision_from_group_member(&artifact, &group_decision, member)?;
+            expanded_decisions.insert(decision.review_id.clone(), decision);
+        }
+    }
+
+    expanded_decisions.extend(explicit_decisions_by_review_id);
+    Ok(expanded_decisions.into_values().collect())
 }
 
 pub fn parse_native_review_import_csv(input: &str) -> Result<Vec<NativeReviewDecision>, Refusal> {
@@ -804,6 +981,85 @@ pub fn parse_native_review_import_csv(input: &str) -> Result<Vec<NativeReviewDec
         decisions.push(record.into_decision()?);
     }
     Ok(decisions)
+}
+
+fn native_members_by_signature(
+    items: &[ExportNativeReviewItem],
+) -> BTreeMap<String, Vec<&ExportNativeReviewItem>> {
+    let mut members_by_signature = BTreeMap::<String, Vec<&ExportNativeReviewItem>>::new();
+    for item in items {
+        if item.evidence_signature.signature_id.is_empty() {
+            continue;
+        }
+        members_by_signature
+            .entry(item.evidence_signature.signature_id.clone())
+            .or_default()
+            .push(item);
+    }
+    for members in members_by_signature.values_mut() {
+        members.sort_by(|left, right| left.review_id.cmp(&right.review_id));
+    }
+    members_by_signature
+}
+
+fn validate_native_group_decision_context(
+    artifact: &ExportNativeReviewArtifact,
+    decision: &NativeReviewGroupDecision,
+) -> Result<(), Refusal> {
+    require_non_empty("evidence_signature_id", &decision.evidence_signature_id)?;
+    require_non_empty("operator_id", &decision.operator_id)?;
+    require_non_empty("reason_code", &decision.reason_code)?;
+    native_compare_context_field(
+        "source_review_artifact_hash",
+        &decision.source_review_artifact_hash,
+        &artifact.artifact_content_hash,
+        &decision.evidence_signature_id,
+    )?;
+    native_compare_context_field(
+        "run_content_hash",
+        &decision.run_content_hash,
+        &artifact.binding.run_content_hash,
+        &decision.evidence_signature_id,
+    )?;
+    native_compare_context_field(
+        "policy_content_hash",
+        &decision.policy_content_hash,
+        &artifact.binding.policy_content_hash,
+        &decision.evidence_signature_id,
+    )?;
+    native_compare_context_field(
+        "registry_snapshot_hash",
+        &decision.registry_snapshot_hash,
+        &artifact.binding.registry_snapshot_hash,
+        &decision.evidence_signature_id,
+    )
+}
+
+fn native_decision_from_group_member(
+    artifact: &ExportNativeReviewArtifact,
+    group_decision: &NativeReviewGroupDecision,
+    member: &ExportNativeReviewItem,
+) -> Result<NativeReviewDecision, Refusal> {
+    let mode = native_mode_from_export(member.mode);
+    let mode_context =
+        native_decision_context_from_export(&member.mode_context, mode, &member.review_id)?;
+    Ok(NativeReviewDecision {
+        review_id: member.review_id.clone(),
+        mode,
+        action: group_decision.action,
+        operator_id: group_decision.operator_id.clone(),
+        reason_code: group_decision.reason_code.clone(),
+        note: group_decision.note.clone(),
+        source_review_artifact_hash: artifact.artifact_content_hash.clone(),
+        decision_binding_hash: member.decision_binding_hash.clone(),
+        run_content_hash: artifact.binding.run_content_hash.clone(),
+        policy_content_hash: artifact.binding.policy_content_hash.clone(),
+        registry_snapshot_hash: artifact.binding.registry_snapshot_hash.clone(),
+        mode_context,
+        surface_ids: Vec::new(),
+        target_canonical_id: group_decision.target_canonical_id.clone(),
+        relation: group_decision.relation.clone(),
+    })
 }
 
 pub fn native_review_import_context_from_artifact(
@@ -918,6 +1174,7 @@ fn validate_native_review_artifact(
             }),
         ));
     }
+    validate_native_review_signature_derivations(&typed)?;
     let expected_hash = native_review_artifact_hash(&typed)?;
     if typed.artifact_content_hash != expected_hash {
         return Err(native_import_refusal(
@@ -930,6 +1187,93 @@ fn validate_native_review_artifact(
         ));
     }
     Ok(typed)
+}
+
+fn validate_native_review_signature_derivations(
+    artifact: &ExportNativeReviewArtifact,
+) -> Result<(), Refusal> {
+    let legacy_without_signatures = artifact.review_groups.is_empty()
+        && artifact
+            .review_items
+            .iter()
+            .all(|item| item.evidence_signature.signature_id.is_empty());
+    if legacy_without_signatures {
+        return Ok(());
+    }
+    for item in &artifact.review_items {
+        let expected = native_evidence_signature_for_item(item).map_err(|refusal| {
+            native_import_refusal(
+                "Native review artifact evidence signature could not be recomputed",
+                json!({
+                    "field": "review_items.evidence_signature",
+                    "review_id": item.review_id,
+                    "source_code": format!("{:?}", refusal.code),
+                    "source_detail": refusal.detail
+                }),
+            )
+        })?;
+        if item.evidence_signature != expected {
+            return Err(native_import_refusal(
+                "Native review artifact evidence signature does not match item content",
+                json!({
+                    "field": "review_items.evidence_signature",
+                    "review_id": item.review_id,
+                    "expected": expected,
+                    "actual": item.evidence_signature.clone()
+                }),
+            ));
+        }
+    }
+    let expected_groups = build_native_review_signature_groups(&artifact.review_items);
+    if artifact.review_groups != expected_groups {
+        return Err(native_import_refusal(
+            "Native review artifact review_groups do not match deterministic item signatures",
+            json!({
+                "field": "review_groups",
+                "expected": expected_groups,
+                "actual": artifact.review_groups.clone()
+            }),
+        ));
+    }
+    validate_native_review_signature_group_ids(&artifact.review_groups)
+}
+
+fn validate_native_review_signature_group_ids(
+    groups: &[ExportNativeReviewEvidenceSignatureGroup],
+) -> Result<(), Refusal> {
+    let mut seen = BTreeSet::new();
+    for group in groups {
+        require_non_empty("review_groups.signature_id", &group.signature_id)?;
+        if group.signature_id != group.signature.signature_id {
+            return Err(native_import_refusal(
+                "Native review artifact review group signature id is inconsistent",
+                json!({
+                    "field": "review_groups.signature_id",
+                    "expected": group.signature.signature_id.clone(),
+                    "actual": group.signature_id.clone()
+                }),
+            ));
+        }
+        if !seen.insert(group.signature_id.clone()) {
+            return Err(native_import_refusal(
+                "Native review artifact contains duplicate evidence signature groups",
+                json!({
+                    "field": "review_groups.signature_id",
+                    "signature_id": group.signature_id.clone()
+                }),
+            ));
+        }
+        if group.member_count == 0 || group.sample_review_ids.is_empty() {
+            return Err(native_import_refusal(
+                "Native review artifact evidence signature group requires members and samples",
+                json!({
+                    "field": "review_groups.member_count",
+                    "signature_id": group.signature_id.clone()
+                }),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn native_mode_from_export(mode: ExportNativeReviewMode) -> NativeReviewDecisionMode {
@@ -1623,6 +1967,19 @@ fn native_json_shape_refusal(error: serde_json::Error) -> Refusal {
         json!({
             "stage": "native_review_import",
             "field": "decisions",
+            "error": error.to_string(),
+            "writes_performed": false
+        }),
+    )
+}
+
+fn native_group_json_shape_refusal(error: serde_json::Error) -> Refusal {
+    review_import_refusal(
+        EntityRefusalKind::ReviewImport,
+        "Native review JSON has an invalid group decision shape",
+        json!({
+            "stage": "native_review_import",
+            "field": "group_decisions",
             "error": error.to_string(),
             "writes_performed": false
         }),

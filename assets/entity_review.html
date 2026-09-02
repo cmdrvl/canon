@@ -43,7 +43,7 @@
       gap: 16px;
       padding: 16px;
     }
-    aside, section.review-item {
+    aside, section.review-item, section.review-group {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -94,14 +94,17 @@
       background: #e7f3f0;
       color: #164b45;
     }
-    #items {
+    #review-groups, #items {
       display: grid;
       gap: 12px;
     }
-    section.review-item {
+    #review-groups {
+      margin-bottom: 12px;
+    }
+    section.review-item, section.review-group {
       padding: 14px;
     }
-    .item-head {
+    .item-head, .group-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -111,6 +114,12 @@
     .item-title {
       margin: 0;
       font-size: 16px;
+      letter-spacing: 0;
+      overflow-wrap: anywhere;
+    }
+    .group-title {
+      margin: 0;
+      font-size: 15px;
       letter-spacing: 0;
       overflow-wrap: anywhere;
     }
@@ -181,7 +190,7 @@
       min-height: 68px;
       resize: vertical;
     }
-    .decision {
+    .decision, .group-decision {
       display: grid;
       gap: 10px;
       margin-top: 10px;
@@ -271,12 +280,15 @@
         <textarea id="decision-output" aria-label="Decision JSON" readonly spellcheck="false"></textarea>
       </div>
     </aside>
-    <div id="items"></div>
+    <div>
+      <div id="review-groups"></div>
+      <div id="items"></div>
+    </div>
   </main>
   <script>
     const data = JSON.parse(document.getElementById("review-data").textContent);
     const decisionEnvelopeVersion = "__CANON_NATIVE_REVIEW_DECISION_ENVELOPE_VERSION__";
-    const state = { mode: "all", decisions: {} };
+    const state = { mode: "all", decisions: {}, groupDecisions: {} };
     const text = (value) => value == null ? "" : String(value);
     const li = (value, className = "") => `<li${className ? ` class="${className}"` : ""}>${escapeHtml(value)}</li>`;
     const escapeHtml = (value) => text(value).replace(/[&<>"']/g, (char) => ({
@@ -291,7 +303,9 @@
       return trimmed.length ? trimmed : null;
     };
     const itemIndex = (item) => data.review_items.findIndex((candidate) => candidate.review_id === item.review_id);
+    const reviewGroups = () => data.review_groups || [];
     const visibleItems = () => data.review_items.filter((item) => state.mode === "all" || item.mode === state.mode);
+    const visibleGroups = () => reviewGroups().filter((group) => state.mode === "all" || group.signature.mode === state.mode);
     function surfaceIds(item) {
       if (item.mode_context.surface_ids) {
         return item.mode_context.surface_ids;
@@ -333,6 +347,38 @@
       }
       return state.decisions[item.review_id];
     }
+    function groupDecisionState(group) {
+      if (!state.groupDecisions[group.signature_id]) {
+        state.groupDecisions[group.signature_id] = {
+          action: "",
+          reason_code: "",
+          note: "",
+          target_canonical_id: "",
+          relation: ""
+        };
+      }
+      return state.groupDecisions[group.signature_id];
+    }
+    function hasGroupDraft(group) {
+      const current = groupDecisionState(group);
+      return Boolean(
+        trimmedOrNull(current.action) ||
+        trimmedOrNull(current.reason_code) ||
+        trimmedOrNull(current.note) ||
+        trimmedOrNull(current.target_canonical_id) ||
+        trimmedOrNull(current.relation)
+      );
+    }
+    function hasItemDraft(item) {
+      const current = decisionState(item);
+      return Boolean(
+        trimmedOrNull(current.action) ||
+        trimmedOrNull(current.reason_code) ||
+        trimmedOrNull(current.note) ||
+        trimmedOrNull(current.target_canonical_id) ||
+        trimmedOrNull(current.relation) !== trimmedOrNull(defaultRelation(item))
+      );
+    }
     function renderSummary() {
       const summary = document.getElementById("summary");
       const rows = [
@@ -342,9 +388,70 @@
         ["Policy", data.binding.policy_content_hash],
         ["Registry", `${data.binding.registry_id}@${data.binding.registry_version}`],
         ["Profile", data.binding.profile_id],
-        ["Items", data.summary.counts.review_items]
+        ["Items", data.summary.counts.review_items],
+        ["Signature Groups", data.summary.counts.evidence_signature_groups || reviewGroups().length]
       ];
       summary.innerHTML = rows.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join("");
+    }
+    function renderGroups() {
+      const root = document.getElementById("review-groups");
+      const groups = visibleGroups();
+      if (!groups.length) {
+        root.innerHTML = "";
+        return;
+      }
+      root.innerHTML = groups.map(renderGroup).join("");
+      root.querySelectorAll("[data-signature-id]").forEach((fieldset) => {
+        fieldset.addEventListener("input", updateGroupDecision);
+        fieldset.addEventListener("change", updateGroupDecision);
+      });
+    }
+    function renderGroup(group) {
+      const signature = group.signature;
+      const current = groupDecisionState(group);
+      const titleId = `group-title-${escapeHtml(group.signature_id).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+      const hits = signature.hit_vector.length
+        ? signature.hit_vector.map((hit) => li(`${hit.lane} ${hit.operator} ${hit.view_field} ${hit.score_band} count=${hit.evidence_count}`)).join("")
+        : li("none");
+      return `
+        <section class="review-group" data-mode="${escapeHtml(signature.mode)}" aria-labelledby="${titleId}">
+          <div class="group-head">
+            <h2 class="group-title" id="${titleId}">${escapeHtml(group.signature_id)}</h2>
+            <span class="badge">${escapeHtml(group.member_count)} members</span>
+          </div>
+          <div class="grid">
+            <div><strong>Action</strong><br>${escapeHtml(signature.recommended_action)}</div>
+            <div><strong>Score Band</strong><br>${escapeHtml(signature.score_band)}</div>
+            <div><strong>Contradiction</strong><br>${escapeHtml(signature.contradiction_class)}</div>
+          </div>
+          <div class="block"><h3>Evidence Signature</h3><ul>${hits}</ul></div>
+          <div class="block"><h3>Samples</h3><ul>${group.sample_review_ids.map((id) => li(id)).join("")}</ul></div>
+          <fieldset class="group-decision" data-signature-id="${escapeHtml(group.signature_id)}">
+            <legend>Group Decision</legend>
+            <div class="action-options">
+              ${signature.allowed_actions.map((action) => `<label class="action-option"><input type="radio" name="group-action-${escapeHtml(group.signature_id)}" data-field="action" value="${escapeHtml(action)}"${current.action === action ? " checked" : ""}>${escapeHtml(action)}</label>`).join("")}
+            </div>
+            <div class="decision-fields">
+              <label class="form-field">
+                <span>Reason code</span>
+                <input data-field="reason_code" value="${escapeHtml(current.reason_code)}" autocomplete="off">
+              </label>
+              <label class="form-field">
+                <span>Target canonical ID</span>
+                <input data-field="target_canonical_id" value="${escapeHtml(current.target_canonical_id)}" autocomplete="off">
+              </label>
+              <label class="form-field">
+                <span>Relation</span>
+                <input data-field="relation" value="${escapeHtml(current.relation)}" autocomplete="off">
+              </label>
+              <label class="form-field">
+                <span>Note</span>
+                <textarea data-field="note">${escapeHtml(current.note)}</textarea>
+              </label>
+            </div>
+          </fieldset>
+        </section>
+      `;
     }
     function renderItems() {
       const root = document.getElementById("items");
@@ -376,6 +483,7 @@
             <div><strong>Rows</strong><br>${escapeHtml(item.impact.affected_rows)}</div>
             <div><strong>Decision hash</strong><br>${escapeHtml(item.decision_binding_hash)}</div>
           </div>
+          <div class="block"><h3>Evidence Signature</h3><ul>${li(item.evidence_signature.signature_id || "none")}</ul></div>
           <div class="block"><h3>Surfaces</h3><ul>${surfaceRows(item).join("")}</ul></div>
           <div class="block"><h3>Evidence Waterfall</h3><ul>${item.evidence_waterfall_refs.map((ref) => li(`${ref.lane}: ${ref.left_surface_id} / ${ref.right_surface_id} score=${ref.score_units}`)).join("") || li("none")}</ul></div>
           <div class="block"><h3>Conflicts</h3><ul>${conflicts}</ul></div>
@@ -425,12 +533,44 @@
         current[field] = event.target.value;
       }
     }
-    function validateVisibleDecisions(items) {
+    function updateGroupDecision(event) {
+      const fieldset = event.currentTarget;
+      const signatureId = fieldset.dataset.signatureId;
+      const field = event.target.dataset.field;
+      if (!signatureId || !field) {
+        return;
+      }
+      const group = reviewGroups().find((candidate) => candidate.signature_id === signatureId);
+      const current = groupDecisionState(group);
+      if (field === "action") {
+        if (event.target.checked) {
+          current.action = event.target.value;
+        }
+      } else {
+        current[field] = event.target.value;
+      }
+    }
+    function validateVisibleDecisions(groups, items) {
       const errors = [];
       const operatorId = document.getElementById("operator-id").value.trim();
       if (!operatorId) {
         errors.push("operator_id");
       }
+      if (!groups.length && !items.length) {
+        errors.push("decision");
+      }
+      groups.forEach((group) => {
+        const current = groupDecisionState(group);
+        if (!current.action) {
+          errors.push(`${group.signature_id}: action`);
+        }
+        if (!current.reason_code.trim()) {
+          errors.push(`${group.signature_id}: reason_code`);
+        }
+        if (current.action === "assignment" && !current.target_canonical_id.trim()) {
+          errors.push(`${group.signature_id}: target_canonical_id`);
+        }
+      });
       items.forEach((item) => {
         const current = decisionState(item);
         if (!current.action) {
@@ -445,6 +585,22 @@
         }
       });
       return { operatorId, errors };
+    }
+    function buildGroupDecision(group, operatorId) {
+      const current = groupDecisionState(group);
+      return {
+        evidence_signature_id: group.signature_id,
+        action: current.action,
+        operator_id: operatorId,
+        reason_code: current.reason_code.trim(),
+        note: current.note,
+        source_review_artifact_hash: data.artifact_content_hash,
+        run_content_hash: data.binding.run_content_hash,
+        policy_content_hash: data.binding.policy_content_hash,
+        registry_snapshot_hash: data.binding.registry_snapshot_hash,
+        target_canonical_id: trimmedOrNull(current.target_canonical_id),
+        relation: trimmedOrNull(current.relation)
+      };
     }
     function buildDecision(item, operatorId) {
       const current = decisionState(item);
@@ -466,32 +622,39 @@
         relation: trimmedOrNull(current.relation)
       };
     }
-    function buildDecisionEnvelope(items, operatorId) {
-      return {
+    function buildDecisionEnvelope(groups, items, operatorId) {
+      const envelope = {
         version: decisionEnvelopeVersion,
         source_review_artifact_hash: data.artifact_content_hash,
         source_review_queue_hash: data.binding.source_review_queue_hash,
         run_content_hash: data.binding.run_content_hash,
         policy_content_hash: data.binding.policy_content_hash,
         registry_snapshot_hash: data.binding.registry_snapshot_hash,
-        decisions: items.map((item) => buildDecision(item, operatorId))
       };
+      if (groups.length) {
+        envelope.group_decisions = groups.map((group) => buildGroupDecision(group, operatorId));
+      }
+      if (items.length) {
+        envelope.decisions = items.map((item) => buildDecision(item, operatorId));
+      }
+      return envelope;
     }
     function exportVisibleDecisions() {
-      const items = visibleItems();
+      const groups = visibleGroups().filter(hasGroupDraft);
+      const items = visibleItems().filter(hasItemDraft);
       const status = document.getElementById("status");
       const output = document.getElementById("decision-output");
-      const validation = validateVisibleDecisions(items);
+      const validation = validateVisibleDecisions(groups, items);
       if (validation.errors.length) {
         status.className = "error";
         status.textContent = `Missing: ${validation.errors.join(", ")}`;
         output.value = "";
         return;
       }
-      const envelope = buildDecisionEnvelope(items, validation.operatorId);
+      const envelope = buildDecisionEnvelope(groups, items, validation.operatorId);
       output.value = JSON.stringify(envelope, null, 2);
       status.className = "";
-      status.textContent = `${items.length} decisions exported`;
+      status.textContent = `${groups.length} group decisions and ${items.length} item overrides exported`;
     }
     document.querySelectorAll("[data-mode]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -499,11 +662,13 @@
         document.querySelectorAll("[data-mode]").forEach((candidate) => {
           candidate.setAttribute("aria-pressed", String(candidate === button));
         });
+        renderGroups();
         renderItems();
       });
     });
     document.getElementById("export-decisions").addEventListener("click", exportVisibleDecisions);
     renderSummary();
+    renderGroups();
     renderItems();
   </script>
 </body>
