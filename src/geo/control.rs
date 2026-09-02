@@ -511,6 +511,14 @@ pub enum GeoCapabilityStatus {
     Unavailable,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoCommandSurface {
+    Primary,
+    Leaf,
+    Measurement,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoContractCapability {
@@ -524,6 +532,7 @@ pub struct GeoContractCapability {
 #[serde(deny_unknown_fields)]
 pub struct GeoCommandCapability {
     pub command: String,
+    pub surface: GeoCommandSurface,
     pub output_contract: String,
     pub read_only: bool,
     pub uses_network: bool,
@@ -1290,114 +1299,133 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
     vec![
         command(
             "canon geo capabilities --emit json",
+            GeoCommandSurface::Primary,
             CANON_GEO_CAPABILITIES_VERSION,
             true,
             false,
         ),
         command(
             "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>",
+            GeoCommandSurface::Primary,
             CANON_GEO_PLAN_VERSION,
             true,
             false,
         ),
         command(
             "canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]",
+            GeoCommandSurface::Primary,
             CANON_GEO_RUN_VERSION,
             false,
             false,
         ),
         command(
             "canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>",
+            GeoCommandSurface::Primary,
             CANON_GEO_PLAN_VERSION,
             false,
             false,
         ),
         command(
             "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
+            GeoCommandSurface::Leaf,
             ENTITY_MULTISOURCE_LINK_VERSION,
             false,
             false,
         ),
         command(
             "canon geo materialize-home-cells --rows <ROWS.json>",
+            GeoCommandSurface::Leaf,
             CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
             true,
             false,
         ),
         command(
             "canon geo tile-work --request <REQUEST.json>",
+            GeoCommandSurface::Leaf,
             CANON_GEO_TILE_WORK_UNIT_VERSION,
             true,
             false,
         ),
         command(
             "canon geo reconcile-tiles --request <REQUEST.json>",
+            GeoCommandSurface::Leaf,
             CANON_GEO_TILE_RECONCILIATION_VERSION,
             true,
             false,
         ),
         command(
             "canon geo solve --request <REQUEST.json>",
+            GeoCommandSurface::Leaf,
             CANON_GEO_COMPOSITION_VERSION,
             true,
             false,
         ),
         command(
             "canon geo materialize-geometry --request <REQUEST.json>",
+            GeoCommandSurface::Leaf,
             CANON_GEO_GEOMETRY_TILE_VERSION,
             true,
             false,
         ),
         command(
             "canon geo materialize-warehouse-geometry --rows <ROWS.json>",
+            GeoCommandSurface::Leaf,
             CANON_GEO_WAREHOUSE_GEOMETRY_VERSION,
             true,
             false,
         ),
         command(
             "canon geo materialize-evidence --rows <ROWS.json>",
+            GeoCommandSurface::Leaf,
             CANON_GEO_EVIDENCE_REQUEST_VERSION,
             true,
             false,
         ),
         command(
             "canon geo materialize-address-evidence --request <REQUEST.json>",
+            GeoCommandSurface::Leaf,
             CANON_GEO_ADDRESS_PARCEL_EVIDENCE_BUNDLE_VERSION,
             true,
             false,
         ),
         command(
             "canon geo materialize-h7-population --rows <ROWS.json>",
+            GeoCommandSurface::Measurement,
             CANON_GEO_H7_POPULATION_VERSION,
             true,
             false,
         ),
         command(
             "canon geo materialize-h7-staging-batch --batch <BATCH.json>",
+            GeoCommandSurface::Measurement,
             CANON_GEO_H7_POPULATION_VERSION,
             true,
             false,
         ),
         command(
             "canon geo materialize-h7-pip-block-batch --batch <BATCH.json>",
+            GeoCommandSurface::Measurement,
             CANON_GEO_H7_POPULATION_VERSION,
             true,
             false,
         ),
         command(
             "canon geo compile-evidence --request <REQUEST.json>",
+            GeoCommandSurface::Leaf,
             CANON_GEO_EVIDENCE_COMPILATION_VERSION,
             true,
             false,
         ),
         command(
             "canon geo stack-evidence --population <POPULATION.json> --overlay <OVERLAY.json>",
+            GeoCommandSurface::Leaf,
             CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION,
             true,
             false,
         ),
         command(
             "canon geo evaluate --population <POPULATION.json>",
+            GeoCommandSurface::Primary,
             CANON_GEO_POPULATION_EVALUATION_VERSION,
             true,
             false,
@@ -1406,12 +1434,22 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
 }
 
 fn unavailable_geo_commands() -> Vec<GeoCommandCapability> {
-    vec![command(
-        "canon geo inspect",
-        "planned_not_implemented",
-        true,
-        false,
-    )]
+    vec![
+        command(
+            "canon geo inspect",
+            GeoCommandSurface::Primary,
+            "planned_not_implemented",
+            true,
+            false,
+        ),
+        command(
+            "canon geo ledger",
+            GeoCommandSurface::Primary,
+            "planned_not_implemented",
+            true,
+            false,
+        ),
+    ]
 }
 
 pub fn canonicalize_capabilities(
@@ -2200,12 +2238,14 @@ fn contract_with_status(
 
 fn command(
     command: &str,
+    surface: GeoCommandSurface,
     output_contract: &str,
     read_only: bool,
     uses_network: bool,
 ) -> GeoCommandCapability {
     GeoCommandCapability {
         command: command.to_string(),
+        surface,
         output_contract: output_contract.to_string(),
         read_only,
         uses_network,

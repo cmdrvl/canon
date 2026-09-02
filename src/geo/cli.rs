@@ -124,6 +124,8 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
         GeoSubcommand::Plan(args) => run_plan(args),
         GeoSubcommand::Run(args) => run_geo_run(args),
         GeoSubcommand::ReplanFromAcquisition(args) => run_replan_from_acquisition(args),
+        GeoSubcommand::Inspect => run_unavailable_primary("geo inspect"),
+        GeoSubcommand::Ledger => run_unavailable_primary("geo ledger"),
         GeoSubcommand::LinkSources(args) => run_link_sources(args),
         GeoSubcommand::MaterializeHomeCells(args) => run_materialize_home_cells(args),
         GeoSubcommand::TileWork(args) => run_tile_work(args),
@@ -142,6 +144,25 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
         GeoSubcommand::StackEvidence(args) => run_stack_evidence(args),
         GeoSubcommand::Evaluate(args) => run_evaluate(args),
     }
+}
+
+fn run_unavailable_primary(command: &str) -> Result<u8, Box<dyn Error>> {
+    emit_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Geo primary command is planned but not implemented in this build",
+        json!({
+            "command": format!("canon {command}"),
+            "status": "planned_not_implemented",
+            "implemented_primary_commands": [
+                "canon geo capabilities --emit json",
+                GEO_PLAN_NEXT_COMMAND,
+                "canon geo run --plan <PLAN.json> --work-dir <DIR> --input <NODE_ID:BINDING_ID=PATH>",
+                GEO_REPLAN_FROM_ACQUISITION_NEXT_COMMAND,
+                "canon geo evaluate --population <POPULATION.json>"
+            ]
+        }),
+        Some("canon geo capabilities --emit json".to_string()),
+    )
 }
 
 fn run_capabilities(args: &GeoCapabilitiesCli) -> Result<u8, Box<dyn Error>> {

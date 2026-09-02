@@ -180,10 +180,34 @@ pub struct ProjectCli {
 }
 
 #[derive(Args, Debug, Clone)]
+#[command(after_help = GEO_TIERED_HELP)]
 pub struct GeoCli {
     #[command(subcommand)]
     pub command: GeoSubcommand,
 }
+
+const GEO_TIERED_HELP: &str = "\
+Primary:
+  capabilities             Emit compiled offline Canon Geo capability contracts
+  plan                     Compile a deterministic offline Geo plan from declared local inputs
+  run                      Run a Geo plan offline with explicit local input bindings
+  replan-from-acquisition  Satisfy one acquisition request, publish an inventory advancement, and replan
+  inspect                  Planned run inspection surface; currently unavailable
+  ledger                   Planned ledger surface; currently unavailable
+  evaluate                 Evaluate labeled composition cases without leaking labels into the solver
+
+Stage leaves (used by geo run and Demo 0):
+  link-sources                    Materialize three or more named sources into one budgeted consistency artifact
+  materialize-home-cells          Derive auditable H3 home cells from release-bound representative points
+  tile-work                       Build one bounded H3 center-plus-halo feature work unit
+  reconcile-tiles                 Reconcile independently solved tile decisions under one ownership rule
+  solve                           Solve the exact hard-feasible parcel/building residual for a composition request
+  materialize-geometry            Normalize and budget source geometry into canonical tile-local values
+  materialize-warehouse-geometry  Decode release-pinned warehouse WKB into a verified source-plane geometry tile
+  materialize-evidence            Fold release-pinned warehouse rows into a typed evidence request
+  materialize-address-evidence    Parse an address, test PAD membership, and emit a typed parcel-evidence bridge
+  compile-evidence                Admit versioned rho observations into a bounded composition request
+  stack-evidence                  Accrete truth-blind evidence onto an exact bounded population";
 
 /// Emit mode for Geo capability inspection
 #[derive(Debug, Clone, ValueEnum, Default)]
@@ -246,57 +270,68 @@ pub enum ProjectLockSubcommand {
 #[derive(Subcommand, Debug, Clone)]
 pub enum GeoSubcommand {
     /// Emit compiled offline Canon Geo capability contracts
+    #[command(hide = true)]
     Capabilities(GeoCapabilitiesCli),
     /// Compile a deterministic offline Geo plan from declared local inputs
+    #[command(hide = true)]
     Plan(GeoPlanCli),
     /// Run a Geo plan offline with explicit local input bindings
+    #[command(hide = true)]
     Run(GeoRunCli),
     /// Satisfy one acquisition request, publish an inventory advancement, and replan
-    #[command(name = "replan-from-acquisition")]
+    #[command(name = "replan-from-acquisition", hide = true)]
     ReplanFromAcquisition(GeoReplanFromAcquisitionCli),
+    /// Inspect a Geo run's sections, receipts, and residual state
+    #[command(hide = true)]
+    Inspect,
+    /// Build and inspect Geo adjudication ledgers
+    #[command(hide = true)]
+    Ledger,
+    /// Evaluate labeled composition cases without leaking labels into the solver
+    #[command(hide = true)]
+    Evaluate(GeoEvaluateCli),
     /// Materialize three or more named sources into one budgeted consistency artifact
-    #[command(name = "link-sources")]
+    #[command(name = "link-sources", hide = true)]
     LinkSources(GeoLinkSourcesCli),
     /// Derive auditable H3 home cells from release-bound representative points
-    #[command(name = "materialize-home-cells")]
+    #[command(name = "materialize-home-cells", hide = true)]
     MaterializeHomeCells(GeoMaterializeHomeCellsCli),
     /// Build one bounded H3 center-plus-halo feature work unit
-    #[command(name = "tile-work")]
+    #[command(name = "tile-work", hide = true)]
     TileWork(GeoTileWorkCli),
     /// Reconcile independently solved tile decisions under one ownership rule
-    #[command(name = "reconcile-tiles")]
+    #[command(name = "reconcile-tiles", hide = true)]
     ReconcileTiles(GeoReconcileTilesCli),
     /// Solve the exact hard-feasible parcel/building residual for a composition request
+    #[command(hide = true)]
     Solve(GeoSolveCli),
     /// Normalize and budget source geometry into canonical tile-local values
-    #[command(name = "materialize-geometry")]
+    #[command(name = "materialize-geometry", hide = true)]
     MaterializeGeometry(GeoMaterializeGeometryCli),
     /// Decode release-pinned warehouse WKB into a verified source-plane geometry tile
-    #[command(name = "materialize-warehouse-geometry")]
+    #[command(name = "materialize-warehouse-geometry", hide = true)]
     MaterializeWarehouseGeometry(GeoMaterializeWarehouseGeometryCli),
     /// Fold release-pinned warehouse rows into a typed evidence request
-    #[command(name = "materialize-evidence")]
+    #[command(name = "materialize-evidence", hide = true)]
     MaterializeEvidence(GeoMaterializeEvidenceCli),
     /// Parse an address, test PAD membership, and emit a typed parcel-evidence bridge
-    #[command(name = "materialize-address-evidence")]
+    #[command(name = "materialize-address-evidence", hide = true)]
     MaterializeAddressEvidence(GeoMaterializeAddressEvidenceCli),
     /// Materialize controlling Appendix H.7 multi-parcel rows into a labeled population
-    #[command(name = "materialize-h7-population")]
+    #[command(name = "materialize-h7-population", hide = true)]
     MaterializeH7Population(GeoMaterializeH7PopulationCli),
     /// Materialize H.7 NYC staging-profile rows through the population adapter
-    #[command(name = "materialize-h7-staging-batch")]
+    #[command(name = "materialize-h7-staging-batch", hide = true)]
     MaterializeH7StagingBatch(GeoMaterializeH7StagingBatchCli),
     /// Materialize an H.7 PIP-block export without a warehouse JSON-wrapper pass
-    #[command(name = "materialize-h7-pip-block-batch")]
+    #[command(name = "materialize-h7-pip-block-batch", hide = true)]
     MaterializeH7PipBlockBatch(GeoMaterializeH7PipBlockBatchCli),
     /// Admit versioned rho observations into a bounded composition request
-    #[command(name = "compile-evidence")]
+    #[command(name = "compile-evidence", hide = true)]
     CompileEvidence(GeoCompileEvidenceCli),
     /// Accrete truth-blind evidence onto an exact bounded population
-    #[command(name = "stack-evidence")]
+    #[command(name = "stack-evidence", hide = true)]
     StackEvidence(GeoStackEvidenceCli),
-    /// Evaluate labeled composition cases without leaking labels into the solver
-    Evaluate(GeoEvaluateCli),
 }
 
 #[derive(Args, Debug, Clone)]
