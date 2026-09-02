@@ -736,6 +736,14 @@
       "action": "preserve"
     },
     {
+      "id": "canon entity calibrate sweep",
+      "family": "entity",
+      "clap_path": "entity calibrate sweep",
+      "operator_name": "entity calibrate sweep",
+      "primary_contracts": ["canon.entity.calibrate_sweep.v0", "canon.entity.quality.v1"],
+      "action": "preserve"
+    },
+    {
       "id": "canon entity audit",
       "family": "entity",
       "clap_path": "entity audit",
@@ -1277,6 +1285,13 @@
     { "id": "canon.baseline.compare.v1", "family": "baseline", "action": "preserve" },
     { "id": "canon.baseline.v1", "family": "baseline", "action": "preserve" },
     { "id": "canon.entity.cache_key.v0", "family": "entity", "action": "preserve" },
+    {
+      "id": "canon.entity.calibrate_sweep.v0",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "public_schema",
+      "source_path": "schemas/canon.entity.calibrate_sweep.v0.schema.json"
+    },
     { "id": "canon.evaluation.alias_withholding.v1", "family": "evaluation", "action": "preserve" },
     { "id": "canon.evaluation.alias_withholding.assignment_firewall.v0", "family": "evaluation", "action": "preserve" },
     { "id": "canon.evaluation.alias_withholding.execution_manifest.v0", "family": "evaluation", "action": "preserve" },
