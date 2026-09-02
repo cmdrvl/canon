@@ -158,7 +158,7 @@ fn t55_bbl_normalization_is_versioned_and_exact_match_only() {
         Some(canonical_id)
     );
     assert!(
-        exact_lookup.get(raw_alias.as_str()).is_none(),
+        !exact_lookup.contains_key(raw_alias.as_str()),
         "raw warehouse projection must not resolve without the declared normalization step"
     );
 
