@@ -118,7 +118,8 @@
               "type": "string",
               "pattern": "^[0-9a-f]{64}$"
             },
-            "falsification_rule_id": { "type": "string" }
+            "falsification_rule_id": { "type": "string" },
+            "admissible_hard_band": { "type": "boolean" }
           },
           "required": [
             "kind",

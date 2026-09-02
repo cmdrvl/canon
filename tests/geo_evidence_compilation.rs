@@ -44,7 +44,53 @@ fn contract(id: &str, soundness: GeoRhoSoundness) -> GeoRhoContract {
                     .to_hex()
                     .to_string(),
                 falsification_rule_id: format!("fixture:{id}:falsify"),
+                admissible_hard_band: false,
             },
+        },
+    }
+}
+
+fn flagged_empirical_contract(id: &str) -> GeoRhoContract {
+    let mut contract = contract(id, GeoRhoSoundness::EmpiricalHighCoverage);
+    if let GeoRhoBasis::EmpiricalCalibration {
+        admissible_hard_band,
+        ..
+    } = &mut contract.basis
+    {
+        *admissible_hard_band = true;
+    }
+    contract
+}
+
+fn integer_sum_observation(id: &str, contract_id: &str) -> GeoRhoObservation {
+    GeoRhoObservation {
+        id: id.to_string(),
+        contract_id: contract_id.to_string(),
+        source_records: vec![source_record(&format!("{id}-row"))],
+        valid_time: None,
+        observation: GeoRhoObservationKind::IntegerSumBand {
+            level: GeoEntityLevel::Parcel,
+            measure: GeoIntegerMeasure {
+                semantic_id: "fixture:structure-count".to_string(),
+                unit: "count".to_string(),
+                value_origin: GeoIntegerValueOrigin::ExactDerived,
+            },
+            values: vec![
+                GeoIntegerMemberValue {
+                    id: "p1".to_string(),
+                    value: 1,
+                },
+                GeoIntegerMemberValue {
+                    id: "p2".to_string(),
+                    value: 1,
+                },
+                GeoIntegerMemberValue {
+                    id: "p3".to_string(),
+                    value: 1,
+                },
+            ],
+            min: 2,
+            max: 2,
         },
     }
 }
@@ -488,6 +534,76 @@ fn empirical_constraints_remain_diagnostic_and_preferences_never_prune() {
             .iter()
             .take_while(|ranked| ranked.cost == 0)
             .all(|ranked| ranked.model.parcels.contains(&"p2".to_string()))
+    );
+}
+
+#[test]
+fn empirical_integer_sum_band_requires_admissible_hard_band_contract() {
+    let request = |contract: GeoRhoContract| GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: universe(&["p1", "p2", "p3"]),
+        contracts: vec![contract],
+        observations: vec![integer_sum_observation(
+            "observer-count",
+            "rho.structure_count.v0",
+        )],
+        max_assignments: 16,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+
+    let unflagged = compile_evidence(&request(contract(
+        "rho.structure_count.v0",
+        GeoRhoSoundness::EmpiricalHighCoverage,
+    )))
+    .expect("unflagged empirical band compiles as diagnostic");
+    assert!(unflagged.composition_request.hard_constraints.is_empty());
+    assert_eq!(
+        unflagged.admissions[0].disposition,
+        GeoEvidenceDisposition::DiagnosticOnly
+    );
+    assert_eq!(
+        unflagged.admissions[0].admission_reason.as_deref(),
+        Some("rho_band_not_admissible")
+    );
+    let unflagged_solve =
+        solve_composition(&unflagged.composition_request).expect("unflagged request solves");
+    assert_eq!(unflagged_solve.summary.residual_model_count, 7);
+
+    let mut malformed = flagged_empirical_contract("rho.structure_count.v0");
+    if let GeoRhoBasis::EmpiricalCalibration {
+        calibration_blake3, ..
+    } = &mut malformed.basis
+    {
+        calibration_blake3.clear();
+    }
+    let error = compile_evidence(&request(malformed))
+        .expect_err("hard-band calibration flag requires a calibration digest");
+    assert_eq!(error.code, canon::geo::GeoEvidenceErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("contracts[].basis.calibration_blake3")
+    );
+
+    let flagged = compile_evidence(&request(flagged_empirical_contract(
+        "rho.structure_count.v0",
+    )))
+    .expect("complete flagged empirical band compiles as hard evidence");
+    assert_eq!(flagged.composition_request.hard_constraints.len(), 1);
+    assert_eq!(
+        flagged.admissions[0].disposition,
+        GeoEvidenceDisposition::HardConstraint
+    );
+    assert_eq!(flagged.admissions[0].admission_reason, None);
+    assert_eq!(
+        flagged.admissions[0].generated_ids,
+        vec!["rho:rho.structure_count.v0@v1:observer-count".to_string()]
+    );
+    let flagged_solve =
+        solve_composition(&flagged.composition_request).expect("flagged request solves");
+    assert_eq!(flagged_solve.summary.residual_model_count, 3);
+    assert!(
+        flagged_solve.summary.residual_model_count < unflagged_solve.summary.residual_model_count
     );
 }
 

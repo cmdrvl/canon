@@ -6,11 +6,12 @@ use canon::geo::{
     CANON_GEO_POPULATION_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCompositionModel,
     GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole,
     GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoEvidenceStackErrorCode,
-    GeoLabeledCompositionCase, GeoPopulationCaseEvidenceOverlay, GeoPopulationCaseStatus,
-    GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoRhoBasis, GeoRhoContract,
-    GeoRhoObservation, GeoRhoObservationKind, GeoTruthPlane,
-    canonical_population_evidence_stack_bytes, evaluate_population, stack_population_evidence,
-    validate_population_evidence_stack_artifact,
+    GeoIntegerMeasure, GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoLabeledCompositionCase,
+    GeoPopulationCaseEvidenceOverlay, GeoPopulationCaseStatus, GeoPopulationEvaluationRequest,
+    GeoPopulationEvidenceStackRequest, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
+    GeoRhoObservationKind, GeoTruthPlane, GeoValidTimeInterval,
+    canonical_population_evidence_stack_bytes, compile_evidence, evaluate_population,
+    stack_population_evidence, validate_population_evidence_stack_artifact,
 };
 use serde_json::{Value, json};
 use std::{fs, path::Path};
@@ -60,8 +61,21 @@ fn empirical_contract(id: &str) -> GeoRhoContract {
                 .to_hex()
                 .to_string(),
             falsification_rule_id: format!("fixture:{id}:falsification"),
+            admissible_hard_band: false,
         },
     }
+}
+
+fn empirical_hard_band_contract(id: &str) -> GeoRhoContract {
+    let mut contract = empirical_contract(id);
+    if let GeoRhoBasis::EmpiricalCalibration {
+        admissible_hard_band,
+        ..
+    } = &mut contract.basis
+    {
+        *admissible_hard_band = true;
+    }
+    contract
 }
 
 fn observation(
@@ -77,6 +91,34 @@ fn observation(
         valid_time: None,
         observation,
     }
+}
+
+fn integer_sum_observation(id: &str, contract_id: &str) -> GeoRhoObservation {
+    observation(
+        id,
+        contract_id,
+        &format!("{id}-row"),
+        GeoRhoObservationKind::IntegerSumBand {
+            level: GeoEntityLevel::Parcel,
+            measure: GeoIntegerMeasure {
+                semantic_id: "fixture:structure-count".to_string(),
+                unit: "count".to_string(),
+                value_origin: GeoIntegerValueOrigin::ExactDerived,
+            },
+            values: vec![
+                GeoIntegerMemberValue {
+                    id: "p1".to_string(),
+                    value: 1,
+                },
+                GeoIntegerMemberValue {
+                    id: "p2".to_string(),
+                    value: 1,
+                },
+            ],
+            min: 1,
+            max: 1,
+        },
+    )
 }
 
 fn base_population() -> GeoPopulationEvaluationRequest {
@@ -193,6 +235,103 @@ fn truth_blind_stack_flows_directly_into_exact_evaluation() {
     assert_eq!(evaluation.cases[0].soft_preference_observations, 1);
     assert_eq!(evaluation.cases[0].diagnostic_observations, 1);
     assert_eq!(evaluation.cases[0].truth_model_in_residual, Some(true));
+}
+
+#[test]
+fn observer_overlay_bands_are_hard_only_under_flagged_empirical_contracts() {
+    let overlay = |contract: GeoRhoContract, observation: GeoRhoObservation| {
+        GeoPopulationEvidenceStackRequest {
+            version: CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION.to_string(),
+            case_overlays: vec![GeoPopulationCaseEvidenceOverlay {
+                case_id: "case-a".to_string(),
+                expected_base_evidence_blake3: None,
+                contracts: vec![contract],
+                observations: vec![observation],
+            }],
+            max_overlay_cases: 1,
+            max_overlay_observations: 1,
+        }
+    };
+
+    let unflagged = stack_population_evidence(
+        &base_population(),
+        &overlay(
+            empirical_contract("rho.structure_count.v0"),
+            integer_sum_observation("observer-count", "rho.structure_count.v0"),
+        ),
+    )
+    .expect("unflagged observer overlay remains diagnostic");
+    assert_eq!(unflagged.summary.hard_constraint_observations, 0);
+    assert_eq!(unflagged.summary.diagnostic_observations, 1);
+    let unflagged_compilation = compile_evidence(&unflagged.population.cases[0].evidence)
+        .expect("stacked unflagged evidence still compiles");
+    assert!(
+        unflagged_compilation
+            .composition_request
+            .hard_constraints
+            .is_empty()
+    );
+    assert_eq!(
+        unflagged_compilation.admissions[0]
+            .admission_reason
+            .as_deref(),
+        Some("rho_band_not_admissible")
+    );
+    let unflagged_evaluation =
+        evaluate_population(&unflagged.population).expect("unflagged stack evaluates");
+    assert_eq!(unflagged_evaluation.cases[0].residual_model_count, Some(3));
+
+    let flagged = stack_population_evidence(
+        &base_population(),
+        &overlay(
+            empirical_hard_band_contract("rho.structure_count.v0"),
+            integer_sum_observation("observer-count", "rho.structure_count.v0"),
+        ),
+    )
+    .expect("flagged observer overlay contributes one hard band");
+    assert_eq!(flagged.summary.hard_constraint_observations, 1);
+    assert_eq!(flagged.summary.diagnostic_observations, 0);
+    let flagged_compilation =
+        compile_evidence(&flagged.population.cases[0].evidence).expect("flagged evidence compiles");
+    assert_eq!(
+        flagged_compilation
+            .composition_request
+            .hard_constraints
+            .len(),
+        1
+    );
+    assert_eq!(flagged_compilation.admissions[0].admission_reason, None);
+    let flagged_evaluation =
+        evaluate_population(&flagged.population).expect("flagged stack evaluates");
+    assert_eq!(flagged_evaluation.cases[0].residual_model_count, Some(2));
+
+    let mut vintage_observation =
+        integer_sum_observation("observer-count-at-vintage", "rho.structure_count.v0");
+    vintage_observation.valid_time = Some(GeoValidTimeInterval {
+        start_day: 19_723,
+        end_day: 19_723,
+    });
+    let vintage = stack_population_evidence(
+        &base_population(),
+        &overlay(
+            empirical_hard_band_contract("rho.structure_count.v0"),
+            vintage_observation,
+        ),
+    )
+    .expect("time-scoped observer overlay remains diagnostic");
+    assert_eq!(vintage.summary.hard_constraint_observations, 0);
+    assert_eq!(vintage.summary.diagnostic_observations, 1);
+    let vintage_compilation =
+        compile_evidence(&vintage.population.cases[0].evidence).expect("vintage evidence compiles");
+    assert!(
+        vintage_compilation
+            .composition_request
+            .hard_constraints
+            .is_empty()
+    );
+    let vintage_evaluation =
+        evaluate_population(&vintage.population).expect("vintage stack evaluates");
+    assert_eq!(vintage_evaluation.cases[0].residual_model_count, Some(3));
 }
 
 #[test]

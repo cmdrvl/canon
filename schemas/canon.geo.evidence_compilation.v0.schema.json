@@ -428,7 +428,8 @@
               "type": "string",
               "pattern": "^[0-9a-f]{64}$"
             },
-            "falsification_rule_id": { "type": "string" }
+            "falsification_rule_id": { "type": "string" },
+            "admissible_hard_band": { "type": "boolean" }
           },
           "required": [
             "kind",
@@ -584,6 +585,10 @@
         "observation": { "$ref": "#/$defs/rho_observation_kind" },
         "disposition": {
           "$ref": "#/$defs/evidence_disposition"
+        },
+        "admission_reason": {
+          "type": "string",
+          "enum": ["rho_band_not_admissible"]
         },
         "generated_ids": {
           "type": "array",

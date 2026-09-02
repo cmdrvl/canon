@@ -22,6 +22,11 @@ use std::{
 
 pub const CANON_GEO_EVIDENCE_REQUEST_VERSION: &str = "canon_geo_evidence_request.v0";
 pub const CANON_GEO_EVIDENCE_COMPILATION_VERSION: &str = "canon_geo_evidence_compilation.v0";
+pub const GEO_RHO_BAND_NOT_ADMISSIBLE_REASON: &str = "rho_band_not_admissible";
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -53,6 +58,8 @@ pub enum GeoRhoBasis {
         population_id: String,
         calibration_blake3: String,
         falsification_rule_id: String,
+        #[serde(default, skip_serializing_if = "is_false")]
+        admissible_hard_band: bool,
     },
 }
 
@@ -171,6 +178,8 @@ pub struct GeoEvidenceAdmission {
     pub valid_time: Option<GeoValidTimeInterval>,
     pub observation: GeoRhoObservationKind,
     pub disposition: GeoEvidenceDisposition,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub admission_reason: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub generated_ids: Vec<String>,
 }
@@ -348,6 +357,7 @@ pub fn compile_evidence(
             contract.id, contract.version, observation.id
         );
         let admitted_observation = observation.observation.clone();
+        let mut admission_reason = None;
 
         let temporal_claim_role = matches!(
             contract.claim_role,
@@ -374,23 +384,27 @@ pub fn compile_evidence(
                 });
                 (GeoEvidenceDisposition::SoftPreference, vec![generated_id])
             }
-            kind if contract.soundness() == GeoRhoSoundness::EmpiricalHighCoverage => {
-                let _ = kind;
-                (GeoEvidenceDisposition::DiagnosticOnly, Vec::new())
-            }
             GeoRhoObservationKind::ExactSets { level, sets } => {
-                hard_constraints.push(GeoHardConstraint {
-                    id: generated_id.clone(),
-                    constraint: GeoHardConstraintKind::AllowedSets { level, sets },
-                });
-                (GeoEvidenceDisposition::HardConstraint, vec![generated_id])
+                if is_logical_relaxation(contract) {
+                    hard_constraints.push(GeoHardConstraint {
+                        id: generated_id.clone(),
+                        constraint: GeoHardConstraintKind::AllowedSets { level, sets },
+                    });
+                    (GeoEvidenceDisposition::HardConstraint, vec![generated_id])
+                } else {
+                    (GeoEvidenceDisposition::DiagnosticOnly, Vec::new())
+                }
             }
             GeoRhoObservationKind::ExistentialMembership { members } => {
-                hard_constraints.push(GeoHardConstraint {
-                    id: generated_id.clone(),
-                    constraint: GeoHardConstraintKind::AnyOf { members },
-                });
-                (GeoEvidenceDisposition::HardConstraint, vec![generated_id])
+                if is_logical_relaxation(contract) {
+                    hard_constraints.push(GeoHardConstraint {
+                        id: generated_id.clone(),
+                        constraint: GeoHardConstraintKind::AnyOf { members },
+                    });
+                    (GeoEvidenceDisposition::HardConstraint, vec![generated_id])
+                } else {
+                    (GeoEvidenceDisposition::DiagnosticOnly, Vec::new())
+                }
             }
             GeoRhoObservationKind::IntegerSumBand {
                 level,
@@ -399,17 +413,24 @@ pub fn compile_evidence(
                 min,
                 max,
             } => {
-                hard_constraints.push(GeoHardConstraint {
-                    id: generated_id.clone(),
-                    constraint: GeoHardConstraintKind::IntegerSumBand {
-                        level,
-                        measure,
-                        values,
-                        min,
-                        max,
-                    },
-                });
-                (GeoEvidenceDisposition::HardConstraint, vec![generated_id])
+                if is_logical_relaxation(contract) || empirical_hard_band_admissible(contract) {
+                    hard_constraints.push(GeoHardConstraint {
+                        id: generated_id.clone(),
+                        constraint: GeoHardConstraintKind::IntegerSumBand {
+                            level,
+                            measure,
+                            values,
+                            min,
+                            max,
+                        },
+                    });
+                    (GeoEvidenceDisposition::HardConstraint, vec![generated_id])
+                } else {
+                    if contract.soundness() == GeoRhoSoundness::EmpiricalHighCoverage {
+                        admission_reason = Some(GEO_RHO_BAND_NOT_ADMISSIBLE_REASON.to_string());
+                    }
+                    (GeoEvidenceDisposition::DiagnosticOnly, Vec::new())
+                }
             }
         };
 
@@ -420,6 +441,7 @@ pub fn compile_evidence(
             valid_time: observation.valid_time,
             observation: admitted_observation,
             disposition,
+            admission_reason,
             generated_ids,
         });
     }
@@ -546,10 +568,22 @@ pub fn validate_evidence_compilation_artifact(
                         [("observation_id", admission.observation_id.as_str())],
                     ));
                 }
+                let expected_reason = expected_diagnostic_admission_reason(
+                    &admission.contract,
+                    &admission.observation,
+                    temporally_scoped,
+                );
+                if admission.admission_reason.as_deref() != expected_reason {
+                    return Err(GeoEvidenceError::invalid(
+                        "Diagnostic Geo evidence admission carries the wrong reason",
+                        [("observation_id", admission.observation_id.as_str())],
+                    ));
+                }
             }
             GeoEvidenceDisposition::HardConstraint => {
                 if temporally_scoped
-                    || admission.contract.soundness() != GeoRhoSoundness::LogicallySound
+                    || !hard_admission_allowed(&admission.contract, &admission.observation)
+                    || admission.admission_reason.is_some()
                     || admission.generated_ids.as_slice() != std::slice::from_ref(&expected_id)
                     || !hard_ids.contains(expected_id.as_str())
                     || soft_ids.contains(expected_id.as_str())
@@ -562,6 +596,7 @@ pub fn validate_evidence_compilation_artifact(
             }
             GeoEvidenceDisposition::SoftPreference => {
                 if temporally_scoped
+                    || admission.admission_reason.is_some()
                     || admission.generated_ids.as_slice() != std::slice::from_ref(&expected_id)
                     || !soft_ids.contains(expected_id.as_str())
                     || hard_ids.contains(expected_id.as_str())
@@ -661,6 +696,7 @@ fn validate_contract(contract: &GeoRhoContract) -> Result<(), GeoEvidenceError> 
             population_id,
             calibration_blake3,
             falsification_rule_id,
+            admissible_hard_band: _,
         } => {
             validate_identifier("contracts[].basis.population_id", population_id)?;
             validate_blake3("contracts[].basis.calibration_blake3", calibration_blake3)?;
@@ -671,6 +707,57 @@ fn validate_contract(contract: &GeoRhoContract) -> Result<(), GeoEvidenceError> 
         }
     }
     Ok(())
+}
+
+fn is_logical_relaxation(contract: &GeoRhoContract) -> bool {
+    matches!(&contract.basis, GeoRhoBasis::LogicalRelaxation { .. })
+}
+
+fn empirical_hard_band_admissible(contract: &GeoRhoContract) -> bool {
+    matches!(
+        &contract.basis,
+        GeoRhoBasis::EmpiricalCalibration {
+            admissible_hard_band: true,
+            ..
+        }
+    )
+}
+
+fn hard_admission_allowed(contract: &GeoRhoContract, observation: &GeoRhoObservationKind) -> bool {
+    match (&contract.basis, observation) {
+        (GeoRhoBasis::LogicalRelaxation { .. }, GeoRhoObservationKind::PreferMember { .. }) => {
+            false
+        }
+        (GeoRhoBasis::LogicalRelaxation { .. }, _) => true,
+        (
+            GeoRhoBasis::EmpiricalCalibration {
+                admissible_hard_band: true,
+                ..
+            },
+            GeoRhoObservationKind::IntegerSumBand { .. },
+        ) => true,
+        _ => false,
+    }
+}
+
+fn expected_diagnostic_admission_reason(
+    contract: &GeoRhoContract,
+    observation: &GeoRhoObservationKind,
+    temporally_scoped: bool,
+) -> Option<&'static str> {
+    if temporally_scoped {
+        return None;
+    }
+    match (&contract.basis, observation) {
+        (
+            GeoRhoBasis::EmpiricalCalibration {
+                admissible_hard_band: false,
+                ..
+            },
+            GeoRhoObservationKind::IntegerSumBand { .. },
+        ) => Some(GEO_RHO_BAND_NOT_ADMISSIBLE_REASON),
+        _ => None,
+    }
 }
 
 fn validate_source_records(
