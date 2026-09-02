@@ -1447,11 +1447,29 @@ BTreeMap<String, String> }` with a `#[serde(rename_all = "snake_case")]` code en
 carries the generic `UnsupportedVersion`, `InvalidInput`, `BudgetExceeded`,
 `ArithmeticOverflow` variants plus the module's rows from §19.4. Each artifact type has a
 `version: String` constant `CANON_GEO_<NAME>_VERSION`, `canonical_<name>_bytes`, and
-`validate_<name>_artifact`. Each module ships `schemas/canon.geo.<name>.v0.schema.json`, a
-`--describe` entry, a `canon geo <subcommand>`, and `tests/geo_<module>.rs`.
+`validate_<name>_artifact`. Each module ships `schemas/canon.geo.<name>.v0.schema.json` and
+`tests/geo_<module>.rs`. A module ships a `canon geo` subcommand only when it is on the
+primary surface below; every other module is a library API plus a `canon geo run` stage
+executor, driven in tests and Demo 0 through the run path, never through its own verb.
 
-**Touch list for a new subcommand (verified against the tree 2026-09-02).** Adding a
-`canon geo <subcommand>` touches exactly six places: the clap variant in
+**Command surface (decision 2026-09-02).** Thirty-plus verbs is not a product surface.
+The surface has three tiers, declared in `operator.json` by a `surface` field:
+
+| Tier | Commands | Who runs it |
+|---|---|---|
+| primary | `geo capabilities`, `geo plan`, `geo run`, `geo replan-from-acquisition`, `geo inspect`, `geo ledger` (verbs `build`, `validate`, `exposure`, `collision`, `card`), `geo evaluate` (the E4/E5 gate instrument) | agents and operators in the course of business; listed first in `--help`, README, and `canon --describe` |
+| leaf | the shipped stage commands: `link-sources`, `materialize-home-cells`, `tile-work`, `reconcile-tiles`, `materialize-geometry`, `materialize-warehouse-geometry`, `materialize-evidence`, `materialize-address-evidence`, `compile-evidence`, `stack-evidence`, `solve` | Demo 0, single-stage debugging, tests; hidden from top-level `--help`, still machine-described and independently callable |
+| measurement | `materialize-h7-population`, `materialize-h7-staging-batch`, `materialize-h7-pip-block-batch` today; adjudication crop requests, observer characterization, retry recovery measurement, and deed-truth derivation as they land | `scripts/geo_measurements/` and the `canon_geo_measurements` binary; the three H.7 verbs move there at their next touch and are not new work |
+
+The twelve §19.3 modules therefore add exactly two subcommands: `geo inspect` (PK-D4c) and
+`geo ledger` (PK-D3a, with `exposure` and `collision` verbs from PK-D3b and PK-D3c and the
+`card` verb from PK-D6c). `propagate`, `explain`, `observer`, `adjudicate`, `retry`,
+`next_evidence`, and `condo` are library modules with run-stage executors and no verb; their
+e2e scripts call `canon geo run` with the shared plan fixture and read the stage outputs.
+Removing shipped leaf commands is churn for no gain; hiding them is one manifest field.
+
+**Touch list for a new primary subcommand (verified against the tree 2026-09-02).** Adding a
+`canon geo` verb (only `inspect` and `ledger` under this plan) touches exactly six places: the clap variant in
 `src/cli.rs` (`GeoSubcommand`, near line 183); the dispatch arm in `src/geo/cli.rs`; the
 describe row in `operator.json` (included by `src/lib.rs` via `include_str!`; there is no
 row in `src/operator.rs`, which holds only `COMMAND_SAFETY_DECLARATIONS`); the capability
@@ -1794,13 +1812,15 @@ for s in propagation explanation separation_request separation observer observat
     and .additionalProperties == false' "schemas/canon.geo.${s}.v0.schema.json"
 done
 
-# --describe entries for geo subcommands (C22: one per new module, named after it:
-# geo propagate, geo explain, geo observer, geo adjudicate, geo card, geo ledger,
-# geo exposure, geo collision, geo retry, geo inspect, geo next-evidence, geo condo)
+# --describe entries (C22): only the two new primary verbs, geo inspect and geo ledger,
+# plus the surface tier of every geo command. Library-only modules have no row; their
+# run-stage executors are listed under the geo run capability instead.
 cargo run --bin canon -- --describe \
-  | jq -r '.subcommands[] | select(.name | startswith("geo ")) | "\(.name)\t\(.status)\t\(.output_schema)"'
+  | jq -r '.subcommands[] | select(.name | startswith("geo ")) | "\(.name)\t\(.status)\t\(.surface)\t\(.output_schema)"'
 cargo run --bin canon -- --describe \
-  | jq -e '[.subcommands[] | select(.name == "geo propagate" and .status == "implemented")] | length == 1'
+  | jq -e '[.subcommands[] | select(.name | startswith("geo ")) | select(.surface == "primary")] | length == 7'
+cargo run --bin canon -- --describe \
+  | jq -e '[.subcommands[] | select(.name == "geo ledger" and .status == "implemented")] | length == 1'
 
 # T27 literal scan (C25, G7). Mirrors tests/geo_e5_franklin_parcel.rs
 # franklin_instance_names_do_not_enter_the_generic_geo_engine, which lowercases each
