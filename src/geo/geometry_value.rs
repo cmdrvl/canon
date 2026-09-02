@@ -1164,10 +1164,14 @@ pub fn ingest_client_geometry_tile(
         .try_fold(0_u64, |sum, count| {
             checked_add_u64(sum, count, "client tile refused feature count")
         })?;
-    let refusal_counts = refusal_counts
+    let mut refusal_counts = refusal_counts
         .into_iter()
         .map(|(reason, count)| GeoClientTileValidationRefusalCount { reason, count })
         .collect::<Vec<_>>();
+    refusal_counts.sort_by(|left, right| {
+        geo_geometry_error_code_wire_name(left.reason)
+            .cmp(geo_geometry_error_code_wire_name(right.reason))
+    });
     let validation = GeoClientTileValidationSummary {
         source_feature_count,
         accepted_feature_count,
@@ -2058,6 +2062,39 @@ fn increment_refusal_count(
     let entry = counts.entry(code).or_insert(0);
     *entry = checked_add_u64(*entry, 1, "client tile refusal count")?;
     Ok(())
+}
+
+fn geo_geometry_error_code_wire_name(code: GeoGeometryErrorCode) -> &'static str {
+    match code {
+        GeoGeometryErrorCode::UnsupportedVersion => "unsupported_version",
+        GeoGeometryErrorCode::InvalidInput => "invalid_input",
+        GeoGeometryErrorCode::InvalidFrame => "invalid_frame",
+        GeoGeometryErrorCode::InvalidCoordinate => "invalid_coordinate",
+        GeoGeometryErrorCode::InvalidSourceDigest => "invalid_source_digest",
+        GeoGeometryErrorCode::InvalidSourceEncoding => "invalid_source_encoding",
+        GeoGeometryErrorCode::InvalidSourceProvenance => "invalid_source_provenance",
+        GeoGeometryErrorCode::InvalidTileContract => "invalid_tile_contract",
+        GeoGeometryErrorCode::InvalidLicensePosture => "invalid_license_posture",
+        GeoGeometryErrorCode::MalformedWkb => "malformed_wkb",
+        GeoGeometryErrorCode::UnsupportedGeometryType => "unsupported_geometry_type",
+        GeoGeometryErrorCode::MixedSourceExecution => "mixed_source_execution",
+        GeoGeometryErrorCode::NonFiniteCoordinate => "non_finite_coordinate",
+        GeoGeometryErrorCode::SourcePrecisionExceeded => "source_precision_exceeded",
+        GeoGeometryErrorCode::MixedCrs => "mixed_crs",
+        GeoGeometryErrorCode::AntimeridianCrossing => "antimeridian_crossing",
+        GeoGeometryErrorCode::EmptyGeometry => "empty_geometry",
+        GeoGeometryErrorCode::UnclosedRing => "unclosed_ring",
+        GeoGeometryErrorCode::TooFewVertices => "too_few_vertices",
+        GeoGeometryErrorCode::DuplicateVertex => "duplicate_vertex",
+        GeoGeometryErrorCode::DegenerateRing => "degenerate_ring",
+        GeoGeometryErrorCode::SelfIntersection => "self_intersection",
+        GeoGeometryErrorCode::HoleOutsideExterior => "hole_outside_exterior",
+        GeoGeometryErrorCode::PolygonIntersection => "polygon_intersection",
+        GeoGeometryErrorCode::VertexBudgetExceeded => "vertex_budget_exceeded",
+        GeoGeometryErrorCode::TileByteBudgetExceeded => "tile_byte_budget_exceeded",
+        GeoGeometryErrorCode::ArithmeticOverflow => "arithmetic_overflow",
+        GeoGeometryErrorCode::Serialization => "serialization",
+    }
 }
 
 fn checked_add_u64(left: u64, right: u64, context: &str) -> Result<u64, GeoGeometryError> {

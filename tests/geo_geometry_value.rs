@@ -710,7 +710,9 @@ fn client_tile_ingest_refuses_missing_coverage_extent_crs_drift_and_relabels() {
     let (mut request, source_bytes, _center, _neighbor) = client_tile_ingest_fixture();
     let source: serde_json::Value = serde_json::from_str(&source_bytes).expect("fixture json");
     let mut features = source["features"].as_array().unwrap().clone();
-    features[1]["properties"]["apn"] = json!("client-apn-1");
+    assert_eq!(features[0]["properties"]["apn"], json!("client-apn-2"));
+    assert_eq!(features[1]["properties"]["apn"], json!("client-apn-1"));
+    features[1]["properties"]["apn"] = features[0]["properties"]["apn"].clone();
     let source = json!({ "type": "FeatureCollection", "features": features }).to_string();
     request.source_digest = blake3_hex(source.as_bytes());
     let error = ingest_client_geometry_tile(&request, source.as_bytes())
