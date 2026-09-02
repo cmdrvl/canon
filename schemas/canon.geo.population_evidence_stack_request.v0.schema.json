@@ -1,0 +1,67 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.population_evidence_stack_request.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.population_evidence_stack_request.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_population_evidence_stack_request.v0",
+      "type": "string"
+    },
+    "case_overlays": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/case_overlay"
+      }
+    },
+    "max_overlay_cases": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_overlay_observations": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "version",
+    "case_overlays",
+    "max_overlay_cases",
+    "max_overlay_observations"
+  ],
+  "$defs": {
+    "case_overlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected_base_evidence_blake3": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "contracts": {
+          "type": "array",
+          "items": {
+            "$ref": "canon.geo.evidence_request.v0.schema.json#/$defs/rho_contract"
+          }
+        },
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "canon.geo.evidence_request.v0.schema.json#/$defs/rho_observation"
+          }
+        }
+      },
+      "required": [
+        "case_id",
+        "observations"
+      ]
+    }
+  }
+}

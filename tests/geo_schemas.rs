@@ -41,19 +41,20 @@ use canon::geo::{
     CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
     CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_MULTISOURCE_REQUEST_VERSION,
     CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
-    CANON_GEO_POPULATION_REQUEST_VERSION, CANON_GEO_QUESTION_VERSION,
-    CANON_GEO_REGIONAL_INVENTORY_VERSION, CANON_GEO_RESOURCE_BUDGET_VERSION,
-    CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
-    CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
-    DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy,
-    GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity, GeoAddressParseRequest,
-    GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm, GeoAsOf, GeoBoundedGeography,
-    GeoBudgetAction, GeoBuildingCandidate, GeoClaimClass, GeoCompositionModel,
-    GeoCompositionProfile, GeoCompositionRequest, GeoCompositionUniverse, GeoControlEntityLevel,
-    GeoCoveragePredicate, GeoEgressClass, GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole,
-    GeoEvidenceClass, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoExactSourceUnitMm,
-    GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoH7AssociationPlane, GeoH7BoroughEdge,
-    GeoH7CandidateReachStatus, GeoH7FiledCountyMapping, GeoH7MapplutoReleasePin,
+    CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
+    CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
+    CANON_GEO_QUESTION_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
+    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
+    CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
+    CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition,
+    GeoAbstentionPolicy, GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity,
+    GeoAddressParseRequest, GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm,
+    GeoAsOf, GeoBoundedGeography, GeoBudgetAction, GeoBuildingCandidate, GeoClaimClass,
+    GeoCompositionModel, GeoCompositionProfile, GeoCompositionRequest, GeoCompositionUniverse,
+    GeoControlEntityLevel, GeoCoveragePredicate, GeoEgressClass, GeoEntityLevel, GeoEntityRef,
+    GeoEvidenceClaimRole, GeoEvidenceClass, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef,
+    GeoExactSourceUnitMm, GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoH7AssociationPlane,
+    GeoH7BoroughEdge, GeoH7CandidateReachStatus, GeoH7FiledCountyMapping, GeoH7MapplutoReleasePin,
     GeoH7PlaneDenominator, GeoH7PopulationProvenance, GeoH7PopulationRowsRequest,
     GeoH7PopulationScope, GeoH7PopulationWarehouseRow, GeoH7QueryDisposition, GeoH7QueryReceipt,
     GeoH7ResultMode, GeoH7SourceEvidenceRecord, GeoH7SourceRecordRole,
@@ -63,7 +64,8 @@ use canon::geo::{
     GeoIdentityParticipation, GeoLabeledCompositionCase, GeoLicenseClass, GeoLocalAcquisitionState,
     GeoLocalArtifactRef, GeoLocalFrameContract, GeoMultisourceRequest, GeoMultisourceSource,
     GeoNativeEntityScope, GeoNumericBound, GeoNumericMeasure, GeoNycBorough, GeoPadAddressMember,
-    GeoPadAddressSet, GeoPlanInventoryRef, GeoPopulationEvaluationRequest, GeoProjectionProvenance,
+    GeoPadAddressSet, GeoPlanInventoryRef, GeoPopulationCaseEvidenceOverlay,
+    GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoProjectionProvenance,
     GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance, GeoRequestedGrain,
     GeoResourceBudget, GeoResourceCounter, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
     GeoRhoObservationKind, GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry,
@@ -79,6 +81,7 @@ use canon::geo::{
     materialize_geometry_tile, materialize_h7_population_rows, materialize_home_cells,
     materialize_tile_work_unit, materialize_warehouse_geometry, parse_address_forest,
     reconcile_tile_decisions, regional_inventory_semantic_hash, solve_composition,
+    stack_population_evidence,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -95,6 +98,10 @@ const POPULATION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_request.v0.schema.json");
 const POPULATION_EVALUATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_evaluation.v0.schema.json");
+const POPULATION_EVIDENCE_STACK_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.population_evidence_stack_request.v0.schema.json");
+const POPULATION_EVIDENCE_STACK_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.population_evidence_stack.v0.schema.json");
 const WAREHOUSE_ROWS_SCHEMA: &str =
     include_str!("../schemas/canon.geo.warehouse_rows.v0.schema.json");
 const GEOMETRY_REQUEST_SCHEMA: &str =
@@ -204,7 +211,11 @@ fn external_schema_source(schema_file: &str, reference: &str) -> &'static str {
         "canon.geo.composition_request.v0.schema.json" => COMPOSITION_REQUEST_SCHEMA,
         "canon.geo.geometry_tile.v0.schema.json" => GEOMETRY_TILE_SCHEMA,
         "canon.geo.h7_population_rows.v0.schema.json" => H7_POPULATION_ROWS_SCHEMA,
+        "canon.geo.evidence_request.v0.schema.json" => EVIDENCE_REQUEST_SCHEMA,
         "canon.geo.population_request.v0.schema.json" => POPULATION_REQUEST_SCHEMA,
+        "canon.geo.population_evidence_stack_request.v0.schema.json" => {
+            POPULATION_EVIDENCE_STACK_REQUEST_SCHEMA
+        }
         "canon.geo.regional_inventory.v1.schema.json" => CONTROL_REGIONAL_INVENTORY_SCHEMA,
         _ => panic!("external $ref {reference} is not registered in the schema test"),
     }
@@ -2420,6 +2431,87 @@ fn population_request_schema_matches_runtime_max_cases_boundary() {
             .and_then(Value::as_u64),
         Some(1),
         "schema must reject max_cases=0 because the evaluator rejects it"
+    );
+}
+
+fn population_stack_fixture() -> (
+    GeoPopulationEvaluationRequest,
+    GeoPopulationEvidenceStackRequest,
+) {
+    let population = GeoPopulationEvaluationRequest {
+        version: CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        cases: vec![GeoLabeledCompositionCase {
+            id: "case-1".to_string(),
+            evidence: evidence_request(),
+            truth_plane: GeoTruthPlane::HumanAdjudication,
+            truth: GeoCompositionModel {
+                parcels: vec!["parcel-a".to_string()],
+                buildings: Vec::new(),
+            },
+        }],
+        max_cases: 1,
+    };
+    let overlay = GeoPopulationEvidenceStackRequest {
+        version: CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION.to_string(),
+        case_overlays: vec![GeoPopulationCaseEvidenceOverlay {
+            case_id: "case-1".to_string(),
+            expected_base_evidence_blake3: None,
+            contracts: vec![GeoRhoContract {
+                id: "stack-contract".to_string(),
+                version: "v1".to_string(),
+                source_dataset: "fixture:stack".to_string(),
+                source_release: "fixture-v1".to_string(),
+                source_lineage_ids: vec!["fixture:stack:lineage".to_string()],
+                method_id: "fixture:stack:rho".to_string(),
+                method_version: "v1".to_string(),
+                claim_role: GeoEvidenceClaimRole::AttributeObservation,
+                basis: GeoRhoBasis::LogicalRelaxation {
+                    invariant_id: "fixture:stack:invariant".to_string(),
+                },
+            }],
+            observations: vec![GeoRhoObservation {
+                id: "stack-observation".to_string(),
+                contract_id: "stack-contract".to_string(),
+                source_records: vec![GeoEvidenceRecordRef {
+                    source_record_id: "stack-row".to_string(),
+                    source_vintage: "fixture-v1".to_string(),
+                    record_blake3: blake3::hash(b"stack-row").to_hex().to_string(),
+                }],
+                valid_time: None,
+                observation: GeoRhoObservationKind::PreferMember {
+                    member: GeoEntityRef::new(GeoEntityLevel::Parcel, "parcel-a"),
+                    cost_if_absent: 3,
+                },
+            }],
+        }],
+        max_overlay_cases: 1,
+        max_overlay_observations: 1,
+    };
+    (population, overlay)
+}
+
+#[test]
+fn population_evidence_stack_request_schema_matches_a_real_instance() {
+    let (_, request) = population_stack_fixture();
+    let instance = serde_json::to_value(request).expect("stack request serializes");
+    assert_drift_free(
+        POPULATION_EVIDENCE_STACK_REQUEST_SCHEMA,
+        "canon.geo.population_evidence_stack_request.v0",
+        CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
+        &instance,
+    );
+}
+
+#[test]
+fn population_evidence_stack_artifact_schema_matches_a_real_instance() {
+    let (population, request) = population_stack_fixture();
+    let artifact = stack_population_evidence(&population, &request).expect("stack fixture");
+    let instance = serde_json::to_value(artifact).expect("stack artifact serializes");
+    assert_drift_free(
+        POPULATION_EVIDENCE_STACK_SCHEMA,
+        "canon.geo.population_evidence_stack.v0",
+        CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION,
+        &instance,
     );
 }
 

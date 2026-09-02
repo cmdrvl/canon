@@ -109,6 +109,7 @@ canon geo materialize-h7-population --rows <ROWS.json>
 canon geo materialize-h7-staging-batch --batch <BATCH.json>
 canon geo materialize-h7-pip-block-batch --batch <BATCH.json>
 canon geo compile-evidence --request <REQUEST.json>
+canon geo stack-evidence --population <POPULATION.json> --overlay <OVERLAY.json>
 canon geo evaluate --population <POPULATION.json>
 canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]
 canon inbox show --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json|summary]

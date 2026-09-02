@@ -2124,9 +2124,77 @@
       ]
     },
     {
+      "name": "geo stack-evidence",
+      "usage": "canon geo stack-evidence --population <POPULATION.json> --overlay <OVERLAY.json>",
+      "description": "Accrete truth-blind rho contracts and observations onto named cases in a bounded population and emit a replay-validatable stack artifact on stdout",
+      "output_mode": "json",
+      "output_schema": "canon_geo_population_evidence_stack.v0",
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "offline and stateless; overlays cannot carry truth or alter candidate universes, profiles, or budgets; source-record counts are provenance rather than confidence",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "geo read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": false,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "exit_codes": {
+        "0": {
+          "meaning": "replay-validatable Geo population evidence-stack artifact emitted",
+          "domain": "positive"
+        },
+        "2": {
+          "meaning": "REFUSAL / population, overlay, budget, content-binding, drift, duplicate, or evidence contract error",
+          "domain": "error"
+        }
+      },
+      "next_command": "canon geo evaluate --population <STACK.json>",
+      "recovery": {
+        "next_command": "canon geo stack-evidence --population <POPULATION.json> --overlay <OVERLAY.json>",
+        "refusal_exit_code": 2
+      },
+      "options": [
+        {
+          "name": "population",
+          "flag": "--population",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding canon_geo_population_request.v0 or a validated prior canon_geo_population_evidence_stack.v0 artifact"
+        },
+        {
+          "name": "overlay",
+          "flag": "--overlay",
+          "type": "file_path",
+          "required": true,
+          "description": "JSON file holding canon_geo_population_evidence_stack_request.v0"
+        }
+      ]
+    },
+    {
       "name": "geo evaluate",
       "usage": "canon geo evaluate --population <POPULATION.json>",
-      "description": "Evaluate labeled composition cases without letting labels reach the compiler or solver and emit the canonical evaluation artifact on stdout",
+      "description": "Evaluate a labeled population request or replay-validated evidence-stack artifact without letting labels reach the compiler or solver and emit the canonical evaluation artifact on stdout",
       "output_mode": "json",
       "output_schema": "canon_geo_population_evaluation.v0",
       "status": "implemented",
@@ -2180,7 +2248,7 @@
           "flag": "--population",
           "type": "file_path",
           "required": true,
-          "description": "JSON file holding a canon_geo_population_request.v0 request"
+          "description": "JSON file holding canon_geo_population_request.v0 or a replay-valid canon_geo_population_evidence_stack.v0 artifact"
         }
       ]
     },

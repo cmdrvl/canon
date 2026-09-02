@@ -292,6 +292,9 @@ pub enum GeoSubcommand {
     /// Admit versioned rho observations into a bounded composition request
     #[command(name = "compile-evidence")]
     CompileEvidence(GeoCompileEvidenceCli),
+    /// Accrete truth-blind evidence onto an exact bounded population
+    #[command(name = "stack-evidence")]
+    StackEvidence(GeoStackEvidenceCli),
     /// Evaluate labeled composition cases without leaking labels into the solver
     Evaluate(GeoEvaluateCli),
 }
@@ -472,9 +475,19 @@ pub struct GeoMaterializeH7PipBlockBatchCli {
 
 #[derive(Args, Debug, Clone)]
 pub struct GeoEvaluateCli {
-    /// JSON file holding a canon_geo_population_request.v0 request
+    /// JSON file holding a population request or validated evidence-stack artifact
     #[arg(long)]
     pub population: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoStackEvidenceCli {
+    /// JSON file holding a population request or validated prior stack artifact
+    #[arg(long)]
+    pub population: PathBuf,
+    /// JSON file holding canon_geo_population_evidence_stack_request.v0
+    #[arg(long)]
+    pub overlay: PathBuf,
 }
 
 #[derive(Subcommand, Debug, Clone)]

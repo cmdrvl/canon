@@ -1,0 +1,167 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.population_evidence_stack.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.population_evidence_stack.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_population_evidence_stack.v0",
+      "type": "string"
+    },
+    "request_version": {
+      "const": "canon_geo_population_evidence_stack_request.v0",
+      "type": "string"
+    },
+    "base_population_blake3": {
+      "$ref": "#/$defs/blake3"
+    },
+    "overlay_blake3": {
+      "$ref": "#/$defs/blake3"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "base_population": {
+      "$ref": "canon.geo.population_request.v0.schema.json"
+    },
+    "request": {
+      "$ref": "canon.geo.population_evidence_stack_request.v0.schema.json"
+    },
+    "population": {
+      "$ref": "canon.geo.population_request.v0.schema.json"
+    }
+  },
+  "required": [
+    "version",
+    "request_version",
+    "base_population_blake3",
+    "overlay_blake3",
+    "summary",
+    "base_population",
+    "request",
+    "population"
+  ],
+  "$defs": {
+    "blake3": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "case_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base_evidence_blake3": {
+          "$ref": "#/$defs/blake3"
+        },
+        "stacked_evidence_blake3": {
+          "$ref": "#/$defs/blake3"
+        },
+        "added_contracts": {
+          "$ref": "#/$defs/count"
+        },
+        "reused_contracts": {
+          "$ref": "#/$defs/count"
+        },
+        "added_observations": {
+          "$ref": "#/$defs/count"
+        },
+        "reused_observations": {
+          "$ref": "#/$defs/count"
+        },
+        "added_source_records": {
+          "$ref": "#/$defs/count"
+        },
+        "hard_constraint_observations": {
+          "$ref": "#/$defs/count"
+        },
+        "soft_preference_observations": {
+          "$ref": "#/$defs/count"
+        },
+        "diagnostic_observations": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "required": [
+        "case_id",
+        "base_evidence_blake3",
+        "stacked_evidence_blake3",
+        "added_contracts",
+        "reused_contracts",
+        "added_observations",
+        "reused_observations",
+        "added_source_records",
+        "hard_constraint_observations",
+        "soft_preference_observations",
+        "diagnostic_observations"
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "population_cases": {
+          "$ref": "#/$defs/count"
+        },
+        "overlay_cases": {
+          "$ref": "#/$defs/count"
+        },
+        "changed_cases": {
+          "$ref": "#/$defs/count"
+        },
+        "added_contracts": {
+          "$ref": "#/$defs/count"
+        },
+        "reused_contracts": {
+          "$ref": "#/$defs/count"
+        },
+        "added_observations": {
+          "$ref": "#/$defs/count"
+        },
+        "reused_observations": {
+          "$ref": "#/$defs/count"
+        },
+        "added_source_records": {
+          "$ref": "#/$defs/count"
+        },
+        "hard_constraint_observations": {
+          "$ref": "#/$defs/count"
+        },
+        "soft_preference_observations": {
+          "$ref": "#/$defs/count"
+        },
+        "diagnostic_observations": {
+          "$ref": "#/$defs/count"
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/case_summary"
+          }
+        }
+      },
+      "required": [
+        "population_cases",
+        "overlay_cases",
+        "changed_cases",
+        "added_contracts",
+        "reused_contracts",
+        "added_observations",
+        "reused_observations",
+        "added_source_records",
+        "hard_constraint_observations",
+        "soft_preference_observations",
+        "diagnostic_observations",
+        "cases"
+      ]
+    }
+  }
+}

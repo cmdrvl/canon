@@ -299,6 +299,18 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo stack-evidence",
+      "family": "geo",
+      "clap_path": "geo stack-evidence",
+      "operator_name": "geo stack-evidence",
+      "primary_contracts": [
+        "canon_geo_population_request.v0",
+        "canon_geo_population_evidence_stack_request.v0",
+        "canon_geo_population_evidence_stack.v0"
+      ],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo materialize-evidence",
       "family": "geo",
       "clap_path": "geo materialize-evidence",
@@ -1789,6 +1801,20 @@
     },
     {
       "id": "canon_geo_population_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_population_evidence_stack_request.v0",
+      "family": "geo",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::geo"
+    },
+    {
+      "id": "canon_geo_population_evidence_stack.v0",
       "family": "geo",
       "action": "preserve",
       "access_boundary": "public_crate_api",

@@ -39,6 +39,10 @@ use super::{
     residual_benchmark::{CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION},
     run::CANON_GEO_RUN_VERSION,
     satisfy::CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION,
+    stack::{
+        CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
+        CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION,
+    },
     tile::{
         CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_RECONCILIATION_VERSION,
@@ -1250,6 +1254,16 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "labeled population evaluation request contract",
         ),
         contract(
+            CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
+            "schemas/canon.geo.population_evidence_stack_request.v0.schema.json",
+            "truth-blind bounded population evidence-overlay request contract",
+        ),
+        contract(
+            CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION,
+            "schemas/canon.geo.population_evidence_stack.v0.schema.json",
+            "replay-validatable accretive population evidence-stack artifact",
+        ),
+        contract(
             CANON_GEO_POPULATION_EVALUATION_VERSION,
             "schemas/canon.geo.population_evaluation.v0.schema.json",
             "population evaluation artifact contract",
@@ -1373,6 +1387,12 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
         command(
             "canon geo compile-evidence --request <REQUEST.json>",
             CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+            true,
+            false,
+        ),
+        command(
+            "canon geo stack-evidence --population <POPULATION.json> --overlay <OVERLAY.json>",
+            CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION,
             true,
             false,
         ),

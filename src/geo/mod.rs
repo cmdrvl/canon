@@ -21,6 +21,7 @@ pub mod plan;
 pub mod residual_benchmark;
 pub mod run;
 pub mod satisfy;
+pub mod stack;
 pub mod tile;
 
 pub use address::*;
@@ -38,4 +39,5 @@ pub use plan::*;
 pub use residual_benchmark::*;
 pub use run::*;
 pub use satisfy::*;
+pub use stack::*;
 pub use tile::*;

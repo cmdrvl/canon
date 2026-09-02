@@ -396,6 +396,7 @@ canon geo materialize-h7-population --rows <ROWS.json>
 canon geo materialize-h7-staging-batch --batch <BATCH.json>
 canon geo materialize-h7-pip-block-batch --batch <BATCH.json>
 canon geo compile-evidence --request <REQUEST.json>
+canon geo stack-evidence --population <POPULATION.json> --overlay <OVERLAY.json>
 canon geo evaluate --population <POPULATION.json>
 canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]
 canon inbox show --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json|summary]
@@ -527,6 +528,20 @@ rho observation. The command rejects duplicate grains and conflicting rows, sort
 collections, validates the result through the same compiler used by `compile-evidence`,
 and writes only to stdout. It performs no warehouse acquisition, and multiple source
 records remain provenance for one observation rather than independent constraint weight.
+
+`canon geo stack-evidence --population --overlay` accretes contracts and observations onto
+named cases in an already bounded `canon_geo_population_request.v0`. The overlay contract
+cannot carry truth, candidate members, solver profile, or solver budgets. It may optionally
+bind the exact pre-stack evidence digest for optimistic concurrency; the emitted
+`canon_geo_population_evidence_stack.v0` retains both inputs, the resulting population,
+per-case before/after digests, and hard/soft/diagnostic admission counts so the whole step
+can be replay-validated. Exact observation reuse is idempotent. Contract drift, observation
+ID drift, and the same semantic observation renamed under another ID are refusals, which
+prevents source or preference-count inflation. A validated stack artifact can be passed
+directly to another `stack-evidence` invocation or to `canon geo evaluate`. More hard
+evidence narrows the feasible set and can make it empty; soft evidence changes objective
+cost only; diagnostic evidence changes neither feasibility nor cost. Source-record count is
+reported solely as provenance volume.
 
 `canon geo materialize-address-evidence --request` is the single-call offline bridge
 from an address parse request plus a PAD address set to an address/PAD parcel
