@@ -41,6 +41,10 @@
       "type": "string",
       "enum": ["implemented", "diagnostic_only", "unavailable"]
     },
+    "command_surface": {
+      "type": "string",
+      "enum": ["primary", "leaf", "measurement"]
+    },
     "entity_level": {
       "type": "string",
       "enum": ["site", "property", "parcel", "building", "unit", "address", "poi"]
@@ -140,11 +144,12 @@
       "additionalProperties": false,
       "properties": {
         "command": { "type": "string" },
+        "surface": { "$ref": "#/$defs/command_surface" },
         "output_contract": { "type": "string" },
         "read_only": { "type": "boolean" },
         "uses_network": { "type": "boolean" }
       },
-      "required": ["command", "output_contract", "read_only", "uses_network"]
+      "required": ["command", "surface", "output_contract", "read_only", "uses_network"]
     },
     "contract_status_sets": {
       "type": "object",

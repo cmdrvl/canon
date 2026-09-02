@@ -30,9 +30,9 @@ use canon::geo::{
     CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_VERSION,
     CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoAbstentionDisposition, GeoAbstentionPolicy, GeoAsOf,
     GeoBoundedGeography, GeoBudgetAction, GeoCapabilities, GeoCapabilityStatus,
-    GeoCapabilityStatusSets, GeoClaimClass, GeoCommandCapability, GeoContractCapability,
-    GeoControlEntityLevel, GeoControlErrorCode, GeoControlProperty, GeoEgressClass,
-    GeoEvidenceClass, GeoGeometryTransformContract, GeoIdentityParticipation,
+    GeoCapabilityStatusSets, GeoClaimClass, GeoCommandCapability, GeoCommandSurface,
+    GeoContractCapability, GeoControlEntityLevel, GeoControlErrorCode, GeoControlProperty,
+    GeoEgressClass, GeoEvidenceClass, GeoGeometryTransformContract, GeoIdentityParticipation,
     GeoInventorySupportStatus, GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef,
     GeoNativeEntityScope, GeoNumericBound, GeoNumericMeasure, GeoQuestion, GeoRegionalInventory,
     GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter,
@@ -52,6 +52,35 @@ const CAPABILITIES_SCHEMA: &str = include_str!("../schemas/canon.geo.capabilitie
 const INVENTORY_SCHEMA: &str =
     include_str!("../schemas/canon.geo.regional_inventory.v1.schema.json");
 const BUDGET_SCHEMA: &str = include_str!("../schemas/canon.geo.resource_budget.v0.schema.json");
+const OPERATOR_JSON: &str = include_str!("../operator.json");
+
+const PRIMARY_GEO_ROWS: [&str; 7] = [
+    "geo capabilities",
+    "geo plan",
+    "geo run",
+    "geo replan-from-acquisition",
+    "geo inspect",
+    "geo ledger",
+    "geo evaluate",
+];
+const LEAF_GEO_ROWS: [&str; 11] = [
+    "geo link-sources",
+    "geo materialize-home-cells",
+    "geo tile-work",
+    "geo reconcile-tiles",
+    "geo solve",
+    "geo materialize-geometry",
+    "geo materialize-warehouse-geometry",
+    "geo materialize-evidence",
+    "geo materialize-address-evidence",
+    "geo compile-evidence",
+    "geo stack-evidence",
+];
+const MEASUREMENT_GEO_ROWS: [&str; 3] = [
+    "geo materialize-h7-population",
+    "geo materialize-h7-staging-batch",
+    "geo materialize-h7-pip-block-batch",
+];
 
 fn canon_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_canon"))
@@ -175,89 +204,260 @@ fn expected_diagnostic_contracts() -> BTreeSet<&'static str> {
     ])
 }
 
-fn expected_implemented_commands() -> BTreeMap<&'static str, (&'static str, bool, bool)> {
+fn expected_implemented_commands()
+-> BTreeMap<&'static str, (&'static str, GeoCommandSurface, bool, bool)> {
     BTreeMap::from([
         (
             "canon geo capabilities --emit json",
-            (CANON_GEO_CAPABILITIES_VERSION, true, false),
+            (
+                CANON_GEO_CAPABILITIES_VERSION,
+                GeoCommandSurface::Primary,
+                true,
+                false,
+            ),
         ),
         (
             "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>",
-            (CANON_GEO_PLAN_VERSION, true, false),
+            (
+                CANON_GEO_PLAN_VERSION,
+                GeoCommandSurface::Primary,
+                true,
+                false,
+            ),
         ),
         (
             "canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]",
-            (CANON_GEO_RUN_VERSION, false, false),
+            (
+                CANON_GEO_RUN_VERSION,
+                GeoCommandSurface::Primary,
+                false,
+                false,
+            ),
         ),
         (
             "canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>",
-            (CANON_GEO_PLAN_VERSION, false, false),
+            (
+                CANON_GEO_PLAN_VERSION,
+                GeoCommandSurface::Primary,
+                false,
+                false,
+            ),
         ),
         (
             "canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>",
-            (ENTITY_MULTISOURCE_LINK_VERSION, false, false),
+            (
+                ENTITY_MULTISOURCE_LINK_VERSION,
+                GeoCommandSurface::Leaf,
+                false,
+                false,
+            ),
         ),
         (
             "canon geo materialize-home-cells --rows <ROWS.json>",
-            (CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, true, false),
+            (
+                CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
+                GeoCommandSurface::Leaf,
+                true,
+                false,
+            ),
         ),
         (
             "canon geo tile-work --request <REQUEST.json>",
-            (CANON_GEO_TILE_WORK_UNIT_VERSION, true, false),
+            (
+                CANON_GEO_TILE_WORK_UNIT_VERSION,
+                GeoCommandSurface::Leaf,
+                true,
+                false,
+            ),
         ),
         (
             "canon geo reconcile-tiles --request <REQUEST.json>",
-            (CANON_GEO_TILE_RECONCILIATION_VERSION, true, false),
+            (
+                CANON_GEO_TILE_RECONCILIATION_VERSION,
+                GeoCommandSurface::Leaf,
+                true,
+                false,
+            ),
         ),
         (
             "canon geo solve --request <REQUEST.json>",
-            (CANON_GEO_COMPOSITION_VERSION, true, false),
+            (
+                CANON_GEO_COMPOSITION_VERSION,
+                GeoCommandSurface::Leaf,
+                true,
+                false,
+            ),
         ),
         (
             "canon geo materialize-geometry --request <REQUEST.json>",
-            (CANON_GEO_GEOMETRY_TILE_VERSION, true, false),
+            (
+                CANON_GEO_GEOMETRY_TILE_VERSION,
+                GeoCommandSurface::Leaf,
+                true,
+                false,
+            ),
         ),
         (
             "canon geo materialize-warehouse-geometry --rows <ROWS.json>",
-            (CANON_GEO_WAREHOUSE_GEOMETRY_VERSION, true, false),
+            (
+                CANON_GEO_WAREHOUSE_GEOMETRY_VERSION,
+                GeoCommandSurface::Leaf,
+                true,
+                false,
+            ),
         ),
         (
             "canon geo materialize-evidence --rows <ROWS.json>",
-            (CANON_GEO_EVIDENCE_REQUEST_VERSION, true, false),
+            (
+                CANON_GEO_EVIDENCE_REQUEST_VERSION,
+                GeoCommandSurface::Leaf,
+                true,
+                false,
+            ),
         ),
         (
             "canon geo materialize-address-evidence --request <REQUEST.json>",
             (
                 CANON_GEO_ADDRESS_PARCEL_EVIDENCE_BUNDLE_VERSION,
+                GeoCommandSurface::Leaf,
                 true,
                 false,
             ),
         ),
         (
             "canon geo materialize-h7-population --rows <ROWS.json>",
-            (CANON_GEO_H7_POPULATION_VERSION, true, false),
+            (
+                CANON_GEO_H7_POPULATION_VERSION,
+                GeoCommandSurface::Measurement,
+                true,
+                false,
+            ),
         ),
         (
             "canon geo materialize-h7-staging-batch --batch <BATCH.json>",
-            (CANON_GEO_H7_POPULATION_VERSION, true, false),
+            (
+                CANON_GEO_H7_POPULATION_VERSION,
+                GeoCommandSurface::Measurement,
+                true,
+                false,
+            ),
         ),
         (
             "canon geo materialize-h7-pip-block-batch --batch <BATCH.json>",
-            (CANON_GEO_H7_POPULATION_VERSION, true, false),
+            (
+                CANON_GEO_H7_POPULATION_VERSION,
+                GeoCommandSurface::Measurement,
+                true,
+                false,
+            ),
         ),
         (
             "canon geo compile-evidence --request <REQUEST.json>",
-            (CANON_GEO_EVIDENCE_COMPILATION_VERSION, true, false),
+            (
+                CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+                GeoCommandSurface::Leaf,
+                true,
+                false,
+            ),
         ),
         (
             "canon geo stack-evidence --population <POPULATION.json> --overlay <OVERLAY.json>",
-            (CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, true, false),
+            (
+                CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION,
+                GeoCommandSurface::Leaf,
+                true,
+                false,
+            ),
         ),
         (
             "canon geo evaluate --population <POPULATION.json>",
-            (CANON_GEO_POPULATION_EVALUATION_VERSION, true, false),
+            (
+                CANON_GEO_POPULATION_EVALUATION_VERSION,
+                GeoCommandSurface::Primary,
+                true,
+                false,
+            ),
         ),
     ])
+}
+
+fn operator_manifest() -> Value {
+    serde_json::from_str(OPERATOR_JSON).expect("operator.json parses")
+}
+
+fn operator_geo_rows(manifest: &Value) -> Vec<&serde_json::Map<String, Value>> {
+    manifest["subcommands"]
+        .as_array()
+        .expect("operator subcommands array")
+        .iter()
+        .filter_map(|row| {
+            let object = row.as_object().expect("operator row object");
+            object["name"]
+                .as_str()
+                .is_some_and(|name| name.starts_with("geo "))
+                .then_some(object)
+        })
+        .collect()
+}
+
+fn operator_command_row_mut<'a>(
+    manifest: &'a mut Value,
+    command_name: &str,
+) -> &'a mut serde_json::Map<String, Value> {
+    manifest["subcommands"]
+        .as_array_mut()
+        .expect("operator subcommands array")
+        .iter_mut()
+        .find_map(|row| {
+            let object = row.as_object_mut().expect("operator row object");
+            (object["name"] == command_name).then_some(object)
+        })
+        .unwrap_or_else(|| panic!("{command_name} row exists"))
+}
+
+fn operator_geo_rows_by_surface(
+    manifest: &Value,
+) -> Result<BTreeMap<String, BTreeSet<String>>, String> {
+    let mut rows_by_surface = BTreeMap::<String, BTreeSet<String>>::new();
+    for row in operator_geo_rows(manifest) {
+        let name = row["name"]
+            .as_str()
+            .expect("operator geo row name")
+            .to_string();
+        let Some(surface) = row.get("surface") else {
+            return Err(format!("{name} is missing required geo surface"));
+        };
+        let Some(surface) = surface.as_str() else {
+            return Err(format!("{name} has non-string geo surface {surface}"));
+        };
+        match surface {
+            "primary" | "leaf" | "measurement" => {
+                rows_by_surface
+                    .entry(surface.to_string())
+                    .or_default()
+                    .insert(name);
+            }
+            other => {
+                return Err(format!("{name} has unknown geo surface {other}"));
+            }
+        }
+    }
+    Ok(rows_by_surface)
+}
+
+fn assert_operator_geo_surface(
+    rows_by_surface: &BTreeMap<String, BTreeSet<String>>,
+    surface: &str,
+    expected: &[&str],
+) {
+    let actual = rows_by_surface
+        .get(surface)
+        .unwrap_or_else(|| panic!("{surface} geo surface exists"));
+    let expected = expected
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(actual, &expected, "{surface} geo command rows drifted");
 }
 
 fn assert_command_status_buckets_are_disjoint(
@@ -570,6 +770,7 @@ fn geo_capabilities_cover_compiled_leaf_commands_and_public_contracts() {
                 command.command.as_str(),
                 (
                     command.output_contract.as_str(),
+                    command.surface,
                     command.read_only,
                     command.uses_network,
                 ),
@@ -579,18 +780,19 @@ fn geo_capabilities_cover_compiled_leaf_commands_and_public_contracts() {
     assert_eq!(actual_commands, expected_commands);
 
     let clap_leafs = geo_clap_leaf_paths();
-    let implemented_leafs = artifact
+    let described_leafs = artifact
         .commands
         .implemented
         .iter()
+        .chain(artifact.commands.unavailable.iter())
         .map(|command| {
             command_leaf(&command.command, &clap_leafs)
                 .unwrap_or_else(|| panic!("{} is not a compiled Geo Clap leaf", command.command))
         })
         .collect::<BTreeSet<_>>();
     assert_eq!(
-        implemented_leafs, clap_leafs,
-        "every compiled canon geo leaf must be present in canon_geo_capabilities.v0"
+        described_leafs, clap_leafs,
+        "every compiled canon geo leaf must be present in canon_geo_capabilities.v0 as implemented or unavailable"
     );
 
     let implemented_contracts = contract_versions(&artifact.contracts.implemented);
@@ -617,6 +819,7 @@ fn geo_capabilities_cover_compiled_leaf_commands_and_public_contracts() {
                 command.command.as_str(),
                 (
                     command.output_contract.as_str(),
+                    command.surface,
                     command.read_only,
                     command.uses_network,
                 ),
@@ -625,16 +828,105 @@ fn geo_capabilities_cover_compiled_leaf_commands_and_public_contracts() {
         .collect::<BTreeMap<_, _>>();
     assert_eq!(
         unavailable_commands,
-        BTreeMap::from([(
-            "canon geo inspect",
-            ("planned_not_implemented", true, false),
-        )])
+        BTreeMap::from([
+            (
+                "canon geo inspect",
+                (
+                    "planned_not_implemented",
+                    GeoCommandSurface::Primary,
+                    true,
+                    false,
+                ),
+            ),
+            (
+                "canon geo ledger",
+                (
+                    "planned_not_implemented",
+                    GeoCommandSurface::Primary,
+                    true,
+                    false,
+                ),
+            )
+        ])
     );
     for command in &artifact.commands.unavailable {
         assert!(
-            command_leaf(&command.command, &clap_leafs).is_none(),
-            "{} must not be both compiled and unavailable",
+            command_leaf(&command.command, &clap_leafs).is_some(),
+            "{} must be a compiled unavailable Geo primary leaf",
             command.command
+        );
+    }
+}
+
+#[test]
+fn operator_geo_rows_declare_valid_surface_tiers() {
+    let manifest = operator_manifest();
+    let rows_by_surface =
+        operator_geo_rows_by_surface(&manifest).expect("operator geo surfaces are valid");
+    assert_operator_geo_surface(&rows_by_surface, "primary", &PRIMARY_GEO_ROWS);
+    assert_operator_geo_surface(&rows_by_surface, "leaf", &LEAF_GEO_ROWS);
+    assert_operator_geo_surface(&rows_by_surface, "measurement", &MEASUREMENT_GEO_ROWS);
+
+    let mut missing = operator_manifest();
+    operator_command_row_mut(&mut missing, "geo plan").remove("surface");
+    let error = operator_geo_rows_by_surface(&missing).expect_err("missing surface must refuse");
+    assert!(
+        error.contains("geo plan"),
+        "missing-surface refusal should name the row, got {error}"
+    );
+
+    let mut unknown = operator_manifest();
+    operator_command_row_mut(&mut unknown, "geo capabilities")
+        .insert("surface".to_string(), json!("debug"));
+    let error = operator_geo_rows_by_surface(&unknown).expect_err("unknown surface must refuse");
+    assert!(
+        error.contains("geo capabilities") && error.contains("debug"),
+        "unknown-surface refusal should name the row and bad value, got {error}"
+    );
+}
+
+#[test]
+fn geo_help_groups_primary_before_stage_leaves_and_hides_measurements() {
+    let assert = canon_command().args(["geo", "--help"]).assert().success();
+    assert!(assert.get_output().stderr.is_empty());
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("help is utf-8");
+
+    let primary_start = stdout
+        .find("Primary:")
+        .unwrap_or_else(|| panic!("geo help must contain Primary heading, got:\n{stdout}"));
+    let leaf_start = stdout
+        .find("Stage leaves (used by geo run and Demo 0):")
+        .unwrap_or_else(|| panic!("geo help must contain stage-leaf heading, got:\n{stdout}"));
+    assert!(
+        primary_start < leaf_start,
+        "Primary heading must precede stage leaves, got:\n{stdout}"
+    );
+
+    let primary_section = &stdout[primary_start..leaf_start];
+    let leaf_section = &stdout[leaf_start..];
+    for command in PRIMARY_GEO_ROWS {
+        let verb = command.strip_prefix("geo ").expect("geo command");
+        assert!(
+            primary_section.contains(verb),
+            "primary help section missing {verb}, got:\n{stdout}"
+        );
+    }
+    for command in LEAF_GEO_ROWS {
+        let verb = command.strip_prefix("geo ").expect("geo command");
+        assert!(
+            !primary_section.contains(verb),
+            "leaf {verb} leaked into Primary help section:\n{stdout}"
+        );
+        assert!(
+            leaf_section.contains(verb),
+            "stage-leaf help section missing {verb}, got:\n{stdout}"
+        );
+    }
+    for command in MEASUREMENT_GEO_ROWS {
+        let verb = command.strip_prefix("geo ").expect("geo command");
+        assert!(
+            !stdout.contains(verb),
+            "measurement command {verb} must stay hidden from geo help:\n{stdout}"
         );
     }
 }

@@ -180,22 +180,16 @@ pub struct ProjectCli {
 }
 
 #[derive(Args, Debug, Clone)]
-#[command(after_help = GEO_TIERED_HELP)]
+#[command(
+    subcommand_help_heading = "Primary",
+    after_help = GEO_STAGE_LEAF_HELP
+)]
 pub struct GeoCli {
     #[command(subcommand)]
     pub command: GeoSubcommand,
 }
 
-const GEO_TIERED_HELP: &str = "\
-Primary:
-  capabilities             Emit compiled offline Canon Geo capability contracts
-  plan                     Compile a deterministic offline Geo plan from declared local inputs
-  run                      Run a Geo plan offline with explicit local input bindings
-  replan-from-acquisition  Satisfy one acquisition request, publish an inventory advancement, and replan
-  inspect                  Planned run inspection surface; currently unavailable
-  ledger                   Planned ledger surface; currently unavailable
-  evaluate                 Evaluate labeled composition cases without leaking labels into the solver
-
+const GEO_STAGE_LEAF_HELP: &str = "\
 Stage leaves (used by geo run and Demo 0):
   link-sources                    Materialize three or more named sources into one budgeted consistency artifact
   materialize-home-cells          Derive auditable H3 home cells from release-bound representative points
@@ -270,25 +264,19 @@ pub enum ProjectLockSubcommand {
 #[derive(Subcommand, Debug, Clone)]
 pub enum GeoSubcommand {
     /// Emit compiled offline Canon Geo capability contracts
-    #[command(hide = true)]
     Capabilities(GeoCapabilitiesCli),
     /// Compile a deterministic offline Geo plan from declared local inputs
-    #[command(hide = true)]
     Plan(GeoPlanCli),
     /// Run a Geo plan offline with explicit local input bindings
-    #[command(hide = true)]
     Run(GeoRunCli),
     /// Satisfy one acquisition request, publish an inventory advancement, and replan
-    #[command(name = "replan-from-acquisition", hide = true)]
+    #[command(name = "replan-from-acquisition")]
     ReplanFromAcquisition(GeoReplanFromAcquisitionCli),
     /// Inspect a Geo run's sections, receipts, and residual state
-    #[command(hide = true)]
     Inspect,
     /// Build and inspect Geo adjudication ledgers
-    #[command(hide = true)]
     Ledger,
     /// Evaluate labeled composition cases without leaking labels into the solver
-    #[command(hide = true)]
     Evaluate(GeoEvaluateCli),
     /// Materialize three or more named sources into one budgeted consistency artifact
     #[command(name = "link-sources", hide = true)]

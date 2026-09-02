@@ -2,7 +2,7 @@
 
 use assert_cmd::Command;
 use serde_json::{Value, json};
-use std::{fs, path::Path};
+use std::{collections::BTreeMap, fs, path::Path};
 use tempfile::tempdir;
 
 fn run_demo(work_dir: &Path) -> Vec<u8> {
@@ -26,6 +26,22 @@ fn run_demo(work_dir: &Path) -> Vec<u8> {
     assert.get_output().stdout.clone()
 }
 
+fn geo_capability_surface_counts(capabilities: &Value) -> BTreeMap<String, u64> {
+    let mut counts = BTreeMap::new();
+    let commands = capabilities["commands"]
+        .as_object()
+        .expect("commands status sets");
+    for bucket in ["implemented", "diagnostic_only", "unavailable"] {
+        for command in commands[bucket].as_array().expect("command bucket array") {
+            let surface = command["surface"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{bucket} command missing surface: {command}"));
+            *counts.entry(surface.to_string()).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
 #[test]
 fn demo0_script_has_valid_bash_syntax() {
     Command::new("bash")
@@ -36,6 +52,44 @@ fn demo0_script_has_valid_bash_syntax() {
         ))
         .assert()
         .success();
+}
+
+#[test]
+fn geo_capabilities_report_exact_surface_tier_counts() {
+    let assert = Command::new(env!("CARGO_BIN_EXE_canon"))
+        .args(["geo", "capabilities", "--emit", "json"])
+        .assert()
+        .success();
+    assert!(assert.get_output().stderr.is_empty());
+    let capabilities: Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("capabilities parses");
+    assert_eq!(
+        geo_capability_surface_counts(&capabilities),
+        BTreeMap::from([
+            ("leaf".to_string(), 11),
+            ("measurement".to_string(), 3),
+            ("primary".to_string(), 7)
+        ])
+    );
+    assert_eq!(
+        capabilities["commands"]["unavailable"],
+        json!([
+            {
+                "command": "canon geo inspect",
+                "surface": "primary",
+                "output_contract": "planned_not_implemented",
+                "read_only": true,
+                "uses_network": false
+            },
+            {
+                "command": "canon geo ledger",
+                "surface": "primary",
+                "output_contract": "planned_not_implemented",
+                "read_only": true,
+                "uses_network": false
+            }
+        ])
+    );
 }
 
 #[test]
@@ -138,7 +192,7 @@ fn demo0_case4_public_cli_journey_is_byte_deterministic_and_honest() {
     );
     assert_eq!(
         summary["capabilities"]["unavailable_control_plane"],
-        json!(["canon geo inspect"])
+        json!(["canon geo inspect", "canon geo ledger"])
     );
     assert_eq!(
         summary["commands_exercised"],

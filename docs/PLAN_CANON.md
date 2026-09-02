@@ -92,10 +92,16 @@ canon project describe <DIR> [--manifest <PATH>] [--emit json|summary]
 canon project lock refresh --manifest <MANIFEST> --out <LOCK> [--emit json|summary]
 canon project plan --manifest <MANIFEST> --lock <LOCK> [--out <PLAN>] [--cache-hit <NODE>...] [--emit json|summary]
 canon project run [--plan <PLAN>] [--manifest <MANIFEST>] [--lock <LOCK>] [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json|summary]
+# Geo primary surface
 canon geo capabilities [--emit json]
 canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>
 canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]
 canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>
+canon geo inspect
+canon geo ledger
+canon geo evaluate --population <POPULATION.json>
+
+# Geo stage leaves (used by geo run and Demo 0)
 canon geo link-sources --request <REQUEST.json> --rows-out <ROWS.csv>
 canon geo materialize-home-cells --rows <ROWS.json>
 canon geo tile-work --request <REQUEST.json>
@@ -105,12 +111,13 @@ canon geo materialize-geometry --request <REQUEST.json>
 canon geo materialize-warehouse-geometry --rows <ROWS.json>
 canon geo materialize-evidence --rows <ROWS.json>
 canon geo materialize-address-evidence --request <REQUEST.json>
+canon geo compile-evidence --request <REQUEST.json>
+canon geo stack-evidence --population <POPULATION.json> --overlay <OVERLAY.json>
+
+# Geo measurement adapters
 canon geo materialize-h7-population --rows <ROWS.json>
 canon geo materialize-h7-staging-batch --batch <BATCH.json>
 canon geo materialize-h7-pip-block-batch --batch <BATCH.json>
-canon geo compile-evidence --request <REQUEST.json>
-canon geo stack-evidence --population <POPULATION.json> --overlay <OVERLAY.json>
-canon geo evaluate --population <POPULATION.json>
 canon inbox list --inbox <INBOX.json> [--policy <POLICY.json>] [--limit <N>] [--cursor <CURSOR>] [--event-kind <KIND>...] [--reason-code <REASON>...] [--field-role <ROLE>...] [--partition <KEY>...] [--emit json|summary]
 canon inbox show --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json|summary]
 canon inbox explain --inbox <INBOX.json> --event-key <KEY> [--policy <POLICY.json>] [--emit json|summary]
