@@ -44,7 +44,7 @@ use canon::geo::{
     CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
     CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
-    CANON_GEO_PRE_RESOLUTION_VERSION, CANON_GEO_QUESTION_VERSION,
+    CANON_GEO_PRE_RESOLUTION_VERSION, CANON_GEO_PROPAGATION_VERSION, CANON_GEO_QUESTION_VERSION,
     CANON_GEO_REGIONAL_INVENTORY_VERSION, CANON_GEO_RESOURCE_BUDGET_VERSION,
     CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
     CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
@@ -66,33 +66,35 @@ use canon::geo::{
     GeoH7StagingEvidenceRecordRef, GeoH7StagingSourceEvidenceRecord,
     GeoH7StagingSourceRecordBytesBatchRequest, GeoH7StagingSourceRecordBytesRow, GeoHardConstraint,
     GeoHardConstraintKind, GeoHomeCellAssignmentArtifact, GeoHomeCellRow, GeoHomeCellRowsRequest,
-    GeoIdentityParticipation, GeoLabeledCompositionCase, GeoLicenseClass, GeoLocalAcquisitionState,
-    GeoLocalArtifactRef, GeoLocalFrameContract, GeoMultisourceRequest, GeoMultisourceSource,
-    GeoNativeEntityScope, GeoNumericBound, GeoNumericMeasure, GeoNycBorough, GeoPadAddressMember,
-    GeoPadAddressSet, GeoPlanInventoryRef, GeoPointPopulationArtifact,
-    GeoPopulationCaseEvidenceOverlay, GeoPopulationEvaluationRequest,
-    GeoPopulationEvidenceStackRequest, GeoPreResolutionArtifact, GeoPreResolutionBuildReceipt,
-    GeoPreResolutionCorpusKind, GeoPreResolutionProofClass, GeoPreResolutionRequest,
-    GeoPreResolutionRunStatus, GeoPreResolutionSourceCorpus, GeoPreResolutionSourceRow,
-    GeoProjectionProvenance, GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance,
-    GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoRhoBasis, GeoRhoContract,
-    GeoRhoObservation, GeoRhoObservationKind, GeoSourceAvailability, GeoSourceAxisDomain,
-    GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed, GeoSourceRelease,
-    GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding, GeoSubjectBindingClass,
-    GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
-    GeoTileCandidateReachReference, GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch,
-    GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
+    GeoIdentityParticipation, GeoIntegerMeasure, GeoIntegerMemberValue, GeoIntegerValueOrigin,
+    GeoLabeledCompositionCase, GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef,
+    GeoLocalFrameContract, GeoMultisourceRequest, GeoMultisourceSource, GeoNativeEntityScope,
+    GeoNumericBound, GeoNumericMeasure, GeoNycBorough, GeoPadAddressMember, GeoPadAddressSet,
+    GeoPlanInventoryRef, GeoPointPopulationArtifact, GeoPopulationCaseEvidenceOverlay,
+    GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoPreResolutionArtifact,
+    GeoPreResolutionBuildReceipt, GeoPreResolutionCorpusKind, GeoPreResolutionProofClass,
+    GeoPreResolutionRequest, GeoPreResolutionRunStatus, GeoPreResolutionSourceCorpus,
+    GeoPreResolutionSourceRow, GeoProjectionProvenance, GeoPropagationBudget, GeoQuestion,
+    GeoRegionalInventory, GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget,
+    GeoResourceCounter, GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
+    GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal,
+    GeoSourcePointFixed, GeoSourceRelease, GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding,
+    GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
+    GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileCandidateReachReference,
+    GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch, GeoTileDecisionMember,
+    GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
     GeoTileReconciliationArtifact, GeoTileReconciliationRequest, GeoTileSourceBinding,
     GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValueOrigin,
     GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
     GeoWarehouseParcelRow, GeoWarehouseRowsRequest, canonical_error_population_bytes,
-    canonical_pre_resolution_bytes, compile_evidence, default_geo_capabilities,
-    evaluate_pad_membership, evaluate_population, ingest_client_geometry_tile,
-    materialize_geo_multisource, materialize_geometry_tile, materialize_h7_population_rows,
-    materialize_home_cells, materialize_pre_resolution, materialize_tile_work_unit,
-    materialize_warehouse_geometry, parse_address_forest, reconcile_tile_decisions,
-    regional_inventory_semantic_hash, solve_composition, stack_population_evidence,
-    validate_point_population_artifact, validate_pre_resolution_artifact,
+    canonical_pre_resolution_bytes, canonical_propagation_bytes, compile_evidence,
+    default_geo_capabilities, evaluate_pad_membership, evaluate_population,
+    ingest_client_geometry_tile, materialize_geo_multisource, materialize_geometry_tile,
+    materialize_h7_population_rows, materialize_home_cells, materialize_pre_resolution,
+    materialize_tile_work_unit, materialize_warehouse_geometry, parse_address_forest, propagate,
+    reconcile_tile_decisions, regional_inventory_semantic_hash, solve_composition,
+    stack_population_evidence, validate_point_population_artifact,
+    validate_pre_resolution_artifact,
 };
 use h3o::{LatLng, Resolution};
 use serde_json::Value;
@@ -114,6 +116,7 @@ const POINT_POPULATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.point_population.v0.schema.json");
 const PRE_RESOLUTION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.pre_resolution.v0.schema.json");
+const PROPAGATION_SCHEMA: &str = include_str!("../schemas/canon.geo.propagation.v0.schema.json");
 const POPULATION_EVIDENCE_STACK_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_evidence_stack_request.v0.schema.json");
 const POPULATION_EVIDENCE_STACK_SCHEMA: &str =
@@ -1211,6 +1214,51 @@ fn composition_request() -> GeoCompositionRequest {
     }
 }
 
+fn propagation_request() -> GeoCompositionRequest {
+    GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: GeoCompositionProfile::parcel(),
+        universe: GeoCompositionUniverse {
+            parcels: vec![
+                "parcel-a".to_string(),
+                "parcel-b".to_string(),
+                "parcel-c".to_string(),
+            ],
+            buildings: Vec::new(),
+        },
+        hard_constraints: vec![GeoHardConstraint {
+            id: "band.fixture.schema.area".to_string(),
+            constraint: GeoHardConstraintKind::IntegerSumBand {
+                level: GeoEntityLevel::Parcel,
+                measure: GeoIntegerMeasure {
+                    semantic_id: "fixture.area".to_string(),
+                    unit: "square_foot".to_string(),
+                    value_origin: GeoIntegerValueOrigin::SourceAsserted,
+                },
+                values: vec![
+                    GeoIntegerMemberValue {
+                        id: "parcel-a".to_string(),
+                        value: 100,
+                    },
+                    GeoIntegerMemberValue {
+                        id: "parcel-b".to_string(),
+                        value: 200,
+                    },
+                    GeoIntegerMemberValue {
+                        id: "parcel-c".to_string(),
+                        value: 5_000,
+                    },
+                ],
+                min: 5_000,
+                max: 5_200,
+            },
+        }],
+        soft_preferences: Vec::new(),
+        max_assignments: 64,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    }
+}
+
 fn evidence_request() -> GeoEvidenceCompilationRequest {
     GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
@@ -1969,6 +2017,30 @@ fn composition_request_schema_matches_a_real_instance() {
         COMPOSITION_REQUEST_SCHEMA,
         "canon.geo.composition_request.v0",
         "canon_geo_composition_request.v0",
+        &instance,
+    );
+}
+
+#[test]
+fn propagation_schema_matches_a_real_instance() {
+    let artifact = propagate(
+        &propagation_request(),
+        None,
+        &GeoPropagationBudget::default(),
+    )
+    .expect("propagation artifact builds");
+    assert!(
+        !artifact.prunings.is_empty(),
+        "schema fixture must exercise nonempty typed pruning output"
+    );
+    let canonical_bytes =
+        canonical_propagation_bytes(&artifact).expect("propagation artifact canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical propagation JSON parses");
+    assert_drift_free(
+        PROPAGATION_SCHEMA,
+        "canon.geo.propagation.v0",
+        CANON_GEO_PROPAGATION_VERSION,
         &instance,
     );
 }
