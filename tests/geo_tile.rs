@@ -835,11 +835,11 @@ fn cross_level_relation_decisions_are_explicit_and_cannot_be_same_as() {
         vec![proposal_with_semantics(
             GeoTileDecisionSemantics::Relation {
                 relation: GeoControlRelation::SameAs,
-                from_entity_level: GeoControlEntityLevel::Building,
-                to_entity_level: GeoControlEntityLevel::Parcel,
+                from_entity_level: GeoControlEntityLevel::Poi,
+                to_entity_level: GeoControlEntityLevel::Building,
             },
             payload("same-as-relation"),
-            vec![building_member.clone(), parcel_member.clone()],
+            vec![poi_member.clone(), building_member.clone()],
         )],
     )]);
     let error = reconcile_tile_decisions(&same_as_relation)
