@@ -1,0 +1,50 @@
+[
+  {
+    "input": "North Pier Holdings LLC",
+    "canonical_id": "https://canon.example/entity/ORG-0001",
+    "canonical_type": "organization",
+    "rule_id": "NAME_PRIMARY"
+  },
+  {
+    "input": "North Pier Hldgs",
+    "canonical_id": "https://canon.example/entity/ORG-0001",
+    "canonical_type": "organization",
+    "rule_id": "NAME_VARIANT"
+  },
+  {
+    "input": "urn:vendor-alpha:entity:0007",
+    "canonical_id": "https://canon.example/entity/ORG-0001",
+    "canonical_type": "organization",
+    "rule_id": "OPAQUE_EXTENSION_ID"
+  },
+  {
+    "input": "Harbor 2026 Trust",
+    "canonical_id": "cmdrvl:trust/HBR-2026",
+    "canonical_type": "trust",
+    "rule_id": "TRUST_NAME"
+  },
+  {
+    "input": "HBR26A",
+    "canonical_id": "cmdrvl:trust/HBR-2026",
+    "canonical_type": "trust",
+    "rule_id": "TRUST_TICKER"
+  },
+  {
+    "input": "CUSIP-999000AA1",
+    "canonical_id": "SEC-ACPT-0001",
+    "canonical_type": "security",
+    "rule_id": "SECURITY_KEY"
+  },
+  {
+    "input": "LEI-5493001KJTIIGC8Y1R12",
+    "canonical_id": "urn:lei:5493001KJTIIGC8Y1R12",
+    "canonical_type": "organization",
+    "rule_id": "IDENTIFIER_KEY"
+  },
+  {
+    "input": "Blue Ridge Warehouse",
+    "canonical_id": "cmdrvl:asset/BLUE-RIDGE-WH",
+    "canonical_type": "property",
+    "rule_id": "NAME_PRIMARY"
+  }
+]

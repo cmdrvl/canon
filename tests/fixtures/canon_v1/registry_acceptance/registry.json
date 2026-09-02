@@ -1,0 +1,13 @@
+{
+  "id": "registry-acceptance",
+  "version": "2026.09.02",
+  "description": "Canon v1 immutable lookup and export acceptance fixture",
+  "updated": "2026-09-02",
+  "entry_count": 8,
+  "canonical_iri_namespace": "https://canon.example/registry/acceptance/",
+  "acceptance": {
+    "bead": "bd-26g5",
+    "source_class": "neutral_public_fixture",
+    "purpose": "immutable lookup, dbt seed export, and search index export acceptance"
+  }
+}
