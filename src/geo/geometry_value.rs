@@ -1303,17 +1303,16 @@ fn canonicalize_provider_feature_provenance(
         source_digest,
         source_record_count: _,
     } = &source.provenance
+        && (provenance.source_path != *source_path || provenance.source_digest != *source_digest)
     {
-        if provenance.source_path != *source_path || provenance.source_digest != *source_digest {
-            return Err(GeoGeometryError::new(
-                GeoGeometryErrorCode::InvalidSourceProvenance,
-                "Canon-full feature provenance must point at the declared source artifact",
-                [
-                    ("feature_id", contract.feature_id.as_str()),
-                    ("source_instance_id", source.source_instance_id.as_str()),
-                ],
-            ));
-        }
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceProvenance,
+            "Canon-full feature provenance must point at the declared source artifact",
+            [
+                ("feature_id", contract.feature_id.as_str()),
+                ("source_instance_id", source.source_instance_id.as_str()),
+            ],
+        ));
     }
     if provenance.field_locators.is_empty() {
         return Err(GeoGeometryError::new(
