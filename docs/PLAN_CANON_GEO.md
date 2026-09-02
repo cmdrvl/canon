@@ -246,11 +246,11 @@ properties are *provable* rather than asserted.
 
 | Property | Mechanism | Authority |
 |---|---|---|
-| Fixpoint unique regardless of application order | monotone, contracting, correct propagators on a finite lattice | Tarski 1955; Cousot & Cousot 1977; Apt 1999 |
+| Fixpoint unique regardless of application order | fair iteration of monotone, contracting, correct propagators on a finite lattice; soundness and completion are separate implementation obligations | Tarski 1955, *Pacific J. Math.* 5:285-309, pp. 285-287, doi:10.2140/pjm.1955.5.285; Cousot & Cousot 1977, POPL, pp. 238-252, doi:10.1145/512950.512973; Apt 1999, *Theoretical Computer Science* 221(1-2):179-210, pp. 182-185, doi:10.1016/S0304-3975(99)00032-8 |
 | Compiled semantics can have a canonical normal form; byte identity additionally requires a frozen serializer | reduced OBDD under a fixed variable order, or compressed/normalized SDD under a fixed vtree. General d-DNNF is not canonical. | Bryant 1986; Darwiche 2011 (SDD) |
 | Adding admitted hard evidence can only narrow the model set; it may expose a contradiction by making that set empty | `Models(T ∧ c) ⊆ Models(T)` plus a separate non-emptiness check; entailment alone must not label an empty successor a healthy refinement | Darwiche & Marquis 2002 |
 | Abstention is the residual, not a threshold | the answer is the model set; a singleton is a decision, a doubleton is an honest doubleton | — |
-| Empty model set is a **proof of source defect** with a minimal ordered blame set | MUS via preference-ordered QuickXplain; repairs via hitting-set duality | Reiter 1987; Junker 2004; Liffiton & Sakallah 2008 |
+| Empty model set is a **proof of source defect** with a minimal ordered blame set | deletion-checked subset-minimal core; preference-ordered QuickXplain; repairs via minimal hitting sets over enumerated cores | Junker 2004, AAAI, pp. 167-172; Reiter 1987, *Artificial Intelligence* 32(1):57-95, pp. 67-77, doi:10.1016/0004-3702(87)90062-2; Liffiton & Sakallah 2008, *J. Automated Reasoning* 40:1-33, doi:10.1007/s10817-007-9084-z |
 | Every conclusion explainable by naming evidence | minimal environment supporting the conclusion, computed on demand | de Kleer 1986 (ATMS) |
 | The whole run is independently machine-checkable | pseudo-Boolean proof log covering global-constraint propagation and symmetry breaking | Gocht, McCreesh & Nordström 2022 (VeriPB) |
 
@@ -535,11 +535,14 @@ Wu 1999):
 > cost model with explicit halo reconciliation. No end-to-end solver runtime has been
 > measured. The ladder below is therefore an architectural proposal, not a benchmark.
 
-**The ceiling is not a consistency level.** Régin's `alldifferent` GAC computes strongly
-connected components of the value graph (Tarjan 1972) as an intrinsic step — **those SCCs
-*are* the tile's decomposition, handed to us free.** No separate tree-decomposition
-heuristic. Typical component after geometric filtering: **6–20 variables, d ≤ 8**, tail to
-~40 on a dense assemblage.
+**The ceiling is not a consistency level.** Régin's `alldifferent` GAC uses a value graph
+and a covering matching; its filtering step computes SCCs of the oriented alternating graph
+to mark edges in alternating cycles (Régin 1994, AAAI, pp. 362-367, especially pp.
+363-365; Tarjan 1972, *SIAM J. Comput.* 1(2):146-160,
+doi:10.1137/0201010). That verifies the Hall-set/global-disequality pruning claim, not
+the old "tile decomposition for free" claim. Canon's decomposition is the separate checked
+predicate-incidence/component factorization after admitted constraints. Typical component
+after geometric filtering: **6–20 variables, d ≤ 8**, tail to ~40 on a dense assemblage.
 
 At that size, **exact compilation of the entire solution set is cheaper than path
 consistency on the tile, and subsumes k-consistency for every k simultaneously.** The
@@ -548,7 +551,7 @@ crossover is at **k = 3**.
 ```
 NC  →  AC-2001 + GAC on globals   ≈ 10 ms   tile-wide
     →  SAC                        ≈ 0.3 s   tile-wide   ← the level that earns its keep
-    →  decompose                  free      from Régin/Tarjan
+    →  decompose                  checked   predicate-incidence components
     →  exact MDD/SDD per component ≈ 0.2 s  ← subsumes all k-consistency at once
     →  PC on components           ≈ 50 ms   ← explanation artifact, NOT pruning
 ```
@@ -564,9 +567,11 @@ for a national pass.**
 
 **AC over pairwise `≠` cannot see Hall sets.** Six MS GlobalML footprints, five
 geometrically admissible slots. Pairwise disequality with AC finds nothing — every value
-still has support. Régin's GAC finds the wipeout immediately, because Hall's theorem (1935)
-violations are exactly what the SCC decomposition detects. **This is a proof that MS
-over-segmented a roof ridge, emitted for free.**
+still has support. Régin's matching/value-graph filter exposes the Hall deficit immediately
+(Hall 1935, *J. London Math. Soc.* s1-10(1):26-30, doi:10.1112/jlms/s1-10.37.26; Régin
+1994, pp. 363-365). This proves the declared exclusivity/candidate graph is inconsistent;
+calling the cause "roof-ridge over-segmentation" requires the evidence card's named source
+records, not the SCC subroutine alone.
 
 **SAC buys eliminations requiring an assignment plus a numeric constraint.** Assume the
 collateral is lot A. Propagate. The knapsack propagator on `Σ A_b · Fl_b` cannot reach the
@@ -604,10 +609,10 @@ checks discards decades of work and prunes far worse.
 
 | Domain rule | Global constraint | Algorithm / authority |
 |---|---|---|
-| Within-source exclusivity (two Overture buildings are never the same building) | `alldifferent` / `alldifferent_except_0` | Régin 1994, via Hall's theorem + Tarjan SCC |
+| Within-source exclusivity (two Overture buildings are never the same building) | `alldifferent` / `alldifferent_except_0` | Régin 1994 matching/value-graph GAC, AAAI pp. 362-367; Hall 1935 matching condition, pp. 26-30; Tarjan 1972 SCC subroutine, pp. 146-160 |
 | Cardinality priors (`NUMBLDGS`, source coverage rates) | `gcc` (global cardinality) | flow-based |
 | Distinct building count | `nvalue` / `atmost_nvalue` | — |
-| Additive area — **not** "sum with tolerance" | `knapsack` / `bin_packing` | subset-sum DP with dedicated propagator |
+| Additive area — **not** "sum with tolerance" | `knapsack` / `bin_packing` | Trick 2003 dynamic-programming knapsack propagation, *Annals OR* 118:73-84, doi:10.1023/A:1021801522545; exact subset-sum DP remains pseudo-polynomial in the declared integer state budget |
 | Parcels do not overlap | `diffn` / `geost` | Beldiceanu et al. |
 | Address along a block face | `disjunctive` scheduling on the house-number axis | — |
 | **Address string parsing** | `regular` | Pesant, CP 2004 — GAC by DFA unfolding, O(n·\|Q\|·\|Σ\|) |
@@ -660,11 +665,13 @@ structure. **Honest cost:** labels are antichains and can blow up exponentially 
 source records as assumptions per tile this is a real risk. **Do not run a full ATMS
 eagerly.**
 
-**(b) QuickXplain** (Junker, AAAI 2004). Preferred minimal explanation on demand in
-**O(k log(n/k))** consistency checks. At n ≈ 60 tile constraints, k ≈ 3: `3·log₂(20) ≈ 13`
-solver calls × ~10 ms = **~130 ms per explanation, paid only when an operator clicks.**
-Fully deterministic given a fixed constraint order, which the source-reliability ordering
-supplies. **This is the right engineering answer.**
+**(b) QuickXplain** (Junker, AAAI 2004, pp. 167-172). Preferred minimal explanation on
+demand. With balanced splits, Junker's Table 4 gives consistency-check counts between
+`log₂(n/k) + 2k` and `2k·log₂(n/k) + 2k` for conflict size `k`; the earlier `13`-call
+example for `n ≈ 60, k ≈ 3` understated the worst-case bound, which is roughly `32`
+checks. Canon therefore relies on deterministic ordered subset-minimality and records
+actual solve counters, not a fixed latency promise. Fully deterministic given a fixed
+constraint order, which the source-reliability ordering supplies.
 
 **(c) Lazy Clause Generation** (Ohrimenko, Stuckey & Codish 2009) — propagators explain
 themselves in clauses; the resolution derivation is the proof. Certified with **VeriPB**
@@ -716,8 +723,8 @@ all of the following linear or polynomial in diagram size.
 | **Backbone** — values in every solution | one traversal | *"Regardless of how the ambiguity resolves, this loan touches BBL 1012920026, GERS `08f2a3…`, and total collateral GLA ≥ 412,000 sf."* **Lets a downstream system act on partial resolution.** |
 | **Exact model count** | one bottom-up pass over a completed deterministic/decomposable representation | A *calibration-free* ambiguity measure. Not a confidence score — a count. A completed unsaturated 1 = decided, 3 = three named alternatives, and 0 = proof of source defect; fallback placeholders and saturated lower bounds are different claim classes. |
 | **Residual enumeration** | polynomial delay for supported compiled/matching classes | The full alternative set when materialization is within budget. Ryser (1963) gives O(2ⁿn) exact matching counts — practical for small proven factors such as n=12, not for a raw n=200 component. *#P-complete in general (Valiant 1979); tractability must come from measured decomposition or compiled width, never tile row count alone.* |
-| **MUS** — minimal blame | QuickXplain | *"These five sources cannot all be right, here is the smallest set that proves it, ordered so the least-trusted source is named first."* |
-| **MCS** — minimal repair | hitting sets of MUSes (Reiter 1987); enumeration via CAMUS (Liffiton & Sakallah 2008) or MARCO (Liffiton et al. 2016) | *"Retract either {FEMA `f3` SQMETERS} or {MapPLUTO `NUMBLDGS`} and the tile becomes consistent. Nothing smaller works."* **A repair recommendation, not an error message.** |
+| **MUS** — minimal blame | deletion-checked subset-minimal core; QuickXplain is the ordered search strategy (Junker 2004, AAAI pp. 167-172) | *"These five sources cannot all be right, here is the smallest set that proves it, ordered so the least-trusted source is named first."* |
+| **MCS** — minimal repair | minimal hitting sets of enumerated MUSes (Reiter 1987, pp. 67-77); enumeration via CAMUS (Liffiton & Sakallah 2008) or MARCO (Liffiton et al. 2016) | *"Retract either {FEMA `f3` SQMETERS} or {MapPLUTO `NUMBLDGS`} and the tile becomes consistent. Nothing smaller works."* **A repair recommendation, not an error message.** |
 | **Counterfactual separation power** | exact count reduction under each precisely stated hypothetical fact | *"If the certificate-of-occupancy date has value `d`, this exact fraction of the residual is eliminated."* This is exact realized/counterfactual reduction, not yet expected value of information. |
 | **Minimal network** (Montanari 1974) | PC on the residual component | *"If lot A then FEMA `f3`; if lot B then FEMA `f7` and the POI is a tenant not the owner."* |
 | **Certified refinement** | entailment plus non-emptiness between diagrams over the same declared universe and semantics; polytime on SDDs sharing a vtree | *"Every 2027 model was allowed in 2026, and at least one 2027 model remains."* An empty successor is a typed contradiction, not a vacuous success. |
@@ -1383,7 +1390,7 @@ The extensional kernel is kept as the exact backend. Three additions make it the
    domains before enumeration, prunes values with a typed reason naming the constraint and
    the evidence ids, and never changes the model set (soundness is checked in tests by
    comparing enumeration with and without propagation on every fixture). They shrink the
-   search space and produce the explanation skeleton for free.
+   search space and produce typed pruning reasons that can seed later explanations.
 2. **Minimal cores and repairs.** On an empty model set, compute one minimal
    unsatisfiable subset of admitted constraints by deletion under the declared reliability
    order, then enumerate correction sets as minimal hitting sets while the core count stays
@@ -1392,6 +1399,18 @@ The extensional kernel is kept as the exact backend. Three additions make it the
 3. **Counterfactual separation.** For a declared prospective observation with an
    exhaustive outcome domain, report the exact model count under each outcome. Never call
    it expected value without calibrated probabilities (architecture §9).
+
+> **Citation audit 2026-09-02 (bd-29cf).** §18.3 `DEFERRED` VeriPB, SDD, and
+> latent-slot symmetry claims are outside this audit until their triggers fire. The D2
+> load-bearing subset is pinned as follows: Régin/Hall/Tarjan verifies
+> `alldifferent`/Hall pruning but not tile decomposition; finite-domain propagation
+> confluence requires fair iteration of monotone domain-narrowing functions and completed
+> quiescence (Tarski/Cousot/Apt); additive bands are justified as bounded integer
+> subset-sum/knapsack propagation (Trick); minimal cores are deletion-checked
+> subset-minimal conflicts with QuickXplain as an ordered search strategy (Junker); and
+> correction sets are minimal hitting sets over enumerated cores (Reiter; Liffiton &
+> Sakallah). The client-facing MUS/MCS language in §9 is valid only when `minimal=true`
+> and the relevant `cores_complete`/`explanation_complete` flags support the claim.
 
 ### 18.6 What this changes in the build order
 
@@ -2034,9 +2053,10 @@ single constant. No characterization, no admission.
 - **Construction state — is there a building here *now*?** The Allen interval constraints in
   §7 need demolition and new-construction observations and currently have **no observation
   source at all**
-- **Confirmation of roof-ridge over-segmentation.** Régin's Hall-set violation *proves*
-  a source split one building into several; imagery *shows* it. Proof and picture in the
-  same evidence card.
+- **Confirmation of roof-ridge over-segmentation.** A Hall-set failure in the declared
+  exclusivity/candidate graph proves the source records cannot all be simultaneously true;
+  imagery can distinguish roof-ridge over-segmentation from missing candidates or stale
+  geometry. Proof and picture in the same evidence card.
 
 ## A.5 Imagery and elevation source inventory
 
