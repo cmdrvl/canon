@@ -1,15 +1,15 @@
 #![forbid(unsafe_code)]
 
-use canon::geo::{compare_property_sets, GeoEntityLevel};
 use canon::geo::{
-    diff_tile_identifier_vintages, normalize_nyc_bbl, registry_entries_for_clusters,
-    registry_proposal_from_ledger_json, GeoIdentifierCluster, GeoIdentifierErrorCode,
-    GeoIdentifierTombstone, GeoPropertyDocumentAssertion, GeoPropertySetRelation,
-    GeoTileIdentifierVintage, CANON_GEO_REGISTRY_PROPOSAL_VERSION, GEO_BBL_NORMALIZATION_RULE_ID,
+    CANON_GEO_REGISTRY_PROPOSAL_VERSION, GEO_BBL_NORMALIZATION_RULE_ID, GeoIdentifierCluster,
+    GeoIdentifierErrorCode, GeoIdentifierTombstone, GeoPropertyDocumentAssertion,
+    GeoPropertySetRelation, GeoTileIdentifierVintage, diff_tile_identifier_vintages,
+    normalize_nyc_bbl, registry_entries_for_clusters, registry_proposal_from_ledger_json,
 };
-use canon::registry::{export_registry, RegistryExportFormat, RegistryExportRequest};
+use canon::geo::{GeoEntityLevel, compare_property_sets};
+use canon::registry::{RegistryExportFormat, RegistryExportRequest, export_registry};
 use rusqlite::Connection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::{fs, path::Path};
 use tempfile::tempdir;
@@ -470,14 +470,18 @@ fn t58_registry_proposal_from_ledger_rows_preserves_denominator_and_skips_reach_
     assert_eq!(assertion.loan_id, "loan-a");
     assert_eq!(assertion.parcel_ids.len(), 2);
     assert_eq!(assertion.building_ids.len(), 1);
-    assert!(assertion
-        .parcel_ids
-        .iter()
-        .all(|id| id.starts_with("cmdrvl:parcel:")));
-    assert!(assertion
-        .building_ids
-        .iter()
-        .all(|id| id.starts_with("cmdrvl:building:")));
+    assert!(
+        assertion
+            .parcel_ids
+            .iter()
+            .all(|id| id.starts_with("cmdrvl:parcel:"))
+    );
+    assert!(
+        assertion
+            .building_ids
+            .iter()
+            .all(|id| id.starts_with("cmdrvl:building:"))
+    );
 
     let serialized = serde_json::to_value(&proposal).expect("proposal serializes");
     assert_no_probabilistic_fields(&serialized);
