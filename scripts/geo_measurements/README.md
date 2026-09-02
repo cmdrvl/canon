@@ -39,6 +39,41 @@ IDs were read back from Snowflake query history after execution.
 | Appendix D same-cell file | `01c6b1c0-0821-83a1-006c-c7030888b8de` | 3,527 ms | BX 287/4/0; BK 2,332/22/0 |
 | Appendix D complete-reach file | `01c6b1c0-0821-784b-006c-c7030888c3c6` | 2,332 ms | BX 290/1/0; BK 2,352/2/0 |
 
+## 2026-09-02 PAD 26B address residual characterization
+
+`address_parse_residual_pad26b_characterization.sql` characterizes the full
+PAD-unresolved residual from the bd-158y address control. It preserves the same
+PAD `26B` / `2026-05-01` release pin, geocode `ASOF <= 2026-08-01` cutoff, and
+5,269 address-county-key denominator: 3,930 matched, 1,339 unresolved. The
+result is a characterization, not a parser reduction; the unresolved count
+remains 1,339 until a later parser rerun lowers it against this same
+denominator.
+
+The live characterization query `01c6ce22-0821-c675-006c-c703089a80c2`
+completed in 4,423 ms and emitted eight guard-`ok` class rows. The class-example
+query `01c6ce27-0821-c676-006c-c703089ab026` completed in 3,809 ms and emitted
+24 example rows. SQL SHA-256:
+`eecadbe0814cffe35b049f6abcffa660353e72d85317fee740feabe2a4267d07`.
+
+| Residual class | Disposition | Keys |
+|---|---|---:|
+| `placeholder_or_non_street_delivery_form` | structurally unresolvable | 7 |
+| `alias_or_multi_address_string` | fixable here | 59 |
+| `queens_hyphenate_unmatched` | fixable here | 196 |
+| `compound_or_range_house_number` | fixable here | 113 |
+| `missing_structured_street` | fixable here | 11 |
+| `missing_or_unparsed_house_number` | fixable here | 9 |
+| `pad_street_present_number_absent` | fixable upstream | 609 |
+| `street_not_seen_in_pad_borough` | fixable here | 335 |
+
+The receipt records the disjoint/exhaustive integrity checks
+(`classified_total=1339`, `distinct_classified_keys=1339`,
+`unclassified_key_rows=0`, `overlap_key_count=0`) and the discarded canceled
+runs. The 45-second bd-158y full export cancellation
+`01c6c25b-0821-ab8c-006c-c703088f34da` and the bd-23ux expensive
+number-support exploration `01c6ce1c-0821-b991-006c-c703089ac006` are both
+explicitly non-positive evidence.
+
 ## 2026-08-31 E5 Franklin County thin-tier preflight
 
 `e5_franklin_county_thin_tier_readiness.sql` is the content-bound 2026-08-31

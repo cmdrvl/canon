@@ -1,0 +1,207 @@
+{
+  "version": "canon_geo_address_parse_residual_characterization_receipt.v0",
+  "bead": "bd-23ux",
+  "measurement_id": "bd-23ux_pad26b_residual_characterization_live",
+  "proof_class": "live",
+  "contract": "canon_geo_address_parse_residual_characterization.v0",
+  "disposition": "characterized_residual",
+  "claim_boundary": "Live characterization of the full PAD-unresolved residual over the unchanged 5,269 address-county-key control population. This is not a parser reduction, not a narrowed corpus, and not evidence that any class is already resolved.",
+  "query_as_of": "2026-09-02",
+  "source_sql_path": "scripts/geo_measurements/address_parse_residual_pad26b_characterization.sql",
+  "source_sql_sha256": "eecadbe0814cffe35b049f6abcffa660353e72d85317fee740feabe2a4267d07",
+  "execution_channel": "cmdrvl_data_mcp",
+  "execution_transform": "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit",
+  "source_pins": {
+    "geocode_table": {
+      "table": "EDGAR_DB.DBT_WRANGLING_EDGAR.WRGL_EDGAR_CMBS_GEOCODES__STRUCTURED",
+      "asof_cutoff": "2026-08-01",
+      "source_hash_status": "not_exposed_by_described_table"
+    },
+    "pad_address_table": {
+      "table": "EDGAR_DB.SOURCE.NYC_DCP_PAD_ADDRESS_HOT",
+      "release": "26B",
+      "release_dt": "2026-05-01",
+      "is_current_release": true,
+      "source_zip_sha256": "016a29968b4bed9e8dde10b9c27b68132aba994baf1dc3e2543a861eadfdf4bd"
+    }
+  },
+  "denominators": {
+    "address_county_keys": 5269,
+    "parsed_street_keys": 5226,
+    "parsed_number_keys": 5247,
+    "pad_matched_keys": 3930,
+    "pad_unresolved_keys": 1339,
+    "pad_unique_keys": 2337,
+    "pad_multi_bbl_keys": 1593,
+    "pad_bbl_edges": 6469,
+    "max_pad_bbls_per_key": 92
+  },
+  "classification_integrity": {
+    "row_status": "ok",
+    "class_rows": 8,
+    "distinct_class_rows": 8,
+    "classified_key_rows": 1339,
+    "distinct_classified_keys": 1339,
+    "unclassified_key_rows": 0,
+    "overlap_key_count": 0,
+    "classified_total": 1339,
+    "counts_sum_to_pad_unresolved_keys": true
+  },
+  "classes": [
+    {
+      "class_order": 1,
+      "residual_class": "placeholder_or_non_street_delivery_form",
+      "disposition": "structurally_unresolvable",
+      "key_count": 7,
+      "pct_of_residual": 0.52,
+      "description": "Placeholder package names, care-of labels, or mailbox/non-street delivery forms are not legal parcel address keys.",
+      "example_keys": [
+        "Brooklyn Package|36047",
+        "Various|36047",
+        "C/o Gumley Haft|36061"
+      ]
+    },
+    {
+      "class_order": 2,
+      "residual_class": "alias_or_multi_address_string",
+      "disposition": "fixable_here",
+      "key_count": 59,
+      "pct_of_residual": 4.41,
+      "description": "One source key names aliases, condominium/unit forms, or multiple addresses; query-side parsing must split all readings before PAD membership.",
+      "example_keys": [
+        "2136/2138 Honeywell Avenue a/k/a 901/903 E 181st St|36005",
+        "2542A, 2544A, 2546A, 2548A WHITE PLAINS ROAD|36005",
+        "2542A, 2544A, 2546A, 2548A White Plains Road|36005"
+      ]
+    },
+    {
+      "class_order": 3,
+      "residual_class": "queens_hyphenate_unmatched",
+      "disposition": "fixable_here",
+      "key_count": 196,
+      "pct_of_residual": 14.64,
+      "description": "Queens hyphenated house number survived normalization but found no PAD member under the current street/range predicate.",
+      "example_keys": [
+        "10-30 Beach 19th Street|36081",
+        "10-36/10-48 Neilson Street|36081",
+        "100-11 67th Road|36081"
+      ]
+    },
+    {
+      "class_order": 4,
+      "residual_class": "compound_or_range_house_number",
+      "disposition": "fixable_here",
+      "key_count": 113,
+      "pct_of_residual": 8.44,
+      "description": "Compound, slash, or range house-number expression needs a multi-reading parse or an upstream source correction.",
+      "example_keys": [
+        "1264-1270 GERARD AVENUE|36005",
+        "1441-1443 and|36005",
+        "1964-1966 Newbold Avenue|36005"
+      ]
+    },
+    {
+      "class_order": 5,
+      "residual_class": "missing_structured_street",
+      "disposition": "fixable_here",
+      "key_count": 11,
+      "pct_of_residual": 0.82,
+      "description": "Structured geocoder row did not expose a street token, so the raw address string has to be parsed by Canon before PAD lookup.",
+      "example_keys": [
+        "3231|36005",
+        "Creston & Prospect|36005",
+        "Stockton & Nostrand|36047"
+      ]
+    },
+    {
+      "class_order": 6,
+      "residual_class": "missing_or_unparsed_house_number",
+      "disposition": "fixable_here",
+      "key_count": 9,
+      "pct_of_residual": 0.67,
+      "description": "Structured geocoder row did not expose a parseable house number/range.",
+      "example_keys": [
+        "Dekalb & Kosciuszko|36047",
+        "FOREST HILL INN APARTMENTS, INC.|36047",
+        "Grove & Menahan|36047"
+      ]
+    },
+    {
+      "class_order": 7,
+      "residual_class": "pad_street_present_number_absent",
+      "disposition": "fixable_upstream",
+      "key_count": 609,
+      "pct_of_residual": 45.48,
+      "description": "The normalized street exists in PAD for the borough, but the house-number range has no current PAD row.",
+      "example_keys": [
+        "1100 Grand Concourse|36005",
+        "1197 East 233rd Street|36005",
+        "1299 GRAND CONCOURSE|36005"
+      ]
+    },
+    {
+      "class_order": 8,
+      "residual_class": "street_not_seen_in_pad_borough",
+      "disposition": "fixable_here",
+      "key_count": 335,
+      "pct_of_residual": 25.02,
+      "description": "The normalized input street is not present in PAD for the borough under this tokenizer/SND-normalization path.",
+      "example_keys": [
+        "1054 Grant Avenue|36005",
+        "106 Mount Hope Place|36005",
+        "1261 Seabury Avenue|36005"
+      ]
+    }
+  ],
+  "query_receipts": [
+    {
+      "purpose": "pad26b_residual_characterization",
+      "query_id": "01c6ce22-0821-c675-006c-c703089a80c2",
+      "status": "SUCCESS",
+      "rows_produced": 8,
+      "total_elapsed_ms": 4423,
+      "bytes_scanned": 253483008,
+      "history_recovered": true
+    },
+    {
+      "purpose": "pad26b_residual_class_examples",
+      "query_id": "01c6ce27-0821-c676-006c-c703089ab026",
+      "status": "SUCCESS",
+      "rows_produced": 24,
+      "total_elapsed_ms": 3809,
+      "bytes_scanned": 285028864,
+      "history_recovered": true
+    },
+    {
+      "purpose": "discarded_expensive_number_support_exploration",
+      "query_id": "01c6ce1c-0821-b991-006c-c703089ac006",
+      "status": "CANCELED",
+      "disposition": "discarded_timeout_not_positive_evidence"
+    },
+    {
+      "purpose": "discarded_full_residual_export_attempt_from_bd158y",
+      "query_id": "01c6c25b-0821-ab8c-006c-c703088f34da",
+      "status": "CANCELED",
+      "disposition": "discarded_timeout_not_positive_evidence"
+    }
+  ],
+  "negative_controls": [
+    {
+      "purpose": "same_denominator_required",
+      "finding": "The characterization is positive only because address_county_keys=5269, pad_matched_keys=3930, and pad_unresolved_keys=1339 under PAD 26B/2026-05-01. Any filtered corpus or different release becomes guard_failure."
+    },
+    {
+      "purpose": "disjoint_exhaustive_required",
+      "finding": "Class rows are accepted only when class_rows=distinct_class_rows, classified_key_rows=distinct_classified_keys, unclassified_key_rows=0, and classified_total=1339."
+    },
+    {
+      "purpose": "canceled_runs_discarded",
+      "finding": "Both the bd-23ux exploratory timeout and the bd-158y full export cancellation are recorded as discarded_timeout_not_positive_evidence."
+    }
+  ],
+  "limitations": [
+    "This is a characterization, not a parser reduction; the unresolved count remains 1339.",
+    "The class labels are ordered diagnostics over the current SQL tokenizer and PAD membership predicate. A later parser improvement must rerun against the same denominator before claiming reduction.",
+    "The geocode table does not expose a source hash in the described schema, so only the table name and ASOF cutoff are pinned for that input."
+  ]
+}
