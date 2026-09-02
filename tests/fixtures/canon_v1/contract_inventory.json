@@ -214,6 +214,22 @@
       "action": "preserve"
     },
     {
+      "id": "canon geo inspect",
+      "family": "geo",
+      "clap_path": "geo inspect",
+      "operator_name": "geo inspect",
+      "primary_contracts": ["canon.v0"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon geo ledger",
+      "family": "geo",
+      "clap_path": "geo ledger",
+      "operator_name": "geo ledger",
+      "primary_contracts": ["canon.v0"],
+      "action": "preserve"
+    },
+    {
       "id": "canon geo link-sources",
       "family": "geo",
       "clap_path": "geo link-sources",
