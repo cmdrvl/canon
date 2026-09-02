@@ -165,10 +165,20 @@ question + capabilities + regional inventory + resolution profile + budget
   materialize evidence, compile evidence, then solve composition. It accepts only local
   exogenous leaf inputs such as home-cell rows, tile-work requests, and warehouse rows; no
   ambient shell or network acquisition is part of the run.
+- The Geo command surface has three tiers (`docs/PLAN_CANON_GEO.md` §19.3, frozen
+  2026-09-02). **primary:** `geo capabilities`, `geo plan`, `geo run`,
+  `geo replan-from-acquisition`, `geo evaluate`, and the not-yet-implemented `geo inspect`
+  and `geo ledger` — seven verbs, the whole in-business surface. **leaf:** the eleven
+  shipped stage commands, driven by `geo run` and Demo 0, hidden from top-level help but
+  still callable and machine-described. **measurement:** the three `materialize-h7-*`
+  adapters, moving under `scripts/geo_measurements/` at their next touch. A new §19.3
+  module ships a verb only if it is on the primary surface; every other module is a library
+  API plus a `geo run` stage executor, exercised through the run path. Do not add a verb
+  per module.
 - Open limits remain explicit: acquisition is external, exactness is representation-relative,
   candidate reach is an upstream proof obligation, immutable cross-release reuse in the same
-  work directory is not guaranteed, E5/live scale proof is not shipped, and `geo inspect`
-  remains open.
+  work directory is not guaranteed, E5/live scale proof is not shipped, and the primary
+  `geo inspect` and `geo ledger` verbs are unimplemented.
 
 ### 3. Summary invariant
 
