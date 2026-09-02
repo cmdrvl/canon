@@ -28,8 +28,6 @@ struct OperatorManifest {
 #[derive(Debug, Deserialize)]
 struct OperatorRow {
     name: String,
-    #[serde(default)]
-    aggregate: bool,
     status: String,
     output_schema: Option<String>,
     read_only: Option<bool>,
@@ -109,7 +107,6 @@ enum SchemaField {
 
 enum JsonAssertion {
     Eq(&'static str, Value),
-    StringContains(&'static str, &'static str),
     ArrayLen(&'static str, usize),
     ArrayNonEmpty(&'static str),
     HashPrefix(&'static str),
@@ -401,8 +398,11 @@ fn assert_runtime_corpus_coverage(manifest: &OperatorManifest, cases: &[RuntimeC
 
     for required in [
         "root lookup",
+        "root orientation",
+        "root --version",
         "root --describe",
         "root --schema",
+        "doctor --robot-triage",
         "doctor health",
         "doctor capabilities",
         "doctor robot-docs",
@@ -546,6 +546,28 @@ impl RuntimeHarness {
 
         vec![
             RuntimeCase {
+                id: "root_orientation_refuses_without_pipeline_stdout",
+                command_name: "root orientation",
+                args: Vec::new(),
+                expected: RuntimeExpectation {
+                    exit_code: 2,
+                    stdout: StdoutExpectation::Empty,
+                    stderr: StderrExpectation::Contains("No input given"),
+                    mutations: Vec::new(),
+                },
+            },
+            RuntimeCase {
+                id: "root_version_reports_package_version",
+                command_name: "root --version",
+                args: vec!["--version".to_string()],
+                expected: RuntimeExpectation {
+                    exit_code: 0,
+                    stdout: StdoutExpectation::TextContains("canon "),
+                    stderr: StderrExpectation::Empty,
+                    mutations: Vec::new(),
+                },
+            },
+            RuntimeCase {
                 id: "root_lookup_resolved_json",
                 command_name: "root lookup",
                 args: vec![
@@ -603,6 +625,20 @@ impl RuntimeHarness {
                     .assert_eq("properties.version.const", json!("canon.v0"))
                     .with_stderr(StderrExpectation::Empty)
                     .with_mutation(MutationExpectation::Missing(schema_path)),
+            },
+            RuntimeCase {
+                id: "doctor_robot_triage_json",
+                command_name: "doctor --robot-triage",
+                args: args(["doctor", "--robot-triage"]),
+                expected: RuntimeExpectation::json(
+                    0,
+                    "canon.doctor.triage.v1",
+                    SchemaField::Schema,
+                )
+                .assert_eq("contract", json!("cmdrvl.read_only_doctor.v1"))
+                .assert_eq("ok", json!(true))
+                .assert_eq("read_only", json!(true))
+                .with_stderr(StderrExpectation::Empty),
             },
             RuntimeCase {
                 id: "doctor_health_json",
@@ -664,7 +700,9 @@ impl RuntimeHarness {
                     "canon_registry_providers.v0",
                     SchemaField::Version,
                 )
-                .assert_string_contains("providers.0.schema_command", "registry provider-schema")
+                .assert_eq("providers.0.id", json!("mock"))
+                .assert_eq("providers.1.id", json!("openfigi"))
+                .assert_array_non_empty("providers.0.seed_columns")
                 .with_stderr(StderrExpectation::Empty),
             },
             RuntimeCase {
@@ -993,7 +1031,7 @@ impl RuntimeHarness {
         });
         fs::write(
             root.join("package.json"),
-            serde_json::to_vec_pretty(&package_json).expect("package json serializes"),
+            canonical_package_bytes(package_json),
         )
         .expect("package json");
         root
@@ -1045,17 +1083,6 @@ impl RuntimeExpectation {
             expectation
                 .assertions
                 .push(JsonAssertion::Eq(path, expected));
-        } else {
-            panic!("JSON assertion added to non-JSON runtime expectation");
-        }
-        self
-    }
-
-    fn assert_string_contains(mut self, path: &'static str, needle: &'static str) -> Self {
-        if let StdoutExpectation::Json(expectation) = &mut self.stdout {
-            expectation
-                .assertions
-                .push(JsonAssertion::StringContains(path, needle));
         } else {
             panic!("JSON assertion added to non-JSON runtime expectation");
         }
@@ -1166,15 +1193,6 @@ fn assert_json(case_id: &str, value: &Value, assertion: &JsonAssertion) {
             path,
             serde_json::to_string_pretty(value).expect("stdout JSON renders")
         ),
-        JsonAssertion::StringContains(path, needle) => {
-            let Some(actual) = value_at(value, path).and_then(Value::as_str) else {
-                panic!("{case_id} JSON path {path} is not a string");
-            };
-            assert!(
-                actual.contains(needle),
-                "{case_id} JSON path {path} did not contain {needle:?}: {actual}"
-            );
-        }
         JsonAssertion::ArrayLen(path, expected_len) => {
             let Some(array) = value_at(value, path).and_then(Value::as_array) else {
                 panic!("{case_id} JSON path {path} is not an array");
@@ -1266,6 +1284,16 @@ fn assert_mutation(case_id: &str, mutation: &MutationExpectation) {
 fn stable_operator_digest() -> String {
     let manifest: Value = serde_json::from_str(OPERATOR_JSON).expect("operator JSON parses");
     stable_manifest_digest(&manifest)
+}
+
+fn canonical_package_bytes(mut value: Value) -> Vec<u8> {
+    value["content_digest"] = Value::String(String::new());
+    let digest = format!(
+        "blake3:{}",
+        blake3::hash(&serde_json::to_vec(&value).expect("package digest view serializes")).to_hex()
+    );
+    value["content_digest"] = Value::String(digest);
+    serde_json::to_vec(&value).expect("canonical package JSON serializes")
 }
 
 fn sample_inbox_item(
