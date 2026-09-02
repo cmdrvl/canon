@@ -88,6 +88,14 @@ struct CaptureItemSeed {
     privacy_class: Option<PrivacyClass>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct CaptureBucketPolicy {
+    event_kind: InboxEventKind,
+    default_reason_code: InboxReasonCode,
+    default_status: CandidateStatus,
+    default_candidate_count: u32,
+}
+
 pub fn capture_artifact(
     artifact: &Value,
     request: &CaptureRequest,
@@ -191,50 +199,60 @@ pub fn capture_entity_v1_artifact(
         artifact,
         "unresolved",
         request,
-        default_kind,
-        InboxReasonCode::NoMatchingRule,
-        CandidateStatus::None,
-        0,
+        CaptureBucketPolicy {
+            event_kind: default_kind,
+            default_reason_code: InboxReasonCode::NoMatchingRule,
+            default_status: CandidateStatus::None,
+            default_candidate_count: 0,
+        },
         &mut items,
     )?;
     capture_bucket(
         artifact,
         "ambiguous",
         request,
-        default_kind,
-        InboxReasonCode::AmbiguousCandidates,
-        CandidateStatus::Ambiguous,
-        2,
+        CaptureBucketPolicy {
+            event_kind: default_kind,
+            default_reason_code: InboxReasonCode::AmbiguousCandidates,
+            default_status: CandidateStatus::Ambiguous,
+            default_candidate_count: 2,
+        },
         &mut items,
     )?;
     capture_bucket(
         artifact,
         "review_deferred",
         request,
-        default_kind,
-        InboxReasonCode::ScoreBelowThreshold,
-        CandidateStatus::None,
-        0,
+        CaptureBucketPolicy {
+            event_kind: default_kind,
+            default_reason_code: InboxReasonCode::ScoreBelowThreshold,
+            default_status: CandidateStatus::None,
+            default_candidate_count: 0,
+        },
         &mut items,
     )?;
     capture_bucket(
         artifact,
         "escrow",
         request,
-        default_kind,
-        InboxReasonCode::ScoreBelowThreshold,
-        CandidateStatus::None,
-        0,
+        CaptureBucketPolicy {
+            event_kind: default_kind,
+            default_reason_code: InboxReasonCode::ScoreBelowThreshold,
+            default_status: CandidateStatus::None,
+            default_candidate_count: 0,
+        },
         &mut items,
     )?;
     capture_bucket(
         artifact,
         "contradictions",
         request,
-        InboxEventKind::CandidateRejected,
-        InboxReasonCode::CannotLink,
-        CandidateStatus::Rejected,
-        0,
+        CaptureBucketPolicy {
+            event_kind: InboxEventKind::CandidateRejected,
+            default_reason_code: InboxReasonCode::CannotLink,
+            default_status: CandidateStatus::Rejected,
+            default_candidate_count: 0,
+        },
         &mut items,
     )?;
     capture_review_items(artifact, request, default_kind, &mut items)?;
@@ -253,10 +271,12 @@ pub fn capture_provider_materialization_artifact(
         artifact,
         "unresolved",
         request,
-        InboxEventKind::CandidateRejected,
-        InboxReasonCode::NoMatchingRule,
-        CandidateStatus::None,
-        0,
+        CaptureBucketPolicy {
+            event_kind: InboxEventKind::CandidateRejected,
+            default_reason_code: InboxReasonCode::NoMatchingRule,
+            default_status: CandidateStatus::None,
+            default_candidate_count: 0,
+        },
         &mut items,
     )?;
 
@@ -399,30 +419,27 @@ fn capture_bucket(
     artifact: &Value,
     bucket: &str,
     request: &CaptureRequest,
-    event_kind: InboxEventKind,
-    default_reason_code: InboxReasonCode,
-    default_status: CandidateStatus,
-    default_candidate_count: u32,
+    policy: CaptureBucketPolicy,
     items: &mut Vec<UnresolvedInboxItem>,
 ) -> InboxResult<()> {
     for (index, entry) in optional_array(artifact, bucket)?.iter().enumerate() {
         let reason = reason_text(entry);
         let reason_code = if reason.is_empty() {
-            default_reason_code
+            policy.default_reason_code
         } else {
-            outcome_reason_code(&reason, default_reason_code)
+            outcome_reason_code(&reason, policy.default_reason_code)
         };
         let status = match reason_code {
             InboxReasonCode::AmbiguousCandidates => CandidateStatus::Ambiguous,
             InboxReasonCode::BudgetExceeded => CandidateStatus::BudgetLimited,
             InboxReasonCode::CannotLink => CandidateStatus::Rejected,
-            _ => default_status,
+            _ => policy.default_status,
         };
 
         items.push(capture_item(
             request,
             CaptureItemSeed {
-                event_kind,
+                event_kind: policy.event_kind,
                 reason_code,
                 field_name: field_name(entry, request),
                 field_role: request.context.field_role,
@@ -431,7 +448,8 @@ fn capture_bucket(
                 record_ref: record_ref(entry, bucket, index),
                 candidate_summary: CandidateSummary {
                     status,
-                    candidate_count: candidate_count(entry, status).max(default_candidate_count),
+                    candidate_count: candidate_count(entry, status)
+                        .max(policy.default_candidate_count),
                     rejection_reasons: rejection_reasons(entry, &reason),
                     ..CandidateSummary::default()
                 },
