@@ -58,6 +58,8 @@ pub const CANON_ALIAS_WITHHOLDING_NATIVE_EVIDENCE_VERSION: &str =
     "canon.evaluation.alias_withholding.native_engine_evidence.v0";
 pub const CANON_ALIAS_WITHHOLDING_EXECUTION_MANIFEST_VERSION: &str =
     "canon.evaluation.alias_withholding.execution_manifest.v0";
+pub const ALIAS_WITHHOLDING_SEALED_REVIEW_LABEL_SET_VERSION: &str =
+    "alias_withholding.sealed_review_label_set.v0";
 pub const CANON_ALIAS_WITHHOLDING_ASSIGNMENT_FIREWALL_VERSION: &str =
     "canon.evaluation.alias_withholding.assignment_firewall.v0";
 pub const CANON_ALIAS_WITHHOLDING_LEAKAGE_SCAN_VERSION: &str =
@@ -344,6 +346,74 @@ pub enum NativePromotionStatus {
     NotRun,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SealedReviewLabelDisposition {
+    ReviewedPositive,
+    HardNegative,
+    Ambiguity,
+    Unmatched,
+    CensoredAttempt,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct SealedReviewDenominators {
+    pub total_labels: u64,
+    pub reviewed_positive_count: u64,
+    pub hard_negative_count: u64,
+    pub ambiguity_count: u64,
+    pub unmatched_count: u64,
+    pub censored_attempt_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct SealedReviewLabelBinding {
+    pub label_id: String,
+    pub trial_id: String,
+    pub lane: String,
+    pub canonical_record_id: String,
+    pub material_hash: String,
+    pub disposition: SealedReviewLabelDisposition,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lookalike_signal_hashes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub corroborating_attribute_lanes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub corroborating_attribute_hashes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hard_negative_basis: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SealedReviewLabelSet {
+    pub version: String,
+    pub label_set_hash: String,
+    pub source_manifest_hash: String,
+    pub selection_seed: String,
+    pub denominators: SealedReviewDenominators,
+    pub labels: Vec<SealedReviewLabelBinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SealedReviewLabelEvidence {
+    pub label_set_hash: String,
+    pub source_manifest_hash: String,
+    pub selection_seed: String,
+    pub label_binding_hash: String,
+    pub label_id_hash: String,
+    pub lane: String,
+    pub canonical_record_id_hash: String,
+    pub material_hash: String,
+    pub disposition: SealedReviewLabelDisposition,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lookalike_signal_hashes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub corroborating_attribute_lanes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub corroborating_attribute_hashes: Vec<String>,
+    pub denominators: SealedReviewDenominators,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct LeakageReceipt {
     pub channel: LeakChannel,
@@ -478,6 +548,8 @@ pub struct NativePromotionEvidence {
     pub artifact_version: String,
     pub artifact_content_hash: String,
     pub audit_artifact_hash: String,
+    pub lock_hash: String,
+    pub pack_id: String,
     pub sandbox_registry_digest_before: String,
     pub sandbox_registry_digest_after: String,
     pub promoted_alias_count: u64,
@@ -524,6 +596,7 @@ pub struct AliasWithholdingNativeEvidence {
     pub candidate_recall_manifest_hash: String,
     pub candidate_records_hash: String,
     pub candidate_diagnostics_hash: String,
+    pub sealed_review_label: SealedReviewLabelEvidence,
     pub leakage: Vec<LeakageReceipt>,
     pub candidate_recall: NativeCandidateRecallEvidence,
     pub link: NativeLinkEvidence,
@@ -547,6 +620,7 @@ pub struct NativeEngineEvidenceReceipt {
     pub candidate_records_hash: String,
     pub candidate_diagnostics_hash: String,
     pub candidate_recall_disposition: NativeCandidateRecallDisposition,
+    pub sealed_review_label: SealedReviewLabelEvidence,
     pub link_artifact_hash: String,
     pub link_materialized_rows_hash: String,
     pub link_observation_surface_bindings_hash: String,
@@ -556,6 +630,10 @@ pub struct NativeEngineEvidenceReceipt {
     pub audit_artifact_hash: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promotion_artifact_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promotion_lock_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub promotion_pack_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub apply_artifact_hash: Option<String>,
     pub leak_channels_checked: Vec<LeakChannel>,
@@ -584,6 +662,7 @@ pub struct AliasWithholdingExecutionManifest {
     pub trial_id: String,
     pub observation_id: String,
     pub assertions: AliasWithholdingExecutionAssertions,
+    pub sealed_review_label_set: SealedReviewLabelSet,
     pub candidate_recall: CandidateRecallExecutionPaths,
     pub link_artifact_path: String,
     pub run_artifact_path: String,
@@ -639,6 +718,10 @@ pub struct CandidateRecallExecutionPaths {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PromotionExecutionPaths {
     pub route: NativePromotionRoute,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lock_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pack_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub promotion_artifact_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1197,6 +1280,7 @@ fn load_native_engine_evidence(
 ) -> AliasWithholdingResult<AliasWithholdingNativeEvidence> {
     let manifest = canonicalize_execution_manifest(manifest.clone())?;
     validate_manifest_trial_binding(trial, &manifest)?;
+    let sealed_review_label = load_sealed_review_label(trial, &manifest)?;
 
     let clean_registry_dir =
         manifest_directory(base_dir, "clean_registry_dir", &manifest.clean_registry_dir)?;
@@ -1242,6 +1326,7 @@ fn load_native_engine_evidence(
             audit: &audit,
             clean_scan: &clean_scan,
             policy_digest,
+            sealed_review_label: &sealed_review_label,
         })?;
 
     let mut evidence = AliasWithholdingNativeEvidence {
@@ -1255,6 +1340,7 @@ fn load_native_engine_evidence(
         candidate_recall_manifest_hash: recall.manifest_hash,
         candidate_records_hash: recall.candidate_records_hash,
         candidate_diagnostics_hash: recall.candidate_diagnostics_hash,
+        sealed_review_label,
         leakage,
         candidate_recall: recall.evidence,
         link,
@@ -1400,6 +1486,102 @@ fn required_run_stage_hash(
     }
     require_digest(&hashes[0], "run.stage_artifact_hash")?;
     Ok(hashes[0].clone())
+}
+
+fn load_sealed_review_label(
+    trial: &AliasWithholdingTrialSpec,
+    manifest: &AliasWithholdingExecutionManifest,
+) -> AliasWithholdingResult<SealedReviewLabelEvidence> {
+    let label_set = canonicalize_sealed_review_label_set(manifest.sealed_review_label_set.clone())?;
+    let matching = label_set
+        .labels
+        .iter()
+        .filter(|label| label.trial_id == trial.trial_id)
+        .collect::<Vec<_>>();
+    if matching.len() != 1 {
+        return Err(native_contract_error(
+            "sealed review label set must contain exactly one label for the trial",
+        ));
+    }
+    let label = matching[0];
+    if label.canonical_record_id != manifest.observation_id
+        || label.canonical_record_id != manifest.assertions.target_observation_id
+    {
+        return Err(native_contract_error(
+            "sealed review label does not bind the canonical target record",
+        ));
+    }
+    validate_sealed_review_label_disposition(trial, label)?;
+
+    Ok(SealedReviewLabelEvidence {
+        label_set_hash: label_set.label_set_hash,
+        source_manifest_hash: label_set.source_manifest_hash,
+        selection_seed: label_set.selection_seed,
+        label_binding_hash: sealed_review_label_binding_hash(label)?,
+        label_id_hash: hash_bytes(label.label_id.as_bytes()),
+        lane: label.lane.clone(),
+        canonical_record_id_hash: hash_bytes(label.canonical_record_id.as_bytes()),
+        material_hash: label.material_hash.clone(),
+        disposition: label.disposition,
+        lookalike_signal_hashes: label.lookalike_signal_hashes.clone(),
+        corroborating_attribute_lanes: label.corroborating_attribute_lanes.clone(),
+        corroborating_attribute_hashes: label.corroborating_attribute_hashes.clone(),
+        denominators: label_set.denominators,
+    })
+}
+
+fn validate_sealed_review_label_disposition(
+    trial: &AliasWithholdingTrialSpec,
+    label: &SealedReviewLabelBinding,
+) -> AliasWithholdingResult<()> {
+    match label.disposition {
+        SealedReviewLabelDisposition::ReviewedPositive => {
+            if !trial
+                .withheld_alias
+                .relation_policy
+                .identity_credit_allowed()
+            {
+                return Err(native_contract_error(
+                    "reviewed positive label must use an identity-credit relation policy",
+                ));
+            }
+            if label.hard_negative_basis.is_some() {
+                return Err(native_contract_error(
+                    "reviewed positive label must not carry hard-negative basis",
+                ));
+            }
+        }
+        SealedReviewLabelDisposition::HardNegative => {
+            if trial
+                .withheld_alias
+                .relation_policy
+                .identity_credit_allowed()
+            {
+                return Err(native_contract_error(
+                    "hard-negative label must use a non-identity relation policy",
+                ));
+            }
+            if label.hard_negative_basis.is_none()
+                || label.lookalike_signal_hashes.is_empty()
+                || label.corroborating_attribute_lanes.is_empty()
+                || label.corroborating_attribute_hashes.is_empty()
+            {
+                return Err(native_contract_error(
+                    "hard-negative label must bind lookalike signals and corroborating attributes",
+                ));
+            }
+        }
+        SealedReviewLabelDisposition::Ambiguity
+        | SealedReviewLabelDisposition::Unmatched
+        | SealedReviewLabelDisposition::CensoredAttempt => {
+            if label.hard_negative_basis.is_some() {
+                return Err(native_contract_error(
+                    "non-hard-negative labels must not carry hard-negative basis",
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn load_candidate_recall_evidence(
@@ -2049,6 +2231,7 @@ struct NativePromotionReplayContext<'a> {
     audit: &'a NativeAuditEvidence,
     clean_scan: &'a RegistryTreeScan,
     policy_digest: &'a str,
+    sealed_review_label: &'a SealedReviewLabelEvidence,
 }
 
 fn load_promotion_and_replay_evidence(
@@ -2066,7 +2249,16 @@ fn load_promotion_and_replay_evidence(
         audit,
         clean_scan,
         policy_digest,
+        sealed_review_label,
     } = context;
+    if sealed_review_label.disposition != SealedReviewLabelDisposition::ReviewedPositive {
+        if manifest.promotion.is_some() || manifest.exact_replay.is_some() {
+            return Err(native_contract_error(
+                "non-positive sealed reviewed labels must not provide promotion or replay evidence",
+            ));
+        }
+        return Ok((None, None));
+    }
     if !trial
         .withheld_alias
         .relation_policy
@@ -2087,6 +2279,7 @@ fn load_promotion_and_replay_evidence(
             let replay_manifest = manifest.exact_replay.as_ref().ok_or_else(|| {
                 native_contract_error("matched native path requires exact replay evidence")
             })?;
+            let (lock_hash, pack_id) = promotion_package_seal(promotion_manifest)?;
             let promoted_registry_dir = manifest_directory(
                 base_dir,
                 "promotion.promoted_registry_dir",
@@ -2153,6 +2346,8 @@ fn load_promotion_and_replay_evidence(
                 artifact_version,
                 artifact_content_hash: promotion_hash,
                 audit_artifact_hash: audit.artifact_content_hash.clone(),
+                lock_hash,
+                pack_id,
                 sandbox_registry_digest_before: clean_scan.tree_hash.clone(),
                 sandbox_registry_digest_after: promoted_scan.tree_hash,
                 promoted_alias_count: promotion_diff.added_count,
@@ -2301,6 +2496,22 @@ fn load_promotion_artifact(
             Ok((hash_bytes(&bytes), 1, version.to_string()))
         }
     }
+}
+
+fn promotion_package_seal(
+    promotion: &PromotionExecutionPaths,
+) -> AliasWithholdingResult<(String, String)> {
+    let lock_hash = promotion
+        .lock_hash
+        .as_ref()
+        .ok_or_else(|| native_contract_error("matched promotion requires lock_hash"))?;
+    let pack_id = promotion
+        .pack_id
+        .as_ref()
+        .ok_or_else(|| native_contract_error("matched promotion requires pack_id"))?;
+    require_content_addressed_digest(lock_hash, "promotion.lock_hash")?;
+    require_content_addressed_digest(pack_id, "promotion.pack_id")?;
+    Ok((lock_hash.clone(), pack_id.clone()))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -3203,6 +3414,7 @@ fn validate_native_engine_evidence(
             "native engine evidence exact-absence fingerprint does not match the withheld alias",
         ));
     }
+    validate_sealed_review_label_evidence(trial, &evidence.sealed_review_label)?;
     validate_leakage_receipts(&evidence.leakage)?;
     validate_link_evidence(trial, &evidence.link)?;
     validate_candidate_recall_evidence(trial, &evidence.link, &evidence.candidate_recall)?;
@@ -3219,6 +3431,50 @@ fn validate_native_engine_evidence(
     validate_assignment_firewall(&evidence.assignment_firewall)?;
     validate_promotion_and_replay(trial, &evidence)?;
     Ok(evidence)
+}
+
+fn validate_sealed_review_label_evidence(
+    trial: &AliasWithholdingTrialSpec,
+    label: &SealedReviewLabelEvidence,
+) -> AliasWithholdingResult<()> {
+    require_digest(&label.label_set_hash, "sealed_review_label.label_set_hash")?;
+    require_content_addressed_digest(
+        &label.source_manifest_hash,
+        "sealed_review_label.source_manifest_hash",
+    )?;
+    require_digest(
+        &label.label_binding_hash,
+        "sealed_review_label.label_binding_hash",
+    )?;
+    require_content_addressed_digest(&label.material_hash, "sealed_review_label.material_hash")?;
+    if label.selection_seed.trim().is_empty()
+        || !is_blake3_digest(&label.label_id_hash)
+        || label.lane.trim().is_empty()
+        || label.canonical_record_id_hash
+            != hash_bytes(trial.withheld_alias.observation_id.as_bytes())
+        || label.denominators.total_labels == 0
+    {
+        return Err(native_contract_error(
+            "sealed review label evidence does not bind the trial",
+        ));
+    }
+    for digest in &label.lookalike_signal_hashes {
+        require_content_addressed_digest(digest, "sealed_review_label.lookalike_signal_hashes")?;
+    }
+    for lane in &label.corroborating_attribute_lanes {
+        if lane.trim().is_empty() {
+            return Err(native_contract_error(
+                "sealed review label corroborating attribute lanes must be non-empty",
+            ));
+        }
+    }
+    for digest in &label.corroborating_attribute_hashes {
+        require_content_addressed_digest(
+            digest,
+            "sealed_review_label.corroborating_attribute_hashes",
+        )?;
+    }
+    Ok(())
 }
 
 fn validate_native_engine_evidence_self_hash(
@@ -3739,6 +3995,14 @@ fn validate_promotion_and_replay(
     trial: &AliasWithholdingTrialSpec,
     evidence: &AliasWithholdingNativeEvidence,
 ) -> AliasWithholdingResult<()> {
+    if evidence.sealed_review_label.disposition != SealedReviewLabelDisposition::ReviewedPositive {
+        if evidence.promotion.is_some() || evidence.exact_replay.is_some() {
+            return Err(native_contract_error(
+                "non-positive sealed reviewed labels must not include promotion or exact replay",
+            ));
+        }
+        return Ok(());
+    }
     if !trial
         .withheld_alias
         .relation_policy
@@ -3800,6 +4064,8 @@ fn validate_promotion_evidence(
         &promotion.artifact_content_hash,
         "promotion.artifact_content_hash",
     )?;
+    require_content_addressed_digest(&promotion.lock_hash, "promotion.lock_hash")?;
+    require_content_addressed_digest(&promotion.pack_id, "promotion.pack_id")?;
     require_digest(
         &promotion.sandbox_registry_digest_before,
         "promotion.sandbox_registry_digest_before",
@@ -4025,6 +4291,7 @@ fn native_engine_evidence_receipt(
         candidate_records_hash: evidence.candidate_records_hash.clone(),
         candidate_diagnostics_hash: evidence.candidate_diagnostics_hash.clone(),
         candidate_recall_disposition: evidence.candidate_recall.disposition,
+        sealed_review_label: evidence.sealed_review_label.clone(),
         link_artifact_hash: evidence.link.artifact_content_hash.clone(),
         link_materialized_rows_hash: evidence.link.materialized_rows_content_hash.clone(),
         link_observation_surface_bindings_hash: evidence
@@ -4039,6 +4306,14 @@ fn native_engine_evidence_receipt(
             .promotion
             .as_ref()
             .map(|promotion| promotion.artifact_content_hash.clone()),
+        promotion_lock_hash: evidence
+            .promotion
+            .as_ref()
+            .map(|promotion| promotion.lock_hash.clone()),
+        promotion_pack_id: evidence
+            .promotion
+            .as_ref()
+            .map(|promotion| promotion.pack_id.clone()),
         apply_artifact_hash: evidence
             .exact_replay
             .as_ref()
@@ -4104,6 +4379,8 @@ fn canonicalize_execution_manifest(
         .review_id
         .map(|value| normalize_non_empty(value, "assertions.review_id"))
         .transpose()?;
+    manifest.sealed_review_label_set =
+        canonicalize_sealed_review_label_set(manifest.sealed_review_label_set)?;
     manifest.clean_registry_dir =
         normalize_non_empty(manifest.clean_registry_dir, "clean_registry_dir")?;
     manifest.link_artifact_path =
@@ -4151,6 +4428,16 @@ fn canonicalize_execution_manifest(
             promotion.promoted_registry_dir.clone(),
             "promotion.promoted_registry_dir",
         )?;
+        promotion.lock_hash = promotion
+            .lock_hash
+            .take()
+            .map(|value| normalize_content_addressed_digest(value, "promotion.lock_hash"))
+            .transpose()?;
+        promotion.pack_id = promotion
+            .pack_id
+            .take()
+            .map(|value| normalize_content_addressed_digest(value, "promotion.pack_id"))
+            .transpose()?;
         promotion.promotion_artifact_path = promotion
             .promotion_artifact_path
             .take()
@@ -4190,6 +4477,24 @@ fn canonicalize_native_engine_evidence(
         receipt.chain_binding_hashes.sort();
         receipt.chain_binding_hashes.dedup();
     }
+    evidence.sealed_review_label.lookalike_signal_hashes.sort();
+    evidence.sealed_review_label.lookalike_signal_hashes.dedup();
+    evidence
+        .sealed_review_label
+        .corroborating_attribute_lanes
+        .sort();
+    evidence
+        .sealed_review_label
+        .corroborating_attribute_lanes
+        .dedup();
+    evidence
+        .sealed_review_label
+        .corroborating_attribute_hashes
+        .sort();
+    evidence
+        .sealed_review_label
+        .corroborating_attribute_hashes
+        .dedup();
     evidence.leakage.sort();
     evidence.candidate_recall.true_pair_ranks.sort();
     evidence.candidate_recall.misses_at_50.sort();
@@ -4416,6 +4721,16 @@ fn require_digest(value: &str, field: &str) -> AliasWithholdingResult<()> {
     } else {
         Err(native_contract_error(format!(
             "{field} must be a lowercase blake3 digest"
+        )))
+    }
+}
+
+fn require_content_addressed_digest(value: &str, field: &str) -> AliasWithholdingResult<()> {
+    if is_content_addressed_digest(value) {
+        Ok(())
+    } else {
+        Err(native_contract_error(format!(
+            "{field} must be a lowercase blake3 or sha256 digest"
         )))
     }
 }
@@ -5089,6 +5404,178 @@ fn normalize_string_vec(values: Vec<String>, field: &str) -> AliasWithholdingRes
     Ok(normalized)
 }
 
+fn canonicalize_sealed_review_label_set(
+    mut label_set: SealedReviewLabelSet,
+) -> AliasWithholdingResult<SealedReviewLabelSet> {
+    label_set.version = normalize_non_empty(label_set.version, "sealed_review_label_set.version")?;
+    if label_set.version != ALIAS_WITHHOLDING_SEALED_REVIEW_LABEL_SET_VERSION {
+        return Err(native_contract_error(
+            "sealed review label set has the wrong version",
+        ));
+    }
+    label_set.label_set_hash = normalize_digest(
+        label_set.label_set_hash,
+        "sealed_review_label_set.label_set_hash",
+    )?;
+    label_set.source_manifest_hash = normalize_content_addressed_digest(
+        label_set.source_manifest_hash,
+        "sealed_review_label_set.source_manifest_hash",
+    )?;
+    label_set.selection_seed = normalize_non_empty(
+        label_set.selection_seed,
+        "sealed_review_label_set.selection_seed",
+    )?;
+    label_set.labels = label_set
+        .labels
+        .into_iter()
+        .map(normalize_sealed_review_label_binding)
+        .collect::<AliasWithholdingResult<Vec<_>>>()?;
+    label_set.labels.sort();
+    validate_sealed_review_denominators(&label_set)?;
+    let expected_hash = sealed_review_label_set_hash(&label_set)?;
+    if label_set.label_set_hash != expected_hash {
+        return Err(native_contract_error(
+            "sealed review label set hash is stale",
+        ));
+    }
+    Ok(label_set)
+}
+
+fn normalize_sealed_review_label_binding(
+    mut label: SealedReviewLabelBinding,
+) -> AliasWithholdingResult<SealedReviewLabelBinding> {
+    label.label_id = normalize_non_empty(label.label_id, "sealed_review_label.label_id")?;
+    label.trial_id = normalize_non_empty(label.trial_id, "sealed_review_label.trial_id")?;
+    label.lane = normalize_non_empty(label.lane, "sealed_review_label.lane")?;
+    label.canonical_record_id = normalize_non_empty(
+        label.canonical_record_id,
+        "sealed_review_label.canonical_record_id",
+    )?;
+    label.material_hash = normalize_content_addressed_digest(
+        label.material_hash,
+        "sealed_review_label.material_hash",
+    )?;
+    label.lookalike_signal_hashes = normalize_content_addressed_digest_vec(
+        label.lookalike_signal_hashes,
+        "sealed_review_label.lookalike_signal_hashes",
+    )?;
+    label.corroborating_attribute_lanes = normalize_string_vec(
+        label.corroborating_attribute_lanes,
+        "sealed_review_label.corroborating_attribute_lanes",
+    )?;
+    label.corroborating_attribute_hashes = normalize_content_addressed_digest_vec(
+        label.corroborating_attribute_hashes,
+        "sealed_review_label.corroborating_attribute_hashes",
+    )?;
+    label.hard_negative_basis = label
+        .hard_negative_basis
+        .map(|value| normalize_non_empty(value, "sealed_review_label.hard_negative_basis"))
+        .transpose()?;
+    Ok(label)
+}
+
+fn validate_sealed_review_denominators(
+    label_set: &SealedReviewLabelSet,
+) -> AliasWithholdingResult<()> {
+    let mut label_ids = BTreeSet::new();
+    for label in &label_set.labels {
+        if !label_ids.insert(label.label_id.as_str()) {
+            return Err(native_contract_error(
+                "sealed review label set contains duplicate label_id",
+            ));
+        }
+    }
+
+    let reviewed_positive_count = label_set
+        .labels
+        .iter()
+        .filter(|label| label.disposition == SealedReviewLabelDisposition::ReviewedPositive)
+        .count() as u64;
+    let hard_negative_count = label_set
+        .labels
+        .iter()
+        .filter(|label| label.disposition == SealedReviewLabelDisposition::HardNegative)
+        .count() as u64;
+    let ambiguity_count = label_set
+        .labels
+        .iter()
+        .filter(|label| label.disposition == SealedReviewLabelDisposition::Ambiguity)
+        .count() as u64;
+    let unmatched_count = label_set
+        .labels
+        .iter()
+        .filter(|label| label.disposition == SealedReviewLabelDisposition::Unmatched)
+        .count() as u64;
+    let censored_attempt_count = label_set
+        .labels
+        .iter()
+        .filter(|label| label.disposition == SealedReviewLabelDisposition::CensoredAttempt)
+        .count() as u64;
+
+    let denominators = &label_set.denominators;
+    let summed = reviewed_positive_count
+        + hard_negative_count
+        + ambiguity_count
+        + unmatched_count
+        + censored_attempt_count;
+    if denominators.total_labels == 0
+        || denominators.total_labels != label_set.labels.len() as u64
+        || denominators.total_labels != summed
+        || denominators.reviewed_positive_count != reviewed_positive_count
+        || denominators.hard_negative_count != hard_negative_count
+        || denominators.ambiguity_count != ambiguity_count
+        || denominators.unmatched_count != unmatched_count
+        || denominators.censored_attempt_count != censored_attempt_count
+    {
+        return Err(native_contract_error(
+            "sealed review label denominators do not match label dispositions",
+        ));
+    }
+    Ok(())
+}
+
+fn sealed_review_label_set_hash(
+    label_set: &SealedReviewLabelSet,
+) -> AliasWithholdingResult<String> {
+    let mut hashable = label_set.clone();
+    hashable.label_set_hash.clear();
+    hash_serialized(&hashable)
+}
+
+fn sealed_review_label_binding_hash(
+    label: &SealedReviewLabelBinding,
+) -> AliasWithholdingResult<String> {
+    hash_serialized(label)
+}
+
+fn normalize_content_addressed_digest_vec(
+    values: Vec<String>,
+    field: &str,
+) -> AliasWithholdingResult<Vec<String>> {
+    let mut normalized = values
+        .into_iter()
+        .map(|value| normalize_content_addressed_digest(value, field))
+        .collect::<AliasWithholdingResult<Vec<_>>>()?;
+    normalized.sort();
+    normalized.dedup();
+    Ok(normalized)
+}
+
+fn normalize_content_addressed_digest(
+    value: String,
+    field: &str,
+) -> AliasWithholdingResult<String> {
+    let value = normalize_non_empty(value, field)?;
+    if is_content_addressed_digest(&value) {
+        Ok(value)
+    } else {
+        Err(error(
+            AliasWithholdingErrorCode::ArtifactContract,
+            format!("{field} must be a lowercase blake3 or sha256 digest"),
+        ))
+    }
+}
+
 fn normalize_digest(value: String, field: &str) -> AliasWithholdingResult<String> {
     let value = normalize_non_empty(value, field)?;
     if is_blake3_digest(&value) {
@@ -5121,6 +5608,21 @@ fn is_blake3_digest(value: &str) -> bool {
     let Some(hex) = value.strip_prefix("blake3:") else {
         return false;
     };
+    is_lowercase_hex_digest(hex)
+}
+
+fn is_sha256_digest(value: &str) -> bool {
+    let Some(hex) = value.strip_prefix("sha256:") else {
+        return false;
+    };
+    is_lowercase_hex_digest(hex)
+}
+
+fn is_content_addressed_digest(value: &str) -> bool {
+    is_blake3_digest(value) || is_sha256_digest(value)
+}
+
+fn is_lowercase_hex_digest(hex: &str) -> bool {
     hex.len() == 64
         && hex
             .bytes()

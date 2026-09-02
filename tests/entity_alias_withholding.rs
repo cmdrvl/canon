@@ -52,18 +52,19 @@ use canon::{
         },
     },
     evaluation::alias_withholding::{
-        AliasClass, AliasRecord, AliasWithholdingBenchmark, AliasWithholdingError,
-        AliasWithholdingErrorCode, AliasWithholdingExecutionAssertions,
-        AliasWithholdingExecutionEnvelope, AliasWithholdingExecutionManifest,
-        CANON_ALIAS_WITHHOLDING_ASSIGNMENT_FIREWALL_VERSION,
+        ALIAS_WITHHOLDING_SEALED_REVIEW_LABEL_SET_VERSION, AliasClass, AliasRecord,
+        AliasWithholdingBenchmark, AliasWithholdingError, AliasWithholdingErrorCode,
+        AliasWithholdingExecutionAssertions, AliasWithholdingExecutionEnvelope,
+        AliasWithholdingExecutionManifest, CANON_ALIAS_WITHHOLDING_ASSIGNMENT_FIREWALL_VERSION,
         CANON_ALIAS_WITHHOLDING_EXECUTION_MANIFEST_VERSION,
         CANON_ALIAS_WITHHOLDING_LEAKAGE_SCAN_VERSION, CANON_ALIAS_WITHHOLDING_VERSION,
         CandidateEvaluation, CandidateRecallExecutionPaths, EntityEngineDecision,
         EvidenceLaneReport, ExactReplayExecutionPaths, IncumbentEntitySnapshot, LeakChannel,
         LeakageExecutionPath, LeakageProbe, NativeCandidateRecallDisposition, NativePromotionRoute,
         PermissibleContext, PromotionExecutionPaths, PromotionReplay, RegistryIdentity,
-        RelationPolicy, ReviewAction, TrialOutcome, TrustedIdentifier, WithheldAlias,
-        alias_withholding_schema_version, build_clean_base_registry_snapshot,
+        RelationPolicy, ReviewAction, SealedReviewDenominators, SealedReviewLabelBinding,
+        SealedReviewLabelDisposition, SealedReviewLabelSet, TrialOutcome, TrustedIdentifier,
+        WithheldAlias, alias_withholding_schema_version, build_clean_base_registry_snapshot,
         canonical_benchmark_bytes, canonical_report_bytes, compile_alias_withholding_benchmark,
         compile_alias_withholding_benchmark_from_execution_manifest, exact_lookup,
     },
@@ -325,7 +326,17 @@ fn native_execution_manifest_derives_outcomes_from_artifacts_not_declared_evalua
     assert_eq!(attach_receipt.external_crosswalk_identity_key_count, 0);
     assert!(!attach_receipt.assignment_facts_used_as_aliases);
     assert!(attach_receipt.promotion_artifact_hash.is_some());
+    assert!(attach_receipt.promotion_lock_hash.is_some());
+    assert!(attach_receipt.promotion_pack_id.is_some());
     assert!(attach_receipt.apply_artifact_hash.is_some());
+    assert_eq!(
+        attach_receipt.sealed_review_label.denominators.total_labels,
+        2
+    );
+    assert_eq!(
+        attach_receipt.sealed_review_label.disposition,
+        SealedReviewLabelDisposition::ReviewedPositive
+    );
     assert_eq!(
         attach_receipt
             .leak_channels_checked
@@ -342,6 +353,24 @@ fn native_execution_manifest_derives_outcomes_from_artifacts_not_declared_evalua
     assert!(abstain.promotion_replay.is_none());
     assert!(abstain.native_engine_evidence.is_some());
     assert_eq!(abstain.exact_absence_proof.checked_mapping_count, 1);
+    let abstain_receipt = abstain
+        .native_engine_evidence
+        .as_ref()
+        .expect("abstain receipt");
+    assert_eq!(
+        abstain_receipt.sealed_review_label.disposition,
+        SealedReviewLabelDisposition::HardNegative
+    );
+    assert_eq!(
+        abstain_receipt
+            .sealed_review_label
+            .corroborating_attribute_lanes,
+        vec![
+            "amount".to_string(),
+            "category".to_string(),
+            "date".to_string()
+        ]
+    );
 
     let declared_attach = fixture
         .benchmark
@@ -371,6 +400,11 @@ fn native_relation_policy_controls_are_excluded_from_recall_and_expose_false_mer
     for trial in &mut fixture.benchmark.trials {
         trial.withheld_alias.relation_policy = RelationPolicy::RelatedDistinct;
     }
+    rewrite_sealed_label_disposition(
+        &mut fixture,
+        NATIVE_ATTACH_TRIAL,
+        SealedReviewLabelDisposition::HardNegative,
+    );
     fixture.manifests[0].promotion = None;
     fixture.manifests[0].exact_replay = None;
     rewrite_candidate_case_disposition(&fixture, 0, "relation_policy_control");
@@ -541,10 +575,40 @@ fn native_execution_manifest_refuses_tampered_artifact_chain() {
             "alias patch",
         ),
         (
+            "stale sealed label set hash",
+            tamper_stale_sealed_label_set_hash,
+            AliasWithholdingErrorCode::ArtifactContract,
+            "sealed review label set hash is stale",
+        ),
+        (
+            "hard negative without corroboration",
+            tamper_hard_negative_without_corroboration,
+            AliasWithholdingErrorCode::ArtifactContract,
+            "hard-negative label",
+        ),
+        (
             "promote-v1 missing review receipt",
             tamper_promote_v1_missing_review_receipt,
             AliasWithholdingErrorCode::ArtifactContract,
             "matched promotion requires review import receipt",
+        ),
+        (
+            "missing promotion lock hash",
+            tamper_missing_promotion_lock_hash,
+            AliasWithholdingErrorCode::ArtifactContract,
+            "lock_hash",
+        ),
+        (
+            "missing promotion pack id",
+            tamper_missing_promotion_pack_id,
+            AliasWithholdingErrorCode::ArtifactContract,
+            "pack_id",
+        ),
+        (
+            "non-positive label with promotion",
+            tamper_non_positive_label_with_promotion,
+            AliasWithholdingErrorCode::ArtifactContract,
+            "non-positive sealed reviewed labels",
         ),
         (
             "wrong replay",
@@ -1218,7 +1282,7 @@ max_candidates: 10
             &surface_ids.abstain_reference,
             &surface_ids.abstain_target,
             "withheld_alias",
-            "same_entity",
+            "relation_policy_control",
         );
         run_candidate_recall_command(
             &attach_manifest_path,
@@ -1315,6 +1379,8 @@ max_candidates: 10
             &leakage_paths,
             Some(PromotionExecutionPaths {
                 route: NativePromotionRoute::RegistryAddEntry,
+                lock_hash: Some(witness::hash_bytes(b"bd-2hav neutral project lock")),
+                pack_id: Some(witness::hash_bytes(b"bd-2hav neutral promotion package")),
                 promotion_artifact_path: Some(rel(&base_dir, &add_entry_receipt_path)),
                 review_import_receipt_path: Some(rel(&base_dir, &review_import_receipt_path)),
                 review_queue_artifact_path: Some(rel(&base_dir, &promotion_review_queue_path)),
@@ -1446,6 +1512,147 @@ fn native_benchmark() -> AliasWithholdingBenchmark {
     }
 }
 
+fn native_sealed_review_label_set() -> SealedReviewLabelSet {
+    let mut label_set = SealedReviewLabelSet {
+        version: ALIAS_WITHHOLDING_SEALED_REVIEW_LABEL_SET_VERSION.to_string(),
+        label_set_hash: String::new(),
+        source_manifest_hash: witness::hash_bytes(b"bd-2hav neutral owner-only input manifest"),
+        selection_seed: "bd-2hav-neutral-selection-seed-0001".to_string(),
+        denominators: SealedReviewDenominators {
+            total_labels: 2,
+            reviewed_positive_count: 1,
+            hard_negative_count: 1,
+            ambiguity_count: 0,
+            unmatched_count: 0,
+            censored_attempt_count: 0,
+        },
+        labels: vec![
+            sealed_label(
+                "sealed.attach",
+                NATIVE_ATTACH_TRIAL,
+                ATTACH_OBSERVATION,
+                SealedReviewLabelDisposition::ReviewedPositive,
+            ),
+            sealed_label(
+                "sealed.hard_negative",
+                NATIVE_ABSTAIN_TRIAL,
+                ABSTAIN_OBSERVATION,
+                SealedReviewLabelDisposition::HardNegative,
+            ),
+        ],
+    };
+    reseal_label_set(&mut label_set);
+    label_set
+}
+
+fn sealed_label(
+    label_id: &str,
+    trial_id: &str,
+    canonical_record_id: &str,
+    disposition: SealedReviewLabelDisposition,
+) -> SealedReviewLabelBinding {
+    let hard_negative = disposition == SealedReviewLabelDisposition::HardNegative;
+    SealedReviewLabelBinding {
+        label_id: label_id.to_string(),
+        trial_id: trial_id.to_string(),
+        lane: "issuer_identity_record_link".to_string(),
+        canonical_record_id: canonical_record_id.to_string(),
+        material_hash: witness::hash_bytes(
+            format!("material:{trial_id}:{canonical_record_id}").as_bytes(),
+        ),
+        disposition,
+        lookalike_signal_hashes: hard_negative
+            .then(|| vec![witness::hash_bytes(b"name-surface-lookalike")])
+            .unwrap_or_default(),
+        corroborating_attribute_lanes: hard_negative
+            .then(|| {
+                vec![
+                    "amount".to_string(),
+                    "category".to_string(),
+                    "date".to_string(),
+                ]
+            })
+            .unwrap_or_default(),
+        corroborating_attribute_hashes: hard_negative
+            .then(|| {
+                vec![
+                    witness::hash_bytes(b"amount-refutes-identity"),
+                    witness::hash_bytes(b"category-refutes-identity"),
+                    witness::hash_bytes(b"date-refutes-identity"),
+                ]
+            })
+            .unwrap_or_default(),
+        hard_negative_basis: hard_negative.then(|| {
+            "candidate-like name surface refuted by amount/date/category corroboration".to_string()
+        }),
+    }
+}
+
+fn reseal_label_set(label_set: &mut SealedReviewLabelSet) {
+    for label in &mut label_set.labels {
+        label.lookalike_signal_hashes.sort();
+        label.lookalike_signal_hashes.dedup();
+        label.corroborating_attribute_lanes.sort();
+        label.corroborating_attribute_lanes.dedup();
+        label.corroborating_attribute_hashes.sort();
+        label.corroborating_attribute_hashes.dedup();
+    }
+    label_set.labels.sort();
+    label_set.label_set_hash.clear();
+    label_set.label_set_hash = hash_compact_json(label_set);
+}
+
+fn refresh_label_denominators(label_set: &mut SealedReviewLabelSet) {
+    label_set.denominators = SealedReviewDenominators {
+        total_labels: label_set.labels.len() as u64,
+        reviewed_positive_count: label_set
+            .labels
+            .iter()
+            .filter(|label| label.disposition == SealedReviewLabelDisposition::ReviewedPositive)
+            .count() as u64,
+        hard_negative_count: label_set
+            .labels
+            .iter()
+            .filter(|label| label.disposition == SealedReviewLabelDisposition::HardNegative)
+            .count() as u64,
+        ambiguity_count: label_set
+            .labels
+            .iter()
+            .filter(|label| label.disposition == SealedReviewLabelDisposition::Ambiguity)
+            .count() as u64,
+        unmatched_count: label_set
+            .labels
+            .iter()
+            .filter(|label| label.disposition == SealedReviewLabelDisposition::Unmatched)
+            .count() as u64,
+        censored_attempt_count: label_set
+            .labels
+            .iter()
+            .filter(|label| label.disposition == SealedReviewLabelDisposition::CensoredAttempt)
+            .count() as u64,
+    };
+}
+
+fn rewrite_sealed_label_disposition(
+    fixture: &mut NativeAliasFixture,
+    trial_id: &str,
+    disposition: SealedReviewLabelDisposition,
+) {
+    for manifest in &mut fixture.manifests {
+        let label_set = &mut manifest.sealed_review_label_set;
+        let label = label_set
+            .labels
+            .iter_mut()
+            .find(|label| label.trial_id == trial_id)
+            .unwrap_or_else(|| panic!("missing sealed label for {trial_id}"));
+        let label_id = label.label_id.clone();
+        let canonical_record_id = label.canonical_record_id.clone();
+        *label = sealed_label(&label_id, trial_id, &canonical_record_id, disposition);
+        refresh_label_denominators(label_set);
+        reseal_label_set(label_set);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn native_trial(
     trial_id: &str,
@@ -1487,7 +1694,11 @@ fn native_trial(
             observation_id: observation_id.to_string(),
             surface: withheld_surface.to_string(),
             alias_class: AliasClass::LegalSuffix,
-            relation_policy: RelationPolicy::SameEntityAllowed,
+            relation_policy: if trial_id == NATIVE_ABSTAIN_TRIAL {
+                RelationPolicy::RelatedDistinct
+            } else {
+                RelationPolicy::SameEntityAllowed
+            },
         },
         retained_alias_ids: vec![retained_alias_id.to_string()],
         evaluation: declared_candidate_evaluation(declared_decision, canonical_id),
@@ -1822,6 +2033,7 @@ fn execution_manifest(
             },
             review_id,
         },
+        sealed_review_label_set: native_sealed_review_label_set(),
         candidate_recall: CandidateRecallExecutionPaths {
             quality_manifest_path: rel(base_dir, quality_manifest_path),
             block_artifact_path: rel(base_dir, block_artifact_path),
@@ -2319,6 +2531,26 @@ fn tamper_missing_alias_patch(fixture: &mut NativeAliasFixture) {
     write_json_value(&fixture.review_import_receipt_path, receipt);
 }
 
+fn tamper_stale_sealed_label_set_hash(fixture: &mut NativeAliasFixture) {
+    fixture.manifests[0]
+        .sealed_review_label_set
+        .selection_seed
+        .push_str("-tampered");
+}
+
+fn tamper_hard_negative_without_corroboration(fixture: &mut NativeAliasFixture) {
+    let label_set = &mut fixture.manifests[1].sealed_review_label_set;
+    let label = label_set
+        .labels
+        .iter_mut()
+        .find(|label| label.trial_id == NATIVE_ABSTAIN_TRIAL)
+        .expect("abstain hard-negative label");
+    label.lookalike_signal_hashes.clear();
+    label.corroborating_attribute_lanes.clear();
+    label.corroborating_attribute_hashes.clear();
+    reseal_label_set(label_set);
+}
+
 fn tamper_promote_v1_missing_review_receipt(fixture: &mut NativeAliasFixture) {
     let promotion = fixture.manifests[0]
         .promotion
@@ -2326,6 +2558,34 @@ fn tamper_promote_v1_missing_review_receipt(fixture: &mut NativeAliasFixture) {
         .expect("matched trial promotion");
     promotion.route = NativePromotionRoute::PromoteV1;
     promotion.review_import_receipt_path = None;
+}
+
+fn tamper_missing_promotion_lock_hash(fixture: &mut NativeAliasFixture) {
+    fixture.manifests[0]
+        .promotion
+        .as_mut()
+        .expect("matched trial promotion")
+        .lock_hash = None;
+}
+
+fn tamper_missing_promotion_pack_id(fixture: &mut NativeAliasFixture) {
+    fixture.manifests[0]
+        .promotion
+        .as_mut()
+        .expect("matched trial promotion")
+        .pack_id = None;
+}
+
+fn tamper_non_positive_label_with_promotion(fixture: &mut NativeAliasFixture) {
+    let label_set = &mut fixture.manifests[0].sealed_review_label_set;
+    let label = label_set
+        .labels
+        .iter_mut()
+        .find(|label| label.trial_id == NATIVE_ATTACH_TRIAL)
+        .expect("attach label");
+    label.disposition = SealedReviewLabelDisposition::Ambiguity;
+    refresh_label_denominators(label_set);
+    reseal_label_set(label_set);
 }
 
 fn tamper_wrong_replay(fixture: &mut NativeAliasFixture) {
@@ -3191,6 +3451,8 @@ fn assert_public_output_does_not_leak_surfaces(output: &Output) {
         "neutral-registry",
         "gold.attach",
         "gold.abstain",
+        "sealed.attach",
+        "sealed.hard_negative",
     ] {
         assert!(
             !combined.contains(value),
