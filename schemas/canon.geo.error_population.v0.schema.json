@@ -1,0 +1,89 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.error_population.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.error_population.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_error_population.v0",
+      "type": "string"
+    },
+    "population_id": { "type": "string", "minLength": 1 },
+    "region": { "type": "string", "minLength": 1 },
+    "selection_seed": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 18446744073709551615
+    },
+    "selection_query_blake3": { "$ref": "#/$defs/blake3" },
+    "source_population_blake3": { "$ref": "#/$defs/blake3" },
+    "subjects": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/subject" }
+    },
+    "declared_before_observer_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "stratum_counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 18446744073709551615
+      }
+    }
+  },
+  "required": [
+    "version",
+    "population_id",
+    "region",
+    "selection_seed",
+    "selection_query_blake3",
+    "source_population_blake3",
+    "subjects",
+    "declared_before_observer_ids",
+    "stratum_counts"
+  ],
+  "$defs": {
+    "blake3": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "truth_plane": {
+      "type": "string",
+      "enum": [
+        "non_round_amount_date_legal_borough",
+        "round_exact_lender_party"
+      ]
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "subject_id": { "type": "string", "minLength": 1 },
+        "truth_plane": { "$ref": "#/$defs/truth_plane" },
+        "window_blake3": { "$ref": "#/$defs/blake3" },
+        "parcel_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "required": ["subject_id", "truth_plane", "window_blake3", "parcel_ids"]
+    }
+  },
+  "x-canon-contract": {
+    "runtime_only_invariants": [
+      "subjects must be strictly sorted by subject_id with no duplicates",
+      "subject parcel_ids must be strictly sorted and unique",
+      "declared_before_observer_ids must be strictly sorted and unique",
+      "stratum_counts must exactly match the subject truth_plane distribution and include both H.7 truth planes",
+      "selection_query_blake3 and source_population_blake3 are recomputed from retained local artifacts by D6 tests"
+    ]
+  }
+}

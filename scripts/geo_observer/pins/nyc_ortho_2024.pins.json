@@ -1,0 +1,19 @@
+{
+  "version": "canon_geo_image_tile_pin.v0",
+  "source_profile_id": "nyc_ortho",
+  "rows": [
+    {
+      "url": "https://orthos.its.ny.gov/arcgis/rest/services/wms/2024/MapServer/tile/16/24642/19300",
+      "byte_range": null,
+      "etag": "19722ead2b5",
+      "blake3": "48acd35c2723c758219e0d18b6027173a3985a70fad0da8c233b151a6fd0a754",
+      "vintage": {
+        "start_day": 19796,
+        "end_day": 19806
+      },
+      "license_id": "CC-BY-4.0",
+      "license_text_blake3": "811c1b55d1b36b9fcc2fef4ccbfec9eb843b83d314d08d956816fa616f35e32b",
+      "source_dataset": "nyc.ortho.2024"
+    }
+  ]
+}

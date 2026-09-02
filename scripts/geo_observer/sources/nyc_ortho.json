@@ -1,0 +1,53 @@
+{
+  "source_profile_id": "nyc_ortho",
+  "source_name": "NYS ITS orthoimagery tiled service for NYC observer inputs",
+  "source_dataset_prefix": "nyc.ortho.",
+  "license": {
+    "license_id": "CC-BY-4.0",
+    "license_text_path": "scripts/geo_observer/licenses/cc_by_4_0.txt"
+  },
+  "allowed_hosts": [
+    "orthos.its.ny.gov",
+    "maps.nyc.gov",
+    "data.cityofnewyork.us",
+    "data.gis.ny.gov"
+  ],
+  "forbidden_host_substrings": ["google", "mapbox", "arcgis", "apple"],
+  "range_requests_supported": false,
+  "tile_path_style": "arcgis_mapserver_z_y_x",
+  "vintages": [
+    {
+      "year": 2024,
+      "source_dataset": "nyc.ortho.2024",
+      "service_url": "https://orthos.its.ny.gov/arcgis/rest/services/wms/2024/MapServer",
+      "tile_url_template": "https://orthos.its.ny.gov/arcgis/rest/services/wms/2024/MapServer/tile/{z}/{y}/{x}",
+      "flight_start_day": 19796,
+      "flight_end_day": 19806
+    },
+    {
+      "year": 2022,
+      "source_dataset": "nyc.ortho.2022",
+      "service_url": "https://orthos.its.ny.gov/arcgis/rest/services/wms/2022/MapServer",
+      "tile_url_template": "https://orthos.its.ny.gov/arcgis/rest/services/wms/2022/MapServer/tile/{z}/{y}/{x}",
+      "flight_start_day": 19067,
+      "flight_end_day": 19081
+    },
+    {
+      "year": 2020,
+      "source_dataset": "nyc.ortho.2020",
+      "service_url": "https://orthos.its.ny.gov/arcgis/rest/services/wms/2020/MapServer",
+      "tile_url_template": "https://orthos.its.ny.gov/arcgis/rest/services/wms/2020/MapServer/tile/{z}/{y}/{x}",
+      "flight_start_day": 18342,
+      "flight_end_day": 18363
+    }
+  ],
+  "default_tiles": [
+    {
+      "window_id": "nyc.dumbo.control.z16.19300.24642",
+      "z": 16,
+      "x": 19300,
+      "y": 24642
+    }
+  ],
+  "acquisition_boundary": "Network acquisition is outside Canon; Canon consumes the retained manifest rows and bytes digests only."
+}

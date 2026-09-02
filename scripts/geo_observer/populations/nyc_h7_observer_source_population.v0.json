@@ -1,0 +1,1402 @@
+{
+  "artifact_kind": "nyc_h7_observer_source_population.v0",
+  "population_id": "nyc.h7.observer.source.2026-09",
+  "region": "nyc",
+  "source_query_path": "scripts/geo_observer/populations/nyc_h7_observer_population.sql",
+  "source_query_blake3": "aa7216b40733030f6221718b68a6c1a45535137f07e31d457e1fb607cf751360",
+  "selection_frame": "h7_accepted_multi_bbl_with_complete_26v2_mappluto_window",
+  "source_pins": {
+    "loan_issuance_property_build_id": "d5ddd2d9-07dc-44d6-bf8b-b7bfc373dbc3",
+    "acris_release_dt": "2026-08-10",
+    "mappluto_release": "26v2",
+    "mappluto_variant": "shoreline_clipped"
+  },
+  "h7_accepted_multi_bbl_counts": {
+    "non_round_amount_date_legal_borough": 35,
+    "round_exact_lender_party": 36
+  },
+  "complete_window_counts": {
+    "round_exact_lender_party": 30,
+    "non_round_amount_date_legal_borough": 25
+  },
+  "excluded_window_counts": {
+    "missing_or_partial_26v2_mappluto_window": 16
+  },
+  "subjects": [
+    {
+      "subject_id": "0048d206538d873999f3c2d49f259d31",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2019050100901003",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "4033550129",
+        "4033550136"
+      ],
+      "window_blake3": "242602fda8858eaef6e168dda2bc3ff79cd27d09ca8f2d67c4c47168350409b3",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -738282744,
+          "ymin_e7": 407080875,
+          "xmax_e7": -738272470,
+          "ymax_e7": 407088138
+        }
+      }
+    },
+    {
+      "subject_id": "073ad3a0862827c75501ac66570eb783",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2020021800990006",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "1004060014",
+        "1004060015",
+        "1004510044",
+        "1004510045",
+        "1004510046",
+        "1004510047"
+      ],
+      "window_blake3": "14976bc43f72c9cd4328141f2714765698edf34a571232adcb860b9f46e85528",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739859044,
+          "ymin_e7": 407285887,
+          "xmax_e7": -739799236,
+          "ymax_e7": 407293177
+        }
+      }
+    },
+    {
+      "subject_id": "07571f6c5757ed966e978b889709caec",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2024071100404003",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "3004210001",
+        "3004210002"
+      ],
+      "window_blake3": "8c17ee9c579f9cc32db489ba796bd2b99bf94ecba6d7508f2fd8da717ce8259a",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739954048,
+          "ymin_e7": 406829944,
+          "xmax_e7": -739950375,
+          "ymax_e7": 406832027
+        }
+      }
+    },
+    {
+      "subject_id": "076f078b2e509ea5ce0d0787352ac934",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2020012201105003",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "2058021294",
+        "2058141101"
+      ],
+      "window_blake3": "7fe0741d3eae722b356cbaafb70986a6e24c465dcdd918d9f8c638680f088a0b",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -738980248,
+          "ymin_e7": 408916936,
+          "xmax_e7": -738970855,
+          "ymax_e7": 408925868
+        }
+      }
+    },
+    {
+      "subject_id": "0b2476809a8914f5c097a7bdfb340991",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2019021100464004",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "3001800052",
+        "3001800053",
+        "3001800054",
+        "3001800055",
+        "3001800056",
+        "3001800057",
+        "3001800058",
+        "3001800059",
+        "3001800060"
+      ],
+      "window_blake3": "c55abd41d8024c0ff6aeb6b508a6dff7146a8caacc2d072684904facf2841d96",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739801934,
+          "ymin_e7": 406850132,
+          "xmax_e7": -739794001,
+          "ymax_e7": 406854738
+        }
+      }
+    },
+    {
+      "subject_id": "0b296a95d154bb0b07a9ddf6733250b1",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2024112600661007",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "1021530067",
+        "1021530068",
+        "1021540024"
+      ],
+      "window_blake3": "b04f51ffc1b03462e6ebc27ffc2336968c805208d597ea284b0aea63a5040024",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739334537,
+          "ymin_e7": 408485354,
+          "xmax_e7": -739324562,
+          "ymax_e7": 408492908
+        }
+      }
+    },
+    {
+      "subject_id": "11306d29410b4f52d24de5c1c25bfb43",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2020122901080003",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "2023300030",
+        "2023300057"
+      ],
+      "window_blake3": "a1b8f659bb29afba17a543ee3bf0bb33df43f426befca033137c5122baee581a",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739211346,
+          "ymin_e7": 408161459,
+          "xmax_e7": -739204654,
+          "ymax_e7": 408167350
+        }
+      }
+    },
+    {
+      "subject_id": "1785a5edc1bc53a620ea2e4669c256bc",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2021100500598003",
+      "bridge_property_keys": 3,
+      "parcel_ids": [
+        "1010780045",
+        "1010780046"
+      ],
+      "window_blake3": "4c385d92278380906deba4f4a59fb133e9700d53f9104be500eb461d41966c58",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739932783,
+          "ymin_e7": 407648378,
+          "xmax_e7": -739929423,
+          "ymax_e7": 407651485
+        }
+      }
+    },
+    {
+      "subject_id": "2a2d2adf109a880c7f5efd5750972745",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2025122301152008",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "3024170009",
+        "3024320039"
+      ],
+      "window_blake3": "2d70a5ea3e38699dfa153e48db1f92e6ad0d5b9f938a0a7ba2468ba657c32cba",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739634993,
+          "ymin_e7": 407112876,
+          "xmax_e7": -739608485,
+          "ymax_e7": 407136549
+        }
+      }
+    },
+    {
+      "subject_id": "2b7bc3d79f35a8e9f91103795d5dc2a6",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2024041600013009",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "3023040020",
+        "3026500009"
+      ],
+      "window_blake3": "d41f78968ab0f9a544129351dcbeb68f3bc438ecdcea8301bbd2bc25002d3b40",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739563316,
+          "ymin_e7": 407194282,
+          "xmax_e7": -739483039,
+          "ymax_e7": 407264497
+        }
+      }
+    },
+    {
+      "subject_id": "2bd9a92fb4c295cf8917a9fd43df3333",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2025061700259005",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "3049470042",
+        "3051690051"
+      ],
+      "window_blake3": "1de641389ef43f2dba21212cc0d547f71e2aba918e930c4429642a6464e20906",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739535421,
+          "ymin_e7": 406411428,
+          "xmax_e7": -739476616,
+          "ymax_e7": 406438179
+        }
+      }
+    },
+    {
+      "subject_id": "2e3fac03a961f918cfa6545c33dd95ef",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2026033000800004",
+      "bridge_property_keys": 3,
+      "parcel_ids": [
+        "3013750052",
+        "3016950031",
+        "3048130019",
+        "3048130020"
+      ],
+      "window_blake3": "98f2211efa55d060d679ef3640ee5ec4884fb35068aff55f3492b85b5334f1f3",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739387095,
+          "ymin_e7": 406597805,
+          "xmax_e7": -739227394,
+          "ymax_e7": 406798005
+        }
+      }
+    },
+    {
+      "subject_id": "327d8ca486c3607d296f7815f3a7e0ff",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2022071400090001",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "3007380006",
+        "3007380009"
+      ],
+      "window_blake3": "b8a76a4232a676098089113f5edbbb35c72a7cd66202ca5496f721a0085dd901",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -740092106,
+          "ymin_e7": 406492800,
+          "xmax_e7": -740086952,
+          "ymax_e7": 406496716
+        }
+      }
+    },
+    {
+      "subject_id": "3330deb3e65852b88b56094dafc1498d",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2018041600600001",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "1015270041",
+        "1015270043"
+      ],
+      "window_blake3": "5b34f6823ad2f4293308b05f7cb93a14ea47bf1b46d136dc8645e4babe29f35e",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739555934,
+          "ymin_e7": 407755799,
+          "xmax_e7": -739551183,
+          "ymax_e7": 407759552
+        }
+      }
+    },
+    {
+      "subject_id": "42bb478bf589352aa72dd46076f6c6ff",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2022040101202002",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "2023190100",
+        "2023190108"
+      ],
+      "window_blake3": "9e59b58e9d3db88903708cc6b29787c8083ab7fc5a4e3c22dafb74af38aa2d57",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739312896,
+          "ymin_e7": 408084187,
+          "xmax_e7": -739303515,
+          "ymax_e7": 408091147
+        }
+      }
+    },
+    {
+      "subject_id": "433c6803fe0f42d7384f5dddace182c5",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2026013000325005",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "1005750031",
+        "1005750032"
+      ],
+      "window_blake3": "5ae413345c88b06cfbc93786927da17e344f33e989e108e5d51c7585c11025a7",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739965515,
+          "ymin_e7": 407350254,
+          "xmax_e7": -739962267,
+          "ymax_e7": 407353356
+        }
+      }
+    },
+    {
+      "subject_id": "49a1e6bbb9d36a905988b675721a3627",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2017082200125001",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "1007220018",
+        "1007220020",
+        "1007220022"
+      ],
+      "window_blake3": "6683ad4d7ca8c3fb97e737eee94cd7cf1233620ef6959b5070c07dfc8118aa72",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -740023755,
+          "ymin_e7": 407476866,
+          "xmax_e7": -740017217,
+          "ymax_e7": 407481341
+        }
+      }
+    },
+    {
+      "subject_id": "49d6e4dcac8841eca517c1190949b551",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2019102800385001",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "3025570013",
+        "4000560036"
+      ],
+      "window_blake3": "2a87412069bd6202be4d25a9c0c4634bd49eadfeaa4266dc60d8c0eb67486213",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739584358,
+          "ymin_e7": 407301510,
+          "xmax_e7": -739497386,
+          "ymax_e7": 407455522
+        }
+      }
+    },
+    {
+      "subject_id": "4b2d7fc321ef05c03b7e8ecaad0152a6",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2024100400812003",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "2058021294",
+        "2058141101"
+      ],
+      "window_blake3": "2147d93d3ba18c6c6593a8c63a778fae19596d19c5259482684656150eedbecc",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -738980248,
+          "ymin_e7": 408916936,
+          "xmax_e7": -738970855,
+          "ymax_e7": 408925868
+        }
+      }
+    },
+    {
+      "subject_id": "5081a27f5b2e4b03f660bbba032d82ed",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2025120900884001",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "4066300015",
+        "4066300030"
+      ],
+      "window_blake3": "3da71f4df5ad45057768a25b8611d594d91069dfe9a8bdda2be3a93fd3e9f159",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -738201578,
+          "ymin_e7": 407196457,
+          "xmax_e7": -738185379,
+          "ymax_e7": 407205597
+        }
+      }
+    },
+    {
+      "subject_id": "5387c521ca6a6f0dc15c6badec8c0134",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2019020700582001",
+      "bridge_property_keys": 3,
+      "parcel_ids": [
+        "1018510020",
+        "1018510022",
+        "1018510023",
+        "1018510024"
+      ],
+      "window_blake3": "2c241ceafbac5f1a682c9e9b7404155c4d08a73389f9b51aa4933c703161bf89",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739686287,
+          "ymin_e7": 407932977,
+          "xmax_e7": -739680505,
+          "ymax_e7": 407937192
+        }
+      }
+    },
+    {
+      "subject_id": "59d308b789056c1be5bbee76a1132dc1",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2019112600688009",
+      "bridge_property_keys": 4,
+      "parcel_ids": [
+        "1003980052",
+        "1003980053",
+        "1004040043",
+        "1004290034",
+        "1004450037"
+      ],
+      "window_blake3": "fb9370b71e405a1577dfc80322ecb48a3e266a754205e7eb59c9695f0b0aae81",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739876719,
+          "ymin_e7": 407225945,
+          "xmax_e7": -739805536,
+          "ymax_e7": 407275675
+        }
+      }
+    },
+    {
+      "subject_id": "6134edf46aa6085ebbe33371eec7cb0c",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2018071101247005",
+      "bridge_property_keys": 4,
+      "parcel_ids": [
+        "4073410012",
+        "4073420028",
+        "4073490001"
+      ],
+      "window_blake3": "ad54253f194ac261b499461e399e4692b78c5381ab4511332332ad91fd482c7b",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -737665559,
+          "ymin_e7": 407561218,
+          "xmax_e7": -737635414,
+          "ymax_e7": 407585991
+        }
+      }
+    },
+    {
+      "subject_id": "61d6cd030f3f61a27ebc488503f127c0",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2019100700389001",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "4014350029",
+        "4014360032",
+        "4014480001",
+        "4014490001"
+      ],
+      "window_blake3": "6a2499e93620d99933eb272a049b7f8837d9729a1d2da258466e8abe6e0b2a4d",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -738803695,
+          "ymin_e7": 407537832,
+          "xmax_e7": -738785468,
+          "ymax_e7": 407548416
+        }
+      }
+    },
+    {
+      "subject_id": "645469abb0305bb496b4fc1b29c5b853",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2021081601369002",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "2057930450",
+        "2057930480",
+        "2057930481"
+      ],
+      "window_blake3": "8ecf3d651e9160bdd31f9305abb131f2515ee313338694030d06984a37abae94",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739098161,
+          "ymin_e7": 408856625,
+          "xmax_e7": -739094585,
+          "ymax_e7": 408859786
+        }
+      }
+    },
+    {
+      "subject_id": "6668e47c143195a41650c2c8eeee9ef1",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2017102501712003",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "3060450024",
+        "3060450025"
+      ],
+      "window_blake3": "163036e3e42d196e706b4a2cf7ac746094fdcac1fe5cc75e3528406f00b64ce7",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -740277576,
+          "ymin_e7": 406214784,
+          "xmax_e7": -740271894,
+          "ymax_e7": 406219909
+        }
+      }
+    },
+    {
+      "subject_id": "6adf5e5094f33076147d7fb3e876974e",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2021050301019001",
+      "bridge_property_keys": 3,
+      "parcel_ids": [
+        "4053010017",
+        "4053010050",
+        "4053020083",
+        "4053020097",
+        "4053020117",
+        "4053030144"
+      ],
+      "window_blake3": "8ba724963408b69365ce17135cb61b1188d26b2d6028839b9b47c2a0455d1872",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -737961532,
+          "ymin_e7": 407615631,
+          "xmax_e7": -737938309,
+          "ymax_e7": 407628665
+        }
+      }
+    },
+    {
+      "subject_id": "6bfe47de21ff7d7e24bf6464871dea9f",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2019050100411003",
+      "bridge_property_keys": 4,
+      "parcel_ids": [
+        "4066310001",
+        "4066320001",
+        "4066330001"
+      ],
+      "window_blake3": "f64a8cfd7a3d9dbe63faabf08446fe3b59950ad7c44982eae52bfc568cd5080d",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -738204185,
+          "ymin_e7": 407174649,
+          "xmax_e7": -738173603,
+          "ymax_e7": 407199713
+        }
+      }
+    },
+    {
+      "subject_id": "6ed280773520fa75508c912ef4cc1ddb",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2021040900545001",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "2029370001",
+        "2029370008",
+        "2029370025"
+      ],
+      "window_blake3": "3a09b254e20c329757f2fdc3f078a686087c02c86776d0d4cbefda5fb7900c80",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -738979855,
+          "ymin_e7": 408329633,
+          "xmax_e7": -738975146,
+          "ymax_e7": 408338394
+        }
+      }
+    },
+    {
+      "subject_id": "7402ec7245fbb952845811f2985dc6ad",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2018031200288001",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "1011170051",
+        "1011170052"
+      ],
+      "window_blake3": "f036d7f93e938745a5769b92cf6e6ff8b10b9d2b97f82ecb88f8855614ac6ca4",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739811633,
+          "ymin_e7": 407721153,
+          "xmax_e7": -739808156,
+          "ymax_e7": 407724404
+        }
+      }
+    },
+    {
+      "subject_id": "76f1aad84ddf56ddf5bc81c94063ca70",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2021040100867001",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "4007910022",
+        "4007910023",
+        "4007910122",
+        "4007910123"
+      ],
+      "window_blake3": "b7dbaa07a211877e14f0d1397d25c2b40421d6826d94623b89df5d720fd07bb1",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -738965676,
+          "ymin_e7": 407780974,
+          "xmax_e7": -738960484,
+          "ymax_e7": 407784918
+        }
+      }
+    },
+    {
+      "subject_id": "7b18a4419586e1411d46dafa4375865c",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2021101500491003",
+      "bridge_property_keys": 3,
+      "parcel_ids": [
+        "2023290064",
+        "2026030007",
+        "3012470029"
+      ],
+      "window_blake3": "ba939678e2127f1ab001583df2812cc899f54ce64d6b1e32e0793944bea52a48",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739516170,
+          "ymin_e7": 406721260,
+          "xmax_e7": -739025853,
+          "ymax_e7": 408160275
+        }
+      }
+    },
+    {
+      "subject_id": "870c78d3e872ceb44352a058bf9a819d",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2025102200443002",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "2032700001",
+        "2032700009",
+        "2057650718"
+      ],
+      "window_blake3": "76b76f5b8dcf5867a710fd3023af44048c1226d3da0486d0d78cab5aa54661cc",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739017613,
+          "ymin_e7": 408833720,
+          "xmax_e7": -739005891,
+          "ymax_e7": 408844995
+        }
+      }
+    },
+    {
+      "subject_id": "8d71ae8d52b901af4a5b657af0b1021c",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2022020300255003",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "3029070021",
+        "3029070022",
+        "3029070023"
+      ],
+      "window_blake3": "b7789f74c44202db46456d0a0ee2e4e31b51ad6a2f961708ddfb3f27cade06ac",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739405162,
+          "ymin_e7": 407153228,
+          "xmax_e7": -739401443,
+          "ymax_e7": 407156536
+        }
+      }
+    },
+    {
+      "subject_id": "913f619113b7ceec6118a4844f7e459c",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2021053100003008",
+      "bridge_property_keys": 4,
+      "parcel_ids": [
+        "2030480050",
+        "2030480051",
+        "3014570021",
+        "3050870021"
+      ],
+      "window_blake3": "2742e33c7097ce3fbee77b3ff1a41f9e43c74fe8c74587f1aef22d04f2df6421",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739549361,
+          "ymin_e7": 406518761,
+          "xmax_e7": -738932020,
+          "ymax_e7": 408519892
+        }
+      }
+    },
+    {
+      "subject_id": "9970d9136018599001e61f2ba8be3519",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2019112700560003",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "1014350020",
+        "1014350021",
+        "1014350022",
+        "1014350023",
+        "1014350024",
+        "1014350025",
+        "1014350026"
+      ],
+      "window_blake3": "d72a0bce0edfd003e90b4c249efa0139e461d8a160b7cf0feb3f64cdbe6c00d2",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739621758,
+          "ymin_e7": 407603634,
+          "xmax_e7": -739614355,
+          "ymax_e7": 407608470
+        }
+      }
+    },
+    {
+      "subject_id": "9a06659b027295baea4de8364dfb8684",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2019072200190003",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "3059270054",
+        "3059270055",
+        "3059270056",
+        "3059270057",
+        "3059270058",
+        "3059270059",
+        "3059270060",
+        "3059270061",
+        "3059270062",
+        "3059270063",
+        "3059270064",
+        "3059270065",
+        "3059270066",
+        "3059270067"
+      ],
+      "window_blake3": "f1a82f026e49689f2cb0dbcc73de51a8d1571d4e5203f91354b62cc42721ef21",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -740323520,
+          "ymin_e7": 406324182,
+          "xmax_e7": -740312183,
+          "ymax_e7": 406329147
+        }
+      }
+    },
+    {
+      "subject_id": "abc2df548bbd7e2a655aab2c43845b4d",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2021062400490001",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "4097130102",
+        "4097150228"
+      ],
+      "window_blake3": "b5edd797d2abb7074e95a24fa8e289d3ed99f8f24e7ab281350fd7350b84aecb",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -738179975,
+          "ymin_e7": 407094498,
+          "xmax_e7": -738165469,
+          "ymax_e7": 407109749
+        }
+      }
+    },
+    {
+      "subject_id": "b1409df04e4b208fe22b043b7c5716ce",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2022071101440001",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "1015350029",
+        "1015350030"
+      ],
+      "window_blake3": "3130a38f3eb9719ebb047b14f3f4d44be7d44cbaec8f2cc761221ee4652cd779",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739507382,
+          "ymin_e7": 407803198,
+          "xmax_e7": -739504022,
+          "ymax_e7": 407806337
+        }
+      }
+    },
+    {
+      "subject_id": "b34ace2027f17984c0cbe01683c00ace",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2018011101966001",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "2057450012",
+        "2057450091",
+        "2057450095",
+        "2057450097"
+      ],
+      "window_blake3": "64cb1a570aeaaa8fdcccfc83637f3424fd209db3d74740b985cf0b5e2ab64b15",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739219609,
+          "ymin_e7": 408824580,
+          "xmax_e7": -739202340,
+          "ymax_e7": 408841523
+        }
+      }
+    },
+    {
+      "subject_id": "b825ec3c31fb3a69ce98a278faa57651",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2024100400812003",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "2058021294",
+        "2058141101"
+      ],
+      "window_blake3": "f485b2e8d88790cf0c18540bc74f994de06cffc48e9854a4c067bf0a401c8e15",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -738980248,
+          "ymin_e7": 408916936,
+          "xmax_e7": -738970855,
+          "ymax_e7": 408925868
+        }
+      }
+    },
+    {
+      "subject_id": "b85b08189259f887be6bf5597b6e388b",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2026021801124001",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "1007200021",
+        "1007200022"
+      ],
+      "window_blake3": "956a6fdc72755c1915b528903f732d48cd6e0ae37e30c44686c3cdefa7f1bc30",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -740034094,
+          "ymin_e7": 407465750,
+          "xmax_e7": -740031670,
+          "ymax_e7": 407468345
+        }
+      }
+    },
+    {
+      "subject_id": "b9045ea09a2e27f6344e39ef5167d0a3",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2023031600167001",
+      "bridge_property_keys": 30,
+      "parcel_ids": [
+        "3014840015",
+        "3014840047",
+        "3014860020",
+        "3014860025",
+        "3014860027",
+        "3015890047",
+        "3015940003",
+        "3015940039",
+        "3015940065",
+        "3016010050",
+        "3016010053",
+        "3016010055",
+        "3016010068",
+        "3016060074",
+        "3016070026",
+        "3016070067",
+        "3016070068",
+        "3016530059",
+        "3016630086",
+        "3016630088",
+        "3017600016",
+        "3017600053",
+        "3017600068",
+        "3017600069",
+        "3017600070",
+        "3017670038"
+      ],
+      "window_blake3": "68108e0447e86f561ababd471c8c25e2c901e99ead9de4a47097002a34bf8ef3",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739465295,
+          "ymin_e7": 406846583,
+          "xmax_e7": -739187797,
+          "ymax_e7": 406958987
+        }
+      }
+    },
+    {
+      "subject_id": "b986131b16a50d5d7464e1a135290076",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2025050800783005",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "3012540032",
+        "3012540033",
+        "3031390017"
+      ],
+      "window_blake3": "705b389c21ad789669f79ade64d36b239df48e5db8b2c149cc07aed86fb2b983",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739511983,
+          "ymin_e7": 406712304,
+          "xmax_e7": -739356275,
+          "ymax_e7": 407021228
+        }
+      }
+    },
+    {
+      "subject_id": "c7aae0bb8dcacba8ad27bdfd51cea625",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2024122601072007",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "2028730012",
+        "2046610023"
+      ],
+      "window_blake3": "c7bbd877c03baf797c1d7c2662705adb0e73ab91750cb809d119fca46eb7ef4f",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739220792,
+          "ymin_e7": 408420390,
+          "xmax_e7": -738638654,
+          "ymax_e7": 408791600
+        }
+      }
+    },
+    {
+      "subject_id": "c88a233fbc140d00649dd966add4abb7",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2024041000706002",
+      "bridge_property_keys": 7,
+      "parcel_ids": [
+        "3026790021",
+        "3026790022",
+        "3026790023",
+        "3026790054",
+        "3026800037",
+        "3026800043",
+        "3026800046"
+      ],
+      "window_blake3": "63d9886057896795977b800b00670d044d63ba731f93d0e603e1c54bb5e5f2ef",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739511115,
+          "ymin_e7": 407225960,
+          "xmax_e7": -739496706,
+          "ymax_e7": 407233344
+        }
+      }
+    },
+    {
+      "subject_id": "c8aaebd5518b664ffa60eb73c3f5dd47",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2019121600472005",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "3002410001",
+        "3002410036"
+      ],
+      "window_blake3": "22615b61a7d34a106633c67998c95f9554e2a0dd5277070b72a90a4bebd70670",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739961453,
+          "ymin_e7": 406953224,
+          "xmax_e7": -739956602,
+          "ymax_e7": 406958906
+        }
+      }
+    },
+    {
+      "subject_id": "d0e218bc4105a6467cf4225e50437bf1",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2019112700560003",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "1014350020",
+        "1014350021",
+        "1014350022",
+        "1014350023",
+        "1014350024",
+        "1014350025",
+        "1014350026"
+      ],
+      "window_blake3": "d58a59c34e4cc529733450c7ad8114c325e180bf0435c90e58d23979af5bac19",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739621758,
+          "ymin_e7": 407603634,
+          "xmax_e7": -739614355,
+          "ymax_e7": 407608470
+        }
+      }
+    },
+    {
+      "subject_id": "d34cdcf84fc0badf2d2c364af2ec6ebd",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2019112600816007",
+      "bridge_property_keys": 3,
+      "parcel_ids": [
+        "1004000056",
+        "1004000057",
+        "1004000058",
+        "1004040048",
+        "1004450025",
+        "1004450026"
+      ],
+      "window_blake3": "c15a79faa3a6919953f75c349decdb9ddc5e88b8a4cdc3f3dbcc3d61e5ead97f",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739881495,
+          "ymin_e7": 407239345,
+          "xmax_e7": -739809497,
+          "ymax_e7": 407277324
+        }
+      }
+    },
+    {
+      "subject_id": "dfc0f3e18f4d1be82f94b66b6bc22e84",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2019122000039001",
+      "bridge_property_keys": 6,
+      "parcel_ids": [
+        "1019680033",
+        "1020740042",
+        "1020830011",
+        "1021250052",
+        "1021260054",
+        "4003460018"
+      ],
+      "window_blake3": "cd1e17dcf7e354214159e8c365b2ec249be52ad0ddb5c69a4a3ac93862ff178d",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739527443,
+          "ymin_e7": 407585934,
+          "xmax_e7": -739347123,
+          "ymax_e7": 408411804
+        }
+      }
+    },
+    {
+      "subject_id": "e7b0bdb8eeb55cb44e166d9da0314030",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2025081200826016",
+      "bridge_property_keys": 7,
+      "parcel_ids": [
+        "1010370062",
+        "1010430004",
+        "1010430061",
+        "1010430062",
+        "1010720029",
+        "1012420031",
+        "1020310029",
+        "1020310031",
+        "1020590032",
+        "1020590061"
+      ],
+      "window_blake3": "83b5d1436c62171740906740dc65d36ea64732774201a119b3d5503dcde84f74",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739954913,
+          "ymin_e7": 407604285,
+          "xmax_e7": -739390606,
+          "ymax_e7": 408250638
+        }
+      }
+    },
+    {
+      "subject_id": "e8e5a5f2fb5a3e69d6dd5a72a8334505",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2020031900454003",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "1006420045",
+        "1006420046",
+        "1006420047",
+        "1006420048"
+      ],
+      "window_blake3": "61295a01ef4463137caf1b6392f5771e84804d85eb2618ba58d9bd68df0931a1",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -740076753,
+          "ymin_e7": 407384538,
+          "xmax_e7": -740073369,
+          "ymax_e7": 407386981
+        }
+      }
+    },
+    {
+      "subject_id": "eba02144113d62311c81b88192b65625",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2024052300265001",
+      "bridge_property_keys": 1,
+      "parcel_ids": [
+        "1007200047",
+        "1007200049"
+      ],
+      "window_blake3": "fdf253c10edc63710af291ca9b34f1bcdba770520eff6270a33b51f72f25f5e8",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -740022173,
+          "ymin_e7": 407462007,
+          "xmax_e7": -740015625,
+          "ymax_e7": 407466475
+        }
+      }
+    },
+    {
+      "subject_id": "f214970742c4aa0e386fa8b344d1dc4d",
+      "truth_plane": "round_exact_lender_party",
+      "document_id": "2022040400745005",
+      "bridge_property_keys": 2,
+      "parcel_ids": [
+        "2057230040",
+        "2057230042"
+      ],
+      "window_blake3": "d1f4ce69133b03aaa0b41c41da8e0f40acfb164566417901772d5ffb654cfe92",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739198491,
+          "ymin_e7": 408786056,
+          "xmax_e7": -739169480,
+          "ymax_e7": 408801809
+        }
+      }
+    },
+    {
+      "subject_id": "f46f9ea45311d9e17972ae06637393de",
+      "truth_plane": "non_round_amount_date_legal_borough",
+      "document_id": "2024090400016018",
+      "bridge_property_keys": 3,
+      "parcel_ids": [
+        "2027870057",
+        "2032500151",
+        "3035390015"
+      ],
+      "window_blake3": "04ba36767cc9604460b8c243dad6a8260662e55441be407995745cb8da4bbd6c",
+      "window": {
+        "encoding": "canon_geo_observer_window.v0.line_digest",
+        "mappluto_release": "26v2",
+        "mappluto_variant": "shoreline_clipped",
+        "bbox_crs": "EPSG:4326",
+        "bbox_wgs84_e7": {
+          "xmin_e7": -739145337,
+          "ymin_e7": 406658509,
+          "xmax_e7": -738985261,
+          "ymax_e7": 408721658
+        }
+      }
+    }
+  ]
+}
