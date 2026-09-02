@@ -221,6 +221,60 @@ fn shipped_public_binary_compiles_generalization_manifest() {
 }
 
 #[test]
+fn strict_generalization_normalizes_only_link_review_export_handoff_path() {
+    let baseline = TempGeneralizationScaffold::new();
+    baseline.build_strict_manifest();
+    let baseline_output = run_generalization_cli_path(&baseline.manifest_path, "json");
+    let baseline_report = assert_strict_generalization_report(&baseline_output);
+
+    let handoff_path = TempGeneralizationScaffold::new();
+    handoff_path.build_strict_manifest();
+    for trial_slug in ["entity_disjoint", "time_forward"] {
+        let command = format!(
+            "canon entity review export {} --include escrow --emit csv",
+            handoff_path
+                .trial_work_dir(trial_slug)
+                .join("link/link.json")
+                .display()
+        );
+        let baseline_link: EntityLinkArtifact =
+            read_json(&baseline.trial_work_dir(trial_slug).join("link/link.json"));
+        let handoff_link_hash = handoff_path.mutate_link_artifact(trial_slug, |link| {
+            link.next_commands.review_export = command;
+        });
+        assert_ne!(
+            baseline_link.artifact_content_hash, handoff_link_hash,
+            "{trial_slug} fixture must exercise a raw link self-hash cascade"
+        );
+    }
+    let handoff_output = run_generalization_cli_path(&handoff_path.manifest_path, "json");
+    let handoff_report = assert_strict_generalization_report(&handoff_output);
+    assert_json_eq_with_path(
+        &baseline_report,
+        &handoff_report,
+        "path_normalized_strict_report",
+    );
+
+    let unclassified_path = TempGeneralizationScaffold::new();
+    unclassified_path.build_strict_manifest();
+    for trial_slug in ["entity_disjoint", "time_forward"] {
+        unclassified_path.mutate_link_artifact(trial_slug, |link| {
+            link.reference.rows_path = format!("unclassified/{}", link.reference.rows_path);
+        });
+    }
+    let unclassified_output = run_generalization_cli_path(&unclassified_path.manifest_path, "json");
+    let unclassified_report = assert_strict_generalization_report(&unclassified_output);
+    assert_ne!(
+        baseline_report["report_digest"], unclassified_report["report_digest"],
+        "unclassified link path fields must remain part of strict semantic comparison"
+    );
+    assert_ne!(
+        baseline_report["derivation"], unclassified_report["derivation"],
+        "derived receipt hashes must not collapse non-handoff link payload changes"
+    );
+}
+
+#[test]
 fn shipped_public_binary_rejects_raw_self_attested_benchmark_shape() {
     let output = run_generalization_cli(BENCHMARK_PATH, "json");
     assert_eq!(

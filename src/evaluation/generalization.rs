@@ -1267,7 +1267,7 @@ pub fn compile_loaded_generalization_execution_envelope(
     }
 
     recompute_strict_leakage(&loaded, &benchmark)?;
-    let receipt = strict_derivation_receipt(&loaded);
+    let receipt = strict_derivation_receipt(&loaded)?;
     let mut report = compile_generalization_benchmark_internal(benchmark)?;
     report.derivation = Some(receipt);
     report.report_digest = generalization_report_digest(&report)?;
@@ -7097,7 +7097,8 @@ fn collect_json_scalar_strings(value: &Value, strings: &mut BTreeSet<String>) {
 
 fn strict_derivation_receipt(
     loaded: &LoadedGeneralizationExecutionEnvelope,
-) -> GeneralizationDerivationReceipt {
+) -> GeneralizationResult<GeneralizationDerivationReceipt> {
+    let semantic_artifact_hashes = strict_semantic_artifact_hashes(loaded)?;
     let mut artifact_hashes = Vec::new();
     for trial in &loaded.trials {
         let prefix = format!(
@@ -7116,20 +7117,18 @@ fn strict_derivation_receipt(
             &trial.solve_derivation.references,
         );
         push_cache_execution_receipt_hash(&mut artifact_hashes, &prefix, &trial.cache_execution);
-        artifact_hashes.extend(trial.artifacts.iter().map(|artifact| {
-            GeneralizationDerivationArtifactHash {
-                artifact_id: format!(
-                    "{prefix}:{}",
-                    artifact
-                        .reference
-                        .artifact_id
-                        .clone()
-                        .unwrap_or_else(|| artifact.reference.version.clone())
-                ),
+        for artifact in &trial.artifacts {
+            let artifact_id = strict_artifact_receipt_id(&prefix, artifact);
+            let content_hash = semantic_artifact_hashes
+                .get(&strict_artifact_semantic_key(trial, artifact))
+                .cloned()
+                .unwrap_or_else(|| artifact.reference.content_hash.clone());
+            artifact_hashes.push(GeneralizationDerivationArtifactHash {
+                artifact_id,
                 version: artifact.reference.version.clone(),
-                content_hash: artifact.reference.content_hash.clone(),
-            }
-        }));
+                content_hash,
+            });
+        }
     }
     artifact_hashes.sort();
     let mut leak_source_hashes = loaded
@@ -7162,14 +7161,109 @@ fn strict_derivation_receipt(
         })
         .collect::<Vec<_>>();
     leak_source_hashes.sort();
-    GeneralizationDerivationReceipt {
+    Ok(GeneralizationDerivationReceipt {
         source: GeneralizationDerivationSource::StrictExecutionEnvelope,
         self_attested_outcomes_used: false,
-        manifest_hash: loaded.manifest_content_hash.clone(),
+        manifest_hash: strict_semantic_manifest_hash(loaded, &semantic_artifact_hashes)?,
         benchmark_hash: loaded.benchmark_content_hash.clone(),
         artifact_hashes,
         leak_source_hashes,
+    })
+}
+
+fn strict_artifact_receipt_id(prefix: &str, artifact: &LoadedGeneralizationArtifactRef) -> String {
+    format!(
+        "{prefix}:{}",
+        artifact
+            .reference
+            .artifact_id
+            .clone()
+            .unwrap_or_else(|| artifact.reference.version.clone())
+    )
+}
+
+fn strict_artifact_semantic_key(
+    trial: &LoadedGeneralizationTrialExecution,
+    artifact: &LoadedGeneralizationArtifactRef,
+) -> (GeneralizationTrialFamily, String, String, String) {
+    (
+        trial.execution.family,
+        trial.execution.trial_id.clone(),
+        artifact.reference.path.clone(),
+        artifact.reference.content_hash.clone(),
+    )
+}
+
+fn strict_semantic_artifact_hashes(
+    loaded: &LoadedGeneralizationExecutionEnvelope,
+) -> GeneralizationResult<BTreeMap<(GeneralizationTrialFamily, String, String, String), String>> {
+    let mut hashes = BTreeMap::new();
+    for trial in &loaded.trials {
+        for artifact in &trial.artifacts {
+            hashes.insert(
+                strict_artifact_semantic_key(trial, artifact),
+                semantic_content_hash_for_loaded_artifact(artifact)?,
+            );
+        }
     }
+    Ok(hashes)
+}
+
+fn semantic_content_hash_for_loaded_artifact(
+    artifact: &LoadedGeneralizationArtifactRef,
+) -> GeneralizationResult<String> {
+    match &artifact.artifact {
+        LoadedGeneralizationArtifact::Link(link) => semantic_entity_link_content_hash(link),
+        _ => Ok(artifact.reference.content_hash.clone()),
+    }
+}
+
+fn semantic_entity_link_content_hash(link: &EntityLinkArtifact) -> GeneralizationResult<String> {
+    const REVIEW_EXPORT_HANDOFF: &str =
+        "<canon:evaluation.generalization:path:entity_link.next_commands.review_export>";
+    let mut normalized = link.clone();
+    normalized.next_commands.review_export = REVIEW_EXPORT_HANDOFF.to_string();
+    normalized.artifact_content_hash.clear();
+    normalized.metadata.artifact_content_hash.clear();
+    hash_serialized(&normalized)
+}
+
+fn strict_semantic_manifest_hash(
+    loaded: &LoadedGeneralizationExecutionEnvelope,
+    semantic_artifact_hashes: &BTreeMap<
+        (GeneralizationTrialFamily, String, String, String),
+        String,
+    >,
+) -> GeneralizationResult<String> {
+    let mut envelope = loaded.envelope.clone();
+    envelope.trials.sort_by(|left, right| {
+        trial_execution_key(left)
+            .cmp(&trial_execution_key(right))
+            .then_with(|| left.trial_id.cmp(&right.trial_id))
+    });
+    for trial in &mut envelope.trials {
+        trial.artifacts.sort_by(|left, right| {
+            left.artifact_id
+                .cmp(&right.artifact_id)
+                .then_with(|| left.version.cmp(&right.version))
+                .then_with(|| left.path.cmp(&right.path))
+                .then_with(|| left.content_hash.cmp(&right.content_hash))
+        });
+        for artifact in &mut trial.artifacts {
+            let key = (
+                trial.family,
+                trial.trial_id.clone(),
+                artifact.path.clone(),
+                artifact.content_hash.clone(),
+            );
+            if let Some(semantic_hash) = semantic_artifact_hashes.get(&key) {
+                artifact.content_hash = semantic_hash.clone();
+            }
+        }
+    }
+    serde_json::to_vec(&envelope)
+        .map(|bytes| hash_bytes(&bytes))
+        .map_err(artifact_error)
 }
 
 fn push_candidate_recall_receipt_hashes(
