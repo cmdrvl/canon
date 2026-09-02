@@ -10,13 +10,18 @@
 use crate::{
     fs_safety::{PlannedAccess, resolve_workspace_path},
     geo::{
+        CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_SATISFACTION_VERSION,
         CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
         CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
         CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_PLAN_VERSION,
         CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
-        CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoCompositionArtifact, GeoCompositionStatus, GeoPlan,
-        GeoPlanError, GeoPlanExternalRequest, GeoPlanGrainStatus, GeoPlanNodeOverlay, GeoPlanStage,
-        GeoPlanStatus, GeoTileWorkUnitArtifact, executor::GEO_COMPILE_EVIDENCE_COMMAND,
+        CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
+        GeoAcquisitionSatisfaction, GeoAcquisitionTerminalState, GeoCompositionArtifact,
+        GeoCompositionStatus, GeoDigest, GeoDigestAlgorithm, GeoPlan, GeoPlanError,
+        GeoPlanExternalRequest, GeoPlanGrainStatus, GeoPlanNodeOverlay, GeoPlanStage,
+        GeoPlanStatus, GeoSatisfactionExecutionRef, GeoSatisfactionFileAudit,
+        GeoSatisfactionFinding, GeoSatisfactionLocalInputBinding, GeoSatisfactionRunInputRef,
+        GeoSatisfactionStatus, GeoTileWorkUnitArtifact, executor::GEO_COMPILE_EVIDENCE_COMMAND,
         executor::GEO_MATERIALIZE_EVIDENCE_COMMAND, executor::GEO_MATERIALIZE_HOME_CELLS_COMMAND,
         executor::GEO_REQUEST_BINDING_ID, executor::GEO_ROWS_BINDING_ID,
         executor::GEO_SOLVE_COMMAND, executor::GEO_TILE_WORK_COMMAND,
@@ -213,6 +218,7 @@ pub struct GeoRunRequest {
     pub plan: GeoPlan,
     pub policy: ProjectRunPolicy,
     pub input_bindings: Vec<GeoRunArtifactBinding>,
+    pub acquisition_satisfactions: Vec<GeoRunAcquisitionSatisfactionRef>,
     pub observation: GeoRunObservation,
 }
 
@@ -226,8 +232,17 @@ impl GeoRunRequest {
             plan,
             policy,
             input_bindings,
+            acquisition_satisfactions: Vec::new(),
             observation: GeoRunObservation::default(),
         }
+    }
+
+    pub fn with_acquisition_satisfactions(
+        mut self,
+        acquisition_satisfactions: Vec<GeoRunAcquisitionSatisfactionRef>,
+    ) -> Self {
+        self.acquisition_satisfactions = acquisition_satisfactions;
+        self
     }
 }
 
@@ -300,6 +315,61 @@ pub struct GeoRunArtifactRef {
     pub media_type: String,
     pub contract_version: String,
     pub byte_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoRunAcquisitionSatisfactionRef {
+    pub satisfaction_id: String,
+    pub semantic_hash: String,
+    pub status: GeoSatisfactionStatus,
+    pub request_id: String,
+    pub request_semantic_hash: String,
+    pub expected_receipt_contract: String,
+    pub receipt_terminal_state: GeoAcquisitionTerminalState,
+    pub proof_class: GeoAcquisitionProofClass,
+    pub receipt_file: GeoSatisfactionFileAudit,
+    pub local_artifacts: Vec<GeoSatisfactionFileAudit>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub result_files: Vec<GeoSatisfactionFileAudit>,
+    pub source_digests: Vec<GeoDigest>,
+    pub result_digests: Vec<GeoDigest>,
+    pub denominators: Vec<GeoAcquisitionDenominator>,
+    pub bindings: Vec<GeoSatisfactionLocalInputBinding>,
+    pub run_input_refs: Vec<GeoSatisfactionRunInputRef>,
+    pub receipt_execution: GeoSatisfactionExecutionRef,
+    pub findings: Vec<GeoSatisfactionFinding>,
+}
+
+impl GeoRunAcquisitionSatisfactionRef {
+    pub fn from_satisfaction(satisfaction: &GeoAcquisitionSatisfaction) -> Self {
+        Self {
+            satisfaction_id: satisfaction.satisfaction_id.clone(),
+            semantic_hash: satisfaction.semantic_hash.clone(),
+            status: satisfaction.status,
+            request_id: satisfaction.request_id.clone(),
+            request_semantic_hash: satisfaction.request_semantic_hash.clone(),
+            expected_receipt_contract: satisfaction.expected_receipt_contract.clone(),
+            receipt_terminal_state: satisfaction.receipt_execution.terminal_state,
+            proof_class: satisfaction.receipt_execution.proof_class,
+            receipt_file: satisfaction.receipt_file.clone(),
+            local_artifacts: satisfaction.local_artifacts.clone(),
+            result_files: satisfaction.result_files.clone(),
+            source_digests: satisfaction.source_digests.clone(),
+            result_digests: satisfaction.result_digests.clone(),
+            denominators: satisfaction.denominators.clone(),
+            bindings: satisfaction.bindings.clone(),
+            run_input_refs: satisfaction.run_input_refs.clone(),
+            receipt_execution: satisfaction.receipt_execution.clone(),
+            findings: satisfaction.findings.clone(),
+        }
+    }
+}
+
+impl From<&GeoAcquisitionSatisfaction> for GeoRunAcquisitionSatisfactionRef {
+    fn from(satisfaction: &GeoAcquisitionSatisfaction) -> Self {
+        Self::from_satisfaction(satisfaction)
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -397,6 +467,8 @@ pub struct GeoRun {
     pub plan_ref: GeoRunPlanRef,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub artifact_inputs: Vec<GeoRunArtifactRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub acquisition_satisfactions: Vec<GeoRunAcquisitionSatisfactionRef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub output_refs: Vec<GeoRunOutputRef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -979,7 +1051,10 @@ fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
     executor: &mut E,
     progress: &mut GeoRunProgressWriter<'_>,
 ) -> GeoRunResult<GeoRun> {
+    let run_input_refs = run_input_shapes_from_bindings(&prepared.input_bindings);
+    validate_acquisition_satisfaction_refs(&request.acquisition_satisfactions, &run_input_refs)?;
     let artifact_inputs = artifact_refs_from_bindings(&prepared.input_bindings);
+    let acquisition_satisfactions = request.acquisition_satisfactions.clone();
     let mut preflight_blockers = Vec::new();
     let mut preflight_actions = Vec::new();
     for input in &prepared.missing_inputs {
@@ -1011,6 +1086,7 @@ fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
             None,
             GeoRunBuildContext {
                 observation: request.observation,
+                acquisition_satisfactions,
                 extra_blockers: preflight_blockers,
                 extra_actions: preflight_actions,
             },
@@ -1049,6 +1125,7 @@ fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
         composition_status,
         GeoRunBuildContext {
             observation: request.observation,
+            acquisition_satisfactions,
             extra_blockers: Vec::new(),
             extra_actions: Vec::new(),
         },
@@ -1298,6 +1375,8 @@ pub fn validate_geo_run(run: &GeoRun) -> GeoRunResult<()> {
     for input in &run.artifact_inputs {
         validate_artifact_ref(input)?;
     }
+    let run_input_refs = run_input_shapes_from_artifact_refs(&run.artifact_inputs)?;
+    validate_acquisition_satisfaction_refs(&run.acquisition_satisfactions, &run_input_refs)?;
     for output in &run.output_refs {
         validate_project_node_id("output_ref.project_node_id", &output.project_node_id)?;
         validate_local_id("output_ref.output_id", &output.output_id, 256)?;
@@ -1386,11 +1465,13 @@ fn build_geo_run(
         project_run_report.as_ref(),
     ));
     next_actions.extend(context.extra_actions);
+    let mut acquisition_satisfactions = context.acquisition_satisfactions;
     sort_and_dedup_run_parts(
         &mut grain_states,
         &mut blockers,
         &mut next_actions,
         &mut artifact_inputs,
+        &mut acquisition_satisfactions,
     );
     let status = run_status(
         &plan,
@@ -1419,6 +1500,7 @@ fn build_geo_run(
         phase,
         plan_ref,
         artifact_inputs,
+        acquisition_satisfactions,
         output_refs,
         grain_states,
         blockers,
@@ -1438,6 +1520,7 @@ fn build_geo_run(
 
 struct GeoRunBuildContext {
     observation: GeoRunObservation,
+    acquisition_satisfactions: Vec<GeoRunAcquisitionSatisfactionRef>,
     extra_blockers: Vec<GeoRunBlocker>,
     extra_actions: Vec<GeoRunNextAction>,
 }
@@ -2421,6 +2504,75 @@ fn artifact_refs_from_bindings(
         .collect()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GeoRunInputShape {
+    artifact_id: String,
+    content_digest: String,
+    media_type: String,
+    contract_version: String,
+    byte_count: u64,
+}
+
+impl GeoRunInputShape {
+    fn from_binding(binding: &GeoRunArtifactBinding) -> Self {
+        Self {
+            artifact_id: binding.artifact_id.clone(),
+            content_digest: binding.content_digest.clone(),
+            media_type: binding.media_type.clone(),
+            contract_version: binding.contract_version.clone(),
+            byte_count: binding.byte_count,
+        }
+    }
+
+    fn from_artifact_ref(reference: &GeoRunArtifactRef) -> Self {
+        Self {
+            artifact_id: reference.artifact_id.clone(),
+            content_digest: reference.content_digest.clone(),
+            media_type: reference.media_type.clone(),
+            contract_version: reference.contract_version.clone(),
+            byte_count: reference.byte_count,
+        }
+    }
+}
+
+fn run_input_shapes_from_bindings(
+    bindings: &BTreeMap<(String, String), GeoRunArtifactBinding>,
+) -> BTreeMap<(String, String), GeoRunInputShape> {
+    bindings
+        .iter()
+        .map(|((node_id, binding_id), binding)| {
+            (
+                (node_id.clone(), binding_id.clone()),
+                GeoRunInputShape::from_binding(binding),
+            )
+        })
+        .collect()
+}
+
+fn run_input_shapes_from_artifact_refs(
+    inputs: &[GeoRunArtifactRef],
+) -> GeoRunResult<BTreeMap<(String, String), GeoRunInputShape>> {
+    let mut refs = BTreeMap::new();
+    for input in inputs {
+        let key = (input.node_id.clone(), input.binding_id.clone());
+        if refs
+            .insert(key.clone(), GeoRunInputShape::from_artifact_ref(input))
+            .is_some()
+        {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run artifact_inputs contain a duplicate node/binding ref",
+                [
+                    ("project_node_id", key.0),
+                    ("binding_id", key.1),
+                    ("artifact_id", input.artifact_id.clone()),
+                ],
+            ));
+        }
+    }
+    Ok(refs)
+}
+
 fn output_refs_from_project_report(
     plan: &GeoPlan,
     report: &ProjectRunReport,
@@ -2873,6 +3025,7 @@ fn sort_and_dedup_run_parts(
     blockers: &mut Vec<GeoRunBlocker>,
     next_actions: &mut Vec<GeoRunNextAction>,
     artifact_inputs: &mut [GeoRunArtifactRef],
+    acquisition_satisfactions: &mut Vec<GeoRunAcquisitionSatisfactionRef>,
 ) {
     for state in grain_states.iter_mut() {
         state.missing_evidence_classes.sort();
@@ -2886,6 +3039,9 @@ fn sort_and_dedup_run_parts(
     next_actions.sort_by(|left, right| left.action_id.cmp(&right.action_id));
     next_actions.dedup_by(|left, right| left.action_id == right.action_id);
     artifact_inputs.sort();
+    acquisition_satisfactions
+        .sort_by(|left, right| left.satisfaction_id.cmp(&right.satisfaction_id));
+    acquisition_satisfactions.dedup_by(|left, right| left.satisfaction_id == right.satisfaction_id);
 }
 
 #[derive(Serialize)]
@@ -2895,12 +3051,33 @@ struct GeoRunSemanticProjection<'a> {
     phase: GeoRunPhase,
     plan_ref: &'a GeoRunPlanRef,
     artifact_inputs: &'a [GeoRunArtifactRef],
+    acquisition_satisfactions: Vec<GeoRunAcquisitionSatisfactionSemanticProjection<'a>>,
     output_refs: &'a [GeoRunOutputRef],
     grain_states: Vec<GeoRunGrainSemanticProjection<'a>>,
     blockers: Vec<GeoRunBlockerSemanticProjection<'a>>,
     next_actions: Vec<GeoRunNextActionSemanticProjection<'a>>,
     deterministic_usage: &'a BTreeMap<String, u64>,
     project_run: Option<GeoProjectRunSemanticProjection<'a>>,
+}
+
+#[derive(Serialize)]
+struct GeoRunAcquisitionSatisfactionSemanticProjection<'a> {
+    satisfaction_id: &'a str,
+    semantic_hash: &'a str,
+    status: GeoSatisfactionStatus,
+    request_id: &'a str,
+    request_semantic_hash: &'a str,
+    expected_receipt_contract: &'a str,
+    receipt_terminal_state: GeoAcquisitionTerminalState,
+    proof_class: GeoAcquisitionProofClass,
+    local_artifacts: &'a [GeoSatisfactionFileAudit],
+    result_files: &'a [GeoSatisfactionFileAudit],
+    source_digests: &'a [GeoDigest],
+    result_digests: &'a [GeoDigest],
+    denominators: &'a [GeoAcquisitionDenominator],
+    bindings: &'a [GeoSatisfactionLocalInputBinding],
+    run_input_refs: &'a [GeoSatisfactionRunInputRef],
+    findings: &'a [GeoSatisfactionFinding],
 }
 
 #[derive(Serialize)]
@@ -2996,12 +3173,37 @@ fn semantic_projection(run: &GeoRun) -> GeoRunSemanticProjection<'_> {
             command: &action.command,
         })
         .collect();
+    let acquisition_satisfactions = run
+        .acquisition_satisfactions
+        .iter()
+        .map(
+            |satisfaction| GeoRunAcquisitionSatisfactionSemanticProjection {
+                satisfaction_id: &satisfaction.satisfaction_id,
+                semantic_hash: &satisfaction.semantic_hash,
+                status: satisfaction.status,
+                request_id: &satisfaction.request_id,
+                request_semantic_hash: &satisfaction.request_semantic_hash,
+                expected_receipt_contract: &satisfaction.expected_receipt_contract,
+                receipt_terminal_state: satisfaction.receipt_terminal_state,
+                proof_class: satisfaction.proof_class,
+                local_artifacts: &satisfaction.local_artifacts,
+                result_files: &satisfaction.result_files,
+                source_digests: &satisfaction.source_digests,
+                result_digests: &satisfaction.result_digests,
+                denominators: &satisfaction.denominators,
+                bindings: &satisfaction.bindings,
+                run_input_refs: &satisfaction.run_input_refs,
+                findings: &satisfaction.findings,
+            },
+        )
+        .collect();
     GeoRunSemanticProjection {
         version: &run.version,
         status: run.status,
         phase: run.phase,
         plan_ref: &run.plan_ref,
         artifact_inputs: &run.artifact_inputs,
+        acquisition_satisfactions,
         output_refs: &run.output_refs,
         grain_states,
         blockers,
@@ -3085,6 +3287,735 @@ fn validate_artifact_ref(input: &GeoRunArtifactRef) -> GeoRunResult<()> {
         &input.contract_version,
     )?;
     validate_digest("artifact_ref.content_digest", &input.content_digest)
+}
+
+fn validate_acquisition_satisfaction_refs(
+    satisfactions: &[GeoRunAcquisitionSatisfactionRef],
+    inputs: &BTreeMap<(String, String), GeoRunInputShape>,
+) -> GeoRunResult<()> {
+    let mut seen = BTreeSet::new();
+    for satisfaction in satisfactions {
+        validate_local_id(
+            "acquisition_satisfaction.satisfaction_id",
+            &satisfaction.satisfaction_id,
+            256,
+        )?;
+        validate_digest(
+            "acquisition_satisfaction.semantic_hash",
+            &satisfaction.semantic_hash,
+        )?;
+        let expected_id = format!(
+            "{CANON_GEO_ACQUISITION_SATISFACTION_VERSION}:{}",
+            satisfaction.semantic_hash.trim_start_matches("blake3:")
+        );
+        if satisfaction.satisfaction_id != expected_id {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition satisfaction id does not match its semantic hash",
+                [
+                    ("expected", expected_id),
+                    ("actual", satisfaction.satisfaction_id.clone()),
+                ],
+            ));
+        }
+        if !seen.insert(satisfaction.satisfaction_id.clone()) {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition satisfactions must have unique ids",
+                [("satisfaction_id", satisfaction.satisfaction_id.clone())],
+            ));
+        }
+        if satisfaction.status != GeoSatisfactionStatus::Satisfied {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition lineage can reference only satisfied acquisition receipts",
+                [
+                    ("satisfaction_id", satisfaction.satisfaction_id.clone()),
+                    ("status", format!("{:?}", satisfaction.status)),
+                ],
+            ));
+        }
+        validate_local_id(
+            "acquisition_satisfaction.request_id",
+            &satisfaction.request_id,
+            256,
+        )?;
+        validate_digest(
+            "acquisition_satisfaction.request_semantic_hash",
+            &satisfaction.request_semantic_hash,
+        )?;
+        if satisfaction.expected_receipt_contract != CANON_GEO_ACQUISITION_RECEIPT_VERSION {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition lineage must cite the acquisition receipt contract",
+                [
+                    (
+                        "expected",
+                        CANON_GEO_ACQUISITION_RECEIPT_VERSION.to_string(),
+                    ),
+                    ("actual", satisfaction.expected_receipt_contract.clone()),
+                ],
+            ));
+        }
+        if satisfaction.receipt_terminal_state != GeoAcquisitionTerminalState::Complete {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition lineage requires a COMPLETE acquisition receipt",
+                [
+                    ("satisfaction_id", satisfaction.satisfaction_id.clone()),
+                    (
+                        "terminal_state",
+                        format!("{:?}", satisfaction.receipt_terminal_state),
+                    ),
+                ],
+            ));
+        }
+        validate_satisfaction_execution(satisfaction)?;
+        validate_file_audit(
+            "acquisition_satisfaction.receipt_file",
+            &satisfaction.receipt_file,
+        )?;
+        let local_artifacts = validate_file_audits(
+            "acquisition_satisfaction.local_artifacts",
+            &satisfaction.local_artifacts,
+            false,
+        )?;
+        let result_files = validate_file_audits(
+            "acquisition_satisfaction.result_files",
+            &satisfaction.result_files,
+            true,
+        )?;
+        validate_geo_digest_list(
+            "acquisition_satisfaction.source_digests",
+            &satisfaction.source_digests,
+            false,
+            false,
+        )?;
+        validate_geo_digest_list(
+            "acquisition_satisfaction.result_digests",
+            &satisfaction.result_digests,
+            false,
+            true,
+        )?;
+        let result_digests = result_digest_map(&satisfaction.result_digests)?;
+        validate_result_file_audits(&result_files, &result_digests)?;
+        validate_acquisition_denominators(&satisfaction.denominators)?;
+        let local_bindings =
+            validate_satisfaction_bindings(satisfaction, &local_artifacts, &result_digests)?;
+        validate_satisfaction_run_inputs(satisfaction, inputs, &local_bindings)?;
+        validate_satisfaction_findings(&satisfaction.findings)?;
+    }
+    Ok(())
+}
+
+fn validate_satisfaction_execution(
+    satisfaction: &GeoRunAcquisitionSatisfactionRef,
+) -> GeoRunResult<()> {
+    if satisfaction.receipt_execution.terminal_state != satisfaction.receipt_terminal_state
+        || satisfaction.receipt_execution.proof_class != satisfaction.proof_class
+    {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run acquisition lineage receipt execution must agree with terminal and proof fields",
+            [("satisfaction_id", satisfaction.satisfaction_id.clone())],
+        ));
+    }
+    match satisfaction.proof_class {
+        GeoAcquisitionProofClass::Fixture => {
+            if satisfaction.receipt_execution.fixture_id.is_none()
+                || satisfaction.receipt_execution.retained_receipt_id.is_some()
+                || satisfaction.receipt_execution.executor_request_id.is_some()
+                || satisfaction.receipt_execution.executor_query_id.is_some()
+                || satisfaction.receipt_execution.executor_attempt_id.is_some()
+            {
+                return Err(invalid_acquisition_execution(
+                    "fixture acquisition lineage must carry fixture proof only",
+                    satisfaction,
+                ));
+            }
+            validate_optional_trimmed_text(
+                "acquisition_satisfaction.receipt_execution.fixture_id",
+                &satisfaction.receipt_execution.fixture_id,
+            )?;
+        }
+        GeoAcquisitionProofClass::Retained => {
+            if satisfaction.receipt_execution.fixture_id.is_some()
+                || satisfaction.receipt_execution.retained_receipt_id.is_none()
+                || satisfaction.receipt_execution.executor_request_id.is_none()
+                || satisfaction.receipt_execution.executor_query_id.is_none()
+            {
+                return Err(invalid_acquisition_execution(
+                    "retained acquisition lineage requires retained receipt and executor ids",
+                    satisfaction,
+                ));
+            }
+            validate_optional_trimmed_text(
+                "acquisition_satisfaction.receipt_execution.retained_receipt_id",
+                &satisfaction.receipt_execution.retained_receipt_id,
+            )?;
+            validate_optional_trimmed_text(
+                "acquisition_satisfaction.receipt_execution.executor_request_id",
+                &satisfaction.receipt_execution.executor_request_id,
+            )?;
+            validate_optional_trimmed_text(
+                "acquisition_satisfaction.receipt_execution.executor_query_id",
+                &satisfaction.receipt_execution.executor_query_id,
+            )?;
+            validate_optional_trimmed_text(
+                "acquisition_satisfaction.receipt_execution.executor_attempt_id",
+                &satisfaction.receipt_execution.executor_attempt_id,
+            )?;
+        }
+        GeoAcquisitionProofClass::Live => {
+            if satisfaction.receipt_execution.fixture_id.is_some()
+                || satisfaction.receipt_execution.retained_receipt_id.is_some()
+                || satisfaction.receipt_execution.executor_request_id.is_none()
+                || satisfaction.receipt_execution.executor_query_id.is_none()
+            {
+                return Err(invalid_acquisition_execution(
+                    "live acquisition lineage requires executor ids only",
+                    satisfaction,
+                ));
+            }
+            validate_optional_trimmed_text(
+                "acquisition_satisfaction.receipt_execution.executor_request_id",
+                &satisfaction.receipt_execution.executor_request_id,
+            )?;
+            validate_optional_trimmed_text(
+                "acquisition_satisfaction.receipt_execution.executor_query_id",
+                &satisfaction.receipt_execution.executor_query_id,
+            )?;
+            validate_optional_trimmed_text(
+                "acquisition_satisfaction.receipt_execution.executor_attempt_id",
+                &satisfaction.receipt_execution.executor_attempt_id,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn invalid_acquisition_execution(
+    message: &str,
+    satisfaction: &GeoRunAcquisitionSatisfactionRef,
+) -> GeoRunError {
+    GeoRunError::new(
+        GeoRunErrorCode::ArtifactContract,
+        message,
+        [
+            ("satisfaction_id", satisfaction.satisfaction_id.clone()),
+            ("proof_class", format!("{:?}", satisfaction.proof_class)),
+        ],
+    )
+}
+
+fn validate_file_audits<'a>(
+    field: &str,
+    audits: &'a [GeoSatisfactionFileAudit],
+    allow_empty: bool,
+) -> GeoRunResult<BTreeMap<String, &'a GeoSatisfactionFileAudit>> {
+    if !allow_empty && audits.is_empty() {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run acquisition lineage file audit list must be non-empty",
+            [("field", field.to_string())],
+        ));
+    }
+    validate_sorted_distinct(field, audits)?;
+    let mut by_id = BTreeMap::new();
+    for audit in audits {
+        validate_file_audit(field, audit)?;
+        if by_id.insert(audit.file_id.clone(), audit).is_some() {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition lineage file audit ids must be unique",
+                [("file_id", audit.file_id.clone())],
+            ));
+        }
+    }
+    Ok(by_id)
+}
+
+fn validate_file_audit(field: &str, audit: &GeoSatisfactionFileAudit) -> GeoRunResult<()> {
+    validate_trimmed_non_empty_text(&format!("{field}.file_id"), &audit.file_id)?;
+    validate_digest(&format!("{field}.digest"), &audit.digest)?;
+    if audit.byte_count == 0 {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run acquisition lineage file audits require positive byte counts",
+            [
+                ("field", field.to_string()),
+                ("file_id", audit.file_id.clone()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_geo_digest_list(
+    field: &str,
+    digests: &[GeoDigest],
+    allow_empty: bool,
+    require_blake3: bool,
+) -> GeoRunResult<()> {
+    if !allow_empty && digests.is_empty() {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run acquisition lineage digest list must be non-empty",
+            [("field", field.to_string())],
+        ));
+    }
+    validate_sorted_distinct(field, digests)?;
+    let mut ids = BTreeSet::new();
+    for digest in digests {
+        validate_trimmed_non_empty_text(&format!("{field}.digest_id"), &digest.digest_id)?;
+        if !ids.insert(digest.digest_id.clone()) {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition lineage digest ids must be unique",
+                [("digest_id", digest.digest_id.clone())],
+            ));
+        }
+        if require_blake3 && digest.algorithm != GeoDigestAlgorithm::Blake3 {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition result digests must use BLAKE3 for local replay",
+                [
+                    ("digest_id", digest.digest_id.clone()),
+                    (
+                        "algorithm",
+                        geo_digest_algorithm_name(digest.algorithm).to_string(),
+                    ),
+                ],
+            ));
+        }
+        validate_geo_digest_hex(field, digest.algorithm, &digest.hex_digest)?;
+    }
+    Ok(())
+}
+
+fn result_digest_map(digests: &[GeoDigest]) -> GeoRunResult<BTreeMap<String, String>> {
+    let mut by_id = BTreeMap::new();
+    for digest in digests {
+        let rendered = prefixed_geo_digest(digest);
+        if by_id.insert(digest.digest_id.clone(), rendered).is_some() {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition result digest ids must be unique",
+                [("digest_id", digest.digest_id.clone())],
+            ));
+        }
+    }
+    Ok(by_id)
+}
+
+fn validate_result_file_audits(
+    files: &BTreeMap<String, &GeoSatisfactionFileAudit>,
+    result_digests: &BTreeMap<String, String>,
+) -> GeoRunResult<()> {
+    for (file_id, audit) in files {
+        let Some(expected_digest) = result_digests.get(file_id) else {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition result file audit must reference a result digest id",
+                [("file_id", file_id.clone())],
+            ));
+        };
+        if audit.digest != *expected_digest {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition result file audit digest must match the cited result digest",
+                [
+                    ("file_id", file_id.clone()),
+                    ("expected", expected_digest.clone()),
+                    ("actual", audit.digest.clone()),
+                ],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_acquisition_denominators(
+    denominators: &[GeoAcquisitionDenominator],
+) -> GeoRunResult<()> {
+    if denominators.is_empty() {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run acquisition lineage denominators must be non-empty",
+            BTreeMap::<String, String>::new(),
+        ));
+    }
+    validate_sorted_distinct("acquisition_satisfaction.denominators", denominators)?;
+    let mut ids = BTreeSet::new();
+    for denominator in denominators {
+        validate_trimmed_non_empty_text(
+            "acquisition_satisfaction.denominator.denominator_id",
+            &denominator.denominator_id,
+        )?;
+        if !ids.insert(denominator.denominator_id.clone()) {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition denominator ids must be unique",
+                [("denominator_id", denominator.denominator_id.clone())],
+            ));
+        }
+        validate_trimmed_non_empty_text(
+            "acquisition_satisfaction.denominator.unit",
+            &denominator.unit,
+        )?;
+        validate_trimmed_non_empty_text(
+            "acquisition_satisfaction.denominator.description",
+            &denominator.description,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_satisfaction_bindings<'a>(
+    satisfaction: &'a GeoRunAcquisitionSatisfactionRef,
+    local_artifacts: &BTreeMap<String, &GeoSatisfactionFileAudit>,
+    result_digests: &BTreeMap<String, String>,
+) -> GeoRunResult<BTreeMap<String, &'a GeoSatisfactionLocalInputBinding>> {
+    if satisfaction.bindings.is_empty() {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run acquisition lineage must bind at least one local artifact",
+            [("satisfaction_id", satisfaction.satisfaction_id.clone())],
+        ));
+    }
+    validate_sorted_distinct("acquisition_satisfaction.bindings", &satisfaction.bindings)?;
+    let mut by_local_artifact = BTreeMap::new();
+    for binding in &satisfaction.bindings {
+        validate_local_id(
+            "acquisition_satisfaction.binding.binding_id",
+            &binding.binding_id,
+            256,
+        )?;
+        validate_trimmed_non_empty_text(
+            "acquisition_satisfaction.binding.source_instance_id",
+            &binding.source_instance_id,
+        )?;
+        validate_trimmed_non_empty_text(
+            "acquisition_satisfaction.binding.release_id",
+            &binding.release_id,
+        )?;
+        validate_prefixed_geo_digest(
+            "acquisition_satisfaction.binding.release_digest",
+            &binding.release_digest,
+        )?;
+        validate_trimmed_non_empty_text(
+            "acquisition_satisfaction.binding.local_artifact_id",
+            &binding.local_artifact_id,
+        )?;
+        validate_trimmed_non_empty_text(
+            "acquisition_satisfaction.binding.media_type",
+            &binding.media_type,
+        )?;
+        validate_digest(
+            "acquisition_satisfaction.binding.content_hash",
+            &binding.content_hash,
+        )?;
+        if binding.byte_count == 0 {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition lineage binding byte_count must be positive",
+                [("binding_id", binding.binding_id.clone())],
+            ));
+        }
+        if binding.request_id != satisfaction.request_id
+            || binding.request_semantic_hash != satisfaction.request_semantic_hash
+            || binding.receipt_terminal_state != satisfaction.receipt_terminal_state
+            || binding.proof_class != satisfaction.proof_class
+        {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition binding must agree with its satisfaction envelope",
+                [("binding_id", binding.binding_id.clone())],
+            ));
+        }
+        let Some(local_artifact) = local_artifacts.get(&binding.local_artifact_id) else {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition binding local_artifact_id is not audited",
+                [("local_artifact_id", binding.local_artifact_id.clone())],
+            ));
+        };
+        if local_artifact.digest != binding.content_hash
+            || local_artifact.byte_count != binding.byte_count
+        {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition binding must match its local artifact audit",
+                [("local_artifact_id", binding.local_artifact_id.clone())],
+            ));
+        }
+        if let Some(contract) = &binding.artifact_contract_version {
+            validate_json_contract(
+                "acquisition_satisfaction.binding.media_type",
+                "acquisition_satisfaction.binding.artifact_contract_version",
+                &binding.media_type,
+                contract,
+            )?;
+        }
+        if binding.result_digest_ids.is_empty() || !strictly_increasing(&binding.result_digest_ids)
+        {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition binding result_digest_ids must be sorted, distinct, and non-empty",
+                [("binding_id", binding.binding_id.clone())],
+            ));
+        }
+        let mut matches_binding_content = false;
+        for digest_id in &binding.result_digest_ids {
+            let Some(result_digest) = result_digests.get(digest_id) else {
+                return Err(GeoRunError::new(
+                    GeoRunErrorCode::ArtifactContract,
+                    "Geo run acquisition binding result_digest_id is not in result_digests",
+                    [
+                        ("binding_id", binding.binding_id.clone()),
+                        ("result_digest_id", digest_id.clone()),
+                    ],
+                ));
+            };
+            if result_digest == &binding.content_hash {
+                matches_binding_content = true;
+            }
+        }
+        if !matches_binding_content {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition binding must cite the result digest for its local bytes",
+                [("binding_id", binding.binding_id.clone())],
+            ));
+        }
+        if by_local_artifact
+            .insert(binding.local_artifact_id.clone(), binding)
+            .is_some()
+        {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition bindings must not repeat a local artifact",
+                [("local_artifact_id", binding.local_artifact_id.clone())],
+            ));
+        }
+    }
+    Ok(by_local_artifact)
+}
+
+fn validate_satisfaction_run_inputs(
+    satisfaction: &GeoRunAcquisitionSatisfactionRef,
+    inputs: &BTreeMap<(String, String), GeoRunInputShape>,
+    local_bindings: &BTreeMap<String, &GeoSatisfactionLocalInputBinding>,
+) -> GeoRunResult<()> {
+    if satisfaction.run_input_refs.is_empty() {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run acquisition lineage must name the run inputs it satisfies",
+            [("satisfaction_id", satisfaction.satisfaction_id.clone())],
+        ));
+    }
+    validate_sorted_distinct(
+        "acquisition_satisfaction.run_input_refs",
+        &satisfaction.run_input_refs,
+    )?;
+    let mut seen_targets = BTreeSet::new();
+    for input_ref in &satisfaction.run_input_refs {
+        validate_project_node_id(
+            "acquisition_satisfaction.run_input_ref.node_id",
+            &input_ref.node_id,
+        )?;
+        validate_local_id(
+            "acquisition_satisfaction.run_input_ref.binding_id",
+            &input_ref.binding_id,
+            256,
+        )?;
+        validate_trimmed_non_empty_text(
+            "acquisition_satisfaction.run_input_ref.local_artifact_id",
+            &input_ref.local_artifact_id,
+        )?;
+        validate_json_contract(
+            "acquisition_satisfaction.run_input_ref.media_type",
+            "acquisition_satisfaction.run_input_ref.contract_version",
+            &input_ref.media_type,
+            &input_ref.contract_version,
+        )?;
+        validate_digest(
+            "acquisition_satisfaction.run_input_ref.content_hash",
+            &input_ref.content_hash,
+        )?;
+        if input_ref.byte_count == 0 {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition run input ref byte_count must be positive",
+                [("artifact_id", input_ref.artifact_id.clone())],
+            ));
+        }
+        let expected_artifact_id =
+            geo_run_input_artifact_id(&input_ref.node_id, &input_ref.binding_id);
+        if input_ref.artifact_id != expected_artifact_id {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition run input artifact id must be derived from node and binding id",
+                [
+                    ("expected", expected_artifact_id),
+                    ("actual", input_ref.artifact_id.clone()),
+                ],
+            ));
+        }
+        let key = (input_ref.node_id.clone(), input_ref.binding_id.clone());
+        if !seen_targets.insert(key.clone()) {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition run input refs must not repeat a node/binding target",
+                [
+                    ("project_node_id", key.0.clone()),
+                    ("binding_id", key.1.clone()),
+                ],
+            ));
+        }
+        let Some(actual_input) = inputs.get(&key) else {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition lineage references a run input that is not bound",
+                [
+                    ("project_node_id", input_ref.node_id.clone()),
+                    ("binding_id", input_ref.binding_id.clone()),
+                ],
+            ));
+        };
+        if actual_input.artifact_id != input_ref.artifact_id
+            || actual_input.contract_version != input_ref.contract_version
+            || actual_input.media_type != input_ref.media_type
+            || actual_input.content_digest != input_ref.content_hash
+            || actual_input.byte_count != input_ref.byte_count
+        {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::InputDigestMismatch,
+                "Geo run acquisition lineage run input ref does not match the bound artifact input",
+                [
+                    ("artifact_id", input_ref.artifact_id.clone()),
+                    ("expected_digest", input_ref.content_hash.clone()),
+                    ("actual_digest", actual_input.content_digest.clone()),
+                ],
+            ));
+        }
+        let Some(local_binding) = local_bindings.get(&input_ref.local_artifact_id) else {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition run input ref local artifact is not bound by the satisfaction",
+                [("local_artifact_id", input_ref.local_artifact_id.clone())],
+            ));
+        };
+        if local_binding.content_hash != input_ref.content_hash
+            || local_binding.byte_count != input_ref.byte_count
+            || local_binding.media_type != input_ref.media_type
+            || local_binding.artifact_contract_version.as_deref()
+                != Some(input_ref.contract_version.as_str())
+        {
+            return Err(GeoRunError::new(
+                GeoRunErrorCode::ArtifactContract,
+                "Geo run acquisition run input ref must match its local acquisition binding",
+                [("local_artifact_id", input_ref.local_artifact_id.clone())],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_satisfaction_findings(findings: &[GeoSatisfactionFinding]) -> GeoRunResult<()> {
+    if findings.is_empty() {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run acquisition lineage findings must preserve the satisfaction outcome",
+            BTreeMap::<String, String>::new(),
+        ));
+    }
+    validate_sorted_distinct("acquisition_satisfaction.findings", findings)?;
+    for finding in findings {
+        for (key, value) in &finding.detail {
+            validate_trimmed_non_empty_text("acquisition_satisfaction.finding.detail.key", key)?;
+            validate_non_empty_text("acquisition_satisfaction.finding.detail.value", value)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_sorted_distinct<T: Clone + Eq + Ord>(field: &str, values: &[T]) -> GeoRunResult<()> {
+    let mut sorted = values.to_vec();
+    sorted.sort();
+    sorted.dedup();
+    if sorted.as_slice() == values {
+        return Ok(());
+    }
+    Err(GeoRunError::new(
+        GeoRunErrorCode::ArtifactContract,
+        "Geo run repeated acquisition lineage collections must be sorted and distinct",
+        [("field", field.to_string())],
+    ))
+}
+
+fn validate_geo_digest_hex(
+    field: &str,
+    algorithm: GeoDigestAlgorithm,
+    hex_digest: &str,
+) -> GeoRunResult<()> {
+    let width = geo_digest_width(algorithm);
+    if hex_digest.len() == width && hex_digest.bytes().all(is_lowercase_hex) {
+        return Ok(());
+    }
+    Err(GeoRunError::new(
+        GeoRunErrorCode::ArtifactContract,
+        "Geo run acquisition lineage digest hex does not match its algorithm",
+        [
+            ("field", field.to_string()),
+            (
+                "algorithm",
+                geo_digest_algorithm_name(algorithm).to_string(),
+            ),
+            ("hex_digest", hex_digest.to_string()),
+        ],
+    ))
+}
+
+fn validate_prefixed_geo_digest(field: &str, digest: &str) -> GeoRunResult<()> {
+    for algorithm in [
+        GeoDigestAlgorithm::Blake3,
+        GeoDigestAlgorithm::Sha256,
+        GeoDigestAlgorithm::Sha512,
+    ] {
+        let prefix = format!("{}:", geo_digest_algorithm_name(algorithm));
+        if let Some(hex) = digest.strip_prefix(&prefix) {
+            return validate_geo_digest_hex(field, algorithm, hex);
+        }
+    }
+    Err(GeoRunError::new(
+        GeoRunErrorCode::ArtifactContract,
+        "Geo run acquisition lineage digest requires an algorithm prefix",
+        [("field", field.to_string()), ("digest", digest.to_string())],
+    ))
+}
+
+fn prefixed_geo_digest(digest: &GeoDigest) -> String {
+    format!(
+        "{}:{}",
+        geo_digest_algorithm_name(digest.algorithm),
+        digest.hex_digest
+    )
+}
+
+fn geo_digest_algorithm_name(algorithm: GeoDigestAlgorithm) -> &'static str {
+    match algorithm {
+        GeoDigestAlgorithm::Blake3 => "blake3",
+        GeoDigestAlgorithm::Sha256 => "sha256",
+        GeoDigestAlgorithm::Sha512 => "sha512",
+    }
+}
+
+fn geo_digest_width(algorithm: GeoDigestAlgorithm) -> usize {
+    match algorithm {
+        GeoDigestAlgorithm::Blake3 | GeoDigestAlgorithm::Sha256 => 64,
+        GeoDigestAlgorithm::Sha512 => 128,
+    }
 }
 
 fn validate_json_contract(
@@ -3391,6 +4322,9 @@ fn validate_canonical_run_order(run: &GeoRun) -> GeoRunResult<()> {
     let ordered = strictly_increasing_by(&run.artifact_inputs, |item| {
         format!("{}\0{}", item.node_id, item.binding_id)
     }) && strictly_increasing_by(&run.output_refs, |item| item.artifact_id.clone())
+        && strictly_increasing_by(&run.acquisition_satisfactions, |item| {
+            item.satisfaction_id.clone()
+        })
         && strictly_increasing_by(&run.grain_states, |item| item.entity_level.clone())
         && strictly_increasing_by(&run.blockers, |item| item.blocker_id.clone())
         && strictly_increasing_by(&run.next_actions, |item| item.action_id.clone())
@@ -3492,6 +4426,20 @@ fn validate_non_empty_text(field: &str, value: &str) -> GeoRunResult<()> {
         return Ok(());
     }
     Err(invalid_identifier(field, value))
+}
+
+fn validate_trimmed_non_empty_text(field: &str, value: &str) -> GeoRunResult<()> {
+    if !value.is_empty() && value.trim() == value && value.len() <= 4096 {
+        return Ok(());
+    }
+    Err(invalid_identifier(field, value))
+}
+
+fn validate_optional_trimmed_text(field: &str, value: &Option<String>) -> GeoRunResult<()> {
+    if let Some(value) = value {
+        validate_trimmed_non_empty_text(field, value)?;
+    }
+    Ok(())
 }
 
 fn validate_entity_level(field: &str, value: &str) -> GeoRunResult<()> {

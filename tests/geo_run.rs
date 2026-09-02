@@ -26,19 +26,24 @@ mod run;
 
 use canon::{
     geo::{
+        CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_SATISFACTION_VERSION,
         CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
         CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_QUESTION_VERSION,
         CANON_GEO_REGIONAL_INVENTORY_VERSION, CANON_GEO_RESOURCE_BUDGET_VERSION,
         CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
-        DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy, GeoAsOf,
+        DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy,
+        GeoAcquisitionDenominator, GeoAcquisitionProofClass, GeoAcquisitionTerminalState, GeoAsOf,
         GeoBoundedGeography, GeoBudgetAction, GeoClaimClass, GeoCompositionProfile,
-        GeoControlEntityLevel, GeoCoveragePredicate, GeoDateInterval, GeoEgressClass,
-        GeoEvidenceClaimRole, GeoEvidenceClass, GeoEvidenceRecordRef, GeoGeometryTransformContract,
-        GeoIdentityParticipation, GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef,
-        GeoNativeEntityScope, GeoNumericBound, GeoNumericMeasure, GeoPlan, GeoPlanInventoryRef,
-        GeoPlanRequest, GeoPlanStatus, GeoRegionalInventory, GeoRegionalSourceInstance,
-        GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoRhoBasis, GeoRhoContract,
-        GeoRhoObservationKind, GeoSourceAvailability, GeoSourceRelease, GeoSubjectBinding,
+        GeoControlEntityLevel, GeoCoveragePredicate, GeoDateInterval, GeoDenominatorSource,
+        GeoDigest, GeoDigestAlgorithm, GeoEgressClass, GeoEvidenceClaimRole, GeoEvidenceClass,
+        GeoEvidenceRecordRef, GeoGeometryTransformContract, GeoIdentityParticipation,
+        GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef, GeoNativeEntityScope,
+        GeoNumericBound, GeoNumericMeasure, GeoPlan, GeoPlanInventoryRef, GeoPlanRequest,
+        GeoPlanStatus, GeoRegionalInventory, GeoRegionalSourceInstance, GeoRequestedGrain,
+        GeoResourceBudget, GeoResourceCounter, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
+        GeoSatisfactionExecutionRef, GeoSatisfactionFileAudit, GeoSatisfactionFinding,
+        GeoSatisfactionFindingCode, GeoSatisfactionLocalInputBinding, GeoSatisfactionRunInputRef,
+        GeoSatisfactionStatus, GeoSourceAvailability, GeoSourceRelease, GeoSubjectBinding,
         GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
         GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileFeatureRef, GeoTileSourceBinding,
         GeoTileWorkRequest, GeoValueOrigin, GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow,
@@ -56,11 +61,12 @@ use canon::{
 use executor::{GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID};
 use h3o::CellIndex;
 use run::{
-    CANON_GEO_RUN_PROGRESS_VERSION, GeoRun, GeoRunArtifactBinding, GeoRunErrorCode,
-    GeoRunNextActionKind, GeoRunObservation, GeoRunProgressEvent, GeoRunProgressEventKind,
-    GeoRunRequest, GeoRunStatus, canonical_geo_run_bytes, canonical_geo_run_semantic_bytes,
-    geo_run_input_hash_ref_id, geo_run_semantic_hash, run_geo_plan,
-    run_geo_plan_with_progress_writer, run_geo_plan_with_project_executor,
+    CANON_GEO_RUN_PROGRESS_VERSION, GeoRun, GeoRunAcquisitionSatisfactionRef,
+    GeoRunArtifactBinding, GeoRunErrorCode, GeoRunNextActionKind, GeoRunObservation,
+    GeoRunProgressEvent, GeoRunProgressEventKind, GeoRunRequest, GeoRunStatus,
+    canonical_geo_run_bytes, canonical_geo_run_semantic_bytes, geo_run_input_hash_ref_id,
+    geo_run_semantic_hash, run_geo_plan, run_geo_plan_with_progress_writer,
+    run_geo_plan_with_project_executor,
 };
 use serde_json::Value;
 use std::{collections::BTreeMap, fs, path::Path, str::FromStr};
@@ -114,6 +120,86 @@ fn geo_run_executes_real_kernels_and_folds_input_hashes() {
     assert!(receipt.content_hash_inputs.iter().any(|input| {
         input.ref_id == geo_run_input_hash_ref_id("geo.building.home_cells", GEO_ROWS_BINDING_ID)
     }));
+}
+
+#[test]
+fn geo_run_persists_acquisition_satisfaction_lineage() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let bindings = run_bindings(warehouse_rows());
+    let satisfaction = acquisition_satisfaction_for_binding(&bindings[2]);
+
+    let run = run_geo_plan(
+        GeoRunRequest::new(plan, policy(temp.path()), bindings.clone())
+            .with_acquisition_satisfactions(vec![satisfaction.clone()]),
+    )
+    .expect("Geo run executes with acquisition lineage");
+
+    assert_eq!(run.acquisition_satisfactions, vec![satisfaction.clone()]);
+    let run_value: Value =
+        serde_json::from_slice(&canonical_geo_run_bytes(&run).expect("canonical run"))
+            .expect("run json");
+    let lineage = &run_value["acquisition_satisfactions"][0];
+    assert_eq!(
+        lineage["denominators"][0]["denominator_id"],
+        "denominator.fixture.rows"
+    );
+    assert_eq!(
+        lineage["source_digests"][0]["digest_id"],
+        "source.fixture.catalog"
+    );
+    assert_eq!(
+        lineage["result_digests"][0]["hex_digest"],
+        bindings[2].content_digest.trim_start_matches("blake3:")
+    );
+    assert_eq!(
+        lineage["run_input_refs"][0]["artifact_id"],
+        bindings[2].artifact_id
+    );
+    assert_eq!(
+        lineage["receipt_execution"]["fixture_id"],
+        "fixture.acquisition.receipt"
+    );
+
+    let semantic = canonical_geo_run_semantic_bytes(&run).expect("semantic run");
+    let mut executor_variant = run.clone();
+    executor_variant.acquisition_satisfactions[0]
+        .receipt_execution
+        .fixture_id = Some("fixture.acquisition.receipt.via-other-protocol".to_string());
+    assert_eq!(
+        canonical_geo_run_semantic_bytes(&executor_variant).expect("variant semantic"),
+        semantic,
+        "operational receipt identity is durable but excluded from protocol-neutral run semantics"
+    );
+}
+
+#[test]
+fn geo_run_rejects_acquisition_lineage_that_drifts_from_bound_input() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let bindings = run_bindings(warehouse_rows());
+    let mut satisfaction = acquisition_satisfaction_for_binding(&bindings[2]);
+    satisfaction.run_input_refs[0].content_hash = digest("wrong warehouse rows");
+
+    let error = run_geo_plan(
+        GeoRunRequest::new(plan, policy(temp.path()), bindings)
+            .with_acquisition_satisfactions(vec![satisfaction]),
+    )
+    .expect_err("drifted acquisition run input refuses");
+
+    assert_eq!(error.code, GeoRunErrorCode::InputDigestMismatch);
+    assert!(
+        !temp.path().join("work/receipts").exists(),
+        "lineage drift must refuse before project execution creates receipts"
+    );
 }
 
 #[test]
@@ -397,6 +483,7 @@ fn unchanged_geo_run_resumes_and_ignores_operational_observation() {
         plan: plan.clone(),
         policy: policy(temp.path()),
         input_bindings: bindings.clone(),
+        acquisition_satisfactions: Vec::new(),
         observation: GeoRunObservation {
             workspace_path: Some("/tmp/first".to_string()),
             observed_at_utc: Some("2026-08-31T10:00:00Z".to_string()),
@@ -410,6 +497,7 @@ fn unchanged_geo_run_resumes_and_ignores_operational_observation() {
         plan,
         policy: policy(temp.path()),
         input_bindings: bindings,
+        acquisition_satisfactions: Vec::new(),
         observation: GeoRunObservation {
             workspace_path: Some("/tmp/second".to_string()),
             observed_at_utc: Some("2026-08-31T11:00:00Z".to_string()),
@@ -1270,6 +1358,110 @@ fn project_plan_with_node_override(
 
 fn digest(label: &str) -> String {
     digest_bytes(label.as_bytes())
+}
+
+fn digest_hex(label: &str) -> String {
+    digest(label).trim_start_matches("blake3:").to_string()
+}
+
+fn acquisition_satisfaction_for_binding(
+    binding: &GeoRunArtifactBinding,
+) -> GeoRunAcquisitionSatisfactionRef {
+    let semantic_hash = digest("satisfaction.fixture.warehouse.semantic");
+    let request_id = format!(
+        "canon_geo_acquisition_request.v0:{}",
+        digest_hex("request.fixture.warehouse")
+    );
+    let local_artifact_id = "local.artifact.warehouse_rows".to_string();
+    let result_digest_id = "result.fixture.warehouse_rows".to_string();
+    let result_hex = binding
+        .content_digest
+        .trim_start_matches("blake3:")
+        .to_string();
+
+    GeoRunAcquisitionSatisfactionRef {
+        satisfaction_id: format!(
+            "{CANON_GEO_ACQUISITION_SATISFACTION_VERSION}:{}",
+            semantic_hash.trim_start_matches("blake3:")
+        ),
+        semantic_hash,
+        status: GeoSatisfactionStatus::Satisfied,
+        request_id: request_id.clone(),
+        request_semantic_hash: digest("request.fixture.warehouse.semantic"),
+        expected_receipt_contract: CANON_GEO_ACQUISITION_RECEIPT_VERSION.to_string(),
+        receipt_terminal_state: GeoAcquisitionTerminalState::Complete,
+        proof_class: GeoAcquisitionProofClass::Fixture,
+        receipt_file: GeoSatisfactionFileAudit {
+            file_id: "receipt".to_string(),
+            byte_count: 128,
+            digest: digest("receipt.fixture.warehouse"),
+        },
+        local_artifacts: vec![GeoSatisfactionFileAudit {
+            file_id: local_artifact_id.clone(),
+            byte_count: binding.byte_count,
+            digest: binding.content_digest.clone(),
+        }],
+        result_files: Vec::new(),
+        source_digests: vec![GeoDigest {
+            digest_id: "source.fixture.catalog".to_string(),
+            algorithm: GeoDigestAlgorithm::Sha256,
+            hex_digest: digest_hex("source.fixture.catalog"),
+        }],
+        result_digests: vec![GeoDigest {
+            digest_id: result_digest_id.clone(),
+            algorithm: GeoDigestAlgorithm::Blake3,
+            hex_digest: result_hex,
+        }],
+        denominators: vec![GeoAcquisitionDenominator {
+            denominator_id: "denominator.fixture.rows".to_string(),
+            source: GeoDenominatorSource::RequestedSubset,
+            count: 2,
+            unit: "row".to_string(),
+            description: "fixture requested warehouse rows".to_string(),
+        }],
+        bindings: vec![GeoSatisfactionLocalInputBinding {
+            binding_id: format!(
+                "geo-local-binding:{}",
+                digest_hex("local.binding.warehouse")
+            ),
+            request_id: request_id.clone(),
+            request_semantic_hash: digest("request.fixture.warehouse.semantic"),
+            receipt_terminal_state: GeoAcquisitionTerminalState::Complete,
+            proof_class: GeoAcquisitionProofClass::Fixture,
+            source_instance_id: "source.fixture.catalog".to_string(),
+            release_id: "release.fixture.catalog".to_string(),
+            release_digest: format!("sha256:{}", digest_hex("release.fixture.catalog")),
+            local_artifact_id: local_artifact_id.clone(),
+            media_type: binding.media_type.clone(),
+            artifact_contract_version: Some(binding.contract_version.clone()),
+            content_hash: binding.content_digest.clone(),
+            byte_count: binding.byte_count,
+            result_digest_ids: vec![result_digest_id],
+        }],
+        run_input_refs: vec![GeoSatisfactionRunInputRef {
+            node_id: binding.node_id.clone(),
+            binding_id: binding.binding_id.clone(),
+            artifact_id: binding.artifact_id.clone(),
+            contract_version: binding.contract_version.clone(),
+            media_type: binding.media_type.clone(),
+            content_hash: binding.content_digest.clone(),
+            byte_count: binding.byte_count,
+            local_artifact_id,
+        }],
+        receipt_execution: GeoSatisfactionExecutionRef {
+            proof_class: GeoAcquisitionProofClass::Fixture,
+            terminal_state: GeoAcquisitionTerminalState::Complete,
+            fixture_id: Some("fixture.acquisition.receipt".to_string()),
+            retained_receipt_id: None,
+            executor_request_id: None,
+            executor_query_id: None,
+            executor_attempt_id: None,
+        },
+        findings: vec![GeoSatisfactionFinding {
+            code: GeoSatisfactionFindingCode::Satisfied,
+            detail: BTreeMap::new(),
+        }],
+    }
 }
 
 fn region() -> GeoBoundedGeography {
