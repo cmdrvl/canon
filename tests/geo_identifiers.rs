@@ -1,14 +1,18 @@
 #![forbid(unsafe_code)]
 
+use canon::geo::{compare_property_sets, GeoEntityLevel};
 use canon::geo::{
-    CANON_GEO_REGISTRY_PROPOSAL_VERSION, GEO_BBL_NORMALIZATION_RULE_ID, GeoIdentifierCluster,
-    GeoIdentifierErrorCode, GeoIdentifierTombstone, GeoPropertyDocumentAssertion,
-    GeoPropertySetRelation, GeoTileIdentifierVintage, diff_tile_identifier_vintages,
-    normalize_nyc_bbl, registry_entries_for_clusters, registry_proposal_from_ledger_json,
+    diff_tile_identifier_vintages, normalize_nyc_bbl, registry_entries_for_clusters,
+    registry_proposal_from_ledger_json, GeoIdentifierCluster, GeoIdentifierErrorCode,
+    GeoIdentifierTombstone, GeoPropertyDocumentAssertion, GeoPropertySetRelation,
+    GeoTileIdentifierVintage, CANON_GEO_REGISTRY_PROPOSAL_VERSION, GEO_BBL_NORMALIZATION_RULE_ID,
 };
-use canon::geo::{GeoEntityLevel, compare_property_sets};
-use serde_json::Value;
+use canon::registry::{export_registry, RegistryExportFormat, RegistryExportRequest};
+use rusqlite::Connection;
+use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
+use std::{fs, path::Path};
+use tempfile::tempdir;
 
 fn digest(hex: char) -> String {
     format!("blake3:{}", hex.to_string().repeat(64))
@@ -85,6 +89,25 @@ fn assert_no_probabilistic_fields(value: &Value) {
             }
         }
         _ => {}
+    }
+}
+
+fn fixture_registry_export_request(
+    registry: &Path,
+    format: RegistryExportFormat,
+    out: &Path,
+) -> RegistryExportRequest {
+    RegistryExportRequest {
+        registry: registry.to_path_buf(),
+        format,
+        out: out.to_path_buf(),
+        namespace: Some("geo_fixture".to_string()),
+        source_files: vec!["mappings.json".to_string()],
+        canonical_types: Vec::new(),
+        rule_id_prefixes: Vec::new(),
+        canonical_iri_prefix: "cmdrvl:".to_string(),
+        schema_out: None,
+        anti_collapse_test_out: None,
     }
 }
 
@@ -447,18 +470,14 @@ fn t58_registry_proposal_from_ledger_rows_preserves_denominator_and_skips_reach_
     assert_eq!(assertion.loan_id, "loan-a");
     assert_eq!(assertion.parcel_ids.len(), 2);
     assert_eq!(assertion.building_ids.len(), 1);
-    assert!(
-        assertion
-            .parcel_ids
-            .iter()
-            .all(|id| id.starts_with("cmdrvl:parcel:"))
-    );
-    assert!(
-        assertion
-            .building_ids
-            .iter()
-            .all(|id| id.starts_with("cmdrvl:building:"))
-    );
+    assert!(assertion
+        .parcel_ids
+        .iter()
+        .all(|id| id.starts_with("cmdrvl:parcel:")));
+    assert!(assertion
+        .building_ids
+        .iter()
+        .all(|id| id.starts_with("cmdrvl:building:")));
 
     let serialized = serde_json::to_value(&proposal).expect("proposal serializes");
     assert_no_probabilistic_fields(&serialized);
@@ -510,5 +529,166 @@ fn t58_registry_proposal_from_ledger_rows_preserves_denominator_and_skips_reach_
     assert_eq!(
         error.detail.get("field").map(String::as_str),
         Some("parcel_set")
+    );
+}
+
+#[test]
+fn t59_promoted_identifier_proposal_exports_to_dbt_seed_and_search_index() {
+    let ledger_json = br#"{
+      "version": "canon_geo_collateral_ledger.v0",
+      "rows": [
+        {
+          "accession": "0000000000-26-000001",
+          "deal_id": "fixture-deal-a",
+          "loan_id": "loan-a",
+          "reach": "full",
+          "parcel_set": ["parcel:nyc:bbl:1004540041", "attom:parcel:1004540041"],
+          "building_set": ["building:nyc:bin:1006494"]
+        },
+        {
+          "accession": "0000000000-26-000001",
+          "deal_id": "fixture-deal-a",
+          "loan_id": "loan-b",
+          "reach": "full",
+          "parcel_set": ["parcel:nyc:bbl:1004540042"],
+          "building_set": ["cmdrvl:building:01J7X0000000000000100"]
+        }
+      ]
+    }"#;
+    let proposal =
+        registry_proposal_from_ledger_json(ledger_json).expect("ledger rows project to proposal");
+
+    let temp = tempdir().expect("temp dir");
+    let registry_dir = temp.path().join("registry");
+    fs::create_dir_all(&registry_dir).expect("registry dir");
+    fs::write(
+        registry_dir.join("registry.json"),
+        serde_json::to_vec_pretty(&json!({
+            "id": "geo-fixture",
+            "version": "2026.09.02",
+            "description": "geo identifier proposal export fixture",
+            "updated": "2026-09-02",
+            "entry_count": proposal.entries.len(),
+        }))
+        .expect("registry metadata serializes"),
+    )
+    .expect("registry metadata writes");
+    fs::write(
+        registry_dir.join("mappings.json"),
+        serde_json::to_vec_pretty(
+            &proposal
+                .entries
+                .iter()
+                .map(|entry| {
+                    json!({
+                        "input": entry.alias,
+                        "canonical_id": entry.canonical_id,
+                        "canonical_type": entry.canonical_type,
+                        "rule_id": entry.rule_id,
+                    })
+                })
+                .collect::<Vec<_>>(),
+        )
+        .expect("registry mappings serialize"),
+    )
+    .expect("registry mappings write");
+
+    let seed_path = temp.path().join("geo_identifiers.csv");
+    let sqlite_path = temp.path().join("geo_identifiers.sqlite");
+    let seed_output = export_registry(fixture_registry_export_request(
+        &registry_dir,
+        RegistryExportFormat::DbtSeed,
+        &seed_path,
+    ))
+    .expect("dbt seed export succeeds");
+    let search_output = export_registry(fixture_registry_export_request(
+        &registry_dir,
+        RegistryExportFormat::SearchIndex,
+        &sqlite_path,
+    ))
+    .expect("search index export succeeds");
+
+    assert_eq!(seed_output.format, "dbt-seed");
+    assert_eq!(search_output.format, "search-index");
+    assert_eq!(seed_output.summary, search_output.summary);
+    assert_eq!(
+        seed_output.summary.exported_alias_count as u64,
+        proposal.summary.entries
+    );
+    assert_eq!(
+        seed_output.summary.exported_entity_count as u64,
+        proposal.summary.unique_parcel_aliases
+            + proposal.summary.unique_building_aliases
+            + proposal.summary.property_assertions
+    );
+
+    let expected_aliases = proposal
+        .entries
+        .iter()
+        .map(|entry| entry.alias.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut seed_reader = csv::Reader::from_path(&seed_path).expect("seed csv reads");
+    let headers = seed_reader.headers().expect("seed headers").clone();
+    let source_input_idx = headers
+        .iter()
+        .position(|header| header == "source_input")
+        .expect("source_input header");
+    let canonical_type_idx = headers
+        .iter()
+        .position(|header| header == "canonical_type")
+        .expect("canonical_type header");
+    let seed_aliases = seed_reader
+        .records()
+        .map(|record| {
+            let record = record.expect("seed row");
+            (
+                record[source_input_idx].to_string(),
+                record[canonical_type_idx].to_string(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        seed_aliases
+            .iter()
+            .map(|(alias, _)| alias.as_str())
+            .collect::<BTreeSet<_>>(),
+        expected_aliases
+    );
+    assert!(
+        seed_aliases.contains(&(
+            "cmbs:annexa:0000000000-26-000001:loan-a".to_string(),
+            "property".to_string()
+        )),
+        "property document assertion alias must survive dbt seed export"
+    );
+
+    let conn = Connection::open(&sqlite_path).expect("search index opens");
+    let alias_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM aliases", [], |row| row.get(0))
+        .expect("alias count");
+    assert_eq!(alias_count, proposal.summary.entries as i64);
+    let property_alias_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM aliases WHERE canonical_type = 'property'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("property alias count");
+    assert_eq!(
+        property_alias_count,
+        proposal.summary.property_assertions as i64
+    );
+
+    let formats = [seed_output.format.as_str(), search_output.format.as_str()]
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        formats,
+        BTreeSet::from(["dbt-seed", "search-index"]),
+        "identifier proposal proof covers exactly the two supported registry export formats"
+    );
+    println!(
+        "T59 registry exports aliases={} entities={} formats={formats:?}",
+        seed_output.summary.exported_alias_count, seed_output.summary.exported_entity_count
     );
 }
