@@ -34,6 +34,10 @@ fn tournament_schema_declares_holdout_and_promotion_boundaries() {
         "rejected"
     );
     assert_eq!(
+        schema["x-canon-contract"]["candidate_generation_sources"],
+        "each generation input source_digest must match the declared train/tune partition corpus_digest or labels_digest for its access kind"
+    );
+    assert_eq!(
         schema["x-canon-contract"]["promotion"],
         "never automatic; tournament output is a recommendation for explicit operator review"
     );
@@ -60,8 +64,28 @@ fn shuffled_candidates_produce_byte_identical_ranking_and_report() {
         canonical_tournament_report_bytes(&left_report).unwrap(),
         canonical_tournament_report_bytes(&right_report).unwrap()
     );
+    assert_eq!(
+        left_report.summary.decision,
+        "recommend_review_no_auto_promotion"
+    );
+    assert_eq!(
+        left_report.candidates[0].recommendation,
+        "candidate_for_operator_review"
+    );
+    assert!(
+        left_report
+            .candidates
+            .iter()
+            .all(|candidate| candidate.recommendation != "promoted")
+    );
     assert_eq!(left_report.summary.holdout_evaluations, 4);
     assert_eq!(left_report.summary.failed_candidates, 1);
+
+    let resource_hit = &left_report.candidates[3];
+    assert_eq!(
+        resource_hit.ranking_status,
+        TournamentEvaluationStatus::ResourceFailure
+    );
 }
 
 #[test]
@@ -76,6 +100,9 @@ fn holdout_metrics_are_reported_but_never_used_for_candidate_ordering() {
     assert_eq!(overfit.ranking_metrics["quality_score"], 900);
     assert_eq!(balanced.holdout_metrics["quality_score"], 880);
     assert_eq!(overfit.holdout_metrics["quality_score"], 990);
+    assert_eq!(overfit.hard_negative_failures, 1);
+    assert_eq!(balanced.resource_cost.wall_ms, 50);
+    assert_eq!(balanced.uncertainty[0].metric, "quality_score");
     assert_eq!(
         overfit.regressions,
         vec!["hard_negative_cluster_regression".to_string()]
@@ -98,6 +125,41 @@ fn rejects_holdout_access_before_tournament_evaluation() {
     assert_eq!(
         error.kind,
         StrategyTournamentErrorKind::HoldoutGenerationAccess
+    );
+}
+
+#[test]
+fn rejects_undeclared_generation_sources_and_holdout_masquerade() {
+    let mut undeclared = fixture_input(false);
+    undeclared.candidates[0].generation_inputs[1].source_digest = digest("external-tune-corpus");
+    let error = run_strategy_tournament(undeclared).expect_err("undeclared source digest rejected");
+    assert_eq!(
+        error.kind,
+        StrategyTournamentErrorKind::UndeclaredPartitionSource
+    );
+
+    let mut input = fixture_input(false);
+    input.candidates[0].generation_inputs[0].partition_role = TournamentPartitionRole::Train;
+    input.candidates[0].generation_inputs[0].access_kind = TournamentAccessKind::Labels;
+    input.candidates[0].generation_inputs[0].source_digest =
+        input.partitions.holdout.labels_digest.clone();
+    let error =
+        run_strategy_tournament(input).expect_err("holdout digest cannot masquerade as train");
+    assert_eq!(
+        error.kind,
+        StrategyTournamentErrorKind::UndeclaredPartitionSource
+    );
+}
+
+#[test]
+fn rejects_duplicate_partition_source_digests() {
+    let mut input = fixture_input(false);
+    input.partitions.tune.labels_digest = input.partitions.holdout.labels_digest.clone();
+
+    let error = run_strategy_tournament(input).expect_err("duplicate partition source rejected");
+    assert_eq!(
+        error.kind,
+        StrategyTournamentErrorKind::DuplicatePartitionSource
     );
 }
 

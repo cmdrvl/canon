@@ -21,11 +21,13 @@ pub enum StrategyTournamentErrorKind {
     EmptyField,
     InvalidDigest,
     DuplicatePartition,
+    DuplicatePartitionSource,
     DuplicateCandidate,
     DuplicateEvaluation,
     UnknownCandidate,
     EmptyRankingPolicy,
     HoldoutGenerationAccess,
+    UndeclaredPartitionSource,
     HoldoutRanking,
     PackageBoundary,
     MissingEvaluation,
@@ -82,7 +84,7 @@ impl StrategyTournamentPartitions {
         self.holdout.normalize("partitions.holdout")?;
 
         let mut ids = BTreeSet::new();
-        let mut digests = BTreeSet::new();
+        let mut source_digests = BTreeSet::new();
         for partition in [&self.train, &self.tune, &self.holdout] {
             if !ids.insert(partition.partition_id.clone()) {
                 return Err(StrategyTournamentError::new(
@@ -90,15 +92,41 @@ impl StrategyTournamentPartitions {
                     "partition ids must be unique",
                 ));
             }
-            if !digests.insert(partition.corpus_digest.clone()) {
-                return Err(StrategyTournamentError::new(
-                    StrategyTournamentErrorKind::DuplicatePartition,
-                    "partition corpus digests must be unique",
-                ));
-            }
+            Self::insert_unique_source_digest(&mut source_digests, &partition.corpus_digest)?;
+            Self::insert_unique_source_digest(&mut source_digests, &partition.labels_digest)?;
         }
 
         Ok(())
+    }
+
+    fn insert_unique_source_digest(
+        source_digests: &mut BTreeSet<String>,
+        digest: &str,
+    ) -> StrategyTournamentResult<()> {
+        if source_digests.insert(digest.to_string()) {
+            return Ok(());
+        }
+
+        Err(StrategyTournamentError::new(
+            StrategyTournamentErrorKind::DuplicatePartitionSource,
+            "partition source digests must be unique across corpora and labels",
+        ))
+    }
+
+    fn expected_source_digest(
+        &self,
+        partition_role: TournamentPartitionRole,
+        access_kind: TournamentAccessKind,
+    ) -> &str {
+        let partition = match partition_role {
+            TournamentPartitionRole::Train => &self.train,
+            TournamentPartitionRole::Tune => &self.tune,
+            TournamentPartitionRole::Holdout => &self.holdout,
+        };
+        match access_kind {
+            TournamentAccessKind::Features => &partition.corpus_digest,
+            TournamentAccessKind::Labels => &partition.labels_digest,
+        }
     }
 }
 
@@ -152,7 +180,11 @@ pub struct StrategyTournamentCandidate {
 }
 
 impl StrategyTournamentCandidate {
-    fn normalize(&mut self, tournament_package_digest: &str) -> StrategyTournamentResult<()> {
+    fn normalize(
+        &mut self,
+        tournament_package_digest: &str,
+        partitions: &StrategyTournamentPartitions,
+    ) -> StrategyTournamentResult<()> {
         self.candidate_id = normalized_non_empty(&self.candidate_id, "candidate", "candidate_id")?;
         self.package_digest =
             normalized_digest(&self.package_digest, "candidate", "package_digest")?;
@@ -189,6 +221,14 @@ impl StrategyTournamentCandidate {
                 return Err(StrategyTournamentError::new(
                     StrategyTournamentErrorKind::HoldoutGenerationAccess,
                     "candidate generation cannot read holdout features or labels",
+                ));
+            }
+            let expected_digest =
+                partitions.expected_source_digest(access.partition_role, access.access_kind);
+            if access.source_digest != expected_digest {
+                return Err(StrategyTournamentError::new(
+                    StrategyTournamentErrorKind::UndeclaredPartitionSource,
+                    "candidate generation input source digest must match its declared partition and access kind",
                 ));
             }
         }
@@ -394,7 +434,7 @@ pub fn run_strategy_tournament(
 
     let mut candidate_ids = BTreeSet::new();
     for candidate in &mut input.candidates {
-        candidate.normalize(&input.package_digest)?;
+        candidate.normalize(&input.package_digest, &input.partitions)?;
         if !candidate_ids.insert(candidate.candidate_id.clone()) {
             return Err(StrategyTournamentError::new(
                 StrategyTournamentErrorKind::DuplicateCandidate,

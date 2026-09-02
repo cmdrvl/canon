@@ -316,6 +316,7 @@
   },
   "x-canon-contract": {
     "candidate_ordering": "status, declared non-holdout ranking metrics, candidate_id",
+    "candidate_generation_sources": "each generation input source_digest must match the declared train/tune partition corpus_digest or labels_digest for its access kind",
     "holdout_access_during_candidate_generation": "rejected",
     "holdout_ranking_policy": "rejected",
     "metric_values": "signed integers; fractional metrics must be pre-scaled by the caller",
