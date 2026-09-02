@@ -19,7 +19,9 @@ use super::{
     composition::{GeoEntityLevel, GeoEntityRef},
     control::GeoAsOf,
     evidence::{
-        GeoEvidenceRecordRef, GeoRhoObservation, GeoRhoObservationKind, GeoValidTimeInterval,
+        CANON_GEO_EVIDENCE_REQUEST_VERSION, GeoEvidenceCompilationRequest, GeoEvidenceError,
+        GeoEvidenceRecordRef, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind,
+        GeoValidTimeInterval, compile_evidence,
     },
 };
 
@@ -610,6 +612,11 @@ pub struct GeoAddressParcelEvidenceRequest {
     pub parse_request: GeoAddressParseRequest,
     pub address_set: GeoPadAddressSet,
     pub bridge_request: GeoAddressParcelBridgeRequest,
+    /// Optional compiler envelope supplied by the caller. When the bridge emits
+    /// positive evidence, Canon fills this with the bridge observation and
+    /// validates it through the normal evidence compiler.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_request: Option<GeoEvidenceCompilationRequest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -620,6 +627,8 @@ pub struct GeoAddressParcelEvidenceBundle {
     pub parse_forest: GeoAddressParseForest,
     pub pad_membership: GeoPadMembershipEvaluation,
     pub bridge: GeoAddressParcelBridge,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_request: Option<GeoEvidenceCompilationRequest>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -842,6 +851,12 @@ pub fn build_address_parcel_evidence(
         &pad_membership,
         &request.bridge_request,
     )?;
+    let evidence_request = request
+        .evidence_request
+        .as_ref()
+        .map(|template| build_address_parcel_compilation_request(&bridge, template))
+        .transpose()?
+        .flatten();
 
     Ok(GeoAddressParcelEvidenceBundle {
         version: CANON_GEO_ADDRESS_PARCEL_EVIDENCE_BUNDLE_VERSION.to_string(),
@@ -849,7 +864,41 @@ pub fn build_address_parcel_evidence(
         parse_forest,
         pad_membership,
         bridge,
+        evidence_request,
     })
+}
+
+pub fn build_address_parcel_compilation_request(
+    bridge: &GeoAddressParcelBridge,
+    template: &GeoEvidenceCompilationRequest,
+) -> Result<Option<GeoEvidenceCompilationRequest>, GeoAddressError> {
+    if bridge.version != CANON_GEO_ADDRESS_PARCEL_BRIDGE_VERSION {
+        return Err(GeoAddressError::new(
+            GeoAddressErrorCode::UnsupportedVersion,
+            "unsupported address parcel bridge version",
+            [
+                ("expected", CANON_GEO_ADDRESS_PARCEL_BRIDGE_VERSION),
+                ("actual", bridge.version.as_str()),
+            ],
+        ));
+    }
+    validate_address_evidence_template(template)?;
+    if bridge.status == GeoAddressParcelBridgeStatus::DiagnosticAbstention {
+        return Ok(None);
+    }
+
+    let observation = bridge.observation.clone().ok_or_else(|| {
+        GeoAddressError::invalid_input(
+            "address parcel bridge marked evidence_observation without an observation",
+            [("field", "bridge.observation")],
+        )
+    })?;
+    validate_address_observation_matches_bridge(bridge, &observation)?;
+    validate_address_template_contracts(template, &observation.contract_id)?;
+
+    let mut request = template.clone();
+    request.observations = vec![observation];
+    Ok(Some(canonical_address_evidence_request(&request)?))
 }
 
 pub fn bridge_pad_membership_to_parcel_observation(
@@ -1139,6 +1188,154 @@ pub fn canonical_address_parcel_bridge_bytes(
     })
 }
 
+fn validate_address_evidence_template(
+    template: &GeoEvidenceCompilationRequest,
+) -> Result<(), GeoAddressError> {
+    if template.version != CANON_GEO_EVIDENCE_REQUEST_VERSION {
+        return Err(GeoAddressError::new(
+            GeoAddressErrorCode::UnsupportedVersion,
+            "unsupported Geo evidence request version in address compile envelope",
+            [
+                ("expected", CANON_GEO_EVIDENCE_REQUEST_VERSION),
+                ("actual", template.version.as_str()),
+            ],
+        ));
+    }
+    if !template.observations.is_empty() {
+        return Err(GeoAddressError::invalid_input(
+            "address compile envelope observations must be empty before bridge materialization",
+            [("field", "evidence_request.observations")],
+        ));
+    }
+    compile_evidence(template)
+        .map(|_| ())
+        .map_err(address_evidence_error)
+}
+
+fn validate_address_template_contracts(
+    template: &GeoEvidenceCompilationRequest,
+    contract_id: &str,
+) -> Result<(), GeoAddressError> {
+    if template.contracts.len() != 1 {
+        return Err(GeoAddressError::invalid_input(
+            "address compile envelope must carry exactly one rho contract",
+            [
+                ("field", "evidence_request.contracts"),
+                ("count", template.contracts.len().to_string()),
+            ],
+        ));
+    }
+    if template.contracts[0].id != contract_id {
+        return Err(GeoAddressError::invalid_input(
+            "address compile envelope rho contract does not match the bridge observation",
+            [
+                ("expected_contract_id", contract_id),
+                ("actual_contract_id", template.contracts[0].id.as_str()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn validate_address_observation_matches_bridge(
+    bridge: &GeoAddressParcelBridge,
+    observation: &GeoRhoObservation,
+) -> Result<(), GeoAddressError> {
+    let GeoRhoObservationKind::ExistentialMembership { members } = &observation.observation else {
+        return Err(GeoAddressError::invalid_input(
+            "address parcel bridge observations must be existential parcel membership",
+            [("field", "bridge.observation.observation.kind")],
+        ));
+    };
+    let bridge_members = bridge
+        .parcel_candidates
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let observation_members = members.iter().cloned().collect::<BTreeSet<_>>();
+    if observation_members.is_empty() || observation_members != bridge_members {
+        return Err(GeoAddressError::invalid_input(
+            "address parcel bridge observation members do not match parcel candidates",
+            [("field", "bridge.observation.observation.members")],
+        ));
+    }
+    if observation_members
+        .iter()
+        .any(|member| member.level != GeoEntityLevel::Parcel)
+    {
+        return Err(GeoAddressError::invalid_input(
+            "address parcel bridge observations must remain parcel-grain",
+            [("field", "bridge.observation.observation.members")],
+        ));
+    }
+
+    let bridge_records = bridge
+        .source_records
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let observation_records = observation
+        .source_records
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if bridge_records.is_empty() || observation_records != bridge_records {
+        return Err(GeoAddressError::invalid_input(
+            "address parcel bridge observation source records do not match the bridge audit",
+            [("field", "bridge.observation.source_records")],
+        ));
+    }
+    Ok(())
+}
+
+fn canonical_address_evidence_request(
+    request: &GeoEvidenceCompilationRequest,
+) -> Result<GeoEvidenceCompilationRequest, GeoAddressError> {
+    let compiled = compile_evidence(request).map_err(address_evidence_error)?;
+    let mut contracts = BTreeMap::<String, GeoRhoContract>::new();
+    let observations = compiled
+        .admissions
+        .iter()
+        .map(|admission| {
+            contracts
+                .entry(admission.contract.id.clone())
+                .or_insert_with(|| admission.contract.clone());
+            GeoRhoObservation {
+                id: admission.observation_id.clone(),
+                contract_id: admission.contract.id.clone(),
+                source_records: admission.source_records.clone(),
+                valid_time: admission.valid_time,
+                observation: admission.observation.clone(),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    Ok(GeoEvidenceCompilationRequest {
+        version: compiled.request_version,
+        profile: compiled.composition_request.profile,
+        universe: compiled.composition_request.universe,
+        contracts: contracts.into_values().collect(),
+        observations,
+        max_assignments: compiled.composition_request.max_assignments,
+        max_materialized_models: compiled.composition_request.max_materialized_models,
+    })
+}
+
+fn address_evidence_error(error: GeoEvidenceError) -> GeoAddressError {
+    let mut detail = error.detail;
+    detail.insert(
+        "geo_evidence_error_code".to_string(),
+        format!("{:?}", error.code),
+    );
+    GeoAddressError::invalid_input(
+        format!(
+            "address compile envelope does not produce a valid Geo evidence request: {}",
+            error.message
+        ),
+        detail,
+    )
+}
+
 pub fn canonical_address_parcel_evidence_bundle_bytes(
     bundle: &GeoAddressParcelEvidenceBundle,
 ) -> Result<Vec<u8>, GeoAddressError> {
@@ -1168,6 +1365,9 @@ pub fn canonical_address_parcel_evidence_bundle_bytes(
                     [("serde", error.to_string())],
                 )
             })?;
+    if let Some(evidence_request) = &canonical.evidence_request {
+        canonical.evidence_request = Some(canonical_address_evidence_request(evidence_request)?);
+    }
     serde_json::to_vec(&canonical).map_err(|error| {
         GeoAddressError::invalid_input(
             "failed to serialize canonical address parcel evidence bundle",
