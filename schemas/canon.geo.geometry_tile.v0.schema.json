@@ -438,6 +438,154 @@
         "provenance": { "$ref": "#/$defs/provider_feature_provenance" }
       }
     },
+    "client_source_format": {
+      "enum": ["geo_json", "ndjson_geo_json"]
+    },
+    "client_coverage_extent_kind": {
+      "enum": ["client_declared_h3_cell_set"]
+    },
+    "client_coverage_extent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extent_id", "kind", "h3_cells"],
+      "properties": {
+        "extent_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "kind": { "$ref": "#/$defs/client_coverage_extent_kind" },
+        "h3_cells": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+        }
+      }
+    },
+    "client_membership_rule": {
+      "enum": ["representative_point_anchor", "declared_supplemental_coverage"]
+    },
+    "client_membership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_instance_id", "feature_id", "source_feature_id", "h3_cell", "rule"],
+      "properties": {
+        "source_instance_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "feature_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_feature_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "h3_cell": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "rule": { "$ref": "#/$defs/client_membership_rule" }
+      }
+    },
+    "client_alias": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["feature_id", "alias_namespace", "alias_value"],
+      "properties": {
+        "feature_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "alias_namespace": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "alias_value": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "client_validation_refusal_count": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "count"],
+      "properties": {
+        "reason": { "type": "string", "minLength": 1 },
+        "count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "client_validation_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_feature_count",
+        "accepted_feature_count",
+        "refused_feature_count",
+        "outside_work_cell_count",
+        "refusal_counts"
+      ],
+      "properties": {
+        "source_feature_count": { "type": "integer", "minimum": 0 },
+        "accepted_feature_count": { "type": "integer", "minimum": 0 },
+        "refused_feature_count": { "type": "integer", "minimum": 0 },
+        "outside_work_cell_count": { "type": "integer", "minimum": 0 },
+        "refusal_counts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/client_validation_refusal_count" }
+        }
+      }
+    },
+    "client_ingest_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validation",
+        "membership_row_count",
+        "anchor_membership_count",
+        "supplemental_membership_count"
+      ],
+      "properties": {
+        "validation": { "$ref": "#/$defs/client_validation_summary" },
+        "membership_row_count": { "type": "integer", "minimum": 0 },
+        "anchor_membership_count": { "type": "integer", "minimum": 0 },
+        "supplemental_membership_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "client_transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method_id",
+        "method_version",
+        "declared_crs",
+        "frame_id",
+        "h3_library",
+        "h3_resolution"
+      ],
+      "properties": {
+        "method_id": { "type": "string", "minLength": 1 },
+        "method_version": { "type": "string", "minLength": 1 },
+        "declared_crs": { "type": "string", "minLength": 1 },
+        "frame_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "h3_library": { "type": "string", "minLength": 1 },
+        "h3_resolution": { "type": "integer", "minimum": 0, "maximum": 15 }
+      }
+    },
+    "client_ingest_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_version",
+        "source_format",
+        "source_path",
+        "source_digest",
+        "declared_crs",
+        "transform",
+        "coverage_extent",
+        "mutual_exclusivity_declared",
+        "aliases",
+        "memberships",
+        "summary"
+      ],
+      "properties": {
+        "request_version": { "const": "canon_geo_client_tile_ingest_request.v0" },
+        "source_format": { "$ref": "#/$defs/client_source_format" },
+        "source_path": { "type": "string", "minLength": 1 },
+        "source_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "declared_crs": { "type": "string", "minLength": 1 },
+        "transform": { "$ref": "#/$defs/client_transform" },
+        "coverage_extent": { "$ref": "#/$defs/client_coverage_extent" },
+        "mutual_exclusivity_declared": { "type": "boolean" },
+        "aliases": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/client_alias" }
+        },
+        "memberships": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/client_membership" }
+        },
+        "summary": { "$ref": "#/$defs/client_ingest_summary" }
+      }
+    },
     "provider_tile": {
       "type": "object",
       "additionalProperties": false,
@@ -468,6 +616,7 @@
           "type": "array",
           "items": { "$ref": "#/$defs/provider_feature_contract" }
         },
+        "client_ingest": { "$ref": "#/$defs/client_ingest_report" },
         "tile_content_blake3": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     }

@@ -30,11 +30,12 @@ use canon::geo::{
 };
 use canon::geo::{
     CANON_GEO_ADDRESS_PARSE_FOREST_VERSION, CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION,
-    CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
-    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_GEOMETRY_REQUEST_VERSION,
-    CANON_GEO_H7_ACRIS_RELEASE_DT, CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION,
-    CANON_GEO_H7_BRIDGE_BUILD_ID, CANON_GEO_H7_COLLATERAL_SCOPE,
-    CANON_GEO_H7_LENDER_MATCH_TRANSFORM, CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
+    CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
+    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
+    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_H7_ACRIS_RELEASE_DT,
+    CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION, CANON_GEO_H7_BRIDGE_BUILD_ID,
+    CANON_GEO_H7_COLLATERAL_SCOPE, CANON_GEO_H7_LENDER_MATCH_TRANSFORM,
+    CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
     CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
     CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_PRIMARY_MAPPLUTO_RELEASE,
     CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS,
@@ -50,11 +51,13 @@ use canon::geo::{
     GeoAbstentionPolicy, GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity,
     GeoAddressParseRequest, GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm,
     GeoAsOf, GeoBoundedGeography, GeoBudgetAction, GeoBuildingCandidate, GeoClaimClass,
-    GeoCompositionModel, GeoCompositionProfile, GeoCompositionRequest, GeoCompositionUniverse,
-    GeoControlEntityLevel, GeoCoveragePredicate, GeoEgressClass, GeoEntityLevel, GeoEntityRef,
-    GeoEvidenceClaimRole, GeoEvidenceClass, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef,
-    GeoExactSourceUnitMm, GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoH7AssociationPlane,
-    GeoH7BoroughEdge, GeoH7CandidateReachStatus, GeoH7FiledCountyMapping, GeoH7MapplutoReleasePin,
+    GeoClientTileCoverageExtent, GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest,
+    GeoClientTileSourceFormat, GeoClientTileVendorIdentifier, GeoCompositionModel,
+    GeoCompositionProfile, GeoCompositionRequest, GeoCompositionUniverse, GeoControlEntityLevel,
+    GeoCoveragePredicate, GeoEgressClass, GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole,
+    GeoEvidenceClass, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoExactSourceUnitMm,
+    GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoH7AssociationPlane, GeoH7BoroughEdge,
+    GeoH7CandidateReachStatus, GeoH7FiledCountyMapping, GeoH7MapplutoReleasePin,
     GeoH7PlaneDenominator, GeoH7PopulationProvenance, GeoH7PopulationRowsRequest,
     GeoH7PopulationScope, GeoH7PopulationWarehouseRow, GeoH7QueryDisposition, GeoH7QueryReceipt,
     GeoH7ResultMode, GeoH7SourceEvidenceRecord, GeoH7SourceRecordRole,
@@ -78,15 +81,16 @@ use canon::geo::{
     GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValueOrigin,
     GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
     GeoWarehouseParcelRow, GeoWarehouseRowsRequest, compile_evidence, default_geo_capabilities,
-    evaluate_pad_membership, evaluate_population, materialize_geo_multisource,
-    materialize_geometry_tile, materialize_h7_population_rows, materialize_home_cells,
-    materialize_tile_work_unit, materialize_warehouse_geometry, parse_address_forest,
-    reconcile_tile_decisions, regional_inventory_semantic_hash, solve_composition,
-    stack_population_evidence,
+    evaluate_pad_membership, evaluate_population, ingest_client_geometry_tile,
+    materialize_geo_multisource, materialize_geometry_tile, materialize_h7_population_rows,
+    materialize_home_cells, materialize_tile_work_unit, materialize_warehouse_geometry,
+    parse_address_forest, reconcile_tile_decisions, regional_inventory_semantic_hash,
+    solve_composition, stack_population_evidence,
 };
+use h3o::{LatLng, Resolution};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
-use std::{fs, path::Path};
+use std::{fs, path::Path, str::FromStr};
 
 const COMPOSITION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.composition_request.v0.schema.json");
@@ -107,6 +111,8 @@ const WAREHOUSE_ROWS_SCHEMA: &str =
     include_str!("../schemas/canon.geo.warehouse_rows.v0.schema.json");
 const GEOMETRY_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.geometry_request.v0.schema.json");
+const CLIENT_TILE_INGEST_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.client_tile_ingest_request.v0.schema.json");
 const GEOMETRY_TILE_SCHEMA: &str =
     include_str!("../schemas/canon.geo.geometry_tile.v0.schema.json");
 const WAREHOUSE_GEOMETRY_ROWS_SCHEMA: &str =
@@ -1261,6 +1267,103 @@ fn geometry_request() -> GeoGeometryTileRequest {
     }
 }
 
+fn client_tile_ingest_schema_fixture() -> (GeoClientTileIngestRequest, String) {
+    let resolution = Resolution::Nine;
+    let center = LatLng::new(40.753000, -73.977000)
+        .unwrap()
+        .to_cell(resolution)
+        .to_string();
+    let mut work_cells = h3o::CellIndex::from_str(&center)
+        .unwrap()
+        .grid_disk::<Vec<_>>(1)
+        .into_iter()
+        .map(|cell| cell.to_string())
+        .collect::<Vec<_>>();
+    work_cells.sort();
+    let source = serde_json::json!({
+        "type": "Feature",
+        "id": "row-1",
+        "properties": {
+            "apn": "client-apn-1"
+        },
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [-73.977100, 40.752900],
+                [-73.976900, 40.752900],
+                [-73.976900, 40.753100],
+                [-73.977100, 40.753100],
+                [-73.977100, 40.752900]
+            ]]
+        }
+    })
+    .to_string();
+    (
+        GeoClientTileIngestRequest {
+            version: CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION.to_string(),
+            tile_id: center.clone(),
+            source_format: GeoClientTileSourceFormat::GeoJson,
+            source_path: "client/parcels.geojson".to_string(),
+            source_digest: blake3::hash(source.as_bytes()).to_hex().to_string(),
+            declared_crs: "EPSG:4326".to_string(),
+            frame: GeoLocalFrameContract {
+                version: CANON_GEO_LOCAL_FRAME_VERSION.to_string(),
+                frame_id: format!("client:{center}:wgs84-local-affine:v0"),
+                tile_id: center.clone(),
+                source_crs: "EPSG:4326".to_string(),
+                source_axis_domain: GeoSourceAxisDomain::GeographicLongitudeLatitude,
+                source_decimal_places: 6,
+                source_origin: GeoSourcePointFixed {
+                    x: -74_000_000,
+                    y: 40_000_000,
+                },
+                affine: GeoAffineProjectionMm {
+                    x_from_source_x_numerator: 1,
+                    x_from_source_y_numerator: 0,
+                    y_from_source_x_numerator: 0,
+                    y_from_source_y_numerator: 1,
+                    denominator: 1,
+                },
+                projection: GeoProjectionProvenance {
+                    method_id: "fixture:wgs84-local-affine".to_string(),
+                    method_version: "v0".to_string(),
+                    parameters_blake3: blake3::hash(format!("fixture:{center}").as_bytes())
+                        .to_hex()
+                        .to_string(),
+                    max_projection_error_micrometres: 10_000_000,
+                },
+                max_abs_coordinate_mm: 10_000_000,
+            },
+            source_instance_id: "source.client.parcels".to_string(),
+            release_id: "client-parcels-2026-q3".to_string(),
+            release_digest: blake3::hash(b"client-parcels-2026-q3").to_hex().to_string(),
+            vendor: "county".to_string(),
+            vintage: "2026-Q3".to_string(),
+            vendor_identifier: GeoClientTileVendorIdentifier {
+                issuer: "county".to_string(),
+                role: "apn".to_string(),
+                property: "apn".to_string(),
+            },
+            source_record_id_property: None,
+            supplemental_h3_cells_property: None,
+            license_expression: "LicenseRef-Client-Parcel-Local".to_string(),
+            coverage_extent: GeoClientTileCoverageExtent {
+                extent_id: "client-declared-h3-k1".to_string(),
+                kind: GeoClientTileCoverageExtentKind::ClientDeclaredH3CellSet,
+                h3_cells: work_cells.clone(),
+            },
+            mutual_exclusivity_declared: false,
+            h3_resolution: 9,
+            halo_k: 1,
+            work_cells,
+            max_features: 8,
+            max_vertices_per_geometry: 64,
+            max_geometry_bytes_per_tile: 100_000,
+        },
+        source,
+    )
+}
+
 fn warehouse_geometry_request() -> GeoWarehouseGeometryRowsRequest {
     let points = [
         (980_252.301_632_881_2_f64, 191_655.610_172_272_3_f64),
@@ -1797,10 +1900,37 @@ fn geometry_request_schema_matches_a_real_instance() {
 }
 
 #[test]
+fn client_tile_ingest_request_schema_matches_a_real_instance() {
+    let (request, _source) = client_tile_ingest_schema_fixture();
+    let instance =
+        serde_json::to_value(&request).expect("client tile ingest request must serialize");
+    assert_drift_free(
+        CLIENT_TILE_INGEST_REQUEST_SCHEMA,
+        "canon.geo.client_tile_ingest_request.v0",
+        CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
+        &instance,
+    );
+}
+
+#[test]
 fn geometry_tile_schema_matches_a_real_instance() {
     let artifact =
         materialize_geometry_tile(&geometry_request()).expect("geometry request materializes");
     let instance = serde_json::to_value(&artifact).expect("geometry tile must serialize");
+    assert_drift_free(
+        GEOMETRY_TILE_SCHEMA,
+        "canon.geo.geometry_tile.v0",
+        "canon_geo_geometry_tile.v0",
+        &instance,
+    );
+}
+
+#[test]
+fn client_ingested_geometry_tile_schema_matches_a_real_instance() {
+    let (request, source) = client_tile_ingest_schema_fixture();
+    let artifact = ingest_client_geometry_tile(&request, source.as_bytes())
+        .expect("client ingest materializes a geometry tile");
+    let instance = serde_json::to_value(&artifact).expect("client geometry tile serializes");
     assert_drift_free(
         GEOMETRY_TILE_SCHEMA,
         "canon.geo.geometry_tile.v0",

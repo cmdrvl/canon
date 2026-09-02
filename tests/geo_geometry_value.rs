@@ -2,22 +2,28 @@
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use canon::geo::{
-    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
-    CANON_GEO_PROVIDER_TILE_BUILD_VERSION, CANON_GEO_PROVIDER_TILE_CONTRACT_VERSION,
-    CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, GeoAffineProjectionMm, GeoCanonicalGeometryMm,
-    GeoExactSourceUnitMm, GeoFeatureValue, GeoGeometryBudgetEnforcement, GeoGeometryErrorCode,
-    GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoLicenseClass, GeoLocalFrameContract,
-    GeoProjectionProvenance, GeoProviderGeometryFidelity, GeoProviderGeometryTileBuildRequest,
-    GeoProviderTileCoverageState, GeoProviderTileDataBookDecision, GeoProviderTileFeatureContract,
+    CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION, CANON_GEO_GEOMETRY_REQUEST_VERSION,
+    CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_PROVIDER_TILE_BUILD_VERSION,
+    CANON_GEO_PROVIDER_TILE_CONTRACT_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
+    GeoAffineProjectionMm, GeoCanonicalGeometryMm, GeoClientTileCoverageExtent,
+    GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest, GeoClientTileMembershipRule,
+    GeoClientTileSourceFormat, GeoClientTileVendorIdentifier, GeoExactSourceUnitMm,
+    GeoFeatureValue, GeoGeometryBudgetEnforcement, GeoGeometryErrorCode, GeoGeometryFeatureInput,
+    GeoGeometryTileRequest, GeoLicenseClass, GeoLocalFrameContract, GeoProjectionProvenance,
+    GeoProviderGeometryFidelity, GeoProviderGeometryTileBuildRequest, GeoProviderTileCoverageState,
+    GeoProviderTileDataBookDecision, GeoProviderTileFeatureContract,
     GeoProviderTileFeatureProvenance, GeoProviderTileFieldLocator, GeoProviderTileLicensePosture,
     GeoProviderTileRedactionClass, GeoProviderTileSource, GeoProviderTileSourceCoverage,
     GeoProviderTileSourceProvenance, GeoProviderTileSubsetKind, GeoProviderTileSubsetPredicate,
     GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed,
     GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest, canonical_geometry_tile_bytes,
-    canonical_warehouse_geometry_bytes, materialize_geometry_tile,
+    canonical_warehouse_geometry_bytes, ingest_client_geometry_tile, materialize_geometry_tile,
     materialize_provider_geometry_tile, materialize_warehouse_geometry,
 };
+use h3o::{LatLng, Resolution};
+use serde_json::json;
 use sha2::{Digest as _, Sha256};
+use std::str::FromStr;
 
 const CRS: &str = "LOCAL:TEST-METRES";
 
@@ -529,6 +535,319 @@ fn provider_tile_refuses_unacknowledged_vendor_simplified_decision_geometry() {
         provider_tile_build_request(GeoProviderGeometryFidelity::VendorSimplified, true);
     materialize_provider_geometry_tile(&acknowledged)
         .expect("explicit acknowledgement admits labelled vendor-simplified decision geometry");
+}
+
+#[test]
+fn client_tile_ingest_indexes_geojson_with_declared_coverage_and_local_license_boundary() {
+    let (request, source_bytes, center, neighbor) = client_tile_ingest_fixture();
+    let artifact = ingest_client_geometry_tile(&request, source_bytes.as_bytes())
+        .expect("declared WGS84 client GeoJSON ingests");
+    let repeated = ingest_client_geometry_tile(&request, source_bytes.as_bytes())
+        .expect("same client GeoJSON ingests twice");
+
+    assert_eq!(
+        canonical_geometry_tile_bytes(&artifact).unwrap(),
+        canonical_geometry_tile_bytes(&repeated).unwrap()
+    );
+    assert_eq!(artifact.version, "canon_geo_geometry_tile.v0");
+    assert_eq!(
+        artifact
+            .features
+            .iter()
+            .map(|feature| feature.feature_id.as_str())
+            .collect::<Vec<_>>(),
+        ["client-apn-1", "client-apn-2"]
+    );
+
+    let provider = artifact.provider_tile.as_ref().expect("provider tile");
+    assert_eq!(provider.tile_id, center);
+    assert_eq!(
+        provider.license_posture.client_restricted_source_ids,
+        ["source.client.parcels"]
+    );
+    assert!(
+        provider
+            .tile_content_blake3
+            .chars()
+            .all(|ch| ch.is_ascii_hexdigit())
+    );
+
+    let ingest = provider
+        .client_ingest
+        .as_ref()
+        .expect("client ingest report");
+    assert_eq!(ingest.source_format, GeoClientTileSourceFormat::GeoJson);
+    assert_eq!(ingest.declared_crs, "EPSG:4326");
+    assert_eq!(ingest.transform.h3_library, "h3o=0.10.0");
+    assert_eq!(
+        ingest.coverage_extent.kind,
+        GeoClientTileCoverageExtentKind::ClientDeclaredH3CellSet
+    );
+    assert_eq!(ingest.summary.validation.source_feature_count, 2);
+    assert_eq!(ingest.summary.validation.accepted_feature_count, 2);
+    assert_eq!(ingest.summary.validation.refused_feature_count, 0);
+    assert_eq!(ingest.summary.anchor_membership_count, 2);
+    assert_eq!(ingest.summary.supplemental_membership_count, 1);
+    assert_eq!(ingest.summary.membership_row_count, 3);
+    assert_eq!(
+        ingest
+            .aliases
+            .iter()
+            .map(|alias| (alias.alias_namespace.as_str(), alias.alias_value.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            ("county:apn", "client-apn-1"),
+            ("county:apn", "client-apn-2")
+        ]
+    );
+    assert!(ingest.memberships.iter().any(|membership| {
+        membership.source_feature_id == "client-apn-1"
+            && membership.h3_cell == center
+            && membership.rule == GeoClientTileMembershipRule::RepresentativePointAnchor
+    }));
+    assert!(ingest.memberships.iter().any(|membership| {
+        membership.source_feature_id == "client-apn-1"
+            && membership.h3_cell == neighbor
+            && membership.rule == GeoClientTileMembershipRule::DeclaredSupplementalCoverage
+    }));
+    assert!(provider.subset.source_coverages.iter().all(|coverage| {
+        coverage.source_instance_id == "source.client.parcels"
+            && coverage.coverage_state == GeoProviderTileCoverageState::Complete
+    }));
+    assert!(provider.features.iter().all(|feature| {
+        feature.license_class == GeoLicenseClass::RestrictedLocalOnly
+            && feature.redaction_class == GeoProviderTileRedactionClass::LocalOnly
+    }));
+}
+
+#[test]
+fn client_tile_ingest_reports_bad_features_without_inventing_membership() {
+    let (mut request, source_bytes, _center, _neighbor) = client_tile_ingest_fixture();
+    let source: serde_json::Value = serde_json::from_str(&source_bytes).expect("fixture json");
+    let mut features = source["features"].as_array().unwrap().clone();
+    features.push(json!({
+        "type": "Feature",
+        "id": "bad-empty",
+        "properties": { "apn": "bad-empty", "supplemental_cells": [] },
+        "geometry": { "type": "Polygon", "coordinates": [] }
+    }));
+    features.push(json!({
+        "type": "Feature",
+        "id": "bad-empty-supplemental",
+        "properties": { "apn": "bad-empty-supplemental", "supplemental_cells": [] },
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [-73.977050, 40.752950],
+                [-73.976950, 40.752950],
+                [-73.976950, 40.753050],
+                [-73.977050, 40.753050],
+                [-73.977050, 40.752950]
+            ]]
+        }
+    }));
+    let source = json!({ "type": "FeatureCollection", "features": features }).to_string();
+    request.source_digest = blake3_hex(source.as_bytes());
+
+    let artifact = ingest_client_geometry_tile(&request, source.as_bytes())
+        .expect("partly valid client ingest still emits validation summary");
+    let ingest = artifact
+        .provider_tile
+        .as_ref()
+        .and_then(|provider| provider.client_ingest.as_ref())
+        .expect("client ingest report");
+
+    assert_eq!(ingest.summary.validation.source_feature_count, 4);
+    assert_eq!(ingest.summary.validation.accepted_feature_count, 2);
+    assert_eq!(ingest.summary.validation.refused_feature_count, 2);
+    assert_eq!(
+        ingest.summary.validation.refusal_counts,
+        [
+            canon::geo::GeoClientTileValidationRefusalCount {
+                reason: GeoGeometryErrorCode::EmptyGeometry,
+                count: 1,
+            },
+            canon::geo::GeoClientTileValidationRefusalCount {
+                reason: GeoGeometryErrorCode::InvalidTileContract,
+                count: 1,
+            }
+        ]
+    );
+    assert!(
+        !ingest
+            .memberships
+            .iter()
+            .any(|membership| membership.source_feature_id == "bad-empty")
+    );
+    assert!(
+        !ingest
+            .memberships
+            .iter()
+            .any(|membership| membership.source_feature_id == "bad-empty-supplemental")
+    );
+}
+
+#[test]
+fn client_tile_ingest_refuses_missing_coverage_extent_crs_drift_and_relabels() {
+    let (mut request, source_bytes, _center, _neighbor) = client_tile_ingest_fixture();
+    request.coverage_extent.h3_cells.clear();
+    let error = ingest_client_geometry_tile(&request, source_bytes.as_bytes())
+        .expect_err("coverage extent is required and cannot be inferred from parcel rows");
+    assert_eq!(error.code, GeoGeometryErrorCode::InvalidTileContract);
+
+    let (mut request, source_bytes, _center, _neighbor) = client_tile_ingest_fixture();
+    request.declared_crs = "EPSG:3857".to_string();
+    let error = ingest_client_geometry_tile(&request, source_bytes.as_bytes())
+        .expect_err("non-WGS84 client layers are not silently reprojected in v0");
+    assert_eq!(error.code, GeoGeometryErrorCode::MixedCrs);
+
+    let (mut request, source_bytes, _center, _neighbor) = client_tile_ingest_fixture();
+    request.source_digest = blake3_hex(b"other-bytes");
+    let error = ingest_client_geometry_tile(&request, source_bytes.as_bytes())
+        .expect_err("source bytes must match the declared client digest");
+    assert_eq!(error.code, GeoGeometryErrorCode::InvalidSourceDigest);
+
+    let (mut request, source_bytes, _center, _neighbor) = client_tile_ingest_fixture();
+    let source: serde_json::Value = serde_json::from_str(&source_bytes).expect("fixture json");
+    let mut features = source["features"].as_array().unwrap().clone();
+    features[1]["properties"]["apn"] = json!("client-apn-1");
+    let source = json!({ "type": "FeatureCollection", "features": features }).to_string();
+    request.source_digest = blake3_hex(source.as_bytes());
+    let error = ingest_client_geometry_tile(&request, source.as_bytes())
+        .expect_err("duplicate vendor identifiers must not be relabeled into one feature");
+    assert_eq!(error.code, GeoGeometryErrorCode::InvalidSourceProvenance);
+}
+
+fn client_tile_ingest_fixture() -> (GeoClientTileIngestRequest, String, String, String) {
+    let resolution = Resolution::Nine;
+    let center = h3_cell_for_lon_lat(-73.977000, 40.753000, resolution);
+    let mut work_cells = h3o::CellIndex::from_str(&center)
+        .unwrap()
+        .grid_disk::<Vec<_>>(1)
+        .into_iter()
+        .map(|cell| cell.to_string())
+        .collect::<Vec<_>>();
+    work_cells.sort();
+    let neighbor = work_cells
+        .iter()
+        .find(|cell| cell.as_str() != center.as_str())
+        .expect("k1 neighbor")
+        .clone();
+    let source = json!({
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "id": "record-2",
+                "properties": { "apn": "client-apn-2" },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [-73.977050, 40.752950],
+                        [-73.976950, 40.752950],
+                        [-73.976950, 40.753050],
+                        [-73.977050, 40.753050],
+                        [-73.977050, 40.752950]
+                    ]]
+                }
+            },
+            {
+                "type": "Feature",
+                "id": "record-1",
+                "properties": {
+                    "apn": "client-apn-1",
+                    "supplemental_cells": [neighbor]
+                },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [-73.977100, 40.752900],
+                        [-73.976900, 40.752900],
+                        [-73.976900, 40.753100],
+                        [-73.977100, 40.753100],
+                        [-73.977100, 40.752900]
+                    ]]
+                }
+            }
+        ]
+    })
+    .to_string();
+    let request = GeoClientTileIngestRequest {
+        version: CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION.to_string(),
+        tile_id: center.clone(),
+        source_format: GeoClientTileSourceFormat::GeoJson,
+        source_path: "client/parcels.geojson".to_string(),
+        source_digest: blake3_hex(source.as_bytes()),
+        declared_crs: "EPSG:4326".to_string(),
+        frame: wgs84_client_frame(&center),
+        source_instance_id: "source.client.parcels".to_string(),
+        release_id: "client-parcels-2026-q3".to_string(),
+        release_digest: blake3_hex(b"client-parcels-2026-q3"),
+        vendor: "county".to_string(),
+        vintage: "2026-Q3".to_string(),
+        vendor_identifier: GeoClientTileVendorIdentifier {
+            issuer: "county".to_string(),
+            role: "apn".to_string(),
+            property: "apn".to_string(),
+        },
+        source_record_id_property: None,
+        supplemental_h3_cells_property: Some("supplemental_cells".to_string()),
+        license_expression: "LicenseRef-Client-Parcel-Local".to_string(),
+        coverage_extent: GeoClientTileCoverageExtent {
+            extent_id: "client-declared-h3-k1".to_string(),
+            kind: GeoClientTileCoverageExtentKind::ClientDeclaredH3CellSet,
+            h3_cells: work_cells,
+        },
+        mutual_exclusivity_declared: false,
+        h3_resolution: 9,
+        halo_k: 1,
+        work_cells: h3o::CellIndex::from_str(&center)
+            .unwrap()
+            .grid_disk::<Vec<_>>(1)
+            .into_iter()
+            .map(|cell| cell.to_string())
+            .collect(),
+        max_features: 8,
+        max_vertices_per_geometry: 64,
+        max_geometry_bytes_per_tile: 100_000,
+    };
+    (request, source, center, neighbor)
+}
+
+fn h3_cell_for_lon_lat(longitude: f64, latitude: f64, resolution: Resolution) -> String {
+    LatLng::new(latitude, longitude)
+        .unwrap()
+        .to_cell(resolution)
+        .to_string()
+}
+
+fn wgs84_client_frame(tile_id: &str) -> GeoLocalFrameContract {
+    GeoLocalFrameContract {
+        version: CANON_GEO_LOCAL_FRAME_VERSION.to_string(),
+        frame_id: format!("client:{tile_id}:wgs84-local-affine:v0"),
+        tile_id: tile_id.to_string(),
+        source_crs: "EPSG:4326".to_string(),
+        source_axis_domain: GeoSourceAxisDomain::GeographicLongitudeLatitude,
+        source_decimal_places: 6,
+        source_origin: GeoSourcePointFixed {
+            x: -74_000_000,
+            y: 40_000_000,
+        },
+        affine: GeoAffineProjectionMm {
+            x_from_source_x_numerator: 1,
+            x_from_source_y_numerator: 0,
+            y_from_source_x_numerator: 0,
+            y_from_source_y_numerator: 1,
+            denominator: 1,
+        },
+        projection: GeoProjectionProvenance {
+            method_id: "fixture:wgs84-local-affine".to_string(),
+            method_version: "v0".to_string(),
+            parameters_blake3: blake3_hex(format!("fixture:{tile_id}").as_bytes()),
+            max_projection_error_micrometres: 10_000_000,
+        },
+        max_abs_coordinate_mm: 10_000_000,
+    }
 }
 
 fn provider_tile_build_request(

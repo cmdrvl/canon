@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon.geo.client_tile_ingest_request.v0.schema.json",
+  "title": "canon.geo.client_tile_ingest_request.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "tile_id",
+    "source_format",
+    "source_path",
+    "source_digest",
+    "declared_crs",
+    "frame",
+    "source_instance_id",
+    "release_id",
+    "release_digest",
+    "vendor",
+    "vintage",
+    "vendor_identifier",
+    "license_expression",
+    "coverage_extent",
+    "mutual_exclusivity_declared",
+    "h3_resolution",
+    "halo_k",
+    "work_cells",
+    "max_features",
+    "max_vertices_per_geometry",
+    "max_geometry_bytes_per_tile"
+  ],
+  "properties": {
+    "version": { "const": "canon_geo_client_tile_ingest_request.v0" },
+    "tile_id": { "$ref": "#/$defs/h3_cell" },
+    "source_format": { "$ref": "#/$defs/source_format" },
+    "source_path": { "type": "string", "minLength": 1 },
+    "source_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "declared_crs": { "const": "EPSG:4326" },
+    "frame": { "$ref": "#/$defs/frame" },
+    "source_instance_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "release_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "release_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "vendor": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "vintage": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "vendor_identifier": { "$ref": "#/$defs/vendor_identifier" },
+    "source_record_id_property": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "supplemental_h3_cells_property": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "license_expression": { "type": "string", "minLength": 1 },
+    "coverage_extent": { "$ref": "#/$defs/coverage_extent" },
+    "mutual_exclusivity_declared": { "type": "boolean" },
+    "h3_resolution": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "halo_k": { "type": "integer", "minimum": 0 },
+    "work_cells": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/h3_cell" }
+    },
+    "max_features": { "type": "integer", "minimum": 1 },
+    "max_vertices_per_geometry": { "type": "integer", "minimum": 1 },
+    "max_geometry_bytes_per_tile": { "type": "integer", "minimum": 1 }
+  },
+  "$defs": {
+    "source_format": {
+      "enum": ["geo_json", "ndjson_geo_json"]
+    },
+    "h3_cell": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{15}$"
+    },
+    "source_point_fixed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "integer" },
+        "y": { "type": "integer" }
+      }
+    },
+    "affine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x_from_source_x_numerator",
+        "x_from_source_y_numerator",
+        "y_from_source_x_numerator",
+        "y_from_source_y_numerator",
+        "denominator"
+      ],
+      "properties": {
+        "x_from_source_x_numerator": { "type": "integer" },
+        "x_from_source_y_numerator": { "type": "integer" },
+        "y_from_source_x_numerator": { "type": "integer" },
+        "y_from_source_y_numerator": { "type": "integer" },
+        "denominator": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method_id",
+        "method_version",
+        "parameters_blake3",
+        "max_projection_error_micrometres"
+      ],
+      "properties": {
+        "method_id": { "type": "string", "minLength": 1 },
+        "method_version": { "type": "string", "minLength": 1 },
+        "parameters_blake3": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "max_projection_error_micrometres": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "frame_id",
+        "tile_id",
+        "source_crs",
+        "source_axis_domain",
+        "source_decimal_places",
+        "source_origin",
+        "affine",
+        "projection",
+        "max_abs_coordinate_mm"
+      ],
+      "properties": {
+        "version": { "const": "canon_geo_local_frame.v0" },
+        "frame_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "tile_id": { "$ref": "#/$defs/h3_cell" },
+        "source_crs": { "const": "EPSG:4326" },
+        "source_axis_domain": { "const": "geographic_longitude_latitude" },
+        "source_decimal_places": { "type": "integer", "minimum": 0, "maximum": 9 },
+        "source_origin": { "$ref": "#/$defs/source_point_fixed" },
+        "affine": { "$ref": "#/$defs/affine" },
+        "projection": { "$ref": "#/$defs/projection" },
+        "max_abs_coordinate_mm": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "vendor_identifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issuer", "role", "property"],
+      "properties": {
+        "issuer": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "role": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "property": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "coverage_extent_kind": {
+      "enum": ["client_declared_h3_cell_set"]
+    },
+    "coverage_extent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extent_id", "kind", "h3_cells"],
+      "properties": {
+        "extent_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "kind": { "$ref": "#/$defs/coverage_extent_kind" },
+        "h3_cells": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "items": { "$ref": "#/$defs/h3_cell" }
+        }
+      }
+    }
+  }
+}

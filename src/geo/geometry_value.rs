@@ -16,8 +16,9 @@ use super::{
     },
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use h3o::{CellIndex, Resolution};
+use h3o::{CellIndex, LatLng, Resolution};
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use sha2::{Digest as _, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -30,6 +31,8 @@ pub const CANON_GEO_GEOMETRY_REQUEST_VERSION: &str = "canon_geo_geometry_request
 pub const CANON_GEO_GEOMETRY_VALUE_VERSION: &str = "canon_geo_geometry_value.v0";
 pub const CANON_GEO_GEOMETRY_TILE_VERSION: &str = "canon_geo_geometry_tile.v0";
 pub const CANON_GEO_LOCAL_FRAME_VERSION: &str = "canon_geo_local_frame.v0";
+pub const CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION: &str =
+    "canon_geo_client_tile_ingest_request.v0";
 pub const CANON_GEO_PROVIDER_TILE_BUILD_VERSION: &str = "canon_geo_provider_tile_build.v0";
 pub const CANON_GEO_PROVIDER_TILE_CONTRACT_VERSION: &str = "canon_geo_provider_tile_contract.v0";
 pub const CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION: &str = "canon_geo_warehouse_geometry_rows.v0";
@@ -37,6 +40,8 @@ pub const CANON_GEO_WAREHOUSE_GEOMETRY_VERSION: &str = "canon_geo_warehouse_geom
 
 const CANON_GEO_PLANAR_FRAME_METHOD_ID: &str = "canon:planar-source-affine";
 const CANON_GEO_PLANAR_FRAME_METHOD_VERSION: &str = "v0";
+const CANON_GEO_CLIENT_TILE_TRANSFORM_METHOD_ID: &str = "canon:client-geojson-wgs84-frame-declared";
+const CANON_GEO_CLIENT_TILE_TRANSFORM_METHOD_VERSION: &str = "v0";
 const ISO_WKB_2D_BASE64_ENCODING: &str = "iso-wkb-2d-base64";
 
 const MAX_SOURCE_DECIMAL_PLACES: u32 = 9;
@@ -396,6 +401,134 @@ pub struct GeoProviderTileFeatureContract {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum GeoClientTileSourceFormat {
+    GeoJson,
+    NdjsonGeoJson,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoClientTileCoverageExtentKind {
+    ClientDeclaredH3CellSet,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoClientTileCoverageExtent {
+    pub extent_id: String,
+    pub kind: GeoClientTileCoverageExtentKind,
+    pub h3_cells: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoClientTileVendorIdentifier {
+    pub issuer: String,
+    pub role: String,
+    pub property: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoClientTileIngestRequest {
+    pub version: String,
+    pub tile_id: String,
+    pub source_format: GeoClientTileSourceFormat,
+    pub source_path: String,
+    pub source_digest: String,
+    pub declared_crs: String,
+    pub frame: GeoLocalFrameContract,
+    pub source_instance_id: String,
+    pub release_id: String,
+    pub release_digest: String,
+    pub vendor: String,
+    pub vintage: String,
+    pub vendor_identifier: GeoClientTileVendorIdentifier,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_record_id_property: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supplemental_h3_cells_property: Option<String>,
+    pub license_expression: String,
+    pub coverage_extent: GeoClientTileCoverageExtent,
+    pub mutual_exclusivity_declared: bool,
+    pub h3_resolution: u8,
+    pub halo_k: u32,
+    pub work_cells: Vec<String>,
+    pub max_features: u64,
+    pub max_vertices_per_geometry: u64,
+    pub max_geometry_bytes_per_tile: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoClientTileMembershipRule {
+    RepresentativePointAnchor,
+    DeclaredSupplementalCoverage,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoClientTileMembership {
+    pub source_instance_id: String,
+    pub feature_id: String,
+    pub source_feature_id: String,
+    pub h3_cell: String,
+    pub rule: GeoClientTileMembershipRule,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoClientTileFeatureAlias {
+    pub feature_id: String,
+    pub alias_namespace: String,
+    pub alias_value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoClientTileValidationRefusalCount {
+    pub reason: GeoGeometryErrorCode,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoClientTileValidationSummary {
+    pub source_feature_count: u64,
+    pub accepted_feature_count: u64,
+    pub refused_feature_count: u64,
+    pub outside_work_cell_count: u64,
+    pub refusal_counts: Vec<GeoClientTileValidationRefusalCount>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoClientTileIngestSummary {
+    pub validation: GeoClientTileValidationSummary,
+    pub membership_row_count: u64,
+    pub anchor_membership_count: u64,
+    pub supplemental_membership_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoClientTileTransformProvenance {
+    pub method_id: String,
+    pub method_version: String,
+    pub declared_crs: String,
+    pub frame_id: String,
+    pub h3_library: String,
+    pub h3_resolution: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoClientTileIngestReport {
+    pub request_version: String,
+    pub source_format: GeoClientTileSourceFormat,
+    pub source_path: String,
+    pub source_digest: String,
+    pub declared_crs: String,
+    pub transform: GeoClientTileTransformProvenance,
+    pub coverage_extent: GeoClientTileCoverageExtent,
+    pub mutual_exclusivity_declared: bool,
+    pub aliases: Vec<GeoClientTileFeatureAlias>,
+    pub memberships: Vec<GeoClientTileMembership>,
+    pub summary: GeoClientTileIngestSummary,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GeoProviderTileDataBookDecision {
     DatabookLikeSelfContainedTileNoNewDependency,
 }
@@ -409,6 +542,8 @@ pub struct GeoProviderTileContract {
     pub sources: Vec<GeoProviderTileSource>,
     pub license_posture: GeoProviderTileLicensePosture,
     pub features: Vec<GeoProviderTileFeatureContract>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_ingest: Option<GeoClientTileIngestReport>,
     pub tile_content_blake3: String,
 }
 
@@ -554,7 +689,7 @@ pub struct GeoGeometryBudgetBreach {
     pub configured: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GeoGeometryErrorCode {
     UnsupportedVersion,
@@ -833,12 +968,1105 @@ pub fn materialize_provider_geometry_tile(
         sources,
         license_posture,
         features: feature_contracts,
+        client_ingest: None,
         tile_content_blake3: String::new(),
     };
     provider_tile.tile_content_blake3 =
         provider_geometry_tile_content_blake3(&geometry_tile, &provider_tile)?;
     geometry_tile.provider_tile = Some(provider_tile);
     Ok(geometry_tile)
+}
+
+pub fn ingest_client_geometry_tile(
+    request: &GeoClientTileIngestRequest,
+    source_bytes: &[u8],
+) -> Result<GeoGeometryTileArtifact, GeoGeometryError> {
+    let (work_cells, coverage_cells) = validate_client_tile_ingest_request(request)?;
+    let actual_source_digest = blake3::hash(source_bytes).to_hex().to_string();
+    if actual_source_digest != request.source_digest {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceDigest,
+            "Client tile ingest source bytes do not match the declared BLAKE3 digest",
+            [
+                ("source_path", request.source_path.as_str()),
+                ("expected", request.source_digest.as_str()),
+                ("actual", actual_source_digest.as_str()),
+            ],
+        ));
+    }
+
+    let source_features = parse_client_geojson_feature_values(request.source_format, source_bytes)?;
+    let source_feature_count = usize_to_u64(source_features.len(), "client source feature count")?;
+    let resolution = Resolution::try_from(request.h3_resolution).map_err(|error| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Client tile ingest declares an unsupported H3 resolution",
+            [
+                ("h3_resolution", request.h3_resolution.to_string()),
+                ("error", error.to_string()),
+            ],
+        )
+    })?;
+    let alias_namespace = client_alias_namespace(&request.vendor_identifier)?;
+    let mut seen_source_feature_ids = BTreeSet::new();
+    let mut refusal_counts = BTreeMap::<GeoGeometryErrorCode, u64>::new();
+    let mut outside_work_cell_count = 0_u64;
+    let mut geometry_features = Vec::new();
+    let mut feature_contracts = Vec::new();
+    let mut aliases = Vec::new();
+    let mut memberships = Vec::new();
+    let mut anchor_membership_count = 0_u64;
+    let mut supplemental_membership_count = 0_u64;
+
+    for (record_ordinal, feature) in source_features {
+        let parsed = match parse_client_geojson_feature(request, record_ordinal, &feature) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                increment_refusal_count(&mut refusal_counts, error.code)?;
+                continue;
+            }
+        };
+        if !seen_source_feature_ids.insert(parsed.source_feature_id.clone()) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidSourceProvenance,
+                "Client tile ingest repeats a vendor feature identifier",
+                [
+                    ("alias_namespace", alias_namespace.as_str()),
+                    ("source_feature_id", parsed.source_feature_id.as_str()),
+                ],
+            ));
+        }
+
+        let anchor_cell = h3_cell_for_decimal_point(
+            &parsed.representative_point,
+            request.frame.source_decimal_places,
+            resolution,
+        )?;
+        let mut feature_memberships = vec![GeoClientTileMembership {
+            source_instance_id: request.source_instance_id.clone(),
+            feature_id: parsed.feature_id.clone(),
+            source_feature_id: parsed.source_feature_id.clone(),
+            h3_cell: anchor_cell,
+            rule: GeoClientTileMembershipRule::RepresentativePointAnchor,
+        }];
+        match parse_client_supplemental_cells(request, &feature, resolution) {
+            Ok(cells) => {
+                for cell in cells {
+                    feature_memberships.push(GeoClientTileMembership {
+                        source_instance_id: request.source_instance_id.clone(),
+                        feature_id: parsed.feature_id.clone(),
+                        source_feature_id: parsed.source_feature_id.clone(),
+                        h3_cell: cell,
+                        rule: GeoClientTileMembershipRule::DeclaredSupplementalCoverage,
+                    });
+                }
+            }
+            Err(error) => {
+                increment_refusal_count(&mut refusal_counts, error.code)?;
+                continue;
+            }
+        }
+        feature_memberships.sort();
+        feature_memberships.dedup();
+        let in_work_cell = feature_memberships
+            .iter()
+            .any(|membership| work_cells.contains(&membership.h3_cell));
+        if !in_work_cell {
+            outside_work_cell_count = checked_add_u64(
+                outside_work_cell_count,
+                1,
+                "client tile outside work-cell count",
+            )?;
+            continue;
+        }
+        for membership in &feature_memberships {
+            if work_cells.contains(&membership.h3_cell)
+                && !coverage_cells.contains(&membership.h3_cell)
+            {
+                return Err(GeoGeometryError::new(
+                    GeoGeometryErrorCode::InvalidTileContract,
+                    "Client tile feature membership falls outside the declared coverage extent",
+                    [
+                        ("feature_id", parsed.feature_id.as_str()),
+                        ("h3_cell", membership.h3_cell.as_str()),
+                        (
+                            "coverage_extent",
+                            request.coverage_extent.extent_id.as_str(),
+                        ),
+                    ],
+                ));
+            }
+        }
+
+        let single_request = GeoGeometryTileRequest {
+            version: CANON_GEO_GEOMETRY_REQUEST_VERSION.to_string(),
+            frame: request.frame.clone(),
+            features: vec![parsed.geometry_feature.clone()],
+            max_vertices_per_geometry: request.max_vertices_per_geometry,
+            max_geometry_bytes_per_tile: request.max_geometry_bytes_per_tile,
+        };
+        if let Err(error) = materialize_geometry_tile(&single_request) {
+            increment_refusal_count(&mut refusal_counts, error.code)?;
+            continue;
+        }
+
+        anchor_membership_count = checked_add_u64(
+            anchor_membership_count,
+            1,
+            "client tile anchor membership count",
+        )?;
+        let supplemental_count = feature_memberships
+            .iter()
+            .filter(|membership| {
+                membership.rule == GeoClientTileMembershipRule::DeclaredSupplementalCoverage
+                    && work_cells.contains(&membership.h3_cell)
+            })
+            .count();
+        supplemental_membership_count = checked_add_u64(
+            supplemental_membership_count,
+            usize_to_u64(
+                supplemental_count,
+                "client tile supplemental membership count",
+            )?,
+            "client tile supplemental membership count",
+        )?;
+        memberships.extend(
+            feature_memberships
+                .into_iter()
+                .filter(|membership| work_cells.contains(&membership.h3_cell)),
+        );
+        aliases.push(GeoClientTileFeatureAlias {
+            feature_id: parsed.feature_id.clone(),
+            alias_namespace: alias_namespace.clone(),
+            alias_value: parsed.source_feature_id.clone(),
+        });
+        geometry_features.push(parsed.geometry_feature);
+        feature_contracts.push(parsed.feature_contract);
+    }
+
+    let accepted_feature_count = usize_to_u64(geometry_features.len(), "accepted client features")?;
+    if accepted_feature_count > request.max_features {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidInput,
+            "Client tile ingest accepted feature count exceeds the declared budget",
+            [
+                ("observed", accepted_feature_count.to_string()),
+                ("configured", request.max_features.to_string()),
+            ],
+        ));
+    }
+    memberships.sort();
+    memberships.dedup();
+    aliases.sort();
+    let refused_feature_count = refusal_counts
+        .values()
+        .copied()
+        .try_fold(0_u64, |sum, count| {
+            checked_add_u64(sum, count, "client tile refused feature count")
+        })?;
+    let refusal_counts = refusal_counts
+        .into_iter()
+        .map(|(reason, count)| GeoClientTileValidationRefusalCount { reason, count })
+        .collect::<Vec<_>>();
+    let validation = GeoClientTileValidationSummary {
+        source_feature_count,
+        accepted_feature_count,
+        refused_feature_count,
+        outside_work_cell_count,
+        refusal_counts,
+    };
+    let report = GeoClientTileIngestReport {
+        request_version: request.version.clone(),
+        source_format: request.source_format,
+        source_path: request.source_path.clone(),
+        source_digest: request.source_digest.clone(),
+        declared_crs: request.declared_crs.clone(),
+        transform: GeoClientTileTransformProvenance {
+            method_id: CANON_GEO_CLIENT_TILE_TRANSFORM_METHOD_ID.to_string(),
+            method_version: CANON_GEO_CLIENT_TILE_TRANSFORM_METHOD_VERSION.to_string(),
+            declared_crs: request.declared_crs.clone(),
+            frame_id: request.frame.frame_id.clone(),
+            h3_library: "h3o=0.10.0".to_string(),
+            h3_resolution: request.h3_resolution,
+        },
+        coverage_extent: request.coverage_extent.clone(),
+        mutual_exclusivity_declared: request.mutual_exclusivity_declared,
+        aliases,
+        memberships,
+        summary: GeoClientTileIngestSummary {
+            validation,
+            membership_row_count: checked_add_u64(
+                anchor_membership_count,
+                supplemental_membership_count,
+                "client tile membership row count",
+            )?,
+            anchor_membership_count,
+            supplemental_membership_count,
+        },
+    };
+
+    let source_coverages = work_cells
+        .iter()
+        .map(|cell| GeoProviderTileSourceCoverage {
+            source_instance_id: request.source_instance_id.clone(),
+            h3_cell: cell.clone(),
+            coverage_state: if coverage_cells.contains(cell) {
+                GeoProviderTileCoverageState::Complete
+            } else {
+                GeoProviderTileCoverageState::Absent
+            },
+        })
+        .collect::<Vec<_>>();
+    let build_request = GeoProviderGeometryTileBuildRequest {
+        version: CANON_GEO_PROVIDER_TILE_BUILD_VERSION.to_string(),
+        tile_id: request.tile_id.clone(),
+        geometry_request: GeoGeometryTileRequest {
+            version: CANON_GEO_GEOMETRY_REQUEST_VERSION.to_string(),
+            frame: request.frame.clone(),
+            features: geometry_features,
+            max_vertices_per_geometry: request.max_vertices_per_geometry,
+            max_geometry_bytes_per_tile: request.max_geometry_bytes_per_tile,
+        },
+        subset: GeoProviderTileSubsetPredicate {
+            kind: GeoProviderTileSubsetKind::H3CellSetAndSourceCoverageIntersection,
+            predicate_id: format!(
+                "client-ingest:{}:{}",
+                request.source_instance_id, request.tile_id
+            ),
+            h3_resolution: request.h3_resolution,
+            center_cell: request.tile_id.clone(),
+            halo_k: request.halo_k,
+            work_cells: work_cells.iter().cloned().collect(),
+            source_coverages,
+        },
+        sources: vec![GeoProviderTileSource {
+            source_instance_id: request.source_instance_id.clone(),
+            release_id: request.release_id.clone(),
+            release_digest: request.release_digest.clone(),
+            license_class: GeoLicenseClass::RestrictedLocalOnly,
+            license_expression: request.license_expression.clone(),
+            attribution_required: false,
+            attribution_text: None,
+            provenance: GeoProviderTileSourceProvenance::ClientDeclared {
+                vendor: request.vendor.clone(),
+                vintage: request.vintage.clone(),
+                source_crs: request.declared_crs.clone(),
+                coverage_extent: request.coverage_extent.extent_id.clone(),
+                mutual_exclusivity_declared: request.mutual_exclusivity_declared,
+            },
+        }],
+        license_posture: GeoProviderTileLicensePosture {
+            posture_id: format!("client-ingest-local-only:{}", request.source_instance_id),
+            output_license_expression: request.license_expression.clone(),
+            redistribution_notice:
+                "Contains client-declared geometry; raw tile remains local-only.".to_string(),
+            attribution_requirements: Vec::new(),
+            client_restricted_source_ids: vec![request.source_instance_id.clone()],
+        },
+        feature_contracts,
+        allow_vendor_simplified_decision_geometry: false,
+    };
+    let mut geometry_tile = materialize_provider_geometry_tile(&build_request)?;
+    let mut provider_tile = geometry_tile.provider_tile.take().ok_or_else(|| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Client tile ingest did not produce a provider tile contract",
+            std::iter::empty::<(&str, &str)>(),
+        )
+    })?;
+    provider_tile.client_ingest = Some(report);
+    provider_tile.tile_content_blake3 =
+        provider_geometry_tile_content_blake3(&geometry_tile, &provider_tile)?;
+    geometry_tile.provider_tile = Some(provider_tile);
+    Ok(geometry_tile)
+}
+
+#[derive(Debug)]
+struct ParsedClientTileFeature {
+    feature_id: String,
+    source_feature_id: String,
+    representative_point: GeoSourcePointDecimal,
+    geometry_feature: GeoGeometryFeatureInput,
+    feature_contract: GeoProviderTileFeatureContract,
+}
+
+#[derive(Debug)]
+struct ParsedClientGeometry {
+    geometry: GeoSourceGeometry,
+    representative_point: GeoSourcePointDecimal,
+}
+
+fn validate_client_tile_ingest_request(
+    request: &GeoClientTileIngestRequest,
+) -> Result<(BTreeSet<String>, BTreeSet<String>), GeoGeometryError> {
+    if request.version != CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::UnsupportedVersion,
+            "Unsupported Geo client tile ingest request version",
+            [
+                ("actual", request.version.as_str()),
+                ("expected", CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION),
+            ],
+        ));
+    }
+    if request.declared_crs != "EPSG:4326" {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::MixedCrs,
+            "Client tile ingest v0 requires an explicit EPSG:4326 longitude/latitude CRS",
+            [("declared_crs", request.declared_crs.as_str())],
+        ));
+    }
+    validate_frame(&request.frame)?;
+    if request.frame.source_crs != request.declared_crs
+        || request.frame.source_axis_domain != GeoSourceAxisDomain::GeographicLongitudeLatitude
+    {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::MixedCrs,
+            "Client tile ingest frame must use the declared WGS84 longitude/latitude CRS",
+            [
+                ("declared_crs", request.declared_crs.as_str()),
+                ("frame_crs", request.frame.source_crs.as_str()),
+            ],
+        ));
+    }
+    if request.frame.tile_id != request.tile_id {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Client tile ingest frame tile_id must match the ingest tile_id",
+            [
+                ("tile_id", request.tile_id.as_str()),
+                ("frame_tile_id", request.frame.tile_id.as_str()),
+            ],
+        ));
+    }
+    for (field, value) in [
+        ("tile_id", request.tile_id.as_str()),
+        ("source_path", request.source_path.as_str()),
+        ("source_instance_id", request.source_instance_id.as_str()),
+        ("release_id", request.release_id.as_str()),
+        ("vendor", request.vendor.as_str()),
+        ("vintage", request.vintage.as_str()),
+        ("license_expression", request.license_expression.as_str()),
+        (
+            "coverage_extent.extent_id",
+            request.coverage_extent.extent_id.as_str(),
+        ),
+    ] {
+        validate_provider_text(field, value)?;
+    }
+    validate_provider_blake3("source_digest", &request.source_digest)?;
+    validate_provider_blake3("release_digest", &request.release_digest)?;
+    validate_provider_text(
+        "vendor_identifier.issuer",
+        &request.vendor_identifier.issuer,
+    )?;
+    validate_provider_text("vendor_identifier.role", &request.vendor_identifier.role)?;
+    validate_provider_text(
+        "vendor_identifier.property",
+        &request.vendor_identifier.property,
+    )?;
+    if let Some(property) = &request.source_record_id_property {
+        validate_provider_text("source_record_id_property", property)?;
+    }
+    if let Some(property) = &request.supplemental_h3_cells_property {
+        validate_provider_text("supplemental_h3_cells_property", property)?;
+    }
+    if request.max_features == 0
+        || request.max_vertices_per_geometry == 0
+        || request.max_geometry_bytes_per_tile == 0
+    {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidInput,
+            "Client tile ingest budgets must be positive",
+            [
+                ("max_features", request.max_features.to_string()),
+                (
+                    "max_vertices_per_geometry",
+                    request.max_vertices_per_geometry.to_string(),
+                ),
+                (
+                    "max_geometry_bytes_per_tile",
+                    request.max_geometry_bytes_per_tile.to_string(),
+                ),
+            ],
+        ));
+    }
+    let resolution = Resolution::try_from(request.h3_resolution).map_err(|error| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Client tile ingest declares an unsupported H3 resolution",
+            [
+                ("h3_resolution", request.h3_resolution.to_string()),
+                ("error", error.to_string()),
+            ],
+        )
+    })?;
+    parse_client_h3_cell("tile_id", &request.tile_id, resolution)?;
+    let work_cells = canonical_client_cell_set("work_cells", &request.work_cells, resolution)?;
+    if !work_cells.contains(&request.tile_id) {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Client tile ingest work cells must include the tile center",
+            [("tile_id", request.tile_id.as_str())],
+        ));
+    }
+    if request.coverage_extent.h3_cells.is_empty() {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Client tile ingest requires an explicit nonempty coverage extent",
+            [(
+                "coverage_extent",
+                request.coverage_extent.extent_id.as_str(),
+            )],
+        ));
+    }
+    let coverage_cells = canonical_client_cell_set(
+        "coverage_extent.h3_cells",
+        &request.coverage_extent.h3_cells,
+        resolution,
+    )?;
+    Ok((work_cells, coverage_cells))
+}
+
+fn canonical_client_cell_set(
+    field: &str,
+    values: &[String],
+    resolution: Resolution,
+) -> Result<BTreeSet<String>, GeoGeometryError> {
+    if values.is_empty() || values.len() > MAX_PROVIDER_TILE_WORK_CELLS {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Client tile ingest requires a bounded nonempty H3 cell set",
+            [
+                ("field", field),
+                ("observed", values.len().to_string().as_str()),
+                ("maximum", MAX_PROVIDER_TILE_WORK_CELLS.to_string().as_str()),
+            ],
+        ));
+    }
+    let mut cells = BTreeSet::new();
+    for value in values {
+        let cell = parse_client_h3_cell(field, value, resolution)?;
+        if !cells.insert(cell) {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidTileContract,
+                "Client tile ingest H3 cell sets must not repeat cells",
+                [("field", field), ("h3_cell", value.as_str())],
+            ));
+        }
+    }
+    Ok(cells)
+}
+
+fn parse_client_h3_cell(
+    field: &str,
+    value: &str,
+    expected_resolution: Resolution,
+) -> Result<String, GeoGeometryError> {
+    let cell = parse_provider_h3_cell(field, value, u8::from(expected_resolution))?;
+    let canonical = cell.to_string();
+    if canonical != value {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Client tile ingest H3 cells must use canonical lowercase encoding",
+            [
+                ("field", field),
+                ("value", value),
+                ("canonical", canonical.as_str()),
+            ],
+        ));
+    }
+    Ok(canonical)
+}
+
+fn parse_client_geojson_feature_values(
+    source_format: GeoClientTileSourceFormat,
+    source_bytes: &[u8],
+) -> Result<Vec<(u64, JsonValue)>, GeoGeometryError> {
+    let source = std::str::from_utf8(source_bytes).map_err(|error| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceEncoding,
+            "Client tile ingest source is not UTF-8 GeoJSON/NDJSON",
+            [("error", error.to_string())],
+        )
+    })?;
+    match source_format {
+        GeoClientTileSourceFormat::GeoJson => {
+            let value: JsonValue = serde_json::from_str(source).map_err(|error| {
+                GeoGeometryError::new(
+                    GeoGeometryErrorCode::InvalidSourceEncoding,
+                    "Client tile ingest source is not valid GeoJSON",
+                    [("error", error.to_string())],
+                )
+            })?;
+            match geojson_type(&value) {
+                Some("FeatureCollection") => {
+                    let features = value
+                        .get("features")
+                        .and_then(JsonValue::as_array)
+                        .ok_or_else(|| {
+                            GeoGeometryError::new(
+                                GeoGeometryErrorCode::InvalidSourceEncoding,
+                                "GeoJSON FeatureCollection must carry a features array",
+                                std::iter::empty::<(&str, &str)>(),
+                            )
+                        })?;
+                    features
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(index, feature)| {
+                            Ok((usize_to_u64(index, "GeoJSON feature ordinal")?, feature))
+                        })
+                        .collect()
+                }
+                Some("Feature") => Ok(vec![(0, value)]),
+                Some(kind) => Err(GeoGeometryError::new(
+                    GeoGeometryErrorCode::UnsupportedGeometryType,
+                    "Client tile ingest GeoJSON input must be a Feature or FeatureCollection",
+                    [("type", kind)],
+                )),
+                None => Err(GeoGeometryError::new(
+                    GeoGeometryErrorCode::InvalidSourceEncoding,
+                    "Client tile ingest GeoJSON object is missing a type field",
+                    std::iter::empty::<(&str, &str)>(),
+                )),
+            }
+        }
+        GeoClientTileSourceFormat::NdjsonGeoJson => {
+            let mut features = Vec::new();
+            for (index, line) in source.lines().enumerate() {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let value: JsonValue = serde_json::from_str(line).map_err(|error| {
+                    GeoGeometryError::new(
+                        GeoGeometryErrorCode::InvalidSourceEncoding,
+                        "Client tile ingest NDJSON line is not valid GeoJSON",
+                        [
+                            ("line", index.saturating_add(1).to_string()),
+                            ("error", error.to_string()),
+                        ],
+                    )
+                })?;
+                if geojson_type(&value) != Some("Feature") {
+                    return Err(GeoGeometryError::new(
+                        GeoGeometryErrorCode::UnsupportedGeometryType,
+                        "Client tile ingest NDJSON supports one GeoJSON Feature per line",
+                        [("line", index.saturating_add(1).to_string())],
+                    ));
+                }
+                features.push((usize_to_u64(index, "NDJSON feature ordinal")?, value));
+            }
+            Ok(features)
+        }
+    }
+}
+
+fn parse_client_geojson_feature(
+    request: &GeoClientTileIngestRequest,
+    record_ordinal: u64,
+    feature: &JsonValue,
+) -> Result<ParsedClientTileFeature, GeoGeometryError> {
+    if geojson_type(feature) != Some("Feature") {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::UnsupportedGeometryType,
+            "Client tile ingest supports only GeoJSON Feature records",
+            [("record_ordinal", record_ordinal.to_string())],
+        ));
+    }
+    let properties = feature_properties(feature)?;
+    let source_feature_id = feature_property_text(
+        properties,
+        &request.vendor_identifier.property,
+        "vendor_identifier.property",
+    )?;
+    validate_provider_contract_identifier(
+        "properties[vendor_identifier.property]",
+        &source_feature_id,
+    )?;
+    let source_record_id = match &request.source_record_id_property {
+        Some(property) => feature_property_text(properties, property, "source_record_id_property")?,
+        None => feature
+            .get("id")
+            .map(json_scalar_text)
+            .transpose()?
+            .unwrap_or_else(|| source_feature_id.clone()),
+    };
+    validate_provider_contract_identifier("source_record_id", &source_record_id)?;
+    let geometry_value = feature.get("geometry").ok_or_else(|| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::EmptyGeometry,
+            "Client tile ingest feature is missing geometry",
+            [("source_feature_id", source_feature_id.as_str())],
+        )
+    })?;
+    let parsed_geometry =
+        parse_client_geojson_geometry(geometry_value, request.frame.source_decimal_places)?;
+    let feature_id = source_feature_id.clone();
+    let geometry_feature = GeoGeometryFeatureInput {
+        feature_id: feature_id.clone(),
+        source_crs: request.declared_crs.clone(),
+        geometry: parsed_geometry.geometry,
+    };
+    let mut field_locators = vec![
+        GeoProviderTileFieldLocator {
+            field_path: "$.geometry".to_string(),
+            source_path: request.source_path.clone(),
+            record_ordinal,
+        },
+        GeoProviderTileFieldLocator {
+            field_path: format!("$.properties.{}", request.vendor_identifier.property),
+            source_path: request.source_path.clone(),
+            record_ordinal,
+        },
+    ];
+    if let Some(property) = &request.source_record_id_property {
+        field_locators.push(GeoProviderTileFieldLocator {
+            field_path: format!("$.properties.{property}"),
+            source_path: request.source_path.clone(),
+            record_ordinal,
+        });
+    }
+    if let Some(property) = &request.supplemental_h3_cells_property
+        && properties.contains_key(property)
+    {
+        field_locators.push(GeoProviderTileFieldLocator {
+            field_path: format!("$.properties.{property}"),
+            source_path: request.source_path.clone(),
+            record_ordinal,
+        });
+    }
+    let feature_contract_source_feature_id = source_feature_id.clone();
+    Ok(ParsedClientTileFeature {
+        feature_id: feature_id.clone(),
+        source_feature_id,
+        representative_point: parsed_geometry.representative_point,
+        geometry_feature,
+        feature_contract: GeoProviderTileFeatureContract {
+            feature_id,
+            source_instance_id: request.source_instance_id.clone(),
+            source_feature_id: feature_contract_source_feature_id,
+            decision_geometry_fidelity: GeoProviderGeometryFidelity::SourceFidelity,
+            display_geometry_fidelity: Some(GeoProviderGeometryFidelity::DisplaySimplified),
+            license_class: GeoLicenseClass::RestrictedLocalOnly,
+            redaction_class: GeoProviderTileRedactionClass::LocalOnly,
+            provenance: GeoProviderTileFeatureProvenance {
+                source_instance_id: request.source_instance_id.clone(),
+                source_path: request.source_path.clone(),
+                source_digest: request.source_digest.clone(),
+                source_record_id,
+                record_ordinal,
+                field_locators,
+            },
+        },
+    })
+}
+
+fn parse_client_geojson_geometry(
+    geometry: &JsonValue,
+    decimal_places: u32,
+) -> Result<ParsedClientGeometry, GeoGeometryError> {
+    if geometry.is_null() {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::EmptyGeometry,
+            "Client tile ingest feature geometry is null",
+            std::iter::empty::<(&str, &str)>(),
+        ));
+    }
+    let kind = geojson_type(geometry).ok_or_else(|| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceEncoding,
+            "Client tile ingest geometry is missing a GeoJSON type",
+            std::iter::empty::<(&str, &str)>(),
+        )
+    })?;
+    let coordinates = geometry.get("coordinates").ok_or_else(|| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::EmptyGeometry,
+            "Client tile ingest geometry is missing coordinates",
+            [("type", kind)],
+        )
+    })?;
+    match kind {
+        "Point" => {
+            let coordinate =
+                parse_geojson_position(coordinates, decimal_places, "$.geometry.coordinates")?;
+            Ok(ParsedClientGeometry {
+                geometry: GeoSourceGeometry::Point {
+                    coordinate: coordinate.clone(),
+                },
+                representative_point: coordinate,
+            })
+        }
+        "Polygon" => {
+            let rings = coordinates.as_array().ok_or_else(|| {
+                GeoGeometryError::new(
+                    GeoGeometryErrorCode::InvalidSourceEncoding,
+                    "GeoJSON Polygon coordinates must be an array of rings",
+                    std::iter::empty::<(&str, &str)>(),
+                )
+            })?;
+            let (exterior, holes, representative_points) =
+                parse_geojson_polygon_rings(rings, decimal_places)?;
+            Ok(ParsedClientGeometry {
+                geometry: GeoSourceGeometry::Polygon { exterior, holes },
+                representative_point: representative_point_from_vertices(
+                    &representative_points,
+                    decimal_places,
+                )?,
+            })
+        }
+        "MultiPolygon" => {
+            let polygons = coordinates.as_array().ok_or_else(|| {
+                GeoGeometryError::new(
+                    GeoGeometryErrorCode::InvalidSourceEncoding,
+                    "GeoJSON MultiPolygon coordinates must be an array of polygons",
+                    std::iter::empty::<(&str, &str)>(),
+                )
+            })?;
+            if polygons.is_empty() {
+                return Err(GeoGeometryError::new(
+                    GeoGeometryErrorCode::EmptyGeometry,
+                    "GeoJSON MultiPolygon must contain at least one polygon",
+                    std::iter::empty::<(&str, &str)>(),
+                ));
+            }
+            let mut source_polygons = Vec::with_capacity(polygons.len());
+            let mut representative_points = Vec::new();
+            for polygon in polygons {
+                let rings = polygon.as_array().ok_or_else(|| {
+                    GeoGeometryError::new(
+                        GeoGeometryErrorCode::InvalidSourceEncoding,
+                        "GeoJSON MultiPolygon members must be arrays of rings",
+                        std::iter::empty::<(&str, &str)>(),
+                    )
+                })?;
+                let (exterior, holes, mut polygon_representative_points) =
+                    parse_geojson_polygon_rings(rings, decimal_places)?;
+                representative_points.append(&mut polygon_representative_points);
+                source_polygons.push(GeoSourcePolygon { exterior, holes });
+            }
+            Ok(ParsedClientGeometry {
+                geometry: GeoSourceGeometry::MultiPolygon {
+                    polygons: source_polygons,
+                },
+                representative_point: representative_point_from_vertices(
+                    &representative_points,
+                    decimal_places,
+                )?,
+            })
+        }
+        value => Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::UnsupportedGeometryType,
+            "Client tile ingest supports GeoJSON Point, Polygon, and MultiPolygon geometries",
+            [("type", value)],
+        )),
+    }
+}
+
+fn parse_geojson_polygon_rings(
+    rings: &[JsonValue],
+    decimal_places: u32,
+) -> Result<
+    (
+        Vec<GeoSourcePointDecimal>,
+        Vec<Vec<GeoSourcePointDecimal>>,
+        Vec<GeoSourcePointDecimal>,
+    ),
+    GeoGeometryError,
+> {
+    if rings.is_empty() {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::EmptyGeometry,
+            "GeoJSON Polygon must contain an exterior ring",
+            std::iter::empty::<(&str, &str)>(),
+        ));
+    }
+    let exterior = parse_geojson_ring(&rings[0], decimal_places, "$.geometry.coordinates[0]")?;
+    let mut representative_points = Vec::new();
+    append_representative_ring_points(&exterior, &mut representative_points, decimal_places)?;
+    let mut holes = Vec::with_capacity(rings.len().saturating_sub(1));
+    for (index, ring) in rings.iter().enumerate().skip(1) {
+        holes.push(parse_geojson_ring(
+            ring,
+            decimal_places,
+            &format!("$.geometry.coordinates[{index}]"),
+        )?);
+    }
+    Ok((exterior, holes, representative_points))
+}
+
+fn parse_geojson_ring(
+    value: &JsonValue,
+    decimal_places: u32,
+    context: &str,
+) -> Result<Vec<GeoSourcePointDecimal>, GeoGeometryError> {
+    let coordinates = value.as_array().ok_or_else(|| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceEncoding,
+            "GeoJSON polygon ring must be an array of positions",
+            [("context", context)],
+        )
+    })?;
+    coordinates
+        .iter()
+        .enumerate()
+        .map(|(index, position)| {
+            parse_geojson_position(position, decimal_places, &format!("{context}[{index}]"))
+        })
+        .collect()
+}
+
+fn parse_geojson_position(
+    value: &JsonValue,
+    decimal_places: u32,
+    context: &str,
+) -> Result<GeoSourcePointDecimal, GeoGeometryError> {
+    let coordinates = value.as_array().ok_or_else(|| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceEncoding,
+            "GeoJSON position must be a two-number longitude/latitude array",
+            [("context", context)],
+        )
+    })?;
+    if coordinates.len() != 2 {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::UnsupportedGeometryType,
+            "Client tile ingest supports only 2D GeoJSON coordinates",
+            [
+                ("context", context.to_string()),
+                ("coordinate_count", coordinates.len().to_string()),
+            ],
+        ));
+    }
+    let point = GeoSourcePointDecimal {
+        x: geojson_number_decimal(&coordinates[0], "longitude", context)?,
+        y: geojson_number_decimal(&coordinates[1], "latitude", context)?,
+    };
+    parse_fixed_decimal("longitude", &point.x, decimal_places)?;
+    parse_fixed_decimal("latitude", &point.y, decimal_places)?;
+    Ok(point)
+}
+
+fn geojson_number_decimal(
+    value: &JsonValue,
+    axis: &str,
+    context: &str,
+) -> Result<String, GeoGeometryError> {
+    let number = value.as_number().ok_or_else(|| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidCoordinate,
+            "GeoJSON coordinates must be JSON numbers",
+            [("axis", axis), ("context", context)],
+        )
+    })?;
+    Ok(number.to_string())
+}
+
+fn append_representative_ring_points(
+    ring: &[GeoSourcePointDecimal],
+    representative_points: &mut Vec<GeoSourcePointDecimal>,
+    decimal_places: u32,
+) -> Result<(), GeoGeometryError> {
+    let mut end = ring.len();
+    if ring.len() > 1 && source_points_equal_fixed(&ring[0], &ring[ring.len() - 1], decimal_places)?
+    {
+        end = end.saturating_sub(1);
+    }
+    representative_points.extend(ring[..end].iter().cloned());
+    Ok(())
+}
+
+fn source_points_equal_fixed(
+    left: &GeoSourcePointDecimal,
+    right: &GeoSourcePointDecimal,
+    decimal_places: u32,
+) -> Result<bool, GeoGeometryError> {
+    Ok(parse_fixed_decimal("longitude", &left.x, decimal_places)?
+        == parse_fixed_decimal("longitude", &right.x, decimal_places)?
+        && parse_fixed_decimal("latitude", &left.y, decimal_places)?
+            == parse_fixed_decimal("latitude", &right.y, decimal_places)?)
+}
+
+fn representative_point_from_vertices(
+    vertices: &[GeoSourcePointDecimal],
+    decimal_places: u32,
+) -> Result<GeoSourcePointDecimal, GeoGeometryError> {
+    if vertices.is_empty() {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::EmptyGeometry,
+            "Client tile ingest cannot derive a representative point from empty geometry",
+            std::iter::empty::<(&str, &str)>(),
+        ));
+    }
+    let mut x_sum = 0_i128;
+    let mut y_sum = 0_i128;
+    for point in vertices {
+        x_sum = x_sum
+            .checked_add(i128::from(parse_fixed_decimal(
+                "longitude",
+                &point.x,
+                decimal_places,
+            )?))
+            .ok_or_else(|| GeoGeometryError::overflow("representative longitude sum"))?;
+        y_sum = y_sum
+            .checked_add(i128::from(parse_fixed_decimal(
+                "latitude",
+                &point.y,
+                decimal_places,
+            )?))
+            .ok_or_else(|| GeoGeometryError::overflow("representative latitude sum"))?;
+    }
+    let count = usize_to_u64(vertices.len(), "representative vertex count")?;
+    let (x, _) = round_rational_ties_even(x_sum, count)?;
+    let (y, _) = round_rational_ties_even(y_sum, count)?;
+    Ok(GeoSourcePointDecimal {
+        x: format_fixed_decimal(x, decimal_places)?,
+        y: format_fixed_decimal(y, decimal_places)?,
+    })
+}
+
+fn h3_cell_for_decimal_point(
+    point: &GeoSourcePointDecimal,
+    decimal_places: u32,
+    resolution: Resolution,
+) -> Result<String, GeoGeometryError> {
+    let longitude = parse_fixed_decimal("longitude", &point.x, decimal_places)?;
+    let latitude = parse_fixed_decimal("latitude", &point.y, decimal_places)?;
+    let scale = pow10_i128(decimal_places)?;
+    let longitude_degrees = (longitude as f64) / (scale as f64);
+    let latitude_degrees = (latitude as f64) / (scale as f64);
+    let point = LatLng::new(latitude_degrees, longitude_degrees).map_err(|error| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidCoordinate,
+            "Client tile representative point could not enter h3o",
+            [
+                ("longitude", longitude.to_string()),
+                ("latitude", latitude.to_string()),
+                ("error", error.to_string()),
+            ],
+        )
+    })?;
+    Ok(point.to_cell(resolution).to_string())
+}
+
+fn parse_client_supplemental_cells(
+    request: &GeoClientTileIngestRequest,
+    feature: &JsonValue,
+    resolution: Resolution,
+) -> Result<Vec<String>, GeoGeometryError> {
+    let Some(property) = &request.supplemental_h3_cells_property else {
+        return Ok(Vec::new());
+    };
+    let properties = feature_properties(feature)?;
+    let Some(value) = properties.get(property) else {
+        return Ok(Vec::new());
+    };
+    let cells = value.as_array().ok_or_else(|| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Client tile supplemental H3 coverage property must be an array of cells",
+            [("property", property.as_str())],
+        )
+    })?;
+    if cells.is_empty() {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidTileContract,
+            "Client tile supplemental H3 coverage must not be empty when declared",
+            [("property", property.as_str())],
+        ));
+    }
+    let mut parsed = Vec::with_capacity(cells.len());
+    for value in cells {
+        let Some(cell) = value.as_str() else {
+            return Err(GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidTileContract,
+                "Client tile supplemental H3 coverage cells must be strings",
+                [("property", property.as_str())],
+            ));
+        };
+        parsed.push(parse_client_h3_cell(property, cell, resolution)?);
+    }
+    parsed.sort();
+    parsed.dedup();
+    Ok(parsed)
+}
+
+fn feature_properties(
+    feature: &JsonValue,
+) -> Result<&serde_json::Map<String, JsonValue>, GeoGeometryError> {
+    feature
+        .get("properties")
+        .and_then(JsonValue::as_object)
+        .ok_or_else(|| {
+            GeoGeometryError::new(
+                GeoGeometryErrorCode::InvalidSourceProvenance,
+                "Client tile ingest GeoJSON Feature must carry an object properties map",
+                std::iter::empty::<(&str, &str)>(),
+            )
+        })
+}
+
+fn feature_property_text(
+    properties: &serde_json::Map<String, JsonValue>,
+    property: &str,
+    field: &str,
+) -> Result<String, GeoGeometryError> {
+    let value = properties.get(property).ok_or_else(|| {
+        GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceProvenance,
+            "Client tile ingest feature is missing a required property",
+            [("field", field), ("property", property)],
+        )
+    })?;
+    json_scalar_text(value)
+}
+
+fn json_scalar_text(value: &JsonValue) -> Result<String, GeoGeometryError> {
+    let text = if let Some(value) = value.as_str() {
+        value.to_string()
+    } else if let Some(value) = value.as_number() {
+        value.to_string()
+    } else {
+        return Err(GeoGeometryError::new(
+            GeoGeometryErrorCode::InvalidSourceProvenance,
+            "Client tile ingest identifiers must be string or number scalars",
+            std::iter::empty::<(&str, &str)>(),
+        ));
+    };
+    validate_provider_text("client_identifier", &text)?;
+    Ok(text)
+}
+
+fn geojson_type(value: &JsonValue) -> Option<&str> {
+    value.get("type").and_then(JsonValue::as_str)
+}
+
+fn client_alias_namespace(
+    identifier: &GeoClientTileVendorIdentifier,
+) -> Result<String, GeoGeometryError> {
+    validate_provider_text("vendor_identifier.issuer", &identifier.issuer)?;
+    validate_provider_text("vendor_identifier.role", &identifier.role)?;
+    Ok(format!("{}:{}", identifier.issuer, identifier.role))
+}
+
+fn increment_refusal_count(
+    counts: &mut BTreeMap<GeoGeometryErrorCode, u64>,
+    code: GeoGeometryErrorCode,
+) -> Result<(), GeoGeometryError> {
+    let entry = counts.entry(code).or_insert(0);
+    *entry = checked_add_u64(*entry, 1, "client tile refusal count")?;
+    Ok(())
+}
+
+fn checked_add_u64(left: u64, right: u64, context: &str) -> Result<u64, GeoGeometryError> {
+    left.checked_add(right)
+        .ok_or_else(|| GeoGeometryError::overflow(context))
+}
+
+fn usize_to_u64(value: usize, context: &str) -> Result<u64, GeoGeometryError> {
+    u64::try_from(value).map_err(|_| GeoGeometryError::overflow(context))
 }
 
 fn canonicalize_provider_sources(
@@ -1383,6 +2611,7 @@ fn provider_geometry_tile_content_blake3(
         sources: &'a [GeoProviderTileSource],
         license_posture: &'a GeoProviderTileLicensePosture,
         feature_contracts: &'a [GeoProviderTileFeatureContract],
+        client_ingest: &'a Option<GeoClientTileIngestReport>,
     }
 
     let projection = DigestProjection {
@@ -1400,6 +2629,7 @@ fn provider_geometry_tile_content_blake3(
         sources: &provider_tile.sources,
         license_posture: &provider_tile.license_posture,
         feature_contracts: &provider_tile.features,
+        client_ingest: &provider_tile.client_ingest,
     };
     let bytes = serde_json::to_vec(&projection).map_err(|error| {
         GeoGeometryError::new(
