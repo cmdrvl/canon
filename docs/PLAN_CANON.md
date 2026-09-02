@@ -150,6 +150,7 @@ canon entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGI
 canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
 canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]
+canon entity calibrate sweep <RESULT|EVIDENCE> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]
 canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY> --work-dir <DIR>
 canon entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--emit json|summary]
 canon entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--emit jsonl|summary]
@@ -502,6 +503,29 @@ lookup path and it does not change `canon.v0` exact-match semantics.
   exits `2` only for malformed envelopes or stale/missing/tampered artifacts;
   it does not change normal exact lookup semantics
 
+`canon entity calibrate sweep <RESULT|EVIDENCE> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]`
+- compiles a read-only threshold-selection report for entity workbench scored
+  pairs; it emits `canon.entity.calibrate_sweep.v0`
+- derives a deterministic grid from observed integer score distributions for
+  `backbone_score_min`, `attach_score_min`, `abstain_margin`,
+  `match_threshold`, and `ambiguity_gap`; axes use exact observed breakpoints
+  and deterministic thinning when an axis exceeds the documented cap
+- emits one truth-space row per threshold tuple with auto-accept, escrow,
+  precision, recall, and critical-false-merge metrics in integer basis points
+  or exact counts; artifacts contain no floating-point rates
+- uses frozen `canon.entity.quality.v1` gates: precision `>= 9950` bps, recall
+  `>= 9800` bps, and critical false merges `== 0`; callers cannot override
+  thresholds or waive gates
+- recommends the tuple with maximum auto-accept among gate-passing rows, with a
+  deterministic strictest-threshold tie-break; if no tuple passes, emits
+  `recommendation.status: blocked` and selects no fallback tuple
+- includes only a proposed YAML threshold fragment for manual operator
+  application; the command has zero authority to mutate strategies, registries,
+  work directories, witness ledgers, or project files
+- exits `0` for a valid report, including a blocked recommendation, and exits
+  `2` for malformed strategy/gold/result inputs or gold pairs absent from the
+  scored result artifact
+
 `canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY> --work-dir <DIR>`
 - validates the profile, registry snapshot, and source rows
 - writes prepared surfaces and profile firewall artifacts under the work
@@ -629,11 +653,12 @@ Streams
 
 No other outcomes.
 
-Workbench evaluation commands such as `canon entity alias-withholding` and
-`canon entity generalization` are report compilers rather than core lookup runs:
-a valid report exits `0` even when its internal release claim is blocked, and a
-bad execution envelope or referenced artifact exits `2` with a structured
-refusal.
+Workbench evaluation commands such as `canon entity alias-withholding`,
+`canon entity generalization`, and `canon entity calibrate sweep` are report
+compilers rather than core lookup runs: a valid report exits `0` even when its
+internal release claim or recommendation is blocked, and a bad execution
+envelope, referenced artifact, or gold/result calibration contract exits `2`
+with a structured refusal.
 
 ---
 

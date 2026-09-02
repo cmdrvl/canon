@@ -12,6 +12,7 @@ pub mod block;
 pub mod block_artifact;
 pub mod budget;
 pub mod cache;
+pub mod calibrate;
 pub mod candidates;
 pub mod contracts;
 pub mod diagnostics;

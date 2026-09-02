@@ -490,8 +490,8 @@ fn write_geo_run_building_plan(dir: &std::path::Path) -> PathBuf {
     assert_eq!(plan["status"], "planned");
     assert_eq!(
         plan["project_plan"]["nodes"].as_array().unwrap().len(),
-        5,
-        "synthetic building demo must exercise the five Geo leaf commands"
+        6,
+        "synthetic building demo must exercise the six Geo leaf commands"
     );
     let path = dir.join("synthetic-not-live-building-plan.json");
     fs::write(&path, &assert.get_output().stdout).expect("write synthetic Geo plan");
@@ -1205,6 +1205,7 @@ fn geo_plan_emits_canonical_partial_plan_and_binds_capabilities() {
         "geo.building.section",
         "geo.building.materialize_evidence",
         "geo.building.compile_evidence",
+        "geo.building.propagate",
         "geo.building.solve",
     ] {
         assert!(
@@ -1229,7 +1230,7 @@ fn geo_plan_is_byte_identical_for_reordered_inputs() {
 }
 
 #[test]
-fn geo_run_cli_executes_synthetic_not_live_five_leaf_building_chain() {
+fn geo_run_cli_executes_synthetic_not_live_six_leaf_building_chain() {
     let temp = tempdir().expect("tempdir");
     let input_dir = temp.path().join("synthetic-not-live-inputs");
     fs::create_dir(&input_dir).expect("create synthetic input dir");
@@ -1282,12 +1283,13 @@ fn geo_run_cli_executes_synthetic_not_live_five_leaf_building_chain() {
             "geo.building.compile_evidence",
             "geo.building.home_cells",
             "geo.building.materialize_evidence",
+            "geo.building.propagate",
             "geo.building.section",
             "geo.building.solve"
         ])
     );
     assert_eq!(run["artifact_inputs"].as_array().unwrap().len(), 3);
-    assert_eq!(run["output_refs"].as_array().unwrap().len(), 5);
+    assert_eq!(run["output_refs"].as_array().unwrap().len(), 6);
     assert!(
         run["output_refs"].as_array().unwrap().iter().any(|output| {
             output["artifact_id"] == "geo.building.solve/solve"

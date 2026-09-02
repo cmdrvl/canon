@@ -18,15 +18,16 @@ use canon::{
         CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
         CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoCompositionProfile,
-        GeoControlEntityLevel, GeoEntityLevel, GeoEvidenceClaimRole, GeoEvidenceRecordRef,
-        GeoHomeCellRow, GeoHomeCellRowsRequest, GeoIdentityParticipation, GeoNativeEntityScope,
+        GeoControlEntityLevel, GeoEntityLevel, GeoEvidenceClaimRole,
+        GeoEvidenceCompilationArtifact, GeoEvidenceRecordRef, GeoHomeCellRow,
+        GeoHomeCellRowsRequest, GeoIdentityParticipation, GeoNativeEntityScope,
         GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanInventoryRef,
-        GeoPlanProducedArtifactRef, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
-        GeoSourceRelease, GeoTileFeatureRef, GeoTileSourceBinding, GeoTileWorkRequest,
-        GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow, GeoWarehouseParcelRow,
-        GeoWarehouseRowsRequest, canonical_evidence_compilation_bytes,
-        canonical_tile_work_unit_bytes, compile_evidence, materialize_tile_work_unit,
-        materialize_warehouse_rows,
+        GeoPlanProducedArtifactRef, GeoPropagationBudget, GeoRhoBasis, GeoRhoContract,
+        GeoRhoObservationKind, GeoSourceRelease, GeoTileFeatureRef, GeoTileSourceBinding,
+        GeoTileWorkRequest, GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow,
+        GeoWarehouseParcelRow, GeoWarehouseRowsRequest, canonical_evidence_compilation_bytes,
+        canonical_propagation_bytes, canonical_tile_work_unit_bytes, compile_evidence,
+        materialize_tile_work_unit, materialize_warehouse_rows, propagate,
     },
     project::{
         ProjectDependencyOutput, ProjectExtensionDagNode, ProjectExtensionDagOutput,
@@ -40,16 +41,16 @@ use canon::{
 };
 use executor::{
     GEO_COMPILE_EVIDENCE_COMMAND, GEO_MATERIALIZE_EVIDENCE_COMMAND,
-    GEO_MATERIALIZE_HOME_CELLS_COMMAND, GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID,
-    GEO_SOLVE_COMMAND, GEO_TILE_WORK_COMMAND, GeoExecutorDependencyOutput, GeoExecutorInputBinding,
-    GeoProjectNodeExecutor,
+    GEO_MATERIALIZE_HOME_CELLS_COMMAND, GEO_PROPAGATE_STAGE_COMMAND, GEO_REQUEST_BINDING_ID,
+    GEO_ROWS_BINDING_ID, GEO_SOLVE_COMMAND, GEO_TILE_WORK_COMMAND, GeoExecutorDependencyOutput,
+    GeoExecutorInputBinding, GeoProjectNodeExecutor,
 };
 use h3o::CellIndex;
 use serde_json::Value;
 use std::{collections::BTreeMap, fs, path::Path, str::FromStr};
 
 #[test]
-fn geo_project_node_executor_runs_the_five_planner_leaf_chain() {
+fn geo_project_node_executor_runs_the_six_planner_leaf_chain() {
     let temp = tempfile::tempdir().expect("tempdir");
     let plan = five_node_plan();
     let mut executor = executor_with_fixture_inputs();
@@ -63,6 +64,7 @@ fn geo_project_node_executor_runs_the_five_planner_leaf_chain() {
             "geo.building.compile_evidence".to_string(),
             "geo.building.home_cells".to_string(),
             "geo.building.materialize_evidence".to_string(),
+            "geo.building.propagate".to_string(),
             "geo.building.section".to_string(),
             "geo.building.solve".to_string(),
         ]
@@ -94,6 +96,7 @@ fn geo_project_node_executor_runs_the_five_planner_leaf_chain() {
             .collect::<Vec<_>>(),
         vec![
             "geo.building.compile_evidence".to_string(),
+            "geo.building.propagate".to_string(),
             "geo.building.section".to_string()
         ]
     );
@@ -159,6 +162,11 @@ fn geo_project_node_executor_resumes_with_verified_dependency_outputs() {
     assert!(
         resumed
             .resumed_nodes
+            .contains(&"geo.building.propagate".to_string())
+    );
+    assert!(
+        resumed
+            .resumed_nodes
             .contains(&"geo.building.section".to_string())
     );
     let solve_receipt =
@@ -171,6 +179,7 @@ fn geo_project_node_executor_resumes_with_verified_dependency_outputs() {
             .collect::<Vec<_>>(),
         vec![
             "geo.building.compile_evidence".to_string(),
+            "geo.building.propagate".to_string(),
             "geo.building.section".to_string()
         ]
     );
@@ -750,6 +759,7 @@ fn geo_executor_refuses_empty_current_section_output_vector_over_stale_preload()
         .expect("solve node")
         .clone();
     let compile_bytes = compile_evidence_bytes();
+    let propagation_bytes = propagation_bytes();
     let section_bytes = section_bytes(&tile_work_request());
     let mut executor = executor_with_scope();
     executor
@@ -772,6 +782,10 @@ fn geo_executor_refuses_empty_current_section_output_vector_over_stale_preload()
                         digest_bytes(&compile_bytes),
                     ),
                     (
+                        "geo.building.propagate".to_string(),
+                        digest_bytes(&propagation_bytes),
+                    ),
+                    (
                         "geo.building.section".to_string(),
                         digest_bytes(&section_bytes),
                     ),
@@ -780,6 +794,10 @@ fn geo_executor_refuses_empty_current_section_output_vector_over_stale_preload()
                     (
                         "geo.building.compile_evidence".to_string(),
                         vec![project_dependency_output("compile_evidence", compile_bytes)],
+                    ),
+                    (
+                        "geo.building.propagate".to_string(),
+                        vec![project_dependency_output("propagation", propagation_bytes)],
                     ),
                     ("geo.building.section".to_string(), Vec::new()),
                 ]),
@@ -806,6 +824,7 @@ fn geo_executor_uses_fresh_direct_section_dependency_over_preloaded_stale_state(
         .expect("solve node")
         .clone();
     let compile_bytes = compile_evidence_bytes();
+    let propagation_bytes = propagation_bytes();
     let section_bytes = section_bytes(&tile_work_request());
     let mut executor = executor_with_scope();
     executor
@@ -828,6 +847,10 @@ fn geo_executor_uses_fresh_direct_section_dependency_over_preloaded_stale_state(
                         digest_bytes(&compile_bytes),
                     ),
                     (
+                        "geo.building.propagate".to_string(),
+                        digest_bytes(&propagation_bytes),
+                    ),
+                    (
                         "geo.building.section".to_string(),
                         digest_bytes(&section_bytes),
                     ),
@@ -836,6 +859,10 @@ fn geo_executor_uses_fresh_direct_section_dependency_over_preloaded_stale_state(
                     (
                         "geo.building.compile_evidence".to_string(),
                         vec![project_dependency_output("compile_evidence", compile_bytes)],
+                    ),
+                    (
+                        "geo.building.propagate".to_string(),
+                        vec![project_dependency_output("propagation", propagation_bytes)],
                     ),
                     (
                         "geo.building.section".to_string(),
@@ -939,6 +966,19 @@ fn compile_evidence_bytes() -> Vec<u8> {
     canonical_evidence_compilation_bytes(&artifact).expect("compile artifact serializes")
 }
 
+fn propagation_bytes() -> Vec<u8> {
+    let compile_bytes = compile_evidence_bytes();
+    let compilation: GeoEvidenceCompilationArtifact =
+        serde_json::from_slice(&compile_bytes).expect("compile artifact parses");
+    let artifact = propagate(
+        &compilation.composition_request,
+        Some(&compilation),
+        &GeoPropagationBudget::default(),
+    )
+    .expect("propagation succeeds");
+    canonical_propagation_bytes(&artifact).expect("propagation artifact serializes")
+}
+
 fn section_bytes(request: &GeoTileWorkRequest) -> Vec<u8> {
     let artifact = materialize_tile_work_unit(request).expect("tile work materializes");
     canonical_tile_work_unit_bytes(&artifact).expect("section artifact serializes")
@@ -1030,11 +1070,21 @@ fn five_node_plan() -> ProjectPlan {
             Vec::new(),
         ),
         extension_node(
+            "geo.building.propagate",
+            ProjectPlanNodeKind::Solve,
+            GEO_PROPAGATE_STAGE_COMMAND,
+            vec!["geo.building.compile_evidence".to_string()],
+            "propagation",
+            "geo/building/propagation.json",
+            Vec::new(),
+        ),
+        extension_node(
             "geo.building.solve",
             ProjectPlanNodeKind::Solve,
             GEO_SOLVE_COMMAND,
             vec![
                 "geo.building.compile_evidence".to_string(),
+                "geo.building.propagate".to_string(),
                 "geo.building.section".to_string(),
             ],
             "solve",

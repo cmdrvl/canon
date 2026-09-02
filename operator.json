@@ -55,6 +55,7 @@
       "canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <GOLD.jsonl>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]",
       "canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]",
       "canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]",
+      "canon entity calibrate sweep <RESULT.json|EVIDENCE.jsonl> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]",
       "canon entity audit <RESULT.json> --suite <SUITE_DIR> [--emit json|summary]",
       "canon entity promote <RESULT.json> --audit <AUDIT.json> --registry <REGISTRY_DIR> --next-version <VERSION> [--emit json|summary]",
       "canon entity apply <RESULT.json> --rows <ROWS> --registry <REGISTRY_DIR> [--column <COL>] [--out <PATH>|--output <PATH>] [--work-dir <DIR>] [--require-full-resolution|--allow-partial-output] [--emit json|summary]",
@@ -6691,6 +6692,88 @@
       "next_command": "canon entity candidate-recall --manifest <QUALITY_MANIFEST.json> --candidates <BLOCK.jsonl> --diagnostics <DIAGNOSTICS.json> --exact-bucket-count <N> --emit json",
       "recovery": {
         "next_command": "canon entity candidate-recall --manifest <QUALITY_MANIFEST.json> --candidates <BLOCK.jsonl> --diagnostics <DIAGNOSTICS.json> --exact-bucket-count <N> --emit json",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity calibrate sweep",
+      "usage": "canon entity calibrate sweep <RESULT.json|EVIDENCE.jsonl> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]",
+      "description": "Sweep deterministic integer entity threshold tuples against gold labels, emit a truth-space report, and recommend a read-only strategy YAML fragment subject to frozen canon.entity.quality.v1 gates",
+      "output_mode": "mixed",
+      "output_schema": "canon.entity.calibrate_sweep.v0",
+      "status": "implemented",
+      "read_only": true,
+      "exit_codes": {
+        "0": {
+          "meaning": "calibration truth-space report emitted; inspect recommendation.status for recommended or blocked",
+          "domain": "report"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI or artifact contract error",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "result",
+          "type": "file_path",
+          "required": true,
+          "position": 0,
+          "description": "Entity result, evidence, or calibration-pair artifact containing scored candidate pairs"
+        },
+        {
+          "name": "gold",
+          "flag": "--gold",
+          "type": "file_path",
+          "required": true,
+          "description": "Gold JSONL labels for calibration pairs"
+        },
+        {
+          "name": "strategy",
+          "flag": "--strategy",
+          "type": "file_path",
+          "required": true,
+          "description": "Strategy YAML file read for provenance only; the command never mutates it"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json (canon.entity.calibrate_sweep.v0) or summary"
+        }
+      ],
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "read-only calibration report compiler; emits a recommendation and threshold fragment only, with no registry or strategy mutation authority",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "entity read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": true,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "next_command": "canon entity run <ROWS> --strategy <UPDATED_STRATEGY.yaml> --registry <REGISTRY_DIR> --work-dir <DIR>",
+      "recovery": {
+        "next_command": "canon entity calibrate sweep <RESULT.json|EVIDENCE.jsonl> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> --emit json",
         "refusal_exit_code": 2
       }
     },

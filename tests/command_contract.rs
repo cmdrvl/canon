@@ -466,6 +466,7 @@ fn assert_runtime_corpus_coverage(manifest: &OperatorManifest, cases: &[RuntimeC
         "package unpack",
         "inbox list",
         "inbox export-review",
+        "entity calibrate sweep",
         "entity profile list",
         "entity profile init",
     ] {
@@ -663,6 +664,32 @@ impl RuntimeHarness {
         let review = self.work.join("review.json");
         let profile_output = self.work.join("regab_firm_identity.yaml");
         let schema_path = self.work.join("mapping.schema.json");
+        let calibrate_result = self.work.join("calibrate-result.jsonl");
+        let calibrate_gold = self.work.join("calibrate-gold.jsonl");
+        let calibrate_strategy = self.work.join("calibrate-strategy.yaml");
+        fs::write(
+            &calibrate_result,
+            concat!(
+                "{\"left_id\":\"A\",\"right_id\":\"B\",\"match_score\":90,\"backbone_score\":90,\"attach_score\":90,\"abstain_margin\":90,\"ambiguity_gap\":90}\n",
+                "{\"left_id\":\"C\",\"right_id\":\"D\",\"match_score\":80,\"backbone_score\":80,\"attach_score\":80,\"abstain_margin\":80,\"ambiguity_gap\":80}\n",
+                "{\"left_id\":\"E\",\"right_id\":\"F\",\"match_score\":70,\"backbone_score\":70,\"attach_score\":70,\"abstain_margin\":70,\"ambiguity_gap\":70}\n"
+            ),
+        )
+        .expect("calibrate result fixture");
+        fs::write(
+            &calibrate_gold,
+            concat!(
+                "{\"left_id\":\"A\",\"right_id\":\"B\",\"label\":\"same\"}\n",
+                "{\"left_id\":\"C\",\"right_id\":\"D\",\"label\":\"same\"}\n",
+                "{\"left_id\":\"E\",\"right_id\":\"F\",\"label\":\"distinct\",\"severity\":\"critical\"}\n"
+            ),
+        )
+        .expect("calibrate gold fixture");
+        fs::write(
+            &calibrate_strategy,
+            "strategy_id: contract-corpus\nsolver:\n  backbone_score_min: 32\n  attach_score_min: 28\n",
+        )
+        .expect("calibrate strategy fixture");
 
         vec![
             RuntimeCase {
@@ -1143,6 +1170,43 @@ impl RuntimeHarness {
                 .assert_eq("template_valid", json!(true))
                 .with_stderr(StderrExpectation::Empty)
                 .with_mutation(MutationExpectation::Exists(profile_output)),
+            },
+            RuntimeCase {
+                id: "entity_calibrate_sweep_json_is_read_only",
+                command_name: "entity calibrate sweep",
+                args: vec![
+                    "entity".to_string(),
+                    "calibrate".to_string(),
+                    "sweep".to_string(),
+                    path_arg(&calibrate_result),
+                    "--gold".to_string(),
+                    path_arg(&calibrate_gold),
+                    "--strategy".to_string(),
+                    path_arg(&calibrate_strategy),
+                    "--emit".to_string(),
+                    "json".to_string(),
+                ],
+                expected: RuntimeExpectation::json(
+                    0,
+                    "canon.entity.calibrate_sweep.v0",
+                    SchemaField::Version,
+                )
+                .assert_eq("read_only", json!(true))
+                .assert_eq("writes_performed", json!(false))
+                .assert_eq("metric_units", json!("integer_basis_points"))
+                .assert_eq("quality_contract", json!("canon.entity.quality.v1"))
+                .assert_eq("inputs.labeled_pair_count", json!(3))
+                .assert_eq("recommendation.status", json!("recommended"))
+                .assert_eq("recommendation.selected_thresholds.match_threshold", json!(80))
+                .assert_eq(
+                    "recommendation.selected_metrics.auto_accept_rate_basis_points",
+                    json!(6667),
+                )
+                .with_stderr(StderrExpectation::Empty)
+                .with_mutation(MutationExpectation::Unchanged(
+                    calibrate_strategy.clone(),
+                    fs::read(&calibrate_strategy).expect("calibrate strategy bytes"),
+                )),
             },
             RuntimeCase {
                 id: "package_push_missing_remote_args_refuses_before_network",

@@ -231,7 +231,7 @@ fn plans_one_bounded_factorized_building_chain_over_the_shared_project_dag() {
 
     assert_eq!(plan.version, CANON_GEO_PLAN_VERSION);
     assert_eq!(plan.status, GeoPlanStatus::Planned);
-    assert_eq!(plan.project_plan.nodes.len(), 5);
+    assert_eq!(plan.project_plan.nodes.len(), 6);
     assert_eq!(plan.project_plan.nodes.len(), plan.geo_nodes.len());
     assert!(plan.external_requests.is_empty());
     assert_eq!(
@@ -259,6 +259,7 @@ fn plans_one_bounded_factorized_building_chain_over_the_shared_project_dag() {
         solve_project_node.dependencies,
         vec![
             "geo.building.compile_evidence".to_string(),
+            "geo.building.propagate".to_string(),
             "geo.building.section".to_string()
         ]
     );
@@ -269,6 +270,15 @@ fn plans_one_bounded_factorized_building_chain_over_the_shared_project_dag() {
     assert_eq!(
         scope.evidence_compilation.producer_node_id,
         "geo.building.compile_evidence"
+    );
+    assert!(
+        plan.geo_nodes
+            .iter()
+            .any(|node| node.stage == GeoPlanStage::PropagateConstraints
+                && node.expected_output_contract == "canon_geo_propagation.v0"
+                && !node.bounded_section_required
+                && !node.incidence_factorization_required),
+        "planning must insert a propagation stage before exact solving"
     );
     assert_eq!(
         scope.component_key_field,
@@ -531,9 +541,9 @@ fn replans_from_validated_advanced_inventory_into_new_bounded_plan() {
     assert_ne!(replanned.semantic_hash, base_plan.semantic_hash);
     assert_eq!(replanned.status, GeoPlanStatus::Planned);
     assert_eq!(replanned.external_requests, Vec::new());
-    assert_eq!(replanned.project_plan.nodes.len(), 5);
+    assert_eq!(replanned.project_plan.nodes.len(), 6);
     assert!(replanned.project_plan.nodes.iter().all(|node| {
-        node.command.starts_with("canon geo ")
+        (node.command.starts_with("canon geo ") || node.command == "canon.geo.stage.propagate.v0")
             && !node.command.contains("link-sources")
             && !node.command.contains("reconcile-tiles")
             && !node.command.contains("materialize-geometry")
@@ -630,7 +640,7 @@ fn replan_identity_is_source_instance_and_telemetry_independent() {
     );
     assert_eq!(replanned_a.semantic_hash, replanned_b.semantic_hash);
     assert_eq!(replanned_a.plan_id, replanned_b.plan_id);
-    assert_eq!(replanned_a.project_plan.nodes.len(), 5);
+    assert_eq!(replanned_a.project_plan.nodes.len(), 6);
     validate_geo_plan(&replanned_a).expect("first replanned artifact validates");
     validate_geo_plan(&replanned_b).expect("renamed replanned artifact validates");
 }
@@ -895,7 +905,7 @@ fn replan_accepts_nonsemantic_bounded_subset_order_from_validated_receipt() {
     .expect("nonsemantic subset order must remain admissible");
 
     assert_eq!(replanned.status, GeoPlanStatus::Planned);
-    assert_eq!(replanned.project_plan.nodes.len(), 5);
+    assert_eq!(replanned.project_plan.nodes.len(), 6);
 }
 
 #[test]

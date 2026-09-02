@@ -39,14 +39,15 @@ pub mod witness;
 
 use crate::cli::{
     CanonCommand, Cli, EntityAliasWithholdingCli, EntityApplyCli, EntityAuditCli, EntityBlockCli,
-    EntityCacheModeArg, EntityCandidateRecallCli, EntityCommand, EntityEmitMode, EntityEvidenceCli,
-    EntityExplainCli, EntityGeneralizationCli, EntityIndexBuildCli, EntityIndexCommand,
-    EntityIndexSubcommand, EntityLinkCli, EntityPrepareCli, EntityProfileCommand,
-    EntityProfileInitCli, EntityProfileListCli, EntityProfileSubcommand, EntityPromoteCli,
-    EntityReviewCommand, EntityReviewExportArtifact, EntityReviewExportCli,
-    EntityReviewExportEmitMode, EntityReviewImportCli, EntityReviewInclude, EntityReviewSubcommand,
-    EntityRunCli, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, PackageCli,
-    PackagePackCli, PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
+    EntityCacheModeArg, EntityCalibrateCommand, EntityCalibrateSubcommand, EntityCalibrateSweepCli,
+    EntityCandidateRecallCli, EntityCommand, EntityEmitMode, EntityEvidenceCli, EntityExplainCli,
+    EntityGeneralizationCli, EntityIndexBuildCli, EntityIndexCommand, EntityIndexSubcommand,
+    EntityLinkCli, EntityPrepareCli, EntityProfileCommand, EntityProfileInitCli,
+    EntityProfileListCli, EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand,
+    EntityReviewExportArtifact, EntityReviewExportCli, EntityReviewExportEmitMode,
+    EntityReviewImportCli, EntityReviewInclude, EntityReviewSubcommand, EntityRunCli,
+    EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, PackageCli, PackagePackCli,
+    PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
     RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryExportCli,
     RegistryExportFormatCli, RegistryLintCli, RegistryLintProfile, RegistryMintCli,
     RegistryNextIdCli, RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli,
@@ -920,6 +921,7 @@ fn run_entity_command(command: &EntityCommand) -> Result<u8, Box<dyn Error>> {
         EntitySubcommand::Generalization(generalization) => {
             run_entity_generalization_command(generalization)
         }
+        EntitySubcommand::Calibrate(calibrate) => run_entity_calibrate_command(calibrate),
         EntitySubcommand::Evidence(evidence) => run_entity_evidence_command(evidence),
         EntitySubcommand::Solve(solve) => run_entity_solve_command(solve),
         EntitySubcommand::Link(link) => run_entity_link_command(link),
@@ -1109,6 +1111,35 @@ fn run_entity_generalization_command(
             Ok(0)
         }
         Err(refusal_output) => emit_entity_refusal(refusal_output, false, summary_mode),
+    }
+}
+
+fn run_entity_calibrate_command(calibrate: &EntityCalibrateCommand) -> Result<u8, Box<dyn Error>> {
+    match &calibrate.command {
+        EntityCalibrateSubcommand::Sweep(sweep) => run_entity_calibrate_sweep_command(sweep),
+    }
+}
+
+fn run_entity_calibrate_sweep_command(
+    sweep: &EntityCalibrateSweepCli,
+) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(sweep.emit, EntityEmitMode::Summary);
+    match entity::calibrate::run_calibrate_sweep(entity::calibrate::CalibrateSweepRequest {
+        result: &sweep.result,
+        gold: &sweep.gold,
+        strategy: &sweep.strategy,
+    }) {
+        Ok(report) => {
+            let output = match sweep.emit {
+                EntityEmitMode::Json => serde_json::to_string(&report)?,
+                EntityEmitMode::Summary => {
+                    entity::calibrate::render_calibrate_sweep_summary(&report)
+                }
+            };
+            emit_entity_output(&output, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
     }
 }
 

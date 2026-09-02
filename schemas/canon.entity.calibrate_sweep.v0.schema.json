@@ -1,0 +1,366 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.entity.calibrate_sweep.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "basis_points_or_null": {
+      "oneOf": [
+        {
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "rate_basis_points": {
+      "maximum": 10000,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "score_unit": {
+      "maximum": 10000,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "threshold_tuple": {
+      "additionalProperties": false,
+      "properties": {
+        "abstain_margin": {
+          "$ref": "#/$defs/score_unit"
+        },
+        "ambiguity_gap": {
+          "$ref": "#/$defs/score_unit"
+        },
+        "attach_score_min": {
+          "$ref": "#/$defs/score_unit"
+        },
+        "backbone_score_min": {
+          "$ref": "#/$defs/score_unit"
+        },
+        "match_threshold": {
+          "$ref": "#/$defs/score_unit"
+        }
+      },
+      "required": [
+        "backbone_score_min",
+        "attach_score_min",
+        "abstain_margin",
+        "match_threshold",
+        "ambiguity_gap"
+      ],
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "gates": {
+      "additionalProperties": false,
+      "properties": {
+        "caller_adjustable": {
+          "const": false
+        },
+        "critical_false_merges_max": {
+          "$ref": "#/$defs/count"
+        },
+        "precision_min_basis_points": {
+          "$ref": "#/$defs/rate_basis_points"
+        },
+        "recall_min_basis_points": {
+          "$ref": "#/$defs/rate_basis_points"
+        }
+      },
+      "required": [
+        "precision_min_basis_points",
+        "recall_min_basis_points",
+        "critical_false_merges_max",
+        "caller_adjustable"
+      ],
+      "type": "object"
+    },
+    "grid": {
+      "additionalProperties": false,
+      "properties": {
+        "axes": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "enum": [
+                  "backbone_score_min",
+                  "attach_score_min",
+                  "abstain_margin",
+                  "match_threshold",
+                  "ambiguity_gap"
+                ],
+                "type": "string"
+              },
+              "values": {
+                "items": {
+                  "$ref": "#/$defs/score_unit"
+                },
+                "minItems": 1,
+                "type": "array",
+                "uniqueItems": true
+              }
+            },
+            "required": ["field", "values"],
+            "type": "object"
+          },
+          "maxItems": 5,
+          "minItems": 5,
+          "type": "array"
+        },
+        "bounds_source": {
+          "const": "observed_labeled_pair_score_distribution"
+        },
+        "max_axis_values": {
+          "$ref": "#/$defs/count"
+        },
+        "step_policy": {
+          "type": "string"
+        },
+        "tuple_count": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "required": [
+        "bounds_source",
+        "step_policy",
+        "max_axis_values",
+        "tuple_count",
+        "axes"
+      ],
+      "type": "object"
+    },
+    "inputs": {
+      "additionalProperties": false,
+      "properties": {
+        "gold_path": {
+          "type": "string"
+        },
+        "gold_set_hash": {
+          "pattern": "^blake3:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "labeled_pair_count": {
+          "$ref": "#/$defs/count"
+        },
+        "prediction_pair_count": {
+          "$ref": "#/$defs/count"
+        },
+        "result_path": {
+          "type": "string"
+        },
+        "result_set_hash": {
+          "pattern": "^blake3:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "strategy_hash": {
+          "pattern": "^blake3:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "strategy_path": {
+          "type": "string"
+        },
+        "unlabeled_prediction_pair_count": {
+          "$ref": "#/$defs/count"
+        }
+      },
+      "required": [
+        "result_path",
+        "result_set_hash",
+        "gold_path",
+        "gold_set_hash",
+        "strategy_path",
+        "strategy_hash",
+        "labeled_pair_count",
+        "prediction_pair_count",
+        "unlabeled_prediction_pair_count"
+      ],
+      "type": "object"
+    },
+    "metric_units": {
+      "const": "integer_basis_points"
+    },
+    "quality_contract": {
+      "const": "canon.entity.quality.v1"
+    },
+    "read_only": {
+      "const": true
+    },
+    "recommendation": {
+      "additionalProperties": false,
+      "properties": {
+        "proposed_strategy_yaml_fragment": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "selected_metrics": {
+          "additionalProperties": false,
+          "properties": {
+            "auto_accept_count": {
+              "$ref": "#/$defs/count"
+            },
+            "auto_accept_rate_basis_points": {
+              "$ref": "#/$defs/rate_basis_points"
+            },
+            "critical_false_merges": {
+              "$ref": "#/$defs/count"
+            },
+            "escrow_count": {
+              "$ref": "#/$defs/count"
+            },
+            "escrow_rate_basis_points": {
+              "$ref": "#/$defs/rate_basis_points"
+            },
+            "precision_basis_points": {
+              "$ref": "#/$defs/basis_points_or_null"
+            },
+            "recall_basis_points": {
+              "$ref": "#/$defs/basis_points_or_null"
+            },
+            "row_index": {
+              "$ref": "#/$defs/count"
+            }
+          },
+          "required": [
+            "row_index",
+            "auto_accept_count",
+            "escrow_count",
+            "auto_accept_rate_basis_points",
+            "escrow_rate_basis_points",
+            "precision_basis_points",
+            "recall_basis_points",
+            "critical_false_merges"
+          ],
+          "type": "object"
+        },
+        "selected_thresholds": {
+          "$ref": "#/$defs/threshold_tuple"
+        },
+        "status": {
+          "enum": ["recommended", "blocked"],
+          "type": "string"
+        }
+      },
+      "required": ["status", "reason"],
+      "type": "object"
+    },
+    "truth_space": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "auto_accept_count": {
+            "$ref": "#/$defs/count"
+          },
+          "auto_accept_rate_basis_points": {
+            "$ref": "#/$defs/rate_basis_points"
+          },
+          "critical_false_merges": {
+            "$ref": "#/$defs/count"
+          },
+          "escrow_count": {
+            "$ref": "#/$defs/count"
+          },
+          "escrow_rate_basis_points": {
+            "$ref": "#/$defs/rate_basis_points"
+          },
+          "false_negative_count": {
+            "$ref": "#/$defs/count"
+          },
+          "false_positive_count": {
+            "$ref": "#/$defs/count"
+          },
+          "gold_negative_count": {
+            "$ref": "#/$defs/count"
+          },
+          "gold_positive_count": {
+            "$ref": "#/$defs/count"
+          },
+          "passes_quality_gates": {
+            "type": "boolean"
+          },
+          "precision_basis_points": {
+            "$ref": "#/$defs/basis_points_or_null"
+          },
+          "recall_basis_points": {
+            "$ref": "#/$defs/basis_points_or_null"
+          },
+          "row_index": {
+            "$ref": "#/$defs/count"
+          },
+          "thresholds": {
+            "$ref": "#/$defs/threshold_tuple"
+          },
+          "total_labeled_pair_count": {
+            "$ref": "#/$defs/count"
+          },
+          "true_negative_count": {
+            "$ref": "#/$defs/count"
+          },
+          "true_positive_count": {
+            "$ref": "#/$defs/count"
+          }
+        },
+        "required": [
+          "row_index",
+          "thresholds",
+          "total_labeled_pair_count",
+          "gold_positive_count",
+          "gold_negative_count",
+          "auto_accept_count",
+          "escrow_count",
+          "true_positive_count",
+          "false_positive_count",
+          "false_negative_count",
+          "true_negative_count",
+          "critical_false_merges",
+          "auto_accept_rate_basis_points",
+          "escrow_rate_basis_points",
+          "precision_basis_points",
+          "recall_basis_points",
+          "passes_quality_gates"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "version": {
+      "const": "canon.entity.calibrate_sweep.v0"
+    },
+    "writes_performed": {
+      "const": false
+    }
+  },
+  "required": [
+    "version",
+    "quality_contract",
+    "read_only",
+    "writes_performed",
+    "metric_units",
+    "inputs",
+    "grid",
+    "gates",
+    "recommendation",
+    "truth_space"
+  ],
+  "title": "canon.entity.calibrate_sweep.v0",
+  "type": "object",
+  "x-canon-contract": {
+    "contract_id": "canon.entity.calibrate_sweep.v0",
+    "quality_contract": "canon.entity.quality.v1",
+    "metric_units": "integer_basis_points",
+    "authority": "recommendation_only",
+    "strategy_mutation": false,
+    "registry_mutation": false
+  }
+}

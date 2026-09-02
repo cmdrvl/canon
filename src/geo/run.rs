@@ -14,7 +14,7 @@ use crate::{
         CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
         CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
         CANON_GEO_GEOMETRY_TILE_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
-        CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_PLAN_VERSION,
+        CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_PLAN_VERSION, CANON_GEO_PROPAGATION_VERSION,
         CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
         CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
         GeoAcquisitionSatisfaction, GeoAcquisitionTerminalState, GeoCompositionArtifact,
@@ -27,11 +27,11 @@ use crate::{
         executor::GEO_CLIENT_TILE_INGEST_STAGE_COMMAND,
         executor::GEO_CLIENT_TILE_SOURCE_BINDING_ID, executor::GEO_COMPILE_EVIDENCE_COMMAND,
         executor::GEO_MATERIALIZE_EVIDENCE_COMMAND, executor::GEO_MATERIALIZE_HOME_CELLS_COMMAND,
-        executor::GEO_REQUEST_BINDING_ID, executor::GEO_ROWS_BINDING_ID,
-        executor::GEO_SOLVE_COMMAND, executor::GEO_TILE_WORK_COMMAND,
-        executor::GeoExecutorDependencyOutput, executor::GeoExecutorInputBinding,
-        executor::GeoProjectNodeExecutor, executor::validate_canonical_geo_artifact_bytes,
-        validate_geo_plan,
+        executor::GEO_PROPAGATE_STAGE_COMMAND, executor::GEO_REQUEST_BINDING_ID,
+        executor::GEO_ROWS_BINDING_ID, executor::GEO_SOLVE_COMMAND,
+        executor::GEO_TILE_WORK_COMMAND, executor::GeoExecutorDependencyOutput,
+        executor::GeoExecutorInputBinding, executor::GeoProjectNodeExecutor,
+        executor::validate_canonical_geo_artifact_bytes, validate_geo_plan,
     },
     project::{
         CANON_PROJECT_RUN_VERSION, ProjectExtensionDagNode, ProjectExtensionDagOutput,
@@ -2230,6 +2230,7 @@ fn output_contract_for_command(command: &str) -> Option<&'static str> {
         GEO_CLIENT_TILE_INGEST_STAGE_COMMAND => Some(CANON_GEO_GEOMETRY_TILE_VERSION),
         GEO_MATERIALIZE_EVIDENCE_COMMAND => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
         GEO_COMPILE_EVIDENCE_COMMAND => Some(CANON_GEO_EVIDENCE_COMPILATION_VERSION),
+        GEO_PROPAGATE_STAGE_COMMAND => Some(CANON_GEO_PROPAGATION_VERSION),
         GEO_SOLVE_COMMAND => Some(CANON_GEO_COMPOSITION_VERSION),
         _ => None,
     }
@@ -2242,6 +2243,7 @@ fn output_id_for_command(command: &str) -> Option<&'static str> {
         GEO_CLIENT_TILE_INGEST_STAGE_COMMAND => Some("client_tile"),
         GEO_MATERIALIZE_EVIDENCE_COMMAND => Some("materialize_evidence"),
         GEO_COMPILE_EVIDENCE_COMMAND => Some("compile_evidence"),
+        GEO_PROPAGATE_STAGE_COMMAND => Some("propagation"),
         GEO_SOLVE_COMMAND => Some("solve"),
         _ => None,
     }
@@ -2254,6 +2256,7 @@ fn output_contract_for_output_id(output_id: &str) -> Option<&'static str> {
         "client_tile" => Some(CANON_GEO_GEOMETRY_TILE_VERSION),
         "materialize_evidence" => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
         "compile_evidence" => Some(CANON_GEO_EVIDENCE_COMPILATION_VERSION),
+        "propagation" => Some(CANON_GEO_PROPAGATION_VERSION),
         "solve" => Some(CANON_GEO_COMPOSITION_VERSION),
         _ => None,
     }
@@ -2293,7 +2296,9 @@ fn input_specs_for_command(command: &str) -> Option<Vec<GeoInputSpec>> {
             accepted_contracts: &[CANON_GEO_WAREHOUSE_ROWS_VERSION],
             reason: "materialize-evidence requires local typed warehouse rows",
         }]),
-        GEO_COMPILE_EVIDENCE_COMMAND | GEO_SOLVE_COMMAND => Some(Vec::new()),
+        GEO_COMPILE_EVIDENCE_COMMAND | GEO_PROPAGATE_STAGE_COMMAND | GEO_SOLVE_COMMAND => {
+            Some(Vec::new())
+        }
         _ => None,
     }
 }

@@ -1030,6 +1030,12 @@ pub struct EntityIndexCommand {
 }
 
 #[derive(Args, Debug, Clone)]
+pub struct EntityCalibrateCommand {
+    #[command(subcommand)]
+    pub command: EntityCalibrateSubcommand,
+}
+
+#[derive(Args, Debug, Clone)]
 pub struct StrategyCommand {
     #[command(subcommand)]
     pub command: StrategySubcommand,
@@ -1308,6 +1314,8 @@ pub enum EntitySubcommand {
     AliasWithholding(EntityAliasWithholdingCli),
     /// Compile a strict artifact-backed generalization execution envelope into a report
     Generalization(EntityGeneralizationCli),
+    /// Sweep entity threshold tuples against gold labels and recommend a read-only strategy fragment
+    Calibrate(EntityCalibrateCommand),
     /// Score typed evidence for candidate pairs
     Evidence(EntityEvidenceCli),
     /// Solve entity identity assignments from evidence artifacts
@@ -1332,6 +1340,12 @@ pub enum EntitySubcommand {
 pub enum EntityIndexSubcommand {
     /// Build deterministic index artifacts for a work directory
     Build(EntityIndexBuildCli),
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum EntityCalibrateSubcommand {
+    /// Sweep deterministic integer threshold tuples against gold labels
+    Sweep(EntityCalibrateSweepCli),
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -1987,6 +2001,24 @@ pub struct EntityGeneralizationCli {
     /// Strict generalization execution envelope JSON
     #[arg(long)]
     pub manifest: PathBuf,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntityCalibrateSweepCli {
+    /// Entity result, evidence, or calibration-pair artifact to score
+    pub result: PathBuf,
+
+    /// Gold JSONL labels for calibration pairs
+    #[arg(long)]
+    pub gold: PathBuf,
+
+    /// Strategy YAML file used as the read-only source of current thresholds
+    #[arg(long)]
+    pub strategy: PathBuf,
 
     /// Output mode
     #[arg(long, value_enum, default_value = "json")]
@@ -3183,6 +3215,51 @@ mod tests {
             );
             assert!(matches!(generalization.emit, EntityEmitMode::Summary));
         }
+    }
+
+    #[test]
+    fn test_cli_entity_calibrate_sweep_parsing() {
+        let args = [
+            "canon",
+            "entity",
+            "calibrate",
+            "sweep",
+            "result.jsonl",
+            "--gold",
+            "gold.jsonl",
+            "--strategy",
+            "strategy.yaml",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = entity_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, EntitySubcommand::Calibrate(_)));
+        if let EntitySubcommand::Calibrate(calibrate) = subcommand {
+            let EntityCalibrateSubcommand::Sweep(sweep) = calibrate.command;
+            assert_eq!(sweep.result, PathBuf::from("result.jsonl"));
+            assert_eq!(sweep.gold, PathBuf::from("gold.jsonl"));
+            assert_eq!(sweep.strategy, PathBuf::from("strategy.yaml"));
+            assert!(matches!(sweep.emit, EntityEmitMode::Summary));
+        }
+    }
+
+    #[test]
+    fn test_cli_entity_calibrate_sweep_requires_gold() {
+        let args = [
+            "canon",
+            "entity",
+            "calibrate",
+            "sweep",
+            "result.jsonl",
+            "--strategy",
+            "strategy.yaml",
+        ];
+        assert!(Cli::try_parse_from(args).is_err());
     }
 
     #[test]

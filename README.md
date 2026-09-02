@@ -107,6 +107,7 @@ yet know enough.
 | `canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json\|summary] [--cache-mode enabled\|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` | Link two row sets through the same typed artifact path used by project mode. | Cross-source linkage; relation evidence is not an equivalence shortcut. Profile and work-dir are required for execution; omissions write nothing. Cache mode defaults to enabled. |
 | `canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json>` | Compile artifact-backed withheld-alias trials into a JSON or summary report. | Strict execution envelope only; outcomes are derived from referenced artifacts, not self-declared. |
 | `canon entity generalization --manifest <STRICT_ENVELOPE.json>` | Compile artifact-backed entity-disjoint and time-forward trials into a JSON or summary report. | Strict execution envelope only; one public/private command, redacted identifiers and paths, outcomes and leakage checks derived from referenced artifacts rather than self-attested fields. Strict solve derivation binds typed edge artifacts, edge records, prepared surfaces, and `canon.evaluation.generalization.solve_policy.v0`. |
+| `canon entity calibrate sweep <RESULT> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml>` | Sweep integer threshold tuples against gold labels and emit a truth-space recommendation report. | Read-only workbench report; no registry writes, no strategy mutation, frozen `canon.entity.quality.v1` gates. |
 | `canon registry export --format dbt-seed|search-index` | Project exact registry knowledge into transform or serving artifacts. | Deterministic downstream snapshots; no new matching semantics. |
 | Package, project, and temporal workflows | Move registries and strategies through reproducible deployment, project locks, and snapshot comparison. | They package and check knowledge; they do not change exact lookup. |
 | Extensions and adapters | Add profiles, source mappings, provider materializers, and domain policies out of tree. | Domain expertise stays outside Canon core defaults unless explicitly packaged and audited. |
@@ -438,6 +439,7 @@ canon entity run <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR>
 canon entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json|summary] [--cache-mode enabled|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]
 canon entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json|summary]
 canon entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json|summary]
+canon entity calibrate sweep <RESULT|EVIDENCE> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> [--emit json|summary]
 canon entity prepare <ROWS> --profile <PROFILE> --registry <DIR> --work-dir <DIR>
 canon entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit json|summary]
 canon entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit jsonl|summary]
@@ -722,6 +724,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `entity link <REFERENCE> <TARGET> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--suite <DIR>] [--gold <JSONL>] [--write-back] [--emit json\|summary] [--cache-mode enabled\|disabled] [--max-candidates <N>] [--max-rows <N>] [--max-bytes <N>] [--no-witness]` | Run link mode for aligning two row sets through the same typed request and artifact path as project mode, with optional suite/gold scoring. Profile and work-dir are required for successful execution even though generated syntax shows them bracketed; omissions write nothing. `--write-back` currently refuses before work-dir or registry mutation, so accepted knowledge flows through review, audit, promote, and apply. Cache mode defaults to enabled, and native cache receipts are inherited from the nested run. |
 | `entity alias-withholding --manifest <EXECUTION_ENVELOPE.json> [--emit json\|summary]` | Compile a strict execution envelope into an alias-withholding report. The envelope references clean registry, candidate, link, run/solve, review, audit, leak-scan, assignment-firewall, and optional promotion/replay artifacts; Canon derives outcomes from those artifacts and refuses self-declared results. |
 | `entity generalization --manifest <STRICT_ENVELOPE.json> [--emit json\|summary]` | Compile a strict artifact-backed entity-disjoint/time-forward envelope into a redacted report. The same command is used for public fixtures and operator-owned private corpora; identifiers, paths, and cutoffs are hashed at the CLI boundary, and outcomes/leakage checks are derived from referenced artifacts rather than self-attested fields. |
+| `entity calibrate sweep <RESULT\|EVIDENCE> --gold <GOLD.jsonl> --strategy <STRATEGY.yaml> [--emit json\|summary]` | Sweep deterministic integer threshold tuples against gold labels and emit `canon.entity.calibrate_sweep.v0`. The report maximizes auto-accept subject to frozen `canon.entity.quality.v1` gates, emits a YAML threshold fragment for manual application, and never writes registry or strategy files. |
 | `entity prepare <ROWS> --profile <PROFILE> --registry <DIR> --work-dir <DIR>` | Validate and project profile-mapped observations for artifact-backed entity preparation. |
 | `entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit json\|summary]` | Build deterministic index artifacts for a work directory. |
 | `entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit jsonl\|summary]` | Generate candidate neighborhoods via blocking operators. |
@@ -761,6 +764,11 @@ or summary report, including low-quality or critical-false-merge reports whose
 `quality.release_claim_status` is `blocked`. It exits `2` only when the envelope
 or referenced artifacts are malformed, missing, stale, tampered, or otherwise
 refuse validation. It does not use exit `1` for benchmark outcomes.
+
+`canon entity calibrate sweep` exits `0` when it emits a structurally valid JSON
+or summary report, including `recommendation.status: blocked` when no threshold
+tuple satisfies `canon.entity.quality.v1`. It exits `2` for malformed
+result/gold/strategy inputs or gold pairs absent from the scored artifact.
 
 `canon doctor health`, bare `canon doctor`, and `canon doctor --robot-triage`
 exit `0` when compiled contract parity is healthy and `1` when the report is
@@ -1232,6 +1240,18 @@ is emitted with exit `0`; only malformed or tampered envelopes and artifacts
 refuse with exit `2`. The command is read-only, emits JSON or summary, hashes
 identifiers, paths, and cutoffs at the CLI boundary, and does not change
 ordinary exact lookup semantics.
+
+`canon entity calibrate sweep <RESULT|EVIDENCE> --gold <GOLD.jsonl> --strategy
+<STRATEGY.yaml>` is a read-only threshold-selection report compiler for entity
+workbench score artifacts. It builds a deterministic integer grid from observed
+labeled score units, emits one truth-space row per threshold tuple with rates in
+integer basis points, and recommends the tuple that maximizes auto-accept while
+satisfying frozen `canon.entity.quality.v1` gates: precision `>= 9950` bps,
+recall `>= 9800` bps, and critical false merges `== 0`. If no tuple passes,
+`recommendation.status` is `blocked` and no fallback tuple is selected. The
+report includes a proposed YAML threshold fragment for manual application only;
+the command never writes registry files, work directories, witness ledgers, or
+the strategy file.
 
 The native entity workbench cache contract records `canon_entity_index_cache_receipt.v0`
 stage artifacts. Public `canon entity run` and `canon entity link` expose

@@ -127,7 +127,7 @@ fn geo_run_executes_real_kernels_and_folds_input_hashes() {
         plan.project_plan.graph_hash
     );
     assert_eq!(run.artifact_inputs.len(), 3);
-    assert_eq!(run.output_refs.len(), 5);
+    assert_eq!(run.output_refs.len(), 6);
 
     let solve = solve_output(temp.path());
     assert_eq!(solve["version"], CANON_GEO_COMPOSITION_VERSION);
@@ -360,12 +360,13 @@ fn fresh_geo_run_resume_preloads_bounded_section_for_solve() {
         report.executed_nodes,
         vec!["geo.building.solve".to_string()]
     );
-    assert_eq!(report.resumed_nodes.len(), 4);
+    assert_eq!(report.resumed_nodes.len(), 5);
     for node_id in [
         "geo.building.home_cells",
         "geo.building.section",
         "geo.building.materialize_evidence",
         "geo.building.compile_evidence",
+        "geo.building.propagate",
     ] {
         assert!(report.resumed_nodes.contains(&node_id.to_string()));
     }
@@ -420,15 +421,15 @@ fn opt_in_progress_is_deterministic_and_non_semantic() {
         GeoRunProgressEventKind::RunFinished
     );
     assert_eq!(events.last().unwrap().status, Some(GeoRunStatus::Completed));
-    assert_eq!(events.last().unwrap().counters.completed_nodes, 5);
-    assert_eq!(events.last().unwrap().counters.executed_nodes, 5);
+    assert_eq!(events.last().unwrap().counters.completed_nodes, 6);
+    assert_eq!(events.last().unwrap().counters.executed_nodes, 6);
     assert_eq!(events.last().unwrap().counters.resumed_nodes, 0);
     assert_eq!(
         events
             .iter()
             .filter(|event| event.kind == GeoRunProgressEventKind::StageStarted)
             .count(),
-        5
+        6
     );
     for (sequence, event) in events.iter().enumerate() {
         assert_eq!(event.version, CANON_GEO_RUN_PROGRESS_VERSION);
@@ -481,7 +482,7 @@ fn progress_writer_failure_is_operational_and_leaves_semantic_work_resumable() {
     assert_eq!(resumed.status, GeoRunStatus::Completed);
     let report = resumed.project_run_report.expect("project report");
     assert!(report.executed_nodes.is_empty());
-    assert_eq!(report.resumed_nodes.len(), 5);
+    assert_eq!(report.resumed_nodes.len(), 6);
 }
 
 #[test]
@@ -524,8 +525,8 @@ fn progress_cancellation_names_last_commit_and_resume_reports_reuse() {
             .as_deref()
             .is_some_and(|reason| !reason.is_empty())
     );
-    assert_eq!(terminal.counters.completed_nodes, 4);
-    assert_eq!(terminal.counters.executed_nodes, 4);
+    assert_eq!(terminal.counters.completed_nodes, 5);
+    assert_eq!(terminal.counters.executed_nodes, 5);
     assert_eq!(terminal.counters.cancelled_nodes, 1);
     assert_eq!(
         terminal
@@ -533,7 +534,7 @@ fn progress_cancellation_names_last_commit_and_resume_reports_reuse() {
             .as_ref()
             .expect("last committed artifact")
             .artifact_id,
-        "geo.building.compile_evidence/compile_evidence"
+        "geo.building.propagate/propagation"
     );
 
     let mut resumed_progress = Vec::new();
@@ -549,7 +550,7 @@ fn progress_cancellation_names_last_commit_and_resume_reports_reuse() {
             .iter()
             .filter(|event| event.kind == GeoRunProgressEventKind::ArtifactResumed)
             .count(),
-        4
+        5
     );
     assert_eq!(
         resumed_events
@@ -571,26 +572,26 @@ fn progress_cancellation_names_last_commit_and_resume_reports_reuse() {
             .iter()
             .filter(|event| event.kind == GeoRunProgressEventKind::ArtifactResumed)
             .count(),
-        4,
+        5,
         "all validated reusable receipts must be visible before pending execution begins"
     );
     let solve_start = &resumed_events[solve_start_index];
-    assert_eq!(solve_start.counters.completed_nodes, 4);
-    assert_eq!(solve_start.counters.resumed_nodes, 4);
+    assert_eq!(solve_start.counters.completed_nodes, 5);
+    assert_eq!(solve_start.counters.resumed_nodes, 5);
     assert_eq!(
         solve_start
             .last_committed_artifact
             .as_ref()
             .expect("last resumed artifact before solve")
             .artifact_id,
-        "geo.building.compile_evidence/compile_evidence"
+        "geo.building.propagate/propagation"
     );
     let terminal = resumed_events.last().expect("resume terminal event");
     assert_eq!(terminal.kind, GeoRunProgressEventKind::RunFinished);
     assert_eq!(terminal.status, Some(GeoRunStatus::Completed));
-    assert_eq!(terminal.counters.completed_nodes, 5);
+    assert_eq!(terminal.counters.completed_nodes, 6);
     assert_eq!(terminal.counters.executed_nodes, 1);
-    assert_eq!(terminal.counters.resumed_nodes, 4);
+    assert_eq!(terminal.counters.resumed_nodes, 5);
 }
 
 #[test]
@@ -950,6 +951,7 @@ fn changed_warehouse_rows_reuse_only_the_unaffected_bounded_section_prefix() {
     for node_id in [
         "geo.building.materialize_evidence",
         "geo.building.compile_evidence",
+        "geo.building.propagate",
         "geo.building.solve",
     ] {
         assert!(report.executed_nodes.contains(&node_id.to_string()));
