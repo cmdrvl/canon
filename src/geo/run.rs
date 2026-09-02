@@ -11,8 +11,9 @@ use crate::{
     fs_safety::{PlannedAccess, resolve_workspace_path},
     geo::{
         CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_SATISFACTION_VERSION,
-        CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
-        CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
+        CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
+        CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
+        CANON_GEO_GEOMETRY_TILE_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
         CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_PLAN_VERSION,
         CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
         CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoAcquisitionDenominator, GeoAcquisitionProofClass,
@@ -21,7 +22,10 @@ use crate::{
         GeoPlanExternalRequest, GeoPlanGrainStatus, GeoPlanNodeOverlay, GeoPlanStage,
         GeoPlanStatus, GeoSatisfactionExecutionRef, GeoSatisfactionFileAudit,
         GeoSatisfactionFinding, GeoSatisfactionLocalInputBinding, GeoSatisfactionRunInputRef,
-        GeoSatisfactionStatus, GeoTileWorkUnitArtifact, executor::GEO_COMPILE_EVIDENCE_COMMAND,
+        GeoSatisfactionStatus, GeoTileWorkUnitArtifact,
+        executor::CANON_GEO_CLIENT_TILE_SOURCE_VERSION,
+        executor::GEO_CLIENT_TILE_INGEST_STAGE_COMMAND,
+        executor::GEO_CLIENT_TILE_SOURCE_BINDING_ID, executor::GEO_COMPILE_EVIDENCE_COMMAND,
         executor::GEO_MATERIALIZE_EVIDENCE_COMMAND, executor::GEO_MATERIALIZE_HOME_CELLS_COMMAND,
         executor::GEO_REQUEST_BINDING_ID, executor::GEO_ROWS_BINDING_ID,
         executor::GEO_SOLVE_COMMAND, executor::GEO_TILE_WORK_COMMAND,
@@ -2215,6 +2219,7 @@ fn output_contract_for_command(command: &str) -> Option<&'static str> {
     match command {
         GEO_MATERIALIZE_HOME_CELLS_COMMAND => Some(CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION),
         GEO_TILE_WORK_COMMAND => Some(CANON_GEO_TILE_WORK_UNIT_VERSION),
+        GEO_CLIENT_TILE_INGEST_STAGE_COMMAND => Some(CANON_GEO_GEOMETRY_TILE_VERSION),
         GEO_MATERIALIZE_EVIDENCE_COMMAND => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
         GEO_COMPILE_EVIDENCE_COMMAND => Some(CANON_GEO_EVIDENCE_COMPILATION_VERSION),
         GEO_SOLVE_COMMAND => Some(CANON_GEO_COMPOSITION_VERSION),
@@ -2226,6 +2231,7 @@ fn output_id_for_command(command: &str) -> Option<&'static str> {
     match command {
         GEO_MATERIALIZE_HOME_CELLS_COMMAND => Some("home_cells"),
         GEO_TILE_WORK_COMMAND => Some("section"),
+        GEO_CLIENT_TILE_INGEST_STAGE_COMMAND => Some("client_tile"),
         GEO_MATERIALIZE_EVIDENCE_COMMAND => Some("materialize_evidence"),
         GEO_COMPILE_EVIDENCE_COMMAND => Some("compile_evidence"),
         GEO_SOLVE_COMMAND => Some("solve"),
@@ -2237,6 +2243,7 @@ fn output_contract_for_output_id(output_id: &str) -> Option<&'static str> {
     match output_id {
         "home_cells" => Some(CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION),
         "section" => Some(CANON_GEO_TILE_WORK_UNIT_VERSION),
+        "client_tile" => Some(CANON_GEO_GEOMETRY_TILE_VERSION),
         "materialize_evidence" => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
         "compile_evidence" => Some(CANON_GEO_EVIDENCE_COMPILATION_VERSION),
         "solve" => Some(CANON_GEO_COMPOSITION_VERSION),
@@ -2258,6 +2265,20 @@ fn input_specs_for_command(command: &str) -> Option<Vec<GeoInputSpec>> {
             accepted_contracts: &[CANON_GEO_TILE_WORK_REQUEST_VERSION],
             reason: "tile-work requires a local typed bounded-section request",
         }]),
+        GEO_CLIENT_TILE_INGEST_STAGE_COMMAND => Some(vec![
+            GeoInputSpec {
+                binding_id: GEO_REQUEST_BINDING_ID,
+                required: true,
+                accepted_contracts: &[CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION],
+                reason: "client tile ingest requires a typed local ingest request",
+            },
+            GeoInputSpec {
+                binding_id: GEO_CLIENT_TILE_SOURCE_BINDING_ID,
+                required: true,
+                accepted_contracts: &[CANON_GEO_CLIENT_TILE_SOURCE_VERSION],
+                reason: "client tile ingest requires local GeoJSON or NDJSON source bytes",
+            },
+        ]),
         GEO_MATERIALIZE_EVIDENCE_COMMAND => Some(vec![GeoInputSpec {
             binding_id: GEO_ROWS_BINDING_ID,
             required: true,
@@ -2412,6 +2433,9 @@ fn validate_artifact_binding(binding: &GeoRunArtifactBinding) -> GeoRunResult<()
                 ("actual", actual_digest),
             ],
         ));
+    }
+    if binding.contract_version == CANON_GEO_CLIENT_TILE_SOURCE_VERSION {
+        return Ok(());
     }
     validate_json_contract_bytes(
         &binding.artifact_id,

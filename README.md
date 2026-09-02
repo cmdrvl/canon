@@ -384,7 +384,7 @@ canon geo capabilities [--emit json]
 canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>
 canon geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]
 canon geo replan-from-acquisition --base-plan <PLAN.json> --base-inventory <INVENTORY.json> --question <QUESTION.json> --capabilities <CAPABILITIES.json> --profile <PROFILE.json> --budget <BUDGET.json> --satisfy <REQUEST_ID=RECEIPT.json> --local-artifact <LOCAL_ARTIFACT_ID=PATH>... [--result <DIGEST_ID=PATH>...] --advancement-out <ADVANCEMENT.json>
-canon geo evaluate --population <POPULATION.json>
+canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>]
 canon geo inspect                                    # planned, not implemented
 canon geo ledger build|validate|exposure|collision|card   # planned, not implemented
 
@@ -684,7 +684,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `project run [--plan <PLAN>] [--manifest <MANIFEST>] [--lock <LOCK>] [--node <NODE>...] [--workspace <DIR>] [--work-dir <DIR>] [--max-parallelism <N>] [--allow-network] [--allow-mutation-gates] [--emit json\|summary]` | Validate a project plan, reuse valid `canon.project.run.v2` receipts, and execute supported pending nodes through registered internal offline executors. Unknown or unsafe executor declarations still refuse before publication. |
 | `geo capabilities [--emit json]` | *(primary)* Emit the compiled offline Geo capability contracts, including each command's surface tier. Deterministic and read-only. |
 | `geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>` | *(primary)* Compile a deterministic offline `canon_geo_plan.v0` over one validated `canon.project.plan.v1` DAG. Missing local sources become typed discovery/acquisition requests or explicit discovery gaps; the command executes no work and acquires nothing. |
-| `geo evaluate --population <POPULATION.json>` | *(primary)* Evaluate a bounded population request and report coverage, reach, rho, solver, truth, and cost as separate planes. This is the E4/E5 gate instrument. |
+| `geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>]` | *(primary)* Evaluate a bounded population request and report coverage, reach, rho, solver, truth, and cost as separate planes. This is the E4/E5 gate instrument. |
 | `geo inspect` | *(primary, planned — not implemented)* Inspect a run's sections, components, and residuals. Tracked in `docs/PLAN_CANON_GEO.md` §19.3. |
 | `geo ledger build\|validate\|exposure\|collision\|card` | *(primary, planned — not implemented)* Ledger construction, validation, exposure, collision, and card verbs. Tracked in `docs/PLAN_CANON_GEO.md` §19.3. |
 | `geo run --plan <PLAN.json> --work-dir <DIR> [--input <NODE_ID:BINDING_ID=PATH>...] [--satisfy <REQUEST_ID=RECEIPT.json>...]` | *(primary)* Execute or preflight the current bounded offline Geo five-stage chain through the shared project runner and Geo executor, using only local exogenous leaf inputs when provided. It resumes validated completed outputs, refuses undeclared commands or compile/solve input overrides, and emits a `canon_geo_run.v0` projection over `canon.project.run.v2` receipts. `--satisfy` checks receipt/explicit-byte consistency only; it does not mutate the plan, clear acquisition blockers, or replan. |

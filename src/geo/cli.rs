@@ -10,10 +10,10 @@
 use crate::{
     CanonOutput, Refusal, RefusalCode,
     cli::{
-        GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoClientTileIngestCli,
-        GeoCompileEvidenceCli, GeoEvaluateCli, GeoLinkSourcesCli, GeoMaterializeAddressEvidenceCli,
-        GeoMaterializeEvidenceCli, GeoMaterializeGeometryCli, GeoMaterializeH7PipBlockBatchCli,
-        GeoMaterializeH7PopulationCli, GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
+        GeoCapabilitiesCli, GeoCapabilitiesEmitMode, GeoCli, GeoCompileEvidenceCli, GeoEvaluateCli,
+        GeoLinkSourcesCli, GeoMaterializeAddressEvidenceCli, GeoMaterializeEvidenceCli,
+        GeoMaterializeGeometryCli, GeoMaterializeH7PipBlockBatchCli, GeoMaterializeH7PopulationCli,
+        GeoMaterializeH7StagingBatchCli, GeoMaterializeHomeCellsCli,
         GeoMaterializeWarehouseGeometryCli, GeoPlanCli, GeoReconcileTilesCli,
         GeoReplanFromAcquisitionCli, GeoRunCli, GeoSolveCli, GeoStackEvidenceCli, GeoSubcommand,
         GeoTileWorkCli,
@@ -60,13 +60,16 @@ use super::{
         canonical_evidence_compilation_bytes, compile_evidence,
         validate_evidence_compilation_artifact,
     },
+    executor::{
+        CANON_GEO_CLIENT_TILE_SOURCE_VERSION, GEO_CLIENT_TILE_INGEST_STAGE_COMMAND,
+        GEO_CLIENT_TILE_SOURCE_BINDING_ID,
+    },
     geometry_value::{
-        CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION, CANON_GEO_GEOMETRY_REQUEST_VERSION,
-        CANON_GEO_GEOMETRY_TILE_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
-        CANON_GEO_WAREHOUSE_GEOMETRY_VERSION, GeoClientTileIngestRequest, GeoGeometryError,
-        GeoGeometryTileRequest, GeoWarehouseGeometryRowsRequest, canonical_geometry_tile_bytes,
-        canonical_warehouse_geometry_bytes, ingest_client_geometry_tile, materialize_geometry_tile,
-        materialize_warehouse_geometry,
+        CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
+        CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_VERSION,
+        GeoGeometryError, GeoGeometryTileRequest, GeoWarehouseGeometryRowsRequest,
+        canonical_geometry_tile_bytes, canonical_warehouse_geometry_bytes,
+        materialize_geometry_tile, materialize_warehouse_geometry,
     },
     materialize::{
         CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
@@ -134,7 +137,6 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
         GeoSubcommand::ReconcileTiles(args) => run_reconcile_tiles(args),
         GeoSubcommand::Solve(args) => run_solve(args),
         GeoSubcommand::MaterializeGeometry(args) => run_materialize_geometry(args),
-        GeoSubcommand::IngestClientTile(args) => run_ingest_client_tile(args),
         GeoSubcommand::MaterializeWarehouseGeometry(args) => {
             run_materialize_warehouse_geometry(args)
         }
@@ -256,7 +258,7 @@ fn run_geo_run(args: &GeoRunCli) -> Result<u8, Box<dyn Error>> {
         Ok(plan) => plan,
         Err(exit_code) => return Ok(exit_code),
     };
-    let input_files = match read_geo_run_inputs(&args.input) {
+    let input_files = match read_geo_run_inputs(&plan, &args.input) {
         Ok(inputs) => inputs,
         Err(exit_code) => return Ok(exit_code),
     };
@@ -571,43 +573,6 @@ fn run_materialize_geometry(args: &GeoMaterializeGeometryCli) -> Result<u8, Box<
         Err(exit_code) => return Ok(exit_code),
     };
     let artifact = match materialize_geometry_tile(&request) {
-        Ok(artifact) => artifact,
-        Err(error) => return emit_geometry_error(error),
-    };
-    match canonical_geometry_tile_bytes(&artifact) {
-        Ok(bytes) => write_canonical(&bytes),
-        Err(error) => emit_serialization_refusal(CANON_GEO_GEOMETRY_TILE_VERSION, &error),
-    }
-}
-
-fn run_ingest_client_tile(args: &GeoClientTileIngestCli) -> Result<u8, Box<dyn Error>> {
-    let request: GeoClientTileIngestRequest = match read_request(
-        &args.request,
-        "request",
-        CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
-        "canon geo ingest-client-tile --request <REQUEST.json> --source <SOURCE.geojson|SOURCE.ndjson>",
-    ) {
-        Ok(request) => request,
-        Err(exit_code) => return Ok(exit_code),
-    };
-    let source_bytes = match fs::read(&args.source) {
-        Ok(bytes) => bytes,
-        Err(error) => {
-            return emit_refusal(
-                RefusalCode::EIo,
-                "Could not read the Geo --source file",
-                json!({
-                    "source": path_string(&args.source),
-                    "error": error.to_string(),
-                }),
-                Some(
-                    "canon geo ingest-client-tile --request <REQUEST.json> --source <SOURCE.geojson|SOURCE.ndjson>"
-                        .to_string(),
-                ),
-            );
-        }
-    };
-    let artifact = match ingest_client_geometry_tile(&request, &source_bytes) {
         Ok(artifact) => artifact,
         Err(error) => return emit_geometry_error(error),
     };
@@ -1146,7 +1111,7 @@ struct GeoRunInputFile {
     bytes: Vec<u8>,
 }
 
-fn read_geo_run_inputs(values: &[String]) -> Result<Vec<GeoRunInputFile>, u8> {
+fn read_geo_run_inputs(plan: &GeoPlan, values: &[String]) -> Result<Vec<GeoRunInputFile>, u8> {
     let mut seen = BTreeSet::new();
     let mut inputs = Vec::with_capacity(values.len());
     for value in values {
@@ -1194,7 +1159,8 @@ fn read_geo_run_inputs(values: &[String]) -> Result<Vec<GeoRunInputFile>, u8> {
                 .unwrap_or(2));
             }
         };
-        let contract_version = json_contract_version(&bytes, &assignment.path)?;
+        let contract_version =
+            geo_run_input_contract_version(plan, &assignment, &bytes, &assignment.path)?;
         let byte_count = match u64::try_from(bytes.len()) {
             Ok(byte_count) => byte_count,
             Err(_) => {
@@ -1227,6 +1193,26 @@ fn read_geo_run_inputs(values: &[String]) -> Result<Vec<GeoRunInputFile>, u8> {
         ))
     });
     Ok(inputs)
+}
+
+fn geo_run_input_contract_version(
+    plan: &GeoPlan,
+    assignment: &GeoRunInputAssignment,
+    bytes: &[u8],
+    path: &Path,
+) -> Result<String, u8> {
+    if is_client_tile_source_binding(plan, assignment) {
+        return Ok(CANON_GEO_CLIENT_TILE_SOURCE_VERSION.to_string());
+    }
+    json_contract_version(bytes, path)
+}
+
+fn is_client_tile_source_binding(plan: &GeoPlan, assignment: &GeoRunInputAssignment) -> bool {
+    assignment.binding_id == GEO_CLIENT_TILE_SOURCE_BINDING_ID
+        && plan.project_plan.nodes.iter().any(|node| {
+            node.node_id == assignment.node_id
+                && node.command == GEO_CLIENT_TILE_INGEST_STAGE_COMMAND
+        })
 }
 
 fn read_geo_satisfaction_file_bindings(

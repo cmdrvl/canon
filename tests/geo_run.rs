@@ -27,24 +27,29 @@ mod run;
 use canon::{
     geo::{
         CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_SATISFACTION_VERSION,
-        CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
-        CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_QUESTION_VERSION,
-        CANON_GEO_REGIONAL_INVENTORY_VERSION, CANON_GEO_RESOURCE_BUDGET_VERSION,
-        CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
-        DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy,
-        GeoAcquisitionDenominator, GeoAcquisitionProofClass, GeoAcquisitionTerminalState, GeoAsOf,
-        GeoBoundedGeography, GeoBudgetAction, GeoClaimClass, GeoCompositionProfile,
-        GeoControlEntityLevel, GeoCoveragePredicate, GeoDateInterval, GeoDenominatorSource,
-        GeoDigest, GeoDigestAlgorithm, GeoEgressClass, GeoEvidenceClaimRole, GeoEvidenceClass,
-        GeoEvidenceRecordRef, GeoGeometryTransformContract, GeoIdentityParticipation,
-        GeoLicenseClass, GeoLocalAcquisitionState, GeoLocalArtifactRef, GeoNativeEntityScope,
+        CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
+        CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
+        CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_LOCAL_FRAME_VERSION,
+        CANON_GEO_QUESTION_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
+        CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
+        CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS,
+        GeoAbstentionDisposition, GeoAbstentionPolicy, GeoAcquisitionDenominator,
+        GeoAcquisitionProofClass, GeoAcquisitionTerminalState, GeoAffineProjectionMm, GeoAsOf,
+        GeoBoundedGeography, GeoBudgetAction, GeoClaimClass, GeoClientTileCoverageExtent,
+        GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest, GeoClientTileSourceFormat,
+        GeoClientTileVendorIdentifier, GeoCompositionProfile, GeoControlEntityLevel,
+        GeoCoveragePredicate, GeoDateInterval, GeoDenominatorSource, GeoDigest, GeoDigestAlgorithm,
+        GeoEgressClass, GeoEvidenceClaimRole, GeoEvidenceClass, GeoEvidenceRecordRef,
+        GeoGeometryTransformContract, GeoIdentityParticipation, GeoLicenseClass,
+        GeoLocalAcquisitionState, GeoLocalArtifactRef, GeoLocalFrameContract, GeoNativeEntityScope,
         GeoNumericBound, GeoNumericMeasure, GeoPlan, GeoPlanInventoryRef, GeoPlanRequest,
-        GeoPlanStatus, GeoRegionalInventory, GeoRegionalSourceInstance, GeoRequestedGrain,
-        GeoResourceBudget, GeoResourceCounter, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
-        GeoSatisfactionExecutionRef, GeoSatisfactionFileAudit, GeoSatisfactionFinding,
-        GeoSatisfactionFindingCode, GeoSatisfactionLocalInputBinding, GeoSatisfactionRunInputRef,
-        GeoSatisfactionStatus, GeoSourceAvailability, GeoSourceRelease, GeoSubjectBinding,
-        GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
+        GeoPlanStage, GeoPlanStatus, GeoProjectionProvenance, GeoRegionalInventory,
+        GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter,
+        GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind, GeoSatisfactionExecutionRef,
+        GeoSatisfactionFileAudit, GeoSatisfactionFinding, GeoSatisfactionFindingCode,
+        GeoSatisfactionLocalInputBinding, GeoSatisfactionRunInputRef, GeoSatisfactionStatus,
+        GeoSourceAvailability, GeoSourceAxisDomain, GeoSourcePointFixed, GeoSourceRelease,
+        GeoSubjectBinding, GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
         GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileFeatureRef, GeoTileSourceBinding,
         GeoTileWorkRequest, GeoValueOrigin, GeoWarehouseBuildingParcelRow, GeoWarehouseEvidenceRow,
         GeoWarehouseRowsRequest, compile_geo_plan, default_geo_capabilities,
@@ -53,13 +58,18 @@ use canon::{
     project::{
         ProjectExtensionDagNode, ProjectExtensionDagOutput, ProjectExtensionDagRequest,
         ProjectNodeExecutionContext, ProjectNodeExecutionResult, ProjectNodeExecutor, ProjectPlan,
-        ProjectPlanNode, ProjectRunError, ProjectRunErrorCode, ProjectRunFailurePolicy,
-        ProjectRunPolicy, ProjectRunResult, compile_extension_project_plan, digest_bytes,
-        read_node_receipt,
+        ProjectPlanErrorCode, ProjectPlanHashRef, ProjectPlanNode, ProjectPlanNodeClass,
+        ProjectPlanNodeKind, ProjectPlanOutputMaterialization, ProjectPlanRefusalCondition,
+        ProjectPlanSideEffect, ProjectPlanSideEffectKind, ProjectRunError, ProjectRunErrorCode,
+        ProjectRunFailurePolicy, ProjectRunPolicy, ProjectRunResult,
+        compile_extension_project_plan, digest_bytes, read_node_receipt,
     },
 };
-use executor::{GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID};
-use h3o::CellIndex;
+use executor::{
+    CANON_GEO_CLIENT_TILE_SOURCE_VERSION, GEO_CLIENT_TILE_INGEST_STAGE_COMMAND,
+    GEO_CLIENT_TILE_SOURCE_BINDING_ID, GEO_REQUEST_BINDING_ID, GEO_ROWS_BINDING_ID,
+};
+use h3o::{CellIndex, LatLng, Resolution};
 use run::{
     CANON_GEO_RUN_PROGRESS_VERSION, GeoRun, GeoRunAcquisitionSatisfactionRef,
     GeoRunArtifactBinding, GeoRunErrorCode, GeoRunNextActionKind, GeoRunObservation,
@@ -68,13 +78,17 @@ use run::{
     geo_run_semantic_hash, run_geo_plan, run_geo_plan_with_progress_writer,
     run_geo_plan_with_project_executor,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::Path,
     str::FromStr,
 };
+
+const CLIENT_TILE_NODE_ID: &str = "geo.client.tile_ingest";
+const CLIENT_TILE_OUTPUT_ID: &str = "client_tile";
+const CLIENT_TILE_OUTPUT_PATH: &str = "geo/client/client_tile.json";
 
 #[test]
 fn geo_run_executes_real_kernels_and_folds_input_hashes() {
@@ -125,6 +139,111 @@ fn geo_run_executes_real_kernels_and_folds_input_hashes() {
     assert!(receipt.content_hash_inputs.iter().any(|input| {
         input.ref_id == geo_run_input_hash_ref_id("geo.building.home_cells", GEO_ROWS_BINDING_ID)
     }));
+}
+
+#[test]
+fn geo_run_executes_client_tile_ingest_stage_from_raw_source_bytes() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = client_tile_ingest_plan();
+    let (request, source, center, neighbor) = client_tile_source_and_request();
+
+    let run = run_geo_plan(GeoRunRequest::new(
+        plan,
+        policy(temp.path()),
+        client_tile_run_bindings(&request, source.as_bytes()),
+    ))
+    .expect("client tile stage runs through geo run");
+
+    assert_eq!(run.status, GeoRunStatus::Completed);
+    assert_eq!(run.artifact_inputs.len(), 2);
+    assert!(run.artifact_inputs.iter().any(|input| {
+        input.node_id == CLIENT_TILE_NODE_ID
+            && input.binding_id == GEO_CLIENT_TILE_SOURCE_BINDING_ID
+            && input.contract_version == CANON_GEO_CLIENT_TILE_SOURCE_VERSION
+    }));
+    assert_eq!(run.output_refs.len(), 1);
+    assert_eq!(
+        run.output_refs[0].contract_version,
+        CANON_GEO_GEOMETRY_TILE_VERSION
+    );
+
+    let artifact_path = temp.path().join(CLIENT_TILE_OUTPUT_PATH);
+    let bytes = fs::read(&artifact_path).expect("client tile artifact is published");
+    assert_eq!(digest_bytes(&bytes), run.output_refs[0].content_digest);
+    let artifact: Value = serde_json::from_slice(&bytes).expect("client tile parses");
+    assert_eq!(artifact["version"], CANON_GEO_GEOMETRY_TILE_VERSION);
+    assert_eq!(artifact["provider_tile"]["tile_id"], center);
+    assert_eq!(
+        artifact["provider_tile"]["client_ingest"]["summary"]["anchor_membership_count"],
+        2
+    );
+    assert!(
+        artifact["provider_tile"]["client_ingest"]["memberships"]
+            .as_array()
+            .expect("memberships")
+            .iter()
+            .any(|membership| {
+                membership["source_feature_id"] == "client-apn-1"
+                    && membership["h3_cell"] == neighbor
+                    && membership["rule"] == "declared_supplemental_coverage"
+            })
+    );
+}
+
+#[test]
+fn geo_run_client_tile_ingest_waits_for_raw_source_and_rejects_wrong_source_contract() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let plan = client_tile_ingest_plan();
+    let (request, source, _, _) = client_tile_source_and_request();
+    let request_only = vec![
+        GeoRunArtifactBinding::from_json(
+            CLIENT_TILE_NODE_ID,
+            GEO_REQUEST_BINDING_ID,
+            CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
+            &request,
+        )
+        .expect("request binding"),
+    ];
+
+    let waiting = run_geo_plan(GeoRunRequest::new(
+        plan.clone(),
+        policy(temp.path()),
+        request_only,
+    ))
+    .expect("missing source waits for input");
+
+    assert_eq!(waiting.status, GeoRunStatus::WaitingForInput);
+    assert!(waiting.output_refs.is_empty());
+    assert!(waiting.next_actions.iter().any(|action| {
+        action.project_node_id.as_deref() == Some(CLIENT_TILE_NODE_ID)
+            && action.expected_contract.as_deref() == Some(CANON_GEO_CLIENT_TILE_SOURCE_VERSION)
+    }));
+    assert!(!temp.path().join(CLIENT_TILE_OUTPUT_PATH).exists());
+
+    let bad_temp = tempfile::tempdir().expect("tempdir");
+    let error = run_geo_plan(GeoRunRequest::new(
+        plan,
+        policy(bad_temp.path()),
+        vec![
+            GeoRunArtifactBinding::from_json(
+                CLIENT_TILE_NODE_ID,
+                GEO_REQUEST_BINDING_ID,
+                CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
+                &request,
+            )
+            .expect("request binding"),
+            GeoRunArtifactBinding::from_bytes(
+                CLIENT_TILE_NODE_ID,
+                GEO_CLIENT_TILE_SOURCE_BINDING_ID,
+                CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
+                source.into_bytes(),
+            ),
+        ],
+    ))
+    .expect_err("raw source bound as a typed request refuses");
+
+    assert_eq!(error.code, GeoRunErrorCode::OutputContractViolation);
+    assert!(!bad_temp.path().join(CLIENT_TILE_OUTPUT_PATH).exists());
 }
 
 #[test]
@@ -1248,6 +1367,145 @@ fn run_bindings(rows: GeoWarehouseRowsRequest) -> Vec<GeoRunArtifactBinding> {
     ]
 }
 
+fn client_tile_run_bindings(
+    request: &GeoClientTileIngestRequest,
+    source: &[u8],
+) -> Vec<GeoRunArtifactBinding> {
+    vec![
+        GeoRunArtifactBinding::from_json(
+            CLIENT_TILE_NODE_ID,
+            GEO_REQUEST_BINDING_ID,
+            CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
+            request,
+        )
+        .expect("client request binding"),
+        GeoRunArtifactBinding::from_bytes(
+            CLIENT_TILE_NODE_ID,
+            GEO_CLIENT_TILE_SOURCE_BINDING_ID,
+            CANON_GEO_CLIENT_TILE_SOURCE_VERSION,
+            source.to_vec(),
+        ),
+    ]
+}
+
+fn client_tile_source_and_request() -> (GeoClientTileIngestRequest, String, String, String) {
+    let center = LatLng::new(40.753000, -73.977000)
+        .expect("valid client tile fixture point")
+        .to_cell(Resolution::Nine)
+        .to_string();
+    let mut work_cells = CellIndex::from_str(&center)
+        .expect("fixture center parses")
+        .grid_disk::<Vec<_>>(1)
+        .into_iter()
+        .map(|cell| cell.to_string())
+        .collect::<Vec<_>>();
+    work_cells.sort();
+    let neighbor = work_cells
+        .iter()
+        .find(|cell| cell.as_str() != center.as_str())
+        .expect("fixture k1 neighbor")
+        .clone();
+    let source = json!({
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "id": "client-row-1",
+                "properties": {
+                    "apn": "client-apn-1",
+                    "supplemental_cells": [neighbor]
+                },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [-73.977100, 40.752900],
+                        [-73.976900, 40.752900],
+                        [-73.976900, 40.753100],
+                        [-73.977100, 40.753100],
+                        [-73.977100, 40.752900]
+                    ]]
+                }
+            },
+            {
+                "type": "Feature",
+                "id": "client-row-2",
+                "properties": { "apn": "client-apn-2" },
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [-73.977000, 40.753000]
+                }
+            }
+        ]
+    })
+    .to_string();
+    let request = GeoClientTileIngestRequest {
+        version: CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION.to_string(),
+        tile_id: center.clone(),
+        source_format: GeoClientTileSourceFormat::GeoJson,
+        source_path: "client/parcels.geojson".to_string(),
+        source_digest: blake3::hash(source.as_bytes()).to_hex().to_string(),
+        declared_crs: "EPSG:4326".to_string(),
+        frame: wgs84_client_frame(&center),
+        source_instance_id: "source.client.parcels".to_string(),
+        release_id: "client-parcels-2026-q3".to_string(),
+        release_digest: blake3::hash(b"client-parcels-2026-q3").to_hex().to_string(),
+        vendor: "county".to_string(),
+        vintage: "2026-Q3".to_string(),
+        vendor_identifier: GeoClientTileVendorIdentifier {
+            issuer: "county".to_string(),
+            role: "apn".to_string(),
+            property: "apn".to_string(),
+        },
+        source_record_id_property: None,
+        supplemental_h3_cells_property: Some("supplemental_cells".to_string()),
+        license_expression: "LicenseRef-Client-Parcel-Local".to_string(),
+        coverage_extent: GeoClientTileCoverageExtent {
+            extent_id: "client-declared-h3-k1".to_string(),
+            kind: GeoClientTileCoverageExtentKind::ClientDeclaredH3CellSet,
+            h3_cells: work_cells.clone(),
+        },
+        mutual_exclusivity_declared: false,
+        h3_resolution: 9,
+        halo_k: 1,
+        work_cells,
+        max_features: 8,
+        max_vertices_per_geometry: 64,
+        max_geometry_bytes_per_tile: 100_000,
+    };
+    (request, source, center, neighbor)
+}
+
+fn wgs84_client_frame(tile_id: &str) -> GeoLocalFrameContract {
+    GeoLocalFrameContract {
+        version: CANON_GEO_LOCAL_FRAME_VERSION.to_string(),
+        frame_id: format!("client:{tile_id}:wgs84-local-affine:v0"),
+        tile_id: tile_id.to_string(),
+        source_crs: "EPSG:4326".to_string(),
+        source_axis_domain: GeoSourceAxisDomain::GeographicLongitudeLatitude,
+        source_decimal_places: 6,
+        source_origin: GeoSourcePointFixed {
+            x: -74_000_000,
+            y: 40_000_000,
+        },
+        affine: GeoAffineProjectionMm {
+            x_from_source_x_numerator: 1,
+            x_from_source_y_numerator: 0,
+            y_from_source_x_numerator: 0,
+            y_from_source_y_numerator: 1,
+            denominator: 1,
+        },
+        projection: GeoProjectionProvenance {
+            method_id: "fixture:wgs84-local-affine".to_string(),
+            method_version: "v0".to_string(),
+            parameters_blake3: blake3::hash(format!("fixture:{tile_id}").as_bytes())
+                .to_hex()
+                .to_string(),
+            max_projection_error_micrometres: 10_000_000,
+        },
+        max_abs_coordinate_mm: 10_000_000,
+    }
+}
+
 fn replace_section_binding(bindings: &mut [GeoRunArtifactBinding], request: Value) {
     let binding = bindings
         .iter_mut()
@@ -1394,6 +1652,102 @@ fn geo_plan_with_wrong_solve_output_id() -> GeoPlan {
         plan.semantic_hash.trim_start_matches("blake3:")
     );
     plan
+}
+
+fn client_tile_ingest_plan() -> GeoPlan {
+    let mut plan = building_plan(
+        "release.fixture.one",
+        GeoSourceAvailability::Available,
+        None,
+    );
+    let mut overlay = plan
+        .geo_nodes
+        .iter()
+        .find(|overlay| overlay.project_node_id == "geo.building.home_cells")
+        .expect("home-cell overlay")
+        .clone();
+    overlay.project_node_id = CLIENT_TILE_NODE_ID.to_string();
+    overlay.stage = GeoPlanStage::BuildBoundedSection;
+    overlay.entity_level = Some(GeoControlEntityLevel::Parcel);
+    overlay.evidence_classes = vec![GeoEvidenceClass::ParcelGeometry];
+    overlay.claim_classes = vec![GeoClaimClass::CollateralComposition];
+    overlay.expected_output_contract = CANON_GEO_GEOMETRY_TILE_VERSION.to_string();
+    overlay.bounded_section_required = false;
+    overlay.incidence_factorization_required = false;
+    overlay.exact_solve_scope = None;
+
+    plan.project_plan =
+        compile_extension_project_plan(ProjectExtensionDagRequest::offline_read_only(
+            "geo-client-tile-stage-fixture",
+            digest_bytes(b"geo client tile stage manifest"),
+            digest_bytes(b"geo client tile stage lock"),
+            vec![client_tile_stage_node(&overlay.deterministic_bounds)],
+        ))
+        .expect("client tile project plan compiles");
+    plan.geo_nodes = vec![overlay];
+    let mut outcome = plan
+        .grain_outcomes
+        .first()
+        .expect("building outcome")
+        .clone();
+    outcome.entity_level = GeoControlEntityLevel::Parcel;
+    outcome.missing_evidence_classes = Vec::new();
+    outcome.project_node_ids = vec![CLIENT_TILE_NODE_ID.to_string()];
+    outcome.claim_limitation =
+        "client tile ingest indexes only the declared local source bytes and coverage extent"
+            .to_string();
+    outcome.next_action = "execute the client tile ingest stage through geo run".to_string();
+    plan.grain_outcomes = vec![outcome];
+    plan.external_requests = Vec::new();
+    plan.diagnostics = Vec::new();
+    plan.status = GeoPlanStatus::Planned;
+    plan.semantic_hash = geo_plan_semantic_hash(&plan).expect("client tile plan semantic hash");
+    plan.plan_id = format!(
+        "canon_geo_plan.v0:{}",
+        plan.semantic_hash.trim_start_matches("blake3:")
+    );
+    canon::geo::validate_geo_plan(&plan).expect("client tile plan validates");
+    plan
+}
+
+fn client_tile_stage_node(bounds: &[GeoNumericBound]) -> ProjectExtensionDagNode {
+    ProjectExtensionDagNode {
+        node_id: CLIENT_TILE_NODE_ID.to_string(),
+        kind: ProjectPlanNodeKind::Index,
+        class: ProjectPlanNodeClass::Computation,
+        command: GEO_CLIENT_TILE_INGEST_STAGE_COMMAND.to_string(),
+        dependencies: Vec::new(),
+        content_hash_inputs: vec![ProjectPlanHashRef {
+            ref_id: "geo.fixture.client_tile_inputs".to_string(),
+            content_hash: digest_bytes(b"geo client tile fixture inputs"),
+        }],
+        outputs: vec![ProjectExtensionDagOutput {
+            output_id: CLIENT_TILE_OUTPUT_ID.to_string(),
+            path: CLIENT_TILE_OUTPUT_PATH.to_string(),
+            materialization: ProjectPlanOutputMaterialization::PlannedArtifact,
+        }],
+        limits: bounds
+            .iter()
+            .map(|bound| (bound.semantic_id.clone(), bound.value))
+            .collect(),
+        cache_eligible: true,
+        side_effects: vec![
+            ProjectPlanSideEffect {
+                kind: ProjectPlanSideEffectKind::ReadsInput,
+                description: "reads declared local client source bytes and request".to_string(),
+            },
+            ProjectPlanSideEffect {
+                kind: ProjectPlanSideEffectKind::WritesArtifact,
+                description: "publishes one canonical client geometry tile".to_string(),
+            },
+        ],
+        refusal_conditions: vec![ProjectPlanRefusalCondition {
+            code: ProjectPlanErrorCode::ArtifactContract,
+            message: "refuse on client tile request, source, or output contract mismatch"
+                .to_string(),
+            next_command: None,
+        }],
+    }
 }
 
 fn project_plan_with_command(

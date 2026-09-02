@@ -2314,7 +2314,7 @@
     },
     {
       "name": "geo evaluate",
-      "usage": "canon geo evaluate --population <POPULATION.json>",
+      "usage": "canon geo evaluate --population <POPULATION.json> [--artifact-dir <DIR>]",
       "description": "Evaluate a labeled population request or replay-validated evidence-stack artifact without letting labels reach the compiler or solver and emit the canonical evaluation artifact on stdout",
       "surface": "primary",
       "output_mode": "json",
@@ -2371,6 +2371,13 @@
           "type": "file_path",
           "required": true,
           "description": "JSON file holding canon_geo_population_request.v0 or a replay-valid canon_geo_population_evidence_stack.v0 artifact"
+        },
+        {
+          "name": "artifact-dir",
+          "flag": "--artifact-dir",
+          "type": "directory_path",
+          "required": false,
+          "description": "Optional directory for per-case evidence and solve artifacts"
         }
       ]
     },

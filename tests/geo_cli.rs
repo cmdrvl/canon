@@ -7,7 +7,7 @@
 use assert_cmd::Command;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use canon::geo::{GeoTileWorkRequest, materialize_tile_work_unit};
-use h3o::{CellIndex, LatLng, Resolution};
+use h3o::CellIndex;
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -154,116 +154,6 @@ fn tiny_geometry_request(max_geometry_bytes_per_tile: u64) -> Value {
         "max_vertices_per_geometry": 100,
         "max_geometry_bytes_per_tile": max_geometry_bytes_per_tile
     })
-}
-
-fn tiny_client_tile_source_and_request() -> (Value, String, String, String) {
-    let center = LatLng::new(40.753000, -73.977000)
-        .expect("valid client tile fixture point")
-        .to_cell(Resolution::Nine)
-        .to_string();
-    let mut work_cells = CellIndex::from_str(&center)
-        .expect("fixture center parses")
-        .grid_disk::<Vec<_>>(1)
-        .into_iter()
-        .map(|cell| cell.to_string())
-        .collect::<Vec<_>>();
-    work_cells.sort();
-    let neighbor = work_cells
-        .iter()
-        .find(|cell| cell.as_str() != center.as_str())
-        .expect("fixture k1 neighbor")
-        .clone();
-    let source = json!({
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "id": "client-row-1",
-                "properties": {
-                    "apn": "client-apn-1",
-                    "supplemental_cells": [neighbor]
-                },
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [[
-                        [-73.977100, 40.752900],
-                        [-73.976900, 40.752900],
-                        [-73.976900, 40.753100],
-                        [-73.977100, 40.753100],
-                        [-73.977100, 40.752900]
-                    ]]
-                }
-            },
-            {
-                "type": "Feature",
-                "id": "client-row-2",
-                "properties": { "apn": "client-apn-2" },
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [-73.977000, 40.753000]
-                }
-            }
-        ]
-    })
-    .to_string();
-    let request = json!({
-        "version": "canon_geo_client_tile_ingest_request.v0",
-        "tile_id": center,
-        "source_format": "geo_json",
-        "source_path": "client/parcels.geojson",
-        "source_digest": blake3::hash(source.as_bytes()).to_hex().to_string(),
-        "declared_crs": "EPSG:4326",
-        "frame": {
-            "version": "canon_geo_local_frame.v0",
-            "frame_id": format!("client:{center}:wgs84-local-affine:v0"),
-            "tile_id": center,
-            "source_crs": "EPSG:4326",
-            "source_axis_domain": "geographic_longitude_latitude",
-            "source_decimal_places": 6,
-            "source_origin": { "x": -74000000, "y": 40000000 },
-            "affine": {
-                "x_from_source_x_numerator": 1,
-                "x_from_source_y_numerator": 0,
-                "y_from_source_x_numerator": 0,
-                "y_from_source_y_numerator": 1,
-                "denominator": 1
-            },
-            "projection": {
-                "method_id": "fixture:wgs84-local-affine",
-                "method_version": "v0",
-                "parameters_blake3": blake3::hash(format!("fixture:{center}").as_bytes()).to_hex().to_string(),
-                "max_projection_error_micrometres": 10000000,
-                "determinism_notes": "fixture identity affine over decimal WGS84 coordinates"
-            },
-            "max_abs_coordinate_mm": 10000000
-        },
-        "source_instance_id": "source.client.parcels",
-        "release_id": "client-parcels-2026-q3",
-        "release_digest": blake3::hash(b"client-parcels-2026-q3").to_hex().to_string(),
-        "vendor": "county",
-        "vintage": "2026-Q3",
-        "vendor_identifier": {
-            "issuer": "county",
-            "role": "apn",
-            "property": "apn"
-        },
-        "source_record_id_property": null,
-        "supplemental_h3_cells_property": "supplemental_cells",
-        "license_expression": "LicenseRef-Client-Parcel-Local",
-        "coverage_extent": {
-            "extent_id": "client-declared-h3-k1",
-            "kind": "client_declared_h3_cell_set",
-            "h3_cells": work_cells
-        },
-        "mutual_exclusivity_declared": false,
-        "h3_resolution": 9,
-        "halo_k": 1,
-        "work_cells": work_cells,
-        "max_features": 8,
-        "max_vertices_per_geometry": 64,
-        "max_geometry_bytes_per_tile": 100000
-    });
-    (request, source, center, neighbor)
 }
 
 fn tiny_warehouse_geometry_request(declared_sha256: Option<&str>) -> Value {
@@ -2388,90 +2278,6 @@ fn geo_materialize_geometry_emits_canonical_values_and_typed_budget_refusals() {
         refusal["refusal"]["detail"]["budget"]["policy_id"],
         "geometry.max_bytes_per_tile"
     );
-}
-
-#[test]
-fn geo_ingest_client_tile_emits_local_h3_tile_and_refuses_missing_source() {
-    let temp = tempdir().expect("tempdir");
-    let (request, source, center, neighbor) = tiny_client_tile_source_and_request();
-    let request_path = write_json(temp.path(), "client-tile-ingest.json", &request);
-    let source_path = temp.path().join("parcels.geojson");
-    fs::write(&source_path, source).expect("write client GeoJSON");
-
-    let first = canon_command()
-        .args([
-            "geo",
-            "ingest-client-tile",
-            "--request",
-            request_path.to_str().unwrap(),
-            "--source",
-            source_path.to_str().unwrap(),
-        ])
-        .assert()
-        .success();
-    let second = canon_command()
-        .args([
-            "geo",
-            "ingest-client-tile",
-            "--request",
-            request_path.to_str().unwrap(),
-            "--source",
-            source_path.to_str().unwrap(),
-        ])
-        .assert()
-        .success();
-    assert_eq!(first.get_output().stdout, second.get_output().stdout);
-
-    let artifact: Value = serde_json::from_slice(&first.get_output().stdout)
-        .expect("client-ingested geometry tile parses");
-    assert_eq!(artifact["version"], "canon_geo_geometry_tile.v0");
-    assert_eq!(artifact["provider_tile"]["tile_id"], center);
-    assert_eq!(
-        artifact["provider_tile"]["license_posture"]["client_restricted_source_ids"],
-        json!(["source.client.parcels"])
-    );
-    assert_eq!(
-        artifact["provider_tile"]["client_ingest"]["coverage_extent"]["h3_cells"]
-            .as_array()
-            .unwrap()
-            .len(),
-        7
-    );
-    assert_eq!(
-        artifact["provider_tile"]["client_ingest"]["summary"]["anchor_membership_count"],
-        2
-    );
-    assert_eq!(
-        artifact["provider_tile"]["client_ingest"]["summary"]["supplemental_membership_count"],
-        1
-    );
-    assert!(
-        artifact["provider_tile"]["client_ingest"]["memberships"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|membership| {
-                membership["source_feature_id"] == "client-apn-1"
-                    && membership["h3_cell"] == neighbor
-                    && membership["rule"] == "declared_supplemental_coverage"
-            })
-    );
-
-    let refusal = canon_command()
-        .args([
-            "geo",
-            "ingest-client-tile",
-            "--request",
-            request_path.to_str().unwrap(),
-            "--source",
-            temp.path().join("missing.geojson").to_str().unwrap(),
-        ])
-        .assert()
-        .code(2);
-    let refusal: Value =
-        serde_json::from_slice(&refusal.get_output().stdout).expect("missing source refusal");
-    assert_eq!(refusal["outcome"], "REFUSAL");
-    assert_eq!(refusal["refusal"]["code"], "E_IO");
 }
 
 #[test]

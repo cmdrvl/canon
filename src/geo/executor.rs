@@ -9,18 +9,21 @@
 
 use crate::{
     geo::{
-        CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_COMPOSITION_VERSION,
-        CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
+        CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
+        CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+        CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
         CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
         CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
-        CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoCompositionArtifact, GeoControlEntityLevel,
-        GeoEntityLevel, GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
-        GeoEvidenceCompilationRequest, GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest,
-        GeoPlan, GeoPlanComponentScope, GeoPlanExactSolveScope, GeoPlanProducedArtifactRef,
-        GeoTileCandidateReachStatus, GeoTileWorkRequest, GeoTileWorkUnitArtifact,
-        GeoWarehouseRowsRequest, canonical_composition_bytes, canonical_evidence_compilation_bytes,
-        canonical_home_cell_assignment_bytes, canonical_materialized_evidence_request_bytes,
-        canonical_tile_work_unit_bytes, compile_evidence, materialize_home_cells,
+        CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoClientTileIngestRequest, GeoCompositionArtifact,
+        GeoControlEntityLevel, GeoEntityLevel, GeoEvidenceCompilationArtifact,
+        GeoEvidenceCompilationReference, GeoEvidenceCompilationRequest, GeoGeometryTileArtifact,
+        GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest, GeoPlan, GeoPlanComponentScope,
+        GeoPlanExactSolveScope, GeoPlanProducedArtifactRef, GeoTileCandidateReachStatus,
+        GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoWarehouseRowsRequest,
+        canonical_composition_bytes, canonical_evidence_compilation_bytes,
+        canonical_geometry_tile_bytes, canonical_home_cell_assignment_bytes,
+        canonical_materialized_evidence_request_bytes, canonical_tile_work_unit_bytes,
+        compile_evidence, ingest_client_geometry_tile, materialize_home_cells,
         materialize_tile_work_unit, materialize_warehouse_rows, solve_composition,
         validate_evidence_compilation_artifact,
     },
@@ -49,9 +52,12 @@ pub const GEO_MATERIALIZE_EVIDENCE_COMMAND: &str =
 pub const GEO_COMPILE_EVIDENCE_COMMAND: &str =
     "canon geo compile-evidence --request <REQUEST.json>";
 pub const GEO_SOLVE_COMMAND: &str = "canon geo solve --request <REQUEST.json>";
+pub const GEO_CLIENT_TILE_INGEST_STAGE_COMMAND: &str = "canon.geo.stage.client_tile_ingest.v0";
+pub const CANON_GEO_CLIENT_TILE_SOURCE_VERSION: &str = "canon_geo_client_tile_source.v0";
 
 pub const GEO_ROWS_BINDING_ID: &str = "rows";
 pub const GEO_REQUEST_BINDING_ID: &str = "request";
+pub const GEO_CLIENT_TILE_SOURCE_BINDING_ID: &str = "source";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeoExecutorInputBinding {
@@ -248,6 +254,7 @@ impl GeoProjectNodeExecutor {
         let leaf = match command {
             GeoExecutorCommand::MaterializeHomeCells => self.execute_home_cells(node)?,
             GeoExecutorCommand::TileWork => self.execute_tile_work(node)?,
+            GeoExecutorCommand::ClientTileIngest => self.execute_client_tile_ingest(node)?,
             GeoExecutorCommand::MaterializeEvidence => self.execute_materialize_evidence(node)?,
             GeoExecutorCommand::CompileEvidence => self.execute_compile_evidence(node)?,
             GeoExecutorCommand::Solve => self.execute_solve(node)?,
@@ -396,6 +403,48 @@ impl GeoProjectNodeExecutor {
         Ok(GeoLeafExecution {
             output_id: "section",
             output_contract: CANON_GEO_TILE_WORK_UNIT_VERSION,
+            output_bytes: bytes,
+            deterministic_usage: usage,
+        })
+    }
+
+    fn execute_client_tile_ingest(
+        &self,
+        node: &ProjectPlanNode,
+    ) -> ProjectRunResult<GeoLeafExecution> {
+        let request: GeoClientTileIngestRequest = self.required_binding_json(
+            node,
+            GEO_REQUEST_BINDING_ID,
+            &[CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION],
+        )?;
+        let source = self.required_binding(
+            node,
+            GEO_CLIENT_TILE_SOURCE_BINDING_ID,
+            &[CANON_GEO_CLIENT_TILE_SOURCE_VERSION],
+        )?;
+        let artifact = ingest_client_geometry_tile(&request, &source.bytes)
+            .map_err(|error| leaf_error(node, "client-tile-ingest", error))?;
+        let bytes = canonical_geometry_tile_bytes(&artifact)
+            .map_err(|error| serialization_error(node, CANON_GEO_GEOMETRY_TILE_VERSION, error))?;
+        let mut usage = BTreeMap::new();
+        usage.insert("client_source_bytes".to_string(), source.bytes.len() as u64);
+        let provider_tile = artifact.provider_tile.as_ref();
+        usage.insert(
+            "client_features".to_string(),
+            provider_tile
+                .map(|tile| tile.features.len() as u64)
+                .unwrap_or(0),
+        );
+        usage.insert(
+            "client_memberships".to_string(),
+            provider_tile
+                .and_then(|tile| tile.client_ingest.as_ref())
+                .map(|ingest| ingest.memberships.len() as u64)
+                .unwrap_or(0),
+        );
+        Ok(GeoLeafExecution {
+            output_id: "client_tile",
+            output_contract: CANON_GEO_GEOMETRY_TILE_VERSION,
             output_bytes: bytes,
             deterministic_usage: usage,
         })
@@ -1150,15 +1199,17 @@ impl ProjectNodeExecutor for GeoProjectNodeExecutor {
 enum GeoExecutorCommand {
     MaterializeHomeCells,
     TileWork,
+    ClientTileIngest,
     MaterializeEvidence,
     CompileEvidence,
     Solve,
 }
 
 impl GeoExecutorCommand {
-    const SUPPORTED: [Self; 5] = [
+    const SUPPORTED: [Self; 6] = [
         Self::MaterializeHomeCells,
         Self::TileWork,
+        Self::ClientTileIngest,
         Self::MaterializeEvidence,
         Self::CompileEvidence,
         Self::Solve,
@@ -1168,6 +1219,7 @@ impl GeoExecutorCommand {
         match node.command.as_str() {
             GEO_MATERIALIZE_HOME_CELLS_COMMAND => Ok(Self::MaterializeHomeCells),
             GEO_TILE_WORK_COMMAND => Ok(Self::TileWork),
+            GEO_CLIENT_TILE_INGEST_STAGE_COMMAND => Ok(Self::ClientTileIngest),
             GEO_MATERIALIZE_EVIDENCE_COMMAND => Ok(Self::MaterializeEvidence),
             GEO_COMPILE_EVIDENCE_COMMAND => Ok(Self::CompileEvidence),
             GEO_SOLVE_COMMAND => Ok(Self::Solve),
@@ -1183,6 +1235,7 @@ impl GeoExecutorCommand {
         match self {
             Self::MaterializeHomeCells => ProjectPlanNodeKind::Normalize,
             Self::TileWork => ProjectPlanNodeKind::Block,
+            Self::ClientTileIngest => ProjectPlanNodeKind::Index,
             Self::MaterializeEvidence | Self::CompileEvidence => ProjectPlanNodeKind::Evidence,
             Self::Solve => ProjectPlanNodeKind::Solve,
         }
@@ -1192,6 +1245,7 @@ impl GeoExecutorCommand {
         match self {
             Self::MaterializeHomeCells => "home_cells",
             Self::TileWork => "section",
+            Self::ClientTileIngest => "client_tile",
             Self::MaterializeEvidence => "materialize_evidence",
             Self::CompileEvidence => "compile_evidence",
             Self::Solve => "solve",
@@ -1201,6 +1255,7 @@ impl GeoExecutorCommand {
     fn expected_dependencies(self) -> &'static [(&'static str, &'static str)] {
         match self {
             Self::MaterializeHomeCells => &[],
+            Self::ClientTileIngest => &[],
             Self::TileWork => &[("home_cells", CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION)],
             Self::MaterializeEvidence => &[("section", CANON_GEO_TILE_WORK_UNIT_VERSION)],
             Self::CompileEvidence => {
@@ -1218,6 +1273,7 @@ impl GeoExecutorCommand {
         match self {
             Self::MaterializeHomeCells => "materialize-home-cells",
             Self::TileWork => "tile-work",
+            Self::ClientTileIngest => "client-tile-ingest",
             Self::MaterializeEvidence => "materialize-evidence",
             Self::CompileEvidence => "compile-evidence",
             Self::Solve => "solve",
@@ -1363,6 +1419,7 @@ fn contract_for_output_id(output_id: &str) -> Option<&'static str> {
     match output_id {
         "home_cells" => Some(CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION),
         "section" => Some(CANON_GEO_TILE_WORK_UNIT_VERSION),
+        "client_tile" => Some(CANON_GEO_GEOMETRY_TILE_VERSION),
         "materialize_evidence" => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
         "compile_evidence" => Some(CANON_GEO_EVIDENCE_COMPILATION_VERSION),
         "solve" => Some(CANON_GEO_COMPOSITION_VERSION),
@@ -1383,7 +1440,10 @@ fn validate_expected_dependency(
         return Err(error(
             node,
             ProjectRunErrorCode::ArtifactContract,
-            "Geo materialize-home-cells must start from explicit bindings, not dependency outputs",
+            format!(
+                "Geo {} must start from explicit bindings, not dependency outputs",
+                command.name()
+            ),
         ));
     }
     if command.requires_exact_dependency_count() && node.dependencies.len() != expected.len() {
@@ -1491,6 +1551,23 @@ fn ensure_canonical_artifact_bytes(
                 contract,
                 bytes,
                 canonical_tile_work_unit_bytes(&artifact),
+            )
+        }
+        CANON_GEO_GEOMETRY_TILE_VERSION => {
+            let artifact: GeoGeometryTileArtifact =
+                parse_json_target(&node, bytes, CANON_GEO_GEOMETRY_TILE_VERSION)?;
+            if artifact.version != CANON_GEO_GEOMETRY_TILE_VERSION {
+                return Err(target_error(
+                    &node,
+                    ProjectRunErrorCode::ArtifactContract,
+                    "geometry tile artifact declares the wrong version",
+                ));
+            }
+            require_exact_bytes(
+                &node,
+                contract,
+                bytes,
+                canonical_geometry_tile_bytes(&artifact),
             )
         }
         CANON_GEO_EVIDENCE_REQUEST_VERSION => {
