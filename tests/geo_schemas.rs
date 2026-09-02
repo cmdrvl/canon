@@ -44,17 +44,18 @@ use canon::geo::{
     CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
     CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
-    CANON_GEO_QUESTION_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
-    CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
-    CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION,
-    CANON_GEO_WAREHOUSE_ROWS_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition,
-    GeoAbstentionPolicy, GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity,
-    GeoAddressParseRequest, GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm,
-    GeoAsOf, GeoBoundedGeography, GeoBudgetAction, GeoBuildingCandidate, GeoClaimClass,
-    GeoClientTileCoverageExtent, GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest,
-    GeoClientTileSourceFormat, GeoClientTileVendorIdentifier, GeoCompositionModel,
-    GeoCompositionProfile, GeoCompositionRequest, GeoCompositionUniverse, GeoControlEntityLevel,
-    GeoCoveragePredicate, GeoEgressClass, GeoEntityLevel, GeoEntityRef, GeoErrorPopulationArtifact,
+    CANON_GEO_PRE_RESOLUTION_VERSION, CANON_GEO_QUESTION_VERSION,
+    CANON_GEO_REGIONAL_INVENTORY_VERSION, CANON_GEO_RESOURCE_BUDGET_VERSION,
+    CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
+    CANON_GEO_WAREHOUSE_GEOMETRY_ROWS_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
+    DEFAULT_MAX_MATERIALIZED_MODELS, GeoAbstentionDisposition, GeoAbstentionPolicy,
+    GeoAddressHouseNumber, GeoAddressJurisdiction, GeoAddressParity, GeoAddressParseRequest,
+    GeoAddressRangeOperator, GeoAddressStreet, GeoAffineProjectionMm, GeoAsOf, GeoBoundedGeography,
+    GeoBudgetAction, GeoBuildingCandidate, GeoClaimClass, GeoClientTileCoverageExtent,
+    GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest, GeoClientTileSourceFormat,
+    GeoClientTileVendorIdentifier, GeoCompositionModel, GeoCompositionProfile,
+    GeoCompositionRequest, GeoCompositionUniverse, GeoControlEntityLevel, GeoCoveragePredicate,
+    GeoEgressClass, GeoEntityLevel, GeoEntityRef, GeoErrorPopulationArtifact,
     GeoErrorPopulationSubject, GeoEvidenceClaimRole, GeoEvidenceClass,
     GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoExactSourceUnitMm,
     GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoH7AssociationPlane, GeoH7BoroughEdge,
@@ -70,25 +71,28 @@ use canon::geo::{
     GeoNativeEntityScope, GeoNumericBound, GeoNumericMeasure, GeoNycBorough, GeoPadAddressMember,
     GeoPadAddressSet, GeoPlanInventoryRef, GeoPointPopulationArtifact,
     GeoPopulationCaseEvidenceOverlay, GeoPopulationEvaluationRequest,
-    GeoPopulationEvidenceStackRequest, GeoProjectionProvenance, GeoQuestion, GeoRegionalInventory,
-    GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter,
-    GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoSourceAvailability,
-    GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed,
-    GeoSourceRelease, GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding,
-    GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
-    GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileCandidateReachReference,
-    GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch, GeoTileDecisionMember,
-    GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
+    GeoPopulationEvidenceStackRequest, GeoPreResolutionArtifact, GeoPreResolutionBuildReceipt,
+    GeoPreResolutionCorpusKind, GeoPreResolutionProofClass, GeoPreResolutionRequest,
+    GeoPreResolutionRunStatus, GeoPreResolutionSourceCorpus, GeoPreResolutionSourceRow,
+    GeoProjectionProvenance, GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance,
+    GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter, GeoRhoBasis, GeoRhoContract,
+    GeoRhoObservation, GeoRhoObservationKind, GeoSourceAvailability, GeoSourceAxisDomain,
+    GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed, GeoSourceRelease,
+    GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding, GeoSubjectBindingClass,
+    GeoTelemetryDeclaration, GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
+    GeoTileCandidateReachReference, GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch,
+    GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
     GeoTileReconciliationArtifact, GeoTileReconciliationRequest, GeoTileSourceBinding,
     GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValueOrigin,
     GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
     GeoWarehouseParcelRow, GeoWarehouseRowsRequest, canonical_error_population_bytes,
-    compile_evidence, default_geo_capabilities, evaluate_pad_membership, evaluate_population,
-    ingest_client_geometry_tile, materialize_geo_multisource, materialize_geometry_tile,
-    materialize_h7_population_rows, materialize_home_cells, materialize_tile_work_unit,
+    canonical_pre_resolution_bytes, compile_evidence, default_geo_capabilities,
+    evaluate_pad_membership, evaluate_population, ingest_client_geometry_tile,
+    materialize_geo_multisource, materialize_geometry_tile, materialize_h7_population_rows,
+    materialize_home_cells, materialize_pre_resolution, materialize_tile_work_unit,
     materialize_warehouse_geometry, parse_address_forest, reconcile_tile_decisions,
     regional_inventory_semantic_hash, solve_composition, stack_population_evidence,
-    validate_point_population_artifact,
+    validate_point_population_artifact, validate_pre_resolution_artifact,
 };
 use h3o::{LatLng, Resolution};
 use serde_json::Value;
@@ -108,6 +112,8 @@ const POPULATION_EVALUATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_evaluation.v0.schema.json");
 const POINT_POPULATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.point_population.v0.schema.json");
+const PRE_RESOLUTION_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.pre_resolution.v0.schema.json");
 const POPULATION_EVIDENCE_STACK_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_evidence_stack_request.v0.schema.json");
 const POPULATION_EVIDENCE_STACK_SCHEMA: &str =
@@ -2753,6 +2759,99 @@ fn point_population_schema_matches_a_real_instance() {
             .and_then(Value::as_i64),
         Some(410000000)
     );
+}
+
+#[test]
+fn pre_resolution_schema_matches_a_real_instance() {
+    let artifact = pre_resolution_artifact();
+    validate_pre_resolution_artifact(&artifact).expect("pre-resolution artifact validates");
+    let canonical =
+        canonical_pre_resolution_bytes(&artifact).expect("pre-resolution canonical bytes");
+    let instance: Value =
+        serde_json::from_slice(&canonical).expect("pre-resolution canonical JSON parses");
+    assert_drift_free(
+        PRE_RESOLUTION_SCHEMA,
+        "canon.geo.pre_resolution.v0",
+        CANON_GEO_PRE_RESOLUTION_VERSION,
+        &instance,
+    );
+
+    let schema = parsed(PRE_RESOLUTION_SCHEMA);
+    assert_eq!(
+        schema
+            .pointer("/$defs/registry_proposal/properties/version/const")
+            .and_then(Value::as_str),
+        Some("canon_geo_registry_proposal.v0")
+    );
+    assert!(
+        schema
+            .pointer("/$defs/source_corpus/properties/corpus_kind/enum")
+            .and_then(Value::as_array)
+            .is_some_and(|values| values
+                .iter()
+                .any(|value| value.as_str() == Some("ginnie_pool_no_address"))
+                && values
+                    .iter()
+                    .any(|value| value.as_str() == Some("reit_schedule_iii_name_only")))
+    );
+}
+
+fn pre_resolution_artifact() -> GeoPreResolutionArtifact {
+    let request = GeoPreResolutionRequest {
+        version: CANON_GEO_PRE_RESOLUTION_VERSION.to_string(),
+        source_corpus: GeoPreResolutionSourceCorpus {
+            corpus_id: "cmdrvl.cmbs.annex_a".to_string(),
+            corpus_kind: GeoPreResolutionCorpusKind::CmbsAnnexA,
+            corpus_version: "fixture-2026-09-02".to_string(),
+            temporal_scope: "as_of=2026-08".to_string(),
+            native_key_fields: vec![
+                "accession".to_string(),
+                "loan_id".to_string(),
+                "property_address".to_string(),
+            ],
+        },
+        proof_class: GeoPreResolutionProofClass::Fixture,
+        build_receipts: vec![GeoPreResolutionBuildReceipt {
+            receipt_id: "receipt-001".to_string(),
+            query_id: "fixture-query:cmbs-annex-a-pre-resolution:2026-09-02".to_string(),
+            source_artifact_blake3: pre_resolution_blake3("cmbs-annex-a-source-artifact"),
+            row_count: 2,
+            run_status: GeoPreResolutionRunStatus::Completed,
+        }],
+        rows: vec![
+            GeoPreResolutionSourceRow {
+                row_id: "annexa-row-001".to_string(),
+                source_record_id: "cmbs-annexa:0000000000-26-000001:loan-a".to_string(),
+                accession: "0000000000-26-000001".to_string(),
+                deal_id: "fixture-deal-a".to_string(),
+                loan_id: "loan-a".to_string(),
+                source_record_blake3: pre_resolution_blake3("annexa-row-001"),
+                asserted_address: Some("305 EAST 72 STREET".to_string()),
+                reach: Some("full".to_string()),
+                reach_none_reason: None,
+                parcel_set: vec!["parcel:nyc:bbl:1004540041".to_string()],
+                building_set: vec!["building:nyc:bin:1006494".to_string()],
+            },
+            GeoPreResolutionSourceRow {
+                row_id: "annexa-row-002".to_string(),
+                source_record_id: "cmbs-annexa:0000000000-26-000001:loan-b".to_string(),
+                accession: "0000000000-26-000001".to_string(),
+                deal_id: "fixture-deal-a".to_string(),
+                loan_id: "loan-b".to_string(),
+                source_record_blake3: pre_resolution_blake3("annexa-row-002"),
+                asserted_address: None,
+                reach: Some("none".to_string()),
+                reach_none_reason: Some("no_candidate_parcels".to_string()),
+                parcel_set: Vec::new(),
+                building_set: Vec::new(),
+            },
+        ],
+    };
+    materialize_pre_resolution(&request).expect("pre-resolution fixture materializes")
+}
+
+fn pre_resolution_blake3(input: &str) -> String {
+    format!("blake3:{}", blake3::hash(input.as_bytes()).to_hex())
 }
 
 fn population_stack_fixture() -> (
