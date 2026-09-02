@@ -1,8 +1,5 @@
 #![forbid(unsafe_code)]
 
-#[path = "../src/extensions/mod.rs"]
-mod extensions;
-
 use canon::entity::profile_package::{
     ENTITY_PROFILE_CANONICAL_SURFACE_ROLE, EntityProfileExecutionRecord,
     EntityProfileExecutionRequest, EntityProfilePackageExecution, EntityProfilePackageRunRequest,
@@ -10,10 +7,10 @@ use canon::entity::profile_package::{
     build_project_lock_view, entity_profile_package_digest, execute_profile_package_from_paths,
     execute_profile_package_records, load_profile_package_bytes, load_profile_package_file,
 };
-use extensions::{
-    FORBIDDEN_EXTENSION_DOC_REFERENCES, REQUIRED_NEUTRAL_DOC_REFERENCES, render_doc_scan_report,
-    render_source_scan_report, scan_domain_neutral_extension_sources, scan_extension_docs,
-    scan_stripped_rust_source,
+use canon::extensions::{
+    self, FORBIDDEN_EXTENSION_DOC_REFERENCES, REQUIRED_NEUTRAL_DOC_REFERENCES,
+    render_doc_scan_report, render_source_scan_report, scan_domain_neutral_extension_sources,
+    scan_extension_docs, scan_stripped_rust_source,
 };
 use serde_json::{Value, json};
 use std::fs;

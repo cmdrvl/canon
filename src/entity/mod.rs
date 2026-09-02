@@ -33,8 +33,7 @@ pub mod postings;
 pub mod prepare;
 pub mod profile;
 pub mod profile_cli;
-#[path = "../extensions/profile.rs"]
-pub mod profile_package;
+pub use crate::extensions::profile as profile_package;
 pub mod profiles;
 pub mod promote;
 pub mod publication;
