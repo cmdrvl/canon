@@ -1,0 +1,375 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.pre_resolution.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.pre_resolution.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_pre_resolution.v0",
+      "type": "string"
+    },
+    "pre_resolution_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_corpus": {
+      "$ref": "#/$defs/source_corpus"
+    },
+    "proof_class": {
+      "$ref": "#/$defs/proof_class"
+    },
+    "build_receipts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/build_receipt" }
+    },
+    "denominators": {
+      "$ref": "#/$defs/denominators"
+    },
+    "registry_proposal": {
+      "$ref": "#/$defs/registry_proposal"
+    },
+    "stage1_exact_aliases": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/exact_alias" }
+    },
+    "abstained_rows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/row_disposition" }
+    },
+    "unresolvable_rows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/row_disposition" }
+    },
+    "review_status": {
+      "$ref": "#/$defs/review_status"
+    }
+  },
+  "required": [
+    "version",
+    "pre_resolution_id",
+    "source_corpus",
+    "proof_class",
+    "build_receipts",
+    "denominators",
+    "registry_proposal",
+    "stage1_exact_aliases",
+    "abstained_rows",
+    "unresolvable_rows",
+    "review_status"
+  ],
+  "$defs": {
+    "blake3_uri": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "string_array": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/string" }
+    },
+    "source_corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "corpus_id": {
+          "$ref": "#/$defs/string"
+        },
+        "corpus_kind": {
+          "type": "string",
+          "enum": [
+            "cmbs_annex_a",
+            "hud_fha",
+            "fannie_freddie",
+            "ginnie_pool_no_address",
+            "reit_schedule_iii_name_only",
+            "naic_descriptor",
+            "unknown"
+          ]
+        },
+        "corpus_version": {
+          "$ref": "#/$defs/string"
+        },
+        "temporal_scope": {
+          "$ref": "#/$defs/string"
+        },
+        "native_key_fields": {
+          "$ref": "#/$defs/string_array"
+        }
+      },
+      "required": [
+        "corpus_id",
+        "corpus_kind",
+        "corpus_version",
+        "temporal_scope",
+        "native_key_fields"
+      ]
+    },
+    "proof_class": {
+      "type": "string",
+      "enum": ["live_query", "retained_artifact", "fixture"]
+    },
+    "build_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "receipt_id": {
+          "$ref": "#/$defs/string"
+        },
+        "query_id": {
+          "$ref": "#/$defs/string"
+        },
+        "source_artifact_blake3": {
+          "$ref": "#/$defs/blake3_uri"
+        },
+        "row_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "run_status": {
+          "type": "string",
+          "enum": ["completed", "cancelled"]
+        }
+      },
+      "required": [
+        "receipt_id",
+        "query_id",
+        "source_artifact_blake3",
+        "row_count",
+        "run_status"
+      ]
+    },
+    "denominators": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "total_source_rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resolved_rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "abstained_rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unresolvable_rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stage1_exact_aliases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "registry_entries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "property_assertions": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "total_source_rows",
+        "resolved_rows",
+        "abstained_rows",
+        "unresolvable_rows",
+        "stage1_exact_aliases",
+        "registry_entries",
+        "property_assertions"
+      ]
+    },
+    "registry_proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": "canon_geo_registry_proposal.v0",
+          "type": "string"
+        },
+        "source_ledger_blake3": {
+          "$ref": "#/$defs/blake3_uri"
+        },
+        "entries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/registry_proposal_entry" }
+        },
+        "property_assertions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/property_assertion" }
+        },
+        "summary": {
+          "$ref": "#/$defs/registry_proposal_summary"
+        }
+      },
+      "required": [
+        "version",
+        "source_ledger_blake3",
+        "entries",
+        "property_assertions",
+        "summary"
+      ]
+    },
+    "registry_proposal_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "alias": {
+          "$ref": "#/$defs/string"
+        },
+        "canonical_id": {
+          "$ref": "#/$defs/string"
+        },
+        "canonical_type": {
+          "$ref": "#/$defs/string"
+        },
+        "rule_id": {
+          "$ref": "#/$defs/string"
+        }
+      },
+      "required": ["alias", "canonical_id", "canonical_type", "rule_id"]
+    },
+    "property_assertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "property_id": {
+          "$ref": "#/$defs/string"
+        },
+        "document_alias": {
+          "$ref": "#/$defs/string"
+        },
+        "accession": {
+          "$ref": "#/$defs/string"
+        },
+        "loan_id": {
+          "$ref": "#/$defs/string"
+        },
+        "parcel_ids": {
+          "$ref": "#/$defs/string_array"
+        },
+        "building_ids": {
+          "$ref": "#/$defs/string_array"
+        }
+      },
+      "required": [
+        "property_id",
+        "document_alias",
+        "accession",
+        "loan_id",
+        "parcel_ids",
+        "building_ids"
+      ]
+    },
+    "registry_proposal_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ledger_rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped_reach_none_rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unique_parcel_aliases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unique_building_aliases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "property_assertions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entries": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "ledger_rows",
+        "skipped_reach_none_rows",
+        "unique_parcel_aliases",
+        "unique_building_aliases",
+        "property_assertions",
+        "entries"
+      ]
+    },
+    "exact_alias": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "alias": {
+          "$ref": "#/$defs/string"
+        },
+        "canonical_id": {
+          "$ref": "#/$defs/string"
+        },
+        "canonical_type": {
+          "$ref": "#/$defs/string"
+        },
+        "rule_id": {
+          "$ref": "#/$defs/string"
+        },
+        "source_row_ids": {
+          "$ref": "#/$defs/string_array"
+        }
+      },
+      "required": [
+        "alias",
+        "canonical_id",
+        "canonical_type",
+        "rule_id",
+        "source_row_ids"
+      ]
+    },
+    "row_disposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "row_id": {
+          "$ref": "#/$defs/string"
+        },
+        "source_record_id": {
+          "$ref": "#/$defs/string"
+        },
+        "reason": {
+          "type": "string",
+          "enum": ["reach_none", "missing_address", "ambiguous_exact_address"]
+        },
+        "detail": {
+          "$ref": "#/$defs/string"
+        }
+      },
+      "required": ["row_id", "source_record_id", "reason", "detail"]
+    },
+    "review_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["review_pending", "accepted", "rejected", "promoted"]
+        },
+        "review_receipt_id": {
+          "$ref": "#/$defs/string"
+        },
+        "promoted_registry_version": {
+          "$ref": "#/$defs/string"
+        }
+      },
+      "required": ["state"]
+    }
+  }
+}
