@@ -106,6 +106,10 @@ struct Manifest {
 struct ManifestMeasurement {
     id: String,
     section: String,
+    gate: String,
+    geography: String,
+    tier: String,
+    declared_grain: String,
     description: String,
     sql_path: String,
     source_sql_sha256: String,
@@ -139,7 +143,7 @@ struct Receipt {
     execution_channel: String,
     execution_transform: String,
     executed_query_text_path: String,
-    query_id: String,
+    query_id: Option<String>,
     executed_at: String,
     as_of: String,
     row_count: u64,
@@ -161,7 +165,7 @@ struct ResultArtifact {
     execution_channel: String,
     execution_transform: String,
     executed_query_text_path: String,
-    query_id: String,
+    query_id: Option<String>,
     source_sql_sha256: String,
     executed_query_text_sha256: String,
     rows: Vec<BTreeMap<String, Value>>,
@@ -191,6 +195,10 @@ struct MeasurementPlanRow {
     order: usize,
     id: String,
     section: String,
+    gate: String,
+    geography: String,
+    tier: String,
+    declared_grain: String,
     sql_path: String,
     source_sql_sha256: String,
     execution_transform: String,
@@ -237,6 +245,7 @@ struct MeasurementStatusRow {
     as_of: Option<String>,
     release_pins: Option<BTreeMap<String, String>>,
     declared_proof_class: Option<String>,
+    proof_attestation: Option<String>,
     source_sql_sha256: Option<String>,
     executed_query_text_sha256: Option<String>,
     result_artifact_sha256: Option<String>,
@@ -481,6 +490,19 @@ fn validate_manifest(repo_root: &Path, manifest: Manifest) -> Result<Manifest, A
                 measurement.id
             )));
         }
+        validate_gate(&measurement.id, &measurement.gate)?;
+        for (field, value) in [
+            ("geography", &measurement.geography),
+            ("tier", &measurement.tier),
+            ("declared_grain", &measurement.declared_grain),
+        ] {
+            if value.trim().is_empty() {
+                return Err(AppError::new(format!(
+                    "manifest measurement {} {field} must be nonempty",
+                    measurement.id
+                )));
+            }
+        }
         validate_measurement_claim_boundary(measurement)?;
         validate_relative_sql_path(&measurement.sql_path)?;
         validate_sha256("source_sql_sha256", &measurement.source_sql_sha256)?;
@@ -667,6 +689,18 @@ fn validate_extension_measurement_id(id: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+fn validate_gate(measurement_id: &str, gate: &str) -> Result<(), AppError> {
+    if matches!(
+        gate,
+        "G3" | "G4" | "G6" | "G7" | "appendix_b" | "appendix_c" | "appendix_d" | "appendix_f"
+    ) {
+        return Ok(());
+    }
+    Err(AppError::new(format!(
+        "manifest measurement {measurement_id} gate must name G3, G4, G6, G7, or a retained appendix id"
+    )))
+}
+
 fn validate_measurement_claim_boundary(measurement: &ManifestMeasurement) -> Result<(), AppError> {
     if !(measurement.id.starts_with("e5_")
         || measurement.section.to_ascii_lowercase().starts_with("e5"))
@@ -720,6 +754,72 @@ fn validate_measurement_claim_boundary(measurement: &ManifestMeasurement) -> Res
     Ok(())
 }
 
+fn proof_attestation(receipt: &Receipt) -> String {
+    let proof_class = receipt.proof_class.to_ascii_lowercase();
+    match (proof_class.as_str(), receipt.query_id.as_ref()) {
+        ("observed", None) => "observed".to_string(),
+        ("cmdrvl_data_live", Some(_)) => "LiveComplete".to_string(),
+        (_, None) => "invalid_input".to_string(),
+        _ => "receipt_consistent".to_string(),
+    }
+}
+
+fn exact_row_diff_detail(
+    measurement: &ManifestMeasurement,
+    actual_rows: &[BTreeMap<String, Value>],
+) -> String {
+    let mut detail = format!(
+        "grain {} expected {} rows, actual {}",
+        measurement.declared_grain,
+        measurement.expected_result_rows.len(),
+        actual_rows.len()
+    );
+    let Some(expected_ids) = row_grain_values(
+        &measurement.expected_result_rows,
+        &measurement.declared_grain,
+    ) else {
+        detail.push_str("; declared grain is absent from one or more expected rows");
+        return detail;
+    };
+    let Some(actual_ids) = row_grain_values(actual_rows, &measurement.declared_grain) else {
+        detail.push_str("; declared grain is absent from one or more actual rows");
+        return detail;
+    };
+    let missing = expected_ids
+        .difference(&actual_ids)
+        .cloned()
+        .collect::<Vec<_>>();
+    let unexpected = actual_ids
+        .difference(&expected_ids)
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        detail.push_str("; missing ids ");
+        detail.push_str(&missing.join(", "));
+    }
+    if !unexpected.is_empty() {
+        detail.push_str("; unexpected ids ");
+        detail.push_str(&unexpected.join(", "));
+    }
+    if missing.is_empty() && unexpected.is_empty() {
+        detail.push_str("; row literals differ at matching grain values");
+    }
+    detail
+}
+
+fn row_grain_values(rows: &[BTreeMap<String, Value>], field: &str) -> Option<BTreeSet<String>> {
+    rows.iter()
+        .map(|row| row.get(field).map(display_grain_value))
+        .collect()
+}
+
+fn display_grain_value(value: &Value) -> String {
+    value
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| compact_json(value))
+}
+
 fn load_receipts(path: &Path) -> Result<Vec<Receipt>, AppError> {
     let bytes = fs::read(path).map_err(|error| {
         AppError::new(format!(
@@ -753,6 +853,10 @@ fn plan_for(manifest: &Manifest) -> MeasurementPlan {
                 order: index + 1,
                 id: measurement.id.clone(),
                 section: measurement.section.clone(),
+                gate: measurement.gate.clone(),
+                geography: measurement.geography.clone(),
+                tier: measurement.tier.clone(),
+                declared_grain: measurement.declared_grain.clone(),
                 sql_path: measurement.sql_path.clone(),
                 source_sql_sha256: measurement.source_sql_sha256.clone(),
                 execution_transform: measurement.execution_transform.clone(),
@@ -776,10 +880,12 @@ fn report_for(manifest: &Manifest, receipts: &[Receipt], receipt_base: &Path) ->
             .entry(receipt.measurement_id.clone())
             .or_default()
             .push(receipt);
-        by_query_id
-            .entry(receipt.query_id.clone())
-            .or_default()
-            .push(receipt.measurement_id.clone());
+        if let Some(query_id) = &receipt.query_id {
+            by_query_id
+                .entry(query_id.clone())
+                .or_default()
+                .push(receipt.measurement_id.clone());
+        }
     }
     let duplicate_query_ids = by_query_id
         .into_iter()
@@ -815,11 +921,12 @@ fn report_for(manifest: &Manifest, receipts: &[Receipt], receipt_base: &Path) ->
                 execution_channel: Some(receipt.execution_channel.clone()),
                 execution_transform: Some(receipt.execution_transform.clone()),
                 executed_query_text_path: Some(receipt.executed_query_text_path.clone()),
-                query_id: Some(receipt.query_id.clone()),
+                query_id: receipt.query_id.clone(),
                 executed_at: Some(receipt.executed_at.clone()),
                 as_of: Some(receipt.as_of.clone()),
                 release_pins: Some(receipt.release_pins.clone()),
                 declared_proof_class: Some(receipt.proof_class.clone()),
+                proof_attestation: Some(proof_attestation(receipt)),
                 source_sql_sha256: Some(receipt.source_sql_sha256.clone()),
                 executed_query_text_sha256: Some(receipt.executed_query_text_sha256.clone()),
                 result_artifact_sha256: receipt.result_artifact_sha256.clone(),
@@ -885,6 +992,7 @@ fn validate_receipt_row(
             as_of: None,
             release_pins: None,
             declared_proof_class: None,
+            proof_attestation: None,
             source_sql_sha256: None,
             executed_query_text_sha256: None,
             result_artifact_sha256: None,
@@ -907,6 +1015,7 @@ fn validate_receipt_row(
             as_of: None,
             release_pins: None,
             declared_proof_class: None,
+            proof_attestation: None,
             source_sql_sha256: None,
             executed_query_text_sha256: None,
             result_artifact_sha256: None,
@@ -949,12 +1058,6 @@ fn validate_receipt_row(
             receipt.execution_transform
         ));
     }
-    if duplicate_query_ids.contains(&receipt.query_id) {
-        malformed.push("duplicate query_id across receipts".to_string());
-    }
-    if !valid_query_id(&receipt.query_id) {
-        malformed.push("query_id is empty or noncanonical".to_string());
-    }
     if !valid_datetime(&receipt.executed_at) {
         malformed.push("executed_at must be an RFC3339-like UTC/offset timestamp".to_string());
     }
@@ -964,12 +1067,29 @@ fn validate_receipt_row(
     let proof_class = receipt.proof_class.to_ascii_lowercase();
     if !matches!(
         proof_class.as_str(),
-        "contract_fixture" | "live" | "fresh_live" | "cmdrvl_data_live"
+        "contract_fixture" | "live" | "fresh_live" | "cmdrvl_data_live" | "observed"
     ) {
         malformed.push(
-            "proof_class must be contract_fixture, live, fresh_live, or cmdrvl_data_live"
+            "proof_class must be contract_fixture, live, fresh_live, cmdrvl_data_live, or observed"
                 .to_string(),
         );
+    }
+    match (&receipt.query_id, proof_class.as_str()) {
+        (None, "observed") => {}
+        (None, proof_class) => malformed.push(format!(
+            "query_id missing for proof_class {proof_class}; only observed may omit it"
+        )),
+        (Some(_), "observed") => {
+            malformed.push("proof_class observed requires query_id null".to_string());
+        }
+        (Some(query_id), _) => {
+            if duplicate_query_ids.contains(query_id) {
+                malformed.push("duplicate query_id across receipts".to_string());
+            }
+            if !valid_query_id(query_id) {
+                malformed.push("query_id is empty or noncanonical".to_string());
+            }
+        }
     }
     match load_result_artifact(receipt_base, measurement, receipt) {
         Ok(artifact) => {
@@ -1024,7 +1144,7 @@ fn validate_receipt_row(
         if measurement.result_row_validation == "exact_manifest_rows"
             && canonical_rows(&artifact_rows) != canonical_rows(&measurement.expected_result_rows)
         {
-            mismatches.push("artifact rows differ from manifest expected_result_rows".to_string());
+            mismatches.push(exact_row_diff_detail(measurement, &artifact_rows));
         }
     }
 
@@ -1056,11 +1176,12 @@ fn validate_receipt_row(
         execution_channel: Some(receipt.execution_channel.clone()),
         execution_transform: Some(receipt.execution_transform.clone()),
         executed_query_text_path: Some(receipt.executed_query_text_path.clone()),
-        query_id: Some(receipt.query_id.clone()),
+        query_id: receipt.query_id.clone(),
         executed_at: Some(receipt.executed_at.clone()),
         as_of: Some(receipt.as_of.clone()),
         release_pins: Some(receipt.release_pins.clone()),
         declared_proof_class: Some(receipt.proof_class.clone()),
+        proof_attestation: Some(proof_attestation(receipt)),
         source_sql_sha256: Some(receipt.source_sql_sha256.clone()),
         executed_query_text_sha256: Some(receipt.executed_query_text_sha256.clone()),
         result_artifact_sha256: receipt.result_artifact_sha256.clone(),
