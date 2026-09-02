@@ -412,6 +412,7 @@ impl GeoProjectNodeExecutor {
         )?;
         let section_artifact: GeoTileWorkUnitArtifact =
             parse_json(node, &section.bytes, CANON_GEO_TILE_WORK_UNIT_VERSION)?;
+        validate_section_candidate_reach_allows_downstream(node, &section.bytes)?;
         let rows: GeoWarehouseRowsRequest = self.required_binding_json(
             node,
             GEO_ROWS_BINDING_ID,
@@ -494,6 +495,7 @@ impl GeoProjectNodeExecutor {
         let section = self.required_scoped_dependency_artifact(node, &scope.bounded_section)?;
         let section_artifact: GeoTileWorkUnitArtifact =
             parse_json(node, &section.bytes, CANON_GEO_TILE_WORK_UNIT_VERSION)?;
+        validate_section_candidate_reach_allows_downstream(node, &section.bytes)?;
         let input = self.required_scoped_dependency_artifact(node, &scope.evidence_compilation)?;
         let compilation: GeoEvidenceCompilationArtifact =
             parse_json(node, &input.bytes, CANON_GEO_EVIDENCE_COMPILATION_VERSION)?;
@@ -923,6 +925,48 @@ fn validate_compilation_universe_against_section(
     }
     validate_compilation_auxiliary_variables(node, compilation, &selected_ids)?;
     Ok(())
+}
+
+fn validate_section_candidate_reach_allows_downstream(
+    node: &ProjectPlanNode,
+    section_bytes: &[u8],
+) -> ProjectRunResult<()> {
+    let section: serde_json::Value = serde_json::from_slice(section_bytes).map_err(|error| {
+        ProjectRunError::new(
+            ProjectRunErrorCode::ArtifactContract,
+            Some(node.node_id.clone()),
+            format!("Geo executor could not inspect bounded-section candidate reach: {error}"),
+        )
+    })?;
+    let Some(reach) = section.get("candidate_reach") else {
+        return Ok(());
+    };
+    let Some(status) = reach.get("status").and_then(serde_json::Value::as_str) else {
+        return Err(error(
+            node,
+            ProjectRunErrorCode::ArtifactContract,
+            "bounded tile section candidate_reach report must declare a status",
+        ));
+    };
+    if status != "failed_against_reference" {
+        return Ok(());
+    }
+    let reference_id = reach
+        .get("reference")
+        .and_then(|reference| reference.get("reference_id"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("<unknown>");
+    let missing = reach
+        .get("missing_reference_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    Err(error(
+        node,
+        ProjectRunErrorCode::ArtifactContract,
+        format!(
+            "bounded tile section candidate reach failed against reference {reference_id}; missing_reference_count={missing}; downstream solving cannot repair an unreachable candidate"
+        ),
+    ))
 }
 
 fn selected_control_level(
