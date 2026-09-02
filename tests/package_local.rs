@@ -218,6 +218,96 @@ fn cli_pack_inspect_verify_and_unpack_round_trip() {
     );
 }
 
+#[test]
+fn cli_pack_reports_typed_refusals_for_pretty_and_malformed_package_json() {
+    let canonical_bytes = canonical_package_bytes(package_json());
+    let canonical_value: Value = serde_json::from_slice(&canonical_bytes).unwrap();
+    let pretty_package = serde_json::to_string_pretty(&canonical_value)
+        .unwrap()
+        .into_bytes();
+    let pretty_root = package_root(false, &pretty_package);
+    let temp = TempDir::new().unwrap();
+    let pretty_archive = temp.path().join("pretty.canonpkg");
+
+    let pretty_refusal = package_pack_refusal(
+        pretty_root.path(),
+        &pretty_root.path().join("package.json"),
+        &pretty_archive,
+    );
+    assert_package_refusal_envelope(&pretty_refusal, "E_PACKAGE_NONCANONICAL");
+    assert_eq!(
+        pretty_refusal["refusal"]["detail"]["package_error_kind"],
+        "non_canonical_package_bytes"
+    );
+    let pretty_next = pretty_refusal["refusal"]["next_command"].as_str().unwrap();
+    assert!(pretty_next.contains("python3 -c"), "{pretty_next}");
+    assert!(pretty_next.contains("sort_keys=True"), "{pretty_next}");
+    assert!(pretty_next.contains("canon package pack"), "{pretty_next}");
+    assert!(!pretty_archive.exists());
+
+    let malformed_root = TempDir::new().unwrap();
+    write_file(
+        malformed_root.path(),
+        "package.json",
+        b"{\"schema_version\":",
+    );
+    let malformed_archive = temp.path().join("malformed.canonpkg");
+
+    let malformed_refusal = package_pack_refusal(
+        malformed_root.path(),
+        &malformed_root.path().join("package.json"),
+        &malformed_archive,
+    );
+    assert_package_refusal_envelope(&malformed_refusal, "E_PARSE");
+    assert_eq!(
+        malformed_refusal["refusal"]["detail"]["package_error_kind"],
+        "parse"
+    );
+    assert_ne!(
+        pretty_refusal["refusal"]["code"],
+        malformed_refusal["refusal"]["code"]
+    );
+    assert!(!malformed_archive.exists());
+}
+
+fn package_pack_refusal(root: &Path, package: &Path, out: &Path) -> Value {
+    let output = canon_command()
+        .arg("package")
+        .arg("pack")
+        .arg("--root")
+        .arg(root)
+        .arg("--package")
+        .arg(package)
+        .arg("--out")
+        .arg(out)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr.clone()).unwrap();
+    assert!(
+        !stderr.starts_with("Error:"),
+        "package pack refusal leaked raw stderr: {stderr}"
+    );
+    serde_json::from_slice(&output.stderr).unwrap()
+}
+
+fn assert_package_refusal_envelope(payload: &Value, code: &str) {
+    assert_eq!(payload["outcome"], "REFUSAL");
+    assert_eq!(payload["registry"], Value::Null);
+    assert_eq!(payload["summary"], Value::Null);
+    assert_eq!(payload["mappings"], Value::Array(vec![]));
+    assert_eq!(payload["unresolved"], Value::Array(vec![]));
+    assert_eq!(payload["refusal"]["code"], code);
+    assert!(payload["refusal"]["message"].is_string());
+    assert!(payload["refusal"]["detail"].is_object());
+    assert!(
+        payload["refusal"]["next_command"]
+            .as_str()
+            .is_some_and(|command| !command.trim().is_empty())
+    );
+}
+
 fn package_root(reversed_write_order: bool, package_bytes: &[u8]) -> TempDir {
     let temp = TempDir::new().unwrap();
     if reversed_write_order {

@@ -45,7 +45,7 @@ use crate::cli::{
     EntityReviewCommand, EntityReviewExportArtifact, EntityReviewExportCli,
     EntityReviewExportEmitMode, EntityReviewImportCli, EntityReviewInclude, EntityReviewSubcommand,
     EntityRunCli, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, PackageCli,
-    PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
+    PackagePackCli, PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
     RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryExportCli,
     RegistryExportFormatCli, RegistryLintCli, RegistryLintProfile, RegistryMintCli,
     RegistryNextIdCli, RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli,
@@ -194,13 +194,7 @@ fn run_command(command: &CanonCommand) -> Result<u8, Box<dyn Error>> {
 
 fn run_package_command(package: &PackageCli) -> Result<u8, Box<dyn Error>> {
     match &package.command {
-        PackageSubcommand::Pack(args) => {
-            let package_bytes = fs::read(&args.package)?;
-            let archive_bytes =
-                distribution::package::pack_local_package(&args.root, &package_bytes)?;
-            fs::write(&args.out, archive_bytes)?;
-            Ok(0)
-        }
+        PackageSubcommand::Pack(args) => run_package_pack_command(args),
         PackageSubcommand::Inspect(args) => {
             let archive_bytes = fs::read(&args.archive)?;
             let inspection = distribution::package::inspect_local_package(&archive_bytes)?;
@@ -260,6 +254,175 @@ fn run_package_command(package: &PackageCli) -> Result<u8, Box<dyn Error>> {
             emit_package_pull_receipt(&receipt, &args.emit)?;
             Ok(0)
         }
+    }
+}
+
+fn run_package_pack_command(args: &PackagePackCli) -> Result<u8, Box<dyn Error>> {
+    let package_bytes = match fs::read(&args.package) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return emit_package_refusal(package_pack_io_refusal(
+                "read_package",
+                &args.package,
+                error,
+                args,
+            ));
+        }
+    };
+    let archive_bytes = match distribution::package::pack_local_package(&args.root, &package_bytes)
+    {
+        Ok(bytes) => bytes,
+        Err(error) => return emit_package_refusal(package_pack_contract_refusal(error, args)),
+    };
+    if let Err(error) = fs::write(&args.out, archive_bytes) {
+        return emit_package_refusal(package_pack_io_refusal(
+            "write_archive",
+            &args.out,
+            error,
+            args,
+        ));
+    }
+    Ok(0)
+}
+
+fn emit_package_refusal(refusal_output: CanonOutput) -> Result<u8, Box<dyn Error>> {
+    eprintln!("{}", serde_json::to_string(&refusal_output)?);
+    Ok(2)
+}
+
+fn package_pack_io_refusal(
+    action: &str,
+    path: &Path,
+    error: std::io::Error,
+    args: &PackagePackCli,
+) -> CanonOutput {
+    let path = path.display().to_string();
+    refusal::create_refusal(
+        RefusalCode::EIo,
+        format!("package pack failed during {action}: {error}"),
+        serde_json::json!({
+            "command": "canon package pack",
+            "action": action,
+            "path": path,
+            "root": args.root.display().to_string(),
+            "package": args.package.display().to_string(),
+            "out": args.out.display().to_string(),
+            "error": error.to_string()
+        }),
+        Some(format!(
+            "Check package pack paths and permissions, then {}",
+            package_pack_command(args, &args.package)
+        )),
+    )
+}
+
+fn package_pack_contract_refusal(
+    error: distribution::package::LocalPackageError,
+    args: &PackagePackCli,
+) -> CanonOutput {
+    let error_kind = error.kind;
+    let error_kind_name = package_error_kind_name(&error_kind);
+    let code = package_error_refusal_code(&error_kind);
+    let next_command = package_error_next_command(&error_kind, args);
+    refusal::create_refusal(
+        code,
+        format!("package pack refused: {}", error.message),
+        serde_json::json!({
+            "command": "canon package pack",
+            "root": args.root.display().to_string(),
+            "package": args.package.display().to_string(),
+            "out": args.out.display().to_string(),
+            "package_error_kind": error_kind_name,
+            "reason": error.message
+        }),
+        Some(next_command),
+    )
+}
+
+fn package_error_refusal_code(kind: &distribution::package::LocalPackageErrorKind) -> RefusalCode {
+    match kind {
+        distribution::package::LocalPackageErrorKind::Io => RefusalCode::EIo,
+        distribution::package::LocalPackageErrorKind::Parse => RefusalCode::EParse,
+        distribution::package::LocalPackageErrorKind::NonCanonicalPackageBytes => {
+            RefusalCode::EPackageNonCanonical
+        }
+        _ => RefusalCode::EPackageContract,
+    }
+}
+
+fn package_error_next_command(
+    kind: &distribution::package::LocalPackageErrorKind,
+    args: &PackagePackCli,
+) -> String {
+    match kind {
+        distribution::package::LocalPackageErrorKind::NonCanonicalPackageBytes => {
+            package_canonicalization_next_command(args)
+        }
+        distribution::package::LocalPackageErrorKind::Parse => format!(
+            "Fix {} as valid package JSON, then {}",
+            shell_path(&args.package),
+            package_pack_command(args, &args.package)
+        ),
+        distribution::package::LocalPackageErrorKind::Io => format!(
+            "Check package root files and permissions, then {}",
+            package_pack_command(args, &args.package)
+        ),
+        _ => format!(
+            "Fix package fields, digests, paths, and archive constraints in {}, then {}",
+            shell_path(&args.package),
+            package_pack_command(args, &args.package)
+        ),
+    }
+}
+
+fn package_canonicalization_next_command(args: &PackagePackCli) -> String {
+    let canonical_package = args.package.with_extension("canonical.json");
+    format!(
+        "python3 -c 'import json,sys; data=json.load(open(sys.argv[1],encoding=\"utf-8\")); sys.stdout.write(json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(\",\",\":\")))' {} > {} && {}",
+        shell_path(&args.package),
+        shell_path(&canonical_package),
+        package_pack_command(args, &canonical_package)
+    )
+}
+
+fn package_pack_command(args: &PackagePackCli, package: &Path) -> String {
+    format!(
+        "canon package pack --root {} --package {} --out {}",
+        shell_path(&args.root),
+        shell_path(package),
+        shell_path(&args.out)
+    )
+}
+
+fn shell_path(path: &Path) -> String {
+    format!("'{}'", path.display().to_string().replace('\'', "'\"'\"'"))
+}
+
+fn package_error_kind_name(kind: &distribution::package::LocalPackageErrorKind) -> &'static str {
+    match kind {
+        distribution::package::LocalPackageErrorKind::UnsupportedArchiveVersion => {
+            "unsupported_archive_version"
+        }
+        distribution::package::LocalPackageErrorKind::MissingPackageField => {
+            "missing_package_field"
+        }
+        distribution::package::LocalPackageErrorKind::NonCanonicalPackageBytes => {
+            "non_canonical_package_bytes"
+        }
+        distribution::package::LocalPackageErrorKind::SemanticContract => "semantic_contract",
+        distribution::package::LocalPackageErrorKind::PathTraversal => "path_traversal",
+        distribution::package::LocalPackageErrorKind::DuplicatePath => "duplicate_path",
+        distribution::package::LocalPackageErrorKind::LinkRejected => "link_rejected",
+        distribution::package::LocalPackageErrorKind::HardLinkRejected => "hard_link_rejected",
+        distribution::package::LocalPackageErrorKind::InvalidMode => "invalid_mode",
+        distribution::package::LocalPackageErrorKind::InvalidContentDigest => {
+            "invalid_content_digest"
+        }
+        distribution::package::LocalPackageErrorKind::NonEmptyTarget => "non_empty_target",
+        distribution::package::LocalPackageErrorKind::MissingTarget => "missing_target",
+        distribution::package::LocalPackageErrorKind::TargetNotDirectory => "target_not_directory",
+        distribution::package::LocalPackageErrorKind::Io => "io",
+        distribution::package::LocalPackageErrorKind::Parse => "parse",
     }
 }
 
@@ -7906,6 +8069,8 @@ pub enum RefusalCode {
     ETooLarge,
     EEmitFormat,
     EColumnExists,
+    EPackageNonCanonical,
+    EPackageContract,
     EEntityProfile,
     EEntityStrategy,
     EEntityInputContract,
@@ -7946,6 +8111,8 @@ impl Serialize for RefusalCode {
             RefusalCode::ETooLarge => "E_TOO_LARGE",
             RefusalCode::EEmitFormat => "E_EMIT_FORMAT",
             RefusalCode::EColumnExists => "E_COLUMN_EXISTS",
+            RefusalCode::EPackageNonCanonical => "E_PACKAGE_NONCANONICAL",
+            RefusalCode::EPackageContract => "E_PACKAGE_CONTRACT",
             RefusalCode::EEntityProfile => "E_ENTITY_PROFILE",
             RefusalCode::EEntityStrategy => "E_ENTITY_STRATEGY",
             RefusalCode::EEntityInputContract => "E_ENTITY_INPUT_CONTRACT",
@@ -8010,6 +8177,12 @@ impl RefusalCode {
             }
             RefusalCode::EColumnExists => {
                 "Choose a --canon-column name that is not already present in the input header"
+            }
+            RefusalCode::EPackageNonCanonical => {
+                "Rewrite --package JSON as sorted-key compact UTF-8 bytes, then rerun canon package pack"
+            }
+            RefusalCode::EPackageContract => {
+                "Fix package fields, digests, paths, or archive constraints, then rerun canon package pack"
             }
             RefusalCode::EEntityProfile => {
                 "Run canon entity profile list or fix the strategy profile block, then rerun canon entity"
