@@ -1405,33 +1405,235 @@ the index and the frozen gate definitions.
 
 ### 19.3 Module skeleton
 
-| Module | Responsibility | Contract ids |
-|---|---|---|
-| `src/geo/propagate.rs` | additive-band, cardinality, exclusivity propagators; fixpoint driver; typed prunings | `canon_geo_propagation.v0` |
-| `src/geo/explain.rs` | minimal core, correction sets, counterfactual separation | `canon_geo_explanation.v0`, `canon_geo_separation_request.v0` |
-| `src/geo/observer.rs` | observer contract, observation admission, image tile pinning, license gate | `canon_geo_observer.v0`, `canon_geo_observation_rows.v0`, `canon_geo_image_tile_pin.v0` |
-| `src/geo/adjudicate.rs` | adjudication crop requests and label receipts for the truth plane | `canon_geo_adjudication_request.v0`, `canon_geo_adjudication_receipt.v0` |
-| `src/geo/card.rs` | visual evidence card artifact (data, not rendering) | `canon_geo_evidence_card.v0` |
-| `src/geo/ledger.rs` | physical collateral ledger rows and deal-level rollups | `canon_geo_collateral_ledger.v0` |
-| `src/geo/exposure.rs` | event exposure join over ledger building sets | `canon_geo_event_exposure.v0` |
-| `src/geo/collision.rs` | cross-deal parcel and building collision, adjacency concentration | `canon_geo_cross_deal.v0` |
-| `src/geo/retry.rs` | abstain, re-geocode request, retry loop artifact | `canon_geo_retry_loop.v0` |
-| `src/geo/inspect.rs` | one-call run state, compare, next actions | `canon_geo_inspection.v0` |
-| `src/geo/condo.rs` | unit to billing lot to building crosswalk with confirmation | `canon_geo_ledger_bridge.v0` |
+**Dependency direction.** New modules depend on the existing `composition`, `evidence`,
+`control`, `discovery`, `evaluation`, `geometry`, `geometry_value`, and `run` modules,
+never the reverse. `src/geo/composition.rs` and `src/geo/evidence.rs` are not modified by
+D2 to D6: `propagate` and `explain` call `solve_composition` as a black box and narrow or
+re-solve `GeoCompositionRequest` values. Within the new set: `explain` consumes
+`propagate`; `card`, `next_evidence`, and `inspect` consume `explain`; `exposure` and
+`collision` consume `ledger`; `adjudicate` and `card` consume `observer`; nothing consumes
+`inspect`.
 
-Each module ships a JSON schema under `schemas/`, a `--describe` entry, a public
-`canon geo` subcommand, and an integration test file `tests/geo_<module>.rs`.
+**Shared shape.** Each module is `pub mod` in `src/geo/mod.rs` with `pub use module::*`.
+Each defines `Geo<Module>Error { code: Geo<Module>ErrorCode, message: String, detail:
+BTreeMap<String, String> }` with a `#[serde(rename_all = "snake_case")]` code enum that
+carries the generic `UnsupportedVersion`, `InvalidInput`, `BudgetExceeded`,
+`ArithmeticOverflow` variants plus the module's rows from §19.4. Each artifact type has a
+`version: String` constant `CANON_GEO_<NAME>_VERSION`, `canonical_<name>_bytes`, and
+`validate_<name>_artifact`. Each module ships `schemas/canon.geo.<name>.v0.schema.json`, a
+`--describe` entry, a `canon geo <subcommand>`, and `tests/geo_<module>.rs`.
+
+| Module | Stage | Responsibility | Contract ids |
+|---|---|---|---|
+| `src/geo/propagate.rs` | D2 | additive-band, cardinality, exclusivity propagators; fixpoint driver; typed prunings | `canon_geo_propagation.v0` |
+| `src/geo/explain.rs` | D2 | minimal core, correction sets, counterfactual separation | `canon_geo_explanation.v0`, `canon_geo_separation_request.v0`, `canon_geo_separation.v0` |
+| `src/geo/observer.rs` | D6 | observer contract, observation admission, image tile pinning, license gate | `canon_geo_observer.v0`, `canon_geo_observation_rows.v0`, `canon_geo_image_tile_pin.v0` |
+| `src/geo/adjudicate.rs` | D0, D6 | adjudication crop requests and label receipts for the truth plane | `canon_geo_adjudication_request.v0`, `canon_geo_adjudication_receipt.v0` |
+| `src/geo/card.rs` | D6 | visual evidence card artifact (data, not rendering) | `canon_geo_evidence_card.v0` |
+| `src/geo/ledger.rs` | D3 | physical collateral ledger rows and deal-level rollups | `canon_geo_collateral_ledger.v0` |
+| `src/geo/exposure.rs` | D3 | event exposure join over ledger building sets | `canon_geo_event_exposure.v0` |
+| `src/geo/collision.rs` | D3 | cross-deal parcel and building collision, adjacency concentration | `canon_geo_cross_deal.v0` |
+| `src/geo/retry.rs` | D4 | abstain, re-geocode request, retry loop artifact | `canon_geo_retry_loop.v0` |
+| `src/geo/inspect.rs` | D4 | one-call run state, compare | `canon_geo_inspection.v0` |
+| `src/geo/next_evidence.rs` | D5 | nondominated next-action frontier, stop decisions | `canon_geo_next_evidence.v0` |
+| `src/geo/condo.rs` | D4 | unit to billing lot to building crosswalk with confirmation | `canon_geo_ledger_bridge.v0` |
+
+Per-module surface. Field lists are the required minimum; implementers may add
+`#[serde(default)]` fields, never remove or rename these.
+
+**`propagate.rs`**
+
+| Item | Definition |
+|---|---|
+| Consumes | `GeoCompositionRequest`, `GeoCompositionUniverse`, `GeoHardConstraint`, `GeoHardConstraintKind::{IntegerSumBand, Cardinality, AllowedSets, Require, Forbid, AllOrNone, Requires}`, `GeoEntityRef`, `GeoEntityLevel`; optional `GeoEvidenceCompilationArtifact` whose `admissions[].contract.source_dataset` and `generated_ids` group constraints by source for exclusivity |
+| `GeoPropagatorKind` | `AdditiveBand`, `Cardinality`, `SourceExclusivity` |
+| `GeoPropagationBudget` | `max_fixpoint_rounds: u64`, `max_hall_subset_size: usize`, `max_subset_sum_states: u64` |
+| `GeoPrunedValue` | `Excluded`, `Forced` |
+| `GeoPruning` | `member: GeoEntityRef`, `value: GeoPrunedValue`, `propagator: GeoPropagatorKind`, `constraint_ids: Vec<String>`, `evidence_ids: Vec<String>` (observation ids when evidence is supplied, else empty) |
+| `GeoPropagationFallback` | `propagator: GeoPropagatorKind`, `counter: String`, `configured: u64`, `guidance: String` |
+| `GeoPropagationArtifact` | `version`, `request_blake3`, `prunings: Vec<GeoPruning>` (sorted by member then value), `rounds: u64`, `fixpoint_reached: bool`, `budget_fallback: Option<GeoPropagationFallback>`, `counters: BTreeMap<String, u64>` |
+| `pub fn propagate(request: &GeoCompositionRequest, evidence: Option<&GeoEvidenceCompilationArtifact>, budget: &GeoPropagationBudget) -> Result<GeoPropagationArtifact, GeoPropagationError>` | runs all three propagators to a fixpoint per incidence component; every pruning cites at least one constraint id |
+| `pub fn apply_prunings(request: &GeoCompositionRequest, artifact: &GeoPropagationArtifact) -> Result<GeoCompositionRequest, GeoPropagationError>` | returns a narrowed request: `Excluded` becomes `GeoHardConstraintKind::Forbid`, `Forced` becomes `Require`, ids prefixed `prune:`; universe and `max_assignments` unchanged so `model_satisfies_request` stays comparable |
+| `pub fn check_soundness(request: &GeoCompositionRequest, artifact: &GeoPropagationArtifact) -> Result<GeoSoundnessReport, GeoPropagationError>` | solves original and narrowed requests with `solve_composition`, compares `residual_models` and `summary.residual_model_count`; `GeoSoundnessReport { sound: bool, model_count_before: u64, model_count_after: u64, differing_models: Vec<GeoCompositionModel> }` (I01, T03) |
+
+**`explain.rs`**
+
+| Item | Definition |
+|---|---|
+| Consumes | `GeoCompositionRequest`, `GeoCompositionArtifact` (`status == GeoCompositionStatus::Conflict`, `conflict_constraint_ids`, `conflict_core_complete`), `GeoEvidenceCompilationArtifact` (`GeoEvidenceAdmission { observation_id, contract, source_records, generated_ids }` maps constraint ids to `GeoEvidenceRecordRef.source_record_id` and `GeoRhoContract.id`), `GeoPropagationArtifact` (pruning skeleton), `solve_composition` |
+| `GeoReliabilityOrder` | `contract_ids_most_reliable_first: Vec<String>`; every admitted contract id must appear exactly once |
+| `GeoExplanationBudget` | `max_core_solves: u64`, `max_cores: u64`, `max_hitting_sets: u64` |
+| `GeoMinimalCore` | `constraint_ids`, `observation_ids`, `source_record_ids`, `rho_contract_ids`, `minimal: bool` |
+| `GeoCorrectionSet` | `observation_ids`, `source_record_ids`, `minimal: bool` |
+| `GeoExplanationArtifact` | `version`, `request_blake3`, `evidence_blake3`, `cores: Vec<GeoMinimalCore>`, `cores_complete: bool`, `correction_sets: Vec<GeoCorrectionSet>`, `explanation_complete: bool`, `counters: BTreeMap<String, u64>` |
+| `GeoProspectiveOutcome` | `outcome_id: String`, `induced: Vec<GeoHardConstraintKind>` |
+| `GeoProspectiveObservation` | `id`, `contract_id`, `cost_units: u64`, `outcomes: Vec<GeoProspectiveOutcome>` (declared exhaustive) |
+| `GeoSeparationRequest` | `version`, `request: GeoCompositionRequest`, `prospective: Vec<GeoProspectiveObservation>` |
+| `GeoOutcomeSeparation` | `outcome_id`, `residual_model_count: u64`, `count_exact: bool` |
+| `GeoSeparationArtifact` | `version`, `request_blake3`, `baseline_model_count`, `per_observation: Vec<{ observation_id, per_outcome: Vec<GeoOutcomeSeparation>, worst_case_remaining: u64, redundant: bool }>` |
+| `pub fn minimal_core(request: &GeoCompositionRequest, evidence: &GeoEvidenceCompilationArtifact, order: &GeoReliabilityOrder, budget: &GeoExplanationBudget) -> Result<GeoExplanationArtifact, GeoExplanationError>` | deletion-based core under `order` (QuickXplain semantics); refuses unless the input solves to `Conflict` (I03, I05) |
+| `pub fn correction_sets(artifact: &mut GeoExplanationArtifact, request: &GeoCompositionRequest, evidence: &GeoEvidenceCompilationArtifact, budget: &GeoExplanationBudget) -> Result<(), GeoExplanationError>` | enumerates further cores up to `max_cores`, then minimal hitting sets; sets `cores_complete` and `explanation_complete` (I04) |
+| `pub fn separate(request: &GeoSeparationRequest, budget: &GeoExplanationBudget) -> Result<GeoSeparationArtifact, GeoExplanationError>` | one `solve_composition` per outcome with `induced` appended; exact only when the baseline residual is complete and unsaturated; never emits an expected value (§18.5 item 3) |
+
+**`observer.rs`**
+
+| Item | Definition |
+|---|---|
+| Consumes | `GeoRhoContract`, `GeoRhoObservation`, `GeoRhoObservationKind::IntegerSumBand`, `GeoValidTimeInterval`, `GeoEvidenceRecordRef`, `GeoIntegerMeasure`, `GeoIntegerValueOrigin::SourceAsserted`, `GeoCanonicalPolygonMm` for the window |
+| `GeoImageTilePin` | `url`, `byte_range: Option<(u64, u64)>`, `etag: Option<String>`, `blake3`, `vintage: GeoValidTimeInterval`, `license_id`, `license_text_blake3` |
+| `GeoObserverIdentity` | `RuleBased { rule_id, rule_version }`, `FrozenWeight { model_id, weight_blake3, arithmetic_contract }`, `RecordedHosted { model_id, model_version, prompt_blake3 }` |
+| `GeoObservationKind` | `StructureCountInWindow`, `FootprintOutline`, `HeightOrFloors`, `PresentAtVintage`, `AbsentAtVintage`, `ChangeEvent` (§18.4 table) |
+| `GeoObserverContract` | `id`, `version`, `identity: GeoObserverIdentity`, `output_kinds: Vec<GeoObservationKind>`, `error_population_id`, `characterization_blake3`, `rho_contract_ids: Vec<String>` |
+| `GeoObservationRow` | `id`, `observer_id`, `tile_pins: Vec<GeoImageTilePin>`, `window_blake3`, `kind`, `payload: GeoObservationPayload` (one variant per kind: count band `{min, max}`, ring digest, floors band, vintage interval, vintage pair), `crop_blake3`, `label_blake3` |
+| `GeoObservationRowsArtifact` | `version`, `contract: GeoObserverContract`, `rows: Vec<GeoObservationRow>`, `rho_observations: Vec<GeoRhoObservation>`, `diagnostic_only_ids: Vec<String>`, `not_admitted_ids: Vec<String>` |
+| `pub fn admit_observations(contract: &GeoObserverContract, rows: &[GeoObservationRow], rho: &[GeoRhoContract], forbidden_license_ids: &[String]) -> Result<GeoObservationRowsArtifact, GeoObserverError>` | applies I06; every row's `kind` must be in `output_kinds`; every `rho_contract_ids` entry must exist in `rho` |
+| `pub fn to_rho_observation(row: &GeoObservationRow, contract: &GeoObserverContract, universe: &GeoCompositionUniverse) -> Option<GeoRhoObservation>` | `StructureCountInWindow` and `HeightOrFloors` become `IntegerSumBand` (`unit` `structure` with value 1 per building candidate in the window, or `floor`; `value_origin` `SourceAsserted`); `PresentAtVintage`/`AbsentAtVintage` carry `valid_time` and are listed in `diagnostic_only_ids`; `FootprintOutline` and `ChangeEvent` return `None` (they enter through `materialize` and `next_evidence`) |
+| `pub fn verify_replay(artifact: &GeoObservationRowsArtifact, bytes_by_blake3: &BTreeMap<String, Vec<u8>>) -> Result<(), GeoObserverError>` | recomputes tile, crop, and label digests; contains no call path to any identity (I07) |
+
+**`adjudicate.rs`**
+
+| Item | Definition |
+|---|---|
+| Consumes | `GeoImageTilePin`, `GeoTruthPlane::HumanAdjudication`, `GeoCanonicalPolygonMm` for candidate parcel lines, population case ids from `canon_geo_population.v0` |
+| `GeoAdjudicationRequest` | `version`, `case_id`, `subject_id`, `tile_pin: GeoImageTilePin`, `window_blake3`, `candidate_parcel_ids: Vec<String>`, `overlay_geometry_blake3` |
+| `GeoAdjudicationLabel` | `SelectedParcels(Vec<String>)`, `NoneVisible`, `Unresolvable` |
+| `GeoAdjudicationReceipt` | `version`, `request_blake3`, `crop_blake3`, `label`, `adjudicator_id`, `truth_plane: GeoTruthPlane`, `notes_blake3: Option<String>` |
+| `pub fn build_adjudication_requests(cases: &[(String, String, Vec<String>)], pins: &BTreeMap<String, GeoImageTilePin>, overlays: &BTreeMap<String, GeoCanonicalPolygonMm>) -> Result<Vec<GeoAdjudicationRequest>, GeoAdjudicationError>` | tuple is `(case_id, subject_id, candidate_parcel_ids)`; deterministic order by `case_id` |
+| `pub fn validate_adjudication_receipt(request: &GeoAdjudicationRequest, receipt: &GeoAdjudicationReceipt, crop_bytes: &[u8]) -> Result<(), GeoAdjudicationError>` | request digest, crop digest, `truth_plane == HumanAdjudication`, and label parcels within `candidate_parcel_ids` |
+
+**`card.rs`**
+
+| Item | Definition |
+|---|---|
+| Consumes | `GeoCompositionArtifact` (`hard_forced`, `residual_models`, `conflict_constraint_ids`), `GeoEvidenceCompilationArtifact`, `GeoExplanationArtifact`, `GeoImageTilePin`, `GeoTypedGeometry` |
+| `GeoEvidenceCard` | `version`, `subject_id`, `ortho_pin: GeoImageTilePin`, `candidate_parcels: Vec<{ id, geometry_blake3 }>`, `forced: GeoCompositionBackbone`, `ambiguous_members: Vec<GeoEntityRef>`, `conflicting_records: Vec<GeoEvidenceRecordRef>`, `composition_blake3`, `evidence_blake3`, `explanation_blake3: Option<String>` |
+| `pub fn build_evidence_card(subject_id: &str, composition: &GeoCompositionArtifact, evidence: &GeoEvidenceCompilationArtifact, explanation: Option<&GeoExplanationArtifact>, ortho: &GeoImageTilePin, geometry: &BTreeMap<String, GeoTypedGeometry>) -> Result<GeoEvidenceCard, GeoCardError>` | data only; `ambiguous_members` is the universe minus backbone minus members absent from every residual model |
+
+**`ledger.rs`**
+
+| Item | Definition |
+|---|---|
+| Consumes | `GeoCompositionArtifact` (`status`, `summary.residual_model_count`, `residual_model_count_complete`, `residual_model_count_saturated`, `hard_forced`, `backbone_complete`), `GeoEntityProjection`, `GeoEvidenceCompilationArtifact`, `GeoCandidateReachStatus`, `GeoTruthPlane`, `GeoClaimClass`, `GeoValidTimeInterval`, release pins from `GeoRegionalInventory` |
+| `GeoSourceReleasePin` | `source_dataset`, `source_release`, `blake3` |
+| `GeoLedgerRow` | `version`, `accession`, `deal_id`, `loan_id`, `reach: GeoCandidateReachStatus`, `reach_none_reason: Option<String>`, `parcel_set: Option<Vec<String>>`, `building_set: Option<Vec<String>>`, `deed_ids: Vec<String>`, `truth_plane: Option<GeoTruthPlane>`, `claim_class: GeoClaimClass`, `residual_model_count: u64`, `count_exact: bool`, `backbone_complete: bool`, `last_observed_present: Option<GeoValidTimeInterval>`, `source_release_pins: Vec<GeoSourceReleasePin>`, `composition_blake3`, `evidence_blake3` |
+| `GeoDealRollup` | `deal_id`, `accession`, `rows: u64`, per-`GeoTruthPlane` counts of `resolved`, `ambiguous`, `conflict`, `reach_none` (never a pooled total) |
+| `GeoCollateralLedger` | `version`, `rows: Vec<GeoLedgerRow>` (sorted by accession, loan id), `rollups: Vec<GeoDealRollup>` |
+| `pub fn build_ledger_row(loan: &GeoLedgerLoanRef, reach: GeoCandidateReachStatus, reach_none_reason: Option<String>, composition: Option<&GeoCompositionArtifact>, evidence: Option<&GeoEvidenceCompilationArtifact>, truth_plane: Option<GeoTruthPlane>, pins: &[GeoSourceReleasePin]) -> Result<GeoLedgerRow, GeoLedgerError>` | `GeoLedgerLoanRef { accession, deal_id, loan_id, deed_ids }`; `reach == None` requires a reason and both sets `None`; otherwise both artifacts required (I08, I09) |
+| `pub fn roll_up_deal(rows: &[GeoLedgerRow]) -> Result<GeoDealRollup, GeoLedgerError>` | one deal per call; refuses mixed `deal_id` |
+| `pub fn validate_ledger(ledger: &GeoCollateralLedger) -> Result<(), GeoLedgerError>` | I08, I09, sort order, rollup consistency |
+
+**`exposure.rs`**
+
+| Item | Definition |
+|---|---|
+| Consumes | `GeoCollateralLedger` building sets, `GeoCanonicalPolygonMm` and `GeoLinearRingMm` building geometry from `GeoGeometryTileArtifact`, geometry.rs predicates |
+| `GeoWindRadiusRing` | `knots: u16`, `ring: GeoCanonicalPolygonMm` |
+| `GeoAdvisoryPin` | `advisory_id`, `storm_id`, `advisory_number: u32`, `issued: GeoValidTimeInterval`, `source_blake3s: Vec<String>`, `wind_radii: Vec<GeoWindRadiusRing>` |
+| `GeoExposedBuilding` | `accession`, `loan_id`, `building_id`, `knots_band: u16` (highest ring containing the building) |
+| `GeoEventExposure` | `version`, `advisory: GeoAdvisoryPin`, `ledger_blake3`, `exposed: Vec<GeoExposedBuilding>`, `buildings_without_geometry: Vec<String>` |
+| `pub fn join_exposure(ledger: &GeoCollateralLedger, advisory: &GeoAdvisoryPin, geometry: &BTreeMap<String, GeoCanonicalPolygonMm>, archive_blake3s: &[String]) -> Result<GeoEventExposure, GeoExposureError>` | polygon-in-ring by exact geometry, never centroids (I11); `archive_blake3s` must contain every `source_blake3s` entry |
+
+**`collision.rs`**
+
+| Item | Definition |
+|---|---|
+| Consumes | two or more `GeoCollateralLedger` values, `GeoEntityRef` |
+| `GeoCollisionKind` | `SharedParcel`, `SharedBuilding`, `Adjacent` |
+| `GeoPariPassuDeclaration` | `entity: GeoEntityRef`, `accessions: Vec<String>`, `source_record: GeoEvidenceRecordRef` |
+| `GeoCollision` | `kind`, `entity: GeoEntityRef`, `accessions: Vec<String>`, `loan_ids: Vec<String>`, `pari_passu: bool`, `explanation: String` |
+| `GeoCrossDealArtifact` | `version`, `ledger_blake3s: Vec<String>`, `collisions: Vec<GeoCollision>`, `adjacency_concentration: Vec<{ block_id, deal_count: u64, accessions }>` |
+| `pub fn find_collisions(ledgers: &[GeoCollateralLedger], declarations: &[GeoPariPassuDeclaration], adjacency: &BTreeMap<String, String>) -> Result<GeoCrossDealArtifact, GeoCollisionError>` | `adjacency` maps parcel id to block id; a declared pari passu match sets `pari_passu = true` and keeps the row (I12) |
+
+**`retry.rs`**
+
+| Item | Definition |
+|---|---|
+| Consumes | `GeoRun` (`status`, `blockers`, `next_actions`, `semantic_hash`), `GeoAcquisitionRequest`, `GeoAcquisitionReceipt` |
+| `GeoRetryPolicy` | `max_passes: u8`, `regeocode_request_template: GeoAcquisitionRequest` |
+| `GeoRetryPass` | `index: u8`, `plan_blake3`, `run_blake3`, `abstention_reason: String`, `regeocode: Option<GeoAcquisitionRequest>`, `receipt_blake3: Option<String>` |
+| `GeoRetryTerminal` | `Resolved`, `AbstainedAtCeiling`, `Blocked` |
+| `GeoRetryLoopArtifact` | `version`, `subject_id`, `policy: GeoRetryPolicy`, `passes: Vec<GeoRetryPass>`, `terminal: Option<GeoRetryTerminal>` |
+| `pub fn next_retry_pass(loop_state: &GeoRetryLoopArtifact, latest_run: &GeoRun) -> Result<Option<GeoAcquisitionRequest>, GeoRetryError>` | `Some` only while `passes.len() < max_passes` and the run abstained; the loop emits requests and never geocodes (I10) |
+| `pub fn record_pass(loop_state: &mut GeoRetryLoopArtifact, run: &GeoRun, receipt: Option<&GeoAcquisitionReceipt>) -> Result<(), GeoRetryError>` | appends one pass; sets `terminal` |
+
+**`inspect.rs`**
+
+| Item | Definition |
+|---|---|
+| Consumes | `GeoRun`, `canon.project.run.v2` receipts, `GeoCompositionArtifact`, `GeoEvidenceCompilationArtifact`, `GeoExplanationArtifact` (all read from the work directory by digest) |
+| `GeoInspectionQuestion` | `Q1` to `Q8`, the eight questions in architecture §1, in that order |
+| `GeoInspectionAnswer` | `question: GeoInspectionQuestion`, `answer: String`, `artifact_refs: Vec<GeoRunArtifactRef>` (at least one) |
+| `GeoInspectionDelta` | `evidence_added`, `evidence_removed`, `components_invalidated`, `model_count_before: u64`, `model_count_after: u64`, `backbone_gained`, `backbone_lost`, `contradictions_introduced`, `contradictions_resolved`, `claim_class_changes: Vec<(GeoClaimClass, GeoClaimClass)>` |
+| `GeoInspection` | `version`, `run_id`, `semantic_hash`, `answers: Vec<GeoInspectionAnswer>` (exactly eight), `compare: Option<GeoInspectionDelta>` |
+| `pub fn inspect(work_dir: &Path) -> Result<GeoInspection, GeoInspectError>` | reads only; no `solve_composition` call path (I13) |
+| `pub fn compare(base: &GeoInspection, other: &GeoInspection) -> Result<GeoInspectionDelta, GeoInspectError>` | both must share `plan_ref` question hash |
+
+**`next_evidence.rs`**
+
+| Item | Definition |
+|---|---|
+| Consumes | `GeoCompositionArtifact`, `GeoSeparationArtifact`, `GeoDecisionPolicyRef`, `GeoResourceBudget`, `GeoAbstentionPolicy`, `GeoAcquisitionRequest` |
+| `GeoNextActionKind` | `Acquire(GeoAcquisitionRequest)`, `Adjudicate(String)`, `Observe(String)`, `Stop` |
+| `GeoNextAction` | `action_id`, `kind`, `cost_units: u64`, `separation: Vec<GeoOutcomeSeparation>`, `dominated_by: Vec<String>` |
+| `GeoStopReason` | `ClaimForced`, `AllActionsRedundant`, `GrainUnsupported`, `HonestAmbiguity`, `BudgetExceeded` (architecture §9) |
+| `GeoNextEvidenceArtifact` | `version`, `run_id`, `frontier: Vec<GeoNextAction>`, `dominated: Vec<GeoNextAction>`, `total_ranking: Option<Vec<String>>` (`Some` only under a declared loss model), `stop: Option<GeoStopReason>` |
+| `pub fn recommend(composition: &GeoCompositionArtifact, separation: &GeoSeparationArtifact, candidates: &[GeoNextAction], policy: Option<&GeoDecisionPolicyRef>, budget: &GeoResourceBudget) -> Result<GeoNextEvidenceArtifact, GeoNextEvidenceError>` | dominance by cost and per-outcome separation; frontier is always emitted (I14) |
+
+**`condo.rs`**
+
+| Item | Definition |
+|---|---|
+| Consumes | `GeoWarehouseGeometryRow`, `GeoLinearRingMm`, `footprint_majority_area_inside_parcel`, `GeoEntityRef`, `GeoIdentityRelation::{PartOf, On}`, `validate_identity_relation` |
+| `GeoCondoBridgeRequest` | `version`, `unit_bbl`, `billing_bbl_candidates: Vec<String>`, `bin_candidates: Vec<String>`, `block: String`, `parcel_rings: BTreeMap<String, GeoLinearRingMm>`, `footprint_rings: BTreeMap<String, GeoLinearRingMm>` |
+| `GeoCondoConfirmation` | `BlockAndGeometry`, `BlockOnly`, `KeyOnly` |
+| `GeoLedgerBridge` | `version`, `unit_bbl`, `billing_bbl: Option<String>`, `bins: Vec<String>`, `confirmation: GeoCondoConfirmation`, `relations: Vec<(GeoEntityRef, GeoIdentityRelation, GeoEntityRef)>`, `abstained_reason: Option<String>` |
+| `pub fn bridge_condo_unit(request: &GeoCondoBridgeRequest) -> Result<GeoLedgerBridge, GeoCondoError>` | emits `billing_bbl` and `bins` only under `BlockAndGeometry` (block match plus majority-area footprint containment); `BlockOnly` and `KeyOnly` abstain with sets empty (T11) |
 
 ### 19.4 Error taxonomy additions
 
-Reason codes follow the existing `GeoEvidenceErrorCode` style. New codes:
+Reason codes follow the existing `GeoEvidenceErrorCode` style: a `#[serde(rename_all =
+"snake_case")]` enum per module, carried in `Geo<Module>Error { code, message, detail }`.
+Every module reuses the generic `unsupported_version`, `invalid_input`, `budget_exceeded`,
+and `arithmetic_overflow` variants for malformed input and counter overflow; the rows below
+are the module-specific additions. Each row has exactly one class:
 
-`propagation_unsound_detected`, `propagation_budget_exhausted`, `core_not_minimal`,
-`core_enumeration_ceiling`, `observer_missing_provenance`, `observer_error_uncharacterized`,
-`observer_license_forbidden`, `image_tile_digest_mismatch`, `observation_regenerated_at_replay`,
-`ledger_truth_plane_pooled`, `ledger_reach_none`, `retry_pass_ceiling`,
-`exposure_advisory_stale`, `collision_pari_passu_labeled`, `inspect_artifact_missing`,
-`next_evidence_no_loss_model`.
+| Class | Meaning | Surface |
+|---|---|---|
+| refusal | no artifact is emitted; `Err(Geo<Module>Error)` with the code and a recovery hint in `detail` | nonzero exit, `emit_serialization_refusal` shape in `cli.rs` |
+| abstention | an artifact is emitted with no answer for the affected unit and the code as its typed reason | zero exit; the code appears in a `*_reason` field |
+| typed fallback | an artifact is emitted with a partial result and a completeness flag set to `false`; the code names the exhausted counter | zero exit; the code appears in a `*_fallback` field |
+
+`detail` always carries the ids the code names (constraint, observation, source record,
+tile, artifact, or pass) so the message is never the only carrier.
+
+| Code | Module and function | Condition | Class | Test |
+|---|---|---|---|---|
+| `propagation_unsound_detected` | `propagate::check_soundness` | residual model set or count differs between the original and narrowed request | refusal; also fails T03 in CI | T03 |
+| `propagation_budget_exhausted` | `propagate::propagate` | `max_fixpoint_rounds`, `max_hall_subset_size`, or `max_subset_sum_states` reached before fixpoint | typed fallback: `fixpoint_reached = false`, prunings so far retained (each is individually justified), `budget_fallback` set | open (pass 2) |
+| `core_not_minimal` | `explain::minimal_core` | re-solving with any single core member deleted stays `Conflict` (I03 check fails) | refusal | T05 |
+| `core_enumeration_ceiling` | `explain::correction_sets` | `max_cores` or `max_core_solves` reached before enumeration closes | typed fallback: `cores_complete = false`, `explanation_complete = false`, every `minimal` flag `false` (I04) | T06 |
+| `explanation_not_conflict` | `explain::minimal_core` | input request solves to `Resolved` or `Ambiguous`; no core exists | refusal | open (pass 2) |
+| `separation_residual_inexact` | `explain::separate` | baseline `residual_model_count_complete = false` or `residual_model_count_saturated = true`, or an outcome solve returns `BudgetFallback` | typed fallback: `count_exact = false` on the affected `GeoOutcomeSeparation`; no `redundant` claim | open (pass 2) |
+| `observer_missing_provenance` | `observer::admit_observations` | any I06 field absent on the contract, a row, or a tile pin | refusal | T13 |
+| `observer_error_uncharacterized` | `observer::admit_observations` | `error_population_id` or `characterization_blake3` empty, or a row `kind` not in `output_kinds` | refusal | T13 |
+| `observer_license_forbidden` | `observer::admit_observations` | a tile pin `license_id` is in `forbidden_license_ids` or `license_text_blake3` is empty (N10) | refusal | T13 |
+| `image_tile_digest_mismatch` | `observer::verify_replay`, `adjudicate::validate_adjudication_receipt` | bytes supplied for a pin, crop, or label hash differently from the stored `blake3` | refusal | T14 |
+| `observation_regenerated_at_replay` | `observer::verify_replay` | caller supplies a row whose `label_blake3` or payload digest differs from the stored artifact, or requests identity invocation during replay (I07) | refusal | T14 |
+| `observation_temporal_diagnostic` | `observer::to_rho_observation` | `PresentAtVintage` or `AbsentAtVintage` before dated composition exists | abstention: id listed in `diagnostic_only_ids`, no hard constraint (T15) | T15 |
+| `adjudication_label_outside_candidates` | `adjudicate::validate_adjudication_receipt` | `SelectedParcels` contains an id not in `candidate_parcel_ids`, or `truth_plane != HumanAdjudication` | refusal | open (pass 2) |
+| `card_artifact_mismatch` | `card::build_evidence_card` | composition, evidence, and explanation digests do not reference one another | refusal | open (pass 2) |
+| `ledger_truth_plane_pooled` | `ledger::roll_up_deal`, `ledger::validate_ledger` | a rollup count or row would combine rows across `GeoTruthPlane` values without a per-plane label (I09) | refusal | T07 |
+| `ledger_reach_none` | `ledger::build_ledger_row` | `reach == GeoCandidateReachStatus::None`; row emitted with `reach_none_reason` and both sets `None` (I08) | abstention | T07 |
+| `ledger_sets_without_artifacts` | `ledger::build_ledger_row` | `reach != None` but `composition` or `evidence` is absent | refusal | open (pass 2) |
+| `retry_pass_ceiling` | `retry::next_retry_pass` | `passes.len() == max_passes` and the latest run still abstains | abstention: `terminal = AbstainedAtCeiling`, last `abstention_reason` preserved (I10) | T10 |
+| `retry_policy_unbounded` | `retry::record_pass`, schema validation | `max_passes == 0` or absent | refusal | T10 |
+| `exposure_advisory_stale` | `exposure::join_exposure` | a `source_blake3s` entry is missing from `archive_blake3s`, or a later `advisory_number` for the same `storm_id` exists in the archive | refusal | T08 |
+| `exposure_geometry_missing` | `exposure::join_exposure` | a ledger building has no `GeoCanonicalPolygonMm`; centroid or point input offered instead (I11) | abstention per building: id listed in `buildings_without_geometry`; refusal when every building lacks geometry | T08 |
+| `collision_pari_passu_labeled` | `collision::find_collisions` | a shared entity is covered by a `GeoPariPassuDeclaration` for every colliding accession | not an error: the row is kept with `pari_passu = true` and `explanation` (I12); listed here so no implementer suppresses it | T09 |
+| `inspect_artifact_missing` | `inspect::inspect` | an `output_refs` entry or receipt is absent from the work directory or fails its digest | refusal | T12 |
+| `inspect_question_unanswerable` | `inspect::inspect` | a question has no artifact that answers it in this run | abstention: `answer` states the missing artifact, `artifact_refs` names the run manifest (I13) | open (pass 2) |
+| `next_evidence_no_loss_model` | `next_evidence::recommend` | caller requests a total ranking and `policy` is `None` or declares no loss model | abstention on the ranking only: `total_ranking = None`, frontier still emitted (I14) | T18 |
+| `condo_confirmation_insufficient` | `condo::bridge_condo_unit` | only `KeyOnly` or `BlockOnly` support exists | abstention: `confirmation` set, `billing_bbl = None`, `bins` empty, `abstained_reason` set | T11 |
 
 ### 19.5 Staged sequence and gates
 
