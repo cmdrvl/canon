@@ -532,7 +532,8 @@ pub struct GeoContractCapability {
 #[serde(deny_unknown_fields)]
 pub struct GeoCommandCapability {
     pub command: String,
-    pub surface: GeoCommandSurface,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface: Option<GeoCommandSurface>,
     pub output_contract: String,
     pub read_only: bool,
     pub uses_network: bool,
@@ -2245,7 +2246,7 @@ fn command(
 ) -> GeoCommandCapability {
     GeoCommandCapability {
         command: command.to_string(),
-        surface,
+        surface: Some(surface),
         output_contract: output_contract.to_string(),
         read_only,
         uses_network,

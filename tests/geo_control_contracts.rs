@@ -137,6 +137,12 @@ fn command_leaf(command: &str, leafs: &BTreeSet<String>) -> Option<String> {
         .cloned()
 }
 
+fn required_command_surface(command: &GeoCommandCapability) -> GeoCommandSurface {
+    command
+        .surface
+        .unwrap_or_else(|| panic!("{} missing emitted geo command surface", command.command))
+}
+
 fn contract_versions(contracts: &[GeoContractCapability]) -> BTreeSet<&str> {
     contracts
         .iter()
@@ -770,7 +776,7 @@ fn geo_capabilities_cover_compiled_leaf_commands_and_public_contracts() {
                 command.command.as_str(),
                 (
                     command.output_contract.as_str(),
-                    command.surface,
+                    required_command_surface(command),
                     command.read_only,
                     command.uses_network,
                 ),
@@ -819,7 +825,7 @@ fn geo_capabilities_cover_compiled_leaf_commands_and_public_contracts() {
                 command.command.as_str(),
                 (
                     command.output_contract.as_str(),
-                    command.surface,
+                    required_command_surface(command),
                     command.read_only,
                     command.uses_network,
                 ),
@@ -856,6 +862,27 @@ fn geo_capabilities_cover_compiled_leaf_commands_and_public_contracts() {
             command.command
         );
     }
+}
+
+#[test]
+fn geo_capabilities_surface_is_additive_for_retained_artifacts() {
+    let mut artifact = default_geo_capabilities().expect("default capabilities");
+    for command in artifact
+        .commands
+        .implemented
+        .iter_mut()
+        .chain(artifact.commands.diagnostic_only.iter_mut())
+        .chain(artifact.commands.unavailable.iter_mut())
+    {
+        command.surface = None;
+    }
+
+    let retained_without_surface =
+        serde_json::to_value(&artifact).expect("retained capabilities serialize");
+    let parsed: GeoCapabilities = serde_json::from_value(retained_without_surface)
+        .expect("retained capabilities without command surface parse");
+    canonical_capabilities_bytes(&parsed)
+        .expect("retained capabilities without command surface canonicalize");
 }
 
 #[test]

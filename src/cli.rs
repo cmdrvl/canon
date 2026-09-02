@@ -276,7 +276,7 @@ pub enum GeoSubcommand {
     Inspect,
     /// Build and inspect Geo adjudication ledgers
     Ledger,
-    /// Evaluate labeled composition cases without leaking labels into the solver
+    /// Evaluate labeled composition cases without exposing labels to composition logic
     Evaluate(GeoEvaluateCli),
     /// Materialize three or more named sources into one budgeted consistency artifact
     #[command(name = "link-sources", hide = true)]

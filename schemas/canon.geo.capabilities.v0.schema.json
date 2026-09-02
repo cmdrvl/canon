@@ -149,7 +149,7 @@
         "read_only": { "type": "boolean" },
         "uses_network": { "type": "boolean" }
       },
-      "required": ["command", "surface", "output_contract", "read_only", "uses_network"]
+      "required": ["command", "output_contract", "read_only", "uses_network"]
     },
     "contract_status_sets": {
       "type": "object",
@@ -293,12 +293,14 @@
         "implemented": [
           {
             "command": "canon geo capabilities --emit json",
+            "surface": "primary",
             "output_contract": "canon_geo_capabilities.v0",
             "read_only": true,
             "uses_network": false
           },
           {
             "command": "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>",
+            "surface": "primary",
             "output_contract": "canon_geo_plan.v0",
             "read_only": true,
             "uses_network": false
