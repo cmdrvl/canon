@@ -728,6 +728,7 @@ fn complete_run_manifest() -> GeoRun {
             '2',
             42,
         )],
+        acquisition_satisfactions: Vec::new(),
         output_refs: vec![GeoRunOutputRef {
             artifact_id: "geo.building.solve/solve".to_string(),
             project_node_id: "geo.building.solve".to_string(),
@@ -775,6 +776,7 @@ fn waiting_for_input_manifest() -> Value {
         phase: GeoRunPhase::Preflighted,
         plan_ref: plan_ref(),
         artifact_inputs: Vec::new(),
+        acquisition_satisfactions: Vec::new(),
         output_refs: Vec::new(),
         grain_states: vec![GeoRunGrainState {
             entity_level: "building".to_string(),
