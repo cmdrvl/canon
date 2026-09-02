@@ -1128,6 +1128,7 @@ Every refusal includes the error code, a concrete message, and a recovery path.
 | `E_ENTITY_INDEX_LIMIT` | Entity index posting, bucket, or top-k limits were exceeded | Tighten blocking or raise the relevant limit |
 | `E_ENTITY_CANDIDATE_BUDGET` | Entity candidate budget was exceeded before bounded candidate emission | Tighten filters or raise the candidate budget |
 | `E_ENTITY_ARTIFACT_CONTRACT` | Entity artifact has the wrong version, profile, strategy, registry, or hash | Rebuild the artifact chain |
+| `E_GEO_COMMAND_UNAVAILABLE` | Geo primary command is planned but not implemented in this build | Use `canon geo capabilities --emit json` |
 | `E_ENTITY_CANNOT_LINK_OVERRIDE` | Entity merge request conflicts with a hard cannot-link fact | Remove or justify the conflicting merge request |
 | `E_ENTITY_REVIEW_IMPORT` | Entity review import is malformed, stale, or references unknown items | Regenerate the review artifact and decisions |
 | `E_ENTITY_AUDIT_GATE` | Entity audit artifact is missing, stale, or failed required gates | Re-run audit and address failed gates |

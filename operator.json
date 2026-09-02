@@ -7540,6 +7540,11 @@
       "action": "fix_input"
     },
     {
+      "code": "E_GEO_COMMAND_UNAVAILABLE",
+      "message": "Geo primary command is planned but not implemented in this build",
+      "action": "adjust_input"
+    },
+    {
       "code": "E_ENTITY_CANNOT_LINK_OVERRIDE",
       "message": "Entity merge request conflicts with a hard cannot-link fact",
       "action": "escalate"

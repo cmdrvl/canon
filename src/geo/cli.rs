@@ -153,7 +153,7 @@ pub fn run(geo: &GeoCli) -> Result<u8, Box<dyn Error>> {
 
 fn run_unavailable_primary(command: &str) -> Result<u8, Box<dyn Error>> {
     emit_refusal(
-        RefusalCode::EEntityArtifactContract,
+        RefusalCode::EGeoCommandUnavailable,
         "Geo primary command is planned but not implemented in this build",
         json!({
             "command": format!("canon {command}"),

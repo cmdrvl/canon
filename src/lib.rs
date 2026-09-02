@@ -8235,6 +8235,7 @@ pub enum RefusalCode {
     EEntityIndexLimit,
     EEntityCandidateBudget,
     EEntityArtifactContract,
+    EGeoCommandUnavailable,
     EEntityCannotLinkOverride,
     EEntityReviewImport,
     EEntityAuditGate,
@@ -8277,6 +8278,7 @@ impl Serialize for RefusalCode {
             RefusalCode::EEntityIndexLimit => "E_ENTITY_INDEX_LIMIT",
             RefusalCode::EEntityCandidateBudget => "E_ENTITY_CANDIDATE_BUDGET",
             RefusalCode::EEntityArtifactContract => "E_ENTITY_ARTIFACT_CONTRACT",
+            RefusalCode::EGeoCommandUnavailable => "E_GEO_COMMAND_UNAVAILABLE",
             RefusalCode::EEntityCannotLinkOverride => "E_ENTITY_CANNOT_LINK_OVERRIDE",
             RefusalCode::EEntityReviewImport => "E_ENTITY_REVIEW_IMPORT",
             RefusalCode::EEntityAuditGate => "E_ENTITY_AUDIT_GATE",
@@ -8367,6 +8369,9 @@ impl RefusalCode {
             }
             RefusalCode::EEntityArtifactContract => {
                 "Use the correct upstream entity artifact or re-run the prior stage"
+            }
+            RefusalCode::EGeoCommandUnavailable => {
+                "Run canon geo capabilities --emit json to inspect implemented Geo commands"
             }
             RefusalCode::EEntityCannotLinkOverride => {
                 "Keep the surfaces in review or add explicit operator override evidence before merging"

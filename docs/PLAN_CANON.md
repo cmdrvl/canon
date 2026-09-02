@@ -984,6 +984,7 @@ pack seal evidence/ --note "Q4 recon with canonical IDs"
 | `E_TOO_LARGE` | Input exceeds `--max-rows` or `--max-bytes` | Increase limits or reduce input |
 | `E_EMIT_FORMAT` | `--emit csv` used with JSONL input | Use `--emit json` or provide CSV input |
 | `E_COLUMN_EXISTS` | `--emit csv` and canonical column name already exists in input header | Choose a different `--canon-column` name |
+| `E_GEO_COMMAND_UNAVAILABLE` | Geo primary command is planned but not implemented in this build | Use `canon geo capabilities --emit json` |
 
 ### Refusal output contract
 Every REFUSAL prints a single JSON object with the shared refusal envelope:

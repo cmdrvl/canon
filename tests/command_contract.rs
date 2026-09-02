@@ -2,11 +2,13 @@
 
 use assert_cmd::Command;
 use canon::{
+    RefusalCode,
     cli::Cli,
     operator::{
         public_leaf_commands_from, public_leaf_long_flags_from, stable_manifest_digest,
         validate_operator_manifest_json,
     },
+    refusal,
 };
 use clap::CommandFactory;
 use serde::Deserialize;
@@ -110,6 +112,7 @@ enum JsonAssertion {
     ArrayLen(&'static str, usize),
     ArrayNonEmpty(&'static str),
     HashPrefix(&'static str),
+    NotEq(&'static str, Value),
 }
 
 enum StderrExpectation {
@@ -195,6 +198,43 @@ fn generated_command_corpus_rejects_missing_cases() {
         error.contains("missing help case for operator row registry providers"),
         "unexpected coverage error: {error}"
     );
+}
+
+#[test]
+fn refusal_taxonomy_keeps_entity_artifact_contract_distinct_from_geo_unavailable() {
+    let entity_artifact_contract = refusal::create_refusal(
+        RefusalCode::EEntityArtifactContract,
+        "Entity artifact has the wrong version".to_string(),
+        json!({
+            "stage": "solve",
+            "field": "version",
+            "expected": "canon_entity_solve.v1",
+            "actual": "canon_entity_solve.v0"
+        }),
+        None,
+    );
+    let planned_geo_unavailable = refusal::create_refusal(
+        RefusalCode::EGeoCommandUnavailable,
+        "Geo primary command is planned but not implemented in this build".to_string(),
+        json!({
+            "command": "canon geo inspect",
+            "status": "planned_not_implemented"
+        }),
+        Some("canon geo capabilities --emit json".to_string()),
+    );
+    let entity_code = &entity_artifact_contract.refusal.as_ref().unwrap().code;
+    let planned_geo_code = &planned_geo_unavailable.refusal.as_ref().unwrap().code;
+
+    assert_eq!(entity_code, &RefusalCode::EEntityArtifactContract);
+    assert_eq!(
+        serde_json::to_value(entity_code).unwrap(),
+        json!("E_ENTITY_ARTIFACT_CONTRACT")
+    );
+    assert_eq!(
+        serde_json::to_value(planned_geo_code).unwrap(),
+        json!("E_GEO_COMMAND_UNAVAILABLE")
+    );
+    assert_ne!(entity_code, &RefusalCode::EGeoCommandUnavailable);
 }
 
 #[test]
@@ -509,7 +549,8 @@ fn expected_json_asserts_path(stdout: &StdoutExpectation, path: &str) -> bool {
                 JsonAssertion::Eq(actual_path, _)
                     | JsonAssertion::ArrayLen(actual_path, _)
                     | JsonAssertion::ArrayNonEmpty(actual_path)
-                    | JsonAssertion::HashPrefix(actual_path) if *actual_path == path
+                    | JsonAssertion::HashPrefix(actual_path)
+                    | JsonAssertion::NotEq(actual_path, _) if *actual_path == path
             )
         }),
         _ => false,
@@ -776,7 +817,8 @@ impl RuntimeHarness {
                 args: args(["geo", "inspect"]),
                 expected: RuntimeExpectation::json(2, "canon.v0", SchemaField::Version)
                     .assert_eq("outcome", json!("REFUSAL"))
-                    .assert_eq("refusal.code", json!("E_ENTITY_ARTIFACT_CONTRACT"))
+                    .assert_eq("refusal.code", json!("E_GEO_COMMAND_UNAVAILABLE"))
+                    .assert_ne("refusal.code", json!("E_ENTITY_ARTIFACT_CONTRACT"))
                     .assert_eq("refusal.detail.command", json!("canon geo inspect"))
                     .assert_eq("refusal.detail.status", json!("planned_not_implemented"))
                     .assert_eq(
@@ -791,7 +833,8 @@ impl RuntimeHarness {
                 args: args(["geo", "ledger"]),
                 expected: RuntimeExpectation::json(2, "canon.v0", SchemaField::Version)
                     .assert_eq("outcome", json!("REFUSAL"))
-                    .assert_eq("refusal.code", json!("E_ENTITY_ARTIFACT_CONTRACT"))
+                    .assert_eq("refusal.code", json!("E_GEO_COMMAND_UNAVAILABLE"))
+                    .assert_ne("refusal.code", json!("E_ENTITY_ARTIFACT_CONTRACT"))
                     .assert_eq("refusal.detail.command", json!("canon geo ledger"))
                     .assert_eq("refusal.detail.status", json!("planned_not_implemented"))
                     .assert_eq(
@@ -1259,6 +1302,17 @@ impl RuntimeExpectation {
         self
     }
 
+    fn assert_ne(mut self, path: &'static str, unexpected: Value) -> Self {
+        if let StdoutExpectation::Json(expectation) = &mut self.stdout {
+            expectation
+                .assertions
+                .push(JsonAssertion::NotEq(path, unexpected));
+        } else {
+            panic!("JSON assertion added to non-JSON runtime expectation");
+        }
+        self
+    }
+
     fn with_stderr(mut self, stderr: StderrExpectation) -> Self {
         self.stderr = stderr;
         self
@@ -1360,6 +1414,15 @@ fn assert_json(case_id: &str, value: &Value, assertion: &JsonAssertion) {
                 "{case_id} JSON path {path} is not a supported digest: {actual}"
             );
         }
+        JsonAssertion::NotEq(path, unexpected) => assert_ne!(
+            value_at(value, path),
+            Some(unexpected),
+            "{} JSON path {} unexpectedly matched {}\nstdout={}",
+            case_id,
+            path,
+            unexpected,
+            serde_json::to_string_pretty(value).expect("stdout JSON renders")
+        ),
     }
 }
 
