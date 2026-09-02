@@ -49,6 +49,7 @@
       "canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY_DIR> --work-dir <DIR>",
       "canon entity index build <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
       "canon entity block <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit jsonl|summary]",
+      "canon entity block preflight <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> [--sample-pct <N>] [--work-dir <DIR>] [--emit json|summary]",
       "canon entity candidate-recall --manifest <QUALITY_MANIFEST.json> --candidates <BLOCK.jsonl|json> --diagnostics <DIAGNOSTICS.json> --exact-bucket-count <N> [--emit json|summary]",
       "canon entity evidence <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --candidates <BLOCK.json> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit jsonl|summary]",
       "canon entity solve <ROWS> [--profile <PROFILE>] --strategy <STRATEGY.yaml> --evidence <EVIDENCE.json> --registry <REGISTRY_DIR> [--work-dir <DIR>] [--emit json|summary]",
@@ -5795,6 +5796,10 @@
       ],
       "status": "implemented",
       "read_only": false,
+      "aggregate": true,
+      "leaves": [
+        "entity block preflight"
+      ],
       "safety": {
         "owned_temp_fixtures_only": true,
         "notes": "owned entity work-dir/cache/artifact writes only",
@@ -6104,6 +6109,101 @@
       "next_command": "canon entity evidence <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --candidates <WORK_DIR>/block/block.json --registry <REGISTRY_DIR> --work-dir <DIR>",
       "recovery": {
         "next_command": "canon entity evidence <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --candidates <WORK_DIR>/block/block.json --registry <REGISTRY_DIR> --work-dir <DIR>",
+        "refusal_exit_code": 2
+      }
+    },
+    {
+      "name": "entity block preflight",
+      "usage": "canon entity block preflight <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> [--sample-pct <N>] [--work-dir <DIR>] [--emit json|summary]",
+      "description": "Estimate native block candidate cardinality and worst-block skew before executing the block stage",
+      "output_mode": "mixed",
+      "output_schema": "canon_entity_block_preflight.v1",
+      "exit_codes": {
+        "0": {
+          "meaning": "entity block preflight report emitted successfully",
+          "domain": "report"
+        },
+        "2": {
+          "meaning": "REFUSAL / CLI, profile, strategy, or artifact contract error",
+          "domain": "error"
+        }
+      },
+      "options": [
+        {
+          "name": "rows",
+          "type": "file_path",
+          "required": true,
+          "position": 0,
+          "description": "Input CSV, TSV, JSONL, or NDJSON rows"
+        },
+        {
+          "name": "profile",
+          "flag": "--profile",
+          "type": "string",
+          "required": true,
+          "description": "Entity profile id or YAML path"
+        },
+        {
+          "name": "strategy",
+          "flag": "--strategy",
+          "type": "file_path",
+          "required": true,
+          "description": "Entity strategy YAML file containing optional block candidate and index budgets"
+        },
+        {
+          "name": "sample_pct",
+          "flag": "--sample-pct",
+          "type": "integer",
+          "default": 100,
+          "description": "Deterministic hash-mod row sample percentage from 1 through 100"
+        },
+        {
+          "name": "work_dir",
+          "flag": "--work-dir",
+          "type": "directory_path",
+          "description": "Existing work directory for the optional single block_preflight.json artifact"
+        },
+        {
+          "name": "emit",
+          "flag": "--emit",
+          "type": "string",
+          "default": "json",
+          "description": "Output mode: json (canon_entity_block_preflight.v1) or summary"
+        }
+      ],
+      "status": "implemented",
+      "read_only": true,
+      "safety": {
+        "owned_temp_fixtures_only": true,
+        "notes": "stdout-only report is read-only; --work-dir writes exactly one caller-owned preflight artifact",
+        "mutation_class": "ReadOnly",
+        "network_class": "Offline",
+        "concurrency_class": "StatelessRead",
+        "platform_classes": [
+          "PortablePathUtf8"
+        ],
+        "declaration_command": "entity read"
+      },
+      "side_effects": {
+        "reads_stdin": false,
+        "reads_input_files": true,
+        "reads_registry_files": false,
+        "reads_strategy_files": true,
+        "loads_sqlite": false,
+        "appends_witness_ledger": false,
+        "creates_witness_directory": false,
+        "writes_migration_logs": false,
+        "writes_deprecation_notices": false,
+        "writes_registry_files": false,
+        "writes_mapping_sidecars": false,
+        "writes_work_dir": false,
+        "writes_project_files": false,
+        "writes_output_files": false,
+        "uses_network": false
+      },
+      "next_command": "canon entity block <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> --work-dir <DIR>",
+      "recovery": {
+        "next_command": "canon entity block preflight <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --emit json",
         "refusal_exit_code": 2
       }
     },

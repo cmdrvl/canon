@@ -1,0 +1,415 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmdrvl.com/schemas/canon_entity_block_preflight.v1.schema.json",
+  "title": "canon_entity_block_preflight.v1",
+  "description": "Read-only entity blocking preflight report with deterministic sampling, candidate-count estimates, skew blocks, and budget verdicts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "rows",
+    "profile",
+    "strategy",
+    "sample",
+    "configured_budgets",
+    "budget_verdict",
+    "totals",
+    "operators",
+    "top_blocks"
+  ],
+  "properties": {
+    "version": {
+      "const": "canon_entity_block_preflight.v1"
+    },
+    "rows": {
+      "$ref": "#/$defs/input_reference"
+    },
+    "profile": {
+      "$ref": "#/$defs/profile_reference"
+    },
+    "strategy": {
+      "$ref": "#/$defs/strategy_reference"
+    },
+    "sample": {
+      "$ref": "#/$defs/sample_report"
+    },
+    "configured_budgets": {
+      "$ref": "#/$defs/configured_budgets"
+    },
+    "budget_verdict": {
+      "$ref": "#/$defs/budget_verdict"
+    },
+    "totals": {
+      "$ref": "#/$defs/totals"
+    },
+    "operators": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/operator_report"
+      }
+    },
+    "top_blocks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/top_block"
+      }
+    },
+    "artifact_path": {
+      "$ref": "#/$defs/non_empty_string"
+    }
+  },
+  "x-canon-contract": {
+    "read_only": true,
+    "deterministic_sampling": "blake3_hash_mod",
+    "sample_pct_100_exact": true,
+    "run_path_dedup_semantics": true,
+    "registry_mutation_forbidden": true,
+    "network_forbidden": true
+  },
+  "$defs": {
+    "blake3_hash": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "tight",
+        "would_refuse"
+      ]
+    },
+    "input_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "content_hash",
+        "row_count"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/blake3_hash"
+        },
+        "row_count": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "profile_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "entity_type",
+        "identity_semantics",
+        "canonical_type",
+        "patch_namespaces"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "version": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "entity_type": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "identity_semantics": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "canonical_type": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "patch_namespaces": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "aliases",
+            "distinct",
+            "relations"
+          ],
+          "properties": {
+            "aliases": {
+              "$ref": "#/$defs/non_empty_string"
+            },
+            "distinct": {
+              "$ref": "#/$defs/non_empty_string"
+            },
+            "relations": {
+              "$ref": "#/$defs/non_empty_string"
+            }
+          }
+        },
+        "content_hash": {
+          "$ref": "#/$defs/blake3_hash"
+        }
+      }
+    },
+    "strategy_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "content_hash"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "version": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/blake3_hash"
+        }
+      }
+    },
+    "sample_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested_pct",
+        "exact",
+        "hash_modulus",
+        "hash_threshold",
+        "input_row_count",
+        "sampled_row_count",
+        "surface_count",
+        "sampled_surface_count"
+      ],
+      "properties": {
+        "requested_pct": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "exact": {
+          "type": "boolean"
+        },
+        "hash_modulus": {
+          "const": 10000
+        },
+        "hash_threshold": {
+          "$ref": "#/$defs/count"
+        },
+        "input_row_count": {
+          "$ref": "#/$defs/count"
+        },
+        "sampled_row_count": {
+          "$ref": "#/$defs/count"
+        },
+        "surface_count": {
+          "$ref": "#/$defs/count"
+        },
+        "sampled_surface_count": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "configured_budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_candidates_per_surface",
+        "max_candidates_per_operator",
+        "max_candidates_per_run",
+        "max_exact_bucket_size"
+      ],
+      "properties": {
+        "max_candidates_per_surface": {
+          "$ref": "#/$defs/count"
+        },
+        "max_candidates_per_operator": {
+          "$ref": "#/$defs/count"
+        },
+        "max_candidates_per_run": {
+          "$ref": "#/$defs/count"
+        },
+        "max_exact_bucket_size": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "budget_verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "checks"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/budget_check"
+          }
+        }
+      }
+    },
+    "budget_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_id",
+        "status",
+        "observed",
+        "estimated",
+        "configured",
+        "subject_kind"
+      ],
+      "properties": {
+        "policy_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "observed": {
+          "$ref": "#/$defs/count"
+        },
+        "estimated": {
+          "$ref": "#/$defs/count"
+        },
+        "configured": {
+          "$ref": "#/$defs/count"
+        },
+        "subject_kind": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "subject_id": {
+          "$ref": "#/$defs/non_empty_string"
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^(observed|estimated|candidate_pairs_per_surface)_[a-z0-9_]+$": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "operator_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operator_id",
+        "observed_input_candidate_count",
+        "estimated_input_candidate_count",
+        "observed_eligible_candidate_count",
+        "estimated_eligible_candidate_count",
+        "observed_emitted_candidate_count",
+        "estimated_emitted_candidate_count",
+        "observed_suppressed_candidate_count",
+        "estimated_suppressed_candidate_count",
+        "observed_large_posting_suppressed_count",
+        "estimated_large_posting_suppressed_count",
+        "observed_marginal_candidate_count",
+        "estimated_marginal_candidate_count",
+        "observed_cumulative_candidate_count",
+        "estimated_cumulative_candidate_count"
+      ],
+      "properties": {
+        "operator_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "observed_input_candidate_count": {
+          "$ref": "#/$defs/count"
+        },
+        "estimated_input_candidate_count": {
+          "$ref": "#/$defs/count"
+        },
+        "observed_eligible_candidate_count": {
+          "$ref": "#/$defs/count"
+        },
+        "estimated_eligible_candidate_count": {
+          "$ref": "#/$defs/count"
+        },
+        "observed_emitted_candidate_count": {
+          "$ref": "#/$defs/count"
+        },
+        "estimated_emitted_candidate_count": {
+          "$ref": "#/$defs/count"
+        },
+        "observed_suppressed_candidate_count": {
+          "$ref": "#/$defs/count"
+        },
+        "estimated_suppressed_candidate_count": {
+          "$ref": "#/$defs/count"
+        },
+        "observed_large_posting_suppressed_count": {
+          "$ref": "#/$defs/count"
+        },
+        "estimated_large_posting_suppressed_count": {
+          "$ref": "#/$defs/count"
+        },
+        "observed_marginal_candidate_count": {
+          "$ref": "#/$defs/count"
+        },
+        "estimated_marginal_candidate_count": {
+          "$ref": "#/$defs/count"
+        },
+        "observed_cumulative_candidate_count": {
+          "$ref": "#/$defs/count"
+        },
+        "estimated_cumulative_candidate_count": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "top_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operator_id",
+        "key_kind",
+        "key_value",
+        "observed_surface_count",
+        "estimated_surface_count",
+        "observed_row_count",
+        "estimated_row_count"
+      ],
+      "properties": {
+        "operator_id": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "key_kind": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "key_value": {
+          "$ref": "#/$defs/non_empty_string"
+        },
+        "observed_surface_count": {
+          "$ref": "#/$defs/count"
+        },
+        "estimated_surface_count": {
+          "$ref": "#/$defs/count"
+        },
+        "observed_row_count": {
+          "$ref": "#/$defs/count"
+        },
+        "estimated_row_count": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    }
+  }
+}

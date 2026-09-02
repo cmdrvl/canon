@@ -805,7 +805,7 @@ pub fn prepare_surface_records(
     Ok(surfaces)
 }
 
-fn prepare_surface_records_for_loaded_profile(
+pub(crate) fn prepare_surface_records_for_loaded_profile(
     rows: &Path,
     loaded_profile: &LoadedPrepareProfile,
     observations: &[PreparedInputObservation],

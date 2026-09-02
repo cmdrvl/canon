@@ -2795,7 +2795,7 @@ fn prepare_header(artifact: &PrepareRunArtifact) -> EntityArtifactHeader {
     }
 }
 
-fn posting_surfaces(surfaces: &[PreparedSurfaceRecord]) -> Vec<EntityPostingSurface> {
+pub(crate) fn posting_surfaces(surfaces: &[PreparedSurfaceRecord]) -> Vec<EntityPostingSurface> {
     surfaces
         .iter()
         .map(|surface| {
@@ -2810,7 +2810,7 @@ fn posting_surfaces(surfaces: &[PreparedSurfaceRecord]) -> Vec<EntityPostingSurf
         .collect()
 }
 
-fn ngram_surfaces(surfaces: &[PreparedSurfaceRecord]) -> Vec<EntityNgramSurface> {
+pub(crate) fn ngram_surfaces(surfaces: &[PreparedSurfaceRecord]) -> Vec<EntityNgramSurface> {
     surfaces
         .iter()
         .map(|surface| {
@@ -2840,7 +2840,7 @@ fn tokens_for_surface(surface: &PreparedSurfaceRecord) -> Vec<String> {
     tokens.into_iter().collect()
 }
 
-fn core_view_value(profile_id: &str, surface: &PreparedSurfaceRecord) -> String {
+pub(crate) fn core_view_value(profile_id: &str, surface: &PreparedSurfaceRecord) -> String {
     surface
         .normalized_views
         .get(core_view_name(profile_id))
@@ -2849,7 +2849,7 @@ fn core_view_value(profile_id: &str, surface: &PreparedSurfaceRecord) -> String 
         .unwrap_or_else(|| surface.primary_surface.trim().to_string())
 }
 
-fn core_view_name(profile_id: &str) -> &'static str {
+pub(crate) fn core_view_name(profile_id: &str) -> &'static str {
     match profile_id {
         "cmbs_tenant_label" => "tenant_core",
         "regab_firm_identity" => "firm_core",

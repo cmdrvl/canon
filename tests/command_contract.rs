@@ -467,6 +467,7 @@ fn assert_runtime_corpus_coverage(manifest: &OperatorManifest, cases: &[RuntimeC
         "inbox list",
         "inbox export-review",
         "entity calibrate sweep",
+        "entity block preflight",
         "entity profile list",
         "entity profile init",
     ] {
@@ -667,6 +668,8 @@ impl RuntimeHarness {
         let calibrate_result = self.work.join("calibrate-result.jsonl");
         let calibrate_gold = self.work.join("calibrate-gold.jsonl");
         let calibrate_strategy = self.work.join("calibrate-strategy.yaml");
+        let block_preflight_rows = self.work.join("block-preflight-rows.csv");
+        let block_preflight_strategy = self.work.join("block-preflight-strategy.yaml");
         fs::write(
             &calibrate_result,
             concat!(
@@ -690,6 +693,22 @@ impl RuntimeHarness {
             "strategy_id: contract-corpus\nsolver:\n  backbone_score_min: 32\n  attach_score_min: 28\n",
         )
         .expect("calibrate strategy fixture");
+        fs::write(
+            &block_preflight_rows,
+            concat!(
+                "source_row_id,deal_id,loan_id,property_id,raw_tenant_name\n",
+                "r001,D1,L1,P1,John Smith LLC\n",
+                "r002,D2,L2,P2,John Smith LLC\n",
+                "r003,D3,L3,P3,Sears Roebuck\n",
+                "r004,D4,L4,P4,Kmart\n",
+            ),
+        )
+        .expect("block preflight rows fixture");
+        fs::write(
+            &block_preflight_strategy,
+            "strategy_id: contract-block-preflight\nstrategy_version: 1\n",
+        )
+        .expect("block preflight strategy fixture");
 
         vec![
             RuntimeCase {
@@ -1197,7 +1216,10 @@ impl RuntimeHarness {
                 .assert_eq("quality_contract", json!("canon.entity.quality.v1"))
                 .assert_eq("inputs.labeled_pair_count", json!(3))
                 .assert_eq("recommendation.status", json!("recommended"))
-                .assert_eq("recommendation.selected_thresholds.match_threshold", json!(80))
+                .assert_eq(
+                    "recommendation.selected_thresholds.match_threshold",
+                    json!(80),
+                )
                 .assert_eq(
                     "recommendation.selected_metrics.auto_accept_rate_basis_points",
                     json!(6667),
@@ -1206,6 +1228,43 @@ impl RuntimeHarness {
                 .with_mutation(MutationExpectation::Unchanged(
                     calibrate_strategy.clone(),
                     fs::read(&calibrate_strategy).expect("calibrate strategy bytes"),
+                )),
+            },
+            RuntimeCase {
+                id: "entity_block_preflight_json_is_read_only",
+                command_name: "entity block preflight",
+                args: vec![
+                    "entity".to_string(),
+                    "block".to_string(),
+                    "preflight".to_string(),
+                    path_arg(&block_preflight_rows),
+                    "--profile".to_string(),
+                    "cmbs_tenant_label".to_string(),
+                    "--strategy".to_string(),
+                    path_arg(&block_preflight_strategy),
+                    "--sample-pct".to_string(),
+                    "100".to_string(),
+                    "--emit".to_string(),
+                    "json".to_string(),
+                ],
+                expected: RuntimeExpectation::json(
+                    0,
+                    "canon_entity_block_preflight.v1",
+                    SchemaField::Version,
+                )
+                .assert_eq("sample.exact", json!(true))
+                .assert_eq("sample.requested_pct", json!(100))
+                .assert_eq("budget_verdict.status", json!("pass"))
+                .assert_array_non_empty("operators")
+                .assert_array_non_empty("top_blocks")
+                .with_stderr(StderrExpectation::Empty)
+                .with_mutation(MutationExpectation::Unchanged(
+                    block_preflight_rows.clone(),
+                    fs::read(&block_preflight_rows).expect("block preflight rows bytes"),
+                ))
+                .with_mutation(MutationExpectation::Unchanged(
+                    block_preflight_strategy.clone(),
+                    fs::read(&block_preflight_strategy).expect("block preflight strategy bytes"),
                 )),
             },
             RuntimeCase {

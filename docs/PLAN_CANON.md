@@ -154,6 +154,7 @@ canon entity calibrate sweep <RESULT|EVIDENCE> --gold <GOLD.jsonl> --strategy <S
 canon entity prepare <ROWS> --profile <PROFILE> --registry <REGISTRY> --work-dir <DIR>
 canon entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--emit json|summary]
 canon entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <REGISTRY> [--work-dir <DIR>] [--emit jsonl|summary]
+canon entity block preflight <ROWS> --profile <PROFILE> --strategy <YAML> [--sample-pct <N>] [--work-dir <DIR>] [--emit json|summary]
 canon entity candidate-recall --manifest <MANIFEST.json> --candidates <CANDIDATES.jsonl> --diagnostics <DIAGNOSTICS.json> --exact-bucket-count <N> [--emit json|summary]
 canon entity evidence <ROWS> [--profile <PROFILE>] --strategy <YAML> --candidates <JSONL> --registry <REGISTRY> [--work-dir <DIR>] [--emit jsonl|summary]
 canon entity solve <ROWS> [--profile <PROFILE>] --strategy <YAML> --evidence <JSONL> --registry <REGISTRY> [--work-dir <DIR>] [--emit json|summary]
@@ -553,6 +554,15 @@ lookup path and it does not change `canon.v0` exact-match semantics.
 - emits bounded candidate neighborhoods from configured blocking operators
 - preserves candidate-budget diagnostics and refuses over-budget runs before
   writing partial candidate artifacts
+
+`canon entity block preflight <ROWS> --profile <PROFILE> --strategy <YAML> [--sample-pct <N>] [--work-dir <DIR>] [--emit json|summary]`
+- estimates candidate cardinality, marginal/cumulative per-operator counts, and
+  largest block keys before running the block stage
+- uses deterministic hash-mod row sampling only; `--sample-pct 100` is exact and
+  must match the block-stage candidate diagnostics on the same rows/profile/strategy
+- emits pass/tight/would-refuse budget verdicts against configured block/index
+  budgets and writes nothing unless `--work-dir` is explicitly supplied, in which
+  case it writes exactly one `block_preflight.json` artifact
 
 `canon entity evidence <ROWS> [--profile <PROFILE>] --strategy <YAML> --candidates <JSONL> --registry <REGISTRY> [--work-dir <DIR>] [--emit jsonl|summary]`
 - scores typed evidence for blocked candidate pairs

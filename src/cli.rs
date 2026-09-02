@@ -1937,9 +1937,13 @@ pub struct EntityIndexBuildCli {
 }
 
 #[derive(Args, Debug, Clone)]
+#[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
 pub struct EntityBlockCli {
+    #[command(subcommand)]
+    pub command: Option<EntityBlockSubcommand>,
+
     /// Input CSV or JSONL rows
-    pub rows: PathBuf,
+    pub rows: Option<PathBuf>,
 
     /// Entity profile id or YAML path for artifact-backed dispatch
     #[arg(long)]
@@ -1947,11 +1951,11 @@ pub struct EntityBlockCli {
 
     /// Strategy YAML file
     #[arg(long)]
-    pub strategy: PathBuf,
+    pub strategy: Option<PathBuf>,
 
     /// Entity registry directory
     #[arg(long)]
-    pub registry: PathBuf,
+    pub registry: Option<PathBuf>,
 
     /// Work directory for artifact-backed stages
     #[arg(long = "work-dir")]
@@ -1960,6 +1964,38 @@ pub struct EntityBlockCli {
     /// Output mode
     #[arg(long, value_enum, default_value = "jsonl")]
     pub emit: EntityStreamEmitMode,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum EntityBlockSubcommand {
+    /// Estimate block candidate cardinality and skew without running the stage
+    Preflight(EntityBlockPreflightCli),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct EntityBlockPreflightCli {
+    /// Input CSV or JSONL rows
+    pub rows: PathBuf,
+
+    /// Entity profile id or YAML path
+    #[arg(long)]
+    pub profile: String,
+
+    /// Strategy YAML file
+    #[arg(long)]
+    pub strategy: PathBuf,
+
+    /// Deterministic hash-mod sample percentage
+    #[arg(long = "sample-pct", default_value_t = 100)]
+    pub sample_pct: u8,
+
+    /// Optional existing work directory for one preflight artifact
+    #[arg(long = "work-dir")]
+    pub work_dir: Option<PathBuf>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value = "json")]
+    pub emit: EntityEmitMode,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -3181,13 +3217,67 @@ mod tests {
         let subcommand = command.command;
         assert!(matches!(&subcommand, EntitySubcommand::Block(_)));
         if let EntitySubcommand::Block(block) = subcommand {
-            assert_eq!(block.rows, PathBuf::from("rows.csv"));
+            assert!(block.command.is_none());
+            assert_eq!(block.rows, Some(PathBuf::from("rows.csv")));
             assert_eq!(block.profile.as_deref(), Some("entity_profile"));
-            assert_eq!(block.strategy, PathBuf::from("strategy.yaml"));
-            assert_eq!(block.registry, PathBuf::from("registries/entity"));
+            assert_eq!(block.strategy, Some(PathBuf::from("strategy.yaml")));
+            assert_eq!(block.registry, Some(PathBuf::from("registries/entity")));
             assert_eq!(block.work_dir, Some(PathBuf::from("work/entity")));
             assert!(matches!(block.emit, EntityStreamEmitMode::Summary));
         }
+    }
+
+    #[test]
+    fn test_cli_entity_block_preflight_parsing() {
+        let args = [
+            "canon",
+            "entity",
+            "block",
+            "preflight",
+            "rows.csv",
+            "--profile",
+            "entity_profile",
+            "--strategy",
+            "strategy.yaml",
+            "--sample-pct",
+            "50",
+            "--work-dir",
+            "work/entity",
+            "--emit",
+            "summary",
+        ];
+        let cli = Cli::try_parse_from(args).unwrap();
+
+        let Some(command) = entity_command(cli) else {
+            return;
+        };
+        let subcommand = command.command;
+        assert!(matches!(&subcommand, EntitySubcommand::Block(_)));
+        if let EntitySubcommand::Block(block) = subcommand {
+            let Some(EntityBlockSubcommand::Preflight(preflight)) = block.command else {
+                panic!("expected entity block preflight command");
+            };
+            assert_eq!(preflight.rows, PathBuf::from("rows.csv"));
+            assert_eq!(preflight.profile, "entity_profile");
+            assert_eq!(preflight.strategy, PathBuf::from("strategy.yaml"));
+            assert_eq!(preflight.sample_pct, 50);
+            assert_eq!(preflight.work_dir, Some(PathBuf::from("work/entity")));
+            assert!(matches!(preflight.emit, EntityEmitMode::Summary));
+        }
+    }
+
+    #[test]
+    fn test_cli_entity_block_preflight_requires_profile() {
+        let args = [
+            "canon",
+            "entity",
+            "block",
+            "preflight",
+            "rows.csv",
+            "--strategy",
+            "strategy.yaml",
+        ];
+        assert!(Cli::try_parse_from(args).is_err());
     }
 
     #[test]

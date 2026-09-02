@@ -31,12 +31,22 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fs,
     path::Path,
 };
 
 pub const BLOCK_STAGE: &str = "block";
 pub const BLOCK_CANDIDATE_ARTIFACT: &str = "candidate_artifact";
 pub const BLOCK_PARTIAL_CANDIDATE_ARTIFACT_WRITTEN_ON_REFUSAL: bool = false;
+pub const DEFAULT_BLOCK_MAX_CANDIDATES_PER_SURFACE: u64 = 100;
+pub const DEFAULT_BLOCK_MAX_CANDIDATES_PER_OPERATOR: u64 = 25_000;
+pub const DEFAULT_BLOCK_MAX_CANDIDATES_PER_RUN: u64 = 25_000;
+pub const DEFAULT_BLOCK_MAX_EXACT_BUCKET_SIZE: u64 = 10_000;
+pub const DEFAULT_BLOCK_NGRAM_TOPK_K: usize = 25;
+pub const DEFAULT_BLOCK_NGRAM_TOPK_CANDIDATE_CAP: usize = 25;
+pub const DEFAULT_BLOCK_RARE_TOKEN_TOPK_K: usize = 25;
+pub const DEFAULT_BLOCK_RARE_TOKEN_CANDIDATE_CAP: usize = 25;
+pub const DEFAULT_BLOCK_RARE_TOKEN_MAX_POSTING_SIZE: usize = 1_000;
 const ALIAS_PATCH_SCORE_UNITS: u32 = 1_000_000;
 
 #[derive(Debug, Clone)]
@@ -122,6 +132,136 @@ impl RareTokenOverlapBlockOperator {
     pub const fn with_max_posting_size(mut self, max_posting_size: usize) -> Self {
         self.max_posting_size = max_posting_size;
         self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockRuntimeConfig {
+    pub candidate_budget: BlockCandidateBudgetConfig,
+    pub max_exact_bucket_size: u64,
+}
+
+pub const fn default_block_runtime_config() -> BlockRuntimeConfig {
+    BlockRuntimeConfig {
+        candidate_budget: BlockCandidateBudgetConfig::new(
+            DEFAULT_BLOCK_MAX_CANDIDATES_PER_SURFACE,
+            DEFAULT_BLOCK_MAX_CANDIDATES_PER_OPERATOR,
+            DEFAULT_BLOCK_MAX_CANDIDATES_PER_RUN,
+        ),
+        max_exact_bucket_size: DEFAULT_BLOCK_MAX_EXACT_BUCKET_SIZE,
+    }
+}
+
+pub fn default_block_candidate_operators(core_view_name: &str) -> Vec<BlockCandidateOperator> {
+    vec![
+        BlockCandidateOperator::NgramTopK(NgramTopKBlockOperator::new(
+            "ngram_topk:run",
+            DEFAULT_BLOCK_NGRAM_TOPK_K,
+            DEFAULT_BLOCK_NGRAM_TOPK_CANDIDATE_CAP,
+        )),
+        BlockCandidateOperator::RareTokenOverlap(
+            RareTokenOverlapBlockOperator::new("rare_token_overlap:run", core_view_name)
+                .with_topk(
+                    DEFAULT_BLOCK_RARE_TOKEN_TOPK_K,
+                    DEFAULT_BLOCK_RARE_TOKEN_CANDIDATE_CAP,
+                )
+                .with_max_posting_size(DEFAULT_BLOCK_RARE_TOKEN_MAX_POSTING_SIZE),
+        ),
+    ]
+}
+
+pub fn load_block_runtime_config(strategy: &Path) -> Result<BlockRuntimeConfig, Refusal> {
+    let bytes = fs::read(strategy).map_err(|error| {
+        EntityRefusalKind::Strategy.to_refusal(
+            "Failed to read entity block strategy",
+            json!({
+                "stage": BLOCK_STAGE,
+                "path": strategy.display().to_string(),
+                "error": error.to_string(),
+                "writes_performed": false
+            }),
+            Some("Provide a readable strategy YAML file".to_string()),
+        )
+    })?;
+    let document =
+        serde_yaml::from_slice::<BlockRuntimeStrategyDocument>(&bytes).map_err(|error| {
+            EntityRefusalKind::Strategy.to_refusal(
+                "Failed to parse entity block strategy",
+                json!({
+                    "stage": BLOCK_STAGE,
+                    "path": strategy.display().to_string(),
+                    "error": error.to_string(),
+                    "writes_performed": false
+                }),
+                Some("Fix the strategy YAML before rerunning canon entity block".to_string()),
+            )
+        })?;
+    Ok(document.into_runtime_config())
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct BlockRuntimeStrategyDocument {
+    #[serde(default)]
+    block: BlockRuntimeStrategySection,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct BlockRuntimeStrategySection {
+    #[serde(default)]
+    candidate_budget: BlockCandidateBudgetOverrides,
+    #[serde(default)]
+    index_budget: BlockIndexBudgetOverrides,
+    max_candidates_per_surface: Option<u64>,
+    max_candidates_per_operator: Option<u64>,
+    max_candidates_per_run: Option<u64>,
+    max_exact_bucket_size: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct BlockCandidateBudgetOverrides {
+    max_candidates_per_surface: Option<u64>,
+    max_candidates_per_operator: Option<u64>,
+    max_candidates_per_run: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct BlockIndexBudgetOverrides {
+    max_exact_bucket_size: Option<u64>,
+}
+
+impl BlockRuntimeStrategyDocument {
+    fn into_runtime_config(self) -> BlockRuntimeConfig {
+        let mut config = default_block_runtime_config();
+        let block = self.block;
+        if let Some(value) = block
+            .candidate_budget
+            .max_candidates_per_surface
+            .or(block.max_candidates_per_surface)
+        {
+            config.candidate_budget.max_candidates_per_surface = value;
+        }
+        if let Some(value) = block
+            .candidate_budget
+            .max_candidates_per_operator
+            .or(block.max_candidates_per_operator)
+        {
+            config.candidate_budget.max_candidates_per_operator = value;
+        }
+        if let Some(value) = block
+            .candidate_budget
+            .max_candidates_per_run
+            .or(block.max_candidates_per_run)
+        {
+            config.candidate_budget.max_candidates_per_run = value;
+        }
+        if let Some(value) = block
+            .index_budget
+            .max_exact_bucket_size
+            .or(block.max_exact_bucket_size)
+        {
+            config.max_exact_bucket_size = value;
+        }
+        config
     }
 }
 

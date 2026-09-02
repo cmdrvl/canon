@@ -10,6 +10,7 @@ pub mod artifact_chain;
 pub mod audit;
 pub mod block;
 pub mod block_artifact;
+pub mod block_preflight;
 pub mod budget;
 pub mod cache;
 pub mod calibrate;

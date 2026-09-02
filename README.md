@@ -443,6 +443,7 @@ canon entity calibrate sweep <RESULT|EVIDENCE> --gold <GOLD.jsonl> --strategy <S
 canon entity prepare <ROWS> --profile <PROFILE> --registry <DIR> --work-dir <DIR>
 canon entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit json|summary]
 canon entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit jsonl|summary]
+canon entity block preflight <ROWS> --profile <PROFILE> --strategy <YAML> [--sample-pct <N>] [--work-dir <DIR>] [--emit json|summary]
 canon entity candidate-recall --manifest <MANIFEST.json> --candidates <CANDIDATES.jsonl> --diagnostics <DIAGNOSTICS.json> --exact-bucket-count <N> [--emit json|summary]
 canon entity evidence <ROWS> [--profile <PROFILE>] --strategy <YAML> --candidates <JSONL> --registry <DIR> [--work-dir <DIR>] [--emit jsonl|summary]
 canon entity solve <ROWS> [--profile <PROFILE>] --strategy <YAML> --evidence <JSONL> --registry <DIR> [--work-dir <DIR>] [--emit json|summary]
@@ -728,6 +729,7 @@ On first default witness use, `canon` copy-migrates an existing legacy `~/.epist
 | `entity prepare <ROWS> --profile <PROFILE> --registry <DIR> --work-dir <DIR>` | Validate and project profile-mapped observations for artifact-backed entity preparation. |
 | `entity index build <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit json\|summary]` | Build deterministic index artifacts for a work directory. |
 | `entity block <ROWS> [--profile <PROFILE>] --strategy <YAML> --registry <DIR> [--work-dir <DIR>] [--emit jsonl\|summary]` | Generate candidate neighborhoods via blocking operators. |
+| `entity block preflight <ROWS> --profile <PROFILE> --strategy <YAML> [--sample-pct <N>] [--work-dir <DIR>] [--emit json\|summary]` | Estimate candidate cardinality and worst-block skew before running the block stage. |
 | `entity candidate-recall --manifest <MANIFEST.json> --candidates <CANDIDATES.jsonl> --diagnostics <DIAGNOSTICS.json> --exact-bucket-count <N> [--emit json\|summary]` | Evaluate candidate retrieval recall against sealed public must-link labels. |
 | `entity evidence <ROWS> [--profile <PROFILE>] --strategy <YAML> --candidates <JSONL> --registry <DIR> [--work-dir <DIR>] [--emit jsonl\|summary]` | Score typed evidence for blocked candidate pairs. Relationship evidence remains a relation hint unless a separate equality fact or support lane justifies equivalence. |
 | `entity solve <ROWS> [--profile <PROFILE>] --strategy <YAML> --evidence <JSONL> --registry <DIR> [--work-dir <DIR>] [--emit json\|summary]` | Solve deterministic identity assignments from evidence artifacts. |
@@ -1318,6 +1320,7 @@ Or run stages individually for inspection:
 ```bash
 $ canon entity prepare rows.csv --profile entity_profile --registry registries/entities/ --work-dir work/entity
 $ canon entity index build rows.csv --profile entity_profile --strategy strategy.yaml --registry registries/entities/ --work-dir work/entity
+$ canon entity block preflight rows.csv --profile entity_profile --strategy strategy.yaml --sample-pct 100 --emit summary
 $ canon entity block rows.csv --profile entity_profile --strategy strategy.yaml --registry registries/entities/ --work-dir work/entity > blocks.jsonl
 $ canon entity evidence rows.csv --profile entity_profile --strategy strategy.yaml --candidates blocks.jsonl --registry registries/entities/ --work-dir work/entity > evidence.jsonl
 $ canon entity solve rows.csv --profile entity_profile --strategy strategy.yaml --evidence evidence.jsonl --registry registries/entities/ --work-dir work/entity > result.json

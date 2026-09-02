@@ -19,8 +19,9 @@ use crate::{
             BlockCandidateGenerationRequest, BlockCandidateHit, BlockCandidateOperator,
             BlockCandidateRecord, EntityBlockStageOutput, EntityBlockStageRequest,
             EntityNativeBlockBudgetRefusalProof, EntityNativeBlockScaleReport,
-            ExactBucketBlockRequest, ExactBucketSurface, NgramTopKBlockOperator,
-            RareTokenOverlapBlockOperator, emit_exact_bucket_hyperedges, generate_block_candidates,
+            ExactBucketBlockRequest, ExactBucketSurface, RareTokenOverlapBlockOperator,
+            default_block_candidate_operators, emit_exact_bucket_hyperedges,
+            generate_block_candidates, load_block_runtime_config,
             native_block_budget_refusal_proof, native_block_scale_report,
         },
         block_artifact::{
@@ -2118,26 +2119,15 @@ fn build_and_write_block(
     mirror_stable_paths: bool,
 ) -> Result<EntityBlockRun, Refusal> {
     let strategy = stage_strategy(base_strategy, "block");
+    let block_config = load_block_runtime_config(request.strategy)?;
     let mut result = generate_block_candidates(BlockCandidateGenerationRequest {
         profile_id: index.artifact.metadata.profile.id.clone(),
         posting_index: &index.postings,
         ngram_index: Some(&index.ngrams),
-        budget_config: BlockCandidateBudgetConfig::new(100, 25_000, 25_000),
-        operators: vec![
-            BlockCandidateOperator::NgramTopK(NgramTopKBlockOperator::new(
-                "ngram_topk:run",
-                25,
-                25,
-            )),
-            BlockCandidateOperator::RareTokenOverlap(
-                RareTokenOverlapBlockOperator::new(
-                    "rare_token_overlap:run",
-                    core_view_name(&index.artifact.metadata.profile.id),
-                )
-                .with_topk(25, 25)
-                .with_max_posting_size(1_000),
-            ),
-        ],
+        budget_config: block_config.candidate_budget,
+        operators: default_block_candidate_operators(core_view_name(
+            &index.artifact.metadata.profile.id,
+        )),
     })?;
     for candidate in &mut result.candidates {
         candidate.version = CANON_ENTITY_BLOCK_VERSION_V1.to_string();

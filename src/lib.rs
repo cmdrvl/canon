@@ -40,20 +40,20 @@ pub mod witness;
 
 use crate::cli::{
     CanonCommand, Cli, EntityAliasWithholdingCli, EntityApplyCli, EntityAuditCli, EntityBlockCli,
-    EntityCacheModeArg, EntityCalibrateCommand, EntityCalibrateSubcommand, EntityCalibrateSweepCli,
-    EntityCandidateRecallCli, EntityCommand, EntityEmitMode, EntityEvidenceCli, EntityExplainCli,
-    EntityGeneralizationCli, EntityIndexBuildCli, EntityIndexCommand, EntityIndexSubcommand,
-    EntityLinkCli, EntityPrepareCli, EntityProfileCommand, EntityProfileInitCli,
-    EntityProfileListCli, EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand,
-    EntityReviewExportArtifact, EntityReviewExportCli, EntityReviewExportEmitMode,
-    EntityReviewImportCli, EntityReviewInclude, EntityReviewSubcommand, EntityRunCli,
-    EntitySolveCli, EntityStreamEmitMode, EntitySubcommand, PackageCli, PackagePackCli,
-    PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli, RegistryBuildCli,
-    RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode, RegistryExportCli,
-    RegistryExportFormatCli, RegistryLintCli, RegistryLintProfile, RegistryMintCli,
-    RegistryNextIdCli, RegistryPlainJsonEmitMode, RegistryProviderSchemaCli, RegistryProvidersCli,
-    RegistrySubcommand, RegistryVersionBumpMode, StrategyAuditCli, StrategyCommand,
-    StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli, StrategyGradeArg,
+    EntityBlockPreflightCli, EntityBlockSubcommand, EntityCacheModeArg, EntityCalibrateCommand,
+    EntityCalibrateSubcommand, EntityCalibrateSweepCli, EntityCandidateRecallCli, EntityCommand,
+    EntityEmitMode, EntityEvidenceCli, EntityExplainCli, EntityGeneralizationCli,
+    EntityIndexBuildCli, EntityIndexCommand, EntityIndexSubcommand, EntityLinkCli,
+    EntityPrepareCli, EntityProfileCommand, EntityProfileInitCli, EntityProfileListCli,
+    EntityProfileSubcommand, EntityPromoteCli, EntityReviewCommand, EntityReviewExportArtifact,
+    EntityReviewExportCli, EntityReviewExportEmitMode, EntityReviewImportCli, EntityReviewInclude,
+    EntityReviewSubcommand, EntityRunCli, EntitySolveCli, EntityStreamEmitMode, EntitySubcommand,
+    PackageCli, PackagePackCli, PackageSubcommand, RegistryAddEntryCli, RegistryAuditCli,
+    RegistryBuildCli, RegistryDefaultIdSchemeCli, RegistryDiffCli, RegistryEmitMode,
+    RegistryExportCli, RegistryExportFormatCli, RegistryLintCli, RegistryLintProfile,
+    RegistryMintCli, RegistryNextIdCli, RegistryPlainJsonEmitMode, RegistryProviderSchemaCli,
+    RegistryProvidersCli, RegistrySubcommand, RegistryVersionBumpMode, StrategyAuditCli,
+    StrategyCommand, StrategyDeprecateCli, StrategyDiffCli, StrategyExplainCli, StrategyGradeArg,
     StrategyKeyTypeArg, StrategyListCli, StrategyProfileCli, StrategyPromoteCli,
     StrategyRegisterCli, StrategyResolveCli, StrategyStatusArg, StrategySubcommand,
     StrategyUpdateCli,
@@ -1024,15 +1024,29 @@ fn run_entity_index_build_command(build: &EntityIndexBuildCli) -> Result<u8, Box
 }
 
 fn run_entity_block_command(block: &EntityBlockCli) -> Result<u8, Box<dyn Error>> {
+    if let Some(EntityBlockSubcommand::Preflight(preflight)) = &block.command {
+        return run_entity_block_preflight_command(preflight);
+    }
     let summary_mode = matches!(block.emit, EntityStreamEmitMode::Summary);
+    let (Some(rows), Some(strategy), Some(registry)) = (
+        block.rows.as_ref(),
+        block.strategy.as_ref(),
+        block.registry.as_ref(),
+    ) else {
+        return emit_entity_refusal(
+            entity_missing_block_stage_args_refusal(block),
+            true,
+            summary_mode,
+        );
+    };
     let (Some(profile), Some(work_dir)) = (block.profile.as_ref(), block.work_dir.as_ref()) else {
         return emit_entity_refusal(
             entity_missing_v1_context_refusal(
                 entity::EntityArtifactStageV1::Block,
-                &block.rows,
+                rows,
                 &block.profile,
-                &block.strategy,
-                &block.registry,
+                strategy,
+                registry,
                 &block.work_dir,
                 None,
             ),
@@ -1042,10 +1056,10 @@ fn run_entity_block_command(block: &EntityBlockCli) -> Result<u8, Box<dyn Error>
     };
 
     match entity::run::run_entity_block_stage(entity::block::EntityBlockStageRequest {
-        rows: &block.rows,
+        rows,
         profile,
-        strategy: &block.strategy,
-        registry: &block.registry,
+        strategy,
+        registry,
         work_dir,
     }) {
         Ok(output) => {
@@ -1054,6 +1068,33 @@ fn run_entity_block_command(block: &EntityBlockCli) -> Result<u8, Box<dyn Error>
                 EntityStreamEmitMode::Summary => render_entity_block_stage_summary(&output),
             };
             emit_entity_output(&rendered, summary_mode);
+            Ok(0)
+        }
+        Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
+    }
+}
+
+fn run_entity_block_preflight_command(
+    preflight: &EntityBlockPreflightCli,
+) -> Result<u8, Box<dyn Error>> {
+    let summary_mode = matches!(preflight.emit, EntityEmitMode::Summary);
+    match entity::block_preflight::run_block_preflight(
+        entity::block_preflight::EntityBlockPreflightRequest {
+            rows: &preflight.rows,
+            profile: &preflight.profile,
+            strategy: &preflight.strategy,
+            sample_pct: preflight.sample_pct,
+            work_dir: preflight.work_dir.as_deref(),
+        },
+    ) {
+        Ok(report) => {
+            let output = match preflight.emit {
+                EntityEmitMode::Json => serde_json::to_string(&report)?,
+                EntityEmitMode::Summary => {
+                    entity::block_preflight::render_block_preflight_summary(&report)
+                }
+            };
+            emit_entity_output(&output, summary_mode);
             Ok(0)
         }
         Err(refusal) => emit_entity_refusal(refusal.to_canon_output(), true, summary_mode),
@@ -4385,6 +4426,30 @@ fn entity_missing_v1_context_refusal(
             strategy.display(),
             registry.display()
         )),
+    )
+}
+
+fn entity_missing_block_stage_args_refusal(block: &EntityBlockCli) -> CanonOutput {
+    refusal::create_refusal(
+        RefusalCode::EEntityInputContract,
+        "Entity block requires rows, --strategy, and --registry unless using a block subcommand"
+            .to_string(),
+        serde_json::json!({
+            "reason": "missing_entity_block_stage_args",
+            "stage": "block",
+            "command": "canon entity block",
+            "rows_present": block.rows.is_some(),
+            "profile_present": block.profile.is_some(),
+            "strategy_present": block.strategy.is_some(),
+            "registry_present": block.registry.is_some(),
+            "work_dir_present": block.work_dir.is_some(),
+            "subcommand_present": block.command.is_some(),
+            "writes_performed": false
+        }),
+        Some(
+            "canon entity block <ROWS> --profile <PROFILE> --strategy <STRATEGY.yaml> --registry <REGISTRY_DIR> --work-dir <DIR>"
+                .to_string(),
+        ),
     )
 }
 

@@ -660,9 +660,17 @@
     {
       "id": "canon entity block",
       "family": "entity",
-      "clap_path": "entity block",
+      "clap_path": null,
       "operator_name": "entity block",
       "primary_contracts": ["canon_entity_block.v1"],
+      "action": "preserve"
+    },
+    {
+      "id": "canon entity block preflight",
+      "family": "entity",
+      "clap_path": "entity block preflight",
+      "operator_name": "entity block preflight",
+      "primary_contracts": ["canon_entity_block_preflight.v1"],
       "action": "preserve"
     },
     {
@@ -1117,6 +1125,13 @@
     { "id": "canon_entity_benchmark_telemetry.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_block.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_block.v1", "family": "entity", "action": "preserve" },
+    {
+      "id": "canon_entity_block_preflight.v1",
+      "family": "entity",
+      "action": "preserve",
+      "access_boundary": "public_schema",
+      "source_path": "schemas/canon_entity_block_preflight.v1.schema.json"
+    },
     { "id": "canon_entity_block_bucket.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_cache.v0", "family": "entity", "action": "preserve" },
     { "id": "canon_entity_cmbs_tenant_id_allocator.v0", "family": "entity", "action": "preserve" },
