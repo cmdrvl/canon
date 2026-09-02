@@ -1116,6 +1116,8 @@ Every refusal includes the error code, a concrete message, and a recovery path.
 | `E_TOO_LARGE` | Exceeds `--max-rows` or `--max-bytes` | Increase limits or reduce input |
 | `E_EMIT_FORMAT` | `--emit csv` with JSONL input | Use `--emit json` or provide CSV input |
 | `E_COLUMN_EXISTS` | Canonical column name already in header | Choose a different `--canon-column` |
+| `E_PACKAGE_NONCANONICAL` | Package JSON bytes are not canonical compact JSON | Rewrite package JSON as sorted-key compact UTF-8 bytes |
+| `E_PACKAGE_CONTRACT` | Package fields, digests, paths, or archive constraints violate the package contract | Fix package metadata or package-root contents |
 | `E_ENTITY_PROFILE` | Entity profile is unknown, missing, or semantically invalid | Fix the profile or pass a valid profile path |
 | `E_ENTITY_STRATEGY` | Entity strategy YAML is malformed or references unsupported operators | Fix the strategy file |
 | `E_ENTITY_INPUT_CONTRACT` | Entity input rows violate the active profile contract | Check required fields and side-field JSON |

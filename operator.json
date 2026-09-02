@@ -7473,6 +7473,16 @@
       "action": "adjust_input"
     },
     {
+      "code": "E_PACKAGE_NONCANONICAL",
+      "message": "Package JSON bytes are not canonical compact JSON",
+      "action": "fix_input"
+    },
+    {
+      "code": "E_PACKAGE_CONTRACT",
+      "message": "Package fields, digests, paths, or archive constraints violate the package contract",
+      "action": "fix_input"
+    },
+    {
       "code": "E_ENTITY_PROFILE",
       "message": "Entity profile is unknown, missing, or semantically invalid",
       "action": "fix_input"
