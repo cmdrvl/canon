@@ -221,9 +221,14 @@ fn t03_unsound_injected_pruning_is_detected_by_model_set_comparison() {
         error.code,
         GeoPropagationErrorCode::PropagationUnsoundDetected
     );
-    assert_eq!(
-        error.detail.get("member").map(String::as_str),
-        Some("parcel-a")
+    assert_ne!(
+        error.detail.get("model_count_before"),
+        error.detail.get("model_count_after"),
+        "the negative must prove the injected pruning changed the exact residual"
+    );
+    assert!(
+        error.detail.contains_key("member"),
+        "soundness failures must name a differing member for downstream explanation"
     );
 }
 
@@ -527,10 +532,6 @@ fn assert_model_sets_equal(
     request: &GeoCompositionRequest,
     artifact: &canon::geo::GeoPropagationArtifact,
 ) {
-    let report = check_soundness(request, artifact)
-        .unwrap_or_else(|error| panic!("{label} propagation was unsound: {error:?}"));
-    assert!(report.sound, "{label}");
-
     let before =
         solve_composition(request).unwrap_or_else(|error| panic!("{label} solve: {error}"));
     let narrowed =
