@@ -209,7 +209,8 @@ fn generated_runtime_corpus_executes_expected_outputs_and_mutations() {
     assert_runtime_corpus_coverage(&operator_manifest(), &cases);
 
     for case in cases {
-        let output = canon_command()
+        let output = harness
+            .command()
             .args(&case.args)
             .output()
             .unwrap_or_else(|error| panic!("failed to run {}: {error}", case.id));
@@ -288,7 +289,7 @@ fn help_contract_corpus(
     let mut cases = manifest
         .subcommands
         .iter()
-        .filter(|row| row.status == "implemented")
+        .filter(|row| row_has_public_help(row))
         .filter_map(|row| {
             compiled_by_name
                 .get(row.name.as_str())
@@ -337,7 +338,7 @@ fn assert_help_corpus_coverage(
     for row in manifest
         .subcommands
         .iter()
-        .filter(|row| row.status == "implemented")
+        .filter(|row| row_has_public_help(row))
     {
         if !compiled_names.contains(row.name.as_str()) {
             errors.push(format!(
@@ -359,6 +360,10 @@ fn assert_help_corpus_coverage(
     } else {
         Err(errors.join("\n"))
     }
+}
+
+fn row_has_public_help(row: &OperatorRow) -> bool {
+    matches!(row.status.as_str(), "implemented" | "unavailable")
 }
 
 fn assert_corpus_ids_are_deterministic(cases: &[HelpCase]) {
@@ -407,6 +412,8 @@ fn assert_runtime_corpus_coverage(manifest: &OperatorManifest, cases: &[RuntimeC
         "doctor capabilities",
         "doctor robot-docs",
         "geo capabilities",
+        "geo inspect",
+        "geo ledger",
         "registry providers",
         "registry provider-schema",
         "registry export",
@@ -430,11 +437,7 @@ fn assert_runtime_corpus_coverage(manifest: &OperatorManifest, cases: &[RuntimeC
 
     for case in cases {
         if let Some(row) = manifest_by_name.get(case.command_name) {
-            assert_eq!(
-                row.status, "implemented",
-                "{} targets an unimplemented operator row",
-                case.id
-            );
+            assert_runtime_case_matches_operator_status(case, row);
             if case.expected.exit_code == 0
                 && let Some(expected_schema) = expected_json_schema(&case.expected.stdout)
             {
@@ -447,6 +450,69 @@ fn assert_runtime_corpus_coverage(manifest: &OperatorManifest, cases: &[RuntimeC
             }
             assert_side_effect_contract(case, row);
         }
+    }
+}
+
+fn assert_runtime_case_matches_operator_status(case: &RuntimeCase, row: &OperatorRow) {
+    match row.status.as_str() {
+        "implemented" => {}
+        "unavailable" => {
+            assert_eq!(
+                case.expected.exit_code, 2,
+                "{} targets unavailable operator row {} without refusing",
+                case.id, row.name
+            );
+            assert!(
+                expected_json_asserts_eq(&case.expected.stdout, "outcome", &json!("REFUSAL")),
+                "{} targets unavailable operator row {} without asserting REFUSAL outcome",
+                case.id,
+                row.name
+            );
+            assert!(
+                expected_json_asserts_eq(
+                    &case.expected.stdout,
+                    "refusal.detail.status",
+                    &json!("planned_not_implemented")
+                ),
+                "{} targets unavailable operator row {} without asserting planned_not_implemented",
+                case.id,
+                row.name
+            );
+            assert!(
+                expected_json_asserts_path(&case.expected.stdout, "refusal.next_command"),
+                "{} targets unavailable operator row {} without asserting next_command",
+                case.id,
+                row.name
+            );
+        }
+        status => panic!(
+            "{} targets operator row {} with unsupported status {status}",
+            case.id, row.name
+        ),
+    }
+}
+
+fn expected_json_asserts_eq(stdout: &StdoutExpectation, path: &str, expected: &Value) -> bool {
+    match stdout {
+        StdoutExpectation::Json(expectation) => expectation.assertions.iter().any(|assertion| {
+            matches!(assertion, JsonAssertion::Eq(actual_path, actual) if *actual_path == path && actual == expected)
+        }),
+        _ => false,
+    }
+}
+
+fn expected_json_asserts_path(stdout: &StdoutExpectation, path: &str) -> bool {
+    match stdout {
+        StdoutExpectation::Json(expectation) => expectation.assertions.iter().any(|assertion| {
+            matches!(
+                assertion,
+                JsonAssertion::Eq(actual_path, _)
+                    | JsonAssertion::ArrayLen(actual_path, _)
+                    | JsonAssertion::ArrayNonEmpty(actual_path)
+                    | JsonAssertion::HashPrefix(actual_path) if *actual_path == path
+            )
+        }),
+        _ => false,
     }
 }
 
@@ -508,24 +574,37 @@ fn canon_command() -> Command {
 struct RuntimeHarness {
     _temp: TempDir,
     root: PathBuf,
+    home: PathBuf,
     work: PathBuf,
 }
 
 impl RuntimeHarness {
     fn new() -> Self {
         let temp = tempdir().expect("tempdir");
+        let home = temp.path().join("home");
         let work = temp.path().join("work");
+        fs::create_dir(&home).expect("home dir");
         fs::create_dir(&work).expect("work dir");
         Self {
             _temp: temp,
             root: PathBuf::from(env!("CARGO_MANIFEST_DIR")),
+            home,
             work,
         }
+    }
+
+    fn command(&self) -> Command {
+        let mut command = canon_command();
+        command.env("HOME", &self.home);
+        command.env("USERPROFILE", &self.home);
+        command.env_remove("CANON_REGISTRY_INDEX_MODE");
+        command
     }
 
     fn runtime_cases(&self) -> Vec<RuntimeCase> {
         let lookup_input = self.root.join("tests/fixtures/csv/all_resolved.csv");
         let lookup_registry = self.root.join("tests/fixtures/registries/cusip-isin");
+        self.prewarm_lookup_registry(&lookup_input, &lookup_registry);
         let wrong_column_input = self.root.join("tests/fixtures/csv/wrong_column.csv");
         let export_seed = self.work.join("registry-export.csv");
         let dbt_schema = self.work.join("registry-export.schema.yml");
@@ -685,11 +764,41 @@ impl RuntimeHarness {
                 expected: RuntimeExpectation::json(
                     0,
                     "canon_geo_capabilities.v0",
-                    SchemaField::SchemaVersion,
+                    SchemaField::Version,
                 )
-                .assert_array_non_empty("commands")
-                .assert_array_non_empty("contracts")
+                .assert_array_non_empty("commands.implemented")
+                .assert_array_non_empty("contracts.implemented")
                 .with_stderr(StderrExpectation::Empty),
+            },
+            RuntimeCase {
+                id: "geo_inspect_planned_refusal",
+                command_name: "geo inspect",
+                args: args(["geo", "inspect"]),
+                expected: RuntimeExpectation::json(2, "canon.v0", SchemaField::Version)
+                    .assert_eq("outcome", json!("REFUSAL"))
+                    .assert_eq("refusal.code", json!("E_ENTITY_ARTIFACT_CONTRACT"))
+                    .assert_eq("refusal.detail.command", json!("canon geo inspect"))
+                    .assert_eq("refusal.detail.status", json!("planned_not_implemented"))
+                    .assert_eq(
+                        "refusal.next_command",
+                        json!("canon geo capabilities --emit json"),
+                    )
+                    .with_stderr(StderrExpectation::Empty),
+            },
+            RuntimeCase {
+                id: "geo_ledger_planned_refusal",
+                command_name: "geo ledger",
+                args: args(["geo", "ledger"]),
+                expected: RuntimeExpectation::json(2, "canon.v0", SchemaField::Version)
+                    .assert_eq("outcome", json!("REFUSAL"))
+                    .assert_eq("refusal.code", json!("E_ENTITY_ARTIFACT_CONTRACT"))
+                    .assert_eq("refusal.detail.command", json!("canon geo ledger"))
+                    .assert_eq("refusal.detail.status", json!("planned_not_implemented"))
+                    .assert_eq(
+                        "refusal.next_command",
+                        json!("canon geo capabilities --emit json"),
+                    )
+                    .with_stderr(StderrExpectation::Empty),
             },
             RuntimeCase {
                 id: "registry_providers_json",
@@ -1009,6 +1118,36 @@ impl RuntimeHarness {
                 },
             },
         ]
+    }
+
+    fn prewarm_lookup_registry(&self, input: &Path, registry: &Path) {
+        let output = self
+            .command()
+            .args([
+                path_arg(input),
+                "--registry".to_string(),
+                path_arg(registry),
+                "--column".to_string(),
+                "cusip".to_string(),
+                "--no-witness".to_string(),
+            ])
+            .output()
+            .expect("prewarm lookup registry cache");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "prewarm lookup cache failed\nstdout={}\nstderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout: Value =
+            serde_json::from_slice(&output.stdout).expect("prewarm lookup stdout is JSON");
+        assert_eq!(stdout["outcome"], "RESOLVED");
+        assert!(
+            !String::from_utf8_lossy(&output.stderr).contains("entry_count"),
+            "prewarm lookup exposed inconsistent registry fixture: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     fn package_root(&self) -> PathBuf {
