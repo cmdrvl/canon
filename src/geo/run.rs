@@ -35,8 +35,8 @@ use crate::{
         ProjectPlanHashRef, ProjectPlanNode, ProjectPlanOutputMaterialization, ProjectRunError,
         ProjectRunFailurePolicy, ProjectRunHashRef, ProjectRunNextAction, ProjectRunNodeOutcome,
         ProjectRunNodeReceipt, ProjectRunOutputReceipt, ProjectRunPolicy, ProjectRunReport,
-        compile_extension_project_plan, digest_bytes, read_node_receipt, run_project_plan,
-        validate_project_plan,
+        compile_extension_project_plan, digest_bytes, read_node_receipt,
+        read_project_run_manifest_head, run_project_plan, validate_project_plan,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -44,7 +44,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
     fmt, fs,
-    io::Write,
+    io::{self, Write},
     path::{Component, Path, PathBuf},
 };
 
@@ -965,7 +965,15 @@ fn execute_prepared_geo_run<E: ProjectNodeExecutor>(
         .iter()
         .map(|node| (node.project_node_id.clone(), node.stage))
         .collect::<BTreeMap<_, _>>();
-    let result = execute_prepared_geo_run_after_start(request, prepared, executor, progress);
+    let result = read_geo_run_manifest_head(&request.policy).and_then(|previous_geo_manifest| {
+        execute_prepared_geo_run_after_start(
+            request,
+            prepared,
+            previous_geo_manifest,
+            executor,
+            progress,
+        )
+    });
     match result {
         Ok(run) => {
             let terminal_node = run
@@ -1048,6 +1056,7 @@ fn execute_prepared_geo_run<E: ProjectNodeExecutor>(
 fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
     request: GeoRunRequest,
     prepared: PreparedGeoRun,
+    previous_geo_manifest: Option<GeoRun>,
     executor: &mut E,
     progress: &mut GeoRunProgressWriter<'_>,
 ) -> GeoRunResult<GeoRun> {
@@ -1078,7 +1087,7 @@ fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
     }
 
     if !preflight_blockers.is_empty() {
-        return build_geo_run(
+        let run = build_geo_run(
             request.plan,
             prepared.effective_project_plan.graph_hash,
             artifact_inputs,
@@ -1090,7 +1099,9 @@ fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
                 extra_blockers: preflight_blockers,
                 extra_actions: preflight_actions,
             },
-        );
+        )?;
+        publish_geo_run_manifest(&request.policy, &run, previous_geo_manifest.as_ref())?;
+        return Ok(run);
     }
 
     validate_effective_geo_project_nodes(&request.plan, &prepared.effective_project_plan)?;
@@ -1117,7 +1128,7 @@ fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
         &project_report,
         &request.policy,
     )?;
-    build_geo_run(
+    let run = build_geo_run(
         request.plan,
         prepared.effective_project_plan.graph_hash,
         artifact_inputs,
@@ -1129,7 +1140,9 @@ fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
             extra_blockers: Vec::new(),
             extra_actions: Vec::new(),
         },
-    )
+    )?;
+    publish_geo_run_manifest(&request.policy, &run, previous_geo_manifest.as_ref())?;
+    Ok(run)
 }
 
 fn validate_geo_project_report_outputs(
@@ -1326,6 +1339,528 @@ pub fn geo_run_semantic_hash(run: &GeoRun) -> GeoRunResult<String> {
     serde_json::to_vec(&semantic_projection(run))
         .map(|bytes| digest_bytes(&bytes))
         .map_err(serialization_error)
+}
+
+pub fn read_geo_run_manifest_head(policy: &ProjectRunPolicy) -> GeoRunResult<Option<GeoRun>> {
+    let head_path = geo_run_manifest_head_path_for(policy, PlannedAccess::Read)?;
+    if !head_path.exists() {
+        return Ok(None);
+    }
+    let head_bytes = fs::read(&head_path).map_err(|error| {
+        geo_run_manifest_io_error(
+            GeoRunErrorCode::ProjectRunFailed,
+            "Geo run could not read its manifest head",
+            &head_path,
+            error,
+        )
+    })?;
+    let head = parse_canonical_geo_run_manifest(&head_bytes, "Geo run manifest head")?;
+    let content_hash = digest_bytes(&head_bytes);
+    let revision_path =
+        geo_run_manifest_revision_path_for(policy, &content_hash, PlannedAccess::Read)?;
+    let revision_bytes = fs::read(&revision_path).map_err(|error| {
+        geo_run_manifest_io_error(
+            GeoRunErrorCode::ProjectRunFailed,
+            "Geo run manifest head revision is missing or unreadable",
+            &revision_path,
+            error,
+        )
+    })?;
+    if revision_bytes != head_bytes {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run manifest head does not match its content-addressed revision",
+            [
+                ("head_path", head_path.display().to_string()),
+                ("revision_path", revision_path.display().to_string()),
+                ("content_hash", content_hash),
+            ],
+        ));
+    }
+    Ok(Some(head))
+}
+
+pub fn geo_run_manifest_head_path(policy: &ProjectRunPolicy) -> GeoRunResult<PathBuf> {
+    geo_run_manifest_head_path_for(policy, PlannedAccess::Read)
+}
+
+pub fn geo_run_manifest_revision_path(
+    policy: &ProjectRunPolicy,
+    content_hash: &str,
+) -> GeoRunResult<PathBuf> {
+    geo_run_manifest_revision_path_for(policy, content_hash, PlannedAccess::Read)
+}
+
+fn publish_geo_run_manifest(
+    policy: &ProjectRunPolicy,
+    run: &GeoRun,
+    expected_existing_head: Option<&GeoRun>,
+) -> GeoRunResult<()> {
+    validate_project_run_manifest_head_matches_geo_run(policy, run)?;
+    let bytes = canonical_geo_run_bytes(run)?;
+    let content_hash = digest_bytes(&bytes);
+    let revision_path =
+        geo_run_manifest_revision_path_for(policy, &content_hash, PlannedAccess::Write)?;
+    write_geo_run_manifest_revision_cas(&revision_path, &content_hash, &bytes)?;
+
+    let expected_head_bytes = expected_existing_head
+        .map(canonical_geo_run_bytes)
+        .transpose()?;
+    let head_path = geo_run_manifest_head_path_for(policy, PlannedAccess::Write)?;
+    match write_geo_run_manifest_atomic_replace(&head_path, &bytes, expected_head_bytes.as_deref())?
+    {
+        GeoRunManifestSlotWrite::Intended => Ok(()),
+        GeoRunManifestSlotWrite::Existing => Err(GeoRunError::new(
+            GeoRunErrorCode::ProjectRunFailed,
+            "Geo run manifest head changed during publication; retry to resume from the committed head",
+            [("head_path", head_path.display().to_string())],
+        )),
+    }
+}
+
+fn validate_project_run_manifest_head_matches_geo_run(
+    policy: &ProjectRunPolicy,
+    run: &GeoRun,
+) -> GeoRunResult<()> {
+    let Some(report) = &run.project_run_report else {
+        return Ok(());
+    };
+    let head = read_project_run_manifest_head(policy).map_err(project_run_error)?;
+    let Some(head) = head else {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ProjectRunFailed,
+            "Geo run cannot publish a completed manifest without the shared project run manifest head",
+            [("run_receipt_hash", report.run_receipt_hash.as_str())],
+        ));
+    };
+    if head.project_id != run.plan_ref.project_id
+        || head.plan_graph_hash != run.plan_ref.project_graph_hash
+        || head.run_receipt_hash != report.run_receipt_hash
+        || head.completed_nodes != report.receipt.completed_nodes
+        || head.failed_nodes != report.receipt.failed_nodes
+        || head.cancelled_nodes != report.receipt.cancelled_nodes
+        || head.invalidated_nodes != report.receipt.invalidated_nodes
+        || head.blocked_nodes != report.receipt.blocked_nodes
+    {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ProjectRunFailed,
+            "Geo run manifest must index the current validated project run manifest revision",
+            [
+                ("project_id", run.plan_ref.project_id.as_str()),
+                (
+                    "project_graph_hash",
+                    run.plan_ref.project_graph_hash.as_str(),
+                ),
+                ("run_receipt_hash", report.run_receipt_hash.as_str()),
+                ("project_revision_hash", head.revision_hash.as_str()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn parse_canonical_geo_run_manifest(bytes: &[u8], context: &str) -> GeoRunResult<GeoRun> {
+    let run: GeoRun = serde_json::from_slice(bytes).map_err(|error| {
+        GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            format!("{context} is not valid JSON for {CANON_GEO_RUN_VERSION}"),
+            [("error", error.to_string())],
+        )
+    })?;
+    let canonical = canonical_geo_run_bytes(&run)?;
+    if bytes != canonical {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            format!("{context} is not canonical compact {CANON_GEO_RUN_VERSION}"),
+            BTreeMap::<String, String>::new(),
+        ));
+    }
+    Ok(run)
+}
+
+fn geo_run_manifest_head_path_for(
+    policy: &ProjectRunPolicy,
+    access: PlannedAccess,
+) -> GeoRunResult<PathBuf> {
+    let work_dir = normalize_relative_path(&policy.work_dir).map_err(|message| {
+        GeoRunError::new(
+            GeoRunErrorCode::InvalidInput,
+            "Geo run work_dir is not workspace relative",
+            [("error", message)],
+        )
+    })?;
+    let relative = work_dir.join("geo-run-manifest").join("head.json");
+    resolve_workspace_path(
+        &policy.workspace_root,
+        "geo_run.manifest_head",
+        &relative,
+        access,
+    )
+    .map(|resolution| resolution.absolute_path)
+    .map_err(|error| {
+        GeoRunError::new(
+            GeoRunErrorCode::InvalidInput,
+            "Geo run manifest head path failed workspace safety",
+            [("error", error.to_string())],
+        )
+    })
+}
+
+fn geo_run_manifest_revision_path_for(
+    policy: &ProjectRunPolicy,
+    content_hash: &str,
+    access: PlannedAccess,
+) -> GeoRunResult<PathBuf> {
+    validate_digest("geo_run_manifest.content_hash", content_hash)?;
+    let digest_hex = content_hash
+        .strip_prefix("blake3:")
+        .expect("validated digest has prefix");
+    let work_dir = normalize_relative_path(&policy.work_dir).map_err(|message| {
+        GeoRunError::new(
+            GeoRunErrorCode::InvalidInput,
+            "Geo run work_dir is not workspace relative",
+            [("error", message)],
+        )
+    })?;
+    let relative = work_dir
+        .join("geo-run-manifest")
+        .join("revisions")
+        .join(format!("{digest_hex}.json"));
+    resolve_workspace_path(
+        &policy.workspace_root,
+        "geo_run.manifest_revision",
+        &relative,
+        access,
+    )
+    .map(|resolution| resolution.absolute_path)
+    .map_err(|error| {
+        GeoRunError::new(
+            GeoRunErrorCode::InvalidInput,
+            "Geo run manifest revision path failed workspace safety",
+            [
+                ("content_hash", content_hash.to_string()),
+                ("error", error.to_string()),
+            ],
+        )
+    })
+}
+
+fn write_geo_run_manifest_revision_cas(
+    revision_path: &Path,
+    content_hash: &str,
+    bytes: &[u8],
+) -> GeoRunResult<()> {
+    let digest_hex = content_hash
+        .strip_prefix("blake3:")
+        .expect("validated digest has prefix");
+    let expected_file_name = format!("{digest_hex}.json");
+    if revision_path.file_name().and_then(|name| name.to_str()) != Some(expected_file_name.as_str())
+    {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run manifest revision path does not match the manifest content hash",
+            [
+                ("revision_path", revision_path.display().to_string()),
+                ("content_hash", content_hash.to_string()),
+            ],
+        ));
+    }
+    if fs::symlink_metadata(revision_path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run refuses a symlink at its content-addressed manifest revision path",
+            [("revision_path", revision_path.display().to_string())],
+        ));
+    }
+    if digest_bytes(bytes) != content_hash {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run manifest bytes do not match their content-addressed revision hash",
+            [("content_hash", content_hash.to_string())],
+        ));
+    }
+    if let Some(parent) = revision_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            geo_run_manifest_io_error(
+                GeoRunErrorCode::ProjectRunFailed,
+                "Geo run could not create its manifest revision directory",
+                parent,
+                error,
+            )
+        })?;
+    }
+    match write_geo_run_manifest_atomic_replace(revision_path, bytes, None)? {
+        GeoRunManifestSlotWrite::Intended => Ok(()),
+        GeoRunManifestSlotWrite::Existing => Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run refuses to replace an existing content-addressed manifest revision with different bytes",
+            [
+                ("revision_path", revision_path.display().to_string()),
+                ("content_hash", content_hash.to_string()),
+            ],
+        )),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GeoRunManifestSlotWrite {
+    Intended,
+    Existing,
+}
+
+fn write_geo_run_manifest_atomic_replace(
+    path: &Path,
+    bytes: &[u8],
+    expected_existing: Option<&[u8]>,
+) -> GeoRunResult<GeoRunManifestSlotWrite> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            geo_run_manifest_io_error(
+                GeoRunErrorCode::ProjectRunFailed,
+                "Geo run could not create its manifest directory",
+                parent,
+                error,
+            )
+        })?;
+    }
+    let temp_path = geo_run_manifest_atomic_temp_path(path, bytes);
+    let _slot_lock = acquire_geo_run_manifest_publication_lock(path, &temp_path, bytes)?;
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_path)
+    {
+        Ok(mut file) => {
+            file.write_all(bytes).map_err(|error| {
+                let _ = fs::remove_file(&temp_path);
+                geo_run_manifest_io_error(
+                    GeoRunErrorCode::ProjectRunFailed,
+                    "Geo run could not write its manifest temp file",
+                    &temp_path,
+                    error,
+                )
+            })?;
+            file.sync_all().map_err(|error| {
+                let _ = fs::remove_file(&temp_path);
+                geo_run_manifest_io_error(
+                    GeoRunErrorCode::ProjectRunFailed,
+                    "Geo run could not sync its manifest temp file",
+                    &temp_path,
+                    error,
+                )
+            })?;
+            drop(file);
+            finish_geo_run_manifest_atomic_replace(path, &temp_path, bytes, expected_existing)
+        }
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            recover_geo_run_manifest_atomic_temp(path, &temp_path, bytes, expected_existing)
+        }
+        Err(error) => Err(geo_run_manifest_io_error(
+            GeoRunErrorCode::ProjectRunFailed,
+            "Geo run could not create its manifest temp file",
+            &temp_path,
+            error,
+        )),
+    }
+}
+
+struct GeoRunManifestPublicationLock {
+    path: PathBuf,
+}
+
+impl Drop for GeoRunManifestPublicationLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+fn acquire_geo_run_manifest_publication_lock(
+    path: &Path,
+    temp_path: &Path,
+    bytes: &[u8],
+) -> GeoRunResult<GeoRunManifestPublicationLock> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("geo-run-manifest");
+    let lock_path = path.with_file_name(format!(".{file_name}.publish.lock"));
+    loop {
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+        {
+            Ok(file) => {
+                file.sync_all().map_err(|error| {
+                    let _ = fs::remove_file(&lock_path);
+                    geo_run_manifest_io_error(
+                        GeoRunErrorCode::ProjectRunFailed,
+                        "Geo run could not sync its manifest publication lock",
+                        &lock_path,
+                        error,
+                    )
+                })?;
+                return Ok(GeoRunManifestPublicationLock { path: lock_path });
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                if recoverable_geo_run_manifest_publication_lock(path, temp_path, bytes)? {
+                    fs::remove_file(&lock_path).map_err(|error| {
+                        geo_run_manifest_io_error(
+                            GeoRunErrorCode::ProjectRunFailed,
+                            "Geo run could not remove a recovered manifest publication lock",
+                            &lock_path,
+                            error,
+                        )
+                    })?;
+                    continue;
+                }
+                return Err(GeoRunError::new(
+                    GeoRunErrorCode::ProjectRunFailed,
+                    "Geo run refuses concurrent manifest publication; retry after the current publisher completes",
+                    [
+                        ("manifest_path", path.display().to_string()),
+                        ("lock_path", lock_path.display().to_string()),
+                    ],
+                ));
+            }
+            Err(error) => {
+                return Err(geo_run_manifest_io_error(
+                    GeoRunErrorCode::ProjectRunFailed,
+                    "Geo run could not create its manifest publication lock",
+                    &lock_path,
+                    error,
+                ));
+            }
+        }
+    }
+}
+
+fn recoverable_geo_run_manifest_publication_lock(
+    path: &Path,
+    temp_path: &Path,
+    bytes: &[u8],
+) -> GeoRunResult<bool> {
+    match fs::read(path) {
+        Ok(existing) if existing == bytes => return Ok(true),
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(geo_run_manifest_io_error(
+                GeoRunErrorCode::ProjectRunFailed,
+                "Geo run could not inspect its manifest path during lock recovery",
+                path,
+                error,
+            ));
+        }
+    }
+    match fs::read(temp_path) {
+        Ok(existing) => Ok(existing == bytes),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(geo_run_manifest_io_error(
+            GeoRunErrorCode::ProjectRunFailed,
+            "Geo run could not inspect its manifest temp path during lock recovery",
+            temp_path,
+            error,
+        )),
+    }
+}
+
+fn recover_geo_run_manifest_atomic_temp(
+    path: &Path,
+    temp_path: &Path,
+    bytes: &[u8],
+    expected_existing: Option<&[u8]>,
+) -> GeoRunResult<GeoRunManifestSlotWrite> {
+    let existing = fs::read(temp_path).map_err(|error| {
+        geo_run_manifest_io_error(
+            GeoRunErrorCode::ProjectRunFailed,
+            "Geo run could not read its existing manifest temp file",
+            temp_path,
+            error,
+        )
+    })?;
+    if existing != bytes {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ProjectRunFailed,
+            "Geo run refuses to reuse a manifest temp file with different bytes",
+            [("temp_path", temp_path.display().to_string())],
+        ));
+    }
+    finish_geo_run_manifest_atomic_replace(path, temp_path, bytes, expected_existing)
+}
+
+fn finish_geo_run_manifest_atomic_replace(
+    path: &Path,
+    temp_path: &Path,
+    bytes: &[u8],
+    expected_existing: Option<&[u8]>,
+) -> GeoRunResult<GeoRunManifestSlotWrite> {
+    match fs::read(path) {
+        Ok(existing) if existing == bytes => {
+            let _ = fs::remove_file(temp_path);
+            Ok(GeoRunManifestSlotWrite::Intended)
+        }
+        Ok(existing) if expected_existing.is_some_and(|expected| expected == existing) => {
+            fs::rename(temp_path, path).map_err(|error| {
+                geo_run_manifest_io_error(
+                    GeoRunErrorCode::ProjectRunFailed,
+                    "Geo run could not replace its manifest head",
+                    temp_path,
+                    error,
+                )
+            })?;
+            Ok(GeoRunManifestSlotWrite::Intended)
+        }
+        Ok(_) => {
+            let _ = fs::remove_file(temp_path);
+            Ok(GeoRunManifestSlotWrite::Existing)
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            fs::rename(temp_path, path).map_err(|error| {
+                geo_run_manifest_io_error(
+                    GeoRunErrorCode::ProjectRunFailed,
+                    "Geo run could not publish its manifest head",
+                    temp_path,
+                    error,
+                )
+            })?;
+            Ok(GeoRunManifestSlotWrite::Intended)
+        }
+        Err(error) => Err(geo_run_manifest_io_error(
+            GeoRunErrorCode::ProjectRunFailed,
+            "Geo run could not read its manifest destination before publication",
+            path,
+            error,
+        )),
+    }
+}
+
+fn geo_run_manifest_atomic_temp_path(path: &Path, bytes: &[u8]) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("geo-run-manifest");
+    path.with_file_name(format!(
+        "{}.{}.tmp",
+        file_name,
+        digest_bytes(bytes).replace(':', "_")
+    ))
+}
+
+fn geo_run_manifest_io_error(
+    code: GeoRunErrorCode,
+    message: &str,
+    path: &Path,
+    error: io::Error,
+) -> GeoRunError {
+    GeoRunError::new(
+        code,
+        message,
+        [
+            ("path", path.display().to_string()),
+            ("error", error.to_string()),
+        ],
+    )
 }
 
 pub fn validate_geo_run(run: &GeoRun) -> GeoRunResult<()> {
@@ -4538,4 +5073,156 @@ fn serialization_error(error: serde_json::Error) -> GeoRunError {
         format!("failed to serialize Geo run artifact: {error}"),
         BTreeMap::<String, String>::new(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn geo_run_manifest_publication_round_trips_head_and_content_revision() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let policy = ProjectRunPolicy::new(temp.path(), "work");
+        let run = waiting_run_manifest();
+
+        publish_geo_run_manifest(&policy, &run, None).expect("publish run manifest");
+
+        let canonical = canonical_geo_run_bytes(&run).expect("canonical run");
+        let head_path = geo_run_manifest_head_path(&policy).expect("head path");
+        assert_eq!(
+            fs::read(&head_path).expect("head bytes"),
+            canonical,
+            "manifest head must be the canonical GeoRun bytes"
+        );
+        let content_hash = digest_bytes(&canonical);
+        let revision_path =
+            geo_run_manifest_revision_path(&policy, &content_hash).expect("revision path");
+        assert_eq!(
+            fs::read(&revision_path).expect("revision bytes"),
+            canonical,
+            "content-addressed revision must preserve the same manifest bytes"
+        );
+        assert_eq!(
+            read_geo_run_manifest_head(&policy).expect("read head"),
+            Some(run.clone())
+        );
+
+        let mut observed = run.clone();
+        observed.observation.host_id = Some("host-b".to_string());
+        restamp_run_manifest(&mut observed);
+        assert_eq!(
+            observed.semantic_hash, run.semantic_hash,
+            "operational observation changes must not alter semantic identity"
+        );
+        publish_geo_run_manifest(&policy, &observed, Some(&run))
+            .expect("publish observation-only revision");
+        let observed_canonical = canonical_geo_run_bytes(&observed).expect("observed canonical");
+        let observed_hash = digest_bytes(&observed_canonical);
+        assert_ne!(
+            observed_hash, content_hash,
+            "content addressing is over the emitted manifest bytes, not host-independent semantics"
+        );
+        let observed_revision =
+            geo_run_manifest_revision_path(&policy, &observed_hash).expect("observed revision");
+        assert_eq!(
+            fs::read(observed_revision).expect("observed revision bytes"),
+            observed_canonical
+        );
+    }
+
+    #[test]
+    fn geo_run_manifest_head_refuses_poisoned_content_revision() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let policy = ProjectRunPolicy::new(temp.path(), "work");
+        let run = waiting_run_manifest();
+        publish_geo_run_manifest(&policy, &run, None).expect("publish run manifest");
+        let canonical = canonical_geo_run_bytes(&run).expect("canonical run");
+        let revision_path = geo_run_manifest_revision_path(&policy, &digest_bytes(&canonical))
+            .expect("revision path");
+
+        fs::write(&revision_path, b"{\"version\":\"canon_geo_run.v0\"}").expect("poison revision");
+
+        let error = read_geo_run_manifest_head(&policy)
+            .expect_err("poisoned content-addressed revision must refuse");
+        assert_eq!(error.code, GeoRunErrorCode::ArtifactContract);
+        assert!(
+            error.message.contains("does not match"),
+            "wrong implementation would silently trust the manifest head: {error:?}"
+        );
+    }
+
+    fn waiting_run_manifest() -> GeoRun {
+        let plan_hash = digest_label("fixture.plan");
+        let mut run = GeoRun {
+            version: CANON_GEO_RUN_VERSION.to_string(),
+            run_id: String::new(),
+            semantic_hash: String::new(),
+            status: GeoRunStatus::WaitingForInput,
+            phase: GeoRunPhase::Preflighted,
+            plan_ref: GeoRunPlanRef {
+                plan_id: format!(
+                    "{CANON_GEO_PLAN_VERSION}:{}",
+                    plan_hash.trim_start_matches("blake3:")
+                ),
+                semantic_hash: plan_hash,
+                project_id: "geo.fixture.project".to_string(),
+                project_graph_hash: digest_label("fixture.project.graph"),
+                question_hash: digest_label("fixture.question"),
+                capabilities_hash: digest_label("fixture.capabilities"),
+                inventory_planning_hash: digest_label("fixture.inventory"),
+                profile_hash: digest_label("fixture.profile"),
+                budget_planning_hash: digest_label("fixture.budget"),
+            },
+            artifact_inputs: Vec::new(),
+            acquisition_satisfactions: Vec::new(),
+            output_refs: Vec::new(),
+            grain_states: vec![GeoRunGrainState {
+                entity_level: "building".to_string(),
+                status: GeoPlanGrainStatus::WaitingForAcquisition,
+                missing_evidence_classes: vec!["observed_snapshot".to_string()],
+                project_node_ids: Vec::new(),
+                claim_limitation: "warehouse rows are not locally bound".to_string(),
+                next_action: "satisfy acquisition request".to_string(),
+            }],
+            blockers: vec![GeoRunBlocker {
+                blocker_id: "waiting_for_input:building".to_string(),
+                kind: GeoRunBlockerKind::WaitingForInput,
+                project_node_id: None,
+                entity_level: Some("building".to_string()),
+                reason: "warehouse rows are not locally bound".to_string(),
+            }],
+            next_actions: vec![GeoRunNextAction {
+                action_id: "acquire.fixture.warehouse".to_string(),
+                kind: GeoRunNextActionKind::SatisfyAcquisition,
+                project_node_id: None,
+                artifact_id: Some("acquire.fixture.warehouse".to_string()),
+                expected_contract: Some(CANON_GEO_ACQUISITION_RECEIPT_VERSION.to_string()),
+                media_type: Some(GEO_RUN_JSON_MEDIA_TYPE.to_string()),
+                command: Some(
+                    "canon geo replan-from-acquisition --base-plan PLAN.json".to_string(),
+                ),
+                reason: "use an external executor; Canon remains offline".to_string(),
+            }],
+            deterministic_usage: BTreeMap::new(),
+            project_run_report: None,
+            observation: GeoRunObservation::default(),
+        };
+        restamp_run_manifest(&mut run);
+        run
+    }
+
+    fn restamp_run_manifest(run: &mut GeoRun) {
+        run.semantic_hash.clear();
+        run.run_id.clear();
+        run.semantic_hash = geo_run_semantic_hash(run).expect("run semantic hash");
+        run.run_id = format!(
+            "{CANON_GEO_RUN_VERSION}:{}",
+            run.semantic_hash.trim_start_matches("blake3:")
+        );
+        validate_geo_run(run).expect("valid run manifest");
+    }
+
+    fn digest_label(label: &str) -> String {
+        digest_bytes(label.as_bytes())
+    }
 }
