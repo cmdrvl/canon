@@ -38,6 +38,7 @@ use super::{
     },
     multisource::CANON_GEO_MULTISOURCE_REQUEST_VERSION,
     plan::CANON_GEO_PLAN_VERSION,
+    propagate::CANON_GEO_PROPAGATION_VERSION,
     residual_benchmark::{CANON_GEO_RESIDUAL_BENCHMARK_VERSION, CANON_GEO_RESIDUAL_OBDD_VERSION},
     run::CANON_GEO_RUN_VERSION,
     satisfy::CANON_GEO_REGIONAL_INVENTORY_ADVANCEMENT_VERSION,
@@ -1000,6 +1001,7 @@ pub fn default_geo_capabilities() -> Result<GeoCapabilities, GeoControlError> {
             },
             solver_backends: GeoCapabilityStatusSets {
                 implemented: vec![
+                    "sound_domain_propagation".to_string(),
                     "any_of_inclusion_exclusion".to_string(),
                     "exhaustive_enumeration".to_string(),
                     "pruned_depth_first_budgeted".to_string(),
@@ -1270,6 +1272,11 @@ fn implemented_geo_contracts() -> Vec<GeoContractCapability> {
             "admitted evidence compilation artifact contract",
         ),
         contract(
+            CANON_GEO_PROPAGATION_VERSION,
+            "schemas/canon.geo.propagation.v0.schema.json",
+            "sound typed pre-search pruning artifact contract",
+        ),
+        contract(
             CANON_GEO_WAREHOUSE_ROWS_VERSION,
             "schemas/canon.geo.warehouse_rows.v0.schema.json",
             "release-pinned offline evidence row contract",
@@ -1394,6 +1401,13 @@ fn implemented_geo_commands() -> Vec<GeoCommandCapability> {
             "canon geo solve --request <REQUEST.json>",
             GeoCommandSurface::Leaf,
             CANON_GEO_COMPOSITION_VERSION,
+            true,
+            false,
+        ),
+        command(
+            "canon.geo.stage.propagate.v0",
+            GeoCommandSurface::Leaf,
+            CANON_GEO_PROPAGATION_VERSION,
             true,
             false,
         ),

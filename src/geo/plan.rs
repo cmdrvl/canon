@@ -17,15 +17,16 @@ use super::{
     CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_COMPOSITION_VERSION,
     CANON_GEO_DISCOVERY_REQUEST_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
     CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
-    CANON_GEO_TILE_WORK_UNIT_VERSION, GeoAcquisitionRequest, GeoBoundedSubset, GeoCapabilities,
-    GeoColumnReadabilityProbe, GeoCompositionProfile, GeoControlEntityLevel, GeoDigest,
-    GeoDigestAlgorithm, GeoDiscoveryGap, GeoDiscoveryReleaseSelectionPolicy, GeoDiscoveryRequest,
-    GeoDiscoveryStep, GeoEntityLevel, GeoEvidenceClass, GeoFieldRole, GeoInventorySupportStatus,
-    GeoNativeEntityScope, GeoNumericBound, GeoOrderDirection, GeoOrderingTerm,
-    GeoPaginationRequest, GeoProjectionOperation, GeoQuestion, GeoRegionalInventory,
-    GeoRegionalSourceInstance, GeoReleaseSelectionMode, GeoRequestedField, GeoResourceBudget,
-    GeoResourceCounter, GeoRowByteCeilings, GeoSubsetPredicate, GeoSubsetPredicateKind,
-    GeoTelemetrySemanticEffect, canonicalize_capabilities, canonicalize_geo_acquisition_request,
+    CANON_GEO_PROPAGATION_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION, GeoAcquisitionRequest,
+    GeoBoundedSubset, GeoCapabilities, GeoColumnReadabilityProbe, GeoCompositionProfile,
+    GeoControlEntityLevel, GeoDigest, GeoDigestAlgorithm, GeoDiscoveryGap,
+    GeoDiscoveryReleaseSelectionPolicy, GeoDiscoveryRequest, GeoDiscoveryStep, GeoEntityLevel,
+    GeoEvidenceClass, GeoFieldRole, GeoInventorySupportStatus, GeoNativeEntityScope,
+    GeoNumericBound, GeoOrderDirection, GeoOrderingTerm, GeoPaginationRequest,
+    GeoProjectionOperation, GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance,
+    GeoReleaseSelectionMode, GeoRequestedField, GeoResourceBudget, GeoResourceCounter,
+    GeoRowByteCeilings, GeoSubsetPredicate, GeoSubsetPredicateKind, GeoTelemetrySemanticEffect,
+    canonicalize_capabilities, canonicalize_geo_acquisition_request,
     canonicalize_geo_discovery_request, canonicalize_question, canonicalize_regional_inventory,
     canonicalize_resource_budget, capabilities_semantic_hash, evaluate_inventory_support,
     geo_acquisition_request_id, geo_acquisition_request_semantic_hash, geo_discovery_request_id,
@@ -54,6 +55,7 @@ const HOME_CELLS_COMMAND: &str = "canon geo materialize-home-cells --rows <ROWS.
 const TILE_WORK_COMMAND: &str = "canon geo tile-work --request <REQUEST.json>";
 const MATERIALIZE_EVIDENCE_COMMAND: &str = "canon geo materialize-evidence --rows <ROWS.json>";
 const COMPILE_EVIDENCE_COMMAND: &str = "canon geo compile-evidence --request <REQUEST.json>";
+const PROPAGATE_COMMAND: &str = "canon.geo.stage.propagate.v0";
 const SOLVE_COMMAND: &str = "canon geo solve --request <REQUEST.json>";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,6 +103,7 @@ pub enum GeoPlanStage {
     BuildBoundedSection,
     MaterializeEvidence,
     CompileEvidence,
+    PropagateConstraints,
     FactorAndSolveExactResidual,
 }
 
@@ -588,6 +591,7 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
                 COMPILE_EVIDENCE_COMMAND,
                 CANON_GEO_EVIDENCE_COMPILATION_VERSION,
             ),
+            (PROPAGATE_COMMAND, CANON_GEO_PROPAGATION_VERSION),
             (SOLVE_COMMAND, CANON_GEO_COMPOSITION_VERSION),
         ];
         let missing_commands = required_commands
@@ -2036,6 +2040,13 @@ fn grain_project_stages(
             GeoPlanStage::CompileEvidence,
         ),
         (
+            "propagate",
+            ProjectPlanNodeKind::Solve,
+            PROPAGATE_COMMAND,
+            CANON_GEO_PROPAGATION_VERSION,
+            GeoPlanStage::PropagateConstraints,
+        ),
+        (
             "solve",
             ProjectPlanNodeKind::Solve,
             SOLVE_COMMAND,
@@ -2050,6 +2061,7 @@ fn grain_project_stages(
         let dependencies = if matches!(stage, GeoPlanStage::FactorAndSolveExactResidual) {
             vec![
                 format!("{prefix}.compile_evidence"),
+                format!("{prefix}.propagate"),
                 format!("{prefix}.section"),
             ]
         } else {
@@ -2095,6 +2107,23 @@ fn grain_project_stages(
                     "every restricting observation requires a versioned rho admission",
                 )]
             }
+            GeoPlanStage::PropagateConstraints => vec![
+                precondition(
+                    GeoPlanGatePlane::ConstraintEffect,
+                    GeoPlanGateStatus::PendingArtifact,
+                    "sound typed propagators prune only values entailed by admitted hard constraints",
+                ),
+                precondition(
+                    GeoPlanGatePlane::SolverCorrectness,
+                    GeoPlanGateStatus::PendingArtifact,
+                    "propagation must pass black-box residual soundness before the exact solve consumes it",
+                ),
+                precondition(
+                    GeoPlanGatePlane::Cost,
+                    GeoPlanGateStatus::SatisfiedByDeclaredInput,
+                    "propagation fallback is controlled by deterministic fixpoint, Hall-set, and subset-sum counters",
+                ),
+            ],
             GeoPlanStage::FactorAndSolveExactResidual => vec![
                 precondition(
                     GeoPlanGatePlane::Coverage,

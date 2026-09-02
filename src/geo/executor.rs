@@ -13,19 +13,21 @@ use crate::{
         CANON_GEO_COMPOSITION_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
         CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_GEOMETRY_TILE_VERSION,
         CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
-        CANON_GEO_TILE_WORK_REQUEST_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
-        CANON_GEO_WAREHOUSE_ROWS_VERSION, GeoClientTileIngestRequest, GeoCompositionArtifact,
-        GeoControlEntityLevel, GeoEntityLevel, GeoEvidenceCompilationArtifact,
-        GeoEvidenceCompilationReference, GeoEvidenceCompilationRequest, GeoGeometryTileArtifact,
-        GeoHomeCellAssignmentArtifact, GeoHomeCellRowsRequest, GeoPlan, GeoPlanComponentScope,
-        GeoPlanExactSolveScope, GeoPlanProducedArtifactRef, GeoTileCandidateReachStatus,
-        GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoWarehouseRowsRequest,
-        canonical_composition_bytes, canonical_evidence_compilation_bytes,
-        canonical_geometry_tile_bytes, canonical_home_cell_assignment_bytes,
-        canonical_materialized_evidence_request_bytes, canonical_tile_work_unit_bytes,
-        compile_evidence, ingest_client_geometry_tile, materialize_home_cells,
-        materialize_tile_work_unit, materialize_warehouse_rows, solve_composition,
-        validate_evidence_compilation_artifact,
+        CANON_GEO_PROPAGATION_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
+        CANON_GEO_TILE_WORK_UNIT_VERSION, CANON_GEO_WAREHOUSE_ROWS_VERSION,
+        GeoClientTileIngestRequest, GeoCompositionArtifact, GeoControlEntityLevel, GeoEntityLevel,
+        GeoEvidenceCompilationArtifact, GeoEvidenceCompilationReference,
+        GeoEvidenceCompilationRequest, GeoGeometryTileArtifact, GeoHomeCellAssignmentArtifact,
+        GeoHomeCellRowsRequest, GeoPlan, GeoPlanComponentScope, GeoPlanExactSolveScope,
+        GeoPlanProducedArtifactRef, GeoPropagationArtifact, GeoPropagationBudget,
+        GeoTileCandidateReachStatus, GeoTileWorkRequest, GeoTileWorkUnitArtifact,
+        GeoWarehouseRowsRequest, apply_prunings, canonical_composition_bytes,
+        canonical_evidence_compilation_bytes, canonical_geometry_tile_bytes,
+        canonical_home_cell_assignment_bytes, canonical_materialized_evidence_request_bytes,
+        canonical_propagation_bytes, canonical_tile_work_unit_bytes, compile_evidence,
+        ingest_client_geometry_tile, materialize_home_cells, materialize_tile_work_unit,
+        materialize_warehouse_rows, propagate, solve_composition,
+        validate_evidence_compilation_artifact, validate_propagation_artifact,
     },
     project::{
         ProjectDependencyOutput, ProjectNodeExecutionContext, ProjectNodeExecutionResult,
@@ -51,6 +53,7 @@ pub const GEO_MATERIALIZE_EVIDENCE_COMMAND: &str =
     "canon geo materialize-evidence --rows <ROWS.json>";
 pub const GEO_COMPILE_EVIDENCE_COMMAND: &str =
     "canon geo compile-evidence --request <REQUEST.json>";
+pub const GEO_PROPAGATE_STAGE_COMMAND: &str = "canon.geo.stage.propagate.v0";
 pub const GEO_SOLVE_COMMAND: &str = "canon geo solve --request <REQUEST.json>";
 pub const GEO_CLIENT_TILE_INGEST_STAGE_COMMAND: &str = "canon.geo.stage.client_tile_ingest.v0";
 pub const CANON_GEO_CLIENT_TILE_SOURCE_VERSION: &str = "canon_geo_client_tile_source.v0";
@@ -257,6 +260,7 @@ impl GeoProjectNodeExecutor {
             GeoExecutorCommand::ClientTileIngest => self.execute_client_tile_ingest(node)?,
             GeoExecutorCommand::MaterializeEvidence => self.execute_materialize_evidence(node)?,
             GeoExecutorCommand::CompileEvidence => self.execute_compile_evidence(node)?,
+            GeoExecutorCommand::Propagate => self.execute_propagate(node)?,
             GeoExecutorCommand::Solve => self.execute_solve(node)?,
         };
         ensure_canonical_artifact_bytes(node, leaf.output_contract, &leaf.output_bytes)?;
@@ -539,6 +543,49 @@ impl GeoProjectNodeExecutor {
         })
     }
 
+    fn execute_propagate(&self, node: &ProjectPlanNode) -> ProjectRunResult<GeoLeafExecution> {
+        let dependency = self.required_immediate_dependency_artifact(
+            node,
+            "compile_evidence",
+            CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+        )?;
+        let compilation: GeoEvidenceCompilationArtifact = parse_json(
+            node,
+            &dependency.bytes,
+            CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+        )?;
+        validate_evidence_compilation_artifact(&compilation)
+            .map_err(|error| leaf_error(node, "propagate.evidence_compilation", error))?;
+        let budget = propagation_budget_from_node(node)?;
+        let artifact = propagate(
+            &compilation.composition_request,
+            Some(&compilation),
+            &budget,
+        )
+        .map_err(|error| leaf_error(node, "propagate", error))?;
+        let bytes = canonical_propagation_bytes(&artifact)
+            .map_err(|error| leaf_error(node, "propagate serialization", error))?;
+        let mut usage = BTreeMap::new();
+        usage.insert("propagation_rounds".to_string(), artifact.rounds);
+        usage.insert(
+            "propagation_prunings".to_string(),
+            artifact.prunings.len() as u64,
+        );
+        usage.insert(
+            "propagation_fixpoint_reached".to_string(),
+            if artifact.fixpoint_reached { 1 } else { 0 },
+        );
+        if let Some(fallback) = &artifact.budget_fallback {
+            usage.insert(format!("propagation_fallback.{}", fallback.counter), 1);
+        }
+        Ok(GeoLeafExecution {
+            output_id: "propagation",
+            output_contract: CANON_GEO_PROPAGATION_VERSION,
+            output_bytes: bytes,
+            deterministic_usage: usage,
+        })
+    }
+
     fn execute_solve(&self, node: &ProjectPlanNode) -> ProjectRunResult<GeoLeafExecution> {
         let scope = self.required_exact_solve_scope(node)?;
         let section = self.required_scoped_dependency_artifact(node, &scope.bounded_section)?;
@@ -559,7 +606,20 @@ impl GeoProjectNodeExecutor {
             request_version: compilation.request_version.clone(),
             blake3: blake3::hash(&canonical).to_hex().to_string(),
         });
-        let request = compilation.composition_request;
+        let request = if let Some(propagation) = self.optional_declared_dependency_artifact(
+            node,
+            "propagation",
+            CANON_GEO_PROPAGATION_VERSION,
+        )? {
+            let propagation_artifact: GeoPropagationArtifact =
+                parse_json(node, &propagation.bytes, CANON_GEO_PROPAGATION_VERSION)?;
+            validate_propagation_artifact(&propagation_artifact)
+                .map_err(|error| leaf_error(node, "solve.propagation", error))?;
+            apply_prunings(&compilation.composition_request, &propagation_artifact)
+                .map_err(|error| leaf_error(node, "solve.propagation", error))?
+        } else {
+            compilation.composition_request
+        };
         let mut artifact =
             solve_composition(&request).map_err(|error| leaf_error(node, "solve", error))?;
         artifact.evidence_compilation = evidence_reference;
@@ -884,6 +944,54 @@ impl GeoProjectNodeExecutor {
         )
     }
 
+    fn optional_declared_dependency_artifact(
+        &self,
+        node: &ProjectPlanNode,
+        output_id: &str,
+        contract: &str,
+    ) -> ProjectRunResult<Option<&VerifiedGeoArtifact>> {
+        let matching = node
+            .dependencies
+            .iter()
+            .filter_map(|producer| {
+                self.dependency_outputs
+                    .get(&(producer.clone(), output_id.to_string()))
+                    .map(|artifact| (producer, artifact))
+            })
+            .collect::<Vec<_>>();
+        match matching.as_slice() {
+            [] => Ok(None),
+            [(_, artifact)] => {
+                if artifact.contract != contract {
+                    return Err(error(
+                        node,
+                        ProjectRunErrorCode::ArtifactContract,
+                        format!(
+                            "dependency output {}:{output_id} contract mismatch: expected {contract}, got {}",
+                            artifact.producer_node_id, artifact.contract
+                        ),
+                    ));
+                }
+                verify_digest(
+                    &artifact.content_hash,
+                    &artifact.bytes,
+                    node,
+                    format!(
+                        "dependency output {}:{output_id}",
+                        artifact.producer_node_id
+                    ),
+                )?;
+                ensure_canonical_artifact_bytes(node, contract, &artifact.bytes)?;
+                Ok(Some(*artifact))
+            }
+            _ => Err(error(
+                node,
+                ProjectRunErrorCode::ArtifactContract,
+                format!("Geo executor expected at most one dependency output {output_id}"),
+            )),
+        }
+    }
+
     fn remember_output(
         &mut self,
         node: &ProjectPlanNode,
@@ -1202,16 +1310,18 @@ enum GeoExecutorCommand {
     ClientTileIngest,
     MaterializeEvidence,
     CompileEvidence,
+    Propagate,
     Solve,
 }
 
 impl GeoExecutorCommand {
-    const SUPPORTED: [Self; 6] = [
+    const SUPPORTED: [Self; 7] = [
         Self::MaterializeHomeCells,
         Self::TileWork,
         Self::ClientTileIngest,
         Self::MaterializeEvidence,
         Self::CompileEvidence,
+        Self::Propagate,
         Self::Solve,
     ];
 
@@ -1222,6 +1332,7 @@ impl GeoExecutorCommand {
             GEO_CLIENT_TILE_INGEST_STAGE_COMMAND => Ok(Self::ClientTileIngest),
             GEO_MATERIALIZE_EVIDENCE_COMMAND => Ok(Self::MaterializeEvidence),
             GEO_COMPILE_EVIDENCE_COMMAND => Ok(Self::CompileEvidence),
+            GEO_PROPAGATE_STAGE_COMMAND => Ok(Self::Propagate),
             GEO_SOLVE_COMMAND => Ok(Self::Solve),
             actual => Err(error(
                 node,
@@ -1237,7 +1348,7 @@ impl GeoExecutorCommand {
             Self::TileWork => ProjectPlanNodeKind::Block,
             Self::ClientTileIngest => ProjectPlanNodeKind::Index,
             Self::MaterializeEvidence | Self::CompileEvidence => ProjectPlanNodeKind::Evidence,
-            Self::Solve => ProjectPlanNodeKind::Solve,
+            Self::Propagate | Self::Solve => ProjectPlanNodeKind::Solve,
         }
     }
 
@@ -1248,6 +1359,7 @@ impl GeoExecutorCommand {
             Self::ClientTileIngest => "client_tile",
             Self::MaterializeEvidence => "materialize_evidence",
             Self::CompileEvidence => "compile_evidence",
+            Self::Propagate => "propagation",
             Self::Solve => "solve",
         }
     }
@@ -1261,6 +1373,7 @@ impl GeoExecutorCommand {
             Self::CompileEvidence => {
                 &[("materialize_evidence", CANON_GEO_EVIDENCE_REQUEST_VERSION)]
             }
+            Self::Propagate => &[("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION)],
             Self::Solve => &[("compile_evidence", CANON_GEO_EVIDENCE_COMPILATION_VERSION)],
         }
     }
@@ -1276,9 +1389,42 @@ impl GeoExecutorCommand {
             Self::ClientTileIngest => "client-tile-ingest",
             Self::MaterializeEvidence => "materialize-evidence",
             Self::CompileEvidence => "compile-evidence",
+            Self::Propagate => "propagate",
             Self::Solve => "solve",
         }
     }
+}
+
+fn propagation_budget_from_node(node: &ProjectPlanNode) -> ProjectRunResult<GeoPropagationBudget> {
+    let default = GeoPropagationBudget::default();
+    let max_hall_subset_size = node
+        .limits
+        .get("geo.propagation.max_hall_subset_size")
+        .copied()
+        .map(|value| {
+            usize::try_from(value).map_err(|_| {
+                error(
+                    node,
+                    ProjectRunErrorCode::ArtifactContract,
+                    "geo.propagation.max_hall_subset_size exceeds usize",
+                )
+            })
+        })
+        .transpose()?
+        .unwrap_or(default.max_hall_subset_size);
+    Ok(GeoPropagationBudget {
+        max_fixpoint_rounds: node
+            .limits
+            .get("geo.propagation.max_fixpoint_rounds")
+            .copied()
+            .unwrap_or(default.max_fixpoint_rounds),
+        max_hall_subset_size,
+        max_subset_sum_states: node
+            .limits
+            .get("geo.propagation.max_subset_sum_states")
+            .copied()
+            .unwrap_or(default.max_subset_sum_states),
+    })
 }
 
 fn validate_node_contract(
@@ -1422,6 +1568,7 @@ fn contract_for_output_id(output_id: &str) -> Option<&'static str> {
         "client_tile" => Some(CANON_GEO_GEOMETRY_TILE_VERSION),
         "materialize_evidence" => Some(CANON_GEO_EVIDENCE_REQUEST_VERSION),
         "compile_evidence" => Some(CANON_GEO_EVIDENCE_COMPILATION_VERSION),
+        "propagation" => Some(CANON_GEO_PROPAGATION_VERSION),
         "solve" => Some(CANON_GEO_COMPOSITION_VERSION),
         _ => None,
     }
@@ -1602,6 +1749,18 @@ fn ensure_canonical_artifact_bytes(
                 canonical_evidence_compilation_bytes(&artifact),
             )
         }
+        CANON_GEO_PROPAGATION_VERSION => {
+            let artifact: GeoPropagationArtifact =
+                parse_json_target(&node, bytes, CANON_GEO_PROPAGATION_VERSION)?;
+            validate_propagation_artifact(&artifact)
+                .map_err(|error| leaf_error_target(&node, "propagation validation", error))?;
+            require_exact_bytes(
+                &node,
+                contract,
+                bytes,
+                canonical_propagation_bytes(&artifact),
+            )
+        }
         CANON_GEO_COMPOSITION_VERSION => {
             let artifact: GeoCompositionArtifact =
                 parse_json_target(&node, bytes, CANON_GEO_COMPOSITION_VERSION)?;
@@ -1633,9 +1792,15 @@ fn require_exact_bytes(
     node: &impl NodeErrorTarget,
     contract: &str,
     actual: &[u8],
-    canonical: Result<Vec<u8>, serde_json::Error>,
+    canonical: Result<Vec<u8>, impl Error>,
 ) -> ProjectRunResult<()> {
-    let canonical = canonical.map_err(|error| serialization_error_target(node, contract, error))?;
+    let canonical = canonical.map_err(|error| {
+        target_error(
+            node,
+            ProjectRunErrorCode::ArtifactContract,
+            format!("failed to canonicalize {contract}: {error}"),
+        )
+    })?;
     if actual != canonical.as_slice() {
         return Err(target_error(
             node,

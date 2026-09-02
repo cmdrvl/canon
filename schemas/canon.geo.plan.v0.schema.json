@@ -284,6 +284,7 @@
         "build_bounded_section",
         "materialize_evidence",
         "compile_evidence",
+        "propagate_constraints",
         "factor_and_solve_exact_residual"
       ]
     },
