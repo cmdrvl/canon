@@ -6,9 +6,15 @@
 //! edge hits. It deliberately emits only support-lane hits; anti-merge and
 //! relation-hint evidence live in their own lanes.
 
+#[path = "value_frequency.rs"]
+pub mod value_frequency;
+
 use crate::{
+    Refusal,
     entity::{
         edge::EdgeEvidenceHit,
+        error::EntityRefusalKind,
+        postings::EntityPostingIndex,
         score::{ScoreLane, ScoreUnits},
     },
     namekit::{
@@ -16,7 +22,12 @@ use crate::{
         similarity::{SimilarityMetric, SimilarityOptions, SimilarityPath, normalized_similarity},
     },
 };
+use serde_json::json;
 use std::{collections::BTreeSet, fmt};
+use value_frequency::{
+    EntityValueFrequencyAdjustment, EntityValueFrequencyError, EntityValueFrequencyTable,
+    scale_score_units_by_frequency,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExactViewSupportRequest<'a> {
@@ -49,6 +60,18 @@ pub struct StringSimilaritySupportRequest<'a> {
     pub right_value: &'a str,
     pub score_cutoff: Option<ScoreUnits>,
     pub score_hint: Option<ScoreUnits>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrequencyWeightedExactViewSupportRequest<'a> {
+    pub support: ExactViewSupportRequest<'a>,
+    pub adjustment: Option<EntityValueFrequencyAdjustment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrequencyWeightedStringSimilaritySupportRequest<'a> {
+    pub support: StringSimilaritySupportRequest<'a>,
+    pub adjustment: Option<EntityValueFrequencyAdjustment>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,6 +167,16 @@ pub fn exact_view_support_hit(request: ExactViewSupportRequest<'_>) -> Option<Ed
     ))
 }
 
+pub fn frequency_weighted_exact_view_support_hit(
+    request: FrequencyWeightedExactViewSupportRequest<'_>,
+) -> Option<EdgeEvidenceHit> {
+    let hit = exact_view_support_hit(request.support)?;
+    Some(match request.adjustment {
+        Some(adjustment) => apply_value_frequency_adjustment(hit, &adjustment),
+        None => hit,
+    })
+}
+
 pub fn token_overlap_support_hit(
     request: TokenOverlapSupportRequest<'_>,
 ) -> Option<EdgeEvidenceHit> {
@@ -205,6 +238,52 @@ pub fn string_similarity_support_hit(
             score_units.as_u32()
         ),
     ))
+}
+
+pub fn frequency_weighted_string_similarity_support_hit(
+    request: FrequencyWeightedStringSimilaritySupportRequest<'_>,
+) -> Option<EdgeEvidenceHit> {
+    let hit = string_similarity_support_hit(request.support)?;
+    Some(match request.adjustment {
+        Some(adjustment) => apply_value_frequency_adjustment(hit, &adjustment),
+        None => hit,
+    })
+}
+
+pub fn apply_value_frequency_adjustment(
+    mut hit: EdgeEvidenceHit,
+    adjustment: &EntityValueFrequencyAdjustment,
+) -> EdgeEvidenceHit {
+    if hit.lane != ScoreLane::Support {
+        return hit;
+    }
+    let original_score_units = hit.score_units;
+    let adjusted_score_units = scale_score_units_by_frequency(original_score_units, adjustment);
+    hit.score_units = adjusted_score_units;
+    hit.explanation = format!(
+        "{} value_frequency version={} table_hash={} view={} value={} count={} band={} floor_applied={} multiplier_basis_points={} original_score_units={} adjusted_score_units={}",
+        hit.explanation,
+        adjustment.version,
+        adjustment.table_content_hash,
+        adjustment.view_name,
+        adjustment.value,
+        adjustment.count,
+        adjustment.band.as_str(),
+        adjustment.floor_applied,
+        adjustment.multiplier_basis_points,
+        original_score_units.as_u32(),
+        adjusted_score_units.as_u32()
+    );
+    hit
+}
+
+pub fn validate_value_frequency_table_for_scoring(
+    table: &EntityValueFrequencyTable,
+    posting_index: &EntityPostingIndex,
+) -> Result<(), Refusal> {
+    table
+        .validate_for_posting_index(posting_index)
+        .map_err(value_frequency_refusal)
 }
 
 pub fn numeric_within_tolerance_support_hit(
@@ -361,6 +440,24 @@ fn path_id(path: SimilarityPath) -> &'static str {
         SimilarityPath::AsciiBytes => "ascii_bytes",
         SimilarityPath::UnicodeChars => "unicode_chars",
     }
+}
+
+fn value_frequency_refusal(error: EntityValueFrequencyError) -> Refusal {
+    EntityRefusalKind::ArtifactContract.to_refusal(
+        "Value-frequency table does not match the current evidence scoring inputs",
+        json!({
+            "stage": "evidence",
+            "artifact": "value_frequency_table",
+            "reason": error.reason(),
+            "field": error.field(),
+            "error": error.to_string(),
+            "writes_performed": false
+        }),
+        Some(
+            "Use the matching frequency table for this index or rerun canon entity index"
+                .to_string(),
+        ),
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

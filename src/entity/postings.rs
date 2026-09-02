@@ -8,6 +8,7 @@ use crate::namekit::{
     ids::TokenSymbolTable,
     tfidf::{idf_units, tf_units},
 };
+use crate::witness;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -246,6 +247,29 @@ impl EntityPostingIndex {
             })
             .collect()
     }
+
+    pub fn exact_view_value_frequencies(
+        &self,
+    ) -> Result<Vec<ExactViewValueFrequency>, PostingLayoutError> {
+        let mut frequencies = self
+            .exact_view_buckets()?
+            .into_iter()
+            .map(|bucket| ExactViewValueFrequency {
+                term_id: bucket.term_id,
+                view_name: bucket.view_name,
+                value: bucket.value,
+                count: u64::try_from(bucket.surface_count).unwrap_or(u64::MAX),
+            })
+            .collect::<Vec<_>>();
+        frequencies.sort_by(exact_view_value_frequency_cmp);
+        Ok(frequencies)
+    }
+
+    pub fn content_hash(&self) -> Result<String, PostingLayoutError> {
+        let bytes = serde_json::to_vec(self)
+            .map_err(|error| PostingLayoutError::Serialization(error.to_string()))?;
+        Ok(witness::hash_bytes(&bytes))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -264,6 +288,14 @@ pub struct ExactViewPostingBucket {
     pub surface_ordinals: Vec<u32>,
     pub surface_count: usize,
     pub pair_expansion: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExactViewValueFrequency {
+    pub term_id: u32,
+    pub view_name: String,
+    pub value: String,
+    pub count: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -513,6 +545,7 @@ pub enum PostingLayoutError {
         surface_count: u32,
     },
     SurfaceCountOverflow(usize),
+    Serialization(String),
     TermIdOverflow(u32),
     UnknownTermId(u32),
     UnknownDictionaryKey {
@@ -794,6 +827,17 @@ fn posting_lengths(layout: &PostingLayout) -> Vec<usize> {
         .windows(2)
         .map(|window| window[1].saturating_sub(window[0]))
         .collect()
+}
+
+fn exact_view_value_frequency_cmp(
+    left: &ExactViewValueFrequency,
+    right: &ExactViewValueFrequency,
+) -> std::cmp::Ordering {
+    left.view_name
+        .as_bytes()
+        .cmp(right.view_name.as_bytes())
+        .then_with(|| left.value.as_bytes().cmp(right.value.as_bytes()))
+        .then_with(|| left.term_id.cmp(&right.term_id))
 }
 
 fn exact_view_key(view_name: &str, value: &str) -> String {
