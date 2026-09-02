@@ -80,45 +80,10 @@ impl EntityValueFrequencyBandConfig {
     pub fn from_operator_params(
         params: &BTreeMap<String, String>,
     ) -> Result<Option<Self>, EntityValueFrequencyError> {
-        let keys = [
-            FREQUENCY_TABLE_HASH_PARAM,
-            FREQUENCY_MINIMUM_COUNT_PARAM,
-            FREQUENCY_RARE_MAX_COUNT_PARAM,
-            FREQUENCY_UNCOMMON_MAX_COUNT_PARAM,
-            FREQUENCY_COMMON_MAX_COUNT_PARAM,
-            FREQUENCY_RARE_MULTIPLIER_PARAM,
-            FREQUENCY_UNCOMMON_MULTIPLIER_PARAM,
-            FREQUENCY_COMMON_MULTIPLIER_PARAM,
-            FREQUENCY_VERY_COMMON_MULTIPLIER_PARAM,
-        ];
-        if !keys.iter().any(|key| params.contains_key(*key)) {
-            return Ok(None);
-        }
-
-        let config = Self {
-            minimum_count: required_u64_param(params, FREQUENCY_MINIMUM_COUNT_PARAM)?,
-            rare_max_count: required_u64_param(params, FREQUENCY_RARE_MAX_COUNT_PARAM)?,
-            uncommon_max_count: required_u64_param(params, FREQUENCY_UNCOMMON_MAX_COUNT_PARAM)?,
-            common_max_count: required_u64_param(params, FREQUENCY_COMMON_MAX_COUNT_PARAM)?,
-            rare_multiplier_basis_points: required_u32_param(
-                params,
-                FREQUENCY_RARE_MULTIPLIER_PARAM,
-            )?,
-            uncommon_multiplier_basis_points: required_u32_param(
-                params,
-                FREQUENCY_UNCOMMON_MULTIPLIER_PARAM,
-            )?,
-            common_multiplier_basis_points: required_u32_param(
-                params,
-                FREQUENCY_COMMON_MULTIPLIER_PARAM,
-            )?,
-            very_common_multiplier_basis_points: required_u32_param(
-                params,
-                FREQUENCY_VERY_COMMON_MULTIPLIER_PARAM,
-            )?,
-        };
-        config.validate()?;
-        Ok(Some(config))
+        Ok(
+            EntityValueFrequencyStrategyConfig::from_operator_params(params)?
+                .map(|config| config.bands),
+        )
     }
 
     pub fn validate(&self) -> Result<(), EntityValueFrequencyError> {
@@ -175,6 +140,100 @@ impl EntityValueFrequencyBandConfig {
             EntityValueFrequencyBand::Common => self.common_multiplier_basis_points,
             EntityValueFrequencyBand::VeryCommon => self.very_common_multiplier_basis_points,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityValueFrequencyStrategyConfig {
+    pub table_content_hash: String,
+    pub bands: EntityValueFrequencyBandConfig,
+}
+
+impl EntityValueFrequencyStrategyConfig {
+    pub fn from_operator_params(
+        params: &BTreeMap<String, String>,
+    ) -> Result<Option<Self>, EntityValueFrequencyError> {
+        let keys = [
+            FREQUENCY_TABLE_HASH_PARAM,
+            FREQUENCY_MINIMUM_COUNT_PARAM,
+            FREQUENCY_RARE_MAX_COUNT_PARAM,
+            FREQUENCY_UNCOMMON_MAX_COUNT_PARAM,
+            FREQUENCY_COMMON_MAX_COUNT_PARAM,
+            FREQUENCY_RARE_MULTIPLIER_PARAM,
+            FREQUENCY_UNCOMMON_MULTIPLIER_PARAM,
+            FREQUENCY_COMMON_MULTIPLIER_PARAM,
+            FREQUENCY_VERY_COMMON_MULTIPLIER_PARAM,
+        ];
+        if !keys.iter().any(|key| params.contains_key(*key)) {
+            return Ok(None);
+        }
+
+        let config = Self {
+            table_content_hash: required_blake3_digest_param(params, FREQUENCY_TABLE_HASH_PARAM)?,
+            bands: EntityValueFrequencyBandConfig {
+                minimum_count: required_u64_param(params, FREQUENCY_MINIMUM_COUNT_PARAM)?,
+                rare_max_count: required_u64_param(params, FREQUENCY_RARE_MAX_COUNT_PARAM)?,
+                uncommon_max_count: required_u64_param(params, FREQUENCY_UNCOMMON_MAX_COUNT_PARAM)?,
+                common_max_count: required_u64_param(params, FREQUENCY_COMMON_MAX_COUNT_PARAM)?,
+                rare_multiplier_basis_points: required_u32_param(
+                    params,
+                    FREQUENCY_RARE_MULTIPLIER_PARAM,
+                )?,
+                uncommon_multiplier_basis_points: required_u32_param(
+                    params,
+                    FREQUENCY_UNCOMMON_MULTIPLIER_PARAM,
+                )?,
+                common_multiplier_basis_points: required_u32_param(
+                    params,
+                    FREQUENCY_COMMON_MULTIPLIER_PARAM,
+                )?,
+                very_common_multiplier_basis_points: required_u32_param(
+                    params,
+                    FREQUENCY_VERY_COMMON_MULTIPLIER_PARAM,
+                )?,
+            },
+        };
+        config.validate()?;
+        Ok(Some(config))
+    }
+
+    pub fn validate(&self) -> Result<(), EntityValueFrequencyError> {
+        self.bands.validate()?;
+        Ok(())
+    }
+
+    pub fn validate_table(
+        &self,
+        table: &EntityValueFrequencyTable,
+        index: &EntityPostingIndex,
+    ) -> Result<(), EntityValueFrequencyError> {
+        table.validate_for_posting_index(index)?;
+        if table.content_hash != self.table_content_hash {
+            return Err(EntityValueFrequencyError::StrategyTableHashMismatch {
+                expected: self.table_content_hash.clone(),
+                actual: table.content_hash.clone(),
+            });
+        }
+        Ok(())
+    }
+
+    pub fn adjustment_for_exact_value(
+        &self,
+        table: &EntityValueFrequencyTable,
+        view_name: &str,
+        value: &str,
+    ) -> Result<EntityValueFrequencyAdjustment, EntityValueFrequencyError> {
+        table.adjustment_for_exact_value(&self.bands, view_name, value)
+    }
+
+    pub fn adjustment_for_fuzzy_values(
+        &self,
+        table: &EntityValueFrequencyTable,
+        view_name: &str,
+        left_value: &str,
+        right_value: &str,
+    ) -> Result<EntityValueFrequencyAdjustment, EntityValueFrequencyError> {
+        table.adjustment_for_fuzzy_values(&self.bands, view_name, left_value, right_value)
     }
 }
 
@@ -258,7 +317,7 @@ impl EntityValueFrequencyTable {
             }
             if let Some(left) = previous {
                 let ordering = value_frequency_record_cmp(left, record);
-                if ordering.is_eq() {
+                if left.view_name == record.view_name && left.value == record.value {
                     return Err(EntityValueFrequencyError::DuplicateRecord {
                         view_name: record.view_name.clone(),
                         value: record.value.clone(),
@@ -363,6 +422,10 @@ pub enum EntityValueFrequencyError {
         expected: String,
         actual: String,
     },
+    StrategyTableHashMismatch {
+        expected: String,
+        actual: String,
+    },
     NonCanonicalRecords {
         expected: String,
         actual: String,
@@ -396,6 +459,7 @@ impl EntityValueFrequencyError {
             Self::MissingField { .. } => "missing_field",
             Self::ContentHashMismatch { .. } => "content_hash_mismatch",
             Self::SourcePostingIndexHashMismatch { .. } => "stale_frequency_table",
+            Self::StrategyTableHashMismatch { .. } => "strategy_frequency_table_hash_mismatch",
             Self::NonCanonicalRecords { .. } => "noncanonical_frequency_records",
             Self::RecordsNotSorted => "frequency_records_not_sorted",
             Self::DuplicateRecord { .. } => "duplicate_frequency_record",
@@ -413,6 +477,7 @@ impl EntityValueFrequencyError {
             Self::MissingField { field } => field,
             Self::ContentHashMismatch { .. } => "content_hash",
             Self::SourcePostingIndexHashMismatch { .. } => "source_posting_index_hash",
+            Self::StrategyTableHashMismatch { .. } => FREQUENCY_TABLE_HASH_PARAM,
             Self::NonCanonicalRecords { .. } => "records",
             Self::RecordsNotSorted => "records",
             Self::DuplicateRecord { .. } => "records",
@@ -488,6 +553,35 @@ fn hash_table_without_self(
     let bytes = serde_json::to_vec(&hashable)
         .map_err(|error| EntityValueFrequencyError::Serialization(error.to_string()))?;
     Ok(witness::hash_bytes(&bytes))
+}
+
+fn required_blake3_digest_param(
+    params: &BTreeMap<String, String>,
+    field: &'static str,
+) -> Result<String, EntityValueFrequencyError> {
+    let value = params
+        .get(field)
+        .ok_or_else(|| missing_config(field))?
+        .trim();
+    let Some(hex) = value.strip_prefix("blake3:") else {
+        return Err(invalid_config_with_value(
+            field,
+            "must_be_blake3_digest",
+            value,
+        ));
+    };
+    if hex.len() != 64
+        || !hex
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(invalid_config_with_value(
+            field,
+            "must_be_blake3_digest",
+            value,
+        ));
+    }
+    Ok(value.to_string())
 }
 
 fn required_u64_param(

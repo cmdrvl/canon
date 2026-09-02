@@ -3,7 +3,8 @@
 use canon::{
     RefusalCode,
     entity::evidence::value_frequency::{
-        EntityValueFrequencyBand, EntityValueFrequencyBandConfig, EntityValueFrequencyTable,
+        EntityValueFrequencyBand, EntityValueFrequencyBandConfig,
+        EntityValueFrequencyStrategyConfig, EntityValueFrequencyTable,
         FREQUENCY_COMMON_MAX_COUNT_PARAM, FREQUENCY_COMMON_MULTIPLIER_PARAM,
         FREQUENCY_MINIMUM_COUNT_PARAM, FREQUENCY_RARE_MAX_COUNT_PARAM,
         FREQUENCY_RARE_MULTIPLIER_PARAM, FREQUENCY_TABLE_HASH_PARAM,
@@ -316,6 +317,23 @@ fn stale_frequency_table_refuses_before_scoring() {
 }
 
 #[test]
+fn strategy_declared_frequency_table_hash_mismatch_refuses_before_scoring() {
+    let index = sample_index();
+    let table = EntityValueFrequencyTable::from_posting_index(&index).unwrap();
+    let declared_hash = different_blake3_digest(&table.content_hash);
+    let config =
+        EntityValueFrequencyStrategyConfig::from_operator_params(&band_params(&declared_hash))
+            .expect("strategy config parses")
+            .expect("frequency strategy config present");
+
+    let error = config
+        .validate_table(&table, &index)
+        .expect_err("stale strategy-declared frequency table hash refuses");
+    assert_eq!(error.reason(), "strategy_frequency_table_hash_mismatch");
+    assert_eq!(error.field(), FREQUENCY_TABLE_HASH_PARAM);
+}
+
+#[test]
 fn strategy_frequency_band_params_are_integer_only_and_explicit() {
     assert!(
         EntityValueFrequencyBandConfig::from_operator_params(&BTreeMap::new())
@@ -323,11 +341,19 @@ fn strategy_frequency_band_params_are_integer_only_and_explicit() {
             .is_none()
     );
 
-    let mut params = band_params("blake3:table");
-    let parsed = EntityValueFrequencyBandConfig::from_operator_params(&params)
+    let table = EntityValueFrequencyTable::from_posting_index(&sample_index()).unwrap();
+    let mut params = band_params(&table.content_hash);
+    let parsed = EntityValueFrequencyStrategyConfig::from_operator_params(&params)
         .expect("integer params parse")
         .expect("frequency config present");
-    assert_eq!(parsed, band_config());
+    assert_eq!(parsed.table_content_hash, table.content_hash);
+    assert_eq!(parsed.bands, band_config());
+    assert_eq!(
+        EntityValueFrequencyBandConfig::from_operator_params(&params)
+            .unwrap()
+            .unwrap(),
+        band_config()
+    );
 
     params.insert(
         FREQUENCY_COMMON_MULTIPLIER_PARAM.to_string(),
@@ -341,12 +367,33 @@ fn strategy_frequency_band_params_are_integer_only_and_explicit() {
     let mut partial = BTreeMap::new();
     partial.insert(
         FREQUENCY_TABLE_HASH_PARAM.to_string(),
-        "blake3:table".to_string(),
+        table.content_hash.clone(),
     );
     let missing = EntityValueFrequencyBandConfig::from_operator_params(&partial)
         .expect_err("partial config refuses");
     assert_eq!(missing.reason(), "invalid_frequency_config");
     assert_eq!(missing.field(), FREQUENCY_MINIMUM_COUNT_PARAM);
+
+    let mut missing_hash = band_params(&table.content_hash);
+    missing_hash.remove(FREQUENCY_TABLE_HASH_PARAM);
+    let missing = EntityValueFrequencyStrategyConfig::from_operator_params(&missing_hash)
+        .expect_err("missing table hash refuses");
+    assert_eq!(missing.reason(), "invalid_frequency_config");
+    assert_eq!(missing.field(), FREQUENCY_TABLE_HASH_PARAM);
+
+    let mut invalid_hash = band_params("blake3:TABLE");
+    let error = EntityValueFrequencyStrategyConfig::from_operator_params(&invalid_hash)
+        .expect_err("malformed table hash refuses");
+    assert_eq!(error.reason(), "invalid_frequency_config");
+    assert_eq!(error.field(), FREQUENCY_TABLE_HASH_PARAM);
+    invalid_hash.insert(
+        FREQUENCY_TABLE_HASH_PARAM.to_string(),
+        format!("blake3:{}", "A".repeat(64)),
+    );
+    let error = EntityValueFrequencyStrategyConfig::from_operator_params(&invalid_hash)
+        .expect_err("uppercase table hash refuses");
+    assert_eq!(error.reason(), "invalid_frequency_config");
+    assert_eq!(error.field(), FREQUENCY_TABLE_HASH_PARAM);
 }
 
 fn weighted_exact_hit(
@@ -414,6 +461,15 @@ fn band_params(table_hash: &str) -> BTreeMap<String, String> {
             "2500".to_string(),
         ),
     ])
+}
+
+fn different_blake3_digest(current: &str) -> String {
+    let zeros = format!("blake3:{}", "0".repeat(64));
+    if current == zeros {
+        format!("blake3:{}", "1".repeat(64))
+    } else {
+        zeros
+    }
 }
 
 fn sample_index() -> EntityPostingIndex {
