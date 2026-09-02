@@ -1174,7 +1174,6 @@ fn validate_native_review_artifact(
             }),
         ));
     }
-    validate_native_review_signature_derivations(&typed)?;
     let expected_hash = native_review_artifact_hash(&typed)?;
     if typed.artifact_content_hash != expected_hash {
         return Err(native_import_refusal(
@@ -1186,6 +1185,7 @@ fn validate_native_review_artifact(
             }),
         ));
     }
+    validate_native_review_signature_derivations(&typed)?;
     Ok(typed)
 }
 
