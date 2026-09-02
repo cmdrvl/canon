@@ -222,13 +222,11 @@ fn shipped_public_binary_compiles_generalization_manifest() {
 
 #[test]
 fn strict_generalization_normalizes_only_link_review_export_handoff_path() {
-    let baseline = TempGeneralizationScaffold::new();
-    baseline.build_strict_manifest();
-    let baseline_output = run_generalization_cli_path(&baseline.manifest_path, "json");
-    let baseline_report = assert_strict_generalization_report(&baseline_output);
-
     let handoff_path = TempGeneralizationScaffold::new();
     handoff_path.build_strict_manifest();
+    let baseline_output = run_generalization_cli_path(&handoff_path.manifest_path, "json");
+    let baseline_report = assert_strict_generalization_report(&baseline_output);
+
     for trial_slug in ["entity_disjoint", "time_forward"] {
         let command = format!(
             "canon entity review export {} --include escrow --emit csv",
@@ -237,8 +235,11 @@ fn strict_generalization_normalizes_only_link_review_export_handoff_path() {
                 .join("link/link.json")
                 .display()
         );
-        let baseline_link: EntityLinkArtifact =
-            read_json(&baseline.trial_work_dir(trial_slug).join("link/link.json"));
+        let baseline_link: EntityLinkArtifact = read_json(
+            &handoff_path
+                .trial_work_dir(trial_slug)
+                .join("link/link.json"),
+        );
         let handoff_link_hash = handoff_path.mutate_link_artifact(trial_slug, |link| {
             link.next_commands.review_export = command;
         });
