@@ -8,6 +8,7 @@ use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
+    process::{Command as StdCommand, Output},
 };
 use tempfile::{TempDir, tempdir};
 
@@ -593,6 +594,34 @@ fn run_report_raw_value(receipts: &Value) -> std::process::Output {
     run_report_raw_path(&receipts_path)
 }
 
+fn run_measurement_script(args: &[&str]) -> Output {
+    StdCommand::new("bash")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/geo_measurements/run.sh"))
+        .args(args)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .env(
+            "CANON_GEO_MEASUREMENTS_BIN",
+            env!("CARGO_BIN_EXE_canon_geo_measurements"),
+        )
+        .output()
+        .expect("run measurement shell runner")
+}
+
+fn run_measurement_script_with_paths(args: Vec<String>) -> Output {
+    let mut command = StdCommand::new("bash");
+    command
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/geo_measurements/run.sh"))
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .env(
+            "CANON_GEO_MEASUREMENTS_BIN",
+            env!("CARGO_BIN_EXE_canon_geo_measurements"),
+        );
+    for arg in args {
+        command.arg(arg);
+    }
+    command.output().expect("run measurement shell runner")
+}
+
 fn run_report(fixture: &MeasurementFixture) -> (bool, Value) {
     let output = run_report_raw_path(&fixture.receipts_path);
     let stdout: Value = serde_json::from_slice(&output.stdout).expect("stdout json");
@@ -638,6 +667,20 @@ fn rewrite_artifact_rows(fixture: &mut MeasurementFixture, index: usize, rows: V
     write_fixture_receipts(fixture);
 }
 
+fn rewrite_artifact_query_id(fixture: &mut MeasurementFixture, index: usize, query_id: Value) {
+    let artifact_path = &fixture.artifact_paths[index];
+    let mut artifact: Value =
+        serde_json::from_slice(&fs::read(artifact_path).expect("artifact bytes"))
+            .expect("artifact json");
+    artifact["query_id"] = query_id.clone();
+    write_json(artifact_path, &artifact);
+    let receipt = &mut fixture.receipts["receipts"][index];
+    receipt["query_id"] = query_id;
+    receipt["result_artifact_sha256"] = json!(sha256_hex(
+        &fs::read(artifact_path).expect("artifact bytes")
+    ));
+}
+
 fn status_for<'a>(report: &'a Value, measurement_id: &str) -> &'a str {
     report["measurements"]
         .as_array()
@@ -647,6 +690,17 @@ fn status_for<'a>(report: &'a Value, measurement_id: &str) -> &'a str {
         .expect("measurement row")["status"]
         .as_str()
         .expect("status")
+}
+
+fn details_for<'a>(report: &'a Value, measurement_id: &str) -> &'a Vec<Value> {
+    report["measurements"]
+        .as_array()
+        .expect("measurements")
+        .iter()
+        .find(|row| row["measurement_id"] == measurement_id)
+        .expect("measurement row")["details"]
+        .as_array()
+        .expect("details")
 }
 
 #[test]
@@ -1040,12 +1094,265 @@ fn self_authored_fresh_live_bundle_is_not_live_attested() {
         report["measurements"][0]["declared_proof_class"],
         "fresh_live"
     );
+    assert_eq!(report["measurements"][0]["proof_attestation"], "receipt_consistent");
     assert!(
         report["measurements"][0]["details"]
             .as_array()
             .expect("details")
             .iter()
             .any(|detail| detail == LIVENESS_NOT_ATTESTED)
+    );
+}
+
+#[test]
+fn t58_manifest_integrity_checks_sha256_gate_fields_and_stale_digest_exit_4() {
+    let manifest = manifest_value();
+    let allowed_gates = [
+        "G3",
+        "G4",
+        "G6",
+        "G7",
+        "appendix_b",
+        "appendix_c",
+        "appendix_d",
+        "appendix_f",
+    ]
+    .into_iter()
+    .collect::<BTreeSet<_>>();
+    for measurement in manifest["measurements"].as_array().expect("measurements") {
+        let id = measurement["id"].as_str().expect("id");
+        let gate = measurement["gate"].as_str().expect("gate");
+        assert!(allowed_gates.contains(gate), "{id} gate {gate}");
+        assert!(
+            measurement["geography"].as_str().is_some_and(|value| !value.is_empty()),
+            "{id} geography"
+        );
+        assert!(
+            measurement["tier"].as_str().is_some_and(|value| !value.is_empty()),
+            "{id} tier"
+        );
+        assert!(
+            measurement["declared_grain"]
+                .as_str()
+                .is_some_and(|value| !value.is_empty()),
+            "{id} declared_grain"
+        );
+    }
+
+    let out = tempdir().expect("out dir");
+    let output = run_measurement_script_with_paths(vec![
+        "--geography".to_string(),
+        "nyc".to_string(),
+        "--tier".to_string(),
+        "nyc_full".to_string(),
+        "--dry-run".to_string(),
+        "--out".to_string(),
+        out.path().display().to_string(),
+    ]);
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("dry-run ok: 7 entries"),
+        "stdout={}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        fs::read_to_string(out.path().join("run.log"))
+            .expect("run log")
+            .contains("entry=appendix_b_centroid_percolation")
+    );
+
+    let scratch = tempdir().expect("scratch dir");
+    let manifest_path = scratch.path().join("manifest.json");
+    let mut stale = manifest;
+    stale["measurements"][0]["source_sql_sha256"] =
+        json!("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    write_json(&manifest_path, &stale);
+    let output = run_measurement_script_with_paths(vec![
+        "--geography".to_string(),
+        "nyc".to_string(),
+        "--tier".to_string(),
+        "nyc_full".to_string(),
+        "--dry-run".to_string(),
+        "--manifest".to_string(),
+        manifest_path.display().to_string(),
+        "--out".to_string(),
+        scratch.path().join("stale-out").display().to_string(),
+    ]);
+    assert_eq!(output.status.code(), Some(4));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("measurement diverged: sql drift"), "{stderr}");
+    assert!(stderr.contains("appendix_b_centroid_percolation"), "{stderr}");
+}
+
+#[test]
+fn t59_runner_classifies_snapshot_moved_and_measurement_diverged_exit_codes() {
+    let valid = valid_fixture();
+    let out = tempdir().expect("valid out");
+    let output = run_measurement_script_with_paths(vec![
+        "--geography".to_string(),
+        "nyc".to_string(),
+        "--tier".to_string(),
+        "nyc_full".to_string(),
+        "--receipts".to_string(),
+        valid.receipts_path.display().to_string(),
+        "--out".to_string(),
+        out.path().display().to_string(),
+    ]);
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(out.path().join("report.json").is_file());
+    assert!(
+        out.path()
+            .join("appendix_b_centroid_percolation.result.json")
+            .is_file()
+    );
+
+    let mut moved = valid_fixture();
+    moved.receipts["receipts"][0]["release_pins"]["mappluto.release"] = json!("26v9");
+    write_fixture_receipts(&moved);
+    let moved_out = tempdir().expect("moved out");
+    let output = run_measurement_script_with_paths(vec![
+        "--geography".to_string(),
+        "nyc".to_string(),
+        "--tier".to_string(),
+        "nyc_full".to_string(),
+        "--receipts".to_string(),
+        moved.receipts_path.display().to_string(),
+        "--out".to_string(),
+        moved_out.path().display().to_string(),
+    ]);
+    assert_eq!(output.status.code(), Some(3));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("snapshot moved"), "{stderr}");
+    assert!(stderr.contains("appendix_b_centroid_percolation"), "{stderr}");
+
+    let mut diverged = valid_fixture();
+    let mut rows = manifest_value()["measurements"][3]["expected_result_rows"].clone();
+    rows[0]["global_one"] = json!(2352);
+    rewrite_artifact_rows(&mut diverged, 3, rows);
+    let diverged_out = tempdir().expect("diverged out");
+    let output = run_measurement_script_with_paths(vec![
+        "--geography".to_string(),
+        "nyc".to_string(),
+        "--tier".to_string(),
+        "nyc_full".to_string(),
+        "--receipts".to_string(),
+        diverged.receipts_path.display().to_string(),
+        "--out".to_string(),
+        diverged_out.path().display().to_string(),
+    ]);
+    assert_eq!(output.status.code(), Some(4));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("measurement diverged"), "{stderr}");
+    assert!(stderr.contains("appendix_d_candidate_reach"), "{stderr}");
+
+    let mut collapsed = valid_fixture();
+    let scratch = tempdir().expect("scratch dir");
+    let manifest_path = scratch.path().join("manifest.json");
+    let mut manifest = manifest_value();
+    let index = 4;
+    manifest["measurements"][index]["declared_grain"] = json!("loan_id");
+    manifest["measurements"][index]["expected_row_count"] = json!(3);
+    manifest["measurements"][index]["denominator_fields"] = json!(["selected_center_count"]);
+    manifest["measurements"][index]["expected_denominators"] =
+        json!({"selected_center_count": 3});
+    manifest["measurements"][index]["expected_sanity"] =
+        json!({"artifact_row_count_matches_expected": true});
+    manifest["measurements"][index]["result_fields"] = json!(["loan_id", "literal_count"]);
+    manifest["measurements"][index]["expected_result_rows"] = json!([
+        {"loan_id": "L1", "literal_count": 10},
+        {"loan_id": "L2", "literal_count": 10},
+        {"loan_id": "L3", "literal_count": 10}
+    ]);
+    write_json(&manifest_path, &manifest);
+    rewrite_artifact_rows(
+        &mut collapsed,
+        index,
+        json!([{"loan_id": "L1", "literal_count": 30}]),
+    );
+    collapsed.receipts["receipts"][index]["denominators"] =
+        json!({"selected_center_count": 1});
+    collapsed.receipts["receipts"][index]["sanity"] =
+        json!({"artifact_row_count_matches_expected": false});
+    write_fixture_receipts(&collapsed);
+    let output = run_measurement_script_with_paths(vec![
+        "--geography".to_string(),
+        "nyc".to_string(),
+        "--tier".to_string(),
+        "nyc_full".to_string(),
+        "--manifest".to_string(),
+        manifest_path.display().to_string(),
+        "--receipts".to_string(),
+        collapsed.receipts_path.display().to_string(),
+        "--out".to_string(),
+        scratch.path().join("collapsed-out").display().to_string(),
+    ]);
+    assert_eq!(output.status.code(), Some(4));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("grain loan_id expected 3 rows, actual 1"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("missing ids L2, L3"), "{stderr}");
+}
+
+#[test]
+fn t60_receipt_attestation_requires_query_ids_for_live_complete() {
+    let mut live = valid_fixture();
+    for receipt in live.receipts["receipts"]
+        .as_array_mut()
+        .expect("receipts")
+    {
+        receipt["proof_class"] = json!("cmdrvl_data_live");
+    }
+    write_fixture_receipts(&live);
+    let (ok, report) = run_report(&live);
+    assert!(ok, "{report}");
+    assert_eq!(report["measurements"][0]["proof_attestation"], "LiveComplete");
+
+    let mut observed = valid_fixture();
+    let len = observed
+        .receipts["receipts"]
+        .as_array()
+        .expect("receipts")
+        .len();
+    for index in 0..len {
+        observed.receipts["receipts"][index]["proof_class"] = json!("observed");
+        rewrite_artifact_query_id(&mut observed, index, Value::Null);
+    }
+    write_fixture_receipts(&observed);
+    let (ok, report) = run_report(&observed);
+    assert!(ok, "{report}");
+    assert_eq!(report["measurements"][0]["proof_attestation"], "observed");
+    assert!(report["measurements"][0]["query_id"].is_null());
+
+    let mut relabeled = observed;
+    for receipt in relabeled.receipts["receipts"]
+        .as_array_mut()
+        .expect("receipts")
+    {
+        receipt["proof_class"] = json!("cmdrvl_data_live");
+    }
+    write_fixture_receipts(&relabeled);
+    let (ok, report) = run_report(&relabeled);
+    assert!(!ok, "{report}");
+    assert_eq!(
+        status_for(&report, "appendix_b_centroid_percolation"),
+        "malformed"
+    );
+    let details = details_for(&report, "appendix_b_centroid_percolation");
+    assert!(
+        details.iter().any(|detail| detail
+            .as_str()
+            .is_some_and(|value| value.contains("query_id missing for proof_class cmdrvl_data_live"))),
+        "{details:?}"
     );
 }
 
