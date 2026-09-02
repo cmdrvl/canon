@@ -1786,32 +1786,34 @@ br ready --json && br dep cycles --json
 Existing beads retained with their stage: bd-179b (D0), bd-7bcp (D0), bd-1g4x (D1),
 bd-1l4r (D1), bd-kwmc and bd-67wx (D3), bd-2fed and bd-1g18 (D4), bd-vojr (D5), bd-101v
 (D6), bd-s07o and bd-3mo1 (D7), bd-2rf9 and bd-3oj1 (D8), bd-2b9d and bd-2cbs and bd-1wpv
-(candidate reach and levels, feeding D1), bd-29cf (citation audit, chore lane).
+(candidate reach and levels, feeding D1), bd-29cf (citation audit, chore lane). Closed as
+superseded on 2026-09-02 with reasons in their bead records: bd-gs6n, bd-1zph, bd-1vcw,
+bd-3ccc, bd-272d, bd-1a12.
 
 Owners per stage, matching §19.5: D0 bd-179b, bd-7bcp; D1 bd-1g4x, bd-1l4r; D2 new
 beads; D3 new beads, bd-kwmc, bd-67wx; D4 new bead, bd-2fed, bd-1g18; D5 bd-vojr; D6 new
 beads, bd-101v; D7 bd-s07o, bd-3mo1; D8 bd-2rf9, bd-3oj1; D9 new P4 placeholder beads.
 
-New beads for D2, D3, D4, D6, and D9 are minted one per packet below and carry the full
+Beads for D2, D3, D4, D6, and D9 were minted 2026-09-02 one per packet below and carry the full
 design text from §18 and §19 (the §19.3 module surface, the §19.4 rows, the §19.6 rows,
 and the §19.9 rows the packet cites) so that no implementer needs to return to this
 document. A packet's bead is blocked by the bead of every packet it depends on.
 
 | Packet | Stage | Modules | Contracts / tests | Bead | Depends on |
 |---|---|---|---|---|---|
-| PK-D2a | D2 | `propagate.rs` | C01 to C04, C22, C25; T01 to T04, T19, T27 | new | G1 (bd-1g4x, bd-1l4r) |
-| PK-D2b | D2 | `explain.rs` | C05 to C08, C22, C25; T05, T06, T20, T21, T27 | new | PK-D2a |
-| PK-D3a | D3 | `ledger.rs` | C13, C14, C22, C23, C25; T07, T23, T26, T27 | new; bd-kwmc owns the client-facing shape, bd-67wx the identifier scheme | G1 |
-| PK-D3b | D3 | `exposure.rs` | C15, C22, C25; T08, T27; ships `advisory_synthetic_adv12.json` | new | PK-D3a |
-| PK-D3c | D3 | `collision.rs` | C16, C22, C25; T09, T27 | new | PK-D3a |
-| PK-D4a | D4 | `retry.rs` | C17, C22, C25; T10, T27 | new | G1 |
+| PK-D2a | D2 | `propagate.rs` | C01 to C04, C22, C25; T01 to T04, T19, T27 | bd-2ofm | G1 (bd-1g4x, bd-1l4r) |
+| PK-D2b | D2 | `explain.rs` | C05 to C08, C22, C25; T05, T06, T20, T21, T27 | bd-o0co | PK-D2a |
+| PK-D3a | D3 | `ledger.rs` | C13, C14, C22, C23, C25; T07, T23, T26, T27 | bd-u0y1; bd-kwmc owns the client-facing shape, bd-67wx the identifier scheme | G1 |
+| PK-D3b | D3 | `exposure.rs` | C15, C22, C25; T08, T27; ships `advisory_synthetic_adv12.json` | bd-2k98 | PK-D3a |
+| PK-D3c | D3 | `collision.rs` | C16, C22, C25; T09, T27 | bd-2sfv | PK-D3a |
+| PK-D4a | D4 | `retry.rs` | C17, C22, C25; T10, T27 | bd-7hze | G1 |
 | PK-D4b | D4 | `condo.rs` | C20, C22, C25; T11, T27 | bd-2fed | G1 |
 | PK-D4c | D4 | `inspect.rs` | C18, C22, C25; T12, T25, T27 | bd-1g18 | PK-D2b |
 | PK-D5 | D5 | `next_evidence.rs` | C19, C22, C25; T18, T27 | bd-vojr | PK-D2b |
-| PK-D6a | D6 | `observer.rs` | C09, C10, C11, C22, C23, C25; T13, T14, T15, T27 | new | PK-D2b |
-| PK-D6b | D6 | `adjudicate.rs` | C12, C22, C25; T22, T27 | new | PK-D6a |
+| PK-D6a | D6 | `observer.rs` | C09, C10, C11, C22, C23, C25; T13, T14, T15, T27 | bd-ci1n | PK-D2b |
+| PK-D6b | D6 | `adjudicate.rs` | C12, C22, C25; T22, T27 | bd-36sc | PK-D6a |
 | PK-D6c | D6 | `card.rs` | C21, C22, C23, C25; T24, T26, T27 | bd-101v | PK-D6a, PK-D2b |
-| PK-D9 | D9 | none | C24; G9 review record, one placeholder per §18.3 DEFERRED item (six) | new P4 placeholders | G1 to G7 recorded |
+| PK-D9 | D9 | none | C24; G9 review record, one placeholder per §18.3 DEFERRED item (six) | bd-pd1f, bd-2gmz, bd-2xxc, bd-2y2x, bd-2vx5, plus bd-1oy8 as the temporal-solver owner | G1 to G7 recorded |
 
 T16 and T17 have no packet: T17 belongs to the D1 owners (bd-1g4x, bd-1l4r) and T16 to
 the D7 owners (bd-s07o, bd-3mo1), both existing beads. D0, D1, D7, and D8 need no new
