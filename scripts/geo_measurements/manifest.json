@@ -525,7 +525,7 @@
         "component_accounting_sanity"
       ],
       "expected_result_rows": [],
-      "source_sql_sha256": "6676d9ef650dd56742cc3f22e2be4e0964cce72540caf4f3985ce1ce86b8abc4",
+      "source_sql_sha256": "27c892d8c12459c9dd33176d48dbee48e89cc7404f782bebd7c08c19ef5ef00f",
       "execution_transform": "cmdrvl_data_sqlglot_normalized_plus_tool_row_limit",
       "result_row_validation": "artifact_digest_only",
       "limitations": [

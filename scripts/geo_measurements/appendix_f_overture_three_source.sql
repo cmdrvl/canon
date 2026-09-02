@@ -4,12 +4,17 @@
 -- independent vote merely because they occupy another warehouse row: most
 -- NYC Overture buildings declare OpenStreetMap lineage.
 --
--- The dedicated OVERTURE_MAPS_FEATURE_H3_COVERAGE projection was still empty
--- on 2026-08-30, and the typed OVERTURE_MAPS_BUILDINGS_HOT view failed because
--- its declared and produced column counts differed. This query therefore uses
--- the described OVERTURE_MAPS_FEATURES_HOT base contract and its populated H3
--- anchors. Do not treat that bypass as proof that either upstream defect is
--- repaired.
+-- Current source state, corrected 2026-09-02: both upstream convenience
+-- contracts are repaired. OVERTURE_MAPS_BUILDINGS_HOT was fixed in a52edb0 and
+-- verified with 6,443,512 NY rows, null_geom=0, null_centroid=0, null_h3_r8=0.
+-- OVERTURE_MAPS_FEATURE_H3_COVERAGE now has 6,443,512 rows for release
+-- 2026-07-22.0 / buildings / US-NY at r8, covering 120,196 cells with key=0
+-- and not_valid_status=0.
+--
+-- This retained statement still reads OVERTURE_MAPS_FEATURES_HOT only to
+-- preserve lineage with the measured 2026-08-30 Appendix F result. A refreshed
+-- measurement should read the typed BUILDINGS_HOT contract; changing the query
+-- body is a separate measurement event requiring a new run receipt.
 --
 -- H3 blocks and assigns ownership only. Majority edges use computed geometry
 -- area in both numerator and denominator. The complete parcel snapshot is an
