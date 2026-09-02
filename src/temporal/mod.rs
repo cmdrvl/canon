@@ -6,6 +6,9 @@
 //! truth. They preserve validity time, knowledge time, and correction links
 //! without changing exact runtime lookup semantics.
 
+pub mod diff;
+pub mod explain;
+
 mod fact;
 
 pub use fact::*;

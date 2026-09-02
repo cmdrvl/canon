@@ -1,33 +1,16 @@
 #![forbid(unsafe_code)]
 
-mod temporal_impl {
-    pub use canon::temporal::*;
-
-    pub mod explain {
-        #![allow(dead_code)]
-        include!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/src/temporal/explain.rs"
-        ));
-    }
-
-    pub mod diff {
-        #![allow(dead_code)]
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/temporal/diff.rs"));
-    }
-}
-
-use temporal_impl::diff::{
+use canon::temporal::diff::{
     CANON_TEMPORAL_DIFF_VERSION, TemporalDiffFilter, TemporalDiffPageRequest, TemporalDiffRequest,
     canonical_diff_bytes, diff_temporal_snapshots,
 };
-use temporal_impl::explain::{
+use canon::temporal::explain::{
     CANON_TEMPORAL_EXPLAIN_VERSION, TemporalChangeClass, TemporalExactResult,
     TemporalExplainRequest, TemporalExplainSubject, TemporalIdentitySnapshot,
     TemporalRelationshipRef, TemporalSnapshotReference, canonical_explain_bytes,
     explain_temporal_identity,
 };
-use temporal_impl::{
+use canon::temporal::{
     AssertionStatus, FactScope, IdentityFact, IntervalBoundary, RecordedTime, SourceLocator,
     TimeInterval, finalize_fact,
 };
@@ -83,6 +66,69 @@ fn no_change_explanation_names_snapshot_and_supporting_fact_set() {
 }
 
 #[test]
+fn unchanged_diff_names_compiled_snapshots_and_supporting_fact_set() {
+    let fact = finalize_fact(accepted_fact(
+        "alias:acme",
+        "person:alpha",
+        "feed_a",
+        "2026-01-02T00:00:00Z",
+    ))
+    .expect("fact finalizes");
+    let before = snapshot(
+        "snap-unchanged-before",
+        "2026-03-01T00:00:00Z",
+        "2026-03-01T00:00:00Z",
+        vec![fact.clone()],
+    );
+    let after = snapshot(
+        "snap-unchanged-after",
+        "2026-03-01T00:00:00Z",
+        "2026-03-01T00:00:00Z",
+        vec![fact.clone()],
+    );
+
+    let diff = diff_temporal_snapshots(TemporalDiffRequest {
+        version: CANON_TEMPORAL_DIFF_VERSION.to_string(),
+        before,
+        after,
+        filter: TemporalDiffFilter::default(),
+        page: TemporalDiffPageRequest::default(),
+        include_unchanged: true,
+    })
+    .expect("unchanged diff builds");
+
+    assert_eq!(diff.before_snapshot.snapshot_id, "snap-unchanged-before");
+    assert_eq!(diff.after_snapshot.snapshot_id, "snap-unchanged-after");
+    assert_eq!(diff.summary.compared_subject_count, 1);
+    assert_eq!(diff.summary.changed_subject_count, 1);
+    assert_eq!(diff.changes.len(), 1);
+    let change = &diff.changes[0];
+    assert_eq!(change.change_class, TemporalChangeClass::NoChange);
+    assert_eq!(change.subject_id, "alias:acme");
+    assert_eq!(change.causal_chain.len(), 1);
+    assert_eq!(change.causal_chain[0].fact_id, fact.fact_id);
+    match (&change.before, &change.after) {
+        (
+            TemporalExactResult::SurfaceMapping {
+                canonical_id: before_id,
+                fact_ids: before_facts,
+                ..
+            },
+            TemporalExactResult::SurfaceMapping {
+                canonical_id: after_id,
+                fact_ids: after_facts,
+                ..
+            },
+        ) => {
+            assert_eq!(before_id, "person:alpha");
+            assert_eq!(after_id, "person:alpha");
+            assert_eq!(before_facts, after_facts);
+        }
+        other => panic!("unexpected unchanged result: {other:?}"),
+    }
+}
+
+#[test]
 fn known_time_correction_is_distinct_from_valid_time_expiry() {
     let original = finalize_fact(accepted_fact(
         "alias:acme",
@@ -130,6 +176,14 @@ fn known_time_correction_is_distinct_from_valid_time_expiry() {
         correction_diff.changes[0].change_class,
         TemporalChangeClass::Correction
     );
+    assert_eq!(
+        correction_diff.before_snapshot.valid_at,
+        correction_diff.after_snapshot.valid_at
+    );
+    assert_ne!(
+        correction_diff.before_snapshot.known_as_of,
+        correction_diff.after_snapshot.known_as_of
+    );
 
     let before_valid = snapshot(
         "snap-valid-before",
@@ -156,6 +210,14 @@ fn known_time_correction_is_distinct_from_valid_time_expiry() {
     assert_eq!(
         expiry_diff.changes[0].change_class,
         TemporalChangeClass::ExpiredFact
+    );
+    assert_ne!(
+        expiry_diff.before_snapshot.valid_at,
+        expiry_diff.after_snapshot.valid_at
+    );
+    assert_eq!(
+        expiry_diff.before_snapshot.known_as_of,
+        expiry_diff.after_snapshot.known_as_of
     );
 }
 
