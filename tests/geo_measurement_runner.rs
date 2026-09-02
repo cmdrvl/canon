@@ -578,7 +578,11 @@ fn write_fixture_receipts(fixture: &MeasurementFixture) {
 }
 
 fn write_valid_query_history(fixture: &MeasurementFixture) -> PathBuf {
-    let rows = fixture.receipts["receipts"]
+    write_query_history_rows(fixture, valid_query_history_rows(fixture))
+}
+
+fn valid_query_history_rows(fixture: &MeasurementFixture) -> Vec<Value> {
+    fixture.receipts["receipts"]
         .as_array()
         .expect("receipts")
         .iter()
@@ -594,8 +598,7 @@ fn write_valid_query_history(fixture: &MeasurementFixture) -> PathBuf {
                 )
             })
         })
-        .collect::<Vec<_>>();
-    write_query_history_rows(fixture, rows)
+        .collect()
 }
 
 fn write_query_history_rows(fixture: &MeasurementFixture, rows: Vec<Value>) -> PathBuf {
@@ -1428,6 +1431,61 @@ fn t60_receipt_attestation_binds_cmdrvl_data_live_query_ids_to_history() {
                     && value.contains(&expected_hash)
                     && value.contains(&actual_hash)
             })),
+        "{details:?}"
+    );
+
+    let mut mismatched_text = valid_fixture();
+    for receipt in mismatched_text.receipts["receipts"]
+        .as_array_mut()
+        .expect("receipts")
+    {
+        receipt["proof_class"] = json!("cmdrvl_data_live");
+    }
+    let mut query_history_rows = valid_query_history_rows(&mismatched_text);
+    let altered_query_text = "-- different statement text under the same query id\nSELECT 1;\n";
+    query_history_rows[0]["QUERY_TEXT"] = json!(altered_query_text);
+    let mismatched_text_history = write_query_history_rows(&mismatched_text, query_history_rows);
+    write_fixture_receipts(&mismatched_text);
+    let (ok, report) = run_report_with_query_history(&mismatched_text, &mismatched_text_history);
+    assert!(!ok, "{report}");
+    let details = details_for(&report, "appendix_b_centroid_percolation");
+    assert!(
+        details
+            .iter()
+            .any(|detail| detail.as_str().is_some_and(|value| {
+                value.contains("query_id correspondence mismatch")
+                    && value.contains(
+                        mismatched_text.receipts["receipts"][0]["executed_query_text_sha256"]
+                            .as_str()
+                            .expect("expected hash"),
+                    )
+                    && value.contains(&sha256_hex(altered_query_text.as_bytes()))
+            })),
+        "{details:?}"
+    );
+
+    let mut expired_history = valid_fixture();
+    for receipt in expired_history.receipts["receipts"]
+        .as_array_mut()
+        .expect("receipts")
+    {
+        receipt["proof_class"] = json!("cmdrvl_data_live");
+    }
+    let mut query_history_rows = valid_query_history_rows(&expired_history);
+    query_history_rows.remove(0);
+    let expired_history_path = write_query_history_rows(&expired_history, query_history_rows);
+    write_fixture_receipts(&expired_history);
+    let (ok, report) = run_report_with_query_history(&expired_history, &expired_history_path);
+    assert!(!ok, "{report}");
+    assert_eq!(
+        status_for(&report, "appendix_b_centroid_percolation"),
+        "query_history_unattested"
+    );
+    let details = details_for(&report, "appendix_b_centroid_percolation");
+    assert!(
+        details.iter().any(|detail| detail
+            .as_str()
+            .is_some_and(|value| value.contains("query history has no row"))),
         "{details:?}"
     );
 
