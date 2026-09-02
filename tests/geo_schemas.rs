@@ -31,11 +31,11 @@ use canon::geo::{
 use canon::geo::{
     CANON_GEO_ADDRESS_PARSE_FOREST_VERSION, CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION,
     CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_CLIENT_TILE_INGEST_REQUEST_VERSION,
-    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
-    CANON_GEO_GEOMETRY_REQUEST_VERSION, CANON_GEO_H7_ACRIS_RELEASE_DT,
-    CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION, CANON_GEO_H7_BRIDGE_BUILD_ID,
-    CANON_GEO_H7_COLLATERAL_SCOPE, CANON_GEO_H7_LENDER_MATCH_TRANSFORM,
-    CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
+    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_ERROR_POPULATION_VERSION,
+    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_GEOMETRY_REQUEST_VERSION,
+    CANON_GEO_H7_ACRIS_RELEASE_DT, CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION,
+    CANON_GEO_H7_BRIDGE_BUILD_ID, CANON_GEO_H7_COLLATERAL_SCOPE,
+    CANON_GEO_H7_LENDER_MATCH_TRANSFORM, CANON_GEO_H7_MAPPLUTO_GEOMETRY_CONTRACT_VERSION,
     CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
     CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_PRIMARY_MAPPLUTO_RELEASE,
     CANON_GEO_H7_ROUND_AMOUNT_LATTICE_CENTS,
@@ -54,8 +54,9 @@ use canon::geo::{
     GeoClientTileCoverageExtent, GeoClientTileCoverageExtentKind, GeoClientTileIngestRequest,
     GeoClientTileSourceFormat, GeoClientTileVendorIdentifier, GeoCompositionModel,
     GeoCompositionProfile, GeoCompositionRequest, GeoCompositionUniverse, GeoControlEntityLevel,
-    GeoCoveragePredicate, GeoEgressClass, GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole,
-    GeoEvidenceClass, GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoExactSourceUnitMm,
+    GeoCoveragePredicate, GeoEgressClass, GeoEntityLevel, GeoEntityRef, GeoErrorPopulationArtifact,
+    GeoErrorPopulationSubject, GeoEvidenceClaimRole, GeoEvidenceClass,
+    GeoEvidenceCompilationRequest, GeoEvidenceRecordRef, GeoExactSourceUnitMm,
     GeoGeometryFeatureInput, GeoGeometryTileRequest, GeoH7AssociationPlane, GeoH7BoroughEdge,
     GeoH7CandidateReachStatus, GeoH7FiledCountyMapping, GeoH7MapplutoReleasePin,
     GeoH7PlaneDenominator, GeoH7PopulationProvenance, GeoH7PopulationRowsRequest,
@@ -81,12 +82,13 @@ use canon::geo::{
     GeoTileReconciliationArtifact, GeoTileReconciliationRequest, GeoTileSourceBinding,
     GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValueOrigin,
     GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
-    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, compile_evidence, default_geo_capabilities,
-    evaluate_pad_membership, evaluate_population, ingest_client_geometry_tile,
-    materialize_geo_multisource, materialize_geometry_tile, materialize_h7_population_rows,
-    materialize_home_cells, materialize_tile_work_unit, materialize_warehouse_geometry,
-    parse_address_forest, reconcile_tile_decisions, regional_inventory_semantic_hash,
-    solve_composition, stack_population_evidence, validate_point_population_artifact,
+    GeoWarehouseParcelRow, GeoWarehouseRowsRequest, canonical_error_population_bytes,
+    compile_evidence, default_geo_capabilities, evaluate_pad_membership, evaluate_population,
+    ingest_client_geometry_tile, materialize_geo_multisource, materialize_geometry_tile,
+    materialize_h7_population_rows, materialize_home_cells, materialize_tile_work_unit,
+    materialize_warehouse_geometry, parse_address_forest, reconcile_tile_decisions,
+    regional_inventory_semantic_hash, solve_composition, stack_population_evidence,
+    validate_point_population_artifact,
 };
 use h3o::{LatLng, Resolution};
 use serde_json::Value;
@@ -169,6 +171,8 @@ const ACQUISITION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.acquisition_request.v0.schema.json");
 const ACQUISITION_RECEIPT_SCHEMA: &str =
     include_str!("../schemas/canon.geo.acquisition_receipt.v0.schema.json");
+const ERROR_POPULATION_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.error_population.v0.schema.json");
 
 fn parsed(source: &str) -> Value {
     serde_json::from_str(source).expect("schema file must be valid JSON")
@@ -350,13 +354,19 @@ fn assert_instance_matches_schema(root: &Value, subschema: &Value, instance: &Va
                 .unwrap_or_default();
             for (key, value) in object {
                 let child_path = format!("{path}.{key}");
-                let child_schema = properties.get(key).unwrap_or_else(|| {
+                if let Some(child_schema) = properties.get(key) {
+                    assert_instance_matches_schema(root, child_schema, value, &child_path);
+                } else if let Some(child_schema) = subschema
+                    .get("additionalProperties")
+                    .filter(|schema| schema.is_object())
+                {
+                    assert_instance_matches_schema(root, child_schema, value, &child_path);
+                } else {
                     panic!(
                         "{child_path}: key not declared in schema properties at {path} (available: {:?})",
                         properties.keys().collect::<Vec<_>>()
                     )
-                });
-                assert_instance_matches_schema(root, child_schema, value, &child_path);
+                }
             }
         }
         Value::Array(items) => {
@@ -816,6 +826,50 @@ fn acquisition_contract_receipt() -> GeoAcquisitionReceipt {
 
 fn geometric_acquisition_contract_receipt() -> GeoAcquisitionReceipt {
     acquisition_contract_receipt_for(geometric_acquisition_contract_request())
+}
+
+fn error_population_contract_artifact() -> GeoErrorPopulationArtifact {
+    let subjects = vec![
+        GeoErrorPopulationSubject {
+            subject_id: "subject.h7.non-round".to_string(),
+            truth_plane: GeoTruthPlane::NonRoundAmountDateLegalBorough,
+            window_blake3: blake3::hash(b"window.h7.non-round").to_hex().to_string(),
+            parcel_ids: vec!["1000000001".to_string(), "1000000002".to_string()],
+        },
+        GeoErrorPopulationSubject {
+            subject_id: "subject.h7.round".to_string(),
+            truth_plane: GeoTruthPlane::RoundExactLenderParty,
+            window_blake3: blake3::hash(b"window.h7.round").to_hex().to_string(),
+            parcel_ids: vec!["2000000001".to_string(), "2000000002".to_string()],
+        },
+    ];
+    GeoErrorPopulationArtifact {
+        version: CANON_GEO_ERROR_POPULATION_VERSION.to_string(),
+        population_id: "population.fixture.h7.observer".to_string(),
+        region: "nyc".to_string(),
+        selection_seed: Some(0x2d6d3440a11f2026),
+        selection_query_blake3: Some(
+            blake3::hash(b"query.fixture.h7.observer")
+                .to_hex()
+                .to_string(),
+        ),
+        source_population_blake3: Some(
+            blake3::hash(b"source.population.fixture.h7.observer")
+                .to_hex()
+                .to_string(),
+        ),
+        subjects,
+        declared_before_observer_ids: vec![
+            "observer.count.frozen".to_string(),
+            "observer.null_footprint".to_string(),
+        ],
+        stratum_counts: [
+            ("non_round_amount_date_legal_borough".to_string(), 1),
+            ("round_exact_lender_party".to_string(), 1),
+        ]
+        .into_iter()
+        .collect(),
+    }
 }
 
 fn acquisition_contract_receipt_for(request: GeoAcquisitionRequest) -> GeoAcquisitionReceipt {
@@ -1875,6 +1929,29 @@ fn geometric_acquisition_receipt_schema_matches_a_real_instance() {
         "canon.geo.acquisition_receipt.v0",
         CANON_GEO_ACQUISITION_RECEIPT_VERSION,
         &instance,
+    );
+}
+
+#[test]
+fn error_population_schema_matches_a_real_instance() {
+    let artifact = error_population_contract_artifact();
+    let canonical_bytes =
+        canonical_error_population_bytes(&artifact).expect("error population canonicalizes");
+    let instance: Value =
+        serde_json::from_slice(&canonical_bytes).expect("canonical error population parses");
+    assert_drift_free(
+        ERROR_POPULATION_SCHEMA,
+        "canon.geo.error_population.v0",
+        CANON_GEO_ERROR_POPULATION_VERSION,
+        &instance,
+    );
+
+    let mut nested_unknown = instance.clone();
+    nested_unknown["subjects"][0]["unregistered_window_field"] = serde_json::json!(true);
+    assert_schema_walk_rejects(
+        ERROR_POPULATION_SCHEMA,
+        &nested_unknown,
+        "$.subjects[0].unregistered_window_field: key not declared",
     );
 }
 
