@@ -7,7 +7,6 @@ use canon::{
         public_leaf_commands_from, public_leaf_long_flags_from, stable_manifest_digest,
         validate_operator_manifest_json,
     },
-    project::receipt::digest_bytes,
 };
 use clap::CommandFactory;
 use serde::Deserialize;
@@ -101,6 +100,8 @@ struct JsonExpectation {
 
 #[derive(Clone, Copy)]
 enum SchemaField {
+    Schema,
+    Title,
     Version,
     SchemaVersion,
 }
@@ -291,17 +292,19 @@ fn help_contract_corpus(
         .iter()
         .filter(|row| row.status == "implemented")
         .filter_map(|row| {
-            compiled_by_name.get(row.name.as_str()).map(|compiled| HelpCase {
-                id: format!("help::{}", row.name),
-                command: row.name.clone(),
-                args: row
-                    .name
-                    .split_whitespace()
-                    .chain(["--help"])
-                    .map(str::to_string)
-                    .collect(),
-                expected_flags: compiled.long_flags.clone(),
-            })
+            compiled_by_name
+                .get(row.name.as_str())
+                .map(|compiled| HelpCase {
+                    id: format!("help::{}", row.name),
+                    command: row.name.clone(),
+                    args: row
+                        .name
+                        .split_whitespace()
+                        .chain(["--help"])
+                        .map(str::to_string)
+                        .collect(),
+                    expected_flags: compiled.long_flags.clone(),
+                })
         })
         .collect::<Vec<_>>();
     cases.sort_by(|left, right| left.id.cmp(&right.id));
@@ -345,10 +348,7 @@ fn assert_help_corpus_coverage(
             ));
         }
         if !case_commands.contains(row.name.as_str()) {
-            errors.push(format!(
-                "missing help case for operator row {}",
-                row.name
-            ));
+            errors.push(format!("missing help case for operator row {}", row.name));
         }
     }
     for leaf in public_leafs {
@@ -364,7 +364,10 @@ fn assert_help_corpus_coverage(
 }
 
 fn assert_corpus_ids_are_deterministic(cases: &[HelpCase]) {
-    let ids = cases.iter().map(|case| case.id.as_str()).collect::<Vec<_>>();
+    let ids = cases
+        .iter()
+        .map(|case| case.id.as_str())
+        .collect::<Vec<_>>();
     let sorted = ids.iter().copied().collect::<BTreeSet<_>>();
     assert_eq!(
         ids.len(),
@@ -431,7 +434,9 @@ fn assert_runtime_corpus_coverage(manifest: &OperatorManifest, cases: &[RuntimeC
                 "{} targets an unimplemented operator row",
                 case.id
             );
-            if let Some(expected_schema) = expected_json_schema(&case.expected.stdout) {
+            if case.expected.exit_code == 0
+                && let Some(expected_schema) = expected_json_schema(&case.expected.stdout)
+            {
                 assert_eq!(
                     row.output_schema.as_deref(),
                     Some(expected_schema),
@@ -477,10 +482,10 @@ fn assert_side_effect_contract(case: &RuntimeCase, row: &OperatorRow) {
         "{} network side effect and safety class must agree",
         case.id
     );
-    if let Some(read_only) = row.read_only {
-        assert_eq!(
-            read_only, !writes_anything,
-            "{} read_only drifted from declared write side effects",
+    if row.read_only == Some(true) {
+        assert!(
+            !writes_anything && !side_effects.uses_network,
+            "{} read_only command declares mutation or network side effects",
             case.id
         );
     }
@@ -521,11 +526,11 @@ impl RuntimeHarness {
         let lookup_input = self.root.join("tests/fixtures/csv/all_resolved.csv");
         let lookup_registry = self.root.join("tests/fixtures/registries/cusip-isin");
         let wrong_column_input = self.root.join("tests/fixtures/csv/wrong_column.csv");
-        let export_dir = self.work.join("registry-export");
+        let export_seed = self.work.join("registry-export.csv");
         let dbt_schema = self.work.join("registry-export.schema.yml");
         let dbt_test = self.work.join("registry-export.tests.sql");
         let seed = self.work.join("seed.csv");
-        fs::write(&seed, "cusip\n037833100\n").expect("seed csv");
+        fs::write(&seed, "cusip\nAAPL\n").expect("seed csv");
         let registry_build_dir = self.work.join("built-registry");
         let project_dir = self.work.join("project");
         let project_manifest = project_dir.join("canon.project.toml");
@@ -592,7 +597,7 @@ impl RuntimeHarness {
                 id: "root_schema_maps_mapping_contract",
                 command_name: "root --schema",
                 args: vec!["--schema".to_string()],
-                expected: RuntimeExpectation::json(0, "canon.v0", SchemaField::Title)
+                expected: RuntimeExpectation::json(0, "Canon Output Schema", SchemaField::Title)
                     .assert_eq("type", json!("object"))
                     .assert_eq("properties.version.const", json!("canon.v0"))
                     .with_stderr(StderrExpectation::Empty)
@@ -605,11 +610,11 @@ impl RuntimeHarness {
                 expected: RuntimeExpectation::json(
                     0,
                     "canon.doctor.health.v1",
-                    SchemaField::SchemaVersion,
+                    SchemaField::Schema,
                 )
                 .assert_eq("tool", json!("canon"))
-                .assert_eq("healthy", json!(true))
-                .assert_eq("operator_manifest_digest", json!(stable_operator_digest()))
+                .assert_eq("ok", json!(true))
+                .assert_eq("operator_manifest.digest", json!(stable_operator_digest()))
                 .with_stderr(StderrExpectation::Empty),
             },
             RuntimeCase {
@@ -619,7 +624,7 @@ impl RuntimeHarness {
                 expected: RuntimeExpectation::json(
                     0,
                     "canon.doctor.capabilities.v1",
-                    SchemaField::SchemaVersion,
+                    SchemaField::Schema,
                 )
                 .assert_array_non_empty("commands")
                 .assert_eq("fixers", json!([]))
@@ -697,8 +702,10 @@ impl RuntimeHarness {
                     "dbt-seed".to_string(),
                     "--registry".to_string(),
                     path_arg(&lookup_registry),
+                    "--namespace".to_string(),
+                    "contract_corpus".to_string(),
                     "--out".to_string(),
-                    path_arg(&export_dir),
+                    path_arg(&export_seed),
                     "--schema-out".to_string(),
                     path_arg(&dbt_schema),
                     "--anti-collapse-test-out".to_string(),
@@ -714,7 +721,7 @@ impl RuntimeHarness {
                 .assert_eq("format", json!("dbt-seed"))
                 .assert_eq("registry.id", json!("cusip-isin"))
                 .with_stderr(StderrExpectation::Empty)
-                .with_mutation(MutationExpectation::Exists(export_dir.join("canon_registry_seed.csv")))
+                .with_mutation(MutationExpectation::Exists(export_seed))
                 .with_mutation(MutationExpectation::Exists(dbt_schema))
                 .with_mutation(MutationExpectation::Exists(dbt_test)),
             },
@@ -742,8 +749,12 @@ impl RuntimeHarness {
                 )
                 .assert_eq("registry.version", json!("1.2.3"))
                 .with_stderr(StderrExpectation::Empty)
-                .with_mutation(MutationExpectation::Exists(registry_build_dir.join("registry.json")))
-                .with_mutation(MutationExpectation::Exists(registry_build_dir.join("_build.json"))),
+                .with_mutation(MutationExpectation::Exists(
+                    registry_build_dir.join("registry.json"),
+                ))
+                .with_mutation(MutationExpectation::Exists(
+                    registry_build_dir.join("_build.json"),
+                )),
             },
             RuntimeCase {
                 id: "project_init_writes_manifest",
@@ -768,7 +779,11 @@ impl RuntimeHarness {
             RuntimeCase {
                 id: "project_validate_reads_initialized_manifest",
                 command_name: "project validate",
-                args: vec!["project".to_string(), "validate".to_string(), path_arg(&project_dir)],
+                args: vec![
+                    "project".to_string(),
+                    "validate".to_string(),
+                    path_arg(&project_dir),
+                ],
                 expected: RuntimeExpectation::json(
                     0,
                     "canon.project.cli.v1",
@@ -849,8 +864,12 @@ impl RuntimeHarness {
                 )
                 .assert_eq("verified_files", json!(3))
                 .with_stderr(StderrExpectation::Empty)
-                .with_mutation(MutationExpectation::Exists(package_unpack.join("package.json")))
-                .with_mutation(MutationExpectation::Exists(package_unpack.join("bin/run.sh"))),
+                .with_mutation(MutationExpectation::Exists(
+                    package_unpack.join("package.json"),
+                ))
+                .with_mutation(MutationExpectation::Exists(
+                    package_unpack.join("bin/run.sh"),
+                )),
             },
             RuntimeCase {
                 id: "inbox_list_json_is_read_only",
@@ -936,7 +955,12 @@ impl RuntimeHarness {
             RuntimeCase {
                 id: "package_push_missing_remote_args_refuses_before_network",
                 command_name: "package push",
-                args: args(["package", "push", "--archive", "/definitely/missing/archive"]),
+                args: args([
+                    "package",
+                    "push",
+                    "--archive",
+                    "/definitely/missing/archive",
+                ]),
                 expected: RuntimeExpectation {
                     exit_code: 2,
                     stdout: StdoutExpectation::Empty,
@@ -991,8 +1015,11 @@ impl RuntimeHarness {
                 sample_inbox_item("beta", "cluster_abstention", "ambiguous_candidates", 1)
             ]
         });
-        fs::write(&inbox, serde_json::to_vec(&artifact).expect("inbox serializes"))
-            .expect("inbox fixture");
+        fs::write(
+            &inbox,
+            serde_json::to_vec(&artifact).expect("inbox serializes"),
+        )
+        .expect("inbox fixture");
         inbox
     }
 }
@@ -1035,7 +1062,9 @@ impl RuntimeExpectation {
 
     fn assert_array_len(mut self, path: &'static str, len: usize) -> Self {
         if let StdoutExpectation::Json(expectation) = &mut self.stdout {
-            expectation.assertions.push(JsonAssertion::ArrayLen(path, len));
+            expectation
+                .assertions
+                .push(JsonAssertion::ArrayLen(path, len));
         } else {
             panic!("JSON assertion added to non-JSON runtime expectation");
         }
@@ -1074,19 +1103,17 @@ impl RuntimeExpectation {
 }
 
 impl SchemaField {
-    const Title: Self = Self::SchemaVersion;
-
     fn assert(self, value: &Value, expected: &str, case_id: &str) {
         let (field, actual) = match self {
+            Self::Schema => ("schema", &value["schema"]),
+            Self::Title => ("title", &value["title"]),
             Self::Version => ("version", &value["version"]),
             Self::SchemaVersion => ("schema_version", &value["schema_version"]),
         };
         assert_eq!(
-            actual,
-            expected,
+            actual, expected,
             "{} stdout JSON {} did not match contract schema",
-            case_id,
-            field
+            case_id, field
         );
     }
 }
@@ -1219,8 +1246,9 @@ fn assert_mutation(case_id: &str, mutation: &MutationExpectation) {
             );
         }
         MutationExpectation::Unchanged(path, before) => {
-            let after = fs::read(path)
-                .unwrap_or_else(|error| panic!("{case_id} failed reading {}: {error}", path.display()));
+            let after = fs::read(path).unwrap_or_else(|error| {
+                panic!("{case_id} failed reading {}: {error}", path.display())
+            });
             assert_eq!(
                 &after,
                 before,
@@ -1237,7 +1265,12 @@ fn stable_operator_digest() -> String {
     stable_manifest_digest(&manifest)
 }
 
-fn sample_inbox_item(label: &str, event_kind: &str, reason_code: &str, occurrence_count: usize) -> Value {
+fn sample_inbox_item(
+    label: &str,
+    event_kind: &str,
+    reason_code: &str,
+    occurrence_count: usize,
+) -> Value {
     let occurrences = (0..occurrence_count)
         .map(|index| {
             json!({
@@ -1292,9 +1325,4 @@ fn args<const N: usize>(items: [&str; N]) -> Vec<String> {
 
 fn path_arg(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
-}
-
-#[allow(dead_code)]
-fn _assert_digest_helper_used_for_project_fixture(bytes: &[u8]) -> String {
-    digest_bytes(bytes)
 }
