@@ -10,6 +10,7 @@ pub mod ontology;
 pub mod profile;
 #[allow(dead_code)]
 pub mod relation_policy;
+pub mod review_policy;
 #[allow(dead_code)]
 pub mod vocabulary;
 
@@ -24,6 +25,7 @@ pub const DOMAIN_NEUTRAL_EXTENSION_SOURCE_FILES: &[&str] = &[
     "src/extensions/ontology.rs",
     "src/extensions/profile.rs",
     "src/extensions/relation_policy.rs",
+    "src/extensions/review_policy.rs",
     "src/extensions/vocabulary.rs",
 ];
 

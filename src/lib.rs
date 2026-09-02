@@ -12,6 +12,7 @@ pub mod distribution {
 pub mod doctor;
 pub mod entity;
 pub mod evaluation;
+pub mod extensions;
 mod fs_safety;
 pub mod geo;
 pub mod inbox;

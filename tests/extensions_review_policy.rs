@@ -2,16 +2,15 @@
 
 pub use canon::{Refusal, entity};
 
-#[path = "../src/entity/review_export.rs"]
-#[allow(dead_code)]
-mod native_review_export;
-#[path = "../src/extensions/review_policy.rs"]
-mod review_policy;
-
 use canon::entity::{
     EntityArtifactMetadata, EntityInputReference, EntityPatchNamespaces, EntityProfileReference,
     EntityRegistrySnapshot, EntityStrategyReference,
     review::{ReviewProvenanceSample, ReviewQueueArtifact, ReviewQueueItem, ReviewRelationHint},
+    review_export as native_review_export,
+    review_export::{
+        CANON_ENTITY_NATIVE_REVIEW_DECISION_ENVELOPE_VERSION, NativeReviewExportRequest,
+        build_native_review_artifact, render_native_review_html,
+    },
     review_import::{
         NativeReviewDecision, NativeReviewDecisionAction, NativeReviewDecisionContext,
         NativeReviewDecisionMode, import_native_review_decisions,
@@ -20,27 +19,34 @@ use canon::entity::{
     score::ScoreUnits,
     solve::{SolveEvidenceCut, SolveReconciliationState},
 };
-use native_review_export::{
-    CANON_ENTITY_NATIVE_REVIEW_DECISION_ENVELOPE_VERSION, NativeReviewExportRequest,
-    build_native_review_artifact, render_native_review_html,
-};
-use review_policy::{
-    ReviewActionRule, ReviewApproval, ReviewEvidenceGroup, ReviewEvidenceKind, ReviewEvidenceRef,
-    ReviewLabelMapping, ReviewPolicyDecisionInput, ReviewPolicyDefinition,
-    ReviewPolicyDocumentationRef, ReviewPolicyErrorCode, ReviewPolicyPackage,
-    ReviewPolicyPatchKind, ReviewPolicyRef, ReviewRefKind, ReviewRiskTier, ReviewSafeAction,
-    ReviewTwoPersonRule, canonical_package_bytes, compile_policy, compile_review_decision,
-    finalize_package, package_compatibility, present_evidence_refs, render_opaque_ref,
-    review_policy_package_digest, review_policy_schema_version, validate_package_for_execution,
+use canon::extensions::review_policy::{
+    CompiledReviewPolicy, ReviewActionRule, ReviewApproval, ReviewEvidenceGroup,
+    ReviewEvidenceKind, ReviewEvidenceRef, ReviewLabelMapping, ReviewPolicyCompatibility,
+    ReviewPolicyDecisionInput, ReviewPolicyDefinition, ReviewPolicyDocumentationRef,
+    ReviewPolicyErrorCode, ReviewPolicyPackage, ReviewPolicyPatchKind, ReviewPolicyRef,
+    ReviewRefKind, ReviewRiskTier, ReviewSafeAction, ReviewTwoPersonRule, canonical_package_bytes,
+    compile_policy, compile_review_decision, finalize_package, package_compatibility,
+    present_evidence_refs, render_opaque_ref, review_policy_package_digest,
+    review_policy_schema_version, validate_package_for_execution,
 };
 use serde_json::Value;
 
 const SCHEMA_JSON: &str = include_str!("../schemas/canon.review.policy.v1.schema.json");
 const MODULE_SOURCE: &str = include_str!("../src/extensions/review_policy.rs");
+const CONTRACT_INVENTORY_JSON: &str = include_str!("fixtures/canon_v1/contract_inventory.json");
 
 #[test]
 fn schema_declares_review_policy_boundary_and_safe_actions() {
     let schema: Value = serde_json::from_str(SCHEMA_JSON).expect("schema parses");
+    let inventory: Value =
+        serde_json::from_str(CONTRACT_INVENTORY_JSON).expect("contract inventory parses");
+    let inventory_row = inventory["contract_rows"]
+        .as_array()
+        .expect("contract rows")
+        .iter()
+        .find(|row| row["id"] == "canon.review.policy.v1")
+        .expect("review policy inventory row");
+
     assert_eq!(schema["title"], "canon.review.policy.v1");
     assert_eq!(
         schema["properties"]["version"]["const"],
@@ -77,6 +83,18 @@ fn schema_declares_review_policy_boundary_and_safe_actions() {
         serde_json::json!(true)
     );
     assert_eq!(review_policy_schema_version(), "canon.review.policy.v1");
+    assert_eq!(
+        inventory_row["access_boundary"],
+        serde_json::json!("public_crate_api")
+    );
+    assert_eq!(
+        inventory_row["crate_module"],
+        serde_json::json!("canon::extensions::review_policy")
+    );
+    assert_eq!(
+        inventory_row["source_path"],
+        serde_json::json!("schemas/canon.review.policy.v1.schema.json")
+    );
 }
 
 #[test]
@@ -468,7 +486,7 @@ fn package_digest_is_stable_and_same_major_updates_are_compatible() {
 
     assert_eq!(
         package_compatibility(&locked, &candidate, &[reference]).expect("same major compatible"),
-        review_policy::ReviewPolicyCompatibility::CompatibleSameMajor
+        ReviewPolicyCompatibility::CompatibleSameMajor
     );
 
     let left = canonical_package_bytes(&locked).expect("left bytes");
@@ -498,7 +516,7 @@ fn source_scan_keeps_domain_vocabulary_out_of_review_policy_contract() {
     }
 }
 
-fn compiled_policy() -> review_policy::CompiledReviewPolicy {
+fn compiled_policy() -> CompiledReviewPolicy {
     let package = sample_package("pkg.synthetic", "1.2.3");
     let digest = review_policy_package_digest(&package).expect("digest");
     compile_policy(&package, &policy_ref(&digest)).expect("policy compiles")

@@ -1329,7 +1329,14 @@
     { "id": "canon.registry.build.v1", "family": "registry", "action": "preserve" },
     { "id": "canon.registry.merge_plan.v1", "family": "registry", "action": "preserve" },
     { "id": "canon.registry.temporal_projection_contract.v1", "family": "registry", "action": "preserve" },
-    { "id": "canon.review.policy.v1", "family": "extension", "action": "preserve" },
+    {
+      "id": "canon.review.policy.v1",
+      "family": "extension",
+      "action": "preserve",
+      "access_boundary": "public_crate_api",
+      "crate_module": "canon::extensions::review_policy",
+      "source_path": "schemas/canon.review.policy.v1.schema.json"
+    },
     { "id": "canon.strategy.tournament.v1", "family": "strategy", "action": "preserve" },
     { "id": "canon.temporal.diff.v1", "family": "temporal", "action": "preserve" },
     { "id": "canon.temporal.explain.v1", "family": "temporal", "action": "preserve" },

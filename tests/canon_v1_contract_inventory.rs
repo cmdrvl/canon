@@ -442,6 +442,24 @@ fn canon_v1_contract_inventory_marks_reviewed_public_contract_boundaries() {
         )),
         "canon.unresolved.inbox.v1 should be marked as a public crate contract"
     );
+    assert!(
+        boundaries.contains(&(
+            "canon.review.policy.v1",
+            Some("public_crate_api"),
+            "canon::extensions::review_policy"
+        )),
+        "canon.review.policy.v1 should be marked as a public crate contract"
+    );
+    let review_policy = inventory
+        .contract_rows
+        .iter()
+        .find(|row| row.id == "canon.review.policy.v1")
+        .expect("canon.review.policy.v1 row present");
+    assert_eq!(
+        review_policy.source_path.as_deref(),
+        Some("schemas/canon.review.policy.v1.schema.json"),
+        "canon.review.policy.v1 should point at its public schema"
+    );
 
     let extension_ontology = inventory
         .contract_rows
