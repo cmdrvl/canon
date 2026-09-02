@@ -3,14 +3,16 @@
 use canon::geo::{
     CANON_GEO_ADDRESS_PARCEL_BRIDGE_REQUEST_VERSION,
     CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION, CANON_GEO_ADDRESS_PARSE_REQUEST_VERSION,
-    CANON_GEO_PAD_ADDRESS_SET_VERSION, GeoAddressHouseNumber, GeoAddressJurisdiction,
+    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_PAD_ADDRESS_SET_VERSION,
+    DEFAULT_MAX_MATERIALIZED_MODELS, GeoAddressHouseNumber, GeoAddressJurisdiction,
     GeoAddressParcelBridge, GeoAddressParcelBridgeRequest, GeoAddressParcelEvidenceBundle,
     GeoAddressParcelEvidenceRequest, GeoAddressParseRequest, GeoAddressStreet, GeoAsOf,
+    GeoCompositionUniverse, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
     GeoEvidenceRecordRef, GeoNycBorough, GeoPadAddressMember, GeoPadAddressSet,
-    GeoPadMemberSourceRecord, GeoRhoObservationKind, GeoStreetDirection, GeoStreetSuffix,
-    GeoValidTimeInterval, GeoValueOrigin, bridge_pad_membership_to_parcel_observation,
-    build_address_parcel_evidence, evaluate_pad_membership, geo_pad_member_blake3,
-    parse_address_forest,
+    GeoPadMemberSourceRecord, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
+    GeoStreetDirection, GeoStreetSuffix, GeoValidTimeInterval, GeoValueOrigin,
+    bridge_pad_membership_to_parcel_observation, build_address_parcel_evidence,
+    evaluate_pad_membership, geo_pad_member_blake3, parse_address_forest,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -24,6 +26,7 @@ const BRIDGE_REQUEST_FILE: &str = "canon.geo.address_parcel_bridge_request.v0.sc
 const BRIDGE_FILE: &str = "canon.geo.address_parcel_bridge.v0.schema.json";
 const EVIDENCE_REQUEST_FILE: &str = "canon.geo.address_parcel_evidence_request.v0.schema.json";
 const EVIDENCE_BUNDLE_FILE: &str = "canon.geo.address_parcel_evidence_bundle.v0.schema.json";
+const GEO_EVIDENCE_REQUEST_FILE: &str = "canon.geo.evidence_request.v0.schema.json";
 
 const ADDRESS_PARSE_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.address_parse_request.v0.schema.json");
@@ -41,6 +44,8 @@ const EVIDENCE_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.address_parcel_evidence_request.v0.schema.json");
 const EVIDENCE_BUNDLE_SCHEMA: &str =
     include_str!("../schemas/canon.geo.address_parcel_evidence_bundle.v0.schema.json");
+const GEO_EVIDENCE_REQUEST_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.evidence_request.v0.schema.json");
 
 fn schema_source(file: &str) -> &'static str {
     match file {
@@ -52,6 +57,7 @@ fn schema_source(file: &str) -> &'static str {
         BRIDGE_FILE => BRIDGE_SCHEMA,
         EVIDENCE_REQUEST_FILE => EVIDENCE_REQUEST_SCHEMA,
         EVIDENCE_BUNDLE_FILE => EVIDENCE_BUNDLE_SCHEMA,
+        GEO_EVIDENCE_REQUEST_FILE => GEO_EVIDENCE_REQUEST_SCHEMA,
         _ => panic!("unregistered address parcel schema ref: {file}"),
     }
 }
@@ -387,12 +393,44 @@ fn bridge_request() -> GeoAddressParcelBridgeRequest {
     }
 }
 
+fn evidence_compile_template() -> GeoEvidenceCompilationRequest {
+    GeoEvidenceCompilationRequest {
+        version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: GeoCompositionUniverse {
+            parcels: vec![
+                "mn:other".to_string(),
+                "mn:first:199".to_string(),
+                "mn:e12:349".to_string(),
+            ],
+            buildings: Vec::new(),
+        },
+        contracts: vec![GeoRhoContract {
+            id: "rho.address.pad.membership".to_string(),
+            version: "1.0.0".to_string(),
+            source_dataset: "SOURCE.NYC_DCP_PAD_ADDRESS_HOT".to_string(),
+            source_release: "26B".to_string(),
+            source_lineage_ids: vec!["SOURCE.NYC_DCP_PAD_ADDRESS_HOT:26B".to_string()],
+            method_id: "address-parse-pad-membership-bridge".to_string(),
+            method_version: "1.0.0".to_string(),
+            claim_role: GeoEvidenceClaimRole::StableIdentityAnchor,
+            basis: GeoRhoBasis::LogicalRelaxation {
+                invariant_id: "pad-member-implies-parcel-address-membership".to_string(),
+            },
+        }],
+        observations: Vec::new(),
+        max_assignments: 16,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    }
+}
+
 fn evidence_request() -> GeoAddressParcelEvidenceRequest {
     GeoAddressParcelEvidenceRequest {
         version: CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION.to_string(),
         parse_request: parse_request("199 First Avenue a/k/a 349 East 12th Street"),
         address_set: address_set(),
         bridge_request: bridge_request(),
+        evidence_request: Some(evidence_compile_template()),
     }
 }
 

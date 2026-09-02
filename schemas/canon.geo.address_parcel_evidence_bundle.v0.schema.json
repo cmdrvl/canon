@@ -20,6 +20,9 @@
     },
     "bridge": {
       "$ref": "canon.geo.address_parcel_bridge.v0.schema.json"
+    },
+    "evidence_request": {
+      "$ref": "canon.geo.evidence_request.v0.schema.json"
     }
   },
   "required": [

@@ -12,10 +12,10 @@ use canon::geo::{
     GeoEvidenceRecordRef, GeoNycBorough, GeoPadAddressMember, GeoPadAddressSet,
     GeoPadMemberSourceRecord, GeoRhoBasis, GeoRhoContract, GeoRhoObservationKind,
     GeoStreetDirection, GeoStreetSuffix, GeoValidTimeInterval, GeoValueOrigin,
-    bridge_pad_membership_to_parcel_observation, build_address_parcel_evidence,
-    canonical_address_parcel_bridge_bytes, canonical_address_parcel_evidence_bundle_bytes,
-    compile_evidence, evaluate_pad_membership, geo_pad_member_blake3, parse_address_forest,
-    solve_composition,
+    bridge_pad_membership_to_parcel_observation, build_address_parcel_compilation_request,
+    build_address_parcel_evidence, canonical_address_parcel_bridge_bytes,
+    canonical_address_parcel_evidence_bundle_bytes, compile_evidence, evaluate_pad_membership,
+    geo_pad_member_blake3, parse_address_forest, solve_composition,
 };
 
 fn request(input: &str, borough: GeoNycBorough) -> GeoAddressParseRequest {
@@ -126,7 +126,7 @@ fn first_and_twelfth_members() -> Vec<GeoPadAddressMember> {
     ]
 }
 
-fn evidence_request(observation: GeoRhoObservationKind) -> GeoEvidenceCompilationRequest {
+fn evidence_template() -> GeoEvidenceCompilationRequest {
     GeoEvidenceCompilationRequest {
         version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
         profile: Default::default(),
@@ -139,19 +139,25 @@ fn evidence_request(observation: GeoRhoObservationKind) -> GeoEvidenceCompilatio
             buildings: Vec::new(),
         },
         contracts: vec![contract()],
-        observations: vec![canon::geo::GeoRhoObservation {
-            id: "obs.address.pad.membership".to_string(),
-            contract_id: "rho.address.pad.membership".to_string(),
-            source_records: vec![
-                source_record("src:pad:first:199"),
-                source_record("src:pad:e12:349"),
-            ],
-            valid_time: None,
-            observation,
-        }],
+        observations: Vec::new(),
         max_assignments: 16,
         max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
     }
+}
+
+fn evidence_request(observation: GeoRhoObservationKind) -> GeoEvidenceCompilationRequest {
+    let mut request = evidence_template();
+    request.observations = vec![canon::geo::GeoRhoObservation {
+        id: "obs.address.pad.membership".to_string(),
+        contract_id: "rho.address.pad.membership".to_string(),
+        source_records: vec![
+            source_record("src:pad:first:199"),
+            source_record("src:pad:e12:349"),
+        ],
+        valid_time: None,
+        observation,
+    }];
+    request
 }
 
 #[test]
@@ -218,6 +224,182 @@ fn multiple_surviving_readings_union_into_one_existential_observation() {
         solved.hard_forced.parcels.is_empty(),
         "the union is an AnyOf, not a guessed singleton"
     );
+}
+
+#[test]
+fn address_bundle_emits_compiler_ready_request_when_envelope_is_supplied() {
+    let request = GeoAddressParcelEvidenceRequest {
+        version: CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION.to_string(),
+        parse_request: request(
+            "199 First Avenue a/k/a 349 East 12th Street",
+            GeoNycBorough::Manhattan,
+        ),
+        address_set: pad_set(first_and_twelfth_members()),
+        bridge_request: bridge_request(&["pad:first:199", "pad:e12:349"]),
+        evidence_request: Some(evidence_template()),
+    };
+
+    let bundle = build_address_parcel_evidence(&request)
+        .expect("address bundle should materialize and wrap evidence");
+    let evidence_request = bundle
+        .evidence_request
+        .clone()
+        .expect("positive bridge support should emit a compile-ready evidence request");
+    assert_eq!(evidence_request.version, CANON_GEO_EVIDENCE_REQUEST_VERSION);
+    assert_eq!(
+        evidence_request
+            .universe
+            .parcels
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["mn:e12:349", "mn:first:199", "mn:other"]
+    );
+    assert_eq!(evidence_request.contracts.len(), 1);
+    assert_eq!(
+        evidence_request.contracts[0].id,
+        "rho.address.pad.membership"
+    );
+    assert_eq!(
+        evidence_request.observations,
+        vec![
+            bundle
+                .bridge
+                .observation
+                .clone()
+                .expect("bridge observation")
+        ]
+    );
+
+    let compiled =
+        compile_evidence(&evidence_request).expect("emitted evidence request must compile");
+    assert_eq!(
+        compiled.admissions[0].disposition,
+        GeoEvidenceDisposition::HardConstraint
+    );
+    assert_eq!(
+        compiled.composition_request.hard_constraints.len(),
+        1,
+        "address membership enters as one AnyOf constraint"
+    );
+    let solved = solve_composition(&compiled.composition_request)
+        .expect("compiled address evidence should solve");
+    assert_eq!(solved.status, GeoCompositionStatus::Ambiguous);
+    assert_eq!(solved.summary.residual_model_count, 6);
+}
+
+#[test]
+fn address_compile_envelope_must_name_the_candidate_universe() {
+    let forest = forest("199 First Avenue a/k/a 349 East 12th Street");
+    let pad = pad_set(first_and_twelfth_members());
+    let membership = evaluate_pad_membership(&forest, &pad).expect("membership evaluates");
+    let bridge = bridge_pad_membership_to_parcel_observation(
+        &forest,
+        &pad,
+        &membership,
+        &bridge_request(&["pad:first:199", "pad:e12:349"]),
+    )
+    .expect("bridge should emit evidence");
+    let mut template = evidence_template();
+    template.universe.parcels = vec!["mn:first:199".to_string()];
+
+    let error = build_address_parcel_compilation_request(&bridge, &template)
+        .expect_err("missing parcel candidates must refuse before compile-ready output");
+
+    assert_eq!(error.code, canon::geo::GeoAddressErrorCode::InvalidInput);
+    assert!(error.message.contains("valid Geo evidence request"));
+}
+
+#[test]
+fn diagnostic_address_bundles_do_not_emit_empty_compile_requests() {
+    let chimera_request = GeoAddressParcelEvidenceRequest {
+        version: CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION.to_string(),
+        parse_request: request("199 E 12th St", GeoNycBorough::Manhattan),
+        address_set: pad_set(first_and_twelfth_members()),
+        bridge_request: bridge_request(&["pad:first:199", "pad:e12:349"]),
+        evidence_request: Some(evidence_template()),
+    };
+    let chimera = build_address_parcel_evidence(&chimera_request)
+        .expect("chimera should materialize as diagnostic abstention");
+    assert_eq!(
+        chimera.bridge.status,
+        GeoAddressParcelBridgeStatus::DiagnosticAbstention
+    );
+    assert_eq!(
+        chimera
+            .bridge
+            .diagnostic
+            .as_ref()
+            .map(|diagnostic| diagnostic.code),
+        Some(GeoAddressParcelDiagnosticCode::NoSourceMemberSupport)
+    );
+    assert!(
+        chimera.evidence_request.is_none(),
+        "diagnostic abstention must not become a zero-observation compile request"
+    );
+
+    let unbound_request = GeoAddressParcelEvidenceRequest {
+        version: CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION.to_string(),
+        parse_request: request("199 First Avenue", GeoNycBorough::Manhattan),
+        address_set: pad_set(first_and_twelfth_members()),
+        bridge_request: bridge_request(&[]),
+        evidence_request: Some(evidence_template()),
+    };
+    let unbound = build_address_parcel_evidence(&unbound_request)
+        .expect("unbound source member should materialize as diagnostic abstention");
+    assert_eq!(
+        unbound.bridge.status,
+        GeoAddressParcelBridgeStatus::DiagnosticAbstention
+    );
+    assert_eq!(
+        unbound
+            .bridge
+            .diagnostic
+            .as_ref()
+            .map(|diagnostic| diagnostic.code),
+        Some(GeoAddressParcelDiagnosticCode::NoBoundSourceRecords)
+    );
+    assert!(
+        unbound.evidence_request.is_none(),
+        "unbound source members must abstain instead of fabricating hard evidence"
+    );
+}
+
+#[test]
+fn time_scoped_address_bundle_request_stays_diagnostic_after_compilation() {
+    let mut bridge_request = bridge_request(&["pad:first:199"]);
+    let interval = GeoValidTimeInterval {
+        start_day: 20_696,
+        end_day: 20_696,
+    };
+    bridge_request.query_as_of = Some(GeoAsOf {
+        utc_day: "2026-08-31".to_string(),
+        semantic_id: "fixture:query_as_of".to_string(),
+        unit: "utc_day".to_string(),
+        origin: GeoValueOrigin::CallerDeclared,
+    });
+    bridge_request.valid_time = Some(interval);
+
+    let request = GeoAddressParcelEvidenceRequest {
+        version: CANON_GEO_ADDRESS_PARCEL_EVIDENCE_REQUEST_VERSION.to_string(),
+        parse_request: request("199 First Avenue", GeoNycBorough::Manhattan),
+        address_set: pad_set(first_and_twelfth_members()),
+        bridge_request,
+        evidence_request: Some(evidence_template()),
+    };
+    let bundle = build_address_parcel_evidence(&request)
+        .expect("time-scoped bundle should materialize with diagnostic evidence");
+    let evidence_request = bundle
+        .evidence_request
+        .expect("supported time-scoped bridge still emits diagnostic evidence request");
+    let compiled =
+        compile_evidence(&evidence_request).expect("time-scoped evidence request compiles");
+
+    assert_eq!(
+        compiled.admissions[0].disposition,
+        GeoEvidenceDisposition::DiagnosticOnly
+    );
+    assert!(compiled.composition_request.hard_constraints.is_empty());
 }
 
 #[test]
@@ -464,6 +646,7 @@ fn convenience_bundle_matches_the_explicit_staged_flow() {
         parse_request,
         address_set,
         bridge_request,
+        evidence_request: None,
     };
     let bundle = build_address_parcel_evidence(&request).expect("convenience bundle should build");
 

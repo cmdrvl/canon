@@ -1217,11 +1217,12 @@ fn validate_address_template_contracts(
     contract_id: &str,
 ) -> Result<(), GeoAddressError> {
     if template.contracts.len() != 1 {
+        let count = template.contracts.len().to_string();
         return Err(GeoAddressError::invalid_input(
             "address compile envelope must carry exactly one rho contract",
             [
                 ("field", "evidence_request.contracts"),
-                ("count", template.contracts.len().to_string()),
+                ("count", count.as_str()),
             ],
         ));
     }
@@ -1321,6 +1322,44 @@ fn canonical_address_evidence_request(
     })
 }
 
+fn canonical_address_bundle_evidence_request(
+    bridge: &GeoAddressParcelBridge,
+    request: &GeoEvidenceCompilationRequest,
+) -> Result<GeoEvidenceCompilationRequest, GeoAddressError> {
+    if bridge.status == GeoAddressParcelBridgeStatus::DiagnosticAbstention {
+        return Err(GeoAddressError::invalid_input(
+            "diagnostic address parcel evidence bundles cannot carry a compile request",
+            [("field", "evidence_request")],
+        ));
+    }
+    let bridge_observation = bridge.observation.as_ref().ok_or_else(|| {
+        GeoAddressError::invalid_input(
+            "address bundle bridge must carry an observation when evidence_request is present",
+            [("field", "bridge.observation")],
+        )
+    })?;
+    if request.observations.len() != 1 {
+        let count = request.observations.len().to_string();
+        return Err(GeoAddressError::invalid_input(
+            "address bundle evidence request must carry exactly one bridge observation",
+            [
+                ("field", "evidence_request.observations"),
+                ("count", count.as_str()),
+            ],
+        ));
+    }
+    validate_address_template_contracts(request, bridge_observation.contract_id.as_str())?;
+    validate_address_observation_matches_bridge(bridge, &request.observations[0])?;
+
+    let canonical_request = canonical_address_evidence_request(request)?;
+    validate_address_template_contracts(
+        &canonical_request,
+        bridge_observation.contract_id.as_str(),
+    )?;
+    validate_address_observation_matches_bridge(bridge, &canonical_request.observations[0])?;
+    Ok(canonical_request)
+}
+
 fn address_evidence_error(error: GeoEvidenceError) -> GeoAddressError {
     let mut detail = error.detail;
     detail.insert(
@@ -1365,8 +1404,11 @@ pub fn canonical_address_parcel_evidence_bundle_bytes(
                     [("serde", error.to_string())],
                 )
             })?;
-    if let Some(evidence_request) = &canonical.evidence_request {
-        canonical.evidence_request = Some(canonical_address_evidence_request(evidence_request)?);
+    if let Some(evidence_request) = canonical.evidence_request.take() {
+        canonical.evidence_request = Some(canonical_address_bundle_evidence_request(
+            &canonical.bridge,
+            &evidence_request,
+        )?);
     }
     serde_json::to_vec(&canonical).map_err(|error| {
         GeoAddressError::invalid_input(
