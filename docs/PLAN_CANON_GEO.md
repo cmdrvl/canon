@@ -1313,6 +1313,29 @@ candidate parcels, forced set, ambiguous set, conflicting source records, all ov
 which is both the reviewer surface and the sales artifact. Third, solver input through the
 kinds above, only after the observer's error is characterized on a named population.
 
+**Frozen decision 2026-09-02: how a characterized observer band becomes hard evidence.**
+The shipped compiler (`src/geo/evidence.rs`) admits every observation under an
+`EmpiricalCalibration` contract as `DiagnosticOnly`, unconditionally; only
+`LogicalRelaxation` contracts produce hard constraints. That is correct for the illustrative
+office NRA band (§16.3 row 6) and wrong for an observer whose error is characterized on a
+named population, because §18.4 admits such observations through `rho`. The resolution is
+one additive compiler change owned by PK-D6a, and it is the single permitted exception to
+C25: `GeoRhoBasis::EmpiricalCalibration` gains an optional `admissible_hard_band: bool`
+(serde default `false`), and the compiler emits the hard `IntegerSumBand` for such an
+observation only when the flag is `true` and `population_id`, `calibration_blake3`, and
+`falsification_rule_id` are all nonempty; otherwise the disposition stays `DiagnosticOnly`
+with reason code `rho_band_not_admissible`. Every existing fixture and test is unchanged
+because the default is `false`. Relabeling an observer band as `LogicalRelaxation` to get it
+admitted is forbidden (it lies about soundness, §3.1). Narrowing the composition request
+after compilation to bypass the compiler is forbidden (it defeats the one-to-one
+observation-to-constraint parity check that `solve` performs). PK-D6a ships the change with
+its own test row (T68: the flag `false` on a complete contract yields `DiagnosticOnly` with
+`rho_band_not_admissible`; `true` with an empty `calibration_blake3` refuses
+`invalid_input` naming the field; `true` and complete yields exactly one hard band whose
+generated id is the `rho:` id of the observation) and the `GeoEvidenceCompilationArtifact`
+digest of the D1 residuals is re-recorded when D6 lands, as C25 requires for any change to
+`evidence.rs`.
+
 **What stays forbidden.** A screenshot of a commercial basemap; a model answering "the
 property is here"; any observer whose output is re-generated at replay; any imagery
 observation admitted without a characterized error population.
@@ -1424,6 +1447,18 @@ carries the generic `UnsupportedVersion`, `InvalidInput`, `BudgetExceeded`,
 `version: String` constant `CANON_GEO_<NAME>_VERSION`, `canonical_<name>_bytes`, and
 `validate_<name>_artifact`. Each module ships `schemas/canon.geo.<name>.v0.schema.json`, a
 `--describe` entry, a `canon geo <subcommand>`, and `tests/geo_<module>.rs`.
+
+**Touch list for a new subcommand (verified against the tree 2026-09-02).** Adding a
+`canon geo <subcommand>` touches exactly six places: the clap variant in
+`src/cli.rs` (`GeoSubcommand`, near line 183); the dispatch arm in `src/geo/cli.rs`; the
+describe row in `operator.json` (included by `src/lib.rs` via `include_str!`; there is no
+row in `src/operator.rs`, which holds only `COMMAND_SAFETY_DECLARATIONS`); the capability
+row in `default_geo_capabilities` in `src/geo/control.rs` (its count is asserted by
+`tests/geo_demo.rs`); the contract ids in `tests/fixtures/canon_v1/contract_inventory.json`
+(enforced by `tests/canon_v1_contract_inventory.rs`); and the schema test in
+`tests/geo_schemas.rs`. `canon geo inspect` is additionally hard-listed as
+`planned_not_implemented` in `src/geo/control.rs` and asserted unavailable by
+`tests/geo_demo.rs`; PK-D4c flips both.
 
 | Module | Stage | Responsibility | Contract ids |
 |---|---|---|---|
@@ -1854,7 +1889,7 @@ that catches it. Numbering is stable; add rows at the end.
 | C22 | Every artifact type declares `CANON_GEO_<NAME>_VERSION`, `canonical_<name>_bytes`, `validate_<name>_artifact`, and a `schemas/canon.geo.<name>.v0.schema.json`; canonical bytes are byte-identical across platforms | all §19.3 modules | N02, §19.3 shared shape |
 | C23 | Artifacts built from `tests/fixtures/geo/` or `scripts/geo_demo/` inputs carry `source_dataset` pins beginning `fixture.` and are never read by a G-gate test or cited as a measurement | all §19.3 modules | N07 |
 | C24 | Gate thresholds (`frozen_e4_h7_gate()` and the G0 to G9 conditions in §19.5) live in tests and this document; code under `src/` cannot move them, and a gate passes only by meeting it | `tests/geo_adjudication.rs`, §19.5 | N11 |
-| C25 | D2 to D6 do not modify `src/geo/composition.rs` or `src/geo/evidence.rs`; new modules call `solve_composition` as a black box, and generic modules carry no fixture, demo, or county literal | all §19.3 modules | §19.3 dependency direction, G7 |
+| C25 | D2 to D6 do not modify `src/geo/composition.rs` or `src/geo/evidence.rs`, with exactly one exception: PK-D6a's additive `admissible_hard_band` flag on `GeoRhoBasis::EmpiricalCalibration` (§18.4 frozen decision 2026-09-02, T68), after which the D1 residual digests are re-recorded; new modules call `solve_composition` as a black box, and generic modules carry no fixture, demo, or county literal | all §19.3 modules | §19.3 dependency direction, G7 |
 
 **Threats**
 
