@@ -1506,7 +1506,7 @@ fn composite_blocking_policy() -> RecordLinkBlockingPolicy {
             components: vec![
                 RecordLinkBlockingComponent::FixedDecimalBucket {
                     feature_id: "cmp:amount".to_string(),
-                    units: "basis_points".to_string(),
+                    units: "usd".to_string(),
                     scale: 2,
                     bucket_width_scaled_units: 1,
                 },
