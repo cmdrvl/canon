@@ -74,6 +74,28 @@ runs. The 45-second bd-158y full export cancellation
 number-support exploration `01c6ce1c-0821-b991-006c-c703089ac006` are both
 explicitly non-positive evidence.
 
+## 2026-09-02 D4 E1 point-population denominators
+
+`e1_gross_class_points.sql` and `e1_condo_points.sql` regenerate the retained
+D4 fixture populations used as the G4 denominators. They are fixture selection
+queries, not recovery-rate measurements: the committed artifacts in
+`tests/fixtures/geo/` carry `source_dataset` pins beginning `fixture.` and bind
+to these SQL files through `selection_query_sha256`.
+
+The gross-class pull `01c6ce57-0821-c675-006c-c703089a835a` emitted 40 rows.
+The condo pull `01c6ce59-0821-c675-006c-c703089a835e` emitted 31 rows, with 10
+rows where `billing_equals_pip` is true. A separate PAD/SND street-absence
+refuter replay over both cached result sets emitted 71 rows with
+`refuter_fired=false` for every retained point; one gross point had no parsed
+input street and all other points had their parsed street present in PAD/SND.
+The broader combined classifier run timed out and is discarded as non-positive
+evidence.
+
+| Population | SQL SHA-256 | Rows | Pinned fixture |
+|---|---|---:|---|
+| `e1.gross_class.40` | `85ee2cede2502bcec22806675f4788e4a5e53d76a002b7db5f592a62331e01b3` | 40 | `tests/fixtures/geo/e1_gross_class_points.json` |
+| `e1.condo.31` | `5a45bf56048bbd0d4a885b492e0209cbdafe01c81d8c3b4af400a10f5e088395` | 31 | `tests/fixtures/geo/e1_condo_points.json` |
+
 ## 2026-08-31 E5 Franklin County thin-tier preflight
 
 `e5_franklin_county_thin_tier_readiness.sql` is the content-bound 2026-08-31

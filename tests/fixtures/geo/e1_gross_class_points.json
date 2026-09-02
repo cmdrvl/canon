@@ -1,0 +1,435 @@
+{
+  "version": "canon_geo_point_population.v0",
+  "population_id": "e1.gross_class.40",
+  "source_dataset": "fixture.e1.gross_class",
+  "selection_query_sha256": "85ee2cede2502bcec22806675f4788e4a5e53d76a002b7db5f592a62331e01b3",
+  "release_pins": [
+    {
+      "source_dataset": "nyc_acris_real_property",
+      "source_release": "2026-08-10",
+      "release_dt": "2026-08-10",
+      "role": "truth_instrument"
+    },
+    {
+      "source_dataset": "nyc_dcp_mappluto",
+      "source_release": "26v1",
+      "release_dt": "2026-05-01",
+      "role": "pip_geometry",
+      "variant": "shoreline_clipped"
+    },
+    {
+      "source_dataset": "nyc_dcp_pad",
+      "source_release": "26B",
+      "release_dt": "2026-05-01",
+      "role": "street_absence_refuter"
+    },
+    {
+      "source_dataset": "wrgl_edgar_cmbs_geocodes_structured",
+      "source_release": "asof_le_2026-08-01",
+      "release_dt": "2026-08-01",
+      "role": "landed_geocode"
+    }
+  ],
+  "points": [
+    {
+      "point_id": "e1.gross_class.0001",
+      "subject_id": "CREP-304D4ADA5A4319C1",
+      "loan_key": "6bb39235c6740cd1b7dc3ccd476bd6f6",
+      "asserted_address_blake3": "6e55dbde5a19633f6c0e3475d77a94e5d670260d15a3d5c739638135c7aa928d",
+      "landed_geocode": {"lon_e7": -739648020, "lat_e7": 405760240, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2026-08-01"},
+      "home_cell_r9": "892a1074103ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0002",
+      "subject_id": "CREP-87C0C73E67A4F2FC",
+      "loan_key": "50c77a0a8de036f17cc397aaf29907ae",
+      "asserted_address_blake3": "d88cf1a840718ae2a624cdb9c94f7de77c0f936d9ac71857eebd9ca35ddfe456",
+      "landed_geocode": {"lon_e7": -738485190, "lat_e7": 405777780, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a1039e0fffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0003",
+      "subject_id": "CREP-E5420ED9EC1E5CD4",
+      "loan_key": "18efbb2e989244df08aa705df25a339e",
+      "asserted_address_blake3": "d1807cd8316ca3ad9bbb5d1d88a0f9075aab962110b4b3e0f1c3e781cfc18fe5",
+      "landed_geocode": {"lon_e7": -739845790, "lat_e7": 405866720, "accuracy_type": "nearest_rooftop_match", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a107402bffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0004",
+      "subject_id": "CREP-DF9B12E0C678D28A",
+      "loan_key": "4bcaa4cb760a83255fab4d33ee6512ec",
+      "asserted_address_blake3": "cf53b357678d8b754455304ef0ea18e6de5205714d9b6aa96a5e0b2f7309afc4",
+      "landed_geocode": {"lon_e7": -739501910, "lat_e7": 405992280, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a1074513ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0005",
+      "subject_id": "CREP-FE51F87229E34184",
+      "loan_key": "1d2d81cfcdd5aa39f8bc587fec15c486",
+      "asserted_address_blake3": "d48b6b40d73b047bb3731c6011588c1de6163372e2296fd148ac19b2189efc7f",
+      "landed_geocode": {"lon_e7": -740347140, "lat_e7": 406153770, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a1075553ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0006",
+      "subject_id": "CREP-5A42F6A871503662",
+      "loan_key": "bde685d353e57bd1d15fcc253e5e6134",
+      "asserted_address_blake3": "7d26239d5c843d3801610a409d9aa9e16f1f57af23915a5faf05de967bcdfd43",
+      "landed_geocode": {"lon_e7": -739573550, "lat_e7": 406441340, "accuracy_type": "nearest_rooftop_match", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a10775a7ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0007",
+      "subject_id": "CREP-8A0333B26E9744E9",
+      "loan_key": "e3e715acfeb4eea43cde5441482133d2",
+      "asserted_address_blake3": "e1048c550c91e56740f67a52f99fb09b50374471561537672e89063e46925a12",
+      "landed_geocode": {"lon_e7": -739443050, "lat_e7": 406480670, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a1076673ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0008",
+      "subject_id": "CREP-149011F05982AAAA",
+      "loan_key": "7c66de27d4aabfb64eb13b8cc46a6a60",
+      "asserted_address_blake3": "85aaa7c4704d141930ea9b8d5034ef13e6cac7d8cc5521d67fa8ac5bc2bb63f2",
+      "landed_geocode": {"lon_e7": -739525370, "lat_e7": 406497870, "accuracy_type": "nearest_rooftop_match", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a107664fffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0009",
+      "subject_id": "CREP-294E3B9C1BE2E241",
+      "loan_key": "f6bd90a1d0c61b6d9ad6bc16d1a078e7",
+      "asserted_address_blake3": "5d4b7d48ee5a8f40b7a921ef7678a9f269626ea362392e25608a57406d709620",
+      "landed_geocode": {"lon_e7": -739394010, "lat_e7": 406799580, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100d823ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0010",
+      "subject_id": "CREP-0C4FAF24886F3A14",
+      "loan_key": "50c77a0a8de036f17cc397aaf29907ae",
+      "asserted_address_blake3": "e066060bc57e0e9fd2eb402cac62e5906785c7110ad7449ac95c3ad7b8e54917",
+      "landed_geocode": {"lon_e7": -739619200, "lat_e7": 406930390, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100da83ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0011",
+      "subject_id": "CREP-3AB624B8DCA33DD9",
+      "loan_key": "30ca3bc108b7d63984900f9186a742d3",
+      "asserted_address_blake3": "7a239002844200285b3bcb0953fa3334e46d4a6069fa503238307ff35982317a",
+      "landed_geocode": {"lon_e7": -739138560, "lat_e7": 407004050, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100dca7ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0012",
+      "subject_id": "CREP-E22D0E928B492475",
+      "loan_key": "30ca3bc108b7d63984900f9186a742d3",
+      "asserted_address_blake3": "4d9169548471fb6c51284f53ff4c8e017709f6f5971a48c4ea6834f5bc8245f8",
+      "landed_geocode": {"lon_e7": -739143880, "lat_e7": 407007370, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100dca7ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0013",
+      "subject_id": "CREP-48BF9EDCC2F1C90C",
+      "loan_key": "5d95013941a87d3d9ec6e5615c16329a",
+      "asserted_address_blake3": "ad6553a94a8dd10758b3ca6fd71c187f5cb7697afeadc0b6c4de294704395e64",
+      "landed_geocode": {"lon_e7": -738096050, "lat_e7": 407012650, "accuracy_type": "place", "source_attribution": "TIGER/Line\u00ae dataset from the US Census Bureau", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100e82bffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0014",
+      "subject_id": "CREP-A19E77E1164E02B6",
+      "loan_key": "fb62e60a4eca859c6ad4153dfee508c6",
+      "asserted_address_blake3": "04c265b2a198d4af402b42847e1d0d15d73771eea19a68530c8ce699e829265f",
+      "landed_geocode": {"lon_e7": -740023600, "lat_e7": 407199290, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a1072c0fffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0015",
+      "subject_id": "CREP-7A0CD3003A52EEFD",
+      "loan_key": "fb62e60a4eca859c6ad4153dfee508c6",
+      "asserted_address_blake3": "866ec6d174fcc347d587cd6a12de4ae277b1b7d6792e7edd19a732e15d06ada8",
+      "landed_geocode": {"lon_e7": -740020530, "lat_e7": 407208780, "accuracy_type": "street_center", "source_attribution": "TIGER/Line\u00ae dataset from the US Census Bureau", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a1072c0fffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0016",
+      "subject_id": "CREP-57E92F79B7C50574",
+      "loan_key": "2e7867b5a4ad7830d529de5cf7986e42",
+      "asserted_address_blake3": "e5cebc7d2f84662e3221c78f213071d677c7483f2ab64fd441eecf07d6e3a77e",
+      "landed_geocode": {"lon_e7": -740033310, "lat_e7": 407231240, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2026-08-01"},
+      "home_cell_r9": "892a1072c03ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0017",
+      "subject_id": "CREP-F02529A43E9F00F2",
+      "loan_key": "f16cff34bed281b8d9e404795b2e5c95",
+      "asserted_address_blake3": "768f4d91218a41c992d8718e2ea198517cd7f65114b548c3b859d65a785c34a9",
+      "landed_geocode": {"lon_e7": -739546490, "lat_e7": 407265530, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100d143ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0018",
+      "subject_id": "CREP-D8ACED6D8E052B31",
+      "loan_key": "be85453d3d81c6aab3dbae8a79da3451",
+      "asserted_address_blake3": "1d4faa620253af47729b08c191d1f33fef8c8e03aee2d9e1041643bfed7a860a",
+      "landed_geocode": {"lon_e7": -739539310, "lat_e7": 407297210, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100d15bffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0019",
+      "subject_id": "CREP-9F200A2B235F53D6",
+      "loan_key": "637fe707ad92c2693b3c181a3e3ac545",
+      "asserted_address_blake3": "4c64e94c9701cff99d8d0fa6664c041fd564d7bf14aeb256d047104cd89c4c99",
+      "landed_geocode": {"lon_e7": -739957760, "lat_e7": 407333580, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100d267ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0020",
+      "subject_id": "CREP-81BB11481F84EE2C",
+      "loan_key": "6fd247a68e1b82794833c343586ecb90",
+      "asserted_address_blake3": "0efa4612e604092e06daf96d26a6792c95c8683a5761039dbf2d2111f5af2728",
+      "landed_geocode": {"lon_e7": -739195160, "lat_e7": 407444460, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-03-01"},
+      "home_cell_r9": "892a100d5bbffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0021",
+      "subject_id": "CREP-5F8AE5E0FA6B5506",
+      "loan_key": "6bfe47de21ff7d7e24bf6464871dea9f",
+      "asserted_address_blake3": "4190056fa462dfc2e5fa886bdc0685f0e955ac7bb579f08132deac445c31aa53",
+      "landed_geocode": {"lon_e7": -739830080, "lat_e7": 407451050, "accuracy_type": "nearest_rooftop_match", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100d28fffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0022",
+      "subject_id": "CREP-6AB181363BFF721C",
+      "loan_key": "a89343223f12351e8cc666345560b9a8",
+      "asserted_address_blake3": "fccff214d5a7217dd8a4dea1698d99692d1d9b1b8ec8f1adfbaaea44f8d634ff",
+      "landed_geocode": {"lon_e7": -738832690, "lat_e7": 407515810, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100f12fffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0023",
+      "subject_id": "CREP-8AA2FA03686431D2",
+      "loan_key": "a637e26b0bbc38837d9d4c28e91d416f",
+      "asserted_address_blake3": "0026d30e2e3b6d51149c81e2eae5d8e9af3efba1f5c832b72e7b1ef631e900a8",
+      "landed_geocode": {"lon_e7": -738848240, "lat_e7": 407536070, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100f12fffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0024",
+      "subject_id": "CREP-AC92579628829D9E",
+      "loan_key": "779ada62f323adebd52d24256e87c42d",
+      "asserted_address_blake3": "88a7d28d94da6ddfcf280365706610bb7e48c9822c152a221aa551beb236fdb6",
+      "landed_geocode": {"lon_e7": -738178470, "lat_e7": 407591040, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100e033ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0025",
+      "subject_id": "CREP-9B12A4A6F524DDCA",
+      "loan_key": "99f550eee2d1ea475537c135f6148b11",
+      "asserted_address_blake3": "e715a787c8000a5c64deaa6bdd22c9627093146c754fd8705267d40480b4820d",
+      "landed_geocode": {"lon_e7": -739660160, "lat_e7": 407606040, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100d6bbffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0026",
+      "subject_id": "CREP-36E58138A2A26BEF",
+      "loan_key": "03bd6eca437fd7bd7b14f5b92bd83706",
+      "asserted_address_blake3": "3d19c86d11b75c516fca6cf9fce0eaa6baa227985382b316c271f55e97cff7c4",
+      "landed_geocode": {"lon_e7": -739832970, "lat_e7": 407644900, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100d643ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0027",
+      "subject_id": "CREP-72B09015E9790A34",
+      "loan_key": "e3efa8df92e241f648567d6286575408",
+      "asserted_address_blake3": "3311a918090ce3946ef992f4357cea65550130c5dd49ffe7f5de2f984974908c",
+      "landed_geocode": {"lon_e7": -739268240, "lat_e7": 407652750, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100f34bffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0028",
+      "subject_id": "CREP-BDF3C196D6279FD2",
+      "loan_key": "64ea8c1b981bca61de390d72faf7aba8",
+      "asserted_address_blake3": "14dfc06e244b6e40f06384c72537e144f19fa343f90fb23786774c292ff435a2",
+      "landed_geocode": {"lon_e7": -737333150, "lat_e7": 407699420, "accuracy_type": "nearest_rooftop_match", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a1005413ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0029",
+      "subject_id": "CREP-095F91DD7869942A",
+      "loan_key": "64ea8c1b981bca61de390d72faf7aba8",
+      "asserted_address_blake3": "41bedaa2d70120bc1710d37b36898e3ad9a0f2a8af03970f846a9db352f7df67",
+      "landed_geocode": {"lon_e7": -737327460, "lat_e7": 407700820, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2026-08-01"},
+      "home_cell_r9": "892a1005413ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0030",
+      "subject_id": "CREP-A33C7ED25C0D0B99",
+      "loan_key": "e7b0bdb8eeb55cb44e166d9da0314030",
+      "asserted_address_blake3": "3516bab892ed25af878b868fb10a69bcc6f28f5c229ac80dc33b6cb6db651685",
+      "landed_geocode": {"lon_e7": -739834210, "lat_e7": 407757950, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2026-07-01"},
+      "home_cell_r9": "892a1008babffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0031",
+      "subject_id": "CREP-6BB289A089F06B92",
+      "loan_key": "0420d1cc30cdb6bfa00a5c7b2c70d4cc",
+      "asserted_address_blake3": "27d4a93c39098cc9f1687adc43937512f4d9e22c7664720dae935ef62aaaad42",
+      "landed_geocode": {"lon_e7": -739609540, "lat_e7": 407782670, "accuracy_type": "nearest_rooftop_match", "source_attribution": "City of New York", "geocode_asof": "2025-03-01"},
+      "home_cell_r9": "892a100890fffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0032",
+      "subject_id": "CREP-39CEE5FAD2C0C438",
+      "loan_key": "130572d0e1e3aa9cd4b3eb211ff3eb4b",
+      "asserted_address_blake3": "1133e8cc5053329db352f02612ede95d8d3fa605291cb00e85bbde4cfcb397c4",
+      "landed_geocode": {"lon_e7": -739543280, "lat_e7": 407830270, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100898fffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0033",
+      "subject_id": "CREP-EC9C875E07D56ECB",
+      "loan_key": "360b8f4c91c377a95c88934a141eeeea",
+      "asserted_address_blake3": "b86d8c07fa28fa09a27b415f433114ba64aedb18db36aecbfa8b9db4d431a42f",
+      "landed_geocode": {"lon_e7": -739675030, "lat_e7": 407904340, "accuracy_type": "nearest_rooftop_match", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a1008837ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0034",
+      "subject_id": "CREP-A992E1C91497E02A",
+      "loan_key": "ad329abfee3752eb30ba71c4866a1da2",
+      "asserted_address_blake3": "7622ee552a9a2422ecfdb6e9aeea12a71130bb6998f1ceb81c0772553be62831",
+      "landed_geocode": {"lon_e7": -739757260, "lat_e7": 407928630, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100883bffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0035",
+      "subject_id": "CREP-8B66E79B1F77EC1C",
+      "loan_key": "5e2fd8ff40fad18bdecd88f4b133858d",
+      "asserted_address_blake3": "3947113b608e5fa0d1362085ea27042b6673ed7d7e1d231d525631a3fccce84b",
+      "landed_geocode": {"lon_e7": -738606790, "lat_e7": 408345330, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a1001e73ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0036",
+      "subject_id": "CREP-283B7D8ADB72438B",
+      "loan_key": "657c2d9d183ccde6698b0301738d547b",
+      "asserted_address_blake3": "95cf626603a44e7aef674dfa1f5b115b6e838815fa3b07cd4bbb94c5d2d6625d",
+      "landed_geocode": {"lon_e7": -738606800, "lat_e7": 408345410, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2026-08-01"},
+      "home_cell_r9": "892a1001e73ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0037",
+      "subject_id": "CREP-DC17CC24C383AB18",
+      "loan_key": "102b16a12cad411770b4aae7ebb7fdd9",
+      "asserted_address_blake3": "d12dd86293a823e94793fa5562d559d24e8819908be19620316358541cce1524",
+      "landed_geocode": {"lon_e7": -739034520, "lat_e7": 408699550, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100a1b7ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0038",
+      "subject_id": "CREP-37EE34B1C85E26F7",
+      "loan_key": "f02834d6d2f14bbb777ea79d95f60dc0",
+      "asserted_address_blake3": "718e68b7e6884802a2a24b3dde095b6907c0a2940ab53c9ec3ff5249acdd8a8c",
+      "landed_geocode": {"lon_e7": -739013740, "lat_e7": 408713880, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-07-01"},
+      "home_cell_r9": "892a100a1b7ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0039",
+      "subject_id": "CREP-A01F96D4AD0C85B2",
+      "loan_key": "6a5340c5112318b6acbd4c1edd0b6b83",
+      "asserted_address_blake3": "31813eb56ba6faca0d96395518278a4ceefcd53f616c277ca152a3341c8b2cfc",
+      "landed_geocode": {"lon_e7": -738604470, "lat_e7": 408792470, "accuracy_type": "street_center", "source_attribution": "TIGER/Line\u00ae dataset from the US Census Bureau", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a10010cfffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    },
+    {
+      "point_id": "e1.gross_class.0040",
+      "subject_id": "CREP-0D2DD9440F503852",
+      "loan_key": "c2d15c8d39156334e478ec6ed3d9cfbc",
+      "asserted_address_blake3": "035dbe6a795b67e763c53c092a5aa6f4e0508105ea43a23c92f46c486d199003",
+      "landed_geocode": {"lon_e7": -739216050, "lat_e7": 408817820, "accuracy_type": "rooftop", "source_attribution": "City of New York", "geocode_asof": "2025-01-01"},
+      "home_cell_r9": "892a100a1c3ffff",
+      "refuter_fired": false,
+      "e1_failure_class": "gross"
+    }
+  ]
+}

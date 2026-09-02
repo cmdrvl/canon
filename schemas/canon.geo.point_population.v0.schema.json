@@ -1,0 +1,188 @@
+{
+  "$id": "https://cmdrvl.com/schemas/canon.geo.point_population.v0.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "canon.geo.point_population.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "canon_geo_point_population.v0",
+      "type": "string"
+    },
+    "population_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_dataset": {
+      "type": "string",
+      "pattern": "^fixture\\."
+    },
+    "selection_query_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "release_pins": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/release_pin" }
+    },
+    "points": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/point" }
+    }
+  },
+  "required": [
+    "version",
+    "population_id",
+    "source_dataset",
+    "selection_query_sha256",
+    "release_pins",
+    "points"
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "blake3": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "bbl": {
+      "type": "string",
+      "pattern": "^[1-5][0-9]{9}$"
+    },
+    "block": {
+      "type": "string",
+      "pattern": "^[1-5][0-9]{5}$"
+    },
+    "h3_r9": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{15}$"
+    },
+    "release_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_dataset": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_release": {
+          "type": "string",
+          "minLength": 1
+        },
+        "release_dt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "variant": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["source_dataset", "source_release", "release_dt", "role"]
+    },
+    "landed_geocode": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lon_e7": {
+          "type": "integer",
+          "minimum": -743000000,
+          "maximum": -736500000
+        },
+        "lat_e7": {
+          "type": "integer",
+          "minimum": 404500000,
+          "maximum": 410000000
+        },
+        "accuracy_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_attribution": {
+          "type": "string",
+          "minLength": 1
+        },
+        "geocode_asof": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "lon_e7",
+        "lat_e7",
+        "accuracy_type",
+        "source_attribution",
+        "geocode_asof"
+      ]
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "point_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "loan_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "asserted_address_blake3": {
+          "$ref": "#/$defs/blake3"
+        },
+        "landed_geocode": {
+          "$ref": "#/$defs/landed_geocode"
+        },
+        "home_cell_r9": {
+          "$ref": "#/$defs/h3_r9"
+        },
+        "refuter_fired": {
+          "type": "boolean"
+        },
+        "e1_failure_class": {
+          "type": "string",
+          "enum": ["gross", "condo"]
+        },
+        "pip_lot_bbl": {
+          "$ref": "#/$defs/bbl"
+        },
+        "pad_billing_bbl_candidates": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/bbl" }
+        },
+        "pad_unit_bbl": {
+          "$ref": "#/$defs/bbl"
+        },
+        "block": {
+          "$ref": "#/$defs/block"
+        },
+        "billing_equals_pip": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "point_id",
+        "subject_id",
+        "loan_key",
+        "asserted_address_blake3",
+        "landed_geocode",
+        "home_cell_r9",
+        "refuter_fired",
+        "e1_failure_class"
+      ]
+    }
+  }
+}

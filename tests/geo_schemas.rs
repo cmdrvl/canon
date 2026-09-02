@@ -42,7 +42,7 @@ use canon::geo::{
     CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION, CANON_GEO_HOME_CELL_ROWS_VERSION,
     CANON_GEO_LOCAL_FRAME_VERSION, CANON_GEO_MULTISOURCE_REQUEST_VERSION,
     CANON_GEO_PAD_ADDRESS_SET_VERSION, CANON_GEO_PAD_MEMBERSHIP_VERSION,
-    CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
+    CANON_GEO_POINT_POPULATION_VERSION, CANON_GEO_POPULATION_EVIDENCE_STACK_REQUEST_VERSION,
     CANON_GEO_POPULATION_EVIDENCE_STACK_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
     CANON_GEO_QUESTION_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
     CANON_GEO_RESOURCE_BUDGET_VERSION, CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION,
@@ -67,16 +67,17 @@ use canon::geo::{
     GeoIdentityParticipation, GeoLabeledCompositionCase, GeoLicenseClass, GeoLocalAcquisitionState,
     GeoLocalArtifactRef, GeoLocalFrameContract, GeoMultisourceRequest, GeoMultisourceSource,
     GeoNativeEntityScope, GeoNumericBound, GeoNumericMeasure, GeoNycBorough, GeoPadAddressMember,
-    GeoPadAddressSet, GeoPlanInventoryRef, GeoPopulationCaseEvidenceOverlay,
-    GeoPopulationEvaluationRequest, GeoPopulationEvidenceStackRequest, GeoProjectionProvenance,
-    GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance, GeoRequestedGrain,
-    GeoResourceBudget, GeoResourceCounter, GeoRhoBasis, GeoRhoContract, GeoRhoObservation,
-    GeoRhoObservationKind, GeoSourceAvailability, GeoSourceAxisDomain, GeoSourceGeometry,
-    GeoSourcePointDecimal, GeoSourcePointFixed, GeoSourceRelease, GeoStreetDirection,
-    GeoStreetSuffix, GeoSubjectBinding, GeoSubjectBindingClass, GeoTelemetryDeclaration,
-    GeoTelemetryMetric, GeoTelemetrySemanticEffect, GeoTemporalScope,
-    GeoTileCandidateReachReference, GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch,
-    GeoTileDecisionMember, GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
+    GeoPadAddressSet, GeoPlanInventoryRef, GeoPointPopulationArtifact,
+    GeoPopulationCaseEvidenceOverlay, GeoPopulationEvaluationRequest,
+    GeoPopulationEvidenceStackRequest, GeoProjectionProvenance, GeoQuestion, GeoRegionalInventory,
+    GeoRegionalSourceInstance, GeoRequestedGrain, GeoResourceBudget, GeoResourceCounter,
+    GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoSourceAvailability,
+    GeoSourceAxisDomain, GeoSourceGeometry, GeoSourcePointDecimal, GeoSourcePointFixed,
+    GeoSourceRelease, GeoStreetDirection, GeoStreetSuffix, GeoSubjectBinding,
+    GeoSubjectBindingClass, GeoTelemetryDeclaration, GeoTelemetryMetric,
+    GeoTelemetrySemanticEffect, GeoTemporalScope, GeoTileCandidateReachReference,
+    GeoTileCandidateReachReferenceKind, GeoTileDecisionBatch, GeoTileDecisionMember,
+    GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileFeatureRef,
     GeoTileReconciliationArtifact, GeoTileReconciliationRequest, GeoTileSourceBinding,
     GeoTileWorkRequest, GeoTileWorkUnitArtifact, GeoTruthPlane, GeoValueOrigin,
     GeoWarehouseEvidenceRow, GeoWarehouseGeometryRow, GeoWarehouseGeometryRowsRequest,
@@ -85,7 +86,7 @@ use canon::geo::{
     materialize_geo_multisource, materialize_geometry_tile, materialize_h7_population_rows,
     materialize_home_cells, materialize_tile_work_unit, materialize_warehouse_geometry,
     parse_address_forest, reconcile_tile_decisions, regional_inventory_semantic_hash,
-    solve_composition, stack_population_evidence,
+    solve_composition, stack_population_evidence, validate_point_population_artifact,
 };
 use h3o::{LatLng, Resolution};
 use serde_json::Value;
@@ -103,6 +104,8 @@ const POPULATION_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_request.v0.schema.json");
 const POPULATION_EVALUATION_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_evaluation.v0.schema.json");
+const POINT_POPULATION_SCHEMA: &str =
+    include_str!("../schemas/canon.geo.point_population.v0.schema.json");
 const POPULATION_EVIDENCE_STACK_REQUEST_SCHEMA: &str =
     include_str!("../schemas/canon.geo.population_evidence_stack_request.v0.schema.json");
 const POPULATION_EVIDENCE_STACK_SCHEMA: &str =
@@ -2637,6 +2640,41 @@ fn population_request_schema_matches_runtime_max_cases_boundary() {
             .and_then(Value::as_u64),
         Some(1),
         "schema must reject max_cases=0 because the evaluator rejects it"
+    );
+}
+
+#[test]
+fn point_population_schema_matches_a_real_instance() {
+    let artifact: GeoPointPopulationArtifact =
+        serde_json::from_str(include_str!("fixtures/geo/e1_gross_class_points.json"))
+            .expect("point population fixture parses");
+    validate_point_population_artifact(&artifact).expect("point population fixture validates");
+    let instance = serde_json::to_value(&artifact).expect("point population serializes");
+    assert_drift_free(
+        POINT_POPULATION_SCHEMA,
+        "canon.geo.point_population.v0",
+        CANON_GEO_POINT_POPULATION_VERSION,
+        &instance,
+    );
+
+    let schema = parsed(POINT_POPULATION_SCHEMA);
+    assert_eq!(
+        schema
+            .pointer("/properties/source_dataset/pattern")
+            .and_then(Value::as_str),
+        Some("^fixture\\.")
+    );
+    assert_eq!(
+        schema
+            .pointer("/$defs/landed_geocode/properties/lon_e7/minimum")
+            .and_then(Value::as_i64),
+        Some(-743000000)
+    );
+    assert_eq!(
+        schema
+            .pointer("/$defs/landed_geocode/properties/lat_e7/maximum")
+            .and_then(Value::as_i64),
+        Some(410000000)
     );
 }
 
