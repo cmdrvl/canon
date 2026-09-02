@@ -17,6 +17,7 @@ use std::{
 pub const GEO_BBL_NORMALIZATION_RULE_ID: &str = "bbl_normalization.v1";
 pub const GEO_DIRECT_ALIAS_RULE_ID: &str = "geo_direct_alias.v1";
 pub const GEO_PROPERTY_ASSERTION_RULE_ID: &str = "geo_property_document_assertion.v1";
+pub const CANON_GEO_REGISTRY_PROPOSAL_VERSION: &str = "canon_geo_registry_proposal.v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeoIdentifierError {
@@ -71,6 +72,46 @@ pub struct GeoRegistryProposalEntry {
     pub canonical_id: String,
     pub canonical_type: String,
     pub rule_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoRegistryMintProposal {
+    pub version: String,
+    pub source_ledger_blake3: String,
+    pub entries: Vec<GeoRegistryProposalEntry>,
+    pub property_assertions: Vec<GeoPropertyDocumentAssertion>,
+    pub summary: GeoRegistryMintProposalSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoRegistryMintProposalSummary {
+    pub ledger_rows: u64,
+    pub skipped_reach_none_rows: u64,
+    pub unique_parcel_aliases: u64,
+    pub unique_building_aliases: u64,
+    pub property_assertions: u64,
+    pub entries: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoLedgerIdentifierArtifact {
+    #[serde(default)]
+    pub rows: Vec<GeoLedgerIdentifierRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeoLedgerIdentifierRow {
+    pub accession: String,
+    pub deal_id: String,
+    pub loan_id: String,
+    #[serde(default)]
+    pub reach: Option<String>,
+    #[serde(default)]
+    pub reach_none_reason: Option<String>,
+    #[serde(default)]
+    pub parcel_set: Option<Vec<String>>,
+    #[serde(default)]
+    pub building_set: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -195,6 +236,151 @@ pub fn registry_entries_for_clusters(
         }
     }
     Ok(entries.into_values().collect())
+}
+
+pub fn registry_proposal_from_ledger_json(
+    ledger_json: &[u8],
+) -> Result<GeoRegistryMintProposal, GeoIdentifierError> {
+    let artifact =
+        serde_json::from_slice::<GeoLedgerIdentifierArtifact>(ledger_json).map_err(|error| {
+            GeoIdentifierError::invalid_input(
+                "Geo ledger identifier proposal input must be a JSON object with rows",
+                [("serde_error", error.to_string())],
+            )
+        })?;
+    registry_proposal_from_ledger_rows(ledger_json, &artifact.rows)
+}
+
+pub fn registry_proposal_from_ledger_rows(
+    source_ledger_bytes: &[u8],
+    rows: &[GeoLedgerIdentifierRow],
+) -> Result<GeoRegistryMintProposal, GeoIdentifierError> {
+    let mut entries = BTreeMap::<String, GeoRegistryProposalEntry>::new();
+    let mut property_assertions = Vec::new();
+    let mut document_assertions = BTreeSet::<(String, String)>::new();
+    let mut skipped_reach_none_rows = 0_u64;
+    let mut parcel_aliases = BTreeSet::<String>::new();
+    let mut building_aliases = BTreeSet::<String>::new();
+
+    for row in rows {
+        validate_ledger_identifier_row(row)?;
+
+        let reach_none = row
+            .reach
+            .as_deref()
+            .is_some_and(|reach| reach.eq_ignore_ascii_case("none"));
+        let parcel_set = row.parcel_set.as_deref().unwrap_or(&[]);
+        let building_set = row.building_set.as_deref().unwrap_or(&[]);
+
+        if reach_none {
+            if row.reach_none_reason.as_deref().is_none_or(str::is_empty) {
+                return Err(GeoIdentifierError::invalid_input(
+                    "Geo reach-none ledger rows must carry a reason before proposal",
+                    [
+                        ("field", "reach_none_reason".to_string()),
+                        ("loan_id", row.loan_id.clone()),
+                    ],
+                ));
+            }
+            if !parcel_set.is_empty() || !building_set.is_empty() {
+                return Err(GeoIdentifierError::invalid_input(
+                    "Geo reach-none ledger rows must not fabricate identifier sets",
+                    [
+                        ("field", "parcel_set_or_building_set".to_string()),
+                        ("loan_id", row.loan_id.clone()),
+                    ],
+                ));
+            }
+            skipped_reach_none_rows += 1;
+            continue;
+        }
+
+        if parcel_set.is_empty() && building_set.is_empty() {
+            return Err(GeoIdentifierError::invalid_input(
+                "Geo ledger rows need at least one stable member unless reach is none",
+                [("loan_id", row.loan_id.clone())],
+            ));
+        }
+
+        let mut property_parcel_ids = Vec::new();
+        let mut property_building_ids = Vec::new();
+        let parcel_set = sorted_ledger_aliases("parcel_set", GeoEntityLevel::Parcel, parcel_set)?;
+        let building_set =
+            sorted_ledger_aliases("building_set", GeoEntityLevel::Building, building_set)?;
+
+        for alias in &parcel_set {
+            let canonical_id = canonical_id_for_ledger_alias(GeoEntityLevel::Parcel, alias)?;
+            insert_proposal_entry(
+                &mut entries,
+                alias,
+                &canonical_id,
+                "parcel",
+                GEO_DIRECT_ALIAS_RULE_ID,
+            )?;
+            parcel_aliases.insert(alias.clone());
+            property_parcel_ids.push(canonical_id);
+        }
+        for alias in &building_set {
+            let canonical_id = canonical_id_for_ledger_alias(GeoEntityLevel::Building, alias)?;
+            insert_proposal_entry(
+                &mut entries,
+                alias,
+                &canonical_id,
+                "building",
+                GEO_DIRECT_ALIAS_RULE_ID,
+            )?;
+            building_aliases.insert(alias.clone());
+            property_building_ids.push(canonical_id);
+        }
+
+        let document_key = (row.accession.clone(), row.loan_id.clone());
+        if !document_assertions.insert(document_key) {
+            return Err(GeoIdentifierError::invalid_input(
+                "Geo registry proposal contains a duplicate property document assertion",
+                [
+                    ("accession", row.accession.clone()),
+                    ("loan_id", row.loan_id.clone()),
+                ],
+            ));
+        }
+
+        property_parcel_ids.sort();
+        property_building_ids.sort();
+        let property_id = property_id_for_document_assertion(&row.accession, &row.loan_id);
+        let document_alias = format!("cmbs:annexa:{}:{}", row.accession, row.loan_id);
+        insert_proposal_entry(
+            &mut entries,
+            &document_alias,
+            &property_id,
+            "property",
+            GEO_PROPERTY_ASSERTION_RULE_ID,
+        )?;
+        property_assertions.push(GeoPropertyDocumentAssertion {
+            property_id,
+            document_alias,
+            accession: row.accession.clone(),
+            loan_id: row.loan_id.clone(),
+            parcel_ids: property_parcel_ids,
+            building_ids: property_building_ids,
+        });
+    }
+
+    let entries = entries.into_values().collect::<Vec<_>>();
+    let summary = GeoRegistryMintProposalSummary {
+        ledger_rows: rows.len() as u64,
+        skipped_reach_none_rows,
+        unique_parcel_aliases: parcel_aliases.len() as u64,
+        unique_building_aliases: building_aliases.len() as u64,
+        property_assertions: property_assertions.len() as u64,
+        entries: entries.len() as u64,
+    };
+    Ok(GeoRegistryMintProposal {
+        version: CANON_GEO_REGISTRY_PROPOSAL_VERSION.to_string(),
+        source_ledger_blake3: format!("blake3:{}", blake3::hash(source_ledger_bytes).to_hex()),
+        entries,
+        property_assertions,
+        summary,
+    })
 }
 
 pub fn diff_tile_identifier_vintages(
@@ -429,6 +615,150 @@ fn validate_property_assertion(
         }
     }
     Ok(())
+}
+
+fn validate_ledger_identifier_row(row: &GeoLedgerIdentifierRow) -> Result<(), GeoIdentifierError> {
+    validate_identifier("accession", &row.accession)?;
+    validate_identifier("deal_id", &row.deal_id)?;
+    validate_identifier("loan_id", &row.loan_id)?;
+    if let Some(reach) = &row.reach {
+        validate_identifier("reach", reach)?;
+    }
+    if let Some(reason) = &row.reach_none_reason {
+        validate_identifier("reach_none_reason", reason)?;
+    }
+    Ok(())
+}
+
+fn sorted_ledger_aliases(
+    field: &'static str,
+    level: GeoEntityLevel,
+    aliases: &[String],
+) -> Result<BTreeSet<String>, GeoIdentifierError> {
+    let mut out = BTreeSet::new();
+    for alias in aliases {
+        validate_ledger_alias(level, alias)?;
+        if !out.insert(alias.clone()) {
+            return Err(GeoIdentifierError::invalid_input(
+                "Geo ledger identifier set contains a duplicate alias",
+                [("field", field.to_string()), ("alias", alias.clone())],
+            ));
+        }
+    }
+    Ok(out)
+}
+
+fn canonical_id_for_ledger_alias(
+    level: GeoEntityLevel,
+    alias: &str,
+) -> Result<String, GeoIdentifierError> {
+    validate_ledger_alias(level, alias)?;
+    if alias.starts_with(cluster_prefix(level)?) {
+        return Ok(alias.to_string());
+    }
+    let digest_input = format!("{CANON_GEO_REGISTRY_PROPOSAL_VERSION}:{level:?}:{alias}");
+    Ok(format!(
+        "{}{}",
+        cluster_prefix(level)?,
+        blake3::hash(digest_input.as_bytes()).to_hex()
+    ))
+}
+
+fn property_id_for_document_assertion(accession: &str, loan_id: &str) -> String {
+    let digest_input =
+        format!("{CANON_GEO_REGISTRY_PROPOSAL_VERSION}:property:{accession}:{loan_id}");
+    format!(
+        "cmdrvl:property:{}",
+        blake3::hash(digest_input.as_bytes()).to_hex()
+    )
+}
+
+fn insert_proposal_entry(
+    entries: &mut BTreeMap<String, GeoRegistryProposalEntry>,
+    alias: &str,
+    canonical_id: &str,
+    canonical_type: &str,
+    rule_id: &str,
+) -> Result<(), GeoIdentifierError> {
+    let entry = GeoRegistryProposalEntry {
+        alias: alias.to_string(),
+        canonical_id: canonical_id.to_string(),
+        canonical_type: canonical_type.to_string(),
+        rule_id: rule_id.to_string(),
+    };
+    match entries.get(alias) {
+        Some(existing)
+            if existing.canonical_id == entry.canonical_id
+                && existing.canonical_type == entry.canonical_type
+                && existing.rule_id == entry.rule_id =>
+        {
+            Ok(())
+        }
+        Some(existing) => Err(GeoIdentifierError::invalid_input(
+            "Geo registry proposal contains an alias with conflicting bindings",
+            [
+                ("alias", alias.to_string()),
+                ("canonical_id_before", existing.canonical_id.clone()),
+                ("canonical_id_after", entry.canonical_id),
+            ],
+        )),
+        None => {
+            entries.insert(alias.to_string(), entry);
+            Ok(())
+        }
+    }
+}
+
+fn validate_ledger_alias(level: GeoEntityLevel, alias: &str) -> Result<(), GeoIdentifierError> {
+    validate_identifier("ledger_alias", alias)?;
+    if !alias.contains(':') {
+        return Err(GeoIdentifierError::invalid_input(
+            "Geo ledger aliases must be role-namespaced",
+            [("alias", alias.to_string())],
+        ));
+    }
+    if alias.starts_with("cmdrvl:") && !alias.starts_with(cluster_prefix(level)?) {
+        return Err(GeoIdentifierError::invalid_input(
+            "Geo ledger alias entity level conflicts with its set field",
+            [
+                ("field", ledger_set_field(level).to_string()),
+                ("alias", alias.to_string()),
+            ],
+        ));
+    }
+    let wrong_role = match level {
+        GeoEntityLevel::Parcel => alias.starts_with("building:") || alias.contains(":building:"),
+        GeoEntityLevel::Building => alias.starts_with("parcel:") || alias.contains(":parcel:"),
+        GeoEntityLevel::Property | GeoEntityLevel::PoiUnit => false,
+    };
+    if wrong_role {
+        return Err(GeoIdentifierError::invalid_input(
+            "Geo ledger alias entity level conflicts with its set field",
+            [
+                ("field", ledger_set_field(level).to_string()),
+                ("alias", alias.to_string()),
+            ],
+        ));
+    }
+    if alias.starts_with("cmdrvl:property:") {
+        return Err(GeoIdentifierError::invalid_input(
+            "Geo ledger parcel/building sets must not contain property ids",
+            [
+                ("field", ledger_set_field(level).to_string()),
+                ("alias", alias.to_string()),
+            ],
+        ));
+    }
+    Ok(())
+}
+
+fn ledger_set_field(level: GeoEntityLevel) -> &'static str {
+    match level {
+        GeoEntityLevel::Parcel => "parcel_set",
+        GeoEntityLevel::Building => "building_set",
+        GeoEntityLevel::Property => "property_set",
+        GeoEntityLevel::PoiUnit => "poi_unit_set",
+    }
 }
 
 fn typed_members(

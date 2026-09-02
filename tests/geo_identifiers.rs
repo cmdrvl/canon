@@ -1,12 +1,12 @@
 #![forbid(unsafe_code)]
 
+use canon::geo::{compare_property_sets, GeoEntityLevel};
 use canon::geo::{
-    GEO_BBL_NORMALIZATION_RULE_ID, GeoIdentifierCluster, GeoIdentifierErrorCode,
+    diff_tile_identifier_vintages, normalize_nyc_bbl, registry_entries_for_clusters,
+    registry_proposal_from_ledger_json, GeoIdentifierCluster, GeoIdentifierErrorCode,
     GeoIdentifierTombstone, GeoPropertyDocumentAssertion, GeoPropertySetRelation,
-    GeoTileIdentifierVintage, diff_tile_identifier_vintages, normalize_nyc_bbl,
-    registry_entries_for_clusters,
+    GeoTileIdentifierVintage, CANON_GEO_REGISTRY_PROPOSAL_VERSION, GEO_BBL_NORMALIZATION_RULE_ID,
 };
-use canon::geo::{GeoEntityLevel, compare_property_sets};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -366,5 +366,145 @@ fn t57_property_set_algebra_is_exact_and_scoreless() {
         overlapping.parcel_ids,
         overlapping.building_ids,
         intersecting.relation
+    );
+}
+
+#[test]
+fn t58_registry_proposal_from_ledger_rows_preserves_denominator_and_skips_reach_none() {
+    let ledger_json = br#"{
+      "version": "canon_geo_collateral_ledger.v0",
+      "rows": [
+        {
+          "accession": "0000000000-26-000001",
+          "deal_id": "fixture-deal-a",
+          "loan_id": "loan-a",
+          "reach": "full",
+          "parcel_set": ["parcel:nyc:bbl:1004540041", "attom:parcel:1004540041"],
+          "building_set": ["building:nyc:bin:1006494"],
+          "score": 0.99
+        },
+        {
+          "accession": "0000000000-26-000001",
+          "deal_id": "fixture-deal-a",
+          "loan_id": "loan-b",
+          "reach": "none",
+          "reach_none_reason": "no_candidate_parcels"
+        }
+      ]
+    }"#;
+
+    let proposal =
+        registry_proposal_from_ledger_json(ledger_json).expect("ledger rows project to proposal");
+    assert_eq!(proposal.version, CANON_GEO_REGISTRY_PROPOSAL_VERSION);
+    assert_eq!(proposal.summary.ledger_rows, 2);
+    assert_eq!(proposal.summary.skipped_reach_none_rows, 1);
+    assert_eq!(proposal.summary.unique_parcel_aliases, 2);
+    assert_eq!(proposal.summary.unique_building_aliases, 1);
+    assert_eq!(proposal.summary.property_assertions, 1);
+    assert_eq!(proposal.summary.entries, 4);
+    assert!(proposal.source_ledger_blake3.starts_with("blake3:"));
+
+    let by_alias = proposal
+        .entries
+        .iter()
+        .map(|entry| (entry.alias.as_str(), entry))
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        by_alias
+            .get("parcel:nyc:bbl:1004540041")
+            .map(|entry| entry.canonical_type.as_str()),
+        Some("parcel")
+    );
+    assert_eq!(
+        by_alias
+            .get("attom:parcel:1004540041")
+            .map(|entry| entry.canonical_type.as_str()),
+        Some("parcel")
+    );
+    assert_ne!(
+        by_alias["parcel:nyc:bbl:1004540041"].canonical_id.as_str(),
+        by_alias["attom:parcel:1004540041"].canonical_id.as_str(),
+        "role namespace stripping would collapse two distinct parcel aliases"
+    );
+    assert_eq!(
+        by_alias
+            .get("building:nyc:bin:1006494")
+            .map(|entry| entry.canonical_type.as_str()),
+        Some("building")
+    );
+    assert_eq!(
+        by_alias
+            .get("cmbs:annexa:0000000000-26-000001:loan-a")
+            .map(|entry| entry.canonical_type.as_str()),
+        Some("property")
+    );
+
+    let assertion = proposal
+        .property_assertions
+        .first()
+        .expect("one document assertion");
+    assert_eq!(assertion.accession, "0000000000-26-000001");
+    assert_eq!(assertion.loan_id, "loan-a");
+    assert_eq!(assertion.parcel_ids.len(), 2);
+    assert_eq!(assertion.building_ids.len(), 1);
+    assert!(assertion
+        .parcel_ids
+        .iter()
+        .all(|id| id.starts_with("cmdrvl:parcel:")));
+    assert!(assertion
+        .building_ids
+        .iter()
+        .all(|id| id.starts_with("cmdrvl:building:")));
+
+    let serialized = serde_json::to_value(&proposal).expect("proposal serializes");
+    assert_no_probabilistic_fields(&serialized);
+    println!(
+        "T58 proposal source={} aliases={:?} canonical_ids={:?}",
+        proposal.source_ledger_blake3,
+        by_alias.keys().collect::<Vec<_>>(),
+        proposal
+            .entries
+            .iter()
+            .map(|entry| (entry.alias.as_str(), entry.canonical_id.as_str()))
+            .collect::<BTreeMap<_, _>>()
+    );
+
+    let reach_none_with_sets = br#"{
+      "rows": [
+        {
+          "accession": "0000000000-26-000001",
+          "deal_id": "fixture-deal-a",
+          "loan_id": "loan-reach-none",
+          "reach": "none",
+          "reach_none_reason": "no_candidate_parcels",
+          "parcel_set": ["parcel:nyc:bbl:1004540041"]
+        }
+      ]
+    }"#;
+    let error = registry_proposal_from_ledger_json(reach_none_with_sets)
+        .expect_err("reach none must not fabricate identifier sets");
+    assert_eq!(error.code, GeoIdentifierErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("parcel_set_or_building_set")
+    );
+
+    let confused_level = br#"{
+      "rows": [
+        {
+          "accession": "0000000000-26-000001",
+          "deal_id": "fixture-deal-a",
+          "loan_id": "loan-confused",
+          "reach": "full",
+          "parcel_set": ["cmdrvl:building:01J7X000000000000000Z"]
+        }
+      ]
+    }"#;
+    let error =
+        registry_proposal_from_ledger_json(confused_level).expect_err("wrong level refuses");
+    assert_eq!(error.code, GeoIdentifierErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("parcel_set")
     );
 }
