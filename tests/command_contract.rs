@@ -100,6 +100,7 @@ struct JsonExpectation {
 
 #[derive(Clone, Copy)]
 enum SchemaField {
+    None,
     Schema,
     Title,
     Version,
@@ -614,7 +615,7 @@ impl RuntimeHarness {
                 )
                 .assert_eq("tool", json!("canon"))
                 .assert_eq("ok", json!(true))
-                .assert_eq("operator_manifest.digest", json!(stable_operator_digest()))
+                .assert_eq("operator_manifest.blake3", json!(stable_operator_digest()))
                 .with_stderr(StderrExpectation::Empty),
             },
             RuntimeCase {
@@ -824,9 +825,10 @@ impl RuntimeHarness {
                 expected: RuntimeExpectation::json(
                     0,
                     "canon.local.package.archive.v1",
-                    SchemaField::SchemaVersion,
+                    SchemaField::None,
                 )
                 .assert_eq("package.package_id", json!("pkg.contract.corpus"))
+                .assert_eq("package.schema_version", json!("canon.strategy.package.v1"))
                 .assert_array_len("inventory", 3)
                 .with_stderr(StderrExpectation::Empty),
             },
@@ -841,7 +843,7 @@ impl RuntimeHarness {
                 expected: RuntimeExpectation::json(
                     0,
                     "canon.local.package.archive.v1",
-                    SchemaField::SchemaVersion,
+                    SchemaField::None,
                 )
                 .assert_eq("verified_files", json!(3))
                 .assert_hash_prefix("package_content_digest")
@@ -860,7 +862,7 @@ impl RuntimeHarness {
                 expected: RuntimeExpectation::json(
                     0,
                     "canon.local.package.archive.v1",
-                    SchemaField::SchemaVersion,
+                    SchemaField::None,
                 )
                 .assert_eq("verified_files", json!(3))
                 .with_stderr(StderrExpectation::Empty)
@@ -1105,6 +1107,7 @@ impl RuntimeExpectation {
 impl SchemaField {
     fn assert(self, value: &Value, expected: &str, case_id: &str) {
         let (field, actual) = match self {
+            Self::None => return,
             Self::Schema => ("schema", &value["schema"]),
             Self::Title => ("title", &value["title"]),
             Self::Version => ("version", &value["version"]),
