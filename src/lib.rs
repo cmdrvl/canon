@@ -4,6 +4,7 @@ pub mod cli;
 pub mod distribution {
     pub mod backend;
     pub mod cache;
+    pub mod mirror;
     pub mod oci;
     pub mod package;
     pub mod remote;
