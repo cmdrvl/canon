@@ -225,7 +225,10 @@ fn validate_point(point: &GeoPointPopulationPoint) -> Result<(), GeoPointPopulat
     validate_point_population_string("points[].point_id", &point.point_id)?;
     validate_point_population_string("points[].subject_id", &point.subject_id)?;
     validate_point_population_string("points[].loan_key", &point.loan_key)?;
-    validate_blake3("points[].asserted_address_blake3", &point.asserted_address_blake3)?;
+    validate_blake3(
+        "points[].asserted_address_blake3",
+        &point.asserted_address_blake3,
+    )?;
     validate_point_population_string(
         "points[].landed_geocode.accuracy_type",
         &point.landed_geocode.accuracy_type,
@@ -275,7 +278,11 @@ fn validate_gross_point(point: &GeoPointPopulationPoint) -> Result<(), GeoPointP
 
 fn validate_condo_point(point: &GeoPointPopulationPoint) -> Result<(), GeoPointPopulationError> {
     validate_required_option(point, "points[].pip_lot_bbl", point.pip_lot_bbl.as_deref())?;
-    validate_required_option(point, "points[].pad_unit_bbl", point.pad_unit_bbl.as_deref())?;
+    validate_required_option(
+        point,
+        "points[].pad_unit_bbl",
+        point.pad_unit_bbl.as_deref(),
+    )?;
     validate_required_option(point, "points[].block", point.block.as_deref())?;
     if point.billing_equals_pip.is_none() {
         return Err(GeoPointPopulationError::invalid(
@@ -290,10 +297,7 @@ fn validate_condo_point(point: &GeoPointPopulationPoint) -> Result<(), GeoPointP
         return Err(GeoPointPopulationError::invalid(
             "Condo E1 points must carry at least one PAD billing BBL candidate",
             [
-                (
-                    "field",
-                    "points[].pad_billing_bbl_candidates".to_string(),
-                ),
+                ("field", "points[].pad_billing_bbl_candidates".to_string()),
                 ("point_id", point.point_id.clone()),
             ],
         ));
@@ -307,10 +311,7 @@ fn validate_condo_point(point: &GeoPointPopulationPoint) -> Result<(), GeoPointP
             return Err(GeoPointPopulationError::invalid(
                 "PAD billing BBL candidates must be strictly sorted and unique",
                 [
-                    (
-                        "field",
-                        "points[].pad_billing_bbl_candidates".to_string(),
-                    ),
+                    ("field", "points[].pad_billing_bbl_candidates".to_string()),
                     ("point_id", point.point_id.clone()),
                     ("value", candidate.clone()),
                 ],
@@ -330,7 +331,10 @@ fn validate_required_option(
         Some(value) => validate_point_population_string(field, value),
         None => Err(GeoPointPopulationError::invalid(
             "Condo E1 points must carry the PAD condo crosswalk fields",
-            [("field", field.to_string()), ("point_id", point.point_id.clone())],
+            [
+                ("field", field.to_string()),
+                ("point_id", point.point_id.clone()),
+            ],
         )),
     }
 }
