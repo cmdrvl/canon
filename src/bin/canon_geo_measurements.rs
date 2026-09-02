@@ -1,7 +1,16 @@
 #![forbid(unsafe_code)]
 
+use canon::geo::{
+    CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION, CANON_GEO_H7_POPULATION_ROWS_VERSION,
+    CANON_GEO_H7_POPULATION_VERSION, CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
+    GeoH7PipBlockPopulationBatchRequest, GeoH7PopulationRowsRequest,
+    GeoH7StagingSourceRecordBytesBatchRequest, canonical_h7_population_bytes,
+    materialize_h7_pip_block_population_batch, materialize_h7_population_rows,
+    materialize_h7_staging_source_record_bytes_batch,
+};
 use chrono::{DateTime, NaiveDate};
-use clap::{Parser, ValueEnum};
+use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -9,6 +18,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
     fmt, fs,
+    io::{self, Write as _},
     path::{Component, Path, PathBuf},
     process::ExitCode,
 };
@@ -47,12 +57,38 @@ struct Args {
     receipts: Option<PathBuf>,
     #[arg(long, value_enum)]
     emit: Option<EmitMode>,
+    #[command(subcommand)]
+    command: Option<MeasurementCommand>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum EmitMode {
     Plan,
     Report,
+}
+
+#[derive(Debug, Subcommand)]
+enum MeasurementCommand {
+    #[command(name = "materialize-h7-population")]
+    MaterializeH7Population(H7PopulationArgs),
+    #[command(name = "materialize-h7-staging-batch")]
+    MaterializeH7StagingBatch(H7BatchArgs),
+    #[command(name = "materialize-h7-pip-block-batch")]
+    MaterializeH7PipBlockBatch(H7BatchArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+struct H7PopulationArgs {
+    /// JSON file holding canon_geo_h7_population_rows.v0 rows
+    #[arg(long)]
+    rows: PathBuf,
+}
+
+#[derive(Debug, ClapArgs)]
+struct H7BatchArgs {
+    /// JSON file holding an H.7 NYC measurement-profile batch
+    #[arg(long)]
+    batch: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -253,6 +289,10 @@ fn main() -> ExitCode {
 
 fn run() -> Result<ExitCode, AppError> {
     let args = Args::parse();
+    if let Some(command) = args.command {
+        return run_measurement_command(command);
+    }
+
     let repo_root = absolute_path(&args.repo_root)?;
     let manifest = load_manifest(&repo_root, &args.manifest)?;
     let emit = args.emit.unwrap_or(if args.receipts.is_some() {
@@ -285,6 +325,95 @@ fn run() -> Result<ExitCode, AppError> {
             })
         }
     }
+}
+
+fn run_measurement_command(command: MeasurementCommand) -> Result<ExitCode, AppError> {
+    match command {
+        MeasurementCommand::MaterializeH7Population(args) => {
+            let rows: GeoH7PopulationRowsRequest = load_json(
+                &args.rows,
+                CANON_GEO_H7_POPULATION_ROWS_VERSION,
+                "rows",
+                "canon_geo_measurements materialize-h7-population --rows <ROWS.json>",
+            )?;
+            let artifact = materialize_h7_population_rows(&rows)
+                .map_err(|error| AppError::new(error.to_string()))?;
+            let bytes = canonical_h7_population_bytes(&artifact).map_err(|error| {
+                AppError::new(format!(
+                    "failed to serialize {CANON_GEO_H7_POPULATION_VERSION}: {error}"
+                ))
+            })?;
+            write_canonical(&bytes)?;
+        }
+        MeasurementCommand::MaterializeH7StagingBatch(args) => {
+            let batch: GeoH7StagingSourceRecordBytesBatchRequest = load_json(
+                &args.batch,
+                CANON_GEO_H7_STAGING_SOURCE_RECORD_BYTES_BATCH_VERSION,
+                "batch",
+                "canon_geo_measurements materialize-h7-staging-batch --batch <BATCH.json>",
+            )?;
+            let artifact = materialize_h7_staging_source_record_bytes_batch(&batch)
+                .map_err(|error| AppError::new(error.to_string()))?;
+            let bytes = canonical_h7_population_bytes(&artifact).map_err(|error| {
+                AppError::new(format!(
+                    "failed to serialize {CANON_GEO_H7_POPULATION_VERSION}: {error}"
+                ))
+            })?;
+            write_canonical(&bytes)?;
+        }
+        MeasurementCommand::MaterializeH7PipBlockBatch(args) => {
+            let batch: GeoH7PipBlockPopulationBatchRequest = load_json(
+                &args.batch,
+                CANON_GEO_H7_PIP_BLOCK_POPULATION_BATCH_VERSION,
+                "batch",
+                "canon_geo_measurements materialize-h7-pip-block-batch --batch <BATCH.json>",
+            )?;
+            let artifact = materialize_h7_pip_block_population_batch(&batch)
+                .map_err(|error| AppError::new(error.to_string()))?;
+            let bytes = canonical_h7_population_bytes(&artifact).map_err(|error| {
+                AppError::new(format!(
+                    "failed to serialize {CANON_GEO_H7_POPULATION_VERSION}: {error}"
+                ))
+            })?;
+            write_canonical(&bytes)?;
+        }
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn load_json<T: DeserializeOwned>(
+    path: &Path,
+    expected_version: &str,
+    version_field: &str,
+    usage: &str,
+) -> Result<T, AppError> {
+    let bytes = fs::read(path)
+        .map_err(|error| AppError::new(format!("failed to read {}: {error}", path.display())))?;
+    let value: Value = serde_json::from_slice(&bytes).map_err(|error| {
+        AppError::new(format!(
+            "failed to parse JSON {} for {usage}: {error}",
+            path.display()
+        ))
+    })?;
+    match value.get("version").and_then(Value::as_str) {
+        Some(actual) if actual == expected_version => {}
+        Some(actual) => {
+            return Err(AppError::new(format!(
+                "unsupported {version_field} version {actual}; expected {expected_version}"
+            )));
+        }
+        None => {
+            return Err(AppError::new(format!(
+                "{usage} requires top-level version {expected_version}"
+            )));
+        }
+    }
+    serde_json::from_value(value).map_err(|error| {
+        AppError::new(format!(
+            "failed to decode {} as {expected_version}: {error}",
+            path.display()
+        ))
+    })
 }
 
 fn load_manifest(repo_root: &Path, manifest_path: &Path) -> Result<Manifest, AppError> {
@@ -1550,6 +1679,18 @@ fn print_json(value: &impl Serialize) -> Result<(), AppError> {
     let mut lock = stdout.lock();
     serde_json::to_writer_pretty(&mut lock, value)
         .map_err(|error| AppError::new(format!("failed to serialize output: {error}")))?;
-    use std::io::Write as _;
     writeln!(&mut lock).map_err(|error| AppError::new(format!("failed to write output: {error}")))
+}
+
+fn write_canonical(bytes: &[u8]) -> Result<(), AppError> {
+    let mut stdout = io::stdout().lock();
+    stdout
+        .write_all(bytes)
+        .map_err(|error| AppError::new(format!("failed to write output: {error}")))?;
+    stdout
+        .write_all(b"\n")
+        .map_err(|error| AppError::new(format!("failed to write output: {error}")))?;
+    stdout
+        .flush()
+        .map_err(|error| AppError::new(format!("failed to flush output: {error}")))
 }

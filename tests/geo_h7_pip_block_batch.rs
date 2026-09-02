@@ -152,9 +152,8 @@ fn pip_block_batch_cli_emits_the_typed_population_artifact() {
         serde_json::to_vec_pretty(&observed_batch()).expect("batch serializes"),
     )
     .expect("batch fixture writes");
-    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+    let output = Command::new(env!("CARGO_BIN_EXE_canon_geo_measurements"))
         .args([
-            "geo",
             "materialize-h7-pip-block-batch",
             "--batch",
             batch_path.to_str().expect("UTF-8 path"),

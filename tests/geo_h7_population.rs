@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use assert_cmd::Command;
 use canon::geo::{
     CANON_GEO_H7_ACRIS_RELEASE_DT, CANON_GEO_H7_AMOUNT_CENTS_QUANTIZATION,
     CANON_GEO_H7_BRIDGE_BUILD_ID, CANON_GEO_H7_COLLATERAL_SCOPE,
@@ -15,9 +16,11 @@ use canon::geo::{
     GeoH7PopulationScope, GeoH7PopulationWarehouseRow, GeoH7QueryDisposition, GeoH7QueryReceipt,
     GeoH7ResultMode, GeoH7SourceEvidenceRecord, GeoH7SourceHash, GeoH7SourceRecordRole,
     GeoH7TruthPlaneSummary, GeoTruthPlane, canonical_h7_population_bytes, evaluate_population,
-    materialize_h7_population_rows,
+    materialize_h7_population_rows, validate_h7_population_artifact,
 };
 use serde_json::Value;
+use std::fs;
+use tempfile::tempdir;
 
 const H7_POPULATION_ROWS_SCHEMA: &str =
     include_str!("../schemas/canon.geo.h7_population_rows.v0.schema.json");
@@ -383,6 +386,33 @@ fn materializes_replay_population_without_pooling_truth_planes_or_candidate_rele
         canonical_h7_population_bytes(&reordered_artifact)
             .expect("reordered external receipts serialize canonically")
     );
+}
+
+#[test]
+fn population_rows_measurement_binary_emits_h7_artifact() {
+    let temp = tempdir().expect("tempdir");
+    let rows_path = temp.path().join("h7-population-rows.json");
+    fs::write(
+        &rows_path,
+        serde_json::to_vec_pretty(&base_request()).expect("rows serialize"),
+    )
+    .expect("write rows");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_canon_geo_measurements"))
+        .args([
+            "materialize-h7-population",
+            "--rows",
+            rows_path.to_str().expect("utf8 path"),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let artifact: Value = serde_json::from_slice(&output).expect("artifact JSON");
+    assert_eq!(artifact["version"], CANON_GEO_H7_POPULATION_VERSION);
+    assert_eq!(artifact["summary"]["source_rows"], 4);
+    assert_eq!(artifact["summary"]["materialized_unique_accepted_loans"], 2);
 }
 
 #[test]
@@ -890,6 +920,99 @@ fn retains_zero_candidate_reach_without_manufacturing_a_solver_case() {
             .iter()
             .all(|case| case.id != artifact.cases[0].subject_id)
     );
+}
+
+#[test]
+fn rejects_empty_loan_key_on_the_producer_path() {
+    let mut request = base_request();
+    request.rows[0].loan_key.clear();
+
+    let error = materialize_h7_population_rows(&request).expect_err("empty loan key rejected");
+    assert!(error.message.contains("string fields"));
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("loan_key")
+    );
+}
+
+#[test]
+fn validate_h7_population_artifact_accepts_producer_output() {
+    let request = base_request();
+    let artifact = materialize_h7_population_rows(&request).expect("h7 replay materializes");
+
+    validate_h7_population_artifact(&artifact).expect("producer artifact validates");
+}
+
+#[test]
+fn validate_h7_population_artifact_rejects_missing_loan_key() {
+    let request = base_request();
+    let mut artifact = materialize_h7_population_rows(&request).expect("h7 replay materializes");
+    artifact.cases[0].loan_key.clear();
+
+    let error = validate_h7_population_artifact(&artifact)
+        .expect_err("consumer validation rejects missing loan key");
+    assert!(error.message.contains("string fields"));
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("case.loan_key")
+    );
+}
+
+#[test]
+fn validate_h7_population_artifact_rejects_missing_bridge_build_id() {
+    let request = base_request();
+    let mut artifact = materialize_h7_population_rows(&request).expect("h7 replay materializes");
+    artifact.provenance.bridge_build_id.clear();
+
+    let error = validate_h7_population_artifact(&artifact)
+        .expect_err("consumer validation rejects missing bridge build id");
+    assert!(error.message.contains("string fields"));
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("provenance.bridge_build_id")
+    );
+}
+
+#[test]
+fn validate_h7_population_artifact_rejects_reach_status_drift() {
+    let request = base_request();
+    let mut artifact = materialize_h7_population_rows(&request).expect("h7 replay materializes");
+    artifact.cases[0].candidate_parcels.clear();
+
+    let error = validate_h7_population_artifact(&artifact)
+        .expect_err("consumer validation recomputes candidate reach");
+    assert!(error.message.contains("candidate reach"));
+    assert_eq!(
+        error.detail.get("computed").map(String::as_str),
+        Some("none")
+    );
+}
+
+#[test]
+fn validate_h7_population_artifact_rejects_solver_population_summary_drift() {
+    let request = base_request();
+    let mut artifact = materialize_h7_population_rows(&request).expect("h7 replay materializes");
+    artifact.summary.solver_population_subjects += 1;
+
+    let error = validate_h7_population_artifact(&artifact)
+        .expect_err("consumer validation rejects solver count drift");
+    assert!(error.message.contains("solver_population_subjects"));
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("summary.solver_population_subjects")
+    );
+}
+
+#[test]
+fn h7_population_artifact_rejects_unknown_reach_status_before_validation() {
+    let request = base_request();
+    let artifact = materialize_h7_population_rows(&request).expect("h7 replay materializes");
+    let mut value = serde_json::to_value(&artifact).expect("artifact serializes");
+    value["cases"][0]["reach_status"] = Value::String("unknown".to_string());
+
+    let error = serde_json::from_value::<canon::geo::GeoH7PopulationArtifact>(value)
+        .expect_err("unknown reach status fails typed artifact decode");
+    assert!(error.to_string().contains("unknown variant"));
 }
 
 #[test]

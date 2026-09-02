@@ -1885,6 +1885,184 @@ pub fn canonical_h7_population_bytes(
     serde_json::to_vec(&canonical)
 }
 
+pub fn validate_h7_population_artifact(
+    artifact: &GeoH7PopulationArtifact,
+) -> Result<(), GeoMaterializationError> {
+    if artifact.version != CANON_GEO_H7_POPULATION_VERSION {
+        return Err(GeoMaterializationError {
+            code: GeoMaterializationErrorCode::UnsupportedVersion,
+            message: "Unsupported Geo H.7 population artifact version".to_string(),
+            detail: [
+                ("actual".to_string(), artifact.version.clone()),
+                (
+                    "expected".to_string(),
+                    CANON_GEO_H7_POPULATION_VERSION.to_string(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        });
+    }
+    if artifact.rows_version != CANON_GEO_H7_POPULATION_ROWS_VERSION {
+        return Err(GeoMaterializationError {
+            code: GeoMaterializationErrorCode::UnsupportedVersion,
+            message: "Unsupported Geo H.7 population-row version".to_string(),
+            detail: [
+                ("actual".to_string(), artifact.rows_version.clone()),
+                (
+                    "expected".to_string(),
+                    CANON_GEO_H7_POPULATION_ROWS_VERSION.to_string(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        });
+    }
+    validate_h7_provenance(
+        artifact.summary.population_scope,
+        &artifact.provenance,
+        artifact.cases.len(),
+    )?;
+    validate_h7_live_legal_residuals(artifact.summary.population_scope, &artifact.provenance)?;
+    if artifact.cases.is_empty() {
+        return Err(h7_invalid(
+            "Geo H.7 population artifact cases must be non-empty",
+            [("cases", "0".to_string())],
+        ));
+    }
+
+    let denominators = h7_denominators_from_summary(&artifact.summary)?;
+    let mut seen_cases = BTreeSet::new();
+    let mut accepted_loans: BTreeMap<String, GeoH7AcceptedLoanTruthKey> = BTreeMap::new();
+    let mut releases_by_loan: BTreeMap<String, BTreeSet<(String, String, String, String)>> =
+        BTreeMap::new();
+    for case in &artifact.cases {
+        validate_h7_string("case.subject_id", &case.subject_id)?;
+        validate_h7_string("case.case_id", &case.case_id)?;
+        validate_h7_string("case.loan_key", &case.loan_key)?;
+        validate_h7_string("case.document_id", &case.document_id)?;
+        validate_h7_string("case.property_state", &case.property_state)?;
+        validate_h7_string("case.reach_reason", &case.reach_reason)?;
+        validate_h7_mappluto_pin("case.candidate_release", &case.candidate_release)?;
+        if !h7_truth_planes().contains(&case.truth_plane) {
+            return Err(h7_invalid(
+                "Geo H.7 population cases may only use controlling H.7 truth planes",
+                [("truth_plane", h7_plane_name(case.truth_plane).to_string())],
+            ));
+        }
+        let truth_parcels = sorted_distinct_nonempty("case.truth_parcels", &case.truth_parcels)?;
+        let candidate_parcels = sorted_distinct("case.candidate_parcels", &case.candidate_parcels)?;
+        if h7_reach_status(&truth_parcels, &candidate_parcels) != case.reach_status {
+            return Err(h7_invalid(
+                "Geo H.7 population artifact case candidate reach does not match truth/candidate sets",
+                [
+                    ("case_id", case.case_id.clone()),
+                    ("loan_key", case.loan_key.clone()),
+                    ("declared", h7_reach_name(case.reach_status).to_string()),
+                    (
+                        "computed",
+                        h7_reach_name(h7_reach_status(&truth_parcels, &candidate_parcels))
+                            .to_string(),
+                    ),
+                ],
+            ));
+        }
+        let truth_key = accepted_truth_key(case);
+        if let Some(prior_truth_key) = accepted_loans.insert(case.loan_key.clone(), truth_key)
+            && prior_truth_key != accepted_truth_key(case)
+        {
+            return Err(h7_invalid(
+                "Geo H.7 population artifact assigns one accepted loan to conflicting accepted truth",
+                [
+                    ("loan_key", case.loan_key.clone()),
+                    ("prior_document_id", prior_truth_key.document_id),
+                    ("current_document_id", case.document_id.clone()),
+                ],
+            ));
+        }
+        let release_key = mappluto_pin_key(&case.candidate_release);
+        if !releases_by_loan
+            .entry(case.loan_key.clone())
+            .or_default()
+            .insert(release_key)
+        {
+            return Err(h7_invalid(
+                "Geo H.7 population artifact repeats one loan/candidate-release measurement",
+                [
+                    ("loan_key", case.loan_key.clone()),
+                    ("candidate_release", case.candidate_release.release.clone()),
+                ],
+            ));
+        }
+        if !seen_cases.insert(case.case_id.clone()) {
+            return Err(h7_invalid(
+                "Geo H.7 population artifact repeats a stable case identity",
+                [
+                    ("case_id", case.case_id.clone()),
+                    ("loan_key", case.loan_key.clone()),
+                ],
+            ));
+        }
+    }
+    validate_h7_release_coverage(&artifact.provenance, &accepted_loans, &releases_by_loan)?;
+    validate_h7_population_scope(
+        artifact.summary.population_scope,
+        artifact.provenance.result_mode,
+        len_u64(
+            &artifact.provenance.mappluto_releases,
+            "pinned_release_count",
+        )?,
+        &denominators,
+        &artifact.cases,
+    )?;
+
+    let expected_solver_subjects = h7_solver_population_subjects(artifact)?;
+    if artifact.summary.solver_population_subjects != expected_solver_subjects {
+        return Err(h7_invalid(
+            "Geo H.7 summary solver_population_subjects must match primary-release nonempty candidate cases",
+            [
+                ("field", "summary.solver_population_subjects".to_string()),
+                (
+                    "actual",
+                    artifact.summary.solver_population_subjects.to_string(),
+                ),
+                ("expected", expected_solver_subjects.to_string()),
+            ],
+        ));
+    }
+    let expected_population_ids = h7_solver_population_ids(artifact)?;
+    let actual_population_ids = artifact
+        .population
+        .cases
+        .iter()
+        .map(|case| case.id.clone())
+        .collect::<BTreeSet<_>>();
+    if actual_population_ids != expected_population_ids {
+        return Err(h7_invalid(
+            "Geo H.7 population request cases must match primary-release nonempty candidate subjects",
+            [
+                ("field", "population.cases".to_string()),
+                ("actual", actual_population_ids.len().to_string()),
+                ("expected", expected_population_ids.len().to_string()),
+            ],
+        ));
+    }
+    let expected_summary = summarize_h7_population(
+        artifact.summary.population_scope,
+        &artifact.cases,
+        &denominators,
+        usize::try_from(expected_solver_subjects)
+            .map_err(|_| h7_overflow("summary.solver_population_subjects"))?,
+    )?;
+    if artifact.summary != expected_summary {
+        return Err(h7_invalid(
+            "Geo H.7 population artifact summary must match its cases and per-plane denominators",
+            [("field", "summary".to_string())],
+        ));
+    }
+    Ok(())
+}
+
 fn evidence_error_code_name(code: GeoEvidenceErrorCode) -> &'static str {
     match code {
         GeoEvidenceErrorCode::UnsupportedVersion => "unsupported_version",
@@ -5026,6 +5204,67 @@ fn summarize_h7_population(
         truth_planes: summaries.into_values().collect(),
         strata: strata.into_values().collect(),
     })
+}
+
+fn h7_denominators_from_summary(
+    summary: &GeoH7PopulationSummary,
+) -> Result<BTreeMap<GeoTruthPlane, GeoH7PlaneDenominator>, GeoMaterializationError> {
+    let denominators = summary
+        .truth_planes
+        .iter()
+        .map(|plane| GeoH7PlaneDenominator {
+            truth_plane: plane.truth_plane,
+            eligible_loans: plane.eligible_loans,
+            candidate_loans: plane.candidate_loans,
+            legal_confirmed_candidate_loans: plane.legal_confirmed_candidate_loans,
+            accepted_loans: plane.accepted_loans,
+            ambiguous_loans: plane.ambiguous_loans,
+            candidate_no_legal_confirmation_loans: plane.candidate_no_legal_confirmation_loans,
+            no_candidate_loans: plane.no_candidate_loans,
+            selected_multi_parcel_loans: plane.selected_multi_parcel_loans,
+        })
+        .collect::<Vec<_>>();
+    validate_h7_denominators(&denominators)
+}
+
+fn h7_solver_population_subjects(
+    artifact: &GeoH7PopulationArtifact,
+) -> Result<u64, GeoMaterializationError> {
+    len_u64_set(
+        &h7_solver_population_ids(artifact)?,
+        "summary.solver_population_subjects",
+    )
+}
+
+fn h7_solver_population_ids(
+    artifact: &GeoH7PopulationArtifact,
+) -> Result<BTreeSet<String>, GeoMaterializationError> {
+    let primary_release_key = mappluto_pin_key(&artifact.provenance.primary_candidate_release);
+    let subjects = artifact
+        .cases
+        .iter()
+        .filter(|case| {
+            mappluto_pin_key(&case.candidate_release) == primary_release_key
+                && !case.candidate_parcels.is_empty()
+        })
+        .map(|case| case.subject_id.clone())
+        .collect::<BTreeSet<_>>();
+    if subjects.len()
+        != artifact
+            .cases
+            .iter()
+            .filter(|case| {
+                mappluto_pin_key(&case.candidate_release) == primary_release_key
+                    && !case.candidate_parcels.is_empty()
+            })
+            .count()
+    {
+        return Err(h7_invalid(
+            "Geo H.7 primary-release solver subjects must have unique subject ids",
+            [("field", "case.subject_id".to_string())],
+        ));
+    }
+    Ok(subjects)
 }
 
 fn canonicalize_h7_provenance(provenance: &GeoH7PopulationProvenance) -> GeoH7PopulationProvenance {

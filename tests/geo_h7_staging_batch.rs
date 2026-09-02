@@ -54,9 +54,8 @@ fn staging_batch_cli_emits_canonical_h7_population_artifact() {
     )
     .expect("write batch");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_canon"))
+    let output = Command::new(env!("CARGO_BIN_EXE_canon_geo_measurements"))
         .args([
-            "geo",
             "materialize-h7-staging-batch",
             "--batch",
             batch_path.to_str().expect("utf8 path"),
