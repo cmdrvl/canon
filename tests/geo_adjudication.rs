@@ -1590,7 +1590,11 @@ fn validate_d0_label_row(
 }
 
 fn validate_hex64(field: &str, value: &str) -> Result<(), String> {
-    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
         return Err(field.to_string());
     }
     Ok(())
@@ -1698,5 +1702,20 @@ fn d0_adjudication_rejects_posthoc_strata_and_unprefixed_adjudicators() {
     assert!(
         error.contains("adjudicator_id"),
         "error should name the field, got {error}"
+    );
+}
+
+#[test]
+fn d0_adjudication_rejects_noncanonical_digest_text() {
+    let mut labels = d0_labels_value();
+    labels["labels"][0]["crop_blake3"] =
+        serde_json::json!("EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE");
+
+    let error = validate_d0_adjudication_fixture(&labels, &d0_pins_value())
+        .expect_err("uppercase digest must reject");
+
+    assert!(
+        error.contains("crop_blake3"),
+        "error should name the digest field, got {error}"
     );
 }
