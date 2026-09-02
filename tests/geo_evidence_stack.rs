@@ -300,7 +300,7 @@ fn observer_overlay_bands_are_hard_only_under_flagged_empirical_contracts() {
             .len(),
         1
     );
-    assert_eq!(flagged_compilation.admissions[0].admission_reason, None);
+    assert!(flagged_compilation.admissions[0].admission_reason.is_none());
     let flagged_evaluation =
         evaluate_population(&flagged.population).expect("flagged stack evaluates");
     assert_eq!(flagged_evaluation.cases[0].residual_model_count, Some(2));

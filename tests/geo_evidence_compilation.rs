@@ -594,7 +594,7 @@ fn empirical_integer_sum_band_requires_admissible_hard_band_contract() {
         flagged.admissions[0].disposition,
         GeoEvidenceDisposition::HardConstraint
     );
-    assert_eq!(flagged.admissions[0].admission_reason, None);
+    assert!(flagged.admissions[0].admission_reason.is_none());
     assert_eq!(
         flagged.admissions[0].generated_ids,
         vec!["rho:rho.structure_count.v0@v1:observer-count".to_string()]
