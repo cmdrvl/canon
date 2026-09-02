@@ -1300,6 +1300,12 @@ struct ParsedClientGeometry {
     representative_point: GeoSourcePointDecimal,
 }
 
+type ParsedGeoJsonPolygonRings = (
+    Vec<GeoSourcePointDecimal>,
+    Vec<Vec<GeoSourcePointDecimal>>,
+    Vec<GeoSourcePointDecimal>,
+);
+
 fn validate_client_tile_ingest_request(
     request: &GeoClientTileIngestRequest,
 ) -> Result<(BTreeSet<String>, BTreeSet<String>), GeoGeometryError> {
@@ -1772,14 +1778,7 @@ fn parse_client_geojson_geometry(
 fn parse_geojson_polygon_rings(
     rings: &[JsonValue],
     decimal_places: u32,
-) -> Result<
-    (
-        Vec<GeoSourcePointDecimal>,
-        Vec<Vec<GeoSourcePointDecimal>>,
-        Vec<GeoSourcePointDecimal>,
-    ),
-    GeoGeometryError,
-> {
+) -> Result<ParsedGeoJsonPolygonRings, GeoGeometryError> {
     if rings.is_empty() {
         return Err(GeoGeometryError::new(
             GeoGeometryErrorCode::EmptyGeometry,
