@@ -1721,7 +1721,16 @@ fn d0_adjudication_rejects_noncanonical_digest_text() {
 }
 
 fn gate_v2_population_request_fixture() -> canon::geo::GeoPopulationEvaluationRequest {
-    let mut cases = population_fixture().cases;
+    let population_case_ids = population_fixture()
+        .cases
+        .into_iter()
+        .map(|case| case.case_id)
+        .collect::<BTreeSet<_>>();
+    let mut cases = load_cases()
+        .into_iter()
+        .map(|(case, _, _)| case)
+        .filter(|case| population_case_ids.contains(&case.case_id))
+        .collect::<Vec<_>>();
     cases.sort_by(|left, right| left.case_id.cmp(&right.case_id));
     canon::geo::GeoPopulationEvaluationRequest {
         version: canon::geo::CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
