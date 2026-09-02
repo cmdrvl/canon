@@ -697,15 +697,14 @@ fn source_window_blake3(subject: &SourceSubject) -> String {
 
 fn source_window_payload(subject: &SourceSubject) -> String {
     format!(
-        "{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        "canon_geo_observer_window.v0\nsubject_id={}\ntruth_plane={}\nmappluto_release={}\nbbox_wgs84_e7={},{},{},{}\nparcel_ids={}\n",
         subject.subject_id,
         truth_plane_key(subject.truth_plane),
         subject.window.mappluto_release,
-        subject.window.mappluto_variant,
-        subject.window.bbox_crs,
         subject.window.bbox_wgs84_e7.xmin_e7,
         subject.window.bbox_wgs84_e7.ymin_e7,
         subject.window.bbox_wgs84_e7.xmax_e7,
-        subject.window.bbox_wgs84_e7.ymax_e7
+        subject.window.bbox_wgs84_e7.ymax_e7,
+        subject.parcel_ids.join(",")
     )
 }
