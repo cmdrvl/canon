@@ -89,6 +89,33 @@
         "hard_constraint_present"
       ]
     },
+    "resolved_claim_class": {
+      "type": "string",
+      "enum": [
+        "evidentially_supported",
+        "structurally_forced"
+      ]
+    },
+    "resolved_claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "claim_class": { "$ref": "#/$defs/resolved_claim_class" },
+        "candidate_members": { "type": "integer", "minimum": 0 },
+        "parcel_candidates": { "type": "integer", "minimum": 0 },
+        "building_candidates": { "type": "integer", "minimum": 0 },
+        "hard_constraint_count": { "type": "integer", "minimum": 0 },
+        "hard_constraint_evaluations": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "claim_class",
+        "candidate_members",
+        "parcel_candidates",
+        "building_candidates",
+        "hard_constraint_count",
+        "hard_constraint_evaluations"
+      ]
+    },
     "population_case_evaluation": {
       "type": "object",
       "additionalProperties": false,
@@ -101,6 +128,9 @@
         },
         "status": {
           "$ref": "#/$defs/population_case_status"
+        },
+        "resolved_claim": {
+          "$ref": "#/$defs/resolved_claim"
         },
         "compilation_digest": {
           "type": "string"
@@ -249,6 +279,19 @@
           "description": "Truth-plane denominator of validated labeled population cases; candidate reach failures remain eligible cases."
         },
         "resolved_cases": { "type": "integer", "minimum": 0 },
+        "evidentially_supported_resolved_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "structurally_forced_resolved_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resolved_with_reach_not_full_cases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Resolved cases whose labeled truth members were not fully reachable in the candidate universe; this is a reach-risk counter, not a solver false-merge judgment."
+        },
         "ambiguous_cases": { "type": "integer", "minimum": 0 },
         "conflict_cases": { "type": "integer", "minimum": 0 },
         "abstention_cases": { "type": "integer", "minimum": 0 },
@@ -278,6 +321,11 @@
         },
         "solver_truth_exclusion_cases": { "type": "integer", "minimum": 0 },
         "residual_count_complete_cases": { "type": "integer", "minimum": 0 },
+        "residual_count_exact_cases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Cases where residual counting completed without saturation; saturated complete counts are lower bounds and are excluded."
+        },
         "residual_count_saturated_cases": { "type": "integer", "minimum": 0 },
         "residual_count_unavailable_cases": { "type": "integer", "minimum": 0 },
         "component_budget_fallback_cases": { "type": "integer", "minimum": 0 },
@@ -297,6 +345,9 @@
         "cases",
         "population_eligible_cases",
         "resolved_cases",
+        "evidentially_supported_resolved_cases",
+        "structurally_forced_resolved_cases",
+        "resolved_with_reach_not_full_cases",
         "ambiguous_cases",
         "conflict_cases",
         "abstention_cases",
@@ -310,6 +361,7 @@
         "empirical_falsification_eligible_cases",
         "solver_truth_exclusion_cases",
         "residual_count_complete_cases",
+        "residual_count_exact_cases",
         "residual_count_saturated_cases",
         "residual_count_unavailable_cases",
         "component_budget_fallback_cases",
@@ -347,6 +399,19 @@
         "resolved_cases": {
           "type": "integer",
           "minimum": 0
+        },
+        "evidentially_supported_resolved_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "structurally_forced_resolved_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resolved_with_reach_not_full_cases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Resolved cases whose labeled truth members were not fully reachable in the candidate universe; this is a reach-risk counter, not a solver false-merge judgment."
         },
         "ambiguous_cases": {
           "type": "integer",
@@ -440,6 +505,11 @@
           "type": "integer",
           "minimum": 0
         },
+        "residual_count_exact_cases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Cases where residual counting completed without saturation; saturated complete counts are lower bounds and are excluded."
+        },
         "residual_count_saturated_cases": {
           "type": "integer",
           "minimum": 0
@@ -474,6 +544,9 @@
         "population_eligible_cases",
         "truth_planes",
         "resolved_cases",
+        "evidentially_supported_resolved_cases",
+        "structurally_forced_resolved_cases",
+        "resolved_with_reach_not_full_cases",
         "ambiguous_cases",
         "conflict_cases",
         "assignment_budget_exceeded_cases",
@@ -496,6 +569,7 @@
         "empirical_falsification_eligible_cases",
         "solver_truth_exclusion_cases",
         "residual_count_complete_cases",
+        "residual_count_exact_cases",
         "residual_count_saturated_cases",
         "residual_count_unavailable_cases",
         "backbone_complete_cases",

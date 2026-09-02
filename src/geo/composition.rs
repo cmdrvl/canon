@@ -1155,6 +1155,23 @@ pub enum GeoCompositionStatus {
     BudgetFallback,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoResolvedClaimClass {
+    EvidentiallySupported,
+    StructurallyForced,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GeoResolvedClaim {
+    pub claim_class: GeoResolvedClaimClass,
+    pub candidate_members: usize,
+    pub parcel_candidates: usize,
+    pub building_candidates: usize,
+    pub hard_constraint_count: usize,
+    pub hard_constraint_evaluations: u64,
+}
+
 /// Semantic projection counted by `residual_model_count`. The current v0
 /// kernel has only parcel/building decision variables, so counts are over
 /// distinct entity selections, never internal search assignments.
@@ -1331,6 +1348,8 @@ pub struct GeoCompositionArtifact {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence_compilation: Option<GeoEvidenceCompilationReference>,
     pub status: GeoCompositionStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_claim: Option<GeoResolvedClaim>,
     pub summary: GeoCompositionSummary,
     pub hard_forced: GeoCompositionBackbone,
     /// Whether `hard_forced` is the complete backbone of the hard-feasible
@@ -1352,6 +1371,29 @@ pub struct GeoCompositionArtifact {
     pub budget_fallback: Option<GeoCompositionFallback>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entity_projection: Option<GeoEntityProjection>,
+}
+
+fn resolved_claim(
+    status: GeoCompositionStatus,
+    summary: &GeoCompositionSummary,
+    hard_constraint_count: usize,
+) -> Option<GeoResolvedClaim> {
+    if status != GeoCompositionStatus::Resolved {
+        return None;
+    }
+    let claim_class = if hard_constraint_count == 0 && summary.hard_constraint_evaluations == 0 {
+        GeoResolvedClaimClass::StructurallyForced
+    } else {
+        GeoResolvedClaimClass::EvidentiallySupported
+    };
+    Some(GeoResolvedClaim {
+        claim_class,
+        candidate_members: summary.parcel_candidates + summary.building_candidates,
+        parcel_candidates: summary.parcel_candidates,
+        building_candidates: summary.building_candidates,
+        hard_constraint_count,
+        hard_constraint_evaluations: summary.hard_constraint_evaluations,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1851,35 +1893,38 @@ impl<'a> FactorizedSolver<'a> {
             })
             .collect::<Vec<_>>();
 
+        let status = if residual_count.is_exactly(1) {
+            GeoCompositionStatus::Resolved
+        } else {
+            GeoCompositionStatus::Ambiguous
+        };
+        let summary = GeoCompositionSummary {
+            parcel_candidates: self.request.parcels.len(),
+            building_candidates: self.request.buildings.len(),
+            candidate_assignments: candidate.value,
+            candidate_assignments_saturated: candidate.saturated,
+            structurally_feasible_assignments: structural.value,
+            structurally_feasible_assignments_complete: true,
+            structurally_feasible_assignments_saturated: structural.saturated,
+            hard_constraint_evaluations: evaluation_count.value,
+            hard_constraint_evaluations_complete: true,
+            hard_constraint_evaluations_saturated: evaluation_count.saturated,
+            residual_model_count: residual_count.value,
+            model_count_scope: GeoModelCountScope::EntitySelection,
+            residual_model_count_complete: true,
+            residual_model_count_saturated: residual_count.saturated,
+            summary_counts_saturated: aggregate_saturated,
+            component_count: factorization.len(),
+            residual_models_materialized: false,
+        };
         Ok(Some(GeoCompositionArtifact {
             version: CANON_GEO_COMPOSITION_VERSION.to_string(),
             request_version: self.request.request_version.clone(),
             profile: self.request.profile.clone(),
             evidence_compilation: None,
-            status: if residual_count.is_exactly(1) {
-                GeoCompositionStatus::Resolved
-            } else {
-                GeoCompositionStatus::Ambiguous
-            },
-            summary: GeoCompositionSummary {
-                parcel_candidates: self.request.parcels.len(),
-                building_candidates: self.request.buildings.len(),
-                candidate_assignments: candidate.value,
-                candidate_assignments_saturated: candidate.saturated,
-                structurally_feasible_assignments: structural.value,
-                structurally_feasible_assignments_complete: true,
-                structurally_feasible_assignments_saturated: structural.saturated,
-                hard_constraint_evaluations: evaluation_count.value,
-                hard_constraint_evaluations_complete: true,
-                hard_constraint_evaluations_saturated: evaluation_count.saturated,
-                residual_model_count: residual_count.value,
-                model_count_scope: GeoModelCountScope::EntitySelection,
-                residual_model_count_complete: true,
-                residual_model_count_saturated: residual_count.saturated,
-                summary_counts_saturated: aggregate_saturated,
-                component_count: factorization.len(),
-                residual_models_materialized: false,
-            },
+            status,
+            resolved_claim: resolved_claim(status, &summary, self.request.hard_constraints.len()),
+            summary,
             hard_forced: GeoCompositionBackbone {
                 parcels: forced.into_iter().map(String::from).collect(),
                 buildings: Vec::new(),
@@ -2109,6 +2154,7 @@ impl<'a> FactorizedSolver<'a> {
             profile: self.request.profile.clone(),
             evidence_compilation: None,
             status,
+            resolved_claim: resolved_claim(status, &summary, self.request.hard_constraints.len()),
             summary,
             hard_forced,
             backbone_complete: false,
@@ -2308,6 +2354,7 @@ impl<'a> FactorizedSolver<'a> {
             profile: self.request.profile.clone(),
             evidence_compilation: None,
             status,
+            resolved_claim: resolved_claim(status, &summary, self.request.hard_constraints.len()),
             summary,
             hard_forced,
             backbone_complete: true,
@@ -2431,6 +2478,7 @@ impl<'a> FactorizedSolver<'a> {
             profile: self.request.profile.clone(),
             evidence_compilation: None,
             status,
+            resolved_claim: resolved_claim(status, &summary, self.request.hard_constraints.len()),
             summary,
             hard_forced,
             backbone_complete: false,

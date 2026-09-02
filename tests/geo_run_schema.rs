@@ -737,6 +737,7 @@ fn complete_run_manifest() -> GeoRun {
             byte_count: 42,
             media_type: "application/json".to_string(),
             contract_version: CANON_GEO_COMPOSITION_VERSION.to_string(),
+            resolved_claim: None,
         }],
         grain_states: vec![GeoRunGrainState {
             entity_level: "building".to_string(),

@@ -20,9 +20,9 @@ use crate::{
         GeoAcquisitionSatisfaction, GeoAcquisitionTerminalState, GeoCompositionArtifact,
         GeoCompositionStatus, GeoDigest, GeoDigestAlgorithm, GeoPlan, GeoPlanError,
         GeoPlanExternalRequest, GeoPlanGrainStatus, GeoPlanNodeOverlay, GeoPlanStage,
-        GeoPlanStatus, GeoSatisfactionExecutionRef, GeoSatisfactionFileAudit,
-        GeoSatisfactionFinding, GeoSatisfactionLocalInputBinding, GeoSatisfactionRunInputRef,
-        GeoSatisfactionStatus, GeoTileWorkUnitArtifact,
+        GeoPlanStatus, GeoResolvedClaim, GeoResolvedClaimClass, GeoSatisfactionExecutionRef,
+        GeoSatisfactionFileAudit, GeoSatisfactionFinding, GeoSatisfactionLocalInputBinding,
+        GeoSatisfactionRunInputRef, GeoSatisfactionStatus, GeoTileWorkUnitArtifact,
         executor::CANON_GEO_CLIENT_TILE_SOURCE_VERSION,
         executor::GEO_CLIENT_TILE_INGEST_STAGE_COMMAND,
         executor::GEO_CLIENT_TILE_SOURCE_BINDING_ID, executor::GEO_COMPILE_EVIDENCE_COMMAND,
@@ -458,6 +458,8 @@ pub struct GeoRunOutputRef {
     pub byte_count: u64,
     pub media_type: String,
     pub contract_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_claim: Option<GeoResolvedClaim>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1092,6 +1094,7 @@ fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
 
     if !preflight_blockers.is_empty() {
         let run = build_geo_run(
+            &request.policy,
             request.plan,
             prepared.effective_project_plan.graph_hash,
             artifact_inputs,
@@ -1133,6 +1136,7 @@ fn execute_prepared_geo_run_after_start<E: ProjectNodeExecutor>(
         &request.policy,
     )?;
     let run = build_geo_run(
+        &request.policy,
         request.plan,
         prepared.effective_project_plan.graph_hash,
         artifact_inputs,
@@ -1935,6 +1939,9 @@ pub fn validate_geo_run(run: &GeoRun) -> GeoRunResult<()> {
                 [("artifact_id", output.artifact_id.as_str())],
             ));
         }
+        if let Some(claim) = &output.resolved_claim {
+            validate_resolved_claim("output_ref.resolved_claim", claim)?;
+        }
     }
     if let Some(report) = &run.project_run_report {
         validate_project_run_report_schema_shape(report)?;
@@ -1980,6 +1987,7 @@ pub fn geo_run_input_hash_ref_id(project_node_id: &str, binding_id: &str) -> Str
 }
 
 fn build_geo_run(
+    policy: &ProjectRunPolicy,
     plan: GeoPlan,
     effective_project_graph_hash: String,
     mut artifact_inputs: Vec<GeoRunArtifactRef>,
@@ -1991,7 +1999,7 @@ fn build_geo_run(
     artifact_inputs.dedup();
     let output_refs = project_run_report
         .as_ref()
-        .map(|report| output_refs_from_project_report(&plan, report))
+        .map(|report| output_refs_from_project_report(&plan, report, policy))
         .transpose()?
         .unwrap_or_default();
     let deterministic_usage = aggregate_deterministic_usage(project_run_report.as_ref());
@@ -3135,6 +3143,7 @@ fn run_input_shapes_from_artifact_refs(
 fn output_refs_from_project_report(
     plan: &GeoPlan,
     report: &ProjectRunReport,
+    policy: &ProjectRunPolicy,
 ) -> GeoRunResult<Vec<GeoRunOutputRef>> {
     let nodes = plan
         .project_plan
@@ -3173,17 +3182,39 @@ fn output_refs_from_project_report(
         })?;
         validate_receipt_outputs_match_effective_node(node, receipt)?;
         for output in &receipt.outputs {
-            refs.push(output_ref(&receipt.node_id, output, contract));
+            let resolved_claim = resolved_claim_from_output_ref(policy, receipt, output, contract)?;
+            refs.push(output_ref(
+                &receipt.node_id,
+                output,
+                contract,
+                resolved_claim,
+            ));
         }
     }
     refs.sort_by(|left, right| left.artifact_id.cmp(&right.artifact_id));
     Ok(refs)
 }
 
+fn resolved_claim_from_output_ref(
+    policy: &ProjectRunPolicy,
+    receipt: &ProjectRunNodeReceipt,
+    output: &ProjectRunOutputReceipt,
+    contract_version: &str,
+) -> GeoRunResult<Option<GeoResolvedClaim>> {
+    if contract_version != CANON_GEO_COMPOSITION_VERSION {
+        return Ok(None);
+    }
+    let bytes = read_receipt_output_bytes(policy, receipt, output)?;
+    let artifact: GeoCompositionArtifact = serde_json::from_slice(&bytes)
+        .map_err(|error| output_parse_error(&receipt.node_id, "composition", error))?;
+    Ok(artifact.resolved_claim)
+}
+
 fn output_ref(
     project_node_id: &str,
     output: &ProjectRunOutputReceipt,
     contract_version: &str,
+    resolved_claim: Option<GeoResolvedClaim>,
 ) -> GeoRunOutputRef {
     GeoRunOutputRef {
         artifact_id: geo_run_declared_artifact_id(project_node_id, &output.output_id),
@@ -3193,6 +3224,7 @@ fn output_ref(
         byte_count: output.byte_count,
         media_type: GEO_RUN_JSON_MEDIA_TYPE.to_string(),
         contract_version: contract_version.to_string(),
+        resolved_claim,
     }
 }
 
@@ -3508,6 +3540,7 @@ fn phase_for_stage(stage: GeoPlanStage) -> GeoRunPhase {
         }
         GeoPlanStage::BuildBoundedSection => GeoRunPhase::ReachChecked,
         GeoPlanStage::CompileEvidence => GeoRunPhase::Compiled,
+        GeoPlanStage::PropagateConstraints => GeoRunPhase::Factorized,
         GeoPlanStage::FactorAndSolveExactResidual => GeoRunPhase::Solved,
     }
 }
@@ -4872,6 +4905,37 @@ fn validate_run_state_shapes(run: &GeoRun) -> GeoRunResult<()> {
     ] {
         if let Some(value) = value {
             validate_non_empty_text(field, value)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_resolved_claim(field: &'static str, claim: &GeoResolvedClaim) -> GeoRunResult<()> {
+    if claim.candidate_members != claim.parcel_candidates + claim.building_candidates {
+        return Err(GeoRunError::new(
+            GeoRunErrorCode::ArtifactContract,
+            "Geo run resolved claim candidate counts are internally inconsistent",
+            [("field", field)],
+        ));
+    }
+    match claim.claim_class {
+        GeoResolvedClaimClass::StructurallyForced => {
+            if claim.hard_constraint_count != 0 || claim.hard_constraint_evaluations != 0 {
+                return Err(GeoRunError::new(
+                    GeoRunErrorCode::ArtifactContract,
+                    "Geo run structurally forced claim carries hard-evidence accounting",
+                    [("field", field)],
+                ));
+            }
+        }
+        GeoResolvedClaimClass::EvidentiallySupported => {
+            if claim.hard_constraint_count == 0 && claim.hard_constraint_evaluations == 0 {
+                return Err(GeoRunError::new(
+                    GeoRunErrorCode::ArtifactContract,
+                    "Geo run evidence-supported claim has no hard-evidence accounting",
+                    [("field", field)],
+                ));
+            }
         }
     }
     Ok(())

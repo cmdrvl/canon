@@ -154,6 +154,7 @@
       "artifact_inputs.node_id",
       "artifact_inputs.binding_id",
       "output_refs",
+      "output_refs.resolved_claim",
       "grain_states.entity_level",
       "grain_states.status",
       "grain_states.missing_evidence_classes",
@@ -373,7 +374,35 @@
         "content_digest": { "$ref": "#/$defs/blake3_digest" },
         "byte_count": { "$ref": "#/$defs/uint64" },
         "media_type": { "const": "application/json" },
-        "contract_version": { "$ref": "#/$defs/contract_version" }
+        "contract_version": { "$ref": "#/$defs/contract_version" },
+        "resolved_claim": { "$ref": "#/$defs/resolved_claim" }
+      }
+    },
+    "resolved_claim_class": {
+      "type": "string",
+      "enum": [
+        "evidentially_supported",
+        "structurally_forced"
+      ]
+    },
+    "resolved_claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_class",
+        "candidate_members",
+        "parcel_candidates",
+        "building_candidates",
+        "hard_constraint_count",
+        "hard_constraint_evaluations"
+      ],
+      "properties": {
+        "claim_class": { "$ref": "#/$defs/resolved_claim_class" },
+        "candidate_members": { "$ref": "#/$defs/uint64" },
+        "parcel_candidates": { "$ref": "#/$defs/uint64" },
+        "building_candidates": { "$ref": "#/$defs/uint64" },
+        "hard_constraint_count": { "$ref": "#/$defs/uint64" },
+        "hard_constraint_evaluations": { "$ref": "#/$defs/uint64" }
       }
     },
     "grain_status": {

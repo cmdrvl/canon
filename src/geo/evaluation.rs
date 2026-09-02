@@ -10,8 +10,8 @@ use super::{
     composition::{
         GeoCompositionArtifact, GeoCompositionBackbone, GeoCompositionError,
         GeoCompositionErrorCode, GeoCompositionModel, GeoCompositionRequest, GeoCompositionStatus,
-        canonical_composition_bytes, canonicalize_composition_request, model_satisfies_request,
-        solve_composition,
+        GeoResolvedClaim, GeoResolvedClaimClass, canonical_composition_bytes,
+        canonicalize_composition_request, model_satisfies_request, solve_composition,
     },
     evidence::{
         GeoEvidenceCompilationArtifact, GeoEvidenceCompilationRequest, GeoEvidenceDisposition,
@@ -245,6 +245,8 @@ pub struct GeoPopulationCaseEvaluation {
     pub case_id: String,
     pub truth_plane: GeoTruthPlane,
     pub status: GeoPopulationCaseStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_claim: Option<GeoResolvedClaim>,
     pub compilation_digest: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub solver_digest: Option<String>,
@@ -298,6 +300,9 @@ pub struct GeoPopulationSummary {
     pub population_eligible_cases: u64,
     pub truth_planes: Vec<GeoPopulationTruthPlaneSummary>,
     pub resolved_cases: u64,
+    pub evidentially_supported_resolved_cases: u64,
+    pub structurally_forced_resolved_cases: u64,
+    pub resolved_with_reach_not_full_cases: u64,
     pub ambiguous_cases: u64,
     pub conflict_cases: u64,
     pub assignment_budget_exceeded_cases: u64,
@@ -335,6 +340,8 @@ pub struct GeoPopulationSummary {
     /// contracts; it is distinct from a wrong singleton/false merge.
     pub solver_truth_exclusion_cases: u64,
     pub residual_count_complete_cases: u64,
+    /// Cases whose residual count is exact, not a saturated lower bound.
+    pub residual_count_exact_cases: u64,
     pub residual_count_saturated_cases: u64,
     pub residual_count_unavailable_cases: u64,
     pub backbone_complete_cases: u64,
@@ -350,6 +357,9 @@ pub struct GeoPopulationTruthPlaneSummary {
     pub cases: u64,
     pub population_eligible_cases: u64,
     pub resolved_cases: u64,
+    pub evidentially_supported_resolved_cases: u64,
+    pub structurally_forced_resolved_cases: u64,
+    pub resolved_with_reach_not_full_cases: u64,
     pub ambiguous_cases: u64,
     pub conflict_cases: u64,
     pub abstention_cases: u64,
@@ -363,6 +373,7 @@ pub struct GeoPopulationTruthPlaneSummary {
     pub empirical_falsification_eligible_cases: u64,
     pub solver_truth_exclusion_cases: u64,
     pub residual_count_complete_cases: u64,
+    pub residual_count_exact_cases: u64,
     pub residual_count_saturated_cases: u64,
     pub residual_count_unavailable_cases: u64,
     pub component_budget_fallback_cases: u64,
@@ -547,6 +558,7 @@ pub fn evaluate_population_with_artifacts(
                     case_id: case.id,
                     truth_plane: case.truth_plane,
                     status: GeoPopulationCaseStatus::AssignmentBudgetExceeded,
+                    resolved_claim: None,
                     compilation_digest: compilation_digest.clone(),
                     solver_digest: None,
                     candidate_members,
@@ -612,12 +624,17 @@ pub fn evaluate_population_with_artifacts(
                         GeoPopulationCaseStatus::ComponentBudgetFallback
                     }
                 };
+                let resolved_claim = resolved_claim_from_artifact(
+                    &artifact,
+                    compilation.composition_request.hard_constraints.len(),
+                );
                 let residual_count_complete = artifact.summary.residual_model_count_complete;
                 let false_merge = scored_false_merge(status, truth_model_in_residual);
                 let evaluation = GeoPopulationCaseEvaluation {
                     case_id: case.id,
                     truth_plane: case.truth_plane,
                     status,
+                    resolved_claim,
                     residual_count_saturated: artifact.summary.residual_model_count_saturated,
                     compilation_digest: compilation_digest.clone(),
                     solver_digest: Some(solver_digest.clone()),
@@ -1552,6 +1569,36 @@ fn is_abstention_status(status: GeoPopulationCaseStatus) -> bool {
     )
 }
 
+fn resolved_claim_from_artifact(
+    artifact: &GeoCompositionArtifact,
+    hard_constraint_count: usize,
+) -> Option<GeoResolvedClaim> {
+    artifact.resolved_claim.clone().or_else(|| {
+        if artifact.status != GeoCompositionStatus::Resolved {
+            return None;
+        }
+        let claim_class =
+            if hard_constraint_count == 0 && artifact.summary.hard_constraint_evaluations == 0 {
+                GeoResolvedClaimClass::StructurallyForced
+            } else {
+                GeoResolvedClaimClass::EvidentiallySupported
+            };
+        Some(GeoResolvedClaim {
+            claim_class,
+            candidate_members: artifact.summary.parcel_candidates
+                + artifact.summary.building_candidates,
+            parcel_candidates: artifact.summary.parcel_candidates,
+            building_candidates: artifact.summary.building_candidates,
+            hard_constraint_count,
+            hard_constraint_evaluations: artifact.summary.hard_constraint_evaluations,
+        })
+    })
+}
+
+fn is_residual_count_exact_case(case: &GeoPopulationCaseEvaluation) -> bool {
+    case.residual_count_complete && !case.residual_count_saturated
+}
+
 fn scored_false_merge(
     status: GeoPopulationCaseStatus,
     truth_model_in_residual: Option<bool>,
@@ -1843,9 +1890,48 @@ fn validate_case_evaluation(case: &GeoPopulationCaseEvaluation) -> Result<(), Ge
             "Geo population evaluation emitted abstention inconsistent with case status",
         ));
     }
+    if let Some(claim) = &case.resolved_claim {
+        if case.status != GeoPopulationCaseStatus::Resolved {
+            return Err(case_invariant_error(
+                case,
+                "resolved_claim",
+                "Geo population evaluation emitted a resolved claim for a non-resolved case",
+            ));
+        }
+        if checked_len(claim.candidate_members, "resolved_claim.candidate_members")?
+            != case.candidate_members
+        {
+            return Err(case_invariant_error(
+                case,
+                "resolved_claim.candidate_members",
+                "Geo population evaluation emitted a resolved claim whose candidate count does not match the case",
+            ));
+        }
+        match claim.claim_class {
+            GeoResolvedClaimClass::StructurallyForced => {
+                if claim.hard_constraint_count != 0 || claim.hard_constraint_evaluations != 0 {
+                    return Err(case_invariant_error(
+                        case,
+                        "resolved_claim.claim_class",
+                        "Geo population evaluation emitted a structurally forced claim with admitted hard evidence",
+                    ));
+                }
+            }
+            GeoResolvedClaimClass::EvidentiallySupported => {
+                if claim.hard_constraint_count == 0 && claim.hard_constraint_evaluations == 0 {
+                    return Err(case_invariant_error(
+                        case,
+                        "resolved_claim.claim_class",
+                        "Geo population evaluation emitted an evidence-supported claim without admitted hard evidence",
+                    ));
+                }
+            }
+        }
+    }
     match case.status {
         GeoPopulationCaseStatus::AssignmentBudgetExceeded => {
             if case.solver_digest.is_some()
+                || case.resolved_claim.is_some()
                 || case.residual_count_complete
                 || case.residual_model_count.is_some()
                 || case.truth_model_in_residual.is_some()
@@ -1862,6 +1948,7 @@ fn validate_case_evaluation(case: &GeoPopulationCaseEvaluation) -> Result<(), Ge
         }
         GeoPopulationCaseStatus::ComponentBudgetFallback => {
             if case.solver_digest.is_none()
+                || case.resolved_claim.is_some()
                 || case.residual_count_complete
                 || case.residual_model_count.is_some()
                 || case.backbone_complete
@@ -1875,6 +1962,7 @@ fn validate_case_evaluation(case: &GeoPopulationCaseEvaluation) -> Result<(), Ge
         }
         GeoPopulationCaseStatus::Resolved => {
             if case.solver_digest.is_none()
+                || case.resolved_claim.is_none()
                 || case.residual_model_count != Some(1)
                 || case.residual_count_saturated
                 || case.abstained
@@ -1887,7 +1975,7 @@ fn validate_case_evaluation(case: &GeoPopulationCaseEvaluation) -> Result<(), Ge
             }
         }
         GeoPopulationCaseStatus::Ambiguous | GeoPopulationCaseStatus::Conflict => {
-            if case.solver_digest.is_none() {
+            if case.solver_digest.is_none() || case.resolved_claim.is_some() {
                 return Err(case_invariant_error(
                     case,
                     "solver_digest",
@@ -1919,6 +2007,9 @@ fn summarize(
         population_eligible_cases: 0,
         truth_planes: Vec::new(),
         resolved_cases: 0,
+        evidentially_supported_resolved_cases: 0,
+        structurally_forced_resolved_cases: 0,
+        resolved_with_reach_not_full_cases: 0,
         ambiguous_cases: 0,
         conflict_cases: 0,
         assignment_budget_exceeded_cases: 0,
@@ -1941,6 +2032,7 @@ fn summarize(
         empirical_falsification_eligible_cases: 0,
         solver_truth_exclusion_cases: 0,
         residual_count_complete_cases: 0,
+        residual_count_exact_cases: 0,
         residual_count_saturated_cases: 0,
         residual_count_unavailable_cases: 0,
         backbone_complete_cases: 0,
@@ -1965,6 +2057,32 @@ fn summarize(
         match case.status {
             GeoPopulationCaseStatus::Resolved => {
                 checked_inc(&mut summary.resolved_cases, "resolved_cases")?;
+                match case
+                    .resolved_claim
+                    .as_ref()
+                    .map(|claim| claim.claim_class)
+                    .ok_or_else(|| {
+                        case_invariant_error(
+                            case,
+                            "resolved_claim",
+                            "Geo population evaluation emitted a resolved case without a claim class",
+                        )
+                    })? {
+                    GeoResolvedClaimClass::EvidentiallySupported => checked_inc(
+                        &mut summary.evidentially_supported_resolved_cases,
+                        "evidentially_supported_resolved_cases",
+                    )?,
+                    GeoResolvedClaimClass::StructurallyForced => checked_inc(
+                        &mut summary.structurally_forced_resolved_cases,
+                        "structurally_forced_resolved_cases",
+                    )?,
+                }
+                if case.candidate_reach != GeoCandidateReachStatus::Full {
+                    checked_inc(
+                        &mut summary.resolved_with_reach_not_full_cases,
+                        "resolved_with_reach_not_full_cases",
+                    )?;
+                }
             }
             GeoPopulationCaseStatus::Ambiguous => {
                 checked_inc(&mut summary.ambiguous_cases, "ambiguous_cases")?;
@@ -2073,6 +2191,12 @@ fn summarize(
                 &mut summary.residual_count_complete_cases,
                 "residual_count_complete_cases",
             )?;
+            if is_residual_count_exact_case(case) {
+                checked_inc(
+                    &mut summary.residual_count_exact_cases,
+                    "residual_count_exact_cases",
+                )?;
+            }
         } else {
             checked_inc(
                 &mut summary.residual_count_unavailable_cases,
@@ -2400,6 +2524,10 @@ fn validate_summary(summary: &GeoPopulationSummary) -> Result<(), GeoPopulationE
         "summary",
         summary.cases,
         summary.population_eligible_cases,
+        summary.resolved_cases,
+        summary.evidentially_supported_resolved_cases,
+        summary.structurally_forced_resolved_cases,
+        summary.resolved_with_reach_not_full_cases,
         summary.candidate_reach_evaluated_cases,
         summary.candidate_reach_full_cases,
         summary.candidate_reach_partial_cases,
@@ -2407,6 +2535,9 @@ fn validate_summary(summary: &GeoPopulationSummary) -> Result<(), GeoPopulationE
         summary.solver_truth_scored_cases,
         summary.empirical_falsification_eligible_cases,
         summary.solver_truth_exclusion_cases,
+        summary.residual_count_complete_cases,
+        summary.residual_count_saturated_cases,
+        summary.residual_count_exact_cases,
     )?;
     validate_truth_plane_sums(summary)?;
     for plane in &summary.truth_planes {
@@ -2414,6 +2545,10 @@ fn validate_summary(summary: &GeoPopulationSummary) -> Result<(), GeoPopulationE
             "truth_plane",
             plane.cases,
             plane.population_eligible_cases,
+            plane.resolved_cases,
+            plane.evidentially_supported_resolved_cases,
+            plane.structurally_forced_resolved_cases,
+            plane.resolved_with_reach_not_full_cases,
             plane.candidate_reach_evaluated_cases,
             plane.candidate_reach_full_cases,
             plane.candidate_reach_partial_cases,
@@ -2421,6 +2556,9 @@ fn validate_summary(summary: &GeoPopulationSummary) -> Result<(), GeoPopulationE
             plane.solver_truth_scored_cases,
             plane.empirical_falsification_eligible_cases,
             plane.solver_truth_exclusion_cases,
+            plane.residual_count_complete_cases,
+            plane.residual_count_saturated_cases,
+            plane.residual_count_exact_cases,
         )?;
     }
     Ok(())
@@ -2685,6 +2823,30 @@ fn validate_truth_plane_sums(summary: &GeoPopulationSummary) -> Result<(), GeoPo
             .map(|plane| plane.resolved_cases),
     )?;
     validate_truth_plane_sum(
+        "evidentially_supported_resolved_cases",
+        summary.evidentially_supported_resolved_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.evidentially_supported_resolved_cases),
+    )?;
+    validate_truth_plane_sum(
+        "structurally_forced_resolved_cases",
+        summary.structurally_forced_resolved_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.structurally_forced_resolved_cases),
+    )?;
+    validate_truth_plane_sum(
+        "resolved_with_reach_not_full_cases",
+        summary.resolved_with_reach_not_full_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.resolved_with_reach_not_full_cases),
+    )?;
+    validate_truth_plane_sum(
         "ambiguous_cases",
         summary.ambiguous_cases,
         summary
@@ -2787,6 +2949,14 @@ fn validate_truth_plane_sums(summary: &GeoPopulationSummary) -> Result<(), GeoPo
             .truth_planes
             .iter()
             .map(|plane| plane.residual_count_complete_cases),
+    )?;
+    validate_truth_plane_sum(
+        "residual_count_exact_cases",
+        summary.residual_count_exact_cases,
+        summary
+            .truth_planes
+            .iter()
+            .map(|plane| plane.residual_count_exact_cases),
     )?;
     validate_truth_plane_sum(
         "residual_count_saturated_cases",
@@ -2913,6 +3083,10 @@ fn validate_summary_denominators(
     scope: &'static str,
     cases: u64,
     population_eligible_cases: u64,
+    resolved_cases: u64,
+    evidentially_supported_resolved_cases: u64,
+    structurally_forced_resolved_cases: u64,
+    resolved_with_reach_not_full_cases: u64,
     candidate_reach_evaluated_cases: u64,
     candidate_reach_full_cases: u64,
     candidate_reach_partial_cases: u64,
@@ -2920,6 +3094,9 @@ fn validate_summary_denominators(
     solver_truth_scored_cases: u64,
     empirical_falsification_eligible_cases: u64,
     solver_truth_exclusion_cases: u64,
+    residual_count_complete_cases: u64,
+    residual_count_saturated_cases: u64,
+    residual_count_exact_cases: u64,
 ) -> Result<(), GeoPopulationError> {
     if population_eligible_cases != cases {
         return Err(summary_invariant_error(
@@ -2953,6 +3130,29 @@ fn validate_summary_denominators(
             candidate_reach_evaluated_cases,
         ));
     }
+    let resolved_class_cases = sum_u64(
+        [
+            evidentially_supported_resolved_cases,
+            structurally_forced_resolved_cases,
+        ],
+        "resolved_class_cases",
+    )?;
+    if resolved_cases != resolved_class_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "resolved_class_cases",
+            resolved_cases,
+            resolved_class_cases,
+        ));
+    }
+    if resolved_with_reach_not_full_cases > resolved_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "resolved_with_reach_not_full_cases",
+            resolved_cases,
+            resolved_with_reach_not_full_cases,
+        ));
+    }
     if empirical_falsification_eligible_cases != solver_truth_scored_cases {
         return Err(summary_invariant_error(
             scope,
@@ -2967,6 +3167,18 @@ fn validate_summary_denominators(
             "solver_truth_exclusion_cases",
             empirical_falsification_eligible_cases,
             solver_truth_exclusion_cases,
+        ));
+    }
+    let exact_or_saturated_cases = sum_u64(
+        [residual_count_exact_cases, residual_count_saturated_cases],
+        "residual_count_exact_or_saturated_cases",
+    )?;
+    if exact_or_saturated_cases != residual_count_complete_cases {
+        return Err(summary_invariant_error(
+            scope,
+            "residual_count_exact_cases",
+            residual_count_complete_cases,
+            exact_or_saturated_cases,
         ));
     }
     Ok(())
@@ -2997,6 +3209,9 @@ impl GeoPopulationTruthPlaneSummary {
             cases: 0,
             population_eligible_cases: 0,
             resolved_cases: 0,
+            evidentially_supported_resolved_cases: 0,
+            structurally_forced_resolved_cases: 0,
+            resolved_with_reach_not_full_cases: 0,
             ambiguous_cases: 0,
             conflict_cases: 0,
             abstention_cases: 0,
@@ -3010,6 +3225,7 @@ impl GeoPopulationTruthPlaneSummary {
             empirical_falsification_eligible_cases: 0,
             solver_truth_exclusion_cases: 0,
             residual_count_complete_cases: 0,
+            residual_count_exact_cases: 0,
             residual_count_saturated_cases: 0,
             residual_count_unavailable_cases: 0,
             component_budget_fallback_cases: 0,
@@ -3045,6 +3261,32 @@ impl GeoPopulationTruthPlaneSummary {
         match case.status {
             GeoPopulationCaseStatus::Resolved => {
                 checked_inc(&mut self.resolved_cases, "truth_plane.resolved_cases")?;
+                match case
+                    .resolved_claim
+                    .as_ref()
+                    .map(|claim| claim.claim_class)
+                    .ok_or_else(|| {
+                        case_invariant_error(
+                            case,
+                            "resolved_claim",
+                            "Geo population evaluation emitted a resolved case without a claim class",
+                        )
+                    })? {
+                    GeoResolvedClaimClass::EvidentiallySupported => checked_inc(
+                        &mut self.evidentially_supported_resolved_cases,
+                        "truth_plane.evidentially_supported_resolved_cases",
+                    )?,
+                    GeoResolvedClaimClass::StructurallyForced => checked_inc(
+                        &mut self.structurally_forced_resolved_cases,
+                        "truth_plane.structurally_forced_resolved_cases",
+                    )?,
+                }
+                if case.candidate_reach != GeoCandidateReachStatus::Full {
+                    checked_inc(
+                        &mut self.resolved_with_reach_not_full_cases,
+                        "truth_plane.resolved_with_reach_not_full_cases",
+                    )?;
+                }
             }
             GeoPopulationCaseStatus::Ambiguous => {
                 checked_inc(&mut self.ambiguous_cases, "truth_plane.ambiguous_cases")?;
@@ -3144,6 +3386,12 @@ impl GeoPopulationTruthPlaneSummary {
                 &mut self.residual_count_complete_cases,
                 "truth_plane.residual_count_complete_cases",
             )?;
+            if is_residual_count_exact_case(case) {
+                checked_inc(
+                    &mut self.residual_count_exact_cases,
+                    "truth_plane.residual_count_exact_cases",
+                )?;
+            }
         } else {
             checked_inc(
                 &mut self.residual_count_unavailable_cases,

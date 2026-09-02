@@ -1,14 +1,15 @@
 use canon::geo::{
-    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_POPULATION_REQUEST_VERSION,
-    DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate, GeoCandidateReachStatus,
-    GeoCompositionModel, GeoCompositionProfile, GeoCompositionStatus, GeoCompositionUniverse,
-    GeoEntityLevel, GeoEntityRef, GeoEvidenceClaimRole, GeoEvidenceCompilationRequest,
-    GeoEvidenceCoverageStatus, GeoEvidenceDisposition, GeoEvidenceRecordRef, GeoIntegerMeasure,
-    GeoIntegerMemberValue, GeoIntegerValueOrigin, GeoLabeledCompositionCase,
-    GeoPopulationCaseStatus, GeoPopulationErrorCode, GeoPopulationEvaluationArtifact,
-    GeoPopulationEvaluationRequest, GeoPopulationSummary, GeoPopulationTruthPlaneSummary,
-    GeoRhoBasis, GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoRhoSoundness,
-    GeoTruthPlane, GeoValidTimeInterval, canonical_evidence_compilation_bytes, compile_evidence,
+    CANON_GEO_COMPOSITION_REQUEST_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
+    CANON_GEO_POPULATION_REQUEST_VERSION, DEFAULT_MAX_MATERIALIZED_MODELS, GeoBuildingCandidate,
+    GeoCandidateReachStatus, GeoCompositionModel, GeoCompositionProfile, GeoCompositionRequest,
+    GeoCompositionStatus, GeoCompositionUniverse, GeoEntityLevel, GeoEntityRef,
+    GeoEvidenceClaimRole, GeoEvidenceCompilationRequest, GeoEvidenceCoverageStatus,
+    GeoEvidenceDisposition, GeoEvidenceRecordRef, GeoIntegerMeasure, GeoIntegerMemberValue,
+    GeoIntegerValueOrigin, GeoLabeledCompositionCase, GeoPopulationCaseStatus,
+    GeoPopulationErrorCode, GeoPopulationEvaluationArtifact, GeoPopulationEvaluationRequest,
+    GeoPopulationSummary, GeoPopulationTruthPlaneSummary, GeoResolvedClaimClass, GeoRhoBasis,
+    GeoRhoContract, GeoRhoObservation, GeoRhoObservationKind, GeoRhoSoundness, GeoTruthPlane,
+    GeoValidTimeInterval, canonical_evidence_compilation_bytes, compile_evidence,
     evaluate_population, solve_composition, validate_population_evaluation_artifact,
 };
 use serde::Deserialize;
@@ -203,6 +204,9 @@ fn assert_summary_matches_truth_plane_sums(summary: &GeoPopulationSummary) {
     assert_plane_sum!(cases);
     assert_plane_sum!(population_eligible_cases);
     assert_plane_sum!(resolved_cases);
+    assert_plane_sum!(evidentially_supported_resolved_cases);
+    assert_plane_sum!(structurally_forced_resolved_cases);
+    assert_plane_sum!(resolved_with_reach_not_full_cases);
     assert_plane_sum!(ambiguous_cases);
     assert_plane_sum!(conflict_cases);
     assert_plane_sum!(abstention_cases);
@@ -216,6 +220,7 @@ fn assert_summary_matches_truth_plane_sums(summary: &GeoPopulationSummary) {
     assert_plane_sum!(empirical_falsification_eligible_cases);
     assert_plane_sum!(solver_truth_exclusion_cases);
     assert_plane_sum!(residual_count_complete_cases);
+    assert_plane_sum!(residual_count_exact_cases);
     assert_plane_sum!(residual_count_saturated_cases);
     assert_plane_sum!(residual_count_unavailable_cases);
     assert_plane_sum!(component_budget_fallback_cases);
@@ -954,10 +959,23 @@ fn population_does_not_score_false_merge_when_truth_is_unreachable() {
         parcels(&["p1"]),
         "the solver result remains reported even though correctness is unscored"
     );
+    let claim = case
+        .resolved_claim
+        .as_ref()
+        .expect("resolved case carries its claim class");
+    assert_eq!(
+        claim.claim_class,
+        GeoResolvedClaimClass::EvidentiallySupported
+    );
+    assert_eq!(claim.candidate_members, 1);
+    assert_eq!(claim.hard_constraint_count, 1);
     assert_eq!(case.backbone_true_positive_members, 0);
     assert_eq!(case.backbone_false_positive_members, 0);
     assert!(!case.false_merge);
     assert_eq!(artifact.summary.resolved_cases, 1);
+    assert_eq!(artifact.summary.evidentially_supported_resolved_cases, 1);
+    assert_eq!(artifact.summary.structurally_forced_resolved_cases, 0);
+    assert_eq!(artifact.summary.resolved_with_reach_not_full_cases, 1);
     assert_eq!(artifact.summary.population_eligible_cases, 1);
     assert_eq!(artifact.summary.candidate_reach_evaluated_cases, 1);
     assert_eq!(artifact.summary.candidate_recall_failure_cases, 1);
@@ -965,6 +983,183 @@ fn population_does_not_score_false_merge_when_truth_is_unreachable() {
     assert_eq!(artifact.summary.solver_truth_scored_cases, 0);
     assert_eq!(artifact.summary.empirical_falsification_eligible_cases, 0);
     assert_eq!(artifact.summary.false_merge_cases, 0);
+}
+
+#[test]
+fn bd_3qs3_singleton_without_hard_evidence_is_labeled_structurally_forced() {
+    let no_truth_run_request = GeoCompositionRequest {
+        version: CANON_GEO_COMPOSITION_REQUEST_VERSION.to_string(),
+        profile: Default::default(),
+        universe: universe(&["p1"]),
+        hard_constraints: Vec::new(),
+        soft_preferences: Vec::new(),
+        max_assignments: 4,
+        max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+    };
+    let solved =
+        solve_composition(&no_truth_run_request).expect("singleton candidate universe solves");
+    assert_eq!(solved.status, GeoCompositionStatus::Resolved);
+    let no_truth_claim = solved
+        .resolved_claim
+        .as_ref()
+        .expect("no-truth run output must not be a bare resolved status");
+    assert_eq!(
+        no_truth_claim.claim_class,
+        GeoResolvedClaimClass::StructurallyForced
+    );
+    assert_eq!(no_truth_claim.candidate_members, 1);
+    assert_eq!(no_truth_claim.parcel_candidates, 1);
+    assert_eq!(no_truth_claim.building_candidates, 0);
+    assert_eq!(no_truth_claim.hard_constraint_count, 0);
+    assert_eq!(no_truth_claim.hard_constraint_evaluations, 0);
+    let serialized = serde_json::to_value(&solved).expect("composition artifact serializes");
+    assert_eq!(
+        serialized
+            .pointer("/resolved_claim/claim_class")
+            .and_then(serde_json::Value::as_str),
+        Some("structurally_forced")
+    );
+
+    let structurally_forced = GeoLabeledCompositionCase {
+        id: "structurally-forced-unreachable-singleton".to_string(),
+        evidence: GeoEvidenceCompilationRequest {
+            version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+            profile: Default::default(),
+            universe: universe(&["p1"]),
+            contracts: Vec::new(),
+            observations: Vec::new(),
+            max_assignments: 4,
+            max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+        },
+        truth_plane: GeoTruthPlane::RoundExactLenderParty,
+        truth: GeoCompositionModel {
+            parcels: parcels(&["p9"]),
+            buildings: Vec::new(),
+        },
+    };
+    let evidence_supported = hard_population_case(
+        "evidence-supported-full-reach",
+        GeoTruthPlane::NonRoundAmountDateLegalBorough,
+        &["p1", "p2"],
+        "p2",
+        &["p2"],
+    );
+    let artifact = evaluate_population(&GeoPopulationEvaluationRequest {
+        version: CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        cases: vec![structurally_forced, evidence_supported],
+        max_cases: 2,
+    })
+    .expect("resolved claim classes evaluate");
+    validate_population_evaluation_artifact(&artifact).expect("new counters validate");
+
+    let forced_case = artifact
+        .cases
+        .iter()
+        .find(|case| case.case_id == "structurally-forced-unreachable-singleton")
+        .expect("forced case present");
+    assert_eq!(forced_case.status, GeoPopulationCaseStatus::Resolved);
+    assert_eq!(forced_case.candidate_reach, GeoCandidateReachStatus::None);
+    assert_eq!(
+        forced_case
+            .resolved_claim
+            .as_ref()
+            .expect("forced case claim")
+            .claim_class,
+        GeoResolvedClaimClass::StructurallyForced
+    );
+    assert!(!forced_case.solver_truth_scored);
+    assert!(!forced_case.false_merge);
+
+    let supported_case = artifact
+        .cases
+        .iter()
+        .find(|case| case.case_id == "evidence-supported-full-reach")
+        .expect("supported case present");
+    assert_eq!(supported_case.status, GeoPopulationCaseStatus::Resolved);
+    assert_eq!(
+        supported_case.candidate_reach,
+        GeoCandidateReachStatus::Full
+    );
+    assert_eq!(
+        supported_case
+            .resolved_claim
+            .as_ref()
+            .expect("supported case claim")
+            .claim_class,
+        GeoResolvedClaimClass::EvidentiallySupported
+    );
+    assert!(supported_case.solver_truth_scored);
+
+    assert_eq!(artifact.summary.resolved_cases, 2);
+    assert_eq!(artifact.summary.evidentially_supported_resolved_cases, 1);
+    assert_eq!(artifact.summary.structurally_forced_resolved_cases, 1);
+    assert_eq!(artifact.summary.resolved_with_reach_not_full_cases, 1);
+    assert_eq!(artifact.summary.false_merge_cases, 0);
+    assert_eq!(artifact.summary.solver_truth_scored_cases, 1);
+    assert_eq!(artifact.summary.residual_count_complete_cases, 2);
+    assert_eq!(artifact.summary.residual_count_exact_cases, 2);
+    assert_eq!(artifact.summary.residual_count_saturated_cases, 0);
+    assert_summary_matches_truth_plane_sums(&artifact.summary);
+}
+
+#[test]
+fn bd_3qs3_residual_count_exact_excludes_saturated_lower_bounds() {
+    let parcel_ids = (0..65)
+        .map(|index| format!("p{index:02}"))
+        .collect::<Vec<_>>();
+    let artifact = evaluate_population(&GeoPopulationEvaluationRequest {
+        version: CANON_GEO_POPULATION_REQUEST_VERSION.to_string(),
+        cases: vec![GeoLabeledCompositionCase {
+            id: "saturated-lower-bound".to_string(),
+            evidence: GeoEvidenceCompilationRequest {
+                version: CANON_GEO_EVIDENCE_REQUEST_VERSION.to_string(),
+                profile: Default::default(),
+                universe: GeoCompositionUniverse {
+                    parcels: parcel_ids.clone(),
+                    buildings: Vec::new(),
+                },
+                contracts: vec![contract("wide-anyof", GeoRhoSoundness::LogicallySound)],
+                observations: vec![GeoRhoObservation {
+                    id: "force-p00".to_string(),
+                    contract_id: "wide-anyof".to_string(),
+                    source_records: vec![source_record("force-p00-row")],
+                    valid_time: None,
+                    observation: GeoRhoObservationKind::ExistentialMembership {
+                        members: vec![GeoEntityRef::new(GeoEntityLevel::Parcel, "p00")],
+                    },
+                }],
+                max_assignments: 8,
+                max_materialized_models: DEFAULT_MAX_MATERIALIZED_MODELS,
+            },
+            truth_plane: GeoTruthPlane::GateV2Historical,
+            truth: GeoCompositionModel {
+                parcels: vec!["p00".to_string()],
+                buildings: Vec::new(),
+            },
+        }],
+        max_cases: 1,
+    })
+    .expect("fixture population evaluates");
+
+    let case = &artifact.cases[0];
+    assert_eq!(case.status, GeoPopulationCaseStatus::Ambiguous);
+    assert!(case.residual_count_complete);
+    assert!(case.residual_count_saturated);
+    assert_eq!(artifact.summary.residual_count_complete_cases, 1);
+    assert_eq!(artifact.summary.residual_count_exact_cases, 0);
+    assert_eq!(artifact.summary.residual_count_saturated_cases, 1);
+    validate_population_evaluation_artifact(&artifact)
+        .expect("complete saturated residual is a lower bound, not an exact count");
+
+    let mut tampered = artifact;
+    tampered.summary.residual_count_exact_cases = 1;
+    let error = validate_population_evaluation_artifact(&tampered)
+        .expect_err("counting complete saturated residuals as exact must be refused");
+    assert_eq!(error.code, GeoPopulationErrorCode::InvalidInput);
+    assert_eq!(
+        error.detail.get("field").map(String::as_str),
+        Some("residual_count_exact_cases")
+    );
 }
 
 #[test]
