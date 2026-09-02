@@ -1902,6 +1902,64 @@ fn tile_reconciliation_schema_matches_a_real_instance() {
 }
 
 #[test]
+fn v1_tile_relation_semantics_schema_uses_non_equivalence_vocabulary() {
+    for (label, schema_source) in [
+        (
+            "tile reconciliation request",
+            TILE_RECONCILIATION_REQUEST_SCHEMA,
+        ),
+        ("tile reconciliation artifact", TILE_RECONCILIATION_SCHEMA),
+    ] {
+        let schema = parsed(schema_source);
+        assert_eq!(
+            schema
+                .pointer("/$defs/decision_semantics/oneOf/2/properties/relation/$ref")
+                .and_then(Value::as_str),
+            Some("#/$defs/non_equivalence_relation"),
+            "{label} relation semantics must not reference the all-relations enum"
+        );
+        let values = schema
+            .pointer("/$defs/non_equivalence_relation/enum")
+            .and_then(Value::as_array)
+            .unwrap_or_else(|| panic!("{label} must declare non_equivalence_relation enum"));
+        assert!(
+            !values.iter().any(|value| value.as_str() == Some("same_as")),
+            "{label} must forbid same_as in relation semantics at schema level"
+        );
+        for required in [
+            "contains",
+            "part_of",
+            "within",
+            "on",
+            "fronts",
+            "intersects",
+        ] {
+            assert!(
+                values.iter().any(|value| value.as_str() == Some(required)),
+                "{label} missing relation {required}"
+            );
+        }
+    }
+
+    let schema = parsed(TILE_RECONCILIATION_SCHEMA);
+    for pointer in [
+        "/$defs/relationship_edge/properties/relation/$ref",
+        "/$defs/relationship_group/properties/relation/$ref",
+    ] {
+        assert_eq!(
+            schema.pointer(pointer).and_then(Value::as_str),
+            Some("#/$defs/non_equivalence_relation"),
+            "typed relationship output must use the non-equivalence vocabulary"
+        );
+    }
+    assert!(
+        required_contains(&schema, "/required", "relationships")
+            && required_contains(&schema, "/required", "relationship_groups"),
+        "typed relationship output must be a first-class artifact field"
+    );
+}
+
+#[test]
 fn v1_tile_schemas_pin_exact_rust_integer_envelopes() {
     for schema_source in [
         HOME_CELL_ROWS_SCHEMA,

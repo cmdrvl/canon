@@ -9,8 +9,9 @@ use canon::geo::{
     GeoPlanInventoryRef, GeoRegionalInventory, GeoRegionalSourceInstance, GeoSourceAvailability,
     GeoSourceRelease, GeoTemporalScope, GeoTileDecisionBatch, GeoTileDecisionMember,
     GeoTileDecisionProposal, GeoTileDecisionSemantics, GeoTileErrorCode, GeoTileFeatureRef,
-    GeoTileInventoryLineage, GeoTilePlacement, GeoTileReconciliationRequest, GeoTileSourceBinding,
-    GeoTileWorkRequest, canonical_home_cell_assignment_bytes, canonical_tile_reconciliation_bytes,
+    GeoTileInventoryLineage, GeoTilePlacement, GeoTileReconciliationRequest,
+    GeoTileRelationshipAnchorSide, GeoTileSourceBinding, GeoTileWorkRequest,
+    canonical_home_cell_assignment_bytes, canonical_tile_reconciliation_bytes,
     canonical_tile_work_unit_bytes, materialize_home_cells, materialize_tile_work_unit,
     reconcile_tile_decisions, regional_inventory_planning_hash, regional_inventory_semantic_hash,
 };
@@ -828,6 +829,28 @@ fn cross_level_relation_decisions_are_explicit_and_cannot_be_same_as() {
     assert_eq!(artifact.decisions[0].inventory_ref, None);
     assert_eq!(artifact.decisions[0].semantics, relation_semantics);
     assert_eq!(artifact.decisions[0].members.len(), 2);
+    assert_eq!(artifact.relationships.len(), 1);
+    assert_eq!(artifact.relationship_groups.len(), 2);
+    let relationship = &artifact.relationships[0];
+    assert_eq!(relationship.decision_id, artifact.decisions[0].decision_id);
+    assert_eq!(relationship.relation, GeoControlRelation::On);
+    assert_eq!(
+        relationship.from.entity_level,
+        GeoControlEntityLevel::Building
+    );
+    assert_eq!(relationship.from.feature_id, "building-1");
+    assert_eq!(relationship.to.entity_level, GeoControlEntityLevel::Parcel);
+    assert_eq!(relationship.to.feature_id, "parcel-1");
+    assert_eq!(
+        relationship.payload_blake3,
+        artifact.decisions[0].payload_blake3
+    );
+    assert!(
+        artifact
+            .relationship_groups
+            .iter()
+            .all(|group| group.related_count == 1 && group.relationship_ids.len() == 1)
+    );
 
     let same_as_relation = reconciliation_request(vec![decision_batch(
         center,
@@ -905,6 +928,167 @@ fn cross_level_relation_decisions_are_explicit_and_cannot_be_same_as() {
         error
             .message
             .contains("outside the declared cross-level relation")
+    );
+}
+
+#[test]
+fn typed_relationship_output_preserves_pairwise_edges_and_cardinality() {
+    let (center, _) = center_and_neighbor();
+    let parcel_source = native_source(
+        "parcel-cadastre",
+        GeoControlEntityLevel::Parcel,
+        GeoIdentityParticipation::StableAlias,
+    );
+    let building_source = native_source(
+        "building-footprints",
+        GeoControlEntityLevel::Building,
+        GeoIdentityParticipation::StableAlias,
+    );
+    let parcel_a = member_from_source(
+        parcel_source.clone(),
+        GeoControlEntityLevel::Parcel,
+        "parcel-a",
+        center,
+    );
+    let parcel_b = member_from_source(
+        parcel_source.clone(),
+        GeoControlEntityLevel::Parcel,
+        "parcel-b",
+        center,
+    );
+    let parcel_c = member_from_source(
+        parcel_source,
+        GeoControlEntityLevel::Parcel,
+        "parcel-c",
+        center,
+    );
+    let building_1 = member_from_source(
+        building_source.clone(),
+        GeoControlEntityLevel::Building,
+        "building-1",
+        center,
+    );
+    let building_2 = member_from_source(
+        building_source.clone(),
+        GeoControlEntityLevel::Building,
+        "building-2",
+        center,
+    );
+    let building_3 = member_from_source(
+        building_source,
+        GeoControlEntityLevel::Building,
+        "building-3",
+        center,
+    );
+    let semantics = GeoTileDecisionSemantics::Relation {
+        relation: GeoControlRelation::Contains,
+        from_entity_level: GeoControlEntityLevel::Parcel,
+        to_entity_level: GeoControlEntityLevel::Building,
+    };
+    let request = reconciliation_request(vec![decision_batch(
+        center,
+        &[
+            parcel_a.clone(),
+            parcel_b.clone(),
+            parcel_c.clone(),
+            building_1.clone(),
+            building_2.clone(),
+            building_3.clone(),
+        ],
+        vec![
+            proposal_with_semantics(
+                semantics,
+                payload("parcel-a-contains-building-1"),
+                vec![parcel_a.clone(), building_1.clone()],
+            ),
+            proposal_with_semantics(
+                semantics,
+                payload("parcel-a-contains-building-2"),
+                vec![parcel_a.clone(), building_2],
+            ),
+            proposal_with_semantics(
+                semantics,
+                payload("parcel-b-contains-building-3"),
+                vec![parcel_b, building_3.clone()],
+            ),
+            proposal_with_semantics(
+                semantics,
+                payload("parcel-c-contains-building-3"),
+                vec![parcel_c, building_3.clone()],
+            ),
+        ],
+    )]);
+
+    let artifact = reconcile_tile_decisions(&request).expect("pairwise relation edges reconcile");
+    assert_eq!(artifact.owned_decisions, 4);
+    assert_eq!(
+        artifact.relationships.len(),
+        4,
+        "typed output must not collapse pairwise relationship facts into one grouped row"
+    );
+    let pairs = artifact
+        .relationships
+        .iter()
+        .map(|relationship| {
+            (
+                relationship.from.feature_id.as_str(),
+                relationship.relation,
+                relationship.to.feature_id.as_str(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        pairs,
+        BTreeSet::from([
+            ("parcel-a", GeoControlRelation::Contains, "building-1"),
+            ("parcel-a", GeoControlRelation::Contains, "building-2"),
+            ("parcel-b", GeoControlRelation::Contains, "building-3"),
+            ("parcel-c", GeoControlRelation::Contains, "building-3"),
+        ])
+    );
+    assert!(
+        artifact
+            .relationships
+            .iter()
+            .all(|relationship| relationship.relation != GeoControlRelation::SameAs)
+    );
+
+    let parcel_a_group = artifact
+        .relationship_groups
+        .iter()
+        .find(|group| {
+            group.anchor_side == GeoTileRelationshipAnchorSide::From
+                && group.anchor.feature_id == "parcel-a"
+        })
+        .expect("from-anchored parcel group");
+    assert_eq!(parcel_a_group.related_count, 2);
+    assert_eq!(parcel_a_group.relationship_ids.len(), 2);
+    assert_eq!(
+        parcel_a_group
+            .related
+            .iter()
+            .map(|endpoint| endpoint.feature_id.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["building-1", "building-2"])
+    );
+
+    let building_3_group = artifact
+        .relationship_groups
+        .iter()
+        .find(|group| {
+            group.anchor_side == GeoTileRelationshipAnchorSide::To
+                && group.anchor.feature_id == "building-3"
+        })
+        .expect("to-anchored building group");
+    assert_eq!(building_3_group.related_count, 2);
+    assert_eq!(building_3_group.relationship_ids.len(), 2);
+    assert_eq!(
+        building_3_group
+            .related
+            .iter()
+            .map(|endpoint| endpoint.feature_id.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["parcel-b", "parcel-c"])
     );
 }
 

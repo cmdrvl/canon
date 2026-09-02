@@ -4,7 +4,7 @@
   "title": "canon.geo.tile_reconciliation.v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "request_version", "h3_resolution", "halo_k", "batches", "input_proposals", "owned_decisions", "discarded_halo_proposals", "batch_receipts", "decisions"],
+  "required": ["version", "request_version", "h3_resolution", "halo_k", "batches", "input_proposals", "owned_decisions", "discarded_halo_proposals", "batch_receipts", "decisions", "relationships", "relationship_groups"],
   "properties": {
     "version": { "const": "canon_geo_tile_reconciliation.v1" },
     "request_version": { "const": "canon_geo_tile_reconciliation_request.v1" },
@@ -16,7 +16,9 @@
     "owned_decisions": { "$ref": "#/$defs/uint64" },
     "discarded_halo_proposals": { "$ref": "#/$defs/uint64" },
     "batch_receipts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/batch_receipt" } },
-    "decisions": { "type": "array", "items": { "$ref": "#/$defs/reconciled_decision" } }
+    "decisions": { "type": "array", "items": { "$ref": "#/$defs/reconciled_decision" } },
+    "relationships": { "type": "array", "items": { "$ref": "#/$defs/relationship_edge" } },
+    "relationship_groups": { "type": "array", "items": { "$ref": "#/$defs/relationship_group" } }
   },
   "$defs": {
     "int64": { "type": "integer", "minimum": -9223372036854775808, "maximum": 9223372036854775807 },
@@ -26,6 +28,9 @@
     "h3_cell": { "type": "string", "pattern": "^[0-9a-f]{15}$" },
     "entity_level": { "enum": ["site", "property", "parcel", "building", "unit", "address", "poi"] },
     "relation": { "enum": ["same_as", "contains", "part_of", "within", "on", "fronts", "intersects"] },
+    "non_equivalence_relation": { "enum": ["contains", "part_of", "within", "on", "fronts", "intersects"] },
+    "relationship_id": { "type": "string", "pattern": "^geo-relationship:[0-9a-f]{64}$" },
+    "relationship_group_id": { "type": "string", "pattern": "^geo-relationship-group:[0-9a-f]{64}$" },
     "release": {
       "type": "object",
       "additionalProperties": false,
@@ -99,7 +104,7 @@
           "required": ["kind", "relation", "from_entity_level", "to_entity_level"],
           "properties": {
             "kind": { "const": "relation" },
-            "relation": { "$ref": "#/$defs/relation" },
+            "relation": { "$ref": "#/$defs/non_equivalence_relation" },
             "from_entity_level": { "$ref": "#/$defs/entity_level" },
             "to_entity_level": { "$ref": "#/$defs/entity_level" }
           }
@@ -140,6 +145,48 @@
         "members": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/decision_member" } },
         "proposal_copies": { "$ref": "#/$defs/uint64", "minimum": 1 }
       }
+    },
+    "relationship_endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_level", "source", "feature_id", "home_cell"],
+      "properties": {
+        "entity_level": { "$ref": "#/$defs/entity_level" },
+        "source": { "$ref": "#/$defs/source_binding" },
+        "feature_id": { "$ref": "#/$defs/identifier" },
+        "home_cell": { "$ref": "#/$defs/h3_cell" }
+      }
+    },
+    "relationship_edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relationship_id", "decision_id", "owner_cell", "relation", "from", "to", "payload_blake3", "proposal_copies"],
+      "properties": {
+        "relationship_id": { "$ref": "#/$defs/relationship_id" },
+        "decision_id": { "type": "string", "pattern": "^geo-decision:[0-9a-f]{64}$" },
+        "owner_cell": { "$ref": "#/$defs/h3_cell" },
+        "relation": { "$ref": "#/$defs/non_equivalence_relation" },
+        "from": { "$ref": "#/$defs/relationship_endpoint" },
+        "to": { "$ref": "#/$defs/relationship_endpoint" },
+        "payload_blake3": { "$ref": "#/$defs/blake3" },
+        "proposal_copies": { "$ref": "#/$defs/uint64", "minimum": 1 }
+      }
+    },
+    "relationship_group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group_id", "relation", "from_entity_level", "to_entity_level", "anchor_side", "anchor", "related", "relationship_ids", "related_count"],
+      "properties": {
+        "group_id": { "$ref": "#/$defs/relationship_group_id" },
+        "relation": { "$ref": "#/$defs/non_equivalence_relation" },
+        "from_entity_level": { "$ref": "#/$defs/entity_level" },
+        "to_entity_level": { "$ref": "#/$defs/entity_level" },
+        "anchor_side": { "enum": ["from", "to"] },
+        "anchor": { "$ref": "#/$defs/relationship_endpoint" },
+        "related": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/relationship_endpoint" } },
+        "relationship_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/relationship_id" } },
+        "related_count": { "$ref": "#/$defs/uint64", "minimum": 1 }
+      }
     }
   },
   "x-canon-contract": {
@@ -151,7 +198,8 @@
       "ObservationOnly sources cannot be candidate members",
       "Composition semantics may span levels and contain only EvidenceOnly members but carry no alias-mint authority",
       "StableIdentity semantics require every member at the declared entity level, at least one exact same-level StableAlias member, and exact source/release/native-scope membership in the canonical inventory named by the emitted inventory semantic and planning hashes",
-      "Relation semantics require exactly two native candidate members, one at each declared endpoint level; endpoint levels must differ and same_as is forbidden because stable_identity owns equivalence",
+      "Relation semantics require exactly two native candidate members, one at each declared endpoint level; endpoint levels must differ and same_as is forbidden by both runtime validation and schema because stable_identity owns equivalence",
+      "typed relationship output is derived only from owned relation decisions and carries non-equivalence relation, from/to endpoint refs, payload binding, proposal copies, and deterministic from- and to-anchored cardinality groups",
       "emitted inventory references establish inventory-relative authority only, not external or world truth",
       "one source_instance_id has exactly one release identity, native scope, and inventory reference across all batches",
       "batch receipts retain canonical work-unit digests as deterministic associations; without an executor-issued receipt they do not prove an external solver consumed those work units",

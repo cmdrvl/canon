@@ -358,6 +358,49 @@ pub struct GeoReconciledTileDecision {
     pub proposal_copies: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileRelationshipEndpointRef {
+    pub entity_level: GeoControlEntityLevel,
+    pub source: GeoTileSourceBinding,
+    pub feature_id: String,
+    pub home_cell: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileRelationshipEdge {
+    pub relationship_id: String,
+    pub decision_id: String,
+    pub owner_cell: String,
+    pub relation: GeoControlRelation,
+    pub from: GeoTileRelationshipEndpointRef,
+    pub to: GeoTileRelationshipEndpointRef,
+    pub payload_blake3: String,
+    pub proposal_copies: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoTileRelationshipAnchorSide {
+    From,
+    To,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoTileRelationshipGroup {
+    pub group_id: String,
+    pub relation: GeoControlRelation,
+    pub from_entity_level: GeoControlEntityLevel,
+    pub to_entity_level: GeoControlEntityLevel,
+    pub anchor_side: GeoTileRelationshipAnchorSide,
+    pub anchor: GeoTileRelationshipEndpointRef,
+    pub related: Vec<GeoTileRelationshipEndpointRef>,
+    pub relationship_ids: Vec<String>,
+    pub related_count: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GeoTileReconciliationArtifact {
@@ -376,6 +419,13 @@ pub struct GeoTileReconciliationArtifact {
     pub discarded_halo_proposals: u64,
     pub batch_receipts: Vec<GeoTileBatchReceipt>,
     pub decisions: Vec<GeoReconciledTileDecision>,
+    /// Pairwise, typed relation decisions projected for consumers that need
+    /// relationship facts without parsing decision semantics.
+    pub relationships: Vec<GeoTileRelationshipEdge>,
+    /// Deterministic adjacency projection over `relationships`. Both anchor
+    /// sides are emitted so one-to-many and many-to-one structure is explicit
+    /// without collapsing the underlying pairwise relation facts.
+    pub relationship_groups: Vec<GeoTileRelationshipGroup>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -472,6 +522,25 @@ struct ValidatedInventoryLineage {
     sources: BTreeMap<String, GeoRegionalSourceInstance>,
 }
 
+type RelationshipGroupKey = (
+    GeoControlRelation,
+    GeoControlEntityLevel,
+    GeoControlEntityLevel,
+    GeoTileRelationshipAnchorSide,
+    GeoTileRelationshipEndpointRef,
+);
+
+#[derive(Debug)]
+struct RelationshipGroupAccumulator {
+    relation: GeoControlRelation,
+    from_entity_level: GeoControlEntityLevel,
+    to_entity_level: GeoControlEntityLevel,
+    anchor_side: GeoTileRelationshipAnchorSide,
+    anchor: GeoTileRelationshipEndpointRef,
+    related: BTreeSet<GeoTileRelationshipEndpointRef>,
+    relationship_ids: BTreeSet<String>,
+}
+
 #[derive(Serialize)]
 struct GeoTileWorkUnitDigestProjection<'a> {
     version: &'a str,
@@ -485,6 +554,26 @@ struct GeoTileWorkUnitDigestProjection<'a> {
     halo_feature_count: u64,
     max_features: u64,
     max_work_cells: u64,
+}
+
+#[derive(Serialize)]
+struct GeoTileRelationshipIdProjection<'a> {
+    decision_id: &'a str,
+    relation: GeoControlRelation,
+    from: &'a GeoTileRelationshipEndpointRef,
+    to: &'a GeoTileRelationshipEndpointRef,
+    payload_blake3: &'a str,
+}
+
+#[derive(Serialize)]
+struct GeoTileRelationshipGroupIdProjection<'a> {
+    relation: GeoControlRelation,
+    from_entity_level: GeoControlEntityLevel,
+    to_entity_level: GeoControlEntityLevel,
+    anchor_side: GeoTileRelationshipAnchorSide,
+    anchor: &'a GeoTileRelationshipEndpointRef,
+    related: &'a [GeoTileRelationshipEndpointRef],
+    relationship_ids: &'a [String],
 }
 
 /// Derive deterministic H3 home cells from release-bound representative points.
@@ -1112,6 +1201,8 @@ pub fn reconcile_tile_decisions(
         });
     }
     reconciled.sort_by(|left, right| left.decision_id.cmp(&right.decision_id));
+    let relationships = relationship_edges_for_decisions(&reconciled)?;
+    let relationship_groups = relationship_groups_for_edges(&relationships)?;
     batch_receipts.sort();
     let owned_decisions = usize_to_u64(reconciled.len(), "decisions.len")?;
 
@@ -1129,6 +1220,8 @@ pub fn reconcile_tile_decisions(
         discarded_halo_proposals,
         batch_receipts,
         decisions: reconciled,
+        relationships,
+        relationship_groups,
     })
 }
 
@@ -1175,6 +1268,228 @@ pub fn canonical_tile_reconciliation_bytes(
     artifact: &GeoTileReconciliationArtifact,
 ) -> Result<Vec<u8>, serde_json::Error> {
     serde_json::to_vec(artifact)
+}
+
+fn relationship_edges_for_decisions(
+    decisions: &[GeoReconciledTileDecision],
+) -> Result<Vec<GeoTileRelationshipEdge>, GeoTileError> {
+    let mut relationships = Vec::new();
+    for decision in decisions {
+        let GeoTileDecisionSemantics::Relation {
+            relation,
+            from_entity_level,
+            to_entity_level,
+        } = decision.semantics
+        else {
+            continue;
+        };
+        if relation == GeoControlRelation::SameAs {
+            return Err(GeoTileError::new(
+                GeoTileErrorCode::InvalidDecision,
+                "Geo tile relationship output cannot express same_as; use stable_identity",
+                [
+                    ("decision_id", decision.decision_id.clone()),
+                    ("relation", relation_name(relation)),
+                ],
+            ));
+        }
+        let from_member = decision
+            .members
+            .iter()
+            .find(|member| member.candidate_entity_level == from_entity_level)
+            .ok_or_else(|| {
+                GeoTileError::new(
+                    GeoTileErrorCode::InvalidDecision,
+                    "Geo tile relation decision is missing its declared from endpoint",
+                    [
+                        ("decision_id", decision.decision_id.clone()),
+                        ("from_entity_level", entity_level_name(from_entity_level)),
+                    ],
+                )
+            })?;
+        let to_member = decision
+            .members
+            .iter()
+            .find(|member| member.candidate_entity_level == to_entity_level)
+            .ok_or_else(|| {
+                GeoTileError::new(
+                    GeoTileErrorCode::InvalidDecision,
+                    "Geo tile relation decision is missing its declared to endpoint",
+                    [
+                        ("decision_id", decision.decision_id.clone()),
+                        ("to_entity_level", entity_level_name(to_entity_level)),
+                    ],
+                )
+            })?;
+        let from = relationship_endpoint(from_entity_level, from_member);
+        let to = relationship_endpoint(to_entity_level, to_member);
+        relationships.push(GeoTileRelationshipEdge {
+            relationship_id: relationship_id(
+                &decision.decision_id,
+                relation,
+                &from,
+                &to,
+                &decision.payload_blake3,
+            )?,
+            decision_id: decision.decision_id.clone(),
+            owner_cell: decision.owner_cell.clone(),
+            relation,
+            from,
+            to,
+            payload_blake3: decision.payload_blake3.clone(),
+            proposal_copies: decision.proposal_copies,
+        });
+    }
+    relationships.sort_by(|left, right| left.relationship_id.cmp(&right.relationship_id));
+    Ok(relationships)
+}
+
+fn relationship_groups_for_edges(
+    relationships: &[GeoTileRelationshipEdge],
+) -> Result<Vec<GeoTileRelationshipGroup>, GeoTileError> {
+    let mut groups = BTreeMap::<RelationshipGroupKey, RelationshipGroupAccumulator>::new();
+    for relationship in relationships {
+        accumulate_relationship_group(
+            &mut groups,
+            relationship,
+            GeoTileRelationshipAnchorSide::From,
+        );
+        accumulate_relationship_group(&mut groups, relationship, GeoTileRelationshipAnchorSide::To);
+    }
+
+    let mut output = Vec::with_capacity(groups.len());
+    for (_, group) in groups {
+        let related = group.related.into_iter().collect::<Vec<_>>();
+        let relationship_ids = group.relationship_ids.into_iter().collect::<Vec<_>>();
+        let related_count = usize_to_u64(related.len(), "relationship_group.related.len")?;
+        output.push(GeoTileRelationshipGroup {
+            group_id: relationship_group_id(
+                group.relation,
+                group.from_entity_level,
+                group.to_entity_level,
+                group.anchor_side,
+                &group.anchor,
+                &related,
+                &relationship_ids,
+            )?,
+            relation: group.relation,
+            from_entity_level: group.from_entity_level,
+            to_entity_level: group.to_entity_level,
+            anchor_side: group.anchor_side,
+            anchor: group.anchor,
+            related,
+            relationship_ids,
+            related_count,
+        });
+    }
+    output.sort_by(|left, right| left.group_id.cmp(&right.group_id));
+    Ok(output)
+}
+
+fn accumulate_relationship_group(
+    groups: &mut BTreeMap<RelationshipGroupKey, RelationshipGroupAccumulator>,
+    relationship: &GeoTileRelationshipEdge,
+    anchor_side: GeoTileRelationshipAnchorSide,
+) {
+    let (anchor, related) = match anchor_side {
+        GeoTileRelationshipAnchorSide::From => (&relationship.from, &relationship.to),
+        GeoTileRelationshipAnchorSide::To => (&relationship.to, &relationship.from),
+    };
+    let key = (
+        relationship.relation,
+        relationship.from.entity_level,
+        relationship.to.entity_level,
+        anchor_side,
+        anchor.clone(),
+    );
+    let entry = groups
+        .entry(key)
+        .or_insert_with(|| RelationshipGroupAccumulator {
+            relation: relationship.relation,
+            from_entity_level: relationship.from.entity_level,
+            to_entity_level: relationship.to.entity_level,
+            anchor_side,
+            anchor: anchor.clone(),
+            related: BTreeSet::new(),
+            relationship_ids: BTreeSet::new(),
+        });
+    entry.related.insert(related.clone());
+    entry
+        .relationship_ids
+        .insert(relationship.relationship_id.clone());
+}
+
+fn relationship_endpoint(
+    entity_level: GeoControlEntityLevel,
+    member: &GeoTileDecisionMember,
+) -> GeoTileRelationshipEndpointRef {
+    GeoTileRelationshipEndpointRef {
+        entity_level,
+        source: member.source.clone(),
+        feature_id: member.feature_id.clone(),
+        home_cell: member.home_cell.clone(),
+    }
+}
+
+fn relationship_id(
+    decision_id: &str,
+    relation: GeoControlRelation,
+    from: &GeoTileRelationshipEndpointRef,
+    to: &GeoTileRelationshipEndpointRef,
+    payload_blake3: &str,
+) -> Result<String, GeoTileError> {
+    let projection = GeoTileRelationshipIdProjection {
+        decision_id,
+        relation,
+        from,
+        to,
+        payload_blake3,
+    };
+    let bytes = serde_json::to_vec(&projection).map_err(|error| {
+        GeoTileError::new(
+            GeoTileErrorCode::Serialization,
+            "Geo tile relationship id projection could not be serialized",
+            [("error", error.to_string())],
+        )
+    })?;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"canon_geo_tile_relationship.v1\0");
+    hasher.update(&bytes);
+    Ok(format!("geo-relationship:{}", hasher.finalize().to_hex()))
+}
+
+fn relationship_group_id(
+    relation: GeoControlRelation,
+    from_entity_level: GeoControlEntityLevel,
+    to_entity_level: GeoControlEntityLevel,
+    anchor_side: GeoTileRelationshipAnchorSide,
+    anchor: &GeoTileRelationshipEndpointRef,
+    related: &[GeoTileRelationshipEndpointRef],
+    relationship_ids: &[String],
+) -> Result<String, GeoTileError> {
+    let projection = GeoTileRelationshipGroupIdProjection {
+        relation,
+        from_entity_level,
+        to_entity_level,
+        anchor_side,
+        anchor,
+        related,
+        relationship_ids,
+    };
+    let bytes = serde_json::to_vec(&projection).map_err(|error| {
+        GeoTileError::new(
+            GeoTileErrorCode::Serialization,
+            "Geo tile relationship-group id projection could not be serialized",
+            [("error", error.to_string())],
+        )
+    })?;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"canon_geo_tile_relationship_group.v1\0");
+    hasher.update(&bytes);
+    Ok(format!(
+        "geo-relationship-group:{}",
+        hasher.finalize().to_hex()
+    ))
 }
 
 fn normalize_members(
