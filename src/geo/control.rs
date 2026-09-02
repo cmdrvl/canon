@@ -17,6 +17,8 @@ use super::{
     composition::{
         CANON_GEO_COMPOSITION_PROFILE_VERSION, CANON_GEO_COMPOSITION_REQUEST_VERSION,
         CANON_GEO_COMPOSITION_VERSION, CANON_GEO_ENTITY_PROJECTION_VERSION,
+        GEO_CLIENT_SIX_FIELD_PROFILE_TEMPLATE_ID, GeoCompositionProfile,
+        validate_composition_profile,
     },
     discovery::{
         CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
@@ -582,6 +584,15 @@ pub struct GeoRuntimeSideEffects {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct GeoProfileTemplateCapability {
+    pub profile_id: String,
+    pub description: String,
+    pub template: GeoCompositionProfile,
+    pub validation_command: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoCapabilities {
     pub version: String,
     pub semantic_hash: String,
@@ -591,6 +602,8 @@ pub struct GeoCapabilities {
     pub contracts: GeoCapabilityStatusSets<GeoContractCapability>,
     pub commands: GeoCapabilityStatusSets<GeoCommandCapability>,
     pub vocabularies: GeoCapabilityVocabularies,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub profile_templates: Vec<GeoProfileTemplateCapability>,
     pub deterministic_ceilings: Vec<GeoNumericBound>,
     pub properties: Vec<GeoScopedProperty>,
     pub runtime_side_effects: GeoRuntimeSideEffects,
@@ -673,6 +686,19 @@ impl fmt::Display for GeoControlError {
 }
 
 impl Error for GeoControlError {}
+
+fn composition_control_error(error: super::GeoCompositionError) -> GeoControlError {
+    GeoControlError::new(
+        match error.code {
+            super::GeoCompositionErrorCode::UnsupportedVersion => {
+                GeoControlErrorCode::UnsupportedVersion
+            }
+            _ => GeoControlErrorCode::InvalidInput,
+        },
+        error.message,
+        error.detail,
+    )
+}
 
 pub fn canonicalize_question(question: &GeoQuestion) -> Result<GeoQuestion, GeoControlError> {
     if question.version != CANON_GEO_QUESTION_VERSION {
@@ -985,6 +1011,16 @@ pub fn default_geo_capabilities() -> Result<GeoCapabilities, GeoControlError> {
                 ],
             },
         },
+        profile_templates: vec![GeoProfileTemplateCapability {
+            profile_id: GEO_CLIENT_SIX_FIELD_PROFILE_TEMPLATE_ID.to_string(),
+            description:
+                "CMBS/client property six-field template: geocode, address, geometry, building size, year built, property type"
+                    .to_string(),
+            template: GeoCompositionProfile::client_six_field_building(),
+            validation_command:
+                "canon geo plan --question <QUESTION.json> --capabilities <CAPABILITIES.json> --inventory <INVENTORY.json> --profile <PROFILE.json> --budget <BUDGET.json>"
+                    .to_string(),
+        }],
         deterministic_ceilings: vec![GeoNumericBound {
             semantic_id: "composition.default_max_materialized_models".to_string(),
             counter: GeoResourceCounter::Models,
@@ -1679,6 +1715,42 @@ fn finalized_capabilities(
     sort_status_sets(
         "vocabularies.solver_backends",
         &mut capabilities.vocabularies.solver_backends,
+    )?;
+    for template in &capabilities.profile_templates {
+        validate_identifier("profile_templates[].profile_id", &template.profile_id)?;
+        validate_text("profile_templates[].description", &template.description)?;
+        validate_composition_profile(&template.template).map_err(composition_control_error)?;
+        validate_text(
+            "profile_templates[].validation_command",
+            &template.validation_command,
+        )?;
+        if let Some(contract) = &template.template.client_input_contract
+            && template.profile_id != contract.profile_template_id
+        {
+            return Err(GeoControlError::invalid(
+                "Geo profile template id must match the embedded client input contract",
+                [
+                    (
+                        "profile_templates[].profile_id",
+                        template.profile_id.as_str(),
+                    ),
+                    (
+                        "client_input_contract.profile_template_id",
+                        contract.profile_template_id.as_str(),
+                    ),
+                ],
+            ));
+        }
+    }
+    capabilities
+        .profile_templates
+        .sort_by(|left, right| left.profile_id.cmp(&right.profile_id));
+    reject_duplicate_keys(
+        "profile_templates",
+        capabilities
+            .profile_templates
+            .iter()
+            .map(|template| template.profile_id.clone()),
     )?;
     for bound in &capabilities.deterministic_ceilings {
         validate_numeric_bound("deterministic_ceilings[]", bound)?;

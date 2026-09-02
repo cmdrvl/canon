@@ -13,6 +13,10 @@
     "contracts": { "$ref": "#/$defs/contract_status_sets" },
     "commands": { "$ref": "#/$defs/command_status_sets" },
     "vocabularies": { "$ref": "#/$defs/vocabularies" },
+    "profile_templates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/profile_template_capability" }
+    },
     "deterministic_ceilings": {
       "type": "array",
       "items": { "$ref": "#/$defs/numeric_bound" }
@@ -150,6 +154,19 @@
         "uses_network": { "type": "boolean" }
       },
       "required": ["command", "output_contract", "read_only", "uses_network"]
+    },
+    "profile_template_capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile_id": { "type": "string" },
+        "description": { "type": "string" },
+        "template": {
+          "$ref": "canon.geo.composition_request.v0.schema.json#/$defs/composition_profile"
+        },
+        "validation_command": { "type": "string" }
+      },
+      "required": ["profile_id", "description", "template", "validation_command"]
     },
     "contract_status_sets": {
       "type": "object",

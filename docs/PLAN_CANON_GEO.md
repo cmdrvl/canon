@@ -986,6 +986,39 @@ explicit `building` permits an empty parcel universe while enumerating building-
 residuals without consulting a legacy parcel oracle. It does not create a parcel-grain
 answer without a parcel source.
 
+Added 2026-09-02 (bd-uilx), superseding OC-0048's earlier "address + geocode + soft
+disambiguators" wording: the CMBS/client property profile projects client input through six
+declared fields, all optional at record grain and all explicit about absence or unreliability:
+
+| Field | Required declarations when present | Contract semantics |
+|---|---|---|
+| `geocode` | lat/lon plus accuracy-tier status (`known` or explicitly `unknown`) | geometry-driving bound only; unknown/interpolated tier cannot auto-accept |
+| `address` | raw string, parsed components where the source has them, locale/jurisdiction | address-set membership evidence; absence is valid, not a failed parse |
+| `geometry` | polygon/multipolygon kind, CRS, vendor, vintage, source-fidelity vs simplified | first-class bring-your-own licensed geometry; Canon refuses missing CRS/vendor/vintage/fidelity rather than assuming defaults |
+| `building_size` | numeric value, unit, measure (`nra`/`gsf`/`bldgarea`/`unknown`), conversion posture | pairwise rejector; assemblage subset-sum constraint only when measures are declared compatible or conversion is declared |
+| `year_built` | integer year plus sentinel policy | pairwise rejector; in assemblage, a wide spread can support redevelopment/assemblage and remains diagnostic without a temporal profile |
+| `property_type` | source category, neutral category mapping, mapping profile | pairwise compatibility check; hard eliminative pre-filter in assemblage profiles |
+
+Present fields with missing declarations are profile contract violations with typed refusals.
+Absent fields are not failures: Ginnie-shaped native records may have neither address nor
+geocode, Annex A may carry placeholder addresses, and a client may provide only address or only
+geometry. `present_but_unreliable` fields remain diagnostic or widen the declared band with the
+widening recorded; they do not silently emit hard constraints.
+
+The client channel rule is agreement, not channel sum. Channels never propose candidates;
+the bounded profile universe does. `geocode`, `address`, and `geometry` are independent driver
+or membership channels; `building_size`, `year_built`, and `property_type` are independent
+attribute channels whose pairwise role is to reject wrong candidates and whose assemblage role is
+to prune or constrain subsets. A reliable available disagreement is stronger than a missing
+channel and is never averaged away. Decision bands:
+
+| Band | Minimum reliable agreements | Disagreement behavior | Output |
+|---|---:|---|---|
+| `hard_forced_candidate` | 2 driver/membership agreements plus no reliable attribute disagreement | reject/prune candidate before solver promotion | hard-forced only if exact residual backbone is complete |
+| `exact_residual_or_soft_ranked` | 1 driver/membership channel and no reliable disagreement | reject/prune only the disagreed candidate/member | residual or soft-ranked alternatives, not a forced answer |
+| `abstain_reacquire` | 0 | any missing declaration for a present field, or an available reliable channel conflict | abstain and reacquire or repair profile declarations |
+| `unsupported_or_waiting_for_input` | 0 | no usable driver channel or no reachable candidate universe | unsupported/waiting result, never a fabricated empty hard constraint |
+
 For the current CMBS profile, output is the **collateral parcel set** `Coll` and **building
 set** `QB`, delivered in the
 §10.2 claim classes — `HARD_FORCED` facts when the backbone is complete, a residual count
@@ -1034,7 +1067,7 @@ open work, not established capability.
 | 3 | Address sets (lot side) | **LANDED 2026-08-16**: `NYC_DCP_PAD_ADDRESS_HOT` (1.32M), `_PAD_BBL_HOT` (874K), `_PAD_SND_HOT` (121K street names) + EXT/meta | county address points, National Address Database, OpenAddresses | the lot's full legal address set; membership tests against it | address-set membership; direct address→BBL+BIN lookup | VERIFIED on acceptance probes: Crosby/Broadway both frontages (Case 5); 241–249 W 74 range→BBL 1011660007 (retry case, no geocoder); Queens hyphenate 130-50 146 St→3 BINs (F.4's disagreement parcel confirmed) |
 | 4 | Parcel geometry | `NYC_DCP_MAPPLUTO_HOT` 26v1 | county parcels / Regrid | survey substrate; exact integer predicates (§4) | candidate universe, area-majority anchor | MEASURED (D/F) |
 | 5 | Footprints, multi-source | NYC footprints; FEMA structures; MS GlobalML (NY landed); Overture buildings (landed and measured in F.6's bounded six-stratum sample) | same, national | geometric-area majority inside an interior-disjoint parcel stratum; overlapping legal hierarchies use typed crosswalks; within-source `alldifferent`; cross-source counts via `gcc` | `X_f`, `Pb_b` slots | Mixed-contract forest retained (F); NYC+Overture predicate-incidence measured in F.6; latent-building reconciliation and canonical multi-source solver rerun `OPEN`; 55% retained count agreement (F.4) |
-| 6 | Asserted attributes | Annex A / `PROPERTY_MART` SF, units, year | every deal tape | exact integer bands only when semantic id, unit, value origin, and calibration basis agree; the illustrative office NRA/gross band is diagnostic, not admitted | `A_b`, `Fl_b`, knapsack | LANDED; typed evidence compiler implemented; population calibration/joint test `OPEN` |
+| 6 | Asserted attributes | Annex A / `PROPERTY_MART` SF, units, year | every deal tape | exact integer bands only when semantic id, unit, size measure, value origin, conversion posture, and calibration basis agree; the illustrative office NRA/gross band is diagnostic, not admitted | `A_b`, `Fl_b`, knapsack | LANDED; typed evidence compiler implemented; population calibration/joint test `OPEN` |
 | 7 | Parcel attributes | `BLDGAREA`, `NUMBLDGS`, units | assessor rolls | observations to check, never denominators (F) | `gcc` counts, area bands | PARTIALLY MEASURED (F.4) |
 | 8 | Document evidence | `NYC_ACRIS_*` external tables | county recorder / title plants | recorded collateral BBL sets bound by amount+date+lender with contamination filters (H) | direct `Coll` evidence; also ground truth | MEASURED as truth instrument (H); unused as solver evidence |
 | 9 | Imagery / elevation observers | none landed; verified catalog in J (NYS/NYC ortho first, 3DEP, NAIP, NOAA event) | national per J | frozen-weight observers emit typed counts/outlines/floors with characterized regional error (A.2–A.3) | `gcc` checks, an own footprint source, change events | UNMEASURED |

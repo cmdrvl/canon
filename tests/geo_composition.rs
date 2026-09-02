@@ -672,6 +672,7 @@ fn unsupported_profile_grains_are_typed_not_generic_invalid_input() {
             profile: GeoCompositionProfile {
                 version: CANON_GEO_COMPOSITION_PROFILE_VERSION.to_string(),
                 selection_level,
+                client_input_contract: None,
             },
             universe: GeoCompositionUniverse {
                 parcels: vec!["parcel-a".to_string()],

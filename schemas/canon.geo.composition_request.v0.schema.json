@@ -80,11 +80,290 @@
         },
         "selection_level": {
           "$ref": "#/$defs/entity_level"
+        },
+        "client_input_contract": {
+          "$ref": "#/$defs/client_input_contract"
         }
       },
       "required": [
         "version",
         "selection_level"
+      ]
+    },
+    "client_input_field": {
+      "type": "string",
+      "enum": [
+        "geocode",
+        "address",
+        "geometry",
+        "building_size",
+        "year_built",
+        "property_type"
+      ]
+    },
+    "client_input_presence": {
+      "type": "string",
+      "enum": [
+        "present",
+        "absent",
+        "present_but_unreliable"
+      ]
+    },
+    "client_input_declaration": {
+      "type": "string",
+      "enum": [
+        "lat_lon",
+        "accuracy_tier_status",
+        "raw_address_string",
+        "parsed_components_when_available",
+        "locale",
+        "geometry_kind",
+        "coordinate_reference_system",
+        "vendor",
+        "vintage",
+        "geometry_fidelity",
+        "numeric_value",
+        "unit",
+        "size_measure",
+        "conversion_posture",
+        "integer_year",
+        "sentinel_policy",
+        "source_category",
+        "neutral_category_mapping",
+        "mapping_profile"
+      ]
+    },
+    "client_input_channel_role": {
+      "type": "string",
+      "enum": [
+        "geometry_driver",
+        "address_membership",
+        "attribute_rejector",
+        "assemblage_constraint",
+        "diagnostic_only"
+      ]
+    },
+    "client_decision_band": {
+      "type": "string",
+      "enum": [
+        "hard_forced_candidate",
+        "exact_residual_or_soft_ranked",
+        "abstain_reacquire",
+        "unsupported_or_waiting_for_input"
+      ]
+    },
+    "client_disagreement_effect": {
+      "type": "string",
+      "enum": [
+        "reject_candidate",
+        "prune_assemblage_member",
+        "abstain_reacquire",
+        "report_unsupported"
+      ]
+    },
+    "client_input_fixture_kind": {
+      "type": "string",
+      "enum": [
+        "fully_populated",
+        "address_only",
+        "geometry_only",
+        "ginnie_native_no_address_no_geocode"
+      ]
+    },
+    "client_input_field_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "$ref": "#/$defs/client_input_field"
+        },
+        "presence_modes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/client_input_presence"
+          }
+        },
+        "required_when_present": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/client_input_declaration"
+          }
+        },
+        "channel_roles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/client_input_channel_role"
+          }
+        },
+        "absent_semantics": {
+          "type": "string"
+        },
+        "unreliable_semantics": {
+          "type": "string"
+        },
+        "missing_declaration_refusal": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "presence_modes",
+        "required_when_present",
+        "channel_roles",
+        "absent_semantics",
+        "unreliable_semantics",
+        "missing_declaration_refusal"
+      ]
+    },
+    "client_channel_decision_band": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "band": {
+          "$ref": "#/$defs/client_decision_band"
+        },
+        "minimum_reliable_agreements": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "required_reliable_channels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/client_input_field"
+          }
+        },
+        "disagreement_effect": {
+          "$ref": "#/$defs/client_disagreement_effect"
+        },
+        "output_semantics": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "band",
+        "minimum_reliable_agreements",
+        "required_reliable_channels",
+        "disagreement_effect",
+        "output_semantics"
+      ]
+    },
+    "client_channel_agreement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rule_id": {
+          "type": "string"
+        },
+        "candidate_universe_rule": {
+          "type": "string"
+        },
+        "independent_channels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/client_input_field"
+          }
+        },
+        "channel_sum_forbidden": {
+          "type": "boolean"
+        },
+        "available_disagreement_stronger_than_missing": {
+          "type": "boolean"
+        },
+        "decision_bands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/client_channel_decision_band"
+          }
+        }
+      },
+      "required": [
+        "rule_id",
+        "candidate_universe_rule",
+        "independent_channels",
+        "channel_sum_forbidden",
+        "available_disagreement_stronger_than_missing",
+        "decision_bands"
+      ]
+    },
+    "client_fixture_field_presence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "$ref": "#/$defs/client_input_field"
+        },
+        "presence": {
+          "$ref": "#/$defs/client_input_presence"
+        }
+      },
+      "required": [
+        "field",
+        "presence"
+      ]
+    },
+    "client_input_conformance_fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fixture_id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/client_input_fixture_kind"
+        },
+        "field_presence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/client_fixture_field_presence"
+          }
+        },
+        "expected_band": {
+          "$ref": "#/$defs/client_decision_band"
+        }
+      },
+      "required": [
+        "fixture_id",
+        "kind",
+        "field_presence",
+        "expected_band"
+      ]
+    },
+    "client_input_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile_template_id": {
+          "type": "string"
+        },
+        "template_version": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "field_contracts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/client_input_field_contract"
+          }
+        },
+        "channel_agreement": {
+          "$ref": "#/$defs/client_channel_agreement"
+        },
+        "conformance_fixtures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/client_input_conformance_fixture"
+          }
+        }
+      },
+      "required": [
+        "profile_template_id",
+        "template_version",
+        "scope",
+        "field_contracts",
+        "channel_agreement",
+        "conformance_fixtures"
       ]
     },
     "building_candidate": {

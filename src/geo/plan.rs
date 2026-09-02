@@ -14,24 +14,23 @@ use super::satisfy::{
 };
 use super::{
     CANON_GEO_ACQUISITION_RECEIPT_VERSION, CANON_GEO_ACQUISITION_REQUEST_VERSION,
-    CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_COMPOSITION_PROFILE_VERSION,
-    CANON_GEO_COMPOSITION_VERSION, CANON_GEO_DISCOVERY_REQUEST_VERSION,
-    CANON_GEO_EVIDENCE_COMPILATION_VERSION, CANON_GEO_EVIDENCE_REQUEST_VERSION,
-    CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION, CANON_GEO_TILE_WORK_UNIT_VERSION,
-    GeoAcquisitionRequest, GeoBoundedSubset, GeoCapabilities, GeoColumnReadabilityProbe,
-    GeoCompositionProfile, GeoControlEntityLevel, GeoDigest, GeoDigestAlgorithm, GeoDiscoveryGap,
-    GeoDiscoveryReleaseSelectionPolicy, GeoDiscoveryRequest, GeoDiscoveryStep, GeoEntityLevel,
-    GeoEvidenceClass, GeoFieldRole, GeoInventorySupportStatus, GeoNativeEntityScope,
-    GeoNumericBound, GeoOrderDirection, GeoOrderingTerm, GeoPaginationRequest,
-    GeoProjectionOperation, GeoQuestion, GeoRegionalInventory, GeoRegionalSourceInstance,
-    GeoReleaseSelectionMode, GeoRequestedField, GeoResourceBudget, GeoResourceCounter,
-    GeoRowByteCeilings, GeoSubsetPredicate, GeoSubsetPredicateKind, GeoTelemetrySemanticEffect,
-    canonicalize_capabilities, canonicalize_geo_acquisition_request,
+    CANON_GEO_CAPABILITIES_VERSION, CANON_GEO_COMPOSITION_VERSION,
+    CANON_GEO_DISCOVERY_REQUEST_VERSION, CANON_GEO_EVIDENCE_COMPILATION_VERSION,
+    CANON_GEO_EVIDENCE_REQUEST_VERSION, CANON_GEO_HOME_CELL_ASSIGNMENT_VERSION,
+    CANON_GEO_TILE_WORK_UNIT_VERSION, GeoAcquisitionRequest, GeoBoundedSubset, GeoCapabilities,
+    GeoColumnReadabilityProbe, GeoCompositionProfile, GeoControlEntityLevel, GeoDigest,
+    GeoDigestAlgorithm, GeoDiscoveryGap, GeoDiscoveryReleaseSelectionPolicy, GeoDiscoveryRequest,
+    GeoDiscoveryStep, GeoEntityLevel, GeoEvidenceClass, GeoFieldRole, GeoInventorySupportStatus,
+    GeoNativeEntityScope, GeoNumericBound, GeoOrderDirection, GeoOrderingTerm,
+    GeoPaginationRequest, GeoProjectionOperation, GeoQuestion, GeoRegionalInventory,
+    GeoRegionalSourceInstance, GeoReleaseSelectionMode, GeoRequestedField, GeoResourceBudget,
+    GeoResourceCounter, GeoRowByteCeilings, GeoSubsetPredicate, GeoSubsetPredicateKind,
+    GeoTelemetrySemanticEffect, canonicalize_capabilities, canonicalize_geo_acquisition_request,
     canonicalize_geo_discovery_request, canonicalize_question, canonicalize_regional_inventory,
     canonicalize_resource_budget, capabilities_semantic_hash, evaluate_inventory_support,
     geo_acquisition_request_id, geo_acquisition_request_semantic_hash, geo_discovery_request_id,
     question_semantic_hash, regional_inventory_planning_hash, regional_inventory_semantic_hash,
-    resource_budget_semantic_hash, validate_geo_acquisition_request,
+    resource_budget_semantic_hash, validate_composition_profile, validate_geo_acquisition_request,
     validate_geo_discovery_request,
 };
 use crate::project::{
@@ -443,8 +442,7 @@ pub fn compile_geo_plan(request: GeoPlanRequest) -> Result<GeoPlan, GeoPlanError
     let capabilities = canonicalize_capabilities(&request.capabilities).map_err(control_error)?;
     let inventory = canonicalize_regional_inventory(&request.inventory).map_err(control_error)?;
     let budget = canonicalize_resource_budget(&request.budget).map_err(control_error)?;
-    validate_profile(&request.profile)?;
-    let profile = request.profile;
+    let profile = validate_profile(&request.profile)?;
 
     let question_hash = question_semantic_hash(&question).map_err(control_error)?;
     let capabilities_hash = capabilities_semantic_hash(&capabilities).map_err(control_error)?;
@@ -931,8 +929,8 @@ fn validate_replan_artifact_inputs(
         &capabilities_hash,
     )?;
 
-    validate_profile(profile)?;
-    let profile_hash = digest_json(profile)?;
+    let profile = validate_profile(profile)?;
+    let profile_hash = digest_json(&profile)?;
     validate_replan_ref(
         "profile_version",
         &base_plan.profile_ref.version,
@@ -1716,26 +1714,10 @@ fn require_implemented_command(
     ))
 }
 
-fn validate_profile(profile: &GeoCompositionProfile) -> Result<(), GeoPlanError> {
-    if profile.version != CANON_GEO_COMPOSITION_PROFILE_VERSION {
-        return Err(GeoPlanError::new(
-            GeoPlanErrorCode::UnsupportedVersion,
-            "unsupported Geo composition profile version",
-            [
-                ("actual", profile.version.as_str()),
-                ("expected", CANON_GEO_COMPOSITION_PROFILE_VERSION),
-            ],
-        ));
-    }
-    if !matches!(
-        profile.selection_level,
-        GeoEntityLevel::Parcel | GeoEntityLevel::Building
-    ) {
-        return Err(GeoPlanError::invalid(
-            "the implemented planning profile supports only parcel or building selection",
-        ));
-    }
-    Ok(())
+fn validate_profile(
+    profile: &GeoCompositionProfile,
+) -> Result<GeoCompositionProfile, GeoPlanError> {
+    validate_composition_profile(profile).map_err(composition_profile_error)
 }
 
 fn deterministic_budget_planning_hash(budget: &GeoResourceBudget) -> Result<String, GeoPlanError> {
@@ -2660,6 +2642,19 @@ fn control_error(error: super::GeoControlError) -> GeoPlanError {
         match error.code {
             super::GeoControlErrorCode::UnsupportedVersion => GeoPlanErrorCode::UnsupportedVersion,
             _ => GeoPlanErrorCode::InvalidInput,
+        },
+        error.message,
+        error.detail,
+    )
+}
+
+fn composition_profile_error(error: super::GeoCompositionError) -> GeoPlanError {
+    GeoPlanError::new(
+        match error.code {
+            super::GeoCompositionErrorCode::UnsupportedVersion => {
+                GeoPlanErrorCode::UnsupportedVersion
+            }
+            _ => GeoPlanErrorCode::ContractViolation,
         },
         error.message,
         error.detail,

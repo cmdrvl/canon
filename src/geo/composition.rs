@@ -19,6 +19,8 @@ pub const CANON_GEO_COMPOSITION_REQUEST_VERSION: &str = "canon_geo_composition_r
 pub const CANON_GEO_COMPOSITION_VERSION: &str = "canon_geo_composition.v0";
 pub const CANON_GEO_COMPOSITION_PROFILE_VERSION: &str = "canon_geo_composition_profile.v0";
 pub const CANON_GEO_ENTITY_PROJECTION_VERSION: &str = "canon_geo_entity_projection.v0";
+pub const GEO_CLIENT_SIX_FIELD_PROFILE_TEMPLATE_ID: &str = "client_property_six_field";
+pub const GEO_CLIENT_SIX_FIELD_PROFILE_TEMPLATE_VERSION: &str = "2026-09-02";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -42,6 +44,146 @@ impl GeoEntityRef {
             id: id.into(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoClientInputField {
+    Geocode,
+    Address,
+    Geometry,
+    BuildingSize,
+    YearBuilt,
+    PropertyType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoClientInputPresence {
+    Present,
+    Absent,
+    PresentButUnreliable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoClientInputDeclaration {
+    LatLon,
+    AccuracyTierStatus,
+    RawAddressString,
+    ParsedComponentsWhenAvailable,
+    Locale,
+    GeometryKind,
+    CoordinateReferenceSystem,
+    Vendor,
+    Vintage,
+    GeometryFidelity,
+    NumericValue,
+    Unit,
+    SizeMeasure,
+    ConversionPosture,
+    IntegerYear,
+    SentinelPolicy,
+    SourceCategory,
+    NeutralCategoryMapping,
+    MappingProfile,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoClientInputChannelRole {
+    GeometryDriver,
+    AddressMembership,
+    AttributeRejector,
+    AssemblageConstraint,
+    DiagnosticOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoClientDecisionBand {
+    HardForcedCandidate,
+    ExactResidualOrSoftRanked,
+    AbstainReacquire,
+    UnsupportedOrWaitingForInput,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoClientDisagreementEffect {
+    RejectCandidate,
+    PruneAssemblageMember,
+    AbstainReacquire,
+    ReportUnsupported,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeoClientInputFixtureKind {
+    FullyPopulated,
+    AddressOnly,
+    GeometryOnly,
+    GinnieNativeNoAddressNoGeocode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoClientInputFieldContract {
+    pub field: GeoClientInputField,
+    pub presence_modes: Vec<GeoClientInputPresence>,
+    pub required_when_present: Vec<GeoClientInputDeclaration>,
+    pub channel_roles: Vec<GeoClientInputChannelRole>,
+    pub absent_semantics: String,
+    pub unreliable_semantics: String,
+    pub missing_declaration_refusal: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoClientChannelDecisionBand {
+    pub band: GeoClientDecisionBand,
+    pub minimum_reliable_agreements: u8,
+    pub required_reliable_channels: Vec<GeoClientInputField>,
+    pub disagreement_effect: GeoClientDisagreementEffect,
+    pub output_semantics: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoClientChannelAgreementRule {
+    pub rule_id: String,
+    pub candidate_universe_rule: String,
+    pub independent_channels: Vec<GeoClientInputField>,
+    pub channel_sum_forbidden: bool,
+    pub available_disagreement_stronger_than_missing: bool,
+    pub decision_bands: Vec<GeoClientChannelDecisionBand>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoClientFixtureFieldPresence {
+    pub field: GeoClientInputField,
+    pub presence: GeoClientInputPresence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoClientInputConformanceFixture {
+    pub fixture_id: String,
+    pub kind: GeoClientInputFixtureKind,
+    pub field_presence: Vec<GeoClientFixtureFieldPresence>,
+    pub expected_band: GeoClientDecisionBand,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeoClientInputContract {
+    pub profile_template_id: String,
+    pub template_version: String,
+    pub scope: String,
+    pub field_contracts: Vec<GeoClientInputFieldContract>,
+    pub channel_agreement: GeoClientChannelAgreementRule,
+    pub conformance_fixtures: Vec<GeoClientInputConformanceFixture>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,9 +235,12 @@ pub struct GeoCompositionUniverse {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GeoCompositionProfile {
     pub version: String,
     pub selection_level: GeoEntityLevel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_input_contract: Option<GeoClientInputContract>,
 }
 
 impl GeoCompositionProfile {
@@ -103,6 +248,7 @@ impl GeoCompositionProfile {
         Self {
             version: CANON_GEO_COMPOSITION_PROFILE_VERSION.to_string(),
             selection_level: GeoEntityLevel::Parcel,
+            client_input_contract: None,
         }
     }
 
@@ -110,6 +256,23 @@ impl GeoCompositionProfile {
         Self {
             version: CANON_GEO_COMPOSITION_PROFILE_VERSION.to_string(),
             selection_level: GeoEntityLevel::Building,
+            client_input_contract: None,
+        }
+    }
+
+    pub fn client_six_field_parcel() -> Self {
+        Self::client_six_field(GeoEntityLevel::Parcel)
+    }
+
+    pub fn client_six_field_building() -> Self {
+        Self::client_six_field(GeoEntityLevel::Building)
+    }
+
+    fn client_six_field(selection_level: GeoEntityLevel) -> Self {
+        Self {
+            version: CANON_GEO_COMPOSITION_PROFILE_VERSION.to_string(),
+            selection_level,
+            client_input_contract: Some(geo_client_six_field_input_contract()),
         }
     }
 }
@@ -118,6 +281,721 @@ impl Default for GeoCompositionProfile {
     fn default() -> Self {
         Self::parcel()
     }
+}
+
+pub fn geo_client_six_field_input_contract() -> GeoClientInputContract {
+    GeoClientInputContract {
+        profile_template_id: GEO_CLIENT_SIX_FIELD_PROFILE_TEMPLATE_ID.to_string(),
+        template_version: GEO_CLIENT_SIX_FIELD_PROFILE_TEMPLATE_VERSION.to_string(),
+        scope: "cmbs_or_client_property_record".to_string(),
+        field_contracts: vec![
+            field_contract(
+                GeoClientInputField::Geocode,
+                vec![
+                    GeoClientInputDeclaration::LatLon,
+                    GeoClientInputDeclaration::AccuracyTierStatus,
+                ],
+                vec![GeoClientInputChannelRole::GeometryDriver],
+                "absent geocode is allowed; no point bound is fabricated".to_string(),
+                "unknown or interpolated tier is diagnostic and cannot auto-accept".to_string(),
+                "E_GEO_CLIENT_GEOCODE_DECLARATION".to_string(),
+            ),
+            field_contract(
+                GeoClientInputField::Address,
+                vec![
+                    GeoClientInputDeclaration::RawAddressString,
+                    GeoClientInputDeclaration::ParsedComponentsWhenAvailable,
+                    GeoClientInputDeclaration::Locale,
+                ],
+                vec![GeoClientInputChannelRole::AddressMembership],
+                "absent address is allowed; address membership evidence is unavailable".to_string(),
+                "unreliable address text stays diagnostic until reparsed or reacquired".to_string(),
+                "E_GEO_CLIENT_ADDRESS_DECLARATION".to_string(),
+            ),
+            field_contract(
+                GeoClientInputField::Geometry,
+                vec![
+                    GeoClientInputDeclaration::GeometryKind,
+                    GeoClientInputDeclaration::CoordinateReferenceSystem,
+                    GeoClientInputDeclaration::Vendor,
+                    GeoClientInputDeclaration::Vintage,
+                    GeoClientInputDeclaration::GeometryFidelity,
+                ],
+                vec![GeoClientInputChannelRole::GeometryDriver],
+                "absent geometry is allowed; the profile must rely on other channels or abstain"
+                    .to_string(),
+                "vendor-simplified or low-fidelity geometry is diagnostic unless admitted by profile rho"
+                    .to_string(),
+                "E_GEO_CLIENT_GEOMETRY_DECLARATION".to_string(),
+            ),
+            field_contract(
+                GeoClientInputField::BuildingSize,
+                vec![
+                    GeoClientInputDeclaration::NumericValue,
+                    GeoClientInputDeclaration::Unit,
+                    GeoClientInputDeclaration::SizeMeasure,
+                    GeoClientInputDeclaration::ConversionPosture,
+                ],
+                vec![
+                    GeoClientInputChannelRole::AttributeRejector,
+                    GeoClientInputChannelRole::AssemblageConstraint,
+                ],
+                "absent size is allowed; no integer band or subset-sum constraint is emitted"
+                    .to_string(),
+                "unknown size measure widens the declared band and records the widening".to_string(),
+                "E_GEO_CLIENT_BUILDING_SIZE_DECLARATION".to_string(),
+            ),
+            field_contract(
+                GeoClientInputField::YearBuilt,
+                vec![
+                    GeoClientInputDeclaration::IntegerYear,
+                    GeoClientInputDeclaration::SentinelPolicy,
+                ],
+                vec![
+                    GeoClientInputChannelRole::AttributeRejector,
+                    GeoClientInputChannelRole::AssemblageConstraint,
+                ],
+                "absent year built is allowed; no temporal or attribute veto is emitted"
+                    .to_string(),
+                "sentinel or redevelopment-shaped years remain diagnostic unless a profile admits them"
+                    .to_string(),
+                "E_GEO_CLIENT_YEAR_BUILT_DECLARATION".to_string(),
+            ),
+            field_contract(
+                GeoClientInputField::PropertyType,
+                vec![
+                    GeoClientInputDeclaration::SourceCategory,
+                    GeoClientInputDeclaration::NeutralCategoryMapping,
+                    GeoClientInputDeclaration::MappingProfile,
+                ],
+                vec![
+                    GeoClientInputChannelRole::AttributeRejector,
+                    GeoClientInputChannelRole::AssemblageConstraint,
+                ],
+                "absent property type is allowed; no compatibility filter is emitted".to_string(),
+                "unmapped source category is diagnostic until the profile declares the mapping"
+                    .to_string(),
+                "E_GEO_CLIENT_PROPERTY_TYPE_DECLARATION".to_string(),
+            ),
+        ],
+        channel_agreement: GeoClientChannelAgreementRule {
+            rule_id: "six_field_channel_agreement".to_string(),
+            candidate_universe_rule:
+                "channels never propose candidates; candidates come from the bounded profile universe"
+                    .to_string(),
+            independent_channels: six_field_order().to_vec(),
+            channel_sum_forbidden: true,
+            available_disagreement_stronger_than_missing: true,
+            decision_bands: vec![
+                decision_band(
+                    GeoClientDecisionBand::HardForcedCandidate,
+                    2,
+                    vec![
+                        GeoClientInputField::Geocode,
+                        GeoClientInputField::Address,
+                        GeoClientInputField::Geometry,
+                    ],
+                    GeoClientDisagreementEffect::RejectCandidate,
+                    "at least two reliable geometry/address channels agree, every reliable available attribute channel agrees, and the exact solver residual has a complete backbone"
+                        .to_string(),
+                ),
+                decision_band(
+                    GeoClientDecisionBand::ExactResidualOrSoftRanked,
+                    1,
+                    vec![
+                        GeoClientInputField::Geocode,
+                        GeoClientInputField::Address,
+                        GeoClientInputField::Geometry,
+                    ],
+                    GeoClientDisagreementEffect::RejectCandidate,
+                    "one reliable driver or membership channel constrains the bounded universe, with no reliable available disagreement; unresolved alternatives remain a residual, not a forced answer"
+                        .to_string(),
+                ),
+                decision_band(
+                    GeoClientDecisionBand::AbstainReacquire,
+                    0,
+                    Vec::new(),
+                    GeoClientDisagreementEffect::AbstainReacquire,
+                    "any reliable available channel disagreement or missing declaration for a present channel stops promotion and asks for reacquisition"
+                        .to_string(),
+                ),
+                decision_band(
+                    GeoClientDecisionBand::UnsupportedOrWaitingForInput,
+                    0,
+                    Vec::new(),
+                    GeoClientDisagreementEffect::ReportUnsupported,
+                    "no usable driver channel or no reachable candidate universe produces an unsupported/waiting-for-input outcome, never an empty hard constraint"
+                        .to_string(),
+                ),
+            ],
+        },
+        conformance_fixtures: vec![
+            conformance_fixture(
+                "client_full_six_field",
+                GeoClientInputFixtureKind::FullyPopulated,
+                GeoClientDecisionBand::HardForcedCandidate,
+            ),
+            conformance_fixture(
+                "client_address_only",
+                GeoClientInputFixtureKind::AddressOnly,
+                GeoClientDecisionBand::ExactResidualOrSoftRanked,
+            ),
+            conformance_fixture(
+                "client_geometry_only",
+                GeoClientInputFixtureKind::GeometryOnly,
+                GeoClientDecisionBand::ExactResidualOrSoftRanked,
+            ),
+            conformance_fixture(
+                "ginnie_native_no_address_no_geocode",
+                GeoClientInputFixtureKind::GinnieNativeNoAddressNoGeocode,
+                GeoClientDecisionBand::UnsupportedOrWaitingForInput,
+            ),
+        ],
+    }
+}
+
+pub fn validate_composition_profile(
+    profile: &GeoCompositionProfile,
+) -> Result<GeoCompositionProfile, GeoCompositionError> {
+    if profile.version != CANON_GEO_COMPOSITION_PROFILE_VERSION {
+        return Err(GeoCompositionError::new(
+            GeoCompositionErrorCode::UnsupportedVersion,
+            "Unsupported Geo composition profile version",
+            [
+                ("actual", profile.version.as_str()),
+                ("expected", CANON_GEO_COMPOSITION_PROFILE_VERSION),
+            ],
+        ));
+    }
+    match profile.selection_level {
+        GeoEntityLevel::Parcel | GeoEntityLevel::Building => {}
+        GeoEntityLevel::PoiUnit | GeoEntityLevel::Property => {
+            return Err(GeoCompositionError::unsupported_grain(
+                "Geo composition profiles support only parcel or building selection levels",
+                [("selection_level", level_name(profile.selection_level))],
+            ));
+        }
+    }
+    if let Some(contract) = &profile.client_input_contract {
+        validate_geo_client_input_contract(contract)?;
+    }
+    Ok(profile.clone())
+}
+
+pub fn validate_geo_client_input_contract(
+    contract: &GeoClientInputContract,
+) -> Result<(), GeoCompositionError> {
+    validate_identifier(
+        "client_input_contract.profile_template_id",
+        &contract.profile_template_id,
+    )?;
+    validate_identifier(
+        "client_input_contract.template_version",
+        &contract.template_version,
+    )?;
+    validate_identifier("client_input_contract.scope", &contract.scope)?;
+    if contract.profile_template_id != GEO_CLIENT_SIX_FIELD_PROFILE_TEMPLATE_ID {
+        return Err(GeoCompositionError::invalid_input(
+            "Geo client input contract profile_template_id is unsupported",
+            [
+                ("actual", contract.profile_template_id.as_str()),
+                ("expected", GEO_CLIENT_SIX_FIELD_PROFILE_TEMPLATE_ID),
+            ],
+        ));
+    }
+    if contract.template_version != GEO_CLIENT_SIX_FIELD_PROFILE_TEMPLATE_VERSION {
+        return Err(GeoCompositionError::invalid_input(
+            "Geo client input contract template_version is unsupported",
+            [
+                ("actual", contract.template_version.as_str()),
+                ("expected", GEO_CLIENT_SIX_FIELD_PROFILE_TEMPLATE_VERSION),
+            ],
+        ));
+    }
+    validate_field_contracts(&contract.field_contracts)?;
+    validate_channel_agreement(&contract.channel_agreement)?;
+    validate_conformance_fixtures(&contract.conformance_fixtures)?;
+    Ok(())
+}
+
+const SIX_FIELD_ORDER: [GeoClientInputField; 6] = [
+    GeoClientInputField::Geocode,
+    GeoClientInputField::Address,
+    GeoClientInputField::Geometry,
+    GeoClientInputField::BuildingSize,
+    GeoClientInputField::YearBuilt,
+    GeoClientInputField::PropertyType,
+];
+
+const GEOMETRY_DRIVER_FIELDS: [GeoClientInputField; 3] = [
+    GeoClientInputField::Geocode,
+    GeoClientInputField::Address,
+    GeoClientInputField::Geometry,
+];
+
+const FIXTURE_KINDS: [GeoClientInputFixtureKind; 4] = [
+    GeoClientInputFixtureKind::FullyPopulated,
+    GeoClientInputFixtureKind::AddressOnly,
+    GeoClientInputFixtureKind::GeometryOnly,
+    GeoClientInputFixtureKind::GinnieNativeNoAddressNoGeocode,
+];
+
+fn six_field_order() -> &'static [GeoClientInputField] {
+    &SIX_FIELD_ORDER
+}
+
+fn expected_fixture_kinds() -> &'static [GeoClientInputFixtureKind] {
+    &FIXTURE_KINDS
+}
+
+const fn client_input_field_name(field: GeoClientInputField) -> &'static str {
+    match field {
+        GeoClientInputField::Geocode => "geocode",
+        GeoClientInputField::Address => "address",
+        GeoClientInputField::Geometry => "geometry",
+        GeoClientInputField::BuildingSize => "building_size",
+        GeoClientInputField::YearBuilt => "year_built",
+        GeoClientInputField::PropertyType => "property_type",
+    }
+}
+
+fn expected_declarations(field: GeoClientInputField) -> Vec<GeoClientInputDeclaration> {
+    match field {
+        GeoClientInputField::Geocode => vec![
+            GeoClientInputDeclaration::LatLon,
+            GeoClientInputDeclaration::AccuracyTierStatus,
+        ],
+        GeoClientInputField::Address => vec![
+            GeoClientInputDeclaration::RawAddressString,
+            GeoClientInputDeclaration::ParsedComponentsWhenAvailable,
+            GeoClientInputDeclaration::Locale,
+        ],
+        GeoClientInputField::Geometry => vec![
+            GeoClientInputDeclaration::GeometryKind,
+            GeoClientInputDeclaration::CoordinateReferenceSystem,
+            GeoClientInputDeclaration::Vendor,
+            GeoClientInputDeclaration::Vintage,
+            GeoClientInputDeclaration::GeometryFidelity,
+        ],
+        GeoClientInputField::BuildingSize => vec![
+            GeoClientInputDeclaration::NumericValue,
+            GeoClientInputDeclaration::Unit,
+            GeoClientInputDeclaration::SizeMeasure,
+            GeoClientInputDeclaration::ConversionPosture,
+        ],
+        GeoClientInputField::YearBuilt => vec![
+            GeoClientInputDeclaration::IntegerYear,
+            GeoClientInputDeclaration::SentinelPolicy,
+        ],
+        GeoClientInputField::PropertyType => vec![
+            GeoClientInputDeclaration::SourceCategory,
+            GeoClientInputDeclaration::NeutralCategoryMapping,
+            GeoClientInputDeclaration::MappingProfile,
+        ],
+    }
+}
+
+fn expected_channel_roles(field: GeoClientInputField) -> Vec<GeoClientInputChannelRole> {
+    match field {
+        GeoClientInputField::Geocode | GeoClientInputField::Geometry => {
+            vec![GeoClientInputChannelRole::GeometryDriver]
+        }
+        GeoClientInputField::Address => vec![GeoClientInputChannelRole::AddressMembership],
+        GeoClientInputField::BuildingSize
+        | GeoClientInputField::YearBuilt
+        | GeoClientInputField::PropertyType => vec![
+            GeoClientInputChannelRole::AttributeRejector,
+            GeoClientInputChannelRole::AssemblageConstraint,
+        ],
+    }
+}
+
+fn expected_decision_bands() -> [(
+    GeoClientDecisionBand,
+    u8,
+    &'static [GeoClientInputField],
+    GeoClientDisagreementEffect,
+); 4] {
+    [
+        (
+            GeoClientDecisionBand::HardForcedCandidate,
+            2,
+            &GEOMETRY_DRIVER_FIELDS,
+            GeoClientDisagreementEffect::RejectCandidate,
+        ),
+        (
+            GeoClientDecisionBand::ExactResidualOrSoftRanked,
+            1,
+            &GEOMETRY_DRIVER_FIELDS,
+            GeoClientDisagreementEffect::RejectCandidate,
+        ),
+        (
+            GeoClientDecisionBand::AbstainReacquire,
+            0,
+            &[],
+            GeoClientDisagreementEffect::AbstainReacquire,
+        ),
+        (
+            GeoClientDecisionBand::UnsupportedOrWaitingForInput,
+            0,
+            &[],
+            GeoClientDisagreementEffect::ReportUnsupported,
+        ),
+    ]
+}
+
+fn expected_fixture_presence(
+    kind: GeoClientInputFixtureKind,
+) -> [(GeoClientInputField, GeoClientInputPresence); 6] {
+    use GeoClientInputField::{Address, BuildingSize, Geocode, Geometry, PropertyType, YearBuilt};
+    use GeoClientInputPresence::{Absent, Present};
+    match kind {
+        GeoClientInputFixtureKind::FullyPopulated => [
+            (Geocode, Present),
+            (Address, Present),
+            (Geometry, Present),
+            (BuildingSize, Present),
+            (YearBuilt, Present),
+            (PropertyType, Present),
+        ],
+        GeoClientInputFixtureKind::AddressOnly => [
+            (Geocode, Absent),
+            (Address, Present),
+            (Geometry, Absent),
+            (BuildingSize, Absent),
+            (YearBuilt, Absent),
+            (PropertyType, Absent),
+        ],
+        GeoClientInputFixtureKind::GeometryOnly => [
+            (Geocode, Absent),
+            (Address, Absent),
+            (Geometry, Present),
+            (BuildingSize, Absent),
+            (YearBuilt, Absent),
+            (PropertyType, Absent),
+        ],
+        GeoClientInputFixtureKind::GinnieNativeNoAddressNoGeocode => [
+            (Geocode, Absent),
+            (Address, Absent),
+            (Geometry, Absent),
+            (BuildingSize, Absent),
+            (YearBuilt, Absent),
+            (PropertyType, Absent),
+        ],
+    }
+}
+
+fn expected_fixture_band(kind: GeoClientInputFixtureKind) -> GeoClientDecisionBand {
+    match kind {
+        GeoClientInputFixtureKind::FullyPopulated => GeoClientDecisionBand::HardForcedCandidate,
+        GeoClientInputFixtureKind::AddressOnly | GeoClientInputFixtureKind::GeometryOnly => {
+            GeoClientDecisionBand::ExactResidualOrSoftRanked
+        }
+        GeoClientInputFixtureKind::GinnieNativeNoAddressNoGeocode => {
+            GeoClientDecisionBand::UnsupportedOrWaitingForInput
+        }
+    }
+}
+
+fn require_exact_values<T>(
+    field: &str,
+    actual: &[T],
+    expected: &[T],
+) -> Result<(), GeoCompositionError>
+where
+    T: Copy + Eq + Ord + fmt::Debug,
+{
+    if actual == expected {
+        return Ok(());
+    }
+    let mut actual_sorted = actual.to_vec();
+    actual_sorted.sort();
+    let mut expected_sorted = expected.to_vec();
+    expected_sorted.sort();
+    Err(GeoCompositionError::invalid_input(
+        "Geo client input contract value set is not canonical",
+        [
+            ("field".to_string(), field.to_string()),
+            ("actual".to_string(), format!("{actual_sorted:?}")),
+            ("expected".to_string(), format!("{expected_sorted:?}")),
+        ],
+    ))
+}
+
+fn validate_contract_text(field: &str, value: &str) -> Result<(), GeoCompositionError> {
+    if value.is_empty() || value.trim() != value {
+        return Err(GeoCompositionError::invalid_input(
+            "Geo client input contract text must be non-empty and already canonical",
+            [("field", field), ("value", value)],
+        ));
+    }
+    Ok(())
+}
+
+fn field_contract(
+    field: GeoClientInputField,
+    required_when_present: Vec<GeoClientInputDeclaration>,
+    channel_roles: Vec<GeoClientInputChannelRole>,
+    absent_semantics: String,
+    unreliable_semantics: String,
+    missing_declaration_refusal: String,
+) -> GeoClientInputFieldContract {
+    GeoClientInputFieldContract {
+        field,
+        presence_modes: vec![
+            GeoClientInputPresence::Present,
+            GeoClientInputPresence::Absent,
+            GeoClientInputPresence::PresentButUnreliable,
+        ],
+        required_when_present,
+        channel_roles,
+        absent_semantics,
+        unreliable_semantics,
+        missing_declaration_refusal,
+    }
+}
+
+fn decision_band(
+    band: GeoClientDecisionBand,
+    minimum_reliable_agreements: u8,
+    required_reliable_channels: Vec<GeoClientInputField>,
+    disagreement_effect: GeoClientDisagreementEffect,
+    output_semantics: String,
+) -> GeoClientChannelDecisionBand {
+    GeoClientChannelDecisionBand {
+        band,
+        minimum_reliable_agreements,
+        required_reliable_channels,
+        disagreement_effect,
+        output_semantics,
+    }
+}
+
+fn conformance_fixture(
+    fixture_id: &str,
+    kind: GeoClientInputFixtureKind,
+    expected_band: GeoClientDecisionBand,
+) -> GeoClientInputConformanceFixture {
+    GeoClientInputConformanceFixture {
+        fixture_id: fixture_id.to_string(),
+        kind,
+        field_presence: expected_fixture_presence(kind)
+            .into_iter()
+            .map(|(field, presence)| GeoClientFixtureFieldPresence { field, presence })
+            .collect(),
+        expected_band,
+    }
+}
+
+const fn expected_fixture_id(kind: GeoClientInputFixtureKind) -> &'static str {
+    match kind {
+        GeoClientInputFixtureKind::FullyPopulated => "client_full_six_field",
+        GeoClientInputFixtureKind::AddressOnly => "client_address_only",
+        GeoClientInputFixtureKind::GeometryOnly => "client_geometry_only",
+        GeoClientInputFixtureKind::GinnieNativeNoAddressNoGeocode => {
+            "ginnie_native_no_address_no_geocode"
+        }
+    }
+}
+
+fn validate_field_contracts(
+    field_contracts: &[GeoClientInputFieldContract],
+) -> Result<(), GeoCompositionError> {
+    if field_contracts.len() != six_field_order().len() {
+        return Err(GeoCompositionError::invalid_input(
+            "Geo client input contract must declare exactly six fields",
+            [
+                ("actual_count", field_contracts.len().to_string()),
+                ("expected_count", six_field_order().len().to_string()),
+            ],
+        ));
+    }
+    for (index, (actual, expected_field)) in
+        field_contracts.iter().zip(six_field_order()).enumerate()
+    {
+        if actual.field != *expected_field {
+            return Err(GeoCompositionError::invalid_input(
+                "Geo client input contract fields must appear in canonical six-field order",
+                [
+                    ("index", index.to_string()),
+                    ("actual", client_input_field_name(actual.field).to_string()),
+                    (
+                        "expected",
+                        client_input_field_name(*expected_field).to_string(),
+                    ),
+                ],
+            ));
+        }
+        require_exact_values(
+            "field_contracts[].presence_modes",
+            &actual.presence_modes,
+            &[
+                GeoClientInputPresence::Present,
+                GeoClientInputPresence::Absent,
+                GeoClientInputPresence::PresentButUnreliable,
+            ],
+        )?;
+        require_exact_values(
+            "field_contracts[].required_when_present",
+            &actual.required_when_present,
+            &expected_declarations(*expected_field),
+        )?;
+        require_exact_values(
+            "field_contracts[].channel_roles",
+            &actual.channel_roles,
+            &expected_channel_roles(*expected_field),
+        )?;
+        validate_contract_text(
+            "field_contracts[].absent_semantics",
+            &actual.absent_semantics,
+        )?;
+        validate_contract_text(
+            "field_contracts[].unreliable_semantics",
+            &actual.unreliable_semantics,
+        )?;
+        validate_identifier(
+            "field_contracts[].missing_declaration_refusal",
+            &actual.missing_declaration_refusal,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_channel_agreement(
+    agreement: &GeoClientChannelAgreementRule,
+) -> Result<(), GeoCompositionError> {
+    validate_identifier("channel_agreement.rule_id", &agreement.rule_id)?;
+    validate_contract_text(
+        "channel_agreement.candidate_universe_rule",
+        &agreement.candidate_universe_rule,
+    )?;
+    require_exact_values(
+        "channel_agreement.independent_channels",
+        &agreement.independent_channels,
+        six_field_order(),
+    )?;
+    if !agreement.channel_sum_forbidden {
+        return Err(GeoCompositionError::invalid_input(
+            "Geo client channel agreement must forbid channel-sum scoring",
+            [("field", "channel_agreement.channel_sum_forbidden")],
+        ));
+    }
+    if !agreement.available_disagreement_stronger_than_missing {
+        return Err(GeoCompositionError::invalid_input(
+            "Geo client channel agreement must treat available disagreement as stronger than missing evidence",
+            [(
+                "field",
+                "channel_agreement.available_disagreement_stronger_than_missing",
+            )],
+        ));
+    }
+    if agreement.decision_bands.len() != expected_decision_bands().len() {
+        return Err(GeoCompositionError::invalid_input(
+            "Geo client channel agreement must declare every decision band",
+            [
+                ("actual_count", agreement.decision_bands.len().to_string()),
+                (
+                    "expected_count",
+                    expected_decision_bands().len().to_string(),
+                ),
+            ],
+        ));
+    }
+    for (actual, expected) in agreement
+        .decision_bands
+        .iter()
+        .zip(expected_decision_bands())
+    {
+        if actual.band != expected.0
+            || actual.minimum_reliable_agreements != expected.1
+            || actual.disagreement_effect != expected.3
+        {
+            return Err(GeoCompositionError::invalid_input(
+                "Geo client channel agreement decision band semantics changed",
+                [
+                    ("band", format!("{:?}", actual.band)),
+                    ("expected_band", format!("{:?}", expected.0)),
+                    (
+                        "minimum_reliable_agreements",
+                        actual.minimum_reliable_agreements.to_string(),
+                    ),
+                    ("expected_minimum", expected.1.to_string()),
+                    ("effect", format!("{:?}", actual.disagreement_effect)),
+                    ("expected_effect", format!("{:?}", expected.3)),
+                ],
+            ));
+        }
+        require_exact_values(
+            "channel_agreement.decision_bands[].required_reliable_channels",
+            &actual.required_reliable_channels,
+            expected.2,
+        )?;
+        validate_contract_text(
+            "channel_agreement.decision_bands[].output_semantics",
+            &actual.output_semantics,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_conformance_fixtures(
+    fixtures: &[GeoClientInputConformanceFixture],
+) -> Result<(), GeoCompositionError> {
+    if fixtures.len() != expected_fixture_kinds().len() {
+        return Err(GeoCompositionError::invalid_input(
+            "Geo client input contract must ship all conformance fixture declarations",
+            [
+                ("actual_count", fixtures.len().to_string()),
+                ("expected_count", expected_fixture_kinds().len().to_string()),
+            ],
+        ));
+    }
+    for (actual, expected) in fixtures.iter().zip(expected_fixture_kinds()) {
+        validate_identifier("conformance_fixtures[].fixture_id", &actual.fixture_id)?;
+        if actual.fixture_id != expected_fixture_id(*expected) {
+            return Err(GeoCompositionError::invalid_input(
+                "Geo client input contract fixture id changed",
+                [
+                    ("actual", actual.fixture_id.as_str()),
+                    ("expected", expected_fixture_id(*expected)),
+                ],
+            ));
+        }
+        if actual.kind != *expected {
+            return Err(GeoCompositionError::invalid_input(
+                "Geo client input contract fixture order changed",
+                [
+                    ("actual", format!("{:?}", actual.kind)),
+                    ("expected", format!("{:?}", expected)),
+                ],
+            ));
+        }
+        let expected_presence = expected_fixture_presence(*expected);
+        let actual_presence = actual
+            .field_presence
+            .iter()
+            .map(|presence| (presence.field, presence.presence))
+            .collect::<Vec<_>>();
+        require_exact_values(
+            "conformance_fixtures[].field_presence",
+            &actual_presence,
+            &expected_presence,
+        )?;
+        if actual.expected_band != expected_fixture_band(*expected) {
+            return Err(GeoCompositionError::invalid_input(
+                "Geo client input contract fixture expected band changed",
+                [
+                    ("fixture", format!("{:?}", actual.kind)),
+                    ("actual", format!("{:?}", actual.expected_band)),
+                    (
+                        "expected",
+                        format!("{:?}", expected_fixture_band(*expected)),
+                    ),
+                ],
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2352,25 +3230,7 @@ fn normalize_request(
 fn normalize_profile(
     profile: &GeoCompositionProfile,
 ) -> Result<GeoCompositionProfile, GeoCompositionError> {
-    if profile.version != CANON_GEO_COMPOSITION_PROFILE_VERSION {
-        return Err(GeoCompositionError::new(
-            GeoCompositionErrorCode::UnsupportedVersion,
-            "Unsupported Geo composition profile version",
-            [
-                ("actual", profile.version.as_str()),
-                ("expected", CANON_GEO_COMPOSITION_PROFILE_VERSION),
-            ],
-        ));
-    }
-    match profile.selection_level {
-        GeoEntityLevel::Parcel | GeoEntityLevel::Building => Ok(profile.clone()),
-        GeoEntityLevel::PoiUnit | GeoEntityLevel::Property => {
-            Err(GeoCompositionError::unsupported_grain(
-                "Geo composition profiles support only parcel or building selection levels",
-                [("selection_level", level_name(profile.selection_level))],
-            ))
-        }
-    }
+    validate_composition_profile(profile)
 }
 
 fn normalize_constraint(
