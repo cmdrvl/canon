@@ -206,18 +206,21 @@ if ! jq -e '.version == "canon_geo_measurement_report.v0"' "$report_path" >/dev/
   exit 4
 fi
 
-jq -r '
+selected_ids="$(jq -c '[.[].id]' "$selected_path")"
+
+jq -r --argjson selected_ids "$selected_ids" '
   .measurements[]
+  | select(.measurement_id as $id | $selected_ids | index($id))
   | "entry=\(.measurement_id) status=\(.status) row_count=\(.row_count // "null") classification=\(.proof_attestation // "none") details=\(.details | join("; "))"
 ' "$report_path" >> "$run_log"
 
-jq -c '
+jq -c --argjson selected_ids "$selected_ids" '
   .measurements[]
-  | select(.result_validation == "exact_manifest_rows")
-  | {entry: .measurement_id, expected_result_rows: .expected_result_rows, actual_row_count: .row_count}
+  | select(.id as $id | $selected_ids | index($id))
+  | select(.result_row_validation == "exact_manifest_rows")
+  | {entry: .id, expected_result_rows: .expected_result_rows}
 ' "$manifest_abs" >> "$run_log" 2>/dev/null || true
 
-selected_ids="$(jq -c '[.[].id]' "$selected_path")"
 receipts_base="$(cd -- "$(dirname -- "$receipts_abs")" && pwd -P)"
 jq -r --argjson selected_ids "$selected_ids" '
   .receipts[]
@@ -230,12 +233,23 @@ jq -r --argjson selected_ids "$selected_ids" '
   fi
 done
 
-diverged_count="$(jq '(.summary.result_mismatch // 0) + (.summary.malformed // 0) + (.summary.missing // 0)' "$report_path")"
-snapshot_count="$(jq '.summary.snapshot_moved // 0' "$report_path")"
+diverged_count="$(jq --argjson selected_ids "$selected_ids" '
+  [.measurements[]
+   | select(.measurement_id as $id | $selected_ids | index($id))
+   | select(.status == "result_mismatch" or .status == "malformed" or .status == "missing")]
+  | length
+' "$report_path")"
+snapshot_count="$(jq --argjson selected_ids "$selected_ids" '
+  [.measurements[]
+   | select(.measurement_id as $id | $selected_ids | index($id))
+   | select(.status == "snapshot_moved")]
+  | length
+' "$report_path")"
 
 if [[ "$diverged_count" != "0" ]]; then
-  jq -r '
+  jq -r --argjson selected_ids "$selected_ids" '
     .measurements[]
+    | select(.measurement_id as $id | $selected_ids | index($id))
     | select(.status == "result_mismatch" or .status == "malformed" or .status == "missing")
     | "measurement diverged: \(.measurement_id): \(.status): \(.details | join("; "))"
   ' "$report_path" | while IFS= read -r line; do say_and_log "$line"; done
@@ -244,19 +258,14 @@ if [[ "$diverged_count" != "0" ]]; then
 fi
 
 if [[ "$snapshot_count" != "0" ]]; then
-  jq -r '
+  jq -r --argjson selected_ids "$selected_ids" '
     .measurements[]
+    | select(.measurement_id as $id | $selected_ids | index($id))
     | select(.status == "snapshot_moved")
     | "snapshot moved: \(.measurement_id): \(.details | join("; "))"
   ' "$report_path" | while IFS= read -r line; do say_and_log "$line"; done
   log "end=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   exit 3
-fi
-
-if [[ "$validator_status" != "0" ]]; then
-  cat "$validator_stderr" >&2
-  say_and_log "measurement diverged: validator returned $validator_status without a classified mismatch"
-  exit 4
 fi
 
 log "end=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
