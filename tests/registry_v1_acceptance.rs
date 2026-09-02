@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use canon::registry::{RegistryPackage, canonical_package_bytes, compile_registry_package};
+use canon::registry::{RegistryPackage, compile_registry_package};
 use rusqlite::{Connection, OpenFlags, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -101,7 +101,7 @@ fn immutable_lookup_and_exports_are_proven_from_package_receipts() -> Result<(),
     let verify_json = json_stdout(&verify)?;
     assert_eq!(
         verify_json["package_content_digest"],
-        prepared.package.content_digest
+        prepared.local_package_content_digest
     );
     assert_eq!(
         verify_json["package_bytes_digest"],
@@ -126,7 +126,7 @@ fn immutable_lookup_and_exports_are_proven_from_package_receipts() -> Result<(),
     let unpack_json = json_stdout(&unpack)?;
     assert_eq!(
         unpack_json["package_content_digest"],
-        prepared.package.content_digest
+        prepared.local_package_content_digest
     );
     assert_eq!(unpack_json["verified_files"], 4);
     command_receipts.push(command_receipt(&unpack));
@@ -352,6 +352,7 @@ struct PreparedRegistryPackage {
     package_root: PathBuf,
     package: RegistryPackage,
     package_bytes: Vec<u8>,
+    local_package_content_digest: String,
 }
 
 struct DbtExport {
@@ -377,24 +378,65 @@ fn prepare_packaged_registry(root: &Path) -> Result<PreparedRegistryPackage, Box
     }
 
     let package = compile_registry_package(&registry_dir)?;
-    let package_bytes = canonical_package_bytes(&package)?;
     let source_manifest = json!({
         "version": "canon.registry.acceptance.source_manifest.v1",
         "registry_subdir": "registry",
         "package_digest": package.content_digest,
         "files": source_file_receipts(&registry_dir, "registry")?,
     });
+    let source_manifest_bytes = serde_json::to_vec_pretty(&source_manifest)?;
+    let source_manifest_digest = hash_bytes(&source_manifest_bytes);
     fs::write(
         package_root.join("source_manifest.json"),
-        serde_json::to_vec_pretty(&source_manifest)?,
+        source_manifest_bytes,
     )?;
+    let package_bytes = local_distribution_package_bytes(&package, &source_manifest_digest)?;
+    let local_package_content_digest = serde_json::from_slice::<Value>(&package_bytes)?
+        .get("content_digest")
+        .and_then(Value::as_str)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing content_digest"))?
+        .to_string();
     fs::write(package_root.join("package.json"), &package_bytes)?;
 
     Ok(PreparedRegistryPackage {
         package_root,
         package,
         package_bytes,
+        local_package_content_digest,
     })
+}
+
+fn local_distribution_package_bytes(
+    registry_package: &RegistryPackage,
+    source_manifest_digest: &str,
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut value = json!({
+        "schema_version": "canon.registry.distribution.package.v1",
+        "package_id": registry_package.registry.id,
+        "package_version": registry_package.registry.version,
+        "content_digest": "",
+        "registry": {
+            "id": registry_package.registry.id,
+            "version": registry_package.registry.version,
+            "schema_version": registry_package.schema_version,
+            "content_digest": registry_package.content_digest,
+        },
+        "provenance": {
+            "source": "tests/fixtures/canon_v1/registry_acceptance",
+            "registry_package_digest": registry_package.content_digest,
+            "source_manifest_digest": source_manifest_digest,
+        },
+        "capabilities": [
+            "dbt_seed_export",
+            "exact_lookup",
+            "search_index_export"
+        ],
+        "dependency_references": []
+    });
+    value["content_digest"] = Value::String(String::new());
+    let content_digest = hash_bytes(&serde_json::to_vec(&value)?);
+    value["content_digest"] = Value::String(content_digest);
+    Ok(serde_json::to_vec(&value)?)
 }
 
 fn assert_package_declares_immutable_export_contracts(package: &RegistryPackage) {
