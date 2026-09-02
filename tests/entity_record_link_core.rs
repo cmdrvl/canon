@@ -3,15 +3,16 @@
 use canon::entity::evidence_ir as evidence;
 use canon::entity::record_link::{
     self, ASSIGNMENT_ALIGNMENT_PATH, ASSIGNMENT_ALIGNMENT_VERSION, AssignmentAlignmentDecisionKind,
-    AssignmentAlignmentPolicy, AssignmentCardinality, RecordLinkCandidateAbstentionReason,
+    AssignmentAlignmentPolicy, AssignmentCardinality, RecordLinkBlockingComponent,
+    RecordLinkBlockingKey, RecordLinkBlockingPolicy, RecordLinkCandidateAbstentionReason,
     RecordLinkCandidateConfig, RecordLinkCandidateRequest, RecordLinkCandidateSet,
     RecordLinkEvidenceRequest, RecordLinkFeatureKind, RecordLinkFeaturePolicy,
-    RecordLinkInputSource, RecordLinkLoadRequest, RecordLinkSupportPolicy,
-    RecordLinkSurfaceBindingInput, build_record_link_evidence, build_record_link_input_set,
-    canonical_assignment_alignment_bytes, canonical_record_link_candidate_set_bytes,
-    generate_record_link_candidates, load_record_link_inputs,
-    validate_assignment_alignment_sidecar, validate_record_link_candidate_set,
-    validate_record_link_candidate_set_for_inputs,
+    RecordLinkInputSource, RecordLinkLoadRequest, RecordLinkPairAccounting,
+    RecordLinkSupportPolicy, RecordLinkSurfaceBindingInput, build_record_link_evidence,
+    build_record_link_input_set, canonical_assignment_alignment_bytes,
+    canonical_record_link_candidate_set_bytes, generate_record_link_candidates,
+    load_record_link_inputs, validate_assignment_alignment_sidecar,
+    validate_record_link_candidate_set, validate_record_link_candidate_set_for_inputs,
 };
 use canon::entity::source_mapping::{
     self, AssignmentArtifact, CapturePolicy, CellDispositionReason, MappedCell,
@@ -86,6 +87,7 @@ fn record_link_core_builds_stable_candidates_evidence_and_alignment() {
         input_set: &input_set,
         candidate_set: &candidate_set,
         feature_policies: &standard_feature_policies(),
+        blocking_policy: None,
         policy: AssignmentAlignmentPolicy {
             cardinality: AssignmentCardinality::ManyToMany,
             ..AssignmentAlignmentPolicy::default()
@@ -193,6 +195,7 @@ fn record_link_core_requires_declared_policy_for_hard_conflict() {
         input_set: &input_set,
         candidate_set: &candidate_set,
         feature_policies: &amount_hard_conflict_policies(),
+        blocking_policy: None,
         policy: AssignmentAlignmentPolicy::default(),
     })
     .expect("evidence output");
@@ -301,6 +304,7 @@ fn record_link_core_evidence_hashes_actual_policy_for_same_outcome() {
         input_set: &input_set,
         candidate_set: &standard_set,
         feature_policies: &standard_policies,
+        blocking_policy: None,
         policy: AssignmentAlignmentPolicy {
             cardinality: AssignmentCardinality::ManyToMany,
             ..AssignmentAlignmentPolicy::default()
@@ -311,6 +315,7 @@ fn record_link_core_evidence_hashes_actual_policy_for_same_outcome() {
         input_set: &input_set,
         candidate_set: &alternate_set,
         feature_policies: &alternate_policies,
+        blocking_policy: None,
         policy: AssignmentAlignmentPolicy {
             cardinality: AssignmentCardinality::ManyToMany,
             ..AssignmentAlignmentPolicy::default()
@@ -457,6 +462,7 @@ fn record_link_core_rejects_self_rehashed_cross_bound_candidates() {
         &input_set,
         &candidate_set,
         &standard_feature_policies(),
+        None,
     )
     .expect("candidate set binds inputs");
 
@@ -468,6 +474,7 @@ fn record_link_core_rejects_self_rehashed_cross_bound_candidates() {
         input_set: &input_set,
         candidate_set: &tampered_refs,
         feature_policies: &standard_feature_policies(),
+        blocking_policy: None,
         policy: AssignmentAlignmentPolicy::default(),
     })
     .expect_err("input ref mismatch must refuse before evidence");
@@ -481,6 +488,7 @@ fn record_link_core_rejects_self_rehashed_cross_bound_candidates() {
         input_set: &input_set,
         candidate_set: &tampered_endpoint,
         feature_policies: &standard_feature_policies(),
+        blocking_policy: None,
         policy: AssignmentAlignmentPolicy::default(),
     })
     .expect_err("endpoint hash mismatch must refuse before evidence");
@@ -508,6 +516,7 @@ fn record_link_core_rejects_self_rehashed_policy_and_decision_drift() {
         input_set: &input_set,
         candidate_set: &tampered_policy,
         feature_policies: &standard_feature_policies(),
+        blocking_policy: None,
         policy: AssignmentAlignmentPolicy::default(),
     })
     .expect_err("policy digest drift must refuse");
@@ -521,6 +530,7 @@ fn record_link_core_rejects_self_rehashed_policy_and_decision_drift() {
         input_set: &input_set,
         candidate_set: &tampered_score,
         feature_policies: &standard_feature_policies(),
+        blocking_policy: None,
         policy: AssignmentAlignmentPolicy::default(),
     })
     .expect_err("score drift must refuse");
@@ -541,6 +551,7 @@ fn record_link_core_rejects_self_rehashed_policy_and_decision_drift() {
         input_set: &input_set,
         candidate_set: &tampered_support,
         feature_policies: &standard_feature_policies(),
+        blocking_policy: None,
         policy: AssignmentAlignmentPolicy::default(),
     })
     .expect_err("support-to-abstention drift must refuse");
@@ -564,12 +575,16 @@ fn record_link_core_rejects_self_rehashed_policy_and_decision_drift() {
         .find(|candidate| candidate.hard_cannot_link)
         .expect("hard candidate");
     hard.hard_cannot_link = false;
+    tampered_hard
+        .summary
+        .insert("hard_cannot_link_count".to_string(), 0);
     reseal_candidate_set(&mut tampered_hard);
     validate_record_link_candidate_set(&tampered_hard).expect("self hash still validates");
     let error = build_record_link_evidence(RecordLinkEvidenceRequest {
         input_set: &input_set,
         candidate_set: &tampered_hard,
         feature_policies: &amount_hard_conflict_policies(),
+        blocking_policy: None,
         policy: AssignmentAlignmentPolicy::default(),
     })
     .expect_err("hard-conflict drift must refuse");
@@ -604,6 +619,7 @@ fn record_link_core_preserves_hard_veto_under_pruning() {
         input_set: &input_set,
         candidate_set: &candidate_set,
         feature_policies: &amount_hard_conflict_policies(),
+        blocking_policy: None,
         policy: AssignmentAlignmentPolicy::default(),
     })
     .expect("evidence output");
@@ -848,6 +864,201 @@ fn record_link_core_enforces_pair_comparison_budget_before_emission() {
 }
 
 #[test]
+fn record_link_core_structured_blocking_admits_before_pair_scoring_budget() {
+    let input_set = neutral_input_set(false);
+    let surfaces = neutral_surfaces(&input_set);
+    let surface_index = record_link::bind_record_link_surfaces(&input_set, &surfaces, "block")
+        .expect("surface bindings");
+
+    let mut unblocked_config = standard_candidate_config(4, false);
+    unblocked_config.max_pair_comparisons = 1;
+    let unblocked = generate_record_link_candidates(RecordLinkCandidateRequest {
+        input_set: &input_set,
+        surface_index: &surface_index,
+        config: unblocked_config,
+    })
+    .expect_err("unblocked all-pairs traversal must hit the tight comparison budget");
+    assert_eq!(unblocked.reason, "pair_comparison_budget_exceeded");
+
+    let blocking = composite_blocking_policy();
+    let mut blocked_config = standard_candidate_config(4, false);
+    blocked_config.max_pair_comparisons = 1;
+    blocked_config.blocking_policy = Some(blocking.clone());
+    let candidate_set = generate_record_link_candidates(RecordLinkCandidateRequest {
+        input_set: &input_set,
+        surface_index: &surface_index,
+        config: blocked_config,
+    })
+    .expect("structured blocking should avoid the nonmatching pair before scoring");
+    assert_eq!(candidate_set.candidates.len(), 1);
+    assert_eq!(candidate_set.blocking_policy, Some(blocking.clone()));
+    assert!(!candidate_set.blocking_policy_digest.is_empty());
+    assert_eq!(
+        candidate_set.pair_accounting,
+        RecordLinkPairAccounting {
+            cross_source_pair_count: 2,
+            admitted_pair_count: 1,
+            suppressed_pair_count: 1,
+            scored_pair_count: 1,
+            blocking_policy_miss_count: 1,
+            comparison_abstention_count: 0,
+            ranking_abstention_count: 0,
+        }
+    );
+    assert_eq!(candidate_set.summary["suppressed_pair_count"], 1);
+    assert_eq!(candidate_set.summary["blocking_policy_miss_count"], 1);
+    validate_record_link_candidate_set_for_inputs(
+        &input_set,
+        &candidate_set,
+        &standard_feature_policies(),
+        Some(&blocking),
+    )
+    .expect("blocking policy binds to candidate set");
+
+    let shuffled = neutral_input_set(true);
+    let shuffled_surfaces = neutral_surfaces(&shuffled);
+    let shuffled_surface_index =
+        record_link::bind_record_link_surfaces(&shuffled, &shuffled_surfaces, "block")
+            .expect("shuffled surface bindings");
+    let mut shuffled_config = standard_candidate_config(4, false);
+    shuffled_config.max_pair_comparisons = 1;
+    shuffled_config.blocking_policy = Some(blocking);
+    let shuffled_candidate_set = generate_record_link_candidates(RecordLinkCandidateRequest {
+        input_set: &shuffled,
+        surface_index: &shuffled_surface_index,
+        config: shuffled_config,
+    })
+    .expect("shuffled candidate set");
+    assert_eq!(
+        canonical_record_link_candidate_set_bytes(&candidate_set).expect("candidate bytes"),
+        canonical_record_link_candidate_set_bytes(&shuffled_candidate_set)
+            .expect("shuffled candidate bytes")
+    );
+}
+
+#[test]
+fn record_link_core_rejects_self_rehashed_blocking_policy_and_accounting_drift() {
+    let input_set = neutral_input_set(false);
+    let surfaces = neutral_surfaces(&input_set);
+    let surface_index = record_link::bind_record_link_surfaces(&input_set, &surfaces, "block")
+        .expect("surface bindings");
+    let blocking = composite_blocking_policy();
+    let mut config = standard_candidate_config(4, false);
+    config.blocking_policy = Some(blocking.clone());
+    let candidate_set = generate_record_link_candidates(RecordLinkCandidateRequest {
+        input_set: &input_set,
+        surface_index: &surface_index,
+        config,
+    })
+    .expect("candidate set");
+
+    let alternate_blocking = categorical_blocking_policy();
+    let mut alternate_config = standard_candidate_config(4, false);
+    alternate_config.blocking_policy = Some(alternate_blocking.clone());
+    let alternate_set = generate_record_link_candidates(RecordLinkCandidateRequest {
+        input_set: &input_set,
+        surface_index: &surface_index,
+        config: alternate_config,
+    })
+    .expect("alternate candidate set");
+
+    let mut tampered_policy = candidate_set.clone();
+    tampered_policy.blocking_policy = Some(alternate_blocking);
+    tampered_policy.blocking_policy_digest = alternate_set.blocking_policy_digest;
+    reseal_candidate_set(&mut tampered_policy);
+    validate_record_link_candidate_set(&tampered_policy).expect("self hash still validates");
+    let error = build_record_link_evidence(RecordLinkEvidenceRequest {
+        input_set: &input_set,
+        candidate_set: &tampered_policy,
+        feature_policies: &standard_feature_policies(),
+        blocking_policy: Some(blocking.clone()),
+        policy: AssignmentAlignmentPolicy::default(),
+    })
+    .expect_err("strategy blocking policy drift must refuse before evidence");
+    assert_eq!(error.reason, "candidate_blocking_policy_digest_mismatch");
+
+    let mut tampered_accounting = candidate_set.clone();
+    tampered_accounting.pair_accounting = RecordLinkPairAccounting {
+        cross_source_pair_count: 2,
+        admitted_pair_count: 2,
+        suppressed_pair_count: 0,
+        scored_pair_count: 2,
+        blocking_policy_miss_count: 0,
+        comparison_abstention_count: 0,
+        ranking_abstention_count: 0,
+    };
+    tampered_accounting
+        .summary
+        .insert("admitted_pair_count".to_string(), 2);
+    tampered_accounting
+        .summary
+        .insert("suppressed_pair_count".to_string(), 0);
+    tampered_accounting
+        .summary
+        .insert("scored_pair_count".to_string(), 2);
+    tampered_accounting
+        .summary
+        .insert("blocking_policy_miss_count".to_string(), 0);
+    reseal_candidate_set(&mut tampered_accounting);
+    validate_record_link_candidate_set(&tampered_accounting).expect("self hash still validates");
+    let error = build_record_link_evidence(RecordLinkEvidenceRequest {
+        input_set: &input_set,
+        candidate_set: &tampered_accounting,
+        feature_policies: &standard_feature_policies(),
+        blocking_policy: Some(blocking),
+        policy: AssignmentAlignmentPolicy::default(),
+    })
+    .expect_err("self-consistent false pair accounting must refuse");
+    assert_eq!(error.reason, "candidate_pair_accounting_mismatch");
+}
+
+#[test]
+fn record_link_core_refuses_malformed_structured_blocking_policy() {
+    let input_set = neutral_input_set(false);
+    let surfaces = neutral_surfaces(&input_set);
+    let surface_index = record_link::bind_record_link_surfaces(&input_set, &surfaces, "block")
+        .expect("surface bindings");
+
+    let mut missing_units = standard_candidate_config(4, false);
+    let mut policy = composite_blocking_policy();
+    if let RecordLinkBlockingComponent::FixedDecimalBucket { units, .. } =
+        &mut policy.keys[0].components[0]
+    {
+        units.clear();
+    }
+    missing_units.blocking_policy = Some(policy);
+    let error = generate_record_link_candidates(RecordLinkCandidateRequest {
+        input_set: &input_set,
+        surface_index: &surface_index,
+        config: missing_units,
+    })
+    .expect_err("numeric buckets must declare units explicitly");
+    assert_eq!(error.reason, "blocking_component_empty_units");
+
+    let mut kind_mismatch = standard_candidate_config(4, false);
+    kind_mismatch.blocking_policy = Some(RecordLinkBlockingPolicy {
+        policy_id: "neutral:blocking".to_string(),
+        policy_version: "1".to_string(),
+        keys: vec![RecordLinkBlockingKey {
+            key_id: "wrong-kind".to_string(),
+            components: vec![RecordLinkBlockingComponent::FixedDecimalBucket {
+                feature_id: "cmp:category".to_string(),
+                units: "basis_points".to_string(),
+                scale: 2,
+                bucket_width_scaled_units: 1,
+            }],
+        }],
+    });
+    let error = generate_record_link_candidates(RecordLinkCandidateRequest {
+        input_set: &input_set,
+        surface_index: &surface_index,
+        config: kind_mismatch,
+    })
+    .expect_err("blocking components must match observed typed feature values");
+    assert_eq!(error.reason, "blocking_component_kind_mismatch");
+}
+
+#[test]
 fn record_link_core_scopes_duplicate_local_ids_by_source() {
     let input_set = neutral_input_set(false);
     let left = &input_set.inputs[0].sidecar.records[0];
@@ -891,6 +1102,7 @@ fn assignment_alignment_self_hash_refuses_tampering() {
         input_set: &input_set,
         candidate_set: &candidate_set,
         feature_policies: &standard_feature_policies(),
+        blocking_policy: None,
         policy: AssignmentAlignmentPolicy::default(),
     })
     .expect("evidence output");
@@ -1282,6 +1494,44 @@ fn standard_candidate_config(
         require_unique_best_per_record,
         feature_policies: standard_feature_policies(),
         ..RecordLinkCandidateConfig::default()
+    }
+}
+
+fn composite_blocking_policy() -> RecordLinkBlockingPolicy {
+    RecordLinkBlockingPolicy {
+        policy_id: "neutral:blocking".to_string(),
+        policy_version: "1".to_string(),
+        keys: vec![RecordLinkBlockingKey {
+            key_id: "amount-date-category".to_string(),
+            components: vec![
+                RecordLinkBlockingComponent::FixedDecimalBucket {
+                    feature_id: "cmp:amount".to_string(),
+                    units: "basis_points".to_string(),
+                    scale: 2,
+                    bucket_width_scaled_units: 1,
+                },
+                RecordLinkBlockingComponent::DateBucket {
+                    feature_id: "cmp:as_of".to_string(),
+                    bucket_days: 1,
+                },
+                RecordLinkBlockingComponent::CategoricalExact {
+                    feature_id: "cmp:category".to_string(),
+                },
+            ],
+        }],
+    }
+}
+
+fn categorical_blocking_policy() -> RecordLinkBlockingPolicy {
+    RecordLinkBlockingPolicy {
+        policy_id: "neutral:blocking".to_string(),
+        policy_version: "1".to_string(),
+        keys: vec![RecordLinkBlockingKey {
+            key_id: "category-only".to_string(),
+            components: vec![RecordLinkBlockingComponent::CategoricalExact {
+                feature_id: "cmp:category".to_string(),
+            }],
+        }],
     }
 }
 

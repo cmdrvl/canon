@@ -83,7 +83,7 @@ use crate::{
             bind_record_link_surfaces, build_record_link_evidence,
             canonical_assignment_alignment_bytes, canonical_record_link_candidate_set_bytes,
             generate_record_link_candidates, load_record_link_inputs,
-            validate_record_link_candidate_set,
+            validate_record_link_blocking_policy, validate_record_link_candidate_set,
         },
         schema::{
             entity_v1_artifact_reference, entity_v1_contract_for_stage,
@@ -402,6 +402,8 @@ struct RecordLinkEvidenceRun {
 struct RecordLinkStrategySection {
     inputs: Vec<RecordLinkStrategyInput>,
     operator_id: Option<String>,
+    #[serde(default)]
+    blocking: Option<crate::entity::record_link::RecordLinkBlockingPolicy>,
     max_candidates_per_record: usize,
     max_candidate_pairs: usize,
     max_pair_comparisons: usize,
@@ -2146,21 +2148,55 @@ fn build_and_write_block(
             &mut result.candidates,
             record_link_block_candidates(record_link)?,
         );
+        let record_link_suppressed = record_link
+            .candidate_set
+            .pair_accounting
+            .suppressed_pair_count
+            .saturating_add(record_link.candidate_set.abstentions.len() as u64);
         result.diagnostics.candidate_record_count = result.candidates.len() as u64;
         result.diagnostics.candidate_pairs_emitted = result.candidates.len() as u64;
+        result.diagnostics.suppressed_candidate_count = result
+            .diagnostics
+            .suppressed_candidate_count
+            .saturating_add(record_link_suppressed);
         result.diagnostics.max_candidates_for_operator = result
             .diagnostics
             .max_candidates_for_operator
             .max(record_link.candidate_set.candidates.len() as u64);
+        let operator_id = record_link_block_operator_id(record_link);
         result
             .diagnostics
             .operator_yield
             .push(crate::entity::block::BlockOperatorYield {
-                operator_id: record_link_block_operator_id(record_link),
+                operator_id: operator_id.clone(),
                 emitted_candidate_count: record_link.candidate_set.candidates.len() as u64,
-                suppressed_candidate_count: record_link.candidate_set.abstentions.len() as u64,
+                suppressed_candidate_count: record_link_suppressed,
                 large_posting_suppressed_count: 0,
             });
+        result.diagnostics.operator_diagnostics.push(
+            crate::entity::block::BlockOperatorCandidateDiagnostics {
+                operator_id,
+                input_candidate_count: record_link
+                    .candidate_set
+                    .pair_accounting
+                    .cross_source_pair_count,
+                eligible_candidate_count: record_link
+                    .candidate_set
+                    .pair_accounting
+                    .admitted_pair_count,
+                emitted_candidate_count: record_link.candidate_set.candidates.len() as u64,
+                suppressed_candidate_count: record_link_suppressed,
+                large_posting_suppressed_count: 0,
+            },
+        );
+        result
+            .diagnostics
+            .operator_diagnostics
+            .sort_by(|left, right| left.operator_id.cmp(&right.operator_id));
+        result
+            .diagnostics
+            .operator_yield
+            .sort_by(|left, right| left.operator_id.cmp(&right.operator_id));
     }
     let exact_bucket_result = emit_exact_bucket_hyperedges(ExactBucketBlockRequest {
         profile: exact_bucket_profile(&index.artifact.metadata),
@@ -2657,6 +2693,7 @@ fn build_record_link_evidence_run(
         input_set: &input_set,
         candidate_set,
         feature_policies: &config.candidate_config.feature_policies,
+        blocking_policy: config.candidate_config.blocking_policy.clone(),
         policy: config.assignment_alignment.clone(),
     })
     .map_err(|error| record_link_refusal(error, "evidence", request))?;
@@ -4262,6 +4299,8 @@ fn load_record_link_runtime_config(
             ));
         }
     }
+    validate_record_link_blocking_policy(section.blocking.as_ref())
+        .map_err(|error| record_link_refusal(error, "strategy", request))?;
     Ok(Some(RecordLinkRuntimeConfig {
         input_paths,
         candidate_config: RecordLinkCandidateConfig {
@@ -4273,6 +4312,7 @@ fn load_record_link_runtime_config(
             max_pair_comparisons: section.max_pair_comparisons,
             require_unique_best_per_record: section.require_unique_best_per_record.unwrap_or(true),
             feature_policies,
+            blocking_policy: section.blocking,
         },
         assignment_alignment: section.assignment_alignment,
         assignment_hint_score_units: section.assignment_hint_score_units,

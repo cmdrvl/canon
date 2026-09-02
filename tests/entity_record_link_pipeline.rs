@@ -6,8 +6,15 @@ use canon::{
         block::BlockCandidateRecord,
         edge::EdgeEvidenceRecord,
         profile_package::{canonical_package_bytes, load_profile_package_bytes},
-        record_link::{AssignmentAlignmentSidecar, canonical_assignment_alignment_bytes},
-        run::link::EntityLinkArtifact,
+        publication::{
+            EntityPublicationFileInput, EntityPublicationRequest, open_current_stream_generation,
+            publish_stream_patch,
+        },
+        record_link::{
+            AssignmentAlignmentSidecar, RecordLinkCandidateSet,
+            canonical_assignment_alignment_bytes, canonical_record_link_candidate_set_bytes,
+        },
+        run::{ENTITY_RUN_PUBLICATION_STREAM_ID, link::EntityLinkArtifact},
         score::ScoreLane,
         source_mapping::{
             AnchorMapping, AssignmentMapping, CANON_SOURCE_MAPPING_VERSION, CapturePolicy,
@@ -393,6 +400,156 @@ fn public_subprocess_record_link_budget_refusal_writes_no_block_artifact() {
             .work_dir
             .join("block/record_link_candidates.json")
             .exists()
+    );
+}
+
+#[test]
+fn public_subprocess_record_link_structured_blocking_admits_before_pair_budget() {
+    let fixture = RecordLinkFixture::new();
+    write_strategy_with_structured_blocking(
+        &fixture.strategy,
+        &fixture.left_sidecar,
+        &fixture.right_sidecar,
+        25,
+        4,
+    );
+    assert_success(block_command(&fixture, &fixture.work_dir), "entity block");
+    let candidates: Value = read_json(&fixture.work_dir.join("block/record_link_candidates.json"));
+
+    assert_eq!(
+        candidates["version"],
+        "canon.entity.record_link_candidates.v1"
+    );
+    assert!(
+        candidates["blocking_policy_digest"]
+            .as_str()
+            .expect("blocking policy digest")
+            .starts_with("blake3:")
+    );
+    assert_eq!(
+        candidates["blocking_policy"]["policy_id"],
+        "pkg.synthetic:blocking"
+    );
+    assert_eq!(candidates["summary"]["cross_source_pair_count"], 16);
+    assert_eq!(candidates["summary"]["admitted_pair_count"], 4);
+    assert_eq!(candidates["summary"]["suppressed_pair_count"], 12);
+    assert_eq!(candidates["summary"]["scored_pair_count"], 4);
+    assert_eq!(candidates["summary"]["blocking_policy_miss_count"], 12);
+    assert_eq!(candidates["pair_accounting"]["admitted_pair_count"], 4);
+    assert_eq!(candidates["pair_accounting"]["suppressed_pair_count"], 12);
+    assert!(
+        !candidates["candidates"]
+            .as_array()
+            .expect("candidate array")
+            .is_empty(),
+        "structured blocking must still emit admitted support candidates"
+    );
+    let diagnostics: Value = read_json(&fixture.work_dir.join("block/diagnostics.json"));
+    let record_link_diagnostic = diagnostics["operator_diagnostics"]
+        .as_array()
+        .expect("operator diagnostics")
+        .iter()
+        .find(|diagnostic| {
+            diagnostic["operator_id"]
+                .as_str()
+                .is_some_and(|operator_id| operator_id.starts_with("record_link:"))
+        })
+        .expect("record-link operator diagnostic");
+    assert_eq!(record_link_diagnostic["input_candidate_count"], 16);
+    assert_eq!(record_link_diagnostic["eligible_candidate_count"], 4);
+    assert_eq!(record_link_diagnostic["emitted_candidate_count"], 4);
+    assert_eq!(record_link_diagnostic["suppressed_candidate_count"], 12);
+
+    let unblocked = RecordLinkFixture::new();
+    write_strategy(
+        &unblocked.strategy,
+        &unblocked.left_sidecar,
+        &unblocked.right_sidecar,
+        25,
+        4,
+    );
+    let output = block_command(&unblocked, &unblocked.work_dir);
+    assert_refusal(&output, RefusalCode::EEntityCandidateBudget, "block");
+    assert!(
+        !unblocked
+            .work_dir
+            .join("block/record_link_candidates.json")
+            .exists(),
+        "disabled structured blocking must not leave a candidate artifact after budget refusal"
+    );
+}
+
+#[test]
+fn public_subprocess_record_link_evidence_refuses_stale_blocking_strategy() {
+    let fixture = RecordLinkFixture::new();
+    write_strategy_with_structured_blocking(
+        &fixture.strategy,
+        &fixture.left_sidecar,
+        &fixture.right_sidecar,
+        25,
+        4,
+    );
+    assert_success(block_command(&fixture, &fixture.work_dir), "entity block");
+
+    let candidate_path = fixture.work_dir.join("block/record_link_candidates.json");
+    let mut candidates: RecordLinkCandidateSet = read_json(&candidate_path);
+    candidates.pair_accounting.admitted_pair_count = 16;
+    candidates.pair_accounting.suppressed_pair_count = 0;
+    candidates.pair_accounting.scored_pair_count = 16;
+    candidates.pair_accounting.blocking_policy_miss_count = 0;
+    candidates
+        .summary
+        .insert("admitted_pair_count".to_string(), 16);
+    candidates
+        .summary
+        .insert("suppressed_pair_count".to_string(), 0);
+    candidates
+        .summary
+        .insert("scored_pair_count".to_string(), 16);
+    candidates
+        .summary
+        .insert("blocking_policy_miss_count".to_string(), 0);
+    reseal_record_link_candidate_set(&mut candidates);
+    publish_tampered_record_link_candidate_set(&fixture.work_dir, &candidates);
+
+    let output = evidence_command(&fixture, &fixture.work_dir);
+    assert_refusal(&output, RefusalCode::EEntityArtifactContract, "evidence");
+    let envelope = parse_refusal_envelope(&output);
+    let refusal = envelope.get("refusal").unwrap_or(&envelope);
+    assert_eq!(
+        refusal["detail"]["reason"],
+        "candidate_pair_accounting_mismatch"
+    );
+    assert!(
+        !fixture
+            .work_dir
+            .join("evidence/record_link_evidence.json")
+            .exists(),
+        "stale blocking replay must refuse before record-link evidence writes"
+    );
+}
+
+#[test]
+fn public_subprocess_record_link_malformed_blocking_refuses_before_block_writes() {
+    let fixture = RecordLinkFixture::new();
+    write_malformed_blocking_strategy(
+        &fixture.strategy,
+        &fixture.left_sidecar,
+        &fixture.right_sidecar,
+        25,
+        25_000,
+    );
+    let output = block_command(&fixture, &fixture.work_dir);
+    assert_refusal(&output, RefusalCode::EEntityArtifactContract, "strategy");
+    let envelope = parse_refusal_envelope(&output);
+    let refusal = envelope.get("refusal").unwrap_or(&envelope);
+    assert_eq!(
+        refusal["detail"]["reason"],
+        "blocking_component_empty_units"
+    );
+    assert!(
+        !fixture.work_dir.join("block/block.json").exists(),
+        "malformed blocking policy must refuse before block writes"
     );
 }
 
@@ -912,6 +1069,85 @@ fn write_strategy(
     max_candidates: usize,
     max_pair_comparisons: usize,
 ) {
+    write_strategy_with_blocking_section(
+        path,
+        left_sidecar,
+        right_sidecar,
+        max_candidates,
+        max_pair_comparisons,
+        "",
+    );
+}
+
+fn write_strategy_with_structured_blocking(
+    path: &Path,
+    left_sidecar: &Path,
+    right_sidecar: &Path,
+    max_candidates: usize,
+    max_pair_comparisons: usize,
+) {
+    write_strategy_with_blocking_section(
+        path,
+        left_sidecar,
+        right_sidecar,
+        max_candidates,
+        max_pair_comparisons,
+        r#"  blocking:
+    policy_id: pkg.synthetic:blocking
+    policy_version: "1"
+    keys:
+      - key_id: amount-date-category
+        components:
+          - kind: fixed_decimal_bucket
+            feature_id: pkg.synthetic:amount
+            units: basis_points
+            scale: 2
+            bucket_width_scaled_units: 1
+          - kind: date_bucket
+            feature_id: pkg.synthetic:effective_date
+            bucket_days: 1
+          - kind: categorical_exact
+            feature_id: pkg.synthetic:category
+"#,
+    );
+}
+
+fn write_malformed_blocking_strategy(
+    path: &Path,
+    left_sidecar: &Path,
+    right_sidecar: &Path,
+    max_candidates: usize,
+    max_pair_comparisons: usize,
+) {
+    write_strategy_with_blocking_section(
+        path,
+        left_sidecar,
+        right_sidecar,
+        max_candidates,
+        max_pair_comparisons,
+        r#"  blocking:
+    policy_id: pkg.synthetic:blocking
+    policy_version: "1"
+    keys:
+      - key_id: malformed-numeric
+        components:
+          - kind: fixed_decimal_bucket
+            feature_id: pkg.synthetic:amount
+            units: ""
+            scale: 2
+            bucket_width_scaled_units: 1
+"#,
+    );
+}
+
+fn write_strategy_with_blocking_section(
+    path: &Path,
+    left_sidecar: &Path,
+    right_sidecar: &Path,
+    max_candidates: usize,
+    max_pair_comparisons: usize,
+    blocking_section: &str,
+) {
     let left_path = left_sidecar
         .file_name()
         .expect("left sidecar file name")
@@ -946,7 +1182,7 @@ record_link:
     - path: {}
     - path: {}
   operator_id: record_link:synthetic:v1
-  max_candidates_per_record: {}
+{}  max_candidates_per_record: {}
   max_candidate_pairs: {}
   max_pair_comparisons: {}
   require_unique_best_per_record: false
@@ -977,10 +1213,58 @@ record_link:
       score_units: 10000
       hard_conflict_on_mismatch: true
 "#,
-            left_path, right_path, max_candidates, max_candidates, max_pair_comparisons
+            left_path,
+            right_path,
+            blocking_section,
+            max_candidates,
+            max_candidates,
+            max_pair_comparisons
         ),
     )
     .expect("strategy");
+}
+
+fn reseal_record_link_candidate_set(candidate_set: &mut RecordLinkCandidateSet) {
+    candidate_set.content_hash.clear();
+    let bytes = serde_json::to_vec(candidate_set).expect("candidate-set hash bytes");
+    candidate_set.content_hash = hash_bytes(&bytes);
+}
+
+fn publish_tampered_record_link_candidate_set(
+    work_dir: &Path,
+    candidate_set: &RecordLinkCandidateSet,
+) {
+    let current = open_current_stream_generation(work_dir, ENTITY_RUN_PUBLICATION_STREAM_ID)
+        .expect("current entity run stage-set publication");
+    let candidate_bytes = canonical_record_link_candidate_set_bytes(candidate_set)
+        .expect("self-consistent tampered candidate bytes");
+    publish_stream_patch(
+        work_dir,
+        EntityPublicationRequest {
+            stream_id: ENTITY_RUN_PUBLICATION_STREAM_ID.to_string(),
+            supersedes_generation_id: Some(current.generation_id),
+            request_fingerprint: hash_bytes(
+                format!(
+                    "record-link-candidate-accounting-tamper:{}",
+                    candidate_set.content_hash
+                )
+                .as_bytes(),
+            ),
+            cache_mode: current.manifest.cache_mode,
+            cache_status: current.manifest.cache_status,
+            cache_receipt_hash: current.manifest.cache_receipt_hash,
+            stage_order: current.manifest.stage_order,
+            upstream_artifacts: current.manifest.upstream_artifacts,
+            files: vec![EntityPublicationFileInput::new(
+                "block/record_link_candidates.json",
+                "block",
+                candidate_set.version.clone(),
+                candidate_bytes,
+            )],
+            omit_logical_paths: Vec::new(),
+        },
+    )
+    .expect("publish tampered record-link candidate set");
 }
 
 fn write_sidecar(path: &Path, source_id: &str, profile_digest: &str, rows: Vec<Value>) {

@@ -232,6 +232,12 @@ pub struct RecordLinkCandidateSet {
     pub operator_id: String,
     pub input_refs: Vec<RecordLinkInputArtifactRef>,
     pub feature_policy_digest: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub blocking_policy_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocking_policy: Option<RecordLinkBlockingPolicy>,
+    #[serde(default, skip_serializing_if = "RecordLinkPairAccounting::is_empty")]
+    pub pair_accounting: RecordLinkPairAccounting,
     pub candidates: Vec<RecordLinkCandidate>,
     pub abstentions: Vec<RecordLinkCandidateAbstention>,
     pub summary: BTreeMap<String, u64>,
@@ -245,6 +251,7 @@ pub struct RecordLinkCandidateConfig {
     pub max_pair_comparisons: usize,
     pub require_unique_best_per_record: bool,
     pub feature_policies: BTreeMap<String, RecordLinkFeaturePolicy>,
+    pub blocking_policy: Option<RecordLinkBlockingPolicy>,
 }
 
 impl Default for RecordLinkCandidateConfig {
@@ -256,7 +263,59 @@ impl Default for RecordLinkCandidateConfig {
             max_pair_comparisons: DEFAULT_MAX_CANDIDATE_PAIRS,
             require_unique_best_per_record: true,
             feature_policies: BTreeMap::new(),
+            blocking_policy: None,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordLinkBlockingPolicy {
+    pub policy_id: String,
+    pub policy_version: String,
+    pub keys: Vec<RecordLinkBlockingKey>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordLinkBlockingKey {
+    pub key_id: String,
+    pub components: Vec<RecordLinkBlockingComponent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RecordLinkBlockingComponent {
+    Exact {
+        feature_id: String,
+    },
+    FixedDecimalBucket {
+        feature_id: String,
+        units: String,
+        scale: u32,
+        bucket_width_scaled_units: u64,
+    },
+    DateBucket {
+        feature_id: String,
+        bucket_days: u32,
+    },
+    CategoricalExact {
+        feature_id: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct RecordLinkPairAccounting {
+    pub cross_source_pair_count: u64,
+    pub admitted_pair_count: u64,
+    pub suppressed_pair_count: u64,
+    pub scored_pair_count: u64,
+    pub blocking_policy_miss_count: u64,
+    pub comparison_abstention_count: u64,
+    pub ranking_abstention_count: u64,
+}
+
+impl RecordLinkPairAccounting {
+    fn is_empty(&self) -> bool {
+        *self == Self::default()
     }
 }
 
@@ -361,6 +420,7 @@ pub struct RecordLinkEvidenceRequest<'a> {
     pub input_set: &'a RecordLinkInputSet,
     pub candidate_set: &'a RecordLinkCandidateSet,
     pub feature_policies: &'a BTreeMap<String, RecordLinkFeaturePolicy>,
+    pub blocking_policy: Option<RecordLinkBlockingPolicy>,
     pub policy: AssignmentAlignmentPolicy,
 }
 
@@ -662,6 +722,9 @@ pub fn generate_record_link_candidates(
     validate_record_link_inputs(request.input_set)?;
     validate_feature_policies(&request.config.feature_policies)?;
     let feature_policy_digest = feature_policy_digest(&request.config.feature_policies)?;
+    let blocking_policy = request.config.blocking_policy.clone();
+    validate_record_link_blocking_policy(blocking_policy.as_ref())?;
+    let blocking_policy_digest = blocking_policy_digest(blocking_policy.as_ref())?;
     if request.config.max_candidate_pairs == 0
         || request.config.max_candidates_per_record == 0
         || request.config.max_pair_comparisons == 0
@@ -678,75 +741,75 @@ pub fn generate_record_link_candidates(
     let mut abstentions = Vec::new();
     let mut pair_comparisons = 0usize;
     let records = all_records(request.input_set);
-    for (left_index, left) in records.iter().enumerate() {
-        for right in records.iter().skip(left_index + 1) {
-            if left.input.sidecar.source_id == right.input.sidecar.source_id {
-                continue;
-            }
-            pair_comparisons = pair_comparisons.saturating_add(1);
-            if pair_comparisons > request.config.max_pair_comparisons {
-                return Err(RecordLinkCoreError::new(
-                    RecordLinkCoreErrorCode::Budget,
-                    "block",
-                    "pair_comparison_budget_exceeded",
-                    format!(
-                        "record-link pair comparisons exceeded {}",
-                        request.config.max_pair_comparisons
-                    ),
-                ));
-            }
-            let left_endpoint = endpoint_for_record(
-                request.surface_index,
-                &left.input.sidecar.source_id,
-                left.record,
-            )?;
-            let right_endpoint = endpoint_for_record(
-                request.surface_index,
-                &right.input.sidecar.source_id,
-                right.record,
-            )?;
-            let comparison =
-                compare_records(left.record, right.record, &request.config.feature_policies)?;
-            abstentions.extend(pair_abstentions(
-                &left_endpoint,
-                &right_endpoint,
-                &comparison,
-            )?);
-            if comparison.support_features.is_empty() && comparison.conflict_features.is_empty() {
-                continue;
-            }
-            let candidate_id = stable_id(
-                "record_link_candidate",
-                &json!({
-                    "left": left_endpoint,
-                    "right": right_endpoint,
-                    "support": comparison.support_features,
-                    "conflict": comparison.conflict_features,
-                }),
-            )?;
-            raw_candidates.push(RecordLinkCandidate {
-                candidate_id,
-                left: left_endpoint,
-                right: right_endpoint,
-                support_features: comparison.support_features,
-                conflict_features: comparison.conflict_features,
-                missing_feature_ids: comparison.missing_feature_ids,
-                score_hint_units: comparison.score_hint_units,
-                hard_cannot_link: comparison.hard_cannot_link,
-            });
-            if raw_candidates.len() > request.config.max_candidate_pairs {
-                return Err(RecordLinkCoreError::new(
-                    RecordLinkCoreErrorCode::Budget,
-                    "block",
-                    "candidate_pair_budget_exceeded",
-                    format!(
-                        "record-link candidate count exceeded {}",
-                        request.config.max_candidate_pairs
-                    ),
-                ));
-            }
+    let pair_plan = candidate_pair_plan(&records, blocking_policy.as_ref())?;
+    let mut pair_accounting = pair_plan.accounting;
+    for (left_index, right_index) in &pair_plan.admitted_pairs {
+        let left = &records[*left_index];
+        let right = &records[*right_index];
+        pair_comparisons = pair_comparisons.saturating_add(1);
+        if pair_comparisons > request.config.max_pair_comparisons {
+            return Err(RecordLinkCoreError::new(
+                RecordLinkCoreErrorCode::Budget,
+                "block",
+                "pair_comparison_budget_exceeded",
+                format!(
+                    "record-link pair comparisons exceeded {}",
+                    request.config.max_pair_comparisons
+                ),
+            ));
+        }
+        let left_endpoint = endpoint_for_record(
+            request.surface_index,
+            &left.input.sidecar.source_id,
+            left.record,
+        )?;
+        let right_endpoint = endpoint_for_record(
+            request.surface_index,
+            &right.input.sidecar.source_id,
+            right.record,
+        )?;
+        let comparison =
+            compare_records(left.record, right.record, &request.config.feature_policies)?;
+        abstentions.extend(pair_abstentions(
+            &left_endpoint,
+            &right_endpoint,
+            &comparison,
+        )?);
+        if comparison.support_features.is_empty() && comparison.conflict_features.is_empty() {
+            continue;
+        }
+        let candidate_id = stable_id(
+            "record_link_candidate",
+            &json!({
+                "left": left_endpoint,
+                "right": right_endpoint,
+                "support": comparison.support_features,
+                "conflict": comparison.conflict_features,
+            }),
+        )?;
+        raw_candidates.push(RecordLinkCandidate {
+            candidate_id,
+            left: left_endpoint,
+            right: right_endpoint,
+            support_features: comparison.support_features,
+            conflict_features: comparison.conflict_features,
+            missing_feature_ids: comparison.missing_feature_ids,
+            score_hint_units: comparison.score_hint_units,
+            hard_cannot_link: comparison.hard_cannot_link,
+        });
+        if raw_candidates.len() > request.config.max_candidate_pairs {
+            return Err(RecordLinkCoreError::new(
+                RecordLinkCoreErrorCode::Budget,
+                "block",
+                "candidate_pair_budget_exceeded",
+                format!(
+                    "record-link candidate count exceeded {}",
+                    request.config.max_candidate_pairs
+                ),
+            ));
         }
     }
+    pair_accounting.scored_pair_count = pair_comparisons as u64;
     raw_candidates.sort_by(candidate_cmp);
 
     let (candidates, ranking_abstentions) =
@@ -754,6 +817,8 @@ pub fn generate_record_link_candidates(
     abstentions.extend(ranking_abstentions);
     abstentions.sort_by(abstention_cmp);
     abstentions.dedup_by(|left, right| left.abstention_id == right.abstention_id);
+    pair_accounting.comparison_abstention_count = comparison_abstention_count(&abstentions);
+    pair_accounting.ranking_abstention_count = ranking_abstention_count(&abstentions);
 
     let mut candidate_set = RecordLinkCandidateSet {
         version: RECORD_LINK_CANDIDATE_SET_VERSION.to_string(),
@@ -761,6 +826,9 @@ pub fn generate_record_link_candidates(
         operator_id: request.config.operator_id,
         input_refs: request.input_set.refs.clone(),
         feature_policy_digest,
+        blocking_policy_digest,
+        blocking_policy,
+        pair_accounting,
         candidates,
         abstentions,
         summary: BTreeMap::new(),
@@ -795,6 +863,25 @@ pub fn validate_record_link_candidate_set(
             ),
         ));
     }
+    if candidate_set.summary != candidate_set_summary(candidate_set) {
+        return Err(contract_error(
+            "block",
+            "candidate_summary_mismatch",
+            "record-link candidate set summary does not match candidate payload/accounting",
+        ));
+    }
+    validate_record_link_blocking_policy(candidate_set.blocking_policy.as_ref())?;
+    let expected_blocking_digest = blocking_policy_digest(candidate_set.blocking_policy.as_ref())?;
+    if candidate_set.blocking_policy_digest != expected_blocking_digest {
+        return Err(contract_error(
+            "block",
+            "candidate_blocking_policy_digest_mismatch",
+            format!(
+                "record-link candidate set embedded blocking policy digest {} did not match expected {}",
+                candidate_set.blocking_policy_digest, expected_blocking_digest
+            ),
+        ));
+    }
     for window in candidate_set.candidates.windows(2) {
         if candidate_cmp(&window[0], &window[1]).is_ge() {
             return Err(contract_error(
@@ -811,6 +898,7 @@ pub fn validate_record_link_candidate_set_for_inputs(
     input_set: &RecordLinkInputSet,
     candidate_set: &RecordLinkCandidateSet,
     feature_policies: &BTreeMap<String, RecordLinkFeaturePolicy>,
+    blocking_policy: Option<&RecordLinkBlockingPolicy>,
 ) -> RecordLinkResult<()> {
     validate_record_link_inputs(input_set)?;
     validate_record_link_candidate_set(candidate_set)?;
@@ -826,6 +914,7 @@ pub fn validate_record_link_candidate_set_for_inputs(
             ),
         ));
     }
+    validate_candidate_blocking_policy(input_set, candidate_set, blocking_policy)?;
     if candidate_set.input_refs != input_set.refs {
         return Err(contract_error(
             "block",
@@ -943,6 +1032,7 @@ pub fn build_record_link_evidence(
         request.input_set,
         request.candidate_set,
         request.feature_policies,
+        request.blocking_policy.as_ref(),
     )?;
     let mut records = Vec::new();
     let mut evidence_ids_by_candidate = BTreeMap::<String, Vec<String>>::new();
@@ -1038,6 +1128,7 @@ pub fn build_record_link_evidence(
         request.input_set,
         request.candidate_set,
         request.feature_policies,
+        request.blocking_policy.as_ref(),
         &bundle,
         &evidence_ids_by_candidate,
         request.policy,
@@ -1053,11 +1144,17 @@ pub fn build_assignment_alignment(
     input_set: &RecordLinkInputSet,
     candidate_set: &RecordLinkCandidateSet,
     feature_policies: &BTreeMap<String, RecordLinkFeaturePolicy>,
+    blocking_policy: Option<&RecordLinkBlockingPolicy>,
     bundle: &EvidenceBundle,
     evidence_ids_by_candidate: &BTreeMap<String, Vec<String>>,
     policy: AssignmentAlignmentPolicy,
 ) -> RecordLinkResult<AssignmentAlignmentSidecar> {
-    validate_record_link_candidate_set_for_inputs(input_set, candidate_set, feature_policies)?;
+    validate_record_link_candidate_set_for_inputs(
+        input_set,
+        candidate_set,
+        feature_policies,
+        blocking_policy,
+    )?;
     canonical_bundle_bytes(bundle).map_err(|error| {
         contract_error(
             "assignment_alignment",
@@ -1316,6 +1413,550 @@ fn all_records(input_set: &RecordLinkInputSet) -> Vec<RecordWithInput<'_>> {
                 .map(move |record| RecordWithInput { input, record })
         })
         .collect()
+}
+
+struct CandidatePairPlan {
+    admitted_pairs: Vec<(usize, usize)>,
+    accounting: RecordLinkPairAccounting,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct BlockingKeyValue {
+    key_id: String,
+    component_values: Vec<String>,
+}
+
+pub fn validate_record_link_blocking_policy(
+    policy: Option<&RecordLinkBlockingPolicy>,
+) -> RecordLinkResult<()> {
+    let Some(policy) = policy else {
+        return Ok(());
+    };
+    if policy.policy_id.trim().is_empty() {
+        return Err(contract_error(
+            "block",
+            "blocking_policy_empty_id",
+            "record-link blocking policy_id is required",
+        ));
+    }
+    if policy.policy_version.trim().is_empty() {
+        return Err(contract_error(
+            "block",
+            "blocking_policy_empty_version",
+            "record-link blocking policy_version is required",
+        ));
+    }
+    if policy.keys.is_empty() {
+        return Err(contract_error(
+            "block",
+            "blocking_policy_empty_keys",
+            "record-link blocking policy requires at least one key",
+        ));
+    }
+    let mut key_ids = BTreeSet::new();
+    for key in &policy.keys {
+        if key.key_id.trim().is_empty() {
+            return Err(contract_error(
+                "block",
+                "blocking_key_empty_id",
+                "record-link blocking key_id is required",
+            ));
+        }
+        if !key_ids.insert(key.key_id.clone()) {
+            return Err(contract_error(
+                "block",
+                "blocking_key_duplicate_id",
+                format!("record-link blocking key_id {} is duplicated", key.key_id),
+            ));
+        }
+        if key.components.is_empty() {
+            return Err(contract_error(
+                "block",
+                "blocking_key_empty_components",
+                format!(
+                    "record-link blocking key {} requires components",
+                    key.key_id
+                ),
+            ));
+        }
+        let mut component_ids = BTreeSet::new();
+        for component in &key.components {
+            let feature_id = blocking_component_feature_id(component);
+            if feature_id.trim().is_empty() {
+                return Err(contract_error(
+                    "block",
+                    "blocking_component_empty_feature",
+                    format!(
+                        "record-link blocking key {} has an empty feature_id",
+                        key.key_id
+                    ),
+                ));
+            }
+            if !component_ids.insert(feature_id.to_string()) {
+                return Err(contract_error(
+                    "block",
+                    "blocking_component_duplicate_feature",
+                    format!(
+                        "record-link blocking key {} repeats feature_id {}",
+                        key.key_id, feature_id
+                    ),
+                ));
+            }
+            match component {
+                RecordLinkBlockingComponent::FixedDecimalBucket {
+                    units,
+                    bucket_width_scaled_units,
+                    ..
+                } => {
+                    if units.trim().is_empty() {
+                        return Err(contract_error(
+                            "block",
+                            "blocking_component_empty_units",
+                            format!(
+                                "record-link fixed-decimal blocking key {} requires units",
+                                key.key_id
+                            ),
+                        ));
+                    }
+                    if *bucket_width_scaled_units == 0 {
+                        return Err(contract_error(
+                            "block",
+                            "blocking_component_zero_width",
+                            format!(
+                                "record-link fixed-decimal blocking key {} requires non-zero bucket_width_scaled_units",
+                                key.key_id
+                            ),
+                        ));
+                    }
+                }
+                RecordLinkBlockingComponent::DateBucket { bucket_days, .. } => {
+                    if *bucket_days == 0 {
+                        return Err(contract_error(
+                            "block",
+                            "blocking_component_zero_days",
+                            format!(
+                                "record-link date blocking key {} requires non-zero bucket_days",
+                                key.key_id
+                            ),
+                        ));
+                    }
+                }
+                RecordLinkBlockingComponent::Exact { .. }
+                | RecordLinkBlockingComponent::CategoricalExact { .. } => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_candidate_blocking_policy(
+    input_set: &RecordLinkInputSet,
+    candidate_set: &RecordLinkCandidateSet,
+    blocking_policy: Option<&RecordLinkBlockingPolicy>,
+) -> RecordLinkResult<()> {
+    validate_record_link_blocking_policy(blocking_policy)?;
+    let expected_digest = blocking_policy_digest(blocking_policy)?;
+    if candidate_set.blocking_policy_digest != expected_digest {
+        return Err(contract_error(
+            "block",
+            "candidate_blocking_policy_digest_mismatch",
+            format!(
+                "record-link candidate set blocking policy digest {} did not match expected {}",
+                candidate_set.blocking_policy_digest, expected_digest
+            ),
+        ));
+    }
+    if candidate_set.blocking_policy.as_ref() != blocking_policy {
+        return Err(contract_error(
+            "block",
+            "candidate_blocking_policy_mismatch",
+            "record-link candidate set does not bind the current blocking policy",
+        ));
+    }
+    let records = all_records(input_set);
+    let plan = candidate_pair_plan(&records, blocking_policy)?;
+    validate_pair_accounting(&candidate_set.pair_accounting, &plan.accounting)?;
+    let admitted = pair_endpoint_keys(&records, &plan.admitted_pairs)?;
+    for candidate in &candidate_set.candidates {
+        let key = canonical_endpoint_pair_key(&candidate.left, &candidate.right);
+        if !admitted.contains(&key) {
+            return Err(contract_error(
+                "block",
+                "candidate_blocking_policy_violation",
+                format!(
+                    "candidate {} was not admitted by the current record-link blocking policy",
+                    candidate.candidate_id
+                ),
+            ));
+        }
+    }
+    if candidate_set.pair_accounting.comparison_abstention_count
+        != comparison_abstention_count(&candidate_set.abstentions)
+    {
+        return Err(contract_error(
+            "block",
+            "candidate_comparison_accounting_mismatch",
+            "record-link comparison abstention accounting does not match abstention records",
+        ));
+    }
+    if candidate_set.pair_accounting.ranking_abstention_count
+        != ranking_abstention_count(&candidate_set.abstentions)
+    {
+        return Err(contract_error(
+            "block",
+            "candidate_ranking_accounting_mismatch",
+            "record-link ranking abstention accounting does not match abstention records",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_pair_accounting(
+    actual: &RecordLinkPairAccounting,
+    expected: &RecordLinkPairAccounting,
+) -> RecordLinkResult<()> {
+    let mut expected_base = expected.clone();
+    expected_base.comparison_abstention_count = actual.comparison_abstention_count;
+    expected_base.ranking_abstention_count = actual.ranking_abstention_count;
+    if actual != &expected_base {
+        return Err(contract_error(
+            "block",
+            "candidate_pair_accounting_mismatch",
+            format!(
+                "record-link pair accounting did not match inputs/policy: expected {:?}, got {:?}",
+                expected_base, actual
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn candidate_pair_plan(
+    records: &[RecordWithInput<'_>],
+    blocking_policy: Option<&RecordLinkBlockingPolicy>,
+) -> RecordLinkResult<CandidatePairPlan> {
+    let cross_source_pair_count = cross_source_pair_count(records)?;
+    let admitted_pairs = match blocking_policy {
+        Some(policy) => blocking_admitted_pairs(records, policy)?,
+        None => all_cross_source_pairs(records),
+    };
+    let admitted_pair_count = admitted_pairs.len() as u64;
+    let suppressed_pair_count = cross_source_pair_count
+        .checked_sub(admitted_pair_count)
+        .ok_or_else(|| {
+            contract_error(
+                "block",
+                "blocking_pair_accounting_underflow",
+                "record-link admitted pair count exceeded cross-source pair count",
+            )
+        })?;
+    let blocking_policy_miss_count = if blocking_policy.is_some() {
+        suppressed_pair_count
+    } else {
+        0
+    };
+    Ok(CandidatePairPlan {
+        admitted_pairs,
+        accounting: RecordLinkPairAccounting {
+            cross_source_pair_count,
+            admitted_pair_count,
+            suppressed_pair_count,
+            scored_pair_count: admitted_pair_count,
+            blocking_policy_miss_count,
+            comparison_abstention_count: 0,
+            ranking_abstention_count: 0,
+        },
+    })
+}
+
+fn cross_source_pair_count(records: &[RecordWithInput<'_>]) -> RecordLinkResult<u64> {
+    let mut by_source = BTreeMap::<&str, u64>::new();
+    for record in records {
+        *by_source
+            .entry(&record.input.sidecar.source_id)
+            .or_default() += 1;
+    }
+    let mut total = 0u64;
+    let mut seen = 0u64;
+    for count in by_source.values() {
+        total = total
+            .checked_add(seen.checked_mul(*count).ok_or_else(|| {
+                contract_error(
+                    "block",
+                    "pair_accounting_overflow",
+                    "record-link pair accounting overflowed",
+                )
+            })?)
+            .ok_or_else(|| {
+                contract_error(
+                    "block",
+                    "pair_accounting_overflow",
+                    "record-link pair accounting overflowed",
+                )
+            })?;
+        seen = seen.checked_add(*count).ok_or_else(|| {
+            contract_error(
+                "block",
+                "pair_accounting_overflow",
+                "record-link pair accounting overflowed",
+            )
+        })?;
+    }
+    Ok(total)
+}
+
+fn all_cross_source_pairs(records: &[RecordWithInput<'_>]) -> Vec<(usize, usize)> {
+    let mut pairs = Vec::new();
+    for (left_index, left) in records.iter().enumerate() {
+        for (right_offset, right) in records.iter().skip(left_index + 1).enumerate() {
+            if left.input.sidecar.source_id == right.input.sidecar.source_id {
+                continue;
+            }
+            pairs.push((left_index, left_index + right_offset + 1));
+        }
+    }
+    pairs
+}
+
+fn blocking_admitted_pairs(
+    records: &[RecordWithInput<'_>],
+    policy: &RecordLinkBlockingPolicy,
+) -> RecordLinkResult<Vec<(usize, usize)>> {
+    validate_record_link_blocking_policy(Some(policy))?;
+    let mut postings = BTreeMap::<BlockingKeyValue, BTreeMap<&str, Vec<usize>>>::new();
+    for (record_index, record) in records.iter().enumerate() {
+        let features = feature_map(record.record)?;
+        for key in record_blocking_keys(&features, policy)? {
+            postings
+                .entry(key)
+                .or_default()
+                .entry(&record.input.sidecar.source_id)
+                .or_default()
+                .push(record_index);
+        }
+    }
+    let mut admitted = BTreeSet::new();
+    for by_source in postings.values_mut() {
+        for indexes in by_source.values_mut() {
+            indexes.sort_unstable();
+            indexes.dedup();
+        }
+        let source_ids = by_source.keys().copied().collect::<Vec<_>>();
+        for (left_source_index, left_source) in source_ids.iter().enumerate() {
+            for right_source in source_ids.iter().skip(left_source_index + 1) {
+                for left_index in &by_source[*left_source] {
+                    for right_index in &by_source[*right_source] {
+                        let pair = if left_index < right_index {
+                            (*left_index, *right_index)
+                        } else {
+                            (*right_index, *left_index)
+                        };
+                        admitted.insert(pair);
+                    }
+                }
+            }
+        }
+    }
+    Ok(admitted.into_iter().collect())
+}
+
+fn record_blocking_keys(
+    features: &BTreeMap<String, RecordLinkFeatureValue>,
+    policy: &RecordLinkBlockingPolicy,
+) -> RecordLinkResult<Vec<BlockingKeyValue>> {
+    let mut keys = Vec::new();
+    for key in &policy.keys {
+        let mut component_values = Vec::with_capacity(key.components.len());
+        let mut missing = false;
+        for component in &key.components {
+            let feature_id = blocking_component_feature_id(component);
+            let Some(value) = features.get(feature_id) else {
+                missing = true;
+                break;
+            };
+            component_values.push(blocking_component_value(&key.key_id, component, value)?);
+        }
+        if !missing {
+            keys.push(BlockingKeyValue {
+                key_id: key.key_id.clone(),
+                component_values,
+            });
+        }
+    }
+    Ok(keys)
+}
+
+fn blocking_component_feature_id(component: &RecordLinkBlockingComponent) -> &str {
+    match component {
+        RecordLinkBlockingComponent::Exact { feature_id }
+        | RecordLinkBlockingComponent::FixedDecimalBucket { feature_id, .. }
+        | RecordLinkBlockingComponent::DateBucket { feature_id, .. }
+        | RecordLinkBlockingComponent::CategoricalExact { feature_id } => feature_id,
+    }
+}
+
+fn blocking_component_value(
+    key_id: &str,
+    component: &RecordLinkBlockingComponent,
+    value: &RecordLinkFeatureValue,
+) -> RecordLinkResult<String> {
+    match (component, value) {
+        (RecordLinkBlockingComponent::Exact { .. }, value) => serde_json::to_string(value)
+            .map(|value| format!("exact:{value}"))
+            .map_err(|error| {
+                contract_error(
+                    "block",
+                    "blocking_component_serialize",
+                    format!("failed to serialize record-link blocking value: {error}"),
+                )
+            }),
+        (
+            RecordLinkBlockingComponent::FixedDecimalBucket {
+                units,
+                scale,
+                bucket_width_scaled_units,
+                ..
+            },
+            RecordLinkFeatureValue::Numeric {
+                units: actual_units,
+                scaled_value,
+                scale: actual_scale,
+            },
+        ) => {
+            if units != actual_units || scale != actual_scale {
+                return Err(contract_error(
+                    "block",
+                    "blocking_component_numeric_contract_mismatch",
+                    format!(
+                        "record-link blocking key {} expected numeric units {} scale {}, got units {} scale {}",
+                        key_id, units, scale, actual_units, actual_scale
+                    ),
+                ));
+            }
+            let width = i64::try_from(*bucket_width_scaled_units).map_err(|_| {
+                contract_error(
+                    "block",
+                    "blocking_component_width_overflow",
+                    format!(
+                        "record-link blocking key {} bucket_width_scaled_units is too large",
+                        key_id
+                    ),
+                )
+            })?;
+            Ok(format!(
+                "fixed_decimal_bucket:{units}:{scale}:{bucket_width_scaled_units}:{}",
+                div_floor(*scaled_value, width)
+            ))
+        }
+        (
+            RecordLinkBlockingComponent::DateBucket { bucket_days, .. },
+            RecordLinkFeatureValue::Date { value },
+        ) => {
+            let day = iso_day_number(value).ok_or_else(|| {
+                contract_error(
+                    "block",
+                    "blocking_component_invalid_date",
+                    format!(
+                        "record-link blocking key {} saw invalid ISO date {}",
+                        key_id, value
+                    ),
+                )
+            })?;
+            Ok(format!(
+                "date_bucket:{bucket_days}:{}",
+                div_floor(day, i64::from(*bucket_days))
+            ))
+        }
+        (
+            RecordLinkBlockingComponent::CategoricalExact { .. },
+            RecordLinkFeatureValue::Categorical { value },
+        ) => Ok(format!("categorical_exact:{value}")),
+        (component, value) => Err(contract_error(
+            "block",
+            "blocking_component_kind_mismatch",
+            format!(
+                "record-link blocking component for feature {} is incompatible with observed {:?}",
+                blocking_component_feature_id(component),
+                feature_value_kind(value)
+            ),
+        )),
+    }
+}
+
+fn div_floor(value: i64, divisor: i64) -> i64 {
+    debug_assert!(divisor > 0);
+    let quotient = value / divisor;
+    let remainder = value % divisor;
+    if remainder != 0 && value < 0 {
+        quotient - 1
+    } else {
+        quotient
+    }
+}
+
+fn blocking_policy_digest(policy: Option<&RecordLinkBlockingPolicy>) -> RecordLinkResult<String> {
+    let Some(policy) = policy else {
+        return Ok(String::new());
+    };
+    validate_record_link_blocking_policy(Some(policy))?;
+    hash_json(policy)
+}
+
+fn pair_endpoint_keys(
+    records: &[RecordWithInput<'_>],
+    pairs: &[(usize, usize)],
+) -> RecordLinkResult<BTreeSet<(String, String, String, String)>> {
+    let mut keys = BTreeSet::new();
+    for (left_index, right_index) in pairs {
+        let Some(left) = records.get(*left_index) else {
+            return Err(contract_error(
+                "block",
+                "candidate_pair_index_out_of_bounds",
+                "record-link candidate pair referenced an unknown left index",
+            ));
+        };
+        let Some(right) = records.get(*right_index) else {
+            return Err(contract_error(
+                "block",
+                "candidate_pair_index_out_of_bounds",
+                "record-link candidate pair referenced an unknown right index",
+            ));
+        };
+        keys.insert(canonical_record_pair_key(
+            &left.input.sidecar.source_id,
+            &left.record.record_id,
+            &right.input.sidecar.source_id,
+            &right.record.record_id,
+        ));
+    }
+    Ok(keys)
+}
+
+fn canonical_endpoint_pair_key(
+    left: &RecordLinkEndpoint,
+    right: &RecordLinkEndpoint,
+) -> (String, String, String, String) {
+    canonical_record_pair_key(
+        &left.source_id,
+        &left.record_id,
+        &right.source_id,
+        &right.record_id,
+    )
+}
+
+fn canonical_record_pair_key(
+    left_source_id: &str,
+    left_record_id: &str,
+    right_source_id: &str,
+    right_record_id: &str,
+) -> (String, String, String, String) {
+    let left = (left_source_id.to_string(), left_record_id.to_string());
+    let right = (right_source_id.to_string(), right_record_id.to_string());
+    if left <= right {
+        (left.0, left.1, right.0, right.1)
+    } else {
+        (right.0, right.1, left.0, left.1)
+    }
 }
 
 fn endpoint_for_record(
@@ -2372,7 +3013,7 @@ fn abstention_cmp(
 }
 
 fn candidate_set_summary(candidate_set: &RecordLinkCandidateSet) -> BTreeMap<String, u64> {
-    BTreeMap::from([
+    let mut summary = BTreeMap::from([
         (
             "candidate_count".to_string(),
             candidate_set.candidates.len() as u64,
@@ -2389,7 +3030,72 @@ fn candidate_set_summary(candidate_set: &RecordLinkCandidateSet) -> BTreeMap<Str
                 .filter(|candidate| candidate.hard_cannot_link)
                 .count() as u64,
         ),
-    ])
+    ]);
+    if !candidate_set.pair_accounting.is_empty() {
+        summary.insert(
+            "cross_source_pair_count".to_string(),
+            candidate_set.pair_accounting.cross_source_pair_count,
+        );
+        summary.insert(
+            "admitted_pair_count".to_string(),
+            candidate_set.pair_accounting.admitted_pair_count,
+        );
+        summary.insert(
+            "suppressed_pair_count".to_string(),
+            candidate_set.pair_accounting.suppressed_pair_count,
+        );
+        summary.insert(
+            "scored_pair_count".to_string(),
+            candidate_set.pair_accounting.scored_pair_count,
+        );
+        summary.insert(
+            "blocking_policy_miss_count".to_string(),
+            candidate_set.pair_accounting.blocking_policy_miss_count,
+        );
+        summary.insert(
+            "comparison_abstention_count".to_string(),
+            candidate_set.pair_accounting.comparison_abstention_count,
+        );
+        summary.insert(
+            "ranking_abstention_count".to_string(),
+            candidate_set.pair_accounting.ranking_abstention_count,
+        );
+    }
+    if let Some(policy) = &candidate_set.blocking_policy {
+        summary.insert("blocking_policy_count".to_string(), 1);
+        summary.insert("blocking_key_count".to_string(), policy.keys.len() as u64);
+    }
+    summary
+}
+
+fn comparison_abstention_count(abstentions: &[RecordLinkCandidateAbstention]) -> u64 {
+    abstentions
+        .iter()
+        .filter(|abstention| {
+            matches!(
+                abstention.reason,
+                RecordLinkCandidateAbstentionReason::MissingComparison
+                    | RecordLinkCandidateAbstentionReason::UnconfiguredFeature
+                    | RecordLinkCandidateAbstentionReason::Mismatch
+                    | RecordLinkCandidateAbstentionReason::ScaleMismatch
+                    | RecordLinkCandidateAbstentionReason::Incomparable
+            )
+        })
+        .count() as u64
+}
+
+fn ranking_abstention_count(abstentions: &[RecordLinkCandidateAbstention]) -> u64 {
+    abstentions
+        .iter()
+        .filter(|abstention| {
+            matches!(
+                abstention.reason,
+                RecordLinkCandidateAbstentionReason::Tie
+                    | RecordLinkCandidateAbstentionReason::DuplicateBest
+                    | RecordLinkCandidateAbstentionReason::CardinalityExceeded
+            )
+        })
+        .count() as u64
 }
 
 fn assignment_alignment_summary(sidecar: &AssignmentAlignmentSidecar) -> BTreeMap<String, u64> {
