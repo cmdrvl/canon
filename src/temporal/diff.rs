@@ -1,9 +1,9 @@
 // Deterministic temporal identity snapshot diffs.
 
 use super::explain::{
-    active_surface_ids, canonical_type_from_id, explain_snapshot_result,
-    finalize_identity_snapshot, interval_contains, result_canonical_ids, TemporalCausalFactRef,
-    TemporalChangeClass, TemporalExactResult, TemporalIdentitySnapshot, TemporalSnapshotReference,
+    TemporalCausalFactRef, TemporalChangeClass, TemporalExactResult, TemporalIdentitySnapshot,
+    TemporalSnapshotReference, active_surface_ids, canonical_type_from_id, explain_snapshot_result,
+    finalize_identity_snapshot, interval_contains, result_canonical_ids,
 };
 use super::{FactScope, TemporalError, TemporalErrorCode, TemporalResult};
 use serde::{Deserialize, Serialize};

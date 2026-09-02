@@ -4,8 +4,8 @@
 // not infer truth or legal status beyond the facts provided by the caller.
 
 use super::{
-    finalize_facts, AssertionStatus, FactScope, IdentityFact, IntervalBoundary, RecordedTime,
-    SourceLocator, TemporalError, TemporalErrorCode, TemporalResult, TimeInterval,
+    AssertionStatus, FactScope, IdentityFact, IntervalBoundary, RecordedTime, SourceLocator,
+    TemporalError, TemporalErrorCode, TemporalResult, TimeInterval, finalize_facts,
 };
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};

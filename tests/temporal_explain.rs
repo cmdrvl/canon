@@ -222,6 +222,68 @@ fn known_time_correction_is_distinct_from_valid_time_expiry() {
 }
 
 #[test]
+fn changed_result_causal_chain_is_minimal_not_snapshot_dump() {
+    let original = finalize_fact(accepted_fact(
+        "alias:acme",
+        "person:alpha",
+        "feed_a",
+        "2026-01-02T00:00:00Z",
+    ))
+    .expect("original finalizes");
+    let correction = finalize_fact(accepted_fact_with_links(
+        "alias:acme",
+        "person:beta",
+        "feed_a",
+        "2026-02-02T00:00:00Z",
+        vec![original.fact_id.clone()],
+        Vec::new(),
+        AssertionStatus::Accepted,
+    ))
+    .expect("correction finalizes");
+    let unrelated = finalize_fact(accepted_fact(
+        "alias:noise",
+        "person:other",
+        "feed_b",
+        "2026-01-03T00:00:00Z",
+    ))
+    .expect("unrelated fact finalizes");
+
+    let diff = diff_temporal_snapshots(TemporalDiffRequest {
+        version: CANON_TEMPORAL_DIFF_VERSION.to_string(),
+        before: snapshot(
+            "snap-min-before",
+            "2026-03-01T00:00:00Z",
+            "2026-01-15T00:00:00Z",
+            vec![original.clone(), correction.clone(), unrelated.clone()],
+        ),
+        after: snapshot(
+            "snap-min-after",
+            "2026-03-01T00:00:00Z",
+            "2026-03-15T00:00:00Z",
+            vec![original.clone(), correction.clone(), unrelated.clone()],
+        ),
+        filter: TemporalDiffFilter::default(),
+        page: TemporalDiffPageRequest::default(),
+        include_unchanged: false,
+    })
+    .expect("minimal diff builds");
+
+    assert_eq!(diff.changes.len(), 1);
+    let change = &diff.changes[0];
+    assert_eq!(change.change_class, TemporalChangeClass::Correction);
+    let mut actual_fact_ids = change
+        .causal_chain
+        .iter()
+        .map(|fact| fact.fact_id.clone())
+        .collect::<Vec<_>>();
+    actual_fact_ids.sort();
+    let mut expected_fact_ids = vec![original.fact_id.clone(), correction.fact_id.clone()];
+    expected_fact_ids.sort();
+    assert_eq!(actual_fact_ids, expected_fact_ids);
+    assert!(!actual_fact_ids.contains(&unrelated.fact_id));
+}
+
+#[test]
 fn retractions_conflicts_policy_and_scope_changes_are_classified() {
     let original = finalize_fact(accepted_fact(
         "alias:acme",
@@ -362,6 +424,104 @@ fn retractions_conflicts_policy_and_scope_changes_are_classified() {
 }
 
 #[test]
+fn merger_and_canonical_rename_histories_have_golden_expectations() {
+    let merger = explain_temporal_identity(TemporalExplainRequest {
+        version: CANON_TEMPORAL_EXPLAIN_VERSION.to_string(),
+        subject: TemporalExplainSubject::CanonicalEntity {
+            canonical_id: "org:combined".to_string(),
+        },
+        snapshots: vec![snapshot(
+            "snap-merger",
+            "2026-03-01T00:00:00Z",
+            "2026-03-01T00:00:00Z",
+            vec![
+                accepted_fact(
+                    "alias:legacy-a",
+                    "org:combined",
+                    "feed_a",
+                    "2026-01-02T00:00:00Z",
+                ),
+                accepted_fact(
+                    "alias:legacy-b",
+                    "org:combined",
+                    "feed_b",
+                    "2026-01-03T00:00:00Z",
+                ),
+            ],
+        )],
+        max_chain_facts: None,
+    })
+    .expect("merger explanation builds");
+
+    assert_eq!(merger.summary.supporting_fact_count, 2);
+    match &merger.snapshots[0].exact_result {
+        TemporalExactResult::EntitySupport {
+            canonical_id,
+            subject_ids,
+            fact_ids,
+        } => {
+            assert_eq!(canonical_id, "org:combined");
+            assert_eq!(
+                subject_ids,
+                &vec!["alias:legacy-a".to_string(), "alias:legacy-b".to_string()]
+            );
+            assert_eq!(fact_ids.len(), 2);
+        }
+        other => panic!("unexpected merger result: {other:?}"),
+    }
+
+    let rename = diff_temporal_snapshots(TemporalDiffRequest {
+        version: CANON_TEMPORAL_DIFF_VERSION.to_string(),
+        before: snapshot(
+            "snap-rename-before",
+            "2026-03-01T00:00:00Z",
+            "2026-03-01T00:00:00Z",
+            vec![accepted_fact(
+                "alias:legal-name",
+                "org:old-name",
+                "feed_a",
+                "2026-01-02T00:00:00Z",
+            )],
+        ),
+        after: snapshot(
+            "snap-rename-after",
+            "2026-03-01T00:00:00Z",
+            "2026-03-01T00:00:00Z",
+            vec![accepted_fact(
+                "alias:legal-name",
+                "org:new-name",
+                "feed_a",
+                "2026-02-02T00:00:00Z",
+            )],
+        ),
+        filter: TemporalDiffFilter::default(),
+        page: TemporalDiffPageRequest::default(),
+        include_unchanged: false,
+    })
+    .expect("rename diff builds");
+
+    assert_eq!(rename.changes.len(), 1);
+    let change = &rename.changes[0];
+    assert_eq!(change.change_class, TemporalChangeClass::CanonicalRemap);
+    match (&change.before, &change.after) {
+        (
+            TemporalExactResult::SurfaceMapping {
+                canonical_id: before_id,
+                ..
+            },
+            TemporalExactResult::SurfaceMapping {
+                canonical_id: after_id,
+                ..
+            },
+        ) => {
+            assert_eq!(before_id, "org:old-name");
+            assert_eq!(after_id, "org:new-name");
+        }
+        other => panic!("unexpected rename result: {other:?}"),
+    }
+}
+
+#[test]
 fn diff_pagination_filters_and_canonical_bytes_are_deterministic() {
     let before = snapshot(
         "snap-page-before",
@@ -407,8 +567,8 @@ fn diff_pagination_filters_and_canonical_bytes_are_deterministic() {
 
     let all_changes = diff_temporal_snapshots(TemporalDiffRequest {
         version: CANON_TEMPORAL_DIFF_VERSION.to_string(),
-        before,
-        after,
+        before: before.clone(),
+        after: after.clone(),
         filter: TemporalDiffFilter::default(),
         page: TemporalDiffPageRequest {
             limit: 1,
@@ -419,6 +579,68 @@ fn diff_pagination_filters_and_canonical_bytes_are_deterministic() {
     .expect("all changes builds");
     assert_eq!(all_changes.page.total_matching, 2);
     assert!(all_changes.page.next_cursor.is_some());
+    let cursor = all_changes
+        .page
+        .next_cursor
+        .clone()
+        .expect("first page has cursor");
+
+    let repeated_first_page = diff_temporal_snapshots(TemporalDiffRequest {
+        version: CANON_TEMPORAL_DIFF_VERSION.to_string(),
+        before: before.clone(),
+        after: after.clone(),
+        filter: TemporalDiffFilter::default(),
+        page: TemporalDiffPageRequest {
+            limit: 1,
+            after_cursor: None,
+        },
+        include_unchanged: false,
+    })
+    .expect("repeated first page builds");
+    assert_eq!(repeated_first_page.changes, all_changes.changes);
+    assert_eq!(repeated_first_page.page.next_cursor, Some(cursor.clone()));
+
+    let second_page = diff_temporal_snapshots(TemporalDiffRequest {
+        version: CANON_TEMPORAL_DIFF_VERSION.to_string(),
+        before: before.clone(),
+        after: after.clone(),
+        filter: TemporalDiffFilter::default(),
+        page: TemporalDiffPageRequest {
+            limit: 1,
+            after_cursor: Some(cursor.clone()),
+        },
+        include_unchanged: false,
+    })
+    .expect("second page builds");
+    assert_eq!(second_page.changes.len(), 1);
+    assert_eq!(second_page.changes[0].subject_id, "alias:c");
+    assert_eq!(second_page.page.next_cursor, None);
+
+    let shuffled_after = snapshot(
+        "snap-page-after",
+        "2026-03-01T00:00:00Z",
+        "2026-03-01T00:00:00Z",
+        vec![
+            accepted_fact("alias:c", "org:gamma", "feed_b", "2026-01-02T00:00:00Z"),
+            accepted_fact("alias:b", "person:beta", "feed_b", "2026-01-02T00:00:00Z"),
+            accepted_fact("alias:a", "person:alpha", "feed_a", "2026-01-02T00:00:00Z"),
+        ],
+    );
+    let shuffled_first_page = diff_temporal_snapshots(TemporalDiffRequest {
+        version: CANON_TEMPORAL_DIFF_VERSION.to_string(),
+        before,
+        after: shuffled_after,
+        filter: TemporalDiffFilter::default(),
+        page: TemporalDiffPageRequest {
+            limit: 1,
+            after_cursor: None,
+        },
+        include_unchanged: false,
+    })
+    .expect("shuffled first page builds");
+    assert_eq!(shuffled_first_page.changes, all_changes.changes);
+    assert_eq!(shuffled_first_page.page.next_cursor, Some(cursor));
+
     let bytes_a = canonical_diff_bytes(&all_changes).expect("canonical diff bytes");
     let round_tripped = serde_json::from_slice(&bytes_a).expect("diff round trips");
     let bytes_b = canonical_diff_bytes(&round_tripped).expect("second diff bytes");
@@ -469,6 +691,70 @@ fn relationship_context_is_explanatory_not_equivalence_evidence() {
         }
         other => panic!("unexpected result: {other:?}"),
     }
+}
+
+#[test]
+fn explain_and_diff_do_not_mutate_input_snapshots() {
+    let before = snapshot(
+        "snap-read-before",
+        "2026-03-01T00:00:00Z",
+        "2026-03-01T00:00:00Z",
+        vec![accepted_fact(
+            "alias:acme",
+            "person:alpha",
+            "feed_a",
+            "2026-01-02T00:00:00Z",
+        )],
+    );
+    let after = snapshot(
+        "snap-read-after",
+        "2026-03-01T00:00:00Z",
+        "2026-03-01T00:00:00Z",
+        vec![accepted_fact(
+            "alias:acme",
+            "person:beta",
+            "feed_b",
+            "2026-01-03T00:00:00Z",
+        )],
+    );
+    let before_bytes = serde_json::to_vec(&before).expect("before snapshot serializes");
+    let after_bytes = serde_json::to_vec(&after).expect("after snapshot serializes");
+
+    explain_temporal_identity(TemporalExplainRequest {
+        version: CANON_TEMPORAL_EXPLAIN_VERSION.to_string(),
+        subject: TemporalExplainSubject::Surface {
+            subject_id: "alias:acme".to_string(),
+        },
+        snapshots: vec![before.clone(), after.clone()],
+        max_chain_facts: None,
+    })
+    .expect("explanation builds");
+    assert_eq!(
+        serde_json::to_vec(&before).expect("before snapshot serializes again"),
+        before_bytes
+    );
+    assert_eq!(
+        serde_json::to_vec(&after).expect("after snapshot serializes again"),
+        after_bytes
+    );
+
+    diff_temporal_snapshots(TemporalDiffRequest {
+        version: CANON_TEMPORAL_DIFF_VERSION.to_string(),
+        before: before.clone(),
+        after: after.clone(),
+        filter: TemporalDiffFilter::default(),
+        page: TemporalDiffPageRequest::default(),
+        include_unchanged: false,
+    })
+    .expect("diff builds");
+    assert_eq!(
+        serde_json::to_vec(&before).expect("before snapshot serializes after diff"),
+        before_bytes
+    );
+    assert_eq!(
+        serde_json::to_vec(&after).expect("after snapshot serializes after diff"),
+        after_bytes
+    );
 }
 
 fn snapshot(
