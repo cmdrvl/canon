@@ -197,6 +197,7 @@ Stage leaves (used by geo run and Demo 0):
   reconcile-tiles                 Reconcile independently solved tile decisions under one ownership rule
   solve                           Solve the exact hard-feasible parcel/building residual for a composition request
   materialize-geometry            Normalize and budget source geometry into canonical tile-local values
+  ingest-client-tile              Ingest a declared local client GeoJSON/NDJSON layer into one H3-indexed tile
   materialize-warehouse-geometry  Decode release-pinned warehouse WKB into a verified source-plane geometry tile
   materialize-evidence            Fold release-pinned warehouse rows into a typed evidence request
   materialize-address-evidence    Parse an address, test PAD membership, and emit a typed parcel-evidence bridge
@@ -296,6 +297,9 @@ pub enum GeoSubcommand {
     /// Normalize and budget source geometry into canonical tile-local values
     #[command(name = "materialize-geometry", hide = true)]
     MaterializeGeometry(GeoMaterializeGeometryCli),
+    /// Ingest a declared local client GeoJSON/NDJSON layer into one H3-indexed tile
+    #[command(name = "ingest-client-tile", hide = true)]
+    IngestClientTile(GeoClientTileIngestCli),
     /// Decode release-pinned warehouse WKB into a verified source-plane geometry tile
     #[command(name = "materialize-warehouse-geometry", hide = true)]
     MaterializeWarehouseGeometry(GeoMaterializeWarehouseGeometryCli),
@@ -445,6 +449,17 @@ pub struct GeoMaterializeGeometryCli {
     /// JSON file holding a canon_geo_geometry_request.v0 request
     #[arg(long)]
     pub request: PathBuf,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GeoClientTileIngestCli {
+    /// JSON file holding a canon_geo_client_tile_ingest_request.v0 request
+    #[arg(long)]
+    pub request: PathBuf,
+
+    /// Local GeoJSON or NDJSON GeoJSON source bytes named by the request
+    #[arg(long)]
+    pub source: PathBuf,
 }
 
 #[derive(Args, Debug, Clone)]
