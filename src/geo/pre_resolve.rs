@@ -417,6 +417,17 @@ pub fn validate_pre_resolution_artifact(
     validate_row_dispositions("abstained_rows", &artifact.abstained_rows)?;
     validate_row_dispositions("unresolvable_rows", &artifact.unresolvable_rows)?;
     validate_review_status(&artifact.review_status)?;
+    let expected_id = pre_resolution_id(artifact)?;
+    if artifact.pre_resolution_id != expected_id {
+        return Err(GeoPreResolutionError::invalid(
+            "Geo pre-resolution id must match the canonical artifact content",
+            [
+                ("field", "pre_resolution_id".to_string()),
+                ("expected", expected_id),
+                ("actual", artifact.pre_resolution_id.clone()),
+            ],
+        ));
+    }
     Ok(())
 }
 
@@ -477,7 +488,7 @@ fn validate_pre_resolution_request(
         return Err(GeoPreResolutionError::invalid(
             "At least one pre-resolution receipt must declare the source-row denominator",
             [
-                ("field", "build_receipts[].row_count"),
+                ("field", "build_receipts[].row_count".to_string()),
                 ("row_count", expected_rows.to_string()),
             ],
         ));
