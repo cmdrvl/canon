@@ -1344,3 +1344,359 @@ fn e4_acceptance_gate_requires_the_full_population_to_be_reachable() {
         rows.len(),
     );
 }
+
+const D0_ADJUDICATION_LABELS_JSON: &str =
+    include_str!("../scripts/geo_measurements/fixtures/d0_adjudication/labels.json");
+const D0_ADJUDICATION_PINS_JSON: &str =
+    include_str!("../scripts/geo_measurements/fixtures/d0_adjudication/pins.json");
+
+#[derive(Debug, Deserialize)]
+struct D0AdjudicationLabelsFile {
+    version: String,
+    cohort_id: String,
+    stratum_denominators: Vec<D0AdjudicationStratum>,
+    labels: Vec<D0AdjudicationLabelRow>,
+}
+
+#[derive(Debug, Deserialize)]
+struct D0AdjudicationStratum {
+    stratum_id: String,
+    denominator: u64,
+    selection_seed: String,
+    selection_method: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct D0AdjudicationPinsFile {
+    version: String,
+    pins: Vec<D0AdjudicationPin>,
+}
+
+#[derive(Debug, Deserialize)]
+struct D0AdjudicationPin {
+    pin_id: String,
+    source_dataset: String,
+    url: String,
+    byte_range: Option<[u64; 2]>,
+    etag: Option<String>,
+    blake3: Option<String>,
+    vintage: String,
+    license_id: String,
+    license_text_blake3: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct D0AdjudicationLabelRow {
+    case_id: String,
+    subject_id: String,
+    stratum_id: String,
+    pin_id: String,
+    window_blake3: String,
+    candidate_parcel_ids: Vec<String>,
+    overlay_geometry_blake3: String,
+    crop_blake3: String,
+    label: D0AdjudicationLabel,
+    adjudicator_id: String,
+    truth_plane: String,
+    notes_blake3: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum D0AdjudicationLabel {
+    SelectedParcels(Vec<String>),
+    NoneVisible,
+    Unresolvable,
+}
+
+fn d0_labels_value() -> serde_json::Value {
+    serde_json::from_str(D0_ADJUDICATION_LABELS_JSON).expect("D0 labels JSON parses")
+}
+
+fn d0_pins_value() -> serde_json::Value {
+    serde_json::from_str(D0_ADJUDICATION_PINS_JSON).expect("D0 pins JSON parses")
+}
+
+fn validate_d0_adjudication_fixture(
+    labels_value: &serde_json::Value,
+    pins_value: &serde_json::Value,
+) -> Result<D0AdjudicationLabelsFile, String> {
+    reject_address_channel_fields(labels_value)?;
+    reject_address_channel_fields(pins_value)?;
+
+    let labels: D0AdjudicationLabelsFile = serde_json::from_value(labels_value.clone())
+        .map_err(|error| format!("labels JSON shape: {error}"))?;
+    let pins: D0AdjudicationPinsFile = serde_json::from_value(pins_value.clone())
+        .map_err(|error| format!("pins JSON shape: {error}"))?;
+
+    if labels.version != "canon_geo_d0_adjudication_labels.v0" {
+        return Err(format!("version {}", labels.version));
+    }
+    if labels.cohort_id.trim().is_empty() {
+        return Err("cohort_id".to_string());
+    }
+    if pins.version != "canon_geo_d0_adjudication_pins.v0" {
+        return Err(format!("pins.version {}", pins.version));
+    }
+
+    let mut strata = BTreeMap::new();
+    for stratum in &labels.stratum_denominators {
+        if stratum.stratum_id.trim().is_empty() {
+            return Err("stratum_id".to_string());
+        }
+        if stratum.denominator == 0 {
+            return Err(format!("stratum {} denominator", stratum.stratum_id));
+        }
+        if stratum.selection_seed.trim().is_empty() {
+            return Err(format!("stratum {} selection_seed", stratum.stratum_id));
+        }
+        if stratum.selection_method.trim().is_empty() {
+            return Err(format!("stratum {} selection_method", stratum.stratum_id));
+        }
+        if strata
+            .insert(stratum.stratum_id.as_str(), stratum.denominator)
+            .is_some()
+        {
+            return Err(format!("duplicate stratum {}", stratum.stratum_id));
+        }
+    }
+
+    let expected_strata = BTreeSet::from([
+        "corner_aka_properties",
+        "interpolated_tier",
+        "multi_address_fields",
+        "multi_containment",
+        "nearest_rooftop_match",
+        "never_parsed",
+    ]);
+    let actual_strata = strata.keys().copied().collect::<BTreeSet<_>>();
+    if actual_strata != expected_strata {
+        return Err(format!("strata {:?}", actual_strata));
+    }
+
+    let mut pins_by_id = BTreeMap::new();
+    for pin in &pins.pins {
+        validate_d0_pin(pin)?;
+        if pins_by_id.insert(pin.pin_id.as_str(), pin).is_some() {
+            return Err(format!("duplicate pin_id {}", pin.pin_id));
+        }
+    }
+
+    if labels.labels.is_empty() {
+        return Err("labels".to_string());
+    }
+    let mut labels_by_case = BTreeSet::new();
+    for row in &labels.labels {
+        validate_d0_label_row(row, &strata, &pins_by_id)?;
+        if !labels_by_case.insert(row.case_id.as_str()) {
+            return Err(format!("duplicate case_id {}", row.case_id));
+        }
+    }
+
+    Ok(labels)
+}
+
+fn validate_d0_pin(pin: &D0AdjudicationPin) -> Result<(), String> {
+    if pin.pin_id.trim().is_empty() {
+        return Err("pin_id".to_string());
+    }
+    if !pin.source_dataset.starts_with("nyc.ortho.") {
+        return Err(format!("source_dataset {}", pin.source_dataset));
+    }
+    if !pin.url.starts_with("https://") {
+        return Err(format!("pin {} url", pin.pin_id));
+    }
+    if let Some([start, end]) = pin.byte_range
+        && start >= end
+    {
+        return Err(format!("pin {} byte_range", pin.pin_id));
+    }
+    if pin.etag.as_deref().is_none_or(str::is_empty) && pin.blake3.as_deref().is_none() {
+        return Err(format!("pin {} etag_or_blake3", pin.pin_id));
+    }
+    if let Some(blake3) = pin.blake3.as_deref() {
+        validate_hex64("pin.blake3", blake3)?;
+    }
+    if pin.vintage.trim().is_empty() {
+        return Err(format!("pin {} vintage", pin.pin_id));
+    }
+    if pin.license_id.trim().is_empty() || pin.license_id.contains("commercial") {
+        return Err(format!("pin {} license_id", pin.pin_id));
+    }
+    validate_hex64("pin.license_text_blake3", &pin.license_text_blake3)
+}
+
+fn validate_d0_label_row(
+    row: &D0AdjudicationLabelRow,
+    strata: &BTreeMap<&str, u64>,
+    pins_by_id: &BTreeMap<&str, &D0AdjudicationPin>,
+) -> Result<(), String> {
+    for (field, value) in [
+        ("case_id", row.case_id.as_str()),
+        ("subject_id", row.subject_id.as_str()),
+        ("stratum_id", row.stratum_id.as_str()),
+        ("pin_id", row.pin_id.as_str()),
+    ] {
+        if value.trim().is_empty() {
+            return Err(field.to_string());
+        }
+    }
+    if !strata.contains_key(row.stratum_id.as_str()) {
+        return Err(format!("stratum_id {}", row.stratum_id));
+    }
+    if !pins_by_id.contains_key(row.pin_id.as_str()) {
+        return Err(format!("pin_id {}", row.pin_id));
+    }
+    validate_hex64("window_blake3", &row.window_blake3)?;
+    validate_hex64("overlay_geometry_blake3", &row.overlay_geometry_blake3)?;
+    validate_hex64("crop_blake3", &row.crop_blake3)?;
+    if let Some(notes_blake3) = row.notes_blake3.as_deref() {
+        validate_hex64("notes_blake3", notes_blake3)?;
+    }
+    if row.truth_plane != "human_adjudication" {
+        return Err(format!("truth_plane {}", row.truth_plane));
+    }
+    if !row.adjudicator_id.starts_with("adjudicator:") {
+        return Err(format!("adjudicator_id {}", row.adjudicator_id));
+    }
+    if row.candidate_parcel_ids.is_empty() {
+        return Err(format!("case {} candidate_parcel_ids", row.case_id));
+    }
+    let mut previous: Option<&str> = None;
+    let mut candidates = BTreeSet::new();
+    for candidate in &row.candidate_parcel_ids {
+        if candidate.trim().is_empty() {
+            return Err(format!("case {} candidate_parcel_ids", row.case_id));
+        }
+        if previous.is_some_and(|prior| prior >= candidate.as_str()) {
+            return Err(format!("case {} candidate_parcel_ids order", row.case_id));
+        }
+        previous = Some(candidate);
+        candidates.insert(candidate.as_str());
+    }
+    if let D0AdjudicationLabel::SelectedParcels(selected) = &row.label {
+        if selected.is_empty() {
+            return Err(format!("case {} selected_parcels", row.case_id));
+        }
+        for parcel_id in selected {
+            if !candidates.contains(parcel_id.as_str()) {
+                return Err(format!(
+                    "selected parcel {parcel_id} outside candidate_parcel_ids"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_hex64(field: &str, value: &str) -> Result<(), String> {
+    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(field.to_string());
+    }
+    Ok(())
+}
+
+fn reject_address_channel_fields(value: &serde_json::Value) -> Result<(), String> {
+    fn visit(path: &str, value: &serde_json::Value) -> Option<String> {
+        match value {
+            serde_json::Value::Object(object) => object.iter().find_map(|(key, child)| {
+                let child_path = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{path}.{key}")
+                };
+                if key.to_ascii_lowercase().contains("address") {
+                    Some(child_path)
+                } else {
+                    visit(&child_path, child)
+                }
+            }),
+            serde_json::Value::Array(items) => items
+                .iter()
+                .enumerate()
+                .find_map(|(index, child)| visit(&format!("{path}[{index}]"), child)),
+            _ => None,
+        }
+    }
+
+    if let Some(field) = visit("", value) {
+        Err(field)
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn d0_adjudication_label_rows_validate_without_address_channel() {
+    let labels =
+        validate_d0_adjudication_fixture(&d0_labels_value(), &d0_pins_value()).expect("D0 valid");
+
+    assert_eq!(labels.labels.len(), 6);
+    assert_eq!(
+        labels
+            .labels
+            .iter()
+            .map(|row| row.stratum_id.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "corner_aka_properties",
+            "interpolated_tier",
+            "multi_address_fields",
+            "multi_containment",
+            "nearest_rooftop_match",
+            "never_parsed",
+        ])
+    );
+}
+
+#[test]
+fn d0_adjudication_rejects_label_outside_drawn_candidates() {
+    let mut labels = d0_labels_value();
+    labels["labels"][0]["label"] = serde_json::json!({
+        "selected_parcels": ["1004540099"]
+    });
+
+    let error = validate_d0_adjudication_fixture(&labels, &d0_pins_value())
+        .expect_err("outside selected parcel must reject");
+
+    assert!(
+        error.contains("1004540099"),
+        "error should name the parcel, got {error}"
+    );
+}
+
+#[test]
+fn d0_adjudication_rejects_address_channel_fields() {
+    let mut labels = d0_labels_value();
+    labels["labels"][0]["asserted_address"] = serde_json::json!("516 East 13th Street");
+
+    let error = validate_d0_adjudication_fixture(&labels, &d0_pins_value())
+        .expect_err("address field must reject");
+
+    assert!(
+        error.contains("asserted_address"),
+        "error should name the field, got {error}"
+    );
+}
+
+#[test]
+fn d0_adjudication_rejects_posthoc_strata_and_unprefixed_adjudicators() {
+    let pins = d0_pins_value();
+    let mut posthoc = d0_labels_value();
+    posthoc["stratum_denominators"][0]["selection_seed"] = serde_json::json!("");
+    let error = validate_d0_adjudication_fixture(&posthoc, &pins)
+        .expect_err("stratum seed must be declared before labels");
+    assert!(
+        error.contains("selection_seed"),
+        "error should name the seed, got {error}"
+    );
+
+    let mut unprefixed = d0_labels_value();
+    unprefixed["labels"][0]["adjudicator_id"] = serde_json::json!("reviewer:d0");
+    let error = validate_d0_adjudication_fixture(&unprefixed, &pins)
+        .expect_err("adjudicator id prefix must reject");
+    assert!(
+        error.contains("adjudicator_id"),
+        "error should name the field, got {error}"
+    );
+}

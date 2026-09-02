@@ -1,0 +1,35 @@
+{
+  "version": "canon_geo_d0_adjudication_pins.v0",
+  "pins": [
+    {
+      "pin_id": "nyc-ortho-2024-manhattan-retained-001",
+      "source_dataset": "nyc.ortho.2024",
+      "url": "https://gisdata.ny.gov/ortho/nysdop12/new_york_city/spcs/zips/boro_manhattan_sp24.zip",
+      "byte_range": [0, 1048576],
+      "etag": "\"99825b89-636d49d29e880\"",
+      "vintage": "2024",
+      "license_id": "nyc_cc_by_4_0",
+      "license_text_blake3": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "pin_id": "nyc-ortho-2024-queens-retained-001",
+      "source_dataset": "nyc.ortho.2024",
+      "url": "https://gisdata.ny.gov/ortho/nysdop12/new_york_city/spcs/zips/boro_queens_sp24.zip",
+      "byte_range": [0, 1048576],
+      "blake3": "2222222222222222222222222222222222222222222222222222222222222222",
+      "vintage": "2024",
+      "license_id": "nyc_cc_by_4_0",
+      "license_text_blake3": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "pin_id": "nyc-ortho-2024-brooklyn-retained-001",
+      "source_dataset": "nyc.ortho.2024",
+      "url": "https://gisdata.ny.gov/ortho/nysdop12/new_york_city/spcs/zips/boro_brooklyn_sp24.zip",
+      "byte_range": [0, 1048576],
+      "etag": "\"retained-brooklyn-sp24\"",
+      "vintage": "2024",
+      "license_id": "nyc_cc_by_4_0",
+      "license_text_blake3": "1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ]
+}
