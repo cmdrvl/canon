@@ -1,11 +1,6 @@
 #![forbid(unsafe_code)]
 
-#[path = "../src/strategy/tournament.rs"]
-mod tournament;
-
-use serde_json::Value;
-use std::collections::BTreeMap;
-use tournament::{
+use canon::strategy::tournament::{
     STRATEGY_TOURNAMENT_SCHEMA_VERSION, StrategyTournamentCandidate, StrategyTournamentErrorKind,
     StrategyTournamentEvaluation, StrategyTournamentInput, StrategyTournamentPartition,
     StrategyTournamentPartitions, StrategyTournamentRankingPolicy, TournamentAccessKind,
@@ -13,6 +8,8 @@ use tournament::{
     TournamentMetricRule, TournamentPartitionRole, TournamentResourceCost, TournamentUncertainty,
     canonical_tournament_report_bytes, run_strategy_tournament, strategy_tournament_schema_version,
 };
+use serde_json::Value;
+use std::collections::BTreeMap;
 
 const TOURNAMENT_SCHEMA_JSON: &str =
     include_str!("../schemas/canon.strategy.tournament.v1.schema.json");

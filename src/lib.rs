@@ -31,6 +31,7 @@ pub mod registry_lint;
 pub mod resolve;
 pub mod temporal;
 pub mod strategy {
+    pub mod tournament;
     pub mod types;
 }
 pub mod strategy_audit;
