@@ -23,6 +23,7 @@
     "blake3": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
     "h3_cell": { "type": "string", "pattern": "^[0-9a-f]{15}$" },
     "entity_level": { "enum": ["site", "property", "parcel", "building", "unit", "address", "poi"] },
+    "relation": { "enum": ["same_as", "contains", "part_of", "within", "on", "fronts", "intersects"] },
     "release": {
       "type": "object",
       "additionalProperties": false,
@@ -98,6 +99,17 @@
             "kind": { "const": "stable_identity" },
             "entity_level": { "$ref": "#/$defs/entity_level" }
           }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "relation", "from_entity_level", "to_entity_level"],
+          "properties": {
+            "kind": { "const": "relation" },
+            "relation": { "$ref": "#/$defs/relation" },
+            "from_entity_level": { "$ref": "#/$defs/entity_level" },
+            "to_entity_level": { "$ref": "#/$defs/entity_level" }
+          }
         }
       ]
     },
@@ -172,6 +184,7 @@
       "ObservationOnly sources cannot be candidate members",
       "Composition semantics may span levels and contain only EvidenceOnly members but carry no alias-mint authority",
       "StableIdentity semantics require supplied inventory lineage whose canonical bytes recompute to the declared inventory semantic and planning hashes, every member at the declared entity level, exact member source/release/native-scope agreement with that inventory, and at least one exact same-level StableAlias member",
+      "Relation semantics require exactly two native candidate members, one at each declared endpoint level; endpoint levels must differ and same_as is forbidden because stable_identity owns equivalence",
       "Composition may omit inventory lineage and carries no stable-alias authority",
       "one source_instance_id has exactly one release identity, native scope, and inventory reference across all batches",
       "each proposal work_unit_blake3 equals its embedded canonical work-unit digest; this deterministic association is not proof that an external solver consumed the work unit",

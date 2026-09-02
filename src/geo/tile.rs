@@ -11,10 +11,10 @@
 //! decision or refuses an orphan/non-confluent boundary result.
 
 use super::{
-    GeoControlEntityLevel, GeoNativeEntityScope, GeoPlanInventoryRef, GeoRegionalInventory,
-    GeoRegionalSourceInstance, GeoSourceRelease, canonicalize_regional_inventory,
-    geometry_value::parse_fixed_decimal, regional_inventory_planning_hash,
-    regional_inventory_semantic_hash,
+    GeoControlEntityLevel, GeoControlRelation, GeoNativeEntityScope, GeoPlanInventoryRef,
+    GeoRegionalInventory, GeoRegionalSourceInstance, GeoSourceRelease,
+    canonicalize_regional_inventory, geometry_value::parse_fixed_decimal,
+    regional_inventory_planning_hash, regional_inventory_semantic_hash,
 };
 use h3o::{CellIndex, LatLng, Resolution};
 use serde::{Deserialize, Serialize};
@@ -260,13 +260,22 @@ impl GeoTileDecisionMember {
 ///
 /// Composition decisions may span entity levels and may consist entirely of
 /// evidence-only candidates; they carry no alias-mint authority. Stable
-/// identity decisions are same-level and require a stable-alias participant at
-/// that exact level.
+/// identity decisions are same-level equivalence and require a stable-alias
+/// participant at that exact level. Relation decisions are explicit
+/// cross-level stitching assertions; `same_as` is intentionally not available
+/// through that path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GeoTileDecisionSemantics {
     Composition,
-    StableIdentity { entity_level: GeoControlEntityLevel },
+    StableIdentity {
+        entity_level: GeoControlEntityLevel,
+    },
+    Relation {
+        relation: GeoControlRelation,
+        from_entity_level: GeoControlEntityLevel,
+        to_entity_level: GeoControlEntityLevel,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1092,6 +1101,7 @@ pub fn reconcile_tile_decisions(
             semantics: decision.semantics,
             inventory_ref: match decision.semantics {
                 GeoTileDecisionSemantics::Composition => None,
+                GeoTileDecisionSemantics::Relation { .. } => None,
                 GeoTileDecisionSemantics::StableIdentity { .. } => inventory_sources
                     .as_ref()
                     .map(|lineage| lineage.inventory_ref.clone()),
@@ -1317,8 +1327,94 @@ fn normalize_members(
             ));
         }
     }
+    if let GeoTileDecisionSemantics::Relation {
+        relation,
+        from_entity_level,
+        to_entity_level,
+    } = semantics
+    {
+        validate_relation_decision(relation, from_entity_level, to_entity_level, &normalized)?;
+    }
     normalized.sort();
     Ok(normalized)
+}
+
+fn validate_relation_decision(
+    relation: GeoControlRelation,
+    from_entity_level: GeoControlEntityLevel,
+    to_entity_level: GeoControlEntityLevel,
+    members: &[GeoTileDecisionMember],
+) -> Result<(), GeoTileError> {
+    if relation == GeoControlRelation::SameAs {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidDecision,
+            "Geo tile relation decisions cannot express same_as; use stable_identity",
+            [("relation", relation_name(relation))],
+        ));
+    }
+    if from_entity_level == to_entity_level {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidDecision,
+            "Geo tile relation decisions must connect distinct entity levels",
+            [
+                ("from_entity_level", entity_level_name(from_entity_level)),
+                ("to_entity_level", entity_level_name(to_entity_level)),
+            ],
+        ));
+    }
+    if members.len() != 2 {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidDecision,
+            "Geo tile relation decisions require exactly one from member and one to member",
+            [
+                ("relation", relation_name(relation)),
+                ("member_count", members.len().to_string()),
+            ],
+        ));
+    }
+
+    let mut from_count = 0_u8;
+    let mut to_count = 0_u8;
+    for member in members {
+        if member.candidate_entity_level == from_entity_level {
+            from_count += 1;
+        } else if member.candidate_entity_level == to_entity_level {
+            to_count += 1;
+        } else {
+            return Err(GeoTileError::new(
+                GeoTileErrorCode::InvalidCandidateMember,
+                "Geo tile relation member is outside the declared cross-level relation",
+                [
+                    ("relation", relation_name(relation)),
+                    (
+                        "member_entity_level",
+                        entity_level_name(member.candidate_entity_level),
+                    ),
+                    ("from_entity_level", entity_level_name(from_entity_level)),
+                    ("to_entity_level", entity_level_name(to_entity_level)),
+                    (
+                        "source_instance_id",
+                        member.source.source_instance_id.clone(),
+                    ),
+                    ("feature_id", member.feature_id.clone()),
+                ],
+            ));
+        }
+    }
+    if from_count != 1 || to_count != 1 {
+        return Err(GeoTileError::new(
+            GeoTileErrorCode::InvalidDecision,
+            "Geo tile relation decisions require one member at each declared entity level",
+            [
+                ("relation", relation_name(relation)),
+                ("from_entity_level", entity_level_name(from_entity_level)),
+                ("to_entity_level", entity_level_name(to_entity_level)),
+                ("from_member_count", from_count.to_string()),
+                ("to_member_count", to_count.to_string()),
+            ],
+        ));
+    }
+    Ok(())
 }
 
 fn validate_work_unit_artifact(
@@ -1831,6 +1927,19 @@ fn entity_level_name(level: GeoControlEntityLevel) -> String {
         GeoControlEntityLevel::Unit => "unit",
         GeoControlEntityLevel::Address => "address",
         GeoControlEntityLevel::Poi => "poi",
+    }
+    .to_string()
+}
+
+fn relation_name(relation: GeoControlRelation) -> String {
+    match relation {
+        GeoControlRelation::SameAs => "same_as",
+        GeoControlRelation::Contains => "contains",
+        GeoControlRelation::PartOf => "part_of",
+        GeoControlRelation::Within => "within",
+        GeoControlRelation::On => "on",
+        GeoControlRelation::Fronts => "fronts",
+        GeoControlRelation::Intersects => "intersects",
     }
     .to_string()
 }

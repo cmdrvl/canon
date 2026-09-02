@@ -3,8 +3,8 @@
 use canon::geo::{
     CANON_GEO_HOME_CELL_ROWS_VERSION, CANON_GEO_REGIONAL_INVENTORY_VERSION,
     CANON_GEO_TILE_RECONCILIATION_REQUEST_VERSION, CANON_GEO_TILE_WORK_REQUEST_VERSION,
-    GeoBoundedGeography, GeoControlEntityLevel, GeoCoveragePredicate, GeoEgressClass,
-    GeoEvidenceClass, GeoHomeCellParity, GeoHomeCellRow, GeoHomeCellRowsRequest,
+    GeoBoundedGeography, GeoControlEntityLevel, GeoControlRelation, GeoCoveragePredicate,
+    GeoEgressClass, GeoEvidenceClass, GeoHomeCellParity, GeoHomeCellRow, GeoHomeCellRowsRequest,
     GeoIdentityParticipation, GeoLicenseClass, GeoLocalAcquisitionState, GeoNativeEntityScope,
     GeoPlanInventoryRef, GeoRegionalInventory, GeoRegionalSourceInstance, GeoSourceAvailability,
     GeoSourceRelease, GeoTemporalScope, GeoTileDecisionBatch, GeoTileDecisionMember,
@@ -772,6 +772,140 @@ fn stable_identity_rejects_leaf_laundered_alias_authority_and_missing_lineage() 
         .expect_err("leaf-to-proposal StableAlias laundering must disagree with inventory truth");
     assert_eq!(error.code, GeoTileErrorCode::InvalidInventoryLineage);
     assert!(error.message.contains("native scope"));
+}
+
+#[test]
+fn cross_level_relation_decisions_are_explicit_and_cannot_be_same_as() {
+    let (center, _) = center_and_neighbor();
+    let building = native_source(
+        "overture-building",
+        GeoControlEntityLevel::Building,
+        GeoIdentityParticipation::StableAlias,
+    );
+    let parcel = native_source(
+        "mappluto-parcel",
+        GeoControlEntityLevel::Parcel,
+        GeoIdentityParticipation::StableAlias,
+    );
+    let poi = native_source(
+        "overture-place",
+        GeoControlEntityLevel::Poi,
+        GeoIdentityParticipation::StableAlias,
+    );
+    let building_member = member_from_source(
+        building.clone(),
+        GeoControlEntityLevel::Building,
+        "building-1",
+        center,
+    );
+    let parcel_member =
+        member_from_source(parcel, GeoControlEntityLevel::Parcel, "parcel-1", center);
+    let poi_member = member_from_source(poi, GeoControlEntityLevel::Poi, "poi-1", center);
+    let available_members = vec![
+        building_member.clone(),
+        parcel_member.clone(),
+        poi_member.clone(),
+    ];
+
+    let relation_semantics = GeoTileDecisionSemantics::Relation {
+        relation: GeoControlRelation::On,
+        from_entity_level: GeoControlEntityLevel::Building,
+        to_entity_level: GeoControlEntityLevel::Parcel,
+    };
+    let request = reconciliation_request(vec![decision_batch(
+        center,
+        &available_members,
+        vec![proposal_with_semantics(
+            relation_semantics,
+            payload("building-on-parcel"),
+            vec![parcel_member.clone(), building_member.clone()],
+        )],
+    )]);
+    let artifact = reconcile_tile_decisions(&request)
+        .expect("cross-level relation is retained as relation semantics, not equality");
+    assert_eq!(artifact.owned_decisions, 1);
+    assert_eq!(artifact.inventory_ref, None);
+    assert_eq!(artifact.decisions[0].inventory_ref, None);
+    assert_eq!(artifact.decisions[0].semantics, relation_semantics);
+    assert_eq!(artifact.decisions[0].members.len(), 2);
+
+    let same_as_relation = reconciliation_request(vec![decision_batch(
+        center,
+        &available_members,
+        vec![proposal_with_semantics(
+            GeoTileDecisionSemantics::Relation {
+                relation: GeoControlRelation::SameAs,
+                from_entity_level: GeoControlEntityLevel::Building,
+                to_entity_level: GeoControlEntityLevel::Parcel,
+            },
+            payload("same-as-relation"),
+            vec![building_member.clone(), parcel_member.clone()],
+        )],
+    )]);
+    let error = reconcile_tile_decisions(&same_as_relation)
+        .expect_err("same_as cannot bypass stable-identity inventory authority");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidDecision);
+    assert!(error.message.contains("same_as"));
+
+    let same_level_relation = reconciliation_request(vec![decision_batch(
+        center,
+        &[
+            building_member.clone(),
+            member_from_source(
+                native_source(
+                    "fema-building",
+                    GeoControlEntityLevel::Building,
+                    GeoIdentityParticipation::StableAlias,
+                ),
+                GeoControlEntityLevel::Building,
+                "building-2",
+                center,
+            ),
+        ],
+        vec![proposal_with_semantics(
+            GeoTileDecisionSemantics::Relation {
+                relation: GeoControlRelation::On,
+                from_entity_level: GeoControlEntityLevel::Building,
+                to_entity_level: GeoControlEntityLevel::Building,
+            },
+            payload("same-level-relation"),
+            vec![
+                building_member.clone(),
+                member_from_source(
+                    native_source(
+                        "fema-building",
+                        GeoControlEntityLevel::Building,
+                        GeoIdentityParticipation::StableAlias,
+                    ),
+                    GeoControlEntityLevel::Building,
+                    "building-2",
+                    center,
+                ),
+            ],
+        )],
+    )]);
+    let error = reconcile_tile_decisions(&same_level_relation)
+        .expect_err("relation semantics cannot collapse same-level equivalence");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidDecision);
+    assert!(error.message.contains("distinct entity levels"));
+
+    let wrong_level_relation = reconciliation_request(vec![decision_batch(
+        center,
+        &available_members,
+        vec![proposal_with_semantics(
+            relation_semantics,
+            payload("wrong-relation-level"),
+            vec![building_member, poi_member],
+        )],
+    )]);
+    let error = reconcile_tile_decisions(&wrong_level_relation)
+        .expect_err("relation members must match the declared cross-level endpoints");
+    assert_eq!(error.code, GeoTileErrorCode::InvalidCandidateMember);
+    assert!(
+        error
+            .message
+            .contains("outside the declared cross-level relation")
+    );
 }
 
 #[test]

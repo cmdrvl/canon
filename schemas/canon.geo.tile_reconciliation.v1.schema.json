@@ -25,6 +25,7 @@
     "blake3": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
     "h3_cell": { "type": "string", "pattern": "^[0-9a-f]{15}$" },
     "entity_level": { "enum": ["site", "property", "parcel", "building", "unit", "address", "poi"] },
+    "relation": { "enum": ["same_as", "contains", "part_of", "within", "on", "fronts", "intersects"] },
     "release": {
       "type": "object",
       "additionalProperties": false,
@@ -91,6 +92,17 @@
             "kind": { "const": "stable_identity" },
             "entity_level": { "$ref": "#/$defs/entity_level" }
           }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "relation", "from_entity_level", "to_entity_level"],
+          "properties": {
+            "kind": { "const": "relation" },
+            "relation": { "$ref": "#/$defs/relation" },
+            "from_entity_level": { "$ref": "#/$defs/entity_level" },
+            "to_entity_level": { "$ref": "#/$defs/entity_level" }
+          }
         }
       ]
     },
@@ -139,6 +151,7 @@
       "ObservationOnly sources cannot be candidate members",
       "Composition semantics may span levels and contain only EvidenceOnly members but carry no alias-mint authority",
       "StableIdentity semantics require every member at the declared entity level, at least one exact same-level StableAlias member, and exact source/release/native-scope membership in the canonical inventory named by the emitted inventory semantic and planning hashes",
+      "Relation semantics require exactly two native candidate members, one at each declared endpoint level; endpoint levels must differ and same_as is forbidden because stable_identity owns equivalence",
       "emitted inventory references establish inventory-relative authority only, not external or world truth",
       "one source_instance_id has exactly one release identity, native scope, and inventory reference across all batches",
       "batch receipts retain canonical work-unit digests as deterministic associations; without an executor-issued receipt they do not prove an external solver consumed those work units",
