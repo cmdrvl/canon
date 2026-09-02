@@ -1337,9 +1337,11 @@ The extensional kernel is kept as the exact backend. Three additions make it the
 
 ### 18.6 What this changes in the build order
 
-Truth plane first, evidence onto the cohort second, propagators and explanations third,
-observer lane fourth, ledger and CMBS joins fifth, E5 throughout. §19 states the sequence
-with gates.
+Truth plane first (D0), evidence onto the cohort second (D1), propagators and
+explanations third (D2), ledger and CMBS joins fourth (D3), retry loop, condo bridge,
+inspect, and the next-evidence controller next (D4, D5), observer lane after the ledger
+exists (D6), E5 throughout (D7). §19.5 states the sequence with gates and controls where
+this sentence and it disagree.
 
 ---
 
@@ -1428,7 +1430,7 @@ carries the generic `UnsupportedVersion`, `InvalidInput`, `BudgetExceeded`,
 | `src/geo/propagate.rs` | D2 | additive-band, cardinality, exclusivity propagators; fixpoint driver; typed prunings | `canon_geo_propagation.v0` |
 | `src/geo/explain.rs` | D2 | minimal core, correction sets, counterfactual separation | `canon_geo_explanation.v0`, `canon_geo_separation_request.v0`, `canon_geo_separation.v0` |
 | `src/geo/observer.rs` | D6 | observer contract, observation admission, image tile pinning, license gate | `canon_geo_observer.v0`, `canon_geo_observation_rows.v0`, `canon_geo_image_tile_pin.v0` |
-| `src/geo/adjudicate.rs` | D0, D6 | adjudication crop requests and label receipts for the truth plane | `canon_geo_adjudication_request.v0`, `canon_geo_adjudication_receipt.v0` |
+| `src/geo/adjudicate.rs` | D6 | adjudication crop requests and label receipts for the truth plane | `canon_geo_adjudication_request.v0`, `canon_geo_adjudication_receipt.v0` |
 | `src/geo/card.rs` | D6 | visual evidence card artifact (data, not rendering) | `canon_geo_evidence_card.v0` |
 | `src/geo/ledger.rs` | D3 | physical collateral ledger rows and deal-level rollups | `canon_geo_collateral_ledger.v0` |
 | `src/geo/exposure.rs` | D3 | event exposure join over ledger building sets | `canon_geo_event_exposure.v0` |
@@ -1436,7 +1438,13 @@ carries the generic `UnsupportedVersion`, `InvalidInput`, `BudgetExceeded`,
 | `src/geo/retry.rs` | D4 | abstain, re-geocode request, retry loop artifact | `canon_geo_retry_loop.v0` |
 | `src/geo/inspect.rs` | D4 | one-call run state, compare | `canon_geo_inspection.v0` |
 | `src/geo/next_evidence.rs` | D5 | nondominated next-action frontier, stop decisions | `canon_geo_next_evidence.v0` |
-| `src/geo/condo.rs` | D4 | unit to billing lot to building crosswalk with confirmation | `canon_geo_ledger_bridge.v0` |
+| `src/geo/condo.rs` | D4 | unit to billing lot to building crosswalk with confirmation | `canon_geo_condo_bridge_request.v0`, `canon_geo_ledger_bridge.v0` |
+
+Every module belongs to exactly one stage, and the stage column above is the only
+assignment. `adjudicate.rs` lands in D6 because it consumes `GeoImageTilePin` from
+`observer.rs`; the D0 truth plane labels its adjudication crops through the existing
+`tests/geo_adjudication.rs` lane under bd-179b, and D6 re-validates those crops as
+`canon_geo_adjudication_receipt.v0` rows (C12, T22) without changing the D0 labels.
 
 Per-module surface. Field lists are the required minimum; implementers may add
 `#[serde(default)]` fields, never remove or rename these.
@@ -1494,7 +1502,7 @@ Per-module surface. Field lists are the required minimum; implementers may add
 
 | Item | Definition |
 |---|---|
-| Consumes | `GeoImageTilePin`, `GeoTruthPlane::HumanAdjudication`, `GeoCanonicalPolygonMm` for candidate parcel lines, population case ids from `canon_geo_population.v0` |
+| Consumes | `GeoImageTilePin`, `GeoTruthPlane::HumanAdjudication`, `GeoCanonicalPolygonMm` for candidate parcel lines, population case ids from `canon_geo_population_request.v0` (E4 gate cases) or `canon_geo_h7_population.v0` (H.7 cohort) |
 | `GeoAdjudicationRequest` | `version`, `case_id`, `subject_id`, `tile_pin: GeoImageTilePin`, `window_blake3`, `candidate_parcel_ids: Vec<String>`, `overlay_geometry_blake3` |
 | `GeoAdjudicationLabel` | `SelectedParcels(Vec<String>)`, `NoneVisible`, `Unresolvable` |
 | `GeoAdjudicationReceipt` | `version`, `request_blake3`, `crop_blake3`, `label`, `adjudicator_id`, `truth_plane: GeoTruthPlane`, `notes_blake3: Option<String>` |
@@ -1638,20 +1646,25 @@ tile, artifact, or pass) so the message is never the only carrier.
 ### 19.5 Staged sequence and gates
 
 Each stage names its owner bead. A gate is a frozen test or a recorded measurement with a
-declared denominator. Stages may run in parallel where dependencies allow.
+declared denominator. Stages may run in parallel where dependencies allow. `Entry
+condition` is what must be true before the stage starts: the prior gate plus any artifact
+that must already exist. `Contracts / tests` cites the §19.9 rows and the §19.6 ids the
+stage must satisfy before its gate is claimed; T27 runs in every stage that adds a
+generic module. Stage text, gates, and owners are unchanged from the 2026-09-01 version;
+the two new columns were added in pass 3.
 
-| Stage | Work | Gate | Owner |
-|---|---|---|---|
-| D0 | Truth plane rebuild: lender/party discrimination, adjudication crops as second source, 79 genuine cases or a recorded shortfall | G0: E4 denominator reaches 79 genuine subjects or the shortfall is documented with the exhausted admission rules | bd-179b, bd-7bcp |
-| D1 | Evidence stacking onto the H.7 cohort: PAD address sets, asserted size bands, footprints, deed-independent observations | G1: the ignored E4 gate reports `evidence_no_observation` on zero cases; residual sizes, backbone accuracy, false merges, and abstentions recorded per truth plane | bd-1g4x, bd-1l4r |
-| D2 | Propagators and explanation artifacts | G2: I01 to I05 hold on every E4 fixture; at least one real cohort conflict yields a minimal core naming source records | new beads |
-| D3 | Ledger output surface, event exposure join, cross-deal collision | G3: one full public deal materializes as ledger rows with claim classes; exposure runs against one archived advisory; collision runs across two deals | new beads, bd-kwmc, bd-67wx |
-| D4 | Retry loop, condo bridge, `geo inspect` | G4: recovery rate of the retry loop measured on the 40 gross-class points with fresh geocodes; condo flips independently confirmed on the 31 points; inspect answers the eight questions in architecture §1 from artifacts alone | new bead, bd-2fed, bd-1g18 |
-| D5 | Next evidence controller | G5: on the D1 residuals, the controller names a nondominated action per unresolved case and a stop for every forced case | bd-vojr |
-| D6 | Observer lane: NYC ortho pinning, one rule-based observer (footprint outline from a landed footprint plane as the null observer), one frozen-weight count observer, adjudication crops, evidence card | G6: observer error characterized on a named NYC population; observations admitted through rho on the D1 cohort change at least one residual or are shown redundant; card artifact validates | new beads, bd-101v |
-| D7 | E5 Franklin County: deed-grain truth, typical-county tier, minimal tier | G7: tier curve recorded with abstention per tier; no Franklin-specific name in generic modules | bd-s07o, bd-3mo1 |
-| D8 | Accretion and parallel protocol | G8: a new source release invalidates only the rows in architecture §8; two agents converge on one manifest | bd-2rf9, bd-3oj1 |
-| D9 | Deferred-trigger review | G9: each DEFERRED item's trigger checked against D1 to D7 measurements and recorded | new P4 placeholder beads |
+| Stage | Work | Entry condition | Gate | Contracts / tests | Owner |
+|---|---|---|---|---|---|
+| D0 | Truth plane rebuild: lender/party discrimination, adjudication crops as second source, 79 genuine cases or a recorded shortfall | None beyond the current tree: `cargo test` green; `cargo test --test geo_adjudication -- --ignored` red for the recorded reason (`evidence_no_observation`) | G0: E4 denominator reaches 79 genuine subjects or the shortfall is documented with the exhausted admission rules | C23, C24; T17 stays armed and red; G0 is a measurement receipt under bd-179b, no new T id | bd-179b, bd-7bcp |
+| D1 | Evidence stacking onto the H.7 cohort: PAD address sets, asserted size bands, footprints, deed-independent observations | G0 passed or its shortfall recorded; the bd-179b truth plane artifacts and `e4_gate_v2_population.json` committed under `tests/fixtures/geo/`; candidate reach and level beads (bd-2b9d, bd-2cbs, bd-1wpv) landed | G1: the ignored E4 gate reports `evidence_no_observation` on zero cases; residual sizes, backbone accuracy, false merges, and abstentions recorded per truth plane | C23, C24; T17 turns green here; per-truth-plane residual artifacts committed for D2 and D5 to consume | bd-1g4x, bd-1l4r |
+| D2 | Propagators and explanation artifacts | G1 passed; D1 residual artifacts committed; `src/geo/composition.rs` and `src/geo/evidence.rs` frozen at their D1 digests (C25); modules `propagate.rs`, `explain.rs` | G2: I01 to I05 hold on every E4 fixture; at least one real cohort conflict yields a minimal core naming source records | C01 to C08, C22, C25; T01 to T06, T19, T20, T21, T27 | new beads |
+| D3 | Ledger output surface, event exposure join, cross-deal collision | G1 passed (D2 not required: no ledger field reads an explanation artifact); one full public deal's loans mapped to H.7 subjects with accession and loan ids; `tests/fixtures/geo/advisory_synthetic_adv12.json` shipped by the exposure bead; modules `ledger.rs`, `exposure.rs`, `collision.rs` | G3: one full public deal materializes as ledger rows with claim classes; exposure runs against one archived advisory; collision runs across two deals | C13 to C16, C22, C23, C25; T07, T08, T09, T23, T26, T27 | new beads, bd-kwmc, bd-67wx |
+| D4 | Retry loop, condo bridge, `geo inspect` | G1 passed for `retry.rs` and `condo.rs`; G2 passed before `inspect.rs` starts (it reads `GeoExplanationArtifact`); a Demo 0 work directory reproduces from `scripts/geo_demo/demo0.sh`; the E1 gross-class and condo point lists committed as fixtures; modules `retry.rs`, `condo.rs`, `inspect.rs` | G4: recovery rate of the retry loop measured on the 40 gross-class points with fresh geocodes; condo flips independently confirmed on the 31 points; inspect answers the eight questions in architecture §1 from artifacts alone | C17, C18, C20, C22, C25; T10, T11, T12, T25, T27 | new bead, bd-2fed, bd-1g18 |
+| D5 | Next evidence controller | G2 passed (`explain::separate` exists); D1 residual artifacts committed; module `next_evidence.rs` | G5: on the D1 residuals, the controller names a nondominated action per unresolved case and a stop for every forced case | C19, C22, C25; T18, T27 | bd-vojr |
+| D6 | Observer lane: NYC ortho pinning, one rule-based observer (footprint outline from a landed footprint plane as the null observer), one frozen-weight count observer, adjudication crops, evidence card | G2 passed (`card.rs` reads explanation artifacts); NYC ortho tile pins recorded with URL, byte range, ETag or SHA-256, vintage, and license text hash per §18.4; the named NYC error population declared before any observer runs; modules `observer.rs`, `adjudicate.rs`, `card.rs` | G6: observer error characterized on a named NYC population; observations admitted through rho on the D1 cohort change at least one residual or are shown redundant; card artifact validates | C09 to C12, C21, C22, C23, C25; T13, T14, T15, T22, T24, T26, T27 | new beads, bd-101v |
+| D7 | E5 Franklin County: deed-grain truth, typical-county tier, minimal tier | G1 passed; bd-s07o Franklin parcel plane landed; deed-grain truth source pinned; runs in parallel with D2 to D6 and re-runs T16 after each of them lands | G7: tier curve recorded with abstention per tier; no Franklin-specific name in generic modules | C22, C23, C25; T16, T27; the existing `franklin_instance_names_do_not_enter_the_generic_geo_engine` scan extended to the twelve §19.3 modules | bd-s07o, bd-3mo1 |
+| D8 | Accretion and parallel protocol | G3 passed; G6 passed or observer rows declared out of accretion scope in the bead text; two agents' manifests available | G8: a new source release invalidates only the rows in architecture §8; two agents converge on one manifest | C22, C23, C24; T04 and T26 re-run under both agents' manifests; no new T id | bd-2rf9, bd-3oj1 |
+| D9 | Deferred-trigger review | G1 to G7 recorded as passed or as a documented shortfall | G9: each DEFERRED item's trigger checked against D1 to D7 measurements and recorded | C24; no T id: G9 is a review record naming each DEFERRED trigger and the measurement checked | new P4 placeholder beads |
 
 ### 19.6 Test matrix
 
@@ -1694,11 +1707,74 @@ close every §19.4 row and every §19.9 threat.
 
 ### 19.7 Commands
 
+Whole-tree gates run on every commit in every stage. Per-module binaries are the
+`tests/geo_<module>.rs` files from §19.3; each stage runs its own set before claiming its
+gate. `rg` exit status 1 means no match, which is the pass for the literal scans, so
+they are written with a leading `!`.
+
 ```bash
+# Whole-tree gates
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
-cargo test --test geo_adjudication -- --ignored   # frozen E4 gate, expected red until G1
+
+# Frozen E4 gate (T17, C24): expected red until G1, green from G1 on
+cargo test --test geo_adjudication e4_acceptance_gate_requires_the_full_population_to_be_reachable -- --ignored
+
+# Per-module test binaries (stage: test ids)
+cargo test --test geo_propagate           # D2: T01 to T04, T19
+cargo test --test geo_explain             # D2: T05, T06, T20, T21
+cargo test --test geo_ledger              # D3: T07, T23, T26
+cargo test --test geo_exposure            # D3: T08
+cargo test --test geo_collision           # D3: T09
+cargo test --test geo_retry               # D4: T10
+cargo test --test geo_condo               # D4: T11
+cargo test --test geo_inspect             # D4: T12, T25
+cargo test --test geo_next_evidence       # D5: T18
+cargo test --test geo_observer            # D6: T13, T14, T15
+cargo test --test geo_adjudicate          # D6: T22 (new binary; distinct from the existing geo_adjudication)
+cargo test --test geo_card                # D6: T24, T26
+cargo test --test geo_e5_franklin_parcel  # D7: T16 plus the existing literal scan
+
+# One test by name with output
+cargo test --test geo_propagate soundness_holds_on_every_e4_fixture -- --nocapture
+
+# Schema drift guard (C22). tests/geo_schemas.rs include_str!s each schema file, pins
+# title, properties.version.const, and additionalProperties == false, then walks a real
+# serialized instance against the schema; there is no jsonschema crate. Each new
+# artifact adds one <name>_schema_matches_a_real_instance test there and one
+# include_str! of schemas/canon.geo.<name>.v0.schema.json.
+cargo test --test geo_schemas
+cargo test --test geo_schemas propagation_schema_matches_a_real_instance
+for s in propagation explanation separation_request separation observer observation_rows \
+         image_tile_pin adjudication_request adjudication_receipt evidence_card \
+         collateral_ledger event_exposure cross_deal retry_loop inspection next_evidence \
+         condo_bridge_request ledger_bridge; do
+  jq -e --arg s "$s" '.title == "canon.geo.\($s).v0"
+    and .properties.version.const == "canon_geo_\($s).v0"
+    and .additionalProperties == false' "schemas/canon.geo.${s}.v0.schema.json"
+done
+
+# --describe entries for geo subcommands (C22: one per new module, named after it:
+# geo propagate, geo explain, geo observer, geo adjudicate, geo card, geo ledger,
+# geo exposure, geo collision, geo retry, geo inspect, geo next-evidence, geo condo)
+cargo run --bin canon -- --describe \
+  | jq -r '.subcommands[] | select(.name | startswith("geo ")) | "\(.name)\t\(.status)\t\(.output_schema)"'
+cargo run --bin canon -- --describe \
+  | jq -e '[.subcommands[] | select(.name == "geo propagate" and .status == "implemented")] | length == 1'
+
+# T27 literal scan (C25, G7). Mirrors tests/geo_e5_franklin_parcel.rs
+# franklin_instance_names_do_not_enter_the_generic_geo_engine, which lowercases each
+# generic source file and asserts it contains no instance literal.
+GEO_GENERIC="src/geo/propagate.rs src/geo/explain.rs src/geo/observer.rs src/geo/adjudicate.rs \
+  src/geo/card.rs src/geo/ledger.rs src/geo/exposure.rs src/geo/collision.rs src/geo/retry.rs \
+  src/geo/inspect.rs src/geo/next_evidence.rs src/geo/condo.rs"
+! rg -i -n 'franklin|39049|epsg:3735|1004540041|chimera_wrongly_admitted|asserted_address_core|case_4' $GEO_GENERIC
+! rg -n 'solve_composition' src/geo/inspect.rs
+! rg -i -n 'reqwest|hyper::|openai|anthropic|gemini|bedrock|invoke_model' src/geo/observer.rs
+cargo test --test geo_e5_franklin_parcel franklin_instance_names_do_not_enter_the_generic_geo_engine
+
+# Demo 0, capabilities, measurement plan, beads
 bash scripts/geo_demo/demo0.sh --work-dir /tmp/demo0
 cargo run --bin canon -- geo capabilities --emit json
 cargo run --bin canon_geo_measurements -- --emit plan
@@ -1712,8 +1788,34 @@ bd-1l4r (D1), bd-kwmc and bd-67wx (D3), bd-2fed and bd-1g18 (D4), bd-vojr (D5), 
 (D6), bd-s07o and bd-3mo1 (D7), bd-2rf9 and bd-3oj1 (D8), bd-2b9d and bd-2cbs and bd-1wpv
 (candidate reach and levels, feeding D1), bd-29cf (citation audit, chore lane).
 
-New beads created 2026-09-01 for D2, D3, D4, D6, and D9 carry the full design text from
-§18 and §19 so that no implementer needs to return to this document.
+Owners per stage, matching §19.5: D0 bd-179b, bd-7bcp; D1 bd-1g4x, bd-1l4r; D2 new
+beads; D3 new beads, bd-kwmc, bd-67wx; D4 new bead, bd-2fed, bd-1g18; D5 bd-vojr; D6 new
+beads, bd-101v; D7 bd-s07o, bd-3mo1; D8 bd-2rf9, bd-3oj1; D9 new P4 placeholder beads.
+
+New beads for D2, D3, D4, D6, and D9 are minted one per packet below and carry the full
+design text from §18 and §19 (the §19.3 module surface, the §19.4 rows, the §19.6 rows,
+and the §19.9 rows the packet cites) so that no implementer needs to return to this
+document. A packet's bead is blocked by the bead of every packet it depends on.
+
+| Packet | Stage | Modules | Contracts / tests | Bead | Depends on |
+|---|---|---|---|---|---|
+| PK-D2a | D2 | `propagate.rs` | C01 to C04, C22, C25; T01 to T04, T19, T27 | new | G1 (bd-1g4x, bd-1l4r) |
+| PK-D2b | D2 | `explain.rs` | C05 to C08, C22, C25; T05, T06, T20, T21, T27 | new | PK-D2a |
+| PK-D3a | D3 | `ledger.rs` | C13, C14, C22, C23, C25; T07, T23, T26, T27 | new; bd-kwmc owns the client-facing shape, bd-67wx the identifier scheme | G1 |
+| PK-D3b | D3 | `exposure.rs` | C15, C22, C25; T08, T27; ships `advisory_synthetic_adv12.json` | new | PK-D3a |
+| PK-D3c | D3 | `collision.rs` | C16, C22, C25; T09, T27 | new | PK-D3a |
+| PK-D4a | D4 | `retry.rs` | C17, C22, C25; T10, T27 | new | G1 |
+| PK-D4b | D4 | `condo.rs` | C20, C22, C25; T11, T27 | bd-2fed | G1 |
+| PK-D4c | D4 | `inspect.rs` | C18, C22, C25; T12, T25, T27 | bd-1g18 | PK-D2b |
+| PK-D5 | D5 | `next_evidence.rs` | C19, C22, C25; T18, T27 | bd-vojr | PK-D2b |
+| PK-D6a | D6 | `observer.rs` | C09, C10, C11, C22, C23, C25; T13, T14, T15, T27 | new | PK-D2b |
+| PK-D6b | D6 | `adjudicate.rs` | C12, C22, C25; T22, T27 | new | PK-D6a |
+| PK-D6c | D6 | `card.rs` | C21, C22, C23, C25; T24, T26, T27 | bd-101v | PK-D6a, PK-D2b |
+| PK-D9 | D9 | none | C24; G9 review record, one placeholder per §18.3 DEFERRED item (six) | new P4 placeholders | G1 to G7 recorded |
+
+T16 and T17 have no packet: T17 belongs to the D1 owners (bd-1g4x, bd-1l4r) and T16 to
+the D7 owners (bd-s07o, bd-3mo1), both existing beads. D0, D1, D7, and D8 need no new
+bead; their owners are listed above.
 
 ### 19.9 Contracts and threats
 
