@@ -5796,10 +5796,6 @@
       ],
       "status": "implemented",
       "read_only": false,
-      "aggregate": true,
-      "leaves": [
-        "entity block preflight"
-      ],
       "safety": {
         "owned_temp_fixtures_only": true,
         "notes": "owned entity work-dir/cache/artifact writes only",
@@ -6077,6 +6073,10 @@
       ],
       "status": "implemented",
       "read_only": false,
+      "aggregate": true,
+      "leaves": [
+        "entity block preflight"
+      ],
       "safety": {
         "owned_temp_fixtures_only": true,
         "notes": "owned entity work-dir/cache/artifact writes only",
