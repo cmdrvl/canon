@@ -1774,6 +1774,9 @@ the two new columns were added in pass 3.
 | D8 | Accretion and parallel protocol | G3 passed; G6 passed or observer rows declared out of accretion scope in the bead text; two agents' manifests available | G8: a new source release invalidates only the rows in architecture §8; two agents converge on one manifest | C22, C23, C24; T04 and T26 re-run under both agents' manifests; no new T id | bd-2rf9, bd-3oj1 |
 | D9 | Deferred-trigger review | G1 to G7 recorded as passed or as a documented shortfall | G9: each DEFERRED item's trigger checked against D1 to D7 measurements and recorded | C24; no T id: G9 is a review record naming each DEFERRED trigger and the measurement checked | new P4 placeholder beads |
 
+**G1 record (2026-09-03).** Accepted at fixture class by operator decision. Evidence: the frozen E4 gate_v2 population (15 cases) re-stacked through the four G1 channels landed in bd-328d, bd-q7uz, bd-35vg (assessment-roll universe widening with exact-owner exclusion, PAD condo bridge, roll gross-sqft band and footprint floor) reports 0 `evidence_no_observation` cases (baseline 2), 4 resolved of which 3 deed-exact (baseline 0), 8 cases at 16 or fewer feasible sets (baseline 0), 0 false merges; truth fully inside the universe stays 7/15 and is the binding constraint for G2 onward. Receipts: `scripts/geo_measurements/fixtures/e4_gate_v2/` (bd-2ezy) and `scripts/geo_measurements/fixtures/e4_gate_v2_restack_2026-09-03/`. Not a live proof; `tests/geo_adjudication.rs` untouched.
+
+
 ### 19.6 Test matrix
 
 Columns. `Fixture or input` names the checked-in file under `tests/fixtures/geo/`, the
